@@ -23,9 +23,14 @@ cargo test --workspace --doc
 
 ## Règles
 
-- **Un rouge = andon.** On arrête, on corrige, on rejoue la gate
-  entière. Un warning clippy ou un avertissement du build ui-v2 est un
-  rouge.
+- **Un rouge = andon.** On arrête, on corrige. Un warning clippy ou un
+  avertissement du build ui-v2 est un rouge.
+- **Re-gate partielle après correction** : rejouer l'étape rouge et ce
+  que la correction peut impacter — si du Rust a bougé, l'amont aussi
+  (fmt, clippy, tests Rust) ; si l'UI a bougé, build ui-v2, contrastes,
+  cohérence, e2e. La **gate complète finale avant commit reste due**,
+  inchangée — la re-gate partielle ne vaut que pour la boucle de
+  correction.
 - **Après un sed/remplacement mécanique, toujours rejouer `fmt`** —
   la CI rouge du 2026-08-14 vient de là.
 - **E2E rouge en local ≠ régression.** La suite flake sur cette machine

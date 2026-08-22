@@ -68,8 +68,10 @@ avec la date. **Aucun code de production avant le GO.**
    l'implémentation complète, avant le commit final. Corriger ce qui
    est confirmé.
 2. **Gate complète** : `/gate`. Un rouge = andon — on arrête, on
-   corrige, on rejoue. Jamais de `--no-verify` sans décision explicite
-   du CE.
+   corrige, puis **re-gate partielle** (l'étape rouge + ce que la
+   correction peut impacter, amont compris si Rust) ; la gate complète
+   finale avant commit reste due. Jamais de `--no-verify` sans décision
+   explicite du CE.
 
 ## ⛔ STOP 2 — validation terrain
 
