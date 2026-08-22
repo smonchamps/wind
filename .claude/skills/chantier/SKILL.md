@@ -58,6 +58,14 @@ avec la date. **Aucun code de production avant le GO.**
   moments dits en Phase 3 — pas à chaque incrément.
 - **DC-D2** : tout commit qui touche l'UI amende
   `docs/design/systeme.dc.html` dans le **même commit** (journal A-n).
+- **STOP visuel précoce (UI)** : dès le premier incrément TDD minimal
+  qui rend quelque chose, demander au CE un verdict d'apparence —
+  avant de dérouler le reste. Un chantier UI complet a été annulé au
+  terrain faute de ce point (barre de tri, A58).
+- **STOP mesuré précoce (perf)** : mesure avant/après dès le premier
+  incrément, arbitrage CE sur le chiffre — jamais dérouler un chantier
+  perf entier sans STOP intermédiaire mesuré (~1 M tokens jetés sur
+  perf-lecture sans ce point).
 - Zéro `unwrap()`/`expect()` en prod ; `thiserror` dans les crates,
   `anyhow` dans les apps. Décision pure et testable, I/O ailleurs
   (motif STANDARD §4).
