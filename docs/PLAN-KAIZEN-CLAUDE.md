@@ -1,0 +1,219 @@
+# PLAN-KAIZEN-CLAUDE — optimiser l'usage de Claude Code sur Wind
+
+> Chantier kaizen ouvert le 2026-08-23, sur l'audit des 46 sessions du
+> 11 au 23 août (extraction déterministe des transcripts + analyse
+> multi-agents avec vérification adversariale sur pièces du dépôt ;
+> 7 recommandations sur 44 rejetées à la vérification). Objet : baisser
+> le coût en tokens, le temps de traitement des prompts et le temps
+> d'exécution du workflow /chantier→/gate→/solde, **sans toucher au
+> niveau de qualité** — la gate complète avant commit, la CI verte, le
+> TDD montré et le STOP 2 terrain sont des invariants, pas des
+> variables d'ajustement.
+
+---
+
+## Constat — baseline mesurée (2026-08-11 → 2026-08-23, 12 jours)
+
+### Volumes
+
+| Mesure | Valeur |
+|---|---|
+| Sessions / prompts CE / tours assistant | 46 / 478 / 17 479 (**36,6 tours par prompt**) |
+| Coût total (équivalents input : cacheRead ×0,1, cacheCreate ×1,25, output ×5) | **876 M** — cacheRead 68 %, cacheCreate 18 %, output 14 % |
+| cacheRead brut | 5,96 Md de tokens ; **top 10 sessions = 62 %** du volume |
+| Contexte moyen relu par tour | marathons 410–540 k ; sessions courtes 75–140 k |
+| Sessions compactées / closes proprement | 2 compactions sur 46 ; sessions de 90,4 h, 37,3 h, 26,3 h, 25,4 h de mur |
+| Chantiers /chantier sur la période | 15 invocations, ~14 chantiers soldés → **~60 M équiv. input par chantier** |
+
+### Temps
+
+| Mesure | Valeur |
+|---|---|
+| Latence API par appel | ~3 s médiane, **plate** de 106 k à 534 k de contexte (le cache paie) |
+| Lancements e2e | 243 ; parmi les 85 > 30 s : médiane 74 s, p90 159 s, max 217 s |
+| `git push` (hook pre-push rejoue la gate) | 42 > 30 s, médiane 118 s, max 164 s — au premier plan |
+| `gh run watch` / veille CI | 28 > 30 s, médiane 141 s ; ~20 min de mur bloqué par journée dense |
+| Gates complètes par chantier | jusqu'à 10+ ; chaque gate = 9 appels d'outil séquentiels (8 tours d'orchestration perdus) |
+| Rebuild par lancement e2e | `construireV2` bump le mtime de `main.rs` → recompile + link à chaque lancement, même sans changement |
+
+### Agents et modèles
+
+| Mesure | Valeur |
+|---|---|
+| Lancements d'agents (Agent tool) | 85 sur la période ; 141 transcripts de sous-agents, 5 301 appels API |
+| Coût des agents | **92 M équiv. input, soit ~9,5 % du total** (968 M fil principal + agents) — gisement secondaire, volume déjà sain (doctrine un-seul-fil + spike) |
+| Modèle des sous-agents | **100 % haut de gamme** (Opus 5 : 3 098 appels, Fable 5 : 2 100) — y compris les agents d'exploration |
+| Modèle du fil principal | Fable 5 : 72 % des messages, Opus 4.8 : 28 %, Sonnet 5 : ~0 % — le mécanique (docs, releases, Notion, veille CI) tourne au tarif maximal |
+| Gaspillage agent identifié | timing, pas volume : 2 revues high-effort (~8 agents chacune) payées sur des designs ensuite invalidés par la mesure |
+
+### Pertes récurrentes identifiées (avec preuve, cf. audit)
+
+- Sessions multi-chantiers jamais closes : le contexte d'un chantier
+  soldé est refacturé à chaque tour du suivant.
+- 9 lancements `/chantier` à vide → un aller-retour perdu chacun.
+- ~15 redemandes des commandes PowerShell du STOP 2, après codification.
+- 11 re-runs de suite complète pour trancher UN flake (la règle
+  spec-en-isolation existait déjà).
+- 2 revues high-effort payées sur des designs ensuite invalidés par la
+  mesure (chantier recherche) ; 1 chantier UI complet annulé au terrain
+  (barre de tri) ; ~1 M tokens jetés sur perf-lecture sans STOP
+  intermédiaire mesuré.
+- Frictions PowerShell 5.1 en cascade (one-liners régénérés au lieu de
+  scripts versionnés).
+
+---
+
+## Objectifs chiffrés — horizon : bilan le 2026-09-06 (2 semaines)
+
+Trois axes, neuf indicateurs. La référence est la fenêtre du 11–23 août ;
+la mesure de contrôle est la fenêtre 24 août – 6 septembre, ramenée au
+chantier soldé pour neutraliser les variations d'activité.
+
+### Axe T — tokens
+
+| Indicateur | Baseline | Cible | Levier principal |
+|---|---|---|---|
+| T1. Équiv. input **par chantier soldé** | ~60 M | **≤ 35 M (−40 %)** | T2+T3+T4 combinés |
+| T2. Contexte moyen relu par tour (toute session) | 410–540 k (marathons) | **≤ 200 k** | /solde = frontière de session ; /compact aux STOP |
+| T3. Sessions closes ou compactées ≤ 24 h de mur ; sessions multi-chantiers | 8+ marathons ; multi-chantiers courant | **100 % ; zéro** | étape finale de /solde |
+| T4. Tours assistant par prompt CE | 36,6 | **≤ 25 (−30 %)** | gate scriptée (−8 tours/gate), vagues groupées |
+
+### Axe P — temps de traitement des prompts, qualité constante
+
+| Indicateur | Baseline | Cible | Levier principal |
+|---|---|---|---|
+| P1. Mur bloqué au premier plan sur commandes > 60 s | ~3,5 h / 12 j (push, watch, e2e) | **≤ 15 min / 2 sem.** | arrière-plan systématique (Monitor), Claude annonce le verdict CI |
+| P2. Re-runs pour trancher un flake e2e | jusqu'à 11 | **≤ 2** (spec entier en isolation, une fois) | rappel de conformité /gate ; retries:1 |
+| P3. Allers-retours évitables (/chantier vide, redemande STOP 2) | 9 + ~15 | **0** | énoncé en argument ; non-conformité signalée |
+| Garde-fou qualité (ne doit PAS se dégrader) | — | constats KO au STOP 2 par chantier et CI rouges : **stables ou en baisse** | invariants inchangés |
+
+### Axe W — temps d'exécution du workflow (121 e2e)
+
+| Indicateur | Baseline | Cible | Levier principal |
+|---|---|---|---|
+| W1. Gate complète (mur, chronométrée) | à mesurer en W0 (estimée 9–12 min) | **≤ 6 min** | rebuild mémoïsé, gate.ps1, nextest (si mesuré gagnant) |
+| W2. Boucle intérieure : 1 spec e2e | méd. 74 s (dominée par rebuild) | **≤ 45 s** | rebuild mémoïsé + bump conditionnel |
+| W3. Gates complètes par chantier | 10+ | **≤ 3** | boucle ciblée codifiée + re-gate partielle |
+| W4. Temps de gate cumulé par chantier | ~100 min | **≤ 25 min** | W1×W3 |
+| W5. Push documentaire (docs-only) | ~2 min (gate entière) | **≤ 30 s** | chemin rapide pre-push |
+
+### Axe M — modèles et agents (validé CE le 2026-08-23)
+
+| Indicateur | Baseline | Cible | Levier principal |
+|---|---|---|---|
+| M1. Part du coût sur modèle haut de gamme **hors chantiers** (sessions mécaniques + agents d'exploration) | ~10–15 % du total | **≤ 5 %** | règle « session mécanique = Sonnet 5 » ; agents d'exploration abaissés |
+| M2. Revues high-effort par chantier | jusqu'à 3 (dont 2 sur designs jetés) | **1, à la convergence** | déjà porté par la vague 1 (T1) |
+| Garde-fou | — | les chantiers (conception, racine, TDD) restent sur Fable 5 — jamais de conception dure sur modèle moindre (précédent perf-lecture, non prouvé mais suspect) | — |
+
+Gain attendu de l'axe M : **−10 à −15 % du coût total**, cumulable avec
+l'axe T, sans toucher à la qualité des chantiers. Le *nombre* d'agents
+n'est pas un levier : 9,5 % du coût, et les spikes set-based comme les
+revues multi-angles sont les meilleurs détecteurs de défauts du
+workflow (c'est une revue qui a attrapé la reconstruction d'index FTS5
+de ~13 Go).
+
+---
+
+## Contre-mesures — trois vagues
+
+### Vague 0 — mesure de référence (avant tout changement, ½ journée)
+
+1. Verser `scripts/mesurer-sessions.mjs` (adaptation du script d'audit :
+   tokens, tours, contexte moyen, commandes > 30 s par catégorie, par
+   session) — on ne pilote que ce qu'on mesure.
+2. Chronométrer UNE gate complète de référence, cache cargo chaud
+   (STANDARD §9 : le cache chaud ment, noter l'état du cache) → fige W1.
+
+### Vague 1 — comportements et skills, zéro code produit (jour 1, un commit `chore:` par amendement)
+
+| # | Contre-mesure | Fichier(s) | Indicateurs servis |
+|---|---|---|---|
+| 1 | `/solde` : dernière étape « écrire l'entrée CHANGELOG (si release à venir), puis **clore cette session** ; le sujet suivant s'ouvre sur ETAT.md » | `.claude/skills/solde/SKILL.md` | T1 T2 T3 |
+| 2 | `/chantier` et `/terrain` : boucle intérieure ciblée — spec(s) impactée(s) **en fichier entier** (jamais `-g`), 2 runs groupés par vague (RED groupé, GREEN groupé) ; gate complète UNE fois avant commit | `chantier/SKILL.md`, `terrain/SKILL.md`, phrase au STANDARD §2.4 | W3 W4 T4 |
+| 3 | `/gate` : re-gate partielle après un rouge corrigé (étape rouge + ce que la correction peut impacter, amont compris si Rust) ; gate complète finale avant commit inchangée | `gate/SKILL.md`, `chantier/SKILL.md` | W3 W4 |
+| 4 | `/gate` et `/chantier` Phase 5 : push + `gh run watch` **en arrière-plan**, verdict annoncé par la session ; jamais d'attente CI au premier plan | `gate/SKILL.md`, `chantier/SKILL.md` | P1 |
+| 5 | `/chantier` : STOP visuel précoce (UI : verdict d'apparence après le premier incrément TDD minimal) ; STOP mesuré précoce (perf : mesure avant/après au premier incrément, arbitrage CE) | `chantier/SKILL.md` | T1 P3 |
+| 6 | Discipline CE (sans commit) : énoncé complet en argument de `/chantier` ; pièce à conviction au premier énoncé ; non-conformité signalée plutôt que redemandée ; une seule session écrivante à la fois | — | P3 T4 |
+| 7 | Politique de modèles dans WORKFLOW.md : **chantier = Fable 5** (invariant) ; **session mécanique** (docs/ETAT/CHANGELOG, Notion, veille CI, release scriptée, consolidation mémoire) **= Sonnet 5** ; préserve aussi le quota Fable pour les chantiers | `docs/WORKFLOW.md` | M1 |
+| 8 | Agents d'exploration/recherche abaissés (Sonnet 5, Haiku pour du pur balayage) ; agents de vérification, de revue et `spike` inchangés (haut de gamme / modèle de session) | `.claude/agents/`, WORKFLOW.md | M1 |
+
+### Vague 2 — petits chantiers techniques (semaine 1, ordre de rentabilité)
+
+| # | Contre-mesure | Gain attendu | Fichier(s) |
+|---|---|---|---|
+| 1 | Mémoïser `construireV2` par processus de suite + bump de `main.rs` conditionné au hash du dist **et** de tauri.conf.json | 3–8 min/suite ; 25–40 s/spec ; porte W1 et W2 | `e2e/rebuild-v2.mjs`, `e2e/launch.mjs` |
+| 2 | `scripts/gate.ps1` fail-fast, 9 étapes dans l'ordre du hook, **sans** les redirections `/dev/null` (le verdict chiffré doit sortir) ; `/gate` l'exécute en un appel | −8 tours/gate ; porte T4 | nouveau script + `gate/SKILL.md` |
+| 3 | `retries:1` dans Playwright + tout flaky consigné au verdict de gate (indissociables : un flaky ne rend pas le run rouge) ; andon = rouge franc | 5–15 min/flake ; porte P2 | `e2e/playwright.config.js`, `gate/SKILL.md` |
+| 4 | Chemin rapide docs-only du pre-push : sauter les étapes 6–8 (clippy, tests Rust, e2e) si le diff ⊆ `docs/**` + `*.md`, en **excluant `docs/design/**`** (DC-D6) ; garder les étapes en secondes | W5 | `.githooks/pre-push` |
+| 5 | `scripts/terrain.ps1` + `scripts/lancer-wind.ps1` compatibles PS 5.1 (CLIENT_ID, chemins OneDrive-sûrs, traces UTF-8 écrites par l'app) | supprime la classe de frictions terminal | nouveaux scripts, référencés au STOP 2 |
+| 6 | Base gabarit seed copiée par spec au lieu de ~14 `cargo run --example` par suite | 15–35 s/suite | `e2e/launch.mjs` |
+| 7 | `cargo-nextest` sur `--all-targets` : **mesurer avant/après** (gain attendu inter-binaires, ~20 binaires) ; adopter seulement si le chiffre le justifie ; `--doc` inchangé | ~15–25 s/gate si confirmé | `gate.ps1`, pre-push, ci.yml |
+
+### Vague 3 — structurel (à planifier, hors fenêtre de mesure)
+
+1. Sortir le dépôt de OneDrive (doctrine existante d'`installer-poste.ps1`)
+   — à un moment sans travail non commité en vol ; re-pointer la mémoire
+   Claude (clé projet = chemin).
+2. Runner self-hosted x64 pour un job e2e CI — l'ADR 0005 planifie cette
+   bascule ; déclencheur : jalon bêta fermée. Sort les 121 tests du
+   chemin bloquant local.
+
+### Pistes instruites et rejetées (ne pas ré-instruire)
+
+sccache (dégrade l'incrémental à chaud) ; fenêtre WebView2 partagée
+entre specs (état partagé, STANDARD §7.1/7.5) ; gate déléguée à la CI
+hébergée (ADR 0005) ; arbitrage d'un flake e2e par `gh run` (la CI ne
+joue aucun e2e).
+
+---
+
+## Mesure et revue (PDCA)
+
+- **À chaque /solde** : noter au PLAN du chantier les 3 chiffres du
+  chantier — équiv. input (T1), gates complètes jouées (W3), constats
+  KO au STOP 2 (garde-fou qualité).
+- **Hebdomadaire (vendredi)** : rejouer `scripts/mesurer-sessions.mjs`
+  sur la semaine, remplir le tableau de suivi ci-dessous.
+- **Bilan le 2026-09-06** : indicateur par indicateur, atteint / raté /
+  cause ; les contre-mesures qui n'ont pas produit leur chiffre sont
+  amendées ou retirées (standard work : on garde ce qui marche mesuré).
+
+### Tableau de suivi
+
+| Indicateur | Baseline | Cible | Sem. 1 | Sem. 2 | Verdict |
+|---|---|---|---|---|---|
+| T1 équiv. input / chantier | ~60 M | ≤ 35 M | | | |
+| T2 contexte moyen / tour | 410–540 k | ≤ 200 k | | | |
+| T3 sessions > 24 h non closes | 8+ | 0 | | | |
+| T4 tours / prompt | 36,6 | ≤ 25 | | | |
+| P1 mur bloqué > 60 s au 1er plan | ~3,5 h | ≤ 15 min | | | |
+| P2 re-runs / flake | ≤ 11 | ≤ 2 | | | |
+| P3 allers-retours évitables | 24 | 0 | | | |
+| W1 gate complète | mesure W0 | ≤ 6 min | | | |
+| W2 1 spec e2e | 74 s | ≤ 45 s | | | |
+| W3 gates complètes / chantier | 10+ | ≤ 3 | | | |
+| W5 push docs-only | ~2 min | ≤ 30 s | | | |
+| M1 coût haut de gamme hors chantiers | ~10–15 % | ≤ 5 % | | | |
+| M2 revues high / chantier | jusqu'à 3 | 1 | | | |
+| Qualité : KO au STOP 2 / CI rouges | réf. sem. passée | stable ou ↓ | | | |
+
+---
+
+## § Décisions CE
+
+- **D1 — Seuils de session.** Contexte moyen ≤ 200 k (T2) et clôture ≤
+  24 h de mur (T3) : valider ou ajuster les deux seuils.
+  *Réponse CE (2026-08-23) : « D1 OK » — seuils validés.*
+- **D2 — Script de mesure au dépôt.** Verser `scripts/mesurer-sessions.mjs`
+  (il lit les transcripts locaux sous `~/.claude/projects/…`, chemin
+  propre à la machine — comme `installer-poste.ps1`) : oui / non.
+  *Réponse CE (2026-08-23) : « oui » — le script sera versé en vague 0.*
+- **D3 — Ordre de la vague 2.** L'ordre proposé (rebuild mémoïsé en
+  premier) : valider ou réordonner.
+  *Réponse CE (2026-08-23) : « OK pour l'ordre proposé. »*
+- **D4 — Fenêtre de bilan.** Bilan PDCA le 2026-09-06 : valider ou
+  déplacer.
+  *Réponse CE (2026-08-23) : « OK pour le 6 septembre. » (Précision
+  actée : ce n'est pas la fin du kaizen — c'est le bilan de la fenêtre
+  de mesure ; les contre-mesures qui tiennent leur chiffre restent,
+  les autres sont amendées ou retirées.)*
