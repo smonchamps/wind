@@ -30,7 +30,9 @@
   import ModaleMigration from './ModaleMigration.svelte';
   import Toast from './Toast.svelte';
   import Hitofude from './Hitofude.svelte';
-  import { fil, fermerFil, reduireFil, estEcho, cleMsg } from './lib/fil.svelte.js';
+  import {
+    fil, fermerFil, reduireFil, retirerMessage, estEcho, cleMsg,
+  } from './lib/fil.svelte.js';
 
   let liste = $state(null);
   let lecture = $state(null);
@@ -1177,21 +1179,29 @@
       return false;
     }
   }
-  async function supprimer(ligne) {
-    if (gesteSurEcho(ligne)) return false;
+  // Terrain R8' (2026-08-23) : « Supprimer » vit PAR message — la
+  // cible est un message du fil (ou la ligne d'un fil d'un seul). Le
+  // fil ouvert reste en place s'il lui reste des messages ; rend VRAI
+  // quand le fil s'est fermé (l'écran 03 retourne alors à la boîte).
+  async function supprimer(cible) {
+    if (gesteSurEcho(cible)) return false;
     try {
       await appel('delete_message', {
-        accountId: ligne.account_id,
-        mailbox: ligne.mailbox,
-        uid: ligne.uid,
+        accountId: cible.account_id,
+        mailbox: cible.mailbox,
+        uid: cible.uid,
       });
-      flash(t('toast.supprimee'));
-      fermerFil();
+      const restants = retirerMessage(cible);
+      const ferme = restants <= 0;
+      if (ferme) fermerFil();
+      flash(t(ferme ? 'toast.supprimee' : 'toast.messageSupprime'));
       // Même mécanique qu'archiver : l'écho est en base, la Corbeille
       // le montre tout de suite, la passe réconcilie derrière.
       liste.recharger();
       chargerNav();
-      passeApresGeste(ligne.account_id);
+      passeApresGeste(cible.account_id);
+      // VRAI = geste abouti (le contrat d'avancerApres) — l'écran 03
+      // regarde fil.ligne pour savoir si le fil s'est fermé.
       return true;
     } catch (err) {
       console.error('delete_message :', err);
@@ -1337,7 +1347,7 @@
              {brouillons} onreprendre={reprendreBrouillon}
              onselect={surSelection} ononglet={surOnglet}
              ontotal={(t) => (totalListe = t)}
-             onresultats={(n, total) => { nResultats = n; nTotal = total; }} />
+             onresultats={(n, total) => { nResultats = n; nTotal = total; }} onflash={flash} />
       {#if volets === 3}
         <Lecture bind:this={lecture} {brouillons} onreprendre={reprendreBrouillon}
                  onarchiver={archiver} onsupprimer={supprimer}
@@ -1429,7 +1439,14 @@
     <Conversation bind:this={conversation} {brouillons}
                   onreprendre={reprendreBrouillon} onretour={retourBoite}
                   onarchiver={async (l) => { await archiver(l); retourBoite(); }}
-                  onsupprimer={async (l) => { await supprimer(l); retourBoite(); }}
+                  onsupprimer={async (l) => {
+                    // Fil fermé (dernier message parti) OU geste refusé
+                    // (écho en attente — le toast l'a dit) : retour à la
+                    // boîte, le câblage d'avant. Le fil ne reste ouvert
+                    // que s'il lui reste des messages.
+                    const abouti = await supprimer(l);
+                    if (!fil.ligne || !abouti) retourBoite();
+                  }}
                   onrepondre={repondre} onrepondretous={repondreTous}
                   ontransferer={transferer}
                   onspam={async (l) => { await signalerSpam(l); retourBoite(); }}

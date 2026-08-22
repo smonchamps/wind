@@ -1,12 +1,11 @@
 [package]
-name = "mail-core"
+name = "mail-ical"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
+calcard.workspace = true
 chrono.workspace = true
-mail-ical.workspace = true
-rusqlite.workspace = true
 thiserror.workspace = true
 
 [lints]

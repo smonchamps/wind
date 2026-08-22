@@ -18,6 +18,7 @@ mod echo;
 mod envelope;
 mod error;
 mod imap_quoted;
+mod invitation;
 mod nav;
 mod notify;
 mod outbox;
@@ -52,6 +53,9 @@ pub use echo::DESTINATIONS_ECHO;
 pub use envelope::{Envelope, Uid};
 pub use error::Error;
 pub use imap_quoted::{unescape_imap_quoted, unescape_imap_quoted_str};
+pub use invitation::{
+    InvitationRow, InvitationStockee, extraire_invitation, participation_de_stable,
+};
 pub use nav::{CanonicalFolders, NavCounts};
 pub use notify::{Lang, Notification, arrivals_to_notify, notification_for};
 pub use outbox::{OutboxAttachment, OutboxMessage, OutboxReport, OutboxState, flush_outbox};
@@ -60,7 +64,9 @@ pub use remote::{
     MessageRecipients, RemoteDraft, ThreadHeaders,
 };
 pub use search::WIDE_QUERY_THRESHOLD;
-pub use store::{Account, AccountConfig, AdoptionProgress, Store, SyncState, UnifiedRow};
+pub use store::{
+    Account, AccountConfig, AdoptionProgress, InvitationRang, Store, SyncState, UnifiedRow,
+};
 pub use sync::{
     RepereLocal, SYNC_BYTES_PER_MESSAGE, SyncEngine, SyncMode, SyncReport, disk_shortfall,
     faut_relever, sync_order, sync_percent,

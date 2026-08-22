@@ -11,6 +11,7 @@ tauri-build = { version = "2", features = [] }
 chrono.workspace = true
 mail-auth.workspace = true
 mail-core.workspace = true
+mail-ical.workspace = true
 mail-imap.workspace = true
 mail-render.workspace = true
 mail-smtp.workspace = true

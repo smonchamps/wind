@@ -24,11 +24,32 @@ pub fn load_body(
     };
     match server.fetch_body_html(mailbox, uid)? {
         Some(fetched) => {
-            store.save_body(state.mailbox_id, uid, &fetched.html, &fetched.attachments)?;
+            let invitation = invitation_de(store, account_id, fetched.ics.as_deref())?;
+            store.save_body_full(
+                state.mailbox_id,
+                uid,
+                &fetched.html,
+                &fetched.attachments,
+                invitation.as_ref(),
+            )?;
             Ok(Some(fetched.html))
         }
         None => Ok(None),
     }
+}
+
+/// La ligne d'invitation d'une partie calendrier rapportée avec le corps
+/// — notre PARTSTAT se cherche à l'adresse du compte (PLAN-INVITATIONS).
+pub(crate) fn invitation_de(
+    store: &Store,
+    account_id: i64,
+    ics: Option<&str>,
+) -> Result<Option<crate::invitation::InvitationRow>, Error> {
+    let Some(ics) = ics else { return Ok(None) };
+    let Some(adresse) = store.account_email(account_id)? else {
+        return Ok(None);
+    };
+    Ok(crate::invitation::extraire_invitation(ics, &adresse))
 }
 
 /// Aperçu texte d'un corps — la ligne grise sous l'objet (écran 02 de la
@@ -405,6 +426,34 @@ mod tests {
         let second = load_body(&mut server, &mut store, account, "INBOX", 1).unwrap();
         assert_eq!(second.as_deref(), Some("<p>corps du message</p>"));
         assert_eq!(server.body_fetches, 1, "le cache doit éviter le serveur");
+    }
+
+    /// PLAN-INVITATIONS : la partie calendrier voyage avec le corps et
+    /// finit en ligne `invitations` — notre PARTSTAT cherché à l'adresse
+    /// du compte.
+    #[test]
+    fn le_corps_rapporte_son_invitation_et_la_stocke() {
+        let (mut server, mut store, account) = synced_setup();
+        server.ics.insert(
+            1,
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REQUEST\r\n\
+             BEGIN:VEVENT\r\nUID:r1@exemple.fr\r\nSUMMARY:Point projet\r\n\
+             DTSTART:20260903T123000Z\r\n\
+             ORGANIZER;CN=Claire Martin:mailto:claire@exemple.fr\r\n\
+             ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:test@exemple.fr\r\n\
+             END:VEVENT\r\nEND:VCALENDAR\r\n"
+                .to_string(),
+        );
+
+        load_body(&mut server, &mut store, account, "INBOX", 1).unwrap();
+
+        let stockee = store
+            .invitation(account, "INBOX", 1)
+            .unwrap()
+            .expect("la ligne d'invitation");
+        assert_eq!(stockee.row.methode, "request");
+        assert_eq!(stockee.row.titre, "Point projet");
+        assert_eq!(stockee.row.partstat.as_deref(), Some("sans_reponse"));
     }
 
     #[test]

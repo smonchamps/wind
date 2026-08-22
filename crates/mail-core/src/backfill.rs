@@ -116,7 +116,14 @@ pub fn backfill_bodies(
         attempted.extend(batch.iter().copied());
 
         for (uid, body) in server.fetch_bodies_html(mailbox, &batch)? {
-            store.save_body(state.mailbox_id, uid, &body.html, &body.attachments)?;
+            let invitation = crate::body::invitation_de(store, account_id, body.ics.as_deref())?;
+            store.save_body_full(
+                state.mailbox_id,
+                uid,
+                &body.html,
+                &body.attachments,
+                invitation.as_ref(),
+            )?;
             fetched += 1;
         }
     }

@@ -15,6 +15,7 @@
   import { tick, untrack } from 'svelte';
   import { appel } from './lib/transport.js';
   import { quand } from './lib/quand.js';
+  import { puceInvitation } from './lib/invitation.js';
   import { initiales } from './lib/initiales.js';
   import { activation } from './lib/clavier.js';
   import { t } from './lib/texte.svelte.js';
@@ -37,6 +38,7 @@
     ononglet = () => {},
     ontotal = () => {},
     onresultats = () => {},
+    onflash = () => {},
   } = $props();
 
   const PAGE = 200;
@@ -98,7 +100,60 @@
   // le compte de porteuses AVANT l'index, tenu par page. `pinned` ne
   // vient que de la section épinglée (hors fenêtrage) : il rend la
   // ligne porteuse pour montrer sa marque, sans toucher les pages.
-  const aPuces = (l) => l.thread_size > 1 || l.attachment_count > 0 || l.pinned;
+  // Terrain R3'c (2026-08-23) : les GESTES d'une invitation occupent
+  // un rang À EUX — les autres puces (messages, fichiers, épingle)
+  // descendent au rang du dessous et ne remontent que quand la puce de
+  // réponse les rejoint. Le fenêtrage compte donc des RANGS (0, 1 ou
+  // 2) : le coût marginal d'un rang est constant (extraPuce = h2 − h1,
+  // la grille espace chaque rang du même row-gap) — la correction
+  // d'A44 se généralise, toujours pas de gabarit mesuré en plus.
+  const autresPuces = (l) => l.thread_size > 1 || l.attachment_count > 0 || l.pinned;
+  const gestesInvitation = (l) =>
+    l.invitation != null && !puceInvitation(l.invitation) && l.invitation.peut_repondre;
+  const rangsPuces = (l) =>
+    (gestesInvitation(l) ? 1 : 0) +
+    (autresPuces(l) || (l.invitation != null && puceInvitation(l.invitation) != null) ? 1 : 0);
+  const aPuces = (l) => rangsPuces(l) > 0;
+
+  // R10 : répondre à une invitation SANS l'ouvrir — le même chemin que
+  // la carte (repondre_invitation : journal + réponse en une
+  // transaction), le sujet dans la langue du produit, la puce suit
+  // localement. stopPropagation : le clic ne choisit pas la ligne.
+  let reponsesInvitation = $state({});
+  async function repondreInvitation(e, ligne, reponse) {
+    e.stopPropagation();
+    const cle = `${ligne.account_id}/${ligne.invitation.mailbox}/${ligne.invitation.uid}`;
+    if (reponsesInvitation[cle]) return;
+    reponsesInvitation[cle] = true;
+    // OPTIMISTE (terrain R3'a, corrigé 3e passe) : la puce remplace
+    // les boutons À L'INSTANT du clic — le journal suit derrière ; un
+    // échec rend l'état d'avant et le dit. Les lignes vivent dans des
+    // pages NON réactives (le fenêtrage) : c'est `version` — le canal
+    // d'invalidation maison — qui redessine la fenêtre, sinon la puce
+    // n'apparaissait qu'à la prochaine invalidation venue d'ailleurs
+    // (la sélection, une sonde…).
+    const avant = ligne.invitation.reponse;
+    ligne.invitation.reponse = reponse;
+    version += 1;
+    try {
+      const sujet = t(`inv.sujet_${reponse}`, { titre: ligne.invitation.titre });
+      await appel('repondre_invitation', {
+        accountId: ligne.account_id,
+        mailbox: ligne.invitation.mailbox,
+        uid: ligne.invitation.uid,
+        reponse,
+        sujet,
+        corps: sujet,
+      });
+      appel('flush_outbox').catch(() => {});
+    } catch (err) {
+      ligne.invitation.reponse = avant;
+      version += 1;
+      onflash(t('erreur.invitation', { err }));
+    } finally {
+      reponsesInvitation[cle] = false;
+    }
+  }
 
   // R4 (PLAN-RETOURS-7, D4/D5) : les conversations ÉPINGLÉES de la
   // Réception — servies À PART (`pinned_rows`), préposées au flot dans
@@ -144,7 +199,7 @@
     if (page) {
       const borne = i - pleine * PAGE;
       for (let k = 0; k < borne && k < page.length; k++) {
-        if (aPuces(page[k])) extra += 1;
+        extra += rangsPuces(page[k]);
       }
     }
     return extra;
@@ -310,7 +365,7 @@
         pages.set(p, page.rows);
         servieA.set(p, nee);
         let n = 0;
-        for (const l of page.rows) if (aPuces(l)) n += 1;
+        for (const l of page.rows) n += rangsPuces(l);
         chipsParPage.set(p, n);
         if (premierePageMs === null) premierePageMs = performance.now() - t0;
         const delta = n - avant;
@@ -748,8 +803,34 @@
              pièces est celui d'AVANT lecture du corps : 0 tant que le
              corps n'est pas rapatrié — la puce apparaît au fil du
              rattrapage, jamais à tort. -->
-        {#if aPuces(ligne)}
+        <!-- R10/R3'c (terrain 2026-08-23) : les GESTES d'une invitation
+             occupent un rang à eux — icône dite par couleur ET par le
+             texte (A8), la puce agit à l'instant du clic (optimiste). -->
+        {#if gestesInvitation(ligne)}
+          <div class="puces" data-testid="puces-invitation">
+            <button type="button" class="puce ton-accepte" data-testid="liste-accepter"
+                    disabled={reponsesInvitation[`${ligne.account_id}/${ligne.invitation.mailbox}/${ligne.invitation.uid}`]}
+                    onclick={(e) => repondreInvitation(e, ligne, 'accepte')}>
+              <span class="ms" aria-hidden="true">check_circle</span>{t('action.accepter')}</button>
+            <button type="button" class="puce ton-provisoire" data-testid="liste-provisoire"
+                    disabled={reponsesInvitation[`${ligne.account_id}/${ligne.invitation.mailbox}/${ligne.invitation.uid}`]}
+                    onclick={(e) => repondreInvitation(e, ligne, 'provisoire')}>
+              <span class="ms" aria-hidden="true">question_mark</span>{t('action.provisoire')}</button>
+            <button type="button" class="puce ton-refuse" data-testid="liste-refuser"
+                    disabled={reponsesInvitation[`${ligne.account_id}/${ligne.invitation.mailbox}/${ligne.invitation.uid}`]}
+                    onclick={(e) => repondreInvitation(e, ligne, 'refuse')}>
+              <span class="ms" aria-hidden="true">cancel</span>{t('action.refuser')}</button>
+          </div>
+        {/if}
+        {#if autresPuces(ligne) || (ligne.invitation && puceInvitation(ligne.invitation))}
           <div class="puces" data-testid="puces-ligne">
+            <!-- R11 : la réponse donnée (ou l'annulation) rejoint le
+                 rang commun — les autres puces remontent avec elle. -->
+            {#if ligne.invitation && puceInvitation(ligne.invitation)}
+              {@const puce = puceInvitation(ligne.invitation)}
+              <span class="puce ton-{puce.ton}" data-testid="puce-invitation">
+                {#if puce.icone}<span class="ms" aria-hidden="true">{puce.icone}</span>{/if}{puce.texte}</span>
+            {/if}
             {#if ligne.pinned}
               <span class="puce"><span class="ms" aria-hidden="true">keep</span>{t('puce.epingle')}</span>
             {/if}
@@ -956,6 +1037,18 @@
     border-radius:6px; white-space:nowrap;
   }
   .puce .ms { font-size:14px; }
+  /* R10 : les gestes d'invitation du rang — la puce qui AGIT. */
+  button.puce { cursor:pointer; }
+  button.puce:hover:not(:disabled) { background:var(--sel); }
+  button.puce:disabled { cursor:default; opacity:.55; }
+  /* R9 : la couleur dit le sens de la réponse — portée par l'ICÔNE
+     (le texte la double, A8), aux jetons du système : accepter en
+     accent, refuser en alerte, provisoire neutre. Paires déjà gatées
+     (accent/surface 3:1, alert/surface 3:1, et leurs pendants --sel). */
+  .puce.ton-accepte .ms { color:var(--accent); }
+  .puce.ton-provisoire .ms { color:var(--muted); }
+  .puce.ton-refuse .ms { color:var(--alert); }
+  .puce.ton-annulee { color:var(--alert); }
   .ligne:hover { background:var(--hover); }
   .ligne.choisie {
     background:var(--sel); border-left-color:var(--accent);

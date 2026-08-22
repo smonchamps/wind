@@ -181,6 +181,7 @@ fn main() {
             commands::search_messages,
             commands::message_body,
             commands::message_attachments,
+            commands::repondre_invitation,
             commands::chemin_enregistrement_suggere,
             commands::save_attachment,
             commands::mark_seen,

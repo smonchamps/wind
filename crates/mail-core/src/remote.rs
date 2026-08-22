@@ -19,6 +19,11 @@ use crate::error::Error;
 pub struct FetchedBody {
     pub html: String,
     pub attachments: Vec<Attachment>,
+    /// La partie `text/calendar` du message, brute — `None` pour un
+    /// message ordinaire. Même logique que les pièces : elle se lit dans
+    /// les mêmes octets, la redemander coûterait un téléchargement
+    /// complet (PLAN-INVITATIONS).
+    pub ics: Option<String>,
 }
 
 impl FetchedBody {
@@ -28,6 +33,7 @@ impl FetchedBody {
         Self {
             html: html.into(),
             attachments: Vec::new(),
+            ics: None,
         }
     }
 }

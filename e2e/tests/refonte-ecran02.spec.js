@@ -503,20 +503,21 @@ test("écrire ouvre la composition ; l'annuler vide ne laisse rien", async () =>
 test('« Répondre à tous » se tient entre Répondre et Transférer, par message (A14, R4/D4)', async () => {
   // R4 (PLAN-RETOURS-3, D4) : les gestes de réponse vivent EN BAS de
   // chaque message — A14 tient toujours, « Répondre à tous » entre
-  // Répondre et Transférer. La barre du FIL ne garde que le TRI (D5) et
-  // « Signaler comme spam » (R2/D2). Pas de clic : hors ligne garanti,
-  // « Répondre à tous » relit les destinataires sur le serveur.
+  // Répondre et Transférer ; « Supprimer » les a rejoints, PAR message
+  // (PLAN-INVITATIONS, terrain R8' du 2026-08-23). La barre du FIL ne
+  // garde que le TRI (D5) et « Signaler comme spam » (R2/D2). Pas de
+  // clic : hors ligne garanti.
   const barreMsg = await page
     .locator('[data-testid="volet-lecture"] [data-testid="actions-message"]')
     .last()
     .locator('button')
     .evaluateAll((boutons) => boutons.map((bouton) => bouton.dataset.testid));
-  expect(barreMsg).toEqual(['repondre', 'repondre-tous', 'transferer']);
+  expect(barreMsg).toEqual(['repondre', 'repondre-tous', 'transferer', 'supprimer']);
   const barreFil = await page
     .locator('[data-testid="volet-lecture"] .actions button')
     .evaluateAll((boutons) => boutons.map((bouton) => bouton.dataset.testid));
   // « Épingler » a rejoint la barre du fil en Réception (RETOURS-7, D3).
-  expect(barreFil).toEqual(['archiver', 'supprimer', 'signaler-spam', 'epingler']);
+  expect(barreFil).toEqual(['archiver', 'signaler-spam', 'epingler']);
 
   await page.locator('[data-testid="voir-conversation"]').click();
   const barreMsgConv = await page
@@ -524,11 +525,11 @@ test('« Répondre à tous » se tient entre Répondre et Transférer, par messa
     .last()
     .locator('button')
     .evaluateAll((boutons) => boutons.map((bouton) => bouton.dataset.testid));
-  expect(barreMsgConv).toEqual(['repondre', 'repondre-tous', 'transferer']);
+  expect(barreMsgConv).toEqual(['repondre', 'repondre-tous', 'transferer', 'supprimer']);
   const barreFilConv = await page
     .locator('[data-testid="conversation"] .actions button')
     .evaluateAll((boutons) => boutons.map((bouton) => bouton.dataset.testid));
-  expect(barreFilConv).toEqual(['archiver', 'supprimer', 'signaler-spam', 'epingler']);
+  expect(barreFilConv).toEqual(['archiver', 'signaler-spam', 'epingler']);
 
   await page.locator('[data-testid="retour-boite"]').click();
   await expect(page.locator('[data-testid="fil-sujet"]')).toHaveText(

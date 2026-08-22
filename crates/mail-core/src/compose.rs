@@ -42,6 +42,11 @@ pub struct Draft {
     /// high` — la paire que posent les clients mûrs. `compose()` rend
     /// `false` ; l'appelant qui a le geste le pose.
     pub important: bool,
+    /// La réponse iTIP d'une invitation (PLAN-INVITATIONS) : le texte
+    /// `METHOD:REPLY` que la remise portera en partie
+    /// `text/calendar; method=REPLY`. `compose()` rend `None` ;
+    /// l'appelant qui répond à une invitation le pose.
+    pub ics_reply: Option<String>,
 }
 
 /// Valide et assemble un brouillon prêt à journaliser.
@@ -78,6 +83,7 @@ pub fn compose(
         body_html: None,
         in_reply_to: in_reply_to.and_then(normalize_message_id),
         important: false,
+        ics_reply: None,
     })
 }
 

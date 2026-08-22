@@ -902,10 +902,48 @@ pub fn is_connection_error(err: &Error) -> bool {
 /// pièces jointes — les deux se lisent dans les mêmes octets, il serait
 /// absurde de les redemander séparément.
 fn body_from_raw(raw: &[u8]) -> Option<FetchedBody> {
+    let ics = convert::extract_ics(raw);
+    // Un message dont la RACINE est text/calendar n'a pas de corps
+    // HTML : il reste affichable — carte d'invitation sur corps vide.
+    // Avant PLAN-INVITATIONS il tombait en « message introuvable » et
+    // restait éternellement candidat au rattrapage.
+    let html = match convert::extract_html(raw) {
+        Some(html) => html,
+        None if ics.is_some() => String::new(),
+        None => return None,
+    };
     Some(FetchedBody {
-        html: convert::extract_html(raw)?,
+        html,
         attachments: convert::extract_attachments(raw),
+        ics,
     })
+}
+
+#[cfg(test)]
+mod body_from_raw_tests {
+    use super::body_from_raw;
+
+    /// Le cas C du constat PLAN-INVITATIONS : la racine EST l'invitation.
+    #[test]
+    fn un_message_racine_calendrier_reste_affichable() {
+        let raw = "From: claire@exemple.fr\r\nTo: nous@wind.example\r\n\
+                   Subject: Invitation\r\nMIME-Version: 1.0\r\n\
+                   Content-Type: text/calendar; method=REQUEST; charset=utf-8\r\n\r\n\
+                   BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REQUEST\r\n\
+                   BEGIN:VEVENT\r\nUID:r1@exemple.fr\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let fetched = body_from_raw(raw.as_bytes()).expect("affichable");
+        assert!(
+            fetched
+                .ics
+                .as_deref()
+                .is_some_and(|i| i.contains("METHOD:REQUEST"))
+        );
+    }
+
+    #[test]
+    fn un_message_inanalysable_reste_none() {
+        assert_eq!(body_from_raw(b"\xff\xfe pas un message"), None);
+    }
 }
 
 #[cfg(test)]

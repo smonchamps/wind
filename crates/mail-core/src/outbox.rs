@@ -125,6 +125,9 @@ pub struct OutboxMessage {
     /// Envoi différé (R2) : l'époque (secondes) avant laquelle la
     /// vidange ne prend pas ce message. `None` = tout de suite.
     pub send_at_epoch: Option<i64>,
+    /// La réponse iTIP (PLAN-INVITATIONS) — la remise la porte en
+    /// partie `text/calendar; method=REPLY`. `None` = envoi ordinaire.
+    pub ics_reply: Option<String>,
     /// Les pièces, dans l'ordre du geste (PJ-D2).
     pub attachments: Vec<OutboxAttachment>,
     pub state: OutboxState,
@@ -135,7 +138,7 @@ pub struct OutboxMessage {
 
 const OUTBOX_SELECT: &str = "SELECT id, account_id, message_id, sender, recipients, subject,
         body_text, in_reply_to, state, attempts, last_error, queued_epoch, cc_addrs, bcc_addrs,
-        body_html, important, send_at_epoch
+        body_html, important, send_at_epoch, ics_reply
  FROM outbox";
 
 impl Store {
@@ -146,8 +149,8 @@ impl Store {
         self.conn().execute(
             "INSERT INTO outbox
              (account_id, message_id, sender, recipients, cc_addrs, bcc_addrs, subject, body_text,
-              body_html, in_reply_to, important, state, queued_epoch)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+              body_html, in_reply_to, important, ics_reply, state, queued_epoch)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 account_id,
                 draft.message_id,
@@ -160,6 +163,7 @@ impl Store {
                 draft.body_html,
                 draft.in_reply_to,
                 draft.important,
+                draft.ics_reply,
                 OutboxState::Queued.as_str(),
                 Utc::now().timestamp(),
             ],
@@ -218,6 +222,38 @@ impl Store {
         }
         tx.commit()?;
         Ok(outbox_id)
+    }
+
+    /// Journalise l'email iTIP d'une réponse ET consigne la réponse sur
+    /// la carte — dans UNE transaction (PLAN-INVITATIONS, D6). Si la
+    /// ligne d'invitation n'existe plus (message expurgé, boîte
+    /// réinitialisée entre l'affichage et le clic), RIEN ne part :
+    /// `None` vaut mieux qu'un email en file devant une carte qui dit
+    /// encore « pas répondu » — l'utilisateur recliquerait, et
+    /// l'organisateur recevrait deux REPLY.
+    pub fn enqueue_reponse_invitation(
+        &self,
+        account_id: i64,
+        draft: &Draft,
+        mailbox: &str,
+        uid: crate::envelope::Uid,
+        reponse: &str,
+        epoch: i64,
+    ) -> Result<Option<i64>, Error> {
+        let tx = self.conn().unchecked_transaction()?;
+        let touchees = tx.execute(
+            "UPDATE invitations SET reponse = ?4, reponse_epoch = ?5
+             WHERE uid = ?3 AND mailbox_id IN
+                   (SELECT id FROM mailboxes WHERE account_id = ?1 AND name = ?2)",
+            params![account_id, mailbox, uid, reponse, epoch],
+        )?;
+        if touchees == 0 {
+            // La transaction se rembobine à la chute : rien de journalisé.
+            return Ok(None);
+        }
+        let outbox_id = self.enqueue_outbox(account_id, draft)?;
+        tx.commit()?;
+        Ok(Some(outbox_id))
     }
 
     /// Annule un envoi programmé (R2, décision CE D2) : l'entrée quitte
@@ -449,6 +485,7 @@ fn row_to_outbox(row: &rusqlite::Row<'_>) -> rusqlite::Result<OutboxMessage> {
         in_reply_to: row.get(7)?,
         important: row.get(15)?,
         send_at_epoch: row.get(16)?,
+        ics_reply: row.get(17)?,
         // Chargées par `load_outbox_attachments`, jamais ici : une ligne
         // ne connaît pas ses pièces.
         attachments: Vec::new(),
@@ -629,6 +666,27 @@ mod tests {
         let queued = store.outbox_to_send(account).unwrap();
         assert!(queued[0].important, "le journal porte le marquage");
         assert!(!queued[1].important, "l'envoi ordinaire reste ordinaire");
+    }
+
+    /// PLAN-INVITATIONS : la réponse iTIP du journal survit à l'enqueue
+    /// et à la relecture — c'est elle que mail-smtp porte en partie
+    /// `text/calendar; method=REPLY` ; l'envoi ordinaire reste NULL.
+    #[test]
+    fn enqueue_roundtrips_ics_reply() {
+        let (store, account) = store();
+        let mut reponse = draft("reponse");
+        reponse.ics_reply = Some("BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nEND:VCALENDAR\r\n".into());
+        store.enqueue_outbox(account, &reponse).unwrap();
+        store.enqueue_outbox(account, &draft("ordinaire")).unwrap();
+
+        let queued = store.outbox_to_send(account).unwrap();
+        assert!(
+            queued[0]
+                .ics_reply
+                .as_deref()
+                .is_some_and(|ics| ics.contains("METHOD:REPLY"))
+        );
+        assert_eq!(queued[1].ics_reply, None);
     }
 
     /// A54 : Cc/Cci du journal survivent à l'enqueue et à la relecture ;

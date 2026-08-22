@@ -266,6 +266,7 @@ wind/
 │   │                  # (ZÉRO dépendance UI ou réseau)
 │   ├── mail-imap/     # adaptateur IMAP (implémente MailServer)
 │   ├── mail-auth/     # OAuth2 PKCE loopback + coffre Windows (keyring)
+│   ├── mail-ical/     # invitations iCalendar/iTIP (calcard), PURE (ADR 0024)
 │   ├── mail-render/   # assainissement HTML (ammonia) + texte + CSP
 │   └── mail-smtp/     # adaptateur SMTP (lettre, XOAUTH2)
 ├── apps/desktop/      # Tauri 2 : commands.rs (IPC) + main.rs + ui/ (JS vanilla)
@@ -309,6 +310,7 @@ scénarios du terrain sans réseau.
 | [0014](adr/0014-telemetrie-de-crash-locale.md) | Télémétrie de crash **locale, opt-in** | Fichier local seul (aucun réseau/tiers) ; panics seuls ; **message du panic supprimé** (seul vecteur de PII) ; hook qui ne touche jamais la base ; un crash thread principal fait un **double panic** (compteur `SEQ` + filtre `cannot unwind`) |
 | [0015](adr/0015-socle-ui-v2-svelte.md) | **Socle UI v2 = Svelte**, front web unique porté partout (Tauri 2 desktop+mobile + navigateur) | Départage set-based (vanilla / Svelte / WASM) **sur mesure** : liste 256 k + bascule de thème, deux moteurs (Blink desktop, Android-classe CPU ×6) — rendu neutralisé par fenêtrage + thème CSS. **Système écrit une fois** (Stratégie A) ; WASM écarté, vanilla en repli ; **iOS/WKWebView : validation terrain due** ; frontière UI↔cœur = port de transport ; `mail-core` intouché (ADR 0001) |
 | [0019](adr/0019-commandes-hors-du-thread-principal.md) | **Commandes bloquantes hors du thread principal**, une à la fois (`hors_pompe` = spawn_blocking + verrou global) | La pompe ne fait que pomper (gel mesuré : 25,2 s/40 s → 0) ; la sérialisation d'avant est CONSERVÉE ; gate `garde-thread-principal.mjs` + budget « aucun gel > 150 ms » (`sonde-gel.py`) |
+| [0024](adr/0024-parseur-icalendar-calcard.md) | Invitations iCalendar = **calcard** dans `mail-ical` pure | Départagé par spikes (corpus commun) sur le **coût de possession** ; TZID Windows natifs ; ⚠️ `resolve()` jamais `resolve_or_default` — un TZID inconnu rend une heure FLOTTANTE dite telle quelle (garde D1), jamais convertie à faux |
 
 Décisions Phase 0 ([PHASE0.md](archives/PHASE0.md) §2) : SQLite local ; CONDSTORE ;
 parsing MIME par `mail-parser` ; OAuth2 PKCE loopback + coffre OS ; rendu
@@ -866,7 +868,8 @@ Payés le même jour (PLAN-COMPOSITION-HTML, e2e du 2026-08-20) :
 | [`crates/mail-core/src/backfill.rs`](../crates/mail-core/src/backfill.rs) | Rattrapage des corps ET passe d'en-têtes — `NO_HORIZON` depuis l'ADR 0010 |
 | [`crates/mail-core/src/test_support.rs`](../crates/mail-core/src/test_support.rs) | `FakeServer` — rejoue les bizarreries du terrain |
 | [`crates/mail-core/examples/`](../crates/mail-core/examples/) | 3 diagnostics + 3 bancs + `seed_inbox` |
-| [`crates/mail-imap/src/convert.rs`](../crates/mail-imap/src/convert.rs) | Traduction IMAP → domaine ; découverte archive et envois |
+| [`crates/mail-imap/src/convert.rs`](../crates/mail-imap/src/convert.rs) | Traduction IMAP → domaine ; découverte archive et envois ; extraction calendrier (`extract_ics`) |
+| [`crates/mail-ical/src/lib.rs`](../crates/mail-ical/src/lib.rs) | Invitations iCalendar/iTIP : parseur + générateur REPLY, pur (ADR 0024) — corpus des spikes en tests |
 | [`crates/mail-auth/src/provider.rs`](../crates/mail-auth/src/provider.rs) | Fournisseurs OAuth décrits **en données** |
 | [`apps/desktop/src/commands.rs`](../apps/desktop/src/commands.rs) | Commandes Tauri (IPC), boucle toutes-boîtes, garde disque, avancement |
 | [`apps/desktop/ui-v2/src/App.svelte`](../apps/desktop/ui-v2/src/App.svelte) | L'UI (Svelte 5, seule depuis B2/PLAN-RETRAIT-V1) : écrans 01-04, fente d'avis, cycle de synchro automatique |

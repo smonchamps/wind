@@ -16,6 +16,9 @@ pub(crate) struct FakeServer {
     pub(crate) modseq: u64,
     pub(crate) messages: BTreeMap<Uid, (Envelope, u64)>,
     pub(crate) bodies: BTreeMap<Uid, String>,
+    /// La partie `text/calendar` servie avec le corps, par UID —
+    /// l'invitation du simulateur (PLAN-INVITATIONS).
+    pub(crate) ics: BTreeMap<Uid, String>,
     pub(crate) fetch_batches: Vec<Vec<Uid>>,
     /// Nombre d'inventaires d'UIDs payés (`UID SEARCH ALL` du réel) —
     /// la preuve qu'E2b ne les demande que si le décompte l'exige.
@@ -49,6 +52,7 @@ impl FakeServer {
             modseq: 0,
             messages: BTreeMap::new(),
             bodies: BTreeMap::new(),
+            ics: BTreeMap::new(),
             fetch_batches: Vec::new(),
             uid_list_calls: 0,
             body_fetches: 0,
@@ -190,7 +194,11 @@ impl MailServer for FakeServer {
 
     fn fetch_body_html(&mut self, _mailbox: &str, uid: Uid) -> Result<Option<FetchedBody>, Error> {
         self.body_fetches += 1;
-        Ok(self.bodies.get(&uid).map(FetchedBody::html))
+        Ok(self.bodies.get(&uid).map(|html| {
+            let mut fetched = FetchedBody::html(html);
+            fetched.ics = self.ics.get(&uid).cloned();
+            fetched
+        }))
     }
 
     fn fetch_bodies_html(
@@ -202,9 +210,11 @@ impl MailServer for FakeServer {
         Ok(uids
             .iter()
             .filter_map(|uid| {
-                self.bodies
-                    .get(uid)
-                    .map(|html| (*uid, FetchedBody::html(html)))
+                self.bodies.get(uid).map(|html| {
+                    let mut fetched = FetchedBody::html(html);
+                    fetched.ics = self.ics.get(uid).cloned();
+                    (*uid, fetched)
+                })
             })
             .collect())
     }

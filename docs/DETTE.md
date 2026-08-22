@@ -442,3 +442,54 @@ motivée.)
   Piste : ré-ancrer l'épingle sur la tête courante du fil à chaque
   service (`pinned_rows` sait le faire), et balayer les orphelines à la
   vidange.
+
+### D-29 · Un message dont la racine EST le calendrier a un corps vide définitif
+
+- **Fait (revue PLAN-INVITATIONS, 2026-08-22)** : un message sans
+  partie texte/HTML dont la racine est `text/calendar` (cas C du
+  constat) est désormais AFFICHABLE — corps vide, la carte d'invitation
+  est le contenu. Avant, il tombait en « message introuvable » et
+  restait éternellement candidat au rattrapage. Contrepartie : le corps
+  `""` est mis en cache (`scanned = 1`) — la recherche plein-texte ne
+  voit pas les mots du titre de la réunion, et TRANSFÉRER ce message
+  produit une citation vide (l'ICS ne suit pas), sans avertissement.
+- **Pourquoi assumé** : la carte affiche l'essentiel (titre, horaire,
+  lieu, organisateur) ; l'ancien comportement (erreur sèche) était pire
+  des deux côtés ; la forme est rare (Google/Outlook émettent en
+  multipart/alternative avec un HTML).
+- **Condition de reprise** : si le terrain ou la bêta transfère des
+  invitations nues ou les cherche par titre. Pistes : indexer le titre
+  de l'invitation dans FTS au `save_body_full` ; joindre l'ICS au
+  transfert.
+
+### D-30 · Une invitation héritée SANS ligne de pièce calendrier n'a pas de carte
+
+- **Fait (revue PLAN-INVITATIONS, 2026-08-22)** : l'adoption de
+  l'existant passe par la réparation `pieces-calendrier` (les corps des
+  messages ayant une ligne `attachments` calendrier sont relus). Un
+  message scanné AVANT la fonctionnalité dont la partie calendrier
+  n'avait PAS été classée en pièce par mail-parser (ex. disposition
+  `inline` exotique) est invisible du critère : sa carte ne naîtra qu'à
+  une relecture fortuite (reset d'UIDVALIDITY, corps re-fetché).
+- **Pourquoi assumé** : forme rare (les producteurs majeurs passent en
+  multipart/alternative, classée en pièce), et le seul critère local
+  possible serait de relire TOUS les corps — le contraire d'une
+  réparation ciblée.
+- **Condition de reprise** : un constat terrain « ce vieux message est
+  une invitation sans carte ». Piste : élargir la réparation aux
+  messages dont le CORPS contient un marqueur BEGIN:VCALENDAR (critère
+  SQL LIKE, une passe).
+
+### D-31 · `drafts` ne porte pas `ics_reply` — l'aller-retour brouillon le perdrait
+
+- **Fait (revue PLAN-INVITATIONS, 2026-08-22)** : `Draft.ics_reply` et
+  `outbox.ics_reply` existent, `drafts` non. Aujourd'hui inatteignable :
+  une réponse d'invitation n'est jamais programmée (l'annulation d'un
+  envoi programmé est le seul chemin outbox → brouillon) ni éditée au
+  composeur. Mais le contrat « le brouillon recréé est COMPLET »
+  (annuler_envoi_programme) est faux pour ce champ.
+- **Pourquoi assumé** : le chemin n'existe pas ; ajouter une colonne
+  morte serait pire.
+- **Condition de reprise** : le jour où une réponse d'invitation
+  devient programmable ou éditable au composeur — la colonne `drafts`
+  et sa copie dans les deux sens font partie du même chantier.

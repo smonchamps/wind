@@ -47,10 +47,18 @@ export function quand(epoch) {
   if (ecartJours === 1) return t('quand.hier');
   // La semaine glissante du prototype : « Lundi, 18:20 ».
   if (ecartJours >= 2 && ecartJours <= 6) return t('quand.jours')[date.getDay()];
-  const quantieme = date.getDate() === 1 ? t('quand.premier') : String(date.getDate());
-  const mois = t('quand.mois')[date.getMonth()];
-  if (date.getFullYear() === maintenant.getFullYear()) {
+  return dateAbsolue(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+// La date absolue — « 5 août » dans l'année, « 5 août 2024 » au-delà,
+// « 1ᵉʳ » compris. LA grammaire vit ici, une fois : la liste (quand) et
+// la carte d'invitation la partagent (revue PLAN-INVITATIONS — une
+// copie divergerait à la première langue ajoutée).
+export function dateAbsolue(annee, moisIndex, jour) {
+  const quantieme = jour === 1 ? t('quand.premier') : String(jour);
+  const mois = t('quand.mois')[moisIndex];
+  if (annee === new Date().getFullYear()) {
     return t('quand.dansAnnee', { jour: quantieme, mois });
   }
-  return t('quand.auDela', { jour: quantieme, mois, annee: date.getFullYear() });
+  return t('quand.auDela', { jour: quantieme, mois, annee });
 }

@@ -71,9 +71,15 @@ désormais le sens unique « repère de compte ») ; le sous-ensemble
 passe de 64 à **76**, cache-buster `?v=76`. Piège appris à la
 régénération : le subsetteur **exige `icon_names` trié** (erreur 400
 sinon — `schedule_send` avant `school`).
+PLAN-INVITATIONS (2026-08-23, terrain R3'/R7) ajoute **2 glyphes** :
+`cancel` (« Refuser » une invitation et la puce « Refusée » — le
+pendant rond de `check_circle`, jamais `close` qui garde son sens
+« fermer ») et `question_mark` (« Provisoire ») ; `check_circle` élargit
+son sens « confirmé » à « accepté » (même famille, A3 tenu) ; le
+sous-ensemble passe de 76 à **78**, cache-buster `?v=78`.
 
 `account_balance` `all_inbox` `archive` `arrow_back` `attach_file`
-`bookmark`
+`bookmark` `cancel`
 `check_circle` `close` `delete` `description` `display_settings`
 `download` `drafts` `eco` `edit_note` `edit_square` `error`
 `favorite` `flight`
@@ -86,7 +92,8 @@ sinon — `schedule_send` avant `school`).
 `keyboard` `link`
 `link_off` `mark_email_unread` `menu` `music_note` `notifications`
 `open_in_full`
-`open_in_new` `person` `person_add` `pets` `priority_high` `reply`
+`open_in_new` `person` `person_add` `pets` `priority_high`
+`question_mark` `reply`
 `reply_all` `report` `schedule_send` `school` `search` `send`
 `settings` `shopping_bag`
 `signature` `sports_esports` `star` `storage` `strikethrough_s`

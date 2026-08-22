@@ -15,12 +15,14 @@
 //!
 //! Tout est LECTURE : la nav affiche un état, rien de plus (ADR 0001).
 
-use rusqlite::params;
+use std::collections::HashMap;
+
+use rusqlite::{OptionalExtension, params, params_from_iter};
 
 use crate::error::Error;
 use crate::store::{
-    PINNED_THREADS, SELECT_UNIFIED, Store, THREAD_AGGREGATE, UNIFIED_JOIN_TAIL, UnifiedRow,
-    row_to_threaded, unified_page_sql,
+    InvitationRang, PINNED_THREADS, SELECT_UNIFIED, Store, THREAD_AGGREGATE, UNIFIED_JOIN_TAIL,
+    UnifiedRow, row_to_threaded, unified_page_sql,
 };
 use crate::thread::RECEIVED_MAILBOX;
 
@@ -399,6 +401,143 @@ impl Store {
                 .collect::<Result<Vec<_>, _>>()?,
         };
         Ok(rows)
+    }
+
+    /// Enrichit UNE PAGE de lignes (terrain R10-R12, 2026-08-22) —
+    /// trois lectures bornées à la page servie, JAMAIS la requête
+    /// chaude (leçon PLAN-DEFILEMENT-PROFOND : rien ne s'ajoute au
+    /// chemin qui pagine 200 k lignes) :
+    ///
+    /// 1. **le compte de pièces d'un FIL somme tous ses messages**
+    ///    (R12 — la tête seule mentait dès que la pièce vivait sur un
+    ///    autre message : répondre à un message à pièce faisait
+    ///    disparaître la puce « n fichiers ») ;
+    /// 2. **l'invitation du fil rejoint la ligne** (R10 : le rang de
+    ///    puces porte les trois gestes, répondre sans ouvrir) ;
+    /// 3. **une invitation RÉPONDUE prête son visage à la ligne**
+    ///    (R11 : sujet, expéditeur et aperçu de l'INVITATION — le seul
+    ///    cas où la liste ne montre pas le dernier message du fil ; la
+    ///    puce dit la réponse, l'ordre de tri ne bouge pas).
+    pub fn enrichir_lignes(&self, rows: &mut [UnifiedRow]) -> Result<(), Error> {
+        let mut thread_ids: Vec<i64> = rows.iter().filter_map(|r| r.thread_id).collect();
+        thread_ids.sort_unstable();
+        thread_ids.dedup();
+        struct FaceInvitation {
+            rang: InvitationRang,
+            subject: Option<String>,
+            sender: Option<String>,
+            sender_address: Option<String>,
+            preview: Option<String>,
+        }
+        let mut pieces_par_fil: HashMap<i64, u32> = HashMap::new();
+        let mut invitation_par_fil: HashMap<i64, FaceInvitation> = HashMap::new();
+        if !thread_ids.is_empty() {
+            let trous = vec!["?"; thread_ids.len()].join(",");
+            // R12 : le compte de pièces du fil ENTIER (idx_envelopes_thread).
+            let mut stmt = self.conn().prepare(&format!(
+                "SELECT e.thread_id, COUNT(*)
+                   FROM attachments a
+                   JOIN envelopes e ON e.mailbox_id = a.mailbox_id AND e.uid = a.uid
+                  WHERE e.thread_id IN ({trous})
+                  GROUP BY e.thread_id"
+            ))?;
+            let comptes = stmt.query_map(params_from_iter(thread_ids.iter()), |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?.max(0) as u32))
+            })?;
+            for compte in comptes {
+                let (fil, n) = compte?;
+                pieces_par_fil.insert(fil, n);
+            }
+            // R10/R11 : l'invitation du fil, la plus récente si
+            // plusieurs (ORDER BY croissant : la dernière écrase).
+            let mut stmt = self.conn().prepare(&format!(
+                "SELECT e.thread_id, m.name, i.uid, i.titre, i.reponse, i.annule,
+                        i.organisateur_adresse IS NOT NULL AND i.annule = 0,
+                        e.subject, e.sender, e.sender_address, b.preview
+                   FROM invitations i
+                   JOIN envelopes e ON e.mailbox_id = i.mailbox_id AND e.uid = i.uid
+                   JOIN mailboxes m ON m.id = i.mailbox_id
+                   LEFT JOIN bodies b ON b.mailbox_id = i.mailbox_id AND b.uid = i.uid
+                  WHERE e.thread_id IN ({trous}) AND i.methode = 'request'
+                  ORDER BY e.date_epoch ASC"
+            ))?;
+            let faces = stmt.query_map(params_from_iter(thread_ids.iter()), |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    FaceInvitation {
+                        rang: InvitationRang {
+                            mailbox: row.get(1)?,
+                            uid: row.get(2)?,
+                            titre: row.get(3)?,
+                            reponse: row.get(4)?,
+                            annulee: row.get(5)?,
+                            peut_repondre: row.get(6)?,
+                        },
+                        subject: row.get(7)?,
+                        sender: row.get(8)?,
+                        sender_address: row.get(9)?,
+                        preview: row.get(10)?,
+                    },
+                ))
+            })?;
+            for face in faces {
+                let (fil, face) = face?;
+                invitation_par_fil.insert(fil, face);
+            }
+        }
+        for ligne in rows.iter_mut() {
+            match ligne.thread_id {
+                Some(fil) => {
+                    if let Some(n) = pieces_par_fil.get(&fil) {
+                        ligne.attachment_count = *n;
+                        ligne.has_attachment = *n > 0;
+                    }
+                    let Some(face) = invitation_par_fil.get(&fil) else {
+                        continue;
+                    };
+                    // R11 : répondu → le visage de la ligne est
+                    // l'invitation, pas notre dernier email.
+                    if face.rang.reponse.is_some() {
+                        ligne.envelope.subject = face.subject.clone();
+                        ligne.envelope.sender = face.sender.clone();
+                        ligne.envelope.sender_address = face.sender_address.clone();
+                        ligne.preview = face.preview.clone();
+                    }
+                    ligne.invitation = Some(face.rang.clone());
+                }
+                // Une ligne SANS fil est elle-même le message : si elle
+                // porte une invitation, la clé est la sienne — un
+                // regard indexé par ligne, page bornée. Les échos
+                // (boîte synthétique) n'en portent jamais.
+                None if !ligne.mailbox.starts_with("echo:") => {
+                    let rang = self
+                        .conn()
+                        .query_row(
+                            "SELECT i.titre, i.reponse, i.annule,
+                                    i.organisateur_adresse IS NOT NULL AND i.annule = 0
+                               FROM invitations i
+                               JOIN mailboxes m ON m.id = i.mailbox_id
+                              WHERE m.account_id = ?1 AND m.name = ?2 AND i.uid = ?3
+                                AND i.methode = 'request'",
+                            params![ligne.account_id, ligne.mailbox, ligne.envelope.uid],
+                            |row| {
+                                Ok(InvitationRang {
+                                    mailbox: ligne.mailbox.clone(),
+                                    uid: ligne.envelope.uid,
+                                    titre: row.get(0)?,
+                                    reponse: row.get(1)?,
+                                    annulee: row.get(2)?,
+                                    peut_repondre: row.get(3)?,
+                                })
+                            },
+                        )
+                        .optional()?;
+                    ligne.invitation = rang;
+                }
+                None => {}
+            }
+        }
+        Ok(())
     }
 
     /// `(total, non lus)` cumulés des boîtes données — le total de la
@@ -1112,6 +1251,93 @@ mod tests {
             .category_page(&[inbox], false, &[], None, 0, 10)
             .unwrap();
         assert_eq!(page[0].preview.as_deref(), Some("Vieux corps"));
+    }
+
+    /// Terrain R10-R12 (PLAN-INVITATIONS) : l'enrichissement de PAGE —
+    /// pièces sommées sur le FIL, badge d'invitation au rang, et visage
+    /// de l'invitation prêté à la ligne une fois la réponse consignée.
+    #[test]
+    fn l_enrichissement_somme_les_pieces_et_prete_le_visage_de_l_invitation() {
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("nous@exemple.fr", "gmail")
+            .unwrap();
+        let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+        // Le fil : l'INVITATION (uid 1, elle porte la pièce) puis notre
+        // email de réponse (uid 2 — la TÊTE affichée du fil).
+        let invitation = envelope(1, "Atelier de septembre", 100, true);
+        let mut tete = envelope(2, "Accepté : Atelier de septembre", 200, true);
+        tete.in_reply_to = Some("<m1@example.com>".to_string());
+        store.upsert_envelopes(inbox, &[invitation, tete]).unwrap();
+        store
+            .save_body_full(
+                inbox,
+                1,
+                "<p>venez nombreux</p>",
+                &[crate::Attachment {
+                    index: 0,
+                    name: "plan.pdf".to_string(),
+                    mime: "application/pdf".to_string(),
+                    size: 1024,
+                }],
+                Some(&crate::InvitationRow {
+                    methode: "request".to_string(),
+                    event_uid: "atelier@exemple.fr".to_string(),
+                    titre: "Atelier de septembre".to_string(),
+                    organisateur_adresse: Some("sofia@exemple.fr".to_string()),
+                    partstat: Some("sans_reponse".to_string()),
+                    ..Default::default()
+                }),
+            )
+            .unwrap();
+
+        let mut page = store.unified_recent_scoped(None, false, 0, 10).unwrap();
+        store.enrichir_lignes(&mut page).unwrap();
+        assert_eq!(page.len(), 1);
+        // R12 : la pièce vit sur l'invitation, PAS sur la tête — la
+        // puce du fil la compte quand même.
+        assert_eq!(page[0].attachment_count, 1);
+        assert!(page[0].has_attachment);
+        // R10 : le badge vise le MESSAGE d'invitation, pas la tête.
+        let badge = page[0].invitation.as_ref().expect("badge");
+        assert_eq!(badge.uid, 1);
+        assert_eq!(badge.titre, "Atelier de septembre");
+        assert!(badge.peut_repondre);
+        assert_eq!(badge.reponse, None);
+        // Sans réponse consignée, la ligne garde le visage de la tête.
+        assert_eq!(
+            page[0].envelope.subject.as_deref(),
+            Some("Accepté : Atelier de septembre")
+        );
+
+        // R11 : la réponse consignée prête le VISAGE de l'invitation.
+        let mut brouillon = crate::compose(
+            "nous@exemple.fr",
+            "sofia@exemple.fr",
+            "",
+            "",
+            "Accepté : Atelier de septembre",
+            "Accepté : Atelier de septembre",
+            None,
+        )
+        .unwrap();
+        brouillon.ics_reply = Some("BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n".to_string());
+        store
+            .enqueue_reponse_invitation(account, &brouillon, "INBOX", 1, "accepte", 42)
+            .unwrap()
+            .expect("journalisé");
+        let mut page = store.unified_recent_scoped(None, false, 0, 10).unwrap();
+        store.enrichir_lignes(&mut page).unwrap();
+        assert_eq!(
+            page[0].envelope.subject.as_deref(),
+            Some("Atelier de septembre"),
+            "le seul cas où la liste ne montre pas le dernier message"
+        );
+        assert_eq!(page[0].preview.as_deref(), Some("venez nombreux"));
+        assert_eq!(
+            page[0].invitation.as_ref().unwrap().reponse.as_deref(),
+            Some("accepte")
+        );
     }
 
     #[test]

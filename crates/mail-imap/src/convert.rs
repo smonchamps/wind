@@ -479,6 +479,35 @@ fn is_inlined_image(part: &mail_parser::MessagePart<'_>) -> bool {
     part.content_id().is_some() && part_mime(part).starts_with("image/")
 }
 
+/// Une partie CALENDRIER — LE prédicat unique de ce que la carte
+/// d'invitation consomme ([`extract_ics`]) : le définir deux fois avait
+/// laissé un trou à la revue (une partie `application/ics` sans nom
+/// était consommée ET listée en puce fantôme).
+fn est_partie_calendrier(part: &mail_parser::MessagePart<'_>) -> bool {
+    use mail_parser::MimeHeaders;
+
+    let mime = part_mime(part);
+    mime.eq_ignore_ascii_case("text/calendar")
+        || mime.eq_ignore_ascii_case("application/ics")
+        || part
+            .attachment_name()
+            .is_some_and(|nom| nom.to_ascii_lowercase().ends_with(".ics"))
+}
+
+/// La partie calendrier INLINE d'une invitation (D3, PLAN-INVITATIONS) :
+/// une partie calendrier SANS nom de fichier n'est pas un fichier —
+/// c'est l'invitation elle-même, rendue en carte. La lister en pièce
+/// affichait une puce fantôme « piece-jointe.calendar » (le constat du
+/// terrain). Un vrai `.ics` nommé et joint, lui, reste une pièce
+/// enregistrable. Même règle de prédicat partagé que
+/// [`is_inlined_image`] : ce que la carte consomme ne se liste pas, et
+/// réciproquement.
+fn est_calendrier_inline(part: &mail_parser::MessagePart<'_>) -> bool {
+    use mail_parser::MimeHeaders;
+
+    part.attachment_name().is_none() && est_partie_calendrier(part)
+}
+
 fn inline_cid_images(html: String, message: &mail_parser::Message<'_>) -> String {
     use base64::Engine;
     use mail_parser::MimeHeaders;
@@ -526,7 +555,7 @@ pub(crate) fn attachment_bytes(raw: &[u8], index: usize) -> Option<Vec<u8>> {
     let message = mail_parser::MessageParser::new().parse(raw)?;
     message
         .attachments()
-        .filter(|part| !is_inlined_image(part))
+        .filter(|part| !is_inlined_image(part) && !est_calendrier_inline(part))
         .nth(index)
         .map(|part| part.contents().to_vec())
 }
@@ -540,7 +569,7 @@ fn attachment_parts(raw: &[u8]) -> Vec<(String, String, u64)> {
     };
     message
         .attachments()
-        .filter(|part| !is_inlined_image(part))
+        .filter(|part| !is_inlined_image(part) && !est_calendrier_inline(part))
         .map(|part| {
             let mime = part_mime(part);
             // `attachment_name` décode déjà le RFC 2047. Sans nom, on en
@@ -552,6 +581,48 @@ fn attachment_parts(raw: &[u8]) -> Vec<(String, String, u64)> {
             (name, mime, part.contents().len() as u64)
         })
         .collect()
+}
+
+/// La partie `text/calendar` d'un message — l'invitation iTIP, brute
+/// (PLAN-INVITATIONS). Cherchée dans TOUTES les parties : une invitation
+/// Gmail/Outlook vit dans le `multipart/alternative` (où mail-parser la
+/// classe en pièce jointe), une invitation transférée arrive en fichier
+/// `.ics` joint, et certains producteurs en font la racine du message.
+pub(crate) fn extract_ics(raw: &[u8]) -> Option<String> {
+    // Garde d'OCTETS avant tout parse : 99,9 % des messages n'ont pas
+    // de calendrier — leur faire payer un parse MIME complet de plus
+    // (le troisième du chemin) coûtait ~60 s de CPU sur un rattrapage
+    // de 200 k messages (revue). Un faux positif (« text/calendar »
+    // écrit dans un corps) ne coûte qu'un parse pour rien.
+    if !contient_marqueur_calendrier(raw) {
+        return None;
+    }
+    let message = mail_parser::MessageParser::new().parse(raw)?;
+    for part in &message.parts {
+        if !est_partie_calendrier(part) {
+            continue;
+        }
+        // Une partie texte arrive décodée par mail-parser ; une pièce
+        // binaire (`application/ics`) se lit en UTF-8 — le charset de
+        // fait du format (RFC 5545 §3.1.4).
+        let texte = match part.text_contents() {
+            Some(texte) => texte.to_string(),
+            None => String::from_utf8_lossy(part.contents()).into_owned(),
+        };
+        if !texte.trim().is_empty() {
+            return Some(texte);
+        }
+    }
+    None
+}
+
+fn contient_marqueur_calendrier(raw: &[u8]) -> bool {
+    ["text/calendar", "application/ics", ".ics"]
+        .iter()
+        .any(|motif| {
+            raw.windows(motif.len())
+                .any(|fenetre| fenetre.eq_ignore_ascii_case(motif.as_bytes()))
+        })
 }
 
 /// Nom de repli pour une pièce sans `filename` — dérivé du sous-type.
@@ -639,6 +710,72 @@ mod tests {
         let recipients = envelope_recipients(&proto);
         assert_eq!(recipients.to, vec!["bob@b.fr"]);
         assert_eq!(recipients.cc, vec!["carole@c.fr"]);
+    }
+
+    const ICS_MINIMAL: &str = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REQUEST\r\n\
+        BEGIN:VEVENT\r\nUID:r1@exemple.fr\r\nSUMMARY:Point projet\r\n\
+        DTSTART:20260903T123000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+
+    /// Le cas massif du terrain : l'invitation Gmail/Outlook, troisième
+    /// partie du multipart/alternative (mail-parser la classe en pièce).
+    #[test]
+    fn l_ics_d_un_multipart_alternative_est_extrait() {
+        let raw = format!(
+            "From: claire@exemple.fr\r\nTo: nous@wind.example\r\n\
+             Subject: Invitation\r\nMIME-Version: 1.0\r\n\
+             Content-Type: multipart/alternative; boundary=\"XX\"\r\n\r\n\
+             --XX\r\nContent-Type: text/plain; charset=utf-8\r\n\r\ncorps texte\r\n\
+             --XX\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>corps</p>\r\n\
+             --XX\r\nContent-Type: text/calendar; method=REQUEST; charset=utf-8\r\n\r\n\
+             {ICS_MINIMAL}\
+             --XX--\r\n"
+        );
+        let ics = extract_ics(raw.as_bytes()).expect("partie calendrier");
+        assert!(ics.contains("METHOD:REQUEST"));
+        assert!(ics.contains("UID:r1@exemple.fr"));
+        // Le corps HTML, lui, reste le corps : rien ne change pour lui.
+        assert_eq!(
+            extract_html(raw.as_bytes()).as_deref(),
+            Some("<p>corps</p>")
+        );
+        // D3 : la partie calendrier INLINE (sans nom de fichier) n'est
+        // pas un fichier — elle ne paraît ni en puce ni au compte. Sans
+        // ce filtre, chaque invitation affichait une pièce fantôme
+        // « piece-jointe.calendar » (le constat du terrain).
+        assert!(
+            extract_attachments(raw.as_bytes()).is_empty(),
+            "la partie calendrier inline ne doit pas être listée en pièce"
+        );
+    }
+
+    /// L'invitation transférée : un fichier `.ics` joint en
+    /// `application/ics`, disposition attachment.
+    #[test]
+    fn l_ics_d_une_piece_jointe_est_extrait() {
+        let raw = format!(
+            "From: claire@exemple.fr\r\nTo: nous@wind.example\r\n\
+             Subject: Tr: Invitation\r\nMIME-Version: 1.0\r\n\
+             Content-Type: multipart/mixed; boundary=\"YY\"\r\n\r\n\
+             --YY\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>voir pj</p>\r\n\
+             --YY\r\nContent-Type: application/ics; name=\"invite.ics\"\r\n\
+             Content-Disposition: attachment; filename=\"invite.ics\"\r\n\r\n\
+             {ICS_MINIMAL}\
+             --YY--\r\n"
+        );
+        let ics = extract_ics(raw.as_bytes()).expect("piece calendrier");
+        assert!(ics.contains("UID:r1@exemple.fr"));
+        // D3 : un VRAI fichier `.ics` nommé et joint, lui, RESTE une
+        // pièce enregistrable.
+        let pieces = extract_attachments(raw.as_bytes());
+        assert_eq!(pieces.len(), 1);
+        assert_eq!(pieces[0].name, "invite.ics");
+    }
+
+    #[test]
+    fn un_message_ordinaire_n_a_pas_d_ics() {
+        let raw = "From: a@b.fr\r\nTo: c@d.fr\r\nSubject: bonjour\r\n\
+                   Content-Type: text/html; charset=utf-8\r\n\r\n<p>rien</p>\r\n";
+        assert_eq!(extract_ics(raw.as_bytes()), None);
     }
 
     #[test]

@@ -15,6 +15,7 @@ use crate::action::{Action, PendingAction};
 use crate::attachment::Attachment;
 use crate::envelope::{Envelope, Uid};
 use crate::error::Error;
+use crate::invitation::{InvitationRow, InvitationStockee};
 use crate::remote::Folder;
 use crate::search;
 use crate::thread;
@@ -207,6 +208,10 @@ CREATE TABLE IF NOT EXISTS outbox (
     -- laquelle la vidange ne doit PAS prendre ce message. NULL = tout
     -- de suite (chemin historique).
     send_at_epoch INTEGER,
+    -- Réponse iTIP d'une invitation (PLAN-INVITATIONS) : la remise la
+    -- porte en partie text/calendar; method=REPLY. NULL = envoi
+    -- ordinaire (chemin historique, octet pour octet inchangé).
+    ics_reply    TEXT,
     state        TEXT NOT NULL DEFAULT 'queued',
     attempts     INTEGER NOT NULL DEFAULT 0,
     last_error   TEXT,
@@ -283,7 +288,130 @@ CREATE TABLE IF NOT EXISTS pins (
     epoch      INTEGER NOT NULL,
     PRIMARY KEY (mailbox_id, uid)
 );
+-- L'invitation de reunion d'un message (PLAN-INVITATIONS) : le CACHE de
+-- la partie text/calendar, extrait au scan du corps (save_body_full) ou
+-- a l'ouverture pour un message d'avant la fonctionnalite (write-back,
+-- invariant d'adoption 6.7 — jamais de migration de masse). Cle
+-- d'enveloppe, comme `attachments` ; le MIME brut n'est jamais stocke.
+-- `partstat` = notre statut LU du REQUEST ; `reponse` = notre derniere
+-- reponse PARTIE par la boite d'envoi (D6) — deux verites distinctes.
+-- Les epochs sont UTC ; quand un horaire n'est pas resolu (journee
+-- entiere, TZID inconnu), la forme TEXTE fait foi et l'epoch reste NULL
+-- (garde D1 : jamais une conversion mensongere).
+CREATE TABLE IF NOT EXISTS invitations (
+    mailbox_id           INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+    uid                  INTEGER NOT NULL,
+    methode              TEXT NOT NULL,
+    event_uid            TEXT NOT NULL,
+    sequence             INTEGER NOT NULL DEFAULT 0,
+    titre                TEXT NOT NULL DEFAULT '',
+    lieu                 TEXT,
+    organisateur_adresse TEXT,
+    organisateur_nom     TEXT,
+    debut_epoch          INTEGER,
+    fin_epoch            INTEGER,
+    debut_texte          TEXT,
+    fin_texte            TEXT,
+    journee_entiere      INTEGER NOT NULL DEFAULT 0,
+    recurrent            INTEGER NOT NULL DEFAULT 0,
+    partstat             TEXT,
+    repondant_adresse    TEXT,
+    repondant_nom        TEXT,
+    repondant_statut     TEXT,
+    -- Le lien d'annulation CROISE (terrain R6, 2026-08-22) : un CANCEL
+    -- etaint le REQUEST de la meme reunion (meme event_uid, meme
+    -- compte), quel que soit l'ordre d'arrivee des scans — sans lui,
+    -- l'annulation arrivait dans une conversation neuve et l'invitation
+    -- d'origine continuait d'offrir Accepter.
+    annule               INTEGER NOT NULL DEFAULT 0,
+    reponse              TEXT,
+    reponse_epoch        INTEGER,
+    PRIMARY KEY (mailbox_id, uid)
+);
 ";
+
+/// Écrit (ou remplace) la ligne d'invitation d'un message, en PRÉSERVANT
+/// notre réponse locale : `reponse`/`reponse_epoch` ne sont jamais
+/// touchées ici (D6) — le PARTSTAT relu du message et la réponse partie
+/// de Wind sont deux vérités distinctes.
+fn ecrire_invitation(
+    conn: &Connection,
+    mailbox_id: i64,
+    uid: Uid,
+    row: &InvitationRow,
+) -> Result<(), Error> {
+    // Le lien d'annulation croisé (terrain R6), dans les DEUX ordres
+    // d'arrivée : un REQUEST écrit APRÈS le CANCEL de sa réunion naît
+    // annulé ; un CANCEL écrit APRÈS éteint les REQUEST existants.
+    // La réunion est identifiée par (event_uid, compte) — jamais
+    // l'event_uid seul : deux comptes peuvent recevoir la même réunion.
+    let annule = row.annule
+        || (row.methode == "request"
+            && conn
+                .prepare(
+                    "SELECT 1 FROM invitations i
+                      JOIN mailboxes m ON m.id = i.mailbox_id
+                     WHERE i.event_uid = ?1 AND i.methode = 'cancel'
+                       AND m.account_id =
+                           (SELECT account_id FROM mailboxes WHERE id = ?2)",
+                )?
+                .exists(params![row.event_uid, mailbox_id])?);
+    conn.execute(
+        "INSERT INTO invitations (mailbox_id, uid, methode, event_uid, sequence, titre,
+             lieu, organisateur_adresse, organisateur_nom, debut_epoch, fin_epoch,
+             debut_texte, fin_texte, journee_entiere, recurrent, partstat,
+             repondant_adresse, repondant_nom, repondant_statut, annule)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
+             ?16, ?17, ?18, ?19, ?20)
+         ON CONFLICT(mailbox_id, uid) DO UPDATE SET
+             methode = excluded.methode, event_uid = excluded.event_uid,
+             sequence = excluded.sequence, titre = excluded.titre,
+             lieu = excluded.lieu,
+             organisateur_adresse = excluded.organisateur_adresse,
+             organisateur_nom = excluded.organisateur_nom,
+             debut_epoch = excluded.debut_epoch, fin_epoch = excluded.fin_epoch,
+             debut_texte = excluded.debut_texte, fin_texte = excluded.fin_texte,
+             journee_entiere = excluded.journee_entiere,
+             recurrent = excluded.recurrent, partstat = excluded.partstat,
+             repondant_adresse = excluded.repondant_adresse,
+             repondant_nom = excluded.repondant_nom,
+             repondant_statut = excluded.repondant_statut,
+             annule = excluded.annule",
+        params![
+            mailbox_id,
+            uid,
+            row.methode,
+            row.event_uid,
+            row.sequence,
+            row.titre,
+            row.lieu,
+            row.organisateur_adresse,
+            row.organisateur_nom,
+            row.debut_epoch,
+            row.fin_epoch,
+            row.debut_texte,
+            row.fin_texte,
+            row.journee_entiere,
+            row.recurrent,
+            row.partstat,
+            row.repondant_adresse,
+            row.repondant_nom,
+            row.repondant_statut,
+            annule
+        ],
+    )?;
+    if row.methode == "cancel" {
+        conn.execute(
+            "UPDATE invitations SET annule = 1
+             WHERE event_uid = ?1 AND methode = 'request' AND annule = 0
+               AND mailbox_id IN
+                   (SELECT id FROM mailboxes WHERE account_id =
+                        (SELECT account_id FROM mailboxes WHERE id = ?2))",
+            params![row.event_uid, mailbox_id],
+        )?;
+    }
+    Ok(())
+}
 
 /// Avancement de l'adoption d'une base héritée, pour l'affichage.
 ///
@@ -358,6 +486,27 @@ pub struct UnifiedRow {
     /// Non-lus du fil. Un fil se montre non lu tant qu'il en reste un,
     /// même si son dernier message est lu.
     pub thread_unseen: u32,
+    /// L'invitation du fil (terrain R10/R11) — posée par
+    /// [`Store::enrichir_lignes`] sur la PAGE servie, jamais par la
+    /// requête chaude. `None` dans tous les autres chemins.
+    pub invitation: Option<InvitationRang>,
+}
+
+/// L'invitation d'une ligne de liste (terrain R10/R11) : ce que le rang
+/// de puces affiche (réponse donnée, annulation) et la clé pour
+/// répondre DEPUIS la liste — la boîte et l'UID du message
+/// d'invitation, qui n'est pas forcément la tête affichée du fil.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvitationRang {
+    pub mailbox: String,
+    pub uid: Uid,
+    /// Le titre de la réunion — le sujet de la réponse se construit de
+    /// lui, jamais du sujet de la tête du fil (« Re : … »).
+    pub titre: String,
+    /// Notre dernière réponse partie (`accepte`|`provisoire`|`refuse`).
+    pub reponse: Option<String>,
+    pub annulee: bool,
+    pub peut_repondre: bool,
 }
 
 /// Colonnes du SELECT unifié, partagées par [`Store::unified_recent`] et
@@ -1113,6 +1262,20 @@ impl Store {
         )?;
         self.0
             .execute("DELETE FROM bodies WHERE mailbox_id = ?1", [mailbox_id])?;
+        // Les tables à clé (mailbox_id, uid) suivent les corps : après un
+        // changement d'UIDVALIDITY les UIDs ne veulent plus rien dire —
+        // une invitation qui survivrait collerait sa carte (et sa
+        // réponse !) au message qui recycle l'UID (revue PLAN-INVITATIONS).
+        // `attachments` avait le même trou depuis toujours ; corrigé au
+        // passage — une ligne de pièce périmée servait un index faux.
+        self.0.execute(
+            "DELETE FROM invitations WHERE mailbox_id = ?1",
+            [mailbox_id],
+        )?;
+        self.0.execute(
+            "DELETE FROM attachments WHERE mailbox_id = ?1",
+            [mailbox_id],
+        )?;
         self.0
             .execute("DELETE FROM envelopes WHERE mailbox_id = ?1", [mailbox_id])?;
         self.0.execute(
@@ -1433,6 +1596,16 @@ impl Store {
             "DELETE FROM bodies WHERE mailbox_id = ?1 AND uid = ?2",
             params![mailbox_id, uid],
         )?;
+        // Mêmes clés, même sort que le corps (revue PLAN-INVITATIONS) :
+        // un message parti ne laisse ni carte ni lignes de pièces.
+        self.0.execute(
+            "DELETE FROM invitations WHERE mailbox_id = ?1 AND uid = ?2",
+            params![mailbox_id, uid],
+        )?;
+        self.0.execute(
+            "DELETE FROM attachments WHERE mailbox_id = ?1 AND uid = ?2",
+            params![mailbox_id, uid],
+        )?;
         self.0.execute(
             "DELETE FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
             params![mailbox_id, uid],
@@ -1541,6 +1714,21 @@ impl Store {
         html: &str,
         attachments: &[Attachment],
     ) -> Result<(), Error> {
+        self.save_body_full(mailbox_id, uid, html, attachments, None)
+    }
+
+    /// [`Store::save_body`], plus la ligne d'invitation quand la partie
+    /// `text/calendar` accompagnait le corps (PLAN-INVITATIONS). Même
+    /// transaction que le corps, remplacement intégral comme les pièces :
+    /// un re-scan sans partie calendrier efface la ligne.
+    pub fn save_body_full(
+        &self,
+        mailbox_id: i64,
+        uid: Uid,
+        html: &str,
+        attachments: &[Attachment],
+        invitation: Option<&InvitationRow>,
+    ) -> Result<(), Error> {
         // Même règle que le rattrapage des aperçus : le parsing HTML se
         // paie AVANT d'ouvrir la transaction — jamais de CPU dans la
         // fenêtre du verrou d'écriture.
@@ -1570,6 +1758,17 @@ impl Store {
                     attachment.size as i64
                 ],
             )?;
+        }
+        match invitation {
+            Some(row) => ecrire_invitation(&tx, mailbox_id, uid, row)?,
+            // Même règle que les pièces : un re-scan SANS partie
+            // calendrier ne garde pas une carte fantôme.
+            None => {
+                tx.execute(
+                    "DELETE FROM invitations WHERE mailbox_id = ?1 AND uid = ?2",
+                    params![mailbox_id, uid],
+                )?;
+            }
         }
         if let Some((subject, sender, sender_address, to_field, cc_field)) = tx
             .query_row(
@@ -1604,6 +1803,72 @@ impl Store {
         }
         tx.commit()?;
         Ok(())
+    }
+
+    /// L'invitation d'un message, avec notre réponse locale — lecture
+    /// LOCALE, jamais de réseau. `None` : ce message n'en porte pas (ou
+    /// son MIME n'a pas encore été inspecté).
+    pub fn invitation(
+        &self,
+        account_id: i64,
+        mailbox: &str,
+        uid: Uid,
+    ) -> Result<Option<InvitationStockee>, Error> {
+        let stockee = self
+            .0
+            .query_row(
+                // Colonnes lues PAR NOM : une colonne ajoutée au milieu du
+                // SELECT ne décale jamais les champs — dix-neuf Options du
+                // même type, un décalage positionnel serait silencieux et
+                // enverrait la réponse iTIP à la mauvaise adresse (revue).
+                "SELECT i.* FROM invitations i JOIN mailboxes m ON m.id = i.mailbox_id
+                 WHERE m.account_id = ?1 AND m.name = ?2 AND i.uid = ?3",
+                params![account_id, mailbox, uid],
+                |row| {
+                    Ok(InvitationStockee {
+                        row: InvitationRow {
+                            methode: row.get("methode")?,
+                            event_uid: row.get("event_uid")?,
+                            sequence: row.get("sequence")?,
+                            titre: row.get("titre")?,
+                            lieu: row.get("lieu")?,
+                            organisateur_adresse: row.get("organisateur_adresse")?,
+                            organisateur_nom: row.get("organisateur_nom")?,
+                            debut_epoch: row.get("debut_epoch")?,
+                            fin_epoch: row.get("fin_epoch")?,
+                            debut_texte: row.get("debut_texte")?,
+                            fin_texte: row.get("fin_texte")?,
+                            journee_entiere: row.get("journee_entiere")?,
+                            recurrent: row.get("recurrent")?,
+                            partstat: row.get("partstat")?,
+                            repondant_adresse: row.get("repondant_adresse")?,
+                            repondant_nom: row.get("repondant_nom")?,
+                            repondant_statut: row.get("repondant_statut")?,
+                            annule: row.get("annule")?,
+                        },
+                        reponse: row.get("reponse")?,
+                        reponse_epoch: row.get("reponse_epoch")?,
+                    })
+                },
+            )
+            .optional()?;
+        Ok(stockee)
+    }
+
+    /// L'adresse d'un compte par son id — la clé de lecture des
+    /// invitations (notre PARTSTAT se cherche par adresse). Adresse
+    /// VIDE = compte à moitié provisionné : dit `None`, comme
+    /// [`Store::accounts`] qui filtre ces lignes.
+    pub fn account_email(&self, account_id: i64) -> Result<Option<String>, Error> {
+        let email: Option<String> = self
+            .0
+            .query_row(
+                "SELECT email FROM accounts WHERE id = ?1 AND email != ''",
+                params![account_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(email)
     }
 
     /// Remplace la liste des dossiers connus d'un compte.
@@ -2349,6 +2614,16 @@ fn migrate(
             ("send_at_epoch", "INTEGER"),
         ],
     )?;
+    // Réponse iTIP (PLAN-INVITATIONS) — NULL sur l'existant, chemin
+    // d'envoi historique inchangé.
+    add_missing_columns(conn, "outbox", &[("ics_reply", "TEXT")])?;
+    // Le lien d'annulation croisé (terrain R6) — les bases nées pendant
+    // le chantier ont la table sans la colonne.
+    add_missing_columns(
+        conn,
+        "invitations",
+        &[("annule", "INTEGER NOT NULL DEFAULT 0")],
+    )?;
     // L'aperçu de liste (écran 02 de la refonte) se calcule à l'ÉCRITURE
     // du corps ; les corps antérieurs le rattrapent PAR LOTS
     // (`preview_catchup`, appelé par le shell au fil du sondage) — jamais
@@ -2423,6 +2698,34 @@ fn migrate(
         conn.execute_batch(
             "DELETE FROM bodies WHERE html LIKE '%' || char(65533) || '%';
              INSERT INTO reparations (nom) VALUES ('corps-fffd');",
+        )?;
+    }
+    // Réparation des messages à partie calendrier scannés AVANT
+    // PLAN-INVITATIONS. Deux raisons, un seul remède : (1) le filtre
+    // `est_calendrier_inline` (mail-imap) a changé la numérotation des
+    // pièces — les `idx` stockés comptaient la partie calendrier, la
+    // relecture des octets ne la compte plus : cliquer une pièce
+    // servirait le MAUVAIS fichier en silence ; (2) ces messages n'ont
+    // pas de ligne `invitations` — leur carte doit naître (adoption,
+    // invariant §6.7). Supprimer corps ET lignes de pièces suffit : le
+    // rattrapage (`bodies_to_backfill`) relit le message, et
+    // `save_body_full` refait pièces (indices neufs), aperçu, index de
+    // recherche et invitation d'un coup. UNE fois, tenu par le marqueur.
+    let deja_faite: bool = conn
+        .prepare("SELECT 1 FROM reparations WHERE nom = 'pieces-calendrier'")?
+        .exists([])?;
+    if !deja_faite {
+        conn.execute_batch(
+            "CREATE TEMP TABLE reparation_calendrier AS
+                 SELECT DISTINCT mailbox_id, uid FROM attachments
+                 WHERE mime IN ('text/calendar', 'application/ics')
+                    OR LOWER(name) LIKE '%.ics';
+             DELETE FROM bodies WHERE (mailbox_id, uid) IN
+                 (SELECT mailbox_id, uid FROM reparation_calendrier);
+             DELETE FROM attachments WHERE (mailbox_id, uid) IN
+                 (SELECT mailbox_id, uid FROM reparation_calendrier);
+             DROP TABLE reparation_calendrier;
+             INSERT INTO reparations (nom) VALUES ('pieces-calendrier');",
         )?;
     }
     // R2 (PLAN-RETOURS-MAIL) : les enveloppes synchronisées AVANT le
@@ -2655,6 +2958,8 @@ pub(crate) fn row_to_unified(row: &rusqlite::Row<'_>) -> rusqlite::Result<Unifie
         // l'agrégat réel via [`row_to_threaded`].
         thread_size: 1,
         thread_unseen: u32::from(!row.get::<_, bool>(8)?),
+        // Posée par la passe de PAGE (`enrichir_lignes`), jamais ici.
+        invitation: None,
     })
 }
 
@@ -2946,6 +3251,7 @@ mod tests {
                         body_html: None,
                         in_reply_to: None,
                         important: false,
+                        ics_reply: None,
                     },
                 )
                 .unwrap();
@@ -3522,6 +3828,303 @@ mod tests {
         store.create_mailbox(other, "INBOX", 1).unwrap();
 
         assert!(store.attachments(other, "INBOX", 1).unwrap().is_empty());
+    }
+
+    fn invitation_projet() -> crate::InvitationRow {
+        crate::InvitationRow {
+            methode: "request".into(),
+            event_uid: "reunion-1@exemple.fr".into(),
+            sequence: 2,
+            titre: "Point projet".into(),
+            lieu: Some("Salle A".into()),
+            organisateur_adresse: Some("claire@exemple.fr".into()),
+            organisateur_nom: Some("Claire Martin".into()),
+            debut_epoch: Some(1_788_400_200),
+            fin_epoch: Some(1_788_402_000),
+            partstat: Some("sans_reponse".into()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn une_invitation_s_ecrit_avec_le_corps_et_se_relit() {
+        let (store, id) = store_with_mailbox();
+        let account = test_account(&store);
+        store
+            .save_body_full(id, 1, "<p>x</p>", &[], Some(&invitation_projet()))
+            .unwrap();
+
+        let stockee = store
+            .invitation(account, "INBOX", 1)
+            .unwrap()
+            .expect("ligne");
+        assert_eq!(stockee.row, invitation_projet());
+        assert_eq!(stockee.reponse, None, "pas encore répondu");
+    }
+
+    /// Même règle que les pièces : un message re-téléchargé SANS partie
+    /// calendrier ne garde pas une carte fantôme.
+    #[test]
+    fn un_rescan_sans_calendrier_efface_la_ligne() {
+        let (store, id) = store_with_mailbox();
+        let account = test_account(&store);
+        store
+            .save_body_full(id, 1, "<p>x</p>", &[], Some(&invitation_projet()))
+            .unwrap();
+        store.save_body(id, 1, "<p>x</p>", &[]).unwrap();
+        assert_eq!(store.invitation(account, "INBOX", 1).unwrap(), None);
+    }
+
+    fn brouillon_reponse() -> crate::compose::Draft {
+        let mut draft = crate::compose(
+            "moi@exemple.fr",
+            "claire@exemple.fr",
+            "",
+            "",
+            "Accepté : Point projet",
+            "Accepté : Point projet",
+            None,
+        )
+        .unwrap();
+        draft.ics_reply = Some("BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nEND:VCALENDAR\r\n".into());
+        draft
+    }
+
+    /// D6 : l'email iTIP se journalise ET la réponse se consigne — UNE
+    /// transaction ; la réponse survit au re-scan du corps (deux vérités
+    /// distinctes — le PARTSTAT lu du message ne l'écrase pas).
+    #[test]
+    fn la_reponse_se_journalise_avec_son_email_et_survit_au_rescan() {
+        let (store, id) = store_with_mailbox();
+        let account = test_account(&store);
+        store
+            .save_body_full(id, 1, "<p>x</p>", &[], Some(&invitation_projet()))
+            .unwrap();
+
+        let outbox_id = store
+            .enqueue_reponse_invitation(
+                account,
+                &brouillon_reponse(),
+                "INBOX",
+                1,
+                "accepte",
+                1_755_900_000,
+            )
+            .unwrap();
+        assert!(outbox_id.is_some(), "email journalisé");
+        store
+            .save_body_full(id, 1, "<p>x</p>", &[], Some(&invitation_projet()))
+            .unwrap();
+
+        let stockee = store
+            .invitation(account, "INBOX", 1)
+            .unwrap()
+            .expect("ligne");
+        assert_eq!(stockee.reponse.as_deref(), Some("accepte"));
+        assert_eq!(stockee.reponse_epoch, Some(1_755_900_000));
+        assert_eq!(store.outbox_to_send(account).unwrap().len(), 1);
+    }
+
+    /// La ligne a disparu entre l'affichage et le clic (expurgé, boîte
+    /// réinitialisée) : RIEN ne part — un email en file devant une carte
+    /// « pas répondu » inviterait au double envoi (revue).
+    #[test]
+    fn une_reponse_sans_ligne_ne_journalise_rien() {
+        let (store, _id) = store_with_mailbox();
+        let account = test_account(&store);
+        assert_eq!(
+            store
+                .enqueue_reponse_invitation(account, &brouillon_reponse(), "INBOX", 9, "accepte", 1)
+                .unwrap(),
+            None
+        );
+        assert!(
+            store.outbox_to_send(account).unwrap().is_empty(),
+            "la transaction s'est rembobinée : aucun email en file"
+        );
+    }
+
+    /// La revue PLAN-INVITATIONS : après un changement d'UIDVALIDITY,
+    /// les UIDs ne veulent plus rien dire — une carte (et sa réponse !)
+    /// qui survivrait collerait à un message sans rapport.
+    #[test]
+    fn reset_mailbox_efface_invitations_et_pieces() {
+        let (store, id) = store_with_mailbox();
+        let account = test_account(&store);
+        store
+            .save_body_full(
+                id,
+                1,
+                "<p>x</p>",
+                &[pdf(0, "un.pdf")],
+                Some(&invitation_projet()),
+            )
+            .unwrap();
+
+        store.reset_mailbox(id, 2).unwrap();
+
+        assert_eq!(store.invitation(account, "INBOX", 1).unwrap(), None);
+        assert!(store.attachments(account, "INBOX", 1).unwrap().is_empty());
+    }
+
+    /// La réparation `pieces-calendrier` : un message scanné AVANT
+    /// PLAN-INVITATIONS avec une partie calendrier a des indices de
+    /// pièces DÉCALÉS (l'ancienne numérotation la comptait) et pas de
+    /// carte. À l'ouverture suivante de la base, corps et pièces de ces
+    /// messages sont jetés : le rattrapage les relira avec la
+    /// numérotation neuve — et la carte naîtra du même scan (adoption,
+    /// invariant §6.7). Sur base FICHIER : c'est la réouverture qui
+    /// répare. Les messages sans calendrier ne bougent pas.
+    #[test]
+    fn la_reparation_pieces_calendrier_fait_relire_les_messages_touches() {
+        let path = std::env::temp_dir().join(format!(
+            "wind-test-reparation-cal-{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        {
+            let mut store = Store::open(&path).unwrap();
+            let account = store
+                .adopt_or_create_account("moi@exemple.fr", "gmail")
+                .unwrap();
+            let id = store.create_mailbox(account, "INBOX", 1).unwrap();
+            store
+                .upsert_envelopes(
+                    id,
+                    &[
+                        envelope(1, "invitation", 100, true),
+                        envelope(2, "simple", 90, true),
+                    ],
+                )
+                .unwrap();
+            // L'état d'AVANT : la partie calendrier comptée en pièce 0.
+            store
+                .save_body(
+                    id,
+                    1,
+                    "<p>invitation</p>",
+                    &[
+                        Attachment {
+                            index: 0,
+                            name: "piece-jointe.calendar".into(),
+                            mime: "text/calendar".into(),
+                            size: 2048,
+                        },
+                        pdf(1, "contrat.pdf"),
+                    ],
+                )
+                .unwrap();
+            store
+                .save_body(id, 2, "<p>simple</p>", &[pdf(0, "note.pdf")])
+                .unwrap();
+            // Retire le marqueur posé à l'ouverture (base née réparée) :
+            // on rejoue l'arrivée d'une base d'AVANT la réparation.
+            store
+                .conn()
+                .execute(
+                    "DELETE FROM reparations WHERE nom = 'pieces-calendrier'",
+                    [],
+                )
+                .unwrap();
+        }
+
+        let store = Store::open(&path).unwrap();
+        let account = store
+            .adopt_or_create_account("moi@exemple.fr", "gmail")
+            .unwrap();
+        assert_eq!(
+            store.body(account, "INBOX", 1).unwrap(),
+            None,
+            "le message à calendrier sera relu"
+        );
+        assert!(store.attachments(account, "INBOX", 1).unwrap().is_empty());
+        assert_eq!(
+            store.body(account, "INBOX", 2).unwrap().as_deref(),
+            Some("<p>simple</p>"),
+            "le message ordinaire ne bouge pas"
+        );
+        assert_eq!(store.attachments(account, "INBOX", 2).unwrap().len(), 1);
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Terrain R6 : un CANCEL éteint le REQUEST de la même réunion
+    /// (même event_uid, même compte), dans les DEUX ordres d'arrivée —
+    /// l'annulation arrive souvent dans une conversation neuve, c'est
+    /// la carte d'ORIGINE qui doit le dire.
+    #[test]
+    fn un_cancel_eteint_le_request_de_la_meme_reunion_dans_les_deux_ordres() {
+        let mut cancel = invitation_projet();
+        cancel.methode = "cancel".to_string();
+        cancel.annule = true;
+
+        // Ordre 1 : le REQUEST d'abord, le CANCEL ensuite.
+        let (store, id) = store_with_mailbox();
+        let account = test_account(&store);
+        store
+            .save_body_full(id, 1, "<p>i</p>", &[], Some(&invitation_projet()))
+            .unwrap();
+        store
+            .save_body_full(id, 2, "<p>a</p>", &[], Some(&cancel))
+            .unwrap();
+        assert!(
+            store
+                .invitation(account, "INBOX", 1)
+                .unwrap()
+                .expect("ligne")
+                .row
+                .annule,
+            "le REQUEST est éteint par le CANCEL"
+        );
+
+        // Une AUTRE réunion du même compte ne bouge pas.
+        let mut autre = invitation_projet();
+        autre.event_uid = "autre-reunion@exemple.fr".to_string();
+        store
+            .save_body_full(id, 3, "<p>x</p>", &[], Some(&autre))
+            .unwrap();
+        assert!(
+            !store
+                .invitation(account, "INBOX", 3)
+                .unwrap()
+                .expect("ligne")
+                .row
+                .annule
+        );
+
+        // Ordre 2 : le CANCEL scanné AVANT (rattrapage dans le
+        // désordre) — le REQUEST naît annulé.
+        let (store, id) = store_with_mailbox();
+        let account = test_account(&store);
+        store
+            .save_body_full(id, 2, "<p>a</p>", &[], Some(&cancel))
+            .unwrap();
+        store
+            .save_body_full(id, 1, "<p>i</p>", &[], Some(&invitation_projet()))
+            .unwrap();
+        assert!(
+            store
+                .invitation(account, "INBOX", 1)
+                .unwrap()
+                .expect("ligne")
+                .row
+                .annule
+        );
+    }
+
+    #[test]
+    fn une_invitation_ne_fuit_pas_entre_comptes() {
+        let (store, id) = store_with_mailbox();
+        store
+            .save_body_full(id, 1, "<p>x</p>", &[], Some(&invitation_projet()))
+            .unwrap();
+
+        let autre = store
+            .adopt_or_create_account("autre@exemple.fr", "gmail")
+            .unwrap();
+        store.create_mailbox(autre, "INBOX", 1).unwrap();
+
+        assert_eq!(store.invitation(autre, "INBOX", 1).unwrap(), None);
     }
 
     #[test]

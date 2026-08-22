@@ -24,6 +24,10 @@ const VIDE = () => ({
   nbPieces: {},
   imagesBloquees: {},
   imagesVoulues: {},
+  // La carte d'invitation par message (PLAN-INVITATIONS) : la vue
+  // arrive AVEC le corps (BodyView.invitation) — aucun aller-retour
+  // dédié. `undefined`/`null` = pas de carte ; objet = la carte.
+  invitations: {},
   // R4 (PLAN-RETOURS-7) : la conversation ouverte est-elle épinglée ?
   // Lu par le FIL côté cœur (pin_state) à l'ouverture, tenu à jour par
   // le geste (App.epinglerFil). Faux par défaut — le bouton dit
@@ -101,6 +105,24 @@ export function reduireFil(versVolet) {
   else fermerFil();
 }
 
+// Terrain R8' (2026-08-23) : « Supprimer » vise UN message — le fil
+// ouvert le retire et reste en place s'il lui en reste. Rend le nombre
+// restant ; 0 = plus rien à montrer, l'appelant ferme. Un message qui
+// n'appartient pas au fil ouvert rend -1 (rien n'est touché).
+export function retirerMessage(m) {
+  const k = cleMsg(m);
+  if (!fil.messages.some((x) => cleMsg(x) === k)) return -1;
+  fil.messages = fil.messages.filter((x) => cleMsg(x) !== k);
+  delete fil.deplies[k];
+  delete fil.corps[k];
+  delete fil.pieces[k];
+  delete fil.nbPieces[k];
+  delete fil.imagesBloquees[k];
+  delete fil.imagesVoulues[k];
+  delete fil.invitations[k];
+  return fil.messages.length;
+}
+
 export function fermerFil() {
   jeton += 1;
   fil.cadre = null;
@@ -134,6 +156,9 @@ async function chargerMessage(m, avecImages = false) {
       fil.corps[k] = vue.document;
       fil.imagesBloquees[k] = avecImages ? 0 : vue.remote_images_blocked;
       fil.nbPieces[k] = vue.attachment_count;
+      // La carte d'invitation voyage avec le corps — même fraîcheur que
+      // le compte de pièces, aucun aller-retour de plus (revue).
+      fil.invitations[k] = vue.invitation ?? null;
     } catch (err) {
       console.error('message_body :', err);
     }

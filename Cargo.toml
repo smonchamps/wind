@@ -4,6 +4,7 @@ members = [
     "crates/mail-core",
     "crates/mail-imap",
     "crates/mail-auth",
+    "crates/mail-ical",
     "crates/mail-render",
     "crates/mail-smtp",
     "apps/desktop",
@@ -17,12 +18,16 @@ edition = "2024"
 [workspace.dependencies]
 mail-auth = { path = "crates/mail-auth" }
 mail-core = { path = "crates/mail-core" }
+mail-ical = { path = "crates/mail-ical" }
 mail-imap = { path = "crates/mail-imap" }
 mail-render = { path = "crates/mail-render" }
 mail-smtp = { path = "crates/mail-smtp" }
 ammonia = "4.1"
 anyhow = "1"
 base64 = "0.22"
+# Parseur/générateur iCalendar (invitations, PLAN-INVITATIONS D1) — sans les
+# features par défaut : elles tirent jmap-tools/serde/uuid, inutiles ici.
+calcard = { version = "0.3.11", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 imap = "3.0.0-alpha.14"
 imap-proto = "0.16"

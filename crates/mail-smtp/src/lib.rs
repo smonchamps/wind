@@ -212,6 +212,31 @@ fn build_message(message: &OutboxMessage) -> Result<Message, SendError> {
     if message.important {
         builder = builder.header(XPriority).header(Importance);
     }
+    // PLAN-INVITATIONS : la réponse iTIP — texte + partie
+    // `text/calendar; method=REPLY` en alternative (le format qu'émet
+    // Outlook, lu par Google/Exchange). Par construction elle n'a ni
+    // HTML ni pièces ; un journal qui en porterait est incohérent —
+    // refus franc, jamais un message ambigu.
+    if let Some(ics) = &message.ics_reply {
+        if !message.attachments.is_empty() || message.body_html.is_some() {
+            return Err(SendError::Permanent(
+                "réponse iTIP avec pièces ou HTML : journal incohérent, envoi refusé".to_string(),
+            ));
+        }
+        let calendrier = SinglePart::builder()
+            .header(
+                ContentType::parse("text/calendar; method=REPLY; charset=utf-8")
+                    .map_err(|err| SendError::Permanent(format!("type calendrier : {err}")))?,
+            )
+            .body(ics.clone());
+        return builder
+            .multipart(
+                MultiPart::alternative()
+                    .singlepart(SinglePart::plain(message.body_text.clone()))
+                    .singlepart(calendrier),
+            )
+            .map_err(|err| SendError::Permanent(format!("construction du message : {err}")));
+    }
     if message.attachments.is_empty() {
         // Corps riche : multipart/alternative — le texte d'abord (RFC
         // 2046, du plus simple au plus fidèle), le HTML ensuite. Sans
@@ -366,6 +391,7 @@ mod tests {
             in_reply_to: in_reply_to.map(str::to_string),
             important: false,
             send_at_epoch: None,
+            ics_reply: None,
             attachments: vec![],
             state: OutboxState::Queued,
             attempts: 0,
@@ -377,6 +403,51 @@ mod tests {
     fn formatted(message: &OutboxMessage) -> String {
         let email = build_message(message).expect("message construisible");
         String::from_utf8(email.formatted()).expect("en-têtes ASCII")
+    }
+
+    /// PLAN-INVITATIONS : la réponse à une invitation part en
+    /// `multipart/alternative` texte + `text/calendar; method=REPLY` —
+    /// c'est le paramètre `method` que Google/Exchange lisent pour
+    /// mettre à jour le calendrier de l'organisateur.
+    #[test]
+    fn une_reponse_itip_part_en_partie_text_calendar_method_reply() {
+        let mut message = outbox_message(None);
+        message.body_text = "Reponse envoyee depuis Wind.".to_string();
+        message.ics_reply =
+            Some("BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nEND:VCALENDAR\r\n".to_string());
+        let raw = formatted(&message);
+        assert!(
+            raw.contains("multipart/alternative"),
+            "texte et calendrier voyagent en alternative :\n{raw}"
+        );
+        assert!(
+            raw.contains("text/calendar") && raw.contains("method=REPLY"),
+            "la partie calendrier doit dire method=REPLY :\n{raw}"
+        );
+        assert!(
+            raw.contains("METHOD:REPLY"),
+            "le VCALENDAR doit voyager entier :\n{raw}"
+        );
+        assert!(
+            raw.contains("Reponse envoyee depuis Wind."),
+            "le texte reste le repli lisible :\n{raw}"
+        );
+    }
+
+    /// Un journal qui porterait une réponse iTIP AVEC pièces ou HTML est
+    /// incohérent par construction : refus franc, jamais un message
+    /// ambigu.
+    #[test]
+    fn une_reponse_itip_avec_pieces_est_refusee() {
+        let mut message = outbox_message(None);
+        message.ics_reply = Some("BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n".to_string());
+        message.attachments = vec![OutboxAttachment {
+            name: "piege.pdf".to_string(),
+            mime: "application/pdf".to_string(),
+            size: 4,
+            bytes: Some(vec![1, 2, 3, 4]),
+        }];
+        assert!(build_message(&message).is_err());
     }
 
     #[test]

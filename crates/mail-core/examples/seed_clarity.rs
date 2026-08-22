@@ -301,6 +301,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ));
     }
     store.upsert_envelopes(inbox, &reception)?;
+    // PLAN-INVITATIONS : « Atelier de septembre » EST une invitation —
+    // corps + ligne `invitations` écrits ensemble, comme un scan réel
+    // (save_body_full), et la ligne naît du VRAI parseur (mail-ical, en
+    // UTC — l'affichage reconvertit en heure du poste : « 14:30 –
+    // 16:00 » quel que soit le jour ou le fuseau du run, e2e
+    // déterministe). Dates RELATIVES au lancement, comme le décor :
+    // l'atelier est dans 12 jours, 14:30-16:00 locales.
+    let debut_atelier = quand(-12, 14, 30).ok_or("date de l'atelier")?;
+    let fin_atelier = quand(-12, 16, 0).ok_or("date de l'atelier")?;
+    let ics_atelier = format!(
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REQUEST\r\n\
+         BEGIN:VEVENT\r\nUID:clarity-atelier-septembre@atelier-nord.fr\r\n\
+         SUMMARY:Atelier de septembre\r\nLOCATION:Grande salle\\, Atelier Nord\r\n\
+         DTSTART:{}\r\nDTEND:{}\r\n\
+         ORGANIZER;CN=Sofia Nardi:mailto:s.nardi@atelier-nord.fr\r\n\
+         ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:paul.merand@atelier-nord.fr\r\n\
+         SEQUENCE:0\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+        debut_atelier.format("%Y%m%dT%H%M%SZ"),
+        fin_atelier.format("%Y%m%dT%H%M%SZ"),
+    );
+    let invitation_atelier =
+        mail_core::extraire_invitation(&ics_atelier, "paul.merand@atelier-nord.fr")
+            .ok_or("l'invitation du décor doit se parser")?;
+    store.save_body_full(
+        inbox,
+        2,
+        &corps(&[
+            "Bonjour Paul,",
+            "L'atelier de rentrée aura lieu dans nos murs — merci de répondre \
+             à l'invitation pour que je dimensionne la salle.",
+            "Sofia",
+        ]),
+        &[],
+        Some(&invitation_atelier),
+    )?;
     store.save_body(
         inbox,
         15,

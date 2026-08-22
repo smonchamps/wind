@@ -18,6 +18,10 @@
   } from './lib/fil.svelte.js';
   import { appel, choisirDestination } from './lib/transport.js';
   import { brancherLiens } from './lib/liens.js';
+  import {
+    tuileInvitation, quandInvitation, kickerInvitation, statutInvitation,
+    ligneRepondant, lieuOrganisateur,
+  } from './lib/invitation.js';
   import { quand, quandLong } from './lib/quand.js';
   import { initiales } from './lib/initiales.js';
   import { activation } from './lib/clavier.js';
@@ -138,6 +142,39 @@
     };
   }
 
+  // La réponse à une invitation (D5-D6) : sujet et corps dans la langue
+  // de l'UI, l'email iTIP journalisé côté cœur (repondre_invitation),
+  // puis une vidange lancée — hors ligne, il part au prochain lancement
+  // (la sémantique dite de PLAN-RETOURS-6).
+  let reponsesEnVol = $state({});
+  async function repondreInvitation(m, reponse) {
+    const k = cleMsg(m);
+    if (reponsesEnVol[k]) return;
+    reponsesEnVol[k] = true;
+    // OPTIMISTE (terrain R3'a) : le bouton se marque à l'instant du
+    // clic — le journal suit ; un échec rend l'état d'avant et le dit.
+    const avant = fil.invitations[k].statut;
+    fil.invitations[k].statut = reponse;
+    try {
+      const sujet = t(`inv.sujet_${reponse}`, { titre: fil.invitations[k].titre });
+      const vue = await appel('repondre_invitation', {
+        accountId: m.account_id,
+        mailbox: m.mailbox,
+        uid: m.uid,
+        reponse,
+        sujet,
+        corps: sujet,
+      });
+      if (vue) fil.invitations[k] = vue;
+      appel('flush_outbox').catch(() => {});
+    } catch (err) {
+      fil.invitations[k].statut = avant;
+      onflash(t('erreur.invitation', { err }));
+    } finally {
+      reponsesEnVol[k] = false;
+    }
+  }
+
   // En-vol transitoire : local au composant, rien à partager entre
   // cadres (revue v3 — le store ne porte que l'état du fil).
   let enregistrements = $state({});
@@ -231,6 +268,74 @@
               <span class="quand">{quandLong(m.epoch)}</span>
             </div>
             <div class="contenu">
+              <!-- La carte d'invitation (PLAN-INVITATIONS, A76) : EN
+                   TÊTE du contenu — c'est l'objet du message, avant les
+                   fichiers. Tuile de date en tuile/tuileInk (le dessin
+                   de la boîte en cours), trois boutons NEUTRES (D4 —
+                   A14 intact, la carte ne hiérarchise pas la réponse),
+                   la réponse courante dite par aria-pressed. Une heure
+                   flottante s'affiche telle quelle, jamais convertie
+                   (garde D1). -->
+              {#if fil.invitations[k]}
+                {@const inv = fil.invitations[k]}
+                {@const tuile = tuileInvitation(inv)}
+                {@const quandInv = quandInvitation(inv)}
+                {@const lieuOrg = lieuOrganisateur(inv)}
+                {@const repondantInv = ligneRepondant(inv)}
+                <div class="invitation" data-testid="invitation">
+                  <div class="inv-tete">
+                    <span class="inv-kicker" class:annulee={inv.annulee}>{kickerInvitation(inv)}</span>
+                    {#if inv.methode === 'request'}
+                      <span class="inv-statut" data-testid="invitation-statut">{statutInvitation(inv)}</span>
+                    {/if}
+                  </div>
+                  <div class="inv-corps">
+                    {#if tuile}
+                      <span class="inv-tuile" class:eteinte={inv.annulee} aria-hidden="true">
+                        <span class="inv-mois">{tuile.mois}</span>
+                        <span class="inv-jour">{tuile.jour}</span>
+                      </span>
+                    {/if}
+                    <div class="inv-details">
+                      <span class="inv-titre" class:barre={inv.annulee}
+                            data-testid="invitation-titre">{inv.titre}</span>
+                      {#if quandInv}
+                        <span class="inv-quand">{quandInv}</span>
+                      {/if}
+                      {#if lieuOrg}
+                        <span class="inv-lieu">{lieuOrg}</span>
+                      {/if}
+                      {#if inv.annulee}
+                        <span class="inv-annulee">{t('inv.annuleeTexte')}</span>
+                      {:else if repondantInv}
+                        <span class="inv-repondant" data-testid="invitation-repondant">{repondantInv}</span>
+                      {/if}
+                    </div>
+                  </div>
+                  {#if inv.peut_repondre}
+                    <!-- R7/R9 (terrain 2026-08-23) : l'icône dit la
+                         réponse, la couleur son sens (accent / neutre /
+                         alerte) — le texte double toujours (A8). -->
+                    <div class="inv-actions" data-testid="invitation-actions">
+                      <button type="button" class="ton-accepte" data-testid="inv-accepter"
+                              aria-pressed={inv.statut === 'accepte'}
+                              disabled={reponsesEnVol[k]}
+                              onclick={() => repondreInvitation(m, 'accepte')}>
+                        <span class="ms" aria-hidden="true">check_circle</span>{t('action.accepter')}</button>
+                      <button type="button" class="ton-provisoire" data-testid="inv-provisoire"
+                              aria-pressed={inv.statut === 'provisoire'}
+                              disabled={reponsesEnVol[k]}
+                              onclick={() => repondreInvitation(m, 'provisoire')}>
+                        <span class="ms" aria-hidden="true">question_mark</span>{t('action.provisoire')}</button>
+                      <button type="button" class="ton-refuse" data-testid="inv-refuser"
+                              aria-pressed={inv.statut === 'refuse'}
+                              disabled={reponsesEnVol[k]}
+                              onclick={() => repondreInvitation(m, 'refuse')}>
+                        <span class="ms" aria-hidden="true">cancel</span>{t('action.refuser')}</button>
+                    </div>
+                  {/if}
+                </div>
+              {/if}
               <!-- R2 (PLAN-RETOURS-7) : les fichiers joints AVANT le
                    corps — sous la tête du message, où l'œil les attend
                    sans dérouler le mail ; la garde d'images reste collée
@@ -305,6 +410,14 @@
               <button type="button" data-testid="transferer"
                       onclick={() => ontransferer(m)}>
                 <span class="ms miroir" aria-hidden="true">reply</span>{t('action.transferer')}</button>
+              <!-- Terrain R8' (2026-08-23) : « Supprimer » vit PAR
+                   message — on supprime CE message, pas la
+                   conversation ; le fil reste ouvert s'il lui reste
+                   des messages (l'App décide). Sur un écho, le geste
+                   dit l'attente de réconciliation, comme avant. -->
+              <button type="button" data-testid="supprimer"
+                      onclick={() => onsupprimer(m)}>
+                <span class="ms" aria-hidden="true">delete</span>{t('action.supprimer')}</button>
             </div>
           </article>
         {:else}
@@ -338,8 +451,6 @@
     <div class="actions">
       <button type="button" data-testid="archiver" onclick={() => onarchiver(fil.ligne)}>
         <span class="ms" aria-hidden="true">archive</span>{t('action.archiver')}</button>
-      <button type="button" data-testid="supprimer" onclick={() => onsupprimer(fil.ligne)}>
-        <span class="ms" aria-hidden="true">delete</span>{t('action.supprimer')}</button>
       {#if estIndesirable}
         <button type="button" data-testid="pas-spam" onclick={() => onnonspam(fil.ligne)}>
           <span class="ms" aria-hidden="true">inbox</span>{t('action.pasSpam')}</button>
@@ -441,6 +552,55 @@
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
   .contenu { padding:14px 20px 18px; display:flex; flex-direction:column; gap:12px; }
+  /* La carte d'invitation (A76) : une carte DANS la carte de message —
+     rayon surface 10 px, sans élévation (elle appartient au flot du
+     contenu, pas au fil). La tuile de date reprend la paire
+     --tuile/--tuileInk de la boîte en cours ; l'annulation passe la
+     tuile en éteint et le titre en barré. */
+  .invitation { border:1px solid var(--border); border-radius:10px; background:var(--surface); }
+  .inv-tete { display:flex; align-items:center; gap:10px; padding:12px 14px 0; }
+  .inv-kicker {
+    font-size:12px; font-weight:600; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--muted); flex:1;
+  }
+  .inv-kicker.annulee { color:var(--alert); }
+  .inv-statut { font-size:12px; color:var(--ink2); white-space:nowrap; }
+  .inv-corps { display:flex; gap:14px; padding:12px 14px 14px; align-items:flex-start; }
+  .inv-tuile {
+    width:52px; height:52px; border-radius:6px; background:var(--tuile);
+    color:var(--tuileInk); display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:1px; flex:none;
+  }
+  .inv-tuile.eteinte { background:var(--panel); color:var(--muted); }
+  .inv-mois {
+    font-size:10px; font-weight:600; letter-spacing:.08em;
+    text-transform:uppercase;
+  }
+  .inv-jour { font-size:20px; font-weight:600; line-height:1; }
+  .inv-details { display:flex; flex-direction:column; gap:4px; min-width:0; }
+  .inv-titre { font-size:15px; font-weight:600; color:var(--ink); }
+  .inv-titre.barre { color:var(--ink2); text-decoration:line-through; }
+  .inv-quand { font-size:13px; color:var(--ink2); }
+  .inv-lieu { font-size:13px; color:var(--muted); }
+  .inv-annulee { font-size:13px; color:var(--alert); }
+  .inv-repondant { font-size:13px; font-weight:600; color:var(--ink2); }
+  /* Trois boutons NEUTRES (D4) au gabarit des actions de message
+     (30 px) ; la réponse courante se dit par aria-pressed — fond --sel
+     et liseré d'accent, la sélection d'A75. */
+  .inv-actions {
+    display:flex; gap:10px; padding:12px 14px;
+    border-top:1px solid var(--border); flex-wrap:wrap;
+  }
+  .inv-actions button:disabled { cursor:default; opacity:.55; }
+  /* R9 : la couleur dit le sens — portée par l'icône, le texte double
+     (A8). Paires gatées : accent/surface et alert/surface à 3:1,
+     muted/surface à 4,5:1, et leurs pendants sur --sel. */
+  .inv-actions .ton-accepte .ms { color:var(--accent); }
+  .inv-actions .ton-provisoire .ms { color:var(--muted); }
+  .inv-actions .ton-refuse .ms { color:var(--alert); }
+  .inv-actions button[aria-pressed='true'] {
+    font-weight:600; background:var(--sel); border-color:var(--accent);
+  }
   .garde-images {
     padding:10px 14px; display:flex; align-items:center; gap:10px;
     font-size:13px; color:var(--ink2); background:var(--panel);
@@ -491,12 +651,15 @@
     padding:12px 20px; border-top:1px solid var(--border);
     display:flex; gap:10px; flex-wrap:wrap;
   }
-  .actions-message button {
+  /* UN gabarit pour les boutons de message ET ceux de la carte
+     d'invitation (A76 dit « au gabarit des actions de message ») : le
+     tenir par copie divergerait au premier retunage (revue). */
+  .actions-message button, .inv-actions button {
     height:30px; padding:0 14px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink); background:var(--surface);
     border:1px solid var(--border); border-radius:6px; cursor:pointer;
   }
-  .actions-message button:hover { background:var(--sel); }
+  .actions-message button:hover, .inv-actions button:hover { background:var(--sel); }
   .actions-message .principal {
     font-weight:600; color:var(--onAccent); background:var(--accent);
     border-color:var(--accent);

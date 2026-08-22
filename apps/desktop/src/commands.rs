@@ -118,6 +118,25 @@ pub struct MessageRow {
     /// son état d'épingle de ce champ (fil.svelte.js) : c'est lui qui
     /// habille « Épingler »/« Désépingler » sans aller-retour.
     pub pinned: bool,
+    /// L'invitation du fil (terrain R10/R11, PLAN-INVITATIONS) : le
+    /// rang de puces la dit (réponse donnée, annulation) et porte les
+    /// trois gestes — répondre sans ouvrir. `None` = ligne ordinaire.
+    pub invitation: Option<InvitationLigne>,
+}
+
+/// Le badge d'invitation d'une ligne — la clé pour répondre DEPUIS la
+/// liste vise le MESSAGE d'invitation (pas la tête du fil).
+#[derive(Serialize)]
+pub struct InvitationLigne {
+    pub mailbox: String,
+    pub uid: u32,
+    /// Le titre de la réunion — le sujet de la réponse se construit de
+    /// lui, jamais du sujet de la tête (« Re : … »).
+    pub titre: String,
+    /// `accepte` | `provisoire` | `refuse` — la puce du rang.
+    pub reponse: Option<String>,
+    pub annulee: bool,
+    pub peut_repondre: bool,
 }
 
 /// Bilan d'une reconnexion : ce qui est revenu, et POURQUOI le reste ne
@@ -1649,6 +1668,14 @@ fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
         thread_size: row.thread_size,
         thread_unseen: row.thread_unseen,
         pinned: false,
+        invitation: row.invitation.map(|rang| InvitationLigne {
+            mailbox: rang.mailbox,
+            uid: rang.uid,
+            titre: rang.titre,
+            reponse: rang.reponse,
+            annulee: rang.annulee,
+            peut_repondre: rang.peut_repondre,
+        }),
     }
 }
 
@@ -1710,12 +1737,16 @@ pub async fn list_category(
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let limit = limit.min(LIST_LIMIT_MAX);
         if category == "reception" {
-            let rows = store
+            let mut lignes = store
                 .unified_recent_scoped(account_id, non_lus, offset, limit)
-                .map_err(|err| err.to_string())?
-                .into_iter()
-                .map(to_message_row)
-                .collect();
+                .map_err(|err| err.to_string())?;
+            // Terrain R10-R12 : pièces sommées par fil, invitations au
+            // rang — une passe bornée à la PAGE, la requête chaude ne
+            // paie rien.
+            store
+                .enrichir_lignes(&mut lignes)
+                .map_err(|err| err.to_string())?;
+            let rows = lignes.into_iter().map(to_message_row).collect();
             return Ok(MessagePage {
                 offset,
                 rows,
@@ -1729,7 +1760,7 @@ pub async fn list_category(
         let echos = mail_core::DESTINATIONS_ECHO
             .contains(&category.as_str())
             .then_some((category.as_str(), portee.comptes.as_slice()));
-        let rows = store
+        let mut lignes = store
             .category_page(
                 &portee.boites,
                 non_lus,
@@ -1738,10 +1769,11 @@ pub async fn list_category(
                 offset,
                 limit,
             )
-            .map_err(|err| err.to_string())?
-            .into_iter()
-            .map(to_message_row)
-            .collect();
+            .map_err(|err| err.to_string())?;
+        store
+            .enrichir_lignes(&mut lignes)
+            .map_err(|err| err.to_string())?;
+        let rows = lignes.into_iter().map(to_message_row).collect();
         Ok(MessagePage {
             offset,
             rows,
@@ -1894,6 +1926,11 @@ pub struct BodyView {
     /// fier faisait ouvrir les pièces jointes fraîchement reçues sur
     /// une rangée vide (terrain CE, 2026-08-14).
     pub attachment_count: usize,
+    /// La carte d'invitation du message, ENTIÈRE (ligne `invitations`
+    /// fraîche du même scan) : elle voyage avec le corps — une seconde
+    /// commande pour la relire coûtait un aller-retour IPC et une
+    /// requête en double par ouverture (revue).
+    pub invitation: Option<InvitationVue>,
 }
 
 /// Corps d'un message : cache local d'abord (aucun réseau), serveur du
@@ -1909,12 +1946,22 @@ pub async fn message_body(
     show_images: bool,
 ) -> Result<BodyView, String> {
     let html = raw_body(&app, &state, account_id, &mailbox, uid).await?;
-    // APRÈS raw_body : si le corps vient d'être rapatrié, ses pièces
-    // viennent d'entrer en base — ce compte-ci est le frais.
-    let attachment_count = Store::open(&db_path(&app)?)
-        .and_then(|store| store.attachments(account_id, &mailbox, uid))
-        .map_err(|err| err.to_string())?
-        .len();
+    // APRÈS raw_body : si le corps vient d'être rapatrié, ses pièces —
+    // et son éventuelle invitation — viennent d'entrer en base : ces
+    // comptes-ci sont les frais.
+    let (attachment_count, invitation) = {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        (
+            store
+                .attachments(account_id, &mailbox, uid)
+                .map_err(|err| err.to_string())?
+                .len(),
+            store
+                .invitation(account_id, &mailbox, uid)
+                .map_err(|err| err.to_string())?
+                .map(vue_invitation),
+        )
+    };
 
     let policy = if show_images {
         mail_render::ImagePolicy::AllowRemote
@@ -1937,6 +1984,7 @@ pub async fn message_body(
         ),
         remote_images_blocked: sanitized.remote_images_blocked,
         attachment_count,
+        invitation,
     })
 }
 
@@ -2016,6 +2064,158 @@ pub async fn message_attachments(
                 mime: attachment.mime,
             })
             .collect())
+    })
+    .await
+}
+
+/// La carte d'invitation d'un message, telle que l'UI la présente
+/// (PLAN-INVITATIONS). Les horaires sont des epochs UTC quand ils sont
+/// résolus ; sinon la forme TEXTE fait foi (`journee_entiere` ou
+/// `heure_flottante` — l'UI affiche cette dernière telle quelle, avec la
+/// mention « heure locale de l'organisateur », garde D1).
+#[derive(Serialize)]
+pub struct InvitationVue {
+    /// `request` | `cancel` | `reply`.
+    pub methode: String,
+    pub titre: String,
+    pub lieu: Option<String>,
+    /// Le nom d'affichage de l'organisateur, sinon son adresse.
+    pub organisateur: Option<String>,
+    pub debut_epoch: Option<i64>,
+    pub fin_epoch: Option<i64>,
+    pub debut_texte: Option<String>,
+    pub fin_texte: Option<String>,
+    pub journee_entiere: bool,
+    pub heure_flottante: bool,
+    pub recurrent: bool,
+    /// Notre dernière réponse partie de Wind (`accepte` | `provisoire` |
+    /// `refuse`), sinon le PARTSTAT lu du message.
+    pub statut: Option<String>,
+    /// Le répondant d'un REPLY reçu (nom, sinon adresse) et son statut.
+    pub repondant: Option<String>,
+    pub repondant_statut: Option<String>,
+    /// La réunion est annulée : vrai sur le CANCEL lui-même ET sur le
+    /// REQUEST de la même réunion (lien croisé, terrain R6) — la carte
+    /// d'origine dit l'annulation, où que l'utilisateur regarde.
+    pub annulee: bool,
+    /// Les trois gestes sont possibles : REQUEST avec organisateur, non
+    /// annulé. Être dans la liste ATTENDEE n'est PAS exigé (terrain
+    /// R8, verdict CE : une invitation transférée EST une invitation —
+    /// qui la transfère en prend la responsabilité).
+    pub peut_repondre: bool,
+}
+
+fn vue_invitation(stockee: mail_core::InvitationStockee) -> InvitationVue {
+    let row = stockee.row;
+    let annulee = row.methode == "cancel" || row.annule;
+    let peut_repondre =
+        row.methode == "request" && row.organisateur_adresse.is_some() && !row.annule;
+    InvitationVue {
+        annulee,
+        // La garde D1 par EXTRÉMITÉ : une fin au TZID irrésolu suffit à
+        // dire « heure locale de l'organisateur » (revue — un couple
+        // début-résolu/fin-flottante affichait une plage mensongère).
+        heure_flottante: (row.debut_texte.is_some() || row.fin_texte.is_some())
+            && !row.journee_entiere,
+        organisateur: row.organisateur_nom.or(row.organisateur_adresse),
+        // D6 : l'état affiché suit la DERNIÈRE réponse partie de Wind ;
+        // le PARTSTAT du message n'est que l'état de départ.
+        statut: stockee.reponse.or(row.partstat),
+        repondant: row.repondant_nom.or(row.repondant_adresse),
+        repondant_statut: row.repondant_statut,
+        methode: row.methode,
+        titre: row.titre,
+        lieu: row.lieu,
+        debut_epoch: row.debut_epoch,
+        fin_epoch: row.fin_epoch,
+        debut_texte: row.debut_texte,
+        fin_texte: row.fin_texte,
+        journee_entiere: row.journee_entiere,
+        recurrent: row.recurrent,
+        peut_repondre,
+    }
+}
+
+/// Répond à une invitation (PLAN-INVITATIONS, D5-D6) : l'email iTIP
+/// `METHOD:REPLY` est JOURNALISÉ dans la boîte d'envoi (règles d'or ADR
+/// 0003 — hors ligne, il part au prochain lancement), la réponse est
+/// consignée sur la carte, et la vue à jour est rendue. Le sujet et le
+/// corps viennent de l'UI : c'est elle qui parle la langue du produit.
+#[tauri::command]
+pub async fn repondre_invitation(
+    app: AppHandle,
+    account_id: i64,
+    mailbox: String,
+    uid: u32,
+    reponse: String,
+    sujet: String,
+    corps: String,
+) -> Result<Option<InvitationVue>, String> {
+    hors_pompe(app, move |app| {
+        let participation = mail_core::participation_de_stable(&reponse)
+            .filter(|p| !matches!(p, mail_ical::Participation::SansReponse))
+            .ok_or_else(|| format!("réponse inconnue : {reponse}"))?;
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let stockee = store
+            .invitation(account_id, &mailbox, uid)
+            .map_err(|err| err.to_string())?
+            .ok_or_else(|| "aucune invitation sur ce message".to_string())?;
+        if stockee.row.methode != "request" || stockee.row.annule {
+            // Même règle que `peut_repondre` — R8 : un `.ics` transféré
+            // EST une invitation (verdict CE) ; une réunion annulée ne
+            // se répond plus.
+            return Err("ce message n'est pas une invitation à répondre".to_string());
+        }
+        let organisateur = stockee
+            .row
+            .organisateur_adresse
+            .clone()
+            .ok_or_else(|| "invitation sans organisateur : réponse impossible".to_string())?;
+        let from = account_email(&store, account_id)?;
+        // La réponse rejoint la conversation de l'invitation (fil).
+        let in_reply_to = store
+            .envelope(account_id, &mailbox, uid)
+            .map_err(|err| err.to_string())?
+            .and_then(|envelope| envelope.message_id);
+        let mut draft = mail_core::compose(
+            &from,
+            &organisateur,
+            "",
+            "",
+            &sujet,
+            &corps,
+            in_reply_to.as_deref(),
+        )
+        .map_err(|err| err.to_string())?;
+        draft.ics_reply = Some(mail_ical::reponse_itip(&mail_ical::DemandeReponse {
+            uid: &stockee.row.event_uid,
+            sequence: stockee.row.sequence,
+            organisateur_adresse: &organisateur,
+            notre_adresse: &from,
+            participation,
+            dtstamp_epoch: chrono::Utc::now().timestamp(),
+        }));
+        // Email ET réponse dans UNE transaction (revue) : si la ligne a
+        // disparu entre l'affichage et le clic, RIEN ne part — un email
+        // en file devant une carte « pas répondu » inviterait au double
+        // envoi.
+        let journalise = store
+            .enqueue_reponse_invitation(
+                account_id,
+                &draft,
+                &mailbox,
+                uid,
+                &reponse,
+                chrono::Utc::now().timestamp(),
+            )
+            .map_err(|err| err.to_string())?;
+        if journalise.is_none() {
+            return Err("l'invitation n'existe plus — rien n'est parti".to_string());
+        }
+        let maj = store
+            .invitation(account_id, &mailbox, uid)
+            .map_err(|err| err.to_string())?;
+        Ok(maj.map(vue_invitation))
     })
     .await
 }
@@ -2366,6 +2566,8 @@ pub async fn echo_body(app: AppHandle, id: i64, show_images: bool) -> Result<Bod
             ),
             remote_images_blocked: sanitized.remote_images_blocked,
             attachment_count,
+            // Un écho est NOTRE envoi : jamais d'invitation reçue.
+            invitation: None,
         })
     })
     .await
@@ -2505,9 +2707,13 @@ pub async fn pinned_rows(
 ) -> Result<Vec<MessageRow>, String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        Ok(store
+        let mut lignes = store
             .pinned_unified_scoped(account_id, non_lus)
-            .map_err(|err| err.to_string())?
+            .map_err(|err| err.to_string())?;
+        store
+            .enrichir_lignes(&mut lignes)
+            .map_err(|err| err.to_string())?;
+        Ok(lignes
             .into_iter()
             .map(to_message_row)
             .map(|mut row| {
@@ -4432,13 +4638,14 @@ fn auth_for(
         .ok_or_else(|| format!("compte non connecté : {email}"))
 }
 
+// Délègue à `Store::account_email` (revue PLAN-INVITATIONS) : UNE seule
+// réponse à « l'adresse du compte N » — la lecture des invitations et
+// l'envoi de leur réponse doivent voir la MÊME vérité (adresse vide =
+// compte à moitié provisionné = inconnu, comme `Store::accounts`).
 fn account_email(store: &Store, account_id: i64) -> Result<String, String> {
     store
-        .accounts()
+        .account_email(account_id)
         .map_err(|err| err.to_string())?
-        .into_iter()
-        .find(|account| account.id == account_id)
-        .map(|account| account.email)
         .ok_or_else(|| "compte inconnu".to_string())
 }
 
