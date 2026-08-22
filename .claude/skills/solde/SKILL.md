@@ -31,6 +31,19 @@ ce soit.
    absolue, faits saillants ; l'index `MEMORY.md` suit.
 6. Si ces écritures font un commit : `docs:`, sans accents, puis push
    et CI verte.
+7. **Chiffres kaizen du chantier** (PLAN-KAIZEN-CLAUDE) : noter au PLAN
+   soldé l'équiv. input consommé (T1, `scripts/mesurer-sessions.mjs`),
+   le nombre de gates complètes jouées (W3) et les constats KO au
+   STOP 2 (garde-fou qualité).
+
+## Dernière étape — clore la session
+
+1. Si une release est à venir : **écrire l'entrée CHANGELOG
+   maintenant** (§2.9 : elle précède TOUJOURS `faire-release.ps1`).
+2. Puis **clore cette session** — un chantier soldé ne reste pas en
+   contexte : le refacturer à chaque tour du chantier suivant est la
+   première perte mesurée du kaizen. Le sujet suivant s'ouvre dans une
+   session neuve, sur la lecture d'ETAT.md.
 
 ## Fin de phase
 
