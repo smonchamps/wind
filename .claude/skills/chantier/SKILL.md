@@ -97,7 +97,9 @@ puis re-gate et nouvelle passe terrain.
 
 - Message : `type: description`, **sans accents**, corps portant les
   chiffres et le raisonnement, **jamais de Co-Authored-By** (§2.8).
-- Push (le hook pre-push rejoue la gate), puis **`gh run watch`
-  jusqu'à CI verte** — les e2e locaux peuvent flaker, la CI est la
-  référence. Le chantier n'est clos qu'à la CI verte ; ensuite,
-  `/solde`.
+- Push et veille CI **en arrière-plan, jamais au premier plan** : le
+  push (le hook pre-push rejoue la gate, ~2 min) et `gh run watch`
+  se lancent en tâche de fond ; la session continue et **annonce le
+  verdict CI quand il tombe**. Les e2e locaux peuvent flaker, la CI
+  est la référence. Le chantier n'est clos qu'à la CI verte ;
+  ensuite, `/solde`.

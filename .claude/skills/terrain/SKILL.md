@@ -30,8 +30,9 @@ A37/A38).
 4. **DC-D2** : si l'UI est touchée, le Système s'amende au même commit —
    phrase au journal (A-n), règle mise à jour là où elle vit.
 5. **Gate complète** : `/gate`. Puis commit (`fix:`, sans accents, le
-   mécanisme et le remède au corps du message), push, `gh run watch`
-   jusqu'à CI verte.
+   mécanisme et le remède au corps du message) ; push et `gh run watch`
+   **en arrière-plan** — la session continue et annonce le verdict CI
+   quand il tombe.
 6. **Clôture** : proposer au CE de re-jouer le geste au terrain pour
    confirmer — en fournissant **systématiquement les commandes
    PowerShell nécessaires à ce test terrain** (lancement de l'app,

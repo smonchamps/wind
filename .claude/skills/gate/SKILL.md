@@ -41,3 +41,6 @@ cargo test --workspace --doc
   (`rust-toolchain.toml` + ref épinglée dans `ci.yml`) — STANDARD §7.4.
 - Le verdict final est la liste : chaque étape, verte ou rouge, avec
   ses chiffres (nombre de tests, avertissements, paires, valeurs).
+- **Jamais d'attente CI au premier plan** : `git push` (le pre-push
+  rejoue la gate) et `gh run watch` se lancent en arrière-plan ; la
+  session annonce le verdict quand il tombe.

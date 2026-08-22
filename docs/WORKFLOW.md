@@ -28,7 +28,8 @@ le workflow s'arrête net aux deux endroits où c'est lui qui tranche.
    │             (un constat → correction le jour même, re-gate, re-terrain)
    │
    ├─ Phase 4  Documentation — journal A-n, PLAN, ADR, ETAT, mémoire
-   └─ Phase 5  Commit (sans accents) → push → gh run watch → CI verte
+   └─ Phase 5  Commit (sans accents) → push + veille CI en arrière-plan
+               → verdict CI annoncé par la session
 ```
 
 ## Quelle commande pour quelle situation
@@ -83,7 +84,10 @@ Chaque skill embarque les règles payées au fil du projet :
 - **Commits** — `type: description`, sans accents, corps portant
   chiffres et raisonnement, jamais de Co-Authored-By.
 - **CI verte obligatoire** — le chantier n'est clos qu'après
-  `gh run watch` vert sur le commit poussé.
+  `gh run watch` vert sur le commit poussé ; push et veille CI se font
+  **en arrière-plan**, la session annonce le verdict (jamais d'attente
+  au premier plan — kaizen 2026-08-23, ~3,5 h de mur bloqué mesurées
+  sur 12 jours).
 
 ## L'agent `spike` — l'exploration set-based
 
