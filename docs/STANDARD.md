@@ -80,6 +80,11 @@ avis**. Règle de départage : l'alternative doit battre l'hypothèse
   simuler.
 - **Gate obligatoire avant tout commit** — et un hook `pre-push` le rejoue
   (§7.4). Un warning clippy = build rouge.
+- **Boucle intérieure ciblée** : pendant l'implémentation, on ne joue que
+  les spec(s) impactée(s), en fichier entier (jamais `-g` sur un e2e),
+  runs groupés par vague (RED groupé, GREEN groupé) ; la gate complète se
+  joue UNE fois avant le commit — pas à chaque incrément (kaizen
+  2026-08-23 : jusqu'à 10+ gates par chantier mesurées, ~100 min).
 - Zéro `unwrap()`/`expect()` en production. Erreurs typées (`thiserror`)
   dans les crates, `anyhow` dans les apps.
 

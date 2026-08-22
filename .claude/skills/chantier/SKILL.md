@@ -51,6 +51,11 @@ avec la date. **Aucun code de production avant le GO.**
 - **TDD strict** : le test échoue (RED, montré) avant l'implémentation
   (GREEN). Si un RED ne peut rien apprendre (fonction pure triviale),
   le dire — jamais le simuler.
+- **Boucle intérieure ciblée** (§2.4) : pendant l'implémentation, ne
+  jouer que les spec(s) impactée(s), **en fichier entier** (jamais
+  `-g` sur un e2e), et grouper les runs par vague — un RED groupé de
+  la vague, un GREEN groupé. La gate complète ne se joue qu'aux
+  moments dits en Phase 3 — pas à chaque incrément.
 - **DC-D2** : tout commit qui touche l'UI amende
   `docs/design/systeme.dc.html` dans le **même commit** (journal A-n).
 - Zéro `unwrap()`/`expect()` en prod ; `thiserror` dans les crates,

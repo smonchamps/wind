@@ -23,7 +23,10 @@ A37/A38).
    `/chantier`** — la voie rapide ne dispense pas de conception.
 3. **TDD** : un test qui échoue sur le constat (e2e si c'est un parcours,
    Rust si c'est le cœur), puis la correction. Le test s'asserte sur le
-   fait observé au terrain, pas sur l'implémentation.
+   fait observé au terrain, pas sur l'implémentation. Boucle intérieure
+   ciblée (§2.4) : la ou les spec(s) impactée(s) **en fichier entier**
+   (jamais `-g`), RED puis GREEN — la gate complète vient après, une
+   fois, avant le commit.
 4. **DC-D2** : si l'UI est touchée, le Système s'amende au même commit —
    phrase au journal (A-n), règle mise à jour là où elle vit.
 5. **Gate complète** : `/gate`. Puis commit (`fix:`, sans accents, le
