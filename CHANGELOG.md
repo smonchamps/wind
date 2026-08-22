@@ -12,6 +12,36 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.7.0] - 2026-08-23
+
+Répondez aux invitations de réunion sans quitter votre boîte mail.
+
+### Ajouté
+
+- **Les invitations de réunion se traitent dans Wind** : une invitation
+  reçue (Google Agenda, Outlook, etc.) s'affiche en carte lisible dans
+  la conversation : titre, date et heure dans votre fuseau,
+  organisateur, lieu, récurrence. Trois boutons : Accepter, Provisoire,
+  Refuser ; votre réponse part par email à l'organisateur, comme le
+  font les autres clients mail. Vous pouvez changer d'avis : la
+  dernière réponse envoyée fait foi, et la ligne de la liste porte une
+  puce « Acceptée », « Provisoire » ou « Refusée ».
+- **Répondre depuis la liste** : les trois boutons apparaissent
+  directement sur la ligne de la conversation dans le volet central,
+  sans ouvrir le message.
+- **Une réunion annulée se voit** : l'avis d'annulation marque
+  l'invitation d'origine « Annulée », même s'il arrive dans une autre
+  conversation ; les boutons de réponse se retirent.
+- **Les invitations déjà reçues gagnent leur carte** : au premier
+  lancement de cette version, Wind repasse une fois sur le courrier
+  existant pour reconnaître les invitations arrivées avant.
+
+### Modifié
+
+- **Le bouton « Supprimer » vit désormais dans chaque message** de la
+  conversation, à côté de Répondre et Transférer : on supprime CE
+  message ; la conversation reste ouverte s'il en reste.
+
 ## [0.6.0] - 2026-08-22
 
 Un repère par boîte mail, un premier démarrage guidé, et Wind existe

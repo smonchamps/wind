@@ -12,7 +12,14 @@
 
 ## Où on en est, et quoi faire en premier
 
-**Rien n'est cassé, rien n'est à moitié écrit, rien n'est en vol.**
+**Rien n'est cassé, rien n'est à moitié écrit. Un seul geste en
+attente : publier la 0.7.0** (décision D7 de PLAN-INVITATIONS,
+MINEUR — première capacité nouvelle depuis la 0.6.0). L'entrée
+CHANGELOG est écrite (§2.9 : elle précède TOUJOURS le script) ; reste
+`scripts/faire-release.ps1 0.7.0` (mot de passe de la clé à la main,
+CE seul) puis `scripts/verifier-release.ps1 0.7.0`. Le **premier
+auto-update x64** (canal né en 0.6.0) sera constatable à cette
+release.
 
 **Prochain chantier : la bêta fermée 20-50 utilisateurs** ([PLAN.md](PLAN.md)
 §4, dernière étape avant le gate 5) — rien n'est engagé.
@@ -47,7 +54,55 @@ exe résout 200 / 5 066 813 octets ; **auto-update 0.4.0 → 0.5.0
 confirmé au terrain**). La 0.5.0 porte les quatre retours de
 PLAN-RETOURS-7 (MINEUR, D6).
 
-**Dernier chantier soldé : [PLAN-RETOURS-8](PLAN-RETOURS-8.md)**
+**Dernier chantier soldé : [PLAN-INVITATIONS](PLAN-INVITATIONS.md)**
+(2026-08-23, `1c159bc`, A76 + **ADR 0024**, **terrain complet en
+QUATRE passes les 2026-08-22/23** — chaque constat corrigé dans la
+session —, CI verte run 32605745661, **à livrer en 0.7.0**, décision
+D7). Une invitation de réunion reçue se TRAITE dans Wind — périmètre
+tenu : une fonctionnalité email, PAS un calendrier (refusés : vue
+calendrier, CalDAV/Graph, création d'évènements, expansion RRULE
+au-delà de « Se répète », COUNTER/délégation). (1) **Crate pure
+`mail-ical`** sur calcard 0.3.11 (`default-features = false`, spikes
+chiffrés — ADR 0024) : REQUEST/CANCEL/REPLY, TZID IANA ET Windows
+(« Romance Standard Time »), garde D1 **par extrémité** — TZID
+inconnu ⇒ heure flottante DITE, jamais une conversion mensongère ;
+répondant d'un REPLY = premier ATTENDEE hors organisateur (écho
+Exchange). (2) **Carte au fil** : elle voyage avec le corps
+(`BodyView.invitation` — zéro aller-retour à l'ouverture), titre,
+horaire local, organisateur, lieu, statut, trois gestes NEUTRES avec
+icônes (D4 — « Accepter en accent » REJETÉE) ; **annulation croisée
+dans les DEUX ordres** (CANCEL avant ou après son REQUEST) ; une
+invitation transférée EST répondable (R8 terrain : être invité n'est
+pas exigé) ; la partie calendrier inline disparaît des puces quand la
+carte est rendue (D3), un `.ics` nommé reste enregistrable. (3)
+**Réponse iTIP transactionnelle** : `enqueue_reponse_invitation` —
+email et réponse dans UNE transaction, rien ne part si la ligne a
+disparu ; MIME `text/calendar; method=REPLY` en alternative ;
+changement d'avis autorisé (D6) ; sujet dans la langue de l'UI (D5).
+(4) **La liste répond** (R10-R12 terrain) : `enrichir_lignes`, une
+passe bornée à la PAGE (jamais la requête chaude — leçon
+DEFILEMENT-PROFOND) ; gestes au rang de puces (fenêtrage généralisé à
+N rangs au coût marginal constant), face-swap de la ligne quand la
+réponse est posée (R11 : l'invitation d'origine reprend le devant —
+seule exception au « dernier message du fil »), somme des pièces du
+fil (R12), **optimisme instantané via `version`** (les pages du
+fenêtrage sont NON réactives ; 3e/4e passes — écriture ET rollback).
+(5) **Adoption de l'existant** : réparation one-shot
+`pieces-calendrier` (motif `corps-fffd`) — les invitations déjà en
+base gagnent leur carte, les index de pièces désalignés d'une base
+héritée se réparent au passage ; `reset_mailbox`/`remove_local`
+purgent `invitations`. (6) **« Supprimer » par message** (2e passe) :
+la barre du fil garde archiver/spam/épingler, l'écran 03 ne retourne
+à la boîte que si le fil se ferme. Glyphes 76 → **78** (`cancel`,
+`question_mark`, `?v=78`, preuve **79/79**). Revue à regard neuf 8
+angles : 11 trouvailles, toutes traitées avant le terrain. Reports :
+DETTE **D-29** (cas C : corps vide si l'invitation est la seule
+partie), **D-30** (invitation héritée sans ligne de pièce), **D-31**
+(`drafts` sans `ics_reply`). e2e : 117 → **121** ; tests Rust
+workspace : **547** (crate `mail-ical` neuve, 16 tests corpus sur
+fixtures Google/Outlook réelles).
+
+**Le chantier soldé précédent : [PLAN-RETOURS-8](PLAN-RETOURS-8.md)**
 (2026-08-22, `cbf795a`, A74-A75 + **ADR 0023**, **terrain complet en
 CINQ passes le même jour** — 16 constats R2, chacun corrigé dans la
 session —, CI verte run 32576771340, **livré en 0.6.0** — la première

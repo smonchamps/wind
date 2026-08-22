@@ -1,5 +1,16 @@
 # PLAN-INVITATIONS — traiter une invitation de réunion reçue
 
+> **CHANTIER SOLDÉ le 2026-08-23 — terrain complet.** GO CE (STOP 1,
+> D1-D7) le 2026-08-22 ; livré en un commit `1c159bc` (A76 + ADR
+> 0024), CI verte run 32605745661. Terrain en QUATRE passes les
+> 2026-08-22/23, chaque constat corrigé dans la session : 1re passe
+> (lien croisé d'annulation, invitation transférée répondable, gestes
+> et visage dans la liste, somme des pièces du fil), 2e passe
+> (optimisme instantané, icônes + tons, Supprimer par message), 3e
+> passe (puce instantanée même sans sélection — bump `version` du
+> fenêtrage), 4e passe : OK. Reports : DETTE D-29, D-30, D-31.
+> À livrer en **0.7.0** (décision D7).
+
 > Chantier ouvert le 2026-08-22 (`/chantier`), sur le retour
 > pré-bêta : « les utilisateurs ne peuvent pas traiter les invitations
 > à des réunions reçues ». Énoncé : afficher une invitation en **carte
