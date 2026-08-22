@@ -20,7 +20,9 @@ plan et la validation terrain. Rien ne les contourne.
 - **Feature** : lire le Système (`docs/design/systeme.dc.html`, seul
   normatif — A18), les ADRs concernés (décisions gelées, STANDARD §5),
   l'état du code. Sur une zone vaste, les agents `Explore`/`Plan`
-  intégrés font la reconnaissance.
+  intégrés font la reconnaissance — **sur Sonnet 5** (Haiku pour du
+  pur balayage) ; le haut de gamme est réservé à la conception, à la
+  vérification et aux revues (WORKFLOW, axe M).
 
 ## Phase 1 — Conception
 

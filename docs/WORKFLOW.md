@@ -117,6 +117,20 @@ l'implémentation ou la documentation en agents séparés perdrait à
 chaque transfert le contexte qui fait la qualité des commits. Un seul
 fil porte le constat jusqu'à la CI verte.
 
+### Modèle des agents (kaizen 2026-08-23 — axe M)
+
+Baseline mesurée : 100 % des sous-agents tournaient haut de gamme, y
+compris le pur balayage. Désormais, au lancement d'un agent (paramètre
+`model` de l'outil Agent) :
+
+- **Exploration / reconnaissance** (`Explore`, `Plan`, recherche de
+  code) : **Sonnet 5** ; **Haiku** pour du pur balayage (localiser des
+  fichiers, inventorier des occurrences).
+- **Vérification, revue, `spike`** : inchangés — haut de gamme ou
+  modèle de la session ; ce sont les meilleurs détecteurs de défauts
+  du workflow (une revue a attrapé la reconstruction d'index FTS5 de
+  ~13 Go), on n'y touche pas.
+
 ## Amender le workflow
 
 Le standard n'est pas figé — c'est du *standard work* : il s'améliore
