@@ -89,6 +89,20 @@ Chaque skill embarque les règles payées au fil du projet :
   au premier plan — kaizen 2026-08-23, ~3,5 h de mur bloqué mesurées
   sur 12 jours).
 
+## Politique de modèles (kaizen 2026-08-23, validée CE — axe M)
+
+La règle tient en deux lignes ; elle préserve aussi le quota Fable
+pour ce qui en a besoin.
+
+- **Chantier = Fable 5, invariant.** Conception, remontée à la racine,
+  TDD, revue : jamais de conception dure sur un modèle moindre
+  (précédent perf-lecture, non prouvé mais suspect).
+- **Session mécanique = Sonnet 5.** Docs/ETAT/CHANGELOG, Notion,
+  veille CI, release scriptée, consolidation mémoire : le CE ouvre ces
+  sessions sur Sonnet 5 (sélecteur de modèle de l'app). Baseline
+  mesurée : le mécanique tournait à 100 % au tarif maximal (M1, cible
+  ≤ 5 % du coût haut de gamme hors chantiers).
+
 ## L'agent `spike` — l'exploration set-based
 
 Quand la conception rencontre un point dur, le départage se fait sur
