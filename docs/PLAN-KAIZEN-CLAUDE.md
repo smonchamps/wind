@@ -91,7 +91,7 @@ chantier soldé pour neutraliser les variations d'activité.
 
 | Indicateur | Baseline | Cible | Levier principal |
 |---|---|---|---|
-| W1. Gate complète (mur, chronométrée) | à mesurer en W0 (estimée 9–12 min) | **≤ 6 min** | rebuild mémoïsé, gate.ps1, nextest (si mesuré gagnant) |
+| W1. Gate complète (mur, chronométrée) | **4 min 34 s** (mesure W0 du 2026-08-23, cache cargo chaud, 121/121 e2e — l'estimation 9–12 min était pessimiste) | **≤ 6 min** (déjà tenue à W0 — resserrer la cible est un arbitrage CE au bilan) | rebuild mémoïsé, gate.ps1, nextest (si mesuré gagnant) |
 | W2. Boucle intérieure : 1 spec e2e | méd. 74 s (dominée par rebuild) | **≤ 45 s** | rebuild mémoïsé + bump conditionnel |
 | W3. Gates complètes par chantier | 10+ | **≤ 3** | boucle ciblée codifiée + re-gate partielle |
 | W4. Temps de gate cumulé par chantier | ~100 min | **≤ 25 min** | W1×W3 |
@@ -123,6 +123,15 @@ de ~13 Go).
    session) — on ne pilote que ce qu'on mesure.
 2. Chronométrer UNE gate complète de référence, cache cargo chaud
    (STANDARD §9 : le cache chaud ment, noter l'état du cache) → fige W1.
+
+   **✓ Fait le 2026-08-23** (cache cargo chaud, aucun changement de code
+   en vol) : **total 274,3 s (4 min 34 s)** — fmt 0,7 s, build-ui
+   2,8 s, contraste 0,3 s, cohérence 0,3 s, garde-thread 0,3 s, clippy
+   2,9 s, tests Rust 9,2 s (--all-targets), doc 1,3 s, **e2e 256,3 s
+   (121/121)**. L'e2e est 93 % du mur : le levier dominant est bien la
+   vague 2 (rebuild mémoïsé, base gabarit seed) — pas gate.ps1 (les 8
+   premières étapes ne pèsent que 18 s, l'orchestration en tours
+   d'outil reste le gain de gate.ps1, −8 tours/gate).
 
 ### Vague 1 — comportements et skills, zéro code produit (jour 1, un commit `chore:` par amendement)
 
@@ -189,7 +198,7 @@ joue aucun e2e).
 | P1 mur bloqué > 60 s au 1er plan | ~3,5 h | ≤ 15 min | | | |
 | P2 re-runs / flake | ≤ 11 | ≤ 2 | | | |
 | P3 allers-retours évitables | 24 | 0 | | | |
-| W1 gate complète | mesure W0 | ≤ 6 min | | | |
+| W1 gate complète | 4 min 34 s (W0) | ≤ 6 min | | | |
 | W2 1 spec e2e | 74 s | ≤ 45 s | | | |
 | W3 gates complètes / chantier | 10+ | ≤ 3 | | | |
 | W5 push docs-only | ~2 min | ≤ 30 s | | | |
