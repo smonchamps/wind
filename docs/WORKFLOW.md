@@ -75,9 +75,10 @@ Chaque skill embarque les règles payées au fil du projet :
   est dit, jamais simulé.
 - **DC-D2** — tout commit UI amende `docs/design/systeme.dc.html` dans
   le même commit (journal A-n).
-- **Gate complète, jamais les tests seuls** — les huit étapes de
+- **Gate complète, jamais les tests seuls** — les neuf étapes de
   [/gate](../.claude/skills/gate/SKILL.md), `coherence-systeme`
-  comprise ; fmt rejoué après tout remplacement mécanique.
+  comprise, jouées en un appel par `scripts/gate.ps1` ; fmt rejoué
+  après tout remplacement mécanique.
 - **E2E flaky en local** — un rouge local se contre-vérifie
   (`gh run list`) avant de suspecter une régression : la CI est la
   référence.

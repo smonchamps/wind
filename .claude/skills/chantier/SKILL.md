@@ -90,7 +90,12 @@ jouer, chiffres attendus, budgets à re-mesurer (STANDARD §3 — un
 budget dépassé arrête la ligne). Fournir **systématiquement, à ce
 moment, les commandes PowerShell nécessaires à la réalisation du test
 terrain** (lancement de l'app, build, préparation des comptes,
-mesures) — prêtes à copier, une par bloc. Attendre le verdict. Un
+mesures) — prêtes à copier, une par bloc. Les scripts versés servent
+d'abord — jamais de one-liner régénéré pour ce qu'ils couvrent :
+`scripts\terrain.ps1` (état du poste : base, version installée,
+identifiants OAuth, traces) et `scripts\lancer-wind.ps1` (lancement
+release AVEC trace — il encode le piège §9 : l'exe nu ne trace rien).
+Attendre le verdict. Un
 constat terrain → correction **le jour même**, dans la même session,
 puis re-gate et nouvelle passe terrain.
 

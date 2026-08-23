@@ -15,6 +15,34 @@
 # Contournement d'urgence : git push --no-verify (en connaissance de cause).
 set -e
 
+# Chemin rapide documentaire (PLAN-KAIZEN-CLAUDE vague 2, E4) : si TOUT
+# ce qui part est de la prose — docs/** ou *.md, en EXCLUANT
+# docs/design/** (le Système est du normatif outillé, DC-D6 : gate
+# entière) — les étapes 6-8 (clippy, tests Rust, e2e, ~4 min) ne
+# peuvent rien attraper : on garde les étapes en secondes (1-5).
+# Prudence par défaut : ref neuve ou suppression => gate entière.
+docs_only=1
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$local_sha" in *[!0]*) ;; *) docs_only=0; break ;; esac   # suppression de ref
+  case "$remote_sha" in *[!0]*) ;; *) docs_only=0; break ;; esac  # ref neuve
+  fichiers=$(git diff --name-only "$remote_sha".."$local_sha")
+  [ -n "$fichiers" ] || continue
+  # Itération par LIGNE (jamais par mot : un chemin avec espace serait
+  # scindé et chaque fragment classé séparément).
+  vieux_ifs=$IFS
+  IFS='
+'
+  for f in $fichiers; do
+    case "$f" in
+      docs/design/*) docs_only=0 ;;
+      docs/*|*.md) ;;
+      *) docs_only=0 ;;
+    esac
+  done
+  IFS=$vieux_ifs
+  [ "$docs_only" = 1 ] || break
+done
+
 echo "[1/8] format"
 cargo fmt --all -- --check
 
@@ -39,6 +67,12 @@ echo "[5/8] garde du thread principal (PLAN-GELS)"
 # fenetre pour toute sa duree (pompe de messages bloquee). Toute commande
 # bloquante doit etre `async fn`.
 node e2e/garde-thread-principal.mjs > /dev/null
+
+if [ "$docs_only" = 1 ]; then
+  echo "Diff documentaire seul (docs/** + *.md, hors docs/design/**) :"
+  echo "etapes 6-8 sautees. Gate pre-push documentaire complete."
+  exit 0
+fi
 
 echo "[6/8] clippy (warnings = erreurs)"
 cargo clippy --workspace --all-targets -- -D warnings

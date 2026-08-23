@@ -11,3 +11,6 @@ apps/desktop/ui-v2/node_modules/
 apps/desktop/ui-v2/dist/
 e2e/test-results/
 e2e/playwright-report/
+
+# Traces terrain de scripts/lancer-wind.ps1 (racine du depot, jamais versees)
+/*.log

@@ -527,8 +527,14 @@ minutes ; ne pas le faire « pour être sûr »).
 
 ### 7.4 Le gate pré-push
 
-`.githooks/pre-push` rejoue : `fmt` → `clippy -D warnings` →
-`cargo test --workspace --all-targets` → `--doc` → `npm test` (e2e).
+`.githooks/pre-push` rejoue : `fmt` → build ui-v2 → contrastes →
+cohérence du Système → garde du thread principal → `clippy -D warnings`
+→ `cargo test --workspace --all-targets` → `--doc` → `npm test` (e2e).
+**Chemin rapide documentaire** (PLAN-KAIZEN-CLAUDE, E4) : si tout ce
+qui part est ⊆ `docs/**` + `*.md` — en excluant `docs/design/**`, le
+Système est du normatif outillé — les étapes lentes (clippy, tests
+Rust, e2e) sont sautées, les étapes en secondes restent ; ref neuve ou
+suppression de ref ⇒ gate entière. La CI reste le filet complet.
 
 **`--all-targets` n'est pas décoratif** : sans lui, cargo ignore les tests
 des EXEMPLES — les diagnostics du terrain vivent là et portent leurs tests.

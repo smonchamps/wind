@@ -158,6 +158,29 @@ de ~13 Go).
 | 6 | Base gabarit seed copiée par spec au lieu de ~14 `cargo run --example` par suite | 15–35 s/suite | `e2e/launch.mjs` |
 | 7 | `cargo-nextest` sur `--all-targets` : **mesurer avant/après** (gain attendu inter-binaires, ~20 binaires) ; adopter seulement si le chiffre le justifie ; `--doc` inchangé | ~15–25 s/gate si confirmé | `gate.ps1`, pre-push, ci.yml |
 
+#### Déroulé de la vague 2 — fait le 2026-08-23, ordre D3
+
+| # | Verdict | Mesure |
+|---|---|---|
+| 1 | **✓ livré** — `empreinteDist` (dist + conf, sha1) + bump conditionné + mémo par processus de suite (`rebuild-v2.mjs`, 4 tests node) | **W2 : 74 s → 13,5–19 s** de mur la spec (`refonte-retours-7`, cache chaud) |
+| 2 | **✓ livré** — `scripts/gate.ps1`, 9 étapes fail-fast, verdict chiffré par étape, exceptions PS rendues en rouge nommé ; `/gate` l'appelle en un tour | −8 tours d'orchestration par gate (T4) |
+| 3 | **✓ livré** — `retries: 1` + « flaky = consigné au verdict, rouge franc = andon » gravé au skill | porte P2 |
+| 4 | **✓ livré** — chemin rapide docs-only du pre-push (⊆ `docs/**`+`*.md`, hors `docs/design/**` ; ref neuve/suppression ⇒ gate entière ; itération par ligne, jamais par mot) | W5 — à chronométrer au premier push docs-only |
+| 5 | **✓ livré** — `scripts/terrain.ps1` (état du poste : base, version, OAuth User **et** session, traces) + `scripts/lancer-wind.ps1` (build par `construire-wind.mjs` — la maison unique des pièges du rebuild — puis `cargo run` qui TIENT le handle de trace, §9) ; référencés au STOP 2 de `/chantier` | terrain.ps1 prouvé sur ce poste (0.7.0, base 11,83 Go) |
+| 6 | **✓ livré** — gabarits de seed (clé = exe du seeder + recette + **date locale** — les seeders figent `Local::now()`), copie par spec, construction à côté + rename | compris dans W2 ci-dessus ; ~14 `cargo run --example` → 1 construction/jour |
+| — | **W1 re-mesuré après E1+E2+E6** : gate complète via `gate.ps1`, 121/121, zéro flaky | **4 min 34 s (W0) → 1 min 43 s** (103 s ; e2e 256 → 86 s), cache cargo chaud aux deux mesures |
+| 7 | **✗ rejeté sur le chiffre** — `cargo test --all-targets` mesuré à **9,3 s** cache chaud : le gain espéré (15-25 s) excède le poste entier ; nextest n'est ni installé ni adopté | — |
+
+Revue à regard neuf 8 angles (2026-08-23) : 10 trouvailles, 8 corrigées
+avant gate (dist périmé du lanceur terrain, dates figées du gabarit,
+word-splitting et suppression de ref du hook, zombies mémoïsés,
+sidecars WAL du gabarit, faux ABSENT OAuth, exception PS muette), 2
+consignées : **double encodage de la gate** (pre-push sh + gate.ps1 —
+deux maisons, à unifier si elles divergent encore) et **piste racine
+`build.rs`** (`cargo:rerun-if-changed` sur le dist rendrait le bump
+inutile — à instruire hors fenêtre, comportement `tauri_build` à
+prouver d'abord).
+
 ### Vague 3 — structurel (à planifier, hors fenêtre de mesure)
 
 1. Sortir le dépôt de OneDrive (doctrine existante d'`installer-poste.ps1`)

@@ -17,10 +17,11 @@
 //   n'ait créé son document. Se contenter du port ouvert crée une course
 //   qui se voit dès que le démarrage est froid.
 import { spawn, execSync } from 'node:child_process';
-import { mkdirSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
-import { construireV2, purgerCacheHttp } from './rebuild-v2.mjs';
+import { balayerZombies, construireV2, purgerCacheHttp } from './rebuild-v2.mjs';
 import { purgerOAuth } from './isolation.mjs';
 import { allouerPortCdp } from './port-cdp.mjs';
 import { argsNavigateur } from './args-navigateur.mjs';
@@ -37,6 +38,52 @@ let portSuite = null;
 // le décor par défaut est le jeu d'essai Clarity (seed_clarity). Les
 // pièges du rebuild (dist périmé, zombie, cache) vivent dans
 // `rebuild-v2.mjs`, une fois.
+// Graines par GABARIT (PLAN-KAIZEN-CLAUDE vague 2, E6) : la même
+// recette de seed était rejouée par `cargo run --example` à CHAQUE spec
+// (~14 exécutions par suite). Le gabarit se construit une fois — clé =
+// recette + empreinte de l'exe du seeder (un seeder modifié invalide) —
+// puis chaque spec reçoit une COPIE de fichier (la base reste jetable
+// et isolée, STANDARD §7.1 tenu). Les exemples sont compilés une fois
+// par processus de suite ; on exécute ensuite l'exe directement.
+let exemplesConstruits = false;
+
+function seeder(db, etapes) {
+  if (!exemplesConstruits) {
+    execSync('cargo build -p mail-core --examples', { cwd: root, stdio: 'inherit' });
+    exemplesConstruits = true;
+  }
+  const exe = (exemple) => path.join(root, 'target', 'debug', 'examples', `${exemple}.exe`);
+  const hash = createHash('sha1');
+  for (const nom of [...new Set(etapes.map((etape) => etape.exemple))].sort()) {
+    const stat = statSync(exe(nom));
+    hash.update(`${nom}|${stat.size}|${stat.mtimeMs}\0`);
+  }
+  hash.update(JSON.stringify(etapes));
+  // Les seeders figent `Local::now()` À LA CONSTRUCTION (« aujourd'hui »,
+  // « hier » du décor Clarity) : un gabarit d'hier ferait dériver tout
+  // parcours à dates relatives. La date locale fait partie de la clé —
+  // le gabarit se reconstruit au plus une fois par jour.
+  hash.update(new Date().toDateString());
+  const gabarit = path.join(root, 'target', 'e2e', 'gabarits', `${hash.digest('hex')}.db`);
+  if (!existsSync(gabarit)) {
+    mkdirSync(path.dirname(gabarit), { recursive: true });
+    // Construction à côté puis rename : un seed interrompu ne laisse
+    // jamais un gabarit à moitié plein sous la clé finale — et ses
+    // sidecars WAL non plus (des frames orphelines rejouées sur la base
+    // reconstruite empoisonneraient le cache sans changer la clé).
+    const chantier = `${gabarit}.chantier`;
+    for (const suffixe of ['', '-wal', '-shm']) rmSync(`${chantier}${suffixe}`, { force: true });
+    for (const etape of etapes) {
+      execSync(`"${exe(etape.exemple)}" "${chantier}" ${etape.args}`.trim(), {
+        cwd: root,
+        stdio: 'inherit',
+      });
+    }
+    renameSync(chantier, gabarit);
+  }
+  copyFileSync(gabarit, db);
+}
+
 // `vierge: true` : base NEUVE et aucun compte factice — l'état « zéro
 // compte » qui doit montrer l'écran 01 (onboarding).
 // `comptes: [{email, messages}]` : le décor seed_inbox — les parcours
@@ -50,29 +97,31 @@ export async function launchAppV2({ vierge = false, comptes = null } = {}) {
     'e2e',
     vierge ? 'parcours-v2-vierge.db' : comptes ? 'parcours-v2-inbox.db' : 'parcours-v2.db',
   );
-  rmSync(db, { force: true });
+  // Un zombie d'une spec précédente qui tiendrait encore cette base
+  // ferait un EBUSY illisible au rmSync — depuis que le build (et son
+  // balayage) est mémoïsé, le lanceur balaie lui-même.
+  balayerZombies(root);
+  // La base ET ses sidecars : un -wal orphelin d'un run précédent collé
+  // à une base fraîchement copiée serait un mensonge d'état.
+  for (const suffixe of ['', '-wal', '-shm']) rmSync(`${db}${suffixe}`, { force: true });
   mkdirSync(path.dirname(db), { recursive: true });
   if (vierge) {
     return attacher(db, []);
   }
   if (comptes) {
+    const etapes = [];
     for (const compte of comptes) {
-      execSync(
-        `cargo run -p mail-core --example seed_inbox -- "${db}" ${compte.messages} ${compte.email}`,
-        { cwd: root, stdio: 'inherit' },
-      );
+      etapes.push({ exemple: 'seed_inbox', args: `${compte.messages} ${compte.email}` });
       // `archives: N` : une boîte Archives de N messages, sans corps —
       // le décor du défilement profond (PLAN-DEFILEMENT-PROFOND). Le
       // seeder inscrit la boîte au cache `folders` (la canonique
       // archives résout), les dossiers Archivés/Factures des autres
       // comptes restent intacts.
       if (compte.archives) {
-        execSync(
-          `cargo run -p mail-core --example seed_inbox -- "${db}" ${compte.archives} ${compte.email} 0 0 Archives`,
-          { cwd: root, stdio: 'inherit' },
-        );
+        etapes.push({ exemple: 'seed_inbox', args: `${compte.archives} ${compte.email} 0 0 Archives` });
       }
     }
+    seeder(db, etapes);
     // `deconnecte: true` : le compte vit au REGISTRE (seedé ci-dessus)
     // mais ne reçoit pas de session — l'état « jeton mort » du réel,
     // celui que Réglages sait désormais réparer (terrain 2026-08-20).
@@ -81,10 +130,7 @@ export async function launchAppV2({ vierge = false, comptes = null } = {}) {
       comptes.filter((compte) => !compte.deconnecte).map((compte) => compte.email),
     );
   }
-  execSync(`cargo run -p mail-core --example seed_clarity -- "${db}"`, {
-    cwd: root,
-    stdio: 'inherit',
-  });
+  seeder(db, [{ exemple: 'seed_clarity', args: '' }]);
   return attacher(db, ['paul.merand@atelier-nord.fr', 'paul@merand.fr']);
 }
 
