@@ -77,6 +77,7 @@ chantier soldé pour neutraliser les variations d'activité.
 | T2. Contexte moyen relu par tour (toute session) | 410–540 k (marathons) | **≤ 200 k** | /solde = frontière de session ; /compact aux STOP |
 | T3. Sessions closes ou compactées ≤ 24 h de mur ; sessions multi-chantiers | 8+ marathons ; multi-chantiers courant | **100 % ; zéro** | étape finale de /solde |
 | T4. Tours assistant par prompt CE | 36,6 | **≤ 25 (−30 %)** | gate scriptée (−8 tours/gate), vagues groupées |
+| T5. *(optionnel, validé CE 2026-08-23)* Tokens de sortie par session, à activité comparable | réf. semaine 1 | **essai mesuré** : adopté seulement si baisse sans perte de qualité | output style `Concise` (portée utilisateur) |
 
 ### Axe P — temps de traitement des prompts, qualité constante
 
@@ -199,6 +200,25 @@ prouver d'abord).
    bascule ; déclencheur : jalon bêta fermée. Sort les 121 tests du
    chemin bloquant local.
 
+### Contre-mesure optionnelle T5 — output style `Concise` (à instruire dans une future session)
+
+Réglage Claude Code : `"outputStyle": "Concise"` dans
+`~/.claude/settings.local.json` (portée utilisateur ; exige Claude Code
+v2.1.237+ ; la commande `/output-style` n'existe plus, passer par
+`/config` ou l'app desktop Settings > Claude Code). Effet : réponses
+courtes par défaut, narration réduite ; les verdicts chiffrés des
+skills, rapports d'erreur et confirmations restent complets.
+
+Protocole d'essai — l'output ne pèse que 14 % du coût, c'est un
+appoint, pas un levier ; il se paie donc en mesure, pas en conviction :
+
+1. Semaine 1 de la fenêtre : baseline sans Concise (déjà en cours).
+2. Semaine 2 : activer Concise, même mix d'activité autant que possible.
+3. Au bilan du 2026-09-06 : comparer via `scripts/mesurer-sessions.mjs`
+   les tokens de sortie par session à activité comparable, ET le
+   garde-fou qualité (KO au STOP 2, CI rouges, re-demandes de détail
+   par le CE). Adopté si baisse nette sans dégradation ; sinon retiré.
+
 ### Pistes instruites et rejetées (ne pas ré-instruire)
 
 sccache (dégrade l'incrémental à chaud) ; fenêtre WebView2 partagée
@@ -234,6 +254,7 @@ joue aucun e2e).
 | W2 1 spec e2e | 74 s | ≤ 45 s | | | |
 | W3 gates complètes / chantier | 10+ | ≤ 3 | | | |
 | W5 push docs-only | ~2 min | ≤ 30 s | | | |
+| T5 (opt.) tokens de sortie / session (Concise) | réf. sem. 1 | baisse sans perte qualité | sans | avec | |
 | M1 coût haut de gamme hors chantiers | ~10–15 % | ≤ 5 % | | | |
 | M2 revues high / chantier | jusqu'à 3 | 1 | | | |
 | Qualité : KO au STOP 2 / CI rouges | réf. sem. passée | stable ou ↓ | | | |
