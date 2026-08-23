@@ -9,7 +9,8 @@
 > (optimisme instantané, icônes + tons, Supprimer par message), 3e
 > passe (puce instantanée même sans sélection — bump `version` du
 > fenêtrage), 4e passe : OK. Reports : DETTE D-29, D-30, D-31.
-> À livrer en **0.7.0** (décision D7).
+> **Livré en 0.7.0** (décision D7), publiée le 2026-08-23 et vérifiée
+> **18/18 PASS** le jour même.
 
 > Chantier ouvert le 2026-08-22 (`/chantier`), sur le retour
 > pré-bêta : « les utilisateurs ne peuvent pas traiter les invitations

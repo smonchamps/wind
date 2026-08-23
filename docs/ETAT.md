@@ -12,14 +12,11 @@
 
 ## Où on en est, et quoi faire en premier
 
-**Rien n'est cassé, rien n'est à moitié écrit. Un seul geste en
-attente : publier la 0.7.0** (décision D7 de PLAN-INVITATIONS,
-MINEUR — première capacité nouvelle depuis la 0.6.0). L'entrée
-CHANGELOG est écrite (§2.9 : elle précède TOUJOURS le script) ; reste
-`scripts/faire-release.ps1 0.7.0` (mot de passe de la clé à la main,
-CE seul) puis `scripts/verifier-release.ps1 0.7.0`. Le **premier
-auto-update x64** (canal né en 0.6.0) sera constatable à cette
-release.
+**Rien n'est cassé, rien n'est à moitié écrit, rien n'est en vol.**
+Deux preuves terrain restent à constater sur la 0.7.0 publiée :
+l'auto-update 0.6.0 → 0.7.0 **arm64** (ce poste) et le **PREMIER
+auto-update x64** (le second poste — le canal x64, né à l'install en
+0.6.0, n'a encore jamais été prouvé sur ce chemin ; décision D5).
 
 **Prochain chantier : la bêta fermée 20-50 utilisateurs** ([PLAN.md](PLAN.md)
 §4, dernière étape avant le gate 5) — rien n'est engagé.
@@ -32,7 +29,23 @@ le redit ; le WIP d'alors avait été retiré (décision CE du
 2026-08-20), sa matière reste au § revue de
 [PLAN-COMPOSITION-HTML](PLAN-COMPOSITION-HTML.md).
 
-**Dernière version livrée : 0.6.0 — la PREMIÈRE release bi-arch**
+**Dernière version livrée : 0.7.0** (publiée 2026-08-23, tag nu sur
+`68384d2`, release **vérifiée** par `scripts/verifier-release.ps1
+0.7.0` le jour même, **18/18 PASS** : Latest au tag nu, 5 assets
+nommés, manifeste sans BOM 1 278 o aux deux clés de plateforme,
+signatures == `.sig` et distinctes, exe arm64 200 / 5 668 094 octets,
+exe x64 200 / 6 390 669 octets ; **preuves terrain par canal à
+constater**, ci-dessus). La 0.7.0 porte les invitations de réunion et
+le « Supprimer » par message (PLAN-INVITATIONS, MINEUR — décision
+D7). **Publication en DEUX temps, enseignement payé** : un premier
+run de `faire-release.ps1` (nuit du 2026-08-22 au 23) a commis et
+poussé le bump puis est mort avant le tag ; le run du matin a rebâti
+et signé, mais échouait sur « rien à commettre » — publication
+terminée à la main à l'identique du script (tag `0.7.0` ancré sur
+`68384d2`, l'arbre exact des binaires), et le script est désormais
+**reprenable** (le commit vide se saute, la publication continue).
+
+**La version précédente, 0.6.0 — la PREMIÈRE release bi-arch**
 (publiée 2026-08-22, `4a72a53`, CI verte run 32584117219 ; release
 **vérifiée** par `scripts/verifier-release.ps1 0.6.0` le jour même,
 **18/18 PASS** : Latest au tag nu, **5 assets nommés** (2 exe, 2
@@ -57,7 +70,8 @@ PLAN-RETOURS-7 (MINEUR, D6).
 **Dernier chantier soldé : [PLAN-INVITATIONS](PLAN-INVITATIONS.md)**
 (2026-08-23, `1c159bc`, A76 + **ADR 0024**, **terrain complet en
 QUATRE passes les 2026-08-22/23** — chaque constat corrigé dans la
-session —, CI verte run 32605745661, **à livrer en 0.7.0**, décision
+session —, CI verte run 32605745661, **livré en 0.7.0** — publiée le
+2026-08-23, vérifiée 18/18, décision
 D7). Une invitation de réunion reçue se TRAITE dans Wind — périmètre
 tenu : une fonctionnalité email, PAS un calendrier (refusés : vue
 calendrier, CalDAV/Graph, création d'évènements, expansion RRULE

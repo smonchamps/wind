@@ -173,8 +173,17 @@ try {
     # Commit de release : les fichiers du bump seulement (jamais `git add -A`
     # qui emporterait du travail voisin). Message SANS accents (STANDARD §2.8).
     git add apps/desktop/tauri.conf.json CHANGELOG.md scripts/faire-release.ps1
-    git commit -m "release: version $Version" -m "Bump tauri.conf.json et entree CHANGELOG ; builds signes arm64 + x64 et Release publiee par faire-release.ps1 (ADR 0013, bi-arch PLAN-RETOURS-8)."
-    if ($LASTEXITCODE -ne 0) { throw "git commit a echoue (code $LASTEXITCODE)." }
+    # Reprise apres un echec partiel (constat terrain 2026-08-23) : si un run
+    # precedent a deja commis et pousse le bump puis est mort avant le tag,
+    # l'index est vide ici — `git commit` echouerait sur « rien a commettre »
+    # et bloquerait la reprise. On saute le commit, la publication continue.
+    git diff --cached --quiet
+    if ($LASTEXITCODE -ne 0) {
+        git commit -m "release: version $Version" -m "Bump tauri.conf.json et entree CHANGELOG ; builds signes arm64 + x64 et Release publiee par faire-release.ps1 (ADR 0013, bi-arch PLAN-RETOURS-8)."
+        if ($LASTEXITCODE -ne 0) { throw "git commit a echoue (code $LASTEXITCODE)." }
+    } else {
+        Write-Host "Rien a commettre : le commit de release existe deja (reprise apres un echec partiel)."
+    }
     # Push : le hook pre-push rejoue la gate complete. Un rouge (parfois un
     # flake e2e local) l'arrete ici — le commit reste local, rejouable.
     git push
