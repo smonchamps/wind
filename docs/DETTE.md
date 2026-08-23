@@ -521,3 +521,19 @@ motivée.)
   pas recompilation de main.rs) — hors périmètre de l'outillage.
 - **Condition de reprise** : un dist périmé constaté HORS des deux
   portes (release ou terrain), ou un chantier qui touche build.rs.
+
+### D-34 · Le patron « pref par compte » se duplique à chaque table (loaders, commandes, script de release)
+
+- **Fait (revue PLAN-RETOURS-9, 2026-08-23)** : `chargerNoms`/
+  `patcherNom` (App.svelte) et `noms_get` (commands.rs) sont des
+  clones structurels du duo repères — deuxième occurrence ; chaque
+  table paie en outre SON `Store::open` sur la file sérialisée au
+  démarrage (~qq ms). Et la table `$oauth` de `faire-release.ps1`
+  duplique les `option_env!` de `provider.rs` (commentaires croisés
+  posés des deux côtés, mais aucun garde-fou).
+- **Pourquoi assumé** : à deux occurrences la factorisation coûterait
+  plus que la duplication (leçon des patrons du dépôt) ; le coût
+  démarrage est négligeable mesuré à l'échelle du poste.
+- **Condition de reprise** : la TROISIÈME pref par compte (fusionner
+  en `identites_get` + loader générique), ou l'ajout d'un fournisseur
+  OAuth (vérifier la table du script AVANT sa première release).

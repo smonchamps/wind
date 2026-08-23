@@ -66,7 +66,29 @@ exe résout 200 / 5 066 813 octets ; **auto-update 0.4.0 → 0.5.0
 confirmé au terrain**). La 0.5.0 porte les quatre retours de
 PLAN-RETOURS-7 (MINEUR, D6).
 
-**Dernier chantier soldé : [PLAN-KAIZEN-CLAUDE](PLAN-KAIZEN-CLAUDE.md)
+**Dernier chantier soldé : [PLAN-RETOURS-9](PLAN-RETOURS-9.md)**
+(2026-08-23, `19e39cf`, A77-A78 + **ADR 0025**, terrain CE **6/6** le
+jour même — zéro KO —, CI verte run 32647649916, **à livrer en 0.8.0**
+MINEUR, décision D5). Trois sujets : (1) **identifiants OAuth compilés
+dans la release** (D1, ADR 0025) — `option_env!("WIND_RELEASE_*")`
+posés par le seul `faire-release.ps1` pour la seule durée des deux
+builds (`finally` — la revue a tué la release qui se serait bloquée
+elle-même au pre-push), la variable d'exécution prime (dev/e2e),
+test « un build dev n'embarque rien », message d'échec réécrit pour
+les deux lecteurs ; **preuve différée : la 0.8.0 sur le second poste
+SANS setx**. (2) **« Retirer le compte »** en icône + texte (D2 —
+« Supprimer » refusé : rien n'est supprimé du serveur), aria WCAG
+2.5.3. (3) **Nom personnalisé par compte** (D3/D4) : pref
+`nom_compte.{id}` purgée au retrait via LA constante
+`PREFS_PAR_COMPTE` (la liste en dur cross-crate est morte), porte =
+libellé de la rangée (aucun glyphe neuf, A3), 60 caractères max
+refusés jamais tronqués, surfaces : nav, badge de liste, Réglages
+(Comptes ET Signature), composeur « Nom — adresse » ; le nom ne
+touche JAMAIS le `From:`. Revue 8 angles : 10 trouvailles, toutes
+corrigées avant le terrain. Reports : DETTE **D-34**. e2e : 121 →
+**124** ; gate verte 2 min 13 s.
+
+**Le chantier soldé précédent : [PLAN-KAIZEN-CLAUDE](PLAN-KAIZEN-CLAUDE.md)
 vague 2** (2026-08-23, `ceb59c4` + `a3ed285`, terrain CE 3/3 le jour
 même, CI verte run 32642956082) — les contre-mesures techniques du
 kaizen, ordre D3, **qualité constante** (121/121 e2e, 0 KO terrain).

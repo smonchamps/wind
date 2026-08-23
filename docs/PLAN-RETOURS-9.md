@@ -1,9 +1,21 @@
 # PLAN-RETOURS-9 — OAuth transparent, libellé de suppression, noms de comptes
 
+> **CHANTIER SOLDÉ le 2026-08-23 — terrain complet** (6/6, zéro KO au
+> STOP 2). GO CE (D1-D5) le 2026-08-23 ; commit `19e39cf` (+ reliquat
+> kaizen `fcfaf09`), A77-A78, ADR 0025, CI verte run 32647649916.
+> Reste UNE preuve différée, consignée à l'ETAT : à la release 0.8.0,
+> connexion d'un compte sur le second poste SANS `setx` — elle ferme
+> l'arbitrage OAuth par canal.
+>
+> Chiffres kaizen (session 3418fb1f, unique, 1,2 h) : 11,4 M équiv.
+> input (T1), 320 tours / 1 prompt CE, 10 agents (5,5 M — revue 8
+> angles + 2 reconnaissances), **2 gates complètes** (1 rouge fmt
+> fail-fast 0,4 s + 1 verte 2 min 13 s) + pre-push (W3 ≤ 3 : tenu),
+> 0 KO au STOP 2 (garde-fou qualité : tenu).
+>
 > Ouvert le 2026-08-23. Trois sujets du Chef Ingénieur, dont le
 > premier solde l'arbitrage ouvert de [ETAT.md](ETAT.md) (« un
-> bêta-testeur ne fera jamais de `setx` »). Statut : **STOP 1 validé
-> le 2026-08-23 (D1-D5 tranchées), implémentation en cours**.
+> bêta-testeur ne fera jamais de `setx` »).
 
 ## Constat (instruction sur pièces, 2026-08-23)
 

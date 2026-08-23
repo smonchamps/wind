@@ -12,6 +12,29 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.8.0] - à venir
+
+Nommez vos comptes, et connectez-vous sans aucune configuration.
+
+### Ajouté
+
+- **Donnez un nom à vos comptes** : dans Réglages > Comptes, cliquez
+  l'adresse d'un compte pour lui donner un nom (« Boulot »,
+  « Perso »…). Le nom s'affiche dans la navigation, dans les
+  infobulles de la boîte unifiée et dans le sélecteur d'expéditeur du
+  composeur — l'adresse reste visible dans les réglages, et vos
+  messages partent toujours avec votre adresse, jamais le nom.
+
+### Amélioré
+
+- **La connexion des comptes ne demande plus aucune configuration** :
+  les versions installées de Wind portent désormais tout ce qu'il
+  faut pour se connecter à Google et Microsoft — plus rien à définir
+  sur le poste.
+- **Le bouton de retrait d'un compte dit son nom** : « Retirer le
+  compte », en toutes lettres à côté de l'icône. Retirer un compte
+  ne supprime rien sur le serveur, comme avant.
+
 ## [0.7.0] - 2026-08-23
 
 Répondez aux invitations de réunion sans quitter votre boîte mail.
