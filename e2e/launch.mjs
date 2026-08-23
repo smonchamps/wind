@@ -17,7 +17,7 @@
 //   n'ait créé son document. Se contenter du port ouvert crée une course
 //   qui se voit dès que le démarrage est froid.
 import { spawn, execSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
+import { copyFileSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
@@ -59,13 +59,21 @@ function seeder(db, etapes) {
     hash.update(`${nom}|${stat.size}|${stat.mtimeMs}\0`);
   }
   hash.update(JSON.stringify(etapes));
-  // Les seeders figent `Local::now()` À LA CONSTRUCTION (« aujourd'hui »,
-  // « hier » du décor Clarity) : un gabarit d'hier ferait dériver tout
-  // parcours à dates relatives. La date locale fait partie de la clé —
-  // le gabarit se reconstruit au plus une fois par jour.
-  hash.update(new Date().toDateString());
   const gabarit = path.join(root, 'target', 'e2e', 'gabarits', `${hash.digest('hex')}.db`);
-  if (!existsSync(gabarit)) {
+  // Les seeders figent l'horloge À LA CONSTRUCTION — les jours relatifs
+  // (« aujourd'hui », « hier ») mais aussi `derniere_synchro` posée « il
+  // y a 2 min » : un gabarit d'il y a une heure fait dire « il y a
+  // 1 heure » à la barre d'état (rouge PAYÉ à la gate du push,
+  // 2026-08-23 — une clé à la journée ne suffisait pas). Fraîcheur par
+  // TTL : au-delà de 30 min, on reconstruit (~1-4 s), le décor reste
+  // dans la minute de son vocabulaire.
+  let frais = false;
+  try {
+    frais = Date.now() - statSync(gabarit).mtimeMs < 30 * 60 * 1000;
+  } catch {
+    /* pas de gabarit : à construire */
+  }
+  if (!frais) {
     mkdirSync(path.dirname(gabarit), { recursive: true });
     // Construction à côté puis rename : un seed interrompu ne laisse
     // jamais un gabarit à moitié plein sous la clé finale — et ses

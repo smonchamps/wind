@@ -167,7 +167,7 @@ de ~13 Go).
 | 3 | **✓ livré** — `retries: 1` + « flaky = consigné au verdict, rouge franc = andon » gravé au skill | porte P2 |
 | 4 | **✓ livré** — chemin rapide docs-only du pre-push (⊆ `docs/**`+`*.md`, hors `docs/design/**` ; ref neuve/suppression ⇒ gate entière ; itération par ligne, jamais par mot) | W5 — à chronométrer au premier push docs-only |
 | 5 | **✓ livré** — `scripts/terrain.ps1` (état du poste : base, version, OAuth User **et** session, traces) + `scripts/lancer-wind.ps1` (build par `construire-wind.mjs` — la maison unique des pièges du rebuild — puis `cargo run` qui TIENT le handle de trace, §9) ; référencés au STOP 2 de `/chantier` | terrain.ps1 prouvé sur ce poste (0.7.0, base 11,83 Go) |
-| 6 | **✓ livré** — gabarits de seed (clé = exe du seeder + recette + **date locale** — les seeders figent `Local::now()`), copie par spec, construction à côté + rename | compris dans W2 ci-dessus ; ~14 `cargo run --example` → 1 construction/jour |
+| 6 | **✓ livré** — gabarits de seed (clé = exe du seeder + recette, **TTL 30 min** — les seeders figent l'horloge à la construction : jours relatifs ET `derniere_synchro` « il y a 2 min » ; une clé à la journée a fait un rouge à la gate du push, corrigé le jour même), copie par spec, construction à côté + rename | compris dans W2 ; ~14 `cargo run --example` → 1 construction / 30 min |
 | — | **W1 re-mesuré après E1+E2+E6** : gate complète via `gate.ps1`, 121/121, zéro flaky | **4 min 34 s (W0) → 1 min 43 s** (103 s ; e2e 256 → 86 s), cache cargo chaud aux deux mesures |
 | 7 | **✗ rejeté sur le chiffre** — `cargo test --all-targets` mesuré à **9,3 s** cache chaud : le gain espéré (15-25 s) excède le poste entier ; nextest n'est ni installé ni adopté | — |
 
