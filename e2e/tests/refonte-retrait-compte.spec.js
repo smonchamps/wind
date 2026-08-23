@@ -37,6 +37,13 @@ test("le retrait se confirme — et l'annulation ne touche à rien", async () =>
   await page.locator('[data-testid="reglages"]').click();
   await expect(page.locator('[data-testid="compte-retirer"]')).toHaveCount(2);
 
+  // PLAN-RETOURS-9 (D2) : le geste se DIT — l'icône porte son texte,
+  // dans le vocabulaire du produit (« retirer », rien n'est supprimé
+  // du serveur).
+  await expect(page.locator('[data-testid="compte-retirer"]').first()).toContainText(
+    'Retirer le compte',
+  );
+
   // Premier clic : la carte de confirmation, pas le retrait.
   await page.locator('[data-testid="compte-retirer"]').first().click();
   await expect(page.locator('[data-testid="reglages-retrait"]')).toBeVisible();

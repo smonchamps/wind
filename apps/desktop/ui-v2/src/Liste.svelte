@@ -27,6 +27,9 @@
     // l'avatar n'apparaît qu'en boîte unifiée (D3 : là où identifier le
     // compte a un sens), et seulement si le compte a un repère.
     reperes = {},
+    // PLAN-RETOURS-9 (D4) : le nom personnalisé sert d'infobulle au
+    // badge — l'adresse reste le repli d'un compte sans nom.
+    noms = {},
     onglet = 'tous',
     recherche = '',
     // PLAN-BROUILLONS : les brouillons locaux (rows de `list_drafts`),
@@ -772,8 +775,8 @@
           {#if repere}
             <span class="ms repere repere-liste" data-testid="ligne-repere"
                   data-teinte={repere.teinte} role="img"
-                  aria-label={ligne.account_email}
-                  title={ligne.account_email}>{repere.icone}</span>
+                  aria-label={noms[ligne.account_id] ?? ligne.account_email}
+                  title={noms[ligne.account_id] ?? ligne.account_email}>{repere.icone}</span>
           {/if}
         </span>
         <div class="l1">

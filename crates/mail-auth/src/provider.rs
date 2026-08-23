@@ -72,6 +72,16 @@ pub struct Provider {
     pub identity: Identity,
     pub imap: Endpoint,
     pub smtp: Endpoint,
+    /// Identifiants figés au moment de la COMPILATION (D1,
+    /// PLAN-RETOURS-9) : `faire-release.ps1` pose `WIND_RELEASE_*`
+    /// avant les deux builds — un utilisateur final n'a aucun `setx` à
+    /// faire. Tout autre build (dev, tests, CI) n'embarque rien : les
+    /// valeurs ne vivent jamais au dépôt, et l'isolation e2e — qui
+    /// purge les variables d'EXÉCUTION — garde son levier. À
+    /// l'exécution, la variable d'environnement prime toujours
+    /// (`resolve_credential`).
+    pub embedded_client_id: Option<&'static str>,
+    pub embedded_client_secret: Option<&'static str>,
 }
 
 pub static GOOGLE: Provider = Provider {
@@ -100,6 +110,11 @@ pub static GOOGLE: Provider = Provider {
         host: "smtp.gmail.com",
         port: 465,
     },
+    // Le « secret » d'une app installée Google n'en est pas un (les
+    // clients mûrs le livrent dans leur binaire) ; il n'entre pour
+    // autant jamais au dépôt — seulement dans le build de release.
+    embedded_client_id: option_env!("WIND_RELEASE_GOOGLE_CLIENT_ID"),
+    embedded_client_secret: option_env!("WIND_RELEASE_GOOGLE_CLIENT_SECRET"),
 };
 
 pub static MICROSOFT: Provider = Provider {
@@ -132,6 +147,10 @@ pub static MICROSOFT: Provider = Provider {
         host: "smtp.office365.com",
         port: 587,
     },
+    embedded_client_id: option_env!("WIND_RELEASE_MICROSOFT_CLIENT_ID"),
+    // Client PUBLIC : un secret embarqué serait aussi refusé qu'un
+    // secret d'environnement — il n'existe pas, même en release.
+    embedded_client_secret: None,
 };
 
 /// Tous les fournisseurs OAuth2 connus. Un compte générique IMAP/SMTP
@@ -257,6 +276,20 @@ mod tests {
     fn generic_accounts_have_no_oauth_provider() {
         assert!(for_account_kind("imap").is_none());
         assert!(for_account_kind("").is_none());
+    }
+
+    /// PLAN-RETOURS-9 D1 : un build de dev ou de test n'embarque AUCUN
+    /// identifiant — les variables `WIND_RELEASE_*` n'existent que dans
+    /// le run de `faire-release.ps1`. L'isolation e2e (purge des
+    /// variables d'exécution avant chaque lancement) repose sur cette
+    /// absence ; un build empoisonné par un environnement qui traîne
+    /// doit crier ici.
+    #[test]
+    fn dev_builds_embed_no_credentials() {
+        for provider in ALL {
+            assert!(provider.embedded_client_id.is_none());
+            assert!(provider.embedded_client_secret.is_none());
+        }
     }
 
     /// Deux fournisseurs qui partageraient une clé se voleraient leurs

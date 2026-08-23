@@ -3850,6 +3850,83 @@ pub async fn repere_set(
     .await
 }
 
+/// PLAN-RETOURS-9 (D3) : la décision pure du nom personnalisé d'un
+/// compte. Espaces rognés ; vide = retiré (None) ; au-delà de 60
+/// caractères refusé — jamais tronqué en silence.
+pub(crate) fn nom_normalise(brut: &str) -> Result<Option<String>, String> {
+    let net = brut.trim();
+    if net.is_empty() {
+        return Ok(None);
+    }
+    if net.chars().count() > 60 {
+        return Err("nom trop long (60 caractères au plus)".to_string());
+    }
+    Ok(Some(net.to_string()))
+}
+
+/// Relit le nom d'un compte ; une coquille blanche en base (posée hors
+/// UI, ancienne version) ne sort jamais vers l'affichage.
+pub(crate) fn nom_de(store: &Store, account_id: i64) -> Result<Option<String>, mail_core::Error> {
+    Ok(store
+        .text_pref(&format!("nom_compte.{account_id}"))?
+        .map(|nom| nom.trim().to_string())
+        .filter(|nom| !nom.is_empty()))
+}
+
+/// Pose ou retire (None) le nom — retirer vide la clé (patron
+/// signature/repère : la pref vide vaut « jamais posée »).
+pub(crate) fn poser_nom(
+    store: &mut Store,
+    account_id: i64,
+    nom: Option<&str>,
+) -> Result<(), mail_core::Error> {
+    let cle = format!("nom_compte.{account_id}");
+    store.set_text_prefs(&[(cle.as_str(), nom.unwrap_or(""))])
+}
+
+#[derive(Serialize)]
+pub struct NomRow {
+    pub account_id: i64,
+    pub nom: String,
+}
+
+/// Tous les noms posés — l'UI les charge UNE fois (nav + réglages +
+/// composeur) et patche sa table au geste (patron des repères).
+#[tauri::command]
+pub async fn noms_get(app: AppHandle) -> Result<Vec<NomRow>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let mut rows = Vec::new();
+        for compte in store.accounts().map_err(|err| err.to_string())? {
+            if let Some(nom) = nom_de(&store, compte.id).map_err(|err| err.to_string())? {
+                rows.push(NomRow {
+                    account_id: compte.id,
+                    nom,
+                });
+            }
+        }
+        Ok(rows)
+    })
+    .await
+}
+
+/// Pose ou retire (chaîne vide / None) le nom d'un compte. Retourne le
+/// nom NORMALISÉ effectivement écrit — c'est lui que l'UI affiche.
+#[tauri::command]
+pub async fn nom_set(
+    app: AppHandle,
+    account_id: i64,
+    nom: Option<String>,
+) -> Result<Option<String>, String> {
+    hors_pompe(app, move |app| {
+        let normalise = nom_normalise(nom.as_deref().unwrap_or(""))?;
+        let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        poser_nom(&mut store, account_id, normalise.as_deref()).map_err(|err| err.to_string())?;
+        Ok(normalise)
+    })
+    .await
+}
+
 // ---------------------------------------------------------------------
 // Brouillons locaux + reflet Gmail par compte (Phases 2-3).
 // ---------------------------------------------------------------------
@@ -5493,5 +5570,35 @@ mod tests {
         store.set_text_pref("repere_icone.1", "delete").unwrap();
         store.set_text_pref("repere_teinte.1", "rouge").unwrap();
         assert_eq!(repere_de(&store, 1).unwrap(), None);
+    }
+
+    /// PLAN-RETOURS-9 (D3) : la décision pure du nom personnalisé.
+    /// Espaces rognés, vide (ou blanc) = retiré, au-delà de 60
+    /// caractères refusé — jamais tronqué en silence.
+    #[test]
+    fn nom_normalise_rogne_vide_et_plafonne() {
+        assert_eq!(nom_normalise("  Boulot  "), Ok(Some("Boulot".to_string())));
+        assert_eq!(nom_normalise(""), Ok(None));
+        assert_eq!(nom_normalise("   "), Ok(None));
+        assert_eq!(nom_normalise(&"x".repeat(60)), Ok(Some("x".repeat(60))));
+        assert!(nom_normalise(&"x".repeat(61)).is_err());
+    }
+
+    /// Jamais posé -> None ; posé -> relu ; vidé -> None (la clé se
+    /// vide, patron repère/signature) ; une coquille blanche en base ne
+    /// sort jamais vers l'UI.
+    #[test]
+    fn nom_compte_absent_pose_retire() {
+        let mut store = Store::open_in_memory().unwrap();
+        assert_eq!(nom_de(&store, 1).unwrap(), None);
+
+        poser_nom(&mut store, 1, Some("Boulot")).unwrap();
+        assert_eq!(nom_de(&store, 1).unwrap(), Some("Boulot".to_string()));
+
+        poser_nom(&mut store, 1, None).unwrap();
+        assert_eq!(nom_de(&store, 1).unwrap(), None);
+
+        store.set_text_pref("nom_compte.1", "   ").unwrap();
+        assert_eq!(nom_de(&store, 1).unwrap(), None);
     }
 }

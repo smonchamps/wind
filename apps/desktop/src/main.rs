@@ -211,6 +211,8 @@ fn main() {
             commands::signature_set,
             commands::reperes_get,
             commands::repere_set,
+            commands::noms_get,
+            commands::nom_set,
             commands::save_draft,
             commands::list_drafts,
             commands::delete_draft,

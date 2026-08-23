@@ -13,7 +13,9 @@
   // R1 (PLAN-RETOURS-8, A74) : un compte peut porter un repère (icône
   // du jeu dédié + teinte du nuancier) — il remplace `person` par une
   // pastille. Sans repère, le rendu D7 d'origine ne change pas.
-  let { comptes = [], reperes = {}, categorie, compte, onchoisir = () => {} } = $props();
+  // PLAN-RETOURS-9 (D4) : le nom personnalisé REMPLACE l'adresse sur
+  // la tuile — la nav dit l'identité choisie, pas la donnée technique.
+  let { comptes = [], reperes = {}, noms = {}, categorie, compte, onchoisir = () => {} } = $props();
 
   const somme = (champ) => comptes.reduce((n, c) => n + c[champ], 0);
 
@@ -44,7 +46,7 @@
   const boites = $derived([
     { id: null, icone: 'all_inbox', libelle: t('nav.toutes') },
     ...comptes.map((c) => ({
-      id: c.account_id, icone: 'person', libelle: c.email,
+      id: c.account_id, icone: 'person', libelle: noms[c.account_id] ?? c.email,
       repere: reperes[c.account_id] ?? null,
     })),
   ]);

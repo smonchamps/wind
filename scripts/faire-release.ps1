@@ -72,6 +72,31 @@ $targets = rustup target list --installed
 if ($targets -notcontains "x86_64-pc-windows-msvc") {
     throw "Cible rustup x86_64-pc-windows-msvc absente — « rustup target add x86_64-pc-windows-msvc » (PLAN-RETOURS-8 E1)."
 }
+# Identifiants OAuth EMBARQUES au build (D1, PLAN-RETOURS-9) : la
+# release publique se connecte sans aucun setx utilisateur. Les valeurs
+# viennent de l'environnement du poste mainteneur (les memes que les
+# setx d'installer-poste.ps1) et sont mappees vers des noms
+# WIND_RELEASE_* que SEUL ce script pose — un build dev/test n'embarque
+# donc jamais rien (l'isolation e2e garde son levier, et le test
+# dev_builds_embed_no_credentials crie sinon). TOUT-OU-RIEN (D7) : une
+# valeur absente arrete la release avant les builds.
+$oauth = @(
+    @{ cible = "WIND_RELEASE_GOOGLE_CLIENT_ID";     source = "GOOGLE_CLIENT_ID" },
+    @{ cible = "WIND_RELEASE_GOOGLE_CLIENT_SECRET"; source = "GOOGLE_CLIENT_SECRET" },
+    @{ cible = "WIND_RELEASE_MICROSOFT_CLIENT_ID";  source = "MICROSOFT_CLIENT_ID" }
+)
+# NB : la table ci-dessus duplique les option_env! de
+# crates/mail-auth/src/provider.rs — un fournisseur AJOUTE la-bas
+# s'ajoute ICI, sinon sa release part sans identifiant (le
+# tout-ou-rien ne verifie que sa propre liste).
+foreach ($o in $oauth) {
+    $o.valeur = [Environment]::GetEnvironmentVariable($o.source)
+    if ([string]::IsNullOrWhiteSpace($o.valeur)) {
+        throw "$($o.source) absente de l'environnement du poste — la release embarquerait un binaire incapable de se connecter (D1, PLAN-RETOURS-9)."
+    }
+}
+Write-Host "Identifiants OAuth presents sur le poste (3/3) — poses pour la seule duree des builds."
+
 $changelog = Join-Path $PSScriptRoot "..\CHANGELOG.md"
 if ((Get-Content -Raw -Encoding UTF8 $changelog) -notmatch [regex]::Escape("## [$Version]")) {
     throw "CHANGELOG.md n'a pas d'entree « ## [$Version] » — ecris d'abord les notes utilisateur."
@@ -97,6 +122,16 @@ Write-Host "tauri.conf.json bumpe a $Version."
 # environnement herite par les processus enfants du build.
 $desktop = Join-Path $PSScriptRoot "..\apps\desktop"
 Push-Location $desktop
+# Les WIND_RELEASE_* ne vivent que le temps des DEUX builds, et le
+# finally les retire meme sur echec ou interruption : laissees dans
+# l'environnement, elles empoisonneraient le pre-push du git push final
+# (cargo test recompile mail-auth avec les valeurs, le test
+# dev_builds_embed_no_credentials passe au rouge et la release se
+# bloque elle-meme) et tout build dev ulterieur du meme shell (revue
+# 2026-08-23).
+foreach ($o in $oauth) {
+    Set-Item -Path "Env:$($o.cible)" -Value $o.valeur
+}
 try {
     foreach ($c in $cibles) {
         Write-Host ""
@@ -108,6 +143,9 @@ try {
     }
 }
 finally {
+    foreach ($o in $oauth) {
+        Remove-Item -Path "Env:$($o.cible)" -ErrorAction SilentlyContinue
+    }
     Pop-Location
 }
 

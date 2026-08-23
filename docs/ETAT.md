@@ -530,20 +530,17 @@ le trou de pertinence le plus courant.
   télémétrie, bêta.
 
 **Ouverts** (au Chef Ingénieur) :
-- **Identifiants OAuth de l'app distribuée** (constat terrain
-  2026-08-23, second poste x64) : Wind lit `GOOGLE_CLIENT_ID`/
-  `GOOGLE_CLIENT_SECRET`/`MICROSOFT_CLIENT_ID` **à l'exécution** dans
-  l'environnement utilisateur (« secret jamais dans le code »,
-  `mail-auth`) — sur un poste sans `setx` (étape documentée
-  d'`installer-poste.ps1`), la connexion échoue avec un message qui
-  parle à un développeur (« lancez l'application depuis un
-  terminal »). Corrigé au poste par les `setx` (connexion Google
-  confirmée ensuite) — mais **un bêta-testeur ne fera jamais de
-  `setx`** : à trancher AVANT la bêta fermée comment le binaire de
-  release porte ses identifiants (les *client id* d'apps natives ne
-  sont pas des secrets au sens strict — les compiler dans la release
-  via une variable au build est la pratique des clients mûrs, le
-  dépôt public reste propre). Chantier candidat, rien n'est engagé.
+- **Identifiants OAuth de l'app distribuée** — **TRANCHÉ et LIVRÉ**
+  (PLAN-RETOURS-9 D1, 2026-08-23) : les client ids sont compilés dans
+  la release via `option_env!("WIND_RELEASE_*")`, posés par le seul
+  `faire-release.ps1` pour la seule durée des deux builds
+  (tout-ou-rien, `finally`) ; la variable d'exécution garde la
+  priorité (dev, e2e — le test `dev_builds_embed_no_credentials`
+  crie sur un build empoisonné). Le message d'échec parle désormais
+  aux deux lecteurs (« installez une version officielle de Wind ;
+  en développement, définissez {VAR} »). **Reste la preuve terrain
+  par canal : à la 0.8.0, connecter un compte sur le second poste
+  SANS aucun `setx`** — c'est elle qui ferme l'arbitrage.
 - **Recherche sans limite pratique** (2026-08-17) — le plafond lui-même est
   soldé (`SEARCH_LIMIT = 100`, barre « N sur M » avec le vrai total ;
   A50/PLAN-RECHERCHE). Reste ouvert le seul vrai « tout voir » : liste de

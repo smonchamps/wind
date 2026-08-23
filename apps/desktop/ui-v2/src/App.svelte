@@ -66,6 +66,7 @@
   // indexés par account_id — la nav et la liste les LISENT, Réglages
   // les pose. Un compte absent de la table n'a pas de repère.
   let reperes = $state({});
+  let noms = $state({});
   let categorie = $state('reception');
   let compte = $state(null);
   let onglet = $state('tous');
@@ -421,6 +422,25 @@
     if (repere) map[id] = repere;
     else delete map[id];
     reperes = map;
+  }
+
+  // PLAN-RETOURS-9 (D3/D4) : les noms personnalisés, même régime que
+  // les repères — chargés une fois, patchés au geste.
+  async function chargerNoms() {
+    try {
+      const lignes = await appel('noms_get');
+      const map = {};
+      for (const l of lignes) map[l.account_id] = l.nom;
+      noms = map;
+    } catch (err) {
+      console.error('noms_get :', err);
+    }
+  }
+  function patcherNom(id, nom) {
+    const map = { ...noms };
+    if (nom) map[id] = nom;
+    else delete map[id];
+    noms = map;
   }
 
   // Rattrapage des aperçus pour les corps écrits avant la colonne
@@ -879,6 +899,7 @@
     prete = true;
     chargerNav();
     chargerReperes();
+    chargerNoms();
     setInterval(chargerNav, 10000);
     sonderSynchro();
     setInterval(sonderSynchro, 5000);
@@ -1124,6 +1145,7 @@
     // la table locale suit, sinon un id SQLite réutilisé hériterait de
     // la pastille (revue 2026-08-22).
     patcherRepere(id, null);
+    patcherNom(id, null);
     if (compte === id) compte = null;
     selectionnee = null;
     fermerFil();
@@ -1341,9 +1363,9 @@
          class:colonnes--1={volets === 1}
          style="--l-nav:{lNav}px; --l-liste:{lListe}px">
       {#if volets !== 1}
-        <Nav {comptes} {reperes} {categorie} {compte} onchoisir={choisir} />
+        <Nav {comptes} {reperes} {noms} {categorie} {compte} onchoisir={choisir} />
       {/if}
-      <Liste bind:this={liste} {categorie} {compte} {reperes} {onglet} {recherche}
+      <Liste bind:this={liste} {categorie} {compte} {reperes} {noms} {onglet} {recherche}
              {brouillons} onreprendre={reprendreBrouillon}
              onselect={surSelection} ononglet={surOnglet}
              ontotal={(t) => (totalListe = t)}
@@ -1432,7 +1454,7 @@
                   onclick={() => (tiroirOuvert = false)}>
             <span class="ms" aria-hidden="true">close</span></button>
         </div>
-        <Nav {comptes} {reperes} {categorie} {compte} onchoisir={choisirDuTiroir} />
+        <Nav {comptes} {reperes} {noms} {categorie} {compte} onchoisir={choisirDuTiroir} />
       </div>
     {/if}
 
@@ -1465,12 +1487,12 @@
                   onfini={() => (accueilAJouer = false)} />
     {/if}
 
-    <Composition bind:this={composition} {comptes} {compte}
+    <Composition bind:this={composition} {comptes} {compte} {noms}
                  onflash={flash} onenvoye={apresEnvoi}
                  oncourrier={apresCourrierEnvoye}
                  onbrouillon={sonderBrouillons} />
-    <Reglages bind:this={reglages} {comptes} {connectes} {reperes}
-              onrepere={patcherRepere} onajoute={compteAjoute}
+    <Reglages bind:this={reglages} {comptes} {connectes} {reperes} {noms}
+              onrepere={patcherRepere} onnom={patcherNom} onajoute={compteAjoute}
               onsupprime={compteRetire}
               onreconnecte={async () => { await connecter(); synchroniser(); }} />
   {/if}

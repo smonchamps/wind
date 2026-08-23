@@ -86,6 +86,16 @@ pub struct Authenticator {
     client_secret: Option<String>,
 }
 
+/// L'ordre de résolution d'un identifiant OAuth (D1, PLAN-RETOURS-9) :
+/// la variable d'EXÉCUTION prime — c'est le levier des postes dev et de
+/// l'isolation e2e —, la valeur embarquée au build de release ne parle
+/// qu'en son absence. Une variable posée mais vide ne compte pas.
+fn resolve_credential(runtime: Option<String>, embedded: Option<&str>) -> Option<String> {
+    runtime
+        .filter(|v| !v.is_empty())
+        .or_else(|| embedded.map(str::to_string))
+}
+
 impl Authenticator {
     pub fn new(
         provider: &'static Provider,
@@ -104,21 +114,40 @@ impl Authenticator {
     }
 
     /// Configuration par variables d'environnement `{PREFIXE}_CLIENT_ID`
-    /// et `{PREFIXE}_CLIENT_SECRET` (secret jamais dans le code).
+    /// et `{PREFIXE}_CLIENT_SECRET`, avec repli sur les identifiants
+    /// embarqués au build de release (D1, PLAN-RETOURS-9). Les valeurs
+    /// ne vivent jamais au dépôt ; en release publique l'utilisateur n'a
+    /// rien à poser, sur un poste dev la variable continue de servir.
     pub fn from_env(provider: &'static Provider) -> Result<Self, AuthError> {
         let id_var = format!("{}_CLIENT_ID", provider.env_prefix);
-        let client_id = std::env::var(&id_var).map_err(|_| {
-            AuthError::Config(format!(
-                "{id_var} manquante — lancez l'application depuis un terminal \
-                 où la variable est définie"
-            ))
-        })?;
+        let client_id =
+            resolve_credential(std::env::var(&id_var).ok(), provider.embedded_client_id)
+                .ok_or_else(|| {
+                    // Le lecteur peut être un testeur (binaire construit hors
+                    // faire-release.ps1) : plus de consigne « terminal » seule —
+                    // le premier remède dit est une version officielle (revue
+                    // 2026-08-23, promesse du PLAN tenue).
+                    AuthError::Config(format!(
+                        "identifiants OAuth absents de ce binaire — installez une \
+                 version officielle de Wind ; en développement, définissez \
+                 {id_var}"
+                    ))
+                })?;
         let client_secret = match provider.client_secret {
             ClientSecret::Required => {
                 let secret_var = format!("{}_CLIENT_SECRET", provider.env_prefix);
                 Some(
-                    std::env::var(&secret_var)
-                        .map_err(|_| AuthError::Config(format!("{secret_var} manquante")))?,
+                    resolve_credential(
+                        std::env::var(&secret_var).ok(),
+                        provider.embedded_client_secret,
+                    )
+                    .ok_or_else(|| {
+                        AuthError::Config(format!(
+                            "identifiants OAuth incomplets dans ce binaire — \
+                             installez une version officielle de Wind ; en \
+                             développement, définissez {secret_var}"
+                        ))
+                    })?,
                 )
             }
             ClientSecret::Forbidden => None,
@@ -348,6 +377,29 @@ pub fn fetch_generic_password(email: &str) -> Result<String, AuthError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// D1 (PLAN-RETOURS-9) : la variable d'exécution garde la priorité
+    /// — c'est elle qui sert sur un poste dev et que le harnais e2e
+    /// purge ; la valeur embarquée au build de release ne parle qu'en
+    /// son absence. Sans rien, pas d'identifiant : l'erreur reste due.
+    #[test]
+    fn la_variable_d_execution_prime_sur_la_valeur_embarquee() {
+        assert_eq!(
+            resolve_credential(Some("runtime".into()), Some("embarque")),
+            Some("runtime".to_string())
+        );
+        assert_eq!(
+            resolve_credential(None, Some("embarque")),
+            Some("embarque".to_string())
+        );
+        assert_eq!(resolve_credential(None, None), None);
+        // Une variable posée mais vide ne compte pas : `setx VAR ""`
+        // laisse une coquille qui masquerait la valeur embarquée.
+        assert_eq!(
+            resolve_credential(Some(String::new()), Some("embarque")),
+            Some("embarque".to_string())
+        );
+    }
 
     /// Test de caractérisation, écrit AVANT la généralisation par
     /// fournisseur : il fige les noms d'entrée du coffre.

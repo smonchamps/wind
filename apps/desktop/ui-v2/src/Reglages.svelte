@@ -34,6 +34,11 @@
     // clic de teinte).
     reperes = {},
     onrepere = () => {},
+    // PLAN-RETOURS-9 (D3/D4) : les noms personnalisés (App les charge) ;
+    // poser ou vider remonte par `onnom(id, nom|null)` — même régime
+    // que le repère.
+    noms = {},
+    onnom = () => {},
     onajoute = () => {},
     onsupprime = () => {},
     onreconnecte = () => {},
@@ -103,18 +108,27 @@
   // thème ; rien à faire échouer, donc rien à faire revenir.
   let volets = $state(voletsActuels());
 
+  // « Jamais deux cartes sous la même rangée » (revue 2026-08-22) : LE
+  // point unique — la prochaine carte s'ajoute ici, pas dans N sites
+  // (revue 2026-08-23 : l'invariant vivait copié en cinq endroits).
+  function fermerCartes() {
+    retrait = null;
+    retraitErreur = null;
+    repereOuvert = null;
+    repereErreur = null;
+    nomOuvert = null;
+    nomErreur = null;
+  }
+
   export function ouvrir() {
     actif = themeAffiche();
     auto = suiviOs();
     langue = langueActuelle();
     volets = voletsActuels();
     ajoutOuvert = false;
-    retrait = null;
-    retraitErreur = null;
+    fermerCartes();
     reconnexion = null;
     reconnexionErreur = null;
-    repereOuvert = null;
-    repereErreur = null;
     groupe = 'comptes';
     maj = null;
     visible = true;
@@ -136,17 +150,12 @@
   function choisirGroupe(id) {
     groupe = id;
     ajoutOuvert = false;
-    retrait = null;
-    retraitErreur = null;
-    repereOuvert = null;
-    repereErreur = null;
+    fermerCartes();
   }
   function demanderRetrait(id) {
-    retrait = retrait === id ? null : id;
-    retraitErreur = null;
-    // Jamais deux cartes sous la même rangée (revue 2026-08-22).
-    repereOuvert = null;
-    repereErreur = null;
+    const rouvre = retrait !== id;
+    fermerCartes();
+    if (rouvre) retrait = id;
   }
   // R1 — le repère : la carte de choix s'ouvre sous la rangée (le
   // patron du retrait). Un repère n'existe qu'ENTIER (icône + teinte,
@@ -156,17 +165,12 @@
   let repereChoix = $state({ icone: null, teinte: null });
   let repereErreur = $state(null);
   function ouvrirRepere(id) {
-    if (repereOuvert === id) {
-      repereOuvert = null;
-      return;
-    }
+    const rouvre = repereOuvert !== id;
+    fermerCartes();
+    if (!rouvre) return;
     repereOuvert = id;
-    // Jamais deux cartes sous la même rangée (revue 2026-08-22).
-    retrait = null;
-    retraitErreur = null;
     const r = reperes[id];
     repereChoix = { icone: r?.icone ?? null, teinte: r?.teinte ?? null };
-    repereErreur = null;
   }
   async function choisirRepere(id, champ, valeur) {
     repereChoix = { ...repereChoix, [champ]: valeur };
@@ -194,6 +198,43 @@
       onrepere(id, null);
     } catch (err) {
       repereErreur = t('reglages.repereImpossible', { err });
+    }
+  }
+  // PLAN-RETOURS-9 (D3) : le nom personnalisé — la carte s'ouvre par le
+  // LIBELLÉ de la rangée (l'identité est la porte de son nom ; pas de
+  // glyphe neuf : le jeu n'a pas de crayon, A3 interdit d'en réemployer
+  // un). Vider le champ retire le nom ; le shell normalise et fait foi.
+  let nomOuvert = $state(null);
+  let nomBrouillon = $state('');
+  let nomErreur = $state(null);
+  let nomOccupe = $state(false);
+  function ouvrirNom(id) {
+    const rouvre = nomOuvert !== id;
+    fermerCartes();
+    if (!rouvre) return;
+    nomOuvert = id;
+    nomBrouillon = noms[id] ?? '';
+  }
+  async function enregistrerNom(id) {
+    // Un seul vol à la fois : Entrée et le bouton passent par la même
+    // porte (revue 2026-08-23 — le disabled du bouton ne gardait pas
+    // le chemin clavier).
+    if (nomOccupe) return;
+    nomOccupe = true;
+    nomErreur = null;
+    try {
+      const nom = await appel('nom_set', { accountId: id, nom: nomBrouillon });
+      onnom(id, nom ?? null);
+      // Ne fermer QUE sa propre carte : une réponse tardive ne doit
+      // jamais claquer celle qu'un autre compte vient d'ouvrir.
+      if (nomOuvert === id) nomOuvert = null;
+    } catch (err) {
+      // La base n'a pas pris le nom : l'erreur se dit sur place et le
+      // geste se rejoue — le libellé de la rangée suit `noms`, l'état
+      // réellement persisté.
+      nomErreur = t('reglages.nomImpossible', { err });
+    } finally {
+      nomOccupe = false;
     }
   }
   // Reconnexion d'un compte au jeton mort (constat terrain 2026-08-20) :
@@ -421,7 +462,18 @@
                       <span class="ms" aria-hidden="true">person</span>
                     {/if}
                   </button>
-                  <span class="adresse">{c.email}</span>
+                  <!-- PLAN-RETOURS-9 (D3/D4) : le libellé est la PORTE
+                       du nom personnalisé — en Réglages le nom s'affiche
+                       AVEC l'adresse (elle reste la vérité de connexion). -->
+                  <button type="button" class="identite" data-testid="compte-nommer"
+                          aria-expanded={nomOuvert === c.account_id}
+                          aria-label={t('reglages.nommerCompte', { email: c.email })}
+                          onclick={() => ouvrirNom(c.account_id)}>
+                    {#if noms[c.account_id]}
+                      <span class="nom-compte" data-testid="compte-nom">{noms[c.account_id]}</span>
+                    {/if}
+                    <span class="adresse" class:sous-nom={noms[c.account_id]}>{c.email}</span>
+                  </button>
                   {#if estDeconnecte(c)}
                     <!-- Jeton mort : l'état se DIT (link_off, le glyphe de
                          la reconnexion — même sens qu'à la fente d'avis)
@@ -436,10 +488,13 @@
                         ? t('reglages.reconnexionEnCours')
                         : t('reglages.reconnecter')}</button>
                   {/if}
+                  <!-- PLAN-RETOURS-9 (D2) : le geste se DIT — icône +
+                       texte, dans le vocabulaire du produit (« retirer »,
+                       rien n'est supprimé du serveur). -->
                   <button type="button" class="retirer" data-testid="compte-retirer"
                           aria-label={t('reglages.retirerCompte', { email: c.email })}
                           onclick={() => demanderRetrait(c.account_id)}>
-                    <span class="ms" aria-hidden="true">delete</span></button>
+                    <span class="ms" aria-hidden="true">delete</span>{t('reglages.retirer')}</button>
                 </div>
                 {#if reconnexionErreur?.id === c.account_id}
                   <p class="erreur-reconnexion" data-testid="reconnexion-erreur">
@@ -483,6 +538,33 @@
                               onclick={() => retirerRepere(c.account_id)}>
                         {t('reglages.repereRetirer')}</button>
                     {/if}
+                  </div>
+                {/if}
+                {#if nomOuvert === c.account_id}
+                  <!-- La carte du nom, sous la rangée (le patron du
+                       retrait). Vider le champ retire le nom ; Entrée
+                       enregistre. -->
+                  <div class="carte-nom" data-testid="reglages-nom">
+                    <p class="titre-repere">{t('reglages.nomTitre')}</p>
+                    <!-- Pas de maxlength : « jamais tronqué en silence »
+                         (contrat D3) — un nom trop long se REFUSE avec
+                         son erreur, par le shell. -->
+                    <input type="text" class="champ-nom"
+                           data-testid="nom-champ" bind:value={nomBrouillon}
+                           placeholder={c.email}
+                           aria-label={t('reglages.nomTitre')}
+                           onkeydown={(e) => { if (e.key === 'Enter') enregistrerNom(c.account_id); }}>
+                    {#if nomErreur}
+                      <p class="erreur-repere" data-testid="nom-erreur">{nomErreur}</p>
+                    {/if}
+                    <div class="boutons-retrait">
+                      <button type="button" class="ajouter" data-testid="nom-enregistrer"
+                              disabled={nomOccupe} onclick={() => enregistrerNom(c.account_id)}>
+                        {t('action.enregistrer')}</button>
+                      <button type="button" class="ajouter" data-testid="nom-annuler"
+                              onclick={() => (nomOuvert = null)}>
+                        {t('action.annuler')}</button>
+                    </div>
                   </div>
                 {/if}
                 {#if retrait === c.account_id}
@@ -611,8 +693,11 @@
               <p class="desc-groupe">{t('reglages.signatureDesc')}</p>
               {#each comptes as c (c.account_id)}
                 <div class="bloc-signature" data-testid="signature-compte">
+                  <!-- D4 (PLAN-RETOURS-9) : en Réglages le nom s'affiche
+                       AVEC l'adresse — ici aussi : c'est la surface où
+                       éditer le mauvais compte coûte (contenu envoyé). -->
                   <span class="adresse-signature">
-                    <span class="ms" aria-hidden="true">person</span>{c.email}</span>
+                    <span class="ms" aria-hidden="true">person</span>{#if noms[c.account_id]}{noms[c.account_id]}<span class="adresse-sous">{c.email}</span>{:else}{c.email}{/if}</span>
                   <!-- La barre réduite (D3) : gras/italique/souligné —
                        onmousedown neutralisé, un bouton de format ne vole
                        jamais la sélection de l'éditeur (idiome A62). -->
@@ -835,6 +920,33 @@
     color:var(--ink); overflow:hidden; text-overflow:ellipsis;
     white-space:nowrap;
   }
+  /* PLAN-RETOURS-9 : le libellé-porte du nom — bouton discret, la
+     rangée reste une rangée ; le survol dit qu'il s'ouvre. min-width:0
+     + overflow : le bouton rétrécit et ses textes se tronquent — une
+     adresse longue ne recouvre jamais les gestes de droite (l'ellipsis
+     que la rangée d'avant tenait, revue 2026-08-23). */
+  .identite {
+    display:flex; flex-direction:column; align-items:flex-start; gap:1px;
+    min-width:0; overflow:hidden; padding:2px 6px; margin:0 -6px;
+    font-size:13px; text-align:left; color:var(--ink);
+    background:transparent; border:1px solid transparent;
+    border-radius:6px; cursor:pointer;
+  }
+  .identite:hover { background:var(--sel); border-color:var(--border); }
+  .identite .nom-compte, .identite .adresse {
+    max-width:100%; overflow:hidden; text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  /* `.nom` appartient aux fiches des groupes (14px) — le nom de compte
+     a SA classe, jamais un réemploi (collision relevée en revue). */
+  .nom-compte { color:var(--ink); font-weight:600; }
+  .sous-nom { font-size:12px; color:var(--muted); }
+  .champ-nom {
+    height:32px; padding:0 10px; font-size:13px; color:var(--ink);
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:6px;
+  }
+  .champ-nom:focus { border-color:var(--accent); outline:none; }
   .ajouter {
     height:32px; padding:0 16px; align-self:flex-start; display:inline-flex;
     align-items:center; gap:8px; font-size:13px; color:var(--ink);
@@ -873,8 +985,9 @@
      ne se montre qu'au survol — le rouge permanent crierait sur chaque
      compte sain. */
   .retirer {
-    height:28px; width:28px; padding:0; margin-left:auto; flex:none;
+    height:28px; padding:0 10px; margin-left:auto; flex:none;
     display:inline-flex; align-items:center; justify-content:center;
+    gap:6px; font-size:12.5px; white-space:nowrap;
     color:var(--muted); background:transparent;
     border:1px solid transparent; border-radius:6px; cursor:pointer;
   }
@@ -883,7 +996,7 @@
   }
   /* La « carte sous la rangée » — UNE règle pour retrait, repère et
      ajout (revue 2026-08-22 : trois copies identiques dérivaient). */
-  .carte-retrait, .carte-repere, .carte-ajout {
+  .carte-retrait, .carte-repere, .carte-ajout, .carte-nom {
     border:1px solid var(--border);
     border-radius:10px; padding:14px 16px 16px;
     display:flex; flex-direction:column; gap:12px;
@@ -1001,6 +1114,7 @@
     display:flex; align-items:center; gap:8px;
     font-size:13px; font-weight:600; color:var(--ink);
   }
+  .adresse-sous { font-weight:400; color:var(--muted); }
   .barre-signature { display:flex; align-items:center; gap:6px; }
   .bouton-format {
     height:32px; min-width:32px; padding:0 6px; display:inline-flex;

@@ -52,6 +52,11 @@
   let {
     comptes = [],
     compte = null,
+    // PLAN-RETOURS-9 (D4) : au composeur le sélecteur dit
+    // « Nom — adresse » — l'adresse reste la donnée fonctionnelle
+    // d'envoi (value inchangée), le nom n'est qu'un libellé.
+    noms = {},
+
     onflash = () => {},
     onenvoye = () => {},
     // Chaque geste qui change les brouillons le rapporte : la liste
@@ -62,6 +67,12 @@
     // suite, sans attendre la sonde de génération.
     oncourrier = () => {},
   } = $props();
+
+  // Le format « Nom — adresse » vit en UN endroit : l'option du
+  // sélecteur et le texte figé mono-compte ne peuvent pas dériver
+  // l'un de l'autre (revue 2026-08-23).
+  const libelleDe = (c) =>
+    c ? (noms[c.account_id] ? `${noms[c.account_id]} — ${c.email}` : c.email) : '';
 
   let visible = $state(false);
   let mode = $state('new');
@@ -1136,11 +1147,11 @@
                     value={expediteur?.email ?? ''}
                     onchange={(e) => changerExpediteur(e.target.value)}>
               {#each comptes as c (c.account_id)}
-                <option value={c.email}>{c.email}</option>
+                <option value={c.email}>{libelleDe(c)}</option>
               {/each}
             </select>
           {:else}
-            <span class="valeur" data-testid="composition-de">{expediteur?.email ?? ''}</span>
+            <span class="valeur" data-testid="composition-de">{libelleDe(expediteur)}</span>
           {/if}
         </div>
         <div class="rang">

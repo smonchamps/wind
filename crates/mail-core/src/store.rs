@@ -554,6 +554,22 @@ pub(crate) const UNIFIED_JOIN_TAIL: &str = "
          LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
          ORDER BY t.last_epoch DESC, t.last_uid DESC, a.id";
 
+/// Les préfixes des prefs suffixées par compte (`{prefixe}.{account_id}`).
+/// LA liste que `delete_account` purge : `accounts.id` est un INTEGER
+/// PRIMARY KEY sans AUTOINCREMENT — SQLite réutilise le plus grand rowid
+/// libéré, et un compte ajouté après un retrait hériterait sinon de
+/// l'identité de l'ancien (revue PLAN-RETOURS-8). Toute pref par compte
+/// neuve s'ajoute ICI, pas dans un site d'appel (revue 2026-08-23 : la
+/// liste vivait en dur dans la requête, à un crate de distance des
+/// helpers qui frappent les clés).
+pub const PREFS_PAR_COMPTE: &[&str] = &[
+    "signature",
+    "signature_replies",
+    "repere_icone",
+    "repere_teinte",
+    "nom_compte",
+];
+
 pub struct Store(Connection);
 
 impl Store {
@@ -1203,6 +1219,9 @@ impl Store {
 
     /// Supprime un compte et TOUT ce qui s'y rattache, en une transaction.
     ///
+    /// Les préfixes des prefs suffixées par compte vivent dans
+    /// [`PREFS_PAR_COMPTE`] — l'auteur d'une pref neuve l'ajoute LÀ.
+    ///
     /// Les cascades du schéma emportent boîtes, enveloppes, corps, pièces
     /// jointes, actions en attente, dossiers et fils. Trois familles n'ont
     /// PAS de clé étrangère et se vident à la main : l'index de recherche
@@ -1237,15 +1256,12 @@ impl Store {
         // grand rowid libéré, et un compte ajouté après le retrait
         // hériterait sinon de l'identité de l'ancien (revue
         // PLAN-RETOURS-8, 2026-08-22).
-        tx.execute(
-            "DELETE FROM prefs WHERE key IN (?1, ?2, ?3, ?4)",
-            params![
-                format!("signature.{account_id}"),
-                format!("signature_replies.{account_id}"),
-                format!("repere_icone.{account_id}"),
-                format!("repere_teinte.{account_id}"),
-            ],
-        )?;
+        for prefixe in PREFS_PAR_COMPTE {
+            tx.execute(
+                "DELETE FROM prefs WHERE key = ?1",
+                [format!("{prefixe}.{account_id}")],
+            )?;
+        }
         tx.execute("DELETE FROM accounts WHERE id = ?1", [account_id])?;
         tx.commit()?;
         Ok(())
@@ -3257,9 +3273,10 @@ mod tests {
                 .unwrap();
         }
 
-        // Les préférences suffixées par l'id (signature, repère) : un id
-        // SQLite réutilisé après retrait ferait sinon hériter au compte
-        // suivant l'identité de l'ancien (revue PLAN-RETOURS-8).
+        // Les préférences suffixées par l'id (signature, repère, nom) :
+        // un id SQLite réutilisé après retrait ferait sinon hériter au
+        // compte suivant l'identité de l'ancien (revue PLAN-RETOURS-8 ;
+        // nom personnalisé : PLAN-RETOURS-9).
         for (account, teinte) in [(parti, "rouge"), (voisin, "bleu")] {
             store
                 .set_text_pref(&format!("signature.{account}"), "<p>sig</p>")
@@ -3270,6 +3287,9 @@ mod tests {
             store
                 .set_text_pref(&format!("repere_teinte.{account}"), teinte)
                 .unwrap();
+            store
+                .set_text_pref(&format!("nom_compte.{account}"), "Perso")
+                .unwrap();
         }
 
         store.delete_account(parti).unwrap();
@@ -3277,7 +3297,7 @@ mod tests {
         let comptes = store.accounts().unwrap();
         assert_eq!(comptes.len(), 1);
         assert_eq!(comptes[0].email, "reste@exemple.fr");
-        for cle in ["signature", "repere_icone", "repere_teinte"] {
+        for cle in ["signature", "repere_icone", "repere_teinte", "nom_compte"] {
             assert_eq!(
                 store.text_pref(&format!("{cle}.{parti}")).unwrap(),
                 None,

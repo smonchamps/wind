@@ -217,6 +217,11 @@ export const FR = {
   'reglages.repereTeintes': 'Couleur du repère',
   'reglages.repereRetirer': 'Retirer le repère',
   'reglages.repereImpossible': 'Repère non enregistré : {err}',
+  // PLAN-RETOURS-9 : le retrait se dit (D2), le nom personnalisé (D3).
+  'reglages.retirer': 'Retirer le compte',
+  'reglages.nommerCompte': 'Nommer {email}',
+  'reglages.nomTitre': 'Nom du compte',
+  'reglages.nomImpossible': 'Nom non enregistré : {err}',
   'repere.icone.home': 'Maison',
   'repere.icone.work': 'Travail',
   'repere.icone.school': 'Études',
@@ -344,7 +349,9 @@ export const FR = {
   'reglages.sectionThemes': 'Thème de couleur',
   'reglages.sectionRaccourcis': 'Raccourcis clavier',
   'reglages.ajouterCompte': 'Ajouter un compte',
-  'reglages.retirerCompte': 'Retirer {email}',
+  // Le texte visible du bouton (« Retirer le compte ») vit DANS son nom
+  // accessible — WCAG 2.5.3, revue 2026-08-23.
+  'reglages.retirerCompte': 'Retirer le compte {email}',
   'reglages.retirerConfirme': 'Retirer {email} ? Son courrier local est effacé et sa connexion oubliée. Rien n’est supprimé sur le serveur.',
   'reglages.retraitEnCours': 'Retrait…',
   'reglages.retraitImpossible': 'Retrait impossible : {err}',
