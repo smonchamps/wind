@@ -90,9 +90,15 @@ $oauth = @(
 # s'ajoute ICI, sinon sa release part sans identifiant (le
 # tout-ou-rien ne verifie que sa propre liste).
 foreach ($o in $oauth) {
+    # Portee process d'abord, repli sur la portee User (le patron de
+    # lancer-wind.ps1) : un shell ouvert AVANT le setx ne doit pas
+    # faire echouer la release a tort (terrain 2026-08-23).
     $o.valeur = [Environment]::GetEnvironmentVariable($o.source)
     if ([string]::IsNullOrWhiteSpace($o.valeur)) {
-        throw "$($o.source) absente de l'environnement du poste — la release embarquerait un binaire incapable de se connecter (D1, PLAN-RETOURS-9)."
+        $o.valeur = [Environment]::GetEnvironmentVariable($o.source, "User")
+    }
+    if ([string]::IsNullOrWhiteSpace($o.valeur)) {
+        throw "$($o.source) absente du poste (portees process ET utilisateur) — la release embarquerait un binaire incapable de se connecter (D1, PLAN-RETOURS-9). Remede : setx $($o.source) `"<valeur>`" puis relancer (nouveau shell inutile, la portee User est lue)."
     }
 }
 Write-Host "Identifiants OAuth presents sur le poste (3/3) — poses pour la seule duree des builds."
