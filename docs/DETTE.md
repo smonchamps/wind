@@ -493,3 +493,31 @@ motivée.)
 - **Condition de reprise** : le jour où une réponse d'invitation
   devient programmable ou éditable au composeur — la colonne `drafts`
   et sa copie dans les deux sens font partie du même chantier.
+
+### D-32 · La gate vit en DEUX encodages — pre-push (sh) et gate.ps1 (PowerShell)
+
+- **Fait (revue PLAN-KAIZEN-CLAUDE vague 2, 2026-08-23)** : les 9
+  étapes existent en sh dans `.githooks/pre-push` (avec le chemin
+  rapide docs-only) et en PowerShell dans `scripts/gate.ps1` (sans ce
+  chemin — voulu : la gate avant commit est toujours entière). Toute
+  étape ajoutée ou modifiée doit l'être deux fois, sans garde-fou.
+- **Pourquoi assumé** : les deux maisons ont des besoins différents
+  (le hook redirige les étapes muettes, le script montre tout ; le
+  hook porte le chemin docs-only, le script jamais) ; unifier
+  aujourd'hui coûterait plus que le risque couru.
+- **Condition de reprise** : la première divergence CONSTATÉE entre
+  les deux verdicts, ou l'ajout d'une 10e étape.
+
+### D-33 · Le dist périmé n'est corrigé qu'en JS — `build.rs` n'a pas de `rerun-if-changed`
+
+- **Fait (revue PLAN-KAIZEN-CLAUDE vague 2, 2026-08-23)** : le piège
+  « generate_context! n'embarque le dist qu'à la compilation de
+  main.rs » est tenu par `e2e/rebuild-v2.mjs` (empreinte + bump) et
+  `scripts/construire-wind.mjs` — mais un `cargo build` nu, hors de
+  ces deux portes, reste exposé.
+- **Pourquoi assumé** : ajouter la dépendance dans
+  `apps/desktop/build.rs` toucherait le code produit avec une
+  sémantique tauri_build à prouver (re-run du build script n'implique
+  pas recompilation de main.rs) — hors périmètre de l'outillage.
+- **Condition de reprise** : un dist périmé constaté HORS des deux
+  portes (release ou terrain), ou un chantier qui touche build.rs.

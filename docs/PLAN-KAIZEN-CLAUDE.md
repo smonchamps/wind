@@ -158,7 +158,16 @@ de ~13 Go).
 | 6 | Base gabarit seed copiée par spec au lieu de ~14 `cargo run --example` par suite | 15–35 s/suite | `e2e/launch.mjs` |
 | 7 | `cargo-nextest` sur `--all-targets` : **mesurer avant/après** (gain attendu inter-binaires, ~20 binaires) ; adopter seulement si le chiffre le justifie ; `--doc` inchangé | ~15–25 s/gate si confirmé | `gate.ps1`, pre-push, ci.yml |
 
-#### Déroulé de la vague 2 — fait le 2026-08-23, ordre D3
+#### Déroulé de la vague 2 — **SOLDÉE le 2026-08-23, terrain complet** (ordre D3)
+
+> Commits `ceb59c4` (les 7 contre-mesures) + `a3ed285` (fraîcheur TTL
+> des gabarits — rouge payé à la gate du push, corrigé dans la
+> session). GO terrain CE le 2026-08-23 (checklist 3/3 : terrain.ps1,
+> lancer-wind.ps1 avec trace prouvée, spec 30,3 s). CI verte run
+> 32642956082. **Chiffres kaizen du chantier** : 6,8 M équiv. input
+> (T1 ; baseline ~60 M/chantier), contexte moyen 181 k/tour (T2 ✓),
+> 4 gates complètes jouées (W3 — dont 1 rouge pre-push), 0 KO au
+> STOP 2, 0 CI rouge (garde-fou ✓).
 
 | # | Verdict | Mesure |
 |---|---|---|

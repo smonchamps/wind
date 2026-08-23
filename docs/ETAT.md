@@ -66,7 +66,23 @@ exe résout 200 / 5 066 813 octets ; **auto-update 0.4.0 → 0.5.0
 confirmé au terrain**). La 0.5.0 porte les quatre retours de
 PLAN-RETOURS-7 (MINEUR, D6).
 
-**Dernier chantier soldé : [PLAN-INVITATIONS](PLAN-INVITATIONS.md)**
+**Dernier chantier soldé : [PLAN-KAIZEN-CLAUDE](PLAN-KAIZEN-CLAUDE.md)
+vague 2** (2026-08-23, `ceb59c4` + `a3ed285`, terrain CE 3/3 le jour
+même, CI verte run 32642956082) — les contre-mesures techniques du
+kaizen, ordre D3, **qualité constante** (121/121 e2e, 0 KO terrain).
+Chiffres : **gate complète 4 min 34 s → 1 min 43 s** (e2e 256 → 86 s ;
+rebuild mémoïsé par empreinte + gabarits de seed copiés par spec, TTL
+30 min — les seeders figent l'horloge, rouge payé et corrigé) ; **une
+spec e2e 74 s → 13-30 s** ; gate en UN appel `scripts/gate.ps1` (9
+étapes, fail-fast) ; `retries: 1` (flaky consigné, deux échecs =
+andon) ; chemin rapide docs-only du pre-push ; `scripts/terrain.ps1` +
+`scripts/lancer-wind.ps1` (l'état du poste et le lancement tracé, PS
+5.1, plus de one-liners au STOP 2) ; **nextest rejeté sur le chiffre**
+(le poste entier = 9,3 s). Reports : DETTE **D-32** (gate en deux
+encodages), **D-33** (dist périmé tenu en JS seul, pas dans build.rs).
+Reste du kaizen : vague 3 hors fenêtre, bilan PDCA le 2026-09-06 (D4).
+
+**Le chantier soldé précédent : [PLAN-INVITATIONS](PLAN-INVITATIONS.md)**
 (2026-08-23, `1c159bc`, A76 + **ADR 0024**, **terrain complet en
 QUATRE passes les 2026-08-22/23** — chaque constat corrigé dans la
 session —, CI verte run 32605745661, **livré en 0.7.0** — publiée le
