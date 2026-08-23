@@ -13,10 +13,6 @@
 ## Où on en est, et quoi faire en premier
 
 **Rien n'est cassé, rien n'est à moitié écrit, rien n'est en vol.**
-Deux preuves terrain restent à constater sur la 0.7.0 publiée :
-l'auto-update 0.6.0 → 0.7.0 **arm64** (ce poste) et le **PREMIER
-auto-update x64** (le second poste — le canal x64, né à l'install en
-0.6.0, n'a encore jamais été prouvé sur ce chemin ; décision D5).
 
 **Prochain chantier : la bêta fermée 20-50 utilisateurs** ([PLAN.md](PLAN.md)
 §4, dernière étape avant le gate 5) — rien n'est engagé.
@@ -34,8 +30,11 @@ le redit ; le WIP d'alors avait été retiré (décision CE du
 0.7.0` le jour même, **18/18 PASS** : Latest au tag nu, 5 assets
 nommés, manifeste sans BOM 1 278 o aux deux clés de plateforme,
 signatures == `.sig` et distinctes, exe arm64 200 / 5 668 094 octets,
-exe x64 200 / 6 390 669 octets ; **preuves terrain par canal à
-constater**, ci-dessus). La 0.7.0 porte les invitations de réunion et
+exe x64 200 / 6 390 669 octets ; **preuves terrain PAR CANAL le
+2026-08-23 : auto-update 0.6.0 → 0.7.0 confirmé sur ce poste (arm64)
+ET — PREMIER de l'histoire du canal — auto-update x64 confirmé sur le
+second poste** : la chaîne signée bi-arch (ADR 0013/0023) est prouvée
+vivante dans les DEUX sens). La 0.7.0 porte les invitations de réunion et
 le « Supprimer » par message (PLAN-INVITATIONS, MINEUR — décision
 D7). **Publication en DEUX temps, enseignement payé** : un premier
 run de `faire-release.ps1` (nuit du 2026-08-22 au 23) a commis et
@@ -515,6 +514,20 @@ le trou de pertinence le plus courant.
   télémétrie, bêta.
 
 **Ouverts** (au Chef Ingénieur) :
+- **Identifiants OAuth de l'app distribuée** (constat terrain
+  2026-08-23, second poste x64) : Wind lit `GOOGLE_CLIENT_ID`/
+  `GOOGLE_CLIENT_SECRET`/`MICROSOFT_CLIENT_ID` **à l'exécution** dans
+  l'environnement utilisateur (« secret jamais dans le code »,
+  `mail-auth`) — sur un poste sans `setx` (étape documentée
+  d'`installer-poste.ps1`), la connexion échoue avec un message qui
+  parle à un développeur (« lancez l'application depuis un
+  terminal »). Corrigé au poste par les `setx` (connexion Google
+  confirmée ensuite) — mais **un bêta-testeur ne fera jamais de
+  `setx`** : à trancher AVANT la bêta fermée comment le binaire de
+  release porte ses identifiants (les *client id* d'apps natives ne
+  sont pas des secrets au sens strict — les compiler dans la release
+  via une variable au build est la pratique des clients mûrs, le
+  dépôt public reste propre). Chantier candidat, rien n'est engagé.
 - **Recherche sans limite pratique** (2026-08-17) — le plafond lui-même est
   soldé (`SEARCH_LIMIT = 100`, barre « N sur M » avec le vrai total ;
   A50/PLAN-RECHERCHE). Reste ouvert le seul vrai « tout voir » : liste de
