@@ -8,12 +8,13 @@
   // fait qu'afficher et rapporter les décisions. « Plus tard » n'efface
   // que pour la session — l'avis suivant prend la place. L'alerte se
   // lit à l'icône (le filet gauche est mort avec la signature, A29).
+  import Icone from './Icone.svelte';
   let { avis = null } = $props();
 </script>
 
 {#if avis}
   <div class="fente" class:alerte={avis.alerte} data-testid="fente-avis">
-    <span class="ms icone" aria-hidden="true">{avis.icone ?? 'info'}</span>
+    <span class="icone" aria-hidden="true"><Icone nom={avis.icone ?? 'info'} /></span>
     <span class="texte" data-testid="avis-texte">{avis.texte}</span>
     {#each avis.actions as action (action.libelle)}
       <button type="button" class:principal={action.principale}
@@ -29,7 +30,7 @@
     border-bottom:1px solid var(--border);
     display:flex; align-items:center; gap:14px; padding:10px 24px;
   }
-  .icone { color:var(--accent); font-variation-settings:'FILL' 1; }
+  .icone { color:var(--accent); }
   .alerte .icone { color:var(--alert); }
   .texte { flex:1; font-size:13px; color:var(--ink); min-width:0; }
   button {

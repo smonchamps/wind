@@ -7,6 +7,7 @@
   // RÉEL — la fiction « Travail / Personnel » n'existe pas ; icône
   // `person` (décision D7), libellé = adresse. La boîte EN COURS prend
   // le dessin de la tuile d'événement (--tuile/--tuileInk, W2-D5).
+  import Icone from './Icone.svelte';
   import { activation } from './lib/clavier.js';
   import { t } from './lib/texte.svelte.js';
 
@@ -59,7 +60,7 @@
          role="button" tabindex="0" aria-current={categorie === d.id}
          onclick={() => onchoisir({ categorie: d.id })}
          onkeydown={activation(() => onchoisir({ categorie: d.id }))}>
-      <span class="ms icone" aria-hidden="true">{d.icone}</span>
+      <span class="icone" aria-hidden="true"><Icone nom={d.icone} /></span>
       <span class="libelle">{d.libelle}</span>
       {#if d.nonLus > 0}
         <span class="pastille">{d.nonLus}</span>
@@ -78,10 +79,10 @@
              onclick={() => onchoisir({ compte: b.id })}
              onkeydown={activation(() => onchoisir({ compte: b.id }))}>
           {#if b.repere}
-            <span class="ms repere repere-nav" data-testid="nav-repere"
-                  data-teinte={b.repere.teinte} aria-hidden="true">{b.repere.icone}</span>
+            <span class="repere repere-nav" data-testid="nav-repere"
+                  data-teinte={b.repere.teinte} aria-hidden="true"><Icone nom={b.repere.icone} /></span>
           {:else}
-            <span class="ms icone-tuile" aria-hidden="true">{b.icone}</span>
+            <span class="icone-tuile" aria-hidden="true"><Icone nom={b.icone} /></span>
           {/if}
           <span class="titre-tuile">{b.libelle}</span>
         </div>
@@ -91,10 +92,10 @@
              onclick={() => onchoisir({ compte: b.id })}
              onkeydown={activation(() => onchoisir({ compte: b.id }))}>
           {#if b.repere}
-            <span class="ms repere repere-nav" data-testid="nav-repere"
-                  data-teinte={b.repere.teinte} aria-hidden="true">{b.repere.icone}</span>
+            <span class="repere repere-nav" data-testid="nav-repere"
+                  data-teinte={b.repere.teinte} aria-hidden="true"><Icone nom={b.repere.icone} /></span>
           {:else}
-            <span class="ms icone" aria-hidden="true">{b.icone}</span>
+            <span class="icone" aria-hidden="true"><Icone nom={b.icone} /></span>
           {/if}
           <span class="libelle">{b.libelle}</span>
         </div>
@@ -117,9 +118,7 @@
   .rang:hover { background:var(--hover); }
   .rang.actif { background:var(--sel); border-color:var(--accent); }
   .icone { color:var(--muted); }
-  .actif .icone {
-    color:var(--accent); font-variation-settings:'FILL' 1, 'wght' 600;
-  }
+  .actif .icone { color:var(--accent); }
   .libelle {
     font-size:14px; color:var(--ink2); flex:1; min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
@@ -147,7 +146,8 @@
   .icone-tuile { color:var(--tuileInk); }
   /* A74 — la pastille du repère : 20 px, glyphe 12 px. La couleur et
      l'encre viennent de systeme.css (.repere, nuancier mesuré). */
-  .repere-nav { width:20px; height:20px; font-size:12px; }
+  .repere-nav { width:20px; height:20px; }
+  .repere-nav :global(.ic) { width:12px; height:12px; }
   .titre-tuile {
     font-size:13px; font-weight:600; min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;

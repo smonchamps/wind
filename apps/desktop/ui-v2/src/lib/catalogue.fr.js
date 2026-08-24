@@ -388,7 +388,7 @@ export const FR = {
     'Sinon, la signature ne s’ajoute qu’aux nouveaux messages.',
   'reglages.signatureTous': 'Appliquer à tous les comptes',
   'reglages.icones': 'Icônes',
-  'reglages.iconesValeur': 'Material Symbols Rounded (Google), licence Apache 2.0 ; police embarquée, aucun réseau.',
+  'reglages.iconesValeur': "Jeu original de Wind, dessiné d'après Material Symbols (Google, Apache 2.0) ; aucun réseau.",
 
   // --- Raccourcis (table D3, référence) ---------------------------------
   'raccourci.touche.c': 'c',

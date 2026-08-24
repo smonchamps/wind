@@ -13,6 +13,7 @@
   // Invariant S1 : une iframe sandbox `allow-same-origin` SANS
   // allow-scripts par message déplié, corps servi par le cœur,
   // liens interceptés (lib/liens.js).
+  import Icone from './Icone.svelte';
   import {
     fil, cleMsg, basculerMessage, toutDeplier, toutReplier, afficherImages, estEcho,
   } from './lib/fil.svelte.js';
@@ -220,9 +221,9 @@
       <!-- Le rang de la maquette (terrain A45) : puces d'inventaire à
            gauche, boutons NUS à droite — « Tout déplier » au bord. -->
       <div class="puces" data-testid="fil-puces">
-        <span class="puce"><span class="ms" aria-hidden="true">forum</span>{t('puce.messages', { n: nbMessages })}</span>
+        <span class="puce"><Icone nom="forum" />{t('puce.messages', { n: nbMessages })}</span>
         {#if totalPieces > 0}
-          <span class="puce"><span class="ms" aria-hidden="true">attach_file</span>{t('puce.fichiers', { n: totalPieces })}</span>
+          <span class="puce"><Icone nom="attach_file" />{t('puce.fichiers', { n: totalPieces })}</span>
         {/if}
         <span class="essor"></span>
         {#if onagrandir}
@@ -234,17 +235,17 @@
                   aria-disabled={fil.ligne.thread_id == null}
                   tabindex={fil.ligne.thread_id != null ? 0 : -1}
                   onclick={() => fil.ligne.thread_id != null && onagrandir(fil.ligne)}>
-            <span class="ms" aria-hidden="true">open_in_full</span>{t('lecture.ouvrir')}</button>
+            <Icone nom="open_in_full" />{t('lecture.ouvrir')}</button>
         {/if}
         <!-- La bascule (A46, dérivée depuis A47) : « Tout replier »
              quand TOUT est déplié — fil d'un message compris —, sinon
              « Tout déplier » ; les dépliages manuels la font suivre. -->
         {#if tousDeplies}
           <button type="button" class="nu" data-testid="tout-replier" onclick={toutReplier}>
-            <span class="ms" aria-hidden="true">unfold_less</span>{t('conv.replier')}</button>
+            <Icone nom="unfold_less" />{t('conv.replier')}</button>
         {:else}
           <button type="button" class="nu" data-testid="tout-deplier" onclick={toutDeplier}>
-            <span class="ms" aria-hidden="true">unfold_more</span>{t('conv.deplier')}</button>
+            <Icone nom="unfold_more" />{t('conv.deplier')}</button>
         {/if}
       </div>
     </div>
@@ -321,17 +322,17 @@
                               aria-pressed={inv.statut === 'accepte'}
                               disabled={reponsesEnVol[k]}
                               onclick={() => repondreInvitation(m, 'accepte')}>
-                        <span class="ms" aria-hidden="true">check_circle</span>{t('action.accepter')}</button>
+                        <Icone nom="check_circle" />{t('action.accepter')}</button>
                       <button type="button" class="ton-provisoire" data-testid="inv-provisoire"
                               aria-pressed={inv.statut === 'provisoire'}
                               disabled={reponsesEnVol[k]}
                               onclick={() => repondreInvitation(m, 'provisoire')}>
-                        <span class="ms" aria-hidden="true">question_mark</span>{t('action.provisoire')}</button>
+                        <Icone nom="question_mark" />{t('action.provisoire')}</button>
                       <button type="button" class="ton-refuse" data-testid="inv-refuser"
                               aria-pressed={inv.statut === 'refuse'}
                               disabled={reponsesEnVol[k]}
                               onclick={() => repondreInvitation(m, 'refuse')}>
-                        <span class="ms" aria-hidden="true">cancel</span>{t('action.refuser')}</button>
+                        <Icone nom="cancel" />{t('action.refuser')}</button>
                     </div>
                   {/if}
                 </div>
@@ -362,7 +363,7 @@
                               disabled={estEcho(m) || enregistrements[`${k}#${piece.index}`]}
                               onclick={() => !estEcho(m) && enregistrer(m, piece)}
                               title={estEcho(m) ? undefined : t('lecture.enregistrer')}>
-                        <span class="ms" aria-hidden="true">description</span>
+                        <Icone nom="description" />
                         <span class="nom">{piece.name}</span><span class="taille">{piece.size}</span>
                         <!-- R1 (PLAN-RETOURS-7, D1) : au survol comme au
                              focus clavier, un voile couvre la puce et DIT
@@ -371,7 +372,7 @@
                              Même géométrie, la rangée ne reflue pas. -->
                         {#if !estEcho(m)}
                           <span class="voile" aria-hidden="true">
-                            <span class="ms">download</span>{t('lecture.voileEnregistrer')}</span>
+                            <Icone nom="download" />{t('lecture.voileEnregistrer')}</span>
                         {/if}
                       </button>
                     {/each}
@@ -380,7 +381,7 @@
               {/if}
               {#if (fil.imagesBloquees[k] ?? 0) > 0}
                 <div class="garde-images" data-testid="garde-images">
-                  <span class="ms" aria-hidden="true">visibility_off</span>
+                  <Icone nom="visibility_off" />
                   <span class="garde-texte">{t('lecture.imagesBloquees', { n: fil.imagesBloquees[k] })}</span>
                   <button type="button" data-testid="afficher-images"
                           onclick={() => afficherImages(m)}>
@@ -403,13 +404,13 @@
             <div class="actions-message" data-testid="actions-message">
               <button type="button" class="principal" data-testid="repondre"
                       onclick={() => onrepondre(m)}>
-                <span class="ms" aria-hidden="true">reply</span>{t('action.repondre')}</button>
+                <Icone nom="reply" />{t('action.repondre')}</button>
               <button type="button" data-testid="repondre-tous"
                       onclick={() => onrepondretous(m)}>
-                <span class="ms" aria-hidden="true">reply_all</span>{t('action.repondreTous')}</button>
+                <Icone nom="reply_all" />{t('action.repondreTous')}</button>
               <button type="button" data-testid="transferer"
                       onclick={() => ontransferer(m)}>
-                <span class="ms miroir" aria-hidden="true">reply</span>{t('action.transferer')}</button>
+                <Icone nom="reply" miroir />{t('action.transferer')}</button>
               <!-- Terrain R8' (2026-08-23) : « Supprimer » vit PAR
                    message — on supprime CE message, pas la
                    conversation ; le fil reste ouvert s'il lui reste
@@ -417,7 +418,7 @@
                    dit l'attente de réconciliation, comme avant. -->
               <button type="button" data-testid="supprimer"
                       onclick={() => onsupprimer(m)}>
-                <span class="ms" aria-hidden="true">delete</span>{t('action.supprimer')}</button>
+                <Icone nom="delete" />{t('action.supprimer')}</button>
             </div>
           </article>
         {:else}
@@ -436,7 +437,7 @@
              role="button" tabindex="0"
              onclick={() => onreprendre(brouillonDuFil)}
              onkeydown={activation(() => onreprendre(brouillonDuFil))}>
-          <span class="mention"><span class="ms" aria-hidden="true">edit_note</span>{t('conv.brouillon')}</span>
+          <span class="mention"><Icone nom="edit_note" />{t('conv.brouillon')}</span>
           <span class="apercu">{brouillonDuFil.body}</span>
           <span class="quand">{quand(Math.floor(brouillonDuFil.updated_epoch / 1000))}</span>
           <span class="reprendre">{t('action.reprendre')}</span>
@@ -450,13 +451,13 @@
          Indésirables. -->
     <div class="actions">
       <button type="button" data-testid="archiver" onclick={() => onarchiver(fil.ligne)}>
-        <span class="ms" aria-hidden="true">archive</span>{t('action.archiver')}</button>
+        <Icone nom="archive" />{t('action.archiver')}</button>
       {#if estIndesirable}
         <button type="button" data-testid="pas-spam" onclick={() => onnonspam(fil.ligne)}>
-          <span class="ms" aria-hidden="true">inbox</span>{t('action.pasSpam')}</button>
+          <Icone nom="inbox" />{t('action.pasSpam')}</button>
       {:else}
         <button type="button" data-testid="signaler-spam" onclick={() => onspam(fil.ligne)}>
-          <span class="ms" aria-hidden="true">report</span>{t('action.signalerSpam')}</button>
+          <Icone nom="report" />{t('action.signalerSpam')}</button>
       {/if}
       <!-- R4 (PLAN-RETOURS-7) : épingler LA conversation — bascule
            dite par son libellé ET aria-pressed ; l'état vient du cœur
@@ -464,7 +465,7 @@
       {#if epinglable && !estEcho(fil.ligne)}
         <button type="button" data-testid="epingler" aria-pressed={fil.epingle}
                 onclick={() => onepingler(fil.ligne)}>
-          <span class="ms" aria-hidden="true">{fil.epingle ? 'keep_off' : 'keep'}</span>
+          <Icone nom={fil.epingle ? 'keep_off' : 'keep'} />
           {fil.epingle ? t('action.desepingler') : t('action.epingler')}</button>
       {/if}
     </div>
@@ -595,9 +596,9 @@
   /* R9 : la couleur dit le sens — portée par l'icône, le texte double
      (A8). Paires gatées : accent/surface et alert/surface à 3:1,
      muted/surface à 4,5:1, et leurs pendants sur --sel. */
-  .inv-actions .ton-accepte .ms { color:var(--accent); }
-  .inv-actions .ton-provisoire .ms { color:var(--muted); }
-  .inv-actions .ton-refuse .ms { color:var(--alert); }
+  .inv-actions .ton-accepte :global(.ic) { color:var(--accent); }
+  .inv-actions .ton-provisoire :global(.ic) { color:var(--muted); }
+  .inv-actions .ton-refuse :global(.ic) { color:var(--alert); }
   .inv-actions button[aria-pressed='true'] {
     font-weight:600; background:var(--sel); border-color:var(--accent);
   }
@@ -606,7 +607,7 @@
     font-size:13px; color:var(--ink2); background:var(--bg);
     border:1px solid var(--border); border-radius:6px;
   }
-  .garde-images .ms { color:var(--muted); }
+  .garde-images :global(.ic) { color:var(--muted); }
   .garde-texte { flex:1; }
   .garde-images button {
     height:26px; padding:0 10px; font-size:12px; color:var(--ink);

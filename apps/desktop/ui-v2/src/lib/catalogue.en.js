@@ -383,7 +383,7 @@ export const EN = {
   'reglages.signatureRepliquesDesc': 'Otherwise the signature is only added to new messages.',
   'reglages.signatureTous': 'Apply to all accounts',
   'reglages.icones': 'Icons',
-  'reglages.iconesValeur': 'Material Symbols Rounded (Google), Apache 2.0 license; bundled font, no network.',
+  'reglages.iconesValeur': "Wind's original set, drawn after Material Symbols (Google, Apache 2.0); no network.",
 
   // --- Raccourcis (table D3, référence) ---------------------------------
   'raccourci.touche.c': 'c',

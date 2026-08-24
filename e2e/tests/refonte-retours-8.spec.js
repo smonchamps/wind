@@ -88,7 +88,7 @@ test('poser un repère depuis Réglages > Comptes le montre dans la nav', async 
     'data-teinte',
     'bleu',
   );
-  await expect(page.locator('[data-testid="nav-repere"]')).toHaveText('home');
+  await expect(page.locator('[data-testid="nav-repere"] .ic')).toHaveAttribute('data-nom', 'home');
 });
 
 test('le badge de liste ne vit qu’en boîte unifiée (D3)', async () => {

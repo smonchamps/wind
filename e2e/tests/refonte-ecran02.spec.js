@@ -29,8 +29,8 @@ test('la nav porte les pastilles de non-lus du décor Clarity (A29, W2-D4)', asy
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   // Depuis A29 la nav ne dit QUE le non-lu, en pastille pleine — les
   // totaux (« 4 / 18 ») ont quitté la nav, la barre de statut les dit.
-  // On vise l'élément pastille : le texte brut de la rangée porte le
-  // nom de ligature de l'icône (« inventory_2 » a un chiffre).
+  // On vise l'élément pastille — le compteur seul, jamais la rangée
+  // entière (V8 : les icônes sont des SVG, plus aucune ligature).
   const pastille = (categorie) => dossier(categorie).locator('.pastille');
   await expect(pastille('reception')).toHaveText('4');
   await expect(dossier('reception')).not.toContainText('/');
@@ -358,10 +358,10 @@ test("le volet est à plat, « Ouvrir » et « Déplier » à leur glyphe propre
   const volet = page.locator('[data-testid="volet-lecture"]');
   const ouvrir = volet.locator('[data-testid="voir-conversation"]');
   await expect(ouvrir).toContainText('Ouvrir');
-  await expect(ouvrir.locator('.ms')).toHaveText('open_in_full');
+  await expect(ouvrir.locator('.ic')).toHaveAttribute('data-nom', 'open_in_full');
   const deplier = volet.locator('[data-testid="tout-deplier"]');
   await expect(deplier).toContainText('Tout déplier');
-  await expect(deplier.locator('.ms')).toHaveText('unfold_more');
+  await expect(deplier.locator('.ic')).toHaveAttribute('data-nom', 'unfold_more');
   // À plat : le volet lui-même défile, la tête ne porte aucun filet.
   expect(await volet.evaluate((el) => getComputedStyle(el).overflowY)).toBe('auto');
   expect(
@@ -376,7 +376,7 @@ test("la bascule « Tout déplier »/« Tout replier » SUIT l'état réel des d
   await expect(volet.locator('[data-testid="tout-deplier"]')).toHaveCount(0);
   const replier = volet.locator('[data-testid="tout-replier"]');
   await expect(replier).toContainText('Tout replier');
-  await expect(replier.locator('.ms')).toHaveText('unfold_less');
+  await expect(replier.locator('.ic')).toHaveAttribute('data-nom', 'unfold_less');
   // Dérivée de l'état (A47, renverse le « geste seul » d'A46) :
   // replier un message à la MAIN la fait retomber sur « Tout
   // déplier »…

@@ -5,6 +5,7 @@
   // P5 : migration bloquante d'abord (ADR 0012), fente d'avis (au plus
   // UN), ligne de progression (au plus UNE), recherche câblée (D1),
   // raccourcis (D3).
+  import Icone from './Icone.svelte';
   import { onMount } from 'svelte';
   import { appel } from './lib/transport.js';
   import { t, poserLangueDetectee } from './lib/texte.svelte.js';
@@ -1332,14 +1333,14 @@
       <button type="button" class="btn-tiroir" data-testid="btn-tiroir"
               aria-label={t('nav.ouvrirTiroir')} aria-expanded={tiroirOuvert}
               onclick={() => (tiroirOuvert = true)}>
-        <span class="ms" aria-hidden="true">menu</span></button>
+        <Icone nom="menu" /></button>
     {/if}
     <!-- A30 : la marque sans tuile-enveloppe — le mot « Wind » (18 px)
          suivi du trait hitofude statique (A28), décalé de 3 px sous la
          ligne de base ; la mini-tuile reste aux contextes OS. -->
     <span class="marque" class:marque--libre={volets === 1}>Wind<Hitofude /></span>
     <span class="recherche" data-testid="recherche">
-      <span class="ms" aria-hidden="true">search</span>
+      <Icone nom="search" />
       <input type="text" bind:this={champRecherche} bind:value={recherche}
              data-testid="champ-recherche" aria-label={t('entete.recherche')}
              placeholder={t('entete.chercher')}>
@@ -1348,12 +1349,12 @@
         <button type="button" class="vider" data-testid="vider-recherche"
                 aria-label={t('entete.effacerRecherche')}
                 onclick={() => { recherche = ''; champRecherche?.focus(); }}>
-          <span class="ms" aria-hidden="true">close</span></button>
+          <Icone nom="close" /></button>
       {/if}</span>
     <button type="button" class="principal" data-testid="ecrire" onclick={ecrire}>
-      <span class="ms" aria-hidden="true">edit_square</span>{t('entete.ecrire')}</button>
+      <Icone nom="edit_square" />{t('entete.ecrire')}</button>
     <button type="button" data-testid="reglages" onclick={() => reglages.ouvrir()}>
-      <span class="ms" aria-hidden="true">settings</span>{t('entete.reglages')}</button>
+      <Icone nom="settings" />{t('entete.reglages')}</button>
   </header>
 
   <FenteAvis {avis} />
@@ -1432,7 +1433,7 @@
            vit dans le trait de la ligne, jamais ici). -->
       <button type="button" class="btn-statut" data-testid="btn-releve"
               disabled={enSynchro} onclick={() => relever(true)}>
-        <span class="ms" aria-hidden="true">sync</span>
+        <Icone nom="sync" />
         {#if enSynchro}{t('action.synchronisation')}{:else if synchroEchec || synchroPartiel}{t('action.reessayer')}{:else}{t('action.synchroniser')}{/if}
       </button>
     </div>
@@ -1452,7 +1453,7 @@
           <button type="button" class="btn-tiroir fermer-tiroir" data-testid="tiroir-fermer"
                   aria-label={t('nav.fermerTiroir')}
                   onclick={() => (tiroirOuvert = false)}>
-            <span class="ms" aria-hidden="true">close</span></button>
+            <Icone nom="close" /></button>
         </div>
         <Nav {comptes} {reperes} {noms} {categorie} {compte} onchoisir={choisirDuTiroir} />
       </div>
@@ -1527,7 +1528,7 @@
     background:var(--surface); border:1px solid var(--border);
     border-radius:6px;
   }
-  .recherche .ms { color:var(--ink2); }
+  .recherche :global(.ic) { color:var(--ink2); }
   .recherche input {
     flex:1; font-size:13px; color:var(--ink); border:none; outline:none;
     background:transparent; min-width:0;
@@ -1634,7 +1635,7 @@
   .btn-statut:hover { background:var(--sel); color:var(--ink); }
   .btn-statut[disabled] { opacity:.55; cursor:default; }
   .btn-statut[disabled]:hover { background:var(--surface); color:var(--ink2); }
-  .btn-statut .ms { font-size:14px; }
+  .btn-statut :global(.ic) { width:14px; height:14px; }
   .point-alerte {
     width:7px; height:7px; border-radius:99px; background:var(--alert);
     flex:none;

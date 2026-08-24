@@ -1,11 +1,12 @@
 <script>
   // Toast du prototype : bas centré, signature, coche pleine.
+  import Icone from './Icone.svelte';
   let { message = null } = $props();
 </script>
 
 {#if message}
   <div class="toast" data-testid="toast" role="status">
-    <span class="ms coche" aria-hidden="true">check_circle</span>
+    <span class="coche" aria-hidden="true"><Icone nom="check_circle" /></span>
     <span class="texte">{message}</span>
   </div>
 {/if}
@@ -21,6 +22,6 @@
     box-shadow:var(--shadow); padding:10px 16px;
     display:flex; align-items:center; gap:10px;
   }
-  .coche { color:var(--accent); font-variation-settings:'FILL' 1; }
+  .coche { color:var(--accent); }
   .texte { font-size:13px; color:var(--ink); }
 </style>

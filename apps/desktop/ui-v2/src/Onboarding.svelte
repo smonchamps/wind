@@ -17,6 +17,7 @@
   // étapes 2 et 3 ne touchent ni la base ni le réseau :
   // `appliquerVolets` / `appliquerTheme` appliquent ET persistent.
   // Seule l'étape 1 (GuichetCompte, A11) parle au shell.
+  import Icone from './Icone.svelte';
   import GuichetCompte from './GuichetCompte.svelte';
   import Hitofude from './Hitofude.svelte';
   import { t } from './lib/texte.svelte.js';
@@ -131,7 +132,7 @@
       {#if complet && comptes.length > 0}
         <ul class="ajoutes" data-testid="accueil-comptes">
           {#each comptes as c (c.account_id)}
-            <li><span class="ms" aria-hidden="true">check_circle</span>{c.email}</li>
+            <li><Icone nom="check_circle" />{c.email}</li>
           {/each}
         </ul>
       {/if}
@@ -210,7 +211,7 @@
           <span class="recap-titre">{t('groupe.comptes')}</span>
           <span class="recap-valeur">{comptes.map((c) => c.email).join(' · ')}</span>
           <span class="voile" aria-hidden="true">
-            <span class="ms">arrow_back</span>{t('accueil.revenir')}</span>
+            <Icone nom="arrow_back" />{t('accueil.revenir')}</span>
         </button>
         <button type="button" class="ligne-recap" data-testid="recap-volets"
                 aria-label="{t('reglages.volets')} — {t('accueil.revenir')}"
@@ -220,7 +221,7 @@
           <span class="recap-valeur">{t(`volets.${volets}`)}</span>
           <img class="mini" src={APERCUS[volets]} alt="" />
           <span class="voile" aria-hidden="true">
-            <span class="ms">arrow_back</span>{t('accueil.revenir')}</span>
+            <Icone nom="arrow_back" />{t('accueil.revenir')}</span>
         </button>
         <button type="button" class="ligne-recap" data-testid="recap-theme"
                 aria-label="{t('accueil.theme')} — {t('accueil.revenir')}"
@@ -233,7 +234,7 @@
             <span class="mini-theme">{@render fenetre(volets, { accent, bg, border, surface })}</span>
           {/if}
           <span class="voile" aria-hidden="true">
-            <span class="ms">arrow_back</span>{t('accueil.revenir')}</span>
+            <Icone nom="arrow_back" />{t('accueil.revenir')}</span>
         </button>
       </div>
     {/if}
@@ -290,7 +291,7 @@
     display:flex; align-items:center; gap:8px; font-size:14px;
     color:var(--ink);
   }
-  .ajoutes .ms { color:var(--accent); }
+  .ajoutes :global(.ic) { color:var(--accent); }
 
   .cartes { display:flex; gap:14px; flex-wrap:wrap; }
   /* V7 : deux fiches, côte à côte — la grille de 28 est morte. */

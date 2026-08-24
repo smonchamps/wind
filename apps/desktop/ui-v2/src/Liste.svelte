@@ -12,6 +12,7 @@
   //
   // Changement de source = nouvelle génération : les pages en vol de la
   // source précédente sont jetées à l'arrivée, jamais mélangées.
+  import Icone from './Icone.svelte';
   import { tick, untrack } from 'svelte';
   import { appel } from './lib/transport.js';
   import { quand } from './lib/quand.js';
@@ -728,7 +729,7 @@
           <div class="l1"><span class="exp">Sonde</span><span class="heure">00:00</span></div>
           <p class="objet">Sonde</p>
           <p class="apercu">Sonde</p>
-          <div class="puces"><span class="puce"><span class="ms" aria-hidden="true">forum</span>2</span></div>
+          <div class="puces"><span class="puce"><Icone nom="forum" />2</span></div>
         </article>
       </div>
     {/if}
@@ -773,10 +774,10 @@
         <span class="col-avatar">
           <span class="avatar" data-testid="avatar" aria-hidden="true">{initiales(correspondant(ligne))}</span>
           {#if repere}
-            <span class="ms repere repere-liste" data-testid="ligne-repere"
+            <span class="repere repere-liste" data-testid="ligne-repere"
                   data-teinte={repere.teinte} role="img"
                   aria-label={noms[ligne.account_id] ?? ligne.account_email}
-                  title={noms[ligne.account_id] ?? ligne.account_email}>{repere.icone}</span>
+                  title={noms[ligne.account_id] ?? ligne.account_email}><Icone nom={repere.icone} /></span>
           {/if}
         </span>
         <div class="l1">
@@ -814,15 +815,15 @@
             <button type="button" class="puce ton-accepte" data-testid="liste-accepter"
                     disabled={reponsesInvitation[`${ligne.account_id}/${ligne.invitation.mailbox}/${ligne.invitation.uid}`]}
                     onclick={(e) => repondreInvitation(e, ligne, 'accepte')}>
-              <span class="ms" aria-hidden="true">check_circle</span>{t('action.accepter')}</button>
+              <Icone nom="check_circle" />{t('action.accepter')}</button>
             <button type="button" class="puce ton-provisoire" data-testid="liste-provisoire"
                     disabled={reponsesInvitation[`${ligne.account_id}/${ligne.invitation.mailbox}/${ligne.invitation.uid}`]}
                     onclick={(e) => repondreInvitation(e, ligne, 'provisoire')}>
-              <span class="ms" aria-hidden="true">question_mark</span>{t('action.provisoire')}</button>
+              <Icone nom="question_mark" />{t('action.provisoire')}</button>
             <button type="button" class="puce ton-refuse" data-testid="liste-refuser"
                     disabled={reponsesInvitation[`${ligne.account_id}/${ligne.invitation.mailbox}/${ligne.invitation.uid}`]}
                     onclick={(e) => repondreInvitation(e, ligne, 'refuse')}>
-              <span class="ms" aria-hidden="true">cancel</span>{t('action.refuser')}</button>
+              <Icone nom="cancel" />{t('action.refuser')}</button>
           </div>
         {/if}
         {#if autresPuces(ligne) || (ligne.invitation && puceInvitation(ligne.invitation))}
@@ -832,16 +833,16 @@
             {#if ligne.invitation && puceInvitation(ligne.invitation)}
               {@const puce = puceInvitation(ligne.invitation)}
               <span class="puce ton-{puce.ton}" data-testid="puce-invitation">
-                {#if puce.icone}<span class="ms" aria-hidden="true">{puce.icone}</span>{/if}{puce.texte}</span>
+                {#if puce.icone}<Icone nom={puce.icone} />{/if}{puce.texte}</span>
             {/if}
             {#if ligne.pinned}
-              <span class="puce"><span class="ms" aria-hidden="true">keep</span>{t('puce.epingle')}</span>
+              <span class="puce"><Icone nom="keep" />{t('puce.epingle')}</span>
             {/if}
             {#if ligne.thread_size > 1}
-              <span class="puce"><span class="ms" aria-hidden="true">forum</span>{t('puce.messages', { n: ligne.thread_size })}</span>
+              <span class="puce"><Icone nom="forum" />{t('puce.messages', { n: ligne.thread_size })}</span>
             {/if}
             {#if ligne.attachment_count > 0}
-              <span class="puce"><span class="ms" aria-hidden="true">attach_file</span>{t('puce.fichiers', { n: ligne.attachment_count })}</span>
+              <span class="puce"><Icone nom="attach_file" />{t('puce.fichiers', { n: ligne.attachment_count })}</span>
             {/if}
           </div>
         {/if}
@@ -937,7 +938,7 @@
             role="button" tabindex="0" aria-pressed={ongletActif === o.id}
             onclick={() => ononglet(o.id)}
             onkeydown={activation(() => ononglet(o.id))}>
-        <span class="ms" aria-hidden="true">{o.icone}</span>{t(o.libelle)}
+        <Icone nom={o.icone} />{t(o.libelle)}
       </span>
     {/each}
   </div>
@@ -1025,7 +1026,8 @@
     grid-row:1 / span 3; display:flex; flex-direction:column;
     align-items:center; gap:4px;
   }
-  .repere-liste { width:16px; height:16px; font-size:10px; }
+  .repere-liste { width:16px; height:16px; }
+  .repere-liste :global(.ic) { width:10px; height:10px; }
   .l1, .objet, .apercu, .puces { grid-column:2; min-width:0; }
   /* Le rang de puces (PLAN-RETOURS-V3 R1) : le gabarit 24 px du
      prototype Classique — présent sur les seules lignes porteuses. */
@@ -1039,7 +1041,7 @@
     background:var(--surface); border:1px solid var(--border);
     border-radius:6px; white-space:nowrap;
   }
-  .puce .ms { font-size:14px; }
+  .puce :global(.ic) { width:14px; height:14px; }
   /* R10 : les gestes d'invitation du rang — la puce qui AGIT. */
   button.puce { cursor:pointer; }
   button.puce:hover:not(:disabled) { background:var(--sel); }
@@ -1048,9 +1050,9 @@
      (le texte la double, A8), aux jetons du système : accepter en
      accent, refuser en alerte, provisoire neutre. Paires déjà gatées
      (accent/surface 3:1, alert/surface 3:1, et leurs pendants --sel). */
-  .puce.ton-accepte .ms { color:var(--accent); }
-  .puce.ton-provisoire .ms { color:var(--muted); }
-  .puce.ton-refuse .ms { color:var(--alert); }
+  .puce.ton-accepte :global(.ic) { color:var(--accent); }
+  .puce.ton-provisoire :global(.ic) { color:var(--muted); }
+  .puce.ton-refuse :global(.ic) { color:var(--alert); }
   .puce.ton-annulee { color:var(--alert); }
   .ligne:hover { background:var(--hover); }
   .ligne.choisie {

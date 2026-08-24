@@ -59,7 +59,7 @@ test('le survol d’une pièce jointe dit « Enregistrer » (R1, D1)', async () 
   // asserte la présence, pas la valeur.)
   expect(await voile.evaluate((el) => getComputedStyle(el).display)).not.toBe('none');
   await expect(voile).toContainText('Enregistrer');
-  await expect(voile.locator('.ms')).toHaveText('download');
+  await expect(voile.locator('.ic')).toHaveAttribute('data-nom', 'download');
   expect(await piece.evaluate((el) => el.offsetWidth)).toBe(largeurAvant);
   // On quitte : le voile se retire.
   await page.locator('[data-testid="fil-sujet"]').hover();

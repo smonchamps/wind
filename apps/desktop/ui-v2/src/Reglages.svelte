@@ -8,6 +8,7 @@
   //
   // Règle : un groupe ne s'expédie qu'avec du contenu RÉEL — aucun
   // réglage inventé pour meubler, aucun groupe vide.
+  import Icone from './Icone.svelte';
   import { tick } from 'svelte';
   import {
     FICHES, appliquerTheme, themeAffiche, suiviOs, appliquerSuiviOs,
@@ -426,7 +427,7 @@
       <div class="tete">
         <span class="titre">{t('entete.reglages')}</span>
         <button type="button" class="fermer" aria-label={t('action.fermer')} onclick={fermer}>
-          <span class="ms" aria-hidden="true">close</span></button>
+          <Icone nom="close" /></button>
       </div>
       <div class="milieu">
         <div class="rail" role="group" aria-label={t('reglages.groupesAria')}>
@@ -436,7 +437,7 @@
                  role="button" tabindex="0" aria-current={groupe === g.id}
                  onclick={() => choisirGroupe(g.id)}
                  onkeydown={activation(() => choisirGroupe(g.id))}>
-              <span class="ms icone" aria-hidden="true">{g.icone}</span>
+              <span class="icone" aria-hidden="true"><Icone nom={g.icone} /></span>
               <span class="libelle">{t(g.libelle)}</span>
             </div>
           {/each}
@@ -455,11 +456,11 @@
                           aria-label={t('reglages.repereCompte', { email: c.email })}
                           onclick={() => ouvrirRepere(c.account_id)}>
                     {#if reperes[c.account_id]}
-                      <span class="ms repere repere-rangee"
+                      <span class="repere repere-rangee"
                             data-teinte={reperes[c.account_id].teinte}
-                            aria-hidden="true">{reperes[c.account_id].icone}</span>
+                            aria-hidden="true"><Icone nom={reperes[c.account_id].icone} /></span>
                     {:else}
-                      <span class="ms" aria-hidden="true">person</span>
+                      <Icone nom="person" />
                     {/if}
                   </button>
                   <!-- PLAN-RETOURS-9 (D3/D4) : le libellé est la PORTE
@@ -479,7 +480,7 @@
                          la reconnexion — même sens qu'à la fente d'avis)
                          et se répare sur place. -->
                     <span class="deconnecte" data-testid="compte-deconnecte">
-                      <span class="ms" aria-hidden="true">link_off</span>{t('reglages.deconnecte')}</span>
+                      <Icone nom="link_off" />{t('reglages.deconnecte')}</span>
                     <button type="button" class="reconnecter" data-testid="compte-reconnecter"
                             disabled={reconnexion === c.account_id}
                             aria-label={t('reglages.reconnecterCompte', { email: c.email })}
@@ -494,7 +495,7 @@
                   <button type="button" class="retirer" data-testid="compte-retirer"
                           aria-label={t('reglages.retirerCompte', { email: c.email })}
                           onclick={() => demanderRetrait(c.account_id)}>
-                    <span class="ms" aria-hidden="true">delete</span>{t('reglages.retirer')}</button>
+                    <Icone nom="delete" />{t('reglages.retirer')}</button>
                 </div>
                 {#if reconnexionErreur?.id === c.account_id}
                   <p class="erreur-reconnexion" data-testid="reconnexion-erreur">
@@ -515,7 +516,7 @@
                                 title={t(`repere.icone.${ic}`)}
                                 aria-label={t(`repere.icone.${ic}`)}
                                 onclick={() => choisirRepere(c.account_id, 'icone', ic)}>
-                          <span class="ms" aria-hidden="true">{ic}</span></button>
+                          <Icone nom={ic} /></button>
                       {/each}
                     </div>
                     <div class="choix-repere" role="group" aria-label={t('reglages.repereTeintes')}>
@@ -597,14 +598,14 @@
                     <span class="titre-ajout">{t('reglages.ajouterCompte')}</span>
                     <button type="button" class="fermer" aria-label={t('action.replier')}
                             onclick={() => (ajoutOuvert = false)}>
-                      <span class="ms" aria-hidden="true">close</span></button>
+                      <Icone nom="close" /></button>
                   </div>
                   <GuichetCompte compact onajoute={() => { ajoutOuvert = false; onajoute(); }} />
                 </div>
               {:else}
                 <button type="button" class="ajouter" data-testid="reglages-ajouter"
                         onclick={() => (ajoutOuvert = true)}>
-                  <span class="ms" aria-hidden="true">person_add</span>{t('reglages.ajouterCompte')}</button>
+                  <Icone nom="person_add" />{t('reglages.ajouterCompte')}</button>
               {/if}
             </div>
           {:else if groupe === 'themes'}
@@ -626,7 +627,7 @@
                     <span class="desc">{t(`theme.${fiche.id}.desc`)}</span>
                   </span>
                   {#if actif === fiche.id}
-                    <span class="ms coche" aria-hidden="true">check_circle</span>
+                    <span class="coche" aria-hidden="true"><Icone nom="check_circle" /></span>
                   {/if}
                 </div>
               {/each}
@@ -697,7 +698,7 @@
                        AVEC l'adresse — ici aussi : c'est la surface où
                        éditer le mauvais compte coûte (contenu envoyé). -->
                   <span class="adresse-signature">
-                    <span class="ms" aria-hidden="true">person</span>{#if noms[c.account_id]}{noms[c.account_id]}<span class="adresse-sous">{c.email}</span>{:else}{c.email}{/if}</span>
+                    <Icone nom="person" />{#if noms[c.account_id]}{noms[c.account_id]}<span class="adresse-sous">{c.email}</span>{:else}{c.email}{/if}</span>
                   <!-- La barre réduite (D3) : gras/italique/souligné —
                        onmousedown neutralisé, un bouton de format ne vole
                        jamais la sélection de l'éditeur (idiome A62). -->
@@ -706,17 +707,17 @@
                             title={t('compo.gras')} data-testid="signature-gras"
                             onmousedown={(e) => e.preventDefault()}
                             onclick={() => commandeSignature('bold')}>
-                      <span class="ms" aria-hidden="true">format_bold</span></button>
+                      <Icone nom="format_bold" /></button>
                     <button type="button" class="bouton-format" aria-label={t('compo.italique')}
                             title={t('compo.italique')} data-testid="signature-italique"
                             onmousedown={(e) => e.preventDefault()}
                             onclick={() => commandeSignature('italic')}>
-                      <span class="ms" aria-hidden="true">format_italic</span></button>
+                      <Icone nom="format_italic" /></button>
                     <button type="button" class="bouton-format" aria-label={t('compo.souligne')}
                             title={t('compo.souligne')} data-testid="signature-souligne"
                             onmousedown={(e) => e.preventDefault()}
                             onclick={() => commandeSignature('underline')}>
-                      <span class="ms" aria-hidden="true">format_underlined</span></button>
+                      <Icone nom="format_underlined" /></button>
                   </div>
                   <div class="editeur-signature" contenteditable="true" role="textbox"
                        aria-multiline="true" tabindex="0"
@@ -744,7 +745,7 @@
                   <div class="boutons-signature">
                     <button type="button" class="ajouter" data-testid="signature-enregistrer"
                             onclick={() => enregistrerSignature(c)}>
-                      <span class="ms" aria-hidden="true">signature</span>{t('action.enregistrer')}</button>
+                      <Icone nom="signature" />{t('action.enregistrer')}</button>
                     <button type="button" class="ajouter" data-testid="signature-effacer"
                             onclick={() => effacerSignature(c)}>{t('action.effacer')}</button>
                     {#if comptes.length > 1}
@@ -867,9 +868,7 @@
     box-shadow:var(--shadow);
   }
   .icone { color:var(--muted); }
-  .actif .icone {
-    color:var(--accent); font-variation-settings:'FILL' 1, 'wght' 600;
-  }
+  .actif .icone { color:var(--accent); }
   .libelle {
     font-size:13px; color:var(--ink2); flex:1; min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
@@ -905,7 +904,7 @@
   }
   .nom { font-size:14px; font-weight:600; color:var(--ink); }
   .desc { font-size:12px; line-height:1.4; color:var(--muted); }
-  .coche { color:var(--accent); font-variation-settings:'FILL' 1; }
+  .coche { color:var(--accent); }
   .compte {
     display:flex; align-items:center; gap:12px; padding:10px 16px;
     font-size:13px; color:var(--ink2);
@@ -913,9 +912,9 @@
   /* A74 : la pastille du repère garde son encre propre (nuancier
      mesuré) — seuls les glyphes neutres de la rangée sont en muted.
      `:where(…)` : spécificité NULLE pour l'exclusion — sinon la règle
-     passerait devant `.deconnecte .ms` et éteindrait le glyphe
+     passerait devant `.deconnecte :global(.ic)` et éteindrait le glyphe
      d'alerte link_off (revue 2026-08-22). */
-  .compte .ms:where(:not(.repere)) { color:var(--muted); }
+  .compte :global(:where(:not(.repere)) > .ic) { color:var(--muted); }
   .adresse {
     color:var(--ink); overflow:hidden; text-overflow:ellipsis;
     white-space:nowrap;
@@ -963,7 +962,7 @@
     gap:6px; font-size:12.5px; font-weight:600; color:var(--alert);
     white-space:nowrap;
   }
-  .deconnecte .ms { color:var(--alert); font-size:15px; }
+  .deconnecte :global(.ic) { color:var(--alert); width:15px; height:15px; }
   .reconnecter {
     height:28px; padding:0 12px; flex:none; display:inline-flex;
     align-items:center; font-size:12.5px; font-weight:600;
@@ -1011,7 +1010,8 @@
     border-radius:6px; cursor:pointer;
   }
   .btn-repere:hover { background:var(--sel); border-color:var(--border); }
-  .repere-rangee { width:20px; height:20px; font-size:12px; }
+  .repere-rangee { width:20px; height:20px; }
+  .repere-rangee :global(.ic) { width:12px; height:12px; }
   .titre-repere { margin:0; font-size:13px; font-weight:600; color:var(--ink); }
   .choix-repere { display:flex; flex-wrap:wrap; gap:6px; }
   .choix {

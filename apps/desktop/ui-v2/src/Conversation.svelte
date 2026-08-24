@@ -6,6 +6,7 @@
   // quand le cadre est 'plein', point — aucun booléen local à
   // désynchroniser. Agrandir ne recharge rien (`agrandirFil`) ; une
   // sélection directe en 1-2 volets recharge (`ouvrirFil`).
+  import Icone from './Icone.svelte';
   import Fil from './Fil.svelte';
   import { fil, ouvrirFil, agrandirFil } from './lib/fil.svelte.js';
   import { t } from './lib/texte.svelte.js';
@@ -48,10 +49,10 @@
   <div class="ecran03" data-testid="conversation">
     <header class="entete">
       <button type="button" class="retour" data-testid="retour-boite" onclick={onretour}>
-        <span class="ms" aria-hidden="true">arrow_back</span>{t('boite.reception')}</button>
+        <Icone nom="arrow_back" />{t('boite.reception')}</button>
       <span class="espace"></span>
       <button type="button" class="principal" onclick={onecrire}>
-        <span class="ms" aria-hidden="true">edit_square</span>{t('entete.ecrire')}</button>
+        <Icone nom="edit_square" />{t('entete.ecrire')}</button>
     </header>
 
     <!-- R3 (PLAN-RETOURS-7) : l'écran 03 est À PLAT, comme le volet

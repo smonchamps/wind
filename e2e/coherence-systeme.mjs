@@ -223,6 +223,55 @@ for (const langue of ['fr', 'en']) {
   }
 }
 
+// --- 7. Les icônes : le relevé du Système EST l'inventaire (A18, V8) --
+// Depuis V8 la fonte est morte : les 78 glyphes vivent en SVG dans
+// lib/icones.js, et le Système les dessine. Trois assertions, qui
+// reprennent la garde du générateur du v2 :
+//   a. les noms du catalogue == les figcaptions de la grille du doc,
+//      dans les DEUX sens (l'écart des dix glyphes d'avant V8 ne peut
+//      pas renaître) ;
+//   b. chaque tracé (`d`) du catalogue apparaît dans le doc — un
+//      dessin changé au code sans amender le Système crie ;
+//   c. chaque nom d'icône posé en dur dans un composant existe au
+//      catalogue et n'est pas réservé (A53/A60/A62 : un réservé ne se
+//      pose pas).
+const iconesJs = readFileSync(
+  path.join(root, 'apps', 'desktop', 'ui-v2', 'src', 'lib', 'icones.js'),
+  'utf8',
+);
+const nomsCatalogue = [...iconesJs.matchAll(/^ {2}([a-z_0-9]+): *\{/gm)].map(([, n]) => n);
+const reservesCatalogue = new Set(
+  [...iconesJs.matchAll(/^ {2}([a-z_0-9]+): *\{[^\n]*\br:true/gm)].map(([, n]) => n),
+);
+const nomsDoc = [...new Set(
+  [...doc.matchAll(/<figcaption>([a-z_0-9]+)<\/figcaption>/g)].map(([, n]) => n),
+)];
+if (nomsCatalogue.length === 0) echec('lib/icones.js : aucun glyphe lu — le catalogue a changé de forme');
+if (nomsDoc.length === 0) echec('le doc ne porte aucune grille de glyphes (figcaption) — la section Icônes a changé de forme');
+for (const n of nomsCatalogue) {
+  if (!nomsDoc.includes(n)) echec(`icône « ${n} » : au catalogue (lib/icones.js) mais absente de la grille du Système`);
+}
+for (const n of nomsDoc) {
+  if (!nomsCatalogue.includes(n)) echec(`icône « ${n} » : dessinée au Système mais absente du catalogue livré`);
+}
+for (const [, nom, brut] of iconesJs.matchAll(/^ {2}([a-z_0-9]+): *\{ *d:\[([^\]]*)\]/gm)) {
+  for (const [, d] of brut.matchAll(/'([^']+)'/g)) {
+    if (!doc.includes(d)) {
+      echec(`icône « ${nom} » : le tracé « ${d} » du catalogue n'apparaît pas dans le Système — dessin changé sans amender le doc (DC-D2)`);
+    }
+  }
+}
+for (const fichier of fichiersUi(srcUi).filter((f) => f.endsWith('.svelte'))) {
+  const source = readFileSync(fichier, 'utf8');
+  for (const [, nom] of source.matchAll(/<Icone[^>]*\bnom="([a-z_0-9]+)"/g)) {
+    if (!nomsCatalogue.includes(nom)) {
+      echec(`${path.relative(root, fichier)} : icône « ${nom} » posée mais absente du catalogue`);
+    } else if (reservesCatalogue.has(nom)) {
+      echec(`${path.relative(root, fichier)} : icône « ${nom} » posée mais RÉSERVÉE (A53/A60/A62)`);
+    }
+  }
+}
+
 const nbThemes = Object.keys(themesCss).length;
 const nbJetons = Object.values(themesCss).reduce((n, t) => n + Object.keys(t).length, 0);
 console.log(

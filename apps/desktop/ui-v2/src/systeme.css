@@ -51,27 +51,17 @@
   95% { opacity:0; } 100% { opacity:0; }
 }
 
-/* Icônes Material Symbols Rounded — sous-ensemble vendorisé (A3),
-   aucun CDN, CSP font-src 'self'. */
-@font-face {
-  font-family: 'Material Symbols Rounded';
-  font-style: normal;
-  font-weight: 300 600;
-  /* ?v=<nombre de glyphes> : le nom du fichier ne change pas d'une
-     régénération à l'autre et le cache HTTP de WebView2 survit aux mises
-     à jour (constaté au banc — styles fantômes) : sans ce cache-buster,
-     un poste pourrait servir l'ANCIEN sous-ensemble à la version neuve
-     et rendre une ligature nouvelle en toutes lettres. À incrémenter à
-     CHAQUE régénération, avec l'inventaire (assets/icones/README.md). */
-  src: url('/icones/material-symbols-rounded.subset.woff2?v=78') format('woff2');
-}
-.ms {
-  font-family:'Material Symbols Rounded'; font-weight:300; font-size:16px;
-  line-height:1; flex:none; font-variation-settings:'opsz' 20;
-}
+/* Icônes « Elements » (V8 — PLAN-ELEMENTS) : le jeu entier est DESSINÉ
+   et servi en SVG en ligne (Icone.svelte, lib/icones.js) — Material
+   Symbols et son sous-ensemble vendorisé sont morts, et avec eux la
+   dernière dépendance de fonte du produit. L'encre est currentColor ;
+   le disque d'état et le rabat de la marque prennent --marque. La
+   taille se pose par l'attribut (16 par défaut) ; un contexte plus
+   petit la fixe en CSS (width/height sur .ic), qui prime. */
+.ic { flex:none; vertical-align:middle; }
 /* A12 — « Transférer » porte la flèche de « Répondre » en symétrie
    verticale (verdict terrain) : le glyphe `reply`, retourné. */
-.ms.miroir { transform:scaleX(-1); }
+.ic.miroir { transform:scaleX(-1); }
 
 /* A74 (PLAN-RETOURS-8 R1) — le nuancier des repères de compte : des
    couleurs de CONTENU (comme le nuancier du composeur), pas des jetons

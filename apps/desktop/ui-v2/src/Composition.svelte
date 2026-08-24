@@ -44,6 +44,7 @@
   // (PJ-D3), retrait par puce, poids total. Chaque geste rend l'epoch
   // du brouillon et on L'ADOPTE : sans cela, l'autosave suivant verrait
   // un conflit fantôme et bifurquerait le brouillon.
+  import Icone from './Icone.svelte';
   import { tick } from 'svelte';
   import { appel, choisirFichiers } from './lib/transport.js';
   import { t } from './lib/texte.svelte.js';
@@ -1135,7 +1136,7 @@
         <span class="kicker" data-testid="composition-kicker">{t(KICKERS[mode])}</span>
         <span class="essor"></span>
         <button type="button" class="fermer" aria-label={t('action.fermer')} onclick={fermer}>
-          <span class="ms" aria-hidden="true">close</span></button>
+          <Icone nom="close" /></button>
       </div>
       <div class="champs">
         <div class="rang">
@@ -1166,12 +1167,12 @@
           {#if !montrerCc}
             <button type="button" class="puce" data-testid="composition-bouton-cc"
                     onclick={() => { montrerCc = true; setTimeout(() => champCc?.focus(), 0); }}>
-              <span class="ms" aria-hidden="true">group_add</span>{t('compo.cc')}</button>
+              <Icone nom="group_add" />{t('compo.cc')}</button>
           {/if}
           {#if !montrerCci}
             <button type="button" class="puce" data-testid="composition-bouton-cci"
                     onclick={() => { montrerCci = true; setTimeout(() => champCci?.focus(), 0); }}>
-              <span class="ms" aria-hidden="true">visibility_off</span>{t('compo.cci')}</button>
+              <Icone nom="visibility_off" />{t('compo.cci')}</button>
           {/if}
         </div>
         {#if montrerCc}
@@ -1217,29 +1218,29 @@
         <div class="fichiers" data-testid="composition-pieces">
           {#each pieces as piece (piece.id)}
             <span class="piece" data-testid="piece-compo">
-              <span class="ms" aria-hidden="true">description</span>
+              <Icone nom="description" />
               <span class="nom">{piece.name}</span><span class="taille">{piece.human}</span>
               <button type="button" class="retrait" data-testid="piece-retrait"
                       aria-label={t('compo.retirerPiece', { nom: piece.name })}
                       onclick={() => retirer(piece)}>
-                <span class="ms" aria-hidden="true">close</span></button>
+                <Icone nom="close" /></button>
             </span>
           {/each}
           {#each rapatriements as entree (entree.index)}
             {#if entree.statut === 'encours'}
               <span class="piece attente" data-testid="piece-rapatriement">
-                <span class="ms" aria-hidden="true">hourglass_empty</span>
+                <Icone nom="hourglass_empty" />
                 {t('compo.rapatriement', { nom: entree.name })}</span>
             {:else}
               <span class="piece echec" data-testid="piece-echec">
-                <span class="ms" aria-hidden="true">description</span>
+                <Icone nom="description" />
                 <span class="nom">{entree.name}</span>
                 <button type="button" class="reessayer" data-testid="piece-reessayer"
                         onclick={() => reessayer(entree)}>{t('action.reessayer')}</button>
                 <button type="button" class="retrait" data-testid="piece-renoncer"
                         aria-label={t('compo.retirerPiece', { nom: entree.name })}
                         onclick={() => renoncer(entree)}>
-                  <span class="ms" aria-hidden="true">close</span></button>
+                  <Icone nom="close" /></button>
               </span>
             {/if}
           {/each}
@@ -1251,7 +1252,7 @@
       {/if}
       {#if refus}
         <div class="refus" data-testid="composition-refus">
-          <span class="ms" aria-hidden="true">warning</span>{refus}
+          <Icone nom="warning" />{refus}
         </div>
       {/if}
       <!-- La barre RÉELLE (R4, D1 : exactement les boutons demandés —
@@ -1280,29 +1281,29 @@
                 aria-label={t('compo.gras')} title={t('compo.gras')} aria-pressed={actifs.gras}
                 data-testid="composition-format-gras"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('bold')}>
-          <span class="ms" aria-hidden="true">format_bold</span></button>
+          <Icone nom="format_bold" /></button>
         <button type="button" class="bouton-format" class:actif={actifs.italique}
                 aria-label={t('compo.italique')} title={t('compo.italique')} aria-pressed={actifs.italique}
                 data-testid="composition-format-italique"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('italic')}>
-          <span class="ms" aria-hidden="true">format_italic</span></button>
+          <Icone nom="format_italic" /></button>
         <button type="button" class="bouton-format" class:actif={actifs.souligne}
                 aria-label={t('compo.souligne')} title={t('compo.souligne')} aria-pressed={actifs.souligne}
                 data-testid="composition-format-souligne"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('underline')}>
-          <span class="ms" aria-hidden="true">format_underlined</span></button>
+          <Icone nom="format_underlined" /></button>
         <button type="button" class="bouton-format" class:actif={actifs.barre}
                 aria-label={t('compo.barre')} title={t('compo.barre')} aria-pressed={actifs.barre}
                 data-testid="composition-format-barre"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('strikeThrough')}>
-          <span class="ms" aria-hidden="true">strikethrough_s</span></button>
+          <Icone nom="strikethrough_s" /></button>
         <span class="groupe-couleur">
           <button type="button" class="bouton-format"
                   aria-label={t('compo.couleur')} title={t('compo.couleur')}
                   data-testid="composition-format-couleur"
                   onmousedown={(e) => e.preventDefault()}
                   onclick={() => (montrerCouleurs = !montrerCouleurs)}>
-            <span class="ms" aria-hidden="true">format_color_text</span></button>
+            <Icone nom="format_color_text" /></button>
           {#if montrerCouleurs}
             <div class="palette" data-testid="composition-palette">
               {#each COULEURS as couleur (couleur)}
@@ -1319,44 +1320,44 @@
                 aria-label={t('compo.alignerGauche')} title={t('compo.alignerGauche')}
                 data-testid="composition-format-gauche"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('justifyLeft')}>
-          <span class="ms" aria-hidden="true">format_align_left</span></button>
+          <Icone nom="format_align_left" /></button>
         <button type="button" class="bouton-format"
                 aria-label={t('compo.alignerCentre')} title={t('compo.alignerCentre')}
                 data-testid="composition-format-centre"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('justifyCenter')}>
-          <span class="ms" aria-hidden="true">format_align_center</span></button>
+          <Icone nom="format_align_center" /></button>
         <button type="button" class="bouton-format"
                 aria-label={t('compo.alignerDroite')} title={t('compo.alignerDroite')}
                 data-testid="composition-format-droite"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('justifyRight')}>
-          <span class="ms" aria-hidden="true">format_align_right</span></button>
+          <Icone nom="format_align_right" /></button>
         <span class="sep" aria-hidden="true"></span>
         <button type="button" class="bouton-format" class:actif={actifs.puces}
                 aria-label={t('compo.listePuces')} title={t('compo.listePuces')} aria-pressed={actifs.puces}
                 data-testid="composition-format-puces"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('insertUnorderedList')}>
-          <span class="ms" aria-hidden="true">format_list_bulleted</span></button>
+          <Icone nom="format_list_bulleted" /></button>
         <button type="button" class="bouton-format" class:actif={actifs.numerotee}
                 aria-label={t('compo.listeNumerotee')} title={t('compo.listeNumerotee')} aria-pressed={actifs.numerotee}
                 data-testid="composition-format-numerotee"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('insertOrderedList')}>
-          <span class="ms" aria-hidden="true">format_list_numbered</span></button>
+          <Icone nom="format_list_numbered" /></button>
         <button type="button" class="bouton-format"
                 aria-label={t('compo.retraitMoins')} title={t('compo.retraitMoins')}
                 data-testid="composition-format-retrait-moins"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('outdent')}>
-          <span class="ms" aria-hidden="true">format_indent_decrease</span></button>
+          <Icone nom="format_indent_decrease" /></button>
         <button type="button" class="bouton-format"
                 aria-label={t('compo.retraitPlus')} title={t('compo.retraitPlus')}
                 data-testid="composition-format-retrait-plus"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('indent')}>
-          <span class="ms" aria-hidden="true">format_indent_increase</span></button>
+          <Icone nom="format_indent_increase" /></button>
         <span class="sep" aria-hidden="true"></span>
         <button type="button" class="bouton-format"
                 aria-label={t('compo.effacerFormat')} title={t('compo.effacerFormat')}
                 data-testid="composition-format-effacer"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('removeFormat')}>
-          <span class="ms" aria-hidden="true">format_clear</span></button>
+          <Icone nom="format_clear" /></button>
         <span class="sep" aria-hidden="true"></span>
         <!-- R3 (terrain 2026-08-21) : « Important » vit DANS la barre de
              mise en forme, au format de ses voisins (icône seule) — une
@@ -1366,7 +1367,7 @@
                 aria-pressed={important} data-testid="composition-important"
                 onmousedown={(e) => e.preventDefault()}
                 onclick={() => { important = !important; programmerSauvegarde(); }}>
-          <span class="ms" aria-hidden="true">priority_high</span></button>
+          <Icone nom="priority_high" /></button>
       </div>
       {#if demandeSuppr}
         <!-- R3/D3 : la confirmation vit DANS le pied, à la place des
@@ -1377,7 +1378,7 @@
           <span class="essor"></span>
           <button type="button" class="danger" data-testid="composition-suppr-confirmer"
                   onclick={supprimerBrouillon}>
-            <span class="ms" aria-hidden="true">delete</span>{t('action.supprimer')}</button>
+            <Icone nom="delete" />{t('action.supprimer')}</button>
           <button type="button" class="annuler" data-testid="composition-suppr-annuler"
                   onclick={() => (demandeSuppr = false)}>{t('action.annuler')}</button>
         </div>
@@ -1385,14 +1386,14 @@
         <div class="pied">
           <button type="button" class="principal" data-testid="composition-envoyer"
                   disabled={envoiEnCours} onclick={envoyer}>
-            <span class="ms" aria-hidden="true">send</span>{t('action.envoyer')}</button>
+            <Icone nom="send" />{t('action.envoyer')}</button>
           <!-- R2 : « Envoyer plus tard » — la carte s'ouvre au-dessus du
                pied (même idiome que le nuancier), échéance préréglée à
                +1 h, contrôle natif date+heure. -->
           <span class="groupe-differe">
             <button type="button" data-testid="composition-plus-tard"
                     disabled={envoiEnCours} onclick={ouvrirDiffere}>
-              <span class="ms" aria-hidden="true">schedule_send</span>{t('compo.plusTard')}</button>
+              <Icone nom="schedule_send" />{t('compo.plusTard')}</button>
             {#if montrerDiffere}
               <div class="differe" data-testid="composition-differe">
                 <label class="differe-label">{t('compo.differeQuand')}
@@ -1405,7 +1406,7 @@
                 <div class="differe-actions">
                   <button type="button" class="principal" data-testid="composition-differe-confirmer"
                           onclick={programmerEnvoi}>
-                    <span class="ms" aria-hidden="true">schedule_send</span>{t('compo.programmer')}</button>
+                    <Icone nom="schedule_send" />{t('compo.programmer')}</button>
                   <button type="button" class="annuler" data-testid="composition-differe-annuler"
                           onclick={() => (montrerDiffere = false)}>{t('action.annuler')}</button>
                 </div>
@@ -1413,16 +1414,16 @@
             {/if}
           </span>
           <button type="button" onclick={joindre} data-testid="composition-joindre">
-            <span class="ms" aria-hidden="true">attach_file</span>{t('compo.joindre')}</button>
+            <Icone nom="attach_file" />{t('compo.joindre')}</button>
           <button type="button" onclick={enregistrerBrouillon} data-testid="composition-brouillon">
-            <span class="ms" aria-hidden="true">drafts</span>{t('compo.enregistrerBrouillon')}</button>
+            <Icone nom="drafts" />{t('compo.enregistrerBrouillon')}</button>
           <span class="essor"></span>
           {#if peutSupprimer}
             <!-- Le geste destructif à DROITE, détaché du cluster d'envoi
                  (moins de mégarde), avant « Annuler » qui, lui, conserve. -->
             <button type="button" class="supprimer" data-testid="composition-supprimer"
                     onclick={() => (demandeSuppr = true)}>
-              <span class="ms" aria-hidden="true">delete</span>{t('compo.supprimerBrouillon')}</button>
+              <Icone nom="delete" />{t('compo.supprimerBrouillon')}</button>
           {/if}
           <button type="button" class="annuler" data-testid="composition-annuler"
                   onclick={fermer}>{t('action.annuler')}</button>
@@ -1549,7 +1550,7 @@
     border:none; border-radius:4px; cursor:pointer;
   }
   .retrait:hover { background:var(--sel); color:var(--ink); }
-  .retrait .ms { font-size:13px; }
+  .retrait :global(.ic) { width:13px; height:13px; }
   /* Les états du rapatriement (maquette §3) : attente atténuée italique,
      échec au bord --alert avec « Réessayer ». */
   .piece.attente { color:var(--muted); font-style:italic; }
@@ -1567,7 +1568,7 @@
     padding:0 22px 14px; font-size:13px; color:var(--alert);
     display:flex; align-items:center; gap:8px;
   }
-  .refus .ms { font-size:14px; }
+  .refus :global(.ic) { width:14px; height:14px; }
 
   .format {
     flex:none; padding:8px 18px; border-top:1px solid var(--border);
@@ -1585,7 +1586,7 @@
   .bouton-format.actif {
     background:var(--sel); color:var(--accent); border-color:var(--accent);
   }
-  .bouton-format .ms { font-size:18px; }
+  .bouton-format :global(.ic) { width:18px; height:18px; }
   .select-format {
     height:32px; padding:0 8px; font:inherit; font-size:13px;
     color:var(--ink2); background:var(--surface); cursor:pointer;
@@ -1665,7 +1666,7 @@
      jamais la couleur d'accent (qui appelle au clic). */
   .supprimer { color:var(--alert); border-color:var(--border); }
   .supprimer:hover { background:var(--alert); color:var(--onAccent); border-color:var(--alert); }
-  .supprimer .ms { font-size:18px; }
+  .supprimer :global(.ic) { width:18px; height:18px; }
   .confirmation .avert-suppr { font-size:13px; color:var(--alert); font-weight:600; }
   .danger {
     font-weight:600; color:var(--onAccent); background:var(--alert);

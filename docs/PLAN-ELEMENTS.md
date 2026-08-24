@@ -210,6 +210,10 @@ plan, `/solde` à la CI verte). Release selon D5.
   famille et amender le relevé ; (c) livrer identiques (A3 rompu, dit).
   — *Réponse CE (2026-08-24) : « Différencier » — option (a), les
   redessins soumis au retour CE comme les trois tours précédents.*
+  *Verdict au STOP E2 (2026-08-24) : « Suffit — consigner tel quel » —
+  les marques distinctives actuelles (poignée corps/couvercle ; bandeau
+  supérieur ; marque intérieure du cercle) suffisent à 16 px, aucun
+  redessin ; le relevé du Système consigne les familles.*
 - **D4 — La dette V9 (palier 16).** (a) **Livrer les maîtres réduits**,
   dette consignée, le STOP visuel d'E2 et le terrain jugent — rouvrir
   en chantier dédié si le flou se voit ; (b) dessiner d'abord les 74
