@@ -269,3 +269,11 @@ complet ; au jugé du terrain) ; RAM 8,1 Mo.
 mutilés par la normalisation `scope="col"` du générateur (la leçon
 V12) ; bandeau d'exploration remplacé par le bandeau normatif, titre
 et journal promus, A79 consigné.
+
+**⛔ STOP 2 — verdict terrain CE (2026-08-24)** : « Terrain OK — 8/8 »
+— les huit points de la checklist conformes (thèmes et migration du
+choix, netteté des icônes aux tailles réelles, coins vifs à côté des
+fenêtres Windows — la réserve V14 levée à la fenêtre réelle —, liste,
+marque et disque/anneau, registre 340, dalle claire du corps en nuit,
+perf perçue), zéro constat. App lancée depuis les sources
+(`scripts\lancer-wind.ps1`).
