@@ -301,7 +301,7 @@
   .carte {
     display:flex; flex-direction:column; gap:8px; padding:10px;
     background:var(--surface); border:1px solid var(--border);
-    border-radius:10px; cursor:pointer; flex:1;
+    border-radius:var(--r-surface); cursor:pointer; flex:1;
   }
   .carte:hover { background:var(--sel); }
   /* Constats 5/7 : la sélection se voit — contour épaissi (liseré
@@ -319,17 +319,17 @@
   .cadre-volets {
     display:flex; flex-direction:column; gap:14px; padding:14px;
     background:var(--surface); border:1px solid var(--border);
-    border-radius:10px; box-shadow:var(--shadow);
+    border-radius:var(--r-surface); box-shadow:var(--shadow);
   }
   .capture-grande {
-    width:100%; height:auto; display:block; border-radius:8px;
+    width:100%; height:auto; display:block; border-radius:var(--r-controle);
     border:1px solid var(--border);
   }
   .boutons-volets { display:flex; gap:12px; justify-content:center; }
   .choix-volet {
     height:40px; padding:0 18px; font-size:14px; font-weight:600;
     color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:8px; cursor:pointer;
+    border:1px solid var(--border); border-radius:var(--r-controle); cursor:pointer;
   }
   .choix-volet:hover { background:var(--sel); }
   .choix-volet.choisie {
@@ -340,7 +340,7 @@
 
   /* La fenêtre d'aperçu de l'étape 3, aux couleurs de la fiche. */
   .fenetre {
-    display:flex; flex-direction:column; height:110px; border-radius:6px;
+    display:flex; flex-direction:column; height:110px; border-radius:var(--r-controle);
     border:1px solid var(--border); overflow:hidden;
   }
   .f-tete { height:14px; flex:none; border-bottom:1px solid var(--border); }
@@ -349,7 +349,7 @@
   .f-liste {
     flex:1; display:flex; flex-direction:column; gap:4px; padding:6px;
   }
-  .f-liste span { height:10px; border-radius:3px; }
+  .f-liste span { height:10px; border-radius:var(--r-controle); }
   .f-liste span:nth-child(2) { opacity:.85; }
   .f-lecture { width:38%; flex:none; border-left:1px solid var(--border); }
 
@@ -360,7 +360,7 @@
     position:relative; flex:1; min-width:0; display:flex;
     flex-direction:column; align-items:flex-start; gap:10px;
     text-align:left; padding:14px 16px; background:var(--surface);
-    border:1px solid var(--border); border-radius:10px; cursor:pointer;
+    border:1px solid var(--border); border-radius:var(--r-surface); cursor:pointer;
   }
   .recap-titre { font-size:13px; font-weight:600; color:var(--ink); }
   .recap-valeur {
@@ -371,20 +371,20 @@
      la fenêtre aux couleurs du thème. */
   .mini {
     width:100%; height:auto; flex:none; display:block;
-    border-radius:4px; border:1px solid var(--border);
+    border-radius:var(--r-controle); border:1px solid var(--border);
   }
   .mini-theme { width:100%; flex:none; display:block; }
-  .mini-theme .fenetre { height:64px; border-radius:4px; }
+  .mini-theme .fenetre { height:64px; border-radius:var(--r-controle); }
   .mini-theme .f-tete { height:8px; }
   .mini-theme .f-liste { padding:3px; gap:2px; }
-  .mini-theme .f-liste span { height:5px; border-radius:2px; }
+  .mini-theme .f-liste span { height:5px; border-radius:var(--r-tuile); }
   /* Le voile « Revenir à cette étape » : les règles du voile des
      pièces jointes (A70) — recouvrement absolu, fond --sel opaque,
      montré au survol ET au focus clavier (A8), géométrie stable. */
   .ligne-recap .voile {
     position:absolute; inset:0; display:none; align-items:center;
     justify-content:center; gap:6px; font-size:13px; font-weight:600;
-    color:var(--ink); background:var(--sel); border-radius:9px;
+    color:var(--ink); background:var(--sel); border-radius:var(--r-surface);
     white-space:nowrap; overflow:hidden;
   }
   .ligne-recap:hover .voile, .ligne-recap:focus-visible .voile {
@@ -395,14 +395,14 @@
   .principal {
     height:40px; padding:0 22px; font-size:14px; font-weight:600;
     color:var(--onAccent); background:var(--accent); border:none;
-    border-radius:8px; cursor:pointer;
+    border-radius:var(--r-controle); cursor:pointer;
   }
   .principal:hover { background:var(--accentH); }
   .principal:disabled { opacity:.5; cursor:default; }
   .secondaire {
     height:40px; padding:0 18px; font-size:14px; color:var(--ink);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:8px; cursor:pointer; align-self:flex-start;
+    border-radius:var(--r-controle); cursor:pointer; align-self:flex-start;
   }
   .secondaire:hover { background:var(--sel); }
 </style>

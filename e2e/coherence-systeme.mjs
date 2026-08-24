@@ -272,6 +272,32 @@ for (const fichier of fichiersUi(srcUi).filter((f) => f.endsWith('.svelte'))) {
   }
 }
 
+// --- 8. Zéro rayon : plus un littéral de border-radius (V14) ---------
+// Les trois jetons de forme (--r-surface, --r-controle, --r-tuile)
+// valent 0 et vivent sur `html` (pas :root — le contrat des jetons de
+// couleur ne s'en gonfle pas). Restent DEUX formes rondes qui disent
+// quelque chose : le disque (50 % — l'état, l'identité, la poignée
+// d'interrupteur) et la pilule de la piste d'interrupteur (999px).
+// Tout autre littéral est un écart — le rembobinage de V14 tient en
+// une ligne PARCE QUE tout passe par les jetons.
+for (const jeton of ['--r-surface', '--r-controle', '--r-tuile']) {
+  if (!new RegExp(`html\\s*\\{[^}]*${jeton}:0`).test(css)) {
+    echec(`systeme.css : le jeton de forme ${jeton}:0 manque sur html (V14)`);
+  }
+}
+for (const fichier of fichiersUi(srcUi)) {
+  const source = readFileSync(fichier, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+  for (const [brut, valeur] of source.matchAll(/border-radius:\s*([^;}]+)/g)) {
+    const v = valeur.trim();
+    if (v === 'var(--r-surface)' || v === 'var(--r-controle)' || v === 'var(--r-tuile)'
+      || v === '50%' || v === '999px') continue;
+    echec(`${path.relative(root, fichier)} : « ${brut.trim()} » — V14 : zéro rayon, tout littéral passe par un jeton de forme (ou 50 % / 999px pour le disque et la piste)`);
+  }
+}
+
 const nbThemes = Object.keys(themesCss).length;
 const nbJetons = Object.values(themesCss).reduce((n, t) => n + Object.keys(t).length, 0);
 console.log(

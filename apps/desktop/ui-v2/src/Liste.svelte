@@ -741,7 +741,7 @@
         <p class="apercu"></p>
       </article>
     {/snippet}
-    {#snippet rangee(ligne)}
+    {#snippet rangee(ligne, epinglee = false)}
       <!-- A74 : le badge vit partout où les comptes se MÉLANGENT —
            boîte unifiée (D3) et recherche (toujours multi-comptes,
            même depuis la vue d'un seul compte ; revue 2026-08-22). -->
@@ -781,6 +781,11 @@
           {/if}
         </span>
         <div class="l1">
+          <!-- V4 : le non-lu se dit par le disque de 9 px ET la graisse
+               (A8 — jamais la couleur seule) ; l'épinglée porte la
+               marque keep sur son sol --tuile (A73). -->
+          {#if ligne.thread_unseen > 0}<span class="disque"></span>{/if}
+          {#if epinglee}<span class="marque-epingle" aria-hidden="true"><Icone nom="keep" taille={14} /></span>{/if}
           <span class="exp">{#if versEnvoi(ligne)}{t('liste.dest', { a: correspondant(ligne) })}{:else}{ligne.sender}{/if}</span>
           <span class="heure">{quand(ligne.epoch)}</span>
         </div>
@@ -898,7 +903,7 @@
       {#if epingles.length > 0}
         <div class="epingles" data-testid="epingles" bind:offsetHeight={hautEpinglesMesure}>
           {#each epingles as ligne (cle(ligne))}
-            {@render rangee(ligne)}
+            {@render rangee(ligne, true)}
           {/each}
         </div>
       {/if}
@@ -987,7 +992,7 @@
     align-self:center; margin:12px 0 20px; height:32px; padding:0 18px;
     display:inline-flex; align-items:center; font-size:13px; font-weight:600;
     color:var(--ink); background:var(--surface); border:1px solid var(--border);
-    border-radius:6px; cursor:pointer;
+    border-radius:var(--r-controle); cursor:pointer;
   }
   .charger-plus:hover { background:var(--sel); }
   .charger-plus:disabled { opacity:.6; cursor:default; }
@@ -1013,10 +1018,11 @@
     row-gap:3px; align-items:start; cursor:pointer;
   }
   .avatar {
-    grid-row:1 / span 3; width:28px; height:28px; border-radius:50%;
-    background:var(--bg); border:1px solid var(--border);
+    grid-row:1 / span 3; width:28px; height:28px;
+    border-radius:var(--r-tuile);
+    background:var(--tuile); border:1px solid var(--border);
     display:grid; place-items:center;
-    font-size:11px; font-weight:600; color:var(--ink2);
+    font-size:11px; font-weight:600; color:var(--tuileInk);
   }
   /* A74 — la colonne de l'avatar : rond + badge du repère empilés.
      `grid-row` de .avatar est inerte ici (item de flex) ; la pile reste
@@ -1039,7 +1045,7 @@
     display:inline-flex; align-items:center; gap:5px; height:24px;
     padding:0 9px; font-size:12px; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:6px; white-space:nowrap;
+    border-radius:var(--r-controle); white-space:nowrap;
   }
   .puce :global(.ic) { width:14px; height:14px; }
   /* R10 : les gestes d'invitation du rang — la puce qui AGIT. */
@@ -1072,6 +1078,8 @@
   .epingles .ligne .apercu,
   .epingles .ligne .heure { color:var(--tuileInk); }
   .l1 { display:flex; align-items:baseline; gap:10px; }
+  .l1 :global(.disque), .l1 .marque-epingle { align-self:center; }
+  .marque-epingle { color:var(--tuileInk); display:inline-flex; }
   .exp {
     font-size:14px; color:var(--ink); flex:1; min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
@@ -1106,7 +1114,7 @@
   }
   .onglet {
     height:32px; padding:0 14px; display:inline-flex; align-items:center;
-    gap:8px; font-size:13px; border-radius:6px; cursor:pointer;
+    gap:8px; font-size:13px; border-radius:var(--r-controle); cursor:pointer;
     color:var(--ink2); background:var(--surface);
     border:1px solid var(--border);
   }

@@ -489,7 +489,7 @@
   .puce {
     height:32px; padding:0 12px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink2); background:var(--surface);
-    border:1px solid var(--border); border-radius:6px; white-space:nowrap;
+    border:1px solid var(--border); border-radius:var(--r-controle); white-space:nowrap;
   }
   .puce.bouton { cursor:pointer; }
   .puce.bouton:hover { background:var(--sel); }
@@ -499,7 +499,7 @@
   .nu {
     height:26px; padding:0 9px; display:inline-flex; align-items:center;
     gap:6px; font-size:12px; color:var(--ink2); background:none;
-    border:1px solid transparent; border-radius:6px; cursor:pointer;
+    border:1px solid transparent; border-radius:var(--r-controle); cursor:pointer;
     white-space:nowrap;
   }
   .nu:hover { background:var(--sel); }
@@ -507,17 +507,20 @@
   .nu.inerte:hover { background:none; }
   /* L'avatar aux initiales des cartes (A45) — le dessin de la liste
      (E2) : 28 px déplié, 26 px replié. */
+  /* V4 — la tuile carrée d'initiales : sol --tuile, encre --tuileInk,
+     filet 1 px (mesuré : sans lui la tuile n'existe pas). */
   .avatar {
-    width:28px; height:28px; border-radius:50%; background:var(--bg);
+    width:28px; height:28px; border-radius:var(--r-tuile);
+    background:var(--tuile);
     border:1px solid var(--border); display:grid; place-items:center;
-    font-size:11px; font-weight:600; color:var(--ink2); flex:none;
+    font-size:11px; font-weight:600; color:var(--tuileInk); flex:none;
   }
   .avatar.petit { width:26px; height:26px; }
   .fil { flex:none; overflow-y:visible; padding:0; }
   .replie {
     display:flex; align-items:center; gap:10px; padding:12px 20px;
     margin-top:12px; background:var(--surface);
-    border:1px solid var(--border); border-radius:10px; cursor:pointer;
+    border:1px solid var(--border); border-radius:var(--r-surface); cursor:pointer;
     font-size:13px;
   }
   .replie:hover { background:var(--hover); }
@@ -535,7 +538,7 @@
   .replie.brouillon .reprendre { color:var(--accent); font-weight:600; flex:none; }
   .deplie {
     background:var(--surface); border:1px solid var(--border);
-    border-radius:10px; box-shadow:var(--shadow); margin-top:12px;
+    border-radius:var(--r-surface); box-shadow:var(--shadow); margin-top:12px;
     display:flex; flex-direction:column;
   }
   /* L'en-tête de la maquette : avatar · (nom / adresse · à X) · quand. */
@@ -558,7 +561,7 @@
      contenu, pas au fil). La tuile de date reprend la paire
      --tuile/--tuileInk de la boîte en cours ; l'annulation passe la
      tuile en éteint et le titre en barré. */
-  .invitation { border:1px solid var(--border); border-radius:10px; background:var(--surface); }
+  .invitation { border:1px solid var(--border); border-radius:var(--r-surface); background:var(--surface); }
   .inv-tete { display:flex; align-items:center; gap:10px; padding:12px 14px 0; }
   .inv-kicker {
     font-size:12px; font-weight:600; letter-spacing:.1em;
@@ -568,7 +571,7 @@
   .inv-statut { font-size:12px; color:var(--ink2); white-space:nowrap; }
   .inv-corps { display:flex; gap:14px; padding:12px 14px 14px; align-items:flex-start; }
   .inv-tuile {
-    width:52px; height:52px; border-radius:6px; background:var(--tuile);
+    width:52px; height:52px; border-radius:var(--r-controle); background:var(--tuile);
     color:var(--tuileInk); display:flex; flex-direction:column;
     align-items:center; justify-content:center; gap:1px; flex:none;
   }
@@ -605,14 +608,14 @@
   .garde-images {
     padding:10px 14px; display:flex; align-items:center; gap:10px;
     font-size:13px; color:var(--ink2); background:var(--bg);
-    border:1px solid var(--border); border-radius:6px;
+    border:1px solid var(--border); border-radius:var(--r-controle);
   }
   .garde-images :global(.ic) { color:var(--muted); }
   .garde-texte { flex:1; }
   .garde-images button {
     height:26px; padding:0 10px; font-size:12px; color:var(--ink);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:6px; cursor:pointer;
+    border-radius:var(--r-controle); cursor:pointer;
   }
   .garde-images button:hover { background:var(--sel); }
   .corps {
@@ -641,7 +644,7 @@
   .actions button {
     height:32px; padding:0 16px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:6px; cursor:pointer;
+    border:1px solid var(--border); border-radius:var(--r-controle); cursor:pointer;
   }
   .actions button:hover { background:var(--sel); }
 
@@ -658,7 +661,7 @@
   .actions-message button, .inv-actions button {
     height:30px; padding:0 14px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:6px; cursor:pointer;
+    border:1px solid var(--border); border-radius:var(--r-controle); cursor:pointer;
   }
   .actions-message button:hover, .inv-actions button:hover { background:var(--sel); }
   .actions-message .principal {
@@ -677,7 +680,7 @@
   .puce .voile {
     position:absolute; inset:0; display:none; align-items:center;
     justify-content:center; gap:6px; font-size:12px; font-weight:600;
-    color:var(--ink); background:var(--sel); border-radius:5px;
+    color:var(--ink); background:var(--sel); border-radius:var(--r-controle);
     white-space:nowrap; overflow:hidden;
   }
   .puce.bouton:hover .voile, .puce.bouton:focus-visible .voile { display:inline-flex; }

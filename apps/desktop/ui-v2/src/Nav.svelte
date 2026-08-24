@@ -1,7 +1,8 @@
 <script>
-  // Nav 248 px de l'écran 02 — le dessin des pistes (A29) : rangées
-  // 14 px à rayon 8, item actif en teinte de sélection bordée d'accent,
-  // pastille de non-lus PLEINE. Les compteurs « héros / total » quittent
+  // Nav 248 px de l'écran 02 — le dessin des pistes (A29, amendé V4/
+  // V14) : rangées 14 px à coin vif, item actif en teinte de sélection
+  // bordée d'accent, compteur de non-lus en NOMBRE nu à l'accent (la
+  // pastille pleine est morte). Les compteurs « héros / total » quittent
   // la nav (W2-D4) — la barre de statut dit les totaux. Les six dossiers
   // canoniques, puis « Boîtes » : Toutes les boîtes + un rang par compte
   // RÉEL — la fiction « Travail / Personnel » n'existe pas ; icône
@@ -112,7 +113,7 @@
   }
   .rang {
     display:flex; align-items:center; gap:10px; flex:none;
-    padding:8px 10px; border-radius:8px; cursor:pointer;
+    padding:8px 10px; border-radius:var(--r-controle); cursor:pointer;
     border:1px solid transparent;
   }
   .rang:hover { background:var(--hover); }
@@ -124,9 +125,10 @@
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
   .actif .libelle { font-weight:600; color:var(--ink); }
+  /* V4 — la pilule pleine est morte : le compteur est un NOMBRE nu,
+     chiffres tabulaires à l'accent (paire accent/bg mesurée en TEXTE). */
   .pastille {
-    flex:none; padding:2px 8px; border-radius:999px; font-size:12px;
-    font-weight:700; color:var(--onAccent); background:var(--accent);
+    flex:none; font-size:12px; font-weight:600; color:var(--accent);
     font-variant-numeric:tabular-nums;
   }
   .boites {
@@ -139,7 +141,7 @@
   }
   .tuile {
     display:flex; align-items:center; gap:10px; flex:none;
-    padding:9px 12px; border-radius:8px; cursor:pointer;
+    padding:9px 12px; border-radius:var(--r-controle); cursor:pointer;
     background:var(--tuile); color:var(--tuileInk);
     border:1px solid var(--border);
   }

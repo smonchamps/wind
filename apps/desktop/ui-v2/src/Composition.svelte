@@ -1442,7 +1442,7 @@
   .carte {
     width:860px; max-height:100%; background:var(--surface);
     border:1px solid var(--border);
-    border-radius:10px; box-shadow:var(--shadow);
+    border-radius:var(--r-surface); box-shadow:var(--shadow);
     display:flex; flex-direction:column; overflow:hidden;
   }
   /* A66 : l'entête porte le même fond que le pied de page de Wind
@@ -1462,14 +1462,14 @@
   .puce {
     height:32px; padding:0 12px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink2); background:var(--surface);
-    border:1px solid var(--border); border-radius:6px; white-space:nowrap;
+    border:1px solid var(--border); border-radius:var(--r-controle); white-space:nowrap;
     flex:none;
   }
   .fermer {
     height:32px; width:32px; padding:0; display:inline-flex; flex:none;
     align-items:center; justify-content:center; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:6px; cursor:pointer;
+    border-radius:var(--r-controle); cursor:pointer;
   }
   .fermer:hover { background:var(--sel); }
 
@@ -1487,12 +1487,12 @@
     min-width:280px; max-width:440px;
     margin:2px 0 0; padding:6px; list-style:none;
     background:var(--surface); border:1px solid var(--border);
-    border-radius:8px; box-shadow:var(--shadow);
+    border-radius:var(--r-controle); box-shadow:var(--shadow);
     display:flex; flex-direction:column; gap:2px;
   }
   .suggestion {
     width:100%; display:flex; align-items:baseline; gap:8px;
-    padding:6px 8px; border:none; background:transparent; border-radius:6px;
+    padding:6px 8px; border:none; background:transparent; border-radius:var(--r-controle);
     cursor:pointer; font-size:13px; text-align:left; font-family:inherit;
   }
   .suggestion:hover { background:var(--hover); }
@@ -1540,14 +1540,14 @@
   .piece {
     height:32px; padding:0 12px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink2); background:var(--surface);
-    border:1px solid var(--border); border-radius:6px; white-space:nowrap;
+    border:1px solid var(--border); border-radius:var(--r-controle); white-space:nowrap;
   }
   .piece .nom { color:var(--ink); }
   .piece .taille { font-size:12px; color:var(--muted); }
   .retrait {
     height:22px; width:22px; padding:0; display:inline-flex; align-items:center;
     justify-content:center; color:var(--muted); background:transparent;
-    border:none; border-radius:4px; cursor:pointer;
+    border:none; border-radius:var(--r-controle); cursor:pointer;
   }
   .retrait:hover { background:var(--sel); color:var(--ink); }
   .retrait :global(.ic) { width:13px; height:13px; }
@@ -1559,7 +1559,7 @@
   .reessayer {
     height:22px; padding:0 8px; display:inline-flex; align-items:center;
     font-size:12px; font-family:inherit; font-weight:600; color:var(--ink2);
-    background:var(--surface); border:1px solid var(--border); border-radius:4px;
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--r-controle);
     cursor:pointer;
   }
   .reessayer:hover { background:var(--sel); color:var(--ink); }
@@ -1579,7 +1579,7 @@
     height:32px; min-width:32px; padding:0 6px; display:inline-flex;
     align-items:center; justify-content:center; font-size:13px;
     color:var(--ink2); background:var(--surface); cursor:pointer;
-    border:1px solid var(--border); border-radius:6px;
+    border:1px solid var(--border); border-radius:var(--r-controle);
   }
   .bouton-format:hover { background:var(--sel); color:var(--ink); }
   /* L'état actif dit ce que porte la sélection (aria-pressed idem). */
@@ -1590,7 +1590,7 @@
   .select-format {
     height:32px; padding:0 8px; font:inherit; font-size:13px;
     color:var(--ink2); background:var(--surface); cursor:pointer;
-    border:1px solid var(--border); border-radius:6px;
+    border:1px solid var(--border); border-radius:var(--r-controle);
   }
   .select-format option { background:var(--surface); color:var(--ink); }
   .sep {
@@ -1603,12 +1603,12 @@
     position:absolute; bottom:38px; left:0; z-index:1;
     display:grid; grid-template-columns:repeat(6, 22px); gap:6px;
     padding:10px; background:var(--surface);
-    border:1px solid var(--border); border-radius:8px;
+    border:1px solid var(--border); border-radius:var(--r-controle);
     box-shadow:var(--shadow);
   }
   .teinte {
     height:22px; width:22px; min-width:0; padding:0;
-    border:1px solid var(--border); border-radius:4px; cursor:pointer;
+    border:1px solid var(--border); border-radius:var(--r-controle); cursor:pointer;
   }
   .teinte:hover { outline:2px solid var(--accent); outline-offset:1px; }
 
@@ -1621,7 +1621,7 @@
   button {
     height:32px; padding:0 16px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:6px; cursor:pointer;
+    border:1px solid var(--border); border-radius:var(--r-controle); cursor:pointer;
     white-space:nowrap;
   }
   .pied { flex-wrap:wrap; }
@@ -1647,7 +1647,7 @@
   .differe {
     position:absolute; bottom:40px; left:0; z-index:3; width:320px;
     padding:14px; background:var(--surface); border:1px solid var(--border);
-    border-radius:8px; box-shadow:var(--shadow);
+    border-radius:var(--r-controle); box-shadow:var(--shadow);
     display:flex; flex-direction:column; gap:10px;
   }
   .differe-label {
@@ -1657,7 +1657,7 @@
   .differe-label input {
     flex:1; min-width:0; height:32px; padding:0 8px; font:inherit;
     font-size:13px; color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:6px;
+    border:1px solid var(--border); border-radius:var(--r-controle);
   }
   .differe-note { margin:0; font-size:12px; color:var(--muted); line-height:1.5; }
   .differe-actions { display:flex; align-items:center; gap:12px; }

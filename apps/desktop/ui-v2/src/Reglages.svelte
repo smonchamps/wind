@@ -831,7 +831,7 @@
   .carte {
     width:800px; height:min(640px, 100%); background:var(--surface);
     border:1px solid var(--border);
-    border-radius:10px; box-shadow:var(--shadow);
+    border-radius:var(--r-surface); box-shadow:var(--shadow);
     display:flex; flex-direction:column; overflow:hidden;
   }
   .tete {
@@ -843,7 +843,7 @@
     height:32px; width:32px; padding:0; display:inline-flex;
     align-items:center; justify-content:center; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:6px; cursor:pointer;
+    border-radius:var(--r-controle); cursor:pointer;
   }
   .fermer:hover { background:var(--sel); }
 
@@ -859,7 +859,7 @@
   }
   .rang {
     display:flex; align-items:center; gap:10px; height:36px; flex:none;
-    padding:0 12px; border-radius:6px; cursor:pointer;
+    padding:0 12px; border-radius:var(--r-controle); cursor:pointer;
     border:1px solid transparent;
   }
   .rang:hover { background:var(--sel); border-color:var(--border); }
@@ -886,7 +886,7 @@
   .rangees { display:flex; flex-direction:column; gap:6px; }
   .rangee {
     display:flex; align-items:center; gap:16px; padding:14px 16px;
-    border-radius:10px; cursor:pointer; border:1px solid transparent;
+    border-radius:var(--r-surface); cursor:pointer; border:1px solid transparent;
   }
   .rangee:hover { background:var(--sel); }
   .rangee.active {
@@ -896,7 +896,7 @@
   .rangee.active:hover { background:var(--surface); }
   .pastilles { display:flex; gap:5px; flex:none; }
   .pastille {
-    width:22px; height:22px; border-radius:6px;
+    width:22px; height:22px; border-radius:var(--r-controle);
     border:1px solid var(--border);
   }
   .libelles {
@@ -929,7 +929,7 @@
     min-width:0; overflow:hidden; padding:2px 6px; margin:0 -6px;
     font-size:13px; text-align:left; color:var(--ink);
     background:transparent; border:1px solid transparent;
-    border-radius:6px; cursor:pointer;
+    border-radius:var(--r-controle); cursor:pointer;
   }
   .identite:hover { background:var(--sel); border-color:var(--border); }
   .identite .nom-compte, .identite .adresse {
@@ -943,14 +943,14 @@
   .champ-nom {
     height:32px; padding:0 10px; font-size:13px; color:var(--ink);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:6px;
+    border-radius:var(--r-controle);
   }
   .champ-nom:focus { border-color:var(--accent); outline:none; }
   .ajouter {
     height:32px; padding:0 16px; align-self:flex-start; display:inline-flex;
     align-items:center; gap:8px; font-size:13px; color:var(--ink);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:6px; cursor:pointer;
+    border-radius:var(--r-controle); cursor:pointer;
   }
   .ajouter:hover { background:var(--sel); }
 
@@ -967,7 +967,7 @@
     height:28px; padding:0 12px; flex:none; display:inline-flex;
     align-items:center; font-size:12.5px; font-weight:600;
     color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:6px; cursor:pointer;
+    border:1px solid var(--border); border-radius:var(--r-controle); cursor:pointer;
     white-space:nowrap;
   }
   .reconnecter:hover:not(:disabled) { background:var(--sel); }
@@ -988,7 +988,7 @@
     display:inline-flex; align-items:center; justify-content:center;
     gap:6px; font-size:12.5px; white-space:nowrap;
     color:var(--muted); background:transparent;
-    border:1px solid transparent; border-radius:6px; cursor:pointer;
+    border:1px solid transparent; border-radius:var(--r-controle); cursor:pointer;
   }
   .retirer:hover {
     color:var(--alert); background:var(--sel); border-color:var(--border);
@@ -997,7 +997,7 @@
      ajout (revue 2026-08-22 : trois copies identiques dérivaient). */
   .carte-retrait, .carte-repere, .carte-ajout, .carte-nom {
     border:1px solid var(--border);
-    border-radius:10px; padding:14px 16px 16px;
+    border-radius:var(--r-surface); padding:14px 16px 16px;
     display:flex; flex-direction:column; gap:12px;
   }
   /* A74 — le repère : la porte est l'icône de la rangée (bouton
@@ -1007,7 +1007,7 @@
     height:28px; width:28px; padding:0; flex:none;
     display:inline-flex; align-items:center; justify-content:center;
     background:transparent; border:1px solid transparent;
-    border-radius:6px; cursor:pointer;
+    border-radius:var(--r-controle); cursor:pointer;
   }
   .btn-repere:hover { background:var(--sel); border-color:var(--border); }
   .repere-rangee { width:20px; height:20px; }
@@ -1018,7 +1018,7 @@
     height:32px; width:32px; padding:0; display:inline-flex;
     align-items:center; justify-content:center; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:6px; cursor:pointer;
+    border-radius:var(--r-controle); cursor:pointer;
   }
   .choix:hover { background:var(--sel); }
   .choix.choisi { border-color:var(--accent); background:var(--sel); }
@@ -1031,7 +1031,7 @@
     height:32px; padding:0 16px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; font-weight:600; color:var(--onAccent);
     background:var(--alert); border:1px solid var(--alert);
-    border-radius:6px; cursor:pointer;
+    border-radius:var(--r-controle); cursor:pointer;
   }
   .danger:disabled { opacity:.6; cursor:default; }
   .tete-ajout { display:flex; align-items:center; gap:14px; }
@@ -1042,13 +1042,13 @@
      repos (V3), accent quand il est armé ; focus visible hérité (A8). */
   .reglage {
     display:flex; align-items:center; gap:16px; padding:14px 16px;
-    border-radius:10px;
+    border-radius:var(--r-surface);
   }
   .bascule {
     width:38px; height:22px; flex:none; padding:2px; cursor:pointer;
     display:inline-flex; align-items:center;
     background:var(--bg); border:1px solid var(--border);
-    border-radius:11px; transition:background .12s ease;
+    border-radius:999px; transition:background .12s ease;
   }
   .bille {
     width:16px; height:16px; border-radius:50%;
@@ -1068,7 +1068,7 @@
   .langue {
     height:32px; padding:0 10px; flex:none; font:inherit; font-size:13px;
     color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:6px; cursor:pointer;
+    border:1px solid var(--border); border-radius:var(--r-controle); cursor:pointer;
   }
   .langue option { background:var(--surface); color:var(--ink); }
 
@@ -1081,7 +1081,7 @@
     min-width:44px; padding:3px 8px; text-align:center; flex:none;
     font-family:inherit; font-size:12px; font-weight:600; color:var(--ink);
     background:var(--bg); border:1px solid var(--border);
-    border-bottom-width:2px; border-radius:6px;
+    border-bottom-width:2px; border-radius:var(--r-controle);
   }
   .geste { color:var(--ink2); }
   .note {
@@ -1108,7 +1108,7 @@
   }
   .bloc-signature {
     display:flex; flex-direction:column; gap:10px; padding:12px 16px;
-    border:1px solid var(--border); border-radius:8px;
+    border:1px solid var(--border); border-radius:var(--r-controle);
   }
   .adresse-signature {
     display:flex; align-items:center; gap:8px;
@@ -1120,13 +1120,13 @@
     height:32px; min-width:32px; padding:0 6px; display:inline-flex;
     align-items:center; justify-content:center; color:var(--ink2);
     background:var(--surface); cursor:pointer;
-    border:1px solid var(--border); border-radius:6px;
+    border:1px solid var(--border); border-radius:var(--r-controle);
   }
   .bouton-format:hover { background:var(--sel); color:var(--ink); }
   .editeur-signature {
     min-height:72px; padding:10px 12px; font-size:13px; line-height:1.6;
     color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:6px; outline:none;
+    border:1px solid var(--border); border-radius:var(--r-controle); outline:none;
     overflow-wrap:break-word;
   }
   .editeur-signature:focus { border-color:var(--accent); }
@@ -1144,7 +1144,7 @@
     height:32px; padding:0 16px; margin-left:auto; display:inline-flex;
     align-items:center; gap:8px; font-size:13px; font-weight:600;
     color:var(--onAccent); background:var(--accent);
-    border:1px solid var(--accent); border-radius:6px; cursor:pointer;
+    border:1px solid var(--accent); border-radius:var(--r-controle); cursor:pointer;
   }
   .principal:hover { background:var(--accentH); border-color:var(--accentH); }
 </style>

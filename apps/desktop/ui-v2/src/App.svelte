@@ -1526,7 +1526,7 @@
     flex:1; max-width:520px; height:32px; display:flex; align-items:center; gap:10px;
     padding:0 14px; font-size:13px; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:6px;
+    border-radius:var(--r-controle);
   }
   .recherche :global(.ic) { color:var(--ink2); }
   .recherche input {
@@ -1540,13 +1540,13 @@
   .vider {
     height:22px; width:22px; padding:0; display:inline-flex; flex:none;
     align-items:center; justify-content:center; color:var(--muted);
-    background:transparent; border:none; border-radius:6px; cursor:pointer;
+    background:transparent; border:none; border-radius:var(--r-controle); cursor:pointer;
   }
   .vider:hover { color:var(--ink); background:var(--sel); }
   button {
     height:32px; padding:0 16px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:6px; cursor:pointer;
+    border:1px solid var(--border); border-radius:var(--r-controle); cursor:pointer;
   }
   button:hover { background:var(--sel); }
   .principal {
@@ -1589,7 +1589,7 @@
     width:32px; height:32px; padding:0; flex:none; display:inline-flex;
     align-items:center; justify-content:center; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:6px; cursor:pointer;
+    border-radius:var(--r-controle); cursor:pointer;
   }
   .btn-tiroir:hover { background:var(--sel); color:var(--ink); }
   .marque--libre { width:auto; }
@@ -1598,7 +1598,7 @@
      surimpressions (le scrim est un BOUTON — clic et clavier ferment). */
   .scrim-tiroir {
     position:absolute; inset:0; height:auto; padding:0; z-index:2;
-    background:var(--scrim); border:none; border-radius:0; cursor:default;
+    background:var(--scrim); border:none; border-radius:var(--r-controle); cursor:default;
   }
   .tiroir {
     position:absolute; top:0; bottom:0; left:0; width:268px; z-index:2;
@@ -1630,14 +1630,14 @@
     height:26px; padding:0 12px; display:inline-flex; align-items:center;
     gap:7px; font-size:12px; font-weight:600; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:6px; cursor:pointer; flex:none;
+    border-radius:var(--r-controle); cursor:pointer; flex:none;
   }
   .btn-statut:hover { background:var(--sel); color:var(--ink); }
   .btn-statut[disabled] { opacity:.55; cursor:default; }
   .btn-statut[disabled]:hover { background:var(--surface); color:var(--ink2); }
   .btn-statut :global(.ic) { width:14px; height:14px; }
   .point-alerte {
-    width:7px; height:7px; border-radius:99px; background:var(--alert);
+    width:7px; height:7px; border-radius:50%; background:var(--alert);
     flex:none;
   }
 </style>

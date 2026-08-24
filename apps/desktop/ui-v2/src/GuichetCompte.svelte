@@ -173,7 +173,7 @@
   label { font-size:13px; color:var(--ink2); }
   input {
     height:52px; font-size:15px; padding:0 16px; background:var(--surface);
-    color:var(--ink); border:1px solid var(--border); border-radius:6px;
+    color:var(--ink); border:1px solid var(--border); border-radius:var(--r-controle);
     box-shadow:var(--shadow); outline:none; width:100%;
   }
   .compact input { height:40px; font-size:13px; box-shadow:none; }
@@ -183,7 +183,7 @@
   .principal {
     height:32px; padding:0 16px; align-self:flex-start; font-size:13px;
     font-weight:600; color:var(--onAccent); background:var(--accent);
-    border:1px solid var(--accent); border-radius:6px; cursor:pointer;
+    border:1px solid var(--accent); border-radius:var(--r-controle); cursor:pointer;
   }
   .principal:hover { background:var(--accentH); border-color:var(--accentH); }
   .principal:disabled { opacity:.6; cursor:default; }
@@ -194,7 +194,7 @@
   .accueil .barre input { height:40px; font-size:14px; }
   .secondaire, .primaire {
     height:40px; padding:0 18px; flex:none; align-self:center;
-    font-size:13px; font-weight:600; border-radius:6px; cursor:pointer;
+    font-size:13px; font-weight:600; border-radius:var(--r-controle); cursor:pointer;
   }
   .secondaire {
     color:var(--ink); background:var(--surface);

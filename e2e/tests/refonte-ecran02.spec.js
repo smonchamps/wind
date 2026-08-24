@@ -39,6 +39,15 @@ test('la nav porte les pastilles de non-lus du décor Clarity (A29, W2-D4)', asy
   await expect(pastille('indesirables')).toHaveText('2');
   await expect(pastille('archives')).toHaveCount(0);
   await expect(pastille('corbeille')).toHaveCount(0);
+  // V4 : le compteur de la nav est un NOMBRE nu en chiffres tabulaires
+  // à l'accent — la pilule pleine est morte (fond transparent), et le
+  // non-lu d'une rangée de liste porte son disque de 9 px --marque.
+  const fondPastille = await pastille('reception').evaluate(
+    (el) => getComputedStyle(el).backgroundColor,
+  );
+  expect(['rgba(0, 0, 0, 0)', 'transparent']).toContain(fondPastille);
+  await expect(page.locator('[data-testid="ligne"].nonlu .disque').first()).toBeVisible();
+  await expect(page.locator('[data-testid="ligne"]:not(.nonlu) .disque')).toHaveCount(0);
   // Boîtes : l'agrégée + un rang par compte RÉEL ; la boîte en cours
   // (Toutes, au démarrage) est la tuile — l'identité seule, sans
   // compteur (A36, terrain E3).

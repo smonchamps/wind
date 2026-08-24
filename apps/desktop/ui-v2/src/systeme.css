@@ -13,6 +13,21 @@
    couleur passe par un jeton — bascule de thème O(1) via
    <html data-theme="…">. */
 
+/* V14 — les trois jetons de FORME, à zéro : coin vif partout, plus un
+   littéral de rayon dans le système (la gate de cohérence y veille).
+   Sur `html` et non `:root` : ils ne dépendent pas de la polarité, le
+   contrat des jetons de couleur ne s'en gonfle pas. Restent DEUX
+   formes rondes qui disent quelque chose — le disque (l'état,
+   l'identité, la poignée d'interrupteur : 50 %) et la pilule de la
+   piste d'interrupteur (999px). L'exception déclarée et permanente :
+   l'icône d'application garde son rayon de plateforme (15/64).
+   Rembobiner V14 tient en une ligne : remettre 10px / 6px / 2px. */
+html {
+  --r-surface:0;
+  --r-controle:0;
+  --r-tuile:0;
+}
+
 :root {
   /* Elements — défaut (V7) */
   --bg:#F3F2EE; --surface:#FFFFFF;
@@ -62,6 +77,23 @@
 /* A12 — « Transférer » porte la flèche de « Répondre » en symétrie
    verticale (verdict terrain) : le glyphe `reply`, retourné. */
 .ic.miroir { transform:scaleX(-1); }
+
+/* V2/V4 — la paire disque / anneau : le disque plein --marque de 9 px
+   dit l'état (non-lu d'une rangée, repos de la barre d'état) ; l'anneau
+   ÉVIDÉ du même diamètre (2 px de paroi, quart haut ouvert) dit qu'une
+   action tourne. Ce n'est pas une forme de plus : c'est le même objet.
+   A52 tient : le pourcentage vit dans le TEXTE, jamais ici. */
+.disque {
+  width:9px; height:9px; border-radius:50%;
+  background:var(--marque); flex:none;
+}
+.anneau {
+  width:9px; height:9px; border-radius:50%; flex:none;
+  border:2px solid var(--marque); border-top-color:transparent;
+  animation:tourne 1s linear infinite;
+}
+@keyframes tourne { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .anneau { animation:none; } }
 
 /* A74 (PLAN-RETOURS-8 R1) — le nuancier des repères de compte : des
    couleurs de CONTENU (comme le nuancier du composeur), pas des jetons
