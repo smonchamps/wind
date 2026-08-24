@@ -12,8 +12,10 @@
 
 ## Où on en est, et quoi faire en premier
 
-**Un chantier est au STOP 2 (terrain) : [PLAN-ELEMENTS](PLAN-ELEMENTS.md)**
-— le Système « Elements » est devenu LE Système de référence
+**Dernier chantier soldé : [PLAN-ELEMENTS](PLAN-ELEMENTS.md)**
+(2026-08-24, `fb32238` → `0de3689`, terrain CE **8/8 zéro KO** le jour
+même, CI verte run 32752449754) — le Système « Elements » est devenu
+LE Système de référence
 (`docs/design/systeme.dc.html`, ADR 0026, journal A79, l'ancien archivé
 en `docs/archives/systeme.v1.dc.html`) et l'UI le livre entière : cinq
 étapes commises gate-vertes le 2026-08-24 (E1 socle 2 thèmes et
@@ -21,11 +23,13 @@ en `docs/archives/systeme.v1.dc.html`) et l'UI le livre entière : cinq
 E3 zéro rayon / tuile d'initiales / disque de non-lu, E4 la marque
 Elements et la mort du trait hitofude, E5 le registre 340), quatre
 STOP visuels CE validés le jour même, revue à regard neuf passée
-(6 angles), 124/124 e2e. **Reste : le terrain CE, puis la release
-0.9.0 (MINEUR, décision D5)** — la preuve OAuth du second poste
-(différée de la 0.8.0) peut se faire sur la 0.9.0 et fermer
-l'arbitrage au même geste. Dette neuve : **D-35** (palier 16 des
-icônes — les maîtres réduits sont livrés, décision D4).
+(6 angles, 10 trouvailles — 7 corrigées), 124/124 e2e, la réserve
+Fluent de V14 levée à la fenêtre réelle. **Reste : la release 0.9.0
+(MINEUR, décision D5)** — la preuve OAuth du second poste (différée de
+la 0.8.0) peut se faire sur la 0.9.0 et fermer l'arbitrage au même
+geste. Dette neuve : **D-35** (palier 16 des icônes — les maîtres
+réduits sont livrés, décision D4). Banc du 2026-08-24 (256 k) : page
+p50 85,8 / p95 180,9 ms (P1 : p95 307,6), thème 0,3 ms, RAM 8,1 Mo.
 
 **La 0.8.0 est publiée** (tag `0.8.0` sur `a3d04fb`, 2026-08-24) —
 elle porte PLAN-RETOURS-9 (OAuth compilé, « Retirer le compte » dit,
@@ -43,7 +47,17 @@ le redit ; le WIP d'alors avait été retiré (décision CE du
 2026-08-20), sa matière reste au § revue de
 [PLAN-COMPOSITION-HTML](PLAN-COMPOSITION-HTML.md).
 
-**Dernière version livrée : 0.7.0** (publiée 2026-08-23, tag nu sur
+**Dernière version livrée : 0.8.0** (publiée 2026-08-24, tag nu sur
+`a3d04fb`, release **vérifiée** par `scripts/verifier-release.ps1
+0.8.0` le 2026-08-24 : **tout passe** — Latest au tag nu, 5 assets
+nommés, manifeste aux deux clés de plateforme, signatures == `.sig`
+et distinctes, exe x64 200 / 6 397 182 octets). La 0.8.0 porte
+PLAN-RETOURS-9 (identifiants OAuth compilés — ADR 0025, « Retirer le
+compte » dit, noms de comptes). **Preuves terrain encore dues** :
+auto-update par canal, et la preuve OAuth du second poste SANS `setx`
+(elle peut se faire sur la 0.9.0 — c'est elle qui ferme l'ADR 0025).
+
+**La version précédente, 0.7.0** (publiée 2026-08-23, tag nu sur
 `68384d2`, release **vérifiée** par `scripts/verifier-release.ps1
 0.7.0` le jour même, **18/18 PASS** : Latest au tag nu, 5 assets
 nommés, manifeste sans BOM 1 278 o aux deux clés de plateforme,
@@ -84,7 +98,7 @@ exe résout 200 / 5 066 813 octets ; **auto-update 0.4.0 → 0.5.0
 confirmé au terrain**). La 0.5.0 porte les quatre retours de
 PLAN-RETOURS-7 (MINEUR, D6).
 
-**Dernier chantier soldé : [PLAN-RETOURS-9](PLAN-RETOURS-9.md)**
+**Le chantier soldé précédent : [PLAN-RETOURS-9](PLAN-RETOURS-9.md)**
 (2026-08-23, `19e39cf`, A77-A78 + **ADR 0025**, terrain CE **6/6** le
 jour même — zéro KO —, CI verte run 32647649916, **à livrer en 0.8.0**
 MINEUR, décision D5). Trois sujets : (1) **identifiants OAuth compilés

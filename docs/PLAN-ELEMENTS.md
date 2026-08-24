@@ -1,5 +1,17 @@
 # PLAN-ELEMENTS — le Système v2 « Elements » devient la référence, et l'UI le livre
 
+> **CHANTIER SOLDÉ le 2026-08-24 — terrain complet (8/8, zéro
+> constat).** GO CE du plan et des cinq décisions D1-D5 le 2026-08-24 ;
+> quatre STOP visuels validés le jour même (E1 socle, E2 icônes, E3
+> formes, E4 marque) ; verdict terrain « Terrain OK — 8/8 » le
+> 2026-08-24 (la réserve Fluent de V14 levée à la fenêtre réelle).
+> Commits : `fb32238` (E1), `fa45db7` (E2), `3aa8a2d` (E3), `84d46ea`
+> (E4), `fed73e5` (E5), `c224595` (E6), `0de3689` (terrain) — CI verte
+> run 32752449754. À livrer en **0.9.0** (MINEUR, D5) ; l'entrée
+> CHANGELOG est écrite. Chiffres kaizen : session 1,9 h, 22,8 M équiv.
+> input fil principal + 6,8 M agents (7), 7 gates complètes jouées
+> (+1 pre-push), 0 constat KO au STOP 2.
+
 > Énoncé (2026-08-24) : `docs/design/systeme.v2.dc.html` doit devenir le
 > nouveau système design de référence de Wind et être implémenté.
 
