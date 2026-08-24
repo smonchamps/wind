@@ -537,3 +537,18 @@ motivée.)
 - **Condition de reprise** : la TROISIÈME pref par compte (fusionner
   en `identites_get` + loader générique), ou l'ajout d'un fournisseur
   OAuth (vérifier la table du script AVANT sa première release).
+
+### D-35 · Le palier 16 des icônes n'est pas dessiné (dette V9)
+
+- **Fait (PLAN-ELEMENTS, 2026-08-24)** : les 78 glyphes livrés sont
+  les maîtres 24 réduits — 37 % seulement des coordonnées survivent au
+  passage 24 → 16 (multiples de 3), le trait vaut 1,33 px à 16 px et
+  0,83 px à 10 px (repères de compte, sous le palier 16 lui-même).
+  Chiffrage du Système (V9) : 74 paliers 16 + 12 paliers 10-12 à
+  dessiner, calés rectangle par rectangle — 86 dessins.
+- **Décision CE (D4, 2026-08-24)** : livrer les maîtres réduits ; la
+  netteté jugée suffisante au STOP visuel E2 sur le rendu réel
+  (anticrénelage, écran de travail).
+- **Rouvre si** : le terrain ou la bêta voit le flou à 16 px ou sur
+  les repères 10-12 px — alors chantier de dessin dédié, glyphe par
+  glyphe (`format_list_numbered` plaide le premier).

@@ -12,6 +12,28 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.9.0] - à venir
+
+Wind change de peau : la direction « Elements ».
+
+### Modifié
+
+- **Un nouveau visage, dessiné d'une seule main** : coins vifs
+  partout, un jeu d'icônes original dessiné pour Wind (plus aucune
+  police d'icônes embarquée), une nouvelle marque, et le disque teal
+  qui dit d'un seul geste ce qui est non lu et ce qui travaille.
+- **Deux thèmes au lieu de vingt-huit** : « Elements » (clair) et
+  « Elements · nuit », composés et mesurés ensemble. Votre ancien
+  choix migre tout seul — un thème sombre reste sombre. Le suivi
+  clair/sombre de Windows fonctionne comme avant.
+- **La liste dit le non-lu au disque** : un point teal devant
+  l'expéditeur, en plus du gras — et le compteur de la navigation
+  devient un nombre discret.
+
+### Retiré
+
+- Les vingt-six thèmes Wada et le trait calligraphique de la marque.
+
 ## [0.8.0] - à venir
 
 Nommez vos comptes, et connectez-vous sans aucune configuration.

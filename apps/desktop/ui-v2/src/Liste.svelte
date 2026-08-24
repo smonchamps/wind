@@ -774,7 +774,7 @@
         <span class="col-avatar">
           <span class="avatar" data-testid="avatar" aria-hidden="true">{initiales(correspondant(ligne))}</span>
           {#if repere}
-            <span class="repere repere-liste" data-testid="ligne-repere"
+            <span class="repere p16" data-testid="ligne-repere"
                   data-teinte={repere.teinte} role="img"
                   aria-label={noms[ligne.account_id] ?? ligne.account_email}
                   title={noms[ligne.account_id] ?? ligne.account_email}><Icone nom={repere.icone} /></span>
@@ -1032,8 +1032,6 @@
     grid-row:1 / span 3; display:flex; flex-direction:column;
     align-items:center; gap:4px;
   }
-  .repere-liste { width:16px; height:16px; }
-  .repere-liste :global(.ic) { width:10px; height:10px; }
   .l1, .objet, .apercu, .puces { grid-column:2; min-width:0; }
   /* Le rang de puces (PLAN-RETOURS-V3 R1) : le gabarit 24 px du
      prototype Classique — présent sur les seules lignes porteuses. */

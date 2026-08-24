@@ -261,9 +261,26 @@ for (const [, nom, brut] of iconesJs.matchAll(/^ {2}([a-z_0-9]+): *\{ *d:\[([^\]
     }
   }
 }
-for (const fichier of fichiersUi(srcUi).filter((f) => f.endsWith('.svelte'))) {
+// Deux formes d'emploi : le littéral (<Icone nom="x">) ET les tables
+// de configuration (`icone: 'x'` — dossiers de nav, groupes de
+// Réglages, avis) qui coulent dans un nom={dynamique}. Sans la
+// seconde, un `icone: 'delet'` resterait vert et rendrait un SVG vide
+// en silence (revue PLAN-ELEMENTS, angle A).
+const srcJsUi = (dossier) =>
+  readdirSync(dossier, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory()
+      ? srcJsUi(path.join(dossier, e.name))
+      : /\.(js|svelte)$/.test(e.name) && !/catalogue\.[a-z]+\.js$/.test(e.name)
+        ? [path.join(dossier, e.name)]
+        : [],
+  );
+for (const fichier of srcJsUi(srcUi)) {
+  if (fichier.endsWith(`lib${path.sep}icones.js`)) continue;
   const source = readFileSync(fichier, 'utf8');
-  for (const [, nom] of source.matchAll(/<Icone[^>]*\bnom="([a-z_0-9]+)"/g)) {
+  for (const [, nom] of [
+    ...source.matchAll(/<Icone[^>]*\bnom="([a-z_0-9]+)"/g),
+    ...source.matchAll(/\bicone:\s*'([a-z_0-9]+)'/g),
+  ]) {
     if (!nomsCatalogue.includes(nom)) {
       echec(`${path.relative(root, fichier)} : icône « ${nom} » posée mais absente du catalogue`);
     } else if (reservesCatalogue.has(nom)) {
@@ -271,6 +288,14 @@ for (const fichier of fichiersUi(srcUi).filter((f) => f.endsWith('.svelte'))) {
     }
   }
 }
+// Les drapeaux `repere:true` du catalogue sont la CINQUIÈME liste du
+// jeu dédié (revue PLAN-ELEMENTS) : sans cette comparaison, un glyphe
+// qui entre ou sort du jeu au catalogue sans les quatre autres
+// porteurs (commands.rs, lib/reperes.js, systeme.css, catalogues)
+// dériverait en silence.
+const reperesCatalogue = [...iconesJs.matchAll(/^ {2}([a-z_0-9]+): *\{[^\n]*\brepere:true/gm)]
+  .map(([, n]) => n);
+compareListes('icône', iconesRust, 'commands.rs', reperesCatalogue, 'lib/icones.js (repere:true)');
 
 // --- 8. Zéro rayon : plus un littéral de border-radius (V14) ---------
 // Les trois jetons de forme (--r-surface, --r-controle, --r-tuile)

@@ -80,7 +80,7 @@
              onclick={() => onchoisir({ compte: b.id })}
              onkeydown={activation(() => onchoisir({ compte: b.id }))}>
           {#if b.repere}
-            <span class="repere repere-nav" data-testid="nav-repere"
+            <span class="repere p20" data-testid="nav-repere"
                   data-teinte={b.repere.teinte} aria-hidden="true"><Icone nom={b.repere.icone} /></span>
           {:else}
             <span class="icone-tuile" aria-hidden="true"><Icone nom={b.icone} /></span>
@@ -93,7 +93,7 @@
              onclick={() => onchoisir({ compte: b.id })}
              onkeydown={activation(() => onchoisir({ compte: b.id }))}>
           {#if b.repere}
-            <span class="repere repere-nav" data-testid="nav-repere"
+            <span class="repere p20" data-testid="nav-repere"
                   data-teinte={b.repere.teinte} aria-hidden="true"><Icone nom={b.repere.icone} /></span>
           {:else}
             <span class="icone" aria-hidden="true"><Icone nom={b.icone} /></span>
@@ -146,10 +146,6 @@
     border:1px solid var(--border);
   }
   .icone-tuile { color:var(--tuileInk); }
-  /* A74 — la pastille du repère : 20 px, glyphe 12 px. La couleur et
-     l'encre viennent de systeme.css (.repere, nuancier mesuré). */
-  .repere-nav { width:20px; height:20px; }
-  .repere-nav :global(.ic) { width:12px; height:12px; }
   .titre-tuile {
     font-size:13px; font-weight:600; min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;

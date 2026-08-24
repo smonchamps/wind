@@ -78,6 +78,22 @@ html {
 @keyframes tourne { to { transform:rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .anneau { animation:none; } }
 
+/* V11 — la bande de marque (tuile figée + « Wind ») : une seule
+   règle pour ses emplacements (migration, « À propos ») — deux copies
+   divergeraient en silence (revue PLAN-ELEMENTS). */
+.marque-bande {
+  display:flex; align-items:center; gap:12px;
+  font-size:15px; color:var(--ink);
+}
+
+/* A74 — les deux tailles d'emploi de la pastille de repère : 20 px
+   (nav, Réglages — glyphe 12) et 16 px (badge de liste — glyphe 10).
+   UNE règle par taille, plus de copies par composant (revue). */
+.repere.p20 { width:20px; height:20px; }
+.repere.p20 .ic { width:12px; height:12px; }
+.repere.p16 { width:16px; height:16px; }
+.repere.p16 .ic { width:10px; height:10px; }
+
 /* A74 (PLAN-RETOURS-8 R1) — le nuancier des repères de compte : des
    couleurs de CONTENU (comme le nuancier du composeur), pas des jetons
    de thème. Fait mesuré (banc sur les jetons réels) : aucune teinte

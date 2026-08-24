@@ -1586,7 +1586,7 @@
   .bouton-format.actif {
     background:var(--sel); color:var(--accent); border-color:var(--accent);
   }
-  .bouton-format :global(.ic) { width:18px; height:18px; }
+  .bouton-format :global(.ic), .supprimer :global(.ic) { width:18px; height:18px; }
   .select-format {
     height:32px; padding:0 8px; font:inherit; font-size:13px;
     color:var(--ink2); background:var(--surface); cursor:pointer;
@@ -1666,7 +1666,6 @@
      jamais la couleur d'accent (qui appelle au clic). */
   .supprimer { color:var(--alert); border-color:var(--border); }
   .supprimer:hover { background:var(--alert); color:var(--onAccent); border-color:var(--alert); }
-  .supprimer :global(.ic) { width:18px; height:18px; }
   .confirmation .avert-suppr { font-size:13px; color:var(--alert); font-weight:600; }
   .danger {
     font-weight:600; color:var(--onAccent); background:var(--alert);

@@ -232,3 +232,40 @@ plan, `/solde` à la CI verte). Release selon D5.
   l'arbitrage au même geste.*
 
 Les cinq décisions sont tranchées le 2026-08-24 — **GO de la Phase 2.**
+
+
+## 6. Livraison (2026-08-24)
+
+| Étape | Commit | Gate | STOP visuel CE |
+|---|---|---|---|
+| E1 — socle (doc + 2 thèmes + `--panel`) | `fb32238` | VERTE 1,9 min, 124/124 | GO |
+| E2 — icônes SVG, la fonte meurt | `fa45db7` | VERTE 1,7 min, 124/124 | GO (netteté D4a ; D3 : « suffit, tel quel ») |
+| E3 — zéro rayon, tuile, disque | `3aa8a2d` | VERTE 1,6 min, 124/124 | GO |
+| E4 — marque, hitofude meurt | `84d46ea` | VERTE, 124/124 | GO |
+| E5 — registre 340 | `fed73e5` | VERTE 1,6 min, 124/124 | (montré au terrain) |
+| E6 — revue, docs, gates durcies | (commit E6) | VERTE | — |
+
+**Revue à regard neuf (6 angles, 2026-08-24)** : 10 trouvailles
+rapportées — 7 corrigées (gate étendue aux noms d'icônes DYNAMIQUES
+`icone: '…'` ; la cinquième liste des repères couplée au catalogue ;
+bande de marque et tailles de repère unifiées en classes partagées ;
+scrim sans jeton de rayon ; jeton glissé de la mini-vignette ;
+commentaires anglais traduits ; accent d'un message de commit corrigé
+par réécriture de la pile avant push), 3 sans changement motivé (les
+états FILL/graisse des icônes : le jeu Elements est AU TRAIT, l'état
+vit dans le fond/liseré/graisse du libellé — prescrit par le Système ;
+l'anneau statique sous reduced-motion distingue mieux le cycle que
+l'ancien repli qui montrait la forme du repos ; DC-D2 aux commits
+E2-E5 : le Système complet MENAIT depuis E1, l'écart doc→code n'a fait
+que se réduire, gates vertes à chaque commit).
+
+**Banc (mesure-v2, 256 312 messages seedés, 2026-08-24)** : page p50
+85,8 ms / p95 180,9 ms (référence P1 du 2026-08-11 : p95 307,6 ms) ;
+thème p50 0,3 ms ; ouverture p50 242 ms / p95 314 ms (pas de
+référence comparable récente — P1 mesurait une coquille sans Fil
+complet ; au jugé du terrain) ; RAM 8,1 Mo.
+
+**Défauts du document trouvés et réparés à l'adoption** : 11 `<thead>`
+mutilés par la normalisation `scope="col"` du générateur (la leçon
+V12) ; bandeau d'exploration remplacé par le bandeau normatif, titre
+et journal promus, A79 consigné.

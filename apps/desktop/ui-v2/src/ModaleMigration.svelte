@@ -79,7 +79,7 @@
          aria-label={t('migration.aria')}>
       <!-- V11 : la marque EN TUILE (figée hors thèmes) — la modale
            précède tout thème appliqué, la tuile porte son propre sol. -->
-      <span class="bande"><Marque tuile taille={28} /><b>Wind</b></span>
+      <span class="marque-bande"><Marque tuile taille={28} /><b>Wind</b></span>
       <h3 class="titre">{t('migration.titre')}</h3>
       <p class="note">{note}</p>
       {#if !bilan}
@@ -108,10 +108,6 @@
     display:flex; align-items:center; justify-content:center;
   }
   .carte { width:520px; display:flex; flex-direction:column; gap:18px; }
-  .bande {
-    display:flex; align-items:center; gap:10px;
-    font-size:15px; color:var(--ink);
-  }
   .titre {
     margin:0; font-size:32px; line-height:1.15; font-weight:600;
     letter-spacing:-.02em; color:var(--ink);

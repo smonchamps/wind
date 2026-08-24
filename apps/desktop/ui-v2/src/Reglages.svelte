@@ -457,7 +457,7 @@
                           aria-label={t('reglages.repereCompte', { email: c.email })}
                           onclick={() => ouvrirRepere(c.account_id)}>
                     {#if reperes[c.account_id]}
-                      <span class="repere repere-rangee"
+                      <span class="repere p20"
                             data-teinte={reperes[c.account_id].teinte}
                             aria-hidden="true"><Icone nom={reperes[c.account_id].icone} /></span>
                     {:else}
@@ -782,7 +782,7 @@
             <div class="rangees" data-testid="reglages-apropos">
               <!-- V11 : la marque EN TUILE — « À propos » est un des
                    quatre emplacements du régime figé (W-D3). -->
-              <span class="bande-apropos"><Marque tuile taille={40} /><b>Wind</b></span>
+              <span class="marque-bande apropos-bande"><Marque tuile taille={40} /><b>Wind</b></span>
               <div class="ligne-apropos">
                 <span class="cle">{t('reglages.version')}</span>
                 <span class="valeur" data-testid="apropos-version">{version || '…'}</span>
@@ -1014,8 +1014,6 @@
     border-radius:var(--r-controle); cursor:pointer;
   }
   .btn-repere:hover { background:var(--sel); border-color:var(--border); }
-  .repere-rangee { width:20px; height:20px; }
-  .repere-rangee :global(.ic) { width:12px; height:12px; }
   .titre-repere { margin:0; font-size:13px; font-weight:600; color:var(--ink); }
   .choix-repere { display:flex; flex-wrap:wrap; gap:6px; }
   .choix {
@@ -1094,11 +1092,9 @@
   }
 
   /* À propos : clé / valeur, sans invention de forme. */
-  /* V11 : la bande d'« À propos » — la tuile figée et le nom. */
-  .bande-apropos {
-    display:flex; align-items:center; gap:12px;
-    font-size:15px; color:var(--ink); padding:2px 0 6px;
-  }
+  /* La bande partagée (.marque-bande, systeme.css) — ici avec son
+     dégagement propre. */
+  .apropos-bande { padding:2px 0 6px; }
   .ligne-apropos {
     display:flex; align-items:baseline; gap:14px; padding:10px 16px;
     font-size:13px;

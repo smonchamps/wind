@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Wind — Système de référence et écrans, v2 « Elements » (exploration)</title>
+<title>Wind — Système de référence et écrans, direction « Elements »</title>
 </head>
 <body>
 <x-dc>
@@ -111,11 +111,11 @@ section{display:flex;flex-direction:column;gap:22px;scroll-margin-top:124px}
 .rangeeH{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
 .etiq{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0}
 
-/* --- Le bandeau d'exploration : ce document n'est PAS le normatif. --- */
-.expl{border:1px solid var(--alert);border-radius:var(--r-surface);padding:16px 20px;display:flex;gap:14px;
+/* --- Le bandeau d'adoption : ce document EST le normatif (A18). --- */
+.expl{border:1px solid var(--border);border-radius:var(--r-surface);padding:16px 20px;display:flex;gap:14px;
   align-items:flex-start;max-width:1100px;background:var(--surface)}
 .expl .t{font-size:13px;line-height:1.6;color:var(--ink2);margin:0}
-.expl .t b{color:var(--alert)}
+.expl .t b{color:var(--accent)}
 
 /* --- Sommaire COLLANT : le document fait 60 000 px de haut. --- */
 .sommaire{position:sticky;top:0;z-index:40;display:flex;flex-wrap:wrap;gap:6px;
@@ -501,7 +501,7 @@ svg.g{flex:none}
 <div class="dc">
 
   <header id="haut">
-    <p class="sourcil">Wind · direction « Elements » · v2 — exploration</p>
+    <p class="sourcil">Wind · direction « Elements » — le Système de référence</p>
     <h1 class="display">Système de référence<br>et écrans, v2</h1>
     <p class="lede">Une seule règle de forme, appliquée partout. Grille de 24, trait de 2 unités,
     bouts nets, jonctions vives, coordonnées entières — <b>aucune correction optique</b> dans tout le
@@ -512,13 +512,17 @@ svg.g{flex:none}
   </header>
 
   <div class="expl">
-    <svg class="g" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4l9 16H3z"/><path d="M12 10v5"/></g></svg>
-    <p class="t"><b>EXPLORATION — ce document n'est pas normatif.</b> Le Système livré reste
-    <code>docs/design/systeme.dc.html</code> (direction « Clarity », v2 « Wada », 28 thèmes), seul
-    document lu par la gate <code>e2e/coherence-systeme.mjs</code> et seul à faire foi tant que le
-    Chef Ingénieur n'a pas tranché. Rien ici n'est livré. Le journal des amendements A1–A78 est repris
-    <b>intégralement et verbatim</b> du normatif — ce sont des faits datés, ils ne se réécrivent pas —
-    et les décisions propres à cette v2 sont consignées à sa suite, sous la référence <b>V-n</b>.
+    <svg class="g" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4a8 8 0 1 0 0 16 8 8 0 1 0 0-16"/><path d="M12 11v6"/><path d="M12 7v2"/></g></svg>
+    <p class="t"><b>NORMATIF — le Système de référence de Wind</b> (A18 : ce qu'il dessine est
+    livré, ce qui est livré s'y dessine — la gate le vérifie dans les deux sens, tracés compris).
+    Adopté le 2026-08-24 (PLAN-ELEMENTS, décision CE D1) : il remplace le Système « Clarity / Wada »
+    — archivé en <code>docs/archives/systeme.v1.dc.html</code> — au chemin que lisent
+    <code>e2e/coherence-systeme.mjs</code> et <code>e2e/contraste.mjs</code>. Ce document est LA
+    source, éditée à la main (DC-D2 : tout commit qui touche l'UI l'amende dans le même commit) ;
+    le générateur d'étude reste figé en trace (<code>spikes/direction-elements/v2/</code>). Le
+    journal des amendements A1–A78 est repris <b>intégralement et verbatim</b> — ce sont des faits
+    datés, ils ne se réécrivent pas — les décisions d'adoption sont consignées sous la référence
+    <b>V-n</b> (série close à V14), et les amendements reprennent la série <b>A-n</b> (A79–).
     <b>Un arbitrage de forme</b> : ce document porte ses couleurs en <b>jetons CSS</b> et non en
     styles en ligne, ce qui lui permet de basculer de thème en O(1) et lui interdit d'écrire un hex
     ailleurs que dans la table du contrat. Le prix est réel : l'éditeur de canevas manipule mal ce
@@ -675,7 +679,7 @@ svg.g{flex:none}
     vingt-quatre teintes du nuancier des repères (A74), et les deux valeurs que
     <code>mail-render</code> bake dans le corps d'un courriel (A61).</p>
     <table class="tbl">
-      <th scope="col"ead><tr>
+      <thead><tr>
         <th scope="col" style="width:34px"></th><th scope="col" style="width:150px">Rôle</th><th scope="col" style="width:130px">Jeton</th>
         <th scope="col" style="width:150px">Clair</th><th scope="col" style="width:150px">Nuit</th><th scope="col">Emploi</th>
       </tr></thead>
@@ -892,7 +896,7 @@ svg.g{flex:none}
 
     <p class="etiq">Le contrat des jetons — ce que le code doit livrer, valeur pour valeur</p>
     <table class="tbl">
-      <th scope="col"ead><tr><th scope="col" style="width:130px">Jeton</th>
+      <thead><tr><th scope="col" style="width:130px">Jeton</th>
         <th scope="col">Elements — clair</th><th scope="col">Elements — nuit</th>
       </tr></thead>
       <tbody>
@@ -956,7 +960,7 @@ svg.g{flex:none}
     gate passerait sans être touchée — la première rédaction de ce document l'affirmait, et c'était
     faux. Le relevé exact :</p>
     <table class="tbl">
-      <th scope="col"ead><tr><th scope="col" style="width:300px">Ce qu'il faut toucher</th><th scope="col">Pourquoi</th></tr></thead>
+      <thead><tr><th scope="col" style="width:300px">Ce qu'il faut toucher</th><th scope="col">Pourquoi</th></tr></thead>
       <tbody>
         <tr><th scope="row"><code>e2e/jetons.mjs</code></th><td><code>NOMBRE_ATTENDU</code> passe de
           <b>28 à 2</b>, et le repli du thème par défaut passe de <code>nature</code> à
@@ -1005,7 +1009,7 @@ svg.g{flex:none}
       <span class="note" style="margin:0">Calculé à la génération de ce document, jamais recopié.</span>
     </div>
     <table class="tbl">
-      <th scope="col"ead><tr><th scope="col" style="width:170px">Paire</th><th scope="col" style="width:80px">Seuil</th>
+      <thead><tr><th scope="col" style="width:170px">Paire</th><th scope="col" style="width:80px">Seuil</th>
         <th scope="col" style="width:110px">Clair</th><th scope="col" style="width:110px">Nuit</th><th scope="col">Où</th></tr></thead>
       <tbody>
         <tr class="ok">
@@ -1257,7 +1261,7 @@ svg.g{flex:none}
     (<code>bg</code>, <code>sel</code>, <code>hover</code>, <code>tuile</code>), la carte et le rail
     des Réglages (<code>surface</code>).</p>
     <table class="tbl">
-      <th scope="col"ead><tr><th scope="col" style="width:110px">Teinte</th>
+      <thead><tr><th scope="col" style="width:110px">Teinte</th>
         <th scope="col" style="width:64px">Clair</th><th scope="col" style="width:110px"></th><th scope="col" style="width:120px">Pire fond</th>
         <th scope="col" style="width:64px">Nuit</th><th scope="col" style="width:110px"></th><th scope="col" style="width:120px">Pire fond</th>
         <th scope="col">Glyphe sur la pastille</th></tr></thead>
@@ -1393,7 +1397,7 @@ svg.g{flex:none}
     <b>340</b>, interlettrage <b>-.03em</b>, réservé aux <b>deux plus grands corps</b> — le titre de
     conversation et le hero d'accueil. Partout ailleurs, rien ne change : 400, 500 ou 600.</p>
     <table class="tbl">
-      <th scope="col"ead><tr><th scope="col" style="width:90px">Taille</th><th scope="col" style="width:330px">Rôle</th>
+      <thead><tr><th scope="col" style="width:90px">Taille</th><th scope="col" style="width:330px">Rôle</th>
         <th scope="col" style="width:230px">Graisse / interlignage</th><th scope="col">Échantillon</th></tr></thead>
       <tbody>
         <tr><th scope="row">11 px</th><td>Sourcil de section, titre de fiche, sections de nav</td>
@@ -1918,7 +1922,7 @@ svg.g{flex:none}
     24 → 16 (il faut être multiple de 3 pour tomber juste). <b>Ce palier n'est pas dessiné</b> ; les
     glyphes ci-dessous sont les maîtres réduits, et ils montrent honnêtement ce que cela donne.</p>
     <table class="echelle">
-      <th scope="col"ead><tr><th scope="col">Glyphe</th><th scope="col">10 px</th><th scope="col">12 px</th><th scope="col">14 px</th><th scope="col">16 px</th><th scope="col">18 px</th><th scope="col">24 px</th><th scope="col">48 px</th><th scope="col">Trait rendu</th></tr></thead>
+      <thead><tr><th scope="col">Glyphe</th><th scope="col">10 px</th><th scope="col">12 px</th><th scope="col">14 px</th><th scope="col">16 px</th><th scope="col">18 px</th><th scope="col">24 px</th><th scope="col">48 px</th><th scope="col">Trait rendu</th></tr></thead>
       <tbody>
         <tr><th scope="row">inbox</th>
           <td><span><svg class="g" viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg></span></td><td><span><svg class="g" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg></span></td><td><span><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg></span></td><td><span><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg></span></td><td><span><svg class="g" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg></span></td><td><span><svg class="g" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg></span></td><td><span><svg class="g" viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg></span></td>
@@ -2000,7 +2004,7 @@ svg.g{flex:none}
     gestes proches (dossier et action), les deux sont notés. Ce relevé <b>est</b> l'inventaire : il
     n'y a plus de contrat séparé à tenir à jour, puisqu'il n'y a plus de fonte à sous-ensembler.</p>
     <table class="tbl">
-      <th scope="col"ead><tr><th scope="col" style="width:52px">Icône</th><th scope="col" style="width:200px">Symbole</th>
+      <thead><tr><th scope="col" style="width:52px">Icône</th><th scope="col" style="width:200px">Symbole</th>
         <th scope="col" style="width:280px">Libellé</th><th scope="col">Emploi</th></tr></thead>
       <tbody>
         <tr>
@@ -3683,7 +3687,7 @@ svg.g{flex:none}
       <div class="fiche">
         <h3 class="sourcil">Raccourcis — table en référence, lecture seule</h3>
         <table class="tbl" style="border-radius:var(--r-controle)">
-          <th scope="col"ead><tr><th scope="col" style="width:88px">Touche</th><th scope="col">Geste</th></tr></thead>
+          <thead><tr><th scope="col" style="width:88px">Touche</th><th scope="col">Geste</th></tr></thead>
           <tbody><tr><td class="nw"><span class="touche">c</span></td><td>Écrire un nouveau message</td></tr><tr><td class="nw"><span class="touche">r</span></td><td>Répondre à la conversation sélectionnée</td></tr><tr><td class="nw"><span class="touche">f</span></td><td>Transférer la conversation sélectionnée</td></tr><tr><td class="nw"><span class="touche">e</span></td><td>Archiver la conversation sélectionnée</td></tr><tr><td class="nw"><span class="touche">Suppr</span></td><td>Supprimer la conversation sélectionnée</td></tr><tr><td class="nw"><span class="touche">/</span></td><td>Aller à la recherche</td></tr><tr><td class="nw"><span class="touche">Échap</span></td><td>Fermer la surimpression, sortir du champ, revenir à la boîte</td></tr>
           </tbody>
         </table>
@@ -3957,15 +3961,16 @@ svg.g{flex:none}
     <a class="haut" href="#haut">↑ Haut du document</a>
     <h2>Journal des amendements</h2>
     <p class="sub">Ce journal est une <b>archive de faits datés</b> : il ne se réécrit pas. Les
-    soixante-dix-huit amendements A1–A78 sont repris <b>verbatim</b> du document livré
-    (<code>docs/design/systeme.dc.html</code>) — les relire est le seul moyen de savoir ce que cette
-    v2 renverse et ce qu'elle conserve. Les décisions propres à l'exploration sont consignées en tête,
-    sous la référence <b>V-n</b>, et ne prétendent à aucune autorité tant que le Chef Ingénieur n'a pas
-    tranché.</p>
+    soixante-dix-huit amendements A1–A78 sont repris <b>verbatim</b> du Système précédent
+    (<code>docs/archives/systeme.v1.dc.html</code>) — les relire est le seul moyen de savoir ce que
+    la direction Elements renverse et ce qu'elle conserve. Les décisions de l'adoption sont
+    consignées en tête, sous la référence <b>V-n</b> — série <b>close</b> à V14 (PLAN-ELEMENTS,
+    décision CE D1 du 2026-08-24) : depuis l'adoption, les amendements reprennent la série
+    <b>A-n</b>, à la suite d'A78.</p>
 
     <p class="etiq">Les décisions de la v2 — 14 entrées</p>
     <table class="tbl">
-      <th scope="col"ead><tr><th scope="col" style="width:110px">Date</th><th scope="col" style="width:96px">Réf.</th><th scope="col">Décision</th></tr></thead>
+      <thead><tr><th scope="col" style="width:110px">Date</th><th scope="col" style="width:96px">Réf.</th><th scope="col">Décision</th></tr></thead>
       <tbody>
         <tr>
           <td class="nw">2026-08-24</td><th scope="row">V1</th><td><b>La marque devient l'icône Elements, et le teal entre à la table des jetons.</b>
@@ -4158,7 +4163,7 @@ svg.g{flex:none}
 
     <p class="etiq">Le journal repris — A1 à A78, verbatim</p>
     <table class="tbl">
-      <th scope="col"ead><tr><th scope="col" style="width:110px">Date</th><th scope="col" style="width:120px">Réf.</th><th scope="col">Amendement</th></tr></thead>
+      <thead><tr><th scope="col" style="width:110px">Date</th><th scope="col" style="width:120px">Réf.</th><th scope="col">Amendement</th></tr></thead>
       <tbody>
         <tr>
           <td class="nw">2026-08-11</td>
@@ -4394,6 +4399,9 @@ svg.g{flex:none}
         <tr>
           <td class="nw">2026-08-23</td>
           <th scope="row">A78</th><td><b>Le nom personnalisé d'un compte</b> (PLAN-RETOURS-9, sujet 3 ; décisions CE D3-D4 du 2026-08-23). Un compte peut porter un nom choisi (« Boulot », « Perso » — 60 caractères au plus, espaces rognés, le shell normalise et fait foi). <b>Le libellé de la rangée Réglages &gt; Comptes est la porte</b> : cliquer l'identité ouvre la carte de saisie sous la rangée (le patron du repère/retrait — champ prérempli, Entrée ou « Enregistrer » applique, vider le champ retire le nom). <b>Pas de glyphe neuf</b> : le jeu n'a pas de crayon et A3 interdit d'en réemployer un (<code>edit_note</code> dit « brouillons », <code>edit_square</code> dit « écrire ») — la porte est textuelle, comme « Reconnecter ». Surfaces (D4) : le nom <b>REMPLACE l'adresse</b> sur la tuile de nav et dans l'infobulle/aria du badge de repère en liste ; en <b>Réglages</b> il s'affiche <b>AVEC l'adresse</b> (nom en graisse, adresse dessous — elle reste la vérité de connexion ; la section Signature aussi, où éditer le mauvais compte coûte) ; l'<b>onboarding</b> de D4 est sans objet par construction (aucun nom ne peut exister au premier démarrage — consigné, pas escamoté) ; au <b>composeur</b> le sélecteur d'expéditeur dit « <b>Nom — adresse</b> » (la valeur reste l'adresse : la donnée fonctionnelle d'envoi ne change pas). <b>Le nom ne touche JAMAIS le <code>From:</code> des messages sortants</b> — libellé local, pas un display name SMTP (refus de périmètre explicite). Préférence locale <code>nom_compte.{id}</code> (patron repère/signature), purgée avec le compte au retrait — un id SQLite réutilisé n'hérite jamais de l'identité de l'ancien.</td></tr>
+        <tr>
+          <td class="nw">2026-08-24</td>
+          <th scope="row">A79</th><td><b>L'adoption : ce document devient le Système de référence, et l'UI le livre</b> (PLAN-ELEMENTS ; décisions CE D1-D5 du 2026-08-24, V1-V14 closes). <b>D1</b> : le HTML est LA source, éditée à la main — le générateur d'étude reste figé en trace (<code>spikes/direction-elements/v2/</code>), l'ancien Système part en <code>docs/archives/systeme.v1.dc.html</code>, la série V se ferme, les amendements reprennent ici en A-n. <b>Livré en cinq étapes, chacune gate-verte et validée au STOP visuel CE le jour même</b> : E1 le socle (17 jetons × 2 thèmes, <code>--panel</code> retiré — 16 emplois sur <code>--bg</code> —, migration des choix mémorisés : tout ancien -nuit vers <code>elements-nuit</code>, le reste au défaut) ; E2 les 78 glyphes en SVG en ligne (<code>lib/icones.js</code> + <code>Icone.svelte</code>, 95 emplois convertis, la fonte Material et son contrat README morts, mention « À propos » arrêtée — D2 : « Jeu original de Wind, dessiné d'après Material Symbols (Google, Apache 2.0) ») ; E3 les formes (zéro rayon par les trois jetons sur <code>html</code>, tuile d'initiales carrée, disque de non-lu 9 px, compteur de nav en nombre nu, marque <code>keep</code> des épinglées) ; E4 la marque (<code>Marque.svelte</code>, deux régimes V11 ; <code>Hitofude.svelte</code> supprimé, disque/anneau à la barre d'état) ; E5 le registre d'affichage (graisse 340 via Segoe UI Variable Display, repli 400). <b>Les gates encodent le Système</b> : contraste 220 paires (filets 1,49/1,26 et <code>--marque</code> compris), cohérence — noms ET tracés des glyphes dans les deux sens, zéro littéral de rayon (l'exception <code>--r-plateforme</code> déclarée), réservés jamais posés. <b>D3 (verdict au STOP E2)</b> : les trois familles de fusion restent différenciées par leurs marques actuelles (poignée corps/couvercle ; bandeau supérieur ; marque intérieure du cercle) — aucun redessin. <b>D4</b> : les maîtres réduits sont livrés, le palier 16 reste la dette V9. <b>Défaut trouvé à l'adoption, réparé</b> : la normalisation <code>scope="col"</code> du générateur avait mutilé onze <code>&lt;thead&gt;</code> (« <code>&lt;th scope="col"ead&gt;</code> ») — le navigateur se rattrapait, un lecteur automatique trébuchait ; les onze sont réparés, la leçon V12 valait aussi pour ce document. e2e : 124/124 ; gate complète ~1 min 40 s.</td></tr>
       </tbody>
     </table>
     <p class="note">Les

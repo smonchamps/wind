@@ -12,9 +12,27 @@
 
 ## Où on en est, et quoi faire en premier
 
-**Rien n'est cassé, rien n'est à moitié écrit, rien n'est en vol.**
+**Un chantier est au STOP 2 (terrain) : [PLAN-ELEMENTS](PLAN-ELEMENTS.md)**
+— le Système « Elements » est devenu LE Système de référence
+(`docs/design/systeme.dc.html`, ADR 0026, journal A79, l'ancien archivé
+en `docs/archives/systeme.v1.dc.html`) et l'UI le livre entière : cinq
+étapes commises gate-vertes le 2026-08-24 (E1 socle 2 thèmes et
+`--panel` mort, E2 les 78 glyphes en SVG et la fonte Material morte,
+E3 zéro rayon / tuile d'initiales / disque de non-lu, E4 la marque
+Elements et la mort du trait hitofude, E5 le registre 340), quatre
+STOP visuels CE validés le jour même, revue à regard neuf passée
+(6 angles), 124/124 e2e. **Reste : le terrain CE, puis la release
+0.9.0 (MINEUR, décision D5)** — la preuve OAuth du second poste
+(différée de la 0.8.0) peut se faire sur la 0.9.0 et fermer
+l'arbitrage au même geste. Dette neuve : **D-35** (palier 16 des
+icônes — les maîtres réduits sont livrés, décision D4).
 
-**Prochain chantier : la bêta fermée 20-50 utilisateurs** ([PLAN.md](PLAN.md)
+**La 0.8.0 est publiée** (tag `0.8.0` sur `a3d04fb`, 2026-08-24) —
+elle porte PLAN-RETOURS-9 (OAuth compilé, « Retirer le compte » dit,
+noms de comptes). Sa preuve terrain différée (connecter un compte sur
+le second poste SANS `setx`) reste due — sur la 0.8.0 ou la 0.9.0.
+
+**Ensuite : la bêta fermée 20-50 utilisateurs** ([PLAN.md](PLAN.md)
 §4, dernière étape avant le gate 5) — rien n'est engagé.
 
 **perf-lecture est éteint** (décision CE D1 du 2026-08-21) : le

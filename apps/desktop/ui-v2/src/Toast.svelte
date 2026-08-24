@@ -1,5 +1,6 @@
 <script>
-  // Toast du prototype : bas centré, signature, coche pleine.
+  // Toast : bas centré, coche à l'accent (au trait — V8, le jeu
+  // Elements n'a pas d'état plein ; l'état se lit au fond et au texte).
   import Icone from './Icone.svelte';
   let { message = null } = $props();
 </script>

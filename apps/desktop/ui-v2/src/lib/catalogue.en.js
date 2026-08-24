@@ -401,9 +401,9 @@ export const EN = {
   'raccourci.geste.slash': 'Go to search',
   'raccourci.geste.echap': 'Close the overlay, leave the field, return to the inbox',
 
-  // --- Themes (picker cards: Settings, welcome) -------------------------
-  // V7 (PLAN-ELEMENTS): two themes, and two only — the 28-card Wada
-  // table is retired.
+  // --- Thèmes (fiches du sélecteur : Réglages, accueil) -----------------
+  // V7 (PLAN-ELEMENTS) : deux thèmes, et deux seulement — la table
+  // Wada de 28 fiches est retirée.
   'theme.elements.nom': 'Elements',
   'theme.elements.desc': 'Light paper, the brand teal — the Elements direction.',
   'theme.elements-nuit.nom': 'Elements · night',

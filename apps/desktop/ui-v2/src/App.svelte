@@ -1595,7 +1595,7 @@
      surimpressions (le scrim est un BOUTON — clic et clavier ferment). */
   .scrim-tiroir {
     position:absolute; inset:0; height:auto; padding:0; z-index:2;
-    background:var(--scrim); border:none; border-radius:var(--r-controle); cursor:default;
+    background:var(--scrim); border:none; cursor:default;
   }
   .tiroir {
     position:absolute; top:0; bottom:0; left:0; width:268px; z-index:2;

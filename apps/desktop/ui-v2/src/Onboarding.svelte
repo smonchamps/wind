@@ -381,7 +381,7 @@
   .mini-theme .fenetre { height:64px; border-radius:var(--r-controle); }
   .mini-theme .f-tete { height:8px; }
   .mini-theme .f-liste { padding:3px; gap:2px; }
-  .mini-theme .f-liste span { height:5px; border-radius:var(--r-tuile); }
+  .mini-theme .f-liste span { height:5px; border-radius:var(--r-controle); }
   /* Le voile « Revenir à cette étape » : les règles du voile des
      pièces jointes (A70) — recouvrement absolu, fond --sel opaque,
      montré au survol ET au focus clavier (A8), géométrie stable. */
