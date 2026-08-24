@@ -118,6 +118,19 @@ html {
 [data-theme$="-nuit"] .repere[data-teinte="rose"]    { background:#f79ab4; }
 [data-theme$="-nuit"] .repere[data-teinte="brun"]    { background:#dcab7c; }
 
+/* V6 — le REGISTRE D'AFFICHAGE : titre de conversation (24 px) et
+   hero d'accueil (40 px) en graisse 340, interlettrage -.03em — la
+   grammaire du document d'icônes. L'autorité reste graduée par la
+   TAILLE ; rien au-dessous de 24 px ne change. Segoe UI Variable
+   Display porte l'axe de graisse sur Windows 11 ; repli EXPLICITE :
+   sans fonte variable, 340 retombe sur 400 — le titre reste un titre,
+   il n'est jamais gras, aucun dessin ne dépend de la graisse. */
+.display {
+  font-family:'Segoe UI Variable Display', -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-weight:340; letter-spacing:-.03em;
+}
+
 /* A8 — le focus est VISIBLE, partout, au clavier seulement : anneau
    accent 2 px décalé de 2 px. Jamais supprimé sans remplacement. */
 :focus-visible {

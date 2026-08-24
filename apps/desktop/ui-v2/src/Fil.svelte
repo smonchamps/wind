@@ -217,7 +217,7 @@
        centrée à plat (Conversation.svelte). -->
   <div class="objet-fil">
     <div class="tete">
-      <h3 class="titre" data-testid="fil-sujet">{fil.ligne.subject}</h3>
+      <h3 class="titre display" data-testid="fil-sujet">{fil.ligne.subject}</h3>
       <!-- Le rang de la maquette (terrain A45) : puces d'inventaire à
            gauche, boutons NUS à droite — « Tout déplier » au bord. -->
       <div class="puces" data-testid="fil-puces">
@@ -480,9 +480,11 @@
      cartes ; seule la largeur disponible change entre cadres. */
   .objet-fil { display:flex; flex-direction:column; flex:none; min-height:100%; }
   .tete { display:flex; flex-direction:column; flex:none; }
+  /* V6 : le titre passe au registre d'affichage (graisse 340,
+     -.03em — classe globale .display) ; la taille reste 24 px. */
   .titre {
-    margin:2px 0 4px; font-size:24px; font-weight:600; line-height:1.2;
-    letter-spacing:-.01em; color:var(--ink);
+    margin:2px 0 4px; font-size:24px; line-height:1.2;
+    color:var(--ink);
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
   .puces { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 10px; }

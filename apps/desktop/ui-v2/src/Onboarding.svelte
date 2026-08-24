@@ -126,7 +126,7 @@
            trait hitofude (V2). Le bloc du guichet reste UN (étape 1 du
            parcours ET écran d'un poste accueilli revenu à zéro
            compte). -->
-      <h3 class="titre"><Marque tuile taille={40} />
+      <h3 class="titre display"><Marque tuile taille={40} />
         <span>{t('accueil.bienvenue')} <span class="marque">Wind</span></span></h3>
       {@render progression(1)}
       <p class="sous">{t('accueil.ajouterSous')}</p>
@@ -150,7 +150,7 @@
           {t('accueil.ajouterAutre')}</button>
       {/if}
     {:else if etape === 2}
-      <h3 class="titre">{t('accueil.voletsTitre')}</h3>
+      <h3 class="titre display">{t('accueil.voletsTitre')}</h3>
       {@render progression(2)}
       <p class="sous">{t('accueil.voletsSous')}</p>
       <!-- Constats 5 (1re passe), 3 (2e) et 3 (3e passe) : UNE capture
@@ -177,7 +177,7 @@
         </div>
       </div>
     {:else if etape === 3}
-      <h3 class="titre">{t('accueil.themeTitre')}</h3>
+      <h3 class="titre display">{t('accueil.themeTitre')}</h3>
       {@render progression(3)}
       <p class="sous">{t('accueil.themeSous')}</p>
       <div class="cartes themes" data-testid="accueil-themes">
@@ -196,7 +196,7 @@
         {/each}
       </div>
     {:else}
-      <h3 class="titre">{t('accueil.finTitre')}</h3>
+      <h3 class="titre display">{t('accueil.finTitre')}</h3>
       {@render progression(4)}
       <p class="sous">{t('accueil.finTexte')}</p>
       <!-- Constat 8 (1re passe) : chaque choix récapitulé est une
@@ -273,9 +273,11 @@
   }
   .colonne { width:520px; display:flex; flex-direction:column; gap:22px; }
   .colonne.large { width:760px; }
+  /* V6 : les titres d'étapes passent au registre d'affichage
+     (graisse 340, -.03em — classe globale .display, posée sur chaque
+     h3) ; la taille ne bouge pas. */
   .titre {
-    margin:0; font-size:40px; line-height:1.1; font-weight:600;
-    letter-spacing:-.02em; color:var(--ink);
+    margin:0; font-size:40px; line-height:1.1; color:var(--ink);
     display:flex; align-items:center; gap:14px;
   }
   /* La marque dans le titre : « Wind », insécable. */
