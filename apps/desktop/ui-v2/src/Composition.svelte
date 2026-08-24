@@ -1445,12 +1445,13 @@
     display:flex; flex-direction:column; overflow:hidden;
   }
   /* A66 : l'entête porte le même fond que le pied de page de Wind
-     (la barre d'état, --panel) — et que la barre de mise en forme en
-     bas de carte : la carte s'encadre haut/bas dans la même teinte. */
+     (la barre d'état — --bg depuis V3, --panel est mort) — et que la
+     barre de mise en forme en bas de carte : la carte s'encadre
+     haut/bas dans la même teinte. */
   .tete {
     height:48px; flex:none; padding:0 16px 0 22px; display:flex;
     align-items:center; gap:14px; border-bottom:1px solid var(--border);
-    background:var(--panel);
+    background:var(--bg);
   }
   .kicker {
     font-size:12px; letter-spacing:.1em; text-transform:uppercase;
@@ -1570,7 +1571,7 @@
 
   .format {
     flex:none; padding:8px 18px; border-top:1px solid var(--border);
-    background:var(--panel); display:flex; align-items:center; gap:6px;
+    background:var(--bg); display:flex; align-items:center; gap:6px;
     flex-wrap:wrap;
   }
   .bouton-format {

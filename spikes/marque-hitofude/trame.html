@@ -1,0 +1,592 @@
+<meta charset="utf-8">
+<title>Vingt trames</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Old+Mincho:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --bg:#f2f0ea; --panel:#e9e6dd; --surface:#ffffff;
+  --ink:#24272e; --ink2:#4a505a; --muted:#575f6a;
+  --border:#cdc6b8; --accent:#1e7566; --accentH:#175c50;
+  --sel:#cddcd2; --alert:#9e3a2c; --shadow:0 2px 8px rgba(36,39,46,0.08);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#1b1e21; --panel:#23272b; --surface:#2b3034;
+    --ink:#edefed; --ink2:#b7bebb; --muted:#a0a7a4;
+    --border:#394045; --accent:#57a88f; --accentH:#6cbda3;
+    --sel:#313f39; --alert:#ea9a90; --shadow:0 2px 12px rgba(0,0,0,0.40);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#1b1e21; --panel:#23272b; --surface:#2b3034;
+  --ink:#edefed; --ink2:#b7bebb; --muted:#a0a7a4;
+  --border:#394045; --accent:#57a88f; --accentH:#6cbda3;
+  --sel:#313f39; --alert:#ea9a90; --shadow:0 2px 12px rgba(0,0,0,0.40);
+}
+*{box-sizing:border-box}
+body{margin:0; background:var(--bg); color:var(--ink);
+  font-family:'Zen Kaku Gothic New',system-ui,sans-serif; font-size:15px; line-height:1.65;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px; margin:0 auto; padding:56px 28px 96px; display:flex; flex-direction:column; gap:52px}
+h1{font-family:'Zen Old Mincho',Georgia,serif; font-weight:600; font-size:clamp(30px,5vw,44px);
+   line-height:1.15; letter-spacing:-.01em; margin:0; text-wrap:balance}
+h2{font-family:'Zen Old Mincho',Georgia,serif; font-weight:600; font-size:23px; line-height:1.35; margin:0; text-wrap:balance}
+h3{font-size:17px; font-weight:700; margin:0; line-height:1.3}
+p{margin:0}
+.lede{font-family:'Zen Old Mincho',Georgia,serif; font-size:17px; line-height:1.8; color:var(--ink2); max-width:66ch}
+.eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace; font-size:11px; letter-spacing:.16em;
+   text-transform:uppercase; color:var(--muted); font-weight:600}
+code,.mono{font-family:'JetBrains Mono',ui-monospace,monospace; font-size:.86em}
+hr{border:0; border-top:1px solid var(--border); margin:0}
+.head{display:flex; flex-direction:column; gap:18px}
+.head .rule{width:64px; border-top:2px solid var(--accent)}
+
+.note{background:var(--panel); border:1px solid var(--border); border-left:3px solid var(--accent);
+  border-radius:0 8px 8px 0; padding:22px 26px; display:flex; flex-direction:column; gap:12px}
+.note p{color:var(--ink2); font-size:14.5px; max-width:74ch}
+.note b{color:var(--ink)}
+
+.controls{position:sticky; top:0; z-index:20; background:var(--bg); border-bottom:1px solid var(--border);
+  margin:0 -28px; padding:14px 28px; display:flex; flex-wrap:wrap; gap:20px; align-items:center}
+.ctl{display:flex; align-items:center; gap:8px}
+.ctl>span{font-size:12px; color:var(--muted); font-weight:500}
+.seg{display:flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; background:var(--surface)}
+.seg button{font:inherit; font-size:12.5px; padding:5px 11px; border:0; background:transparent;
+  color:var(--ink2); cursor:pointer; line-height:1.4; white-space:nowrap}
+.seg button+button{border-left:1px solid var(--border)}
+.seg button[aria-pressed="true"]{background:var(--sel); color:var(--ink); font-weight:700}
+.seg button:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
+.sw{width:11px; height:11px; border-radius:3px; display:inline-block; vertical-align:-1px; margin-right:5px}
+
+.contact{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:26px;
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(104px,1fr)); gap:20px}
+.contact figcaption{font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted)}
+
+.grid{display:grid; grid-template-columns:repeat(2,1fr); gap:18px}
+@media (max-width:880px){.grid{grid-template-columns:1fr}}
+.card{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px;
+  display:flex; gap:20px; align-items:flex-start; box-shadow:var(--shadow)}
+.visual{display:flex; flex-direction:column; gap:12px; align-items:center; flex:none}
+.ladder{display:flex; align-items:flex-end; gap:9px}
+figure{margin:0; display:flex; flex-direction:column; align-items:center; gap:5px}
+figcaption{font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted)}
+.body{display:flex; flex-direction:column; gap:9px; min-width:0}
+.num{font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; color:var(--accent); letter-spacing:.08em}
+.tags{display:flex; gap:6px; flex-wrap:wrap}
+.tag{font-size:10.5px; font-family:'JetBrains Mono',monospace; padding:2px 7px; border-radius:999px;
+  border:1px solid var(--border); color:var(--muted); background:var(--panel)}
+.tag.ok{border-color:var(--accent); color:var(--accent)}
+.tag.ko{border-color:var(--alert); color:var(--alert)}
+.thesis{font-family:'Zen Old Mincho',Georgia,serif; font-size:14.5px; line-height:1.65; color:var(--ink)}
+.risk{font-size:12.5px; color:var(--alert); line-height:1.5}
+
+.compare{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:26px;
+  display:flex; flex-direction:column; gap:18px}
+.clair-bar{display:flex; gap:18px; align-items:flex-end; padding:16px 20px; background:#e9e6dd;
+  border-radius:8px; flex-wrap:wrap}
+.clair-bar figcaption{color:#575f6a}
+.desk{display:flex; gap:18px; align-items:flex-end; padding:16px 20px; background:#2f3438; border-radius:8px; flex-wrap:wrap}
+.desk figcaption{color:#9aa2a8}
+
+table{border-collapse:collapse; width:100%; font-size:13.5px; min-width:720px}
+th,td{text-align:left; padding:9px 11px; border-bottom:1px solid var(--border); vertical-align:top}
+th{font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); font-weight:600}
+td{color:var(--ink2)}
+td:first-child{white-space:nowrap; font-weight:700; color:var(--ink)}
+td.n{font-family:'JetBrains Mono',monospace; font-variant-numeric:tabular-nums; white-space:nowrap}
+.bad{color:var(--alert); font-weight:700}
+.good{color:var(--accent); font-weight:700}
+.tbl-wrap{overflow-x:auto}
+
+ol.q{margin:0; padding-left:22px; display:flex; flex-direction:column; gap:11px; color:var(--ink2); max-width:74ch}
+ol.q b{color:var(--ink)}
+.foot{color:var(--muted); font-size:13px; max-width:74ch}
+</style>
+
+<div class="wrap">
+
+  <header class="head">
+    <p class="eyebrow">Wind · exploration marque · la trame · 2026-08-23</p>
+    <h1>Vingt trames</h1>
+    <div class="rule"></div>
+    <p class="lede">Une seule technique, poussée jusqu'au bout : le fond tramé. Vingt façons de faire passer le vent derrière la lettre — lignes, points, ondes, dispersions, déviations — et une mesure pour départager celles qui tiennent de celles qui moirent.</p>
+  </header>
+
+  <div class="note">
+    <p class="eyebrow">La mesure qui décide, et pourquoi elle est nouvelle</p>
+    <p>Une trame a un <b>pas</b> : la distance entre deux éléments, exprimée dans les 64 unités de la tuile. Servie à 32 px, ce pas est divisé par deux ; à 16 px, par quatre. Deux seuils, et ils ne disent pas la même chose. <b>En dessous de 4 pixels de pas, le motif cesse d'être identifiable</b> — on ne distingue plus un point d'un tiret, une onde d'une hachure : il ne reste qu'une texture. <b>En dessous de 2 pixels, la texture elle-même s'éteint</b> : deux éléments voisins tombent dans le même pixel, et le fond devient un aplat gris ou se met à moirer. Ce n'est pas une opinion, c'est de l'échantillonnage.</p>
+    <p>Chaque proposition affiche donc son pas en unités <i>et</i> en pixels réels aux quatre définitions du dépôt (256, 48, 32, 16 — <code>scripts/faire-icone.ps1</code>). La colonne du tableau est calculée dans la page, pas estimée. Le verdict de la dernière colonne applique les deux seuils à 32 px : « motif lisible » au-dessus de 4 px, « texture seule » entre 2 et 4, « aplat » en dessous.</p>
+    <p><b>Conséquence de dessin, et elle est sévère :</b> pour qu'un motif reste identifiable à 32 px, il lui faut un pas d'au moins <b>huit unités</b> — soit huit éléments en tout sur la hauteur de la tuile. Une seule des vingt y arrive. Toutes les autres sont des trames de grande taille, qui se dégradent en texture puis en aplat. Ce n'est pas disqualifiant : encore faut-il le choisir en connaissance de cause.</p>
+  </div>
+
+  <div class="controls" role="group" aria-label="Réglages de la planche">
+    <div class="ctl">
+      <span>Palette</span>
+      <div class="seg" id="segPal">
+        <button data-v="marque" aria-pressed="true"><i class="sw" style="background:#365a4f"></i>marque</button>
+        <button data-v="inverse" aria-pressed="false"><i class="sw" style="background:#e2ebe8;border:1px solid #cdc6b8"></i>inversé</button>
+        <button data-v="accent" aria-pressed="false"><i class="sw" style="background:#1e7566"></i>accent</button>
+        <button data-v="profond" aria-pressed="false"><i class="sw" style="background:#1d5449"></i>profond</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <span>Enveloppe</span>
+      <div class="seg" id="segEnv">
+        <button data-v="auto" aria-pressed="true">selon la proposition</button>
+        <button data-v="pleine" aria-pressed="false">pleine</button>
+        <button data-v="contour" aria-pressed="false">contour</button>
+      </div>
+    </div>
+  </div>
+
+  <section style="display:flex; flex-direction:column; gap:18px">
+    <h2>La planche de contact</h2>
+    <p class="lede" style="font-size:16px">Les vingt trames à 96 px. C'est la taille où toutes se voient encore : le tri commence plus bas.</p>
+    <div class="contact" id="planche"></div>
+  </section>
+
+  <hr>
+
+  <section style="display:flex; flex-direction:column; gap:14px">
+    <h2>Les vingt, une par une</h2>
+    <p class="lede" style="font-size:16px">Chacune porte son pas mesuré et son verdict à 32 px. Le premier chiffre est la géométrie, le second la vérité de l'écran.</p>
+  </section>
+
+  <div class="grid" id="cartes"></div>
+
+  <hr>
+
+  <section style="display:flex; flex-direction:column; gap:20px">
+    <h2>La planche de vérité</h2>
+    <p class="lede" style="font-size:16px">À 32 px, presque toutes les trames survivent encore — mais comme <i>texture</i>, plus comme motif : on voit qu'il se passe quelque chose derrière la lettre, on ne sait plus quoi. À 16 px, il n'en reste rien du tout. C'est exactement ce que la mesure du pas annonçait, et c'est pourquoi l'enveloppe doit tenir toute seule.</p>
+    <div class="compare">
+      <p class="eyebrow">32 px · sur fond clair</p>
+      <div class="clair-bar" id="min32"></div>
+      <p class="eyebrow" style="margin-top:4px">16 et 24 px · sur barre des tâches sombre</p>
+      <div class="desk" id="min16d"></div>
+    </div>
+  </section>
+
+  <hr>
+
+  <section style="display:flex; flex-direction:column; gap:20px">
+    <h2>Le tableau des pas</h2>
+    <div class="tbl-wrap">
+      <table id="tabl">
+        <thead><tr><th>Trame</th><th>Motif</th><th>Pas (unités)</th><th>à 256 px</th><th>à 48 px</th><th>à 32 px</th><th>à 16 px</th><th>Verdict</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="foot">Pas en pixels = pas en unités × taille / 64. Seuil retenu : <b>2 px</b>, en dessous duquel deux éléments voisins tombent dans le même pixel et la trame cesse d'exister comme trame.</p>
+  </section>
+
+  <hr>
+
+  <section style="display:flex; flex-direction:column; gap:18px">
+    <h2>Recommandation</h2>
+    <p class="lede" style="font-size:16px" id="reco"></p>
+    <ol class="q">
+      <li><b>La trame ne peut pas être le seul porteur du vent.</b> À 16 px elle est morte dans tous les cas — même les plus grossières tombent à un pas d'un pixel. Ce qui doit rester à cette taille, c'est la <b>silhouette</b> : la trame est un enrichissement des grandes définitions, jamais le message.</li>
+      <li><b>D'où le vrai partage : la trame décore, ou la trame porte la forme ?</b> Les propositions où l'enveloppe existe indépendamment de la trame (fond tramé, enveloppe pleine) dégradent proprement — la trame s'efface, l'enveloppe reste. Celles où l'enveloppe <i>naît</i> de la trame (17, 5, 4) n'ont pas cette issue : quand la trame meurt, l'icône meurt avec elle.</li>
+      <li><b>Le calage sur la grille de pixels.</b> Une trame régulière alignée sur un pas entier de pixels moire nettement moins. Le chantier devra choisir des pas qui tombent juste aux quatre définitions — 4, 8 et 16 unités le font ; 3, 5 et 4,3 ne le font pas. C'est un choix de géométrie, à faire avant le dessin.</li>
+      <li><b>Ce que le Système doit acter.</b> Une trame introduit une troisième valeur entre la tuile et l'encre. W-D3 fige deux couleurs : soit la trame est une transparence de l'encre (ce que font ces vingt dessins, donc rien à amender), soit c'est un jeton neuf, et il faut l'écrire.</li>
+    </ol>
+    <p class="foot">Dessins de jugement, tracés à plat dans la tuile de 64 au rayon 15. Le chantier reprendra la trame retenue sur une grille alignée avant de toucher <code>assets/marque/</code> et le script d'icône.</p>
+  </section>
+
+</div>
+
+<script>
+(function(){
+  var PAL={
+    marque:{tuile:'#e2ebe8',encre:'#365a4f',trame:'#365a4f'},
+    inverse:{tuile:'#365a4f',encre:'#e2ebe8',trame:'#e2ebe8'},
+    accent:{tuile:'#f2f0ea',encre:'#1e7566',trame:'#1e7566'},
+    profond:{tuile:'#1d5449',encre:'#f0f6f3',trame:'#f0f6f3'}
+  };
+  var STATE={pal:'marque', env:'auto'};
+  var TAILLES=[256,48,32,16];
+
+  /* ---------- enveloppe ---------- */
+  var EB={x:12,y:21,w:40,h:26,r:4};
+  function rectPath(x,y,w,h,r){
+    return 'M'+(x+r)+' '+y+' H'+(x+w-r)+' A'+r+' '+r+' 0 0 1 '+(x+w)+' '+(y+r)+
+           ' V'+(y+h-r)+' A'+r+' '+r+' 0 0 1 '+(x+w-r)+' '+(y+h)+
+           ' H'+(x+r)+' A'+r+' '+r+' 0 0 1 '+x+' '+(y+h-r)+
+           ' V'+(y+r)+' A'+r+' '+r+' 0 0 1 '+(x+r)+' '+y+' Z';
+  }
+  var EP=rectPath(EB.x,EB.y,EB.w,EB.h,EB.r);
+  var EF=(EB.x+EB.w*0.062).toFixed(2)+','+(EB.y+EB.h*0.135).toFixed(2)+' '+(EB.x+EB.w/2)+','+
+         (EB.y+EB.h*0.60).toFixed(2)+' '+(EB.x+EB.w*0.938).toFixed(2)+','+(EB.y+EB.h*0.135).toFixed(2);
+
+  function envPleine(p){
+    return '<path d="'+EP+'" fill="'+p.encre+'"/>'+
+      '<polyline points="'+EF+'" fill="none" stroke="'+p.tuile+'" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>';
+  }
+  function envContour(p){
+    return '<g fill="none" stroke="'+p.encre+'" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round">'+
+      '<path d="'+EP+'"/><polyline points="'+EF+'"/></g>';
+  }
+  function envTrou(id,p){ /* masque : la trame est percee a l'emplacement de l'enveloppe, rabat compris */
+    return '<mask id="tr'+id+'"><rect width="64" height="64" fill="#fff"/>'+
+      '<path d="'+EP+'" fill="#000"/>'+
+      '<polyline points="'+EF+'" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>'+
+      '</mask>';
+  }
+  function env(p,id,defaut){
+    var mode = STATE.env==='auto' ? defaut : STATE.env;
+    if(mode==='pleine') return envPleine(p);
+    if(mode==='contour') return envContour(p);
+    return '';
+  }
+
+  /* ---------- degrade de densite, dans n'importe quel sens ---------- */
+  function fondu(id,inner,x1,y1,x2,y2,a0,a1){
+    return '<defs><linearGradient id="fg'+id+'" x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" gradientUnits="userSpaceOnUse">'+
+      '<stop offset="0" stop-color="#fff" stop-opacity="'+a0+'"/>'+
+      '<stop offset="1" stop-color="#fff" stop-opacity="'+a1+'"/></linearGradient>'+
+      '<mask id="fm'+id+'"><rect width="64" height="64" fill="url(#fg'+id+')"/></mask></defs>'+
+      '<g mask="url(#fm'+id+')">'+inner+'</g>';
+  }
+
+  /* ---------- les vingt trames ---------- */
+  var T=[];
+  function add(n,motif,pas,thesis,risk,defaut,f){T.push({n:n,motif:motif,pas:pas,thesis:thesis,risk:risk,defaut:defaut,f:f});}
+
+  add('La filante','lignes horizontales',4.2,
+    'La trame d’origine, tenue au propre : des lignes horizontales de pas constant, dont la densité s’épuise vers la droite. Le vent est un courant régulier qui passe derrière la lettre et s’évanouit.',
+    'Quatre unités de pas : à 32 px il reste deux pixels, tout juste.',
+    'pleine',
+    function(p,id){
+      var s='',i;
+      for(i=0;i<15;i++){var y=(3+i*4.2).toFixed(2);
+        s+='<rect x="0" y="'+y+'" width="64" height="1.5" fill="'+p.trame+'" opacity="0.30"/>';}
+      return fondu(id,s,0,0,64,0,1,0.06)+env(p,id,'pleine');
+    });
+
+  add('Les points','trame de points, taille variable',5.4,
+    'Le similigravure classique : une grille de points dont le diamètre grossit dans le sens du vent. C’est la trame la plus lisible en tant que trame — l’œil sait ce que c’est avant de savoir ce qu’elle dit.',
+    'Un point de 1 px devient un pixel gris : le motif disparaît avant la densité.',
+    'pleine',
+    function(p,id){
+      var s='',i,j;
+      for(j=0;j<12;j++)for(i=0;i<12;i++){
+        var x=3+i*5.4, y=3+j*5.4, r=(0.5+1.7*(i/11)).toFixed(2);
+        s+='<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+r+'" fill="'+p.trame+'" opacity="0.34"/>';}
+      return s+env(p,id,'pleine');
+    });
+
+  add('La déviée','lignes déviées par l’obstacle',4.8,
+    'La plus juste physiquement : les lignes de courant s’écartent en approchant de l’enveloppe et se referment derrière elle, comme l’air autour d’une aile. Le vent n’est pas décoratif — il réagit à la lettre.',
+    'La déviation n’est visible qu’au-dessus et en dessous : elle mange peu de place, mais elle en demande.',
+    'pleine',
+    function(p,id){
+      var s='',i;
+      for(i=0;i<13;i++){
+        var y=(3+i*4.8), d=y-32, push=(d>=0?1:-1)*7*Math.exp(-(d*d)/420);
+        var yd=(y+push).toFixed(2);
+        s+='<path d="M0 '+y.toFixed(2)+' C14 '+y.toFixed(2)+' 17 '+yd+' 32 '+yd+
+           ' C47 '+yd+' 50 '+y.toFixed(2)+' 64 '+y.toFixed(2)+'" fill="none" stroke="'+p.trame+
+           '" stroke-width="1.5" opacity="0.32"/>';}
+      return s+env(p,id,'pleine');
+    });
+
+  add('L’évidée','trame pleine, enveloppe percée',4,
+    'La tuile est entièrement tramée et l’enveloppe est un trou parfait dans la trame : aucun trait, aucun aplat, juste une absence. C’est la version la plus radicale — la lettre est ce que le vent n’a pas rempli.',
+    'Quand la trame s’efface en petit, le trou n’a plus de bord : l’enveloppe s’évapore.',
+    'aucune',
+    function(p,id){
+      var s='',i;
+      for(i=0;i<16;i++){var y=(1+i*4).toFixed(2);
+        s+='<rect x="0" y="'+y+'" width="64" height="2.1" fill="'+p.trame+'" opacity="0.62"/>';}
+      return envTrou(id,p)+'<g mask="url(#tr'+id+')">'+s+'</g>'+env(p,id,'aucune');
+    });
+
+  add('L’intérieure','trame enfermée dans la lettre',3.6,
+    'Le rapport s’inverse : le fond est un aplat calme et c’est <i>l’enveloppe</i> qui est tramée. Le vent n’est plus autour de la lettre, il est dedans — le papier lui-même est fait de courants.',
+    'Une trame dans une forme de 40 unités a très peu de place : elle se boucle à 48 px.',
+    'contour',
+    function(p,id){
+      var s='',i;
+      for(i=0;i<10;i++){var y=(20+i*3.6).toFixed(2);
+        s+='<rect x="8" y="'+y+'" width="48" height="1.6" fill="'+p.trame+'" opacity="0.55"/>';}
+      return '<clipPath id="cl'+id+'"><path d="'+EP+'"/></clipPath>'+
+        '<g clip-path="url(#cl'+id+')">'+s+'</g>'+envContour(p);
+    });
+
+  add('Le bokashi','bandes plates dégressives',8,
+    'Le dégradé de l’estampe, qui n’est jamais un dégradé continu mais une pile de bandes plates. Sept valeurs, sept aplats, aucune interpolation : c’est la trame la plus grossière de la planche, donc la plus solide.',
+    'Sept bandes se lisent comme des rayures : la direction du vent est faible.',
+    'pleine',
+    function(p,id){
+      var s='',i,o=[0.58,0.46,0.36,0.27,0.19,0.12,0.06,0.02];
+      for(i=0;i<8;i++){
+        s+='<rect x="0" y="'+(i*8)+'" width="64" height="8.05" fill="'+p.trame+'" opacity="'+o[i]+'"/>';}
+      return s+env(p,id,'pleine');
+    });
+
+  add('La diagonale','lignes à 45°',5,
+    'La même trame, tournée d’un huitième de tour. La diagonale donne au fond une vitesse que l’horizontale n’a pas — c’est le sens de lecture qui la contredit, donc qui la rend rapide.',
+    'La diagonale accroche la grille de pixels : c’est la plus sujette au crénelage.',
+    'pleine',
+    function(p,id){
+      var s='',i;
+      for(i=-14;i<26;i++){var x=i*5;
+        s+='<path d="M'+x+' -6 L'+(x+70)+' 70" stroke="'+p.trame+'" stroke-width="1.6" opacity="0.30"/>';}
+      return fondu(id,s,0,64,64,0,0.1,1)+env(p,id,'pleine');
+    });
+
+  add('Les ondes','arcs concentriques',6,
+    'Des arcs concentriques nés d’un point hors cadre, en bas à gauche : la trame devient une onde de choc, une bourrasque qui se propage. Le fond a une origine, donc une direction.',
+    'Les arcs se resserrent au centre : le pas n’est pas constant, la mesure vaut pour le plus serré.',
+    'pleine',
+    function(p,id){
+      var s='',i;
+      for(i=0;i<15;i++){var r=18+i*6;
+        s+='<circle cx="-14" cy="76" r="'+r+'" fill="none" stroke="'+p.trame+'" stroke-width="1.7" opacity="0.30"/>';}
+      return s+env(p,id,'pleine');
+    });
+
+  add('La radiale','rais divergents',5.5,
+    'Des rais partant d’un même foyer hors cadre balaient la tuile en éventail. C’est la trame qui donne le plus de mouvement, parce que ses lignes ne sont pas parallèles : elles s’ouvrent.',
+    'Près du foyer les rais se touchent : la trame s’y bouche en aplat.',
+    'pleine',
+    function(p,id){
+      var s='',i;
+      for(i=0;i<18;i++){
+        var a=(-52+i*6.2)*Math.PI/180;
+        s+='<path d="M-16 74 L'+(-16+150*Math.cos(a)).toFixed(1)+' '+(74+150*Math.sin(a)).toFixed(1)+
+           '" stroke="'+p.trame+'" stroke-width="1.7" opacity="0.28"/>';}
+      return s+env(p,id,'pleine');
+    });
+
+  add('L’ondulée','sinusoïdes à amplitude croissante',5.2,
+    'Des lignes qui se mettent à onduler de plus en plus fort en allant vers la droite : la trame passe d’un air calme à un air agité, dans la même image. La turbulence est racontée, pas figurée.',
+    'L’ondulation demande de la place verticale : le pas effectif se resserre là où ça ondule.',
+    'pleine',
+    function(p,id){
+      var s='',i,k,d;
+      for(i=0;i<12;i++){
+        var y=3+i*5.2; d='M0 '+y.toFixed(2);
+        for(k=1;k<=16;k++){
+          var x=k*4, amp=2.6*(x/64)*(x/64), yy=y+amp*Math.sin(k*0.9+i*0.5);
+          d+=' L'+x+' '+yy.toFixed(2);
+        }
+        s+='<path d="'+d+'" fill="none" stroke="'+p.trame+'" stroke-width="1.5" opacity="0.32"/>';}
+      return s+env(p,id,'pleine');
+    });
+
+  add('Les tirets','pointillés à longueur croissante',4.6,
+    'Des lignes brisées en tirets qui s’allongent vers la droite : chaque trait est une bouffée. C’est la seule trame qui donne un <i>rythme</i> plutôt qu’une densité — le vent y est cadencé.',
+    'Le tiret court tombe sous le pixel avant la ligne : la moitié gauche meurt en premier.',
+    'pleine',
+    function(p,id){
+      var s='',i;
+      for(i=0;i<13;i++){var y=(3+i*4.6).toFixed(2);
+        s+='<path d="M0 '+y+' H64" stroke="'+p.trame+'" stroke-width="1.7" opacity="0.34" stroke-linecap="round" '+
+           'stroke-dasharray="'+(1.5+i%3)+' 3.4"/>';}
+      return fondu(id,s,0,0,64,0,0.35,1)+env(p,id,'pleine');
+    });
+
+  add('La croisée','hachures croisées',5.6,
+    'Deux réseaux de hachures qui se croisent : la trame devient un tissu. C’est celle qui évoque le moins le mouvement et le plus la <b>matière</b> — un papier, une toile, quelque chose qu’on touche.',
+    'Le croisement double la densité : elle vire au gris uni très tôt.',
+    'pleine',
+    function(p,id){
+      var s='',i;
+      for(i=-12;i<24;i++){
+        s+='<path d="M'+(i*5.6)+' -8 L'+(i*5.6+40)+' 72" stroke="'+p.trame+'" stroke-width="1.3" opacity="0.24"/>';
+        s+='<path d="M'+(i*5.6)+' 72 L'+(i*5.6+40)+' -8" stroke="'+p.trame+'" stroke-width="1.3" opacity="0.24"/>';}
+      return fondu(id,s,64,0,0,0,1,0.15)+env(p,id,'pleine');
+    });
+
+  add('Les chevrons','semis de chevrons',6.4,
+    'Un semis de petits chevrons tous tournés dans le même sens : chaque élément de la trame porte lui-même la direction. Le fond ne suggère pas le vent, il le répète.',
+    'Le chevron est une forme, pas un point : il devient illisible bien avant de disparaître.',
+    'pleine',
+    function(p,id){
+      var s='',i,j;
+      for(j=0;j<10;j++)for(i=0;i<11;i++){
+        var x=2+i*6.4+(j%2?3.2:0), y=4+j*6.4;
+        s+='<path d="M'+x.toFixed(1)+' '+(y-2).toFixed(1)+' L'+(x+3).toFixed(1)+' '+y.toFixed(1)+
+           ' L'+x.toFixed(1)+' '+(y+2).toFixed(1)+'" fill="none" stroke="'+p.trame+
+           '" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.34"/>';}
+      return s+env(p,id,'pleine');
+    });
+
+  add('La densité','points égaux, espacement variable',4,
+    'Tous les points ont exactement la même taille : c’est <b>l’écart</b> entre eux qui varie. C’est la trame la plus honnête techniquement — celle des vrais similis — et la seule dont le motif reste net partout où il existe.',
+    'L’espacement serré crée un moiré franc dès que la grille de pixels ne tombe pas juste.',
+    'pleine',
+    function(p,id){
+      var s='',j,x,k;
+      for(j=0;j<15;j++){
+        x=1; k=0;
+        while(x<64){
+          s+='<circle cx="'+x.toFixed(1)+'" cy="'+(2+j*4.3).toFixed(1)+'" r="1.05" fill="'+p.trame+'" opacity="0.42"/>';
+          x+= 3 + 4.5*(x/64)*(x/64); k++;
+          if(k>30) break;
+        }
+      }
+      return s+env(p,id,'pleine');
+    });
+
+  add('Le moiré','deux trames désalignées',4.4,
+    'Deux réseaux de lignes identiques, l’un tourné de six degrés sur l’autre : leur interférence fabrique des ondes que personne n’a dessinées. La turbulence naît du désaccord, pas du trait.',
+    'Le moiré est un défaut qu’on assume : il change d’aspect à chaque taille, donc il est incontrôlable.',
+    'pleine',
+    function(p,id){
+      var s='',i;
+      for(i=0;i<16;i++){s+='<rect x="-8" y="'+(i*4.4-2).toFixed(1)+'" width="80" height="1.5" fill="'+p.trame+'" opacity="0.30"/>';}
+      var t='<g>'+s+'</g><g transform="rotate(6 32 32)">'+s+'</g>';
+      return t+env(p,id,'pleine');
+    });
+
+  add('La dispersion','ligne, puis tiret, puis point',4.4,
+    'La trame change de nature en avançant : à gauche des lignes pleines, au milieu des tirets, à droite des points épars. Le vent commence par pousser, puis il disperse — le fond raconte une durée.',
+    'Trois motifs dans une seule image : c’est la plus chargée conceptuellement.',
+    'pleine',
+    function(p,id){
+      var s='',i;
+      for(i=0;i<14;i++){var y=(2.5+i*4.4).toFixed(2);
+        s+='<path d="M0 '+y+' H22" stroke="'+p.trame+'" stroke-width="1.7" opacity="0.40" stroke-linecap="round"/>';
+        s+='<path d="M25 '+y+' H45" stroke="'+p.trame+'" stroke-width="1.7" opacity="0.34" stroke-linecap="round" stroke-dasharray="3 3.4"/>';
+        s+='<path d="M48 '+y+' H64" stroke="'+p.trame+'" stroke-width="1.7" opacity="0.26" stroke-linecap="round" stroke-dasharray="0.4 4.6"/>';}
+      return s+env(p,id,'pleine');
+    });
+
+  add('Le creux','la lettre naît d’un changement de densité',4,
+    'Aucun trait, aucun aplat, aucun trou : la trame couvre toute la tuile et devient simplement <b>plus dense</b> à l’endroit de l’enveloppe. La lettre n’est pas dessinée — elle est une variation locale du vent.',
+    'C’est la plus fragile de toutes : la forme meurt exactement quand la trame meurt.',
+    'aucune',
+    function(p,id){
+      var s='',i;
+      for(i=0;i<16;i++){s+='<rect x="0" y="'+(1+i*4).toFixed(1)+'" width="64" height="1.5" fill="'+p.trame+'" opacity="0.26"/>';}
+      var d='',j;
+      for(j=0;j<32;j++){d+='<rect x="0" y="'+(1+j*2).toFixed(1)+'" width="64" height="1.1" fill="'+p.trame+'" opacity="0.85"/>';}
+      return s+'<clipPath id="cl'+id+'"><path d="'+EP+'"/></clipPath>'+
+        '<g clip-path="url(#cl'+id+')">'+d+'</g>'+env(p,id,'aucune');
+    });
+
+  add('La battue','verticales couchées par le vent',4.5,
+    'Des verticales — des herbes, des roseaux — toutes penchées du même côté, plus fort en haut qu’en bas. La trame ne bouge pas : elle a été <i>pliée</i>, et c’est le pli qui dit le vent.',
+    'Des verticales derrière une enveloppe horizontale : les deux directions se disputent.',
+    'pleine',
+    function(p,id){
+      var s='',i;
+      for(i=0;i<15;i++){var x=1+i*4.5;
+        s+='<path d="M'+x.toFixed(1)+' 64 C'+(x+1).toFixed(1)+' 44 '+(x+5).toFixed(1)+' 26 '+(x+11).toFixed(1)+
+           ' 8" fill="none" stroke="'+p.trame+'" stroke-width="1.6" opacity="0.30" stroke-linecap="round"/>';}
+      return s+env(p,id,'pleine');
+    });
+
+  add('Les effilés','semis de traits effilés',6,
+    'Chaque élément de la trame est un petit coup de pinceau : épais à l’entame, pointu à la sortie. Le fond est un semis de gestes, pas de traits — c’est la trame la plus proche du hitofude d’origine.',
+    'Un effilé de 6 unités n’a plus de pointe à 48 px : il redevient un trait bête.',
+    'pleine',
+    function(p,id){
+      var s='',i,j;
+      for(j=0;j<9;j++)for(i=0;i<9;i++){
+        var x=1+i*7+(j%2?3.5:0), y=4+j*7;
+        s+='<path d="M'+x.toFixed(1)+' '+y.toFixed(1)+' C'+(x+3).toFixed(1)+' '+(y-1.6).toFixed(1)+' '+
+           (x+5).toFixed(1)+' '+(y-1.2).toFixed(1)+' '+(x+7).toFixed(1)+' '+(y-1.8).toFixed(1)+
+           ' C'+(x+5).toFixed(1)+' '+(y+0.6).toFixed(1)+' '+(x+3).toFixed(1)+' '+(y+1).toFixed(1)+' '+
+           x.toFixed(1)+' '+y.toFixed(1)+' Z" fill="'+p.trame+'" opacity="0.36"/>';}
+      return s+env(p,id,'pleine');
+    });
+
+  add('Le décalage','la même trame, deux fois, décalée',4.4,
+    'Une trame, puis la même déplacée d’une unité et posée par-dessus dans la même encre plus pâle. L’œil lit un flou de bougé — l’image d’un fond qui file trop vite pour être net.',
+    'Deux trames superposées, c’est deux fois la densité pour une seule idée.',
+    'pleine',
+    function(p,id){
+      var s='',t='',i;
+      for(i=0;i<15;i++){var y=2+i*4.4;
+        s+='<rect x="0" y="'+y.toFixed(1)+'" width="64" height="1.4" fill="'+p.trame+'" opacity="0.46"/>';
+        t+='<rect x="4" y="'+(y+2.1).toFixed(1)+'" width="64" height="1.4" fill="'+p.trame+'" opacity="0.20"/>';
+        t+='<rect x="9" y="'+(y+3.4).toFixed(1)+'" width="64" height="1.4" fill="'+p.trame+'" opacity="0.10"/>';}
+      return s+t+env(p,id,'pleine');
+    });
+
+  /* ---------- rendu ---------- */
+  var uid=0;
+  function tuile(t,taille){
+    var id=++uid, p=PAL[STATE.pal];
+    return '<svg width="'+taille+'" height="'+taille+'" viewBox="0 0 64 64" role="img" aria-label="'+t.n+'">'+
+      '<defs><clipPath id="k'+id+'"><rect width="64" height="64" rx="15"/></clipPath></defs>'+
+      '<g clip-path="url(#k'+id+')"><rect width="64" height="64" fill="'+p.tuile+'"/>'+t.f(p,id)+'</g></svg>';
+  }
+  function px(pas,taille){return pas*taille/64;}
+  function fig(h,c){return '<figure>'+h+'<figcaption>'+c+'</figcaption></figure>';}
+  function cell(pas,taille){
+    var v=px(pas,taille);
+    return '<td class="n '+(v>=4?'good':(v>=2?'':'bad'))+'">'+v.toFixed(2)+' px</td>';
+  }
+  function verdict(pas){
+    var v=px(pas,32);
+    if(v>=4) return '<span class="good">motif lisible</span>';
+    if(v>=2) return 'texture seule';
+    return '<span class="bad">aplat</span>';
+  }
+
+  var RECO='Une seule trame passe les 32 px sans devenir un aplat, et c’est <b>6 — Le bokashi</b> : huit bandes de '+
+    'huit unités, soit quatre pixels de pas à 32 px et deux à 16 px. Ce n’est pas un hasard — c’est la trame la plus '+
+    'grossière de la planche, et la seule qui soit faite d’aplats plutôt que de traits. C’est aussi, si l’on est '+
+    'honnête, celle qui évoque le moins le mouvement : elle donne de la profondeur, pas de la vitesse. '+
+    '<b>3 — La déviée</b> est de loin la plus intelligente des vingt — l’air qui contourne la lettre comme il '+
+    'contourne une aile — et je la retiendrais pour les grandes définitions, à condition d’accepter qu’elle s’éteigne '+
+    'en dessous de 48 px. <b>14 — La densité</b> est la plus juste techniquement, la seule vraie similigravure du lot, '+
+    'et la plus belle en grand. <b>17 — Le creux</b> est l’idée la plus élégante de toutes — la lettre comme simple '+
+    'variation locale de la trame — et la plus impraticable : elle n’a aucune silhouette de secours.';
+
+  function rendu(){
+    uid=0;
+    document.getElementById('planche').innerHTML =
+      T.map(function(t,i){return fig(tuile(t,96),(i+1)+' · '+t.n);}).join('');
+
+    document.getElementById('cartes').innerHTML = T.map(function(t,i){
+      var v32=px(t.pas,32), v16=px(t.pas,16);
+      return '<article class="card">'+
+        '<div class="visual">'+tuile(t,104)+
+          '<div class="ladder">'+fig(tuile(t,48),'48')+fig(tuile(t,32),'32')+fig(tuile(t,16),'16')+'</div>'+
+        '</div>'+
+        '<div class="body">'+
+          '<p class="num">'+(i+1)+'</p><h3>'+t.n+'</h3>'+
+          '<div class="tags"><span class="tag">'+t.motif+'</span>'+
+            '<span class="tag">pas '+t.pas+' u</span>'+
+            '<span class="tag '+(v32>=4?'ok':(v32>=2?'':'ko'))+'">'+v32.toFixed(2)+' px à 32</span></div>'+
+          '<p class="thesis">'+t.thesis+'</p>'+
+          '<p class="risk">'+t.risk+'</p>'+
+        '</div></article>';
+    }).join('');
+
+    var a='',b='';
+    T.forEach(function(t,i){
+      a+=fig(tuile(t,32),String(i+1));
+      b+=fig(tuile(t,16)+'<div style="height:6px"></div>'+tuile(t,24),String(i+1));
+    });
+    document.getElementById('min32').innerHTML=a;
+    document.getElementById('min16d').innerHTML=b;
+
+    document.querySelector('#tabl tbody').innerHTML = T.map(function(t,i){
+      var v32=px(t.pas,32);
+      return '<tr><td>'+(i+1)+' · '+t.n+'</td><td>'+t.motif+'</td><td class="n">'+t.pas+'</td>'+
+        TAILLES.map(function(s){return cell(t.pas,s);}).join('')+
+        '<td>'+verdict(t.pas)+'</td></tr>';
+    }).join('');
+    document.getElementById('reco').innerHTML=RECO;
+  }
+
+  function seg(id,key){
+    var el=document.getElementById(id);
+    el.addEventListener('click',function(e){
+      var b=e.target.closest('button'); if(!b) return;
+      [].forEach.call(el.querySelectorAll('button'),function(x){x.setAttribute('aria-pressed',String(x===b));});
+      STATE[key]=b.dataset.v; rendu();
+    });
+  }
+  seg('segPal','pal'); seg('segEnv','env');
+  rendu();
+})();
+</script>

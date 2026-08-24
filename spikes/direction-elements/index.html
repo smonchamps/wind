@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="jour"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wind — direction Elements (spike)</title>
+<style>
+/* ===================================================================
+   SPIKE « direction Elements » — les jetons.
+
+   Les valeurs viennent du document de direction. Celles qui ne passaient
+   pas le banc sont assombries du MINIMUM, à teinte constante (le remède
+   A8 de la maison). Tout est mesuré par ./contraste.mjs — le banc
+   expédié, même formules, même table de paires : 74 mesures, 0 échec.
+
+     --mut  #6E7577 -> #606668   (4,19:1 sur la page -> 5,21:1)
+     --line #E3E3DD -> #CBC8BB   (1,15:1 -> 1,50:1 ; le filet SHIPPÉ
+                                  de Clarity vaut 1,49:1 — le seuil)
+     teal   #1F8A8A reste EXACT, mais devient COMPOSANT (3,70:1) ;
+            sa dérivée texte --accent #1A7A7A tient 4,56:1.
+   =================================================================== */
+:root{
+  --bg:#F3F2EE; --surface:#FFFFFF; --tuile:#F2EDE3; --tuileInk:#4A4436;
+  --ink:#191D1E; --ink2:#565C5E; --muted:#606668;
+  --border:#CBC8BB;
+  --accent:#1A7A7A; --accentH:#14625E; --marque:#1F8A8A;
+  --sel:#DDE9E6; --hover:#EAE8E1; --alert:#C42D24; --onAccent:#FFFFFF;
+  --scrim:rgba(25,29,30,.30);
+  --cpt-a:#B0703C; --cpt-b:#2153A0;   /* disques de compte — Stone, River */
+  color-scheme:light;
+}
+:root[data-theme="nuit"]{
+  --bg:#0D100F; --surface:#171B1A; --tuile:#241F17; --tuileInk:#DFCFAE;
+  --ink:#ECEDEA; --ink2:#B4BAB8; --muted:#98A0A1;
+  --border:#333B3A;
+  --accent:#3FA39C; --accentH:#55B7B0; --marque:#3FA39C;
+  --sel:#1E322F; --hover:#141817; --alert:#EA9A90; --onAccent:#06211F;
+  --scrim:rgba(0,0,0,.55);
+  --cpt-a:#DCAB7C; --cpt-b:#72BDF0;   /* la 2e déclinaison — le motif A74 */
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%}
+body{
+  background:var(--bg); color:var(--ink); overflow:hidden;
+  font-family:"Segoe UI Variable Text","Segoe UI",ui-sans-serif,system-ui,
+    -apple-system,Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+/* La ligne d'affichage du document : graisse 340, chasse resserrée. */
+.display{
+  font-family:"Segoe UI Variable Display","Segoe UI",ui-sans-serif,system-ui,sans-serif;
+  font-weight:340; letter-spacing:-.03em;
+}
+/* Le sourcil du document : capitales, .2em, atténué. */
+.sourcil{
+  font-size:11px; letter-spacing:.2em; text-transform:uppercase;
+  color:var(--muted); font-weight:600;
+}
+button,input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--marque); outline-offset:2px}
+::selection{background:var(--sel)}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;transition-duration:.01ms !important}
+}
+
+/* --- Le disque : l'atome du système --------------------------------
+   Une seule forme, une seule règle : posé sur le CENTRE GÉOMÉTRIQUE de
+   son contenant. Le teal dit l'état du système ; la teinte de compte dit
+   l'identité. Rien d'autre n'est rond dans toute l'interface.
+
+   UN SEUL RAYON dans tout le système : le document le dit de River — « le
+   disque est aussi large que sa cellule (…) c'est lui qui a fixé le rayon
+   de tout le système ». Rapporté à la grille de 24 : r = 2,3 u, soit
+   Ø 4,6 u — Ø 9 px à l'échelle d'emploi de l'interface. Le non-lu et le
+   compte partagent donc la MÊME forme ; seule la teinte les sépare, comme
+   dans le jeu d'icônes où la teinte seule dit l'outil. */
+.disque{border-radius:50%;flex:none;display:block;width:9px;height:9px}
+.d-nonlu{background:var(--marque)}
+.d-a{background:var(--cpt-a)} .d-b{background:var(--cpt-b)}
+
+/* --- Icônes : la grammaire du jeu ----------------------------------
+   grille 24, trait 2 unités, bouts NETS, jonctions VIVES, coordonnées
+   entières. Achromatiques : dans l'application la couleur est réservée à
+   l'état — le disque coloré dit l'élément, et l'élément est acquis. */
+.i{width:19px;height:19px;flex:none;display:block;color:var(--ink2)}
+.i-s{width:15px;height:15px}
+.i-l{width:23px;height:23px}
+
+/* --- L'écran -------------------------------------------------------- */
+.ecran{display:flex;flex-direction:column;height:100vh;position:relative;overflow:hidden}
+
+/* Entête 52 px — la géométrie livrée, inchangée (une variable à la fois). */
+.entete{
+  height:52px;flex:none;display:flex;align-items:center;gap:12px;
+  padding:0 14px;background:var(--bg);border-bottom:1px solid var(--border);
+}
+.marque{width:212px;display:flex;align-items:center;gap:9px;flex:none}
+.marque .mot{font-size:17px;font-weight:650;letter-spacing:-.015em;color:var(--ink)}
+.recherche{
+  flex:1;max-width:520px;height:32px;display:flex;align-items:center;gap:9px;
+  padding:0 12px;background:var(--surface);border:1px solid var(--border);
+  border-radius:6px;
+}
+.recherche input{flex:1;min-width:0;border:0;outline:0;background:transparent;
+  font-size:13px;color:var(--ink)}
+.recherche input::placeholder{color:var(--muted)}
+.btn{
+  height:32px;padding:0 14px;display:inline-flex;align-items:center;gap:8px;
+  font-size:13px;color:var(--ink);background:var(--surface);
+  border:1px solid var(--border);border-radius:6px;cursor:pointer;
+}
+.btn:hover{background:var(--hover)}
+.btn .i{color:var(--ink2)}
+.btn-principal{
+  margin-left:auto;font-weight:600;color:var(--onAccent);
+  background:var(--accent);border-color:var(--accent);
+}
+.btn-principal:hover{background:var(--accentH);border-color:var(--accentH)}
+.btn-principal .i{color:var(--onAccent)}
+.icone-seule{width:32px;padding:0;justify-content:center}
+
+/* Colonnes 248 / 400 / 1fr — la grille livrée. */
+.colonnes{flex:1;display:grid;grid-template-columns:248px 400px minmax(0,1fr);
+  min-height:0;position:relative}
+
+/* --- Nav ------------------------------------------------------------ */
+nav{background:var(--bg);border-right:1px solid var(--border);
+  padding:18px 12px;display:flex;flex-direction:column;gap:1px;
+  min-height:0;overflow:auto}
+.rang{display:flex;align-items:center;gap:11px;flex:none;padding:8px 10px;
+  border-radius:6px;cursor:pointer;border-left:2px solid transparent;
+  background:none;border-top:0;border-right:0;border-bottom:0;width:100%;
+  text-align:left;font-size:13.5px}
+.rang:hover{background:var(--hover)}
+.rang.actif{background:var(--sel);border-left-color:var(--marque)}
+.rang .lbl{font-size:13.5px;color:var(--ink2);flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rang.actif .lbl{color:var(--ink);font-weight:600}
+.rang.actif .i{color:var(--accent)}
+/* Le compteur de non-lus : un NOMBRE, pas une pastille pleine — la
+   pastille était un second porteur de la même information. */
+.compte-nonlus{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;flex:none}
+.rang.actif .compte-nonlus{color:var(--ink2);font-weight:600}
+.boites{margin-top:auto;padding-top:14px;border-top:1px solid var(--border);
+  display:flex;flex-direction:column;gap:1px}
+.boites .sourcil{margin:0 0 7px;padding:0 12px}
+/* La boîte en cours prend la TUILE — le fond du jeu d'icônes, littéral. */
+.rang.tuile{background:var(--tuile);border-left-color:transparent;border-radius:2px}
+.rang.tuile .lbl{color:var(--tuileInk);font-weight:600}
+
+/* --- Liste ---------------------------------------------------------- */
+.liste{display:flex;flex-direction:column;min-height:0;background:var(--bg);
+  border-right:1px solid var(--border)}
+.bandeau{flex:none;height:52px;display:flex;align-items:baseline;gap:10px;
+  padding:0 16px 0 18px;border-bottom:1px solid var(--border)}
+.bandeau h1{margin:0;font-size:21px;line-height:52px;color:var(--ink)}
+.bandeau .n{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.cadre{flex:1;overflow:auto}
+.section-titre{padding:15px 18px 7px}
+
+/* La rangée : colonne du disque (16) + tuile d'initiales (28) + contenu.
+   FLEX et non grille : le rang de puces n'existe que sur certaines
+   rangées, et une colonne de grille ne peut pas enjamber un nombre de
+   rangs variable (`1/-1` ne veut rien dire sans rangs explicites — essayé,
+   mesuré faux : disque à 35 px du centre). En flex, la colonne du disque
+   s'étire sur TOUTE la rangée et centre son enfant : le centre
+   géométrique est obtenu par construction, jamais réglé à l'œil. */
+.ligne{
+  position:relative;
+  display:flex;align-items:stretch;column-gap:10px;
+  padding:12px 16px 12px 12px;border-top:1px solid var(--border);
+  border-left:2px solid transparent;cursor:pointer;
+  width:100%;text-align:left;background:none;border-right:0;border-bottom:0;
+}
+.contenu{flex:1;min-width:0;display:flex;flex-direction:column;row-gap:3px}
+.ligne:hover{background:var(--hover)}
+.ligne.choisie{background:var(--sel);border-left-color:var(--marque)}
+.ligne.epinglee,.ligne.epinglee:hover{background:var(--tuile)}
+.ligne.epinglee .exp,.ligne.epinglee .objet,.ligne.epinglee .apercu,
+.ligne.epinglee .heure{color:var(--tuileInk)}
+/* Le marqueur est CENTRÉ sur la rangée entière — la règle du document.
+   Mesuré : écart au centre géométrique = 0,00 px, rangée à puces ou non. */
+.col-disque{width:16px;flex:none;display:flex;align-items:center;justify-content:center}
+/* La tuile d'initiales : un CARRÉ. Le rond est rendu au disque, qui n'a
+   qu'un seul sens dans tout le système. Elle, en revanche, s'aligne sur
+   la PREMIÈRE ligne — ce n'est pas un marqueur, c'est une identité. */
+.col-tuile{width:28px;flex:none;display:flex;flex-direction:column;align-items:center;gap:4px}
+.tuile-ini{width:28px;height:28px;border-radius:2px;background:var(--tuile);
+  display:grid;place-items:center;font-size:11px;font-weight:650;
+  color:var(--tuileInk);flex:none;letter-spacing:.02em}
+.l1{display:flex;align-items:baseline;gap:10px;min-width:0}
+.exp{font-size:13.5px;color:var(--ink);flex:1;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.nonlu .exp{font-weight:700}
+.heure{font-size:12px;color:var(--muted);flex:none;font-variant-numeric:tabular-nums}
+.objet{display:block;margin:0;font-size:13.5px;line-height:1.35;color:var(--ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nonlu .objet{font-weight:700}
+.apercu{display:block;margin:0;font-size:12.5px;line-height:1.45;color:var(--muted);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-height:1.45em}
+.puces{display:flex;align-items:center;gap:6px;height:24px;margin-top:2px}
+.puce{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;
+  font-size:11.5px;color:var(--ink2);background:var(--surface);
+  border:1px solid var(--border);border-radius:4px;white-space:nowrap}
+.puce .i{width:14px;height:14px}
+.prefixe{color:var(--alert);font-weight:600}
+.vide{padding:46px 30px;text-align:center;font-size:13px;color:var(--muted);line-height:1.65}
+
+/* Onglets 52 px */
+.onglets{flex:none;height:52px;padding:0 12px;display:flex;align-items:center;gap:8px;
+  border-top:1px solid var(--border)}
+.onglet{height:30px;padding:0 12px;display:inline-flex;align-items:center;gap:7px;
+  font-size:12.5px;border-radius:6px;cursor:pointer;color:var(--ink2);
+  background:var(--surface);border:1px solid var(--border)}
+.onglet:hover{background:var(--hover)}
+.onglet.actif{font-weight:600;color:var(--ink);background:var(--sel);border-color:var(--marque)}
+
+/* --- Lecture -------------------------------------------------------- */
+.lecture{min-height:0;overflow:auto;background:var(--bg)}
+.lecture-dedans{max-width:760px;margin:0 auto;padding:26px 30px 60px}
+.tete-fil .sourcil{display:block;margin-bottom:11px}
+.tete-fil h2{margin:0 0 16px;font-size:26px;line-height:1.18;color:var(--ink)}
+.rang-actions{display:flex;align-items:center;gap:4px;flex-wrap:wrap;
+  padding-bottom:18px;border-bottom:1px solid var(--border)}
+.nu{height:30px;padding:0 10px;display:inline-flex;align-items:center;gap:7px;
+  font-size:12.5px;color:var(--ink2);background:transparent;border:0;
+  border-radius:6px;cursor:pointer}
+.nu:hover{background:var(--hover);color:var(--ink)}
+.essor{flex:1}
+.msg{margin-top:14px;background:var(--surface);border:1px solid var(--border);
+  border-radius:14px;overflow:hidden}
+.msg-tete{display:flex;align-items:center;gap:12px;padding:14px 20px;
+  cursor:pointer;width:100%;background:none;border:0;text-align:left}
+.msg-tete:hover{background:var(--hover)}
+.msg-qui{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.msg-auteur{font-size:13.5px;font-weight:650;color:var(--ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msg-adr{font-size:12px;color:var(--muted);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.msg-quand{font-size:12px;color:var(--muted);flex:none;font-variant-numeric:tabular-nums}
+.msg-corps{padding:2px 20px 20px 20px;font-size:13.5px;line-height:1.68;color:var(--ink2);
+  border-top:1px solid var(--border);margin-top:0;padding-top:16px}
+.msg-corps p{margin:0 0 13px}
+.msg-corps p:last-child{margin-bottom:0}
+.msg-corps a{color:var(--accent)}
+.replie .msg-corps{display:none}
+.msg-pieces{display:flex;gap:8px;flex-wrap:wrap;padding:0 20px 18px}
+/* La carte d'invitation : la TUILE, avec sa date en tuile d'Elements. */
+.invit{margin:0 20px 18px;background:var(--tuile);border-radius:8px;
+  padding:15px 17px;display:flex;gap:15px;align-items:flex-start}
+.invit-date{width:52px;flex:none;background:var(--surface);border-radius:2px;
+  border:1px solid var(--border);padding:6px 0;text-align:center}
+.invit-mois{display:block;font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);font-weight:650}
+.invit-jour{display:block;font-size:21px;line-height:1.15;color:var(--tuileInk);font-weight:340;
+  font-family:"Segoe UI Variable Display","Segoe UI",ui-sans-serif,system-ui,sans-serif}
+.invit-corps{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.invit-titre{font-size:14px;font-weight:650;color:var(--tuileInk)}
+.invit-quand,.invit-lieu{font-size:12.5px;color:var(--tuileInk);opacity:.85}
+.invit-gestes{display:flex;gap:7px;margin-top:9px}
+.invit-gestes .btn{height:28px;font-size:12.5px;padding:0 11px}
+.lecture-vide{height:100%;display:grid;place-items:center;padding:40px;text-align:center}
+.lecture-vide p{margin:12px 0 0;font-size:13px;color:var(--muted);line-height:1.65;max-width:38ch}
+
+/* --- Barre de statut 36 px ------------------------------------------ */
+.statut{height:36px;flex:none;display:flex;align-items:center;gap:14px;
+  padding:0 18px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)}
+.statut .texte{flex:1;min-width:0;display:flex;align-items:center;gap:9px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.statut .perf{flex:none;font-variant-numeric:tabular-nums}
+/* L'indicateur : le disque au repos, l'ANNEAU qui tourne pendant un cycle.
+   Même forme, une fois évidée — « le disque plein désigne un objectif ». */
+.anneau{width:11px;height:11px;flex:none;animation:tourne 1.1s linear infinite}
+@keyframes tourne{to{transform:rotate(360deg)}}
+.btn-statut{height:25px;padding:0 11px;display:inline-flex;align-items:center;gap:7px;
+  font-size:12px;font-weight:600;color:var(--ink2);background:var(--surface);
+  border:1px solid var(--border);border-radius:6px;cursor:pointer;flex:none}
+.btn-statut:hover{background:var(--hover);color:var(--ink)}
+.btn-statut[disabled]{opacity:.55;cursor:default}
+.btn-statut .i{width:14px;height:14px}
+
+/* --- Composeur ------------------------------------------------------ */
+.scrim{position:absolute;inset:0;background:var(--scrim);border:0;z-index:5;cursor:default}
+.composeur{position:absolute;right:22px;bottom:52px;width:600px;max-width:calc(100vw - 44px);
+  z-index:6;background:var(--surface);border:1px solid var(--border);border-radius:16px;
+  display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 12px 40px rgba(0,0,0,.16)}
+.comp-tete{height:46px;flex:none;display:flex;align-items:center;gap:10px;
+  padding:0 12px 0 18px;border-bottom:1px solid var(--border)}
+.comp-tete .sourcil{flex:1}
+.comp-champ{display:flex;align-items:center;gap:12px;padding:0 18px;height:42px;
+  border-bottom:1px solid var(--border)}
+.comp-champ label{width:52px;flex:none;font-size:12px;color:var(--muted)}
+.comp-champ input{flex:1;border:0;outline:0;background:transparent;font-size:13.5px}
+.comp-corps{border:0;outline:0;resize:none;background:transparent;padding:16px 18px;
+  min-height:190px;font-size:13.5px;line-height:1.68;color:var(--ink2)}
+.comp-pied{height:52px;flex:none;display:flex;align-items:center;gap:8px;
+  padding:0 14px;border-top:1px solid var(--border)}
+
+/* --- Pilule d'exploration (hors produit) ---------------------------- */
+.pilule{position:fixed;right:16px;bottom:46px;z-index:20;display:flex;gap:6px;
+  padding:6px;background:var(--surface);border:1px solid var(--border);
+  border-radius:999px;box-shadow:0 6px 20px rgba(0,0,0,.13)}
+.pilule button{height:26px;padding:0 12px;font-size:11.5px;border-radius:999px;
+  border:0;background:transparent;color:var(--muted);cursor:pointer;font-weight:600;
+  letter-spacing:.04em}
+.pilule button:hover{color:var(--ink);background:var(--hover)}
+.pilule button[aria-pressed="true"]{background:var(--sel);color:var(--ink)}
+
+/* --- Le calque « repères » ------------------------------------------
+   Le document de direction montre ses cotes ; le prototype montre les
+   siennes. Chaque disque reçoit son anneau et sa croix de centre, chaque
+   rangée son axe médian : on voit que rien n'est corrigé à l'œil. */
+.reperes .disque{box-shadow:0 0 0 1px var(--alert)}
+.reperes .ligne::after{content:"";position:absolute;left:0;right:0;top:50%;
+  height:1px;background:var(--alert);opacity:.35;pointer-events:none}
+.reperes .tuile-ini{outline:1px solid var(--alert);outline-offset:0}
+.reperes .col-disque{position:relative}
+.reperes .col-disque::before,.reperes .col-disque::after{
+  content:"";position:absolute;left:50%;top:50%;background:var(--alert);opacity:.8}
+.reperes .col-disque::before{width:15px;height:1px;transform:translate(-50%,-50%)}
+.reperes .col-disque::after{width:1px;height:15px;transform:translate(-50%,-50%)}
+</style></head>
+<body>
+
+<!-- ==================================================================
+     Le jeu d'icônes, redessiné dans la grammaire du document : grille
+     24, trait 2, bouts nets, jonctions vives, coordonnées entières.
+     Aucun disque coloré ici — dans l'application, la couleur est un
+     ÉTAT, pas une décoration d'icône.
+     ================================================================== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-wind" viewBox="0 0 24 24">
+    <g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter">
+      <path d="M4 8h16v9H4z"/></g>
+    <path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--marque)"/>
+  </symbol>
+  <symbol id="i-wind-clair" viewBox="0 0 24 24">
+    <g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter">
+      <path d="M4 8h16v9H4z"/></g>
+    <path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-reception" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></symbol>
+  <symbol id="i-envoyes" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M3 4l18 8-18 8 3-8z"/></g></symbol>
+  <symbol id="i-brouillons" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h10"/><path d="M4 11h7"/><path d="M11 19l1-3 6-6 2 2-6 6z"/></g></symbol>
+  <symbol id="i-indesirables" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M9 3h6l6 6v6l-6 6H9l-6-6V9z"/><path d="M12 8v5"/><path d="M12 16v2"/></g></symbol>
+  <symbol id="i-archives" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 5h18v4H3z"/><path d="M5 9h14v10H5z"/><path d="M9 13h6"/></g></symbol>
+  <symbol id="i-corbeille" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M4 7h16"/><path d="M6 7v12h12V7"/><path d="M10 4h4"/><path d="M10 11v5"/><path d="M14 11v5"/></g></symbol>
+  <symbol id="i-toutes" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M4 12h16v7H4z"/><path d="M6 9h12"/><path d="M8 6h8"/></g></symbol>
+  <symbol id="i-chercher" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 1 0 0-14"/><path d="M16 16l4 4"/></g></symbol>
+  <symbol id="i-reglages" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M4 8h16"/><path d="M14 5v6"/><path d="M4 16h16"/><path d="M9 13v6"/></g></symbol>
+  <symbol id="i-sync" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></g></symbol>
+  <symbol id="i-repondre" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M9 6L3 12l6 6"/><path d="M3 12h11a6 6 0 0 1 6 6v1"/></g></symbol>
+  <symbol id="i-repondretous" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M8 6L2 12l6 6"/><path d="M14 6l-6 6 6 6"/><path d="M8 12h8a5 5 0 0 1 5 5v2"/></g></symbol>
+  <symbol id="i-transferer" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M15 6l6 6-6 6"/><path d="M21 12H10a6 6 0 0 0-6 6v1"/></g></symbol>
+  <symbol id="i-epingler" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M10 3h4v7l2 4H8l2-4z"/><path d="M12 14v7"/></g></symbol>
+  <symbol id="i-fichier" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M19 7v9a6 6 0 0 1-12 0V6a4 4 0 0 1 8 0v10a2 2 0 0 1-4 0V8"/></g></symbol>
+  <symbol id="i-fil" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M6 5V2h16v10h-6"/><path d="M2 5h14v9H7l-5 5z"/></g></symbol>
+  <symbol id="i-nonlus" viewBox="0 0 24 24">
+    <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter">
+      <path d="M3 8h14v10H3z"/><path d="M3 8l7 5 7-5"/></g>
+    <circle cx="19" cy="6" r="3.4" fill="var(--marque)"/></symbol>
+  <symbol id="i-deplier" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M7 10l5-5 5 5"/><path d="M7 14l5 5 5-5"/></g></symbol>
+  <symbol id="i-replier" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M7 5l5 5 5-5"/><path d="M7 19l5-5 5 5"/></g></symbol>
+  <symbol id="i-ouvrir" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M14 4h6v6"/><path d="M10 20H4v-6"/><path d="M20 4l-7 7"/><path d="M4 20l7-7"/></g></symbol>
+  <symbol id="i-fermer" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M5 5l14 14"/><path d="M19 5L5 19"/></g></symbol>
+  <symbol id="i-oui" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4a8 8 0 1 0 0 16 8 8 0 1 0 0-16"/><path d="M8 12l3 3 5-5"/></g></symbol>
+  <symbol id="i-peutetre" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M8 8a4 4 0 1 1 4 4v3"/><path d="M12 18v2"/></g></symbol>
+</defs></svg>
+
+<div class="ecran">
+
+  <header class="entete">
+    <!-- La marque : le glyphe Wind lui-même — la seule forme ORIENTÉE du
+         système, son demi-disque tangent au bord intérieur haut. -->
+    <span class="marque">
+      <svg class="i i-l" style="color:var(--ink)"><use href="#i-wind"/></svg>
+      <span class="mot">Wind</span>
+    </span>
+    <span class="recherche">
+      <svg class="i i-s"><use href="#i-chercher"/></svg>
+      <input id="q" type="text" placeholder="Chercher un message, une personne, un fichier"
+             aria-label="Recherche">
+    </span>
+    <button class="btn btn-principal" id="btn-ecrire">
+      <svg class="i i-s"><use href="#i-wind-clair"/></svg>Écrire</button>
+    <button class="btn"><svg class="i i-s"><use href="#i-reglages"/></svg>Réglages</button>
+  </header>
+
+  <div class="colonnes">
+    <nav id="nav" aria-label="Dossiers et comptes"></nav>
+
+    <section class="liste" aria-label="Liste des messages">
+      <header class="bandeau">
+        <h1 class="display" id="bandeau-titre">Boîte de réception</h1>
+        <span class="n" id="bandeau-n"></span>
+      </header>
+      <div class="cadre" id="cadre"></div>
+      <div class="onglets" id="onglets"></div>
+    </section>
+
+    <section class="lecture" id="lecture" aria-label="Lecture"></section>
+  </div>
+
+  <div class="statut">
+    <span class="texte">
+      <span id="indicateur"></span>
+      <span id="statut-texte">Tous les messages sont à jour · dernière synchronisation il y a 4 minutes</span>
+    </span>
+    <span class="perf" id="perf">1 284 conversations · première page servie+rendue en 12 ms</span>
+    <button class="btn-statut" id="btn-sync">
+      <svg class="i"><use href="#i-sync"/></svg><span id="sync-mot">Synchroniser</span></button>
+  </div>
+</div>
+
+<div class="pilule">
+  <button id="t-jour" aria-pressed="true">Clair</button>
+  <button id="t-nuit" aria-pressed="false">Sombre</button>
+  <button id="t-reperes" aria-pressed="false">Repères</button>
+</div>
+
+<script>
+/* =====================================================================
+   Décor. Rien n'est branché : le spike sert à JUGER LA DIRECTION, pas à
+   remplacer l'application. Les données imitent la forme réelle servie
+   par le cœur Rust (compte, boîte, uid, fil, pièces, invitation).
+   ===================================================================== */
+const COMPTES = [
+  { id:'a', nom:'Camille Rey',  adr:'camille@atelier-rey.fr',  teinte:'d-a' },
+  { id:'b', nom:'Nordvent',     adr:'c.rey@nordvent.fr',       teinte:'d-b' },
+];
+
+const M = (o) => Object.assign({
+  dossier:'reception', compte:'a', nonlu:false, epingle:false, fils:1,
+  pieces:0, brouillon:false, invitation:null, corps:[], avant:[],
+}, o);
+// Les messages ANTÉRIEURS d'un fil : servis repliés au-dessus du message
+// choisi. Ils sont déclarés, pas devinés par le sujet — deux messages du
+// même expéditeur donnaient deux cartes jumelles, et ça se voyait.
+const A = (exp, ini, adr, heure, corps) => ({ exp, ini, adr, heure, corps, pieces:0, invitation:null });
+
+const MESSAGES = [
+  M({ id:1, exp:'Hélène Vasseur', ini:'HV', adr:'h.vasseur@bureau-nord.fr',
+      objet:'Relevé de chantier — bâtiment C, jeudi',
+      apercu:"J'ai repris les cotes du niveau 2 avec Paul. Deux écarts sur les linteaux, rien de bloquant.",
+      heure:'09:14', nonlu:true, fils:4, pieces:2, epingle:true,
+      avant:[
+        A('Camille Rey', 'CR', 'camille@atelier-rey.fr', 'Lun. 16:20',
+          ["Hélène, peux-tu repasser sur le niveau 2 avant la réception ? Je veux les linteaux au relevé, pas de mémoire."]),
+        A('Paul Ferrand', 'PF', 'paul.ferrand@bureau-nord.fr', 'Mar. 08:05',
+          ["Je suis dispo mercredi matin pour tenir la mire."]),
+      ],
+      corps:["Bonjour Camille,",
+        "J'ai repris les cotes du niveau 2 avec Paul ce matin. Deux écarts sur les linteaux — 4 mm et 7 mm — rien qui remette en cause la pose, mais je préfère que ce soit écrit avant la réception.",
+        "Le relevé complet est en pièce jointe, avec les photos numérotées comme convenu. Je passe jeudi vers 10 h si tu veux qu'on reprenne le point ensemble sur place."] }),
+  M({ id:2, exp:'Paul Ferrand', ini:'PF', adr:'paul.ferrand@bureau-nord.fr',
+      objet:'Invitation — Revue de conception, mardi 2 septembre',
+      apercu:'Revue de conception · mardi 2 septembre, 14 h 00 — 15 h 30 · Salle Nord',
+      heure:'08:47', nonlu:true, fils:1,
+      invitation:{ mois:'sept.', jour:'2', titre:'Revue de conception — lot menuiseries',
+                   quand:'Mardi 2 septembre, 14 h 00 – 15 h 30', lieu:'Salle Nord · 6 participants' },
+      corps:["On boucle le lot menuiseries avant l'envoi au client. Merci de venir avec les plans à jour."] }),
+  M({ id:3, exp:'Atelier Rey', ini:'AR', adr:'compta@atelier-rey.fr',
+      objet:'Facture 2026-0412 — acquittée',
+      apercu:"Le virement est arrivé ce matin. Je classe la facture, rien à faire de ton côté.",
+      heure:'Hier', fils:2, pieces:1,
+      corps:["Le virement est arrivé ce matin.", "Je classe la facture — rien à faire de ton côté."] }),
+  M({ id:4, exp:'Marion Delaunay', ini:'MD', adr:'m.delaunay@ateliers-lumiere.fr',
+      objet:'Re: Échantillons de teinte — le chaume et la bruyère',
+      apercu:"Les deux tiennent au soleil rasant. Je penche pour le chaume, plus calme sur les grandes surfaces.",
+      heure:'Hier', nonlu:true, fils:6, compte:'b',
+      avant:[
+        A('Camille Rey', 'CR', 'c.rey@nordvent.fr', 'Lun. 11:40',
+          ["Marion, as-tu pu sortir les deux échantillons au soleil rasant ? C'est le seul essai qui tranche."]),
+      ],
+      corps:["Les deux tiennent au soleil rasant, contrairement à ce que je craignais.",
+        "Je penche pour le chaume : plus calme sur les grandes surfaces, et il ne tire pas au vert en fin de journée.",
+        "Dis-moi ce que tu en penses avant vendredi, je dois passer la commande."] }),
+  M({ id:5, exp:'Nordvent — Exploitation', ini:'NE', adr:'exploitation@nordvent.fr',
+      objet:'Rapport hebdomadaire — semaine 34',
+      apercu:'Disponibilité 99,4 %. Un incident court sur le poste 3, résolu en 11 minutes.',
+      heure:'Hier', compte:'b', pieces:1, fils:1,
+      corps:["Disponibilité 99,4 % sur la semaine.",
+        "Un incident court sur le poste 3 (bascule d'alimentation), résolu en 11 minutes. Le détail est dans le rapport joint."] }),
+  M({ id:6, exp:'Julien Marchand', ini:'JM', adr:'j.marchand@grandes-lignes.fr',
+      objet:'Devis — reprise de la charpente est',
+      apercu:'Comme discuté, je te fais parvenir le devis. Validité 30 jours.',
+      heure:'Ven.', fils:3, pieces:3,
+      corps:["Comme discuté au téléphone, voici le devis pour la reprise de la charpente est.",
+        "Validité 30 jours. Le poste « échafaudage » est ferme, le poste « bois » est indexé — je te le signale, c'est la seule ligne qui peut bouger."] }),
+  M({ id:7, exp:'Sophie Aubert', ini:'SA', adr:'s.aubert@mairie-valmont.fr',
+      objet:'Autorisation de voirie — accordée',
+      apercu:"L'arrêté est signé. Occupation du trottoir du 8 au 26 septembre.",
+      heure:'Ven.', fils:1, pieces:1,
+      corps:["L'arrêté est signé.", "Occupation du trottoir autorisée du 8 au 26 septembre, de 7 h à 18 h. L'arrêté est joint — merci de l'afficher sur la palissade."] }),
+  M({ id:8, exp:'Thomas Bourgeois', ini:'TB', adr:'t.bourgeois@atelier-rey.fr',
+      objet:'Compte rendu — visite de la semaine',
+      apercu:'Rien à signaler côté gros œuvre. Les carreleurs commencent lundi.',
+      heure:'Jeu.', fils:2,
+      corps:["Rien à signaler côté gros œuvre.", "Les carreleurs commencent lundi, la livraison des faïences est confirmée pour vendredi."] }),
+  M({ id:9, exp:'Élodie Chevalier', ini:'ÉC', adr:'e.chevalier@nordvent.fr',
+      objet:'Congés de septembre — à arbitrer',
+      apercu:'Trois demandes se chevauchent sur la semaine 38. Je te laisse trancher.',
+      heure:'Jeu.', compte:'b', fils:5, nonlu:true,
+      corps:["Trois demandes se chevauchent sur la semaine 38.",
+        "Le tableau est à jour dans le partage. Je te laisse trancher — je préviens les trois dès que tu as décidé."] }),
+  M({ id:10, exp:'Renaud Pasquier', ini:'RP', adr:'r.pasquier@bois-du-nord.fr',
+      objet:'Délai de livraison — lot 3',
+      apercu:'La scierie annonce dix jours de plus. Je cherche une solution de repli.',
+      heure:'Mer.', fils:3,
+      corps:["La scierie annonce dix jours de plus sur le lot 3.",
+        "Je cherche une solution de repli chez un confrère. Je te tiens au courant demain en fin de journée."] }),
+  M({ id:11, exp:'Isabelle Fournier', ini:'IF', adr:'i.fournier@assur-batiment.fr',
+      objet:'Attestation décennale — renouvellement',
+      apercu:"Votre attestation arrive à échéance le 30 septembre.",
+      heure:'Mer.', fils:1, pieces:1,
+      corps:["Votre attestation décennale arrive à échéance le 30 septembre.",
+        "Le renouvellement est automatique, sauf changement d'activité de votre part. L'attestation 2026-2027 est jointe."] }),
+  M({ id:12, exp:'Cercle des artisans', ini:'CA', adr:'lettre@cercle-artisans.fr',
+      objet:'La lettre de septembre',
+      apercu:"Au sommaire : la réforme des marchés publics locaux, et un portrait d'atelier.",
+      heure:'Mar.', fils:1,
+      corps:["Au sommaire de septembre : la réforme des marchés publics locaux, un portrait d'atelier à Valmont, et le calendrier des formations."] }),
+
+  /* --- Envoyés ---------------------------------------------------- */
+  M({ id:20, dossier:'envoyes', exp:'Hélène Vasseur', ini:'HV', adr:'h.vasseur@bureau-nord.fr',
+      objet:'Re: Relevé de chantier — bâtiment C, jeudi',
+      apercu:'Parfait pour jeudi 10 h. Je préviens Paul.', heure:'09:31', fils:4,
+      corps:["Parfait pour jeudi 10 h. Je préviens Paul."] }),
+  M({ id:21, dossier:'envoyes', exp:'Renaud Pasquier', ini:'RP', adr:'r.pasquier@bois-du-nord.fr',
+      objet:'Re: Délai de livraison — lot 3',
+      apercu:"Merci. Tiens-moi au courant dès que tu as une réponse du confrère.", heure:'Mer.', fils:3,
+      corps:["Merci. Tiens-moi au courant dès que tu as une réponse du confrère — je dois arbitrer vendredi."] }),
+
+  /* --- Brouillons -------------------------------------------------- */
+  M({ id:30, dossier:'brouillons', brouillon:true, exp:'Marion Delaunay', ini:'MD',
+      adr:'m.delaunay@ateliers-lumiere.fr', objet:'Re: Échantillons de teinte — le chaume et la bruyère',
+      apercu:"D'accord pour le chaume. Une seule réserve sur les menuiseries exposées au sud —",
+      heure:'11:02', fils:1, compte:'b',
+      corps:["D'accord pour le chaume. Une seule réserve sur les menuiseries exposées au sud —"] }),
+  M({ id:31, dossier:'brouillons', brouillon:true, exp:'', ini:'', adr:'',
+      objet:'', apercu:'', heure:'Hier', fils:1, corps:[] }),
+
+  /* --- Indésirables ------------------------------------------------ */
+  M({ id:40, dossier:'indesirables', exp:'Promotions Habitat', ini:'PH', adr:'no-reply@promo-habitat.biz',
+      objet:'VOTRE DEVIS GRATUIT vous attend', apercu:'Offre exceptionnelle valable 48 heures seulement.',
+      heure:'07:12', nonlu:true, fils:1, corps:["Offre exceptionnelle valable 48 heures seulement."] }),
+  M({ id:41, dossier:'indesirables', exp:'Gagnant Sélection', ini:'GS', adr:'contact@selection-gagnants.net',
+      objet:'Félicitations, vous êtes sélectionné', apercu:'Cliquez pour réclamer votre lot.',
+      heure:'Hier', nonlu:true, fils:1, corps:["Cliquez pour réclamer votre lot."] }),
+
+  /* --- Archives ----------------------------------------------------- */
+  M({ id:50, dossier:'archives', exp:'Sophie Aubert', ini:'SA', adr:'s.aubert@mairie-valmont.fr',
+      objet:'Dépôt du permis modificatif — accusé de réception',
+      apercu:'Votre dossier a été enregistré sous le numéro PM-2026-118.',
+      heure:'12 août', fils:2, pieces:1,
+      corps:["Votre dossier a été enregistré sous le numéro PM-2026-118."] }),
+  M({ id:51, dossier:'archives', exp:'Julien Marchand', ini:'JM', adr:'j.marchand@grandes-lignes.fr',
+      objet:'Chantier Valmont — clôture',
+      apercu:'Tout est levé côté réserves. Merci pour le sérieux.', heure:'4 août', fils:7,
+      corps:["Tout est levé côté réserves. Merci pour le sérieux sur ce chantier."] }),
+
+  /* --- Corbeille ---------------------------------------------------- */
+  M({ id:60, dossier:'corbeille', exp:'Newsletter Outillage', ini:'NO', adr:'lettre@outillage-pro.fr',
+      objet:'Les nouveautés de la rentrée', apercu:'Perceuses, visseuses, et le retour du service de réparation.',
+      heure:'Lun.', fils:1, corps:["Perceuses, visseuses, et le retour du service de réparation."] }),
+];
+
+const DOSSIERS = [
+  { id:'reception',    icone:'i-reception',    lbl:'Boîte de réception' },
+  { id:'envoyes',      icone:'i-envoyes',      lbl:'Envoyés' },
+  { id:'brouillons',   icone:'i-brouillons',   lbl:'Brouillons' },
+  { id:'indesirables', icone:'i-indesirables', lbl:'Indésirables' },
+  { id:'archives',     icone:'i-archives',     lbl:'Archives' },
+  { id:'corbeille',    icone:'i-corbeille',    lbl:'Corbeille' },
+];
+const ONGLETS = [
+  { id:'tous',       icone:'i-reception',  lbl:'Tous' },
+  { id:'nonlus',     icone:'i-nonlus',     lbl:'Non lus' },
+  { id:'brouillons', icone:'i-brouillons', lbl:'Brouillons' },
+];
+
+/* --- État ------------------------------------------------------------ */
+let etat = { dossier:'reception', compte:null, onglet:'tous', choisi:1, q:'',
+             replies:new Set(), cycle:false };
+
+const ico = (id, cls) => `<svg class="i ${cls||''}" aria-hidden="true"><use href="#${id}"/></svg>`;
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
+  ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+
+/* --- Sélection des lignes -------------------------------------------- */
+function lignes() {
+  const q = etat.q.trim().toLowerCase();
+  let l = MESSAGES.filter((m) => m.dossier === etat.dossier);
+  if (etat.compte) l = l.filter((m) => m.compte === etat.compte);
+  if (etat.onglet === 'nonlus' && etat.dossier !== 'brouillons') l = l.filter((m) => m.nonlu);
+  if (etat.onglet === 'brouillons' && etat.dossier !== 'brouillons') l = [];
+  if (q) {
+    // La recherche traverse les comptes ET les dossiers, comme au produit.
+    l = MESSAGES.filter((m) =>
+      [m.exp, m.objet, m.apercu, m.adr].join(' ').toLowerCase().includes(q));
+  }
+  return l;
+}
+const nonLusDe = (dossier) => MESSAGES.filter((m) =>
+  m.dossier === dossier && m.nonlu && (!etat.compte || m.compte === etat.compte)).length;
+
+/* --- Nav -------------------------------------------------------------- */
+function rendreNav() {
+  const d = DOSSIERS.map((f) => {
+    const n = nonLusDe(f.id);
+    return `<button class="rang ${etat.dossier === f.id ? 'actif' : ''}" data-dossier="${f.id}">
+      ${ico(f.icone)}<span class="lbl">${f.lbl}</span>
+      ${n ? `<span class="compte-nonlus">${n}</span>` : ''}</button>`;
+  }).join('');
+
+  // Un compte = un DISQUE de sa teinte. Nu : la mesure dit qu'aucune des
+  // six teintes ne porte un glyphe à 4,5:1 — le jeu d'icônes ne met
+  // d'ailleurs jamais rien DANS un disque.
+  const boites = [
+    `<button class="rang ${etat.compte === null ? 'tuile' : ''}" data-compte="">
+       ${ico('i-toutes')}<span class="lbl">Toutes les boîtes</span></button>`,
+    ...COMPTES.map((c) => `<button class="rang ${etat.compte === c.id ? 'tuile' : ''}" data-compte="${c.id}">
+       <span class="disque d-compte ${c.teinte}"></span>
+       <span class="lbl">${esc(c.nom)}</span></button>`),
+  ].join('');
+
+  nav.innerHTML = d + `<div class="boites"><p class="sourcil">Boîtes</p>${boites}</div>`;
+}
+
+/* --- Liste ------------------------------------------------------------ */
+function rangee(m) {
+  const puces = [];
+  if (m.epingle) puces.push(`<span class="puce">${ico('i-epingler')}Épinglé</span>`);
+  if (m.fils > 1) puces.push(`<span class="puce">${ico('i-fil')}${m.fils} messages</span>`);
+  if (m.pieces > 0) puces.push(`<span class="puce">${ico('i-fichier')}${m.pieces} fichier${m.pieces > 1 ? 's' : ''}</span>`);
+  const cpt = COMPTES.find((c) => c.id === m.compte);
+  // Le disque de compte n'apparaît que là où les comptes se MÉLANGENT.
+  const melange = etat.compte === null || etat.q.trim() !== '';
+  const classes = ['ligne'];
+  if (m.nonlu) classes.push('nonlu');
+  if (etat.choisi === m.id) classes.push('choisie');
+  if (m.epingle && !etat.q) classes.push('epinglee');
+  // Que des éléments EN LIGNE dans le bouton : un <p> dans un <button>
+  // est invalide (contenu de phrasé attendu) — le rendu passe, la
+  // conformité non, et une rangée est le nœud le plus répété de l'écran.
+  return `<button class="${classes.join(' ')}" data-id="${m.id}"
+                  aria-current="${etat.choisi === m.id}">
+    <span class="col-disque">${m.nonlu
+      ? '<span class="disque d-nonlu" role="img" aria-label="Non lu"></span>' : ''}</span>
+    <span class="col-tuile">
+      <span class="tuile-ini">${esc(m.ini || '—')}</span>
+      ${melange && cpt ? `<span class="disque d-compte ${cpt.teinte}" role="img"
+        aria-label="${esc(cpt.nom)}" title="${esc(cpt.nom)}"></span>` : ''}
+    </span>
+    <span class="contenu">
+      <span class="l1">
+        <span class="exp">${esc(m.exp || 'Sans destinataire')}</span>
+        <span class="heure">${m.heure}</span></span>
+      <span class="objet">${esc(m.objet || '(sans objet)')}</span>
+      <span class="apercu">${m.brouillon ? '<span class="prefixe">Brouillon : </span>' : ''}${esc(m.apercu)}</span>
+      ${puces.length ? `<span class="puces">${puces.join('')}</span>` : ''}
+    </span>
+  </button>`;
+}
+
+function rendreListe() {
+  const l = lignes();
+  const titre = etat.q.trim() ? 'Recherche'
+    : (DOSSIERS.find((d) => d.id === etat.dossier) || {}).lbl;
+  document.getElementById('bandeau-titre').textContent = titre;
+  document.getElementById('bandeau-n').textContent =
+    l.length ? `${l.length} élément${l.length > 1 ? 's' : ''}` : '';
+
+  if (!l.length) {
+    cadre.innerHTML = `<p class="vide">${etat.q.trim()
+      ? 'Aucun résultat. Essayez un autre mot, ou une adresse.'
+      : 'Rien ici. Ce dossier est vide.'}</p>`;
+  } else {
+    const ep = etat.q.trim() ? [] : l.filter((m) => m.epingle);
+    const flot = l.filter((m) => !ep.includes(m));
+    cadre.innerHTML =
+      (ep.length ? `<p class="sourcil section-titre">Épinglés</p>${ep.map(rangee).join('')}` : '') +
+      (ep.length && flot.length ? `<p class="sourcil section-titre">Le fil des jours</p>` : '') +
+      flot.map(rangee).join('');
+  }
+
+  onglets.innerHTML = ONGLETS.map((o) => `<button class="onglet ${etat.onglet === o.id ? 'actif' : ''}"
+    data-onglet="${o.id}">${ico(o.icone)}${o.lbl}</button>`).join('');
+}
+
+/* --- Lecture ----------------------------------------------------------- */
+function rendreLecture() {
+  const m = MESSAGES.find((x) => x.id === etat.choisi);
+  if (!m) {
+    lecture.innerHTML = `<div class="lecture-vide"><div>
+      <svg class="i" style="width:44px;height:44px;color:var(--ink);margin:0 auto"><use href="#i-wind"/></svg>
+      <p>Aucun message choisi. Le demi-disque est le seul repère orienté du système : il montre le rabat, donc le sens d'ouverture.</p>
+    </div></div>`;
+    return;
+  }
+  const cpt = COMPTES.find((c) => c.id === m.compte);
+
+  // Le fil : le message choisi déplié, et les précédents repliés — la
+  // même carte, une fois fermée. Deux états d'une seule forme.
+  const cartes = [
+    ...(m.avant || []).map((a) => carte(a, true)),
+    carte(m, false),
+  ].join('');
+
+  lecture.innerHTML = `<div class="lecture-dedans">
+    <div class="tete-fil">
+      <span class="sourcil">${m.fils > 1 ? `Conversation · ${m.fils} messages` : 'Message'}${
+        cpt ? ` · ${esc(cpt.nom)}` : ''}</span>
+      <h2 class="display">${esc(m.objet || '(sans objet)')}</h2>
+      <div class="rang-actions">
+        <button class="nu">${ico('i-repondre')}Répondre</button>
+        <button class="nu">${ico('i-repondretous')}Répondre à tous</button>
+        <button class="nu">${ico('i-transferer')}Transférer</button>
+        <span class="essor"></span>
+        <button class="nu">${ico('i-epingler')}${m.epingle ? 'Désépingler' : 'Épingler'}</button>
+        <button class="nu">${ico('i-archives')}Archiver</button>
+        <button class="nu">${ico('i-corbeille')}Supprimer</button>
+        <button class="nu">${ico('i-ouvrir')}Ouvrir</button>
+      </div>
+    </div>
+    ${cartes}
+  </div>`;
+}
+
+function carte(m, replie) {
+  const ferme = replie && !etat.replies.has(m.id);
+  const invit = m.invitation ? `<div class="invit">
+      <span class="invit-date">
+        <span class="invit-mois">${m.invitation.mois}</span>
+        <span class="invit-jour">${m.invitation.jour}</span></span>
+      <span class="invit-corps">
+        <span class="invit-titre">${esc(m.invitation.titre)}</span>
+        <span class="invit-quand">${esc(m.invitation.quand)}</span>
+        <span class="invit-lieu">${esc(m.invitation.lieu)}</span>
+        <span class="invit-gestes">
+          <button class="btn">${ico('i-oui', 'i-s')}Accepter</button>
+          <button class="btn">${ico('i-peutetre', 'i-s')}Peut-être</button>
+          <button class="btn">${ico('i-fermer', 'i-s')}Refuser</button>
+        </span></span></div>` : '';
+  const pieces = m.pieces > 0 ? `<div class="msg-pieces">${
+    Array.from({ length: m.pieces }, (_, i) =>
+      `<span class="puce">${ico('i-fichier')}${['releve-niveau-2.pdf', 'photos-linteaux.zip', 'devis-charpente-est.pdf'][i] || 'piece-jointe.pdf'}</span>`).join('')}</div>` : '';
+  return `<article class="msg ${ferme ? 'replie' : ''}">
+    <button class="msg-tete" data-replie="${m.id}">
+      <span class="tuile-ini">${esc(m.ini || '—')}</span>
+      <span class="msg-qui">
+        <span class="msg-auteur">${esc(m.exp || 'Sans destinataire')}</span>
+        <span class="msg-adr">${esc(m.adr)} · à moi</span></span>
+      <span class="msg-quand">${m.heure}</span>
+      ${ico(ferme ? 'i-deplier' : 'i-replier', 'i-s')}
+    </button>
+    <div class="msg-corps">
+      ${invit}
+      ${m.corps.map((p) => `<p>${esc(p)}</p>`).join('') || '<p>—</p>'}
+    </div>
+    ${ferme ? '' : pieces}
+  </article>`;
+}
+
+/* --- Barre de statut ---------------------------------------------------- */
+function rendreStatut() {
+  indicateur.innerHTML = etat.cycle
+    ? `<svg class="anneau" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"
+         fill="none" stroke="var(--marque)" stroke-width="4"
+         stroke-dasharray="17 34" stroke-linecap="butt"/></svg>`
+    : `<span class="disque" style="width:9px;height:9px;background:var(--marque)"></span>`;
+  document.getElementById('sync-mot').textContent = etat.cycle ? 'Synchronisation' : 'Synchroniser';
+  document.getElementById('btn-sync').disabled = etat.cycle;
+}
+
+function tout() { rendreNav(); rendreListe(); rendreLecture(); rendreStatut(); }
+
+/* --- Gestes -------------------------------------------------------------- */
+nav.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-dossier],[data-compte]');
+  if (!b) return;
+  if (b.dataset.dossier !== undefined && b.dataset.dossier !== '') {
+    etat.dossier = b.dataset.dossier; etat.q = ''; document.getElementById('q').value = '';
+  } else if (b.dataset.compte !== undefined) {
+    etat.compte = b.dataset.compte || null;
+  }
+  const l = lignes(); etat.choisi = l.length ? l[0].id : null;
+  tout();
+});
+
+cadre.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-id]');
+  if (!b) return;
+  const m = MESSAGES.find((x) => x.id === +b.dataset.id);
+  etat.choisi = m.id; m.nonlu = false;     // lire, c'est éteindre le disque
+  etat.replies = new Set();
+  tout();
+});
+
+onglets.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-onglet]');
+  if (!b) return;
+  etat.onglet = b.dataset.onglet;
+  if (etat.onglet === 'brouillons') etat.dossier = 'brouillons';
+  else if (etat.dossier === 'brouillons') etat.dossier = 'reception';
+  const l = lignes(); etat.choisi = l.length ? l[0].id : null;
+  tout();
+});
+
+lecture.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-replie]');
+  if (!b) return;
+  const id = +b.dataset.replie;
+  if (etat.replies.has(id)) etat.replies.delete(id); else etat.replies.add(id);
+  rendreLecture();
+});
+
+document.getElementById('q').addEventListener('input', (e) => {
+  etat.q = e.target.value;
+  const l = lignes(); etat.choisi = l.length ? l[0].id : null;
+  rendreListe(); rendreLecture();
+});
+
+document.getElementById('btn-sync').addEventListener('click', () => {
+  if (etat.cycle) return;
+  etat.cycle = true; rendreStatut();
+  const st = document.getElementById('statut-texte');
+  const etapes = ['Synchronisation · inventaire des dossiers · 12 %',
+                  'Synchronisation · 41 %', 'Synchronisation · fils de discussion · 78 %',
+                  'Synchronisation · brouillons · 96 %'];
+  let i = 0;
+  const t = setInterval(() => {
+    st.textContent = etapes[i++];
+    if (i >= etapes.length) {
+      clearInterval(t);
+      setTimeout(() => {
+        etat.cycle = false; rendreStatut();
+        st.textContent = "Tous les messages sont à jour · dernière synchronisation à l'instant";
+      }, 700);
+    }
+  }, 620);
+});
+
+/* --- Composeur ----------------------------------------------------------- */
+function ouvrirComposeur() {
+  if (document.querySelector('.composeur')) return;
+  const scrim = document.createElement('button');
+  scrim.className = 'scrim'; scrim.setAttribute('aria-label', 'Fermer le composeur');
+  const c = document.createElement('div');
+  c.className = 'composeur'; c.setAttribute('role', 'dialog'); c.setAttribute('aria-label', 'Nouveau message');
+  c.innerHTML = `
+    <div class="comp-tete"><span class="sourcil">Nouveau message</span>
+      <button class="btn icone-seule" data-fermer>${ico('i-fermer', 'i-s')}</button></div>
+    <div class="comp-champ"><label for="c-a">À</label><input id="c-a" placeholder="Une adresse, un nom"></div>
+    <div class="comp-champ"><label for="c-o">Objet</label><input id="c-o" placeholder="L'objet du message"></div>
+    <textarea class="comp-corps" placeholder="Écrivez."></textarea>
+    <div class="comp-pied">
+      <button class="btn btn-principal" style="margin-left:0">${ico('i-envoyes', 'i-s')}Envoyer</button>
+      <button class="btn icone-seule">${ico('i-fichier', 'i-s')}</button>
+      <span class="essor"></span>
+      <button class="btn icone-seule" data-fermer>${ico('i-corbeille', 'i-s')}</button>
+    </div>`;
+  const fermer = () => { c.remove(); scrim.remove(); };
+  scrim.addEventListener('click', fermer);
+  c.addEventListener('click', (e) => { if (e.target.closest('[data-fermer]')) fermer(); });
+  document.querySelector('.ecran').append(scrim, c);
+  c.querySelector('#c-a').focus();
+}
+document.getElementById('btn-ecrire').addEventListener('click', ouvrirComposeur);
+
+/* --- Clavier -------------------------------------------------------------- */
+addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { document.querySelector('.composeur [data-fermer]')?.click(); return; }
+  if (e.target.matches('input,textarea')) return;
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  e.preventDefault();
+  const l = lignes(); if (!l.length) return;
+  const i = l.findIndex((m) => m.id === etat.choisi);
+  const j = Math.min(l.length - 1, Math.max(0, i + (e.key === 'ArrowDown' ? 1 : -1)));
+  etat.choisi = l[j].id; l[j].nonlu = false; etat.replies = new Set();
+  tout();
+  cadre.querySelector('.choisie')?.scrollIntoView({ block:'nearest' });
+});
+
+/* --- Pilule d'exploration -------------------------------------------------- */
+const poser = (theme) => {
+  document.documentElement.dataset.theme = theme;
+  document.getElementById('t-jour').setAttribute('aria-pressed', String(theme === 'jour'));
+  document.getElementById('t-nuit').setAttribute('aria-pressed', String(theme === 'nuit'));
+};
+document.getElementById('t-jour').onclick = () => poser('jour');
+document.getElementById('t-nuit').onclick = () => poser('nuit');
+document.getElementById('t-reperes').onclick = (e) => {
+  const on = document.body.classList.toggle('reperes');
+  e.currentTarget.setAttribute('aria-pressed', String(on));
+};
+
+tout();
+</script>
+</body></html>

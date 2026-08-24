@@ -1511,7 +1511,7 @@
      UI v3, E4 (verdict CE 2026-08-16) : le gabarit de la maquette
      Classique — 52 px, gouttières 14/12, recherche bornée à 520 px. */
   .entete {
-    height:52px; flex:none; background:var(--panel);
+    height:52px; flex:none; background:var(--bg);
     border-bottom:1px solid var(--border); display:flex;
     align-items:center; gap:12px; padding:0 14px;
   }
@@ -1601,7 +1601,7 @@
   }
   .tiroir {
     position:absolute; top:0; bottom:0; left:0; width:268px; z-index:2;
-    background:var(--panel); border-right:1px solid var(--border);
+    background:var(--bg); border-right:1px solid var(--border);
     box-shadow:var(--shadow); display:flex; flex-direction:column;
   }
   .tiroir > :global(nav) { flex:1; border-right:none; }
@@ -1613,7 +1613,7 @@
   .fermer-tiroir { margin-left:auto; }
 
   .statut {
-    position:relative; height:36px; flex:none; background:var(--panel);
+    position:relative; height:36px; flex:none; background:var(--bg);
     border-top:1px solid var(--border); display:flex; align-items:center;
     gap:14px; padding:0 24px;
     font-size:12px; color:var(--muted);

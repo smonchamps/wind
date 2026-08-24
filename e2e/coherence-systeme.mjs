@@ -4,21 +4,21 @@
 //
 //   node coherence-systeme.mjs   -> écarts nommés + verdict
 //
-// Quatre vérifications :
+// Vérifications :
 //   1. La table du contrat des jetons (cellules data-theme/data-jeton)
 //      égale les :root de systeme.css, VALEUR POUR VALEUR, dans les
 //      deux sens — un jeton du CSS absent du doc est un échec autant
 //      qu'une valeur fausse, et une cellule orpheline (jeton mort au
 //      CSS) autant qu'une cellule manquante.
-//   2. Aucun compteur de glyphes (« N glyphes ») dans le corps du doc —
-//      le contrat est assets/icones/README.md, seul compteur qui fait
-//      foi (DC-D3). Le journal des amendements, archive de faits datés,
-//      est seul exempté.
-//   3. Le renvoi au contrat des icônes est bien présent.
-//   4. Les pastilles de FICHES (lib/theme.js) égalent les jetons
-//      [accent, bg, panel, surface, ink] du CSS — les vignettes du
+//   2. Le journal des amendements est présent. (Les anciens contrôles
+//      « aucun compteur de glyphes hors journal » et « renvoi à
+//      assets/icones/README.md » sont morts avec la fonte : depuis V8
+//      le relevé de la section Icônes EST l'inventaire — le doc dit
+//      « 78 glyphes » et il a raison de le dire.)
+//   3. Les pastilles de FICHES (lib/theme.js) égalent les jetons
+//      [accent, bg, border, surface, ink] du CSS — les vignettes du
 //      sélecteur Réglages montrent chaque thème sans l'appliquer, la
-//      copie ne doit jamais dériver (revue A42).
+//      copie ne doit jamais dériver (revue A42). `panel` est mort (V3).
 //
 // Le remède est toujours le même : amender le Système dans le commit
 // fautif (DC-D2) — jamais tordre la gate.
@@ -84,27 +84,17 @@ for (const nom of Object.keys(themesDoc)) {
   }
 }
 
-// --- 2. Aucun compteur de glyphes hors du journal --------------------
-const debutJournal = doc.indexOf('Journal des amendements');
-const corpsDoc = debutJournal === -1 ? doc : doc.slice(0, debutJournal);
-if (debutJournal === -1) {
+// --- 2. Le journal des amendements est présent -----------------------
+if (!doc.includes('Journal des amendements')) {
   echec('la section « Journal des amendements » est introuvable');
 }
-for (const [motif] of corpsDoc.matchAll(/\b\d+\s*(?:<[^>]+>\s*)*glyphes/g)) {
-  echec(`compteur de glyphes dans le corps du doc (« ${motif.replace(/\s+/g, ' ')} ») — le contrat est assets/icones/README.md (DC-D3)`);
-}
 
-// --- 3. Le renvoi au contrat des icônes ------------------------------
-if (!corpsDoc.includes('assets/icones/README.md')) {
-  echec('le renvoi au contrat assets/icones/README.md manque dans le corps du doc (DC-D3)');
-}
-
-// --- 4. Les pastilles de FICHES disent les jetons livrés -------------
+// --- 3. Les pastilles de FICHES disent les jetons livrés -------------
 const themeJs = readFileSync(
   path.join(root, 'apps', 'desktop', 'ui-v2', 'src', 'lib', 'theme.js'),
   'utf8',
 );
-const ROLES_PASTILLES = ['accent', 'bg', 'panel', 'surface', 'ink'];
+const ROLES_PASTILLES = ['accent', 'bg', 'border', 'surface', 'ink'];
 const fiches = [...themeJs.matchAll(/\{ id: '([a-z-]+)', pastilles: \[([^\]]*)\] \}/g)];
 if (fiches.length !== NOMBRE_ATTENDU) {
   echec(`${fiches.length} fiche(s) lues dans lib/theme.js — ${NOMBRE_ATTENDU} attendues : FICHES a changé de forme, ou une fiche manque`);
@@ -123,7 +113,7 @@ for (const [, id, brut] of fiches) {
   });
 }
 
-// --- 5. Les catalogues nomment chaque thème livré --------------------
+// --- 4. Les catalogues nomment chaque thème livré --------------------
 // Revue A42 : la parité fr↔en (refonte-langue.spec) ne dit pas qu'un
 // thème LIVRÉ a son libellé — un id renommé sans les catalogues rendait
 // la clé brute `theme.<id>.nom` sur la carte, en vert partout.
@@ -147,7 +137,8 @@ for (const langue of ['fr', 'en']) {
   }
 }
 
-// --- 5. Aucune règle de barre de défilement (A44) --------------------
+// --- 5. Aucune règle de barre de défilement (A44) — (numérotation
+//     remise d'équerre à E1 de PLAN-ELEMENTS : deux « 5 » cohabitaient)
 // Les barres sont NATIVES en surimpression (OverlayScrollbar) : UNE
 // seule règle `::-webkit-scrollbar` / `scrollbar-width` /
 // `scrollbar-color` fait retomber l'élément sur le chemin classique et
@@ -176,7 +167,7 @@ for (const fichier of fichiersUi(srcUi)) {
   }
 }
 
-// --- 7. Le jeu dédié des repères : UNE liste, quatre porteurs --------
+// --- 6. Le jeu dédié des repères : UNE liste, quatre porteurs --------
 // (PLAN-RETOURS-8, revue 2026-08-22) : l'allowlist Rust (commands.rs,
 // elle fait foi à l'écriture), lib/reperes.js (ce que l'UI propose),
 // les teintes de systeme.css (ce qui se dessine) et les catalogues

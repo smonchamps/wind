@@ -29,8 +29,9 @@ test("R4 : l'entête du composeur porte le fond du pied de page de Wind (A66)", 
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   await page.locator('[data-testid="ecrire"]').click();
   await expect(page.locator('[data-testid="composition-kicker"]')).toBeVisible();
-  // Le même jeton (--panel) des deux côtés : la comparaison se fait sur
-  // la couleur CALCULÉE — un thème qui bouge ne casse pas le test.
+  // Le même jeton (--bg depuis V3 — --panel est mort) des deux côtés :
+  // la comparaison se fait sur la couleur CALCULÉE — un thème qui bouge
+  // ne casse pas le test.
   const tete = await fond(page.locator('[data-testid="composition"] .tete'));
   const pied = await fond(page.locator('[data-testid="statut"]'));
   expect(tete).toBe(pied);

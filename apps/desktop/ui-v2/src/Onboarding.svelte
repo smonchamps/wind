@@ -93,18 +93,22 @@
 
 <div class="ecran01" data-testid="onboarding">
   <!-- L'aperçu-fenêtre de l'étape 3 : n = disposition dessinée (celle
-       choisie à l'étape 2, constat 6), c = couleurs d'une fiche. -->
+       choisie à l'étape 2, constat 6), c = couleurs d'une fiche. V3 :
+       entête et nav ne sont plus en retrait (--panel est mort) — le
+       FILET de la fiche dessine seul la séparation, comme au produit. -->
   {#snippet fenetre(n, c)}
-    <span class="fenetre" aria-hidden="true" style="background:{c.bg}">
-      <span class="f-tete" style="background:{c.panel}"></span>
+    <span class="fenetre" aria-hidden="true"
+          style="background:{c.bg}; border-color:{c.border}">
+      <span class="f-tete" style="border-color:{c.border}"></span>
       <span class="f-corps">
-        {#if n !== 1}<span class="f-nav" style="background:{c.panel}"></span>{/if}
+        {#if n !== 1}<span class="f-nav" style="border-right:1px solid {c.border}"></span>{/if}
         <span class="f-liste">
           <span style="background:{c.surface}"></span>
           <span style="background:{c.accent}"></span>
           <span style="background:{c.surface}"></span>
         </span>
-        {#if n === 3}<span class="f-lecture" style="background:{c.surface}"></span>{/if}
+        {#if n === 3}<span class="f-lecture"
+              style="background:{c.surface}; border-color:{c.border}"></span>{/if}
       </span>
     </span>
   {/snippet}
@@ -176,7 +180,7 @@
       <p class="sous">{t('accueil.themeSous')}</p>
       <div class="cartes themes" data-testid="accueil-themes">
         {#each FICHES as fiche (fiche.id)}
-          {@const [accent, bg, panel, surface] = fiche.pastilles}
+          {@const [accent, bg, border, surface] = fiche.pastilles}
           <button type="button" class="carte" class:choisie={themeActif === fiche.id}
                   data-testid="accueil-theme" data-theme-id={fiche.id}
                   aria-pressed={themeActif === fiche.id}
@@ -184,7 +188,7 @@
             <!-- La fenêtre aux couleurs de LA fiche (FICHES est mesuré
                  contre systeme.css par la gate), dans la disposition
                  choisie (constat 6). -->
-            {@render fenetre(volets, { accent, bg, panel, surface })}
+            {@render fenetre(volets, { accent, bg, border, surface })}
             <span class="carte-nom">{t(`theme.${fiche.id}.nom`)}</span>
           </button>
         {/each}
@@ -225,8 +229,8 @@
           <!-- 4e passe terrain : le texte AU-DESSUS de l'image. -->
           <span class="recap-valeur">{t(`theme.${themeActif}.nom`)}</span>
           {#if ficheActive}
-            {@const [accent, bg, panel, surface] = ficheActive.pastilles}
-            <span class="mini-theme">{@render fenetre(volets, { accent, bg, panel, surface })}</span>
+            {@const [accent, bg, border, surface] = ficheActive.pastilles}
+            <span class="mini-theme">{@render fenetre(volets, { accent, bg, border, surface })}</span>
           {/if}
           <span class="voile" aria-hidden="true">
             <span class="ms">arrow_back</span>{t('accueil.revenir')}</span>
@@ -289,8 +293,9 @@
   .ajoutes .ms { color:var(--accent); }
 
   .cartes { display:flex; gap:14px; flex-wrap:wrap; }
+  /* V7 : deux fiches, côte à côte — la grille de 28 est morte. */
   .cartes.themes {
-    display:grid; grid-template-columns:repeat(4, 1fr); gap:12px;
+    display:grid; grid-template-columns:repeat(2, 1fr); gap:14px;
   }
   .carte {
     display:flex; flex-direction:column; gap:8px; padding:10px;

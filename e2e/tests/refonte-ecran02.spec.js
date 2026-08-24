@@ -55,7 +55,8 @@ test('le volet liste porte son bandeau de titre — le nom de la boîte, sans bo
   await expect(titre.locator('button')).toHaveCount(0);
   // PLAN-RETOURS-V3 R2 : le bandeau du haut au MÊME format visuel que
   // le bandeau de filtre du bas — même hauteur (52 px), même fond
-  // (--panel), un filet le sépare de la liste comme le filet du bas.
+  // (--bg depuis V3 — --panel est mort), un filet le sépare de la
+  // liste comme le filet du bas.
   const gabarit = (loc) =>
     loc.evaluate((el) => {
       const s = getComputedStyle(el);
@@ -651,7 +652,7 @@ test('R3 : le corps reste sur dalle claire même sous un thème sombre (PLAN-RET
   // vide le cache des corps → relève fraîche sous ce thème) ; l'ancien
   // code aurait baké un fond sombre ici — réintroduire une palette de
   // thème casserait ce test.
-  await page.evaluate(() => { document.documentElement.dataset.theme = 'estampe-nuit'; });
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'elements-nuit'; });
   await page.locator('[data-testid="ligne"]', { hasText: 'renouvellement du domaine' }).click();
   await expect(page.locator('[data-testid="garde-images"]')).toBeVisible();
   const srcdoc = await page.locator('iframe.corps').first().getAttribute('srcdoc');
@@ -787,21 +788,20 @@ test('les réglages appliquent et persistent le thème', async () => {
   await page.locator('[data-testid="reglages"]').click();
   // A13 : les thèmes vivent dans leur groupe, choisi au rail.
   await page.locator('[data-testid="reglages-groupe"][data-groupe="themes"]').click();
-  // A42 : 28 fiches — 14 claires et leurs 14 déclinaisons -nuit,
-  // toutes choisissables (décision D1 de PLAN-WADA-ELARGI).
-  await expect(page.locator('[data-testid="theme"]')).toHaveCount(28);
-  await page.locator('[data-theme-id="nature-nuit"]').click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'nature-nuit');
+  // V7 : deux fiches, et deux seulement — Elements et Elements · nuit.
+  await expect(page.locator('[data-testid="theme"]')).toHaveCount(2);
+  await page.locator('[data-theme-id="elements-nuit"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'elements-nuit');
   await page.locator('[data-testid="reglages-termine"]').click();
   await expect(page.locator('[data-testid="reglages-modal"]')).toHaveCount(0);
   // Persistance : le choix survit dans localStorage (rechargé au montage).
-  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('nature-nuit');
-  // La coche suit le choix à la réouverture ; retour à `nature` pour ne
-  // pas teinter d'autres parcours.
+  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('elements-nuit');
+  // La coche suit le choix à la réouverture ; retour à `elements` pour
+  // ne pas teinter d'autres parcours.
   await page.locator('[data-testid="reglages"]').click();
   await page.locator('[data-testid="reglages-groupe"][data-groupe="themes"]').click();
-  await expect(page.locator('[data-theme-id="nature-nuit"] .coche')).toBeVisible();
-  await page.locator('[data-theme-id="nature"]').click();
+  await expect(page.locator('[data-theme-id="elements-nuit"] .coche')).toBeVisible();
+  await page.locator('[data-theme-id="elements"]').click();
   await page.locator('[data-testid="reglages-termine"]').click();
 });
 
@@ -849,48 +849,46 @@ test("la section Comptes liste les comptes réels et ouvre le guichet d'ajout (A
 
 // ——— E2 des Réglages : les groupes à décision (R-D1, R-D2) —————————————
 
-test("Affichage : le suivi de l'OS sombre suffixe le thème choisi en -nuit (D6, A42)", async () => {
+test("Affichage : le suivi de l'OS sombre suffixe le thème choisi en -nuit (D6, A42/V7)", async () => {
   await page.locator('[data-testid="reglages"]').click();
   await page.locator('[data-testid="reglages-groupe"][data-groupe="affichage"]').click();
   const bascule = page.locator('[data-testid="affichage-auto"]');
   await expect(bascule).toHaveAttribute('aria-checked', 'false');
   await bascule.click();
-  // OS sombre : la déclinaison nuit du thème choisi (nature) s'affiche ;
-  // le choix persisté reste le thème de BASE — le suffixe est un état
-  // dérivé, jamais enregistré (A42).
+  // OS sombre : la déclinaison nuit du thème choisi (elements)
+  // s'affiche ; le choix persisté reste le thème de BASE — le suffixe
+  // est un état dérivé, jamais enregistré (A42, mécanique conservée
+  // par V7 sur les deux thèmes restants).
   await page.emulateMedia({ colorScheme: 'dark' });
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'nature-nuit');
-  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).not.toBe('nature-nuit');
-  // Le suffixe suit le thème choisi, pas un sombre unique : safran
-  // choisi sous OS sombre s'affiche safran-nuit, et safran est persisté.
-  await page.locator('[data-testid="reglages-groupe"][data-groupe="themes"]').click();
-  await page.locator('[data-theme-id="safran"]').click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'safran-nuit');
-  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('safran');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'elements-nuit');
+  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).not.toBe('elements-nuit');
   // Un thème -nuit choisi à la main reste en paix : déjà sombre…
-  await page.locator('[data-theme-id="estampe-nuit"]').click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'estampe-nuit');
+  await page.locator('[data-testid="reglages-groupe"][data-groupe="themes"]').click();
+  await page.locator('[data-theme-id="elements-nuit"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'elements-nuit');
+  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('elements-nuit');
   // …y compris quand l'OS repasse au clair — le choix explicite prime
   // (revue A42 : cette direction-là n'était pas assertée).
   await page.emulateMedia({ colorScheme: 'light' });
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'estampe-nuit');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'elements-nuit');
   await page.emulateMedia({ colorScheme: 'dark' });
-  // La coche suit la fiche AFFICHÉE (revue A42) : nature choisi sous
-  // OS sombre s'affiche nature-nuit — la coche aussi, sinon le clic de
-  // « correction » sur la fiche -nuit enferme dans le sombre permanent.
-  await page.locator('[data-theme-id="nature"]').click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'nature-nuit');
-  await expect(page.locator('[data-theme-id="nature-nuit"] .coche')).toBeVisible();
-  // OS clair : le choix revient tel quel — l'attribut TOMBE (nature),
+  // La coche suit la fiche AFFICHÉE (revue A42) : elements choisi sous
+  // OS sombre s'affiche elements-nuit — la coche aussi, sinon le clic
+  // de « correction » sur la fiche -nuit enferme dans le sombre
+  // permanent.
+  await page.locator('[data-theme-id="elements"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'elements-nuit');
+  await expect(page.locator('[data-theme-id="elements-nuit"] .coche')).toBeVisible();
+  // OS clair : le choix revient tel quel — l'attribut TOMBE (elements),
   // et la coche revient sur la fiche claire. Assertion pleine : pas
-  // « autre chose que nature-nuit », l'absence d'attribut (revue A42).
+  // « autre chose qu'elements-nuit », l'absence d'attribut (revue A42).
   await page.emulateMedia({ colorScheme: 'light' });
   await expect(page.locator('html')).not.toHaveAttribute('data-theme');
-  await expect(page.locator('[data-theme-id="nature"] .coche')).toBeVisible();
+  await expect(page.locator('[data-theme-id="elements"] .coche')).toBeVisible();
   // Persistance : le booléen survit comme le thème.
   expect(await page.evaluate(() => localStorage.getItem('wind-theme-auto'))).toBe('1');
   // Retour au groupe Affichage : la bascule n'existe que sous son
-  // groupe — le rail est resté sur Thèmes depuis le choix de safran.
+  // groupe — le rail est resté sur Thèmes depuis le choix explicite.
   await page.locator('[data-testid="reglages-groupe"][data-groupe="affichage"]').click();
   await bascule.click();
   await page.emulateMedia({ colorScheme: null });
@@ -920,12 +918,12 @@ test("le suivi OS lit l'API Tauri : une vraie bascule Windows suffixe et revient
     await bascule.click();
     await expect(bascule).toHaveAttribute('aria-checked', 'true');
     // OS clair d'abord (l'état de référence), puis sombre : la
-    // déclinaison nuit du thème choisi (nature) doit se poser SANS
+    // déclinaison nuit du thème choisi (elements) doit se poser SANS
     // emulateMedia — la livraison de l'événement Tauri prend ~1 s.
     basculer(1);
     await expect(page.locator('html')).not.toHaveAttribute('data-theme', /nuit/, { timeout: 10_000 });
     basculer(0);
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'nature-nuit', { timeout: 10_000 });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'elements-nuit', { timeout: 10_000 });
     // Et le RETOUR — le sens exact du constat terrain (point 4 KO).
     basculer(1);
     await expect(page.locator('html')).not.toHaveAttribute('data-theme', /nuit/, { timeout: 10_000 });
@@ -938,16 +936,24 @@ test("le suivi OS lit l'API Tauri : une vraie bascule Windows suffixe et revient
   }
 });
 
-test("l'ancien choix « La nuit » migre vers nature-nuit au montage (A42)", async () => {
-  // Un profil d'avant A42 porte `nuit` : le choix SURVIT au renommage
-  // (le motif de la migration Discovery → Wind, PLAN-WIND E3).
+test("les anciens choix migrent : tout -nuit vers elements-nuit, le reste au défaut (V7)", async () => {
+  // Un profil d'avant A42 porte `nuit` : la POLARITÉ survit à la
+  // migration (le motif de la migration Discovery → Wind, PLAN-WIND E3,
+  // rejoué par V7 sur la table Wada entière).
   await page.evaluate(() => localStorage.setItem('wind-theme', 'nuit'));
   await page.reload();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'nature-nuit');
-  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('nature-nuit');
-  // Un thème RETIRÉ (l'air) retombe sur le défaut, silencieusement.
-  await page.evaluate(() => localStorage.setItem('wind-theme', 'air'));
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'elements-nuit');
+  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('elements-nuit');
+  // Un thème Wada -nuit garde sa nuit — le choix de polarité est le
+  // seul qui survive à V7, il est ÉCRIT (pas un repli silencieux).
+  await page.evaluate(() => localStorage.setItem('wind-theme', 'bruyere-nuit'));
+  await page.reload();
+  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'elements-nuit');
+  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('elements-nuit');
+  // Un thème RETIRÉ clair (safran) retombe sur le défaut, silencieusement.
+  await page.evaluate(() => localStorage.setItem('wind-theme', 'safran'));
   await page.reload();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   await expect(page.locator('html')).not.toHaveAttribute('data-theme');

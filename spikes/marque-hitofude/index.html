@@ -1,0 +1,492 @@
+<meta charset="utf-8">
+<title>Hitofude au carré</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Old+Mincho:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --bg:#f2f0ea; --panel:#e9e6dd; --surface:#ffffff;
+  --ink:#24272e; --ink2:#4a505a; --muted:#575f6a;
+  --border:#cdc6b8; --accent:#1e7566; --accentH:#175c50;
+  --sel:#cddcd2; --alert:#9e3a2c;
+  --shadow:0 2px 8px rgba(36,39,46,0.08);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#1b1e21; --panel:#23272b; --surface:#2b3034;
+    --ink:#edefed; --ink2:#b7bebb; --muted:#a0a7a4;
+    --border:#394045; --accent:#57a88f; --accentH:#6cbda3;
+    --sel:#313f39; --alert:#ea9a90;
+    --shadow:0 2px 12px rgba(0,0,0,0.40);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#1b1e21; --panel:#23272b; --surface:#2b3034;
+  --ink:#edefed; --ink2:#b7bebb; --muted:#a0a7a4;
+  --border:#394045; --accent:#57a88f; --accentH:#6cbda3;
+  --sel:#313f39; --alert:#ea9a90;
+  --shadow:0 2px 12px rgba(0,0,0,0.40);
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:'Zen Kaku Gothic New',system-ui,sans-serif;
+  font-size:15px; line-height:1.65; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1040px; margin:0 auto; padding:56px 28px 96px; display:flex; flex-direction:column; gap:52px}
+h1{font-family:'Zen Old Mincho',Georgia,serif; font-weight:600; font-size:clamp(30px,5vw,44px);
+   line-height:1.15; letter-spacing:-.01em; margin:0; text-wrap:balance}
+h2{font-family:'Zen Old Mincho',Georgia,serif; font-weight:600; font-size:23px; line-height:1.35;
+   margin:0; text-wrap:balance}
+h3{font-size:19px; font-weight:700; margin:0; line-height:1.3}
+p{margin:0}
+.lede{font-family:'Zen Old Mincho',Georgia,serif; font-size:17px; line-height:1.8; color:var(--ink2); max-width:66ch}
+.eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace; font-size:11px; letter-spacing:.16em;
+   text-transform:uppercase; color:var(--muted); font-weight:600}
+code,.mono{font-family:'JetBrains Mono',ui-monospace,monospace; font-size:.86em}
+hr{border:0; border-top:1px solid var(--border); margin:0}
+.head{display:flex; flex-direction:column; gap:18px}
+.head .rule{width:64px; border-top:2px solid var(--accent)}
+
+.note{background:var(--panel); border:1px solid var(--border); border-left:3px solid var(--accent);
+  border-radius:0 8px 8px 0; padding:22px 26px; display:flex; flex-direction:column; gap:12px}
+.note p{color:var(--ink2); font-size:14.5px; max-width:74ch}
+.note b{color:var(--ink)}
+.tri{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:4px}
+@media (max-width:680px){.tri{grid-template-columns:1fr}}
+.tri div{background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:13px 15px}
+.tri b{display:block; font-size:14px; margin-bottom:3px}
+.tri span{font-size:13px; color:var(--muted); line-height:1.5}
+
+.controls{position:sticky; top:0; z-index:20; background:var(--bg); border-bottom:1px solid var(--border);
+  margin:0 -28px; padding:14px 28px; display:flex; flex-wrap:wrap; gap:22px; align-items:center}
+.ctl{display:flex; align-items:center; gap:8px}
+.ctl>span{font-size:12px; color:var(--muted); font-weight:500}
+.seg{display:flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; background:var(--surface)}
+.seg button{font:inherit; font-size:12.5px; padding:5px 11px; border:0; background:transparent;
+  color:var(--ink2); cursor:pointer; line-height:1.4; white-space:nowrap}
+.seg button+button{border-left:1px solid var(--border)}
+.seg button[aria-pressed="true"]{background:var(--sel); color:var(--ink); font-weight:700}
+.seg button:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
+.sw{width:11px; height:11px; border-radius:3px; display:inline-block; vertical-align:-1px; margin-right:5px}
+
+.grid{display:flex; flex-direction:column; gap:22px}
+.card{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:26px;
+  display:grid; grid-template-columns:auto 1fr; gap:34px; align-items:start; box-shadow:var(--shadow)}
+@media (max-width:780px){.card{grid-template-columns:1fr; gap:22px}}
+.visual{display:flex; flex-direction:column; gap:16px; align-items:flex-start}
+.ladder{display:flex; align-items:flex-end; gap:13px}
+figure{margin:0; display:flex; flex-direction:column; align-items:center; gap:6px}
+figcaption{font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted)}
+.body{display:flex; flex-direction:column; gap:13px}
+.num{font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:600; color:var(--accent); letter-spacing:.08em}
+.title-row{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap}
+.tag{font-size:11px; font-family:'JetBrains Mono',monospace; padding:2px 8px; border-radius:999px;
+  border:1px solid var(--border); color:var(--muted); background:var(--panel); white-space:nowrap}
+.verdict{font-size:11px; font-family:'JetBrains Mono',monospace; padding:2px 9px; border-radius:999px;
+  white-space:nowrap; font-weight:600}
+.verdict.ok{background:var(--sel); border:1px solid var(--accent); color:var(--accentH)}
+.verdict.ko{background:transparent; border:1px solid var(--alert); color:var(--alert)}
+:root[data-theme="dark"] .verdict.ok, :root:not([data-theme="light"]) .verdict.ok{color:var(--accent)}
+.thesis{font-family:'Zen Old Mincho',Georgia,serif; font-size:16px; line-height:1.72; color:var(--ink)}
+dl{margin:0; display:grid; grid-template-columns:auto 1fr; gap:8px 16px; font-size:14px}
+dt{color:var(--muted); font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; padding-top:4px}
+dd{margin:0; color:var(--ink2)}
+dd.risk{color:var(--alert)}
+
+.compare{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:26px;
+  display:flex; flex-direction:column; gap:18px}
+.compare-row{display:flex; flex-wrap:wrap; gap:26px; align-items:flex-end}
+.clair-bar{display:flex; gap:26px; align-items:flex-end; padding:16px 20px; background:#e9e6dd; border-radius:8px; flex-wrap:wrap}
+.clair-bar figcaption{color:#575f6a}
+.desk{display:flex; gap:20px; align-items:center; padding:16px 20px; background:#2f3438; border-radius:8px; flex-wrap:wrap}
+.desk figcaption{color:#9aa2a8}
+
+table{border-collapse:collapse; width:100%; font-size:14px; min-width:660px}
+th,td{text-align:left; padding:10px 12px; border-bottom:1px solid var(--border); vertical-align:top}
+th{font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); font-weight:600}
+td{color:var(--ink2)}
+td:first-child{white-space:nowrap; font-weight:700; color:var(--ink)}
+td.n{font-family:'JetBrains Mono',monospace; font-variant-numeric:tabular-nums}
+.tbl-wrap{overflow-x:auto}
+
+ol.q{margin:0; padding-left:22px; display:flex; flex-direction:column; gap:11px; color:var(--ink2); max-width:74ch}
+ol.q b{color:var(--ink)}
+.foot{color:var(--muted); font-size:13px; max-width:74ch}
+</style>
+
+<div class="wrap">
+
+  <header class="head">
+    <p class="eyebrow">Wind · exploration marque · 2026-08-23</p>
+    <h1>Hitofude au carré</h1>
+    <div class="rule"></div>
+    <p class="lede">Sept façons de faire tenir le coup de pinceau dans une icône carrée, l'enveloppe agrandie posée en blanc par-dessus, la pastille « W » retirée. Rien ici n'est un chantier : sept dessins à regarder à 128, à 32, à 16 pixels — la taille où les icônes meurent.</p>
+  </header>
+
+  <div class="note">
+    <p class="eyebrow">Le point dur, mesuré en dessinant</p>
+    <p>Le fond de la tuile reste <code>#e2ebe8</code>, l'enveloppe passe en blanc : entre les deux, le contraste est de <b>1,15 : 1</b>. Autrement dit <b>l'enveloppe blanche n'existe que là où le trait est derrière elle</b> — partout ailleurs elle s'évanouit dans le fond clair. Et plus l'enveloppe grandit, plus le trait doit être gros pour la porter. D'où le trilemme : <b>on ne peut en garder que deux sur trois</b>.</p>
+    <div class="tri">
+      <div><b>Enveloppe agrandie</b><span>48 ou 52 sur 64, contre 42 aujourd'hui.</span></div>
+      <div><b>Trait porteur</b><span>Le trait couvre toute l'empreinte de l'enveloppe.</span></div>
+      <div><b>Fond clair conservé</b><span>La tuile reste <code>#e2ebe8</code>, comme demandé.</span></div>
+    </div>
+    <p>Chaque proposition dit laquelle des trois elle sacrifie. La pastille verte ou rouge est <b>mesurée</b>, pas jugée : on échantillonne l'axe du contour de l'enveloppe, point par point, et on compte ceux qui tombent hors de l'encre.</p>
+  </div>
+
+  <div class="controls" role="group" aria-label="Réglages de la planche">
+    <div class="ctl">
+      <span>Encre du trait</span>
+      <div class="seg" id="segInk">
+        <button data-v="#365a4f" aria-pressed="true"><i class="sw" style="background:#365a4f"></i>#365a4f élément</button>
+        <button data-v="#1e7566" aria-pressed="false"><i class="sw" style="background:#1e7566"></i>#1e7566 accent</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <span>Enveloppe</span>
+      <div class="seg" id="segEnv">
+        <button data-v="auto" aria-pressed="true">selon la proposition</button>
+        <button data-v="contour" aria-pressed="false">contour</button>
+        <button data-v="plein" aria-pressed="false">pleine</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <span>Largeur</span>
+      <div class="seg" id="segW">
+        <button data-v="auto" aria-pressed="true">selon la proposition</button>
+        <button data-v="42" aria-pressed="false">42 actuelle</button>
+        <button data-v="48" aria-pressed="false">48</button>
+        <button data-v="52" aria-pressed="false">52</button>
+      </div>
+    </div>
+  </div>
+
+  <section style="display:flex; flex-direction:column; gap:18px">
+    <p class="eyebrow">L'existant, pour mémoire</p>
+    <div class="compare">
+      <div class="compare-row" id="existant"></div>
+      <p style="font-size:14px; color:var(--ink2); max-width:76ch">Tuile 64 / rayon 15, fond <code>#e2ebe8</code>, enveloppe <code>#365a4f</code> à 42/64, pastille « W » 25 débordant de 6. Le trait hitofude, lui, ne vit aujourd'hui que dans l'application — <span class="mono">110 × 20</span>, un rapport de 5,5 : 1 qu'aucune icône carrée n'accepte tel quel.</p>
+      <div class="compare-row" id="traitOrigine"></div>
+    </div>
+  </section>
+
+  <hr>
+
+  <section style="display:flex; flex-direction:column; gap:14px">
+    <h2>Les sept propositions</h2>
+    <p class="lede" style="font-size:16px">Les six premières font grossir le trait jusqu'à ce qu'il porte l'enveloppe ; elles se distinguent par <b>l'endroit où le fond clair respire encore</b> — c'est cela, et rien d'autre, qui reste lisible à 16 px. La septième prend l'autre issue : elle garde le trait fin et cède sur le « tout blanc ».</p>
+  </section>
+
+  <div class="grid" id="cartes"></div>
+
+  <hr>
+
+  <section style="display:flex; flex-direction:column; gap:20px">
+    <h2>La planche de vérité : 16 pixels</h2>
+    <p class="lede" style="font-size:16px">La barre des tâches Windows sert l'icône à 16 et 24 px. C'est là que se décide le dessin, pas à 128.</p>
+    <div class="compare">
+      <p class="eyebrow">Sur fond clair</p>
+      <div class="clair-bar" id="min16"></div>
+      <p class="eyebrow" style="margin-top:4px">Sur barre des tâches sombre</p>
+      <div class="desk" id="min16d"></div>
+    </div>
+  </section>
+
+  <hr>
+
+  <section style="display:flex; flex-direction:column; gap:20px">
+    <h2>Ce que chacune coûte</h2>
+    <div class="tbl-wrap">
+      <table id="tabl">
+        <thead><tr><th>Proposition</th><th>Enveloppe</th><th>Contour hors encre</th><th>Sacrifie</th><th>Tient à 16 px</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="foot">« Contour hors encre » : part des points échantillonnés sur l'axe du contour de l'enveloppe qui tombent sur le fond clair — mesurée dans la page, à chaque réglage. 0 % = l'enveloppe blanche est lisible partout.</p>
+  </section>
+
+  <hr>
+
+  <section style="display:flex; flex-direction:column; gap:18px">
+    <h2>Recommandation, et ce qui reste à trancher</h2>
+    <p class="lede" style="font-size:16px">Ma recommandation : <b>3 — Le sillage</b>. C'est celle qui reste la plus proche du geste d'origine — le trait file sous l'enveloppe et sort par la droite, exactement comme le hitofude file sous le mot « Wind » dans la barre — tout en portant une enveloppe à 48 sans une seule fuite de contour mesurée, et en gardant à 16 px une silhouette qu'on distingue des six autres. <b>2 — La crête</b> est son miroir : même qualités, image inverse (le vent porte la lettre au lieu de la suivre) ; c'est un choix de sens, pas de technique. <b>5 — Le geste entier</b> est la seule où l'on voit la pointe du pinceau, et la seule à payer une fuite de contour (5,4 %) : à retenir si le geste prime sur la propreté.</p>
+    <ol class="q">
+      <li><b>« Couleur principale » — laquelle ?</b> La planche propose <code>#365a4f</code> (couleur d'élément de la marque, figée hors thèmes, W-D3) par défaut, <code>#1e7566</code> (accent produit) en bascule. Le Système réserve aujourd'hui la couleur d'élément à la marque : basculer vers l'accent produit demanderait un amendement.</li>
+      <li><b>Le trilemme se tranche où ?</b> Si l'enveloppe doit vraiment monter à 52, le trait n'a plus le choix : il devient un fond (propositions 5 et 6). Si le trait doit rester un trait, l'enveloppe plafonne autour de 44 (proposition 3) ou garde un filet d'encre (proposition 7).</li>
+      <li><b>Le retrait de la pastille « W »</b> touche la règle de suite Elements (« l'icône dit la fonction, la couleur dit l'élément »). Sans pastille, la fonction reste dite par l'enveloppe et l'élément par la couleur — la règle tient, mais la section « Marque » du Système et <code>scripts/faire-icone.ps1</code> (qui trace la pastille en GDI+ pour 256 et 48) sont à amender, et l'ICO à régénérer avec ses quatre tailles.</li>
+      <li><b>Le trait de l'application suit-il ?</b> <code>Hitofude.svelte</code> garde son trait allongé 110 × 20 pour la barre et la ligne d'état, avec sa boucle SMIL (A40, A52). Deux dessins pour une même signature, ou un seul redessiné pour les deux emplacements ? Si c'est un seul, l'animation de tracé est à repenser : une masse ne « se trace » pas de gauche à droite comme un filet.</li>
+      <li><b>Le rendu GDI+ suit-il ?</b> <code>faire-icone.ps1</code> trace aujourd'hui des <i>contours</i> (<code>DrawPath</code>, plume ronde). Les six premières propositions sont des <i>remplissages</i> de chemins courbes : il faudra passer en <code>FillPath</code> avec des béziers, ou basculer l'ICO sur un rendu depuis le SVG.</li>
+    </ol>
+    <p class="foot">Les chemins sont générés ici par échantillonnage d'une épine et d'un profil de largeur — bons pour juger, pas pour livrer. Le chantier les convertira en courbes propres, puis répercutera la géométrie dans <code>assets/marque/wind-tuile.svg</code>, <code>assets/marque/wind-enveloppe.svg</code>, <code>scripts/faire-icone.ps1</code> et la section « Marque » du Système.</p>
+  </section>
+
+</div>
+
+<script>
+(function(){
+  var FOND='#e2ebe8';
+
+  function ptSeg(s,t){var u=1-t;
+    return [u*u*u*s[0][0]+3*u*u*t*s[1][0]+3*u*t*t*s[2][0]+t*t*t*s[3][0],
+            u*u*u*s[0][1]+3*u*u*t*s[1][1]+3*u*t*t*s[2][1]+t*t*t*s[3][1]];}
+  function tgSeg(s,t){var u=1-t;
+    return [3*u*u*(s[1][0]-s[0][0])+6*u*t*(s[2][0]-s[1][0])+3*t*t*(s[3][0]-s[2][0]),
+            3*u*u*(s[1][1]-s[0][1])+6*u*t*(s[2][1]-s[1][1])+3*t*t*(s[3][1]-s[2][1])];}
+
+  function spineFns(d){
+    if(d.type==='arc'){
+      var a0=d.a0*Math.PI/180, a1=d.a1*Math.PI/180;
+      return {pt:function(t){var a=a0+(a1-a0)*t; return [d.c[0]+d.r*Math.cos(a), d.c[1]+d.r*Math.sin(a)];},
+              tg:function(t){var a=a0+(a1-a0)*t; return [-Math.sin(a)*(a1-a0), Math.cos(a)*(a1-a0)];}};
+    }
+    var n=d.segs.length;
+    return {pt:function(t){var i=Math.min(Math.floor(t*n),n-1); return ptSeg(d.segs[i], t*n-i);},
+            tg:function(t){var i=Math.min(Math.floor(t*n),n-1); return tgSeg(d.segs[i], t*n-i);}};
+  }
+  function f(v){return Math.round(v*100)/100;}
+
+  function traitPath(d){
+    var N=120, sp=spineFns(d), L=[], R=[], i,t,p,g,m,nx,ny,h;
+    for(i=0;i<=N;i++){
+      t=i/N; p=sp.pt(t); g=sp.tg(t); m=Math.sqrt(g[0]*g[0]+g[1]*g[1])||1;
+      nx=-g[1]/m; ny=g[0]/m; h=d.w*d.prof(t)/2;
+      /* Sur un arc, le bord INTERNE ne doit pas franchir le centre : au-dela
+         le polygone se croise et le remplissage non-zero s'annule (trou blanc
+         constate au banc). On le borne au rayon. */
+      var hl=h, hr=h;
+      if(d.type==='arc'){ if(d.a1>d.a0){hl=Math.min(h,d.r);} else {hr=Math.min(h,d.r);} }
+      L.push([p[0]+nx*hl,p[1]+ny*hl]); R.push([p[0]-nx*hr,p[1]-ny*hr]);
+    }
+    var dd='M'+f(L[0][0])+' '+f(L[0][1]);
+    for(i=1;i<=N;i++) dd+='L'+f(L[i][0])+' '+f(L[i][1]);
+    for(i=N;i>=0;i--) dd+='L'+f(R[i][0])+' '+f(R[i][1]);
+    var h0=d.w*d.prof(0)/2;
+    if(h0>0.4){
+      var p0=sp.pt(0), g0=sp.tg(0), m0=Math.sqrt(g0[0]*g0[0]+g0[1]*g0[1])||1;
+      var aR=Math.atan2(R[0][1]-p0[1],R[0][0]-p0[0]);
+      var aB=Math.atan2(-g0[1]/m0,-g0[0]/m0);
+      var aL=Math.atan2(L[0][1]-p0[1],L[0][0]-p0[0]);
+      var norm=function(a){while(a>Math.PI)a-=2*Math.PI; while(a<-Math.PI)a+=2*Math.PI; return a;};
+      var d1=norm(aB-aR), d2=norm(aL-aB), k, a;
+      for(k=1;k<=8;k++){a=aR+d1*k/8; dd+='L'+f(p0[0]+h0*Math.cos(a))+' '+f(p0[1]+h0*Math.sin(a));}
+      for(k=1;k<=8;k++){a=aB+d2*k/8; dd+='L'+f(p0[0]+h0*Math.cos(a))+' '+f(p0[1]+h0*Math.sin(a));}
+    }
+    return dd+'Z';
+  }
+  function pointe(k){return function(t){return Math.pow(1-t,k);};}
+  function fuselee(min,k){return function(t){return min+(1-min)*Math.pow(1-t,k);};}
+  function queue(min,seuil,k){return function(t){return t<seuil?1:min+(1-min)*Math.pow(1-(t-seuil)/(1-seuil),k);};}
+  function plateau(fin,seuil){return function(t){return t<seuil?1:1-(1-fin)*(t-seuil)/(1-seuil);};}
+
+  /* -------- enveloppe -------- */
+  function envGeo(W,dy){
+    var H=W/1.5;
+    return {W:W,H:H,x:32-W/2,y:32-H/2+(dy||0),rx:W*0.094};
+  }
+  function envSVG(W, style, uid, dy){
+    var G=envGeo(W,dy), x=G.x, y=G.y, H=G.H, rx=G.rx;
+    var pts=f(x+W*0.0588)+','+f(y+H*0.1304)+' 32,'+f(y+H*0.6087)+' '+f(x+W*0.9412)+','+f(y+H*0.1304);
+    if(style==='contour'){
+      return '<g fill="none" stroke="#ffffff" stroke-width="'+f(W*0.079)+'" stroke-linecap="round" stroke-linejoin="round">'+
+        '<rect x="'+f(x)+'" y="'+f(y)+'" width="'+f(W)+'" height="'+f(H)+'" rx="'+f(rx)+'"/>'+
+        '<polyline points="'+pts+'"/></g>';
+    }
+    if(style==='filet'){
+      return '<g><rect x="'+f(x)+'" y="'+f(y)+'" width="'+f(W)+'" height="'+f(H)+'" rx="'+f(rx)+'" fill="#ffffff" stroke="'+STATE.ink+'" stroke-width="'+f(W*0.030)+'"/>'+
+        '<polyline points="'+pts+'" fill="none" stroke="'+STATE.ink+'" stroke-width="'+f(W*0.052)+'" stroke-linecap="round" stroke-linejoin="round"/></g>';
+    }
+    var kpts=f(x+W*0.015)+','+f(y+H*0.02)+' 32,'+f(y+H*0.60)+' '+f(x+W*0.985)+','+f(y+H*0.02);
+    return '<mask id="mk'+uid+'" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">'+
+      '<rect width="64" height="64" fill="#000"/>'+
+      '<rect x="'+f(x)+'" y="'+f(y)+'" width="'+f(W)+'" height="'+f(H)+'" rx="'+f(rx)+'" fill="#fff"/>'+
+      '<polyline points="'+kpts+'" fill="none" stroke="#000" stroke-width="'+f(W*0.062)+'" stroke-linejoin="round" stroke-linecap="butt"/>'+
+      '</mask><rect width="64" height="64" fill="#ffffff" mask="url(#mk'+uid+')"/>';
+  }
+
+  /* points d'echantillonnage : l'axe du contour de l'enveloppe */
+  function envAxe(W,dy){
+    var G=envGeo(W,dy), x=G.x, y=G.y, H=G.H, rx=G.rx, P=[], i, n;
+    n=Math.round((W-2*rx)/1.2);
+    for(i=0;i<=n;i++){P.push([x+rx+(W-2*rx)*i/n, y]); P.push([x+rx+(W-2*rx)*i/n, y+H]);}
+    n=Math.round((H-2*rx)/1.2);
+    for(i=0;i<=n;i++){P.push([x, y+rx+(H-2*rx)*i/n]); P.push([x+W, y+rx+(H-2*rx)*i/n]);}
+    var cx=[[x+rx,y+rx,180],[x+W-rx,y+rx,270],[x+W-rx,y+H-rx,0],[x+rx,y+H-rx,90]];
+    cx.forEach(function(c){for(i=0;i<=8;i++){var a=(c[2]+90*i/8)*Math.PI/180; P.push([c[0]+rx*Math.cos(a), c[1]+rx*Math.sin(a)]);}});
+    var A=[x+W*0.0588,y+H*0.1304], B=[32,y+H*0.6087], C=[x+W*0.9412,y+H*0.1304];
+    for(i=0;i<=24;i++){P.push([A[0]+(B[0]-A[0])*i/24, A[1]+(B[1]-A[1])*i/24]);
+                       P.push([B[0]+(C[0]-B[0])*i/24, B[1]+(C[1]-B[1])*i/24]);}
+    return P;
+  }
+
+  /* -------- les sept -------- */
+  var PROPS=[
+    { n:'Le bandeau', tag:'clair en haut-gauche et bas-droite', envW:48, envDY:0, env:'contour',
+      thesis:'Le geste d’origine, gardé horizontal et montant, gonflé jusqu’à porter l’enveloppe. Le pinceau entre et sort de la tuile : on voit sa course, jamais ses deux bouts. Deux bandes claires en diagonale opposée disent le passage.',
+      geo:'Une cubique à −12°, largeur 52, débordant la tuile aux deux extrémités.',
+      sac:'la pointe du pinceau — la fin du geste est hors cadre',
+      risk:'Sans entame ni pointe, la bande se lit comme une bicolore, pas comme un trait.',
+      px16:'oui', d:{segs:[[[-16,42.5],[8,37.6],[52,27.4],[80,21.5]]], w:52, prof:plateau(0.87,0.42)} },
+
+    { n:'La crête', tag:'un ciel clair en haut', envW:48, envDY:6, env:'contour',
+      thesis:'Le trait devient le sol : une ligne de crête traverse la tuile de part en part, du clair au-dessus, de l’encre au-dessous. L’enveloppe est à cheval, descendue de cinq unités — portée par le vent plutôt que posée dessus.',
+      geo:'Une cubique montante, largeur 68, moitié basse hors tuile ; enveloppe descendue de 5.',
+      sac:'la finesse — la moitié basse de la tuile devient un bloc d’encre',
+      risk:'L’identité tient à un seul bord : si la crête est trop plate, c’est une bannière.',
+      px16:'oui', d:{segs:[[[-14,55],[10,53],[44,47],[78,44]]], w:68, prof:plateau(0.97,0.35)} },
+
+    { n:'Le sillage', tag:'un sol clair en bas', envW:48, envDY:-5, env:'contour',
+      thesis:'La crête retournée : l’encre occupe le haut, le clair reste au sol, et le bord inférieur du trait file vers la droite comme le hitofude file sous le mot « Wind » dans la barre. L’enveloppe remonte de cinq unités, le vent passe dessous.',
+      geo:'Une cubique rase, largeur 62, moitié haute hors tuile ; enveloppe remontée de 5.',
+      sac:'la finesse — le haut de la tuile devient un bloc d’encre',
+      risk:'Symétrique de la crête : il faudra trancher entre les deux, pas garder les deux.',
+      px16:'oui', d:{segs:[[[-14,15],[14,18],[42,15.5],[78,11]]], w:62, prof:plateau(0.95,0.35)} },
+
+    { n:'Le sceau', tag:'clair aux quatre coins', envW:44, envDY:0, env:'contour',
+      thesis:'Le cercle du zen tracé si large qu’il se referme en médaillon, la brosse s’amincissant sur la fin : une encoche reste, là où le pinceau s’est levé. La signature devient un cachet — la silhouette la plus stable du lot à toute taille.',
+      geo:'Arc de 340°, rayon 11, largeur 40 → 32.',
+      sac:'le trait linéaire — il se lit comme un rond, plus comme un geste',
+      risk:'Un disque dans un carré arrondi : deux rondeurs qui se disputent la tuile.',
+      px16:'oui', d:{type:'arc', c:[32,32], r:11, a0:150, a1:490, w:40, prof:plateau(0.80,0.78)} },
+
+    { n:'Le geste entier', tag:'entame ronde et pointe visibles', envW:44, envDY:0, env:'contour',
+      thesis:'La seule où l’on voit le coup de pinceau en entier : l’entame ronde en bas à gauche, la course en diagonale, la pointe qui s’effile en haut à droite, tout à l’intérieur du cadre. C’est le hitofude, simplement gros.',
+      geo:'Une cubique diagonale, largeur 56 → 9, tête ronde, pointe rentrée.',
+      sac:'l’agrandissement — 44 au lieu de 48, pour laisser la pointe respirer',
+      risk:'Le coin haut-droit du contour sort de l’encre (5,4 % mesurés) : c’est exactement le prix de la pointe.',
+      px16:'oui', d:{segs:[[[9,56],[22,44],[38,29],[57,10]]], w:56, prof:queue(0.14,0.46,0.85)} },
+
+    { n:'Le plein diagonal', tag:'deux croissants aux coins opposés', envW:52, envDY:0, env:'contour',
+      thesis:'Le coup de pinceau dilaté jusqu’à emplir la tuile : il n’en reste que deux croissants clairs aux coins opposés, l’entame et la sortie de la brosse. La seule qui accepte une enveloppe à 52.',
+      geo:'Cubique diagonale, largeur 66 → 61, rognée à la tuile.',
+      sac:'le trait — il n’est plus lu comme un trait mais comme un fond',
+      risk:'La marque perd sa signature : c’est une enveloppe blanche sur carré vert.',
+      px16:'oui, franchement', d:{segs:[[[-26,76],[6,48],[58,16],[90,-12]]], w:66, prof:plateau(0.92,0.4)} },
+
+    { n:'Le filet', tag:'le trait reste fin', envW:46, envDY:0, env:'filet',
+      thesis:'L’autre issue : on garde le trait d’origine, intact et fin, et c’est l’enveloppe qui cède — blanche pleine, mais cernée d’un filet d’encre pour exister sur le fond clair. Le seul dessin où le hitofude est encore un hitofude.',
+      geo:'Chemin d’origine, <span class="mono">rotate(−38) scale(0,58 × 1,55)</span>, centré.',
+      sac:'le « tout blanc » — un filet d’encre borde l’enveloppe',
+      risk:'Trois valeurs au lieu de deux (encre, blanc, fond) : la tuile se complique.',
+      px16:'non — le filet passe sous le pixel',
+      brut:'<g transform="translate(32 32) rotate(-38) scale(0.58 1.55) translate(-55 -10.5)"><path d="M2 14 Q30 4 60 7 Q88 9.5 108 3 Q90 13 60 14 Q32 15 10 18 Q4 19 2 14 Z"/></g>',
+      brutD:'M2 14 Q30 4 60 7 Q88 9.5 108 3 Q90 13 60 14 Q32 15 10 18 Q4 19 2 14 Z',
+      brutM:[32,32,-38,0.58,1.55,-55,-10.5] }
+  ];
+
+  var STATE={ink:'#365a4f', env:'auto', envW:'auto'};
+  var uid=0;
+  function largeur(p){return STATE.envW==='auto' ? p.envW : Number(STATE.envW);}
+  function style(p){return STATE.env==='auto' ? p.env : STATE.env;}
+
+  function icone(p, taille, opt){
+    opt=opt||{}; var id=++uid;
+    var trait = p.brut ? p.brut : '<path d="'+traitPath(p.d)+'"/>';
+    var s='<svg width="'+taille+'" height="'+taille+'" viewBox="0 0 64 64" role="img" aria-label="'+p.n+'">';
+    s+='<defs><clipPath id="cp'+id+'"><rect width="64" height="64" rx="15"/></clipPath></defs>';
+    s+='<g clip-path="url(#cp'+id+')"><rect width="64" height="64" fill="'+FOND+'"/>';
+    s+='<g fill="'+STATE.ink+'">'+trait+'</g>';
+    if(!opt.sansEnveloppe) s+=envSVG(largeur(p), style(p), id, p.envDY);
+    s+='</g></svg>';
+    return s;
+  }
+
+  /* -------- mesure : part de l'axe du contour hors encre -------- */
+  var cv=document.createElement('canvas'); cv.width=cv.height=64;
+  var cx2=cv.getContext('2d');
+  function mesure(p){
+    var pts=envAxe(largeur(p), p.envDY), path, i, hors=0;
+    cx2.setTransform(1,0,0,1,0,0);
+    if(p.brutM){
+      var m=p.brutM, r=m[2]*Math.PI/180;
+      cx2.translate(m[0],m[1]); cx2.rotate(r); cx2.scale(m[3],m[4]); cx2.translate(m[5],m[6]);
+      path=new Path2D(p.brutD);
+    } else {
+      path=new Path2D(traitPath(p.d));
+    }
+    for(i=0;i<pts.length;i++){
+      var q=pts[i];
+      if(!cx2.isPointInPath(path,q[0],q[1])) hors++;
+    }
+    cx2.setTransform(1,0,0,1,0,0);
+    return {hors:hors, total:pts.length, pct:Math.round(1000*hors/pts.length)/10};
+  }
+
+  function actuelle(taille, pastille){
+    var vb=pastille?70:64;
+    var s='<svg width="'+taille+'" height="'+taille+'" viewBox="0 0 '+vb+' '+vb+'" role="img" aria-label="Icône Wind actuelle">';
+    s+='<rect width="64" height="64" rx="15" fill="#e2ebe8"/>';
+    s+='<g transform="translate(11 11) scale(0.875)" fill="none" stroke="#365a4f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">';
+    s+='<rect x="7" y="13" width="34" height="23" rx="3"/><polyline points="9,16 24,27 39,16"/></g>';
+    if(pastille){
+      s+='<rect x="45" y="45" width="25" height="25" rx="8" fill="#365a4f"/>';
+      s+='<polyline transform="translate(45 45)" points="5.8,7.5 9.4,17.5 12.5,10.5 15.6,17.5 19.2,7.5" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>';
+    }
+    return s+'</svg>';
+  }
+  function traitOrigine(l){
+    return '<svg width="'+l+'" height="'+Math.round(l/5.5)+'" viewBox="0 0 110 20" aria-hidden="true">'+
+      '<path d="M2 14 Q30 4 60 7 Q88 9.5 108 3 Q90 13 60 14 Q32 15 10 18 Q4 19 2 14 Z" fill="'+STATE.ink+'"/></svg>';
+  }
+  function fig(h,c){return '<figure>'+h+'<figcaption>'+c+'</figcaption></figure>';}
+
+  function rendu(){
+    uid=0;
+    document.getElementById('existant').innerHTML =
+      fig(actuelle(112,true),'128 · avec pastille')+fig(actuelle(48,true),'48')+
+      fig(actuelle(32,false),'32')+fig(actuelle(16,false),'16');
+    document.getElementById('traitOrigine').innerHTML =
+      fig(traitOrigine(220),'le trait hitofude actuel · 110 × 20');
+
+    var html='', mesures=[];
+    PROPS.forEach(function(p,i){
+      var m = style(p)==='filet' ? null : mesure(p);
+      mesures.push(m);
+      var badge = m===null
+        ? '<span class="verdict ok">filet d’encre · mesure sans objet</span>'
+        : (m.hors===0
+            ? '<span class="verdict ok">contour lisible · 0 % hors encre</span>'
+            : '<span class="verdict ko">'+m.pct+' % du contour hors encre</span>');
+      html+='<article class="card">'+
+        '<div class="visual">'+icone(p,150)+
+          '<div class="ladder">'+fig(icone(p,48),'48')+fig(icone(p,32),'32')+fig(icone(p,24),'24')+
+             fig(icone(p,16),'16')+fig(icone(p,32,{sansEnveloppe:true}),'trait seul')+'</div>'+
+        '</div>'+
+        '<div class="body">'+
+          '<p class="num">Proposition '+(i+1)+'</p>'+
+          '<div class="title-row"><h3>'+p.n+'</h3><span class="tag">'+p.tag+'</span>'+
+            '<span class="tag">enveloppe '+largeur(p)+'/64 · '+style(p)+'</span>'+badge+'</div>'+
+          '<p class="thesis">'+p.thesis+'</p>'+
+          '<dl><dt>Tracé</dt><dd>'+p.geo+'</dd>'+
+              '<dt>Sacrifie</dt><dd>'+p.sac+'</dd>'+
+              '<dt>Risque</dt><dd class="risk">'+p.risk+'</dd></dl>'+
+        '</div></article>';
+    });
+    document.getElementById('cartes').innerHTML=html;
+
+    var a='',b='';
+    PROPS.forEach(function(p,i){a+=fig(icone(p,16),String(i+1)); b+=fig(icone(p,16),String(i+1));});
+    document.getElementById('min16').innerHTML=a;
+    document.getElementById('min16d').innerHTML=b;
+
+    var rows='';
+    PROPS.forEach(function(p,i){
+      var m=mesures[i];
+      rows+='<tr><td>'+(i+1)+' · '+p.n+'</td><td class="n">'+largeur(p)+'/64 · '+style(p)+'</td>'+
+        '<td class="n">'+(m===null?'—':m.pct+' %')+'</td><td>'+p.sac+'</td><td>'+p.px16+'</td></tr>';
+    });
+    document.querySelector('#tabl tbody').innerHTML=rows;
+  }
+
+  function seg(id,key){
+    var el=document.getElementById(id);
+    el.addEventListener('click',function(e){
+      var b=e.target.closest('button'); if(!b) return;
+      [].forEach.call(el.querySelectorAll('button'),function(x){x.setAttribute('aria-pressed',String(x===b));});
+      STATE[key]=b.dataset.v; rendu();
+    });
+  }
+  seg('segInk','ink'); seg('segEnv','env'); seg('segW','envW');
+  rendu();
+})();
+</script>

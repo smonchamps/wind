@@ -951,11 +951,11 @@
     background:var(--bg); border-right:1px solid var(--border);
   }
   /* Le bandeau (UI v3, E1 — reformé PLAN-RETOURS-V3 R2) : le MÊME
-     format visuel que le bandeau de filtre du bas — 52 px, fond
-     --panel, filet vers la liste ; le titre 16 px 600 ne bouge pas. */
+     format visuel que le bandeau de filtre du bas — 52 px, fond --bg
+     (V3 : le filet porte seul la séparation) ; titre 16 px 600. */
   .bandeau {
     flex:none; height:52px; display:flex; align-items:center;
-    padding:0 16px; background:var(--panel);
+    padding:0 16px; background:var(--bg);
     border-bottom:1px solid var(--border);
   }
   .bandeau h1 {
@@ -1013,7 +1013,7 @@
   }
   .avatar {
     grid-row:1 / span 3; width:28px; height:28px; border-radius:50%;
-    background:var(--panel); border:1px solid var(--border);
+    background:var(--bg); border:1px solid var(--border);
     display:grid; place-items:center;
     font-size:11px; font-weight:600; color:var(--ink2);
   }
@@ -1100,7 +1100,7 @@
   .onglets {
     flex:none; height:52px; padding:0 12px; display:flex;
     align-items:center; gap:10px; border-top:1px solid var(--border);
-    background:var(--panel);
+    background:var(--bg);
   }
   .onglet {
     height:32px; padding:0 14px; display:inline-flex; align-items:center;

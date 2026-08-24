@@ -1,0 +1,491 @@
+<meta charset="utf-8">
+<title>L'estampe et l'enveloppe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Old+Mincho:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --bg:#f2f0ea; --panel:#e9e6dd; --surface:#ffffff;
+  --ink:#24272e; --ink2:#4a505a; --muted:#575f6a;
+  --border:#cdc6b8; --accent:#1e7566; --accentH:#175c50;
+  --sel:#cddcd2; --alert:#9e3a2c;
+  --shadow:0 2px 8px rgba(36,39,46,0.08);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#1b1e21; --panel:#23272b; --surface:#2b3034;
+    --ink:#edefed; --ink2:#b7bebb; --muted:#a0a7a4;
+    --border:#394045; --accent:#57a88f; --accentH:#6cbda3;
+    --sel:#313f39; --alert:#ea9a90; --shadow:0 2px 12px rgba(0,0,0,0.40);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#1b1e21; --panel:#23272b; --surface:#2b3034;
+  --ink:#edefed; --ink2:#b7bebb; --muted:#a0a7a4;
+  --border:#394045; --accent:#57a88f; --accentH:#6cbda3;
+  --sel:#313f39; --alert:#ea9a90; --shadow:0 2px 12px rgba(0,0,0,0.40);
+}
+*{box-sizing:border-box}
+body{margin:0; background:var(--bg); color:var(--ink);
+  font-family:'Zen Kaku Gothic New',system-ui,sans-serif; font-size:15px; line-height:1.65;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:1040px; margin:0 auto; padding:56px 28px 96px; display:flex; flex-direction:column; gap:52px}
+h1{font-family:'Zen Old Mincho',Georgia,serif; font-weight:600; font-size:clamp(30px,5vw,44px);
+   line-height:1.15; letter-spacing:-.01em; margin:0; text-wrap:balance}
+h2{font-family:'Zen Old Mincho',Georgia,serif; font-weight:600; font-size:23px; line-height:1.35; margin:0; text-wrap:balance}
+h3{font-size:19px; font-weight:700; margin:0; line-height:1.3}
+p{margin:0}
+.lede{font-family:'Zen Old Mincho',Georgia,serif; font-size:17px; line-height:1.8; color:var(--ink2); max-width:66ch}
+.eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace; font-size:11px; letter-spacing:.16em;
+   text-transform:uppercase; color:var(--muted); font-weight:600}
+code,.mono{font-family:'JetBrains Mono',ui-monospace,monospace; font-size:.86em}
+hr{border:0; border-top:1px solid var(--border); margin:0}
+.head{display:flex; flex-direction:column; gap:18px}
+.head .rule{width:64px; border-top:2px solid var(--accent)}
+
+.note{background:var(--panel); border:1px solid var(--border); border-left:3px solid var(--accent);
+  border-radius:0 8px 8px 0; padding:22px 26px; display:flex; flex-direction:column; gap:12px}
+.note p{color:var(--ink2); font-size:14.5px; max-width:74ch}
+.note b{color:var(--ink)}
+.note.alerte{border-left-color:var(--alert)}
+
+.controls{position:sticky; top:0; z-index:20; background:var(--bg); border-bottom:1px solid var(--border);
+  margin:0 -28px; padding:14px 28px; display:flex; flex-wrap:wrap; gap:22px; align-items:center}
+.ctl{display:flex; align-items:center; gap:8px}
+.ctl>span{font-size:12px; color:var(--muted); font-weight:500}
+.seg{display:flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; background:var(--surface)}
+.seg button{font:inherit; font-size:12.5px; padding:5px 11px; border:0; background:transparent;
+  color:var(--ink2); cursor:pointer; line-height:1.4; white-space:nowrap}
+.seg button+button{border-left:1px solid var(--border)}
+.seg button[aria-pressed="true"]{background:var(--sel); color:var(--ink); font-weight:700}
+.seg button:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
+
+.grid{display:flex; flex-direction:column; gap:22px}
+.card{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:26px;
+  display:grid; grid-template-columns:auto 1fr; gap:34px; align-items:start; box-shadow:var(--shadow)}
+@media (max-width:800px){.card{grid-template-columns:1fr; gap:22px}}
+.visual{display:flex; flex-direction:column; gap:16px; align-items:flex-start}
+.ladder{display:flex; align-items:flex-end; gap:13px}
+figure{margin:0; display:flex; flex-direction:column; align-items:center; gap:6px}
+figcaption{font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted)}
+.body{display:flex; flex-direction:column; gap:13px}
+.num{font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:600; color:var(--accent); letter-spacing:.08em}
+.title-row{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap}
+.tag{font-size:11px; font-family:'JetBrains Mono',monospace; padding:2px 8px; border-radius:999px;
+  border:1px solid var(--border); color:var(--muted); background:var(--panel); white-space:nowrap}
+.tag.jp{border-color:var(--accent); color:var(--accent)}
+.thesis{font-family:'Zen Old Mincho',Georgia,serif; font-size:16px; line-height:1.72; color:var(--ink)}
+dl{margin:0; display:grid; grid-template-columns:auto 1fr; gap:8px 16px; font-size:14px}
+dt{color:var(--muted); font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; padding-top:4px}
+dd{margin:0; color:var(--ink2)}
+dd.risk{color:var(--alert)}
+
+.compare{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:26px;
+  display:flex; flex-direction:column; gap:18px}
+.compare-row{display:flex; flex-wrap:wrap; gap:26px; align-items:flex-end}
+.clair-bar{display:flex; gap:26px; align-items:flex-end; padding:16px 20px; background:#e9e6dd; border-radius:8px; flex-wrap:wrap}
+.clair-bar figcaption{color:#575f6a}
+.desk{display:flex; gap:26px; align-items:flex-end; padding:16px 20px; background:#2f3438; border-radius:8px; flex-wrap:wrap}
+.desk figcaption{color:#9aa2a8}
+.duo{display:flex; gap:34px; flex-wrap:wrap; align-items:flex-end}
+
+table{border-collapse:collapse; width:100%; font-size:14px; min-width:640px}
+th,td{text-align:left; padding:10px 12px; border-bottom:1px solid var(--border); vertical-align:top}
+th{font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); font-weight:600}
+td{color:var(--ink2)}
+td:first-child{white-space:nowrap; font-weight:700; color:var(--ink)}
+.tbl-wrap{overflow-x:auto}
+
+ol.q{margin:0; padding-left:22px; display:flex; flex-direction:column; gap:11px; color:var(--ink2); max-width:74ch}
+ol.q b{color:var(--ink)}
+.foot{color:var(--muted); font-size:13px; max-width:74ch}
+</style>
+
+<div class="wrap">
+
+  <header class="head">
+    <p class="eyebrow">Wind · exploration marque · estampe · 2026-08-23</p>
+    <h1>L'estampe et l'enveloppe</h1>
+    <div class="rule"></div>
+    <p class="lede">Cinq fonds d'estampe consacrés au vent, l'enveloppe posée par-dessus en contour. Du paysage complet — Ejiri, où le vent arrache les papiers des voyageurs — jusqu'au simple motif de rafales, en cherchant à chaque étage combien de gravure une icône peut porter.</p>
+  </header>
+
+  <div class="note alerte">
+    <p class="eyebrow">À lire avant de regarder</p>
+    <p><b>Ces estampes sont dessinées ici, pas reproduites.</b> Une page publiée ne peut charger aucune image distante (la politique de sécurité l'interdit), et je ne vais pas embarquer un fichier que je n'ai pas. Ce que tu vois sont des <b>interprétations vectorielles</b> — composition, palette et vocabulaire de l'ukiyo-e, formes redessinées à plat. Elles disent l'intention ; elles ne disent pas le rendu final.</p>
+    <p><b>Si la direction te plaît, le chantier aura un préalable :</b> choisir une estampe réelle du domaine public (Hokusai, <i>Ejiri dans la province de Suruga</i>, vers 1830 — le vent qui emporte les papiers ; ou Sōtatsu, <i>Fūjin</i>, XVII<sup>e</sup>), vérifier la licence du fichier source, et la réduire à quelques aplats. Une estampe photographique ne tiendra jamais dans un ICO : ce qui entre dans l'icône, c'est toujours une réduction en aplats.</p>
+  </div>
+
+  <div class="controls" role="group" aria-label="Réglages de la planche">
+    <div class="ctl">
+      <span>Enveloppe</span>
+      <div class="seg" id="segEnv">
+        <button data-v="doublé" aria-pressed="true">contour blanc doublé</button>
+        <button data-v="blanc" aria-pressed="false">contour blanc seul</button>
+        <button data-v="encre" aria-pressed="false">contour d'encre</button>
+        <button data-v="plein" aria-pressed="false">pleine</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <span>Voile sur l'estampe</span>
+      <div class="seg" id="segVoile">
+        <button data-v="0" aria-pressed="false">aucun</button>
+        <button data-v="0.28" aria-pressed="true">léger</button>
+        <button data-v="0.5" aria-pressed="false">fort</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <span>Largeur</span>
+      <div class="seg" id="segW">
+        <button data-v="34" aria-pressed="false">34</button>
+        <button data-v="40" aria-pressed="true">40</button>
+        <button data-v="46" aria-pressed="false">46</button>
+      </div>
+    </div>
+  </div>
+
+  <section style="display:flex; flex-direction:column; gap:18px">
+    <p class="eyebrow">L'existant, pour mémoire</p>
+    <div class="compare">
+      <div class="compare-row" id="existant"></div>
+      <p style="font-size:14px; color:var(--ink2); max-width:76ch">Deux aplats, un contour, quatre tailles. Toute la question de cette planche est de savoir ce qu'on gagne, et ce qu'on perd, en remplaçant l'aplat de fond par une gravure.</p>
+    </div>
+  </section>
+
+  <hr>
+
+  <section style="display:flex; flex-direction:column; gap:14px">
+    <h2>Les cinq fonds</h2>
+    <p class="lede" style="font-size:16px">Rangés du plus figuratif au plus abstrait. À chaque étage, le fond perd du récit et gagne de la lisibilité — c'est le seul échange qui compte ici.</p>
+  </section>
+
+  <div class="grid" id="cartes"></div>
+
+  <hr>
+
+  <section style="display:flex; flex-direction:column; gap:20px">
+    <h2>La planche de vérité : 16 pixels</h2>
+    <p class="lede" style="font-size:16px">Le verdict est brutal et il était prévisible : <b>une estampe ne survit pas à 16 px</b>. Ce qui reste, c'est une tache de couleur et un contour blanc. La question n'est donc pas « laquelle tient », c'est « que sert-on quand elle ne tient plus ».</p>
+    <div class="compare">
+      <p class="eyebrow">Sur fond clair · 16 px</p>
+      <div class="clair-bar" id="min16"></div>
+      <p class="eyebrow" style="margin-top:4px">Sur barre des tâches sombre · 16 et 24 px</p>
+      <div class="desk" id="min16d"></div>
+    </div>
+  </section>
+
+  <hr>
+
+  <section style="display:flex; flex-direction:column; gap:20px">
+    <h2>La sortie : une icône à deux régimes</h2>
+    <p class="lede" style="font-size:16px">Le dépôt connaît déjà cette solution. <code>scripts/faire-icone.ps1</code> sert aujourd'hui la pastille « W » à 256 et 48 px, et la retire à 32 et 16 — « en dessous de 48 px la pastille est une bouillie », dit le script. Le même partage s'applique à l'estampe : gravure en grand, aplats en petit.</p>
+    <div class="compare">
+      <div class="duo" id="regimes"></div>
+      <p style="font-size:14px; color:var(--ink2); max-width:76ch">À gauche le régime « estampe » (256 et 128 px : bureau, boutique, écran d'accueil) ; à droite le régime « aplat » (32 et 16 px : barre des tâches, onglet, liste de fichiers), qui reprend le fond <code>#e2ebe8</code> et le contour <code>#365a4f</code> de la marque actuelle. Les deux partagent la même enveloppe, la même tuile, le même rayon : c'est une seule icône servie à deux définitions, pas deux marques.</p>
+    </div>
+  </section>
+
+  <hr>
+
+  <section style="display:flex; flex-direction:column; gap:20px">
+    <h2>Ce que chacune coûte</h2>
+    <div class="tbl-wrap">
+      <table id="tabl">
+        <thead><tr><th>Fond</th><th>Aplats</th><th>Ce qu'il raconte</th><th>Contour lisible</th><th>Tient à 32 px</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <hr>
+
+  <section style="display:flex; flex-direction:column; gap:18px">
+    <h2>Recommandation, et ce qui reste à trancher</h2>
+    <p class="lede" style="font-size:16px" id="reco"></p>
+    <ol class="q">
+      <li><b>Le préalable est juridique avant d'être graphique.</b> Hokusai et Sōtatsu sont dans le domaine public, mais <i>le fichier</i> qu'on récupère ne l'est pas forcément : certaines institutions revendiquent un droit sur leurs numérisations. Le chantier commence par identifier une source explicitement libre (Metropolitan Museum, domaine public déclaré ; Library of Congress ; Bibliothèque nationale) — ou par redessiner, ce qui règle la question et donne de toute façon les aplats dont l'icône a besoin.</li>
+      <li><b>Deux régimes, ou un seul ?</b> Servir l'estampe en grand et un aplat en petit est déjà la pratique du dépôt. Mais cela veut dire que la plupart des usagers, qui ne voient l'icône que dans leur barre des tâches, <b>ne verront jamais l'estampe</b>. Est-ce que ça vaut le coup ?</li>
+      <li><b>Le fond n'est plus <code>#e2ebe8</code>.</b> La règle W-D3 fige aujourd'hui les deux couleurs de la marque hors thèmes. Une estampe en apporte cinq ou six. Il faut soit amender W-D3 (« la tuile porte une image, l'élément reste <code>#365a4f</code> »), soit contraindre l'estampe aux deux couleurs de la marque — c'est la proposition 2.</li>
+      <li><b>Le contour blanc a besoin d'être doublé.</b> Sur une gravure, aucun blanc ne tient seul : la bascule par défaut ajoute sous le trait blanc un trait d'encre à 30 %, plus large de deux unités. C'est la seule façon mesurée de garantir l'enveloppe sur n'importe quel fond — mais cela fait trois valeurs dans le contour, à acter au Système.</li>
+      <li><b>Que devient le trait hitofude ?</b> Il vit toujours dans <code>Hitofude.svelte</code> (A28, A40, A52). Avec une estampe en fond, l'icône et l'application ne parlent plus la même langue graphique du tout. C'est le point le plus lourd de cette direction.</li>
+    </ol>
+    <p class="foot">Dessins de jugement. Chaque estampe est tracée à plat dans un carré de 240, posée dans la tuile de 64 : c'est déjà la réduction en aplats qu'un ICO exige, ce qui rend la mesure honnête même si le dessin n'est pas la gravure finale.</p>
+  </section>
+
+</div>
+
+<script>
+(function(){
+  var STATE={env:'doublé', voile:0.28, W:40};
+
+  /* ---------- palettes ---------- */
+  var U={ washi:'#efe6d0', ciel:'#7d9fb8', cielF:'#4a6f8a', fuji:'#93a9b8', neige:'#f4f0e7',
+          coteau:'#5d7360', eau:'#8fb0c2', terre:'#c8ae72', terre2:'#a8925c',
+          bois:'#3f352a', feuille:'#63744f', papier:'#faf6ec', beni:'#a8492f', sumi:'#2a2622' };
+  var M={ fond:'#e2ebe8', t1:'#365a4f', t2:'rgba(54,90,79,0.70)', t3:'rgba(54,90,79,0.42)', t4:'rgba(54,90,79,0.16)' };
+
+  /* ---------- les estampes, dessinees dans un carre de 240 ---------- */
+  function ejiri(P, plein){
+    var s='';
+    s+='<rect width="240" height="240" fill="'+(plein?P.washi:P.fond)+'"/>';
+    s+='<rect width="240" height="20" fill="'+(plein?P.cielF:P.t3)+'"/>';
+    s+='<rect y="20" width="240" height="14" fill="'+(plein?P.ciel:P.t4)+'" opacity="'+(plein?0.5:1)+'"/>';
+    /* Fuji : la pointe passe au-dessus de l'enveloppe */
+    s+='<path d="M24 118 L86 26 L148 118 Z" fill="'+(plein?P.fuji:P.t3)+'"/>';
+    s+='<path d="M68 52 L86 26 L104 52 L95 46 L86 52 L77 46 Z" fill="'+(plein?P.neige:P.fond)+'"/>';
+    s+='<path d="M0 116 C40 106 92 112 148 104 C186 98 214 102 240 96 L240 136 H0 Z" fill="'+(plein?P.coteau:P.t2)+'"/>';
+    s+='<path d="M0 134 C48 128 96 136 152 128 C192 122 216 126 240 122 L240 150 C210 156 180 150 148 154 C96 160 48 150 0 156 Z" fill="'+(plein?P.eau:P.t3)+'"/>';
+    s+='<path d="M0 154 C48 148 96 158 152 150 C194 144 218 148 240 144 L240 240 H0 Z" fill="'+(plein?P.terre:P.t2)+'"/>';
+    s+='<path d="M0 210 C56 194 120 200 240 176 L240 202 C120 226 56 220 0 236 Z" fill="'+(plein?P.terre2:P.t1)+'" opacity="'+(plein?0.85:0.5)+'"/>';
+    /* arbre : cale dans la bande droite */
+    s+='<path d="M226 232 C226 206 222 182 210 160" stroke="'+(plein?P.bois:P.t1)+'" stroke-width="8" fill="none" stroke-linecap="round"/>';
+    s+='<path d="M210 160 C196 142 172 138 154 146 C176 142 198 150 212 166 Z" fill="'+(plein?P.feuille:P.t1)+'"/>';
+    s+='<path d="M218 186 C204 174 184 174 170 182 C190 178 208 184 220 194 Z" fill="'+(plein?P.feuille:P.t2)+'"/>';
+    /* les papiers : tous dans la bande haute, autour du Fuji */
+    var pap=[[124,36,-24],[158,20,14],[192,44,-8],[54,30,32],[218,22,-30],[136,62,26],[30,58,8],[186,66,-16]];
+    pap.forEach(function(q){
+      s+='<g transform="rotate('+q[2]+' '+q[0]+' '+q[1]+')">'+
+         '<rect x="'+(q[0]-10)+'" y="'+(q[1]-6.5)+'" width="20" height="13" rx="1.5" fill="'+(plein?P.papier:P.fond)+'" stroke="'+(plein?'#cfc4a8':P.t3)+'" stroke-width="1.6"/></g>';
+    });
+    return s;
+  }
+
+  function ejiriSerre(P, plein){
+    var s='';
+    s+='<rect width="240" height="240" fill="'+(plein?P.washi:P.fond)+'"/>';
+    s+='<rect width="240" height="26" fill="'+(plein?P.cielF:P.t3)+'"/>';
+    s+='<path d="M0 172 C52 158 116 166 240 138 L240 240 H0 Z" fill="'+(plein?P.coteau:P.t2)+'"/>';
+    s+='<path d="M14 176 L74 22 L134 176 Z" fill="'+(plein?P.fuji:P.t3)+'"/>';
+    s+='<path d="M54 52 L74 22 L94 52 L84 45 L74 52 L64 45 Z" fill="'+(plein?P.neige:P.fond)+'"/>';
+    var pap=[[142,28,-26],[184,48,16],[214,20,-10],[122,62,34],[204,80,-18],[168,86,28]];
+    pap.forEach(function(q){
+      s+='<g transform="rotate('+q[2]+' '+q[0]+' '+q[1]+')">'+
+         '<rect x="'+(q[0]-13)+'" y="'+(q[1]-9)+'" width="26" height="18" rx="2" fill="'+(plein?P.papier:P.fond)+'" stroke="'+(plein?'#cfc4a8':P.t3)+'" stroke-width="2"/></g>';
+    });
+    return s;
+  }
+
+  function fujin(P, plein){
+    var s='';
+    s+='<rect width="240" height="240" fill="'+(plein?'#e8d9a8':P.fond)+'"/>';
+    s+='<path d="M0 176 C36 160 76 186 112 172 C150 158 186 184 240 164 L240 240 H0 Z" fill="'+(plein?'#4c5a4a':P.t2)+'"/>';
+    /* le sac de vent : arche fine dont la clef passe au-dessus de l enveloppe */
+    s+='<path d="M34 178 C22 100 66 30 120 28 C174 26 220 96 208 176" fill="none" stroke="'+(plein?P.beni:P.t1)+'" stroke-width="17" stroke-linecap="round"/>';
+    s+='<path d="M34 176 C26 202 54 214 66 196 C74 184 60 172 52 182" fill="none" stroke="'+(plein?P.beni:P.t1)+'" stroke-width="13" stroke-linecap="round"/>';
+    s+='<path d="M208 174 C216 200 188 212 176 194 C168 182 182 170 190 180" fill="none" stroke="'+(plein?P.beni:P.t1)+'" stroke-width="13" stroke-linecap="round"/>';
+    /* rafales, dans la bande haute */
+    s+='<path d="M68 62 C92 44 132 42 156 54" fill="none" stroke="'+(plein?P.washi:P.fond)+'" stroke-width="8" stroke-linecap="round" opacity="0.85"/>';
+    s+='<path d="M88 84 C108 72 134 72 150 80" fill="none" stroke="'+(plein?P.washi:P.fond)+'" stroke-width="7" stroke-linecap="round" opacity="0.6"/>';
+    return s;
+  }
+
+  function rafales(P, plein){
+    var s='', i, j;
+    s+='<rect width="240" height="240" fill="'+(plein?P.washi:P.fond)+'"/>';
+    /* motif de rafales, trois rangs decales, deux valeurs */
+    for(j=0;j<5;j++){
+      for(i=-1;i<5;i++){
+        var x=i*56+(j%2?28:0), y=j*52+16;
+        var t=(i+j)%3;
+        var c = plein ? [P.ciel,P.cielF,P.beni][t] : [P.t3,P.t2,P.t1][t];
+        s+='<path d="M'+x+' '+(y+18)+' C'+(x+10)+' '+(y-2)+' '+(x+40)+' '+(y-2)+' '+(x+46)+' '+(y+14)+
+           ' C'+(x+50)+' '+(y+26)+' '+(x+34)+' '+(y+30)+' '+(x+32)+' '+(y+18)+
+           '" fill="none" stroke="'+c+'" stroke-width="8" stroke-linecap="round" opacity="'+(plein?0.8:1)+'"/>';
+      }
+    }
+    return s;
+  }
+
+  function vague(P, plein){
+    var s='';
+    s+='<rect width="240" height="240" fill="'+(plein?P.washi:P.fond)+'"/>';
+    s+='<rect width="240" height="30" fill="'+(plein?P.cielF:P.t3)+'"/>';
+    /* trois cretes de vent superposees, a la Seigaiha etire */
+    var crete=[[150,P.eau,'t3'],[186,P.ciel,'t2'],[222,P.cielF,'t1']];
+    crete.forEach(function(c,k){
+      var y=c[0];
+      s+='<path d="M-10 '+y+' C30 '+(y-38)+' 74 '+(y-38)+' 110 '+(y-8)+
+         ' C140 '+(y+16)+' 190 '+(y+10)+' 250 '+(y-30)+' L250 260 L-10 260 Z" fill="'+
+         (plein?c[1]:P[c[2]])+'"/>';
+      s+='<path d="M-10 '+y+' C30 '+(y-38)+' 74 '+(y-38)+' 110 '+(y-8)+
+         ' C140 '+(y+16)+' 190 '+(y+10)+' 250 '+(y-30)+'" fill="none" stroke="'+
+         (plein?P.washi:P.fond)+'" stroke-width="5" opacity="0.75"/>';
+    });
+    /* papiers emportes au-dessus */
+    [[74,58,-22],[126,40,18],[176,66,-8],[206,36,30]].forEach(function(q){
+      s+='<g transform="rotate('+q[2]+' '+q[0]+' '+q[1]+')">'+
+         '<rect x="'+(q[0]-11)+'" y="'+(q[1]-7.5)+'" width="22" height="15" rx="2" fill="'+(plein?P.papier:P.fond)+'" stroke="'+(plein?'#cfc4a8':P.t3)+'" stroke-width="1.8"/></g>';
+    });
+    return s;
+  }
+
+  var PROPS=[
+    { n:'Ejiri, l’estampe entière', tag:'paysage complet', aplats:'11',
+      dit:'le vent arrache les papiers des voyageurs, le Fuji regarde',
+      thesis:'La gravure du vent par excellence : Hokusai, <i>Ejiri dans la province de Suruga</i>. Une rafale traverse la plaine, plie l’arbre et arrache aux voyageurs les feuilles qu’ils portaient — le sujet de l’estampe est littéralement du courrier emporté par le vent. Tout y est : le Fuji, les coteaux, l’eau, le chemin, huit papiers en vol.',
+      geo:'Onze aplats, huit papiers, un arbre penché.',
+      risk:'Onze aplats dans 64 unités : au-dessous de 64 px, c’est une confiture.',
+      px32:'non', f:ejiri, plein:true },
+
+    { n:'Ejiri, en deux tons de la marque', tag:'contrainte W-D3', aplats:'4 valeurs',
+      dit:'la même scène, mais dans les couleurs figées de Wind',
+      thesis:'La même composition, réduite aux deux couleurs que le Système fige (<code>#e2ebe8</code>, <code>#365a4f</code>) et à leurs transparences. On garde la gravure et la règle : la marque ne gagne pas une palette, elle gagne une image. C’est la version qui ne demande aucun amendement de couleur.',
+      geo:'Quatre valeurs d’une seule encre sur le fond de la marque.',
+      risk:'Sans couleur, le Fuji et les coteaux se confondent : la scène devient décorative.',
+      px32:'non', f:ejiri, plein:false },
+
+    { n:'Ejiri, cadré serré', tag:'paysage réduit', aplats:'6',
+      dit:'le Fuji, un coteau, sept papiers en vol — rien d’autre',
+      thesis:'La même estampe, mais recadrée sur ce qui compte : le cône du Fuji, une masse de coteau, et les papiers qui volent. Six aplats au lieu de onze. On perd le récit, on gagne une silhouette qu’on lit encore à 48 px.',
+      geo:'Six aplats, sept papiers plus gros.',
+      risk:'Le Fuji devient un triangle générique : sans les détails, l’estampe s’évapore.',
+      px32:'à peine', f:ejiriSerre, plein:true },
+
+    { n:'Fūjin', tag:'le dieu du vent', aplats:'5',
+      dit:'le sac de vent du dieu, arqué au-dessus de la nuée',
+      thesis:'Sōtatsu plutôt que Hokusai : du <i>Fūjin Raijin-zu</i>, on ne garde que le geste — la grande arche du sac de vent que le dieu tient au-dessus de sa tête, ses deux extrémités enroulées, et deux rafales. C’est le fond le plus graphique et le plus reconnaissable de la planche.',
+      geo:'Une arche de 26 d’épaisseur, deux enroulements, une nuée.',
+      risk:'L’arche entoure l’enveloppe comme une anse : les deux formes se disputent.',
+      px32:'oui', f:fujin, plein:true },
+
+    { n:'Les rafales', tag:'motif, pas scène', aplats:'3',
+      dit:'un semis de crochets de vent, comme un papier peint',
+      thesis:'On abandonne la scène pour le motif : un semis régulier de crochets de vent, à la manière des fonds textiles d’estampe. Rien à reconnaître, donc rien à perdre en rétrécissant — c’est le seul fond de la planche qui se contente d’être une texture, et le seul qui tienne encore à 32 px.',
+      geo:'Trente crochets sur cinq rangs décalés, trois valeurs.',
+      risk:'Ce n’est plus une estampe : c’est un motif. L’intention d’origine est perdue.',
+      px32:'oui', f:rafales, plein:true },
+
+    { n:'Les crêtes', tag:'entre scène et motif', aplats:'6',
+      dit:'trois vagues de vent empilées, quatre papiers au-dessus',
+      thesis:'Le compromis : trois crêtes empilées, soulignées de blanc comme les vagues d’une estampe, et quatre papiers emportés au-dessus. Ce n’est plus un lieu, c’est encore un souffle. La silhouette reste simple — trois bandes et un ciel — donc elle descend plus bas que les paysages.',
+      geo:'Trois crêtes soulignées, quatre papiers, un bokashi.',
+      risk:'Les crêtes se lisent comme de l’eau autant que comme du vent.',
+      px32:'à peine', f:vague, plein:true }
+  ];
+
+  /* ---------- enveloppe ---------- */
+  function envSVG(W, style, uid){
+    var H=W/1.5, x=32-W/2, y=32-H/2, rx=W*0.094, sw=W*0.075;
+    var pts=(x+W*0.0588).toFixed(2)+','+(y+H*0.1304).toFixed(2)+' 32,'+(y+H*0.6087).toFixed(2)+' '+
+            (x+W*0.9412).toFixed(2)+','+(y+H*0.1304).toFixed(2);
+    var forme='<rect x="'+x.toFixed(2)+'" y="'+y.toFixed(2)+'" width="'+W+'" height="'+H.toFixed(2)+'" rx="'+rx.toFixed(2)+'"/>'+
+              '<polyline points="'+pts+'"/>';
+    function trait(c,w,o){
+      return '<g fill="none" stroke="'+c+'" stroke-width="'+w.toFixed(2)+'" stroke-linecap="round" stroke-linejoin="round"'+
+             (o?' opacity="'+o+'"':'')+'>'+forme+'</g>';
+    }
+    if(style==='blanc')  return trait('#ffffff', sw);
+    if(style==='encre')  return trait('#2a2622', sw);
+    if(style==='doublé') return trait('#2a2622', sw+2, 0.30) + trait('#ffffff', sw);
+    var kw=W*0.062;
+    var kpts=(x+W*0.015).toFixed(2)+','+(y+H*0.02).toFixed(2)+' 32,'+(y+H*0.60).toFixed(2)+' '+
+             (x+W*0.985).toFixed(2)+','+(y+H*0.02).toFixed(2);
+    return '<mask id="mk'+uid+'" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">'+
+      '<rect width="64" height="64" fill="#000"/>'+
+      '<rect x="'+x.toFixed(2)+'" y="'+y.toFixed(2)+'" width="'+W+'" height="'+H.toFixed(2)+'" rx="'+rx.toFixed(2)+'" fill="#fff"/>'+
+      '<polyline points="'+kpts+'" fill="none" stroke="#000" stroke-width="'+kw.toFixed(2)+'" stroke-linejoin="round"/>'+
+      '</mask><rect width="64" height="64" fill="#ffffff" mask="url(#mk'+uid+')"/>';
+  }
+
+  var uid=0;
+  function tuile(p, taille, opt){
+    opt=opt||{}; var id=++uid;
+    var P = p.plein ? U : M;
+    var s='<svg width="'+taille+'" height="'+taille+'" viewBox="0 0 64 64" role="img" aria-label="'+p.n+'">';
+    s+='<defs><clipPath id="cp'+id+'"><rect width="64" height="64" rx="15"/></clipPath></defs>';
+    s+='<g clip-path="url(#cp'+id+')">';
+    s+='<svg x="0" y="0" width="64" height="64" viewBox="0 0 240 240" preserveAspectRatio="xMidYMid slice">'+p.f(P,p.plein)+'</svg>';
+    if(STATE.voile>0) s+='<rect width="64" height="64" fill="'+(p.plein?'#efe6d0':'#e2ebe8')+'" opacity="'+STATE.voile+'"/>';
+    if(!opt.sansEnveloppe) s+=envSVG(STATE.W, STATE.env, id);
+    s+='</g></svg>';
+    return s;
+  }
+
+  /* le regime « aplat » : la marque actuelle, sans pastille */
+  function aplat(taille){
+    var W=46,H=W/1.5,x=32-W/2,y=32-H/2;
+    var pts=(x+W*0.0588).toFixed(2)+','+(y+H*0.1304).toFixed(2)+' 32,'+(y+H*0.6087).toFixed(2)+' '+
+            (x+W*0.9412).toFixed(2)+','+(y+H*0.1304).toFixed(2);
+    return '<svg width="'+taille+'" height="'+taille+'" viewBox="0 0 64 64" role="img" aria-label="Régime aplat">'+
+      '<rect width="64" height="64" rx="15" fill="#e2ebe8"/>'+
+      '<g fill="none" stroke="#365a4f" stroke-width="'+(W*0.075).toFixed(2)+'" stroke-linecap="round" stroke-linejoin="round">'+
+      '<rect x="'+x.toFixed(2)+'" y="'+y.toFixed(2)+'" width="'+W+'" height="'+H.toFixed(2)+'" rx="'+(W*0.094).toFixed(2)+'"/>'+
+      '<polyline points="'+pts+'"/></g></svg>';
+  }
+
+  function actuelle(taille, pastille){
+    var vb=pastille?70:64;
+    var s='<svg width="'+taille+'" height="'+taille+'" viewBox="0 0 '+vb+' '+vb+'" role="img" aria-label="Icône Wind actuelle">';
+    s+='<rect width="64" height="64" rx="15" fill="#e2ebe8"/>';
+    s+='<g transform="translate(11 11) scale(0.875)" fill="none" stroke="#365a4f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">';
+    s+='<rect x="7" y="13" width="34" height="23" rx="3"/><polyline points="9,16 24,27 39,16"/></g>';
+    if(pastille){
+      s+='<rect x="45" y="45" width="25" height="25" rx="8" fill="#365a4f"/>';
+      s+='<polyline transform="translate(45 45)" points="5.8,7.5 9.4,17.5 12.5,10.5 15.6,17.5 19.2,7.5" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>';
+    }
+    return s+'</svg>';
+  }
+  function fig(h,c){return '<figure>'+h+'<figcaption>'+c+'</figcaption></figure>';}
+
+  var RECO='Ma recommandation, si la direction est retenue : <b>3 — Ejiri, cadré serré</b> pour le régime « estampe », '+
+    'et le régime « aplat » de la marque actuelle en dessous de 48 px. Ejiri est la seule estampe dont le sujet <i>est</i> '+
+    'du courrier emporté par le vent — le récit fait la moitié du travail — et le cadrage serré est le point où elle tient '+
+    'encore comme image sans devenir un timbre illisible. <b>4 — Fūjin</b> est le plus beau des six en grand et le seul qui '+
+    'garde de la force à 32 px, mais son arche entoure l’enveloppe au lieu de la porter : il faudrait la décaler. '+
+    '<b>5 — Les rafales</b> est le seul choix raisonnable si l’icône doit rester une icône avant d’être une image — mais '+
+    'alors ce n’est plus une estampe, et autant l’assumer plutôt que d’appeler « estampe » un papier peint.';
+
+  function rendu(){
+    uid=0;
+    document.getElementById('existant').innerHTML =
+      fig(actuelle(112,true),'128 · avec pastille')+fig(actuelle(48,true),'48')+
+      fig(actuelle(32,false),'32')+fig(actuelle(16,false),'16');
+
+    var html='';
+    PROPS.forEach(function(p,i){
+      html+='<article class="card">'+
+        '<div class="visual">'+tuile(p,168)+
+          '<div class="ladder">'+fig(tuile(p,64),'64')+fig(tuile(p,48),'48')+fig(tuile(p,32),'32')+
+             fig(tuile(p,16),'16')+fig(tuile(p,64,{sansEnveloppe:true}),'fond seul')+'</div>'+
+        '</div>'+
+        '<div class="body">'+
+          '<p class="num">Fond '+(i+1)+'</p>'+
+          '<div class="title-row"><h3>'+p.n+'</h3><span class="tag jp">'+p.tag+'</span>'+
+            '<span class="tag">'+p.aplats+' aplats</span></div>'+
+          '<p class="thesis">'+p.thesis+'</p>'+
+          '<dl><dt>Ce qu’il dit</dt><dd>'+p.dit+'</dd>'+
+              '<dt>Tracé</dt><dd>'+p.geo+'</dd>'+
+              '<dt>Risque</dt><dd class="risk">'+p.risk+'</dd></dl>'+
+        '</div></article>';
+    });
+    document.getElementById('cartes').innerHTML=html;
+
+    var a='',b='';
+    PROPS.forEach(function(p,i){ a+=fig(tuile(p,16),String(i+1)); b+=fig(tuile(p,16)+'<div style="height:6px"></div>'+tuile(p,24),String(i+1)); });
+    document.getElementById('min16').innerHTML=a;
+    document.getElementById('min16d').innerHTML=b;
+
+    document.getElementById('regimes').innerHTML =
+      fig(tuile(PROPS[2],128),'estampe · 256 et 128')+fig(tuile(PROPS[2],64),'64 — la charnière')+
+      fig(aplat(32),'aplat · 32')+fig(aplat(16),'aplat · 16');
+
+    var rows='';
+    PROPS.forEach(function(p,i){
+      rows+='<tr><td>'+(i+1)+' · '+p.n+'</td><td>'+p.aplats+'</td><td>'+p.dit+'</td><td>'+STATE.env+'</td><td>'+p.px32+'</td></tr>';
+    });
+    document.querySelector('#tabl tbody').innerHTML=rows;
+    document.getElementById('reco').innerHTML=RECO;
+  }
+
+  function seg(id,key,cast){
+    var el=document.getElementById(id);
+    el.addEventListener('click',function(e){
+      var b=e.target.closest('button'); if(!b) return;
+      [].forEach.call(el.querySelectorAll('button'),function(x){x.setAttribute('aria-pressed',String(x===b));});
+      STATE[key]=cast?cast(b.dataset.v):b.dataset.v; rendu();
+    });
+  }
+  seg('segEnv','env'); seg('segVoile','voile',Number); seg('segW','W',Number);
+  rendu();
+})();
+</script>

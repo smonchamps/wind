@@ -1,7 +1,10 @@
-// Banc de contraste WCAG des jetons Clarity (systeme.css) : chaque
-// paire (encre, fond) réellement posée par ui-v2, dans les 28 thèmes
-// (A42). Seuils : 4,5:1 pour le texte courant, 3:1 pour le grand texte
-// et les composants d'interface (icônes, bordures porteuses de sens).
+// Banc de contraste WCAG des jetons Elements (systeme.css) : chaque
+// paire (encre, fond) réellement posée par ui-v2, dans les 2 thèmes
+// (V7). Seuils : 4,5:1 pour le texte courant, 3:1 pour le grand texte
+// et les composants d'interface (icônes, disques, anneaux) — plus les
+// paires de FILET (V3 : le filet porte SEUL la séparation), au seuil
+// du filet expédié par Clarity (1,49:1 sur le fond, 1,26:1 sur une
+// carte) : sous ce plancher, le filet disparaît et la séparation ment.
 //
 //   node contraste.mjs        -> tableau complet + verdict
 //
@@ -35,33 +38,48 @@ const rapport = (a, b) => {
 };
 
 // --- Les paires posées par ui-v2 (relevé des composants) -------------
-// [encre, fond, seuil, où]
+// [encre, fond, seuil, où] — la table du Système Elements (section
+// Thèmes de couleur), reprise valeur pour valeur : le banc du document
+// et cette gate mesurent la MÊME chose.
 const PAIRES = [
-  ['ink', 'bg', 4.5, 'titres, objets de liste'],
-  ['ink', 'surface', 4.5, 'cartes, boutons, entête'],
-  ['ink', 'panel', 4.5, 'nav, barre de format'],
-  ['ink', 'sel', 4.5, 'rangée sélectionnée'],
-  ['ink', 'hover', 4.5, 'rangée survolée (A29/A35)'],
+  ['ink', 'bg', 4.5, 'titres, objets de liste, nav'],
+  ['ink', 'surface', 4.5, 'cartes de message, champs'],
+  ['ink', 'sel', 4.5, 'rangée sélectionnée, dossier ouvert'],
+  ['ink', 'hover', 4.5, 'rangée survolée'],
+  ['ink', 'tuile', 4.5, "objet d'une rangée épinglée"],
   ['ink2', 'bg', 4.5, 'expéditeurs, corps de texte'],
   ['ink2', 'surface', 4.5, 'puces, boutons secondaires'],
-  ['ink2', 'panel', 4.5, 'nav (libellés)'],
   ['ink2', 'sel', 4.5, 'aperçus (rangée sélectionnée)'],
   ['ink2', 'hover', 4.5, 'aperçus (rangée survolée)'],
-  ['muted', 'bg', 4.5, 'heures, aperçus, statut'],
-  ['muted', 'surface', 4.5, 'kickers, descriptions, placeholder'],
-  ['muted', 'panel', 4.5, 'statut, sections nav'],
-  ['muted', 'sel', 4.5, 'heures (rangée sélectionnée) — le remède A35'],
+  ['ink2', 'tuile', 4.5, "aperçu d'une rangée épinglée"],
+  ['muted', 'bg', 4.5, "heures, sourcils, barre d'état"],
+  ['muted', 'surface', 4.5, 'descriptions, texte de substitution'],
+  ['muted', 'sel', 4.5, 'heures (rangée sélectionnée)'],
   ['muted', 'hover', 4.5, 'heures (rangée survolée)'],
-  ['onAccent', 'accent', 4.5, 'boutons principaux, pastille de non-lus (nav)'],
-  ['alert', 'bg', 4.5, "texte d'erreur (onboarding), mention Brouillon (rangée)"],
+  ['muted', 'tuile', 4.5, 'heures (rangée épinglée)'],
+  ['onAccent', 'accent', 4.5, "libellé du bouton primaire, poignée de l'interrupteur armé"],
+  ['onAccent', 'accentH', 4.5, 'libellé du bouton primaire (survol)'],
+  ['alert', 'bg', 4.5, "texte d'erreur, mention Brouillon"],
   ['alert', 'sel', 4.5, 'mention Brouillon (rangée choisie)'],
   ['alert', 'hover', 4.5, 'mention Brouillon (rangée survolée)'],
-  ['alert', 'surface', 4.5, 'mention Brouillon (cartes)'],
-  ['alert', 'surface', 3, "icône/bordure d'alerte (fente)"],
-  ['accent', 'surface', 3, 'icônes signature, coche, héros non-lu'],
-  ['accent', 'panel', 3, 'trait hitofude (entête, barre d’état)'],
-  ['accent', 'sel', 3, 'liseré de la ligne choisie (A29)'],
-  ['tuileInk', 'tuile', 4.5, 'la tuile de la boîte en cours (nav, A35)'],
+  ['alert', 'tuile', 4.5, 'mention Brouillon (rangée épinglée)'],
+  ['alert', 'surface', 4.5, 'mention Brouillon (cartes), Supprimer le brouillon'],
+  ['alert', 'surface', 3, "icône d'alerte, point d'anomalie, glyphe « Refuser »"],
+  ['accent', 'surface', 3, 'icônes, coche, anneau de focus, glyphe « Accepter »'],
+  ['accent', 'bg', 3, 'anneau de focus, liseré, poignée de volet'],
+  ['accent', 'sel', 3, 'liseré de la ligne choisie, contour de la réponse en cours'],
+  ['accent', 'tuile', 3, "liseré et anneau de focus sur une rangée épinglée — COMPOSANT seulement : sous le seuil du texte en clair, aucun libellé d'accent ne se pose sur la tuile"],
+  ['accent', 'surface', 4.5, 'compteur de non-lus, liens, libellés en accent (TEXTE)'],
+  ['accent', 'bg', 4.5, 'compteur de non-lus de la nav (TEXTE, V4)'],
+  ['tuileInk', 'tuile', 4.5, "tuile d'initiales, boîte en cours, rangée épinglée, tuile de date"],
+  ['marque', 'bg', 3, 'DISQUE de non-lu et anneau de cycle sur le fond'],
+  ['marque', 'surface', 3, 'DISQUE sur une carte'],
+  ['marque', 'sel', 3, 'DISQUE sur la rangée choisie'],
+  ['marque', 'hover', 3, 'DISQUE sur la rangée survolée'],
+  ['marque', 'tuile', 3, 'DISQUE sur la rangée épinglée'],
+  ['border', 'bg', 1.49, 'filet sur le fond — seuil = le filet EXPÉDIÉ par Clarity'],
+  ['border', 'surface', 1.26, 'filet sur une carte — seuil = le filet EXPÉDIÉ par Clarity'],
+  ['border', 'tuile', 1.26, "filet de la tuile d'initiales — la tuile ne vaut que 1,04:1 sur le fond clair, le filet la fait exister"],
 ];
 
 let echecs = 0;
@@ -98,15 +116,16 @@ for (const [nom, t] of Object.entries(themes)) {
 }
 // --- REPERES (A74, PLAN-RETOURS-8 R1) --------------------------------
 // Le nuancier des repères de compte : 12 familles × 2 déclinaisons
-// (sombre pour les 14 thèmes clairs, claire pour les 14 -nuit). On lit
-// les hex EXPÉDIÉS (les règles .repere[data-teinte] de systeme.css),
-// jamais une copie : chaque déclinaison doit tenir 3:1 (composant) sur
-// les fonds où le repère se pose, et porter son glyphe à 4,5:1.
+// (sombre pour le thème clair, claire pour elements-nuit — V5 : le
+// nuancier SUIT la polarité). On lit les hex EXPÉDIÉS (les règles
+// .repere[data-teinte] de systeme.css), jamais une copie : chaque
+// déclinaison doit tenir 3:1 (composant) sur les fonds où le repère se
+// pose, et porter son glyphe à 4,5:1.
 const REPERE_FAMILLES = 12;
 // `tuile` en fait partie (revue 2026-08-22) : la pastille du compte EN
 // COURS se pose sur la tuile de nav — l'oublier laissait ce fond-là,
-// précisément, sans mesure.
-const FONDS_REPERE = ['panel', 'bg', 'sel', 'hover', 'surface', 'tuile'];
+// précisément, sans mesure. `panel` est mort (V3).
+const FONDS_REPERE = ['bg', 'sel', 'hover', 'surface', 'tuile'];
 function lireReperes(prefixe) {
   const reperes = {};
   for (const [, teinte, hex] of css.matchAll(new RegExp(

@@ -852,7 +852,7 @@
      au dessin des pistes) — rangées 36 px, icône + libellé, actif en
      surface blanche avec l'ombre unique, sans filet gauche. */
   .rail {
-    width:220px; flex:none; background:var(--panel);
+    width:220px; flex:none; background:var(--bg);
     border-right:1px solid var(--border); padding:20px 16px;
     display:flex; flex-direction:column; gap:4px; overflow:auto;
   }
@@ -1038,8 +1038,8 @@
   .titre-ajout { flex:1; font-size:14px; font-weight:600; color:var(--ink); }
 
   /* Une rangée de réglage : libellé + description, interrupteur à
-     droite. L'interrupteur reste aux jetons — piste `--panel`/filet au
-     repos, accent quand il est armé ; focus visible hérité (A8). */
+     droite. L'interrupteur reste aux jetons — piste `--bg`/filet au
+     repos (V3), accent quand il est armé ; focus visible hérité (A8). */
   .reglage {
     display:flex; align-items:center; gap:16px; padding:14px 16px;
     border-radius:10px;
@@ -1047,7 +1047,7 @@
   .bascule {
     width:38px; height:22px; flex:none; padding:2px; cursor:pointer;
     display:inline-flex; align-items:center;
-    background:var(--panel); border:1px solid var(--border);
+    background:var(--bg); border:1px solid var(--border);
     border-radius:11px; transition:background .12s ease;
   }
   .bille {
@@ -1080,7 +1080,7 @@
   kbd {
     min-width:44px; padding:3px 8px; text-align:center; flex:none;
     font-family:inherit; font-size:12px; font-weight:600; color:var(--ink);
-    background:var(--panel); border:1px solid var(--border);
+    background:var(--bg); border:1px solid var(--border);
     border-bottom-width:2px; border-radius:6px;
   }
   .geste { color:var(--ink2); }

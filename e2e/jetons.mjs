@@ -9,10 +9,10 @@
 // ne reconnaît pas n'est pas une paire à sauter, c'est la gate qui
 // devient aveugle en silence. À mettre à jour avec la table, dans le
 // même commit (DC-D2) — l'écart est bruyant, c'est le but.
-export const NOMBRE_ATTENDU = 28;
+export const NOMBRE_ATTENDU = 2;
 
-// [a-z-]+ : les déclinaisons sombres portent un trait d'union
-// (« nature-nuit », A42). [a-zA-Z][a-zA-Z0-9]* côté jeton : « ink2 »
+// [a-z-]+ : la déclinaison sombre porte un trait d'union
+// (« elements-nuit », V7). [a-zA-Z][a-zA-Z0-9]* côté jeton : « ink2 »
 // porte un chiffre. `motifValeur` : contraste.mjs n'extrait que les
 // hex #RRGGBB (seuls mesurables), coherence-systeme.mjs prend toute
 // valeur (ombres, scrims) — le défaut.
@@ -27,7 +27,7 @@ export function lireThemes(css, { motifValeur = /[^;]+/ } = {}) {
     )) {
       jetons[cle] = valeur.replace(/\s+/g, ' ').trim();
     }
-    if (Object.keys(jetons).length > 0) themes[nom ?? 'nature'] = jetons;
+    if (Object.keys(jetons).length > 0) themes[nom ?? 'elements'] = jetons;
   }
   return themes;
 }

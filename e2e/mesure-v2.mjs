@@ -155,12 +155,12 @@ try {
   });
   console.log(`page       : ${stats(pages_ms)} (service IPC + rendu + reflow)`);
 
-  // Thème : 60 bascules à chaud sur les 7 thèmes.
+  // Thème : 60 bascules à chaud sur les thèmes livrés (lus du produit).
   const themes_ms = await page.evaluate(() => {
     const noms = window.__mesure.themes;
     const mesures = [];
     for (let n = 0; n < 60; n++) mesures.push(window.__mesure.theme(noms[n % noms.length]));
-    window.__mesure.theme('nature');
+    window.__mesure.theme('elements');
     return mesures;
   });
   console.log(`thème      : ${stats(themes_ms)}`);

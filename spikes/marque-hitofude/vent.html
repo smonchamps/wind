@@ -1,0 +1,378 @@
+<meta charset="utf-8">
+<title>Le vent et la lettre</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Old+Mincho:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --bg:#f2f0ea; --panel:#e9e6dd; --surface:#ffffff;
+  --ink:#24272e; --ink2:#4a505a; --muted:#575f6a;
+  --border:#cdc6b8; --accent:#1e7566; --accentH:#175c50;
+  --sel:#cddcd2; --alert:#9e3a2c;
+  --shadow:0 2px 8px rgba(36,39,46,0.08);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#1b1e21; --panel:#23272b; --surface:#2b3034;
+    --ink:#edefed; --ink2:#b7bebb; --muted:#a0a7a4;
+    --border:#394045; --accent:#57a88f; --accentH:#6cbda3;
+    --sel:#313f39; --alert:#ea9a90;
+    --shadow:0 2px 12px rgba(0,0,0,0.40);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#1b1e21; --panel:#23272b; --surface:#2b3034;
+  --ink:#edefed; --ink2:#b7bebb; --muted:#a0a7a4;
+  --border:#394045; --accent:#57a88f; --accentH:#6cbda3;
+  --sel:#313f39; --alert:#ea9a90;
+  --shadow:0 2px 12px rgba(0,0,0,0.40);
+}
+*{box-sizing:border-box}
+body{margin:0; background:var(--bg); color:var(--ink);
+  font-family:'Zen Kaku Gothic New',system-ui,sans-serif; font-size:15px; line-height:1.65;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:1040px; margin:0 auto; padding:56px 28px 96px; display:flex; flex-direction:column; gap:52px}
+h1{font-family:'Zen Old Mincho',Georgia,serif; font-weight:600; font-size:clamp(30px,5vw,44px);
+   line-height:1.15; letter-spacing:-.01em; margin:0; text-wrap:balance}
+h2{font-family:'Zen Old Mincho',Georgia,serif; font-weight:600; font-size:23px; line-height:1.35; margin:0; text-wrap:balance}
+h3{font-size:19px; font-weight:700; margin:0; line-height:1.3}
+p{margin:0}
+.lede{font-family:'Zen Old Mincho',Georgia,serif; font-size:17px; line-height:1.8; color:var(--ink2); max-width:66ch}
+.eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace; font-size:11px; letter-spacing:.16em;
+   text-transform:uppercase; color:var(--muted); font-weight:600}
+code,.mono{font-family:'JetBrains Mono',ui-monospace,monospace; font-size:.86em}
+hr{border:0; border-top:1px solid var(--border); margin:0}
+.head{display:flex; flex-direction:column; gap:18px}
+.head .rule{width:64px; border-top:2px solid var(--accent)}
+
+.note{background:var(--panel); border:1px solid var(--border); border-left:3px solid var(--accent);
+  border-radius:0 8px 8px 0; padding:22px 26px; display:flex; flex-direction:column; gap:12px}
+.note p{color:var(--ink2); font-size:14.5px; max-width:74ch}
+.note b{color:var(--ink)}
+
+.controls{position:sticky; top:0; z-index:20; background:var(--bg); border-bottom:1px solid var(--border);
+  margin:0 -28px; padding:14px 28px; display:flex; flex-wrap:wrap; gap:22px; align-items:center}
+.ctl{display:flex; align-items:center; gap:8px}
+.ctl>span{font-size:12px; color:var(--muted); font-weight:500}
+.seg{display:flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; background:var(--surface)}
+.seg button{font:inherit; font-size:12.5px; padding:5px 11px; border:0; background:transparent;
+  color:var(--ink2); cursor:pointer; line-height:1.4; white-space:nowrap}
+.seg button+button{border-left:1px solid var(--border)}
+.seg button[aria-pressed="true"]{background:var(--sel); color:var(--ink); font-weight:700}
+.seg button:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
+.sw{width:11px; height:11px; border-radius:3px; display:inline-block; vertical-align:-1px; margin-right:5px}
+
+.grid{display:flex; flex-direction:column; gap:22px}
+.card{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:26px;
+  display:grid; grid-template-columns:auto 1fr; gap:34px; align-items:start; box-shadow:var(--shadow)}
+@media (max-width:780px){.card{grid-template-columns:1fr; gap:22px}}
+.visual{display:flex; flex-direction:column; gap:16px; align-items:flex-start}
+.ladder{display:flex; align-items:flex-end; gap:13px}
+figure{margin:0; display:flex; flex-direction:column; align-items:center; gap:6px}
+figcaption{font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted)}
+.body{display:flex; flex-direction:column; gap:13px}
+.num{font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:600; color:var(--accent); letter-spacing:.08em}
+.title-row{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap}
+.tag{font-size:11px; font-family:'JetBrains Mono',monospace; padding:2px 8px; border-radius:999px;
+  border:1px solid var(--border); color:var(--muted); background:var(--panel); white-space:nowrap}
+.tag.jp{border-color:var(--accent); color:var(--accent)}
+.thesis{font-family:'Zen Old Mincho',Georgia,serif; font-size:16px; line-height:1.72; color:var(--ink)}
+dl{margin:0; display:grid; grid-template-columns:auto 1fr; gap:8px 16px; font-size:14px}
+dt{color:var(--muted); font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; padding-top:4px}
+dd{margin:0; color:var(--ink2)}
+dd.risk{color:var(--alert)}
+
+.compare{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:26px;
+  display:flex; flex-direction:column; gap:18px}
+.compare-row{display:flex; flex-wrap:wrap; gap:26px; align-items:flex-end}
+.clair-bar{display:flex; gap:26px; align-items:flex-end; padding:16px 20px; background:#e9e6dd;
+  border-radius:8px; flex-wrap:wrap}
+.clair-bar figcaption{color:#575f6a}
+.desk{display:flex; gap:26px; align-items:flex-end; padding:16px 20px; background:#2f3438; border-radius:8px; flex-wrap:wrap}
+.desk figcaption{color:#9aa2a8}
+
+table{border-collapse:collapse; width:100%; font-size:14px; min-width:660px}
+th,td{text-align:left; padding:10px 12px; border-bottom:1px solid var(--border); vertical-align:top}
+th{font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); font-weight:600}
+td{color:var(--ink2)}
+td:first-child{white-space:nowrap; font-weight:700; color:var(--ink)}
+.tbl-wrap{overflow-x:auto}
+
+ol.q{margin:0; padding-left:22px; display:flex; flex-direction:column; gap:11px; color:var(--ink2); max-width:74ch}
+ol.q b{color:var(--ink)}
+.foot{color:var(--muted); font-size:13px; max-width:74ch}
+</style>
+
+<div class="wrap">
+
+  <header class="head">
+    <p class="eyebrow">Wind · exploration marque · feuille blanche · 2026-08-23</p>
+    <h1>Le vent et la lettre</h1>
+    <div class="rule"></div>
+    <p class="lede">Deux exigences, rien d'autre : qu'on voie le vent, qu'on voie l'enveloppe. Sept dessins neufs, rangés du plus évident au plus fusionné — de deux objets posés côte à côte jusqu'à une seule forme qui dit les deux à la fois.</p>
+  </header>
+
+  <div class="note">
+    <p class="eyebrow">Ce que la première exploration a appris, et qu'on garde</p>
+    <p><b>Le blanc sur fond clair ne tient pas</b> (1,15 : 1 entre <code>#e2ebe8</code> et le blanc). Ces sept dessins reviennent donc à la langue de la marque actuelle : <b>traits d'encre <code>#365a4f</code> sur tuile <code>#e2ebe8</code></b>, bouts et angles ronds, une seule épaisseur — exactement le vocabulaire de l'enveloppe d'aujourd'hui, appliqué à un dessin neuf. La bascule ci-dessous permet de voir chacun en négatif (tuile d'encre, trait clair), l'autre arrangement qui tient le contraste.</p>
+    <p><b>Et le juge reste 16 px.</b> Chaque proposition est servie à 48, 32, 24 et 16 px, sur fond clair et sur barre des tâches sombre. Un dessin qui a besoin de trois éléments meurt à cette taille ; c'est dit sur chaque carte.</p>
+  </div>
+
+  <div class="controls" role="group" aria-label="Réglages de la planche">
+    <div class="ctl">
+      <span>Tuile</span>
+      <div class="seg" id="segFond">
+        <button data-v="clair" aria-pressed="true"><i class="sw" style="background:#e2ebe8;border:1px solid #cdc6b8"></i>claire, trait d'encre</button>
+        <button data-v="encre" aria-pressed="false"><i class="sw" style="background:#365a4f"></i>d'encre, trait clair</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <span>Trait</span>
+      <div class="seg" id="segTrait">
+        <button data-v="2.6" aria-pressed="false">fin</button>
+        <button data-v="3" aria-pressed="true">3 · actuel</button>
+        <button data-v="3.5" aria-pressed="false">gras</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <span>Glyphe</span>
+      <div class="seg" id="segTaille">
+        <button data-v="46" aria-pressed="false">46/64</button>
+        <button data-v="50" aria-pressed="true">50/64</button>
+        <button data-v="54" aria-pressed="false">54/64</button>
+      </div>
+    </div>
+  </div>
+
+  <section style="display:flex; flex-direction:column; gap:18px">
+    <p class="eyebrow">L'existant, pour mémoire</p>
+    <div class="compare">
+      <div class="compare-row" id="existant"></div>
+      <p style="font-size:14px; color:var(--ink2); max-width:76ch">Tuile 64 / rayon 15, fond <code>#e2ebe8</code>, enveloppe <code>#365a4f</code> à 42/64, trait 3, pastille « W » 25 débordant de 6. Aucun vent nulle part — c'est précisément ce qui manque.</p>
+    </div>
+  </section>
+
+  <hr>
+
+  <section style="display:flex; flex-direction:column; gap:14px">
+    <h2>Les sept propositions</h2>
+    <p class="lede" style="font-size:16px">Les trois premières posent le vent <i>à côté</i> de la lettre ou <i>sur</i> elle. Les trois suivantes le font entrer <i>dans</i> la lettre — c'est la déformation du papier qui dit le souffle. La septième les confond : une seule forme, lue comme les deux.</p>
+  </section>
+
+  <div class="grid" id="cartes"></div>
+
+  <hr>
+
+  <section style="display:flex; flex-direction:column; gap:20px">
+    <h2>La planche de vérité : 16 pixels</h2>
+    <p class="lede" style="font-size:16px">La barre des tâches Windows sert l'icône à 16 et 24 px. Un dessin qui ne survit pas ici ne sera jamais l'icône de Wind, si beau soit-il à 128.</p>
+    <div class="compare">
+      <p class="eyebrow">Sur fond clair · 16 px</p>
+      <div class="clair-bar" id="min16"></div>
+      <p class="eyebrow" style="margin-top:4px">Sur barre des tâches sombre · 16 et 24 px</p>
+      <div class="desk" id="min16d"></div>
+    </div>
+  </section>
+
+  <hr>
+
+  <section style="display:flex; flex-direction:column; gap:20px">
+    <h2>Ce que chacune dit, et ce qu'elle risque</h2>
+    <div class="tbl-wrap">
+      <table id="tabl">
+        <thead><tr><th>Proposition</th><th>Le vent est dit par</th><th>La lettre est dite par</th><th>Éléments</th><th>Tient à 16 px</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="foot">« Éléments » : nombre de formes distinctes que l'œil doit séparer. Au-delà de deux, la lecture à 16 px se paie.</p>
+  </section>
+
+  <hr>
+
+  <section style="display:flex; flex-direction:column; gap:18px">
+    <h2>Recommandation, et ce qui reste à trancher</h2>
+    <p class="lede" style="font-size:16px" id="reco"></p>
+    <ol class="q">
+      <li><b>Le vent doit-il être un objet ou un état ?</b> C'est le vrai partage de cette planche. Objet (courants, moulinet, fūrin) : lisible tout de suite, mais deux choses à regarder. État (rabat au vent, voile, cerf-volant) : une seule forme, plus de caractère, lecture moins immédiate.</li>
+      <li><b>Tuile claire ou tuile d'encre ?</b> Le Système fige aujourd'hui <code>#e2ebe8</code> / <code>#365a4f</code> (W-D3) mais ne dit pas lequel est le fond. La bascule en haut montre les deux : le négatif tient mieux dans une barre des tâches sombre, le positif dans une barre claire.</li>
+      <li><b>Que devient le trait hitofude de l'application ?</b> Il vit toujours dans <code>Hitofude.svelte</code> — barre de l'application et ligne d'état, boucle SMIL (A28, A40, A52). Si l'icône ne le porte plus, la marque a deux signatures : l'icône dit le vent par son dessin, l'application par son trait. C'est tenable, mais c'est une décision à écrire au Système.</li>
+      <li><b>La règle de suite Elements</b> — « l'icône dit la fonction, la couleur dit l'élément » — est respectée par les sept : l'enveloppe dit le courrier, le vert d'élément dit Wind. Le retrait de la pastille « W » reste à acter dans la section « Marque » et dans <code>scripts/faire-icone.ps1</code>.</li>
+      <li><b>Le rendu GDI+ suit-il ?</b> Ces sept dessins sont des <i>contours</i> à plume ronde, comme l'enveloppe actuelle : <code>faire-icone.ps1</code> sait déjà les tracer (<code>DrawPath</code>, <code>DrawLines</code>). Les courbes de Bézier demanderont un <code>AddBezier</code> en plus — pas de refonte du script.</li>
+    </ol>
+    <p class="foot">Dessins de jugement, pas de livraison : la géométrie est écrite à la main dans un carré de 48, posée dans la tuile de 64. Le chantier les reprendra proprement, puis répercutera dans <code>assets/marque/</code>, <code>scripts/faire-icone.ps1</code> et la section « Marque » du Système.</p>
+  </section>
+
+</div>
+
+<script>
+(function(){
+  var CLAIR='#e2ebe8', ENCRE='#365a4f';
+  var STATE={fond:'clair', trait:3, taille:50};
+
+  /* Chaque glyphe est dessine dans un carre de 48, pose centre dans la tuile
+     de 64 a la taille demandee. Contours seuls, bouts et angles ronds : le
+     vocabulaire exact de l'enveloppe actuelle (Systeme, section Marque). */
+  var PROPS=[
+    { n:'Les courants', tag:'le vent à côté', el:'2',
+      vent:'trois lignes de courant, la plus longue bouclée',
+      lettre:'l’enveloppe actuelle, inchangée',
+      thesis:'Le parti le plus court : on garde l’enveloppe telle qu’elle est et on fait passer le vent au-dessus. Trois lignes de courant, dont une qui s’enroule en fin de course — le pictogramme universel du souffle, celui que tout le monde lit sans y penser.',
+      geo:'Enveloppe 38 × 25 en bas du carré, trois courbes au-dessus.',
+      risk:'Le vent et la lettre restent deux choses posées l’une sur l’autre : rien ne les lie.',
+      px16:'oui',
+      g:'<rect x="5" y="21" width="38" height="24" rx="3.5"/>'+
+        '<polyline points="8,24.3 24,37 40,24.3"/>'+
+        '<path d="M2 7.5 C10 2 24 2 30.5 6 C34.5 8.4 34 12.8 29.5 12"/>'+
+        '<path d="M9 15.5 C15 12 25.5 12 31 14.5"/>' },
+
+    { n:'La lettre envolée', tag:'le vent à côté', el:'2',
+      vent:'la feuille incurvée, emportée hors de l’enveloppe',
+      lettre:'l’enveloppe, posée en bas',
+      thesis:'Ce que le vent fait au courrier plutôt que ce qu’il est : la feuille s’échappe de l’enveloppe et part en s’incurvant vers le haut. Le souffle n’est pas dessiné, il se déduit de la courbe du papier et de la direction de la fuite.',
+      geo:'Enveloppe 27 × 17 en bas à gauche, feuille 16 × 24 en fuite vers le haut.',
+      risk:'Deux objets à séparer : à 16 px la feuille se colle à l’enveloppe et tout devient tache.',
+      px16:'non',
+      g:'<rect x="2" y="29" width="27" height="17" rx="3"/>'+
+        '<polyline points="4.3,31 15.5,39.6 26.7,31"/>'+
+        '<path d="M19 26 L33 5.5 L47 14 L33 34.5 Z"/>' },
+
+    { n:'La bourrasque', tag:'le vent domine', el:'2',
+      vent:'une grande volute qui enveloppe toute la tuile',
+      lettre:'une petite enveloppe prise dedans',
+      thesis:'Le seul dessin où le vent est le sujet et la lettre l’objet : une volute occupe la tuile entière, et l’enveloppe, petite, est prise dans son œil. C’est le renversement de rapport — Wind avant le courrier.',
+      geo:'Volute de 330° qui s’enroule en fin de course, enveloppe 22 × 15 au centre.',
+      risk:'L’enveloppe est trop petite pour survivre en dessous de 32 px.',
+      px16:'non',
+      g:'<path d="M12 44.5 C2.5 38.5 1 24 9.5 14.5 C19 3.8 36 4.8 43 14.5 C48.5 22 46.5 33.5 39 39.5 C35 42.7 30 43.5 27.5 41.5"/>'+
+        '<rect x="13" y="22" width="22" height="15" rx="2.5"/>'+
+        '<polyline points="14.8,23.8 24,31.4 33.2,23.8"/>' },
+
+    { n:'Le rabat au vent', tag:'le vent comme état', el:'1',
+      vent:'le rabat décollé, arqué par le souffle',
+      lettre:'le corps de l’enveloppe, intact',
+      thesis:'Une seule forme, et le vent est dedans : l’enveloppe est ouverte et son rabat, au lieu de retomber en V, se soulève et s’arque vers la droite. Rien n’est ajouté — c’est la déformation du papier qui dit tout.',
+      geo:'Corps 38 × 23, rabat en triangle dissymétrique, pointe repliée à droite.',
+      risk:'Le rabat levé peut se lire comme un couvercle ; à 16 px il se referme optiquement sur le corps.',
+      px16:'oui, de justesse',
+      g:'<rect x="5" y="21.5" width="38" height="23" rx="3.5"/>'+
+        '<path d="M6.5 22 L29.5 9.5 C33.5 7.5 37.5 10 38 13.5 L41.5 22"/>' },
+
+    { n:'La voile', tag:'le vent comme état', el:'1',
+      vent:'les bords bombés, l’enveloppe gonflée',
+      lettre:'rectangle et rabat, reconnaissables',
+      thesis:'L’enveloppe prend le vent comme une voile : ses quatre bords cessent d’être droits, le haut et le bas s’incurvent dans le même sens, le rabat suit la courbe. Ce n’est plus un rectangle, c’est une surface tendue par un souffle qu’on ne dessine pas.',
+      geo:'Corps à bords bombés de 4 unités, rabat suivant la courbure.',
+      risk:'Trop peu de bombement et c’est un rectangle mal fait ; trop, et c’est un fanion.',
+      px16:'oui',
+      g:'<path d="M5 24 C15 15.5 32 14.5 43 19 L43 40 C32 46.5 15 47.5 5 44 Z"/>'+
+        '<path d="M8.5 27.5 C14.5 33 19.5 36.5 23.5 38.5 C29 35.5 35.5 29.5 39.5 23"/>' },
+
+    { n:'Le cerf-volant', tag:'fusion', el:'2', jp:true,
+      vent:'la queue qui ondule, l’objet qui vole',
+      lettre:'l’enveloppe, simplement inclinée à 45°',
+      thesis:'L’enveloppe pivotée d’un quart de tour devient un losange — et un losange qui traîne une queue ondulante, c’est un cerf-volant. Rien n’est déformé, rien n’est ajouté sinon la queue : la même enveloppe, prise dans le vent.',
+      geo:'Enveloppe 30 × 21 tournée de 45°, queue ondulée de 12.',
+      risk:'À 45° le rabat perd son évidence : l’enveloppe se lit moins vite.',
+      px16:'à peine',
+      g:'<g transform="rotate(45 24 19)"><rect x="7.5" y="7.5" width="33" height="23" rx="3"/>'+
+        '<polyline points="10.3,10.2 24,21.3 37.7,10.2"/></g>'+
+        '<path d="M24 36 C29.5 38.5 18.5 41 24 43.5 C29.5 46 19.5 48 23 50"/>' },
+
+    { n:'Le souffle traversant', tag:'fusion', el:'1',
+      vent:'trois courants qui entrent par le flanc ouvert',
+      lettre:'l’enveloppe, ouverte à gauche',
+      thesis:'La forme la plus fondue : l’enveloppe n’est pas fermée. Son flanc gauche est absent, et par cette brèche entrent trois lignes de courant qui deviennent ses bords. Le vent ne passe pas devant la lettre ni derrière : il la traverse et la dessine.',
+      geo:'Contour ouvert sur 14 unités à gauche, trois courants entrants.',
+      risk:'Le pari le plus risqué en grand : mal réglé, l’œil ne referme pas l’enveloppe. En petit, les trois courants fusionnent en un seul — sans dommage.',
+      px16:'oui',
+      g:'<path d="M12.5 20 H39.5 A3.5 3.5 0 0 1 43 23.5 V40.5 A3.5 3.5 0 0 1 39.5 44 H12.5"/>'+
+        '<polyline points="14.5,22.3 27,34.8 40.5,22.3"/>'+
+        '<path d="M1.5 21 H12"/>'+
+        '<path d="M-1 32 H8.5"/>'+
+        '<path d="M1.5 43 H12"/>' }
+  ];
+
+  var uid=0;
+  function tuile(p, taille, opt){
+    opt=opt||{}; var id=++uid;
+    var fond = STATE.fond==='clair' ? CLAIR : ENCRE;
+    var trait = STATE.fond==='clair' ? ENCRE : CLAIR;
+    var T=STATE.taille, s=T/48, o=(64-T)/2;
+    var g=p.g.replace(/id="pale"/g,'id="pale'+id+'"').replace(/href="#pale"/g,'href="#pale'+id+'"');
+    return '<svg width="'+taille+'" height="'+taille+'" viewBox="0 0 64 64" role="img" aria-label="'+p.n+'">'+
+      '<rect width="64" height="64" rx="15" fill="'+fond+'"/>'+
+      '<g transform="translate('+o.toFixed(2)+' '+o.toFixed(2)+') scale('+s.toFixed(4)+')" '+
+      'fill="none" stroke="'+trait+'" stroke-width="'+STATE.trait+'" stroke-linecap="round" stroke-linejoin="round">'+
+      g+'</g></svg>';
+  }
+
+  function actuelle(taille, pastille){
+    var vb=pastille?70:64;
+    var s='<svg width="'+taille+'" height="'+taille+'" viewBox="0 0 '+vb+' '+vb+'" role="img" aria-label="Icône Wind actuelle">';
+    s+='<rect width="64" height="64" rx="15" fill="#e2ebe8"/>';
+    s+='<g transform="translate(11 11) scale(0.875)" fill="none" stroke="#365a4f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">';
+    s+='<rect x="7" y="13" width="34" height="23" rx="3"/><polyline points="9,16 24,27 39,16"/></g>';
+    if(pastille){
+      s+='<rect x="45" y="45" width="25" height="25" rx="8" fill="#365a4f"/>';
+      s+='<polyline transform="translate(45 45)" points="5.8,7.5 9.4,17.5 12.5,10.5 15.6,17.5 19.2,7.5" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>';
+    }
+    return s+'</svg>';
+  }
+  function fig(h,c){return '<figure>'+h+'<figcaption>'+c+'</figcaption></figure>';}
+
+  var RECO='Ma recommandation : <b>7 — Le souffle traversant</b>. C’est la seule qui tient les deux exigences dans <b>une seule forme</b> : l’enveloppe est ouverte sur son flanc gauche et ce sont les courants qui entrent par la brèche qui lui tiennent lieu de bord. Le vent ne se pose ni devant ni derrière la lettre — il la dessine. Elle survit à 16 px parce que sa silhouette est franche et qu’aucun élément n’est à séparer d’un autre. <b>5 — La voile</b> est la plus élégante en grand et la plus discrète : rien n’est ajouté, ce sont les quatre bords de l’enveloppe qui cessent d’être droits ; à retenir si la marque doit rester sobre. <b>6 — Le cerf-volant</b> est la plus mémorable et la plus japonaise — c’est celle qu’on reconnaît de loin dans une grille d’icônes — mais elle coûte la lecture immédiate de l’enveloppe, tournée à 45°. <b>1 — Les courants</b> reste le filet de sécurité : personne ne s’y trompe, personne ne s’en souvient.';
+
+  function rendu(){
+    uid=0;
+    document.getElementById('existant').innerHTML =
+      fig(actuelle(112,true),'128 · avec pastille')+fig(actuelle(48,true),'48')+
+      fig(actuelle(32,false),'32')+fig(actuelle(16,false),'16');
+
+    var html='';
+    PROPS.forEach(function(p,i){
+      html+='<article class="card">'+
+        '<div class="visual">'+tuile(p,150)+
+          '<div class="ladder">'+fig(tuile(p,48),'48')+fig(tuile(p,32),'32')+
+             fig(tuile(p,24),'24')+fig(tuile(p,16),'16')+'</div>'+
+        '</div>'+
+        '<div class="body">'+
+          '<p class="num">Proposition '+(i+1)+'</p>'+
+          '<div class="title-row"><h3>'+p.n+'</h3><span class="tag'+(p.jp?' jp':'')+'">'+p.tag+'</span>'+
+            '<span class="tag">'+p.el+(p.el==='1'?' élément':' éléments')+'</span></div>'+
+          '<p class="thesis">'+p.thesis+'</p>'+
+          '<dl><dt>Le vent</dt><dd>'+p.vent+'</dd>'+
+              '<dt>La lettre</dt><dd>'+p.lettre+'</dd>'+
+              '<dt>Tracé</dt><dd>'+p.geo+'</dd>'+
+              '<dt>Risque</dt><dd class="risk">'+p.risk+'</dd></dl>'+
+        '</div></article>';
+    });
+    document.getElementById('cartes').innerHTML=html;
+
+    var a='',b='';
+    PROPS.forEach(function(p,i){
+      a+=fig(tuile(p,16),String(i+1));
+      b+=fig(tuile(p,16)+'<div style="height:6px"></div>'+tuile(p,24),String(i+1));
+    });
+    document.getElementById('min16').innerHTML=a;
+    document.getElementById('min16d').innerHTML=b;
+
+    var rows='';
+    PROPS.forEach(function(p,i){
+      rows+='<tr><td>'+(i+1)+' · '+p.n+'</td><td>'+p.vent+'</td><td>'+p.lettre+'</td><td>'+p.el+'</td><td>'+p.px16+'</td></tr>';
+    });
+    document.querySelector('#tabl tbody').innerHTML=rows;
+    document.getElementById('reco').innerHTML=RECO;
+  }
+
+  function seg(id,key,cast){
+    var el=document.getElementById(id);
+    el.addEventListener('click',function(e){
+      var b=e.target.closest('button'); if(!b) return;
+      [].forEach.call(el.querySelectorAll('button'),function(x){x.setAttribute('aria-pressed',String(x===b));});
+      STATE[key]=cast?cast(b.dataset.v):b.dataset.v; rendu();
+    });
+  }
+  seg('segFond','fond'); seg('segTrait','trait',Number); seg('segTaille','taille',Number);
+  rendu();
+})();
+</script>

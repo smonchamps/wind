@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="jour"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Poste F — le jeu complet</title>
+<style>
+/* GÉNÉRÉ PAR planche.mjs — ne pas éditer à la main. */
+:root{
+  --bg:#F3F2EE; --surface:#FFFFFF; --tuile:#F2EDE3; --tuileInk:#4A4436;
+  --ink:#191D1E; --ink2:#565C5E; --muted:#606668; --border:#CBC8BB;
+  --accent:#1A7A7A; --marque:#1F8A8A; --sel:#DDE9E6; --hover:#EAE8E1;
+  --alert:#C42D24; color-scheme:light;
+}
+:root[data-theme="nuit"]{
+  --bg:#0D100F; --surface:#171B1A; --tuile:#241F17; --tuileInk:#DFCFAE;
+  --ink:#ECEDEA; --ink2:#B4BAB8; --muted:#98A0A1; --border:#333B3A;
+  --accent:#3FA39C; --marque:#3FA39C; --sel:#1E322F; --hover:#141817;
+  --alert:#EA9A90; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;
+  font-family:"Segoe UI Variable Text","Segoe UI",ui-sans-serif,system-ui,-apple-system,sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:56px 28px 100px}
+.display{font-family:"Segoe UI Variable Display","Segoe UI",ui-sans-serif,system-ui,sans-serif;
+  font-weight:340;letter-spacing:-.03em}
+.sourcil{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);
+  font-weight:600;margin:0 0 14px}
+h1{font-size:46px;line-height:1.04;margin:0 0 18px}
+.lede{font-size:16px;line-height:1.68;color:var(--ink2);margin:0;max-width:64ch}
+section{margin-top:52px}
+h2{font-size:26px;line-height:1.2;margin:0 0 6px}
+.sub{margin:0 0 22px;font-size:13.5px;line-height:1.65;color:var(--muted);max-width:72ch}
+hr{border:0;border-top:1px solid var(--border);margin:0}
+
+.grille{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:1px;
+  background:var(--border);border:1px solid var(--border)}
+.cell{margin:0;background:var(--bg);padding:16px 8px 11px;display:flex;flex-direction:column;
+  align-items:center;gap:11px;min-height:88px;justify-content:center}
+.cell .glyphe{color:var(--ink);display:grid;place-items:center;height:24px}
+.cell figcaption{font-size:10px;line-height:1.35;color:var(--muted);text-align:center;
+  word-break:break-word;font-variant-numeric:tabular-nums}
+.cell.c-dur{background:var(--tuile)}
+.cell.c-dur figcaption{color:var(--tuileInk)}
+.cell.reserve{opacity:.45}
+.legende{display:flex;gap:20px;flex-wrap:wrap;margin:16px 0 0;font-size:12px;color:var(--muted)}
+.legende span{display:inline-flex;align-items:center;gap:7px}
+.pastille{width:11px;height:11px;border-radius:2px;border:1px solid var(--border);display:inline-block}
+
+.echelle{border:1px solid var(--border);border-collapse:collapse;width:100%}
+.echelle th,.echelle td{border:1px solid var(--border);padding:12px 10px;text-align:center;
+  vertical-align:middle}
+.echelle thead th{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);
+  font-weight:600}
+.echelle tbody th{font-size:11.5px;font-weight:600;text-align:left;white-space:nowrap;color:var(--ink2)}
+.echelle td span{color:var(--ink);display:inline-grid;place-items:center}
+
+.duo{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.fiche{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px 20px;
+  display:flex;gap:16px;align-items:flex-start}
+.fiche .paire{display:flex;align-items:center;gap:12px;flex:none;color:var(--ink)}
+.fiche .txt b{display:block;font-size:13px;margin-bottom:5px}
+.fiche .txt span{font-size:12.5px;line-height:1.55;color:var(--muted)}
+
+.fusion{display:flex;align-items:center;gap:14px;padding:13px 0;border-bottom:1px solid var(--border)}
+.fusion:last-child{border-bottom:0}
+.fusion .paire{display:flex;gap:14px;color:var(--ink);flex:none;width:96px}
+.fusion .noms{font-size:13px;color:var(--ink2)}
+.fusion .noms em{font-style:normal;color:var(--muted)}
+
+.trait{display:flex;gap:0;align-items:flex-end;border:1px solid var(--border);background:var(--surface)}
+.trait div{flex:1;padding:16px 8px 12px;text-align:center;border-right:1px solid var(--border)}
+.trait div:last-child{border-right:0}
+.trait .bar{background:var(--ink);margin:0 auto 12px;height:40px}
+.trait .px{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;line-height:1.5}
+.trait .px b{display:block;color:var(--ink);font-size:12px}
+.trait .sous{background:var(--alert)}
+
+.chiffre{width:100%;border-collapse:collapse;margin-top:6px}
+.chiffre th,.chiffre td{border-bottom:1px solid var(--border);padding:11px 10px;text-align:left;
+  font-size:13px}
+.chiffre thead th{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);
+  font-weight:600}
+.chiffre td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.chiffre tr.total td{font-weight:700;border-bottom:2px solid var(--ink)}
+
+.pilule{position:fixed;right:18px;bottom:18px;display:flex;gap:6px;padding:6px;background:var(--surface);
+  border:1px solid var(--border);border-radius:999px;box-shadow:0 6px 20px rgba(0,0,0,.13)}
+.pilule button{height:26px;padding:0 13px;font-size:11.5px;border-radius:999px;border:0;
+  background:transparent;color:var(--muted);cursor:pointer;font-weight:600;letter-spacing:.04em}
+.pilule button[aria-pressed="true"]{background:var(--sel);color:var(--ink)}
+:focus-visible{outline:2px solid var(--marque);outline-offset:2px}
+@media(max-width:640px){h1{font-size:32px}.wrap{padding:34px 18px 70px}}
+</style></head><body><div class="wrap">
+
+<p class="sourcil">Spike « direction Elements » — poste F</p>
+<h1 class="display">Soixante-dix-huit glyphes,<br>et deux paliers à dessiner</h1>
+<p class="lede">Le jeu vendorisé de Wind compte 78 glyphes ; 74
+sont employés, 4 sont réservés. Les voici tous redessinés dans la grammaire du
+document — grille 24, trait 2 unités, bouts nets, jonctions vives. Cette page est
+<b>générée</b> depuis <code>jeu.mjs</code> : elle montre exactement ce que
+<code>chiffrage.mjs</code> mesure.</p>
+
+<section>
+  <h2 class="display">Le jeu, à la taille d'emploi</h2>
+  <p class="sub">16 px — la taille par défaut de <code>.ms</code> dans le Système, donc celle
+  de la grande majorité des icônes de Wind. Rien n'est agrandi. Les cellules sur fond de tuile
+  sont les 14 glyphes que la grammaire ne porte pas à cette taille.</p>
+  <div class="grille"><figure class="cell c-dur repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 9l9-5 9 5"/><path d="M5 9v9"/><path d="M10 9v9"/><path d="M14 9v9"/><path d="M19 9v9"/><path d="M3 20h18"/></g></svg></span>
+    <figcaption>account_balance</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 12h16v7H4z"/><path d="M6 9h12"/><path d="M8 6h8"/></g></svg></span>
+    <figcaption>all_inbox</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 5h18v4H3z"/><path d="M5 9h14v10H5z"/><path d="M9 13h6"/></g></svg></span>
+    <figcaption>archive</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M20 12H4"/><path d="M10 6l-6 6 6 6"/></g></svg></span>
+    <figcaption>arrow_back</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M19 7v9a6 6 0 0 1-12 0V6a4 4 0 0 1 8 0v10a2 2 0 0 1-4 0V8"/></g></svg></span>
+    <figcaption>attach_file</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M7 3h10v18l-5-5-5 5z"/></g></svg></span>
+    <figcaption>bookmark</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4a8 8 0 1 0 0 16 8 8 0 1 0 0-16"/><path d="M9 9l6 6"/><path d="M15 9l-6 6"/></g></svg></span>
+    <figcaption>cancel</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4a8 8 0 1 0 0 16 8 8 0 1 0 0-16"/><path d="M8 12l3 3 5-5"/></g></svg></span>
+    <figcaption>check_circle</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 5l14 14"/><path d="M19 5L5 19"/></g></svg></span>
+    <figcaption>close</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 7h16"/><path d="M6 7v12h12V7"/><path d="M10 4h4"/><path d="M10 11v5"/><path d="M14 11v5"/></g></svg></span>
+    <figcaption>delete</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 3h8l4 4v14H6z"/><path d="M9 12h6"/><path d="M9 16h4"/></g></svg></span>
+    <figcaption>description</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 5h18v12H3z"/><path d="M6 11h12"/><path d="M10 9v4"/><path d="M9 20h6"/></g></svg></span>
+    <figcaption>display_settings</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4v10"/><path d="M8 11l4 4 4-4"/><path d="M4 19h16"/></g></svg></span>
+    <figcaption>download</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 19V9l8-4 8 4v10z"/><path d="M4 9l8 4 8-4"/></g></svg></span>
+    <figcaption>drafts</figcaption></figure><figure class="cell c-dur repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 19L19 5"/><path d="M5 19c0-9 6-14 15-14 0 9-6 14-15 14z"/></g></svg></span>
+    <figcaption>eco</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h10"/><path d="M4 11h7"/><path d="M11 19l1-3 6-6 2 2-6 6z"/></g></svg></span>
+    <figcaption>edit_note</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h8"/><path d="M4 6v14h14v-8"/><path d="M11 15l1-3 6-6 2 2-6 6z"/></g></svg></span>
+    <figcaption>edit_square</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4a8 8 0 1 0 0 16 8 8 0 1 0 0-16"/><path d="M12 7v6"/><path d="M12 15v2"/></g></svg></span>
+    <figcaption>error</figcaption></figure><figure class="cell c-dur repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 20S4 14 4 9a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 5-8 11-8 11z"/></g></svg></span>
+    <figcaption>favorite</figcaption></figure><figure class="cell c-dur repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 3h2l1 8 7 3v2l-7-1-1 5 3 2v1l-4-1-4 1v-1l3-2-1-5-7 1v-2l7-3z"/></g></svg></span>
+    <figcaption>flight</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16"/><path d="M7 10h10"/><path d="M4 14h16"/><path d="M7 18h10"/></g></svg></span>
+    <figcaption>format_align_center</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16"/><path d="M4 10h10"/><path d="M4 14h16"/><path d="M4 18h10"/></g></svg></span>
+    <figcaption>format_align_left</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16"/><path d="M10 10h10"/><path d="M4 14h16"/><path d="M10 18h10"/></g></svg></span>
+    <figcaption>format_align_right</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M8 4v16"/><path d="M8 4h6l3 4-3 4H8"/><path d="M8 12h7l3 4-3 4H8"/></g></svg></span>
+    <figcaption>format_bold</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 5h12v5H3z"/><path d="M15 7h4v6h-7v8"/><path d="M2 2l20 20"/></g></svg></span>
+    <figcaption>format_clear</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 15l6-11 6 11"/><path d="M9 11h6"/></g><path d="M4 19h16" fill="none" stroke="var(--marque)" stroke-width="2" stroke-linecap="butt"/></svg></span>
+    <figcaption>format_color_text</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16"/><path d="M11 10h9"/><path d="M11 14h9"/><path d="M4 18h16"/><path d="M8 10l-3 2 3 2"/></g></svg></span>
+    <figcaption>format_indent_decrease</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16"/><path d="M11 10h9"/><path d="M11 14h9"/><path d="M4 18h16"/><path d="M5 10l3 2-3 2"/></g></svg></span>
+    <figcaption>format_indent_increase</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 4h8"/><path d="M6 20h8"/><path d="M14 4l-4 16"/></g></svg></span>
+    <figcaption>format_italic</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h2"/><path d="M4 12h2"/><path d="M4 18h2"/><path d="M10 6h10"/><path d="M10 12h10"/><path d="M10 18h10"/></g></svg></span>
+    <figcaption>format_list_bulleted</figcaption></figure><figure class="cell c-dur">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 5h10"/><path d="M11 12h10"/><path d="M11 19h10"/><path d="M5 2v6"/><path d="M3 8h4"/><path d="M2 9h5v3H2v3h5"/><path d="M2 16h5v3H3"/><path d="M7 19v3H2"/></g></svg></span>
+    <figcaption>format_list_numbered</figcaption></figure><figure class="cell c-direct reserve">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 14V9h5v5l-3 4H5z"/><path d="M14 14V9h5v5l-3 4h-2z"/></g></svg></span>
+    <figcaption>format_quote</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M7 4v8l5 5 5-5V4"/><path d="M5 20h14"/></g></svg></span>
+    <figcaption>format_underlined</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 5V2h16v10h-6"/><path d="M2 5h14v9H7l-5 5z"/></g></svg></span>
+    <figcaption>forum</figcaption></figure><figure class="cell c-dur">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M8 5a3 3 0 1 0 0 6 3 3 0 1 0 0-6"/><path d="M2 19v-1a6 6 0 0 1 12 0v1"/><path d="M19 4v6"/><path d="M16 7h6"/></g></svg></span>
+    <figcaption>group_add</figcaption></figure><figure class="cell c-direct repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span>
+    <figcaption>home</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 3h12l-6 9 6 9H6l6-9z"/></g></svg></span>
+    <figcaption>hourglass_empty</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg></span>
+    <figcaption>inbox</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4a8 8 0 1 0 0 16 8 8 0 1 0 0-16"/><path d="M12 11v6"/><path d="M12 7v2"/></g></svg></span>
+    <figcaption>info</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 4h18v5H3z"/><path d="M5 9h14v11H5z"/><path d="M10 6h4"/></g></svg></span>
+    <figcaption>inventory_2</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 3h4v7l2 4H8l2-4z"/><path d="M12 14v7"/></g></svg></span>
+    <figcaption>keep</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 3h4v7l2 4H8l2-4z"/><path d="M12 14v7"/><path d="M4 4l16 16"/></g></svg></span>
+    <figcaption>keep_off</figcaption></figure><figure class="cell c-dur">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 7h18v10H3z"/><path d="M7 14h10"/><path d="M7 10h2"/><path d="M11 10h2"/><path d="M15 10h2"/></g></svg></span>
+    <figcaption>keyboard</figcaption></figure><figure class="cell c-arbitrage reserve">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 8H8a4 4 0 0 0 0 8h2"/><path d="M14 8h2a4 4 0 0 1 0 8h-2"/><path d="M9 12h6"/></g></svg></span>
+    <figcaption>link</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 8H8a4 4 0 0 0 0 8h2"/><path d="M14 8h2a4 4 0 0 1 0 8h-2"/><path d="M4 4l16 16"/></g></svg></span>
+    <figcaption>link_off</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h14v10H3z"/><path d="M3 8l7 5 7-5"/></g><circle cx="19" cy="6" r="3.4" fill="var(--marque)"/></svg></span>
+    <figcaption>mark_email_unread</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></g></svg></span>
+    <figcaption>menu</figcaption></figure><figure class="cell c-arbitrage repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 18V6"/><path d="M11 6l5 3"/></g><circle cx="8" cy="18" r="3" fill="currentColor"/></svg></span>
+    <figcaption>music_note</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M7 17v-6a5 5 0 0 1 10 0v6"/><path d="M4 17h16"/><path d="M10 20h4"/></g></svg></span>
+    <figcaption>notifications</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M14 4h6v6"/><path d="M10 20H4v-6"/><path d="M20 4l-7 7"/><path d="M4 20l7-7"/></g></svg></span>
+    <figcaption>open_in_full</figcaption></figure><figure class="cell c-direct reserve">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M14 4h6v6"/><path d="M20 4l-8 8"/><path d="M18 13v6H5V6h6"/></g></svg></span>
+    <figcaption>open_in_new</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 1 0 0-7"/><path d="M5 20v-1a7 7 0 0 1 14 0v1"/></g></svg></span>
+    <figcaption>person</figcaption></figure><figure class="cell c-dur">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 1 0 0-7"/><path d="M2 20v-1a7 7 0 0 1 14 0v1"/><path d="M19 4v6"/><path d="M16 7h6"/></g></svg></span>
+    <figcaption>person_add</figcaption></figure><figure class="cell c-dur repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 21a4 4 0 0 1-4-4c0-3 8-3 8 0a4 4 0 0 1-4 4z"/></g><circle cx="4" cy="10" r="2" fill="currentColor"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="6" r="2" fill="currentColor"/><circle cx="20" cy="10" r="2" fill="currentColor"/></svg></span>
+    <figcaption>pets</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4v10"/><path d="M12 17v3"/></g></svg></span>
+    <figcaption>priority_high</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M8 8a4 4 0 1 1 4 4v3"/><path d="M12 18v2"/></g></svg></span>
+    <figcaption>question_mark</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 6L3 12l6 6"/><path d="M3 12h11a6 6 0 0 1 6 6v1"/></g></svg></span>
+    <figcaption>reply</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M8 6L2 12l6 6"/><path d="M14 6l-6 6 6 6"/><path d="M8 12h8a5 5 0 0 1 5 5v2"/></g></svg></span>
+    <figcaption>reply_all</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 3h6l6 6v6l-6 6H9l-6-6V9z"/><path d="M12 8v5"/><path d="M12 16v2"/></g></svg></span>
+    <figcaption>report</figcaption></figure><figure class="cell c-dur">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 3a6 6 0 1 0 0 12 6 6 0 1 0 0-12"/><path d="M9 6v3l2 2"/></g><path d="M14 15l8 4-8 4 2-4z" fill="currentColor" stroke="none"/></svg></span>
+    <figcaption>schedule_send</figcaption></figure><figure class="cell c-dur repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span>
+    <figcaption>school</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 1 0 0-14"/><path d="M16 16l4 4"/></g></svg></span>
+    <figcaption>search</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 4l18 8-18 8 3-8z"/></g></svg></span>
+    <figcaption>send</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16"/><path d="M14 5v6"/><path d="M4 16h16"/><path d="M9 13v6"/></g></svg></span>
+    <figcaption>settings</figcaption></figure><figure class="cell c-arbitrage repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 7h14v13H5z"/><path d="M9 7V5a3 3 0 0 1 6 0v2"/></g></svg></span>
+    <figcaption>shopping_bag</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 12l4 4"/><path d="M7 12l-4 4"/><path d="M10 17V7h5v6h-5"/><path d="M17 17v-6h5v6"/><path d="M3 21h4"/><path d="M10 21h4"/><path d="M17 21h4"/></g></svg></span>
+    <figcaption>signature</figcaption></figure><figure class="cell c-dur repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 16l2-7h12l2 7a2 2 0 0 1-3 1l-2-2H9l-2 2a2 2 0 0 1-3-1z"/></g><path d="M7 11h2v2H7z" fill="currentColor" stroke="none"/><path d="M15 11h2v2h-2z" fill="currentColor" stroke="none"/></svg></span>
+    <figcaption>sports_esports</figcaption></figure><figure class="cell c-dur repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 3l3 6 6 1-4 5 1 6-6-3-6 3 1-6-4-5 6-1z"/></g></svg></span>
+    <figcaption>star</figcaption></figure><figure class="cell c-direct reserve">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 5h18v4H3z"/><path d="M3 10h18v4H3z"/><path d="M3 15h18v4H3z"/></g></svg></span>
+    <figcaption>storage</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M16 7h-6l-2 3 8 4-2 3H8"/><path d="M4 12h16"/></g></svg></span>
+    <figcaption>strikethrough_s</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></g></svg></span>
+    <figcaption>sync</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 4h16v3H4z"/><path d="M12 9v8"/><path d="M8 14l4 4 4-4"/><path d="M4 21h16"/></g></svg></span>
+    <figcaption>system_update_alt</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M7 5l5 5 5-5"/><path d="M7 19l5-5 5 5"/></g></svg></span>
+    <figcaption>unfold_less</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M7 10l5-5 5 5"/><path d="M7 14l5 5 5-5"/></g></svg></span>
+    <figcaption>unfold_more</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 12l4-4h10l4 4-4 4H7z"/><path d="M4 4l16 16"/></g></svg></span>
+    <figcaption>visibility_off</figcaption></figure><figure class="cell c-dur">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 9S9 6 7 6a3 3 0 0 0 0 6l5 4"/><path d="M12 9s3-3 5-3a3 3 0 0 1 0 6l-5 4"/><path d="M3 14v7h4l6 2 8-4v-2h-8"/></g></svg></span>
+    <figcaption>volunteer_activism</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4l9 16H3z"/><path d="M12 10v5"/></g></svg></span>
+    <figcaption>warning</figcaption></figure><figure class="cell c-direct repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span>
+    <figcaption>work</figcaption></figure></div>
+  <p class="legende">
+    <span><i class="pastille" style="background:var(--bg)"></i>direct — 38</span>
+    <span><i class="pastille" style="background:var(--bg)"></i>arbitrage — 26</span>
+    <span><i class="pastille" style="background:var(--tuile)"></i>dur — 14</span>
+    <span><i class="pastille" style="background:var(--bg);opacity:.45"></i>réservé, employé nulle part — 4</span>
+  </p>
+</section>
+
+<section>
+  <h2 class="display">Le même jeu, agrandi</h2>
+  <p class="sub">48 px : le dessin se juge. C'est aussi la démonstration du problème — ces
+  dessins-là sont bons, et ce ne sont pas eux que Wind affiche.</p>
+  <div class="grille"><figure class="cell c-dur repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 9l9-5 9 5"/><path d="M5 9v9"/><path d="M10 9v9"/><path d="M14 9v9"/><path d="M19 9v9"/><path d="M3 20h18"/></g></svg></span>
+    <figcaption>account_balance</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 12h16v7H4z"/><path d="M6 9h12"/><path d="M8 6h8"/></g></svg></span>
+    <figcaption>all_inbox</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 5h18v4H3z"/><path d="M5 9h14v10H5z"/><path d="M9 13h6"/></g></svg></span>
+    <figcaption>archive</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M20 12H4"/><path d="M10 6l-6 6 6 6"/></g></svg></span>
+    <figcaption>arrow_back</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M19 7v9a6 6 0 0 1-12 0V6a4 4 0 0 1 8 0v10a2 2 0 0 1-4 0V8"/></g></svg></span>
+    <figcaption>attach_file</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M7 3h10v18l-5-5-5 5z"/></g></svg></span>
+    <figcaption>bookmark</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4a8 8 0 1 0 0 16 8 8 0 1 0 0-16"/><path d="M9 9l6 6"/><path d="M15 9l-6 6"/></g></svg></span>
+    <figcaption>cancel</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4a8 8 0 1 0 0 16 8 8 0 1 0 0-16"/><path d="M8 12l3 3 5-5"/></g></svg></span>
+    <figcaption>check_circle</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 5l14 14"/><path d="M19 5L5 19"/></g></svg></span>
+    <figcaption>close</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 7h16"/><path d="M6 7v12h12V7"/><path d="M10 4h4"/><path d="M10 11v5"/><path d="M14 11v5"/></g></svg></span>
+    <figcaption>delete</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 3h8l4 4v14H6z"/><path d="M9 12h6"/><path d="M9 16h4"/></g></svg></span>
+    <figcaption>description</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 5h18v12H3z"/><path d="M6 11h12"/><path d="M10 9v4"/><path d="M9 20h6"/></g></svg></span>
+    <figcaption>display_settings</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4v10"/><path d="M8 11l4 4 4-4"/><path d="M4 19h16"/></g></svg></span>
+    <figcaption>download</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 19V9l8-4 8 4v10z"/><path d="M4 9l8 4 8-4"/></g></svg></span>
+    <figcaption>drafts</figcaption></figure><figure class="cell c-dur repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 19L19 5"/><path d="M5 19c0-9 6-14 15-14 0 9-6 14-15 14z"/></g></svg></span>
+    <figcaption>eco</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h10"/><path d="M4 11h7"/><path d="M11 19l1-3 6-6 2 2-6 6z"/></g></svg></span>
+    <figcaption>edit_note</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h8"/><path d="M4 6v14h14v-8"/><path d="M11 15l1-3 6-6 2 2-6 6z"/></g></svg></span>
+    <figcaption>edit_square</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4a8 8 0 1 0 0 16 8 8 0 1 0 0-16"/><path d="M12 7v6"/><path d="M12 15v2"/></g></svg></span>
+    <figcaption>error</figcaption></figure><figure class="cell c-dur repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 20S4 14 4 9a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 5-8 11-8 11z"/></g></svg></span>
+    <figcaption>favorite</figcaption></figure><figure class="cell c-dur repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 3h2l1 8 7 3v2l-7-1-1 5 3 2v1l-4-1-4 1v-1l3-2-1-5-7 1v-2l7-3z"/></g></svg></span>
+    <figcaption>flight</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16"/><path d="M7 10h10"/><path d="M4 14h16"/><path d="M7 18h10"/></g></svg></span>
+    <figcaption>format_align_center</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16"/><path d="M4 10h10"/><path d="M4 14h16"/><path d="M4 18h10"/></g></svg></span>
+    <figcaption>format_align_left</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16"/><path d="M10 10h10"/><path d="M4 14h16"/><path d="M10 18h10"/></g></svg></span>
+    <figcaption>format_align_right</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M8 4v16"/><path d="M8 4h6l3 4-3 4H8"/><path d="M8 12h7l3 4-3 4H8"/></g></svg></span>
+    <figcaption>format_bold</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 5h12v5H3z"/><path d="M15 7h4v6h-7v8"/><path d="M2 2l20 20"/></g></svg></span>
+    <figcaption>format_clear</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 15l6-11 6 11"/><path d="M9 11h6"/></g><path d="M4 19h16" fill="none" stroke="var(--marque)" stroke-width="2" stroke-linecap="butt"/></svg></span>
+    <figcaption>format_color_text</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16"/><path d="M11 10h9"/><path d="M11 14h9"/><path d="M4 18h16"/><path d="M8 10l-3 2 3 2"/></g></svg></span>
+    <figcaption>format_indent_decrease</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16"/><path d="M11 10h9"/><path d="M11 14h9"/><path d="M4 18h16"/><path d="M5 10l3 2-3 2"/></g></svg></span>
+    <figcaption>format_indent_increase</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 4h8"/><path d="M6 20h8"/><path d="M14 4l-4 16"/></g></svg></span>
+    <figcaption>format_italic</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h2"/><path d="M4 12h2"/><path d="M4 18h2"/><path d="M10 6h10"/><path d="M10 12h10"/><path d="M10 18h10"/></g></svg></span>
+    <figcaption>format_list_bulleted</figcaption></figure><figure class="cell c-dur">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 5h10"/><path d="M11 12h10"/><path d="M11 19h10"/><path d="M5 2v6"/><path d="M3 8h4"/><path d="M2 9h5v3H2v3h5"/><path d="M2 16h5v3H3"/><path d="M7 19v3H2"/></g></svg></span>
+    <figcaption>format_list_numbered</figcaption></figure><figure class="cell c-direct reserve">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 14V9h5v5l-3 4H5z"/><path d="M14 14V9h5v5l-3 4h-2z"/></g></svg></span>
+    <figcaption>format_quote</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M7 4v8l5 5 5-5V4"/><path d="M5 20h14"/></g></svg></span>
+    <figcaption>format_underlined</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 5V2h16v10h-6"/><path d="M2 5h14v9H7l-5 5z"/></g></svg></span>
+    <figcaption>forum</figcaption></figure><figure class="cell c-dur">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M8 5a3 3 0 1 0 0 6 3 3 0 1 0 0-6"/><path d="M2 19v-1a6 6 0 0 1 12 0v1"/><path d="M19 4v6"/><path d="M16 7h6"/></g></svg></span>
+    <figcaption>group_add</figcaption></figure><figure class="cell c-direct repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span>
+    <figcaption>home</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 3h12l-6 9 6 9H6l6-9z"/></g></svg></span>
+    <figcaption>hourglass_empty</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg></span>
+    <figcaption>inbox</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4a8 8 0 1 0 0 16 8 8 0 1 0 0-16"/><path d="M12 11v6"/><path d="M12 7v2"/></g></svg></span>
+    <figcaption>info</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 4h18v5H3z"/><path d="M5 9h14v11H5z"/><path d="M10 6h4"/></g></svg></span>
+    <figcaption>inventory_2</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 3h4v7l2 4H8l2-4z"/><path d="M12 14v7"/></g></svg></span>
+    <figcaption>keep</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 3h4v7l2 4H8l2-4z"/><path d="M12 14v7"/><path d="M4 4l16 16"/></g></svg></span>
+    <figcaption>keep_off</figcaption></figure><figure class="cell c-dur">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 7h18v10H3z"/><path d="M7 14h10"/><path d="M7 10h2"/><path d="M11 10h2"/><path d="M15 10h2"/></g></svg></span>
+    <figcaption>keyboard</figcaption></figure><figure class="cell c-arbitrage reserve">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 8H8a4 4 0 0 0 0 8h2"/><path d="M14 8h2a4 4 0 0 1 0 8h-2"/><path d="M9 12h6"/></g></svg></span>
+    <figcaption>link</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 8H8a4 4 0 0 0 0 8h2"/><path d="M14 8h2a4 4 0 0 1 0 8h-2"/><path d="M4 4l16 16"/></g></svg></span>
+    <figcaption>link_off</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h14v10H3z"/><path d="M3 8l7 5 7-5"/></g><circle cx="19" cy="6" r="3.4" fill="var(--marque)"/></svg></span>
+    <figcaption>mark_email_unread</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></g></svg></span>
+    <figcaption>menu</figcaption></figure><figure class="cell c-arbitrage repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 18V6"/><path d="M11 6l5 3"/></g><circle cx="8" cy="18" r="3" fill="currentColor"/></svg></span>
+    <figcaption>music_note</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M7 17v-6a5 5 0 0 1 10 0v6"/><path d="M4 17h16"/><path d="M10 20h4"/></g></svg></span>
+    <figcaption>notifications</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M14 4h6v6"/><path d="M10 20H4v-6"/><path d="M20 4l-7 7"/><path d="M4 20l7-7"/></g></svg></span>
+    <figcaption>open_in_full</figcaption></figure><figure class="cell c-direct reserve">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M14 4h6v6"/><path d="M20 4l-8 8"/><path d="M18 13v6H5V6h6"/></g></svg></span>
+    <figcaption>open_in_new</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 1 0 0-7"/><path d="M5 20v-1a7 7 0 0 1 14 0v1"/></g></svg></span>
+    <figcaption>person</figcaption></figure><figure class="cell c-dur">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 1 0 0-7"/><path d="M2 20v-1a7 7 0 0 1 14 0v1"/><path d="M19 4v6"/><path d="M16 7h6"/></g></svg></span>
+    <figcaption>person_add</figcaption></figure><figure class="cell c-dur repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 21a4 4 0 0 1-4-4c0-3 8-3 8 0a4 4 0 0 1-4 4z"/></g><circle cx="4" cy="10" r="2" fill="currentColor"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="6" r="2" fill="currentColor"/><circle cx="20" cy="10" r="2" fill="currentColor"/></svg></span>
+    <figcaption>pets</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4v10"/><path d="M12 17v3"/></g></svg></span>
+    <figcaption>priority_high</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M8 8a4 4 0 1 1 4 4v3"/><path d="M12 18v2"/></g></svg></span>
+    <figcaption>question_mark</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 6L3 12l6 6"/><path d="M3 12h11a6 6 0 0 1 6 6v1"/></g></svg></span>
+    <figcaption>reply</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M8 6L2 12l6 6"/><path d="M14 6l-6 6 6 6"/><path d="M8 12h8a5 5 0 0 1 5 5v2"/></g></svg></span>
+    <figcaption>reply_all</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 3h6l6 6v6l-6 6H9l-6-6V9z"/><path d="M12 8v5"/><path d="M12 16v2"/></g></svg></span>
+    <figcaption>report</figcaption></figure><figure class="cell c-dur">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 3a6 6 0 1 0 0 12 6 6 0 1 0 0-12"/><path d="M9 6v3l2 2"/></g><path d="M14 15l8 4-8 4 2-4z" fill="currentColor" stroke="none"/></svg></span>
+    <figcaption>schedule_send</figcaption></figure><figure class="cell c-dur repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span>
+    <figcaption>school</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 1 0 0-14"/><path d="M16 16l4 4"/></g></svg></span>
+    <figcaption>search</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 4l18 8-18 8 3-8z"/></g></svg></span>
+    <figcaption>send</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16"/><path d="M14 5v6"/><path d="M4 16h16"/><path d="M9 13v6"/></g></svg></span>
+    <figcaption>settings</figcaption></figure><figure class="cell c-arbitrage repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 7h14v13H5z"/><path d="M9 7V5a3 3 0 0 1 6 0v2"/></g></svg></span>
+    <figcaption>shopping_bag</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 12l4 4"/><path d="M7 12l-4 4"/><path d="M10 17V7h5v6h-5"/><path d="M17 17v-6h5v6"/><path d="M3 21h4"/><path d="M10 21h4"/><path d="M17 21h4"/></g></svg></span>
+    <figcaption>signature</figcaption></figure><figure class="cell c-dur repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 16l2-7h12l2 7a2 2 0 0 1-3 1l-2-2H9l-2 2a2 2 0 0 1-3-1z"/></g><path d="M7 11h2v2H7z" fill="currentColor" stroke="none"/><path d="M15 11h2v2h-2z" fill="currentColor" stroke="none"/></svg></span>
+    <figcaption>sports_esports</figcaption></figure><figure class="cell c-dur repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 3l3 6 6 1-4 5 1 6-6-3-6 3 1-6-4-5 6-1z"/></g></svg></span>
+    <figcaption>star</figcaption></figure><figure class="cell c-direct reserve">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 5h18v4H3z"/><path d="M3 10h18v4H3z"/><path d="M3 15h18v4H3z"/></g></svg></span>
+    <figcaption>storage</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M16 7h-6l-2 3 8 4-2 3H8"/><path d="M4 12h16"/></g></svg></span>
+    <figcaption>strikethrough_s</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></g></svg></span>
+    <figcaption>sync</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 4h16v3H4z"/><path d="M12 9v8"/><path d="M8 14l4 4 4-4"/><path d="M4 21h16"/></g></svg></span>
+    <figcaption>system_update_alt</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M7 5l5 5 5-5"/><path d="M7 19l5-5 5 5"/></g></svg></span>
+    <figcaption>unfold_less</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M7 10l5-5 5 5"/><path d="M7 14l5 5 5-5"/></g></svg></span>
+    <figcaption>unfold_more</figcaption></figure><figure class="cell c-arbitrage">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 12l4-4h10l4 4-4 4H7z"/><path d="M4 4l16 16"/></g></svg></span>
+    <figcaption>visibility_off</figcaption></figure><figure class="cell c-dur">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 9S9 6 7 6a3 3 0 0 0 0 6l5 4"/><path d="M12 9s3-3 5-3a3 3 0 0 1 0 6l-5 4"/><path d="M3 14v7h4l6 2 8-4v-2h-8"/></g></svg></span>
+    <figcaption>volunteer_activism</figcaption></figure><figure class="cell c-direct">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4l9 16H3z"/><path d="M12 10v5"/></g></svg></span>
+    <figcaption>warning</figcaption></figure><figure class="cell c-direct repere">
+    <span class="glyphe"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span>
+    <figcaption>work</figcaption></figure></div>
+</section>
+
+<section>
+  <h2 class="display">L'échelle</h2>
+  <p class="sub">Le même fichier maître rendu aux sept tailles réellement posées par le Système.
+  La colonne 16 px est celle qui compte ; les colonnes 10 et 12 px sont celles des repères de compte.</p>
+  <table class="echelle">
+    <thead><tr><th>Glyphe</th><th>10 px</th><th>12 px</th><th>14 px</th><th>16 px</th><th>18 px</th><th>24 px</th><th>48 px</th></tr></thead>
+    <tbody><tr><th>inbox</th><td><span><svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg></span></td></tr><tr><th>hourglass_empty</th><td><span><svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 3h12l-6 9 6 9H6l6-9z"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 3h12l-6 9 6 9H6l6-9z"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 3h12l-6 9 6 9H6l6-9z"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 3h12l-6 9 6 9H6l6-9z"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 3h12l-6 9 6 9H6l6-9z"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 3h12l-6 9 6 9H6l6-9z"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 3h12l-6 9 6 9H6l6-9z"/></g></svg></span></td></tr><tr><th>reply</th><td><span><svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 6L3 12l6 6"/><path d="M3 12h11a6 6 0 0 1 6 6v1"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 6L3 12l6 6"/><path d="M3 12h11a6 6 0 0 1 6 6v1"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 6L3 12l6 6"/><path d="M3 12h11a6 6 0 0 1 6 6v1"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 6L3 12l6 6"/><path d="M3 12h11a6 6 0 0 1 6 6v1"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 6L3 12l6 6"/><path d="M3 12h11a6 6 0 0 1 6 6v1"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 6L3 12l6 6"/><path d="M3 12h11a6 6 0 0 1 6 6v1"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 6L3 12l6 6"/><path d="M3 12h11a6 6 0 0 1 6 6v1"/></g></svg></span></td></tr><tr><th>settings</th><td><span><svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16"/><path d="M14 5v6"/><path d="M4 16h16"/><path d="M9 13v6"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16"/><path d="M14 5v6"/><path d="M4 16h16"/><path d="M9 13v6"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16"/><path d="M14 5v6"/><path d="M4 16h16"/><path d="M9 13v6"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16"/><path d="M14 5v6"/><path d="M4 16h16"/><path d="M9 13v6"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16"/><path d="M14 5v6"/><path d="M4 16h16"/><path d="M9 13v6"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16"/><path d="M14 5v6"/><path d="M4 16h16"/><path d="M9 13v6"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16"/><path d="M14 5v6"/><path d="M4 16h16"/><path d="M9 13v6"/></g></svg></span></td></tr><tr><th>keyboard</th><td><span><svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 7h18v10H3z"/><path d="M7 14h10"/><path d="M7 10h2"/><path d="M11 10h2"/><path d="M15 10h2"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 7h18v10H3z"/><path d="M7 14h10"/><path d="M7 10h2"/><path d="M11 10h2"/><path d="M15 10h2"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 7h18v10H3z"/><path d="M7 14h10"/><path d="M7 10h2"/><path d="M11 10h2"/><path d="M15 10h2"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 7h18v10H3z"/><path d="M7 14h10"/><path d="M7 10h2"/><path d="M11 10h2"/><path d="M15 10h2"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 7h18v10H3z"/><path d="M7 14h10"/><path d="M7 10h2"/><path d="M11 10h2"/><path d="M15 10h2"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 7h18v10H3z"/><path d="M7 14h10"/><path d="M7 10h2"/><path d="M11 10h2"/><path d="M15 10h2"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 7h18v10H3z"/><path d="M7 14h10"/><path d="M7 10h2"/><path d="M11 10h2"/><path d="M15 10h2"/></g></svg></span></td></tr><tr><th>star</th><td><span><svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 3l3 6 6 1-4 5 1 6-6-3-6 3 1-6-4-5 6-1z"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 3l3 6 6 1-4 5 1 6-6-3-6 3 1-6-4-5 6-1z"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 3l3 6 6 1-4 5 1 6-6-3-6 3 1-6-4-5 6-1z"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 3l3 6 6 1-4 5 1 6-6-3-6 3 1-6-4-5 6-1z"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 3l3 6 6 1-4 5 1 6-6-3-6 3 1-6-4-5 6-1z"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 3l3 6 6 1-4 5 1 6-6-3-6 3 1-6-4-5 6-1z"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 3l3 6 6 1-4 5 1 6-6-3-6 3 1-6-4-5 6-1z"/></g></svg></span></td></tr></tbody>
+  </table>
+</section>
+
+<section>
+  <h2 class="display">Le trait sous le pixel</h2>
+  <p class="sub">Un trait de 2 unités sur une grille de 24, rendu à P pixels, mesure 2 ÷ 24 × P.
+  C'est la raison d'être des trois paliers du document — et la raison pour laquelle le maître
+  ne peut pas être simplement mis à l'échelle.</p>
+  <div class="trait"><div><div class="bar sous" style="width:0.83px"></div>
+      <p class="px"><b>10 px</b>0.83 px<br>sous le pixel</p></div><div><div class="bar" style="width:1.00px"></div>
+      <p class="px"><b>12 px</b>1.00 px</p></div><div><div class="bar" style="width:1.08px"></div>
+      <p class="px"><b>13 px</b>1.08 px</p></div><div><div class="bar" style="width:1.17px"></div>
+      <p class="px"><b>14 px</b>1.17 px</p></div><div><div class="bar" style="width:1.25px"></div>
+      <p class="px"><b>15 px</b>1.25 px</p></div><div><div class="bar" style="width:1.33px"></div>
+      <p class="px"><b>16 px</b>1.33 px</p></div><div><div class="bar" style="width:1.50px"></div>
+      <p class="px"><b>18 px</b>1.50 px</p></div><div><div class="bar" style="width:2.00px"></div>
+      <p class="px"><b>24 px</b>2.00 px</p></div><div><div class="bar" style="width:2.42px"></div>
+      <p class="px"><b>29 px</b>2.42 px</p></div></div>
+  <p class="sub" style="margin-top:16px">Aucune taille d'emploi de Wind n'atteint 21 px : le palier 24
+  et le palier maître ne servent que la marque <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--marque)"/></svg> et l'écran vide. Tout le reste
+  vit dans le palier 16, qui se cale <b>à la main</b>, rectangle par rectangle.</p>
+</section>
+
+<section>
+  <h2 class="display">Ce que la grammaire refuse</h2>
+  <p class="sub">14 glyphes sur 78. À gauche la taille d'emploi,
+  à droite le dessin dont elle vient. L'écart entre les deux colonnes est le coût.</p>
+  <div class="duo"><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 9l9-5 9 5"/><path d="M5 9v9"/><path d="M10 9v9"/><path d="M14 9v9"/><path d="M19 9v9"/><path d="M3 20h18"/></g></svg><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 9l9-5 9 5"/><path d="M5 9v9"/><path d="M10 9v9"/><path d="M14 9v9"/><path d="M19 9v9"/><path d="M3 20h18"/></g></svg></span>
+    <span class="txt"><b>account_balance</b><span>Trop de sous-chemins ou de nœuds pour tenir à 16 px dans un trait de 2 unités.</span></span>
+  </div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 19L19 5"/><path d="M5 19c0-9 6-14 15-14 0 9-6 14-15 14z"/></g></svg><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 19L19 5"/><path d="M5 19c0-9 6-14 15-14 0 9-6 14-15 14z"/></g></svg></span>
+    <span class="txt"><b>eco</b><span>Trop de sous-chemins ou de nœuds pour tenir à 16 px dans un trait de 2 unités.</span></span>
+  </div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 20S4 14 4 9a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 5-8 11-8 11z"/></g></svg><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 20S4 14 4 9a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 5-8 11-8 11z"/></g></svg></span>
+    <span class="txt"><b>favorite</b><span>Trop de sous-chemins ou de nœuds pour tenir à 16 px dans un trait de 2 unités.</span></span>
+  </div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 3h2l1 8 7 3v2l-7-1-1 5 3 2v1l-4-1-4 1v-1l3-2-1-5-7 1v-2l7-3z"/></g></svg><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 3h2l1 8 7 3v2l-7-1-1 5 3 2v1l-4-1-4 1v-1l3-2-1-5-7 1v-2l7-3z"/></g></svg></span>
+    <span class="txt"><b>flight</b><span>Trop de sous-chemins ou de nœuds pour tenir à 16 px dans un trait de 2 unités.</span></span>
+  </div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 5h10"/><path d="M11 12h10"/><path d="M11 19h10"/><path d="M5 2v6"/><path d="M3 8h4"/><path d="M2 9h5v3H2v3h5"/><path d="M2 16h5v3H3"/><path d="M7 19v3H2"/></g></svg><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 5h10"/><path d="M11 12h10"/><path d="M11 19h10"/><path d="M5 2v6"/><path d="M3 8h4"/><path d="M2 9h5v3H2v3h5"/><path d="M2 16h5v3H3"/><path d="M7 19v3H2"/></g></svg></span>
+    <span class="txt"><b>format_list_numbered</b><span>Retour CE (2ᵉ tour) : REPRIS. Les chiffres passent de 4 à 6 unités de haut et de 3 à 5 de large, les lignes reculent de x = 10 à x = 11 pour leur céder la place, et chacun se centre sur SA ligne (5, 12, 19). À 16 px un chiffre gagne de 2,7 à 4,0 px de haut. Reste « dur », et c'est le verdict honnête : trois chiffres dans une colonne de 5 unités ne seront jamais lisibles à 16 px, quelle que soit la grammaire. C'est le glyphe qui plaide le plus fort pour le palier 16 dessiné à la main.</span></span>
+  </div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M8 5a3 3 0 1 0 0 6 3 3 0 1 0 0-6"/><path d="M2 19v-1a6 6 0 0 1 12 0v1"/><path d="M19 4v6"/><path d="M16 7h6"/></g></svg><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M8 5a3 3 0 1 0 0 6 3 3 0 1 0 0-6"/><path d="M2 19v-1a6 6 0 0 1 12 0v1"/><path d="M19 4v6"/><path d="M16 7h6"/></g></svg></span>
+    <span class="txt"><b>group_add</b><span>Trop de sous-chemins ou de nœuds pour tenir à 16 px dans un trait de 2 unités.</span></span>
+  </div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 7h18v10H3z"/><path d="M7 14h10"/><path d="M7 10h2"/><path d="M11 10h2"/><path d="M15 10h2"/></g></svg><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 7h18v10H3z"/><path d="M7 14h10"/><path d="M7 10h2"/><path d="M11 10h2"/><path d="M15 10h2"/></g></svg></span>
+    <span class="txt"><b>keyboard</b><span>Trois touches de 2 u dans un cadre : à 16 px elles fusionnent avec le cadre.</span></span>
+  </div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 1 0 0-7"/><path d="M2 20v-1a7 7 0 0 1 14 0v1"/><path d="M19 4v6"/><path d="M16 7h6"/></g></svg><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 1 0 0-7"/><path d="M2 20v-1a7 7 0 0 1 14 0v1"/><path d="M19 4v6"/><path d="M16 7h6"/></g></svg></span>
+    <span class="txt"><b>person_add</b><span>Trop de sous-chemins ou de nœuds pour tenir à 16 px dans un trait de 2 unités.</span></span>
+  </div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 21a4 4 0 0 1-4-4c0-3 8-3 8 0a4 4 0 0 1-4 4z"/></g><circle cx="4" cy="10" r="2" fill="currentColor"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="6" r="2" fill="currentColor"/><circle cx="20" cy="10" r="2" fill="currentColor"/></svg><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 21a4 4 0 0 1-4-4c0-3 8-3 8 0a4 4 0 0 1-4 4z"/></g><circle cx="4" cy="10" r="2" fill="currentColor"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="6" r="2" fill="currentColor"/><circle cx="20" cy="10" r="2" fill="currentColor"/></svg></span>
+    <span class="txt"><b>pets</b><span>Retour CE (3ᵉ tour) : les deux coussinets du haut passent de 4 à 6 unités de centre à centre — à 4, avec r = 2, ils étaient exactement TANGENTS, ce qui les soudait en une seule masse. Les extérieurs s'écartent d'autant (4 et 20) : les trois cordes tombent à 6,4 / 6,0 / 6,4, et plus aucune paire ne se touche. Disposition du Système, tenue au 2ᵉ tour ; l'espacement identique du 1ᵉʳ reste abandonné — quatre centres entiers sur un arc ne peuvent pas tenir trois cordes égales. Reste quatre disques dans un système qui réserve le rond à l'état : incompatible avec la doctrine, pas seulement cher.</span></span>
+  </div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 3a6 6 0 1 0 0 12 6 6 0 1 0 0-12"/><path d="M9 6v3l2 2"/></g><path d="M14 15l8 4-8 4 2-4z" fill="currentColor" stroke="none"/></svg><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 3a6 6 0 1 0 0 12 6 6 0 1 0 0-12"/><path d="M9 6v3l2 2"/></g><path d="M14 15l8 4-8 4 2-4z" fill="currentColor" stroke="none"/></svg></span>
+    <span class="txt"><b>schedule_send</b><span>Retour CE : la flèche cède la place au TRIANGLE PLEIN de `send`, même silhouette à l'encoche. Deux sous-chemins au lieu de quatre, et plus rien ne déborde du cadre (l'ancien chevron sortait à y = 26). Reste « dur » : une horloge et un envoi dans 24 unités.</span></span>
+  </div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span>
+    <span class="txt"><b>school</b><span>Trop de sous-chemins ou de nœuds pour tenir à 16 px dans un trait de 2 unités.</span></span>
+  </div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 16l2-7h12l2 7a2 2 0 0 1-3 1l-2-2H9l-2 2a2 2 0 0 1-3-1z"/></g><path d="M7 11h2v2H7z" fill="currentColor" stroke="none"/><path d="M15 11h2v2h-2z" fill="currentColor" stroke="none"/></svg><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 16l2-7h12l2 7a2 2 0 0 1-3 1l-2-2H9l-2 2a2 2 0 0 1-3-1z"/></g><path d="M7 11h2v2H7z" fill="currentColor" stroke="none"/><path d="M15 11h2v2h-2z" fill="currentColor" stroke="none"/></svg></span>
+    <span class="txt"><b>sports_esports</b><span>Retour CE (3ᵉ tour) : les carrés deviennent PLEINS au lieu d'être tracés. Un carré de 2 u tracé au trait de 2 u rendait un pavé de 4 u qui touchait le boîtier ; plein, il fait vraiment 2 u et garde ~1 unité de dégagement sur les quatre bords. Même taille tous les deux, centres (8,12) et (16,12) — symétriques autour de x = 12.</span></span>
+  </div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 3l3 6 6 1-4 5 1 6-6-3-6 3 1-6-4-5 6-1z"/></g></svg><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 3l3 6 6 1-4 5 1 6-6-3-6 3 1-6-4-5 6-1z"/></g></svg></span>
+    <span class="txt"><b>star</b><span>Trop de sous-chemins ou de nœuds pour tenir à 16 px dans un trait de 2 unités.</span></span>
+  </div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 9S9 6 7 6a3 3 0 0 0 0 6l5 4"/><path d="M12 9s3-3 5-3a3 3 0 0 1 0 6l-5 4"/><path d="M3 14v7h4l6 2 8-4v-2h-8"/></g></svg><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 9S9 6 7 6a3 3 0 0 0 0 6l5 4"/><path d="M12 9s3-3 5-3a3 3 0 0 1 0 6l-5 4"/><path d="M3 14v7h4l6 2 8-4v-2h-8"/></g></svg></span>
+    <span class="txt"><b>volunteer_activism</b><span>Trop de sous-chemins ou de nœuds pour tenir à 16 px dans un trait de 2 unités.</span></span>
+  </div></div>
+</section>
+
+<section>
+  <h2 class="display">Fusions forcées</h2>
+  <p class="sub">Réduits à la grammaire, ces glyphes retombent sur le même dessin. Les garder
+  distincts demande d'ajouter du détail — donc de sortir de la grammaire. Chaque paire est une
+  décision à prendre, pas un défaut à corriger.</p>
+  <div><div class="fusion">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 5h18v4H3z"/><path d="M5 9h14v10H5z"/><path d="M9 13h6"/></g></svg><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 4h18v5H3z"/><path d="M5 9h14v11H5z"/><path d="M10 6h4"/></g></svg></span>
+    <span class="noms"><b>archives</b> — archive = inventory_2
+    <em>&nbsp;· 2 entrées du jeu Material, un seul dessin ici</em></span></div><div class="fusion">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4v10"/><path d="M8 11l4 4 4-4"/><path d="M4 19h16"/></g></svg><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 4h16v3H4z"/><path d="M12 9v8"/><path d="M8 14l4 4 4-4"/><path d="M4 21h16"/></g></svg></span>
+    <span class="noms"><b>fleche-bas</b> — download = system_update_alt
+    <em>&nbsp;· 2 entrées du jeu Material, un seul dessin ici</em></span></div><div class="fusion">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4a8 8 0 1 0 0 16 8 8 0 1 0 0-16"/><path d="M8 12l3 3 5-5"/></g></svg><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4a8 8 0 1 0 0 16 8 8 0 1 0 0-16"/><path d="M9 9l6 6"/><path d="M15 9l-6 6"/></g></svg><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4a8 8 0 1 0 0 16 8 8 0 1 0 0-16"/><path d="M12 7v6"/><path d="M12 15v2"/></g></svg><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4a8 8 0 1 0 0 16 8 8 0 1 0 0-16"/><path d="M12 11v6"/><path d="M12 7v2"/></g></svg></span>
+    <span class="noms"><b>rond-etat</b> — check_circle = cancel = error = info
+    <em>&nbsp;· 4 entrées du jeu Material, un seul dessin ici</em></span></div></div>
+</section>
+
+<section>
+  <h2 class="display">Les douze repères de compte</h2>
+  <p class="sub">Rendus à 10 et 12 px dans une pastille colorée (A74). Le trait y mesure
+  0.83 à 1.00 px : sous le palier 16 lui-même.
+  Sous cette direction, le compte est un <b>disque nu</b> et ces douze glyphes disparaissent —
+  c'est l'arbitrage §4-C de la note de spike, et c'est 12 dessins d'un côté ou de
+  l'autre de la décision.</p>
+  <table class="echelle">
+    <thead><tr><th>Glyphe</th><th>10 px</th><th>12 px</th><th>16 px</th><th>40 px</th></tr></thead>
+    <tbody><tr><th>account_balance</th>
+      <td><span><svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 9l9-5 9 5"/><path d="M5 9v9"/><path d="M10 9v9"/><path d="M14 9v9"/><path d="M19 9v9"/><path d="M3 20h18"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 9l9-5 9 5"/><path d="M5 9v9"/><path d="M10 9v9"/><path d="M14 9v9"/><path d="M19 9v9"/><path d="M3 20h18"/></g></svg></span></td>
+      <td><span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 9l9-5 9 5"/><path d="M5 9v9"/><path d="M10 9v9"/><path d="M14 9v9"/><path d="M19 9v9"/><path d="M3 20h18"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 9l9-5 9 5"/><path d="M5 9v9"/><path d="M10 9v9"/><path d="M14 9v9"/><path d="M19 9v9"/><path d="M3 20h18"/></g></svg></span></td></tr><tr><th>eco</th>
+      <td><span><svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 19L19 5"/><path d="M5 19c0-9 6-14 15-14 0 9-6 14-15 14z"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 19L19 5"/><path d="M5 19c0-9 6-14 15-14 0 9-6 14-15 14z"/></g></svg></span></td>
+      <td><span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 19L19 5"/><path d="M5 19c0-9 6-14 15-14 0 9-6 14-15 14z"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 19L19 5"/><path d="M5 19c0-9 6-14 15-14 0 9-6 14-15 14z"/></g></svg></span></td></tr><tr><th>favorite</th>
+      <td><span><svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 20S4 14 4 9a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 5-8 11-8 11z"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 20S4 14 4 9a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 5-8 11-8 11z"/></g></svg></span></td>
+      <td><span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 20S4 14 4 9a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 5-8 11-8 11z"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 20S4 14 4 9a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 5-8 11-8 11z"/></g></svg></span></td></tr><tr><th>flight</th>
+      <td><span><svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 3h2l1 8 7 3v2l-7-1-1 5 3 2v1l-4-1-4 1v-1l3-2-1-5-7 1v-2l7-3z"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 3h2l1 8 7 3v2l-7-1-1 5 3 2v1l-4-1-4 1v-1l3-2-1-5-7 1v-2l7-3z"/></g></svg></span></td>
+      <td><span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 3h2l1 8 7 3v2l-7-1-1 5 3 2v1l-4-1-4 1v-1l3-2-1-5-7 1v-2l7-3z"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 3h2l1 8 7 3v2l-7-1-1 5 3 2v1l-4-1-4 1v-1l3-2-1-5-7 1v-2l7-3z"/></g></svg></span></td></tr><tr><th>home</th>
+      <td><span><svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></td>
+      <td><span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></td></tr><tr><th>music_note</th>
+      <td><span><svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 18V6"/><path d="M11 6l5 3"/></g><circle cx="8" cy="18" r="3" fill="currentColor"/></svg></span></td><td><span><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 18V6"/><path d="M11 6l5 3"/></g><circle cx="8" cy="18" r="3" fill="currentColor"/></svg></span></td>
+      <td><span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 18V6"/><path d="M11 6l5 3"/></g><circle cx="8" cy="18" r="3" fill="currentColor"/></svg></span></td><td><span><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 18V6"/><path d="M11 6l5 3"/></g><circle cx="8" cy="18" r="3" fill="currentColor"/></svg></span></td></tr><tr><th>pets</th>
+      <td><span><svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 21a4 4 0 0 1-4-4c0-3 8-3 8 0a4 4 0 0 1-4 4z"/></g><circle cx="4" cy="10" r="2" fill="currentColor"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="6" r="2" fill="currentColor"/><circle cx="20" cy="10" r="2" fill="currentColor"/></svg></span></td><td><span><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 21a4 4 0 0 1-4-4c0-3 8-3 8 0a4 4 0 0 1-4 4z"/></g><circle cx="4" cy="10" r="2" fill="currentColor"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="6" r="2" fill="currentColor"/><circle cx="20" cy="10" r="2" fill="currentColor"/></svg></span></td>
+      <td><span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 21a4 4 0 0 1-4-4c0-3 8-3 8 0a4 4 0 0 1-4 4z"/></g><circle cx="4" cy="10" r="2" fill="currentColor"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="6" r="2" fill="currentColor"/><circle cx="20" cy="10" r="2" fill="currentColor"/></svg></span></td><td><span><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 21a4 4 0 0 1-4-4c0-3 8-3 8 0a4 4 0 0 1-4 4z"/></g><circle cx="4" cy="10" r="2" fill="currentColor"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="6" r="2" fill="currentColor"/><circle cx="20" cy="10" r="2" fill="currentColor"/></svg></span></td></tr><tr><th>school</th>
+      <td><span><svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></td>
+      <td><span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></td></tr><tr><th>shopping_bag</th>
+      <td><span><svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 7h14v13H5z"/><path d="M9 7V5a3 3 0 0 1 6 0v2"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 7h14v13H5z"/><path d="M9 7V5a3 3 0 0 1 6 0v2"/></g></svg></span></td>
+      <td><span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 7h14v13H5z"/><path d="M9 7V5a3 3 0 0 1 6 0v2"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 7h14v13H5z"/><path d="M9 7V5a3 3 0 0 1 6 0v2"/></g></svg></span></td></tr><tr><th>sports_esports</th>
+      <td><span><svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 16l2-7h12l2 7a2 2 0 0 1-3 1l-2-2H9l-2 2a2 2 0 0 1-3-1z"/></g><path d="M7 11h2v2H7z" fill="currentColor" stroke="none"/><path d="M15 11h2v2h-2z" fill="currentColor" stroke="none"/></svg></span></td><td><span><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 16l2-7h12l2 7a2 2 0 0 1-3 1l-2-2H9l-2 2a2 2 0 0 1-3-1z"/></g><path d="M7 11h2v2H7z" fill="currentColor" stroke="none"/><path d="M15 11h2v2h-2z" fill="currentColor" stroke="none"/></svg></span></td>
+      <td><span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 16l2-7h12l2 7a2 2 0 0 1-3 1l-2-2H9l-2 2a2 2 0 0 1-3-1z"/></g><path d="M7 11h2v2H7z" fill="currentColor" stroke="none"/><path d="M15 11h2v2h-2z" fill="currentColor" stroke="none"/></svg></span></td><td><span><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 16l2-7h12l2 7a2 2 0 0 1-3 1l-2-2H9l-2 2a2 2 0 0 1-3-1z"/></g><path d="M7 11h2v2H7z" fill="currentColor" stroke="none"/><path d="M15 11h2v2h-2z" fill="currentColor" stroke="none"/></svg></span></td></tr><tr><th>star</th>
+      <td><span><svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 3l3 6 6 1-4 5 1 6-6-3-6 3 1-6-4-5 6-1z"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 3l3 6 6 1-4 5 1 6-6-3-6 3 1-6-4-5 6-1z"/></g></svg></span></td>
+      <td><span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 3l3 6 6 1-4 5 1 6-6-3-6 3 1-6-4-5 6-1z"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 3l3 6 6 1-4 5 1 6-6-3-6 3 1-6-4-5 6-1z"/></g></svg></span></td></tr><tr><th>work</th>
+      <td><span><svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></td>
+      <td><span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></td><td><span><svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></td></tr></tbody>
+  </table>
+</section>
+
+<section>
+  <h2 class="display">Le chiffre</h2>
+  <p class="sub">Un « dessin » = un fichier de glyphe calé sur sa grille. Le maître 24 est fait
+  pour les 78 ; le palier 16 ne l'est pour aucun.</p>
+  <table class="chiffre">
+    <thead><tr><th>Branche</th><th>À produire</th><th class="n">Dessins</th><th class="n">Faits</th></tr></thead>
+    <tbody>
+      <tr><td rowspan="3"><b>Disque nu</b><br><span style="color:var(--muted);font-size:12px">§4-C tranché pour la doctrine</span></td>
+        <td>maîtres 24</td><td class="n">62</td><td class="n">62</td></tr>
+      <tr><td>paliers 16, calés à la main</td><td class="n">62</td><td class="n">0</td></tr>
+      <tr class="total"><td>total</td><td class="n">124</td>
+        <td class="n">62 · 50 %</td></tr>
+      <tr><td rowspan="4"><b>Le glyphe reste</b><br><span style="color:var(--muted);font-size:12px">A74 conservé</span></td>
+        <td>maîtres 24</td><td class="n">74</td><td class="n">74</td></tr>
+      <tr><td>paliers 16</td><td class="n">74</td><td class="n">0</td></tr>
+      <tr><td>palier 10-12, à inventer</td><td class="n">12</td><td class="n">0</td></tr>
+      <tr class="total"><td>total</td><td class="n">160</td>
+        <td class="n">74 · 46 %</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2 class="display">Les décisions prises en dessinant</h2>
+  <p class="sub">Chaque note est un endroit où la grammaire ne donnait pas la réponse. Elles ne
+  sont pas des détails de dessin : ce sont les endroits où quelqu'un devra trancher.</p>
+  <div class="duo"><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M19 7v9a6 6 0 0 1-12 0V6a4 4 0 0 1 8 0v10a2 2 0 0 1-4 0V8"/></g></svg></span>
+    <span class="txt"><b>attach_file</b><span>Retour CE (2ᵉ tour) : le repli REVIENT — le trait unique se lisait comme un U, la réserve était fondée. Ce qui a servi la première tentative est gardé : les quatre montants sont à 7, 11, 15 et 19, donc **trois intervalles de 4 unités exactement**. La version d'origine avait 4 u puis 2 u ; c'est la paire à 2 u qui se collait à 16 px, pas le repli lui-même. Trois arcs, trois demi-cercles vrais (corde = 2 r) : aucun rayon décidé à l'œil.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 7h16"/><path d="M6 7v12h12V7"/><path d="M10 4h4"/><path d="M10 11v5"/><path d="M14 11v5"/></g></svg></span>
+    <span class="txt"><b>delete</b><span>Retour CE : le corps porte ses deux traits — la poubelle vide se lisait comme une simple boîte.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 19V9l8-4 8 4v10z"/><path d="M4 9l8 4 8-4"/></g></svg></span>
+    <span class="txt"><b>drafts</b><span>Retour CE (3ᵉ tour) : le triangle du rabat est REDOUBLÉ par symétrie autour de la ligne d'épaules (y = 9) — il forme un losange de sommets (4,9) (12,5) (20,9) (12,13). Aucune cote neuve n'a été décidée : la moitié basse est la moitié haute retournée, le losange sort du dessin qui existait déjà. **Et cela lève la réserve du 2ᵉ tour** — le losange casse la silhouette de toit, le glyphe ne se lit plus comme une maison. Le repli du rabat était la pièce manquante, pas la proportion.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h10"/><path d="M4 11h7"/><path d="M11 19l1-3 6-6 2 2-6 6z"/></g></svg></span>
+    <span class="txt"><b>edit_note</b><span>Le crayon impose une diagonale — le document n’en emploie que dans Helios et le rabat de Moon.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4a8 8 0 1 0 0 16 8 8 0 1 0 0-16"/><path d="M12 7v6"/><path d="M12 15v2"/></g></svg></span>
+    <span class="txt"><b>error</b><span>Retour CE : c'est `info` RETOURNÉ, au sens strict — la barre et la marque échangent leurs places par symétrie autour du centre du cercle (y = 12). Deux glyphes, une seule cote.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 5h12v5H3z"/><path d="M15 7h4v6h-7v8"/><path d="M2 2l20 20"/></g></svg></span>
+    <span class="txt"><b>format_clear</b><span>Retour CE (2ᵉ tour) : la barre va de coin à coin (2,2 → 22,22) au lieu de s'arrêter au ras du rouleau. Une barre qui commence sur ce qu'elle barre ne barre rien — elle doit entrer et sortir de la figure.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 15l6-11 6 11"/><path d="M9 11h6"/></g><path d="M4 19h16" fill="none" stroke="var(--marque)" stroke-width="2" stroke-linecap="butt"/></svg></span>
+    <span class="txt"><b>format_color_text</b><span>La barre du bas est le SEUL élément coloré légitime du jeu : elle porte la couleur choisie, elle ne décore pas.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h2"/><path d="M4 12h2"/><path d="M4 18h2"/><path d="M10 6h10"/><path d="M10 12h10"/><path d="M10 18h10"/></g></svg></span>
+    <span class="txt"><b>format_list_bulleted</b><span>Puces CARRÉES (barres de 2 u) : des puces rondes seraient trois disques.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 5h10"/><path d="M11 12h10"/><path d="M11 19h10"/><path d="M5 2v6"/><path d="M3 8h4"/><path d="M2 9h5v3H2v3h5"/><path d="M2 16h5v3H3"/><path d="M7 19v3H2"/></g></svg></span>
+    <span class="txt"><b>format_list_numbered</b><span>Retour CE (2ᵉ tour) : REPRIS. Les chiffres passent de 4 à 6 unités de haut et de 3 à 5 de large, les lignes reculent de x = 10 à x = 11 pour leur céder la place, et chacun se centre sur SA ligne (5, 12, 19). À 16 px un chiffre gagne de 2,7 à 4,0 px de haut. Reste « dur », et c'est le verdict honnête : trois chiffres dans une colonne de 5 unités ne seront jamais lisibles à 16 px, quelle que soit la grammaire. C'est le glyphe qui plaide le plus fort pour le palier 16 dessiné à la main.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 5V2h16v10h-6"/><path d="M2 5h14v9H7l-5 5z"/></g></svg></span>
+    <span class="txt"><b>forum</b><span>Retour CE : le SECOND message derrière, comme au Système. Seule la part visible du bulle arrière est tracée — le recouvrement se dessine, il ne se superpose pas : deux traits ne passent jamais l'un sur l'autre.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 3h12l-6 9 6 9H6l6-9z"/></g></svg></span>
+    <span class="txt"><b>hourglass_empty</b><span>Un seul sous-chemin, huit nœuds, tout en droites : le glyphe le plus « Elements » de tout le jeu.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4a8 8 0 1 0 0 16 8 8 0 1 0 0-16"/><path d="M12 11v6"/><path d="M12 7v2"/></g></svg></span>
+    <span class="txt"><b>info</b><span>Le point de l'i devient une BARRE de 2 u : un point serait un disque.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 4h18v5H3z"/><path d="M5 9h14v11H5z"/><path d="M10 6h4"/></g></svg></span>
+    <span class="txt"><b>inventory_2</b><span>Même sens qu'`archive` (le dossier contre l'action) : deux dessins pour un sens, la grammaire pousse à fusionner.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 7h18v10H3z"/><path d="M7 14h10"/><path d="M7 10h2"/><path d="M11 10h2"/><path d="M15 10h2"/></g></svg></span>
+    <span class="txt"><b>keyboard</b><span>Trois touches de 2 u dans un cadre : à 16 px elles fusionnent avec le cadre.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h14v10H3z"/><path d="M3 8l7 5 7-5"/></g><circle cx="19" cy="6" r="3.4" fill="var(--marque)"/></svg></span>
+    <span class="txt"><b>mark_email_unread</b><span>Retour CE : rabat FERMÉ sur l'enveloppe. Le disque teal reste le seul du jeu à dire un état — c'est sa fonction.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 18V6"/><path d="M11 6l5 3"/></g><circle cx="8" cy="18" r="3" fill="currentColor"/></svg></span>
+    <span class="txt"><b>music_note</b><span>Retour CE : une note SEULE — hampe, disque plein en bas, petit trait diagonal en haut. On passe de deux têtes à une, et de deux arcs à zéro. La tête est tangente à la hampe, pas posée à côté.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 1 0 0-7"/><path d="M5 20v-1a7 7 0 0 1 14 0v1"/></g></svg></span>
+    <span class="txt"><b>person</b><span>La tête est un cercle plein chez Material ; ici de contour, sinon elle devient un disque de 7 u.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 21a4 4 0 0 1-4-4c0-3 8-3 8 0a4 4 0 0 1-4 4z"/></g><circle cx="4" cy="10" r="2" fill="currentColor"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="6" r="2" fill="currentColor"/><circle cx="20" cy="10" r="2" fill="currentColor"/></svg></span>
+    <span class="txt"><b>pets</b><span>Retour CE (3ᵉ tour) : les deux coussinets du haut passent de 4 à 6 unités de centre à centre — à 4, avec r = 2, ils étaient exactement TANGENTS, ce qui les soudait en une seule masse. Les extérieurs s'écartent d'autant (4 et 20) : les trois cordes tombent à 6,4 / 6,0 / 6,4, et plus aucune paire ne se touche. Disposition du Système, tenue au 2ᵉ tour ; l'espacement identique du 1ᵉʳ reste abandonné — quatre centres entiers sur un arc ne peuvent pas tenir trois cordes égales. Reste quatre disques dans un système qui réserve le rond à l'état : incompatible avec la doctrine, pas seulement cher.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 6L3 12l6 6"/><path d="M3 12h11a6 6 0 0 1 6 6v1"/></g></svg></span>
+    <span class="txt"><b>reply</b><span>Sert aussi « Transférer » en symétrie verticale (A12) — aucun glyphe supplémentaire.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 3h6l6 6v6l-6 6H9l-6-6V9z"/><path d="M12 8v5"/><path d="M12 16v2"/></g></svg></span>
+    <span class="txt"><b>report</b><span>Retour CE : OCTOGONE, comme au Système. Effet de bord mesurable — `report` ne fusionne plus avec `warning`, la famille « triangle » disparaît du chiffrage.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 3a6 6 0 1 0 0 12 6 6 0 1 0 0-12"/><path d="M9 6v3l2 2"/></g><path d="M14 15l8 4-8 4 2-4z" fill="currentColor" stroke="none"/></svg></span>
+    <span class="txt"><b>schedule_send</b><span>Retour CE : la flèche cède la place au TRIANGLE PLEIN de `send`, même silhouette à l'encoche. Deux sous-chemins au lieu de quatre, et plus rien ne déborde du cadre (l'ancien chevron sortait à y = 26). Reste « dur » : une horloge et un envoi dans 24 unités.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 1 0 0-14"/><path d="M16 16l4 4"/></g></svg></span>
+    <span class="txt"><b>search</b><span>Cercle de CONTOUR : il ne se lit pas comme un disque, mais il en approche — première tension du jeu.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 4l18 8-18 8 3-8z"/></g></svg></span>
+    <span class="txt"><b>send</b><span>Retour CE : la silhouette double-triangle du Système — un seul chemin fermé, quatre sommets entiers, l'encoche fait le second triangle. La flèche est morte.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16"/><path d="M14 5v6"/><path d="M4 16h16"/><path d="M9 13v6"/></g></svg></span>
+    <span class="txt"><b>settings</b><span>La roue dentée est intransposable (12 dents à 16 px) : deux glissières la remplacent.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 12l4 4"/><path d="M7 12l-4 4"/><path d="M10 17V7h5v6h-5"/><path d="M17 17v-6h5v6"/><path d="M3 21h4"/><path d="M10 21h4"/><path d="M17 21h4"/></g></svg></span>
+    <span class="txt"><b>signature</b><span>Retour CE (2ᵉ tour) : proposition NEUVE. Le zigzag est mort — il se lisait comme une chaîne de montagnes. À la place, la structure du Système : le x à gauche, deux caractères, la ligne POINTILLÉE dessous. Les deux caractères sont des lettres angulaires (une hampe à panse, une cuvette) : la grammaire n'a pas de boucle, elle a des angles vifs — c'est une évocation d'écriture, pas une imitation de cursive. Le pointillé est trois tirets de 4 u au pas de 7, de x = 3 à x = 21 : symétrique autour de 12. Tout pose sur la même ligne de base, y = 17.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 16l2-7h12l2 7a2 2 0 0 1-3 1l-2-2H9l-2 2a2 2 0 0 1-3-1z"/></g><path d="M7 11h2v2H7z" fill="currentColor" stroke="none"/><path d="M15 11h2v2h-2z" fill="currentColor" stroke="none"/></svg></span>
+    <span class="txt"><b>sports_esports</b><span>Retour CE (3ᵉ tour) : les carrés deviennent PLEINS au lieu d'être tracés. Un carré de 2 u tracé au trait de 2 u rendait un pavé de 4 u qui touchait le boîtier ; plein, il fait vraiment 2 u et garde ~1 unité de dégagement sur les quatre bords. Même taille tous les deux, centres (8,12) et (16,12) — symétriques autour de x = 12.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M16 7h-6l-2 3 8 4-2 3H8"/><path d="M4 12h16"/></g></svg></span>
+    <span class="txt"><b>strikethrough_s</b><span>L'S est rendu en zigzag mitré — une lettre dans une grammaire qui n'en a pas.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 4h16v3H4z"/><path d="M12 9v8"/><path d="M8 14l4 4 4-4"/><path d="M4 21h16"/></g></svg></span>
+    <span class="txt"><b>system_update_alt</b><span>Le bandeau supérieur est tout ce qui le sépare de `download`.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M7 5l5 5 5-5"/><path d="M7 19l5-5 5 5"/></g></svg></span>
+    <span class="txt"><b>unfold_less</b><span>Retour CE : les deux pointes s'écartent de 2 à 4 unités — le même écart que `unfold_more`, qui l'avait déjà. Les deux glyphes de la bascule sont enfin cotés pareil.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 12l4-4h10l4 4-4 4H7z"/><path d="M4 4l16 16"/></g></svg></span>
+    <span class="txt"><b>visibility_off</b><span>La lentille perd sa pupille : une pupille est un DISQUE, et le disque est réservé à l'état.</span></span></div><div class="fiche">
+    <span class="paire"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4l9 16H3z"/><path d="M12 10v5"/></g></svg></span>
+    <span class="txt"><b>warning</b><span>Le triangle lui reste en propre depuis que `report` a repris son octogone : plus de collision.</span></span></div></div>
+</section>
+
+</div>
+<div class="pilule">
+  <button id="j" aria-pressed="true">Clair</button>
+  <button id="n" aria-pressed="false">Sombre</button>
+</div>
+<script>
+const poser=(t)=>{document.documentElement.dataset.theme=t;
+  j.setAttribute('aria-pressed',String(t==='jour'));n.setAttribute('aria-pressed',String(t==='nuit'));};
+j.onclick=()=>poser('jour'); n.onclick=()=>poser('nuit');
+</script></body></html>

@@ -507,7 +507,7 @@
   /* L'avatar aux initiales des cartes (A45) — le dessin de la liste
      (E2) : 28 px déplié, 26 px replié. */
   .avatar {
-    width:28px; height:28px; border-radius:50%; background:var(--panel);
+    width:28px; height:28px; border-radius:50%; background:var(--bg);
     border:1px solid var(--border); display:grid; place-items:center;
     font-size:11px; font-weight:600; color:var(--ink2); flex:none;
   }
@@ -571,7 +571,7 @@
     color:var(--tuileInk); display:flex; flex-direction:column;
     align-items:center; justify-content:center; gap:1px; flex:none;
   }
-  .inv-tuile.eteinte { background:var(--panel); color:var(--muted); }
+  .inv-tuile.eteinte { background:var(--bg); color:var(--muted); }
   .inv-mois {
     font-size:10px; font-weight:600; letter-spacing:.08em;
     text-transform:uppercase;
@@ -603,7 +603,7 @@
   }
   .garde-images {
     padding:10px 14px; display:flex; align-items:center; gap:10px;
-    font-size:13px; color:var(--ink2); background:var(--panel);
+    font-size:13px; color:var(--ink2); background:var(--bg);
     border:1px solid var(--border); border-radius:6px;
   }
   .garde-images .ms { color:var(--muted); }

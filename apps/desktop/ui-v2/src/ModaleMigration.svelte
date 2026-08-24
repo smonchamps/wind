@@ -115,7 +115,7 @@
   }
   .note, .etat { margin:0; font-size:13px; line-height:1.5; color:var(--muted); }
   .jauge {
-    height:6px; background:var(--panel); border:1px solid var(--border);
+    height:6px; background:var(--bg); border:1px solid var(--border);
     border-radius:6px; overflow:hidden;
   }
   .remplie { height:100%; background:var(--accent); transition:width .3s; }

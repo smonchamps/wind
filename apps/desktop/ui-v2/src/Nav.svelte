@@ -105,7 +105,7 @@
 
 <style>
   nav {
-    background:var(--panel); border-right:1px solid var(--border);
+    background:var(--bg); border-right:1px solid var(--border);
     padding:20px 12px; display:flex; flex-direction:column; gap:2px;
     min-height:0; overflow:auto;
   }
