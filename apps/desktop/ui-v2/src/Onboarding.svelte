@@ -19,7 +19,7 @@
   // Seule l'étape 1 (GuichetCompte, A11) parle au shell.
   import Icone from './Icone.svelte';
   import GuichetCompte from './GuichetCompte.svelte';
-  import Hitofude from './Hitofude.svelte';
+  import Marque from './Marque.svelte';
   import { t } from './lib/texte.svelte.js';
   import { FICHES, appliquerTheme, themeAffiche } from './lib/theme.js';
   import { voletsActuels, appliquerVolets } from './lib/volets.svelte.js';
@@ -121,12 +121,13 @@
   {/snippet}
   <div class="colonne" class:large={complet && etape !== 1}>
     {#if !complet || etape === 1}
-      <!-- Constat 1 : « Bienvenue dans Wind », le trait hitofude
-           derrière la marque — le bloc du guichet est UN (étape 1 du
+      <!-- Constat 1 : « Bienvenue dans Wind » — la marque EN TUILE
+           (V11 : figée hors thèmes, rayon de plateforme) remplace le
+           trait hitofude (V2). Le bloc du guichet reste UN (étape 1 du
            parcours ET écran d'un poste accueilli revenu à zéro
            compte). -->
-      <h3 class="titre">{t('accueil.bienvenue')}
-        <span class="marque">Wind<Hitofude largeur={52} hauteur={12} /></span></h3>
+      <h3 class="titre"><Marque tuile taille={40} />
+        <span>{t('accueil.bienvenue')} <span class="marque">Wind</span></span></h3>
       {@render progression(1)}
       <p class="sous">{t('accueil.ajouterSous')}</p>
       {#if complet && comptes.length > 0}
@@ -275,9 +276,10 @@
   .titre {
     margin:0; font-size:40px; line-height:1.1; font-weight:600;
     letter-spacing:-.02em; color:var(--ink);
+    display:flex; align-items:center; gap:14px;
   }
-  /* La marque dans le titre : « Wind » et son trait, insécables. */
-  .marque { display:inline-flex; align-items:center; gap:10px; white-space:nowrap; }
+  /* La marque dans le titre : « Wind », insécable. */
+  .marque { white-space:nowrap; }
   .progression {
     margin:0; font-size:13px; font-weight:600; color:var(--muted);
     font-variant-numeric:tabular-nums;

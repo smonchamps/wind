@@ -1,4 +1,5 @@
 <script>
+  import Marque from './Marque.svelte';
   // La modale de migration (ADR 0012, dû de bascule §6) : exclusive et
   // bloquante au démarrage. Sans elle, la PREMIÈRE commande venue
   // paierait l'adoption d'une base héritée en silence, dans un gel
@@ -76,7 +77,9 @@
   <div class="scrim" data-testid="migration-modale">
     <div class="carte" role="dialog" aria-modal="true"
          aria-label={t('migration.aria')}>
-      <p class="kicker">Wind</p>
+      <!-- V11 : la marque EN TUILE (figée hors thèmes) — la modale
+           précède tout thème appliqué, la tuile porte son propre sol. -->
+      <span class="bande"><Marque tuile taille={28} /><b>Wind</b></span>
       <h3 class="titre">{t('migration.titre')}</h3>
       <p class="note">{note}</p>
       {#if !bilan}
@@ -105,9 +108,9 @@
     display:flex; align-items:center; justify-content:center;
   }
   .carte { width:520px; display:flex; flex-direction:column; gap:18px; }
-  .kicker {
-    margin:0; font-size:12px; letter-spacing:.14em; text-transform:uppercase;
-    color:var(--muted); font-weight:600;
+  .bande {
+    display:flex; align-items:center; gap:10px;
+    font-size:15px; color:var(--ink);
   }
   .titre {
     margin:0; font-size:32px; line-height:1.15; font-weight:600;

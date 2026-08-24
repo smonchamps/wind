@@ -49,23 +49,6 @@ html {
   --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
 }
 
-/* Le trait hitofude (A28, A40) — la signature du vent, deux
-   emplacements normés (marque, synchronisation). Boucle de 4 s pendant
-   un cycle : tracé 2 s (SMIL, dans le composant — le chemin vit dans le
-   <mask>, sous-arbre non rendu où Chromium ne fait pas tourner les
-   animations CSS ; A40), plein, fondu (CSS, ci-dessous : le chemin
-   masqué, lui, est rendu). Au repos le trait est plein et immobile ;
-   sous prefers-reduced-motion la règle A8 coupe le fondu et le
-   composant ne rend pas l'<animate> (SMIL n'obéit pas au CSS) — le
-   dashoffset de base est 0, le trait reste plein. */
-/* A52 : le fondu-in ACCOMPAGNE le remplissage (tracé SMIL 0→2 s = 0→50 %) :
-   apparition en fondu + remplissage G→D, brève tenue pleine, disparition
-   en fondu — l'animation « complète » du retour terrain 2026-08-17. */
-@keyframes hitofudeFade {
-  0% { opacity:0; } 45% { opacity:1; } 70% { opacity:1; }
-  95% { opacity:0; } 100% { opacity:0; }
-}
-
 /* Icônes « Elements » (V8 — PLAN-ELEMENTS) : le jeu entier est DESSINÉ
    et servi en SVG en ligne (Icone.svelte, lib/icones.js) — Material
    Symbols et son sous-ensemble vendorisé sont morts, et avec eux la

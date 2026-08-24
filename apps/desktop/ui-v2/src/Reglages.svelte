@@ -9,6 +9,7 @@
   // Règle : un groupe ne s'expédie qu'avec du contenu RÉEL — aucun
   // réglage inventé pour meubler, aucun groupe vide.
   import Icone from './Icone.svelte';
+  import Marque from './Marque.svelte';
   import { tick } from 'svelte';
   import {
     FICHES, appliquerTheme, themeAffiche, suiviOs, appliquerSuiviOs,
@@ -779,6 +780,9 @@
           {:else if groupe === 'apropos'}
             <p class="section">{t('groupe.apropos')}</p>
             <div class="rangees" data-testid="reglages-apropos">
+              <!-- V11 : la marque EN TUILE — « À propos » est un des
+                   quatre emplacements du régime figé (W-D3). -->
+              <span class="bande-apropos"><Marque tuile taille={40} /><b>Wind</b></span>
               <div class="ligne-apropos">
                 <span class="cle">{t('reglages.version')}</span>
                 <span class="valeur" data-testid="apropos-version">{version || '…'}</span>
@@ -1090,6 +1094,11 @@
   }
 
   /* À propos : clé / valeur, sans invention de forme. */
+  /* V11 : la bande d'« À propos » — la tuile figée et le nom. */
+  .bande-apropos {
+    display:flex; align-items:center; gap:12px;
+    font-size:15px; color:var(--ink); padding:2px 0 6px;
+  }
   .ligne-apropos {
     display:flex; align-items:baseline; gap:14px; padding:10px 16px;
     font-size:13px;

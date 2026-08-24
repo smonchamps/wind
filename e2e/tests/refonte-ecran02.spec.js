@@ -169,23 +169,23 @@ test('le bouton de relève vit dans la barre — « Réessayer » sur échec (E3
   await expect(bouton).toBeEnabled();
 });
 
-test('pendant un cycle, le trait hitofude de la barre porte son animation SMIL (A40)', async () => {
-  // Constat terrain 2026-08-15 (PLAN-GELS) : le trait restait fixe
-  // pendant la synchronisation. Le chemin animé vit dans le <mask>,
-  // sous-arbre non rendu où Chromium ne fait PAS tourner les
-  // animations CSS — la boucle était morte-née (playState `idle`,
-  // prouvé sur la vraie fenêtre). Depuis A40 le tracé est SMIL
-  // (<animate>, qui tourne dans un mask). Le cycle du décor est bref
-  // (comptes sans serveur) : on s'assert sur la PRÉSENCE de l'<animate>
-  // dans le trait `vague` attrapé pendant la fenêtre — c'est elle que
-  // la régression (retour au CSS) ferait disparaître ; la vie de
-  // l'horloge SMIL est une garantie moteur, pas un comportement à nous.
+test("pendant un cycle, l'anneau remplace le disque de la barre d'état (V2)", async () => {
+  // V2 (PLAN-ELEMENTS) : le trait hitofude est MORT — la paire
+  // disque / anneau le remplace. Le disque plein --marque de 9 px dit
+  // le repos ; l'anneau évidé du même diamètre (2 px de paroi, quart
+  // haut ouvert, rotation CSS — plus aucun SMIL ni <mask>, la leçon
+  // A40 n'a plus d'objet) dit qu'une action tourne. A52 tient et se
+  // renforce : le pourcentage vit dans le TEXTE, jamais dans la
+  // signature. Le cycle du décor est bref (comptes sans serveur) : on
+  // attrape l'anneau pendant la fenêtre.
   const bouton = page.locator('[data-testid="btn-releve"]');
   await expect(bouton).toBeEnabled();
   await bouton.click();
   await expect(
-    page.locator('[data-testid="statut"] path.boucle animate'),
+    page.locator('[data-testid="statut"] .anneau'),
   ).toBeAttached({ timeout: 8000 });
+  // La signature calligraphique ne revient jamais (A28/A36/A40 tombés).
+  await expect(page.locator('[data-testid="statut"] path.boucle')).toHaveCount(0);
 });
 
 test('sélectionner ouvre le volet, lit le corps, et le non-lu tombe', async () => {

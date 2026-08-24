@@ -30,7 +30,7 @@
   import FenteAvis from './FenteAvis.svelte';
   import ModaleMigration from './ModaleMigration.svelte';
   import Toast from './Toast.svelte';
-  import Hitofude from './Hitofude.svelte';
+  import Marque from './Marque.svelte';
   import {
     fil, fermerFil, reduireFil, retirerMessage, estEcho, cleMsg,
   } from './lib/fil.svelte.js';
@@ -223,9 +223,9 @@
     corbeille: 'boite.corbeille',
   };
 
-  // La ligne de statut ENTIÈRE — texte, trait hitofude (A52 : la boucle
-  // `fil` dès qu'une action tourne, plein au repos `trait` ; le mode « au
-  // pourcentage » est mort, le % vit dans le TEXTE), point d'alerte —
+  // La ligne de statut ENTIÈRE — texte, paire disque/anneau (V2 :
+  // l'anneau `fil` dès qu'une action tourne, disque plein au repos
+  // `trait` ; A52 : le % vit dans le TEXTE), point d'alerte —
   // sort d'une seule décision : les trois ne peuvent pas diverger. Au
   // plus UNE progression (Système A4) ; priorités
   // re-triées par la sincérité (PLAN-SYNCHRO E1) : le cycle courant
@@ -354,9 +354,8 @@
         alerte: true,
       };
     }
-    // A28/A29 : aux états « À jour », le trait hitofude précède le
-    // texte — complètement dessiné et immobile (il ne boucle que
-    // pendant un cycle, dans le bouton de relève).
+    // V2 : aux états « À jour », le disque plein précède le texte —
+    // immobile (l'anneau ne tourne que pendant un cycle).
     return {
       texte: derniere
         ? t('statut.ajourDepuis', { depuis: depuis(derniere, maintenant) })
@@ -1335,10 +1334,11 @@
               onclick={() => (tiroirOuvert = true)}>
         <Icone nom="menu" /></button>
     {/if}
-    <!-- A30 : la marque sans tuile-enveloppe — le mot « Wind » (18 px)
-         suivi du trait hitofude statique (A28), décalé de 3 px sous la
-         ligne de base ; la mini-tuile reste aux contextes OS. -->
-    <span class="marque" class:marque--libre={volets === 1}>Wind<Hitofude /></span>
+    <!-- V1/V11 : la marque EN GLYPHE — l'enveloppe à l'encre courante,
+         rabat --marque, devant le mot « Wind » (18 px). Le trait
+         hitofude est mort (V2) ; la tuile figée reste aux contextes OS,
+         à l'accueil, à la migration et à « À propos ». -->
+    <span class="marque" class:marque--libre={volets === 1}><Marque taille={20} />Wind</span>
     <span class="recherche" data-testid="recherche">
       <Icone nom="search" />
       <input type="text" bind:this={champRecherche} bind:value={recherche}
@@ -1410,17 +1410,16 @@
     </div>
 
     <div class="statut" data-testid="statut">
-      <!-- A52 : le trait hitofude, à gauche de la ligne, porte son
-           animation de boucle dès qu'une action tourne (`ligne.fil`) et
-           reste plein et immobile au repos (`ligne.trait`). Le mode « au
-           pourcentage » est mort : le % vit dans le TEXTE. La barre fine
-           de 2 px est morte depuis A36. -->
+      <!-- V2 : la paire disque / anneau — le disque plein --marque de
+           9 px dit le repos (`ligne.trait`), l'anneau évidé du même
+           diamètre dit qu'une action tourne (`ligne.fil`). Le trait
+           hitofude est mort. A52 tient : le % vit dans le TEXTE. -->
       <span class="texte">
         {#if ligne.alerte}<span class="point-alerte" aria-hidden="true"></span>{/if}
         {#if ligne.fil}
-          <Hitofude anime largeur={38} hauteur={9} />
+          <span class="anneau" aria-hidden="true"></span>
         {:else if ligne.trait}
-          <Hitofude largeur={38} hauteur={9} />
+          <span class="disque" aria-hidden="true"></span>
         {/if}
         <span data-testid="progression">{ligne.texte}</span>
       </span>
@@ -1449,7 +1448,7 @@
       <div class="tiroir" data-testid="tiroir" role="dialog" aria-modal="true"
            aria-label={t('nav.aria')}>
         <div class="tete-tiroir">
-          Wind<Hitofude />
+          <Marque taille={20} />Wind
           <button type="button" class="btn-tiroir fermer-tiroir" data-testid="tiroir-fermer"
                   aria-label={t('nav.fermerTiroir')}
                   onclick={() => (tiroirOuvert = false)}>
@@ -1520,8 +1519,6 @@
     font-size:18px; font-weight:600; width:212px; color:var(--ink);
     display:flex; align-items:center; gap:10px;
   }
-  /* Le trait de la marque : décalé de 3 px sous la ligne de base (A28). */
-  .marque :global(svg), .tete-tiroir :global(svg) { margin-top:3px; }
   .recherche {
     flex:1; max-width:520px; height:32px; display:flex; align-items:center; gap:10px;
     padding:0 14px; font-size:13px; color:var(--ink2);

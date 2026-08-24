@@ -293,7 +293,10 @@ for (const fichier of fichiersUi(srcUi)) {
   for (const [brut, valeur] of source.matchAll(/border-radius:\s*([^;}]+)/g)) {
     const v = valeur.trim();
     if (v === 'var(--r-surface)' || v === 'var(--r-controle)' || v === 'var(--r-tuile)'
-      || v === '50%' || v === '999px') continue;
+      || v === '50%' || v === '999px'
+      // L'exception déclarée et permanente (V14) : la marque en tuile
+      // garde son rayon de PLATEFORME (15/64) — c'est l'OS qui le dicte.
+      || v === 'var(--r-plateforme)') continue;
     echec(`${path.relative(root, fichier)} : « ${brut.trim()} » — V14 : zéro rayon, tout littéral passe par un jeton de forme (ou 50 % / 999px pour le disque et la piste)`);
   }
 }
