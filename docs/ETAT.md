@@ -36,7 +36,7 @@ effets (le ré-ancrage lisait une position déjà réécrite par l'effet des
 chaîne de prototypes. **Enseignement payé** : trois des cinq tests du
 premier filet ne pouvaient pas échouer ; le filet réécrit (8 tests) lit
 ce que l'utilisateur VOIT et a été **prouvé non-vacant** en cassant
-volontairement le code. **À livrer en 0.9.0** — CHANGELOG écrit.
+volontairement le code. **À livrer en 0.10.0** — CHANGELOG écrit.
 
 **Le chantier soldé précédent : [PLAN-REPERE-LIGNE](PLAN-REPERE-LIGNE.md)**
 (2026-08-25, terrain CE **15/15**, gate verte, e2e 124 → **129**) — **la
@@ -64,8 +64,7 @@ Revue à regard neuf : 8 angles, 40 candidats, **14 défauts distincts —
 tous corrigés** (dont un bloc qui pouvait se peindre par-dessus l'heure,
 et une règle D7 qui donnait un refrain aux postes à un seul compte).
 Constat terrain unique (point 12 : le volet parlait quand la liste se
-taisait) corrigé le jour même. **À livrer en 0.9.0** avec PLAN-ELEMENTS
-— CHANGELOG déjà écrit.
+taisait) corrigé le jour même. **À livrer en 0.10.0** — CHANGELOG écrit.
 
 **Le chantier soldé précédent : [PLAN-ELEMENTS](PLAN-ELEMENTS.md)**
 (2026-08-24, `fb32238` → `0de3689`, terrain CE **8/8 zéro KO** le jour
@@ -79,17 +78,29 @@ E3 zéro rayon / tuile d'initiales / disque de non-lu, E4 la marque
 Elements et la mort du trait hitofude, E5 le registre 340), quatre
 STOP visuels CE validés le jour même, revue à regard neuf passée
 (6 angles, 10 trouvailles — 7 corrigées), 124/124 e2e, la réserve
-Fluent de V14 levée à la fenêtre réelle. **Reste : la release 0.9.0
-(MINEUR, décision D5)** — la preuve OAuth du second poste (différée de
-la 0.8.0) peut se faire sur la 0.9.0 et fermer l'arbitrage au même
-geste. Dette neuve : **D-35** (palier 16 des icônes — les maîtres
+Fluent de V14 levée à la fenêtre réelle. **Livré en 0.9.0, PUBLIÉE le
+2026-08-24** (tag `0.9.0` sur `f135791`, Latest, 5 assets — vérifié le
+2026-08-25). Dette neuve : **D-35** (palier 16 des icônes — les maîtres
 réduits sont livrés, décision D4). Banc du 2026-08-24 (256 k) : page
 p50 85,8 / p95 180,9 ms (P1 : p95 307,6), thème 0,3 ms, RAM 8,1 Mo.
 
-**La 0.8.0 est publiée** (tag `0.8.0` sur `a3d04fb`, 2026-08-24) —
+⚠️ **Piège payé le 2026-08-25 — ce document a menti une journée
+entière.** Il annonçait « Reste : la release 0.9.0 » alors qu'elle
+était publiée depuis la veille au soir, et le CHANGELOG portait encore
+« [0.9.0] - à venir » (comme « [0.8.0] - à venir », publiée l'avant-
+veille). Conséquence : deux chantiers ont été écrits sous une entrée de
+version DÉJÀ LIVRÉE, et il a fallu les déplacer en 0.10.0. **La règle
+qui en sort : dater l'entrée du CHANGELOG au moment de la publication,
+dans le même geste** — une entrée « à venir » sur une version publiée
+est un mensonge qui se propage. Le contrôle qui ne coûte rien :
+`gh release list` avant d'écrire une note de version.
+
+**La 0.8.0 est publiée** (tag `0.8.0` sur `a3d04fb`, 2026-08-23) —
 elle porte PLAN-RETOURS-9 (OAuth compilé, « Retirer le compte » dit,
 noms de comptes). Sa preuve terrain différée (connecter un compte sur
-le second poste SANS `setx`) reste due — sur la 0.8.0 ou la 0.9.0.
+le second poste SANS `setx`) **reste due** : elle n'a été faite ni sur
+la 0.8.0 ni sur la 0.9.0 — à faire sur la **0.10.0**, c'est elle qui
+ferme l'ADR 0025.
 
 **Sujet ÉCARTÉ le 2026-08-25 : les glyphes de repère en remplissage
 plein.** Demandé par le CE le matin, instruit sur pièces, mis en
@@ -114,15 +125,21 @@ le redit ; le WIP d'alors avait été retiré (décision CE du
 2026-08-20), sa matière reste au § revue de
 [PLAN-COMPOSITION-HTML](PLAN-COMPOSITION-HTML.md).
 
-**Dernière version livrée : 0.8.0** (publiée 2026-08-24, tag nu sur
+**Dernière version livrée : 0.9.0** (publiée **2026-08-24 à 16:59**,
+tag nu sur `f135791`, marquée Latest, 5 assets — 2 exe, 2 `.sig`,
+`latest.json`). Elle porte PLAN-ELEMENTS : la direction « Elements »
+entière. **Vérification §2.10 non rejouée** — à faire par
+`scripts/verifier-release.ps1 0.9.0` ; **preuves terrain dues** :
+auto-update par canal, et la preuve OAuth du second poste SANS `setx`
+(ADR 0025).
+
+**La version précédente, 0.8.0** (publiée 2026-08-23, tag nu sur
 `a3d04fb`, release **vérifiée** par `scripts/verifier-release.ps1
 0.8.0` le 2026-08-24 : **tout passe** — Latest au tag nu, 5 assets
 nommés, manifeste aux deux clés de plateforme, signatures == `.sig`
 et distinctes, exe x64 200 / 6 397 182 octets). La 0.8.0 porte
 PLAN-RETOURS-9 (identifiants OAuth compilés — ADR 0025, « Retirer le
-compte » dit, noms de comptes). **Preuves terrain encore dues** :
-auto-update par canal, et la preuve OAuth du second poste SANS `setx`
-(elle peut se faire sur la 0.9.0 — c'est elle qui ferme l'ADR 0025).
+compte » dit, noms de comptes).
 
 **La version précédente, 0.7.0** (publiée 2026-08-23, tag nu sur
 `68384d2`, release **vérifiée** par `scripts/verifier-release.ps1

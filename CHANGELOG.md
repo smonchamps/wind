@@ -12,7 +12,40 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
-## [0.9.0] - à venir
+## [0.10.0] - à venir
+
+La liste dit d'où vient chaque message, et vous choisissez son air.
+
+### Ajouté
+
+- **Chaque message dit sur quelle boîte il est arrivé** : quand vos
+  comptes se mélangent — « Toutes les boîtes », ou une recherche —, la
+  ligne l'écrit en toutes lettres derrière le nom de l'expéditeur,
+  « Camille Roux sur Travail », avec le repère du compte à sa couleur.
+  Plus besoin de se souvenir d'une couleur ou d'un logo, et un compte
+  sans repère dit sa boîte comme les autres. La mention se retrouve à
+  l'identique sur les messages ouverts ; là où le compte est déjà
+  connu — la vue d'une seule boîte, ou un seul compte configuré —,
+  elle ne dit rien et disparaît.
+- **Trois niveaux d'espacement pour la liste** (Réglages > Affichage) :
+  « Faible » — ce que vous aviez jusqu'ici, au pixel près —, « Moyen »
+  et « Élevé ». Plus d'air entre les messages si vous préférez respirer,
+  autant qu'avant si vous préférez en voir beaucoup. Le changement
+  s'applique à l'instant, et la liste reste là où vous l'aviez laissée :
+  le message que vous regardiez ne bouge pas de l'écran.
+
+### Modifié
+
+- **La vignette aux initiales quitte la liste** : le nom de
+  l'expéditeur, écrit juste au-dessus, disait déjà ce qu'elle disait —
+  la place revient au message. Elle reste là où elle travaille : sur
+  les messages d'une conversation, et au dossier Brouillons.
+- **Le repère d'un compte se dessine au trait** dans la navigation, à
+  la place de la pastille pleine : la même marque exactement que celle
+  de la ligne. La pastille reste dans les Réglages, où elle sert à
+  choisir.
+
+## [0.9.0] - 2026-08-24
 
 Wind change de peau : la direction « Elements ».
 
@@ -29,34 +62,11 @@ Wind change de peau : la direction « Elements ».
 - **La liste dit le non-lu au disque** : un point teal devant
   l'expéditeur, en plus du gras — et le compteur de la navigation
   devient un nombre discret.
-- **Chaque message dit sur quelle boîte il est arrivé** : quand vos
-  comptes se mélangent — « Toutes les boîtes », ou une recherche —, la
-  ligne l'écrit en toutes lettres derrière le nom de l'expéditeur,
-  « Camille Roux sur Travail », avec le repère du compte à sa couleur.
-  Plus besoin de se souvenir d'une couleur ou d'un logo, et un compte
-  sans repère dit sa boîte comme les autres. La mention se retrouve à
-  l'identique sur les messages ouverts ; là où le compte est déjà
-  connu — la vue d'une seule boîte, ou un seul compte configuré —,
-  elle ne dit rien et disparaît.
-- **La vignette aux initiales quitte la liste** : le nom de
-  l'expéditeur, écrit juste au-dessus, disait déjà ce qu'elle disait —
-  la place revient au message. Elle reste là où elle travaille : sur
-  les messages d'une conversation, et au dossier Brouillons.
-
-### Ajouté
-
-- **Trois niveaux d'espacement pour la liste** (Réglages > Affichage) :
-  « Faible » — ce que vous avez aujourd'hui, au pixel près —, « Moyen »
-  et « Élevé ». Plus d'air entre les messages si vous préférez respirer,
-  autant qu'avant si vous préférez en voir beaucoup. Le changement
-  s'applique à l'instant, et la liste reste là où vous l'aviez laissée :
-  le message que vous regardiez ne bouge pas de l'écran.
-
 ### Retiré
 
 - Les vingt-six thèmes Wada et le trait calligraphique de la marque.
 
-## [0.8.0] - à venir
+## [0.8.0] - 2026-08-23
 
 Nommez vos comptes, et connectez-vous sans aucune configuration.
 
