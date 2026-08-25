@@ -79,8 +79,9 @@ Elements et la mort du trait hitofude, E5 le registre 340), quatre
 STOP visuels CE validés le jour même, revue à regard neuf passée
 (6 angles, 10 trouvailles — 7 corrigées), 124/124 e2e, la réserve
 Fluent de V14 levée à la fenêtre réelle. **Livré en 0.9.0, PUBLIÉE le
-2026-08-24** (tag `0.9.0` sur `f135791`, Latest, 5 assets — vérifié le
-2026-08-25). Dette neuve : **D-35** (palier 16 des icônes — les maîtres
+2026-08-24** (tag `0.9.0` sur `f135791`, Latest) — release **vérifiée
+18/18** et **toutes preuves terrain faites** le 2026-08-25, détail plus
+bas. Dette neuve : **D-35** (palier 16 des icônes — les maîtres
 réduits sont livrés, décision D4). Banc du 2026-08-24 (256 k) : page
 p50 85,8 / p95 180,9 ms (P1 : p95 307,6), thème 0,3 ms, RAM 8,1 Mo.
 
@@ -126,13 +127,18 @@ le redit ; le WIP d'alors avait été retiré (décision CE du
 2026-08-20), sa matière reste au § revue de
 [PLAN-COMPOSITION-HTML](PLAN-COMPOSITION-HTML.md).
 
-**Dernière version livrée : 0.9.0** (publiée **2026-08-24 à 16:59**,
-tag nu sur `f135791`, marquée Latest, 5 assets — 2 exe, 2 `.sig`,
-`latest.json`). Elle porte PLAN-ELEMENTS : la direction « Elements »
-entière. **Vérification §2.10 non rejouée** — à faire par
-`scripts/verifier-release.ps1 0.9.0`. La **preuve OAuth du second poste
-SANS `setx` est FAITE** (2026-08-25 — ADR 0025 clos) ; reste due :
-l'**auto-update par canal**.
+**Dernière version livrée : 0.9.0** (publiée 2026-08-24 à 16:59, tag
+nu sur `f135791`, marquée Latest). Elle porte PLAN-ELEMENTS : la
+direction « Elements » entière. **Release vérifiée par
+`scripts/verifier-release.ps1 0.9.0` le 2026-08-25 : 18/18 PASS** —
+Latest au tag nu, 5 assets nommés, `latest.json` sans BOM 1 581 o aux
+DEUX clés de plateforme, URL au tag nu, signatures == `.sig` et
+distinctes (garde anti-croisement), exe arm64 200 / 5 629 324 o, exe
+x64 200 / 6 351 726 o. **TOUTES ses preuves terrain sont faites**
+(2026-08-25) : **auto-update confirmé sur les DEUX canaux** — la chaîne
+signée bi-arch (ADR 0013/0023) est prouvée vivante dans les deux sens,
+comme à la 0.7.0 — et la **preuve OAuth du second poste SANS `setx`**,
+qui **clôt l'ADR 0025**. Plus rien n'est dû sur cette version.
 
 **La version précédente, 0.8.0** (publiée 2026-08-23, tag nu sur
 `a3d04fb`, release **vérifiée** par `scripts/verifier-release.ps1
