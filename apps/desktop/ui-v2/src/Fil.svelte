@@ -24,12 +24,22 @@
     ligneRepondant, lieuOrganisateur,
   } from './lib/invitation.js';
   import { quand, quandLong } from './lib/quand.js';
+  import { blocBoite } from './lib/boite.js';
   import { initiales } from './lib/initiales.js';
   import { activation } from './lib/clavier.js';
   import { t } from './lib/texte.svelte.js';
 
   let {
     brouillons = [],
+    // A80/D5 : le bloc de boîte se répète au fil, derrière le nom de
+    // l'expéditeur — carte dépliée ET rangée repliée. `comptes` sert la
+    // seule garde D7 qui vaille ici : y a-t-il plus d'un compte ?
+    reperes = {},
+    noms = {},
+    comptes = [],
+    // La vue courante mélange-t-elle les comptes ? (App le sait seule :
+    // elle tient le compte choisi ET l'état de la recherche.)
+    melange = false,
     onreprendre = () => {},
     onarchiver = () => {},
     onsupprimer = () => {},
@@ -61,6 +71,29 @@
   // ligne porte celui d'AVANT l'ouverture — le store retient celui de
   // message_body dès que le corps est servi.
   const nbPiecesDe = (m) => fil.nbPieces[cleMsg(m)] ?? m.attachment_count;
+
+  // A80/D5 : le compte se lit sur le MESSAGE (m.account_id — l'identité
+  // canonique, invariant 2 du STANDARD) ; tous les messages d'un fil
+  // viennent de la même boîte, l'adresse de repli est celle du fil
+  // ouvert. Graisse normale : c'est le nom qui porte l'autorité.
+  // LA règle du bloc (lib/boite.js), partagée avec la liste. Le compte
+  // se lit sur le MESSAGE (identité canonique, invariant 2 du
+  // STANDARD) ; l'adresse de repli est celle du fil ouvert.
+  //
+  // Verdict terrain du 2026-08-25 (point 12) : le volet suit la MÊME
+  // garde de vue que la liste — dans la vue d'un seul compte, la liste
+  // se taisait et le volet parlait encore. `melange` descend de l'App,
+  // qui seule connaît la vue courante et l'état de la recherche.
+  const boiteDe = (m) =>
+    !melange
+      ? null
+      : blocBoite({
+        accountId: m.account_id,
+        adresse: fil.ligne?.account_email ?? '',
+        reperes,
+        noms,
+        comptes,
+      });
 
   // Le brouillon du fil ouvert — le plus récent (B-D5).
   const brouillonDuFil = $derived.by(() => {
@@ -253,6 +286,7 @@
     <div class="fil">
       {#each fil.messages as m (cleMsg(m))}
         {@const k = cleMsg(m)}
+        {@const boite = boiteDe(m)}
         {#if fil.deplies[k]}
           <article class="deplie" data-testid="message-deplie">
             <!-- L'en-tête de la maquette (A45) : avatar, nom sur
@@ -263,7 +297,21 @@
                  onclick={() => basculerMessage(m)} onkeydown={activation(() => basculerMessage(m))}>
               <span class="avatar" aria-hidden="true">{initiales(m.sender)}</span>
               <span class="qui">
-                <span class="auteur">{m.sender}</span>
+                <!-- A80/D5 : la boîte derrière le nom — le même bloc
+                     que la ligne de liste (systeme.css). -->
+                <span class="rang-nom">
+                  <span class="auteur">{m.sender}</span>
+                  {#if boite}
+                    <span class="boite" title={boite.titre}>
+                      <span class="mot">{t('liste.sur')}</span>
+                      {#if boite.repere}
+                        <span class="repere-nu" data-teinte={boite.repere.teinte}
+                              aria-hidden="true"><Icone nom={boite.repere.icone} taille={14} /></span>
+                      {/if}
+                      <span class="lib">{boite.libelle}</span>
+                    </span>
+                  {/if}
+                </span>
                 <span class="adr">{t('conv.adrDest', { adr: m.sender_address || m.sender, qui: destinataire(m) })}</span>
               </span>
               <span class="quand">{quandLong(m.epoch)}</span>
@@ -427,6 +475,17 @@
                onclick={() => basculerMessage(m)} onkeydown={activation(() => basculerMessage(m))}>
             <span class="avatar petit" aria-hidden="true">{initiales(m.sender)}</span>
             <span class="auteur">{m.sender}</span>
+            <!-- A80/D5 : la boîte derrière le nom, ici aussi. -->
+            {#if boite}
+              <span class="boite" title={boite.titre}>
+                <span class="mot">{t('liste.sur')}</span>
+                {#if boite.repere}
+                  <span class="repere-nu" data-teinte={boite.repere.teinte}
+                        aria-hidden="true"><Icone nom={boite.repere.icone} taille={14} /></span>
+                {/if}
+                <span class="lib">{boite.libelle}</span>
+              </span>
+            {/if}
             <span class="apercu">{m.preview ?? ''}</span>
             <span class="quand">{quandLong(m.epoch)}</span>
           </div>
@@ -548,8 +607,18 @@
     display:flex; align-items:center; gap:10px; padding:12px 20px;
     border-bottom:1px solid var(--border); cursor:pointer;
   }
-  .tete-message .qui { min-width:0; display:flex; flex-direction:column; }
+  /* `flex:1 1 auto` : sans lui, .qui se dimensionnait au contenu et le
+     plafond du tiers de .boite se résolvait contre ce groupe étroit —
+     la règle écrite au Système (« jamais plus du tiers de la LIGNE »)
+     ne décrivait pas ce que le fil rendait (revue). */
+  .tete-message .qui { min-width:0; flex:1 1 auto; display:flex; flex-direction:column; }
+  /* A80/D5 : nom + bloc de boîte sur la même ligne — le bloc
+     (systeme.css) garde son plafond du tiers et cède le premier. */
+  .tete-message .rang-nom {
+    display:flex; align-items:baseline; gap:6px; min-width:0;
+  }
   .tete-message .auteur {
+    flex:0 1 auto; min-width:0;
     font-size:15px; font-weight:600; color:var(--ink);
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }

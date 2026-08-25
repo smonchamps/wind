@@ -276,12 +276,53 @@ svg.g{flex:none}
 @keyframes tourne{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.anneau{animation:none}}
 
-/* La pastille de repère de compte (A74) — le SEUL autre rond, et il
-   porte un glyphe que la couleur seule ne dirait pas. La teinte SUIT la
-   polarité : figée au clair, son glyphe tomberait à 2,35:1 en nuit. */
+/* La pastille de repère de compte (A74, amendée A82) — elle ne vit
+   plus qu'aux Réglages (pastille de CHOIX) ; partout ailleurs le
+   repère est un TRACÉ nu (.rep-nu). La teinte SUIT la polarité :
+   figée au clair, son glyphe tomberait à 2,35:1 en nuit. */
 .rep{width:16px;height:16px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
   flex:none;color:#ffffff}
 [data-theme="elements-nuit"] .rep{color:#1c1b1b}
+/* A82 — le repère nu : le tracé à la teinte du compte, sans contenant
+   (16 px dans la nav, 14 px dans la ligne d'entête et au fil). */
+.rep-nu{display:inline-flex;flex:none}
+.rep-nu[data-teinte="rouge"]{color:#a93226}
+.rep-nu[data-teinte="orange"]{color:#9c4a06}
+.rep-nu[data-teinte="ocre"]{color:#7a5c00}
+.rep-nu[data-teinte="olive"]{color:#556000}
+.rep-nu[data-teinte="vert"]{color:#186a2b}
+.rep-nu[data-teinte="sapin"]{color:#0b635d}
+.rep-nu[data-teinte="bleu"]{color:#0a5a8f}
+.rep-nu[data-teinte="indigo"]{color:#3f4dbb}
+.rep-nu[data-teinte="violet"]{color:#712cb0}
+.rep-nu[data-teinte="magenta"]{color:#991d7c}
+.rep-nu[data-teinte="rose"]{color:#ad204c}
+.rep-nu[data-teinte="brun"]{color:#7a4a1b}
+[data-theme="elements-nuit"] .rep-nu[data-teinte="rouge"]{color:#f1998e}
+[data-theme="elements-nuit"] .rep-nu[data-teinte="orange"]{color:#f2a76c}
+[data-theme="elements-nuit"] .rep-nu[data-teinte="ocre"]{color:#e5c04b}
+[data-theme="elements-nuit"] .rep-nu[data-teinte="olive"]{color:#c3cc4e}
+[data-theme="elements-nuit"] .rep-nu[data-teinte="vert"]{color:#7fd18c}
+[data-theme="elements-nuit"] .rep-nu[data-teinte="sapin"]{color:#5ecec4}
+[data-theme="elements-nuit"] .rep-nu[data-teinte="bleu"]{color:#72bdf0}
+[data-theme="elements-nuit"] .rep-nu[data-teinte="indigo"]{color:#aab4fa}
+[data-theme="elements-nuit"] .rep-nu[data-teinte="violet"]{color:#cba4f5}
+[data-theme="elements-nuit"] .rep-nu[data-teinte="magenta"]{color:#f095d8}
+[data-theme="elements-nuit"] .rep-nu[data-teinte="rose"]{color:#f79ab4}
+[data-theme="elements-nuit"] .rep-nu[data-teinte="brun"]{color:#dcab7c}
+/* A80 — le bloc de boîte : « sur <tracé> Libellé », partagé par la
+   ligne d'entête et le fil (D5), comme au produit (systeme.css).
+   Plafond au tiers (mesuré), l'heure ne cède jamais, ellipse partout.
+   QUALIFIÉ par son contexte : ce document a déjà une classe `.boite`
+   (la rangée de compte de la nav, `.rang.boite` plus haut) — une règle
+   nue lui imposerait ce plafond du tiers et son display (revue).
+   Pas de min-width:0 sur le bloc, comme au produit : il ne doit pas
+   descendre sous « sur <tracé> », sinon son contenu déborde sur
+   l'heure ; c'est .lib qui porte le min-width:0, donc l'ellipse. */
+.l1 .boite,.carte .boite{flex:0 3 auto;max-width:33%;display:inline-flex;align-items:center;gap:5px;
+  font-size:12.5px;color:var(--ink2);white-space:nowrap;font-weight:400}
+.l1 .boite .mot,.carte .boite .mot{color:var(--muted);flex:none}
+.l1 .boite .lib,.carte .boite .lib{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* .echantillon : la SEULE pastille dont la teinte est figée en ligne —
    la table de référence du nuancier doit montrer les deux valeurs
    quel que soit le thème affiché. Partout ailleurs, data-teinte. */
@@ -1249,17 +1290,22 @@ svg.g{flex:none}
     ne sert qu'en <b>liseré et en anneau de focus</b>, jamais en libellé. Les quatre autres encres y
     passent sans réserve.</p>
 
-    <p class="etiq">Le nuancier des repères de compte (A74) — douze teintes, deux polarités</p>
+    <p class="etiq">Le nuancier des repères de compte (A74, amendé A82) — douze teintes, deux polarités</p>
     <p class="sub">Ce sont des couleurs de <b>contenu</b>, pas des jetons de thème : elles ne suivent
     pas la direction, elles sont <b>mesurées contre elle</b>. Fait re-dérivé au banc : aucune teinte
     unique ne tient 3:1 sur le fond clair <b>et</b> sur le fond nuit — chaque famille vit donc en deux
     déclinaisons, la sombre servie au thème clair (glyphe blanc), la claire au thème nuit (glyphe
     <code>#1c1b1b</code>), par <code>.rep[data-teinte]</code> exactement comme
-    <code>systeme.css</code>. <b>Le glyphe montré ci-dessous est arbitraire et identique sur toutes
+    <code>systeme.css</code> — où les 24 hex vivent en jetons <code>--rep-&lt;teinte&gt;</code>
+    depuis A82, car chaque hex sert deux fois. <b>Deux emplois</b> : la <b>pastille</b>, 20 px,
+    <b>aux Réglages seulement</b> (rangée de compte et nuancier de choix — le fond porte la teinte,
+    le glyphe la traverse), et le <b>tracé</b> — la teinte en <code>color</code> du glyphe nu —
+    16 px dans la nav, 14 px dans la ligne d'entête et au volet de lecture (A80/A82).
+    <b>Le glyphe montré ci-dessous est arbitraire et identique sur toutes
     les lignes</b> : la teinte et le glyphe se choisissent <b>séparément</b>, aucun couple n'est
-    imposé. La pastille est mesurée sur les cinq fonds où elle se pose — la rangée
+    imposé. La teinte est mesurée sur les cinq fonds où elle se pose — la rangée
     (<code>bg</code>, <code>sel</code>, <code>hover</code>, <code>tuile</code>), la carte et le rail
-    des Réglages (<code>surface</code>).</p>
+    des Réglages (<code>surface</code>) — la même table valant pour la pastille et pour le tracé.</p>
     <table class="tbl">
       <thead><tr><th scope="col" style="width:110px">Teinte</th>
         <th scope="col" style="width:64px">Clair</th><th scope="col" style="width:110px"></th><th scope="col" style="width:120px">Pire fond</th>
@@ -1444,7 +1490,6 @@ svg.g{flex:none}
     <div class="fiches duo">
       <div class="fiche"><h3 class="sourcil">Appliqué</h3>
     <div class="rangee" style="border:1px solid var(--border);border-radius:var(--r-controle);background:var(--surface)">
-      <span class="col"><span class="tuileini">CR</span></span>
       <span class="txt">
         <span class="l1"><span class="exp">Camille Rousseau</span><span class="h">09:12</span></span>
         <span class="obj">Relecture du contrat Vantis et de ses annexes tarifaires du second semestre</span>
@@ -1455,7 +1500,6 @@ svg.g{flex:none}
         coupent de la même façon.</p></div>
       <div class="fiche"><h3 class="sourcil">À éviter</h3>
     <div class="rangee" style="border:1px solid var(--border);border-radius:var(--r-controle);background:var(--surface)">
-      <span class="col"><span class="tuileini">CR</span></span>
       <span class="txt">
         <span class="l1"><span class="exp">Camille Rousseau</span><span class="h">09:12</span></span>
         <span class="obj" style="white-space:normal;overflow:visible">Relecture du contrat Vantis et de ses annexes tarifaires du second semestre</span>
@@ -1488,8 +1532,10 @@ svg.g{flex:none}
         <p><b>Zéro rayon</b> (V14). Surfaces, contrôles, tuiles : coin vif partout, dans ce document
         comme dans le produit. La règle tient dans une phrase, et elle se vérifie d'un regard.</p>
         <p>Restent <b>deux formes rondes</b>, et elles ne sont pas des rayons : le <b>disque</b>
-        (50 %) dit l'état et l'identité — non-lu, cycle, repère de compte, poignée d'interrupteur — et
-        la <b>pilule</b> (999) dit le glissement, à la seule piste de l'interrupteur. Ce sont les
+        (50 %) dit l'état — non-lu, cycle — et la poignée d'interrupteur, et
+        la <b>pilule</b> (999) dit le glissement, à la seule piste de l'interrupteur. L'identité
+        d'un compte, elle, se dit désormais <b>en lettres</b> (A80) et <b>en tracé</b> (A82) — plus
+        par un rond. Ce sont les
         <b>seules</b> choses rondes du système, et c'est ce qui leur donne leur force : V4 avait rendu
         le rond au disque à moitié, V14 va jusqu'au bout.</p>
         <p>Une exception, déclarée et permanente : le rayon de l'<b>icône d'application</b> (15/64)
@@ -1517,9 +1563,11 @@ svg.g{flex:none}
         <p>Ø <b>9 px</b>, en <code>--marque</code>, deux emplois : le non-lu d'une rangée et
         l'indicateur de la barre d'état. Pour lui rendre son unicité, deux ronds sont retirés :
         l'<b>avatar d'initiales devient un carré</b> (tuile, coin vif depuis V14) et la <b>pastille pleine de
-        non-lus de la navigation devient un nombre</b> en chiffres tabulaires, à l'accent. Reste un
-        seul autre rond dans tout le système : la pastille de repère de compte, Ø 16 px — et elle
-        porte un glyphe, donc elle dit quelque chose que la couleur seule ne dirait pas (A8).</p>
+        non-lus de la navigation devient un nombre</b> en chiffres tabulaires, à l'accent. Depuis
+        A82, le disque est <b>la seule forme ronde de l'écran 02</b> — mesuré sur la fenêtre
+        entière : la pastille de repère a quitté la nav pour un tracé nu. Elle subsiste aux
+        <b>Réglages</b> — pastille <b>de choix</b>, pas marque d'identité ; elle y garde son glyphe
+        pour la raison de V5 (A8 : jamais la couleur seule).</p>
       </div>
       <div class="fiche">
         <h3 class="sourcil">Marges symétriques (A33)</h3>
@@ -1574,7 +1622,8 @@ svg.g{flex:none}
     <p class="sub"><b>Zéro rayon.</b> Surfaces, contrôles, tuiles, cartes, modales, puces, champs,
     onglets, rangées de navigation, fenêtre d'application : <b>coin vif partout</b>, dans ce document
     comme dans le produit. Restent <b>deux formes rondes</b>, et chacune dit quelque chose — le
-    <b>disque</b> (l'état, l'identité) et la <b>pilule</b> de l'interrupteur (le glissement). Une seule
+    <b>disque</b> (l'état ; l'identité l'a quitté avec A82) et la <b>pilule</b> de l'interrupteur (le
+    glissement). Une seule
     exception, déclarée et permanente : l'icône d'application, dont le rayon est une cote de
     plateforme. C'est le verdict V14 ; voici ce qui l'a établi, et ce qu'il coûte.</p>
     <div class="rangeeH">
@@ -1605,8 +1654,8 @@ svg.g{flex:none}
         arrondi le dilue</b> : une carte à 10, un bouton à 6 et une tuile à 2 étaient trois degrés de
         rondeur qui ne disaient rien.</p>
         <p style="color:var(--ink);font-size:15px;line-height:1.6"><b>Zéro rayon. Deux formes rondes,
-        et elles disent quelque chose : le disque</b> (l'état, l'identité) <b>et la pilule</b> (le
-        glissement).</p>
+        et elles disent quelque chose : le disque</b> (l'état — depuis A82 il ne dit plus que cela)
+        <b>et la pilule</b> (le glissement).</p>
         <p>La règle est plus courte que celle qu'elle remplace — « trois rayons, aucune autre
         valeur » — et elle se vérifie d'un regard. C'est le geste de V3, qui a tué
         <code>--panel</code> pour laisser le filet faire le travail : ici on tue les rayons pour
@@ -1661,7 +1710,7 @@ svg.g{flex:none}
     <div class="bande" style="gap:18px">
       <span class="disque" title="le disque : l'état"></span>
       <span class="anneau" title="l'anneau : le cycle"></span>
-      <span class="rep p24" data-teinte="sapin" title="la pastille : l'identité"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span>
+      <span class="rep p24" data-teinte="sapin" title="la pastille : le choix (Réglages, A82)"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span>
       <span class="inter arme" title="la pilule : le glissement"><i></i></span>
     </div>
   </div>
@@ -1693,7 +1742,7 @@ svg.g{flex:none}
     <div class="bande" style="gap:18px">
       <span class="disque" title="le disque : l'état"></span>
       <span class="anneau" title="l'anneau : le cycle"></span>
-      <span class="rep p24" data-teinte="sapin" title="la pastille : l'identité"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span>
+      <span class="rep p24" data-teinte="sapin" title="la pastille : le choix (Réglages, A82)"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span>
       <span class="inter arme" title="la pilule : le glissement"><i></i></span>
     </div>
   </div>
@@ -1910,9 +1959,11 @@ svg.g{flex:none}
     <p class="note">Écart mesuré à la grammaire : <b>24 glyphes sur 78</b>
     emploient au moins un arc, quand le document d'icônes n'en emploie que dans le rabat de Wind.
     Les 14 durs sont : <code>account_balance</code>, <code>eco</code>, <code>favorite</code>, <code>flight</code>, <code>format_list_numbered</code>, <code>group_add</code>, <code>keyboard</code>, <code>person_add</code>, <code>pets</code>, <code>schedule_send</code>, <code>school</code>, <code>sports_esports</code>, <code>star</code>, <code>volunteer_activism</code>.
-    Douze d'entre eux sont les repères de compte, rendus à 10-12 px dans une pastille — ils passent
-    <b>sous le palier 16 lui-même</b>, et il leur faudrait un quatrième palier que le document n'a
-    pas. C'est le prix de la décision de garder le glyphe dans la pastille (V5).</p>
+    Douze d'entre eux sont les repères de compte — rendus à 12 px dans la pastille des Réglages
+    (le seul emploi en pastille depuis A82) et en tracé de 14-16 px dans la ligne et la nav. À 12 px
+    ils passent <b>sous le palier 16 lui-même</b>, et il leur faudrait un quatrième palier que le
+    document n'a pas. C'est le prix de la décision de garder le glyphe dans la pastille (V5) ; A82
+    a relevé les autres emplois à 14-16 px.</p>
 
     <p class="etiq">Le palier — le coût réel n'est pas le dessin</p>
     <p class="sub">Un trait de 2 unités sur une grille de 24, rendu à P px, mesure 2 ÷ 24 × P. Les
@@ -1950,8 +2001,10 @@ svg.g{flex:none}
             0.83 · 1.00 · 1.17 · 1.33 · 1.50 · 2.00 · 4.00 px</td></tr>
       </tbody>
     </table>
-    <p class="note">À 10 px — la taille d'un repère de compte dans une rangée — le trait vaut
-    <b>0,83 px</b> : il passe sous le pixel. À 16 px, la taille par défaut de tout le produit, il vaut
+    <p class="note">À 12 px — la taille d'un glyphe de repère dans la pastille des Réglages, le plus
+    petit emploi restant depuis A82 — le trait vaut <b>1,00 px</b> ; à 10 px il passait sous le
+    pixel (l'ancien badge de liste, mort avec A80). À 16 px, la taille par défaut de tout le
+    produit, il vaut
     <b>1,33 px</b> et tombe sur des tiers de pixel. C'est la dette V9, et elle ne se délègue pas à
     une mise à l'échelle.</p>
 
@@ -2062,7 +2115,7 @@ svg.g{flex:none}
         <tr>
           <td style="color:var(--ink)"><svg class="g" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 1 0 0-7"/><path d="M5 20v-1a7 7 0 0 1 14 0v1"/></g></svg></td>
           <td class="mono">person</td>
-          <td>paul@atelier-nord.fr</td><td>Boîte de compte et tuile de la boîte en cours — le DÉFAUT d'un compte sans repère ; un repère choisi le remplace par sa pastille (A74)</td></tr>
+          <td>paul@atelier-nord.fr</td><td>Boîte de compte et tuile de la boîte en cours — le DÉFAUT d'un compte sans repère ; un repère choisi le remplace par son tracé (A82)</td></tr>
         <tr>
           <td style="color:var(--ink)"><svg class="g" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></td>
           <td class="mono">home</td>
@@ -2565,7 +2618,7 @@ svg.g{flex:none}
   </div>
     
   <div class="rang ">
-    <span class="rep" data-teinte="bleu" title="marie@atelier-brindille.fr"><svg class="g" viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span>
+    <span class="rep-nu" data-teinte="bleu" title="marie@atelier-brindille.fr"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span>
     <span class="l">Atelier Brindille</span>
   </div>
   </nav>
@@ -2575,26 +2628,24 @@ svg.g{flex:none}
             <p class="section-liste">Épinglés</p>
             
   <div class="rangee epingle ">
-    <span class="col"><span class="tuileini">SN</span></span>
     <span class="txt">
       <span class="l1">
-        
+
         <span style="color:var(--tuileInk);display:inline-flex"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 3h4v7l2 4H8l2-4z"/><path d="M12 14v7"/></g></svg></span>
         <span class="exp">Sofia Nardi</span><span class="h">4 août</span>
       </span>
       <span class="obj">Atelier de septembre</span>
       <span class="apr">Nous visons la semaine du 14, deux salles réservées à Milan.</span>
-      
+
     </span>
   </div>
             <p class="section-liste">Tous les messages</p>
             
   <div class="rangee sel ">
-    <span class="col"><span class="tuileini">CR</span></span>
     <span class="txt">
       <span class="l1">
-        
-        
+
+
         <span class="exp">Camille Rousseau</span><span class="h">09:12</span>
       </span>
       <span class="obj">Relecture du contrat Vantis</span>
@@ -2604,11 +2655,10 @@ svg.g{flex:none}
   </div>
             
   <div class="rangee  nonlu">
-    <span class="col"><span class="tuileini">YB</span></span>
     <span class="txt">
       <span class="l1">
         <span class="disque"></span>
-        
+
         <span class="exp">Yanis Belkacem</span><span class="h">08:40</span>
       </span>
       <span class="obj">Planning de la semaine 33</span>
@@ -2618,11 +2668,10 @@ svg.g{flex:none}
   </div>
             
   <div class="rangee survol ">
-    <span class="col"><span class="tuileini">LF</span></span>
     <span class="txt">
       <span class="l1">
-        
-        
+
+
         <span class="exp">Léa Fontaine</span><span class="h">Hier</span>
       </span>
       <span class="obj">Compte rendu du 4 août</span>
@@ -2632,11 +2681,10 @@ svg.g{flex:none}
   </div>
             
   <div class="rangee  ">
-    <span class="col"><span class="tuileini">SC</span></span>
     <span class="txt">
       <span class="l1">
-        
-        
+
+
         <span class="exp">Service comptabilité</span><span class="h">5 août</span>
       </span>
       <span class="obj">Facture 2026-0841 réglée</span>
@@ -2664,12 +2712,15 @@ svg.g{flex:none}
       </span>
     </div>
     <div class="carte replie"><span class="tuileini p26">PM</span><span class="nom">Paul Mérand</span>
+      <span class="boite"><span class="mot">sur</span><span class="lib">paul@atelier-nord.fr</span></span>
       <span class="ap">Merci, je regarde ça ce soir et je te réponds demain.</span><span class="h">Lundi, 18:20</span></div>
     <div class="carte replie"><span class="tuileini p26">SN</span><span class="nom">Sofia Nardi</span>
+      <span class="boite"><span class="mot">sur</span><span class="lib">paul@atelier-nord.fr</span></span>
       <span class="ap">J'ajoute la grille tarifaire mise à jour au fil.</span><span class="h">Mardi, 11:05</span></div>
     <div class="carte">
       <div class="msg-tete"><span class="tuileini">CR</span>
-        <span><span class="nom">Camille Rousseau</span><br>
+        <span style="min-width:0"><span style="display:flex;align-items:baseline;gap:6px;min-width:0"><span class="nom">Camille Rousseau</span>
+        <span class="boite"><span class="mot">sur</span><span class="lib">paul@atelier-nord.fr</span></span></span>
         <span class="adr">c.rousseau@atelier-nord.fr · à Paul Mérand</span></span>
         <span class="h">Aujourd'hui, 09:12</span></div>
       <div class="joints">
@@ -2704,11 +2755,14 @@ svg.g{flex:none}
   </div>
     </div>
 
-    <p class="sub"><b>La rangée.</b> Chaque ligne porte une <b>tuile d'initiales de 28 px</b> —
-    un carré net, sol <code>--tuile</code>, encre <code>--tuileInk</code>, filet de 1 px,
-    11 px 600 — <b>visuelle seule</b> : aucun geste, la sélection en lot n'existe pas. Le
+    <p class="sub"><b>La rangée.</b> Depuis A81 elle n'a <b>plus de colonne de tête</b> : la tuile
+    d'initiales a quitté la liste (elle vit encore au fil et au dossier Brouillons, où elle
+    travaille), le contenu prend toute la largeur. Le
     <b>non-lu</b> se dit par un <b>disque de 9 px</b> en tête de première ligne, plus la graisse de
-    l'expéditeur et de l'objet. Le survol teinte le fond sans déplacer le contenu ; la sélection prend
+    l'expéditeur et de l'objet. En boîte unifiée et en recherche, la ligne d'entête porte le <b>bloc
+    de boîte</b> (A80) entre le nom et l'heure — la maquette ci-dessus est la vue d'un seul compte,
+    où le bloc n'a rien à dire (D7) et où, le bloc étant en ligne, son absence ne décale rien. Le
+    survol teinte le fond sans déplacer le contenu ; la sélection prend
     <code>--sel</code> et le liseré d'accent de 2 px au bord gauche — jamais d'ombre ni de surface
     blanche. Le <b>pied de liste</b> porte les trois onglets et le couple « non-lus / total » en
     chiffres tabulaires.</p>
@@ -2767,44 +2821,45 @@ svg.g{flex:none}
         sa forme : « Brouillons · 3 messages ».</p>
       </div>
       <div class="fiche">
-        <h3 class="sourcil">Le repère de compte, en boîte unifiée seulement</h3>
+        <h3 class="sourcil">Le bloc de boîte, en boîte unifiée seulement (A80)</h3>
         <div style="border:1px solid var(--border);border-radius:var(--r-controle);overflow:hidden">
-          
+
   <div class="rangee  nonlu">
-    <span class="col"><span class="tuileini">MB</span><span class="rep" data-teinte="bleu" title="marie@atelier-brindille.fr"><svg class="g" viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span>
     <span class="txt">
       <span class="l1">
         <span class="disque"></span>
-        
-        <span class="exp">Marie Brindille</span><span class="h">11:02</span>
+
+        <span class="exp">Marie Brindille</span><span class="boite" title="Atelier Brindille — marie@atelier-brindille.fr"><span class="mot">sur</span><span class="rep-nu" data-teinte="bleu"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span><span class="lib">Atelier Brindille</span></span><span class="h">11:02</span>
       </span>
       <span class="obj">Devis atelier — relance</span>
       <span class="apr">Je te renvoie le devis corrigé.</span>
-      
+
     </span>
   </div>
-          
+
   <div class="rangee  ">
-    <span class="col"><span class="tuileini">CR</span><span class="rep" data-teinte="sapin" title="paul@atelier-nord.fr"><svg class="g" viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span>
     <span class="txt">
       <span class="l1">
-        
-        
-        <span class="exp">Camille Rousseau</span><span class="h">09:12</span>
+
+
+        <span class="exp">Camille Rousseau</span><span class="boite" title="paul@atelier-nord.fr — paul@atelier-nord.fr"><span class="mot">sur</span><span class="lib">paul@atelier-nord.fr</span></span><span class="h">09:12</span>
       </span>
       <span class="obj">Relecture du contrat Vantis</span>
       <span class="apr">Il reste la clause de renouvellement.</span>
-      
+
     </span>
   </div>
         </div>
-        <p>En <b>boîte unifiée seulement</b> (là où identifier le compte a un sens ; jamais dans la vue
-        d'un seul compte, où il ne dirait rien), une ligne dont le compte porte un repère montre,
-        <b>sous la tuile</b>, une pastille de 16 px — teinte du nuancier, glyphe du jeu dédié à 10 px,
-        <b>infobulle = l'adresse</b>. Elle s'empile dans la colonne de la tuile (28 + 4 + 16), plus
-        courte que les trois rangs de contenu : les deux gabarits de hauteur ne bougent pas, le
-        fenêtrage non plus. Décorative pour les lecteurs d'écran : l'information est portée par
-        l'adresse, déjà lisible ailleurs.</p>
+        <p>En <b>boîte unifiée et en recherche seulement</b> (là où identifier le compte a un sens ;
+        jamais dans la vue d'un seul compte, ni sur un poste qui n'a qu'un seul compte, où il ne
+        dirait rien — D7), <b>chaque</b> ligne dit sa
+        boîte <b>en toutes lettres</b> dans la ligne d'entête : <code>sur</code> à l'encre atténuée,
+        le tracé du repère à la teinte du compte (14 px — absent si le compte n'en a pas, D8 : le
+        mot suffit), le libellé — nom personnalisé (A78) ou adresse ; <b>infobulle = « libellé —
+        adresse »</b>. Le bloc est <b>en ligne</b> : aucune colonne réservée, les deux gabarits de
+        hauteur ne bougent pas, le fenêtrage non plus. Le tracé est décoratif pour les lecteurs
+        d'écran : l'information est portée par le libellé, qui reste entier au DOM sous sa
+        troncature CSS.</p>
       </div>
     </div>
 
@@ -2867,7 +2922,7 @@ svg.g{flex:none}
   </div>
     
   <div class="rang ">
-    <span class="rep" data-teinte="bleu" title="marie@atelier-brindille.fr"><svg class="g" viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span>
+    <span class="rep-nu" data-teinte="bleu" title="marie@atelier-brindille.fr"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span>
     <span class="l">Atelier Brindille</span>
   </div>
   </nav>
@@ -2877,44 +2932,41 @@ svg.g{flex:none}
           <div class="flot">
             
   <div class="rangee  ">
-    <span class="col"><span class="tuileini">CR</span><span class="rep" data-teinte="sapin" title="paul@atelier-nord.fr"><svg class="g" viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span>
     <span class="txt">
       <span class="l1">
-        
-        
-        <span class="exp">Camille Rousseau</span><span class="h">09:12</span>
+
+
+        <span class="exp">Camille Rousseau</span><span class="boite" title="paul@atelier-nord.fr"><span class="mot">sur</span><span class="rep-nu" data-teinte="sapin"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span><span class="lib">paul@atelier-nord.fr</span></span><span class="h">09:12</span>
       </span>
       <span class="obj">Relecture du <span class="surligne">contrat Vantis</span></span>
       <span class="apr">J'ai repris les articles 4 et 7 après notre échange de lundi.</span>
-      
+
     </span>
   </div>
-            
+
   <div class="rangee  ">
-    <span class="col"><span class="tuileini">PM</span><span class="rep" data-teinte="sapin" title="paul@atelier-nord.fr"><svg class="g" viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span>
     <span class="txt">
       <span class="l1">
-        
-        
-        <span class="exp">Paul Mérand</span><span class="h">Lundi</span>
+
+
+        <span class="exp">Paul Mérand</span><span class="boite" title="paul@atelier-nord.fr"><span class="mot">sur</span><span class="rep-nu" data-teinte="sapin"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span><span class="lib">paul@atelier-nord.fr</span></span><span class="h">Lundi</span>
       </span>
       <span class="obj">Re : Relecture du <span class="surligne">contrat Vantis</span></span>
       <span class="apr">Merci, je regarde ça ce soir et je te réponds demain.</span>
-      
+
     </span>
   </div>
-            
+
   <div class="rangee  ">
-    <span class="col"><span class="tuileini">MB</span><span class="rep" data-teinte="bleu" title="marie@atelier-brindille.fr"><svg class="g" viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span>
     <span class="txt">
       <span class="l1">
-        
-        
-        <span class="exp">Marie Brindille</span><span class="h">2 août</span>
+
+
+        <span class="exp">Marie Brindille</span><span class="boite" title="Atelier Brindille — marie@atelier-brindille.fr"><span class="mot">sur</span><span class="rep-nu" data-teinte="bleu"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span><span class="lib">Atelier Brindille</span></span><span class="h">2 août</span>
       </span>
       <span class="obj"><span class="surligne">Contrat</span> de sous-traitance</span>
       <span class="apr">Le <span class="surligne">Vantis</span> arrive en fin de période.</span>
-      
+
     </span>
   </div>
           </div>
@@ -2934,12 +2986,15 @@ svg.g{flex:none}
       </span>
     </div>
     <div class="carte replie"><span class="tuileini p26">PM</span><span class="nom">Paul Mérand</span>
+      <span class="boite"><span class="mot">sur</span><span class="lib">paul@atelier-nord.fr</span></span>
       <span class="ap">Merci, je regarde ça ce soir et je te réponds demain.</span><span class="h">Lundi, 18:20</span></div>
     <div class="carte replie"><span class="tuileini p26">SN</span><span class="nom">Sofia Nardi</span>
+      <span class="boite"><span class="mot">sur</span><span class="lib">paul@atelier-nord.fr</span></span>
       <span class="ap">J'ajoute la grille tarifaire mise à jour au fil.</span><span class="h">Mardi, 11:05</span></div>
     <div class="carte">
       <div class="msg-tete"><span class="tuileini">CR</span>
-        <span><span class="nom">Camille Rousseau</span><br>
+        <span style="min-width:0"><span style="display:flex;align-items:baseline;gap:6px;min-width:0"><span class="nom">Camille Rousseau</span>
+        <span class="boite"><span class="mot">sur</span><span class="lib">paul@atelier-nord.fr</span></span></span>
         <span class="adr">c.rousseau@atelier-nord.fr · à Paul Mérand</span></span>
         <span class="h">Aujourd'hui, 09:12</span></div>
       <div class="joints">
@@ -2973,8 +3028,8 @@ svg.g{flex:none}
     <span class="bt"><span class="btn nu"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></g></svg>Synchroniser</span></span>
   </div>
     </div>
-    <p class="note">La recherche <b>traverse les comptes et les dossiers</b> : le repère de compte y
-    apparaît donc, comme en boîte unifiée. Un résultat est un <b>message</b>, pas une conversation —
+    <p class="note">La recherche <b>traverse les comptes et les dossiers</b> : le bloc de boîte y
+    apparaît donc, comme en boîte unifiée (A80). Un résultat est un <b>message</b>, pas une conversation —
     le cœur ne joint pas les fils en recherche : la puce « n messages » n'y figure pas, par
     construction. La barre d'état dit le compte : « Recherche · N résultats », ou
     « <b>Recherche · N sur M résultats</b> » quand le rendu est plafonné (100 max, A50) — le total M
@@ -3212,7 +3267,13 @@ svg.g{flex:none}
     <p class="sub">L'écran 03 est <b>à plat</b> (A72) : plus de carte pleine — une colonne de lecture
     centrée, bornée à 960 px, la scène défile en un seul flot. Le volet de lecture et l'écran 03 sont
     <b>deux cadres du même objet</b> (composant Fil, état partagé) : agrandir ne recharge rien,
-    dépliage et corps survivent. Le titre passe au <b>registre d'affichage</b> (24 px, graisse 340).</p>
+    dépliage et corps survivent. Le titre passe au <b>registre d'affichage</b> (24 px, graisse 340).
+    Depuis A80 (D5), chaque carte — dépliée comme repliée — porte le <b>bloc de boîte</b> derrière
+    le nom de l'expéditeur, en graisse normale : le nom garde l'autorité. Le compte se lit sur le
+    message ; tous les messages d'un fil venant de la même boîte, la mention se répète — elle vaut
+    pour le premier coup d'œil. <b>Aux mêmes conditions que la liste</b> (verdict terrain du
+    2026-08-25) : là où la rangée se tait — vue d'un seul compte, poste à un seul compte — la carte
+    se tait aussi.</p>
 
     <div class="scene" style="padding:26px;display:flex;justify-content:center">
       <div style="width:960px;max-width:100%;display:flex;flex-direction:column;gap:14px">
@@ -3225,14 +3286,17 @@ svg.g{flex:none}
           <span style="margin-left:auto"><span class="btn nu"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M7 10l5-5 5 5"/><path d="M7 14l5 5 5-5"/></g></svg>Tout déplier</span></span>
         </div>
         <div class="carte replie"><span class="tuileini p26">PM</span><span class="nom">Paul Mérand</span>
+          <span class="boite"><span class="mot">sur</span><span class="lib">paul@atelier-nord.fr</span></span>
           <span class="ap">Merci, je regarde ça ce soir et je te réponds demain.</span>
           <span class="h">Lundi, 18:20</span></div>
         <div class="carte replie"><span class="tuileini p26">SN</span><span class="nom">Sofia Nardi</span>
+          <span class="boite"><span class="mot">sur</span><span class="lib">paul@atelier-nord.fr</span></span>
           <span class="ap">J'ajoute la grille tarifaire mise à jour au fil.</span>
           <span class="h">Mardi, 11:05</span></div>
         <div class="carte">
           <div class="msg-tete"><span class="tuileini">CR</span>
-            <span><span class="nom">Camille Rousseau</span><br>
+            <span style="min-width:0"><span style="display:flex;align-items:baseline;gap:6px;min-width:0"><span class="nom">Camille Rousseau</span>
+            <span class="boite"><span class="mot">sur</span><span class="lib">paul@atelier-nord.fr</span></span></span>
             <span class="adr">c.rousseau@atelier-nord.fr · à Paul Mérand</span></span>
             <span class="h">Aujourd'hui, 09:12</span></div>
           <div class="joints">
@@ -3861,88 +3925,97 @@ svg.g{flex:none}
     <h2>Ligne de message</h2>
     <p class="sub">Deux gabarits — <b>h1 nue</b> et <b>h2 porteuse</b> de son rang de puces (A44) —
     tous deux sondés par la mécanique de fenêtrage. Une ligne qui a quelque chose à dire porte un rang
-    de puces de 24 px et s'en agrandit ; il n'y a pas de rang réservé sur les lignes nues. La tuile
-    enjambe les rangs du contenu, le rang de puces vit en colonne 2.</p>
+    de puces de 24 px et s'en agrandit ; il n'y a pas de rang réservé sur les lignes nues. Depuis A81
+    la rangée n'a <b>plus de colonne de tête</b> (la tuile d'initiales a quitté la liste) : la ligne
+    d'entête porte, dans l'ordre, le disque de non-lu, le nom d'expéditeur, le <b>bloc de boîte</b>
+    (A80 — en boîte unifiée et en recherche) et l'heure ; l'objet et l'aperçu suivent, pleine
+    largeur. Ci-dessous, un décor de boîte unifiée : « Travail » est un compte au nom personnalisé et
+    au repère ; l'autre compte n'a ni l'un ni l'autre — sa boîte se dit quand même, par l'adresse
+    (D8).</p>
     <div style="width:520px;max-width:100%;border:1px solid var(--border);border-radius:var(--r-surface);overflow:hidden">
-      
+
   <div class="rangee  ">
-    <span class="col"><span class="tuileini">SN</span></span>
     <span class="txt">
       <span class="l1">
-        
-        
-        <span class="exp">Sofia Nardi</span><span class="h">4 août</span>
+
+
+        <span class="exp">Sofia Nardi</span><span class="boite"><span class="mot">sur</span><span class="rep-nu" data-teinte="sapin"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span><span class="lib">Travail</span></span><span class="h">4 août</span>
       </span>
       <span class="obj">Atelier de septembre</span>
       <span class="apr">Nous visons la semaine du 14.</span>
-      
+
     </span>
   </div>
-      
+
   <div class="rangee  nonlu">
-    <span class="col"><span class="tuileini">YB</span></span>
     <span class="txt">
       <span class="l1">
         <span class="disque"></span>
-        
-        <span class="exp">Yanis Belkacem</span><span class="h">08:40</span>
+
+        <span class="exp">Yanis Belkacem</span><span class="boite"><span class="mot">sur</span><span class="lib">paul@merand.fr</span></span><span class="h">08:40</span>
       </span>
       <span class="obj">Planning de la semaine 33</span>
       <span class="apr">Deux créneaux se chevauchent mardi.</span>
-      
+
     </span>
   </div>
-      
+
   <div class="rangee survol ">
-    <span class="col"><span class="tuileini">LF</span></span>
     <span class="txt">
       <span class="l1">
-        
-        
-        <span class="exp">Léa Fontaine</span><span class="h">Hier</span>
+
+
+        <span class="exp">Léa Fontaine</span><span class="boite"><span class="mot">sur</span><span class="rep-nu" data-teinte="sapin"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span><span class="lib">Travail</span></span><span class="h">Hier</span>
       </span>
       <span class="obj">Compte rendu du 4 août</span>
       <span class="apr">Trois décisions actées.</span>
-      
+
     </span>
   </div>
-      
+
   <div class="rangee sel ">
-    <span class="col"><span class="tuileini">CR</span></span>
     <span class="txt">
       <span class="l1">
-        
-        
-        <span class="exp">Camille Rousseau</span><span class="h">09:12</span>
+
+
+        <span class="exp">Camille Rousseau</span><span class="boite"><span class="mot">sur</span><span class="rep-nu" data-teinte="sapin"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span><span class="lib">Travail</span></span><span class="h">09:12</span>
       </span>
       <span class="obj">Relecture du contrat Vantis</span>
       <span class="apr">Il reste la clause de renouvellement.</span>
       <span class="puces" style="margin-top:5px"><span class="puce"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 5V2h16v10h-6"/><path d="M2 5h14v9H7l-5 5z"/></g></svg>3 messages</span><span class="puce"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M19 7v9a6 6 0 0 1-12 0V6a4 4 0 0 1 8 0v10a2 2 0 0 1-4 0V8"/></g></svg>2 fichiers</span></span>
     </span>
   </div>
-      
+
   <div class="rangee epingle ">
-    <span class="col"><span class="tuileini">SN</span></span>
     <span class="txt">
       <span class="l1">
-        
+
         <span style="color:var(--tuileInk);display:inline-flex"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 3h4v7l2 4H8l2-4z"/><path d="M12 14v7"/></g></svg></span>
-        <span class="exp">Sofia Nardi</span><span class="h">4 août</span>
+        <span class="exp">Sofia Nardi</span><span class="boite"><span class="mot">sur</span><span class="rep-nu" data-teinte="sapin"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span><span class="lib">Travail</span></span><span class="h">4 août</span>
       </span>
       <span class="obj">Atelier de septembre</span>
       <span class="apr">Deux salles réservées à Milan.</span>
-      
+
     </span>
   </div>
     </div>
     <div class="legende" style="margin-top:2px">
-      <span>Lu, au repos</span><span>Non lu</span><span>Survol</span>
+      <span>Lu, au repos</span><span>Non lu (compte sans repère, D8)</span><span>Survol</span>
       <span>Sélectionné (rang porteur)</span><span>Épinglé</span>
     </div>
     <p class="sub"><b>Règles de transmission.</b> Le non-lu se dit par le <b>disque de 9 px</b> et par
-    la graisse — jamais par une pastille pleine, jamais par une couleur d'objet. Dans le dossier
-    <b>Envoyés</b> (A48), l'expéditeur étant SOI, la ligne dit le <b>destinataire</b> — « À : … »,
-    tuile aux initiales du destinataire — tiré de l'À stocké de l'ENVELOPE ; un envoi non encore
+    la graisse — jamais par une pastille pleine, jamais par une couleur d'objet ; le bloc de boîte,
+    lui, <b>reste en graisse normale</b> sur une rangée non lue (A8/V6 : la graisse porte ce que la
+    ligne DIT, pas ses circonstances). <b>Le bloc de boîte</b> (A80) : <code>sur</code> à l'encre
+    atténuée, le tracé du repère à la teinte du compte (14 px, absent si le compte n'a pas de
+    repère — D8), le libellé — nom personnalisé (A78) ou adresse ; infobulle « libellé — adresse ».
+    <b>Trois règles de troncature</b>, chacune en une phrase : l'heure ne se coupe <b>jamais</b>
+    (c'est le repère de lecture de la colonne) ; le bloc cède <b>trois fois plus vite</b> que
+    l'expéditeur et ne prend jamais plus du <b>tiers</b> de la ligne (plafond mesuré,
+    PLAN-REPERE-LIGNE §1.3) ; les deux se terminent à l'<b>ellipse</b>, jamais à la coupe sèche.
+    Dans le dossier
+    <b>Envoyés</b> (A48), l'expéditeur étant SOI, la ligne dit le <b>destinataire</b> — « À : … » —
+    tiré de l'À stocké de l'ENVELOPE ; un envoi non encore
     rattrapé retombe sur l'expéditeur, jamais une ligne muette. Le rang de puces est <b>factuel et
     silencieux</b> : il ne porte jamais d'état ni d'alerte — compter, pas signaler. Le survol teinte
     le fond <b>sans déplacer le contenu</b>. La sélection prend <code>--sel</code> et le liseré
@@ -4402,10 +4475,20 @@ svg.g{flex:none}
         <tr>
           <td class="nw">2026-08-24</td>
           <th scope="row">A79</th><td><b>L'adoption : ce document devient le Système de référence, et l'UI le livre</b> (PLAN-ELEMENTS ; décisions CE D1-D5 du 2026-08-24, V1-V14 closes). <b>D1</b> : le HTML est LA source, éditée à la main — le générateur d'étude reste figé en trace (<code>spikes/direction-elements/v2/</code>), l'ancien Système part en <code>docs/archives/systeme.v1.dc.html</code>, la série V se ferme, les amendements reprennent ici en A-n. <b>Livré en cinq étapes, chacune gate-verte et validée au STOP visuel CE le jour même</b> : E1 le socle (17 jetons × 2 thèmes, <code>--panel</code> retiré — 16 emplois sur <code>--bg</code> —, migration des choix mémorisés : tout ancien -nuit vers <code>elements-nuit</code>, le reste au défaut) ; E2 les 78 glyphes en SVG en ligne (<code>lib/icones.js</code> + <code>Icone.svelte</code>, 95 emplois convertis, la fonte Material et son contrat README morts, mention « À propos » arrêtée — D2 : « Jeu original de Wind, dessiné d'après Material Symbols (Google, Apache 2.0) ») ; E3 les formes (zéro rayon par les trois jetons sur <code>html</code>, tuile d'initiales carrée, disque de non-lu 9 px, compteur de nav en nombre nu, marque <code>keep</code> des épinglées) ; E4 la marque (<code>Marque.svelte</code>, deux régimes V11 ; <code>Hitofude.svelte</code> supprimé, disque/anneau à la barre d'état) ; E5 le registre d'affichage (graisse 340 via Segoe UI Variable Display, repli 400). <b>Les gates encodent le Système</b> : contraste 220 paires (filets 1,49/1,26 et <code>--marque</code> compris), cohérence — noms ET tracés des glyphes dans les deux sens, zéro littéral de rayon (l'exception <code>--r-plateforme</code> déclarée), réservés jamais posés. <b>D3 (verdict au STOP E2)</b> : les trois familles de fusion restent différenciées par leurs marques actuelles (poignée corps/couvercle ; bandeau supérieur ; marque intérieure du cercle) — aucun redessin. <b>D4</b> : les maîtres réduits sont livrés, le palier 16 reste la dette V9. <b>Défaut trouvé à l'adoption, réparé</b> : la normalisation <code>scope="col"</code> du générateur avait mutilé onze <code>&lt;thead&gt;</code> (« <code>&lt;th scope="col"ead&gt;</code> ») — le navigateur se rattrapait, un lecteur automatique trébuchait ; les onze sont réparés, la leçon V12 valait aussi pour ce document. e2e : 124/124 ; gate complète ~1 min 40 s.</td></tr>
+        <tr>
+          <td class="nw">2026-08-24</td>
+          <th scope="row">A80</th><td><b>La boîte se dit en toutes lettres, sur la ligne de l'expéditeur</b> (PLAN-REPERE-LIGNE ; décisions CE D1-D5 du 2026-08-24). Le badge de repère sous l'avatar (A74) est remplacé par un <b>bloc de texte</b> dans la ligne d'entête : <code>sur</code> à l'encre atténuée (<code>--muted</code>), le glyphe du repère à la teinte du compte (tracé nu, 14 px), puis le <b>libellé de la boîte</b> — nom personnalisé (A78) ou adresse. Motif du Chef Ingénieur : <i>la phrase se lit, et elle évite d'avoir à se souvenir en permanence d'une couleur ou d'un logo.</i> En anglais, le mot est <code>in</code> (D10 : la boîte est un contenant, pas un support). Trois règles de troncature, chacune en une phrase : <b>l'heure ne se coupe jamais</b> (c'est le repère de lecture de la colonne) ; <b>le bloc cède trois fois plus vite que l'expéditeur et ne prend jamais plus du tiers de la ligne</b> ; <b>les deux se terminent à l'ellipse</b>, jamais à la coupe sèche. Le tiers est <b>mesuré</b>, pas choisi : sur un nom de 32 caractères, à la moitié deux noms d'expéditeur se coupent au défaut (volet 400 px) ; à 30 % ce sont les libellés <b>courts</b> qui se coupent pour rien à la borne basse ; 33 à 36 % donnent le même résultat — un plateau, d'où le tiers, qui se dit en un mot. <b>A8 s'en trouve renforcé</b> : l'information est portée par un MOT, la couleur et le glyphe ne font que la doubler — plus fort que ce qu'A74 obtenait. Un compte <b>sans repère</b> dit quand même sa boîte (D8 : bloc sans tracé — deux comptes sans repère cessent d'être indiscernables, le repère redevient réellement facultatif). Le bloc vit là où les comptes se mélangent — boîte unifiée et recherche (D3 d'A74, inchangé) —, et « se mélangent » se lit <b>au pied de la lettre</b> (revue) : un poste qui n'a qu'<b>un seul compte</b> ne mélange rien, son bloc se tait partout, liste et volet compris ; la condition porte sur le NOMBRE de comptes, pas seulement sur la vue choisie —, et <b>le volet de lecture suit la MÊME règle que la liste</b> (verdict terrain du 2026-08-25) : là où la rangée se tait, la carte se tait aussi. D5 disait « le même schéma au volet » ; le terrain a montré l'asymétrie que cette formule laissait passer — dans la vue d'un seul compte, la liste ne disait rien et le volet parlait encore — et <b>le même bloc se répète au volet de lecture</b>, derrière le nom de l'expéditeur, carte dépliée et rangées repliées (D5). L'infobulle donne « libellé — adresse » ; la troncature est CSS seule (le libellé entier reste au DOM, lu par les technologies d'assistance) ; le tracé est <code>aria-hidden</code> : il double le mot. Aucun rang neuf, aucun glyphe neuf, <b>aucune paire de contraste neuve</b> ; les deux gabarits d'A44 sont mesurés inchangés.</td></tr>
+        <tr>
+          <td class="nw">2026-08-24</td>
+          <th scope="row">A81</th><td><b>La tuile aux initiales quitte la liste</b> (PLAN-REPERE-LIGNE ; décision CE D9 du 2026-08-24). La colonne de tête de la rangée disparaît : les initiales de l'expéditeur ne disaient rien que le nom, écrit en toutes lettres à 10 px au-dessus, ne disait déjà — et elles coûtaient 38 px sur les 400 du volet, au bénéfice de l'objet qui, lui, apprenait quelque chose (le bloc de boîte, A80). <b>La tuile survit là où elle travaille</b> : les cartes du fil (l'expéditeur y change d'un message à l'autre) et le dossier Brouillons (elle y dit le destinataire). Conséquence sur la phrase de V4 — « l'avatar d'initiales devient un carré » — : elle reste vraie de ses deux emplois restants, et cesse de valoir pour la rangée de liste.</td></tr>
+        <tr>
+          <td class="nw">2026-08-24</td>
+          <th scope="row">A82</th><td><b>Le repère est un glyphe nu ; la pastille se retire aux Réglages</b> (PLAN-REPERE-LIGNE ; décision CE D6 du 2026-08-24). La pastille pleine de 20 px quitte la navigation : le repère s'y trace <b>à même le fond</b>, à la teinte du compte, <b>16 px</b> — la taille des glyphes de dossier de la même colonne, si bien que les rangées de comptes cessent d'être des rangées à part. Motif : la nav et la ligne de liste doivent porter <b>exactement le même objet</b> (D2). Ce que le Système perd : la phrase de V4/V14 « reste un seul autre rond dans tout le système, la pastille de repère » cesse de valoir pour l'écran 02 — <b>mesuré sur la fenêtre entière, la seule forme ronde restante est le disque</b> (non-lu de rangée, barre d'état). Le disque ne dit donc plus <b>que</b> l'état, ce que V4 visait sans l'atteindre. Ce que le Système garde : la pastille vit aux <b>Réglages</b> (rangée de compte et nuancier de choix), où elle est une pastille <b>de choix</b> et non une marque d'identité — V5 tient donc entièrement dans son domaine restant. Les 24 hex du nuancier servent désormais deux fois (background de pastille, color de tracé) : ils passent en jetons <code>--rep-&lt;teinte&gt;</code>, une table par polarité, jamais recopiés. Contrastes : la teinte en <b>tracé</b> se pose sur les mêmes fonds que la pastille et la table de mesure ne bouge pas (pire cas du nuancier : 4,97:1, seuil composant 3:1) — aucune paire neuve. Ce qui est perdu, et dit : le fond coloré donnait au repère une présence à distance ; un tracé de 2 unités à 16 px pèse ~1,3 px — la nav dit le compte plus doucement.</td></tr>
       </tbody>
     </table>
     <p class="note">Les
-    78 lignes portent leurs trois cellules : le défaut d'A48 relevé en V12 est <b>réparé à la
+    96 lignes — 14 décisions d'adoption V1-V14, 82 amendements A1-A82 — portent leurs trois
+    cellules : le défaut d'A48 relevé en V12 est <b>réparé à la
     source</b>, ce document n'a plus rien à restituer.</p>
   </section>
 </div>

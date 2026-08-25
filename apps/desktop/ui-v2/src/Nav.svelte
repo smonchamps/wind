@@ -12,9 +12,12 @@
   import { activation } from './lib/clavier.js';
   import { t } from './lib/texte.svelte.js';
 
-  // R1 (PLAN-RETOURS-8, A74) : un compte peut porter un repère (icône
-  // du jeu dédié + teinte du nuancier) — il remplace `person` par une
-  // pastille. Sans repère, le rendu D7 d'origine ne change pas.
+  // R1 (PLAN-RETOURS-8, A74), amendé A82 : un compte peut porter un
+  // repère (icône du jeu dédié + teinte du nuancier) — il remplace
+  // `person` par le TRACÉ nu du glyphe à la teinte du compte, 16 px
+  // comme les glyphes de dossier (la pastille pleine a quitté la nav :
+  // la nav et la ligne portent exactement le même objet, D2). Sans
+  // repère, le rendu D7 d'origine ne change pas.
   // PLAN-RETOURS-9 (D4) : le nom personnalisé REMPLACE l'adresse sur
   // la tuile — la nav dit l'identité choisie, pas la donnée technique.
   let { comptes = [], reperes = {}, noms = {}, categorie, compte, onchoisir = () => {} } = $props();
@@ -80,8 +83,8 @@
              onclick={() => onchoisir({ compte: b.id })}
              onkeydown={activation(() => onchoisir({ compte: b.id }))}>
           {#if b.repere}
-            <span class="repere p20" data-testid="nav-repere"
-                  data-teinte={b.repere.teinte} aria-hidden="true"><Icone nom={b.repere.icone} /></span>
+            <span class="repere-nu" data-testid="nav-repere"
+                  data-teinte={b.repere.teinte} aria-hidden="true"><Icone nom={b.repere.icone} taille={16} /></span>
           {:else}
             <span class="icone-tuile" aria-hidden="true"><Icone nom={b.icone} /></span>
           {/if}
@@ -93,8 +96,8 @@
              onclick={() => onchoisir({ compte: b.id })}
              onkeydown={activation(() => onchoisir({ compte: b.id }))}>
           {#if b.repere}
-            <span class="repere p20" data-testid="nav-repere"
-                  data-teinte={b.repere.teinte} aria-hidden="true"><Icone nom={b.repere.icone} /></span>
+            <span class="repere-nu" data-testid="nav-repere"
+                  data-teinte={b.repere.teinte} aria-hidden="true"><Icone nom={b.repere.icone} taille={16} /></span>
           {:else}
             <span class="icone" aria-hidden="true"><Icone nom={b.icone} /></span>
           {/if}

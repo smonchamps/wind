@@ -206,6 +206,39 @@ const teintesCss = [
   ...new Set([...css.matchAll(/\.repere\[data-teinte="([a-z]+)"\]/g)].map(([, v]) => v)),
 ];
 compareListes('teinte', teintesRust, 'commands.rs', teintesCss, 'systeme.css');
+// A82 : le repère se dessine désormais de DEUX façons — la pastille des
+// Réglages (background) et le TRACÉ de la nav et de la ligne (color).
+// Contrôler la seule table de pastilles laisserait une teinte oubliée du
+// tracé passer en vert : le compte porterait sa couleur aux Réglages et
+// un glyphe à l'encre héritée partout où on le regarde vraiment.
+// (`.repere\[` ne matche pas `.repere-nu\[` : les deux relevés sont
+// disjoints, aucun doublon à craindre.)
+const teintesTrace = [
+  ...new Set([...css.matchAll(/\.repere-nu\[data-teinte="([a-z]+)"\]/g)].map(([, v]) => v)),
+];
+compareListes('teinte du tracé', teintesRust, 'commands.rs', teintesTrace, 'systeme.css (.repere-nu)');
+// Et les jetons eux-mêmes : depuis A82 les 24 hex vivent en --rep-<teinte>,
+// une table par polarité. Un jeton manquant rendrait `color:var(--rep-x)`
+// sans valeur — le glyphe retomberait sur l'encre courante, en silence.
+for (const [polarite, motif] of [
+  ['clair', /:root\s*\{([^}]+)\}/],
+  ['nuit', /:root\[data-theme="elements-nuit"\]\s*\{([^}]+)\}/],
+]) {
+  // Les --rep-* vivent dans LEUR propre bloc :root (le contrat des 17
+  // jetons de thème ne s'en gonfle pas) : on rassemble tous les blocs de
+  // la polarité avant de compter.
+  const blocs = [...css.matchAll(new RegExp(motif.source, 'g'))]
+    .map(([, corps]) => corps)
+    .filter((corps) => corps.includes('--rep-'));
+  const jetons = new Set(
+    blocs.flatMap((corps) => [...corps.matchAll(/--rep-([a-z]+)\s*:/g)].map(([, t]) => t)),
+  );
+  for (const teinte of teintesRust) {
+    if (!jetons.has(teinte)) {
+      echec(`systeme.css : le jeton --rep-${teinte} manque en polarité ${polarite} (A82) — le tracé de ce repère n'aurait pas de couleur`);
+    }
+  }
+}
 for (const langue of ['fr', 'en']) {
   const cat = readFileSync(
     path.join(root, 'apps', 'desktop', 'ui-v2', 'src', 'lib', `catalogue.${langue}.js`),

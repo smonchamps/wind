@@ -13,6 +13,12 @@
 
   let {
     brouillons = [],
+    // A80/D5 : le fil dit la boîte derrière le nom — les repères et
+    // les noms de compte descendent de l'App, dans les DEUX cadres.
+    reperes = {},
+    noms = {},
+    comptes = [],
+    melange = false,
     onreprendre = () => {},
     onretour = () => {},
     onarchiver = () => {},
@@ -61,7 +67,7 @@
          lecture centrée et bornée (D2 : ~960 px). -->
     <div class="scene">
       <div class="colonne">
-        <Fil {brouillons} {onreprendre} {onarchiver} {onsupprimer}
+        <Fil {brouillons} {reperes} {noms} {comptes} {melange} {onreprendre} {onarchiver} {onsupprimer}
              {onrepondre} {onrepondretous} {ontransferer}
              {onspam} {onnonspam} {estIndesirable} {onflash}
              {epinglable} {onepingler} />

@@ -20,6 +20,7 @@
     BORNES,
   } from './lib/largeurs.svelte.js';
   import { depuis, quandLong } from './lib/quand.js';
+  import { vueMelange } from './lib/boite.js';
   import Nav from './Nav.svelte';
   import Liste from './Liste.svelte';
   import Lecture from './Lecture.svelte';
@@ -1078,6 +1079,11 @@
   // offert qu'en Réception (D4) et JAMAIS sur une recherche : un
   // résultat peut vivre hors Réception — l'épingle serait invisible.
   const epinglable = $derived(categorie === 'reception' && nResultats === null);
+  // A80/D7, verdict terrain du 2026-08-25 (point 12) : le volet de
+  // lecture ne dit la boîte que là où la LISTE la dit — même règle,
+  // une seule expression (lib/boite.js). L'App est la seule à tenir les
+  // deux moitiés : le compte choisi et l'état de la recherche.
+  const melangeComptes = $derived(vueMelange(compte, nResultats !== null));
   async function epinglerFil(ligne) {
     if (gesteSurEcho(ligne)) return;
     try {
@@ -1366,13 +1372,13 @@
       {#if volets !== 1}
         <Nav {comptes} {reperes} {noms} {categorie} {compte} onchoisir={choisir} />
       {/if}
-      <Liste bind:this={liste} {categorie} {compte} {reperes} {noms} {onglet} {recherche}
+      <Liste bind:this={liste} {categorie} {compte} {comptes} {reperes} {noms} {onglet} {recherche}
              {brouillons} onreprendre={reprendreBrouillon}
              onselect={surSelection} ononglet={surOnglet}
              ontotal={(t) => (totalListe = t)}
              onresultats={(n, total) => { nResultats = n; nTotal = total; }} onflash={flash} />
       {#if volets === 3}
-        <Lecture bind:this={lecture} {brouillons} onreprendre={reprendreBrouillon}
+        <Lecture bind:this={lecture} {brouillons} {reperes} {noms} {comptes} melange={melangeComptes} onreprendre={reprendreBrouillon}
                  onarchiver={archiver} onsupprimer={supprimer}
                  onconversation={ouvrirConversation}
                  onrepondre={repondre} onrepondretous={repondreTous}
@@ -1458,7 +1464,7 @@
       </div>
     {/if}
 
-    <Conversation bind:this={conversation} {brouillons}
+    <Conversation bind:this={conversation} {brouillons} {reperes} {noms} {comptes} melange={melangeComptes}
                   onreprendre={reprendreBrouillon} onretour={retourBoite}
                   onarchiver={async (l) => { await archiver(l); retourBoite(); }}
                   onsupprimer={async (l) => {

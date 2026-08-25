@@ -30,7 +30,7 @@ test.afterAll(async () => {
 const boiteNav = (libelle) =>
   page.locator('[data-testid="nav-boite"]', { hasText: libelle });
 
-test('nommer un compte depuis Réglages : la nav prend le nom, la rangée garde l’adresse', async () => {
+test('nommer un compte depuis Réglages : la nav ET le bloc de boîte prennent le nom', async () => {
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   await expect(boiteNav('un@exemple.fr')).toHaveCount(1);
 
@@ -52,6 +52,25 @@ test('nommer un compte depuis Réglages : la nav prend le nom, la rangée garde 
   await expect(boiteNav('Boulot')).toHaveCount(1);
   await expect(boiteNav('un@exemple.fr')).toHaveCount(0);
   await expect(boiteNav('deux@exemple.fr')).toHaveCount(1);
+
+  // A80/D8 : la LIGNE dit la boîte en toutes lettres, et le nom
+  // personnalisé en est le libellé — c'est la seule branche `noms[…]`
+  // de `boiteDe`, celle que le décor sans nom n'atteint jamais.
+  const nomme = page
+    .locator('[data-testid="ligne-boite"]', { hasText: 'Boulot' })
+    .first();
+  await expect(nomme).toBeVisible();
+  await expect(nomme.locator('.lib')).toHaveText('Boulot');
+  // L'infobulle garde l'adresse : elle reste la vérité technique (A78).
+  await expect(nomme).toHaveAttribute('title', 'Boulot — un@exemple.fr');
+
+  // Le compte NON nommé retombe sur son adresse — et son infobulle ne
+  // la dit qu'UNE fois : « adresse — adresse » serait un bégaiement
+  // (revue du 2026-08-25).
+  const anonyme = page
+    .locator('[data-testid="ligne-boite"]', { hasText: 'deux@exemple.fr' })
+    .first();
+  await expect(anonyme).toHaveAttribute('title', 'deux@exemple.fr');
 });
 
 test('au composeur, le sélecteur d’expéditeur dit « Nom — adresse »', async () => {

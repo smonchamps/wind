@@ -173,6 +173,9 @@ export const EN = {
   'liste.affiner': 'Refine your search (from:, to:, date:) to go further.',
   'liste.prefixeBrouillon': 'Draft: ',
   'liste.dest': 'To: {a}',
+  // A80, décision D10 : « Camille Roux in Work » — la boîte est un
+  // contenant, pas un support.
+  'liste.sur': 'in',
   'brouillons.a': 'To: {a}',
   'brouillons.sansDestinataire': '(no recipient)',
   'brouillons.sansObjet': '(no subject)',

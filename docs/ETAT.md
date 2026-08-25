@@ -12,7 +12,36 @@
 
 ## Où on en est, et quoi faire en premier
 
-**Dernier chantier soldé : [PLAN-ELEMENTS](PLAN-ELEMENTS.md)**
+**Dernier chantier soldé : [PLAN-REPERE-LIGNE](PLAN-REPERE-LIGNE.md)**
+(2026-08-25, terrain CE **15/15**, gate verte, e2e 124 → **129**) — **la
+boîte se dit en toutes lettres, sur la ligne de l'expéditeur**
+(A80-A82). Le badge de repère sous l'avatar est remplacé par un **bloc
+de texte** dans la ligne d'entête — `sur` à l'encre atténuée, le glyphe
+du repère **en tracé nu** à la teinte du compte, le libellé (nom
+personnalisé A78, sinon l'adresse) — motif du CE : *la phrase se lit,
+elle évite d'avoir à se souvenir en permanence d'une couleur ou d'un
+logo*. Trois règles de troncature mesurées (l'heure ne cède jamais, le
+bloc cède trois fois plus vite que l'expéditeur, plafond au **tiers** —
+plateau 33-36 %, mesuré sur 22 dessins et 5 planches jetables). **La
+tuile aux initiales quitte la LISTE** (A81) — elle survit au fil et au
+dossier Brouillons, où elle travaille. **La pastille de repère quitte la
+nav** pour un tracé de 16 px (A82) : mesuré sur la fenêtre entière, le
+disque est désormais **la seule forme ronde de l'écran 02**, ce que V4
+visait sans l'atteindre ; la pastille survit aux Réglages, comme
+pastille de *choix*. Les 24 hex du nuancier servant deux fois
+(background et color), ils passent en **jetons `--rep-*`** — la gate de
+contraste a été amendée avec, et la gate de cohérence contrôle
+désormais les DEUX tables plus les jetons des deux polarités (prouvée
+rouge sur les trois pannes qu'elle vise). **Aucune paire de contraste
+neuve**, aucun glyphe neuf, les deux gabarits d'A44 mesurés inchangés.
+Revue à regard neuf : 8 angles, 40 candidats, **14 défauts distincts —
+tous corrigés** (dont un bloc qui pouvait se peindre par-dessus l'heure,
+et une règle D7 qui donnait un refrain aux postes à un seul compte).
+Constat terrain unique (point 12 : le volet parlait quand la liste se
+taisait) corrigé le jour même. **À livrer en 0.9.0** avec PLAN-ELEMENTS
+— CHANGELOG déjà écrit.
+
+**Le chantier soldé précédent : [PLAN-ELEMENTS](PLAN-ELEMENTS.md)**
 (2026-08-24, `fb32238` → `0de3689`, terrain CE **8/8 zéro KO** le jour
 même, CI verte run 32752449754) — le Système « Elements » est devenu
 LE Système de référence
@@ -35,6 +64,17 @@ p50 85,8 / p95 180,9 ms (P1 : p95 307,6), thème 0,3 ms, RAM 8,1 Mo.
 elle porte PLAN-RETOURS-9 (OAuth compilé, « Retirer le compte » dit,
 noms de comptes). Sa preuve terrain différée (connecter un compte sur
 le second poste SANS `setx`) reste due — sur la 0.8.0 ou la 0.9.0.
+
+**Deux chantiers demandés par le CE le 2026-08-25**, instruits mais non
+ouverts (aucune décision prise, aucun code) : (1) **glyphes de repère en
+remplissage plein** — le glyphe lui-même, hors de tout disque : touche
+la grammaire du jeu d'icônes (« trait de 2 unités ») et suppose de
+savoir si les douze tracés sont des contours fermés qu'un remplissage
+rendrait, ou des traits ouverts qu'il déformerait ; (2) **trois niveaux
+d'espacement de la liste** (« Faible » = l'actuel, « Moyen », « Élevé »)
+— le point dur est le **fenêtrage** : l'espacement change la hauteur des
+rangées, or ces hauteurs sont sondées et toute la géométrie du
+défilement en dépend (A44).
 
 **Ensuite : la bêta fermée 20-50 utilisateurs** ([PLAN.md](PLAN.md)
 §4, dernière étape avant le gate 5) — rien n'est engagé.

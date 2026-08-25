@@ -11,6 +11,12 @@
 
   let {
     brouillons = [],
+    // A80/D5 : le fil dit la boîte derrière le nom — les repères et
+    // les noms de compte descendent de l'App, dans les DEUX cadres.
+    reperes = {},
+    noms = {},
+    comptes = [],
+    melange = false,
     onreprendre = () => {},
     onarchiver = () => {},
     onsupprimer = () => {},
@@ -39,7 +45,7 @@
 
 <main aria-label={t('lecture.aria')} data-testid="volet-lecture">
   {#if fil.cadre === 'volet' && fil.ligne}
-    <Fil {brouillons} {onreprendre} {onarchiver} {onsupprimer}
+    <Fil {brouillons} {reperes} {noms} {comptes} {melange} {onreprendre} {onarchiver} {onsupprimer}
          {onrepondre} {onrepondretous} {ontransferer}
          {onspam} {onnonspam} {estIndesirable} {onflash}
          {epinglable} {onepingler}

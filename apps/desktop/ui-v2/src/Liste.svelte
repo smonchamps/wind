@@ -17,6 +17,7 @@
   import { appel } from './lib/transport.js';
   import { quand } from './lib/quand.js';
   import { puceInvitation } from './lib/invitation.js';
+  import { blocBoite, vueMelange } from './lib/boite.js';
   import { initiales } from './lib/initiales.js';
   import { activation } from './lib/clavier.js';
   import { t } from './lib/texte.svelte.js';
@@ -24,12 +25,17 @@
   let {
     categorie = 'reception',
     compte = null,
-    // R1 (PLAN-RETOURS-8, A74) : les repères de compte — le badge sous
-    // l'avatar n'apparaît qu'en boîte unifiée (D3 : là où identifier le
-    // compte a un sens), et seulement si le compte a un repère.
+    // A80/D7 : le bloc de boîte ne se dit que si les comptes se
+    // mélangent VRAIMENT — il faut donc savoir combien il y en a.
+    comptes = [],
+    // A80 : les repères de compte nourrissent le TRACÉ du bloc de
+    // boîte, qui ne vit qu'en boîte unifiée et en recherche (D3/D7 :
+    // là où identifier le compte a un sens) — sur toutes les rangées,
+    // repère ou non (D8).
     reperes = {},
-    // PLAN-RETOURS-9 (D4) : le nom personnalisé sert d'infobulle au
-    // badge — l'adresse reste le repli d'un compte sans nom.
+    // PLAN-RETOURS-9 (D4) : le nom personnalisé est le libellé du
+    // bloc — l'adresse reste le repli d'un compte sans nom, et la
+    // vérité de l'infobulle.
     noms = {},
     onglet = 'tous',
     recherche = '',
@@ -56,6 +62,24 @@
   const versEnvoi = (ligne) => categorie === 'envoyes' && (ligne.to_addrs?.length ?? 0) > 0;
   const correspondant = (ligne) =>
     versEnvoi(ligne) ? ligne.to_addrs.join(', ') : ligne.sender;
+
+  // A80 : le bloc de boîte vit là où les comptes se MÉLANGENT — boîte
+  // unifiée (D3 d'A74) et recherche, D7. À la différence du badge, il
+  // ne demande PAS de repère : le mot suffit, et le libellé retombe
+  // sur l'adresse quand aucun nom n'est posé (D8).
+  // La règle ENTIÈRE vit dans lib/boite.js — garde de vue comprise
+  // depuis le verdict terrain du 2026-08-25 (point 12) : le volet de
+  // lecture applique la même, et deux expressions divergeraient.
+  const boiteDe = (ligne) =>
+    !vueMelange(compte, resultats !== null)
+      ? null
+      : blocBoite({
+        accountId: ligne.account_id,
+        adresse: ligne.account_email,
+        reperes,
+        noms,
+        comptes,
+      });
 
   let cadre = $state(null);
   let total = $state(0);
@@ -716,17 +740,18 @@
     <h1>{t(`boite.${categorie}`)}</h1>
   </header>
   <div class="cadre" bind:this={cadre} onscroll={surDefilement}>
+    <!-- A81 : les sondes suivent la rangée réelle — plus de colonne de
+         tuile ; une sonde qui rendrait un objet mort mentirait sur la
+         géométrie. -->
     {#if !sondees}
       <div class="sondes" aria-hidden="true">
         <article class="ligne" use:sonder={false}>
-          <span class="avatar" aria-hidden="true">SO</span>
-          <div class="l1"><span class="exp">Sonde</span><span class="heure">00:00</span></div>
+          <div class="l1"><span class="exp">Sonde</span><span class="essor"></span><span class="heure">00:00</span></div>
           <p class="objet">Sonde</p>
           <p class="apercu">Sonde</p>
         </article>
         <article class="ligne" use:sonder={true}>
-          <span class="avatar" aria-hidden="true">SO</span>
-          <div class="l1"><span class="exp">Sonde</span><span class="heure">00:00</span></div>
+          <div class="l1"><span class="exp">Sonde</span><span class="essor"></span><span class="heure">00:00</span></div>
           <p class="objet">Sonde</p>
           <p class="apercu">Sonde</p>
           <div class="puces"><span class="puce"><Icone nom="forum" />2</span></div>
@@ -735,17 +760,17 @@
     {/if}
     {#snippet attente()}
       <article class="ligne attente" data-testid="ligne-attente">
-        <span class="avatar" aria-hidden="true"></span>
-        <div class="l1"><span class="exp">…</span><span class="heure"></span></div>
+        <div class="l1"><span class="exp">…</span><span class="essor"></span><span class="heure"></span></div>
         <p class="objet">…</p>
         <p class="apercu"></p>
       </article>
     {/snippet}
     {#snippet rangee(ligne, epinglee = false)}
-      <!-- A74 : le badge vit partout où les comptes se MÉLANGENT —
-           boîte unifiée (D3) et recherche (toujours multi-comptes,
-           même depuis la vue d'un seul compte ; revue 2026-08-22). -->
-      {@const repere = (compte === null || resultats !== null) ? reperes[ligne.account_id] : null}
+      <!-- A80 : le bloc de boîte vit partout où les comptes se
+           MÉLANGENT — boîte unifiée (D3/D7) et recherche (toujours
+           multi-comptes, même depuis la vue d'un seul compte ; revue
+           2026-08-22) — et sur TOUTES les rangées, repère ou non (D8). -->
+      {@const boite = boiteDe(ligne)}
       <div class="ligne"
            class:nonlu={ligne.thread_unseen > 0}
            class:choisie={estChoisie(ligne)}
@@ -764,22 +789,12 @@
              choisir(ligne);
            }}
            onkeydown={activation(() => choisir(ligne))}>
-        <!-- A74 : la colonne de l'avatar empile le badge du repère SOUS
-             le rond, sans rang de grille neuf — les deux gabarits de
-             hauteur (h1/h2) ne bougent pas (la pile 28+4+16 px reste
-             sous la hauteur des trois rangs de contenu). Le badge se
-             DIT aux lecteurs d'écran (adresse en aria-label) — la
-             seule information de la ligne qui n'existait qu'en
-             couleur. -->
-        <span class="col-avatar">
-          <span class="avatar" data-testid="avatar" aria-hidden="true">{initiales(correspondant(ligne))}</span>
-          {#if repere}
-            <span class="repere p16" data-testid="ligne-repere"
-                  data-teinte={repere.teinte} role="img"
-                  aria-label={noms[ligne.account_id] ?? ligne.account_email}
-                  title={noms[ligne.account_id] ?? ligne.account_email}><Icone nom={repere.icone} /></span>
-          {/if}
-        </span>
+        <!-- A81 : la tuile aux initiales a quitté la liste — le nom en
+             toutes lettres disait déjà ce qu'elle disait. A80 : la
+             ligne d'entête porte à sa place le bloc de boîte, EN
+             LIGNE — aucune colonne réservée, son absence ne décale
+             rien (D7). Le tracé est aria-hidden : il DOUBLE le mot ;
+             l'infobulle donne « libellé — adresse ». -->
         <div class="l1">
           <!-- V4 : le non-lu se dit par le disque de 9 px ET la graisse
                (A8 — jamais la couleur seule) ; l'épinglée porte la
@@ -787,6 +802,17 @@
           {#if ligne.thread_unseen > 0}<span class="disque"></span>{/if}
           {#if epinglee}<span class="marque-epingle" aria-hidden="true"><Icone nom="keep" taille={14} /></span>{/if}
           <span class="exp">{#if versEnvoi(ligne)}{t('liste.dest', { a: correspondant(ligne) })}{:else}{ligne.sender}{/if}</span>
+          {#if boite}
+            <span class="boite" data-testid="ligne-boite" title={boite.titre}>
+              <span class="mot">{t('liste.sur')}</span>
+              {#if boite.repere}
+                <span class="repere-nu" data-teinte={boite.repere.teinte}
+                      aria-hidden="true"><Icone nom={boite.repere.icone} taille={14} /></span>
+              {/if}
+              <span class="lib">{boite.libelle}</span>
+            </span>
+          {/if}
+          <span class="essor"></span>
           <span class="heure">{quand(ligne.epoch)}</span>
         </div>
         <p class="objet">{ligne.subject}</p>
@@ -881,7 +907,10 @@
           <div class="vide-recherche"><p>{t('liste.vide')}</p></div>
         {/if}
         {#each lignesBrouillons as b (b.id)}
-          <div class="ligne" data-testid="ligne-brouillon"
+          <!-- A81 : le dossier Brouillons GARDE sa tuile (D9 — elle y
+               dit le destinataire) : la classe `tuilee` lui rend la
+               colonne de tête que la rangée de liste a perdue. -->
+          <div class="ligne tuilee" data-testid="ligne-brouillon"
                role="button" tabindex="0"
                onclick={() => onreprendre(b)}
                onkeydown={activation(() => onreprendre(b))}>
@@ -889,6 +918,10 @@
             <div class="l1">
               <span class="exp" class:sans={!b.to}>
                 {b.to ? t('brouillons.a', { a: b.to }) : t('brouillons.sansDestinataire')}</span>
+              <!-- L'essor pousse l'heure au bord droit : depuis A80,
+                   .exp ne grandit plus (flex:0 1 auto), c'est lui qui
+                   porte le ressort — ici comme dans la rangée du flot. -->
+              <span class="essor"></span>
               <span class="heure">{quand(Math.floor(b.updated_epoch / 1000))}</span>
             </div>
             <p class="objet" class:sans={!b.subject}>{b.subject || t('brouillons.sansObjet')}</p>
@@ -1005,18 +1038,19 @@
      sélection en teinte + liseré d'accent de 2 px — jamais d'ombre ni
      de surface blanche (A29). Le liseré est réservé en transparent :
      la sélection ne déplace pas le contenu. */
-  /* UI v3, E2 : la grille de la maquette — l'avatar en première
-     colonne, enjambant les trois rangs du contenu ; le reste du dessin
-     des pistes (filet, états, graisses) ne bouge pas. Le rang de puces
-     (A44, terrain : hauteur au contenu) n'existe que sur les lignes
-     porteuses, en 4e rang de colonne 2 — hors de l'avatar, comme au
-     prototype ; les DEUX hauteurs sont sondées (h1/h2). */
+  /* A81 : la colonne de tête (tuile d'initiales) a quitté la rangée de
+     liste — la grille est à UNE colonne, le contenu prend toute la
+     largeur. Le rang de puces (A44, terrain : hauteur au contenu)
+     n'existe que sur les lignes porteuses ; les DEUX hauteurs sont
+     sondées (h1/h2). Le dossier Brouillons garde sa tuile (D9) : la
+     classe `tuilee` lui rend la colonne de tête. */
   .ligne {
     padding:13px 16px; border-top:1px solid var(--border);
     border-left:2px solid transparent;
-    display:grid; grid-template-columns:auto 1fr; column-gap:10px;
+    display:grid; grid-template-columns:1fr;
     row-gap:3px; align-items:start; cursor:pointer;
   }
+  .ligne.tuilee { grid-template-columns:auto 1fr; column-gap:10px; }
   .avatar {
     grid-row:1 / span 3; width:28px; height:28px;
     border-radius:var(--r-tuile);
@@ -1024,15 +1058,8 @@
     display:grid; place-items:center;
     font-size:11px; font-weight:600; color:var(--tuileInk);
   }
-  /* A74 — la colonne de l'avatar : rond + badge du repère empilés.
-     `grid-row` de .avatar est inerte ici (item de flex) ; la pile reste
-     plus courte que les trois rangs — les hauteurs sondées ne bougent
-     pas. */
-  .col-avatar {
-    grid-row:1 / span 3; display:flex; flex-direction:column;
-    align-items:center; gap:4px;
-  }
-  .l1, .objet, .apercu, .puces { grid-column:2; min-width:0; }
+  .l1, .objet, .apercu, .puces { grid-column:1; min-width:0; }
+  .tuilee .l1, .tuilee .objet, .tuilee .apercu, .tuilee .puces { grid-column:2; }
   /* Le rang de puces (PLAN-RETOURS-V3 R1) : le gabarit 24 px du
      prototype Classique — présent sur les seules lignes porteuses. */
   .puces {
@@ -1075,13 +1102,27 @@
   .epingles .ligne .objet,
   .epingles .ligne .apercu,
   .epingles .ligne .heure { color:var(--tuileInk); }
-  .l1 { display:flex; align-items:baseline; gap:10px; }
+  /* A73 vaut pour la ligne ENTIÈRE : le bloc de boîte (A80) prend
+     l'encre chaude comme ses voisins — sans cette règle il gardait ses
+     deux gris froids (--ink2/--muted) sur le sol --tuile, seul îlot
+     froid de la rangée (revue). Le tracé, lui, garde la teinte du
+     compte : c'est son identité, et sa paire sur --tuile est mesurée. */
+  .epingles .ligne :global(.boite),
+  .epingles .ligne :global(.boite .mot),
+  .epingles .ligne :global(.boite .lib) { color:var(--tuileInk); }
+  /* A80 — la ligne d'entête : gap 6 (le bloc de boîte ajoute deux
+     gouttières ; à 10 la ligne perdait 12 px pour rien). L'ORDRE DE
+     TRONCATURE EST LE DESSIN : l'heure ne cède jamais (flex:none),
+     le bloc (.boite, systeme.css) cède trois fois plus vite que
+     l'expéditeur, l'essor absorbe le mou. */
+  .l1 { display:flex; align-items:baseline; gap:6px; }
   .l1 :global(.disque), .l1 .marque-epingle { align-self:center; }
   .marque-epingle { color:var(--tuileInk); display:inline-flex; }
   .exp {
-    font-size:14px; color:var(--ink); flex:1; min-width:0;
+    font-size:14px; color:var(--ink); flex:0 1 auto; min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
+  .essor { flex:1 1 0; min-width:0; }
   .nonlu .exp { font-weight:700; }
   .heure { font-size:12px; color:var(--muted); flex:none; }
   .objet {

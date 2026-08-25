@@ -81,9 +81,11 @@ test('poser un repère depuis Réglages > Comptes le montre dans la nav', async 
   ).toHaveAttribute('data-teinte', 'bleu');
   await page.locator('[data-testid="reglages-termine"]').click();
 
-  // La nav : la boîte du compte porte la pastille, l'autre compte reste
-  // au glyphe neutre.
+  // La nav : la boîte du compte porte le TRACÉ du repère (A82 — glyphe
+  // nu à la teinte, plus jamais une pastille pleine), l'autre compte
+  // reste au glyphe neutre.
   await expect(page.locator('[data-testid="nav-repere"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="nav-repere"]')).toHaveClass(/repere-nu/);
   await expect(page.locator('[data-testid="nav-repere"]')).toHaveAttribute(
     'data-teinte',
     'bleu',
@@ -91,28 +93,46 @@ test('poser un repère depuis Réglages > Comptes le montre dans la nav', async 
   await expect(page.locator('[data-testid="nav-repere"] .ic')).toHaveAttribute('data-nom', 'home');
 });
 
-test('le badge de liste ne vit qu’en boîte unifiée (D3)', async () => {
-  // Boîte unifiée (défaut) : les lignes du compte au repère portent le
-  // badge, celles de l'autre compte non.
-  const badges = page.locator('[data-testid="ligne-repere"]');
-  await expect(badges.first()).toBeVisible();
-  await expect(badges.first()).toHaveAttribute('data-teinte', 'bleu');
-  const nBadges = await badges.count();
+test('le bloc de boîte ne vit qu’en boîte unifiée (D3/D7) — et sur TOUTES les rangées (D8)', async () => {
+  // Boîte unifiée (défaut) : CHAQUE rangée dit sa boîte en toutes
+  // lettres (A80/D8 — un compte sans repère n'est plus indiscernable) ;
+  // le tracé, lui, n'apparaît que sur les lignes du compte au repère.
+  const blocs = page.locator('[data-testid="ligne-boite"]');
+  await expect(blocs.first()).toBeVisible();
   const nLignes = await page.locator('[data-testid="ligne"]').count();
-  expect(nBadges).toBeGreaterThan(0);
-  expect(nBadges).toBeLessThan(nLignes);
+  await expect(blocs).toHaveCount(nLignes);
+  const traces = page.locator('[data-testid="ligne-boite"] .repere-nu');
+  await expect(traces.first()).toHaveAttribute('data-teinte', 'bleu');
+  const nTraces = await traces.count();
+  expect(nTraces).toBeGreaterThan(0);
+  expect(nTraces).toBeLessThan(nLignes);
 
-  // Vue d'un seul compte : le badge n'a plus rien à dire — aucun.
+  // Le volet de lecture porte le MÊME objet (D5/A82) : le tracé du
+  // repère, pas une pastille — c'est la seule surface où le tracé du
+  // fil est vérifié.
+  const auRepere = page
+    .locator('[data-testid="ligne"]')
+    .filter({ has: page.locator('[data-testid="ligne-boite"] .repere-nu') })
+    .first();
+  await auRepere.click();
+  const volet = page.locator('[data-testid="volet-lecture"]');
+  await expect(volet.locator('.boite .repere-nu').first()).toBeVisible();
+  await expect(volet.locator('.boite .repere-nu').first()).toHaveAttribute(
+    'data-teinte',
+    'bleu',
+  );
+
+  // Vue d'un seul compte : le bloc n'a plus rien à dire — aucun (D7).
   await boiteNav('un@exemple.fr').click();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  await expect(page.locator('[data-testid="ligne-repere"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="ligne-boite"]')).toHaveCount(0);
 
   // Retour à la boîte unifiée pour la suite.
   await boiteNav('Toutes les boîtes').click();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
 });
 
-test('retirer le repère rend le glyphe neutre partout', async () => {
+test('retirer le repère rend le glyphe neutre — le bloc reste, sans tracé', async () => {
   await page.locator('[data-testid="reglages"]').click();
   await page.locator('[data-testid="compte-repere"]').first().click();
   await page.locator('[data-testid="repere-retirer"]').click();
@@ -120,7 +140,11 @@ test('retirer le repère rend le glyphe neutre partout', async () => {
   await page.locator('[data-testid="reglages-termine"]').click();
 
   await expect(page.locator('[data-testid="nav-repere"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="ligne-repere"]')).toHaveCount(0);
+  // A80/D8 : retirer le repère retire le TRACÉ, jamais le bloc — la
+  // boîte se dit en toutes lettres, repère ou non.
+  const nLignes = await page.locator('[data-testid="ligne"]').count();
+  await expect(page.locator('[data-testid="ligne-boite"]')).toHaveCount(nLignes);
+  await expect(page.locator('[data-testid="ligne-boite"] .repere-nu')).toHaveCount(0);
 });
 
 // ---------------------------------------------------------------- R2 --

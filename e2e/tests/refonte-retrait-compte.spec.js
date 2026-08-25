@@ -30,6 +30,10 @@ test.afterAll(async () => {
 
 test("le retrait se confirme — et l'annulation ne touche à rien", async () => {
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  // A80/D7 : DEUX comptes, donc les comptes se mélangent — chaque
+  // rangée dit sa boîte. Le retrait, plus bas, en fera disparaître un :
+  // c'est le pendant de cette assertion.
+  await expect(page.locator('[data-testid="ligne-boite"]').first()).toBeVisible();
   // 6 + 4 messages, un fil sur cinq (uid 5 répond au 4) : 5 + 4
   // conversations. Le total a quitté la nav (A29, W2-D4) — il se lit
   // à la ligne de perf de la barre de statut.
@@ -86,4 +90,12 @@ test('confirmé : le compte quitte les Réglages, la nav et la liste', async () 
   // les 5 conversations d'un@exemple.fr, plus les 4 disparues (le
   // compte des lignes rendues fait foi — la liste tient sur une page).
   await expect(page.locator('[data-testid="ligne"]')).toHaveCount(5);
+
+  // A80/D7 (revue du 2026-08-25) : il ne reste qu'UN compte — les
+  // comptes ne se mélangent plus, et « sur <sa propre adresse> » sur
+  // chaque rangée serait le refrain que D7 refuse. La règle porte donc
+  // sur le NOMBRE de comptes, pas seulement sur la vue choisie : c'est
+  // ce que cette assertion tient, et la boîte unifiée est bien la vue
+  // courante ici.
+  await expect(page.locator('[data-testid="ligne-boite"]')).toHaveCount(0);
 });

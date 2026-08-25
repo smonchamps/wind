@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<title>O2 — le glyphe nu, en situation</title>
+<style>
+:root { color-scheme:light; }
+* { box-sizing:border-box; }
+body {
+  margin:0; padding:0 0 72px;
+  font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background:#F3F2EE; color:#191D1E;
+}
+.page { max-width:1360px; margin:0 auto; padding:0 40px; }
+header.tete-page { padding:48px 0 20px; border-bottom:1px solid #CBC8BB; }
+h1.titre-page {
+  font-family:'Segoe UI Variable Display', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-weight:340; letter-spacing:-.03em; font-size:40px; margin:0 0 12px;
+}
+.sourcil { font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+  color:#606668; font-weight:600; margin:0 0 6px; }
+.sous-titre { margin:0 0 10px; font-size:15px; line-height:1.6; color:#565C5E; max-width:74ch; }
+p.note { font-size:14px; line-height:1.6; color:#565C5E; max-width:78ch; margin:0 0 10px; }
+ol.regarder { font-size:14px; line-height:1.6; color:#565C5E; max-width:78ch; padding-left:20px; }
+ol.regarder li { margin-bottom:8px; }
+b { color:#191D1E; font-weight:600; }
+code { font-family:Consolas, monospace; font-size:12.5px; background:#FFFFFF;
+  border:1px solid #CBC8BB; padding:0 4px; }
+a { color:#1A7A7A; }
+section.bloc { padding:32px 0; border-bottom:1px solid #CBC8BB; }
+h2 {
+  font-family:'Segoe UI Variable Display', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-weight:340; letter-spacing:-.03em; font-size:24px; margin:0 0 4px;
+}
+.legende { margin:0 0 14px; font-size:13px; color:#606668; }
+.duo { display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start; }
+figure { margin:0; flex:none; }
+figcaption { margin-top:8px; font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+  color:#606668; font-weight:600; }
+
+/* ================= LA FENÊTRE ================= */
+
+.theme-clair { --bg:#F3F2EE;--surface:#FFFFFF;--ink:#191D1E;--ink2:#565C5E;--muted:#606668;--border:#CBC8BB;--accent:#1A7A7A;--accentH:#14625E;--marque:#1F8A8A;--sel:#DDE9E6;--hover:#EAE8E1;--tuile:#F2EDE3;--tuileInk:#4A4436;--alert:#C42D24;--onAccent:#FFFFFF;--rep-rouge:#a93226;--rep-orange:#9c4a06;--rep-ocre:#7a5c00;--rep-olive:#556000;--rep-vert:#186a2b;--rep-sapin:#0b635d;--rep-bleu:#0a5a8f;--rep-indigo:#3f4dbb;--rep-violet:#712cb0;--rep-magenta:#991d7c;--rep-rose:#ad204c;--rep-brun:#7a4a1b; }
+.theme-nuit { --bg:#0D100F;--surface:#171B1A;--ink:#ECEDEA;--ink2:#B4BAB8;--muted:#98A0A1;--border:#333B3A;--accent:#3FA39C;--accentH:#55B7B0;--marque:#3FA39C;--sel:#1E322F;--hover:#141817;--tuile:#241F17;--tuileInk:#DFCFAE;--alert:#EA9A90;--onAccent:#06211F;--rep-rouge:#f1998e;--rep-orange:#f2a76c;--rep-ocre:#e5c04b;--rep-olive:#c3cc4e;--rep-vert:#7fd18c;--rep-sapin:#5ecec4;--rep-bleu:#72bdf0;--rep-indigo:#aab4fa;--rep-violet:#cba4f5;--rep-magenta:#f095d8;--rep-rose:#f79ab4;--rep-brun:#dcab7c; }
+.liste { display:flex; flex-direction:column; }
+.ligne {
+  padding:13px 16px; border-top:1px solid var(--border);
+  border-left:2px solid transparent;
+  display:grid; grid-template-columns:auto 1fr; column-gap:10px;
+  row-gap:3px; align-items:start;
+}
+.ligne:first-child { border-top:none; }
+.ligne.choisie { background:var(--sel); border-left-color:var(--accent); }
+.avatar {
+  grid-row:1 / span 3; width:28px; height:28px; border-radius:0;
+  background:var(--tuile); border:1px solid var(--border);
+  display:grid; place-items:center; font-size:11px; font-weight:600; color:var(--tuileInk);
+}
+.col-avatar { grid-row:1 / span 3; display:flex; flex-direction:column; align-items:center; gap:4px; }
+.l1, .objet, .apercu, .puces { grid-column:2; min-width:0; }
+.l1 { display:flex; align-items:baseline; gap:10px; }
+.l1 .disque { align-self:center; }
+.exp { font-size:14px; color:var(--ink); flex:1; min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nonlu .exp { font-weight:700; }
+.heure { font-size:12px; color:var(--muted); flex:none; }
+.objet { margin:0; font-size:14px; font-weight:400; line-height:1.3; color:var(--ink);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nonlu .objet { font-weight:700; }
+.apercu { margin:0; font-size:13px; line-height:1.45; color:var(--ink2);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-height:1.45em; }
+.puces { height:24px; display:flex; align-items:center; gap:6px; overflow:hidden; }
+.puce { display:inline-flex; align-items:center; gap:5px; height:24px; padding:0 9px;
+  font-size:12px; color:var(--ink2); background:var(--surface);
+  border:1px solid var(--border); white-space:nowrap; }
+.puce .ic { width:14px; height:14px; }
+.disque { width:9px; height:9px; border-radius:50%; background:var(--marque); flex:none; }
+.anneau { width:9px; height:9px; border-radius:50%; flex:none;
+  border:2px solid var(--marque); border-top-color:transparent; }
+.ic { flex:none; vertical-align:middle; }
+
+/* La pastille de repère — la règle du produit, rescopée par thème. */
+.repere { display:inline-flex; align-items:center; justify-content:center;
+  border-radius:50%; flex:none; color:#ffffff; }
+.theme-nuit .repere { color:#1c1b1b; }
+.repere.p16 { width:16px; height:16px; }
+.repere.p20 { width:20px; height:20px; }
+.theme-clair .repere[data-teinte="rouge"] { background:#a93226; }.theme-nuit .repere[data-teinte="rouge"] { background:#f1998e; }
+.theme-clair .repere[data-teinte="orange"] { background:#9c4a06; }.theme-nuit .repere[data-teinte="orange"] { background:#f2a76c; }
+.theme-clair .repere[data-teinte="ocre"] { background:#7a5c00; }.theme-nuit .repere[data-teinte="ocre"] { background:#e5c04b; }
+.theme-clair .repere[data-teinte="olive"] { background:#556000; }.theme-nuit .repere[data-teinte="olive"] { background:#c3cc4e; }
+.theme-clair .repere[data-teinte="vert"] { background:#186a2b; }.theme-nuit .repere[data-teinte="vert"] { background:#7fd18c; }
+.theme-clair .repere[data-teinte="sapin"] { background:#0b635d; }.theme-nuit .repere[data-teinte="sapin"] { background:#5ecec4; }
+.theme-clair .repere[data-teinte="bleu"] { background:#0a5a8f; }.theme-nuit .repere[data-teinte="bleu"] { background:#72bdf0; }
+.theme-clair .repere[data-teinte="indigo"] { background:#3f4dbb; }.theme-nuit .repere[data-teinte="indigo"] { background:#aab4fa; }
+.theme-clair .repere[data-teinte="violet"] { background:#712cb0; }.theme-nuit .repere[data-teinte="violet"] { background:#cba4f5; }
+.theme-clair .repere[data-teinte="magenta"] { background:#991d7c; }.theme-nuit .repere[data-teinte="magenta"] { background:#f095d8; }
+.theme-clair .repere[data-teinte="rose"] { background:#ad204c; }.theme-nuit .repere[data-teinte="rose"] { background:#f79ab4; }
+.theme-clair .repere[data-teinte="brun"] { background:#7a4a1b; }.theme-nuit .repere[data-teinte="brun"] { background:#dcab7c; }
+
+/* Le glyphe nu (O2) : la teinte devient l'encre du tracé. */
+.glyphe-compte { display:inline-flex; }
+.theme-clair .glyphe-compte[data-teinte="rouge"] { color:#a93226; }.theme-nuit .glyphe-compte[data-teinte="rouge"] { color:#f1998e; }
+.theme-clair .glyphe-compte[data-teinte="orange"] { color:#9c4a06; }.theme-nuit .glyphe-compte[data-teinte="orange"] { color:#f2a76c; }
+.theme-clair .glyphe-compte[data-teinte="ocre"] { color:#7a5c00; }.theme-nuit .glyphe-compte[data-teinte="ocre"] { color:#e5c04b; }
+.theme-clair .glyphe-compte[data-teinte="olive"] { color:#556000; }.theme-nuit .glyphe-compte[data-teinte="olive"] { color:#c3cc4e; }
+.theme-clair .glyphe-compte[data-teinte="vert"] { color:#186a2b; }.theme-nuit .glyphe-compte[data-teinte="vert"] { color:#7fd18c; }
+.theme-clair .glyphe-compte[data-teinte="sapin"] { color:#0b635d; }.theme-nuit .glyphe-compte[data-teinte="sapin"] { color:#5ecec4; }
+.theme-clair .glyphe-compte[data-teinte="bleu"] { color:#0a5a8f; }.theme-nuit .glyphe-compte[data-teinte="bleu"] { color:#72bdf0; }
+.theme-clair .glyphe-compte[data-teinte="indigo"] { color:#3f4dbb; }.theme-nuit .glyphe-compte[data-teinte="indigo"] { color:#aab4fa; }
+.theme-clair .glyphe-compte[data-teinte="violet"] { color:#712cb0; }.theme-nuit .glyphe-compte[data-teinte="violet"] { color:#cba4f5; }
+.theme-clair .glyphe-compte[data-teinte="magenta"] { color:#991d7c; }.theme-nuit .glyphe-compte[data-teinte="magenta"] { color:#f095d8; }
+.theme-clair .glyphe-compte[data-teinte="rose"] { color:#ad204c; }.theme-nuit .glyphe-compte[data-teinte="rose"] { color:#f79ab4; }
+.theme-clair .glyphe-compte[data-teinte="brun"] { color:#7a4a1b; }.theme-nuit .glyphe-compte[data-teinte="brun"] { color:#dcab7c; }
+
+
+.fenetre { height:860px; display:flex; flex-direction:column;
+  background:var(--bg); color:var(--ink); border:1px solid var(--border); overflow:hidden; }
+.entete { height:52px; flex:none; background:var(--bg); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:12px; padding:0 14px; }
+.marque-titre { font-size:18px; font-weight:600; width:212px; color:var(--ink);
+  display:flex; align-items:center; gap:10px; }
+.recherche { flex:1; max-width:520px; height:32px; display:flex; align-items:center; gap:10px;
+  padding:0 14px; font-size:13px; color:var(--ink2);
+  background:var(--surface); border:1px solid var(--border); }
+.recherche .ph { color:var(--ink2); }
+.fenetre button, .volet-seul button {
+  height:32px; padding:0 16px; display:inline-flex; align-items:center; gap:8px;
+  font-size:13px; color:var(--ink); background:var(--surface);
+  border:1px solid var(--border); font-family:inherit; }
+.fenetre button.principal {
+  font-weight:600; color:var(--onAccent); background:var(--accent); border-color:var(--accent);
+  margin-left:auto; }
+.colonnes { flex:1; display:grid;
+  grid-template-columns:248px var(--l-liste, 400px) minmax(0,1fr); min-height:0; }
+
+/* Nav (A29, V4/V14) */
+.nav { background:var(--bg); border-right:1px solid var(--border);
+  padding:20px 12px; display:flex; flex-direction:column; gap:2px; min-height:0; }
+.nav .rang { display:flex; align-items:center; gap:10px; flex:none;
+  padding:8px 10px; border:1px solid transparent; }
+.nav .rang.actif { background:var(--sel); border-color:var(--accent); }
+.nav .icone { color:var(--muted); display:inline-flex; }
+.nav .actif .icone { color:var(--accent); }
+.nav .libelle { font-size:14px; color:var(--ink2); flex:1; min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nav .actif .libelle { font-weight:600; color:var(--ink); }
+.pastille-nav { flex:none; font-size:12px; font-weight:600; color:var(--accent);
+  font-variant-numeric:tabular-nums; }
+.boites { margin-top:auto; padding-top:16px; border-top:1px solid var(--border);
+  display:flex; flex-direction:column; gap:6px; }
+.titre-nav { margin:0 0 4px; padding:0 10px; font-size:11px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--muted); font-weight:600; }
+.tuile-nav { display:flex; align-items:center; gap:10px; flex:none; padding:9px 12px;
+  background:var(--tuile); color:var(--tuileInk); border:1px solid var(--border); }
+.icone-tuile { color:var(--tuileInk); display:inline-flex; }
+.titre-tuile { font-size:13px; font-weight:600; }
+
+/* Volet central (Liste.svelte) */
+.colonne { display:flex; flex-direction:column; min-height:0;
+  background:var(--bg); border-right:1px solid var(--border); }
+.volet-seul { border:1px solid var(--border); overflow:hidden; display:flex; }
+.volet-seul .colonne { flex:1; border-right:none; }
+.bandeau { flex:none; height:52px; display:flex; align-items:center; padding:0 16px;
+  background:var(--bg); border-bottom:1px solid var(--border); }
+.bandeau h1 { margin:0; font-size:16px; font-weight:600; line-height:1.3; color:var(--ink);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cadre-liste { flex:1; min-height:0; overflow:hidden; }
+.onglets { flex:none; height:52px; padding:0 12px; display:flex; align-items:center; gap:10px;
+  border-top:1px solid var(--border); background:var(--bg); }
+.onglet { height:32px; padding:0 14px; display:inline-flex; align-items:center; gap:8px;
+  font-size:13px; color:var(--ink2); background:var(--surface); border:1px solid var(--border);
+  white-space:nowrap; }
+.onglet.actif { font-weight:600; color:var(--ink); background:var(--sel); border-color:var(--accent); }
+
+/* Volet de lecture (Fil.svelte — schématique, aux jetons) */
+.lecture { min-width:0; display:flex; flex-direction:column; background:var(--bg); overflow:hidden; }
+.tete-fil { flex:none; padding:14px 20px 12px; border-bottom:1px solid var(--border); }
+.gestes, .barre-fil, .reponses { display:flex; align-items:center; gap:8px; }
+.essor { flex:1; }
+.fenetre button.nu { background:transparent; border-color:transparent; color:var(--ink2);
+  padding:0 10px; }
+.titre { margin:10px 0 8px; font-size:24px; line-height:1.2; color:var(--ink);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.display { font-family:'Segoe UI Variable Display', -apple-system, BlinkMacSystemFont,
+  "Segoe UI", sans-serif; font-weight:340; letter-spacing:-.03em; }
+.fil-corps { flex:1; min-height:0; overflow:hidden; padding:16px 20px 20px; }
+.replie { display:flex; align-items:center; gap:10px; padding:12px 20px;
+  background:var(--surface); border:1px solid var(--border); font-size:13px; }
+.replie-exp { font-weight:600; color:var(--ink); flex:none; }
+.replie-ap { color:var(--ink2); min-width:0; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; }
+.quand { margin-left:auto; color:var(--muted); font-size:12px; flex:none; white-space:nowrap; }
+.avatar.petit { width:26px; height:26px; grid-row:auto; }
+.deplie { background:var(--surface); border:1px solid var(--border);
+  box-shadow:var(--shadow); margin-top:12px; display:flex; flex-direction:column; }
+.tete-message { display:flex; align-items:center; gap:10px; padding:12px 20px;
+  border-bottom:1px solid var(--border); }
+.tete-message .avatar { grid-row:auto; }
+.qui { min-width:0; display:flex; flex-direction:column; }
+.auteur { font-size:15px; font-weight:600; color:var(--ink);
+  display:flex; align-items:baseline; gap:6px; min-width:0; }
+/* Décision 5 : le bloc boîte de la ligne, au volet de lecture. Il y
+   garde sa graisse normale — c'est le NOM qui porte l'autorité. */
+.auteur .boite, .replie .boite { font-weight:400; flex:0 3 auto; }
+.replie .boite { margin-right:2px; }
+.adr { font-size:12px; color:var(--muted); }
+.contenu { padding:14px 20px 18px; display:flex; flex-direction:column; gap:12px; }
+.txt { margin:0; font-size:14px; line-height:1.6; color:var(--ink); }
+.titre-fichiers { margin:0 0 8px; font-size:12px; font-weight:600; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--muted); }
+.poids { color:var(--muted); margin-left:6px; }
+.reponses { padding-top:4px; }
+
+/* Barre d'état (V2 : le disque plein dit le repos) */
+.statut { height:36px; flex:none; background:var(--bg); border-top:1px solid var(--border);
+  display:flex; align-items:center; gap:14px; padding:0 24px; font-size:12px; color:var(--muted); }
+.statut .texte { display:flex; align-items:center; gap:10px; }
+.btn-statut { height:26px; padding:0 12px; display:inline-flex; align-items:center; gap:7px;
+  font-size:12px; font-weight:600; color:var(--ink2); background:var(--surface);
+  border:1px solid var(--border); font-family:inherit; }
+.btn-statut .ic { width:14px; height:14px; }
+.ic.miroir { transform:scaleX(-1); }
+
+.ligne > .tete { grid-row:1; align-self:center; display:flex; width:18px; height:18px; }
+.o1 .ligne > .tete { width:16px; height:16px; }
+
+/* Le duo de fin : le même volet, O2 et O1 */
+.cadre { width:400px; height:640px; overflow:hidden;
+  border:1px solid var(--border); background:var(--bg); }
+</style></head>
+<body><div class="page">
+<header class="tete-page">
+  <p class="sourcil">Spike jetable · 2026-08-24 · rien ici n’est livré</p>
+  <h1 class="titre-page">O2 — le glyphe nu, en situation</h1>
+  <p class="sous-titre">La fenêtre entière, aux deux polarités, à la <b>densité réelle</b> :
+  une liste montre ce qu’elle montre. Le décor est celui de la planche — mêmes comptes, mêmes
+  teintes, glyphes et jetons lus du produit — et les comptes y alternent comme ils alternent
+  vraiment quand le tri est la date : c’est le cas le plus défavorable au glyphe nu, et le seul
+  qui vaille d’être regardé. Fenêtre de 1280 × 860 ; le défaut du produit est 1000 de large,
+  nav 248 et liste 400.</p>
+  <p class="note">Le volet de lecture est <b>schématique</b> — assez fidèle pour donner l’échelle
+  et tirer l’œil, pas une proposition. Il garde la tuile aux initiales : dans un fil, l’expéditeur
+  change d’un message à l’autre (arbitrage D-c de la planche).</p>
+  <ol class="regarder">
+    <li><b>Le glyphe se trouve-t-il sans le chercher ?</b> Descendez la liste comme vous la
+    descendez le matin. S’il faut s’arrêter pour lire la marque, « visible » n’est pas tenu.</li>
+    <li><b>Le même compte se lit-il comme le même compte ?</b> La nav porte ses pastilles
+    PLEINES de 20 px, la liste ses glyphes NUS. C’est le coût nommé d’O2 — il se juge ici, pas
+    en prose.</li>
+    <li><b>La rangée choisie et la nuit.</b> Sur <code>--sel</code> et sur le fond nuit, le tracé
+    de 1,5 px tient-il ? La mesure dit 4,97:1 au pire ; l’œil dira si c’est assez.</li>
+  </ol>
+  <p class="note"><a href="planche.html">← les sept dessins</a> ·
+  <a href="organisation.html">les quinze organisations</a> ·
+  <a href="ligne-expediteur.html">« Expéditeur sur ▣ Boîte »</a> ·
+  <a href="v1v7.html">V1 + V7 en situation</a></p>
+</header>
+
+<section class="bloc">
+  <h2>Elements — clair</h2>
+  <p class="legende">Boîte unifiée, trois comptes, rangée « Photos du chantier de Vaise » choisie.</p>
+  
+<div class="fenetre theme-clair" style="width:1280px; --l-liste:400px">
+  <header class="entete">
+    <span class="marque-titre"><svg class="ic" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--marque)"/></svg>Wind</span>
+    <span class="recherche"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 1 0 0-14"/><path d="M16 16l4 4"/></g></svg><span class="ph">Chercher dans le courrier</span></span>
+    <button class="principal"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h8"/><path d="M4 6v14h14v-8"/><path d="M11 15l1-3 6-6 2 2-6 6z"/></g></svg>Écrire</button>
+    <button><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16"/><path d="M14 5v6"/><path d="M4 16h16"/><path d="M9 13v6"/></g></svg>Réglages</button>
+  </header>
+  <div class="colonnes">
+<nav class="nav">
+  
+    <div class="rang actif">
+      <span class="icone"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg></span><span class="libelle">Boîte de réception</span>
+      <span class="pastille-nav">12</span>
+    </div>
+    <div class="rang">
+      <span class="icone"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 4l18 8-18 8 3-8z"/></g></svg></span><span class="libelle">Envoyés</span>
+      
+    </div>
+    <div class="rang">
+      <span class="icone"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h10"/><path d="M4 11h7"/><path d="M11 19l1-3 6-6 2 2-6 6z"/></g></svg></span><span class="libelle">Brouillons</span>
+      
+    </div>
+    <div class="rang">
+      <span class="icone"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 3h6l6 6v6l-6 6H9l-6-6V9z"/><path d="M12 8v5"/><path d="M12 16v2"/></g></svg></span><span class="libelle">Indésirables</span>
+      <span class="pastille-nav">3</span>
+    </div>
+    <div class="rang">
+      <span class="icone"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 4h18v5H3z"/><path d="M5 9h14v11H5z"/><path d="M10 6h4"/></g></svg></span><span class="libelle">Archives</span>
+      
+    </div>
+    <div class="rang">
+      <span class="icone"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 7h16"/><path d="M6 7v12h12V7"/><path d="M10 4h4"/><path d="M10 11v5"/><path d="M14 11v5"/></g></svg></span><span class="libelle">Corbeille</span>
+      
+    </div>
+  <div class="boites">
+    <p class="titre-nav">Boîtes</p>
+    <div class="tuile-nav">
+      <span class="icone-tuile"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 12h16v7H4z"/><path d="M6 9h12"/><path d="M8 6h8"/></g></svg></span>
+      <span class="titre-tuile">Toutes les boîtes</span>
+    </div>
+    
+      <div class="rang"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span><span class="libelle">Travail</span></div>
+      <div class="rang"><span class="glyphe-compte" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span><span class="libelle">Maison</span></div>
+      <div class="rang"><span class="glyphe-compte" data-teinte="violet" title="Études — p.mercier@etu-lyon.fr"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span><span class="libelle">Études</span></div>
+  </div>
+</nav>
+<section class="colonne">
+  <header class="bandeau"><h1>Boîte de réception</h1></header>
+  <div class="cadre-liste"><div class="liste"><div class="ligne nonlu"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">Camille Roux</span><span class="heure">09:41</span></div><p class="objet">Contrat Vantis — v4 pour relecture</p><p class="apercu">Voici la version corrigée, les deux annexes sont à jour.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M19 7v9a6 6 0 0 1-12 0V6a4 4 0 0 1 8 0v10a2 2 0 0 1-4 0V8"/></g></svg>2 fichiers</span></div></div><div class="ligne nonlu"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">Sofia Nardi</span><span class="heure">09:07</span></div><p class="objet">Atelier de septembre</p><p class="apercu">Deux salles réservées à Milan.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Marine Alonso</span><span class="heure">08:52</span></div><p class="objet">Relevé de juillet</p><p class="apercu">Votre relevé est disponible dans votre espace client.</p></div><div class="ligne choisie"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Thomas Petit</span><span class="heure">08:30</span></div><p class="objet">Photos du chantier de Vaise</p><p class="apercu">J’ai mis les prises de vue dans le dossier partagé.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 5V2h16v10h-6"/><path d="M2 5h14v9H7l-5 5z"/></g></svg>3 messages</span></div></div><div class="ligne nonlu"><span class="tete"><span class="glyphe-compte" data-teinte="violet" title="Études — p.mercier@etu-lyon.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">École Jean-Moulin</span><span class="heure">08:04</span></div><p class="objet">Réunion parents-professeurs</p><p class="apercu">La réunion se tiendra le mardi 9 septembre à 18 h.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Yann Bernard</span><span class="heure">4 août</span></div><p class="objet">Re: planning des salles</p><p class="apercu">Je confirme pour jeudi, salle 2 au premier étage.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Syndic Beauregard</span><span class="heure">4 août</span></div><p class="objet">Assemblée générale — convocation</p><p class="apercu">Vous trouverez l’ordre du jour et les pouvoirs en pièce jointe.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M19 7v9a6 6 0 0 1-12 0V6a4 4 0 0 1 8 0v10a2 2 0 0 1-4 0V8"/></g></svg>3 fichiers</span></div></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Léa Fontaine</span><span class="heure">3 août</span></div><p class="objet">Devis Kessler — relance</p><p class="apercu">Sans retour de leur part d’ici vendredi, je relance par téléphone.</p></div><div class="ligne nonlu"><span class="tete"><span class="glyphe-compte" data-teinte="violet" title="Études — p.mercier@etu-lyon.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">Secrétariat pédagogique</span><span class="heure">3 août</span></div><p class="objet">Inscription au semestre — pièces manquantes</p><p class="apercu">Il manque le justificatif de domicile pour finaliser le dossier.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Thomas Petit</span><span class="heure">2 août</span></div><p class="objet">Week-end du 15 ?</p><p class="apercu">On est quatre pour l’instant, dis-moi si vous venez.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 5V2h16v10h-6"/><path d="M2 5h14v9H7l-5 5z"/></g></svg>6 messages</span></div></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Camille Roux</span><span class="heure">2 août</span></div><p class="objet">Compte rendu du comité</p><p class="apercu">Décisions actées et points reportés au prochain comité.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Support Vantis</span><span class="heure">1 août</span></div><p class="objet">Votre demande #4812 a été résolue</p><p class="apercu">Nous restons à votre disposition si le problème réapparaît.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Marine Alonso</span><span class="heure">1 août</span></div><p class="objet">Rendez-vous du 12 septembre</p><p class="apercu">Le créneau de 14 h 30 est confirmé.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="violet" title="Études — p.mercier@etu-lyon.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></span><div class="l1"><span class="exp">Bibliothèque universitaire</span><span class="heure">31 juil.</span></div><p class="objet">Prêt arrivant à échéance</p><p class="apercu">Deux ouvrages sont à rendre avant le 5 septembre.</p></div></div></div>
+  <div class="onglets">
+    <span class="onglet actif"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg>Tous</span>
+    <span class="onglet"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h14v10H3z"/><path d="M3 8l7 5 7-5"/></g><circle cx="19" cy="6" r="3.4" fill="var(--marque)"/></svg>Non lus</span>
+    <span class="onglet"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h10"/><path d="M4 11h7"/><path d="M11 19l1-3 6-6 2 2-6 6z"/></g></svg>Brouillons</span>
+  </div>
+</section>
+<section class="lecture">
+  <div class="tete-fil">
+    <div class="gestes">
+      <button class="nu"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 5h18v4H3z"/><path d="M5 9h14v10H5z"/><path d="M9 13h6"/></g></svg>Archiver</button>
+      <button class="nu"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 7h16"/><path d="M6 7v12h12V7"/><path d="M10 4h4"/><path d="M10 11v5"/><path d="M14 11v5"/></g></svg>Supprimer</button>
+      <button class="nu"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 3h6l6 6v6l-6 6H9l-6-6V9z"/><path d="M12 8v5"/><path d="M12 16v2"/></g></svg>Signaler comme spam</button>
+      <span class="essor"></span>
+      <button class="nu"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 3h4v7l2 4H8l2-4z"/><path d="M12 14v7"/></g></svg>Épingler</button>
+    </div>
+    <h3 class="titre display">Photos du chantier de Vaise</h3>
+    <div class="barre-fil">
+      <span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 5V2h16v10h-6"/><path d="M2 5h14v9H7l-5 5z"/></g></svg>3 messages</span>
+      <span class="essor"></span>
+      <button class="nu"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M14 4h6v6"/><path d="M10 20H4v-6"/><path d="M20 4l-7 7"/><path d="M4 20l7-7"/></g></svg>Ouvrir</button>
+      <button class="nu"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M7 10l5-5 5 5"/><path d="M7 14l5 5 5-5"/></g></svg>Tout déplier</button>
+    </div>
+  </div>
+  <div class="fil-corps">
+    <div class="replie">
+      <span class="avatar petit">PM</span>
+      <span class="replie-exp">Paul Mercier</span>
+      <span class="replie-ap">Parfait, je regarde ça ce soir.</span>
+      <span class="quand">3 août, 11 h 02</span>
+    </div>
+    <article class="deplie">
+      <div class="tete-message">
+        <span class="avatar">TP</span>
+        <span class="qui">
+          <span class="auteur">Thomas Petit</span>
+          <span class="adr">thomas.petit@atelier-nord.fr · à Paul Mercier</span>
+        </span>
+        <span class="quand">3 août, 08 h 30</span>
+      </div>
+      <div class="contenu">
+        <p class="txt">Bonjour Paul,</p>
+        <p class="txt">J’ai mis les prises de vue dans le dossier partagé — la série du matin
+        est nettement plus lisible que celle de mercredi, la lumière rasante ne pardonne rien
+        sur les enduits.</p>
+        <p class="txt">Dis-moi si tu veux que je repasse jeudi pour les façades nord ; sinon je
+        garde le créneau pour le rapport.</p>
+        <p class="txt">Thomas</p>
+        <div class="pieces">
+          <p class="titre-fichiers">Fichiers</p>
+          <span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 3h8l4 4v14H6z"/><path d="M9 12h6"/><path d="M9 16h4"/></g></svg>vaise-facade-nord.pdf<span class="poids">2,4 Mo</span></span>
+        </div>
+        <div class="reponses">
+          <button class="nu"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 6L3 12l6 6"/><path d="M3 12h11a6 6 0 0 1 6 6v1"/></g></svg>Répondre</button>
+          <button class="nu"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M8 6L2 12l6 6"/><path d="M14 6l-6 6 6 6"/><path d="M8 12h8a5 5 0 0 1 5 5v2"/></g></svg>Répondre à tous</button>
+          <button class="nu"><svg class="ic miroir" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 6L3 12l6 6"/><path d="M3 12h11a6 6 0 0 1 6 6v1"/></g></svg>Transférer</button>
+        </div>
+      </div>
+    </article>
+  </div>
+</section></div>
+  <div class="statut">
+    <span class="texte"><span class="disque"></span>À jour — dernière relève il y a 2 min</span>
+    <span class="essor"></span>
+    <button class="btn-statut"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></g></svg>Synchroniser</button>
+  </div>
+</div>
+</section>
+
+<section class="bloc">
+  <h2>Elements · nuit</h2>
+  <p class="legende">Le même écran, la même minute — le nuancier suit la polarité (V5).</p>
+  
+<div class="fenetre theme-nuit" style="width:1280px; --l-liste:400px">
+  <header class="entete">
+    <span class="marque-titre"><svg class="ic" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--marque)"/></svg>Wind</span>
+    <span class="recherche"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 1 0 0-14"/><path d="M16 16l4 4"/></g></svg><span class="ph">Chercher dans le courrier</span></span>
+    <button class="principal"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h8"/><path d="M4 6v14h14v-8"/><path d="M11 15l1-3 6-6 2 2-6 6z"/></g></svg>Écrire</button>
+    <button><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16"/><path d="M14 5v6"/><path d="M4 16h16"/><path d="M9 13v6"/></g></svg>Réglages</button>
+  </header>
+  <div class="colonnes">
+<nav class="nav">
+  
+    <div class="rang actif">
+      <span class="icone"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg></span><span class="libelle">Boîte de réception</span>
+      <span class="pastille-nav">12</span>
+    </div>
+    <div class="rang">
+      <span class="icone"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 4l18 8-18 8 3-8z"/></g></svg></span><span class="libelle">Envoyés</span>
+      
+    </div>
+    <div class="rang">
+      <span class="icone"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h10"/><path d="M4 11h7"/><path d="M11 19l1-3 6-6 2 2-6 6z"/></g></svg></span><span class="libelle">Brouillons</span>
+      
+    </div>
+    <div class="rang">
+      <span class="icone"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 3h6l6 6v6l-6 6H9l-6-6V9z"/><path d="M12 8v5"/><path d="M12 16v2"/></g></svg></span><span class="libelle">Indésirables</span>
+      <span class="pastille-nav">3</span>
+    </div>
+    <div class="rang">
+      <span class="icone"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 4h18v5H3z"/><path d="M5 9h14v11H5z"/><path d="M10 6h4"/></g></svg></span><span class="libelle">Archives</span>
+      
+    </div>
+    <div class="rang">
+      <span class="icone"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 7h16"/><path d="M6 7v12h12V7"/><path d="M10 4h4"/><path d="M10 11v5"/><path d="M14 11v5"/></g></svg></span><span class="libelle">Corbeille</span>
+      
+    </div>
+  <div class="boites">
+    <p class="titre-nav">Boîtes</p>
+    <div class="tuile-nav">
+      <span class="icone-tuile"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 12h16v7H4z"/><path d="M6 9h12"/><path d="M8 6h8"/></g></svg></span>
+      <span class="titre-tuile">Toutes les boîtes</span>
+    </div>
+    
+      <div class="rang"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span><span class="libelle">Travail</span></div>
+      <div class="rang"><span class="glyphe-compte" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span><span class="libelle">Maison</span></div>
+      <div class="rang"><span class="glyphe-compte" data-teinte="violet" title="Études — p.mercier@etu-lyon.fr"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span><span class="libelle">Études</span></div>
+  </div>
+</nav>
+<section class="colonne">
+  <header class="bandeau"><h1>Boîte de réception</h1></header>
+  <div class="cadre-liste"><div class="liste"><div class="ligne nonlu"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">Camille Roux</span><span class="heure">09:41</span></div><p class="objet">Contrat Vantis — v4 pour relecture</p><p class="apercu">Voici la version corrigée, les deux annexes sont à jour.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M19 7v9a6 6 0 0 1-12 0V6a4 4 0 0 1 8 0v10a2 2 0 0 1-4 0V8"/></g></svg>2 fichiers</span></div></div><div class="ligne nonlu"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">Sofia Nardi</span><span class="heure">09:07</span></div><p class="objet">Atelier de septembre</p><p class="apercu">Deux salles réservées à Milan.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Marine Alonso</span><span class="heure">08:52</span></div><p class="objet">Relevé de juillet</p><p class="apercu">Votre relevé est disponible dans votre espace client.</p></div><div class="ligne choisie"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Thomas Petit</span><span class="heure">08:30</span></div><p class="objet">Photos du chantier de Vaise</p><p class="apercu">J’ai mis les prises de vue dans le dossier partagé.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 5V2h16v10h-6"/><path d="M2 5h14v9H7l-5 5z"/></g></svg>3 messages</span></div></div><div class="ligne nonlu"><span class="tete"><span class="glyphe-compte" data-teinte="violet" title="Études — p.mercier@etu-lyon.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">École Jean-Moulin</span><span class="heure">08:04</span></div><p class="objet">Réunion parents-professeurs</p><p class="apercu">La réunion se tiendra le mardi 9 septembre à 18 h.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Yann Bernard</span><span class="heure">4 août</span></div><p class="objet">Re: planning des salles</p><p class="apercu">Je confirme pour jeudi, salle 2 au premier étage.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Syndic Beauregard</span><span class="heure">4 août</span></div><p class="objet">Assemblée générale — convocation</p><p class="apercu">Vous trouverez l’ordre du jour et les pouvoirs en pièce jointe.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M19 7v9a6 6 0 0 1-12 0V6a4 4 0 0 1 8 0v10a2 2 0 0 1-4 0V8"/></g></svg>3 fichiers</span></div></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Léa Fontaine</span><span class="heure">3 août</span></div><p class="objet">Devis Kessler — relance</p><p class="apercu">Sans retour de leur part d’ici vendredi, je relance par téléphone.</p></div><div class="ligne nonlu"><span class="tete"><span class="glyphe-compte" data-teinte="violet" title="Études — p.mercier@etu-lyon.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">Secrétariat pédagogique</span><span class="heure">3 août</span></div><p class="objet">Inscription au semestre — pièces manquantes</p><p class="apercu">Il manque le justificatif de domicile pour finaliser le dossier.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Thomas Petit</span><span class="heure">2 août</span></div><p class="objet">Week-end du 15 ?</p><p class="apercu">On est quatre pour l’instant, dis-moi si vous venez.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 5V2h16v10h-6"/><path d="M2 5h14v9H7l-5 5z"/></g></svg>6 messages</span></div></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Camille Roux</span><span class="heure">2 août</span></div><p class="objet">Compte rendu du comité</p><p class="apercu">Décisions actées et points reportés au prochain comité.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Support Vantis</span><span class="heure">1 août</span></div><p class="objet">Votre demande #4812 a été résolue</p><p class="apercu">Nous restons à votre disposition si le problème réapparaît.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Marine Alonso</span><span class="heure">1 août</span></div><p class="objet">Rendez-vous du 12 septembre</p><p class="apercu">Le créneau de 14 h 30 est confirmé.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="violet" title="Études — p.mercier@etu-lyon.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></span><div class="l1"><span class="exp">Bibliothèque universitaire</span><span class="heure">31 juil.</span></div><p class="objet">Prêt arrivant à échéance</p><p class="apercu">Deux ouvrages sont à rendre avant le 5 septembre.</p></div></div></div>
+  <div class="onglets">
+    <span class="onglet actif"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg>Tous</span>
+    <span class="onglet"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h14v10H3z"/><path d="M3 8l7 5 7-5"/></g><circle cx="19" cy="6" r="3.4" fill="var(--marque)"/></svg>Non lus</span>
+    <span class="onglet"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h10"/><path d="M4 11h7"/><path d="M11 19l1-3 6-6 2 2-6 6z"/></g></svg>Brouillons</span>
+  </div>
+</section>
+<section class="lecture">
+  <div class="tete-fil">
+    <div class="gestes">
+      <button class="nu"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 5h18v4H3z"/><path d="M5 9h14v10H5z"/><path d="M9 13h6"/></g></svg>Archiver</button>
+      <button class="nu"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 7h16"/><path d="M6 7v12h12V7"/><path d="M10 4h4"/><path d="M10 11v5"/><path d="M14 11v5"/></g></svg>Supprimer</button>
+      <button class="nu"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 3h6l6 6v6l-6 6H9l-6-6V9z"/><path d="M12 8v5"/><path d="M12 16v2"/></g></svg>Signaler comme spam</button>
+      <span class="essor"></span>
+      <button class="nu"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 3h4v7l2 4H8l2-4z"/><path d="M12 14v7"/></g></svg>Épingler</button>
+    </div>
+    <h3 class="titre display">Photos du chantier de Vaise</h3>
+    <div class="barre-fil">
+      <span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 5V2h16v10h-6"/><path d="M2 5h14v9H7l-5 5z"/></g></svg>3 messages</span>
+      <span class="essor"></span>
+      <button class="nu"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M14 4h6v6"/><path d="M10 20H4v-6"/><path d="M20 4l-7 7"/><path d="M4 20l7-7"/></g></svg>Ouvrir</button>
+      <button class="nu"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M7 10l5-5 5 5"/><path d="M7 14l5 5 5-5"/></g></svg>Tout déplier</button>
+    </div>
+  </div>
+  <div class="fil-corps">
+    <div class="replie">
+      <span class="avatar petit">PM</span>
+      <span class="replie-exp">Paul Mercier</span>
+      <span class="replie-ap">Parfait, je regarde ça ce soir.</span>
+      <span class="quand">3 août, 11 h 02</span>
+    </div>
+    <article class="deplie">
+      <div class="tete-message">
+        <span class="avatar">TP</span>
+        <span class="qui">
+          <span class="auteur">Thomas Petit</span>
+          <span class="adr">thomas.petit@atelier-nord.fr · à Paul Mercier</span>
+        </span>
+        <span class="quand">3 août, 08 h 30</span>
+      </div>
+      <div class="contenu">
+        <p class="txt">Bonjour Paul,</p>
+        <p class="txt">J’ai mis les prises de vue dans le dossier partagé — la série du matin
+        est nettement plus lisible que celle de mercredi, la lumière rasante ne pardonne rien
+        sur les enduits.</p>
+        <p class="txt">Dis-moi si tu veux que je repasse jeudi pour les façades nord ; sinon je
+        garde le créneau pour le rapport.</p>
+        <p class="txt">Thomas</p>
+        <div class="pieces">
+          <p class="titre-fichiers">Fichiers</p>
+          <span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 3h8l4 4v14H6z"/><path d="M9 12h6"/><path d="M9 16h4"/></g></svg>vaise-facade-nord.pdf<span class="poids">2,4 Mo</span></span>
+        </div>
+        <div class="reponses">
+          <button class="nu"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 6L3 12l6 6"/><path d="M3 12h11a6 6 0 0 1 6 6v1"/></g></svg>Répondre</button>
+          <button class="nu"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M8 6L2 12l6 6"/><path d="M14 6l-6 6 6 6"/><path d="M8 12h8a5 5 0 0 1 5 5v2"/></g></svg>Répondre à tous</button>
+          <button class="nu"><svg class="ic miroir" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M9 6L3 12l6 6"/><path d="M3 12h11a6 6 0 0 1 6 6v1"/></g></svg>Transférer</button>
+        </div>
+      </div>
+    </article>
+  </div>
+</section></div>
+  <div class="statut">
+    <span class="texte"><span class="disque"></span>À jour — dernière relève il y a 2 min</span>
+    <span class="essor"></span>
+    <button class="btn-statut"><svg class="ic " viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></g></svg>Synchroniser</button>
+  </div>
+</div>
+</section>
+
+<section class="bloc">
+  <h2>Si le glyphe nu paraît trop léger — le même volet en O1</h2>
+  <p class="legende">Même quatorze rangées, même largeur : à gauche le glyphe nu (O2), à droite
+  la pastille pleine (O1). C’est le seul départage qui reste, et il est à l’œil.</p>
+  <div class="duo">
+    <figure><div class="cadre theme-clair"><div class="liste o2"><div class="ligne nonlu"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">Camille Roux</span><span class="heure">09:41</span></div><p class="objet">Contrat Vantis — v4 pour relecture</p><p class="apercu">Voici la version corrigée, les deux annexes sont à jour.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M19 7v9a6 6 0 0 1-12 0V6a4 4 0 0 1 8 0v10a2 2 0 0 1-4 0V8"/></g></svg>2 fichiers</span></div></div><div class="ligne nonlu"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">Sofia Nardi</span><span class="heure">09:07</span></div><p class="objet">Atelier de septembre</p><p class="apercu">Deux salles réservées à Milan.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Marine Alonso</span><span class="heure">08:52</span></div><p class="objet">Relevé de juillet</p><p class="apercu">Votre relevé est disponible dans votre espace client.</p></div><div class="ligne choisie"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Thomas Petit</span><span class="heure">08:30</span></div><p class="objet">Photos du chantier de Vaise</p><p class="apercu">J’ai mis les prises de vue dans le dossier partagé.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 5V2h16v10h-6"/><path d="M2 5h14v9H7l-5 5z"/></g></svg>3 messages</span></div></div><div class="ligne nonlu"><span class="tete"><span class="glyphe-compte" data-teinte="violet" title="Études — p.mercier@etu-lyon.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">École Jean-Moulin</span><span class="heure">08:04</span></div><p class="objet">Réunion parents-professeurs</p><p class="apercu">La réunion se tiendra le mardi 9 septembre à 18 h.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Yann Bernard</span><span class="heure">4 août</span></div><p class="objet">Re: planning des salles</p><p class="apercu">Je confirme pour jeudi, salle 2 au premier étage.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Syndic Beauregard</span><span class="heure">4 août</span></div><p class="objet">Assemblée générale — convocation</p><p class="apercu">Vous trouverez l’ordre du jour et les pouvoirs en pièce jointe.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M19 7v9a6 6 0 0 1-12 0V6a4 4 0 0 1 8 0v10a2 2 0 0 1-4 0V8"/></g></svg>3 fichiers</span></div></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Léa Fontaine</span><span class="heure">3 août</span></div><p class="objet">Devis Kessler — relance</p><p class="apercu">Sans retour de leur part d’ici vendredi, je relance par téléphone.</p></div><div class="ligne nonlu"><span class="tete"><span class="glyphe-compte" data-teinte="violet" title="Études — p.mercier@etu-lyon.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">Secrétariat pédagogique</span><span class="heure">3 août</span></div><p class="objet">Inscription au semestre — pièces manquantes</p><p class="apercu">Il manque le justificatif de domicile pour finaliser le dossier.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Thomas Petit</span><span class="heure">2 août</span></div><p class="objet">Week-end du 15 ?</p><p class="apercu">On est quatre pour l’instant, dis-moi si vous venez.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 5V2h16v10h-6"/><path d="M2 5h14v9H7l-5 5z"/></g></svg>6 messages</span></div></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Camille Roux</span><span class="heure">2 août</span></div><p class="objet">Compte rendu du comité</p><p class="apercu">Décisions actées et points reportés au prochain comité.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Support Vantis</span><span class="heure">1 août</span></div><p class="objet">Votre demande #4812 a été résolue</p><p class="apercu">Nous restons à votre disposition si le problème réapparaît.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Marine Alonso</span><span class="heure">1 août</span></div><p class="objet">Rendez-vous du 12 septembre</p><p class="apercu">Le créneau de 14 h 30 est confirmé.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="violet" title="Études — p.mercier@etu-lyon.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></span><div class="l1"><span class="exp">Bibliothèque universitaire</span><span class="heure">31 juil.</span></div><p class="objet">Prêt arrivant à échéance</p><p class="apercu">Deux ouvrages sont à rendre avant le 5 septembre.</p></div></div></div>
+      <figcaption>O2 — le glyphe nu</figcaption></figure>
+    <figure><div class="cadre theme-clair"><div class="liste o1"><div class="ligne nonlu"><span class="tete"><span class="repere p16" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">Camille Roux</span><span class="heure">09:41</span></div><p class="objet">Contrat Vantis — v4 pour relecture</p><p class="apercu">Voici la version corrigée, les deux annexes sont à jour.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M19 7v9a6 6 0 0 1-12 0V6a4 4 0 0 1 8 0v10a2 2 0 0 1-4 0V8"/></g></svg>2 fichiers</span></div></div><div class="ligne nonlu"><span class="tete"><span class="repere p16" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">Sofia Nardi</span><span class="heure">09:07</span></div><p class="objet">Atelier de septembre</p><p class="apercu">Deux salles réservées à Milan.</p></div><div class="ligne"><span class="tete"><span class="repere p16" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Marine Alonso</span><span class="heure">08:52</span></div><p class="objet">Relevé de juillet</p><p class="apercu">Votre relevé est disponible dans votre espace client.</p></div><div class="ligne choisie"><span class="tete"><span class="repere p16" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Thomas Petit</span><span class="heure">08:30</span></div><p class="objet">Photos du chantier de Vaise</p><p class="apercu">J’ai mis les prises de vue dans le dossier partagé.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 5V2h16v10h-6"/><path d="M2 5h14v9H7l-5 5z"/></g></svg>3 messages</span></div></div><div class="ligne nonlu"><span class="tete"><span class="repere p16" data-teinte="violet" title="Études — p.mercier@etu-lyon.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">École Jean-Moulin</span><span class="heure">08:04</span></div><p class="objet">Réunion parents-professeurs</p><p class="apercu">La réunion se tiendra le mardi 9 septembre à 18 h.</p></div><div class="ligne"><span class="tete"><span class="repere p16" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Yann Bernard</span><span class="heure">4 août</span></div><p class="objet">Re: planning des salles</p><p class="apercu">Je confirme pour jeudi, salle 2 au premier étage.</p></div><div class="ligne"><span class="tete"><span class="repere p16" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Syndic Beauregard</span><span class="heure">4 août</span></div><p class="objet">Assemblée générale — convocation</p><p class="apercu">Vous trouverez l’ordre du jour et les pouvoirs en pièce jointe.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M19 7v9a6 6 0 0 1-12 0V6a4 4 0 0 1 8 0v10a2 2 0 0 1-4 0V8"/></g></svg>3 fichiers</span></div></div><div class="ligne"><span class="tete"><span class="repere p16" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Léa Fontaine</span><span class="heure">3 août</span></div><p class="objet">Devis Kessler — relance</p><p class="apercu">Sans retour de leur part d’ici vendredi, je relance par téléphone.</p></div><div class="ligne nonlu"><span class="tete"><span class="repere p16" data-teinte="violet" title="Études — p.mercier@etu-lyon.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">Secrétariat pédagogique</span><span class="heure">3 août</span></div><p class="objet">Inscription au semestre — pièces manquantes</p><p class="apercu">Il manque le justificatif de domicile pour finaliser le dossier.</p></div><div class="ligne"><span class="tete"><span class="repere p16" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Thomas Petit</span><span class="heure">2 août</span></div><p class="objet">Week-end du 15 ?</p><p class="apercu">On est quatre pour l’instant, dis-moi si vous venez.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 5V2h16v10h-6"/><path d="M2 5h14v9H7l-5 5z"/></g></svg>6 messages</span></div></div><div class="ligne"><span class="tete"><span class="repere p16" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Camille Roux</span><span class="heure">2 août</span></div><p class="objet">Compte rendu du comité</p><p class="apercu">Décisions actées et points reportés au prochain comité.</p></div><div class="ligne"><span class="tete"><span class="repere p16" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Support Vantis</span><span class="heure">1 août</span></div><p class="objet">Votre demande #4812 a été résolue</p><p class="apercu">Nous restons à votre disposition si le problème réapparaît.</p></div><div class="ligne"><span class="tete"><span class="repere p16" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Marine Alonso</span><span class="heure">1 août</span></div><p class="objet">Rendez-vous du 12 septembre</p><p class="apercu">Le créneau de 14 h 30 est confirmé.</p></div><div class="ligne"><span class="tete"><span class="repere p16" data-teinte="violet" title="Études — p.mercier@etu-lyon.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></span><div class="l1"><span class="exp">Bibliothèque universitaire</span><span class="heure">31 juil.</span></div><p class="objet">Prêt arrivant à échéance</p><p class="apercu">Deux ouvrages sont à rendre avant le 5 septembre.</p></div></div></div>
+      <figcaption>O1 — la pastille</figcaption></figure>
+    <figure><div class="cadre theme-nuit"><div class="liste o2"><div class="ligne nonlu"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">Camille Roux</span><span class="heure">09:41</span></div><p class="objet">Contrat Vantis — v4 pour relecture</p><p class="apercu">Voici la version corrigée, les deux annexes sont à jour.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M19 7v9a6 6 0 0 1-12 0V6a4 4 0 0 1 8 0v10a2 2 0 0 1-4 0V8"/></g></svg>2 fichiers</span></div></div><div class="ligne nonlu"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">Sofia Nardi</span><span class="heure">09:07</span></div><p class="objet">Atelier de septembre</p><p class="apercu">Deux salles réservées à Milan.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Marine Alonso</span><span class="heure">08:52</span></div><p class="objet">Relevé de juillet</p><p class="apercu">Votre relevé est disponible dans votre espace client.</p></div><div class="ligne choisie"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Thomas Petit</span><span class="heure">08:30</span></div><p class="objet">Photos du chantier de Vaise</p><p class="apercu">J’ai mis les prises de vue dans le dossier partagé.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 5V2h16v10h-6"/><path d="M2 5h14v9H7l-5 5z"/></g></svg>3 messages</span></div></div><div class="ligne nonlu"><span class="tete"><span class="glyphe-compte" data-teinte="violet" title="Études — p.mercier@etu-lyon.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">École Jean-Moulin</span><span class="heure">08:04</span></div><p class="objet">Réunion parents-professeurs</p><p class="apercu">La réunion se tiendra le mardi 9 septembre à 18 h.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Yann Bernard</span><span class="heure">4 août</span></div><p class="objet">Re: planning des salles</p><p class="apercu">Je confirme pour jeudi, salle 2 au premier étage.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Syndic Beauregard</span><span class="heure">4 août</span></div><p class="objet">Assemblée générale — convocation</p><p class="apercu">Vous trouverez l’ordre du jour et les pouvoirs en pièce jointe.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M19 7v9a6 6 0 0 1-12 0V6a4 4 0 0 1 8 0v10a2 2 0 0 1-4 0V8"/></g></svg>3 fichiers</span></div></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Léa Fontaine</span><span class="heure">3 août</span></div><p class="objet">Devis Kessler — relance</p><p class="apercu">Sans retour de leur part d’ici vendredi, je relance par téléphone.</p></div><div class="ligne nonlu"><span class="tete"><span class="glyphe-compte" data-teinte="violet" title="Études — p.mercier@etu-lyon.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">Secrétariat pédagogique</span><span class="heure">3 août</span></div><p class="objet">Inscription au semestre — pièces manquantes</p><p class="apercu">Il manque le justificatif de domicile pour finaliser le dossier.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Thomas Petit</span><span class="heure">2 août</span></div><p class="objet">Week-end du 15 ?</p><p class="apercu">On est quatre pour l’instant, dis-moi si vous venez.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 5V2h16v10h-6"/><path d="M2 5h14v9H7l-5 5z"/></g></svg>6 messages</span></div></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Camille Roux</span><span class="heure">2 août</span></div><p class="objet">Compte rendu du comité</p><p class="apercu">Décisions actées et points reportés au prochain comité.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Support Vantis</span><span class="heure">1 août</span></div><p class="objet">Votre demande #4812 a été résolue</p><p class="apercu">Nous restons à votre disposition si le problème réapparaît.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Marine Alonso</span><span class="heure">1 août</span></div><p class="objet">Rendez-vous du 12 septembre</p><p class="apercu">Le créneau de 14 h 30 est confirmé.</p></div><div class="ligne"><span class="tete"><span class="glyphe-compte" data-teinte="violet" title="Études — p.mercier@etu-lyon.fr"><svg class="ic " viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></span><div class="l1"><span class="exp">Bibliothèque universitaire</span><span class="heure">31 juil.</span></div><p class="objet">Prêt arrivant à échéance</p><p class="apercu">Deux ouvrages sont à rendre avant le 5 septembre.</p></div></div></div>
+      <figcaption>O2 — nuit</figcaption></figure>
+    <figure><div class="cadre theme-nuit"><div class="liste o1"><div class="ligne nonlu"><span class="tete"><span class="repere p16" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">Camille Roux</span><span class="heure">09:41</span></div><p class="objet">Contrat Vantis — v4 pour relecture</p><p class="apercu">Voici la version corrigée, les deux annexes sont à jour.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M19 7v9a6 6 0 0 1-12 0V6a4 4 0 0 1 8 0v10a2 2 0 0 1-4 0V8"/></g></svg>2 fichiers</span></div></div><div class="ligne nonlu"><span class="tete"><span class="repere p16" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">Sofia Nardi</span><span class="heure">09:07</span></div><p class="objet">Atelier de septembre</p><p class="apercu">Deux salles réservées à Milan.</p></div><div class="ligne"><span class="tete"><span class="repere p16" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Marine Alonso</span><span class="heure">08:52</span></div><p class="objet">Relevé de juillet</p><p class="apercu">Votre relevé est disponible dans votre espace client.</p></div><div class="ligne choisie"><span class="tete"><span class="repere p16" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Thomas Petit</span><span class="heure">08:30</span></div><p class="objet">Photos du chantier de Vaise</p><p class="apercu">J’ai mis les prises de vue dans le dossier partagé.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 5V2h16v10h-6"/><path d="M2 5h14v9H7l-5 5z"/></g></svg>3 messages</span></div></div><div class="ligne nonlu"><span class="tete"><span class="repere p16" data-teinte="violet" title="Études — p.mercier@etu-lyon.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">École Jean-Moulin</span><span class="heure">08:04</span></div><p class="objet">Réunion parents-professeurs</p><p class="apercu">La réunion se tiendra le mardi 9 septembre à 18 h.</p></div><div class="ligne"><span class="tete"><span class="repere p16" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Yann Bernard</span><span class="heure">4 août</span></div><p class="objet">Re: planning des salles</p><p class="apercu">Je confirme pour jeudi, salle 2 au premier étage.</p></div><div class="ligne"><span class="tete"><span class="repere p16" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Syndic Beauregard</span><span class="heure">4 août</span></div><p class="objet">Assemblée générale — convocation</p><p class="apercu">Vous trouverez l’ordre du jour et les pouvoirs en pièce jointe.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M19 7v9a6 6 0 0 1-12 0V6a4 4 0 0 1 8 0v10a2 2 0 0 1-4 0V8"/></g></svg>3 fichiers</span></div></div><div class="ligne"><span class="tete"><span class="repere p16" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Léa Fontaine</span><span class="heure">3 août</span></div><p class="objet">Devis Kessler — relance</p><p class="apercu">Sans retour de leur part d’ici vendredi, je relance par téléphone.</p></div><div class="ligne nonlu"><span class="tete"><span class="repere p16" data-teinte="violet" title="Études — p.mercier@etu-lyon.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></span><div class="l1"><span class="disque"></span><span class="exp">Secrétariat pédagogique</span><span class="heure">3 août</span></div><p class="objet">Inscription au semestre — pièces manquantes</p><p class="apercu">Il manque le justificatif de domicile pour finaliser le dossier.</p></div><div class="ligne"><span class="tete"><span class="repere p16" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Thomas Petit</span><span class="heure">2 août</span></div><p class="objet">Week-end du 15 ?</p><p class="apercu">On est quatre pour l’instant, dis-moi si vous venez.</p><div class="puces"><span class="puce"><svg class="ic " viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 5V2h16v10h-6"/><path d="M2 5h14v9H7l-5 5z"/></g></svg>6 messages</span></div></div><div class="ligne"><span class="tete"><span class="repere p16" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Camille Roux</span><span class="heure">2 août</span></div><p class="objet">Compte rendu du comité</p><p class="apercu">Décisions actées et points reportés au prochain comité.</p></div><div class="ligne"><span class="tete"><span class="repere p16" data-teinte="bleu" title="Travail — p.mercier@vantis.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span></span><div class="l1"><span class="exp">Support Vantis</span><span class="heure">1 août</span></div><p class="objet">Votre demande #4812 a été résolue</p><p class="apercu">Nous restons à votre disposition si le problème réapparaît.</p></div><div class="ligne"><span class="tete"><span class="repere p16" data-teinte="vert" title="Maison — paul@atelier-nord.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span></span><div class="l1"><span class="exp">Marine Alonso</span><span class="heure">1 août</span></div><p class="objet">Rendez-vous du 12 septembre</p><p class="apercu">Le créneau de 14 h 30 est confirmé.</p></div><div class="ligne"><span class="tete"><span class="repere p16" data-teinte="violet" title="Études — p.mercier@etu-lyon.fr"><svg class="ic " viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M2 9l10-4 10 4-10 4z"/><path d="M6 12v5c0 2 12 2 12 0v-5"/></g></svg></span></span><div class="l1"><span class="exp">Bibliothèque universitaire</span><span class="heure">31 juil.</span></div><p class="objet">Prêt arrivant à échéance</p><p class="apercu">Deux ouvrages sont à rendre avant le 5 septembre.</p></div></div></div>
+      <figcaption>O1 — nuit</figcaption></figure>
+  </div>
+</section>
+</div></body></html>

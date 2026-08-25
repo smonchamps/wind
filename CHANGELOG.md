@@ -29,6 +29,19 @@ Wind change de peau : la direction « Elements ».
 - **La liste dit le non-lu au disque** : un point teal devant
   l'expéditeur, en plus du gras — et le compteur de la navigation
   devient un nombre discret.
+- **Chaque message dit sur quelle boîte il est arrivé** : quand vos
+  comptes se mélangent — « Toutes les boîtes », ou une recherche —, la
+  ligne l'écrit en toutes lettres derrière le nom de l'expéditeur,
+  « Camille Roux sur Travail », avec le repère du compte à sa couleur.
+  Plus besoin de se souvenir d'une couleur ou d'un logo, et un compte
+  sans repère dit sa boîte comme les autres. La mention se retrouve à
+  l'identique sur les messages ouverts ; là où le compte est déjà
+  connu — la vue d'une seule boîte, ou un seul compte configuré —,
+  elle ne dit rien et disparaît.
+- **La vignette aux initiales quitte la liste** : le nom de
+  l'expéditeur, écrit juste au-dessus, disait déjà ce qu'elle disait —
+  la place revient au message. Elle reste là où elle travaille : sur
+  les messages d'une conversation, et au dossier Brouillons.
 
 ### Retiré
 

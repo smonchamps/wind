@@ -114,30 +114,42 @@ for (const [nom, t] of Object.entries(themes)) {
     }
   }
 }
-// --- REPERES (A74, PLAN-RETOURS-8 R1) --------------------------------
+// --- REPERES (A74, PLAN-RETOURS-8 R1 ; jetons depuis A82) ------------
 // Le nuancier des repères de compte : 12 familles × 2 déclinaisons
 // (sombre pour le thème clair, claire pour elements-nuit — V5 : le
-// nuancier SUIT la polarité). On lit les hex EXPÉDIÉS (les règles
-// .repere[data-teinte] de systeme.css), jamais une copie : chaque
+// nuancier SUIT la polarité). Depuis A82 chaque hex sert deux fois
+// (pastille des Réglages en background, tracé en color) : les hex
+// EXPÉDIÉS vivent en jetons --rep-<teinte> dans les blocs :root de
+// systeme.css — on lit CES jetons, jamais une copie. Chaque
 // déclinaison doit tenir 3:1 (composant) sur les fonds où le repère se
-// pose, et porter son glyphe à 4,5:1.
+// pose, et porter son glyphe de pastille à 4,5:1.
 const REPERE_FAMILLES = 12;
-// `tuile` en fait partie (revue 2026-08-22) : la pastille du compte EN
+// `tuile` en fait partie (revue 2026-08-22) : le repère du compte EN
 // COURS se pose sur la tuile de nav — l'oublier laissait ce fond-là,
 // précisément, sans mesure. `panel` est mort (V3).
 const FONDS_REPERE = ['bg', 'sel', 'hover', 'surface', 'tuile'];
-function lireReperes(prefixe) {
+// Le bloc :root de la polarité demandée peut exister en PLUSIEURS
+// exemplaires (les 17 jetons de thème d'un côté, les --rep-* de
+// l'autre) : on balaie chaque bloc et on ne garde que les --rep-*.
+// lireThemes (jetons.mjs) ne peut pas servir ici : sa classe de nom
+// [a-zA-Z0-9] laisse volontairement passer le trait d'union des
+// --rep-* (voir le commentaire du nuancier dans systeme.css).
+function lireReperes(nuit) {
   const reperes = {};
-  for (const [, teinte, hex] of css.matchAll(new RegExp(
-    `${prefixe}\\.repere\\[data-teinte="([a-z]+)"\\]\\s*\\{\\s*background:(#[0-9a-fA-F]{6})`,
-    'g',
-  ))) {
-    reperes[teinte] = hex;
+  for (const [, theme, corps] of css.matchAll(
+    /:root(\[data-theme="elements-nuit"\])?\s*\{([^}]+)\}/g,
+  )) {
+    if (Boolean(theme) !== nuit) continue;
+    for (const [, teinte, hex] of corps.matchAll(
+      /--rep-([a-z]+)\s*:\s*(#[0-9a-fA-F]{6})/g,
+    )) {
+      reperes[teinte] = hex;
+    }
   }
   return reperes;
 }
-const sombres = lireReperes('(?<!-nuit"\\] )');
-const claires = lireReperes('\\[data-theme\\$="-nuit"\\] ');
+const sombres = lireReperes(false);
+const claires = lireReperes(true);
 // Les encres des glyphes se LISENT du CSS expédié, comme les fonds —
 // une copie locale mentirait dès que systeme.css bouge (revue).
 const encreSombre = css.match(/\.repere\s*\{[^}]*color:(#[0-9a-fA-F]{6})/)?.[1];
@@ -166,7 +178,7 @@ for (const [nom, t] of Object.entries(themes)) {
       const r = rapport(hex, t[fond]);
       if (r < 3) {
         echecs += 1;
-        console.log(`ECHEC ${nom} · repère ${teinte.padEnd(8)} sur ${fond.padEnd(8)} ${r.toFixed(2).padStart(5)}:1  (seuil 3:1)  nav, badge de liste`);
+        console.log(`ECHEC ${nom} · repère ${teinte.padEnd(8)} sur ${fond.padEnd(8)} ${r.toFixed(2).padStart(5)}:1  (seuil 3:1)  Réglages (pastille), nav et ligne (tracé)`);
       }
     }
     mesures += 1;

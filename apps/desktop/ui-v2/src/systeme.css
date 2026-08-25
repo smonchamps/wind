@@ -86,53 +86,105 @@ html {
   font-size:15px; color:var(--ink);
 }
 
-/* A74 — les deux tailles d'emploi de la pastille de repère : 20 px
-   (nav, Réglages — glyphe 12) et 16 px (badge de liste — glyphe 10).
-   UNE règle par taille, plus de copies par composant (revue). */
+/* A74, amendé A82 — la pastille de repère ne vit plus qu'aux Réglages
+   (rangée de compte, nuancier de choix), à sa seule taille de 20 px
+   (glyphe 12). Le badge de liste de 16 px est mort avec A80/A82. */
 .repere.p20 { width:20px; height:20px; }
 .repere.p20 .ic { width:12px; height:12px; }
-.repere.p16 { width:16px; height:16px; }
-.repere.p16 .ic { width:10px; height:10px; }
 
-/* A74 (PLAN-RETOURS-8 R1) — le nuancier des repères de compte : des
-   couleurs de CONTENU (comme le nuancier du composeur), pas des jetons
-   de thème. Fait mesuré (banc sur les jetons réels) : aucune teinte
-   unique ne tient 3:1 sur les fonds clairs ET sur les fonds -nuit —
-   chaque famille vit donc en DEUX déclinaisons, la sombre servie au
-   thème clair (glyphe blanc), la claire à elements-nuit (glyphe
-   #1c1b1b), bascule par [data-theme$="-nuit"] (V5 : le nuancier SUIT
-   la polarité). Les 24 hex sont
-   mesurés par e2e/contraste.mjs (section REPERES) : >= 3:1 sur
-   bg/sel/hover/surface/tuile de leur polarité, glyphe >= 4,5:1. */
+/* A82 — le repère NU : le tracé du repère, à la teinte du compte, sans
+   contenant. Deux tailles d'emploi, portées par l'attribut de l'icône :
+   16 px (nav — la taille des glyphes de dossier) et 14 px (ligne
+   d'entête et volet de lecture — la taille de leur texte). */
+.repere-nu { display:inline-flex; flex:none; }
+
+/* A74 (PLAN-RETOURS-8 R1), amendé A82 — le nuancier des repères de
+   compte : des couleurs de CONTENU (comme le nuancier du composeur),
+   pas des jetons de thème. Fait mesuré (banc sur les jetons réels) :
+   aucune teinte unique ne tient 3:1 sur les fonds clairs ET sur les
+   fonds -nuit — chaque famille vit donc en DEUX déclinaisons, la
+   sombre servie au thème clair (glyphe blanc), la claire à
+   elements-nuit (glyphe #1c1b1b). Depuis A82 chaque hex sert DEUX
+   fois — en background (pastille des Réglages) et en color (tracé) :
+   les 24 hex vivent en JETONS --rep-<teinte>, une table par polarité,
+   jamais recopiés.
+   ATTENTION (piège du parseur) : jetons.mjs (lireThemes) capture
+   --([a-zA-Z][a-zA-Z0-9]*) — le trait d'union des --rep-* les fait
+   échapper au contrat des 17 jetons de thème, et c'est VOULU (le
+   nuancier est du contenu, pas un jeton de thème). « Corriger » cette
+   classe en [a-zA-Z0-9-] ferait tomber le contrôle 1 de
+   coherence-systeme.mjs sur 12 jetons « livrés mais absents du doc ».
+   Les 24 hex sont mesurés par e2e/contraste.mjs (section REPERES) :
+   >= 3:1 sur bg/sel/hover/surface/tuile de leur polarité — Réglages
+   (pastille), nav et ligne (tracé) —, glyphe de pastille >= 4,5:1. */
+:root {
+  --rep-rouge:#a93226; --rep-orange:#9c4a06; --rep-ocre:#7a5c00;
+  --rep-olive:#556000; --rep-vert:#186a2b; --rep-sapin:#0b635d;
+  --rep-bleu:#0a5a8f; --rep-indigo:#3f4dbb; --rep-violet:#712cb0;
+  --rep-magenta:#991d7c; --rep-rose:#ad204c; --rep-brun:#7a4a1b;
+}
+:root[data-theme="elements-nuit"] {
+  --rep-rouge:#f1998e; --rep-orange:#f2a76c; --rep-ocre:#e5c04b;
+  --rep-olive:#c3cc4e; --rep-vert:#7fd18c; --rep-sapin:#5ecec4;
+  --rep-bleu:#72bdf0; --rep-indigo:#aab4fa; --rep-violet:#cba4f5;
+  --rep-magenta:#f095d8; --rep-rose:#f79ab4; --rep-brun:#dcab7c;
+}
 .repere {
   display:inline-flex; align-items:center; justify-content:center;
   border-radius:50%; flex:none; color:#ffffff;
 }
 [data-theme$="-nuit"] .repere { color:#1c1b1b; }
-.repere[data-teinte="rouge"]   { background:#a93226; }
-.repere[data-teinte="orange"]  { background:#9c4a06; }
-.repere[data-teinte="ocre"]    { background:#7a5c00; }
-.repere[data-teinte="olive"]   { background:#556000; }
-.repere[data-teinte="vert"]    { background:#186a2b; }
-.repere[data-teinte="sapin"]   { background:#0b635d; }
-.repere[data-teinte="bleu"]    { background:#0a5a8f; }
-.repere[data-teinte="indigo"]  { background:#3f4dbb; }
-.repere[data-teinte="violet"]  { background:#712cb0; }
-.repere[data-teinte="magenta"] { background:#991d7c; }
-.repere[data-teinte="rose"]    { background:#ad204c; }
-.repere[data-teinte="brun"]    { background:#7a4a1b; }
-[data-theme$="-nuit"] .repere[data-teinte="rouge"]   { background:#f1998e; }
-[data-theme$="-nuit"] .repere[data-teinte="orange"]  { background:#f2a76c; }
-[data-theme$="-nuit"] .repere[data-teinte="ocre"]    { background:#e5c04b; }
-[data-theme$="-nuit"] .repere[data-teinte="olive"]   { background:#c3cc4e; }
-[data-theme$="-nuit"] .repere[data-teinte="vert"]    { background:#7fd18c; }
-[data-theme$="-nuit"] .repere[data-teinte="sapin"]   { background:#5ecec4; }
-[data-theme$="-nuit"] .repere[data-teinte="bleu"]    { background:#72bdf0; }
-[data-theme$="-nuit"] .repere[data-teinte="indigo"]  { background:#aab4fa; }
-[data-theme$="-nuit"] .repere[data-teinte="violet"]  { background:#cba4f5; }
-[data-theme$="-nuit"] .repere[data-teinte="magenta"] { background:#f095d8; }
-[data-theme$="-nuit"] .repere[data-teinte="rose"]    { background:#f79ab4; }
-[data-theme$="-nuit"] .repere[data-teinte="brun"]    { background:#dcab7c; }
+.repere[data-teinte="rouge"]   { background:var(--rep-rouge); }
+.repere[data-teinte="orange"]  { background:var(--rep-orange); }
+.repere[data-teinte="ocre"]    { background:var(--rep-ocre); }
+.repere[data-teinte="olive"]   { background:var(--rep-olive); }
+.repere[data-teinte="vert"]    { background:var(--rep-vert); }
+.repere[data-teinte="sapin"]   { background:var(--rep-sapin); }
+.repere[data-teinte="bleu"]    { background:var(--rep-bleu); }
+.repere[data-teinte="indigo"]  { background:var(--rep-indigo); }
+.repere[data-teinte="violet"]  { background:var(--rep-violet); }
+.repere[data-teinte="magenta"] { background:var(--rep-magenta); }
+.repere[data-teinte="rose"]    { background:var(--rep-rose); }
+.repere[data-teinte="brun"]    { background:var(--rep-brun); }
+.repere-nu[data-teinte="rouge"]   { color:var(--rep-rouge); }
+.repere-nu[data-teinte="orange"]  { color:var(--rep-orange); }
+.repere-nu[data-teinte="ocre"]    { color:var(--rep-ocre); }
+.repere-nu[data-teinte="olive"]   { color:var(--rep-olive); }
+.repere-nu[data-teinte="vert"]    { color:var(--rep-vert); }
+.repere-nu[data-teinte="sapin"]   { color:var(--rep-sapin); }
+.repere-nu[data-teinte="bleu"]    { color:var(--rep-bleu); }
+.repere-nu[data-teinte="indigo"]  { color:var(--rep-indigo); }
+.repere-nu[data-teinte="violet"]  { color:var(--rep-violet); }
+.repere-nu[data-teinte="magenta"] { color:var(--rep-magenta); }
+.repere-nu[data-teinte="rose"]    { color:var(--rep-rose); }
+.repere-nu[data-teinte="brun"]    { color:var(--rep-brun); }
+
+/* A80 — le bloc de boîte : « sur <tracé> Libellé ». Partagé par la
+   liste et le fil (trois poses), donc ici et pas dans un composant.
+   L'ORDRE DE TRONCATURE EST LE DESSIN : l'heure ne cède jamais, le
+   bloc cède trois fois plus vite que l'expéditeur, et le tiers est un
+   plafond mesuré (PLAN-REPERE-LIGNE §1.3). La préposition et le tracé
+   ne rétrécissent pas : un « sur » tronqué ne dirait rien. */
+/* PAS de min-width:0 ici, et c'est mesuré (revue) : avec lui, le bloc
+   descend SOUS sa largeur min-content — « sur » et le tracé sont
+   flex:none, ils ne cèdent pas — et débordent d'un bloc large de 0 px
+   pour se peindre par-dessus l'heure (29 px de recouvrement au défaut
+   de 400 px, dossier Envoyés à plusieurs destinataires). Le minimum
+   automatique du flex garde donc le plancher « sur <tracé> » ; c'est
+   .lib qui porte le min-width:0, donc l'ellipse. Et surtout PAS
+   d'overflow:hidden en ceinture : sur un inline-flex il déplacerait la
+   baseline, donc la hauteur sondée de la rangée (A44). */
+.boite {
+  flex:0 3 auto; max-width:33%;
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:13px; color:var(--ink2); white-space:nowrap;
+}
+.boite .mot { color:var(--muted); flex:none; }
+.boite .repere-nu { flex:none; }
+.boite .lib { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* Une rangée non lue met la graisse sur ce qu'elle DIT, pas sur ses
+   circonstances (A8/V6) : le bloc reste en graisse normale. */
+.nonlu .boite { font-weight:400; }
 
 /* V6 — le REGISTRE D'AFFICHAGE : titre de conversation (24 px) et
    hero d'accueil (40 px) en graisse 340, interlettrage -.03em — la

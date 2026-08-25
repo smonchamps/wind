@@ -175,6 +175,11 @@ export const FR = {
   'liste.affiner': 'Affinez votre recherche (from:, to:, date:) pour aller plus loin.',
   'liste.prefixeBrouillon': 'Brouillon : ',
   'liste.dest': 'À : {a}',
+  // A80 : la préposition du bloc de boîte — « Camille Roux sur Travail ».
+  // L'ordre des mots est figé par le dessin (nom, bloc, heure) : une
+  // langue qui demanderait un autre ordre exigerait un gabarit, pas une
+  // clé (limite dite au PLAN-REPERE-LIGNE §4.6).
+  'liste.sur': 'sur',
   'brouillons.a': 'À : {a}',
   'brouillons.sansDestinataire': '(sans destinataire)',
   'brouillons.sansObjet': '(sans objet)',

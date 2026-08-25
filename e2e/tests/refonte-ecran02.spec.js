@@ -90,20 +90,12 @@ test('le volet liste porte son bandeau de titre — le nom de la boîte, sans bo
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
 });
 
-test("la ligne de liste porte l'avatar aux initiales — visuel seul (UI v3, E2)", async () => {
-  // Verdict CE du 2026-08-16 (ANNOTATIONS-V3 §4, décision D2) :
-  // l'avatar 28 px de la maquette entre au gabarit, SANS geste — la
-  // sélection en lot est une feature à part, différée.
-  const premiere = page.locator('[data-testid="ligne"]').first();
-  const avatar = premiere.locator('[data-testid="avatar"]');
-  await expect(avatar).toBeVisible();
-  // Les initiales disent l'expéditeur de la rangée (deux lettres).
-  const exp = (await premiere.locator('.exp').innerText()).trim();
-  const attendu = exp.split(/\s+/).slice(0, 2).map((m) => m[0]).join('').toUpperCase();
-  await expect(avatar).toHaveText(attendu);
-  // Visuel seul : jamais un bouton, rien à activer.
-  expect(await avatar.evaluate((el) => el.tagName)).not.toBe('BUTTON');
-});
+// (A81 — PLAN-REPERE-LIGNE : le test « la ligne de liste porte
+// l'avatar aux initiales » est mort avec son objet — la tuile a quitté
+// la LISTE. Elle vit encore au fil (assertions du fil plus bas) et au
+// dossier Brouillons, où elle dit le destinataire : ce second emploi
+// est tenu par repere-ligne.spec.js, « le dossier Brouillons garde sa
+// tuile (D9) et son heure au bord droit ».)
 
 test('recharger garde les lignes servies — jamais de squelette (PLAN-REACTIVITE E1)', async () => {
   // La recharge que le cycle et les gestes déclenchent en rafale ne
