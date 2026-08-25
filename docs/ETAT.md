@@ -12,7 +12,33 @@
 
 ## Où on en est, et quoi faire en premier
 
-**Dernier chantier soldé : [PLAN-REPERE-LIGNE](PLAN-REPERE-LIGNE.md)**
+**Dernier chantier soldé : [PLAN-ESPACEMENT](PLAN-ESPACEMENT.md)**
+(2026-08-25, terrain CE **7/7 zéro constat**, gate verte 2 min, e2e
+129 → **137**) — **trois crans d'air entre les messages** (A83) :
+« Faible » (l'existant au pixel près, padding 13 px, rangée 88),
+« Moyen » (19, 100), « Élevé » (25, 112), aux Réglages > Affichage
+(sélecteur natif, patron d'A26). Le cran se pose en **jeton
+`--rangee-pad`** sur le cadre de la liste (patron de `--l-nav`) : toutes
+les rangées le prennent d'un coup, sondes comprises. **L'air vit dans le
+padding et nulle part ailleurs** — une marge ou un `row-gap` donneraient
+12,375 px par rangée invisibles à `offsetHeight`, donc au fenêtrage.
+**Les sondes de hauteur deviennent permanentes**, dans une **cage
+positionnée** : `sondees`/`sonder()` sont morts, `bind:offsetHeight` les
+remplace. Mesuré au banc (`spikes/espacement/`, msedge = WebView2, 4
+variantes × 5 hauteurs) : sans le `position:relative` de la cage, les
+sondes ajoutent jusqu'à **85 px de défilement fantôme** ; avec, **zéro**
+à toutes les hauteurs. Défaut préexistant corrigé au passage (décision
+D3) : `visibles` lisait `clientHeight`, qui n'est pas un signal —
+agrandir la fenêtre laissait une bande vide. Revue à regard neuf : 7
+angles, **29 trouvailles retenues, toutes corrigées** — dont l'ordre des
+effets (le ré-ancrage lisait une position déjà réécrite par l'effet des
+épinglées : **44 rangées de dérive mesurées**) et le piège `in` sur la
+chaîne de prototypes. **Enseignement payé** : trois des cinq tests du
+premier filet ne pouvaient pas échouer ; le filet réécrit (8 tests) lit
+ce que l'utilisateur VOIT et a été **prouvé non-vacant** en cassant
+volontairement le code. **À livrer en 0.9.0** — CHANGELOG écrit.
+
+**Le chantier soldé précédent : [PLAN-REPERE-LIGNE](PLAN-REPERE-LIGNE.md)**
 (2026-08-25, terrain CE **15/15**, gate verte, e2e 124 → **129**) — **la
 boîte se dit en toutes lettres, sur la ligne de l'expéditeur**
 (A80-A82). Le badge de repère sous l'avatar est remplacé par un **bloc
@@ -65,16 +91,22 @@ elle porte PLAN-RETOURS-9 (OAuth compilé, « Retirer le compte » dit,
 noms de comptes). Sa preuve terrain différée (connecter un compte sur
 le second poste SANS `setx`) reste due — sur la 0.8.0 ou la 0.9.0.
 
-**Deux chantiers demandés par le CE le 2026-08-25**, instruits mais non
-ouverts (aucune décision prise, aucun code) : (1) **glyphes de repère en
-remplissage plein** — le glyphe lui-même, hors de tout disque : touche
-la grammaire du jeu d'icônes (« trait de 2 unités ») et suppose de
-savoir si les douze tracés sont des contours fermés qu'un remplissage
-rendrait, ou des traits ouverts qu'il déformerait ; (2) **trois niveaux
-d'espacement de la liste** (« Faible » = l'actuel, « Moyen », « Élevé »)
-— le point dur est le **fenêtrage** : l'espacement change la hauteur des
-rangées, or ces hauteurs sont sondées et toute la géométrie du
-défilement en dépend (A44).
+**Le chantier demandé restant : les glyphes de repère en remplissage
+plein** (CE, 2026-08-25 — le glyphe lui-même, hors de tout disque).
+Instruit sur pièces, **non ouvert**, aucune décision prise. Faits
+établis : rien n'interdit le remplissage et le jeu en contient déjà
+quatre cas (dont trois repères) ; **9 glyphes sur 12 se remplissent sans
+redessin** (mesuré par aire de Gauss après aplatissement), trois
+résistent (`shopping_bag` s'auto-ferme sur un pâté, `account_balance` et
+`music_note` sont des traits ouverts sans surface) ; le plein **seul**
+fait maigrir plusieurs glyphes, c'est plein **+ trait** qu'il faut ; et
+le coût inattendu — le remplissage **rapproche les silhouettes** (IoU
+moyen 0,24 → 0,47), or le travail d'un repère est de distinguer douze
+comptes. Les gates sont **aveugles** au remplissage : le contrôle qui
+vérifie que le Système dit les tracés ne lit que la clé `d`.
+À noter : ce chantier n'est pas un correctif — A82 (le retrait de la
+pastille) a été décidé en connaissance de la perte, et le terrain a
+validé le point « le compte se trouve-t-il encore d'un coup d'œil ».
 
 **Ensuite : la bêta fermée 20-50 utilisateurs** ([PLAN.md](PLAN.md)
 §4, dernière étape avant le gate 5) — rien n'est engagé.

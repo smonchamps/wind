@@ -16,6 +16,9 @@
   } from './lib/theme.js';
   import { t, LANGUES, langueActuelle, appliquerLangue } from './lib/texte.svelte.js';
   import { voletsActuels, appliquerVolets } from './lib/volets.svelte.js';
+  import {
+    espacementActuel, appliquerEspacement, NIVEAUX,
+  } from './lib/espacement.svelte.js';
   import { activation } from './lib/clavier.js';
   import { appel } from './lib/transport.js';
   import { REPERE_ICONES, REPERE_TEINTES } from './lib/reperes.js';
@@ -109,6 +112,7 @@
   // localStorage comme le thème — application immédiate, le geste du
   // thème ; rien à faire échouer, donc rien à faire revenir.
   let volets = $state(voletsActuels());
+  let espacement = $state(espacementActuel());
 
   // « Jamais deux cartes sous la même rangée » (revue 2026-08-22) : LE
   // point unique — la prochaine carte s'ajoute ici, pas dans N sites
@@ -127,6 +131,7 @@
     auto = suiviOs();
     langue = langueActuelle();
     volets = voletsActuels();
+    espacement = espacementActuel();
     ajoutOuvert = false;
     fermerCartes();
     reconnexion = null;
@@ -296,6 +301,10 @@
   function changerVolets(n) {
     appliquerVolets(n);
     volets = voletsActuels();
+  }
+  function changerEspacement(niveau) {
+    appliquerEspacement(niveau);
+    espacement = espacementActuel();
   }
   function changerLangue(code) {
     const avant = langueActuelle();
@@ -670,6 +679,23 @@
                         onchange={(e) => changerVolets(Number(e.target.value))}>
                   {#each [3, 2, 1] as n (n)}
                     <option value={String(n)}>{t(`volets.${n}`)}</option>
+                  {/each}
+                </select>
+              </div>
+              <!-- A83 : l'espacement des rangées, au patron EXACT de la
+                   Disposition (A26) — sélecteur natif habillé aux jetons
+                   de la ligne, aucun dessin neuf (A15 : pas de groupe
+                   neuf pour une rangée). -->
+              <div class="reglage">
+                <span class="libelles">
+                  <span class="nom">{t('reglages.espacement')}</span>
+                  <span class="desc">{t('reglages.espacementDesc')}</span>
+                </span>
+                <select class="langue" data-testid="affichage-espacement"
+                        aria-label={t('reglages.espacement')} value={espacement}
+                        onchange={(e) => changerEspacement(e.target.value)}>
+                  {#each NIVEAUX as n (n)}
+                    <option value={n}>{t(`espacement.${n}`)}</option>
                   {/each}
                 </select>
               </div>

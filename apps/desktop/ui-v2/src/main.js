@@ -8,11 +8,15 @@ import { appliquerTheme, restaurerTheme, THEMES } from './lib/theme.js';
 import { restaurerLangue } from './lib/texte.svelte.js';
 import { restaurerVolets } from './lib/volets.svelte.js';
 import { restaurerLargeurs } from './lib/largeurs.svelte.js';
+import { restaurerEspacement } from './lib/espacement.svelte.js';
 import App from './App.svelte';
 
 restaurerTheme();
 restaurerVolets();
 restaurerLargeurs();
+// A83 : AVANT le montage — la première sonde mesure ainsi déjà le bon
+// cran, et la liste ne se redessine pas au démarrage.
+restaurerEspacement();
 await restaurerLangue();
 
 const app = mount(App, { target: document.getElementById('app') });

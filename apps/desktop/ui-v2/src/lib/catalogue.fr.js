@@ -370,6 +370,12 @@ export const FR = {
   'volets.3': 'Trois volets',
   'volets.2': 'Deux volets',
   'volets.1': 'Un volet',
+  'reglages.espacement': 'Espacement des messages',
+  'reglages.espacementDesc':
+    "L'air entre deux messages dans la liste. Plus il est grand, plus la liste respire — et moins elle montre de messages à la fois.",
+  'espacement.faible': 'Faible',
+  'espacement.moyen': 'Moyen',
+  'espacement.eleve': 'Élevé',
   'nav.ouvrirTiroir': 'Ouvrir la navigation',
   'nav.fermerTiroir': 'Fermer la navigation',
   'volets.poigneeNav': 'Régler la largeur de la navigation',

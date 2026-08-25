@@ -364,6 +364,12 @@ export const EN = {
   'volets.3': 'Three panes',
   'volets.2': 'Two panes',
   'volets.1': 'One pane',
+  'reglages.espacement': 'Message spacing',
+  'reglages.espacementDesc':
+    'The air between two messages in the list. The more there is, the more the list breathes — and the fewer messages it shows at once.',
+  'espacement.faible': 'Low',
+  'espacement.moyen': 'Medium',
+  'espacement.eleve': 'High',
   'nav.ouvrirTiroir': 'Open navigation',
   'nav.fermerTiroir': 'Close navigation',
   'volets.poigneeNav': 'Resize the navigation pane',

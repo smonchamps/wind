@@ -18,6 +18,7 @@
   import { quand } from './lib/quand.js';
   import { puceInvitation } from './lib/invitation.js';
   import { blocBoite, vueMelange } from './lib/boite.js';
+  import { padRangee } from './lib/espacement.svelte.js';
   import { initiales } from './lib/initiales.js';
   import { activation } from './lib/clavier.js';
   import { t } from './lib/texte.svelte.js';
@@ -85,9 +86,11 @@
   let total = $state(0);
   let premier = $state(0);
   let version = $state(0);
-  let h1 = $state(90);
-  let h2 = $state(117);
-  let sondees = $state(false);
+  // Amorces = la géométrie réelle du cran par défaut (mesurée : 88 nue,
+  // 115 porteuse). Elles ne servent que le premier frame, avant que les
+  // sondes ne se lient — les tenir justes évite un saut inutile.
+  let h1 = $state(88);
+  let h2 = $state(115);
   let selection = $state(null);
   let premierePageMs = $state(null);
   // PLAN-DEFILEMENT-PROFOND E2 + terrain du 2026-08-20 :
@@ -478,8 +481,71 @@
     });
   });
 
+  // A83 — le ré-ancrage au changement de cran, et c'est l'INVERSE de
+  // l'effet ci-dessus : quand la hauteur au-dessus du flot bouge, les
+  // pixels gardent leur sens et c'est l'index qu'on recalcule ; quand
+  // c'est la hauteur d'une RANGÉE qui bouge, la conversion
+  // index <-> pixel change et il faut garder la LIGNE DU HAUT en
+  // déplaçant le défilement. Sans cela, changer d'espacement ferait
+  // sauter la liste ailleurs — d'autant plus loin qu'on a défilé.
+  //
+  // Il faut DEUX temps, et la revue a montré pourquoi : on lit la
+  // position avec l'ANCIENNE géométrie et on l'écrit avec la NOUVELLE.
+  //
+  // 1) La CAPTURE se déclenche sur le cran lui-même — `padRangee()`, un
+  //    état AMONT, qui bouge avant que le style ne soit relayouté et
+  //    donc avant que les sondes ne re-mesurent. Capturer depuis
+  //    l'effet de `h1` serait TROP TARD : l'effet des épinglées, créé
+  //    plus haut donc joué avant lui dans le même flush (les épinglées
+  //    sont des `.ligne`, elles grandissent aussi), a déjà réécrit
+  //    `premier` avec la nouvelle hauteur contre l'ancien scrollTop —
+  //    44 rangées de dérive mesurées avec deux conversations épinglées.
+  let ancreCran = null;
+  $effect(() => {
+    void padRangee();
+    untrack(() => {
+      ancreCran = cadre
+        ? { ligne: premier, dansEpingles: cadre.scrollTop < hautEpingles }
+        : null;
+    });
+  });
+
+  // 2) L'APPLICATION attend que les sondes aient rendu la nouvelle
+  //    hauteur, puis rend sa ligne à l'utilisateur. Deux gardes, chacune
+  //    payée par un défaut réel :
+  //    — le FLOT seulement : `aller()` parle la géométrie du flot
+  //      fenêtré ; l'appliquer au dossier Brouillons (où `total` reste 0,
+  //      donc `aller(0)`) ou à une recherche remonterait la liste en
+  //      haut à chaque changement de cran ;
+  //    — pas depuis la BANDE ÉPINGLÉE : `aller(0)` pose le défilement
+  //      SOUS elle, c'est-à-dire qu'il la ferait sortir de l'écran de
+  //      quelqu'un qui était précisément en train de la regarder.
+  $effect(() => {
+    void h1;
+    const ancre = ancreCran;
+    if (ancre === null) return;
+    ancreCran = null;
+    if (ancre.dansEpingles) return;
+    untrack(() => {
+      if (cadre && resultats === null && lignesBrouillons === null) {
+        aller(ancre.ligne);
+      }
+    });
+  });
+
+  // Décision CE D3 (2026-08-25) — défaut PRÉEXISTANT corrigé ici : la
+  // hauteur du cadre se lisait par `cadre.clientHeight`, qui n'est pas
+  // un signal. Le dérivé ne se recalculait donc qu'au changement de
+  // `cadre` ou de `h1`, et agrandir la fenêtre de plus de OVER rangées
+  // laissait une bande vide en bas jusqu'au prochain défilement.
+  // `bind:clientHeight` compile vers un ResizeObserver (le patron de
+  // `hautEpingles`) : la fenêtre suit la fenêtre.
+  // Corrigé DANS ce chantier et pas en dette, parce que le cran
+  // d'espacement l'aurait masqué par intermittence — chaque changement
+  // de cran recalcule `visibles` — et l'aurait rendu irreproductible.
+  let hCadre = $state(0);
   const visibles = $derived(
-    cadre ? Math.ceil(cadre.clientHeight / h1) + 1 : 12,
+    hCadre > 0 ? Math.ceil(hCadre / h1) + 1 : 12,
   );
   const debut = $derived(Math.max(0, premier - OVER));
   const fin = $derived(Math.min(total, premier + visibles + OVER));
@@ -595,12 +661,9 @@
     untrack(() => ontotal(n));
   });
 
-  function sonder(el, avecPuces) {
-    const h = el.offsetHeight;
-    if (avecPuces) h2 = h;
-    else h1 = h;
-    sondees = true;
-  }
+  // A83 : `sonder()` et `sondees` sont morts — les sondes sont montées
+  // en permanence et se lient par `bind:offsetHeight`. Une mesure
+  // ponctuelle ne pouvait pas suivre un cran d'espacement réglable.
 
   const cle = (l) => `${l.account_id}/${l.mailbox}/${l.uid}`;
   function choisir(l) {
@@ -739,25 +802,48 @@
   <header class="bandeau" data-testid="liste-titre">
     <h1>{t(`boite.${categorie}`)}</h1>
   </header>
-  <div class="cadre" bind:this={cadre} onscroll={surDefilement}>
+  <!-- A83 : le cran d'espacement se pose EN JETON sur le cadre — les
+       cinq poses de `.ligne` (sondes, attente, flot, épinglées,
+       brouillons) sont dessous et le prennent d'un coup, sondes
+       comprises. Le patron est celui des largeurs de volets
+       (`--l-nav`) ; le trait d'union le fait échapper au contrat des
+       17 jetons de thème, et c'est voulu : c'est une dimension de mise
+       en page, pas une couleur. -->
+  <div class="cadre" bind:this={cadre} bind:clientHeight={hCadre}
+       onscroll={surDefilement}
+       style="--rangee-pad:{padRangee()}px">
     <!-- A81 : les sondes suivent la rangée réelle — plus de colonne de
          tuile ; une sonde qui rendrait un objet mort mentirait sur la
-         géométrie. -->
-    {#if !sondees}
-      <div class="sondes" aria-hidden="true">
-        <article class="ligne" use:sonder={false}>
+         géométrie.
+         A83 : elles restent MONTÉES et se re-mesurent seules
+         (`bind:offsetHeight` compile vers un ResizeObserver, le patron
+         de `hautEpingles`). Avant, elles étaient retirées après une
+         mesure unique et `sondees` n'était jamais remis à false : un
+         changement de cran aurait redessiné les rangées à la nouvelle
+         hauteur en laissant les gabarits figés sur l'ancienne — barre
+         de défilement fausse de 13,6 % à 27,3 %, et jusqu'à 12 000 px
+         d'écart sur un saut (mesuré, PLAN-ESPACEMENT §3). Montées en
+         permanence, la classe de bug est IMPOSSIBLE, pas corrigée.
+         La cage est POSITIONNÉE, et ce n'est pas décoratif : sans son
+         `position:relative` elle n'est pas le bloc conteneur des sondes
+         en `position:absolute`, qui se calent alors sur `.cadre` et lui
+         ajoutent jusqu'à 85 px de défilement FANTÔME sur une fenêtre
+         courte (mesuré au banc, variante C). -->
+    <div class="sondes-cage" aria-hidden="true">
+      <div class="sondes">
+        <article class="ligne" bind:offsetHeight={h1}>
           <div class="l1"><span class="exp">Sonde</span><span class="essor"></span><span class="heure">00:00</span></div>
           <p class="objet">Sonde</p>
           <p class="apercu">Sonde</p>
         </article>
-        <article class="ligne" use:sonder={true}>
+        <article class="ligne" bind:offsetHeight={h2}>
           <div class="l1"><span class="exp">Sonde</span><span class="essor"></span><span class="heure">00:00</span></div>
           <p class="objet">Sonde</p>
           <p class="apercu">Sonde</p>
           <div class="puces"><span class="puce"><Icone nom="forum" />2</span></div>
         </article>
       </div>
-    {/if}
+    </div>
     {#snippet attente()}
       <article class="ligne attente" data-testid="ligne-attente">
         <div class="l1"><span class="exp">…</span><span class="essor"></span><span class="heure"></span></div>
@@ -1008,6 +1094,14 @@
     position:absolute; top:0; left:0; right:0;
     display:flex; flex-direction:column;
   }
+  /* A83 — la cage des sondes. `position:relative` est LA ligne qui
+     compte : elle fait de la cage le bloc conteneur des sondes, qui
+     sont alors clippées par `height:0; overflow:hidden` et sortent de
+     la région défilante du cadre. Sans elle, les sondes se calent sur
+     `.cadre` (lui aussi positionné) et lui ajoutent jusqu'à 85 px de
+     défilement fantôme sur une fenêtre courte — mesuré au banc
+     (spikes/espacement/sondes.mjs, variantes B et C). */
+  .sondes-cage { position:relative; height:0; overflow:hidden; }
   .sondes { position:absolute; visibility:hidden; left:0; right:0; }
   .vide {
     position:absolute; inset:0; display:flex; align-items:center;
@@ -1045,7 +1139,11 @@
      sondées (h1/h2). Le dossier Brouillons garde sa tuile (D9) : la
      classe `tuilee` lui rend la colonne de tête. */
   .ligne {
-    padding:13px 16px; border-top:1px solid var(--border);
+    /* A83 : l'air vertical vient du cran (--rangee-pad, posé sur le
+       cadre) ; 13 px reste le défaut, l'existant au pixel près. Le
+       repli couvre les rangées rendues hors du cadre, s'il en naissait
+       une. */
+    padding:var(--rangee-pad, 13px) 16px; border-top:1px solid var(--border);
     border-left:2px solid transparent;
     display:grid; grid-template-columns:1fr;
     row-gap:3px; align-items:start; cursor:pointer;

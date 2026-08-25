@@ -43,6 +43,15 @@ Wind change de peau : la direction « Elements ».
   la place revient au message. Elle reste là où elle travaille : sur
   les messages d'une conversation, et au dossier Brouillons.
 
+### Ajouté
+
+- **Trois niveaux d'espacement pour la liste** (Réglages > Affichage) :
+  « Faible » — ce que vous avez aujourd'hui, au pixel près —, « Moyen »
+  et « Élevé ». Plus d'air entre les messages si vous préférez respirer,
+  autant qu'avant si vous préférez en voir beaucoup. Le changement
+  s'applique à l'instant, et la liste reste là où vous l'aviez laissée :
+  le message que vous regardiez ne bouge pas de l'écran.
+
 ### Retiré
 
 - Les vingt-six thèmes Wada et le trait calligraphique de la marque.

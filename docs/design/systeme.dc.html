@@ -3661,6 +3661,12 @@ svg.g{flex:none}
             dans un tiroir.</span></span>
           <span class="champ h32" style="width:150px;color:var(--ink)">Trois volets&nbsp;&nbsp;<span style="color:var(--muted)">▾</span></span>
         </div>
+        <div class="reglage">
+          <span class="d"><b>Espacement des messages</b><span>L'air entre deux messages dans la
+            liste. Plus il est grand, plus la liste respire — et moins elle montre de messages à la
+            fois.</span></span>
+          <span class="champ h32" style="width:150px;color:var(--ink)">Faible&nbsp;&nbsp;<span style="color:var(--muted)">▾</span></span>
+        </div>
       </div></div>
         <div class="modale-pied"><span class="btn primaire">Terminé</span></div>
       </div></div>
@@ -3924,7 +3930,11 @@ svg.g{flex:none}
     <p class="sourcil">États</p>
     <h2>Ligne de message</h2>
     <p class="sub">Deux gabarits — <b>h1 nue</b> et <b>h2 porteuse</b> de son rang de puces (A44) —
-    tous deux sondés par la mécanique de fenêtrage. Une ligne qui a quelque chose à dire porte un rang
+    tous deux sondés par la mécanique de fenêtrage, et <b>réglables</b> depuis A83 : l'air vertical
+    de la rangée a trois crans (« Faible » 88 px, « Moyen » 100, « Élevé » 112 ; le rang de puces
+    ajoute 27 px dans tous les cas). Les sondes restent <b>montées en permanence</b> pour se
+    re-mesurer d'elles-mêmes — une hauteur figée sur l'ancien cran ferait mentir la barre de
+    défilement. Une ligne qui a quelque chose à dire porte un rang
     de puces de 24 px et s'en agrandit ; il n'y a pas de rang réservé sur les lignes nues. Depuis A81
     la rangée n'a <b>plus de colonne de tête</b> (la tuile d'initiales a quitté la liste) : la ligne
     d'entête porte, dans l'ordre, le disque de non-lu, le nom d'expéditeur, le <b>bloc de boîte</b>
@@ -4484,10 +4494,13 @@ svg.g{flex:none}
         <tr>
           <td class="nw">2026-08-24</td>
           <th scope="row">A82</th><td><b>Le repère est un glyphe nu ; la pastille se retire aux Réglages</b> (PLAN-REPERE-LIGNE ; décision CE D6 du 2026-08-24). La pastille pleine de 20 px quitte la navigation : le repère s'y trace <b>à même le fond</b>, à la teinte du compte, <b>16 px</b> — la taille des glyphes de dossier de la même colonne, si bien que les rangées de comptes cessent d'être des rangées à part. Motif : la nav et la ligne de liste doivent porter <b>exactement le même objet</b> (D2). Ce que le Système perd : la phrase de V4/V14 « reste un seul autre rond dans tout le système, la pastille de repère » cesse de valoir pour l'écran 02 — <b>mesuré sur la fenêtre entière, la seule forme ronde restante est le disque</b> (non-lu de rangée, barre d'état). Le disque ne dit donc plus <b>que</b> l'état, ce que V4 visait sans l'atteindre. Ce que le Système garde : la pastille vit aux <b>Réglages</b> (rangée de compte et nuancier de choix), où elle est une pastille <b>de choix</b> et non une marque d'identité — V5 tient donc entièrement dans son domaine restant. Les 24 hex du nuancier servent désormais deux fois (background de pastille, color de tracé) : ils passent en jetons <code>--rep-&lt;teinte&gt;</code>, une table par polarité, jamais recopiés. Contrastes : la teinte en <b>tracé</b> se pose sur les mêmes fonds que la pastille et la table de mesure ne bouge pas (pire cas du nuancier : 4,97:1, seuil composant 3:1) — aucune paire neuve. Ce qui est perdu, et dit : le fond coloré donnait au repère une présence à distance ; un tracé de 2 unités à 16 px pèse ~1,3 px — la nav dit le compte plus doucement.</td></tr>
+        <tr>
+          <td class="nw">2026-08-25</td>
+          <th scope="row">A83</th><td><b>Trois crans d'air entre les messages</b> (PLAN-ESPACEMENT ; décisions CE D1-D3 du 2026-08-25). L'espacement vertical de la rangée de liste devient réglable — <b>« Faible »</b> (l'existant AU PIXEL PRÈS : padding 13 px, rangée 88), <b>« Moyen »</b> (19, 100), <b>« Élevé »</b> (25, 112) —, choisi aux <b>Réglages &gt; Affichage</b>, quatrième rangée après « Disposition », au patron exact d'A26 : sélecteur natif habillé aux jetons de la ligne, aucun dessin neuf (A15 : pas de groupe neuf pour une rangée). Préférence <b>pure UI</b> (<code>localStorage</code>, patron des volets — le shell n'a rien à en lire), restaurée AVANT le montage pour que la première sonde mesure déjà le bon cran. <b>Le cran se pose en JETON</b> (<code>--rangee-pad</code>, en <code>style=</code> sur le cadre de la liste, patron de <code>--l-nav</code>) : toutes les rangées le prennent d'un coup, sans une ligne de code de plus — les deux sondes, la ligne d'attente, le flot et la section épinglée (qui partagent leur gabarit) et le dossier Brouillons ; le trait d'union le fait échapper au contrat des 17 jetons de thème, et c'est voulu (c'est une dimension de mise en page, pas une couleur). <b>L'air vit dans le PADDING, jamais dans une marge ni un <code>row-gap</code></b> : <code>offsetHeight</code> ne voit que la boîte de bordure, et ces deux voies donneraient 12,375 px par rangée invisibles à la sonde — le rendu mentirait pendant que la sonde dirait vrai. <b>Les sondes deviennent permanentes</b> : elles restent montées dans une <b>cage positionnée</b> et se lient par <code>bind:offsetHeight</code> (le patron de <code>hautEpingles</code>) ; <code>sondees</code> et <code>sonder()</code> meurent. Motif mesuré : les sondes étaient retirées après une mesure unique et <code>sondees</code> n'était jamais remis à faux — un cran changé aurait laissé les gabarits figés sur l'ancienne hauteur, soit une barre de défilement fausse de <b>13,6 %</b> (vers Moyen) à <b>27,3 %</b> (vers Élevé) et jusqu'à 12 000 px d'écart sur un saut, c'est-à-dire un écran blanc. La cage doit être <b>positionnée</b>, et ce n'est pas décoratif : sans <code>position:relative</code> elle n'est pas le bloc conteneur des sondes en <code>position:absolute</code>, qui se calent alors sur le cadre et lui ajoutent jusqu'à <b>85 px</b> de défilement fantôme sur une fenêtre courte (les quatre variantes sont mesurées au banc, <code>spikes/espacement/sondes.mjs</code>). <b>Le ré-ancrage est l'inverse de celui des épinglées</b> : quand la hauteur AU-DESSUS du flot bouge, les pixels gardent leur sens et l'index se recalcule ; quand c'est la hauteur d'une RANGÉE qui bouge, la conversion index↔pixel change et c'est la ligne du haut qu'on garde en déplaçant le défilement. <b>Défaut préexistant corrigé au passage</b> (décision D3) : la hauteur du cadre se lisait par <code>clientHeight</code>, qui n'est pas un signal — agrandir la fenêtre de plus de huit rangées laissait une bande vide jusqu'au prochain défilement ; <code>bind:clientHeight</code> le répare, et il fallait le faire ici, ce chantier l'ayant rendu intermittent donc irreproductible. <b>Refusés</b> (§2.6) : le fil et le volet de lecture (l'énoncé dit « le volet central »), une étape d'accueil dédiée (D2 — A75 reste à quatre étapes ; le défaut étant l'existant, personne ne perd rien à ne pas voir ce choix au premier lancement), et toute densité de police ou de contenu. Aucun glyphe neuf, aucune couleur, aucune paire de contraste neuve.</td></tr>
       </tbody>
     </table>
     <p class="note">Les
-    96 lignes — 14 décisions d'adoption V1-V14, 82 amendements A1-A82 — portent leurs trois
+    97 lignes — 14 décisions d'adoption V1-V14, 83 amendements A1-A83 — portent leurs trois
     cellules : le défaut d'A48 relevé en V12 est <b>réparé à la
     source</b>, ce document n'a plus rien à restituer.</p>
   </section>
