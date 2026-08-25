@@ -48,6 +48,10 @@ avec un message de développeur. Un bêta-testeur ne fera jamais de
 - La table `$oauth` du script duplique les `option_env!` de
   `provider.rs` (DETTE D-34) : un fournisseur ajouté côté Rust doit
   l'être côté script, sinon sa release part sans identifiant.
-- **Preuve terrain différée** : la première release qui suit (0.8.0)
+- ~~**Preuve terrain différée** : la première release qui suit (0.8.0)
   doit connecter un compte sur un poste SANS `setx` — c'est elle qui
-  ferme l'arbitrage.
+  ferme l'arbitrage.~~ **FAITE le 2026-08-25** : un compte connecté sur
+  le second poste depuis une release publiée, sans aucun `setx` —
+  l'arbitrage est **clos**. La preuve a glissé de deux versions (elle
+  était attendue sur la 0.8.0, elle est venue après la 0.9.0) : la
+  décision, elle, tient telle qu'elle a été prise.

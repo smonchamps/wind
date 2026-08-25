@@ -97,10 +97,11 @@ est un mensonge qui se propage. Le contrôle qui ne coûte rien :
 
 **La 0.8.0 est publiée** (tag `0.8.0` sur `a3d04fb`, 2026-08-23) —
 elle porte PLAN-RETOURS-9 (OAuth compilé, « Retirer le compte » dit,
-noms de comptes). Sa preuve terrain différée (connecter un compte sur
-le second poste SANS `setx`) **reste due** : elle n'a été faite ni sur
-la 0.8.0 ni sur la 0.9.0 — à faire sur la **0.10.0**, c'est elle qui
-ferme l'ADR 0025.
+noms de comptes). Sa preuve terrain différée est **FAITE le
+2026-08-25** : un compte connecté sur le second poste depuis une
+release publiée, **sans aucun `setx`** — l'**ADR 0025 est CLOS**. Elle
+aura glissé de deux versions (attendue à la 0.8.0, venue après la
+0.9.0) ; la décision, elle, est restée inchangée pendant ce temps.
 
 **Sujet ÉCARTÉ le 2026-08-25 : les glyphes de repère en remplissage
 plein.** Demandé par le CE le matin, instruit sur pièces, mis en
@@ -129,9 +130,9 @@ le redit ; le WIP d'alors avait été retiré (décision CE du
 tag nu sur `f135791`, marquée Latest, 5 assets — 2 exe, 2 `.sig`,
 `latest.json`). Elle porte PLAN-ELEMENTS : la direction « Elements »
 entière. **Vérification §2.10 non rejouée** — à faire par
-`scripts/verifier-release.ps1 0.9.0` ; **preuves terrain dues** :
-auto-update par canal, et la preuve OAuth du second poste SANS `setx`
-(ADR 0025).
+`scripts/verifier-release.ps1 0.9.0`. La **preuve OAuth du second poste
+SANS `setx` est FAITE** (2026-08-25 — ADR 0025 clos) ; reste due :
+l'**auto-update par canal**.
 
 **La version précédente, 0.8.0** (publiée 2026-08-23, tag nu sur
 `a3d04fb`, release **vérifiée** par `scripts/verifier-release.ps1
@@ -191,8 +192,8 @@ posés par le seul `faire-release.ps1` pour la seule durée des deux
 builds (`finally` — la revue a tué la release qui se serait bloquée
 elle-même au pre-push), la variable d'exécution prime (dev/e2e),
 test « un build dev n'embarque rien », message d'échec réécrit pour
-les deux lecteurs ; **preuve différée : la 0.8.0 sur le second poste
-SANS setx**. (2) **« Retirer le compte »** en icône + texte (D2 —
+les deux lecteurs ; preuve différée alors, **faite le 2026-08-25**
+sur le second poste SANS setx — ADR 0025 clos. (2) **« Retirer le compte »** en icône + texte (D2 —
 « Supprimer » refusé : rien n'est supprimé du serveur), aria WCAG
 2.5.3. (3) **Nom personnalisé par compte** (D3/D4) : pref
 `nom_compte.{id}` purgée au retrait via LA constante
@@ -666,19 +667,18 @@ le trou de pertinence le plus courant.
 - ~~Périmètre de la Phase 5 ?~~ → La migration visible et interruptible
   d'abord — **faite** (ADR 0012). Suivent, dans l'ordre : installeur,
   télémétrie, bêta.
+- ~~Identifiants OAuth de l'app distribuée ?~~ → **CLOS le 2026-08-25**
+  (ADR 0025, décision D1 de PLAN-RETOURS-9). Les client ids sont
+  compilés dans la release par le seul `faire-release.ps1`
+  (`option_env!("WIND_RELEASE_*")`, tout-ou-rien) ; la variable
+  d'exécution garde la priorité en dev et en e2e, et le test
+  `dev_builds_embed_no_credentials` crie sur un build empoisonné. **La
+  preuve terrain qui fermait l'arbitrage est faite** : un compte
+  connecté sur le second poste depuis une release publiée, sans aucun
+  `setx`. Elle aura glissé de deux versions — attendue à la 0.8.0,
+  venue après la 0.9.0.
 
 **Ouverts** (au Chef Ingénieur) :
-- **Identifiants OAuth de l'app distribuée** — **TRANCHÉ et LIVRÉ**
-  (PLAN-RETOURS-9 D1, 2026-08-23) : les client ids sont compilés dans
-  la release via `option_env!("WIND_RELEASE_*")`, posés par le seul
-  `faire-release.ps1` pour la seule durée des deux builds
-  (tout-ou-rien, `finally`) ; la variable d'exécution garde la
-  priorité (dev, e2e — le test `dev_builds_embed_no_credentials`
-  crie sur un build empoisonné). Le message d'échec parle désormais
-  aux deux lecteurs (« installez une version officielle de Wind ;
-  en développement, définissez {VAR} »). **Reste la preuve terrain
-  par canal : à la 0.8.0, connecter un compte sur le second poste
-  SANS aucun `setx`** — c'est elle qui ferme l'arbitrage.
 - **Recherche sans limite pratique** (2026-08-17) — le plafond lui-même est
   soldé (`SEARCH_LIMIT = 100`, barre « N sur M » avec le vrai total ;
   A50/PLAN-RECHERCHE). Reste ouvert le seul vrai « tout voir » : liste de
