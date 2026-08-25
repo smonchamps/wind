@@ -91,22 +91,17 @@ elle porte PLAN-RETOURS-9 (OAuth compilé, « Retirer le compte » dit,
 noms de comptes). Sa preuve terrain différée (connecter un compte sur
 le second poste SANS `setx`) reste due — sur la 0.8.0 ou la 0.9.0.
 
-**Le chantier demandé restant : les glyphes de repère en remplissage
-plein** (CE, 2026-08-25 — le glyphe lui-même, hors de tout disque).
-Instruit sur pièces, **non ouvert**, aucune décision prise. Faits
-établis : rien n'interdit le remplissage et le jeu en contient déjà
-quatre cas (dont trois repères) ; **9 glyphes sur 12 se remplissent sans
-redessin** (mesuré par aire de Gauss après aplatissement), trois
-résistent (`shopping_bag` s'auto-ferme sur un pâté, `account_balance` et
-`music_note` sont des traits ouverts sans surface) ; le plein **seul**
-fait maigrir plusieurs glyphes, c'est plein **+ trait** qu'il faut ; et
-le coût inattendu — le remplissage **rapproche les silhouettes** (IoU
-moyen 0,24 → 0,47), or le travail d'un repère est de distinguer douze
-comptes. Les gates sont **aveugles** au remplissage : le contrôle qui
-vérifie que le Système dit les tracés ne lit que la clé `d`.
-À noter : ce chantier n'est pas un correctif — A82 (le retrait de la
-pastille) a été décidé en connaissance de la perte, et le terrain a
-validé le point « le compte se trouve-t-il encore d'un coup d'œil ».
+**Sujet ÉCARTÉ le 2026-08-25 : les glyphes de repère en remplissage
+plein.** Demandé par le CE le matin, instruit sur pièces, mis en
+planche l'après-midi (`spikes/glyphes-pleins/`, les douze repères au
+trait contre plein+trait aux trois tailles et deux polarités) —
+verdict CE devant la planche : **« Le trait suffit. »** Refus de
+périmètre §2.6, **aucun code de production touché**. Les faits mesurés
+sont gardés au README du spike pour ne pas les remesurer : 9 glyphes
+sur 12 se remplissent sans redessin, le plein seul en amaigrit trois,
+et surtout il **rapproche les silhouettes** (recouvrement 0,24 → 0,47)
+alors que le travail d'un repère est de distinguer douze comptes. À ne
+pas re-proposer sans raison neuve.
 
 **Ensuite : la bêta fermée 20-50 utilisateurs** ([PLAN.md](PLAN.md)
 §4, dernière étape avant le gate 5) — rien n'est engagé.
