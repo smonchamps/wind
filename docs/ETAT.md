@@ -36,7 +36,7 @@ effets (le ré-ancrage lisait une position déjà réécrite par l'effet des
 chaîne de prototypes. **Enseignement payé** : trois des cinq tests du
 premier filet ne pouvaient pas échouer ; le filet réécrit (8 tests) lit
 ce que l'utilisateur VOIT et a été **prouvé non-vacant** en cassant
-volontairement le code. **À livrer en 0.10.0** — CHANGELOG écrit.
+volontairement le code. **Livré en 0.10.0** (publiée le 2026-08-25).
 
 **Le chantier soldé précédent : [PLAN-REPERE-LIGNE](PLAN-REPERE-LIGNE.md)**
 (2026-08-25, terrain CE **15/15**, gate verte, e2e 124 → **129**) — **la
@@ -64,7 +64,7 @@ Revue à regard neuf : 8 angles, 40 candidats, **14 défauts distincts —
 tous corrigés** (dont un bloc qui pouvait se peindre par-dessus l'heure,
 et une règle D7 qui donnait un refrain aux postes à un seul compte).
 Constat terrain unique (point 12 : le volet parlait quand la liste se
-taisait) corrigé le jour même. **À livrer en 0.10.0** — CHANGELOG écrit.
+taisait) corrigé le jour même. **Livré en 0.10.0** (publiée le 2026-08-25).
 
 **Le chantier soldé précédent : [PLAN-ELEMENTS](PLAN-ELEMENTS.md)**
 (2026-08-24, `fb32238` → `0de3689`, terrain CE **8/8 zéro KO** le jour
@@ -127,7 +127,20 @@ le redit ; le WIP d'alors avait été retiré (décision CE du
 2026-08-20), sa matière reste au § revue de
 [PLAN-COMPOSITION-HTML](PLAN-COMPOSITION-HTML.md).
 
-**Dernière version livrée : 0.9.0** (publiée 2026-08-24 à 16:59, tag
+**Dernière version livrée : 0.10.0** (publiée **2026-08-25 à 21:02**,
+tag nu sur `f94a008`, marquée Latest). Elle porte les deux chantiers du
+2026-08-25 : **PLAN-REPERE-LIGNE** (la boîte en toutes lettres sur la
+ligne, A80-A82) et **PLAN-ESPACEMENT** (les trois crans d'air, A83).
+**Release vérifiée par `scripts/verifier-release.ps1 0.10.0` le jour
+même : 18/18 PASS** — Latest au tag nu, 5 assets nommés, `latest.json`
+sans BOM 1 590 o aux DEUX clés de plateforme, URL au tag nu, signatures
+== `.sig` et distinctes, exe arm64 200 / 5 632 535 o, exe x64
+200 / 6 350 877 o. **Preuve terrain FAITE le jour même : auto-update
+0.9.0 → 0.10.0 confirmé sur les DEUX postes** — la chaîne signée
+bi-arch (ADR 0013/0023) est prouvée vivante dans les deux sens pour la
+**deuxième version consécutive**. Plus rien n'est dû sur cette version.
+
+**La version précédente, 0.9.0** (publiée 2026-08-24 à 16:59, tag
 nu sur `f135791`, marquée Latest). Elle porte PLAN-ELEMENTS : la
 direction « Elements » entière. **Release vérifiée par
 `scripts/verifier-release.ps1 0.9.0` le 2026-08-25 : 18/18 PASS** —
