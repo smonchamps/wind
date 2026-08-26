@@ -12,6 +12,30 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.10.1] - 2026-08-26
+
+Le démarrage cesse de se figer.
+
+### Corrigé
+
+- **Wind ne se fige plus quelques secondes après son ouverture.** Sur
+  une grande boîte, l'application s'arrêtait de répondre environ trois
+  secondes après le lancement, et pendant près de **neuf secondes** :
+  impossible de faire défiler la liste, d'ouvrir un message ou de
+  changer de dossier. La fenêtre, elle, bougeait toujours — ce qui
+  rendait la chose d'autant plus déroutante. C'est fini. Mesuré sur une
+  boîte de 251 000 messages : **8,9 secondes d'attente sont devenues un
+  dixième de seconde**.
+- **La liste s'affiche trois fois plus tôt.** Elle réclamait sa première
+  page en douzième position, derrière toutes les vérifications du
+  démarrage ; elle passe devant. De l'ouverture de la fenêtre aux
+  messages à l'écran : **1,2 seconde avant, 0,4 aujourd'hui**.
+
+**Une seule fois, à cette mise à jour** : le premier lancement prendra
+environ deux secondes de plus que d'habitude. Wind réorganise un index
+de sa base — c'est ce qui rend tout ce qui précède possible. Les
+lancements suivants sont immédiats.
+
 ## [0.10.0] - 2026-08-25
 
 La liste dit d'où vient chaque message, et vous choisissez son air.
