@@ -6,6 +6,7 @@ spikes/search-engine/target/
 spikes/microsoft/target/
 spikes/body-backfill/target/
 spikes/idle/target/
+spikes/demarrage/target/
 e2e/node_modules/
 apps/desktop/ui-v2/node_modules/
 apps/desktop/ui-v2/dist/

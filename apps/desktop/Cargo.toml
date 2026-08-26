@@ -6,6 +6,18 @@ edition.workspace = true
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+# Banc de demarrage (exploration 2026-08-26). N'existe que pour MESURER la
+# tranche WebView2 : `tauri/tracing` allume les `debug_span!` deja ecrits en
+# amont — `wry::webview::create`, `wry::window::create`, `wry::window::draw`
+# (tauri-runtime-wry/src/lib.rs:4510-4515) — plus les `info_span!` de wry sur
+# l'IPC et le service des assets. Aucune ligne de mesure a ecrire ici.
+#
+# JAMAIS dans le binaire livre : `faire-release.ps1` ne passe pas la feature,
+# et `main.rs` ne rend la console QUE sous elle (un binaire `windows_subsystem`
+# n'a pas de stderr ou ecrire les spans).
+[features]
+mesure = ["tauri/tracing", "dep:tracing-subscriber", "dep:tracing"]
+
 [dependencies]
 # Horodatage ISO 8601 des rapports de plantage (telemetrie, ADR 0014).
 chrono.workspace = true
@@ -40,6 +52,12 @@ fs4 = "0.13"
 # fait pour des dossiers, pas des URL. Le schema est valide en Rust
 # AVANT l'appel — la garde vit ici, pas dans l'UI.
 open = "5"
+# Banc de demarrage seulement (feature `mesure`) : le collecteur qui imprime
+# la duree des spans d'amont a leur fermeture.
+tracing-subscriber = { version = "0.3", optional = true }
+# Idem : nos PROPRES jalons, la ou les spans d'amont ne disent rien — le
+# detail d'une commande dont on cherche a savoir ce qu'elle paie.
+tracing = { version = "0.1", optional = true }
 
 [lints]
 workspace = true

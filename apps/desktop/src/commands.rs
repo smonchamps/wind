@@ -4970,9 +4970,29 @@ pub struct BackfillStatus {
 #[tauri::command]
 pub async fn backfill_status(app: AppHandle) -> Result<BackfillStatus, String> {
     hors_pompe(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        let remaining = pending_total(&store)?;
-        let total = corpus_total(&store)?;
+        // Jalons de mesure (feature `mesure` — jamais dans le binaire
+        // livré). Le span d'amont `wry::custom_protocol::handle` donne le
+        // TOTAL de la commande et rien de plus : mesuré à froid le
+        // 2026-08-26, il valait 2 740 ms après la correction du prédicat,
+        // sans dire lequel des trois temps le portait. On a vérifié que
+        // ce n'était NI la file d'attente (le verrou était libre) NI
+        // `corpus_total` (35 ms) — restait l'ouverture, qu'aucun span ne
+        // couvre. D'où ces trois-là.
+        let store = {
+            #[cfg(feature = "mesure")]
+            let _jalon = tracing::debug_span!("mesure::store_open").entered();
+            Store::open(&db_path(&app)?).map_err(|err| err.to_string())?
+        };
+        let remaining = {
+            #[cfg(feature = "mesure")]
+            let _jalon = tracing::debug_span!("mesure::pending_total").entered();
+            pending_total(&store)?
+        };
+        let total = {
+            #[cfg(feature = "mesure")]
+            let _jalon = tracing::debug_span!("mesure::corpus_total").entered();
+            corpus_total(&store)?
+        };
         Ok(BackfillStatus {
             remaining,
             // `done = total - remaining` : les corps déjà là. La fonction

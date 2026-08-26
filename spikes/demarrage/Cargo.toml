@@ -1,0 +1,20 @@
+# Spike PLAN-DEMARRAGE — banc de mesure du CHEMIN D'OUVERTURE, hors du
+# workspace de production. JETABLE : il instruit le diagnostic « freeze et
+# lenteurs au démarrage », il ne livre rien. `mail-core` par chemin, sur le
+# modèle de `spikes/idle` : la clé `[workspace]` vide détache ce manifeste
+# du workspace racine, donc `cargo build` ici ne touche NI son target/, NI
+# son verrou.
+[workspace]
+
+[package]
+name = "spike-demarrage"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+mail-core = { path = "../../crates/mail-core" }
+rusqlite = { version = "0.37", features = ["bundled"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+[profile.release]
+debug = false

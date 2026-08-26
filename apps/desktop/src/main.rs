@@ -1,4 +1,11 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// La feature `mesure` (banc de demarrage) GARDE la console : un binaire
+// `windows_subsystem = "windows"` n'a pas de stderr, et les spans d'amont
+// n'auraient nulle part ou s'ecrire. Le binaire livre, lui, ne change pas —
+// la release ne passe jamais la feature.
+#![cfg_attr(
+    all(not(debug_assertions), not(feature = "mesure")),
+    windows_subsystem = "windows"
+)]
 //! Shell desktop : la fenêtre Tauri branchée sur le noyau.
 //!
 //! L'UI est « bête » (PLAN.md §3) : elle affiche l'état et émet des
@@ -125,7 +132,58 @@ pub(crate) struct AppState {
     pub commandes: Arc<Mutex<()>>,
 }
 
+/// Banc de démarrage (feature `mesure`) : armer le collecteur AVANT tout,
+/// pour que les spans d'amont soient captés dès leur ouverture.
+///
+/// Rien à instrumenter nous-mêmes — les spans existent déjà :
+/// `wry::window::create` (la fenêtre tao seule), `wry::webview::create`
+/// (toute la fonction, fenêtre + webview), `wry::window::draw` (fenêtre
+/// créée → première trame). La TRANCHE cherchée est leur différence :
+/// `webview::create` − `window::create`.
+///
+/// Ce sont des `debug_span!` : au niveau par défaut rien n'est enregistré,
+/// d'où le `DEBUG` explicite. `FmtSpan::CLOSE` n'imprime qu'à la fermeture,
+/// avec la durée — on ne veut pas le détail des événements.
+/// Le filtre est INDISPENSABLE, pas un confort : sans lui, le span
+/// `app::setup` de tauri (pose par `#[instrument]`, donc invisible a un
+/// grep de `span!`) porte le Debug ENTIER de `App` — plusieurs milliers de
+/// caracteres recrachés sur stderr a CHAQUE fermeture de span, et cette
+/// ecriture tombe DANS `wry::webview::create`, c'est-a-dire dans la tranche
+/// qu'on pretend mesurer. Constate au premier run d'observation.
+///
+/// On ne garde donc que les deux cibles utiles : `tauri_runtime_wry` en
+/// DEBUG (les trois spans de creation) et `wry` en INFO (l'IPC et le
+/// service des assets, qui sont des `info_span!`).
+#[cfg(feature = "mesure")]
+fn armer_les_spans() {
+    use tracing_subscriber::filter::LevelFilter;
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+
+    let couche = tracing_subscriber::fmt::layer()
+        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::CLOSE)
+        .with_ansi(false)
+        .with_writer(std::io::stderr);
+    let cibles = tracing_subscriber::filter::Targets::new()
+        .with_target("tauri_runtime_wry", LevelFilter::DEBUG)
+        .with_target("wry", LevelFilter::INFO)
+        // `tauri::ipc` SEULEMENT, et non `tauri` : le prefixe evite le span
+        // `app::setup`, qui recracherait le Debug entier de `App`. Donne un
+        // span par COMMANDE traitee — de quoi distinguer un transport
+        // dedouble d'une commande reellement executee deux fois.
+        .with_target("tauri::ipc", LevelFilter::TRACE)
+        // Nos propres jalons (`mesure::*`), posés dans les commandes dont
+        // le span d'amont donne le TOTAL sans dire ce qu'il recouvre.
+        .with_target("wind_desktop", LevelFilter::DEBUG);
+    let _ = tracing_subscriber::registry()
+        .with(couche)
+        .with(cibles)
+        .try_init();
+}
+
 fn main() {
+    #[cfg(feature = "mesure")]
+    armer_les_spans();
     // Le déménagement Discovery → Wind (PLAN-WIND E3) passe AVANT tout :
     // ni la base ni le profil WebView2 ne doivent naître côté Wind
     // pendant qu'un poste Discovery attend son rename. Échec = arrêt
