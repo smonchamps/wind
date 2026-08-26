@@ -8,11 +8,12 @@
 > par leur sha**. **0.10.1 publiée le 2026-08-26**, vérification §2.10
 > **18/18**, 5 assets, les deux canaux. Reste : la preuve terrain de
 > l'auto-update **par canal** (D5) : **arm64 PROUVÉ** — ce poste est en
-> ARM64 et la base de registre dit `Wind 0.10.1` ; **x64 : le clic a
-> ouvert un constat terrain** (Smart App Control bloque l'installateur
-> non signé, l'app se fermait sans un mot) — la preuve est REPRISE par
-> [PLAN-SIGNATURE](PLAN-SIGNATURE.md) (terrain de la 0.10.2). Puis
-> `/solde`.
+> ARM64 et la base de registre dit `Wind 0.10.1` ; **x64 PROUVÉ le
+> 2026-08-27** — après un premier refus le 26 (Smart App Control,
+> verdict cloud par binaire ET par jour : le même exe refusé puis
+> accepté ~24 h plus tard), le clic a appliqué 0.10.0 → 0.10.1. Le
+> silence de l'échec, lui, a ouvert
+> [PLAN-SIGNATURE](PLAN-SIGNATURE.md). Plus rien de dû : `/solde`.
 
 ### Gate et flake — 2026-08-26
 

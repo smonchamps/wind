@@ -142,14 +142,21 @@ Issue ouverte en amont. Gate : tests Rust + e2e existants verts (le
 bandeau ne change pas de forme, seul son texte d'échec devient
 possible).
 
-**E5 — la preuve vivante** *(réécrite après D2 : filet seul)*. Release
-**0.10.2** non signée, vérification §2.10 (18/18), puis terrain :
+**E5 — la preuve vivante** *(réécrite après D2, ré-amendée le
+2026-08-27)*. Fait nouveau : l'auto-update 0.10.0 → 0.10.1 **a fini
+par passer** sur le poste x64 — le même exe, refusé le 26, accepté le
+27 : le verdict SAC change AVEC LE TEMPS (réputation du hash), la
+loterie est complète, intermittence prouvée. Release **0.10.2** non
+signée, vérification §2.10 (18/18), puis terrain :
 - arm64 : auto-update 0.10.1 → 0.10.2 normal ;
-- x64 **SAC On** : le clic « Installer » doit désormais **montrer
-  l'erreur au bandeau et se réarmer** — le défaut d'origine (fermeture
-  muette), rejoué et rendu visible. L'installation elle-même restera
-  bloquée par SAC tant que rien n'est signé : c'est l'attendu, pas un
-  échec du chantier. C'est le STOP 2.
+- x64 **SAC On, désormais en 0.10.1** (updater ANCIEN — le filet
+  n'existe qu'une fois la 0.10.2 posée) : le clic donne SOIT
+  l'installation (chemin nominal prouvé sur x64), SOIT le refus SAC du
+  hash neuf — et alors l'app se ferme encore en silence : c'est
+  l'ancienne version qui parle, pas une régression. **La preuve du
+  filet au terrain se fait à la PREMIÈRE mise à jour depuis la
+  0.10.2** sur ce poste (prochaine release, ou refus SAC de celle-ci
+  suivi d'un passage ultérieur). C'est le STOP 2.
 
 **E6 — documentation.** ADR 0027 (la signature de code : lève le
 report de l'ADR 0013 décision 3, consigne le choix Trusted Signing et
