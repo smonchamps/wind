@@ -37,11 +37,23 @@ motivée.)
 
 ### D-8 · Requêtes chères des sondes périodiques (hors pompe, coût CPU réel)
 
+> ✅ **FERMÉE le 2026-08-26 (PLAN-DEMARRAGE).** Sa clause de
+> réouverture s'est réalisée : la base est passée de 1,3 à 12,8 Go et
+> les 575 ms de `pending_total` étaient devenus **20 839 ms à froid**,
+> tenant le verrou global 8 870 ms à chaque démarrage. Corrigé —
+> `pending_total` vaut **107,9 ms**, `backfill_status` **124,9 ms** au
+> terrain froid (×71). Le chiffre de 865 ms ci-dessous était **PÉRIMÉ**
+> dès l'écriture de cette dette : re-mesuré à ~31 ms froid / ~11 ms
+> chaud, `nav_snapshot` ayant été réécrit entre-temps. **La leçon à
+> retenir n'est pas le chiffre, c'est qu'une dette porte une mesure
+> DATÉE : la re-mesurer avant de s'en servir.**
+
 - **Fait (2026-08-15, PLAN-GELS)** : `nav_snapshot` **865 ms** par
   compte Gmail (compteur Archives d'une intégrale, exclusion par
-  `message_id`, 87 k lignes — toutes les 10 s) ; `pending_total`
-  **575 ms** (COUNT par boîte, NOT EXISTS sur `bodies` — à chaque
-  génération de courrier). Mesurés en SQL direct sur base réelle.
+  `message_id`, 87 k lignes — toutes les 10 s) — **chiffre périmé, voir
+  l'encadré** ; `pending_total` **575 ms** (COUNT par boîte, NOT EXISTS
+  sur `bodies` — à chaque génération de courrier). Mesurés en SQL
+  direct sur base réelle.
 - **Décision CE (2026-08-15, D4 du plan)** : depuis `hors_pompe()`
   elles ne gèlent plus rien ni personne — les optimiser sans constat
   serait du travail sans mesure. Famille D-7 (chronos de réactivité).
@@ -552,3 +564,60 @@ motivée.)
 - **Rouvre si** : le terrain ou la bêta voit le flou à 16 px ou sur
   les repères 10-12 px — alors chantier de dessin dédié, glyphe par
   glyphe (`format_list_numbered` plaide le premier).
+
+### D-36 · La colonne fantôme de `echos` naît sur toute base neuve
+
+- **Fait (PLAN-DEMARRAGE, 2026-08-26)** : le littéral `SCHEMA` de
+  `store.rs` contient un `
+` **à l'intérieur d'un commentaire SQL
+  `--`** d'une chaîne Rust ordinaire. Rust en fait un vrai saut de
+  ligne : le commentaire s'arrête là, et SQLite avale la suite comme
+  une **colonne**. Reproduit sur base fraîche — une colonne nommée
+  `) — la liste d` dont le type absorbe la déclaration de `to_addrs`.
+  La vraie `to_addrs` n'existe que parce qu'`add_missing_columns` la
+  rajoute plus tard. Les bases du parc sont saines (créées avant ce
+  commentaire) ; **toute base neuve ne l'est pas**.
+- **Raison du report** : ce n'est pas un défaut de performance, et
+  retirer une colonne d'une base existante demande une réécriture de
+  table. Hors périmètre d'un chantier de démarrage (refus §2.6).
+- **Piste** : corriger le littéral, plus un test asserant les noms de
+  colonnes de `echos` sur une base NEUVE — c'est lui qui manque, et son
+  absence est la vraie cause.
+- **Rouvre si** : une base neuve montre un défaut lié à `to_addrs`, ou
+  au premier chantier qui réécrit `echos`.
+
+### D-37 · `sync_progress` recompte toutes les boîtes, toutes les 5 s, à vie
+
+- **Fait (PLAN-DEMARRAGE, 2026-08-26)** : `store.sync_progress()` est un
+  `SUM` de `COUNT` corrélés sur toutes les boîtes — **152 ms à froid**,
+  8,6 ms à chaud, rejoué **toutes les 5 secondes pour toujours**, sous
+  le verrou global. Sur les 60 premières secondes d'un démarrage, ~1,8 s
+  de verrou.
+- **Raison du report (décision CE D6, 2026-08-26)** : son correctif est
+  un compteur tenu à l'écriture — même famille et même risque de dérive
+  que le compteur des corps manquants, pour ~1,8 s contre les ~26 s du
+  défaut principal. Un compteur qui ment est pire qu'un compte lent.
+- **Piste** : compteur par boîte maintenu à l'écriture, ou une seule
+  requête agrégée au lieu de la boucle (le patron mesuré à E1-bis :
+  c'est l'index qui portait le coût, pas les allers-retours).
+- **Rouvre si** : le terrain désigne le coût — ventilateur, batterie,
+  ou latence perçue des sondes au repos.
+
+### D-38 · Le rattrapage des aperçus recharge la liste même quand il n'a rien fait
+
+- **Fait (contre-expertise PLAN-DEMARRAGE, 2026-08-26)** :
+  `rattraperApercus` (`App.svelte`) appelle `liste?.recharger()`
+  **inconditionnellement**, hors de sa boucle — donc **même quand
+  `restants === 0` au premier appel**, ce qui est le cas de toute base à
+  jour. Or `recharger()` incrémente la génération, relance `pomper()` et
+  `lancerEpingles()` : une page `list_category`, un `pinned_rows` et un
+  `category_total` de plus, à t + 1,5 s, pour rien.
+- **Raison du report** : trouvé pendant E2, hors du périmètre réduit
+  tranché par le CE (le `tick` seul). Deux lignes, mais elles changent
+  un comportement de recharge qui mérite son propre filet.
+- **Piste** : capturer `const aFaire = restants > 0;` au premier appel
+  et ne recharger que si `aFaire`. Filet : compter les `list_category`
+  dans `__e2eJournal` après le palier sur un décor sans aperçu manquant
+  — la valeur attendue est zéro.
+- **Rouvre si** : le prochain chantier touche le rattrapage, ou si le
+  banc voit ces trois commandes dans le budget.

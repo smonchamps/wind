@@ -12,6 +12,60 @@
 
 ## Où on en est, et quoi faire en premier
 
+⏳ **CHANTIER EN COURS — [PLAN-DEMARRAGE](PLAN-DEMARRAGE.md)**
+(2026-08-26) : **livré, gate complète verte, EN ATTENTE DU TERRAIN
+(STOP 2)**. Rien n'est commité.
+
+Le constat du CE — « freezes et lenteurs au démarrage, une fois la
+fenêtre ouverte » — était **un gel de SERVICE, pas de fenêtre** :
+`backfill_status` partait à t + 3 s, tenait le **verrou global des
+commandes 8 870 ms**, et pendant ce temps aucune commande applicative
+n'était servie. Mesuré au terrain, premier lancement **après
+redémarrage machine** (la première mesure honnêtement froide du
+projet) :
+
+| | avant | après |
+|---|---|---|
+| `backfill_status`, verrou tenu | **8 867,8 ms** | **124,9 ms** (×71) |
+| fenêtre → liste complète | **1 157,3 ms** | **384,6 ms** |
+| la part hors tranche WebView2 | 406,4 ms | **119,0 ms** (×3,4) |
+
+**Trois correctifs, tous d'une ligne ou presque, tous mesurés avant
+d'être écrits :** le critère `AND b.scanned = 1` quitte les requêtes du
+rattrapage (il forçait 251 k rappels de ligne grasse dans 11,4 Go pour
+protéger **zéro** ligne — mesuré sur les deux postes) ; `idx_envelopes_date`
+gagne `uid` (sans lui SQLite allait chercher la ligne d'enveloppe pour
+lire l'uid du sondage — `pending_total` 521,9 → 107,9 ms) ; et un
+`await tick()` fait partir la première page de la liste **avant** les
+sondes, où elle était douzième.
+
+**Quatre hypothèses ont été retournées par la mesure ou la
+contre-expertise, et aucune n'a été écrite avant d'être éprouvée** — le
+correctif du dossier d'instruction (un index nu que SQLite n'aurait
+jamais choisi : il fallait `INDEXED BY` ou UNIQUE), la contention, les
+64 allers-retours, et le E2 du plan (différer les sondes aurait
+**fabriqué** un repeint de chaque rangée du premier écran). Économie :
+un index inutile à 18 s de migration, un regroupement de requêtes sans
+effet, et un défaut visible chez le CE.
+
+**Décisions CE : D1-D9** (§5 du plan), dont D1 « palier liste peinte »,
+D8 « retirer le critère `scanned` » et D9 « assumer les 1,77 s de
+reconstruction d'index au premier lancement après mise à jour, sans
+écran » — inscrit au STANDARD §3.
+
+**Dette rouverte puis FERMÉE : D-8.** Dettes neuves : **D-36**
+(colonne fantôme de `echos`), **D-37** (`sync_progress`), **D-38** (le
+rattrapage des aperçus recharge la liste pour rien).
+
+**Deux défauts d'outillage payés et corrigés en route** :
+`depouiller.py` mourait hors PowerShell 7 sur sa propre flèche, et le
+banc écrivait `$n` dans sa boucle bornée par `$N` — **en PowerShell
+c'est la même variable** ; un `-N 3` partait pour ~550 tours. C'est
+aussi ce qui explique les « 19 lancements » de la campagne du 26/08.
+
+**Reste :** le terrain (STOP 2), puis commit, push et CI, puis
+`/solde`.
+
 **Dernier chantier soldé : [PLAN-ESPACEMENT](PLAN-ESPACEMENT.md)**
 (2026-08-25, terrain CE **7/7 zéro constat**, gate verte 2 min, e2e
 129 → **137**) — **trois crans d'air entre les messages** (A83) :

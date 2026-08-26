@@ -91,14 +91,29 @@ CREATE TABLE IF NOT EXISTS envelopes (
     flagged        INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (mailbox_id, uid)
 );
-CREATE INDEX IF NOT EXISTS idx_envelopes_date ON envelopes(mailbox_id, date_epoch DESC);
+-- `uid` en TROISIEME colonne, et ce n'est pas de l'ornement : sans lui
+-- l'index ne COUVRE pas les requetes du rattrapage, qui filtrent par date
+-- puis sondent `bodies` par (mailbox_id, uid). SQLite devait alors aller
+-- chercher la LIGNE d'enveloppe pour y lire l'uid, une fois par message.
+-- Mesure du 2026-08-26 sur la base du terrain : `pending_total` 521,9 ms
+-- avec l'index a deux colonnes, 107,9 ms avec celui-ci (pire dossier,
+-- 87 117 enveloppes : 400,5 -> 46,3 ms). L'ordre DESC de la date reste
+-- celui de la pagination ; uid ne le derange pas, il le complete.
+CREATE INDEX IF NOT EXISTS idx_envelopes_date ON envelopes(mailbox_id, date_epoch DESC, uid);
 CREATE TABLE IF NOT EXISTS bodies (
     mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
     uid        INTEGER NOT NULL,
     html       TEXT NOT NULL,
-    -- 0 = corps rapatrie AVANT que les pieces jointes existent : son MIME
-    -- n'a jamais ete inspecte, et l'information n'est PAS recuperable
-    -- depuis le HTML stocke. Il faut le relire (voir bodies_to_backfill).
+    -- VESTIGIALE depuis le 2026-08-26 (PLAN-DEMARRAGE, decision D8) :
+    -- ecrite a 1 par save_body_full, plus JAMAIS LUE. Elle marquait les
+    -- corps rapatries AVANT que les pieces jointes existent, dont le MIME
+    -- n'avait jamais ete inspecte ; le rattrapage les reprenait. La lire
+    -- coutait 251 k rappels de ligne grasse dans 11,4 Go — 20 839 ms a
+    -- froid contre 396 ms sans (mesure du 2026-08-26) — pour proteger
+    -- ZERO ligne : la passe d'heritage est soldee sur toute la flotte, et
+    -- rien en production n'ecrit plus 0. La retirer demanderait une
+    -- reecriture de 11,4 Go : elle partira avec le chantier qui touchera
+    -- `bodies` de toute facon.
     scanned    INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (mailbox_id, uid)
 );
@@ -2053,20 +2068,7 @@ impl Store {
         since_epoch: i64,
         limit: usize,
     ) -> Result<Vec<Uid>, Error> {
-        let mut stmt = self.0.prepare(
-            "SELECT e.uid
-             FROM envelopes e
-             JOIN mailboxes m ON m.id = e.mailbox_id
-             WHERE m.account_id = ?1 AND m.name = ?2
-               AND (e.date_epoch IS NULL OR e.date_epoch >= ?3)
-               AND NOT EXISTS (
-                   SELECT 1 FROM bodies b
-                    WHERE b.mailbox_id = e.mailbox_id AND b.uid = e.uid
-                      AND b.scanned = 1
-               )
-             ORDER BY e.date_epoch DESC, e.uid DESC
-             LIMIT ?4",
-        )?;
+        let mut stmt = self.0.prepare(&bodies_to_backfill_sql())?;
         let uids = stmt
             .query_map(
                 params![account_id, mailbox, since_epoch, limit as i64],
@@ -2218,16 +2220,7 @@ impl Store {
         since_epoch: i64,
     ) -> Result<u64, Error> {
         let count: i64 = self.0.query_row(
-            "SELECT COUNT(*)
-             FROM envelopes e
-             JOIN mailboxes m ON m.id = e.mailbox_id
-             WHERE m.account_id = ?1 AND m.name = ?2
-               AND (e.date_epoch IS NULL OR e.date_epoch >= ?3)
-               AND NOT EXISTS (
-                   SELECT 1 FROM bodies b
-                    WHERE b.mailbox_id = e.mailbox_id AND b.uid = e.uid
-                      AND b.scanned = 1
-               )",
+            &bodies_pending_count_sql(),
             params![account_id, mailbox, since_epoch],
             |row| row.get(0),
         )?;
@@ -2480,6 +2473,69 @@ pub struct AccountConfig {
     pub username: Option<String>,
 }
 
+/// Le prédicat « ce message attend encore son corps », partagé par le
+/// COMPTE ([`Store::bodies_pending_count`]) et la LISTE de travail
+/// ([`Store::bodies_to_backfill`]).
+///
+/// UNE écriture : les deux ne peuvent plus diverger — et c'est cette
+/// écriture-là, jamais une copie, que la garde de plan interroge (même
+/// raison qu'[`unified_page_sql`], et même leçon payée).
+///
+/// **Il ne lit AUCUNE colonne de `bodies`, et c'est tout le chantier.**
+/// L'existence de la ligne se tranche dans l'auto-index de la clé
+/// primaire `(mailbox_id, uid)` — donc sans jamais rappeler la ligne,
+/// qui pèse 56 ko en moyenne au terrain. Y lire ne serait-ce qu'un bit
+/// coûtait 251 k lectures aléatoires dans 11,4 Go : **20 839 ms à froid
+/// contre 396 ms sans** (mesuré le 2026-08-26 sur la base du terrain).
+///
+/// Ce prédicat portait `AND b.scanned = 1` — la trace des corps
+/// rapatriés AVANT que les pièces jointes n'existent, dont le MIME
+/// n'avait jamais été inspecté. **Retiré le 2026-08-26 (PLAN-DEMARRAGE,
+/// décision D8)** sur trois faits mesurés : la production n'écrit
+/// JAMAIS `scanned = 0` ([`Store::save_body_full`] pose un `1` en dur),
+/// les deux postes de la flotte portent **zéro** ligne à `scanned = 0`,
+/// et le critère coûtait le gel de 8 870 ms du démarrage pour protéger
+/// zéro ligne. La colonne survit, vestigiale : la retirer demanderait
+/// une réécriture de 11,4 Go — elle partira avec le chantier qui
+/// touchera `bodies` de toute façon (l'aperçu, dette).
+///
+/// **Exige l'alias `e`** pour `envelopes` chez qui l'emploie — comme
+/// [`SELECT_UNIFIED`] exige les siens. Le fragment est une chaine : un
+/// autre alias compile et echoue au `prepare`, sur un chemin dont l'UI
+/// n'affiche rien (le `catch` du rattrapage est un `console.error`).
+pub(crate) const CORPS_ABSENT: &str = "NOT EXISTS (
+                   SELECT 1 FROM bodies b
+                    WHERE b.mailbox_id = e.mailbox_id AND b.uid = e.uid
+               )";
+
+/// Le COMPTE des corps manquants d'une boîte : `?1` le compte, `?2` la
+/// boîte, `?3` l'horizon.
+pub(crate) fn bodies_pending_count_sql() -> String {
+    format!(
+        "SELECT COUNT(*)
+             FROM envelopes e
+             JOIN mailboxes m ON m.id = e.mailbox_id
+             WHERE m.account_id = ?1 AND m.name = ?2
+               AND (e.date_epoch IS NULL OR e.date_epoch >= ?3)
+               AND {CORPS_ABSENT}"
+    )
+}
+
+/// La LISTE de travail du rattrapage — mêmes paramètres, plus `?4`, la
+/// borne du lot.
+pub(crate) fn bodies_to_backfill_sql() -> String {
+    format!(
+        "SELECT e.uid
+             FROM envelopes e
+             JOIN mailboxes m ON m.id = e.mailbox_id
+             WHERE m.account_id = ?1 AND m.name = ?2
+               AND (e.date_epoch IS NULL OR e.date_epoch >= ?3)
+               AND {CORPS_ABSENT}
+             ORDER BY e.date_epoch DESC, e.uid DESC
+             LIMIT ?4"
+    )
+}
+
 /// La requête d'une page de la boîte unifiée.
 ///
 /// Isolée pour qu'un test puisse interroger **son** plan d'exécution, et
@@ -2650,6 +2706,79 @@ fn migrate(
         "CREATE INDEX IF NOT EXISTS idx_bodies_apercu_manquant
              ON bodies(mailbox_id, uid) WHERE preview IS NULL;",
     )?;
+    // L'index de date des enveloppes gagne `uid` (voir le commentaire du
+    // SCHEMA). `CREATE INDEX IF NOT EXISTS` ne suffit PAS : sur une base
+    // existante l'index porte deja ce nom, la creation est un no-op muet
+    // et le defaut survivrait. On lit donc sa DEFINITION et on le
+    // reconstruit s'il lui manque la colonne — meme patron que la sonde
+    // `recipients` de l'index de recherche.
+    //
+    // Sans ecran : la reconstruction ne lit que `envelopes` (47 Mo au
+    // terrain), jamais les corps — 0,332 s mesurees sur la base du CE,
+    // contre les 18 s qu'aurait coutees un index sur `bodies`. C'est
+    // toute la difference entre une migration muette acceptable et le gel
+    // du 2026-08-17.
+    //
+    // La relecture et la reconstruction vivent dans UNE transaction, et
+    // ce n'est pas de la prudence de principe (revue a regard neuf du
+    // 2026-08-26) : `connect_accounts` appelle `Store::open` DIRECTEMENT,
+    // hors du verrou global des commandes (commands.rs), donc deux
+    // `migrate()` tournent pour de vrai en parallele au demarrage. Sans
+    // transaction, les deux lisent l'index a deux colonnes avant que l'un
+    // n'ecrive, et le reconstruisent chacun leur tour : ~3,5 s de gel au
+    // lieu de 1,77 s. `BEGIN IMMEDIATE` prend le verrou d'ecriture des la
+    // lecture — le second arrivant relit APRES le premier, trouve `uid`,
+    // et ne fait rien.
+    // DOUBLE VERIFICATION, et le premier temps compte autant que le
+    // second : `migrate()` tourne a CHAQUE `Store::open`, donc des
+    // dizaines de fois par demarrage. Une lecture nue de `sqlite_master`
+    // ne prend aucun verrou ; ouvrir une transaction d'ecriture juste
+    // pour verifier couterait le verrou d'ecriture a chaque commande.
+    let peut_etre_court: Option<String> = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master
+              WHERE type = 'index' AND name = 'idx_envelopes_date'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if peut_etre_court.is_some_and(|sql| !sql.contains("uid")) {
+        // Second temps, sous verrou : `connect_accounts` appelle
+        // `Store::open` DIRECTEMENT, hors du verrou global des commandes
+        // (commands.rs), donc deux `migrate()` tournent pour de vrai en
+        // parallele au demarrage. Sans re-lecture sous verrou, les deux
+        // reconstruiraient — ~3,5 s de gel au lieu de 1,77 s. Le second
+        // arrivant relit APRES le premier, trouve `uid`, et ne fait rien.
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let travail = (|| -> Result<(), Error> {
+            let sql: Option<String> = conn
+                .query_row(
+                    "SELECT sql FROM sqlite_master
+                      WHERE type = 'index' AND name = 'idx_envelopes_date'",
+                    [],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if sql.is_some_and(|sql| !sql.contains("uid")) {
+                conn.execute_batch(
+                    "DROP INDEX idx_envelopes_date;
+                     CREATE INDEX idx_envelopes_date
+                         ON envelopes(mailbox_id, date_epoch DESC, uid);",
+                )?;
+            }
+            Ok(())
+        })();
+        match travail {
+            Ok(()) => conn.execute_batch("COMMIT")?,
+            Err(err) => {
+                // L'echec du retour arriere n'apprendrait rien de plus
+                // que l'erreur d'origine — meme choix qu'a l'unite des
+                // fils.
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(err);
+            }
+        }
+    }
     // La sonde d'exclusion des intégrales (nav, catégorie Archives sur
     // Gmail) cherche par message_id : sans cet index, chaque ligne de
     // « Tous les messages » paierait un parcours de table.
@@ -3630,22 +3759,45 @@ mod tests {
         }
     }
 
-    /// Le defaut livre : un corps rapatrie AVANT les pieces jointes n'a
-    /// jamais eu son MIME inspecte, et l'information n'est pas
-    /// recuperable depuis le HTML stocke. Comme le rattrapage ne
-    /// selectionnait que les corps ABSENTS, ces messages n'auraient
-    /// jamais montre leurs pieces jointes — soit, en pratique, la
-    /// totalite d'une boite deja rattrapee.
+    /// Ce que le rattrapage cherche, depuis le 2026-08-26 : **les corps
+    /// ABSENTS**, et rien d'autre.
+    ///
+    /// Il a longtemps cherché aussi les corps rapatriés AVANT que les
+    /// pièces jointes n'existent — `bodies.scanned = 0`, un MIME jamais
+    /// inspecté, non récupérable depuis le HTML stocké. Ce critère est
+    /// **retiré** (PLAN-DEMARRAGE, décision D8 du CE) : il obligeait
+    /// SQLite à rappeler la ligne du corps pour lire un bit, ce qui
+    /// tenait le verrou global **8 870 ms à chaque démarrage** sur la
+    /// base du terrain.
+    ///
+    /// Les trois faits qui l'ont permis, tous mesurés le 2026-08-26 :
+    /// la production n'écrit **jamais** `scanned = 0` ([`Store::save_body_full`]
+    /// pose un `1` en dur) ; les **deux** postes de la flotte portent
+    /// **zéro** ligne à `scanned = 0` ; et la passe d'héritage qui les
+    /// produisait est soldée partout. Le critère protégeait zéro ligne.
+    ///
+    /// Ce que ce test garde donc : un corps présent sort le message du
+    /// rattrapage, et **rien ne l'y ramène**. Plus l'invariant d'écriture
+    /// qui a rendu le retrait sûr — si un jour quelque chose écrivait
+    /// `scanned = 0`, il faudrait rouvrir la décision, et ce test le dira.
     #[test]
-    fn a_body_fetched_before_attachments_existed_is_queued_for_a_re_read() {
+    fn un_corps_present_sort_le_message_du_rattrapage_et_rien_ne_l_y_ramene() {
         let (mut store, id) = store_with_mailbox();
         let account = test_account(&store);
         store
             .upsert_envelopes(id, &[envelope(1, "sujet", 100, false)])
             .unwrap();
+
+        // Sans corps : le message attend.
+        assert_eq!(
+            store.bodies_to_backfill(account, "INBOX", 0, 10).unwrap(),
+            vec![1]
+        );
+        assert_eq!(store.bodies_pending_count(account, "INBOX", 0).unwrap(), 1);
+
         store.save_body(id, 1, "<p>corps</p>", &[]).unwrap();
 
-        // Rien a faire : le corps a ete lu par la version courante.
+        // Corps present : plus rien a faire, definitivement.
         assert!(
             store
                 .bodies_to_backfill(account, "INBOX", 0, 10)
@@ -3654,26 +3806,17 @@ mod tests {
         );
         assert_eq!(store.bodies_pending_count(account, "INBOX", 0).unwrap(), 0);
 
-        // On simule l'heritage : corps present, MIME jamais inspecte.
-        store
+        // L'INVARIANT qui a rendu le retrait du critere sur : la
+        // production pose `scanned = 1`, toujours. La colonne n'est plus
+        // lue par le rattrapage — si elle devait le redevenir, elle dit
+        // encore la verite.
+        let scanne: i64 = store
             .conn()
-            .execute("UPDATE bodies SET scanned = 0", [])
+            .query_row("SELECT scanned FROM bodies", [], |row| row.get(0))
             .unwrap();
-
         assert_eq!(
-            store.bodies_to_backfill(account, "INBOX", 0, 10).unwrap(),
-            vec![1],
-            "un corps jamais inspecte doit revenir dans le rattrapage"
-        );
-        assert_eq!(store.bodies_pending_count(account, "INBOX", 0).unwrap(), 1);
-
-        // Le relire le sort definitivement de la file.
-        store.save_body(id, 1, "<p>corps</p>", &[]).unwrap();
-        assert!(
-            store
-                .bodies_to_backfill(account, "INBOX", 0, 10)
-                .unwrap()
-                .is_empty()
+            scanne, 1,
+            "la production doit toujours ecrire scanned = 1 — sinon la decision D8 de PLAN-DEMARRAGE est a rouvrir"
         );
     }
 
@@ -5889,6 +6032,145 @@ mod tests {
             "la sous-requête des épingles ne part plus de `pins`.\nPlan :\n{}",
             plan.join("\n")
         );
+    }
+
+    /// PLAN-DEMARRAGE, E1-bis — l'index de date des enveloppes gagne
+    /// `uid`, et **`CREATE INDEX IF NOT EXISTS` ne suffit PAS** : sur une
+    /// base existante l'index porte déjà ce nom, la création est un no-op
+    /// muet, et le défaut survivrait à la mise à jour. La migration lit
+    /// donc sa DÉFINITION, pas son nom.
+    ///
+    /// Sans ce test, la branche de reconstruction n'est **jamais jouée** :
+    /// toute base née d'un `Store::open` porte l'index à jour dès le
+    /// `SCHEMA`, et `migrate()` n'a plus rien à faire. Il faut donc
+    /// rétrograder l'index à la main pour exercer le chemin du parc.
+    #[test]
+    fn l_index_de_date_herite_gagne_uid_a_la_reouverture() {
+        let path =
+            std::env::temp_dir().join(format!("wind-test-idx-date-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+
+        let lire_sql = |store: &Store| -> String {
+            store
+                .conn()
+                .query_row(
+                    "SELECT sql FROM sqlite_master WHERE name = 'idx_envelopes_date'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap()
+        };
+
+        {
+            let store = Store::open(&path).unwrap();
+            // Rétrograde l'index à sa forme d'avant le chantier — l'état
+            // exact de toute base du parc au moment de la mise à jour.
+            store
+                .conn()
+                .execute_batch(
+                    "DROP INDEX idx_envelopes_date;
+                     CREATE INDEX idx_envelopes_date
+                         ON envelopes(mailbox_id, date_epoch DESC);",
+                )
+                .unwrap();
+            assert!(
+                !lire_sql(&store).contains("uid"),
+                "le décor doit partir de l'index COURT, sinon le test ne prouve rien"
+            );
+        }
+
+        let store = Store::open(&path).unwrap();
+        let sql = lire_sql(&store);
+        assert!(
+            sql.contains("uid"),
+            "l'index hérité n'a pas été reconstruit à l'ouverture — la sonde de définition ne fait rien, et le parc garderait le défaut.
+SQL : {sql}"
+        );
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// PLAN-DEMARRAGE, défaut 01 — la sonde « combien de corps
+    /// manquent ? » tenait le VERROU GLOBAL des commandes **8 870 ms à
+    /// chaque démarrage** (20 839 ms en SQL pur à froid), mesuré le
+    /// 2026-08-26 sur la base du terrain : 251 466 corps, 11,4 Go.
+    ///
+    /// La cause n'était pas la jointure. C'était la lecture d'une
+    /// COLONNE de `bodies` : absente de l'auto-index de la clé primaire,
+    /// elle forçait SQLite à rappeler la LIGNE — 56 ko en moyenne — pour
+    /// lire un bit. 251 k lectures aléatoires dans 11,4 Go.
+    ///
+    /// Le plan le dit d'un seul mot : `COVERING`. Tant que la
+    /// sous-requête ne lit AUCUNE colonne de `bodies`, l'existence de la
+    /// ligne se tranche dans l'index seul. Qu'on y rajoute une colonne un
+    /// jour, et le mot disparaît — c'est cela, et rien d'autre, que ce
+    /// test garde.
+    ///
+    /// On interroge le plan plutôt qu'un chronomètre : une durée dépend
+    /// de la machine, un plan d'exécution non.
+    #[test]
+    fn les_sondes_de_corps_manquants_ne_rappellent_jamais_la_ligne_grasse() {
+        let (mut store, inbox) = store_with_mailbox();
+        let envelopes: Vec<Envelope> = (1..=40u32)
+            .map(|uid| envelope(uid, "Sujet", 1_600_000_000 + i64::from(uid), true))
+            .collect();
+        store.upsert_envelopes(inbox, &envelopes).unwrap();
+        // Des corps pour les trois quarts : la sous-requête doit avoir
+        // des lignes à trouver ET des lignes à ne pas trouver.
+        for uid in 1..=30u32 {
+            store.save_body(inbox, uid, "<p>corps</p>", &[]).unwrap();
+        }
+
+        let mut compte = store
+            .0
+            .prepare(&format!(
+                "EXPLAIN QUERY PLAN {}",
+                bodies_pending_count_sql()
+            ))
+            .unwrap();
+        let plan_compte: Vec<String> = compte
+            .query_map(params![1i64, "INBOX", 0i64], |row| row.get::<_, String>(3))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+
+        let mut liste = store
+            .0
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", bodies_to_backfill_sql()))
+            .unwrap();
+        let plan_liste: Vec<String> = liste
+            .query_map(params![1i64, "INBOX", 0i64, 10i64], |row| {
+                row.get::<_, String>(3)
+            })
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+
+        for (quoi, plan) in [
+            ("le compte des manquants", &plan_compte),
+            ("la liste de travail du rattrapage", &plan_liste),
+        ] {
+            for (alias, table) in [(" e ", "envelopes"), (" b ", "bodies")] {
+                let etape = plan
+                    .iter()
+                    .find(|etape| etape.contains(alias))
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "{quoi} : aucune etape ne touche `{table}`.\nPlan :\n{}",
+                            plan.join("\n")
+                        )
+                    });
+                assert!(
+                    etape.contains("COVERING"),
+                    "{quoi} : l'acces a `{table}` n'est PAS couvert par son \
+index — SQLite rappelle la ligne pour y lire une colonne que l'index ne \
+porte pas. C'est le defaut de PLAN-DEMARRAGE, des DEUX cotes : 8 870 ms \
+de verrou tenu cote `bodies`, 521,9 ms de sonde cote `envelopes`.\n\
+Etape : {etape}\nPlan :\n{}",
+                    plan.join("\n")
+                );
+            }
+        }
     }
 
     /// R4 (PLAN-RETOURS-7) : une conversation épinglée se sert À PART

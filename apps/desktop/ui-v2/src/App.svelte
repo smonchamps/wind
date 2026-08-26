@@ -6,7 +6,7 @@
   // UN), ligne de progression (au plus UNE), recherche câblée (D1),
   // raccourcis (D3).
   import Icone from './Icone.svelte';
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { appel } from './lib/transport.js';
   import { t, poserLangueDetectee } from './lib/texte.svelte.js';
   import { voletsActuels } from './lib/volets.svelte.js';
@@ -898,6 +898,21 @@
     // flotte des sondes, comme quand elle vivait avant le montage.
     if (baseClaire) await poserLangueDetectee();
     prete = true;
+    // LA LISTE D'ABORD (PLAN-DEMARRAGE, E2). `prete = true` ne peint pas
+    // tout de suite : Svelte planifie le flush par microtâche. Sans ce
+    // `tick`, les dix appels qui suivent partent AVANT que `<Liste>` ne
+    // soit monté, et sa première page se retrouve DOUZIÈME dans l'ordre
+    // d'émission — donc derrière sept sondes qui prennent le verrou
+    // global. Mesuré au terrain le 2026-08-26, run froid : la page était
+    // émise à 89,6 ms et servie à 440,6 ms, pour un travail propre de
+    // 28 ms.
+    //
+    // Rendre la main au flush suffit : la liste demande sa page la
+    // PREMIÈRE, seule, donc elle prend le verrou sans concurrent. On ne
+    // DIFFÈRE rien — `chargerNav` reste juste derrière, et c'est
+    // délibéré : sa réponse porte le bloc de boîte de chaque rangée
+    // (A80), la retarder ferait repeindre toutes les lignes visibles.
+    await tick();
     chargerNav();
     chargerReperes();
     chargerNoms();

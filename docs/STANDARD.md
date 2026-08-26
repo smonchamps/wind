@@ -235,7 +235,7 @@ Re-mesurés le 2026-07-26 après l'ADR 0010, sur les bases du gate 3
 
 | Métrique | Cible | Dernière mesure |
 |---|---|---|
-| Démarrage à froid | < 1 s | 337 ms ✅ |
+| Démarrage à froid | < 1 s | 337 ms sur le décor du gate 3 ✅ — et **384,6 ms sur la base RÉELLE** (12,84 Go, 251 524 enveloppes, 64 boîtes), premier lancement après redémarrage machine, 2026-08-26 : la première mesure honnêtement froide du projet ✅ |
 | Ouverture d'un message | < 50 ms | 1–3 ms ✅ |
 | Page de liste | < 100 ms | 0,58 ms ✅ |
 | RAM (working set **privé**) | < 200 Mo | 95,5 Mo · 7 processus ✅ |
@@ -245,6 +245,7 @@ Re-mesurés le 2026-07-26 après l'ADR 0010, sur les bases du gate 3
 | **Recherche** | < 100 ms | **~66 ms ✅** (terrain, vraie base 251 k / 7 Go, pire cas préfixe 3 car. 36 k corr. ; tenu par la **soupape tri-date** au-delà de 10 k corr., le plancher BM25 dépassant sinon — `WIDE_QUERY_THRESHOLD`, A50/PLAN-RECHERCHE) |
 | **Adoption d'une base héritée** | < 1 s | **3,66 s — assumé** (ADR 0012 : une seule fois, visible, annulable, rembobinable) |
 | **Reconstruction de l'index de recherche** | pas de gel muet | **~4 min à froid sur 7 Go — assumé** (ADR 0012 : une seule fois à la MAJ, visible, annulable, rembobinable ; PLAN-RECHERCHE E3) |
+| **Reconstruction de l'index de date des enveloppes** | pas de gel muet > 2 s | **1,77 s à froid — assumé SANS écran** (PLAN-DEMARRAGE, décision CE D9 : une seule fois à la MAJ, et elle ne lit que `envelopes` — 47 Mo — jamais les corps. Un écran qui s'affiche et disparaît en 1,8 s est plus pénible que l'attente) |
 
 Un budget dépassé = **on arrête la ligne** (andon). Le gate « base
 < 1 Go » n'est pas un oubli : il est **levé explicitement** par
