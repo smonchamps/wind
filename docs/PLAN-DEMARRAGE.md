@@ -4,7 +4,33 @@
 > même jour, décisions D1-D9 tranchées et consignées mot pour mot (§5).
 > E0, E1, E1-bis et E2 livrés ; revue à regard neuf passée (2 trouvailles,
 > les 2 corrigées) ; **gate complète VERTE 9/9**, e2e 137 → **138**.
-> Reste : commit, push, CI verte, puis `/solde`.
+> Commits `b94d63b` puis `385ee64` ; **CI verte sur les deux, vérifiée
+> par leur sha**. **0.10.1 publiée le 2026-08-26**, vérification §2.10
+> **18/18**, 5 assets, les deux canaux. Reste : la preuve terrain de
+> l'auto-update **par canal** (D5) : **arm64 PROUVÉ** — ce poste est en
+> ARM64 et la base de registre dit `Wind 0.10.1` ; **x64 : le clic a
+> ouvert un constat terrain** (Smart App Control bloque l'installateur
+> non signé, l'app se fermait sans un mot) — la preuve est REPRISE par
+> [PLAN-SIGNATURE](PLAN-SIGNATURE.md) (terrain de la 0.10.2). Puis
+> `/solde`.
+
+### Gate et flake — 2026-08-26
+
+**Gate complète VERTE, 9/9**, jouée trois fois sur l'arbre final (fmt,
+build ui-v2, contrastes, cohérence du Système, garde du thread
+principal, clippy `-D warnings`, tests Rust `--all-targets`, doc, e2e) —
+e2e **137 → 138** (le filet neuf).
+
+**Un flake NEUF, consigné.** Le hook pre-push a rougi une fois sur
+`refonte-retours-6.spec.js:42` (« la signature se pose aux Réglages »),
+à l'assertion de propagation vers le second compte, retry compris.
+Rejoué **en isolation : 4/4**, et vert au second push (138/138). Les
+trois gates complètes de la journée étaient toutes à 138/138. C'est donc
+un flake **sous charge**, pas une régression : le chantier ne touche ni
+les Réglages, ni les signatures, et l'ordre du démarrage est joué et
+soldé longtemps avant que ce test ne clique. Le dépôt ne connaissait
+qu'un flake nommé (« le brouillon fantôme », commit `0956c85`) — **en
+voici un second**.
 
 ### Verdict du Chef Ingénieur au terrain — 2026-08-26
 

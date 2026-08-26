@@ -625,6 +625,12 @@
       maj = await appel('update_check');
     } catch { return; }
     if (!maj) return;
+    proposerMaj(maj);
+  }
+  // Le bandeau se (ré)arme depuis des données CONNUES — jamais un
+  // aller-retour réseau : un réarmement qui échouerait laisserait
+  // « Installation… » figé sans aucun bouton (revue PLAN-SIGNATURE).
+  function proposerMaj(maj) {
     avisMaj = {
       icone: 'system_update_alt',
       texte: t('avis.maj', { version: maj.version }),
@@ -634,10 +640,11 @@
           avisMaj.actions = [];
           try {
             // L'application redémarre sur la version neuve : cet appel
-            // ne rend pas la main en cas de succès.
-            await appel('update_install');
+            // ne rend pas la main en cas de succès. La version part
+            // avec : on n'installe que ce que le bandeau a annoncé.
+            await appel('update_install', { version: maj.version });
           } catch (err) {
-            verifierMaj();
+            proposerMaj(maj);
             flash(t('erreur.maj', { err }));
           }
         } },

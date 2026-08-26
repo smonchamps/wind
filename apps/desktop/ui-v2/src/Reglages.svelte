@@ -422,11 +422,17 @@
     }
   }
   async function installerMaj() {
+    const version = maj.version;
     maj = 'installation';
     try {
-      await appel('update_install');
+      // Ne rend pas la main en cas de succès ; la version part avec —
+      // on n'installe que ce qui a été annoncé.
+      await appel('update_install', { version });
     } catch (err) {
-      maj = { erreur: String(err) };
+      // Le lancement a échoué : la mise à jour reste disponible — on la
+      // repropose avec l'erreur dite, jamais un cul-de-sac (revue
+      // PLAN-SIGNATURE). { erreur } seul reste l'échec du CONTRÔLE.
+      maj = { version, erreur: String(err) };
     }
   }
 </script>
@@ -826,6 +832,9 @@
                   {:else if maj === 'installation'}
                     {t('reglages.installation')}
                   {:else if maj.version}
+                    <!-- L'échec d'INSTALLATION se dit sous son vrai nom
+                         (erreur.maj), et l'action reste offerte. -->
+                    {#if maj.erreur}{t('erreur.maj', { err: maj.erreur })} — {/if}
                     {t('reglages.majDisponible', { version: maj.version })}
                     <button type="button" class="ajouter" onclick={installerMaj}>
                       {t('action.installer')}</button>

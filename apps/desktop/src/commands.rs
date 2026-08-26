@@ -5253,8 +5253,11 @@ pub async fn update_check(app: AppHandle) -> Result<Option<UpdateInfo>, String> 
     if std::env::var("WIND_DB_PATH").is_ok() {
         return Ok(None);
     }
-    let updater = app.updater().map_err(|err| err.to_string())?;
-    match updater.check().await.map_err(|err| err.to_string())? {
+    match updater_wind(&app)?
+        .check()
+        .await
+        .map_err(|err| err.to_string())?
+    {
         Some(update) => Ok(Some(UpdateInfo {
             version: update.version.clone(),
             notes: update.body.clone(),
@@ -5351,30 +5354,140 @@ pub async fn lang_set(app: AppHandle, lang: String) -> Result<(), String> {
     .await
 }
 
-/// Telecharge, verifie la signature, installe, puis redemarre.
+/// Telecharge, verifie la signature, lance l'installateur, et NE QUITTE
+/// QUE SI ce lancement a reussi.
 ///
-/// `download_and_install` remplace le binaire en place ; `restart` rend
-/// la main a la version neuve. La base ne bouge pas de `%APPDATA%`
-/// (NSIS, pas MSIX — ADR 0013) : une mise a jour ne peut pas orpheliner
-/// les messages.
+/// Le telechargement reste au plugin : la verification minisign est sur
+/// ce chemin (updater.rs:712) et y demeure. Le LANCEMENT, lui, est a
+/// nous (PLAN-SIGNATURE E4, D4) : le `install()` du plugin appelle
+/// `ShellExecuteW` sans lire son retour puis sort par `exit(0)` — un
+/// refus de Windows (Smart App Control, constat terrain 2026-08-26)
+/// fermait l'application sans un mot et sans rien installer. Ici le
+/// refus remonte au bandeau (`erreur.maj`), qui se rearme.
+///
+/// La base ne bouge pas de `%APPDATA%` (NSIS, pas MSIX — ADR 0013) :
+/// une mise a jour ne peut pas orpheliner les messages.
 #[tauri::command]
-pub async fn update_install(app: AppHandle) -> Result<(), String> {
-    let updater = app.updater().map_err(|err| err.to_string())?;
-    let update = updater
+pub async fn update_install(app: AppHandle, version: String) -> Result<(), String> {
+    // Meme garde d'isolation que `update_check` (passation §7.5) : un
+    // test ne telecharge ni ne lance JAMAIS rien.
+    if std::env::var("WIND_DB_PATH").is_ok() {
+        return Err("mise à jour indisponible en test".to_string());
+    }
+    // Une installation a la fois, toutes surfaces confondues (bandeau
+    // ET Reglages) : la seconde ecrirait le meme temoin et doublerait
+    // le lancement.
+    if MAJ_EN_COURS.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return Err("une installation est déjà en cours".to_string());
+    }
+    let resultat = telecharger_et_lancer(app, version).await;
+    // Sur succes l'application quitte : on ne repasse ici qu'en echec.
+    MAJ_EN_COURS.store(false, std::sync::atomic::Ordering::SeqCst);
+    resultat
+}
+
+/// L'installation ne se double pas (bandeau + Réglages sont deux
+/// surfaces pour la même action) — le drapeau se libère sur échec,
+/// et n'a plus d'importance sur succès : l'application quitte.
+static MAJ_EN_COURS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+async fn telecharger_et_lancer(app: AppHandle, version: String) -> Result<(), String> {
+    let update = updater_wind(&app)?
         .check()
         .await
         .map_err(|err| err.to_string())?
-        .ok_or_else(|| "aucune mise a jour a installer".to_string())?;
-    update
-        .download_and_install(|_, _| {}, || {})
+        .ok_or_else(|| "aucune mise à jour à installer".to_string())?;
+    // Le manifeste peut avoir bouge entre le bandeau et le clic : on
+    // n'installe que la version ANNONCEE — jamais une autre en silence.
+    // L'UI re-verifie sur cet echec et redit la version neuve.
+    if update.version != version {
+        return Err(format!(
+            "la version proposée a changé ({version} → {}) — vérifie à nouveau",
+            update.version
+        ));
+    }
+    let octets = update
+        .download(|_, _| {}, || {})
         .await
         .map_err(|err| err.to_string())?;
-    app.restart();
+    // Filet de format : le plugin sniffait zip/exe/msi (extract,
+    // updater.rs:882) ; l'artefact de Wind est l'exe NSIS nu
+    // (createUpdaterArtifacts: true, cible nsis seule). Tout autre
+    // contenu signe partirait en erreur Windows cryptique au spawn.
+    if !octets.starts_with(b"MZ") {
+        return Err("le paquet téléchargé n'est pas un exécutable Windows".to_string());
+    }
+    // Ecriture (~6 Mo) et CreateProcess (scan antivirus synchrone
+    // possible) sont bloquants : hors de la pompe (ADR 0019), comme
+    // toute commande qui touche un fichier.
+    hors_pompe(app, move |app| {
+        // Repertoire NEUF par tentative — le regime du tempdir aleatoire
+        // du plugin : pas de collision avec un installateur fantome
+        // d'une tentative precedente, pas de chemin devinable longtemps
+        // a l'avance entre l'ecriture et le lancement.
+        let horodatage = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| err.to_string())?
+            .as_nanos();
+        let dossier =
+            std::env::temp_dir().join(format!("wind-maj-{}-{horodatage}", std::process::id()));
+        std::fs::create_dir_all(&dossier)
+            .map_err(|err| format!("préparation du répertoire ({}) : {err}", dossier.display()))?;
+        let temoin = dossier.join(format!("Wind_{}_maj-setup.exe", update.version));
+        std::fs::write(&temoin, &octets)
+            .map_err(|err| format!("écriture de l'installateur ({}) : {err}", temoin.display()))?;
+        commande_installateur(&temoin)
+            .spawn()
+            .map_err(|err| format!("lancement de l'installateur refusé par Windows : {err}"))?;
+        // Lancement REUSSI seulement : l'installateur (mode /UPDATE)
+        // attend la fin du processus pour remplacer le binaire, puis
+        // /R relance Wind — la version neuve.
+        app.exit(0);
+        Ok(())
+    })
+    .await
+}
+
+/// L'updater de Wind — UNE construction pour les deux commandes.
+/// Le plugin ne pose AUCUN timeout (`timeout: None`) : un transfert qui
+/// cale rendrait `check` muet au démarrage et figerait le bandeau sur
+/// « Installation… » pour toujours — les deux visages de la panne du
+/// constat 2026-08-26. Dix minutes couvrent ~6 Mo sur un lien très
+/// lent ; au-delà, l'échec remonte et se retente.
+fn updater_wind(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, String> {
+    app.updater_builder()
+        .timeout(std::time::Duration::from_secs(600))
+        .build()
+        .map_err(|err| err.to_string())
+}
+
+/// L'invocation de l'installateur NSIS — la decision pure, figee par le
+/// test `l_installateur_est_invoque_en_passif_relance_et_mise_a_jour`.
+fn commande_installateur(temoin: &std::path::Path) -> std::process::Command {
+    let mut commande = std::process::Command::new(temoin);
+    commande.args(["/P", "/R", "/UPDATE"]);
+    commande
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// L'invocation de l'installateur (PLAN-SIGNATURE E4, D4) : le
+    /// témoin lui-même, en mode passif (`/P`), relance de l'application
+    /// après pose (`/R`), mode mise à jour (`/UPDATE`) — les arguments
+    /// mêmes que le plugin construit pour `installMode` passif. Et
+    /// JAMAIS de `/ARGS` : le plugin le fait suivre des arguments du
+    /// binaire courant, Wind se lance sans argument — un `/ARGS` vide
+    /// serait une hypothèse non mesurée sur le parseur NSIS.
+    #[test]
+    fn l_installateur_est_invoque_en_passif_relance_et_mise_a_jour() {
+        let temoin = std::path::Path::new("C:\\tmp\\Wind_0.10.2_x64-setup.exe");
+        let commande = commande_installateur(temoin);
+        assert_eq!(commande.get_program(), temoin.as_os_str());
+        let arguments: Vec<_> = commande.get_args().collect();
+        assert_eq!(arguments, ["/P", "/R", "/UPDATE"]);
+    }
 
     /// La table de la retentative d'Envoyés (PLAN-REACTIVITE E2) : la
     /// copie asynchrone de Gmail peut suivre l'acceptation SMTP de

@@ -12,6 +12,28 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.10.2] - 2026-08-27
+
+Un échec de mise à jour se voit, au lieu de fermer l'application.
+
+### Corrigé
+
+- **Cliquer « Installer » ne peut plus fermer Wind sans rien faire.**
+  Quand Windows refusait de lancer l'installateur téléchargé (c'est le
+  cas sur les PC où le *contrôle intelligent des applications* est
+  actif), l'application se fermait sans un mot et rien ne s'installait.
+  Désormais l'échec s'affiche dans le bandeau, avec sa raison, et le
+  bouton « Installer » reste là pour réessayer. Sur ces PC,
+  l'installation reste bloquée par Windows tant que Wind n'est pas
+  signé d'un certificat d'éditeur — c'est le chantier suivant ; en
+  attendant, au moins, Wind vous le dit.
+- **Une mise à jour qui n'avance plus finit par le dire.** Le
+  téléchargement n'avait aucune limite de temps : une connexion qui
+  calait laissait le bandeau sur « Installation… » pour toujours. Au
+  bout de dix minutes, l'échec s'affiche et se retente.
+- **Wind installe exactement la version que le bandeau annonce** —
+  jamais une autre publiée entre-temps.
+
 ## [0.10.1] - 2026-08-26
 
 Le démarrage cesse de se figer.

@@ -38,7 +38,11 @@ tauri-plugin-notification = "2"
 # Mise a jour automatique signee (ADR 0013). Pilotee depuis RUST, meme
 # raison que les notifications : la webview n'appelle jamais l'API
 # updater, seulement nos commandes — capabilities au strict minimum.
-tauri-plugin-updater = "2"
+# EPINGLE (PLAN-SIGNATURE E4) : update_install s'appuie sur des faits
+# internes de 2.10.1 (minisign verifiee DANS download(), artefact = exe
+# NSIS nu, arguments /P /R /UPDATE du mode passif). Un bump est un acte
+# conscient : relire update_install (commands.rs) avant de bouger.
+tauri-plugin-updater = "=2.10.1"
 # Selecteur de fichiers natif du composeur (PLAN-PIECES-JOINTES, PJ-D5).
 # Seule exception au « pilote depuis Rust » : la boite de dialogue est
 # un geste de la webview — capability limitee a dialog:allow-open.

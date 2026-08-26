@@ -621,3 +621,39 @@ motivée.)
   — la valeur attendue est zéro.
 - **Rouvre si** : le prochain chantier touche le rattrapage, ou si le
   banc voit ces trois commandes dans le budget.
+
+### D-39 · La signature Authenticode est gelée — l'installation sur poste SAC reste une loterie
+
+- **Fait (spike `spikes/maj-x64/`, relevés CE des 2026-08-26/27)** :
+  Smart App Control (`On` par défaut sur les Windows 11 récents) juge
+  les exe non signés Authenticode **binaire par binaire** (verdict
+  cloud par hash) : la 0.10.0 se lance, la 0.10.1 est refusée, sur le
+  même poste. Toute release non signée peut être bloquée chez tout
+  utilisateur SAC — et le verdict peut changer avec le temps.
+- **Raison du report (décision CE D2, 2026-08-27)** : E1 a échoué — la
+  validation d'identité individuelle Azure Trusted Signing est fermée
+  hors USA/Canada (adresse CE en France). Replis chiffrés au
+  PLAN-SIGNATURE §2 (Certum open source ~69 €/an, OV cloud
+  ~200-400 $/an) : « attendre + filet seul » tranché. Le compte Azure
+  `rg-fcts` est à supprimer (le Basic facture 9,99 $/mois).
+- **Piste** : guetter la réouverture individuelle Trusted Signing
+  (ou Certum si l'attente pèse) ; E2/E3 du PLAN-SIGNATURE sont écrites
+  et GELÉES — outillage poste, `signCommand` injecté par
+  `faire-release.ps1` seulement, contrôle Authenticode ajouté à
+  `verifier-release.ps1` (18 → 20).
+- **Rouvre si** : un retour bêta bute sur SAC, ou la porte Azure
+  rouvre, ou le lancement public approche (ADR 0013 le lie au public).
+
+### D-40 · L'issue amont tauri-plugin-updater n'est pas encore ouverte
+
+- **Fait (sources 2.10.1, `updater.rs:854-865`)** : le retour de
+  `ShellExecuteW` n'est jamais testé et le processus sort par
+  `exit(0)` — tout refus de Windows ferme l'application hôte sans un
+  mot. Wind est protégé par son propre lancement (PLAN-SIGNATURE E4),
+  le reste de l'écosystème Tauri ne l'est pas.
+- **Raison du report** : action sortante (publier sous le compte
+  GitHub du CE) — brouillon à faire valider au STOP 2 du chantier.
+- **Piste** : issue courte avec les lignes en cause et le remède
+  (tester le retour > 32, sinon rendre l'erreur au lieu de quitter).
+- **Rouvre si** : au prochain bump du crate (épinglé `=2.10.1`) — si
+  l'amont a corrigé, le contournement local devient candidat au retrait.
