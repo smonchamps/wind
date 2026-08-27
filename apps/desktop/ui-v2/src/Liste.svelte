@@ -14,6 +14,7 @@
   // source précédente sont jetées à l'arrivée, jamais mélangées.
   import Icone from './Icone.svelte';
   import { tick, untrack } from 'svelte';
+  import { SvelteMap } from 'svelte/reactivity';
   import { appel } from './lib/transport.js';
   import { quand } from './lib/quand.js';
   import { puceInvitation } from './lib/invitation.js';
@@ -50,6 +51,10 @@
     ontotal = () => {},
     onresultats = () => {},
     onflash = () => {},
+    // PLAN-RETOURS-10 R1 : les gestes de MASSE remontent à l'App, qui
+    // possède les commandes (archiver, supprimer, spam, lu/non-lu) —
+    // la Liste possède la sélection, jamais l'action.
+    ongroupe = async () => {},
   } = $props();
 
   const PAGE = 200;
@@ -456,6 +461,10 @@
       totalPrecis = false;
       premier = 0;
       selection = null;
+      // R1 : la sélection multiple ne survit jamais à sa source — un
+      // geste de masse sur des rangées qu'on ne voit plus serait un
+      // piège (D4 : la sélection est toujours sous les yeux).
+      viderSelection();
       // La première page se re-mesure PAR source (revue 2026-08-20) :
       // figée à la toute première, `etat().premierePageMs` aurait menti
       // aux bancs — le statut de démarrage, lui, est déjà capturé.
@@ -632,6 +641,9 @@
     const q = recherche.trim();
     untrack(() => {
       clearTimeout(minuterieRecherche);
+      // R1 : une frappe change les rangées affichées — la sélection
+      // multiple se vide dans les deux sens (entrer, affiner, sortir).
+      viderSelection();
       if (q.length < 3) {
         jetonRecherche += 1;
         resultats = null;
@@ -672,6 +684,93 @@
   }
   const estChoisie = (l) => selection === cle(l);
 
+  // --- Sélection multiple (PLAN-RETOURS-10 R1, D1-D4) -----------------
+  // Un ensemble clé -> ligne (SvelteMap : les rangées vivent dans des
+  // pages NON réactives, la carte réactive suffit à redessiner cases et
+  // barre). `ancre` = la dernière rangée basculée — le Shift-clic étend
+  // depuis elle, sur l'ORDRE AFFICHÉ des rangées chargées (refus §2.6 :
+  // jamais « tout le dossier », la sélection vit dans le chargé).
+  let cochees = $state(new SvelteMap());
+  let ancre = null;
+  const estCochee = (l) => cochees.has(cle(l));
+  function basculer(l) {
+    // Un lot en vol fige la sélection : cocher pendant l'exécution
+    // fabriquerait des rangées jamais servies (revue).
+    if (gesteEnCours) return;
+    const k = cle(l);
+    if (cochees.has(k)) cochees.delete(k);
+    else cochees.set(k, l);
+    ancre = k;
+  }
+  function lignesOrdonnees() {
+    if (resultats !== null) return resultats;
+    const flot = [];
+    for (const p of [...pages.keys()].sort((a, b) => a - b)) flot.push(...pages.get(p));
+    return [...epingles, ...flot];
+  }
+  function etendre(l) {
+    if (gesteEnCours) return;
+    const ordre = lignesOrdonnees();
+    // Terrain 2026-08-27 (R1-2) : sans ancre de coche, l'ancre est la
+    // rangée SÉLECTIONNÉE (le message choisi, ex. le premier au
+    // démarrage) — la plage va de la sélection à la cible, incluses.
+    const depart = ancre ?? selection;
+    const ia = depart === null ? -1 : ordre.findIndex((x) => cle(x) === depart);
+    const ib = ordre.findIndex((x) => cle(x) === cle(l));
+    // Sans ancre visible (jamais cochée ni choisie, ou hors des pages
+    // chargées), le Shift-clic vaut une bascule simple — jamais un
+    // silence.
+    if (ia < 0 || ib < 0) return basculer(l);
+    for (let i = Math.min(ia, ib); i <= Math.max(ia, ib); i++) {
+      cochees.set(cle(ordre[i]), ordre[i]);
+    }
+  }
+  function viderSelection() {
+    cochees.clear();
+    ancre = null;
+  }
+  // L'App décoche la cible d'un geste UNITAIRE abouti (e/Suppr, boutons
+  // du fil) : la barre ne compte jamais une rangée qui n'est plus — un
+  // lot rejoué sur un uid parti rapporterait un faux échec (revue).
+  export function decocher(l) {
+    cochees.delete(cle(l));
+    if (ancre === cle(l)) ancre = null;
+  }
+  // Le clic d'une rangée, trois régimes : Shift étend (Ctrl+Shift
+  // aussi), Ctrl/Cmd bascule ET choisit, nu = choisir (l'existant,
+  // inchangé). Terrain 2026-08-27 (R1-1) : le focus de lecture SUIT le
+  // Ctrl-clic — laisser le liseré (et le volet) sur une autre rangée
+  // que celle qu'on vient de cocher déroutait.
+  // Constat terrain (2026-08-15, suite d'A38), valable pour les TROIS
+  // régimes : choisie ou cochée à la souris (detail > 0), la rangée
+  // rend le focus — sinon l'anneau :focus-visible surgirait plus tard
+  // sur un nœud recyclé par index.
+  function clicRangee(e, l) {
+    if (e.detail > 0) e.currentTarget.blur();
+    if (e.shiftKey) return etendre(l);
+    if (e.ctrlKey || e.metaKey) basculer(l);
+    choisir(l);
+  }
+  // Le geste de masse : l'App agit sur l'INSTANTANÉ du lot ; au retour,
+  // seul ce lot se décoche — une rangée cochée pendant le vol (bloquée
+  // aujourd'hui, mais la garde ne repose pas dessus) survivrait.
+  // Exporté : les raccourcis clavier de l'App (e/Suppr) s'appliquent au
+  // lot coché quand il existe (terrain 2026-08-27, R1-8).
+  export const enSelection = () => cochees.size > 0;
+  let gesteEnCours = $state(false);
+  export async function agir(action) {
+    if (gesteEnCours) return;
+    gesteEnCours = true;
+    const lot = [...cochees.values()];
+    try {
+      await ongroupe(action, lot);
+    } finally {
+      for (const l of lot) cochees.delete(cle(l));
+      ancre = null;
+      gesteEnCours = false;
+    }
+  }
+
   // --- Brouillons (PLAN-BROUILLONS) -----------------------------------
   // Le fil -> son brouillon le plus récent : la mention de la Réception
   // (variante B validée) montre le préfixe et le CORPS du brouillon en
@@ -698,6 +797,19 @@
       ? brouillons.filter((b) => compte === null || b.account_id === compte)
       : null,
   );
+
+  // R1 (RETOURS-10, D1) : les gestes de la barre de sélection — une
+  // table, comme ONGLETS ; en Indésirables, « Signaler » cède à « Ce
+  // n'est pas un spam », le miroir du volet de lecture.
+  const GESTES_BARRE = $derived([
+    { action: 'lu', icone: 'drafts', libelle: 'action.marquerLu' },
+    { action: 'nonlu', icone: 'mark_email_unread', libelle: 'action.marquerNonLu' },
+    { action: 'archiver', icone: 'archive', libelle: 'action.archiver' },
+    categorie === 'indesirables'
+      ? { action: 'nonspam', icone: 'report', libelle: 'action.pasSpam' }
+      : { action: 'spam', icone: 'report', libelle: 'action.signalerSpam' },
+    { action: 'supprimer', icone: 'delete', libelle: 'action.supprimer' },
+  ]);
 
   const ONGLETS = [
     { id: 'tous', icone: 'inbox', libelle: 'onglet.tous' },
@@ -799,9 +911,35 @@
   <!-- UI v3, E1 (verdict CE 2026-08-16) : le bandeau de la maquette
        Classique — le nom de la boîte courante, SEUL (« Tout marquer
        lu » écarté). Les clés boite.* sont celles de la nav. -->
-  <header class="bandeau" data-testid="liste-titre">
-    <h1>{t(`boite.${categorie}`)}</h1>
-  </header>
+  {#if cochees.size > 0}
+    <!-- R1/D3 : la barre de la liste SE TRANSFORME tant que la
+         sélection est non vide — le compte, les quatre gestes de masse
+         (D1), Annuler. Aucune surface neuve : mêmes 52 px, même filet.
+         Boutons-icônes à la grammaire de l'entête (32 px), le libellé
+         vit dans aria-label ET title. En Indésirables, « Signaler
+         indésirable » cède à « Ce n'est pas un spam » — le miroir du
+         volet de lecture. -->
+    <header class="bandeau bandeau-selection" data-testid="barre-selection">
+      <h1>{t('liste.nSelection', { n: cochees.size })}</h1>
+      {#each GESTES_BARRE as g (g.action)}
+        <button type="button" class="btn-barre" data-testid="barre-{g.action}"
+                disabled={gesteEnCours}
+                aria-label={t(g.libelle)} title={t(g.libelle)}
+                onclick={() => agir(g.action)}><Icone nom={g.icone} /></button>
+      {/each}
+      <!-- Annuler gèle aussi pendant le lot : la barre qui se replierait
+           pendant que les commandes continuent se lirait comme une
+           annulation (revue). -->
+      <button type="button" class="btn-barre" data-testid="barre-annuler"
+              disabled={gesteEnCours}
+              aria-label={t('action.annulerSelection')} title={t('action.annulerSelection')}
+              onclick={viderSelection}><Icone nom="close" /></button>
+    </header>
+  {:else}
+    <header class="bandeau" data-testid="liste-titre">
+      <h1>{t(`boite.${categorie}`)}</h1>
+    </header>
+  {/if}
   <!-- A83 : le cran d'espacement se pose EN JETON sur le cadre — les
        cinq poses de `.ligne` (sondes, attente, flot, épinglées,
        brouillons) sont dessous et le prennent d'un coup, sondes
@@ -810,6 +948,7 @@
        17 jetons de thème, et c'est voulu : c'est une dimension de mise
        en page, pas une couleur. -->
   <div class="cadre" bind:this={cadre} bind:clientHeight={hCadre}
+       class:selection-en-cours={cochees.size > 0}
        onscroll={surDefilement}
        style="--rangee-pad:{padRangee()}px">
     <!-- A81 : les sondes suivent la rangée réelle — plus de colonne de
@@ -857,24 +996,39 @@
            multi-comptes, même depuis la vue d'un seul compte ; revue
            2026-08-22) — et sur TOUTES les rangées, repère ou non (D8). -->
       {@const boite = boiteDe(ligne)}
+      {@const cochee = estCochee(ligne)}
+      <!-- R1 : le clic vit en trois régimes (clicRangee) — Ctrl/Cmd
+           bascule la coche, Shift étend depuis l'ancre, nu = choisir
+           (la note d'A38 sur le focus vit dans clicRangee). Le
+           mousedown avale la sélection de TEXTE d'un Shift-clic —
+           jamais le geste. -->
       <div class="ligne"
            class:nonlu={ligne.thread_unseen > 0}
            class:choisie={estChoisie(ligne)}
+           class:cochee={cochee}
            data-testid="ligne"
            role="button" tabindex="0"
-           onclick={(e) => {
-             // Constat terrain (2026-08-15, suite d'A38) : un clic
-             // laissait le focus sur la rangée, et la PREMIÈRE touche
-             // venue (raccourci ou non) basculait en modalité clavier —
-             // l'anneau :focus-visible surgissait sur un nœud recyclé
-             // par index. Choisie à la souris (detail > 0 : jamais vrai
-             // au clavier ni aux technologies d'assistance), la rangée
-             // rend le focus ; le liseré dit la position. Entrée/Espace
-             // passent par activation(), focus et anneau intacts (A8).
-             if (e.detail > 0) e.currentTarget.blur();
-             choisir(ligne);
-           }}
+           onmousedown={(e) => { if (e.shiftKey) e.preventDefault(); }}
+           onclick={(e) => clicRangee(e, ligne)}
            onkeydown={activation(() => choisir(ligne))}>
+        <!-- R1/D4 : la case — absolue dans la gouttière gauche, la
+             géométrie de la rangée ne bouge JAMAIS (les sondes h1/h2
+             mesurent la rangée sans elle) ; opacité 0 au repos, révélée
+             au survol et dès qu'une sélection existe (CSS). tabindex -1 :
+             la coche clavier passe par Entrée/Espace sur la rangée
+             choisie, la case est une affordance de pointeur. -->
+        <button type="button" class="case" data-testid="ligne-case"
+                role="checkbox" aria-checked={cochee} tabindex="-1"
+                aria-label={t('liste.cocher')}
+                onclick={(e) => {
+                  e.stopPropagation();
+                  // La garde A38 vaut aussi ici : un clic ne laisse pas
+                  // le focus sur un bouton d'un nœud recyclé.
+                  e.currentTarget.blur();
+                  basculer(ligne);
+                }}>
+          {#if cochee}<Icone nom="check" taille={12} />{/if}
+        </button>
         <!-- A81 : la tuile aux initiales a quitté la liste — le nom en
              toutes lettres disait déjà ce qu'elle disait. A80 : la
              ligne d'entête porte à sa place le bloc de boîte, EN
@@ -1147,6 +1301,9 @@
     border-left:2px solid transparent;
     display:grid; grid-template-columns:1fr;
     row-gap:3px; align-items:start; cursor:pointer;
+    /* R1 : le bloc conteneur de la case (absolue) — sans effet sur la
+       géométrie mesurée par les sondes. */
+    position:relative;
   }
   .ligne.tuilee { grid-template-columns:auto 1fr; column-gap:10px; }
   .avatar {
@@ -1187,6 +1344,54 @@
   .ligne.choisie {
     background:var(--sel); border-left-color:var(--accent);
   }
+  /* R1 : la rangée COCHÉE prend la teinte de sélection, sans le liseré
+     (le liseré reste la position de lecture — deux idées, deux
+     dessins). Verdict terrain 2026-08-27 (R1-7) : les ÉPINGLÉES la
+     prennent AUSSI — la coche est le seul état qui déloge le sol
+     --tuile d'A73, parce qu'elle précède un geste de masse : ce que
+     l'œil ne compte pas peut partir par surprise. */
+  .ligne.cochee { background:var(--sel); }
+  /* R1/D4 — la case : absolue dans la gouttière gauche (padding 16 px
+     + liseré réservé 2 px : elle n'entre pas dans la grille, les
+     gabarits sondés h1/h2 ne la voient pas). Invisible au repos
+     (opacité seule — elle reste cliquable à l'aveugle dans la
+     gouttière, et la géométrie ne reflue jamais) ; révélée au survol
+     de SA rangée, et sur toutes dès qu'une sélection existe. */
+  /* Terrain 2026-08-27 (R1-3) : la case respire — 8 px du bord, 16 px
+     de boîte, et le CONTENU s'écarte à 34 px quand la case se montre
+     (survol de SA rangée, rangée cochée, ou mode sélection — là,
+     toutes les rangées s'écartent d'un bloc, rien ne « saute » pendant
+     qu'on coche). Le décalage vit dans le padding : la hauteur des
+     rangées ne bouge pas, les sondes h1/h2 restent justes. Le dossier
+     Brouillons (.tuilee) n'a pas de case, il ne s'écarte pas. */
+  .case {
+    position:absolute; left:8px; top:calc(var(--rangee-pad, 13px) + 1px);
+    width:16px; height:16px; padding:0;
+    display:inline-flex; align-items:center; justify-content:center;
+    background:var(--bg); border:1px solid var(--border);
+    border-radius:var(--r-controle); color:var(--accent);
+    cursor:pointer; opacity:0;
+  }
+  .ligne:hover .case,
+  .selection-en-cours .case,
+  .case[aria-checked="true"] { opacity:1; }
+  .ligne:not(.tuilee):hover,
+  .ligne.cochee,
+  .selection-en-cours .ligne:not(.tuilee) { padding-left:34px; }
+  /* La barre transformée (D3) : mêmes 52 px que le bandeau, boutons
+     32 px de la grammaire d'entête. */
+  .bandeau-selection { gap:4px; }
+  .bandeau-selection h1 { font-size:14px; }
+  .btn-barre {
+    flex:none; width:32px; height:32px; padding:0;
+    display:inline-flex; align-items:center; justify-content:center;
+    background:none; border:1px solid transparent;
+    border-radius:var(--r-controle); color:var(--ink2); cursor:pointer;
+  }
+  /* Survol en --sel : le jeton de la grammaire d'entête (.btn-tiroir,
+     .btn-statut) — jamais une seconde convention (revue). */
+  .btn-barre:hover:not(:disabled) { background:var(--sel); color:var(--ink); }
+  .btn-barre:disabled { opacity:.55; cursor:default; }
   /* A73, terrain 2026-08-21 : la ligne ÉPINGLÉE prend le dessin de la
      tuile de la boîte en cours (nav, W2-D5) — fond --tuile, encre
      --tuileInk (paire déjà mesurée par la gate) : elle se distingue au
@@ -1196,6 +1401,11 @@
   .epingles .ligne:hover,
   .epingles .ligne.choisie { background:var(--tuile); }
   .epingles .ligne.choisie { border-left-color:var(--accent); }
+  /* Verdict terrain 2026-08-27 (R1-7) : la COCHE déloge le sol --tuile
+     — déclarée APRÈS le bloc ci-dessus pour gagner aussi sur une
+     rangée à la fois choisie et cochée (même spécificité, l'ordre
+     tranche). */
+  .epingles .ligne.cochee { background:var(--sel); }
   .epingles .ligne .exp,
   .epingles .ligne .objet,
   .epingles .ligne .apercu,

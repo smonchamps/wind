@@ -1,13 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 70 70" width="70" height="70">
-  <!-- La marque Wind, complète : tuile 64, enveloppe 42/64 (A32), pastille 25
-       débordant de 6. Couleurs figées hors thèmes (W-D3, Système section
-       « Marque ») : fond #e2ebe8, élément #365a4f. Le « W » est tracé en
-       traits ronds, jamais composé en fonte — identique partout. -->
-  <rect x="0" y="0" width="64" height="64" rx="15" fill="#e2ebe8"/>
-  <g transform="translate(11 11) scale(0.875)" fill="none" stroke="#365a4f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="7" y="13" width="34" height="23" rx="3"/>
-    <polyline points="9,16 24,27 39,16"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="96" height="96">
+  <!-- La marque Elements en régime TUILE (V1/V11, Système section
+       « Marque ») : couleurs FIGÉES hors thèmes (W-D3) — tuile #F2EDE3,
+       structure #141414 trait 2,3, rabat #1F8A8A. Le rayon 15/64 est la
+       cote de PLATEFORME, la SEULE forme arrondie du produit (V14).
+       Verbatim de Marque.svelte / MARQUE (lib/icones.js). -->
+  <clipPath id="plateforme"><rect width="24" height="24" rx="5.625"/></clipPath>
+  <g clip-path="url(#plateforme)">
+    <rect width="24" height="24" fill="#F2EDE3"/>
+    <path d="M4 8h16v9H4z" fill="none" stroke="#141414" stroke-width="2.3"
+          stroke-linecap="butt" stroke-linejoin="miter"/>
+    <path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="#1F8A8A"/>
   </g>
-  <rect x="45" y="45" width="25" height="25" rx="8" fill="#365a4f"/>
-  <polyline transform="translate(45 45)" points="5.8,7.5 9.4,17.5 12.5,10.5 15.6,17.5 19.2,7.5" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

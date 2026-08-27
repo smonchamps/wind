@@ -12,13 +12,26 @@
 
 ## Où on en est, et quoi faire en premier
 
-✅ **AUCUN CHANTIER EN COURS.** La **0.10.2 est PUBLIÉE le 2026-08-27**,
-vérifiée §2.10 (tout passe, 2 canaux), **auto-update prouvé au terrain
-sur les DEUX postes** (GO CE : « release ok auto update ok sur les 2
-postes »). Prochain sujet : la **bêta fermée** — avec, en travers de sa
-route, la dette **D-39** (signature Authenticode gelée : sur tout poste
-Smart App Control, l'installation d'un exe non signé est une loterie
-par binaire ET par jour — prouvé les 26-27/08) et **D-40** (issue amont
+🔄 **CHANTIER EN CLÔTURE : [PLAN-RETOURS-10](PLAN-RETOURS-10.md)**
+(2026-08-27) — quatre retours CE : **sélection multiple** (Ctrl-clic,
+Shift-clic, cases, barre de gestes de masse, raccourcis sur le lot,
+**le fil part ENTIER** — D6), **icône Windows** remise à la marque
+Elements (désynchronisée depuis le 2026-08-24), **marque d'entête
+24 px** (D2), **calage optique des glyphes de la nav** (planche,
+variante C — baseline + 2 px, D7). Terrain validé en DEUX passes le
+jour même (8 constats de première passe, tous corrigés dans la
+session) ; revue à regard neuf 8 angles, 10 trouvailles, 9 corrigées ;
+gate verte 2,1 min, e2e 137 → **148** ; glyphe `check` neuf (79),
+A86-A88. **Reste : commit, push, CI verte, `/solde` — puis la release
+0.11.0 (MINEUR, D5).**
+
+La **0.10.2 est PUBLIÉE le 2026-08-27**, vérifiée §2.10 (tout passe,
+2 canaux), **auto-update prouvé au terrain sur les DEUX postes** (GO
+CE : « release ok auto update ok sur les 2 postes »). Ensuite : la
+**bêta fermée** — avec, en travers de sa route, la dette **D-39**
+(signature Authenticode gelée : sur tout poste Smart App Control,
+l'installation d'un exe non signé est une loterie par binaire ET par
+jour — prouvé les 26-27/08) et **D-40** (issue amont
 tauri-plugin-updater, GO CE en attente).
 
 ---

@@ -114,10 +114,23 @@
     padding:20px 12px; display:flex; flex-direction:column; gap:2px;
     min-height:0; overflow:auto;
   }
+  /* PLAN-RETOURS-10 R4 : le glyphe se cale sur la BASELINE du libellé,
+     puis descend de 2 px — le calage OPTIQUE choisi par le CE sur
+     planche (variante C, trois captures, terrain du 2026-08-27) : le
+     centrage flex d'origine posait le SVG ~2,6 px sous la baseline
+     (trop bas), la baseline pure le laissait paraître haut. La
+     mécanique : align-items:baseline exige que le SVG garde son
+     vertical-align par défaut (le `middle` global de `.ic`,
+     systeme.css, est rendu ci-dessous), et la descente est un
+     transform — hors géométrie, les rangées ne bougent pas. */
   .rang {
-    display:flex; align-items:center; gap:10px; flex:none;
+    display:flex; align-items:baseline; gap:10px; flex:none;
     padding:8px 10px; border-radius:var(--r-controle); cursor:pointer;
     border:1px solid transparent;
+  }
+  .icone :global(.ic), .icone-tuile :global(.ic),
+  .repere-nu :global(.ic) {
+    vertical-align:baseline; transform:translateY(2px);
   }
   .rang:hover { background:var(--hover); }
   .rang.actif { background:var(--sel); border-color:var(--accent); }
@@ -143,7 +156,7 @@
     text-transform:uppercase; color:var(--muted); font-weight:600;
   }
   .tuile {
-    display:flex; align-items:center; gap:10px; flex:none;
+    display:flex; align-items:baseline; gap:10px; flex:none;
     padding:9px 12px; border-radius:var(--r-controle); cursor:pointer;
     background:var(--tuile); color:var(--tuileInk);
     border:1px solid var(--border);

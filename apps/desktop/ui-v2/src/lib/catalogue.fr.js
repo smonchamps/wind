@@ -100,6 +100,10 @@ export const FR = {
   'action.accepter': 'Accepter',
   'action.provisoire': 'Provisoire',
   'action.refuser': 'Refuser',
+  // PLAN-RETOURS-10 R1 : la barre de sélection multiple.
+  'action.marquerLu': 'Marquer lu',
+  'action.marquerNonLu': 'Marquer non lu',
+  'action.annulerSelection': 'Annuler la sélection',
 
   // --- Carte d'invitation (PLAN-INVITATIONS) ----------------------------
   'inv.kicker': 'Invitation',
@@ -134,6 +138,14 @@ export const FR = {
   'toast.messageSupprime': 'Message supprimé.',
   'toast.spamSignale': 'Message signalé comme indésirable.',
   'toast.pasSpam': 'Message remis en réception.',
+  // PLAN-RETOURS-10 R1 : les gestes de masse — UN toast par lot.
+  'toast.groupeArchivees': 'Conversation archivée.|{n} conversations archivées.',
+  'toast.groupeSupprimees': 'Message supprimé.|{n} messages supprimés.',
+  'toast.groupeSpam': 'Conversation signalée indésirable.|{n} conversations signalées indésirables.',
+  'toast.groupePasSpam': 'Conversation remise en réception.|{n} conversations remises en réception.',
+  'toast.groupeLues': 'Conversation marquée lue.|{n} conversations marquées lues.',
+  'toast.groupeNonLues': 'Conversation marquée non lue.|{n} conversations marquées non lues.',
+  'erreur.groupePartiel': '{faits} sur {total} — le reste a échoué.',
   'toast.pieceEnregistree': 'Pièce enregistrée : {chemin}',
   'toast.brouillonEnregistre': 'Brouillon enregistré.',
   'toast.brouillonSupprime': 'Brouillon supprimé.',
@@ -180,6 +192,9 @@ export const FR = {
   // langue qui demanderait un autre ordre exigerait un gabarit, pas une
   // clé (limite dite au PLAN-REPERE-LIGNE §4.6).
   'liste.sur': 'sur',
+  // PLAN-RETOURS-10 R1 : la sélection multiple.
+  'liste.nSelection': '{n} sélectionné|{n} sélectionnés',
+  'liste.cocher': 'Sélectionner la conversation',
   'brouillons.a': 'À : {a}',
   'brouillons.sansDestinataire': '(sans destinataire)',
   'brouillons.sansObjet': '(sans objet)',

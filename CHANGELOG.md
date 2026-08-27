@@ -12,6 +12,33 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.11.0] - à venir
+
+La sélection multiple arrive dans la liste, et la marque Wind s'affirme.
+
+### Ajouté
+
+- **Sélectionner plusieurs conversations d'un coup.** Ctrl-clic ajoute
+  une conversation à la sélection, Maj-clic étend la plage depuis la
+  conversation choisie, et une case à cocher apparaît au survol de
+  chaque rangée. Dès qu'une sélection existe, la barre de la liste se
+  transforme : marquer lu ou non lu, archiver, signaler indésirable
+  (ou « Ce n'est pas un spam » dans le dossier Indésirables),
+  supprimer, annuler — un seul message de confirmation pour tout le
+  lot, et les raccourcis `e` / `Suppr` s'appliquent au lot coché.
+  Un geste de masse emporte chaque conversation **entière** — tous les
+  messages de ses fils, pas seulement le dernier.
+
+### Modifié
+
+- **L'icône de l'application est désormais la marque actuelle de
+  Wind** (l'enveloppe au rabat) — dans la barre des tâches, sur
+  l'exécutable et à l'installation.
+- **La marque en haut à gauche de la fenêtre est plus présente**
+  (24 px au lieu de 20).
+- **Les icônes du volet de gauche s'alignent mieux avec leurs
+  libellés** — un calage optique choisi sur planche.
+
 ## [0.10.2] - 2026-08-27
 
 Un échec de mise à jour se voit, au lieu de fermer l'application.

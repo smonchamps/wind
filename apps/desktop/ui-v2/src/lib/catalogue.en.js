@@ -98,6 +98,10 @@ export const EN = {
   'action.accepter': 'Accept',
   'action.provisoire': 'Tentative',
   'action.refuser': 'Decline',
+  // PLAN-RETOURS-10 R1 : la barre de sélection multiple.
+  'action.marquerLu': 'Mark as read',
+  'action.marquerNonLu': 'Mark as unread',
+  'action.annulerSelection': 'Cancel selection',
 
   // --- Invitation card (PLAN-INVITATIONS) -------------------------------
   'inv.kicker': 'Invitation',
@@ -132,6 +136,14 @@ export const EN = {
   'toast.messageSupprime': 'Message deleted.',
   'toast.spamSignale': 'Reported as spam.',
   'toast.pasSpam': 'Moved back to Inbox.',
+  // PLAN-RETOURS-10 R1 : les gestes de masse — UN toast par lot.
+  'toast.groupeArchivees': 'Conversation archived.|{n} conversations archived.',
+  'toast.groupeSupprimees': 'Message deleted.|{n} messages deleted.',
+  'toast.groupeSpam': 'Conversation reported as spam.|{n} conversations reported as spam.',
+  'toast.groupePasSpam': 'Conversation moved back to Inbox.|{n} conversations moved back to Inbox.',
+  'toast.groupeLues': 'Conversation marked as read.|{n} conversations marked as read.',
+  'toast.groupeNonLues': 'Conversation marked as unread.|{n} conversations marked as unread.',
+  'erreur.groupePartiel': '{faits} of {total} — the rest failed.',
   'toast.pieceEnregistree': 'Attachment saved: {chemin}',
   'toast.brouillonEnregistre': 'Draft saved.',
   'toast.brouillonSupprime': 'Draft deleted.',
@@ -176,6 +188,9 @@ export const EN = {
   // A80, décision D10 : « Camille Roux in Work » — la boîte est un
   // contenant, pas un support.
   'liste.sur': 'in',
+  // PLAN-RETOURS-10 R1 : la sélection multiple.
+  'liste.nSelection': '{n} selected|{n} selected',
+  'liste.cocher': 'Select the conversation',
   'brouillons.a': 'To: {a}',
   'brouillons.sansDestinataire': '(no recipient)',
   'brouillons.sansObjet': '(no subject)',

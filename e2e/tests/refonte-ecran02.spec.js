@@ -56,6 +56,40 @@ test('la nav porte les pastilles de non-lus du décor Clarity (A29, W2-D4)', asy
   await expect(page.locator('[data-testid="nav-boite"]').first()).not.toContainText('non lus');
 });
 
+// PLAN-RETOURS-10 R4 : le glyphe de nav se cale sur la baseline du
+// libellé PUIS descend de 2 px — le calage optique C, choisi par le CE
+// sur planche (terrain du 2026-08-27). L'écart attendu est donc 2 px
+// EXACTEMENT ; la tolérance 0,5 px distingue les trois candidats de la
+// planche (centré ≈ +2,6, baseline pure = 0 — tous deux ROUGES ici).
+// La baseline se mesure par une sonde inline-block de taille nulle
+// glissée dans le libellé — son bord bas EST la baseline (définition
+// CSS d'un inline-block vide) ; getBoundingClientRect voit le
+// transform, la descente est donc mesurée.
+test('les glyphes de la nav tiennent le calage optique C — baseline + 2 px (RETOURS-10)', async () => {
+  const ecart = (loc) =>
+    loc.evaluate((el) => {
+      const svg = el.querySelector('svg.ic').getBoundingClientRect();
+      const libelle = el.querySelector('.libelle, .titre-tuile');
+      const sonde = document.createElement('span');
+      sonde.style.cssText =
+        'display:inline-block;width:0;height:0;padding:0;margin:0;border:0';
+      libelle.appendChild(sonde);
+      const baseline = sonde.getBoundingClientRect().bottom;
+      sonde.remove();
+      return svg.bottom - baseline;
+    });
+  // Les trois porteurs : rangée de dossier, rangée de boîte, tuile de
+  // la boîte en cours (« Toutes les boîtes » au démarrage).
+  expect(Math.abs((await ecart(dossier('reception'))) - 2)).toBeLessThanOrEqual(0.5);
+  expect(Math.abs((await ecart(dossier('corbeille'))) - 2)).toBeLessThanOrEqual(0.5);
+  expect(
+    Math.abs((await ecart(page.locator('[data-testid="nav-boite"]').first())) - 2),
+  ).toBeLessThanOrEqual(0.5);
+  expect(
+    Math.abs((await ecart(page.locator('[data-testid="nav-boite"]').nth(1))) - 2),
+  ).toBeLessThanOrEqual(0.5);
+});
+
 test('le volet liste porte son bandeau de titre — le nom de la boîte, sans bouton (UI v3, E1)', async () => {
   // Verdict CE du 2026-08-16 (ANNOTATIONS-V3 §3) : le bandeau de la
   // maquette Classique entre, SANS « Tout marquer lu » — le titre seul.

@@ -670,7 +670,7 @@ svg.g{flex:none}
         <div class="bande">
           <span class="marque-tuile" style="width:48px;height:48px;border-radius:11px"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><rect width="24" height="24" fill="#F2EDE3"/><g fill="none" stroke="#141414" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="#1F8A8A"/></svg></span>
           <span class="app-entete" style="border:1px solid var(--border);border-radius:var(--r-controle);flex:1;min-width:220px">
-            <span class="app-marque" style="width:auto"><svg class="g marque" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--marque)"/></svg><b>Wind</b></span>
+            <span class="app-marque" style="width:auto"><svg class="g marque" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--marque)"/></svg><b>Wind</b></span>
           </span>
         </div>
         <p><b>En tuile</b> — icône d'application, écran d'accueil, modale de migration — la marque est
@@ -1010,7 +1010,7 @@ svg.g{flex:none}
         <tr><th scope="row"><code>e2e/coherence-systeme.mjs</code> · contrôle 2</th><td>Il interdit tout
           compteur de glyphes hors du journal, parce que le contrat vivait ailleurs. V8 tue ce
           contrat : <b>le contrôle devient sans objet</b> et doit être retiré, ou inversé — ce
-          document dit « 78 glyphes » et « 24 glyphes », et il a raison de le dire.</td></tr>
+          document dit « 79 glyphes » et « 24 glyphes », et il a raison de le dire.</td></tr>
         <tr><th scope="row"><code>e2e/coherence-systeme.mjs</code> · contrôle 3</th><td>Il exige le renvoi
           à <code>assets/icones/README.md</code> dans le corps du document. V8 supprime le
           sous-ensemble ; le renvoi n'a plus d'objet, et le relevé de la section Icônes le
@@ -1037,7 +1037,7 @@ svg.g{flex:none}
         <tr><th scope="row"><code>reglages.iconesValeur</code> (catalogues)</th><td>La ligne « À propos »
           dit « Material Symbols Rounded (Google), licence Apache 2.0 ; police embarquée ». V8 retire
           la police : la mention doit dire ce qui est réellement livré, et <b>la question de
-          l'attribution reste ouverte</b> — les 78 glyphes sont <i>redessinés d'après</i> les formes
+          l'attribution reste ouverte</b> — les 79 glyphes sont <i>redessinés d'après</i> les formes
           Material, ce qui n'est pas la même chose que les redistribuer. À faire trancher avant toute
           adoption.</td></tr>
       </tbody>
@@ -1635,8 +1635,8 @@ svg.g{flex:none}
     <div class="fiches">
       <div class="fiche">
         <h3 class="sourcil">1 · Ce que la direction fait — mesuré, pas supposé</h3>
-        <p><b>Les dessins sont strictement à coins vifs.</b> Les 78 glyphes, <b>219 sous-chemins</b>,
-        <b>654 commandes de tracé</b> : <b>zéro coin arrondi</b>, <code>stroke-linejoin: miter</code>
+        <p><b>Les dessins sont strictement à coins vifs.</b> Les 79 glyphes, <b>220 sous-chemins</b>,
+        <b>657 commandes de tracé</b> : <b>zéro coin arrondi</b>, <code>stroke-linejoin: miter</code>
         et <code>stroke-linecap: butt</code> partout, sans une exception.</p>
         <p><b>Les documents qui les présentent sont arrondis — et indisciplinés.</b> La planche des
         glyphes et le jeu d'icônes emploient à eux deux <b>huit rayons différents</b> : 18, 16, 14,
@@ -1851,7 +1851,7 @@ svg.g{flex:none}
   <section id="icones">
     <a class="haut" href="#haut">↑ Haut du document</a>
     <h2>Icônes</h2>
-    <p class="sub">Le jeu entier est <b>dessiné</b>, pas composé : 78 glyphes en SVG en
+    <p class="sub">Le jeu entier est <b>dessiné</b>, pas composé : 79 glyphes en SVG en
     ligne, grille de 24, trait de 2 unités, bouts nets, jonctions vives, coordonnées entières. La
     police Material Symbols et son sous-ensemble vendorisé <b>disparaissent</b> (V8) — avec eux
     disparaît la dernière dépendance de fonte du produit, et l'écart de dix glyphes que le Système
@@ -1872,6 +1872,7 @@ svg.g{flex:none}
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M7 3h10v18l-5-5-5 5z"/></g></svg></span><figcaption>bookmark</figcaption></figure><figure class="cell c-arbitrage">
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4a8 8 0 1 0 0 16 8 8 0 1 0 0-16"/><path d="M9 9l6 6"/><path d="M15 9l-6 6"/></g></svg></span><figcaption>cancel</figcaption></figure><figure class="cell c-arbitrage">
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M12 4a8 8 0 1 0 0 16 8 8 0 1 0 0-16"/><path d="M8 12l3 3 5-5"/></g></svg></span><figcaption>check_circle</figcaption></figure><figure class="cell c-direct">
+      <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 13l5 5L20 7"/></g></svg></span><figcaption>check</figcaption></figure><figure class="cell c-direct">
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 5l14 14"/><path d="M19 5L5 19"/></g></svg></span><figcaption>close</figcaption></figure><figure class="cell c-direct">
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 7h16"/><path d="M6 7v12h12V7"/><path d="M10 4h4"/><path d="M10 11v5"/><path d="M14 11v5"/></g></svg></span><figcaption>delete</figcaption></figure><figure class="cell c-direct">
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 3h8l4 4v14H6z"/><path d="M9 12h6"/><path d="M9 16h4"/></g></svg></span><figcaption>description</figcaption></figure><figure class="cell c-arbitrage">
@@ -2381,7 +2382,7 @@ svg.g{flex:none}
     <p class="note">Les douze repères de compte forment un <b>jeu dédié</b>, réservé à ce seul usage
     et jamais réemployé ailleurs (A74, A3 tenu par réservation) :
     <code>account_balance</code> · <code>eco</code> · <code>favorite</code> · <code>flight</code> · <code>home</code> · <code>music_note</code> · <code>pets</code> · <code>school</code> · <code>shopping_bag</code> · <code>sports_esports</code> · <code>star</code> · <code>work</code>.</p>
-    <p class="note"><b>Une question ouverte, et elle n'est pas de dessin.</b> Ces 78 glyphes sont
+    <p class="note"><b>Une question ouverte, et elle n'est pas de dessin.</b> Ces 79 glyphes sont
     <b>redessinés d'après</b> les formes de Material Symbols — ce n'est pas la même chose que
     redistribuer la police (Apache 2.0), et ce n'est pas non plus une création ex nihilo. La ligne
     « À propos » du produit dit aujourd'hui « police embarquée, licence Apache 2.0 » ; elle devra dire
@@ -2565,7 +2566,7 @@ svg.g{flex:none}
       
   <div class="app-entete">
     
-    <span class="app-marque"><svg class="g marque" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--marque)"/></svg><b>Wind</b></span>
+    <span class="app-marque"><svg class="g marque" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--marque)"/></svg><b>Wind</b></span>
     <span class="recherche"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 1 0 0-14"/><path d="M16 16l4 4"/></g></svg>Chercher un message, une personne, un fichier
       </span>
     <span class="gestes">
@@ -2869,7 +2870,7 @@ svg.g{flex:none}
       
   <div class="app-entete">
     
-    <span class="app-marque"><svg class="g marque" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--marque)"/></svg><b>Wind</b></span>
+    <span class="app-marque"><svg class="g marque" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--marque)"/></svg><b>Wind</b></span>
     <span class="recherche active"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 1 0 0-14"/><path d="M16 16l4 4"/></g></svg>contrat vantis
       <span style="margin-left:auto;color:var(--muted)"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 5l14 14"/><path d="M19 5L5 19"/></g></svg></span></span>
     <span class="gestes">
@@ -3078,7 +3079,7 @@ svg.g{flex:none}
           <div style="position:absolute;left:0;top:0;bottom:0;width:220px;background:var(--bg);
             border-right:1px solid var(--border);padding:10px 8px">
             <div style="height:44px;display:flex;align-items:center;gap:9px;padding:0 8px;color:var(--ink)">
-              <svg class="g marque" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--marque)"/></svg><b style="font-size:15px">Wind</b>
+              <svg class="g marque" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--marque)"/></svg><b style="font-size:15px">Wind</b>
               <span style="margin-left:auto;color:var(--muted)"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 5l14 14"/><path d="M19 5L5 19"/></g></svg></span></div>
             <div class="rang actif"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg><span class="l">Boîte de réception</span><span class="n">4</span></div>
             <div class="rang"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h10"/><path d="M4 11h7"/><path d="M11 19l1-3 6-6 2 2-6 6z"/></g></svg><span class="l">Brouillons</span><span class="n">3</span></div>
@@ -3775,7 +3776,7 @@ svg.g{flex:none}
             <span class="d"><b>Mises à jour</b><span>Vous êtes à jour.</span></span>
             <span class="btn">Vérifier les mises à jour</span>
           </div>
-          <p style="font-size:12px;color:var(--muted)"><b>Icônes</b> — 78 glyphes dessinés dans le
+          <p style="font-size:12px;color:var(--muted)"><b>Icônes</b> — 79 glyphes dessinés dans le
           dépôt, servis en SVG ; aucune police, aucun réseau. <i>Formulation d'attribution à
           arrêter</i> : les dessins dérivent des formes Material Symbols (Apache 2.0) sans en
           redistribuer la police.</p>
@@ -4504,10 +4505,19 @@ svg.g{flex:none}
         <tr>
           <td class="nw">2026-08-27</td>
           <th scope="row">A85</th><td><b>Un échec de mise à jour se voit — l'application ne se ferme plus sans un mot</b> (PLAN-SIGNATURE E4 ; décisions CE D2/D4 du 2026-08-27). Constat terrain (2026-08-26, poste x64) : le clic « Installer » fermait Wind et rien ne s'installait — Smart App Control (<code>On</code>, verdict rendu <b>binaire par binaire</b> sur les exe non signés Authenticode) refusait le lancement de l'installateur, et le plugin updater sortait par <code>exit(0)</code> sans lire le retour de <code>ShellExecuteW</code>. Le lancement est repris à l'application (retour testé ; le téléchargement et sa vérification minisign restent au plugin), et l'échec suit <b>la voie d'erreur existante de chaque surface, sans état neuf</b> : au bandeau, <code>erreur.maj</code> en flash et le bandeau <b>se réarme depuis les données déjà connues</b> — jamais un aller-retour réseau, dont l'échec l'aurait refigé sur « Installation… » sans bouton ; aux Réglages, l'échec d'installation se dit <b>sous son vrai nom</b> (<code>erreur.maj</code>, pas « Vérification impossible ») devant la rangée « Mise à jour disponible », dont le bouton « Installer » <b>reste offert</b> — jamais de cul-de-sac. Deux gardes sœurs, même constat : le téléchargement gagne un <b>timeout de 10 minutes</b> (le plugin n'en pose aucun — un transfert qui calait figeait « Installation… » pour toujours), et la commande n'installe que la <b>version que le bandeau a annoncée</b> (le manifeste peut bouger entre l'annonce et le clic ; sur écart, erreur propre et l'UI redit la neuve). Aucun composant neuf, aucune couleur, aucune paire de contraste neuve. Ce que l'amendement ne couvre pas, et dit : sur un poste SAC, l'installation <b>reste refusée</b> tant que les exe ne sont pas signés Authenticode — la signature d'éditeur est gelée (D2 : la validation individuelle Trusted Signing est fermée hors USA/Canada), consignée en dette ; en attendant, l'échec se voit et se retente.</td></tr>
+        <tr>
+          <td class="nw">2026-08-27</td>
+          <th scope="row">A86</th><td><b>La liste sait sélectionner plusieurs conversations</b> (PLAN-RETOURS-10 R1 ; décisions CE D1/D3/D4 du 2026-08-27). Trois gestes, ceux des clients mûrs : <b>Ctrl-clic</b> bascule une rangée dans la sélection <b>et y déplace le focus de lecture</b> (terrain du 2026-08-27 : laisser le liseré et le volet sur une autre rangée que celle qu'on vient de cocher déroutait), <b>Shift-clic</b> étend depuis la dernière rangée basculée — à défaut, depuis la rangée <b>sélectionnée</b> (le premier message choisi au démarrage compte comme ancre, terrain) — sur l'ordre affiché des rangées chargées, jamais « tout le dossier », et une <b>case à cocher</b> par rangée. La case vit en <b>absolu dans la gouttière gauche</b> (8 px du bord, boîte de 16 px) : elle n'entre pas dans la grille de la rangée, donc <b>les gabarits sondés h1/h2 ne la voient jamais</b> — et quand elle se montre, le contenu s'écarte à 34 px par le <b>padding</b> (la hauteur ne bouge pas ; en mode sélection toutes les rangées s'écartent d'un bloc, rien ne saute pendant qu'on coche — terrain, la case affleurait le texte). Invisible au repos (opacité 0, D4), elle se révèle au survol de SA rangée et sur toutes dès qu'une sélection existe ; cochée, elle porte le glyphe <code>check</code> (neuf, 78 → <b>79</b> — le <code>check_circle</code> aurait rendu une forme ronde à l'écran 02, ce qu'A82 a chèrement conquis). La rangée cochée prend la teinte de sélection <b>sans le liseré</b> (le liseré reste la position de lecture — deux idées, deux dessins), et les raccourcis <b>e/Suppr s'appliquent au lot coché</b> quand il existe (terrain), par le même chemin que la barre. <b>La barre de la liste se transforme</b> (D3, aucune surface neuve) : tant que la sélection est non vide, le bandeau de titre cède à « N sélectionnés » + les gestes de masse (D1 : marquer lu, non lu, archiver, indésirable — « Ce n'est pas un spam » en Indésirables —, supprimer) en boutons-icônes 32 px à la grammaire de l'entête, et Annuler. Les gestes de masse <b>rejouent les commandes unitaires en séquence</b> (refus §2.6 : pas de commande cœur groupée — une sélection se compte en dizaines), et une rangée cochée est une <b>CONVERSATION</b> : le geste emporte le <b>fil entier</b> (D6, tranchée devant l'exemple Vantis — sans elle, un fil reperdait un message par passage et le toast mentait ; <code>thread_messages</code> liste le fil, purement local). UN toast par lot, compté en conversations — une rangée n'est réussie que si TOUS ses messages le sont ; un lot incomplet se dit (« n sur total »). Cocher n'est pas choisir : la sélection multiple n'ouvre rien, ne marque rien lu ; elle <b>meurt avec sa source</b> (changement de dossier, de compte, d'onglet, de recherche — un geste de masse sur des rangées qu'on ne voit plus serait un piège). Épinglées cochables, et <b>teintées comme les autres</b> (verdict terrain du 2026-08-27, renverse la première livraison) : la coche est le seul état qui déloge le sol <code>--tuile</code> d'A73, parce qu'elle précède un geste de masse — ce que l'œil ne compte pas peut partir par surprise. Le dossier Brouillons et les échos restent hors du geste ; un lot amputé d'échos se dit (« n sur total »), un lot tout-échos dit l'attente au lieu de disparaître, et le fil ouvert ne se ferme que si SON geste a réussi.</td></tr>
+        <tr>
+          <td class="nw">2026-08-27</td>
+          <th scope="row">A87</th><td><b>L'icône d'application rejoint Elements ; la marque d'entête passe à 24 px</b> (PLAN-RETOURS-10 R2/R3 ; décision CE D2 du 2026-08-27). L'icône Windows (<code>icons/icon.ico</code> — barre des tâches, exécutable, installeur) portait encore la marque « W-pastille » d'avant l'adoption : <code>scripts/faire-icone.ps1</code> n'avait jamais été rejoué depuis V1. Il trace désormais le <b>régime tuile</b> verbatim (tuile <code>#F2EDE3</code> au rayon de plateforme 15/64, enveloppe <code>#141414</code> à coins vifs trait 2,3, rabat demi-disque <code>#1F8A8A</code>) aux quatre tailles 256/48/32/16 — sous 16 px le trait passe à 2 unités, le régime de <code>Marque.svelte</code> ; les sources <code>assets/marque/*.svg</code> sont remises d'équerre. Dans l'entête (et la tête du tiroir), la marque en glyphe passe de 20 à <b>24 px</b> — 20 px se perdait dans l'entête de 52 px ; le mot « Wind » (18 px) reste dominant. La fiche V11 porte la nouvelle cote.</td></tr>
+        <tr>
+          <td class="nw">2026-08-27</td>
+          <th scope="row">A88</th><td><b>Les glyphes de la nav tiennent le calage optique C — baseline + 2 px</b> (PLAN-RETOURS-10 R4 ; constat CE du 2026-08-27, verdict sur planche le jour même). Le centrage flex des rangées (<code>align-items:center</code>) posait le SVG de 16 px au centre de la boîte de ligne du libellé de 14 px : le tracé débordait de ~2,6 px <b>sous la baseline</b> — l'œil lisait des glyphes « trop bas ». La baseline pure, livrée d'abord, les faisait paraître <b>hauts</b> (deuxième constat terrain) : le verdict est tombé devant une <b>planche de trois calages</b> capturés sur la vraie nav — centré pur, centré remonté d'1 px, baseline descendue de 2 px — et c'est la troisième (<b>C</b>) qui l'emporte. La mécanique, sur les trois porteurs (rangée de dossier, rangée de boîte, tuile de la boîte en cours) : <code>align-items:baseline</code>, les SVG retrouvent leur <code>vertical-align</code> par défaut (le <code>middle</code> global de <code>.ic</code> est rendu dans cette colonne), puis descendent de 2 px par <code>transform</code> — hors géométrie, les rangées ne bougent pas. Garde e2e : la baseline se mesure par une sonde inline-block de taille nulle glissée dans le libellé ; l'écart attendu est <b>2 px exactement</b>, tolérance 0,5 px — assez fine pour que les deux calages écartés de la planche soient ROUGES. Aucune cote, aucune couleur, aucune paire neuve.</td></tr>
       </tbody>
     </table>
     <p class="note">Les
-    99 lignes — 14 décisions d'adoption V1-V14, 85 amendements A1-A85 — portent leurs trois
+    102 lignes — 14 décisions d'adoption V1-V14, 88 amendements A1-A88 — portent leurs trois
     cellules : le défaut d'A48 relevé en V12 est <b>réparé à la
     source</b>, ce document n'a plus rien à restituer.</p>
   </section>

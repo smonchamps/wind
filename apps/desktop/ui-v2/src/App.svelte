@@ -1040,11 +1040,16 @@
       case 'f':
         if (selectionnee) transferer(selectionnee);
         break;
+      // Terrain 2026-08-27 (R1-8) : quand un lot est coché, e/Suppr
+      // agissent sur LE LOT (le même chemin que la barre — agir gèle la
+      // barre et vide la sélection) ; sans lot, le triage unitaire A38.
       case 'e':
-        if (selectionnee) avancerApres(selectionnee, archiver);
+        if (liste?.enSelection()) liste.agir('archiver');
+        else if (selectionnee) avancerApres(selectionnee, archiver);
         break;
       case 'Delete':
-        if (selectionnee) avancerApres(selectionnee, supprimer);
+        if (liste?.enSelection()) liste.agir('supprimer');
+        else if (selectionnee) avancerApres(selectionnee, supprimer);
         break;
       case '/':
         champRecherche?.focus();
@@ -1216,6 +1221,9 @@
         uid: ligne.uid,
       });
       flash(t('toast.archivee'));
+      // R1 (RETOURS-10) : la rangée partie quitte aussi la sélection
+      // multiple — la barre ne compte jamais une rangée qui n'est plus.
+      liste?.decocher(ligne);
       fermerFil();
       // L'écho de destination est DÉJÀ en base (même transaction que le
       // geste, E3) : la resservie le montre en Archives < 1 s — le
@@ -1243,6 +1251,7 @@
       });
       const restants = retirerMessage(cible);
       const ferme = restants <= 0;
+      liste?.decocher(cible);
       if (ferme) fermerFil();
       flash(t(ferme ? 'toast.supprimee' : 'toast.messageSupprime'));
       // Même mécanique qu'archiver : l'écho est en base, la Corbeille
@@ -1271,6 +1280,7 @@
         uid: ligne.uid,
       });
       flash(t('toast.spamSignale'));
+      liste?.decocher(ligne);
       fermerFil();
       liste.recharger();
       chargerNav();
@@ -1292,6 +1302,7 @@
         uid: ligne.uid,
       });
       flash(t('toast.pasSpam'));
+      liste?.decocher(ligne);
       fermerFil();
       liste.recharger();
       chargerNav();
@@ -1300,6 +1311,102 @@
     } catch (err) {
       console.error('mark_not_spam :', err);
       return false;
+    }
+  }
+
+  // PLAN-RETOURS-10 R1 : les gestes de MASSE de la barre de sélection.
+  // Refus §2.6 : aucune commande coeur groupée — les commandes
+  // unitaires existantes rejouent en séquence (une sélection se compte
+  // en dizaines), puis UN toast, UNE resservie, UNE passe par compte.
+  // L'échec d'une cible n'arrête pas les autres ; un lot incomplet se
+  // DIT (« n sur total »), jamais un succès de façade.
+  const GESTES_GROUPE = {
+    archiver: { commande: 'archive_message', toast: 'toast.groupeArchivees', ferme: true },
+    supprimer: { commande: 'delete_message', toast: 'toast.groupeSupprimees', ferme: true },
+    spam: { commande: 'report_spam', toast: 'toast.groupeSpam', ferme: true },
+    nonspam: { commande: 'mark_not_spam', toast: 'toast.groupePasSpam', ferme: true },
+    lu: { commande: 'mark_seen', toast: 'toast.groupeLues', args: { seen: true } },
+    nonlu: { commande: 'mark_seen', toast: 'toast.groupeNonLues', args: { seen: false } },
+  };
+  // La cible d'une commande par message — le cinquième site qui épelait
+  // ce triple à la main (revue).
+  const cibleDe = (l) => ({ accountId: l.account_id, mailbox: l.mailbox, uid: l.uid });
+  // D6 (CE, 2026-08-27, devant l'exemple Vantis) : une rangée cochée
+  // est une CONVERSATION — le geste de masse emporte le fil ENTIER,
+  // sinon le fil reperd un message par passage et « N conversations
+  // archivées » ment. Un résultat de recherche (thread_size 1 par
+  // construction) et un fil d'un message passent tels quels ; un fil
+  // dont la liste échoue retombe sur sa rangée seule, jamais un
+  // silence.
+  async function messagesDe(l) {
+    if (l.thread_id == null || l.thread_size <= 1) return [l];
+    try {
+      const fil = await appel('thread_messages', { threadId: l.thread_id });
+      return fil.length > 0 ? fil : [l];
+    } catch (err) {
+      console.error('thread_messages (groupe) :', err);
+      return [l];
+    }
+  }
+  async function groupe(action, lignes) {
+    const geste = GESTES_GROUPE[action];
+    if (!geste) {
+      console.error(`groupe : action inconnue « ${action} »`);
+      return;
+    }
+    // Les échos s'écartent par le prédicat PUR (estEcho — gesteSurEcho
+    // flasherait un toast PAR écho, aussitôt écrasés) et restent au
+    // DÉNOMINATEUR : un lot amputé se dit, jamais un succès de façade.
+    const cibles = lignes.filter((l) => !estEcho(l));
+    const total = lignes.length;
+    if (cibles.length === 0) {
+      if (total > 0) flash(t('toast.echoAttente'));
+      return;
+    }
+    let faits = 0;
+    const reussies = [];
+    let spamRefuse = false;
+    for (const l of cibles) {
+      // Le compte reste en CONVERSATIONS : la rangée n'est réussie que
+      // si TOUS ses messages le sont — un fil à moitié parti se dit.
+      const messages = await messagesDe(l);
+      let entier = true;
+      for (const m of messages) {
+        try {
+          await appel(geste.commande, { ...cibleDe(m), ...(geste.args ?? {}) });
+        } catch (err) {
+          // Le seul échec ATTENDU du lot : pas de dossier indésirable —
+          // la voix de l'unitaire (erreur.spamImpossible) survit au lot.
+          if (action === 'spam') spamRefuse = true;
+          entier = false;
+          console.error(`${geste.commande} (groupe) :`, err);
+        }
+      }
+      if (entier) {
+        faits += 1;
+        reussies.push(l);
+      }
+    }
+    flash(
+      faits === total
+        ? t(geste.toast, { n: faits })
+        : action === 'spam' && faits === 0 && spamRefuse
+          ? t('erreur.spamImpossible')
+          : t('erreur.groupePartiel', { faits, total }),
+    );
+    // L'écho local du marquage lu, comme au chemin unitaire (marquerVue) :
+    // la graisse tombe à l'instant, la resservie dit la vérité derrière.
+    if (action === 'lu') for (const l of reussies) liste.marquerLue(l);
+    // Le fil ouvert ne se ferme que si SON geste a RÉUSSI — un échec le
+    // laisse en place, comme au chemin unitaire.
+    if (geste.ferme && selectionnee
+      && reussies.some((l) => cleMsg(l) === cleMsg(selectionnee))) {
+      fermerFil();
+    }
+    liste.recharger();
+    chargerNav();
+    if (geste.ferme) {
+      for (const id of new Set(reussies.map((l) => l.account_id))) passeApresGeste(id);
     }
   }
 
@@ -1365,8 +1472,9 @@
     <!-- V1/V11 : la marque EN GLYPHE — l'enveloppe à l'encre courante,
          rabat --marque, devant le mot « Wind » (18 px). Le trait
          hitofude est mort (V2) ; la tuile figée reste aux contextes OS,
-         à l'accueil, à la migration et à « À propos ». -->
-    <span class="marque" class:marque--libre={volets === 1}><Marque taille={20} />Wind</span>
+         à l'accueil, à la migration et à « À propos ». 24 px depuis
+         PLAN-RETOURS-10 (D2) — 20 px se perdait dans l'entête de 52. -->
+    <span class="marque" class:marque--libre={volets === 1}><Marque taille={24} />Wind</span>
     <span class="recherche" data-testid="recherche">
       <Icone nom="search" />
       <input type="text" bind:this={champRecherche} bind:value={recherche}
@@ -1396,7 +1504,7 @@
       {/if}
       <Liste bind:this={liste} {categorie} {compte} {comptes} {reperes} {noms} {onglet} {recherche}
              {brouillons} onreprendre={reprendreBrouillon}
-             onselect={surSelection} ononglet={surOnglet}
+             onselect={surSelection} ononglet={surOnglet} ongroupe={groupe}
              ontotal={(t) => (totalListe = t)}
              onresultats={(n, total) => { nResultats = n; nTotal = total; }} onflash={flash} />
       {#if volets === 3}
@@ -1476,7 +1584,7 @@
       <div class="tiroir" data-testid="tiroir" role="dialog" aria-modal="true"
            aria-label={t('nav.aria')}>
         <div class="tete-tiroir">
-          <Marque taille={20} />Wind
+          <Marque taille={24} />Wind
           <button type="button" class="btn-tiroir fermer-tiroir" data-testid="tiroir-fermer"
                   aria-label={t('nav.fermerTiroir')}
                   onclick={() => (tiroirOuvert = false)}>
