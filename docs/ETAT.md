@@ -12,35 +12,38 @@
 
 ## Où on en est, et quoi faire en premier
 
-⏳ **CHANTIER EN COURS — [PLAN-SIGNATURE](PLAN-SIGNATURE.md)**
-(2026-08-26 → 27) : **E4 (le filet) livré, revue à regard neuf passée
-(10 trouvailles, 10 corrigées), gate complète VERTE 9/9 — EN ATTENTE
-du commit, de la release 0.10.2 et du terrain (STOP 2)**.
-
-Le constat : sur le poste x64, « Installer » **fermait Wind sans rien
-installer** — Smart App Control (`On`) refuse les exe non signés
-Authenticode sur un **verdict cloud rendu binaire par binaire** (la
-0.10.0 passe, la 0.10.1 non — mesuré au spike `spikes/maj-x64/`), et
-le plugin updater sort par `exit(0)` sans lire le retour de
-`ShellExecuteW`. Le lancement est repris chez nous (retour testé,
-échec au bandeau qui se réarme, Réglages sans cul-de-sac, timeout
-10 min, version annoncée = version posée, témoin en répertoire neuf,
-garde e2e, crate épinglé `=2.10.1`). **E1 a échoué proprement** : la
-validation individuelle Trusted Signing est fermée hors USA/Canada
-(adresse CE en France) — **décision D2 : attendre + filet seul** ; la
-signature Authenticode (E2/E3) est GELÉE, en dette. Sur un poste SAC,
-l'installation reste refusée mais **se voit et se retente**.
-
-**La preuve auto-update x64 due par PLAN-DEMARRAGE (D5) est reprise
-ici** : elle était impossible telle quelle (c'est ce constat qui a
-ouvert le chantier) ; le terrain de la 0.10.2 la remplace.
+✅ **AUCUN CHANTIER EN COURS.** La **0.10.2 est PUBLIÉE le 2026-08-27**,
+vérifiée §2.10 (tout passe, 2 canaux), **auto-update prouvé au terrain
+sur les DEUX postes** (GO CE : « release ok auto update ok sur les 2
+postes »). Prochain sujet : la **bêta fermée** — avec, en travers de sa
+route, la dette **D-39** (signature Authenticode gelée : sur tout poste
+Smart App Control, l'installation d'un exe non signé est une loterie
+par binaire ET par jour — prouvé les 26-27/08) et **D-40** (issue amont
+tauri-plugin-updater, GO CE en attente).
 
 ---
 
-✅ **[PLAN-DEMARRAGE](PLAN-DEMARRAGE.md)** (2026-08-26) : livré,
-terrain 6/6, commits `b94d63b`/`385ee64`, CI verte, **0.10.1 publiée**
-(18/18) — il ne restait que la preuve auto-update x64, reprise
-ci-dessus.
+✅ **[PLAN-SIGNATURE](PLAN-SIGNATURE.md)** (2026-08-26 → 27, SOLDÉ) :
+un échec d'installation de mise à jour **se voit** désormais (bandeau
+qui se réarme, Réglages sans cul-de-sac, timeout 10 min, version
+annoncée = posée, témoin en répertoire neuf, garde e2e, crate épinglé
+`=2.10.1`) au lieu de fermer l'application en silence. La signature
+Authenticode attend (D2) : validation individuelle Trusted Signing
+fermée hors USA/Canada. Preuve du filet en condition de refus : à la
+première MAJ depuis la 0.10.2 sur poste SAC.
+
+Le constat d'origine : « Installer » **fermait Wind sans rien
+installer** — Smart App Control (`On`) refusait l'exe non signé et le
+plugin updater sortait par `exit(0)` sans lire le retour de
+`ShellExecuteW` (spike `spikes/maj-x64/`). Détail complet au plan
+(constat, E1-E5, décisions D1-D5) et au journal **A85**.
+
+---
+
+✅ **[PLAN-DEMARRAGE](PLAN-DEMARRAGE.md)** (2026-08-26, SOLDÉ le 27) :
+livré, terrain 6/6, commits `b94d63b`/`385ee64`, CI verte, **0.10.1
+publiée** (18/18) ; la preuve auto-update x64 (D5) est tombée le 27
+(0.10.0 → 0.10.1 appliqué, après un premier refus SAC).
 
 Le constat du CE — « freezes et lenteurs au démarrage, une fois la
 fenêtre ouverte » — était **un gel de SERVICE, pas de fenêtre** :

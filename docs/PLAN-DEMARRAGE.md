@@ -1,5 +1,10 @@
 # PLAN-DEMARRAGE — rendre les soixante premières secondes
 
+> **CHANTIER SOLDÉ le 2026-08-27 — terrain complet** (la preuve
+> auto-update x64, dernière due, est tombée le 27 : 0.10.0 → 0.10.1
+> appliqué — après un premier refus SAC dont le silence a ouvert
+> PLAN-SIGNATURE, soldé le même jour).
+>
 > **TERRAIN VALIDÉ le 2026-08-26 — 6/6, aucun constat.** STOP 1 passé le
 > même jour, décisions D1-D9 tranchées et consignées mot pour mot (§5).
 > E0, E1, E1-bis et E2 livrés ; revue à regard neuf passée (2 trouvailles,

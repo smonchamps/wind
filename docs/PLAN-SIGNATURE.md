@@ -1,15 +1,20 @@
 # PLAN-SIGNATURE — signer les installateurs, et voir un échec de lancement
 
-> **E4 LIVRÉ le 2026-08-27** — STOP 1 passé (D1-D5, §5), E1 échouée
-> proprement (D2 : attendre + filet seul, E2/E3 gelées → DETTE D-39),
-> E4 implémentée en TDD, **revue à regard neuf : 10 trouvailles, 10
-> corrigées** (réarmement du bandeau sans réseau, Réglages sans
-> cul-de-sac, témoin en répertoire neuf + verrou de réentrance,
-> `hors_pompe` (ADR 0019), garde e2e, constructeur d'updater commun
-> avec timeout, contrôle `MZ`, crate épinglé `=2.10.1`, accents UI,
-> version annoncée = version posée), **gate complète VERTE 9/9**
-> (2,2 min, 138 e2e). Système : A85. Reste : commit + CI, release
-> **0.10.2** (E5), terrain STOP 2 sur les deux postes, `/solde`.
+> **CHANTIER SOLDÉ le 2026-08-27 — terrain complet.** STOP 1 le
+> 2026-08-26 (D1-D5, §5) ; E1 échouée proprement le 27 (D2 : attendre
+> + filet seul, E2/E3 gelées → DETTE D-39) ; E4 en TDD ; **revue à
+> regard neuf : 10 trouvailles, 10 corrigées** ; **gate complète VERTE
+> 9/9** (2,2 min, 138 e2e) ; Système : **A85**. Commits `e00bd3f`
+> (E4), `e97ad60` (intermittence SAC), `d0812ac` (release) — **CI
+> verte sur les trois**. **0.10.2 publiée et vérifiée §2.10 : tout
+> passe** (2 canaux, signatures distinctes). **Terrain (GO CE du
+> 2026-08-27) : « release ok auto update ok sur les 2 postes »** —
+> chemin nominal prouvé bi-arch, x64 SAC compris (loterie gagnée ce
+> jour-là) ; la preuve du filet en condition de refus reste due À LA
+> PREMIÈRE MAJ depuis la 0.10.2 sur poste SAC (consigné en E5). Aucun
+> constat KO au STOP 2. Kaizen : session 9,2 M équiv. input, 4 gates
+> complètes (1 explicite + 3 pre-push). Dette : D-39 (signature
+> gelée), D-40 (issue amont, GO CE en attente).
 
 > Énoncé (2026-08-26) : « Feature : signer les installateurs Windows en
 > Authenticode (Azure Trusted Signing) pour que Smart App Control ne
