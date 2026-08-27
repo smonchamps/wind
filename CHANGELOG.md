@@ -12,6 +12,27 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.12.0] - 2026-08-28
+
+Wind se souvient de vos choix d'images, et la bêta s'outille.
+
+### Ajouté
+
+- **Wind retient votre choix d'afficher les images.** Cliquer
+  « Afficher les images » sur un message vaut désormais pour de bon :
+  rouvrir ce message ne redemande plus. Et un nouveau bouton,
+  « Toujours afficher les images de cet expéditeur », affiche
+  d'office les images de tous ses messages, sans bandeau. La liste de
+  ces expéditeurs se consulte et se retire dans
+  Réglages > Affichage. Les images distantes des autres messages
+  restent bloquées par défaut, comme avant.
+- **Un bouton Feedback en haut à droite.** Écrivez ce qui cloche ou
+  ce qui manque : votre message part par email depuis votre compte,
+  avec la version de Wind — nous lisons tous les retours. Le parcours
+  de premier démarrage gagne une étape qui le présente.
+- **« Made in EU »** avec le drapeau de l'Union européenne, dans
+  Réglages > À propos.
+
 ## [0.11.0] - 2026-08-27
 
 La sélection multiple arrive dans la liste, et la marque Wind s'affirme.
