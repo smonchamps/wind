@@ -1,9 +1,17 @@
 # PLAN-RETOURS-10 — quatre retours CE (sélection multiple, marque)
 
-> Ouvert le 2026-08-27. Statut : **TERRAIN VALIDÉ le 2026-08-27**
-> (deux passes — 8 constats de première passe, tous corrigés le jour
-> même ; seconde passe « tout passe ») — décisions CE D1-D8 (§5).
-> Reste : commit, push, CI verte, `/solde`. Livraison cible : 0.11.0.
+> **CHANTIER SOLDÉ le 2026-08-27 — terrain complet.** Ouvert et clos
+> le même jour. GO CE du plan (D1-D5) le 2026-08-27 au matin ; terrain
+> en DEUX passes le jour même — première passe : R2/R3 OK + 8 constats
+> (D6-D8 posées en route, tous corrigés dans la session) ; seconde
+> passe : **« Terrain OK — tout passe »**. Commit `a72f341`, CI verte
+> (run 33111561147). Dette : **D-41** (coche clavier). À livrer en
+> **0.11.0** (MINEUR, D5) — entrée CHANGELOG déjà écrite (« à venir »).
+>
+> Chiffres kaizen : 2 gates complètes jouées (2,2 puis 2,1 min) + le
+> pre-push ; 8 constats KO à la première passe terrain, 0 à la
+> seconde ; revue à regard neuf 8 angles / 10 trouvailles / 9 corrigées
+> avant terrain ; e2e 137 → 148.
 
 ## 1. Constat — instruction sur pièces (2026-08-27)
 

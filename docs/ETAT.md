@@ -12,18 +12,24 @@
 
 ## Où on en est, et quoi faire en premier
 
-🔄 **CHANTIER EN CLÔTURE : [PLAN-RETOURS-10](PLAN-RETOURS-10.md)**
-(2026-08-27) — quatre retours CE : **sélection multiple** (Ctrl-clic,
-Shift-clic, cases, barre de gestes de masse, raccourcis sur le lot,
-**le fil part ENTIER** — D6), **icône Windows** remise à la marque
-Elements (désynchronisée depuis le 2026-08-24), **marque d'entête
-24 px** (D2), **calage optique des glyphes de la nav** (planche,
-variante C — baseline + 2 px, D7). Terrain validé en DEUX passes le
-jour même (8 constats de première passe, tous corrigés dans la
-session) ; revue à regard neuf 8 angles, 10 trouvailles, 9 corrigées ;
-gate verte 2,1 min, e2e 137 → **148** ; glyphe `check` neuf (79),
-A86-A88. **Reste : commit, push, CI verte, `/solde` — puis la release
-0.11.0 (MINEUR, D5).**
+✅ **AUCUN CHANTIER EN COURS.** Dernier soldé :
+**[PLAN-RETOURS-10](PLAN-RETOURS-10.md)** (2026-08-27, ouvert et clos
+le même jour, commit `a72f341`, CI verte run 33111561147) — quatre
+retours CE : **sélection multiple** (Ctrl-clic qui coche ET déplace le
+focus de lecture, Shift-clic depuis l'ancre ou la sélection, case au
+survol dans une gouttière de 8 px avec contenu écarté à 34 px, barre
+de la liste transformée — lu/non-lu/archiver/indésirable/supprimer —,
+raccourcis e/Suppr sur le lot, et **le fil part ENTIER** — D6, tranché
+devant l'exemple Vantis), **icône Windows** remise à la marque Elements
+(elle portait la « W-pastille » d'avant l'adoption du 2026-08-24 ;
+`faire-icone.ps1` réécrit), **marque d'entête 24 px** (D2), **calage
+optique des glyphes de la nav** (planche de trois variantes, verdict
+C — baseline + 2 px, D7). Terrain validé en DEUX passes le jour même
+(8 constats de première passe, tous corrigés dans la session) ; revue
+à regard neuf 8 angles, 10 trouvailles, 9 corrigées ; e2e 137 →
+**148** ; glyphe `check` neuf (79) ; A86-A88. Dette neuve : **D-41**
+(coche clavier). **À faire ensuite : la release 0.11.0** (MINEUR,
+D5 — l'entrée CHANGELOG est écrite, à dater à la publication).
 
 La **0.10.2 est PUBLIÉE le 2026-08-27**, vérifiée §2.10 (tout passe,
 2 canaux), **auto-update prouvé au terrain sur les DEUX postes** (GO

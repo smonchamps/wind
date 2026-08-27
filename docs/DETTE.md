@@ -665,3 +665,17 @@ motivée.)
   (tester le retour > 32, sinon rendre l'erreur au lieu de quitter).
 - **Rouvre si** : au prochain bump du crate (épinglé `=2.10.1`) — si
   l'amont a corrigé, le contournement local devient candidat au retrait.
+
+### D-41 · La coche de sélection multiple n'a pas de geste clavier dédié
+
+- **Fait (PLAN-RETOURS-10, 2026-08-27)** : la sélection multiple de la
+  liste est un geste de pointeur — Ctrl-clic, Shift-clic, case au
+  survol. Au clavier, e/Suppr s'appliquent bien au lot coché, mais
+  RIEN ne permet de COCHER sans souris (pas de Ctrl+Espace, pas de
+  Shift+Flèches).
+- **Raison du report** : hors périmètre du chantier (§2.6) — l'énoncé
+  CE visait les trois gestes de pointeur, et un vocabulaire clavier de
+  sélection multiple mérite sa propre conception (interaction avec le
+  triage e/Suppr d'A38 et l'anneau :focus-visible sur nœuds recyclés).
+- **Rouvre si** : le terrain ou la bêta le demande — alors concevoir
+  le vocabulaire complet (cocher, étendre, tout vider) en une passe.
