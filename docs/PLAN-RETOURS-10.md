@@ -5,8 +5,10 @@
 > en DEUX passes le jour même — première passe : R2/R3 OK + 8 constats
 > (D6-D8 posées en route, tous corrigés dans la session) ; seconde
 > passe : **« Terrain OK — tout passe »**. Commit `a72f341`, CI verte
-> (run 33111561147). Dette : **D-41** (coche clavier). À livrer en
-> **0.11.0** (MINEUR, D5) — entrée CHANGELOG déjà écrite (« à venir »).
+> (run 33111561147). Dette : **D-41** (coche clavier). **LIVRÉ en
+> 0.11.0, PUBLIÉE le 2026-08-27** (MINEUR, D5 — `d0f9c8c`, vérifiée
+> §2.10 18/18, auto-update prouvé sur les DEUX postes le jour même :
+> « release ok, auto update ok sur les 2 postes »).
 >
 > Chiffres kaizen : 2 gates complètes jouées (2,2 puis 2,1 min) + le
 > pre-push ; 8 constats KO à la première passe terrain, 0 à la

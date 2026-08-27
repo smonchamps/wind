@@ -28,8 +28,17 @@ C — baseline + 2 px, D7). Terrain validé en DEUX passes le jour même
 (8 constats de première passe, tous corrigés dans la session) ; revue
 à regard neuf 8 angles, 10 trouvailles, 9 corrigées ; e2e 137 →
 **148** ; glyphe `check` neuf (79) ; A86-A88. Dette neuve : **D-41**
-(coche clavier). **À faire ensuite : la release 0.11.0** (MINEUR,
-D5 — l'entrée CHANGELOG est écrite, à dater à la publication).
+(coche clavier). **La 0.11.0 est PUBLIÉE le 2026-08-27** (commit
+`d0f9c8c`, CI verte run 33113349707), **vérifiée §2.10 le jour même :
+18/18 PASS** (Latest au tag nu, 5 assets, `latest.json` sans BOM
+1 590 o aux DEUX clés de plateforme, signatures == `.sig` et
+distinctes, exe arm64 200 / 5 630 211 o, exe x64 200 / 6 354 494 o) et
+**prouvée au terrain : auto-update 0.10.2 → 0.11.0 confirmé sur les
+DEUX postes** (GO CE : « release ok, auto update ok sur les 2
+postes »). Plus rien n'est dû sur cette version. NB : aucun refus SAC
+n'a été signalé à cette MAJ — la preuve du filet d'échec de MAJ **en
+condition de refus** (PLAN-SIGNATURE) reste due, à la prochaine
+occasion où SAC refusera réellement.
 
 La **0.10.2 est PUBLIÉE le 2026-08-27**, vérifiée §2.10 (tout passe,
 2 canaux), **auto-update prouvé au terrain sur les DEUX postes** (GO
@@ -229,7 +238,13 @@ le redit ; le WIP d'alors avait été retiré (décision CE du
 2026-08-20), sa matière reste au § revue de
 [PLAN-COMPOSITION-HTML](PLAN-COMPOSITION-HTML.md).
 
-**Dernière version livrée : 0.10.0** (publiée **2026-08-25 à 21:02**,
+**Dernière version livrée : 0.11.0** (publiée **2026-08-27**, tag nu
+sur `d0f9c8c`, marquée Latest, vérifiée 18/18 et prouvée aux deux
+postes le jour même — détail plus haut). Elle porte PLAN-RETOURS-10 :
+la sélection multiple (fil entier, D6), l'icône Windows Elements, la
+marque d'entête 24 px, le calage nav C.
+
+**Une version antérieure, 0.10.0** (publiée **2026-08-25 à 21:02**,
 tag nu sur `f94a008`, marquée Latest). Elle porte les deux chantiers du
 2026-08-25 : **PLAN-REPERE-LIGNE** (la boîte en toutes lettres sur la
 ligne, A80-A82) et **PLAN-ESPACEMENT** (les trois crans d'air, A83).
