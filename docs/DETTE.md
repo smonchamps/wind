@@ -644,7 +644,15 @@ motivée.)
 - **Rouvre si** : un retour bêta bute sur SAC, ou la porte Azure
   rouvre, ou le lancement public approche (ADR 0013 le lie au public).
 
-### D-40 · L'issue amont tauri-plugin-updater n'est pas encore ouverte
+### D-40 · L'issue amont tauri-plugin-updater — OUVERTE le 2026-08-27 (GO CE)
+
+> **SOLDÉE en tant qu'action** :
+> https://github.com/tauri-apps/plugins-workspace/issues/3555
+> (titre : « updater: ShellExecuteW result is never checked on
+> Windows — app exits silently when the installer fails to launch »).
+> Ce qui reste vivant est la VEILLE : au prochain bump du crate
+> (épinglé `=2.10.1`), vérifier si l'amont a corrigé — le contournement
+> local (PLAN-SIGNATURE E4) devient alors candidat au retrait.
 
 - **Fait (sources 2.10.1, `updater.rs:854-865`)** : le retour de
   `ShellExecuteW` n'est jamais testé et le processus sort par
