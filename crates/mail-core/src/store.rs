@@ -303,6 +303,23 @@ CREATE TABLE IF NOT EXISTS pins (
     epoch      INTEGER NOT NULL,
     PRIMARY KEY (mailbox_id, uid)
 );
+-- La mémoire de la garde d'images (PLAN-RETOURS-11, R1 — D1 renverse
+-- l'invariant A43) : deux exceptions EXPLICITES au blocage par défaut,
+-- jamais un réglage global. Par MESSAGE : clé d'enveloppe, patron de
+-- `pins` (survit à la reconstruction des fils, meurt avec sa boîte).
+-- Par EXPÉDITEUR : adresse exacte en minuscules (normalisée par le
+-- Rust, comme `correspondants`), GLOBALE au poste (D3 — survit au
+-- retrait d'un compte).
+CREATE TABLE IF NOT EXISTS images_messages (
+    mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+    uid        INTEGER NOT NULL,
+    epoch      INTEGER NOT NULL,
+    PRIMARY KEY (mailbox_id, uid)
+);
+CREATE TABLE IF NOT EXISTS images_expediteurs (
+    address TEXT PRIMARY KEY,
+    epoch   INTEGER NOT NULL
+);
 -- L'invitation de reunion d'un message (PLAN-INVITATIONS) : le CACHE de
 -- la partie text/calendar, extrait au scan du corps (save_body_full) ou
 -- a l'ouverture pour un message d'avant la fonctionnalite (write-back,
@@ -1307,6 +1324,14 @@ impl Store {
             "DELETE FROM attachments WHERE mailbox_id = ?1",
             [mailbox_id],
         )?;
+        // La mémoire d'images (R1, RETOURS-11) suit le même contrat :
+        // un accord qui survivrait ferait charger les images distantes
+        // — pixel espion compris — du message qui recycle l'UID, sans
+        // bandeau ni geste (revue 2026-08-28).
+        self.0.execute(
+            "DELETE FROM images_messages WHERE mailbox_id = ?1",
+            [mailbox_id],
+        )?;
         self.0
             .execute("DELETE FROM envelopes WHERE mailbox_id = ?1", [mailbox_id])?;
         self.0.execute(
@@ -1635,6 +1660,10 @@ impl Store {
         )?;
         self.0.execute(
             "DELETE FROM attachments WHERE mailbox_id = ?1 AND uid = ?2",
+            params![mailbox_id, uid],
+        )?;
+        self.0.execute(
+            "DELETE FROM images_messages WHERE mailbox_id = ?1 AND uid = ?2",
             params![mailbox_id, uid],
         )?;
         self.0.execute(
@@ -2377,6 +2406,107 @@ impl Store {
         Ok(epingle)
     }
 
+    /// R1 (PLAN-RETOURS-11, D1-D2) : le choix « Afficher les images »
+    /// du message — clé d'enveloppe, patron de `pins`. Rejouer le
+    /// geste ne change rien (REPLACE).
+    pub fn allow_images_message(&self, mailbox_id: i64, uid: Uid, epoch: i64) -> Result<(), Error> {
+        self.0.execute(
+            "INSERT OR REPLACE INTO images_messages (mailbox_id, uid, epoch)
+             VALUES (?1, ?2, ?3)",
+            params![mailbox_id, uid, epoch],
+        )?;
+        Ok(())
+    }
+
+    /// D3 : pose la règle « toujours afficher les images de cet
+    /// expéditeur » DEPUIS un message — l'adresse est lue de
+    /// l'enveloppe (jamais de l'UI), normalisée en minuscules. Rend
+    /// l'adresse posée ; None si l'enveloppe n'a pas d'adresse (jamais
+    /// une règle vide). N'écrit PAS de choix par message : la règle
+    /// d'expéditeur doit suffire seule, et sa révocation tout défaire.
+    pub fn allow_images_sender_of(
+        &self,
+        mailbox_id: i64,
+        uid: Uid,
+        epoch: i64,
+    ) -> Result<Option<String>, Error> {
+        let adresse: Option<String> = self
+            .0
+            .query_row(
+                "SELECT sender_address FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
+                params![mailbox_id, uid],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+        let Some(adresse) = adresse_images(adresse) else {
+            return Ok(None);
+        };
+        self.0.execute(
+            "INSERT OR REPLACE INTO images_expediteurs (address, epoch) VALUES (?1, ?2)",
+            params![adresse, epoch],
+        )?;
+        Ok(Some(adresse))
+    }
+
+    /// D4 : retire une règle d'expéditeur (la porte de sortie du
+    /// « toujours »). La normalisation passe par LA même autorité que
+    /// la pose — sinon une règle posée deviendrait irrévocable le jour
+    /// où `adresse_images` évolue.
+    pub fn revoke_images_sender(&self, address: &str) -> Result<(), Error> {
+        let Some(adresse) = adresse_images(Some(address.to_string())) else {
+            return Ok(());
+        };
+        self.0.execute(
+            "DELETE FROM images_expediteurs WHERE address = ?1",
+            params![adresse],
+        )?;
+        Ok(())
+    }
+
+    /// Les règles d'expéditeur, pour la liste des Réglages (D4) —
+    /// ordre alphabétique : l'œil y cherche une adresse.
+    pub fn images_senders(&self) -> Result<Vec<String>, Error> {
+        let mut stmt = self
+            .0
+            .prepare("SELECT address FROM images_expediteurs ORDER BY address")?;
+        let adresses = stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(adresses)
+    }
+
+    /// La porte du RENDU (message_body) : ce message a-t-il droit aux
+    /// images distantes ? Choix par message OU règle d'expéditeur —
+    /// l'adresse de l'enveloppe est normalisée par le MÊME chemin que
+    /// l'écriture (une seule autorité, jamais le lower() ASCII de
+    /// SQLite).
+    pub fn images_allowed(&self, mailbox_id: i64, uid: Uid) -> Result<bool, Error> {
+        if self
+            .0
+            .prepare("SELECT 1 FROM images_messages WHERE mailbox_id = ?1 AND uid = ?2")?
+            .exists(params![mailbox_id, uid])?
+        {
+            return Ok(true);
+        }
+        let adresse: Option<String> = self
+            .0
+            .query_row(
+                "SELECT sender_address FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
+                params![mailbox_id, uid],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+        match adresse_images(adresse) {
+            Some(adresse) => Ok(self
+                .0
+                .prepare("SELECT 1 FROM images_expediteurs WHERE address = ?1")?
+                .exists(params![adresse])?),
+            None => Ok(false),
+        }
+    }
+
     /// Les messages d'une conversation, du plus ancien au plus récent —
     /// l'ordre de lecture d'un échange.
     pub fn thread_messages(&self, thread_id: i64) -> Result<Vec<UnifiedRow>, Error> {
@@ -3053,6 +3183,16 @@ fn split_addrs(raw: Option<String>) -> Vec<String> {
 /// Mapping partagé par toutes les lectures d'enveloppes — l'ordre des
 /// colonnes est celui des SELECT ci-dessus (`to_addrs`/`cc_addrs` en
 /// queue, index 9/10).
+/// L'autorité UNIQUE de normalisation d'une adresse pour la mémoire
+/// d'images (R1, PLAN-RETOURS-11) : minuscules Unicode côté Rust —
+/// écriture (`allow_images_sender_of`, `revoke_images_sender`) et
+/// lecture (`images_allowed`) passent toutes par ici.
+fn adresse_images(adresse: Option<String>) -> Option<String> {
+    adresse
+        .map(|a| a.trim().to_lowercase())
+        .filter(|a| !a.is_empty())
+}
+
 fn row_to_envelope(row: &rusqlite::Row<'_>) -> rusqlite::Result<Envelope> {
     Ok(Envelope {
         uid: row.get(0)?,
@@ -6217,6 +6357,109 @@ Etape : {etape}\nPlan :\n{}",
         assert!(!store.toggle_pin(inbox, 1, 1_001).unwrap(), "désépinglé");
         assert!(store.pinned_unified_scoped(None, false).unwrap().is_empty());
         assert_eq!(store.unified_count_scoped(None, false).unwrap(), 3);
+    }
+
+    /// R1 (PLAN-RETOURS-11, D1-D2) : le choix « Afficher les images »
+    /// est une exception EXPLICITE écrite en base, par MESSAGE (clé
+    /// d'enveloppe, patron de `pins`) — rouvrir le message ne
+    /// redemande pas, et le message voisin n'hérite de rien.
+    #[test]
+    fn le_choix_d_images_par_message_persiste_et_ne_deteint_pas() {
+        let (mut store, inbox) = store_with_mailbox();
+        store
+            .upsert_envelopes(
+                inbox,
+                &[envelope(1, "a", 100, true), envelope(2, "b", 200, true)],
+            )
+            .unwrap();
+        assert!(
+            !store.images_allowed(inbox, 1).unwrap(),
+            "bloqué par défaut"
+        );
+        store.allow_images_message(inbox, 1, 1_000).unwrap();
+        assert!(store.images_allowed(inbox, 1).unwrap());
+        assert!(
+            !store.images_allowed(inbox, 2).unwrap(),
+            "le choix est PAR message"
+        );
+    }
+
+    /// R1 (D3-D4) : la règle d'expéditeur se pose DEPUIS un message —
+    /// l'adresse est lue de l'ENVELOPPE (jamais de l'UI), normalisée
+    /// en minuscules — couvre tous ses messages, se liste et se
+    /// révoque.
+    #[test]
+    fn la_regle_d_expediteur_couvre_ses_messages_et_se_revoque() {
+        let (mut store, inbox) = store_with_mailbox();
+        let mut expediteur = envelope(1, "a", 100, true);
+        expediteur.sender_address = Some("No-Reply@Registrar.FR".to_string());
+        let mut pareil = envelope(2, "b", 200, true);
+        pareil.sender_address = Some("no-reply@registrar.fr".to_string());
+        let tiers = envelope(3, "c", 300, true); // alice@example.com
+        store
+            .upsert_envelopes(inbox, &[expediteur, pareil, tiers])
+            .unwrap();
+
+        let posee = store.allow_images_sender_of(inbox, 1, 1_000).unwrap();
+        assert_eq!(
+            posee.as_deref(),
+            Some("no-reply@registrar.fr"),
+            "l'adresse posée est normalisée"
+        );
+        assert!(store.images_allowed(inbox, 1).unwrap());
+        assert!(
+            store.images_allowed(inbox, 2).unwrap(),
+            "tous les messages de l'expéditeur, quelle que soit la casse"
+        );
+        assert!(!store.images_allowed(inbox, 3).unwrap(), "jamais un tiers");
+        assert_eq!(
+            store.images_senders().unwrap(),
+            vec!["no-reply@registrar.fr".to_string()]
+        );
+
+        store.revoke_images_sender("no-reply@registrar.fr").unwrap();
+        assert!(store.images_senders().unwrap().is_empty());
+        assert!(
+            !store.images_allowed(inbox, 1).unwrap(),
+            "révoquée — la garde revient"
+        );
+    }
+
+    /// R1 (revue 2026-08-28) : l'accord d'images PAR MESSAGE meurt au
+    /// changement d'UIDVALIDITY — un UID recyclé ne doit JAMAIS
+    /// hériter d'un consentement (le pixel espion d'un inconnu
+    /// partirait sans bandeau ni geste). Même contrat que
+    /// `invitations`/`attachments` dans `reset_mailbox`.
+    #[test]
+    fn le_reset_uidvalidity_purge_la_memoire_d_images_par_message() {
+        let (mut store, inbox) = store_with_mailbox();
+        store
+            .upsert_envelopes(inbox, &[envelope(1, "a", 100, true)])
+            .unwrap();
+        store.allow_images_message(inbox, 1, 1_000).unwrap();
+        assert!(store.images_allowed(inbox, 1).unwrap());
+
+        store.reset_mailbox(inbox, 2).unwrap();
+        store
+            .upsert_envelopes(inbox, &[envelope(1, "tout autre", 200, true)])
+            .unwrap();
+        assert!(
+            !store.images_allowed(inbox, 1).unwrap(),
+            "un UID recyclé n'hérite d'aucun accord"
+        );
+    }
+
+    /// R1 : une enveloppe SANS adresse d'expéditeur ne pose RIEN —
+    /// jamais une règle vide qui accorderait on ne sait quoi.
+    #[test]
+    fn pas_d_adresse_d_expediteur_pas_de_regle() {
+        let (mut store, inbox) = store_with_mailbox();
+        let mut sans = envelope(1, "a", 100, true);
+        sans.sender_address = None;
+        store.upsert_envelopes(inbox, &[sans]).unwrap();
+        assert_eq!(store.allow_images_sender_of(inbox, 1, 1_000).unwrap(), None);
+        assert!(store.images_senders().unwrap().is_empty());
+        assert!(!store.images_allowed(inbox, 1).unwrap());
     }
 
     /// R4 : l'épingle suit le FIL — posée sur un message, elle tient

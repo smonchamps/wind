@@ -679,3 +679,23 @@ motivée.)
   triage e/Suppr d'A38 et l'anneau :focus-visible sur nœuds recyclés).
 - **Rouvre si** : le terrain ou la bêta le demande — alors concevoir
   le vocabulaire complet (cocher, étendre, tout vider) en une passe.
+
+### D-42 · La mémoire d'images PAR MESSAGE n'a pas de porte de sortie
+
+- **Fait (PLAN-RETOURS-11, revue à regard neuf du 2026-08-28)** : le
+  choix « Afficher les images » d'un message s'écrit en base
+  (`images_messages`, clé d'enveloppe) mais ne se liste ni ne se
+  révoque nulle part — la liste des Réglages (D4) ne couvre que les
+  règles d'expéditeur (`images_expediteurs`). Un clic malencontreux
+  sur un message suspect recharge son pixel distant à chaque
+  réouverture, sans moyen visible de re-bloquer.
+- **Raison du report** : périmètre assumé du chantier — la décision
+  CE D4 n'a tranché la révocation que pour les expéditeurs ; une
+  porte de sortie par message demande sa propre forme (où vivrait le
+  geste ? un bandeau inversé ?).
+- **Borne** : l'accord meurt avec sa boîte (CASCADE), au retrait
+  local du message (`remove_local`) et au changement d'UIDVALIDITY
+  (`reset_mailbox`, purge prouvée par test) — jamais d'héritage par
+  un UID recyclé.
+- **Rouvre si** : le terrain ou la bêta rapporte un « je veux
+  re-bloquer les images de CE message ».

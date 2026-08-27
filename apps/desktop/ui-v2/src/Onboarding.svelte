@@ -1,9 +1,10 @@
 <script>
   // Écran 01, refondu en parcours de premier démarrage (PLAN-RETOURS-8
   // R2, A75 — renverse « l'accueil qui ne réclame qu'une adresse » ;
-  // forme arrêtée au terrain du 2026-08-22, constats 1-8) : quatre
-  // étapes — comptes, disposition, thème, récapitulatif. Chaque étape
-  // dit son titre, puis « Étape n/4 », puis son texte. Deux régimes :
+  // forme arrêtée au terrain du 2026-08-22, constats 1-8) : cinq
+  // étapes — comptes, disposition, thème, bêta (RETOURS-11, terrain du
+  // 2026-08-28), récapitulatif. Chaque étape dit son titre, puis
+  // « Étape n/5 », puis son texte. Deux régimes :
   // `complet` (première installation : le parcours entier, la marque
   // `wind-accueil-fait` posée au Terminer) et guichet seul (un poste
   // revenu à zéro compte : l'accueil sans étapes, qui s'efface au
@@ -12,7 +13,7 @@
   // L'étape 2 montre des CAPTURES RÉELLES de l'application (décor
   // Clarity, e2e/capture-accueil.mjs — constat 5) ; l'étape 3 dessine
   // ses fenêtres aux couleurs de FICHES ET dans la disposition choisie
-  // à l'étape 2 (constat 6). L'étape 4 récapitule les trois choix —
+  // à l'étape 2 (constat 6). L'étape 5 récapitule les trois choix —
   // chacun est une porte qui ramène à son étape (constat 8). Les
   // étapes 2 et 3 ne touchent ni la base ni le réseau :
   // `appliquerVolets` / `appliquerTheme` appliquent ET persistent.
@@ -30,7 +31,7 @@
 
   let { comptes = [], complet = false, onajoute = () => {}, onfini = () => {} } = $props();
 
-  const ETAPES = 4;
+  const ETAPES = 5;
   const APERCUS = { 3: apercu3, 2: apercu2, 1: apercu1 };
   let etape = $state(1);
   // Constat 2 : dès qu'une adresse existe, la barre d'ajout se replie
@@ -195,9 +196,23 @@
           </button>
         {/each}
       </div>
+    {:else if etape === 4}
+      <!-- L'étape bêta (RETOURS-11 R3, terrain du 2026-08-28) : dire
+           que Wind est en bêta et montrer le bouton Feedback de
+           l'entête — l'échantillon est INERTE (aria-hidden sur le
+           dessin), le vrai bouton vit en haut à droite une fois le
+           parcours fini. -->
+      <h3 class="titre display">{t('accueil.betaTitre')}</h3>
+      {@render progression(4)}
+      <p class="sous">{t('accueil.betaSous')}</p>
+      <div class="beta" data-testid="accueil-beta">
+        <span class="echantillon" aria-hidden="true">
+          <Icone nom="feedback" />{t('entete.feedback')}</span>
+        <p class="beta-texte">{t('accueil.betaBouton')}</p>
+      </div>
     {:else}
       <h3 class="titre display">{t('accueil.finTitre')}</h3>
-      {@render progression(4)}
+      {@render progression(5)}
       <p class="sous">{t('accueil.finTexte')}</p>
       <!-- Constat 8 (1re passe) : chaque choix récapitulé est une
            porte vers son étape ; constat 4 (2e passe) : miniatures
@@ -359,6 +374,23 @@
 
   /* Constat 4 (3e passe) : les trois récaps côte à côte, chacun en
      colonne (titre, miniature, valeur). */
+  /* L'étape bêta (RETOURS-11) : l'échantillon du bouton Feedback au
+     dessin exact de l'entête (bordure, rayon de contrôle, 13 px),
+     inerte — le texte explique, le dessin montre. */
+  .beta {
+    display:flex; align-items:center; gap:18px; text-align:left;
+    padding:14px 0;
+  }
+  .echantillon {
+    flex:none; display:inline-flex; align-items:center; gap:8px;
+    height:32px; padding:0 14px; font-size:13px; color:var(--ink);
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--r-controle);
+  }
+  .beta-texte {
+    margin:0; font-size:13px; line-height:1.5; color:var(--ink2);
+  }
+
   .recap { display:flex; gap:12px; align-items:stretch; }
   .ligne-recap {
     position:relative; flex:1; min-width:0; display:flex;

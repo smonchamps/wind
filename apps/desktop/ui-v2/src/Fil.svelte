@@ -15,7 +15,8 @@
   // liens interceptés (lib/liens.js).
   import Icone from './Icone.svelte';
   import {
-    fil, cleMsg, basculerMessage, toutDeplier, toutReplier, afficherImages, estEcho,
+    fil, cleMsg, basculerMessage, toutDeplier, toutReplier, afficherImages,
+    toujoursAfficherImages, estEcho,
   } from './lib/fil.svelte.js';
   import { appel, choisirDestination } from './lib/transport.js';
   import { brancherLiens } from './lib/liens.js';
@@ -434,6 +435,13 @@
                   <button type="button" data-testid="afficher-images"
                           onclick={() => afficherImages(m)}>
                     {t('lecture.afficherImages')}</button>
+                  <!-- D3 (RETOURS-11) : la règle d'expéditeur — jamais
+                       sur un écho (soi-même, pas d'expéditeur tiers). -->
+                  {#if !estEcho(m)}
+                    <button type="button" data-testid="toujours-afficher-images"
+                            onclick={() => toujoursAfficherImages(m)}>
+                      {t('lecture.toujoursAfficherImages')}</button>
+                  {/if}
                 </div>
               {/if}
               <iframe class="corps" sandbox="allow-same-origin" srcdoc={fil.corps[k] ?? ''}
@@ -680,6 +688,9 @@
     padding:10px 14px; display:flex; align-items:center; gap:10px;
     font-size:13px; color:var(--ink2); background:var(--bg);
     border:1px solid var(--border); border-radius:var(--r-controle);
+    /* Deux boutons depuis RETOURS-11 (D3) : en fenêtre étroite ils
+       passent à la ligne plutôt que d'écraser le texte. */
+    flex-wrap:wrap;
   }
   .garde-images :global(.ic) { color:var(--muted); }
   .garde-texte { flex:1; }

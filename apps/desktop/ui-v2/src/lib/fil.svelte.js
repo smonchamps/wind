@@ -23,7 +23,6 @@ const VIDE = () => ({
   // revue v3).
   nbPieces: {},
   imagesBloquees: {},
-  imagesVoulues: {},
   // La carte d'invitation par message (PLAN-INVITATIONS) : la vue
   // arrive AVEC le corps (BodyView.invitation) — aucun aller-retour
   // dédié. `undefined`/`null` = pas de carte ; objet = la carte.
@@ -118,7 +117,6 @@ export function retirerMessage(m) {
   delete fil.pieces[k];
   delete fil.nbPieces[k];
   delete fil.imagesBloquees[k];
-  delete fil.imagesVoulues[k];
   delete fil.invitations[k];
   return fil.messages.length;
 }
@@ -150,8 +148,7 @@ async function chargerMessage(m, avecImages = false) {
           });
       // Le jeton d'ouverture garde chaque écriture : une réponse
       // tardive (images accordées puis sélection changée) n'écrase
-      // jamais l'état d'un fil plus récent — l'opt-in d'images ne
-      // survit pas à la sélection (invariant, revenu à la revue v3).
+      // jamais l'état d'un fil plus récent.
       if (mien !== jeton) return;
       fil.corps[k] = vue.document;
       fil.imagesBloquees[k] = avecImages ? 0 : vue.remote_images_blocked;
@@ -206,11 +203,63 @@ export function toutReplier() {
   for (const m of fil.messages) basculerMessage(m, false);
 }
 
-// Images distantes : bloquées par DÉFAUT (invariant), opt-in PAR
-// MESSAGE — l'accord ne survit pas à la fermeture du fil.
+// Images distantes : bloquées par DÉFAUT (l'invariant qui reste), avec
+// deux exceptions EXPLICITES et PERSISTANTES (RETOURS-11, D1 renverse
+// A43 « l'opt-in ne survit pas à la sélection ») : par message ici,
+// par expéditeur ci-dessous. L'écriture part en tir-et-oublie et le
+// rechargement DANS LE MÊME TOUR : le rendu immédiat n'a pas besoin de
+// l'écriture (`showImages: true` suffit à la session), la file
+// sérialisée du cœur pose l'écriture avant toute lecture future, et
+// `chargerMessage` capture son jeton au clic — un `await` ici rendait
+// la garde anti-course vacante (revue 2026-08-28). Si l'écriture
+// échoue, les images de la session s'affichent quand même et l'échec
+// est dit. Un écho local reste hors mémoire (clé éphémère par nature).
 export function afficherImages(m) {
-  const k = cleMsg(m);
-  if (fil.imagesVoulues[k]) return;
-  fil.imagesVoulues[k] = true;
-  chargerMessage(m, true);
+  if (!estEcho(m)) {
+    appel('allow_images_message', {
+      accountId: m.account_id,
+      mailbox: m.mailbox,
+      uid: m.uid,
+    }).catch((err) => console.error('allow_images_message :', err));
+  }
+  return chargerMessage(m, true);
+}
+
+// D3 : « Toujours afficher les images de cet expéditeur » — l'adresse
+// est résolue par le CŒUR depuis l'enveloppe (l'UI ne parse jamais une
+// adresse) ; la règle est globale au poste et se révoque aux Réglages
+// (D4). Elle n'écrit PAS de choix par message : sa révocation défait
+// tout. Le retour du cœur se LIT : `null` = enveloppe sans adresse,
+// rien n'a été écrit — le dire, sinon la promesse du bouton se rompt
+// en silence (revue 2026-08-28).
+export function toujoursAfficherImages(m) {
+  // Jamais offert sur un écho (le template le garde déjà — ceinture).
+  if (estEcho(m)) return Promise.resolve();
+  const mien = jeton;
+  appel('allow_images_sender', {
+    accountId: m.account_id,
+    mailbox: m.mailbox,
+    uid: m.uid,
+  })
+    .then((adresse) => {
+      if (adresse == null) {
+        console.error(
+          'allow_images_sender : enveloppe sans adresse — aucune règle posée',
+        );
+        return;
+      }
+      if (mien !== jeton) return;
+      // La règle couvre les AUTRES messages du fil dont le bandeau est
+      // levé : les recharger sans opt-in — le cœur départage, un
+      // message d'un tiers re-rend à l'identique.
+      for (const autre of fil.messages) {
+        const ka = cleMsg(autre);
+        if (ka !== cleMsg(m) && (fil.imagesBloquees[ka] ?? 0) > 0) {
+          delete fil.corps[ka];
+          chargerMessage(autre);
+        }
+      }
+    })
+    .catch((err) => console.error('allow_images_sender :', err));
+  return chargerMessage(m, true);
 }

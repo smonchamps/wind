@@ -4,7 +4,7 @@
 //! (PLAN-UI-V2 §4, banc retiré avec le prototype), il reste le décor
 //! des e2e et des sections d'écran du Système.
 //!
-//! Le décor : 18 conversations en réception dont 4 non lues, le fil
+//! Le décor : 19 conversations en réception dont 4 non lues, le fil
 //! « Relecture du contrat Vantis » (3 messages dont une réponse à soi,
 //! pièces jointes), 12 envoyés, 2 brouillons, 3 indésirables (2 non
 //! lus), 64 archives, 3 à la corbeille — répartis sur DEUX comptes
@@ -487,6 +487,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 quand(8, 7, 15),
                 false,
             ),
+            // Second message du MÊME expéditeur à image distante
+            // (PLAN-RETOURS-11 R1) : le filet de la règle « toujours
+            // afficher les images de cet expéditeur » a besoin d'un
+            // autre message que celui du clic — lu et ancien, pour ne
+            // déranger ni les badges ni les premières rangées.
+            message(
+                3,
+                "Confirmation : domaine renouvelé",
+                "Registrar",
+                "no-reply@registrar.fr",
+                "<clarity-c7@exemple.fr>",
+                None,
+                quand(21, 10, 0),
+                true,
+            ),
         ],
     )?;
     store.save_body(
@@ -511,6 +526,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "<p>Bonjour,</p>\n\
          <p>Le domaine atelier-nord.fr expire le 2&nbsp;septembre. Renouvelez-le \
          pour &eacute;viter toute interruption de&nbsp;service.</p>\n\
+         <p>Support</p>\n\
+         <img src=\"https://registrar.exemple/logo.png\" alt=\"Registrar\">",
+        &[],
+    )?;
+    store.save_body(
+        inbox_p,
+        3,
+        "<p>Bonjour,</p>\n\
+         <p>Le domaine atelier-nord.fr est renouvel&eacute; jusqu'au \
+         2&nbsp;septembre de l'an prochain.</p>\n\
          <p>Support</p>\n\
          <img src=\"https://registrar.exemple/logo.png\" alt=\"Registrar\">",
         &[],

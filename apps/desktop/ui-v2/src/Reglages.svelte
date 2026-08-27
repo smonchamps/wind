@@ -10,6 +10,7 @@
   // réglage inventé pour meubler, aucun groupe vide.
   import Icone from './Icone.svelte';
   import Marque from './Marque.svelte';
+  import DrapeauUE from './DrapeauUE.svelte';
   import { tick } from 'svelte';
   import {
     FICHES, appliquerTheme, themeAffiche, suiviOs, appliquerSuiviOs,
@@ -113,6 +114,10 @@
   // thème ; rien à faire échouer, donc rien à faire revenir.
   let volets = $state(voletsActuels());
   let espacement = $state(espacementActuel());
+  // R1 (RETOURS-11, D4) : les règles « toujours afficher les images de
+  // cet expéditeur » — lues du cœur à chaque ouverture, retirées sur
+  // place. La porte de sortie du « toujours ».
+  let expediteursImages = $state([]);
 
   // « Jamais deux cartes sous la même rangée » (revue 2026-08-22) : LE
   // point unique — la prochaine carte s'ajoute ici, pas dans N sites
@@ -147,6 +152,23 @@
     appel('notif_pref_get')
       .then((v) => (bulles = v))
       .catch(() => { /* hors Tauri : le défaut (activées) reste affiché */ });
+    // Remise à zéro AVANT le rechargement : sur échec, montrer la liste
+    // de l'ouverture précédente serait un mensonge (une règle révoquée
+    // ailleurs paraîtrait encore vivante) ; et l'échec se dit (§9 —
+    // jamais avalé).
+    expediteursImages = [];
+    appel('images_senders')
+      .then((liste) => (expediteursImages = liste))
+      .catch((err) => console.error('images_senders :', err));
+  }
+
+  async function retirerExpediteurImages(adresse) {
+    try {
+      await appel('revoke_images_sender', { address: adresse });
+      expediteursImages = expediteursImages.filter((a) => a !== adresse);
+    } catch (err) {
+      console.error('revoke_images_sender :', err);
+    }
   }
   export function fermer() {
     visible = false;
@@ -705,6 +727,28 @@
                   {/each}
                 </select>
               </div>
+              <!-- R1 (RETOURS-11, D4) : les règles « toujours afficher
+                   les images de cet expéditeur », retirables ici. Pas
+                   de groupe neuf pour une liste (A15) ; rien ne
+                   s'affiche tant qu'aucune règle n'existe — jamais une
+                   section vide. -->
+              {#if expediteursImages.length > 0}
+                <div class="reglage">
+                  <span class="libelles">
+                    <span class="nom">{t('reglages.imagesExpediteurs')}</span>
+                    <span class="desc">{t('reglages.imagesExpediteursDesc')}</span>
+                  </span>
+                </div>
+                {#each expediteursImages as adresse (adresse)}
+                  <div class="regle-images" data-testid="expediteur-images">
+                    <span class="adresse-regle">{adresse}</span>
+                    <button type="button" class="ajouter"
+                            data-testid="retirer-expediteur-images"
+                            onclick={() => retirerExpediteurImages(adresse)}>
+                      {t('reglages.retirerExpediteur')}</button>
+                  </div>
+                {/each}
+              {/if}
             </div>
           {:else if groupe === 'notifications'}
             <p class="section">{t('groupe.notifications')}</p>
@@ -846,6 +890,12 @@
               <div class="ligne-apropos">
                 <span class="cle">{t('reglages.icones')}</span>
                 <span class="valeur">{t('reglages.iconesValeur')}</span>
+              </div>
+              <!-- R2 (PLAN-RETOURS-11, verdict CE du STOP visuel) : la
+                   mention d'origine est SANS clé — un label posé seul,
+                   dégagé du bloc clé/valeur qui la précède. -->
+              <div class="origine" data-testid="apropos-origine">
+                <DrapeauUE />{t('reglages.origineValeur')}
               </div>
             </div>
           {/if}
@@ -1109,6 +1159,17 @@
   }
   .langue option { background:var(--surface); color:var(--ink); }
 
+  /* R1 (RETOURS-11, D4) : une règle d'images par rangée — l'adresse et
+     sa porte de sortie, aux jetons de la carte. */
+  .regle-images {
+    display:flex; align-items:center; gap:12px; padding:6px 16px;
+    font-size:13px; color:var(--ink);
+  }
+  .adresse-regle {
+    flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+
   /* Raccourcis : référence en lecture seule, aux jetons. */
   .raccourci {
     display:flex; align-items:center; gap:14px; padding:8px 16px;
@@ -1138,6 +1199,15 @@
   .valeur {
     color:var(--ink); display:inline-flex; flex-wrap:wrap;
     align-items:center; gap:10px; min-width:0;
+  }
+  /* La mention d'origine (R2, RETOURS-11) : sans clé, dégagée du bloc
+     clé/valeur par une marge haute, et ALIGNÉE sur la colonne des
+     valeurs (verdicts CE du STOP visuel) : 16 px du bord + 110 px de
+     clé + 14 px de gouttière = 140 px. */
+  .origine {
+    display:flex; align-items:center; gap:10px; margin-top:18px;
+    padding:10px 16px 10px calc(16px + 110px + 14px);
+    font-size:13px; color:var(--ink);
   }
 
   /* R1 (PLAN-RETOURS-6) : le groupe Signature — un bloc par compte,

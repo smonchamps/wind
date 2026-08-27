@@ -39,12 +39,12 @@ test.afterAll(async () => {
 test("à zéro compte, le parcours accueille — étape 1, le guichet", async () => {
   await expect(page.locator('[data-testid="onboarding"]')).toBeVisible();
   // Terrain 2026-08-22 (constat 1) : « Bienvenue dans Wind », puis
-  // « Étape 1/4 », puis l'invite d'ajout.
+  // « Étape 1/5 », puis l'invite d'ajout.
   await expect(page.locator('[data-testid="onboarding"]')).toContainText(
     'Bienvenue dans Wind',
   );
   await expect(page.locator('[data-testid="accueil-progression"]')).toHaveText(
-    'Étape 1/4',
+    'Étape 1/5',
   );
   await expect(page.locator('[data-testid="onboarding"]')).toContainText(
     'Pour commencer, ajoutez une adresse email.',

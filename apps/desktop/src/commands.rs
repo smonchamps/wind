@@ -1949,8 +1949,24 @@ pub async fn message_body(
     // APRÈS raw_body : si le corps vient d'être rapatrié, ses pièces —
     // et son éventuelle invitation — viennent d'entrer en base : ces
     // comptes-ci sont les frais.
-    let (attachment_count, invitation) = {
+    let (attachment_count, invitation, images_accordees) = {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        // R1 (PLAN-RETOURS-11, D1) : la mémoire de la garde d'images se
+        // consulte ICI — l'autorité est le cœur, l'UI ne décide rien
+        // (elle ne voit qu'un `remote_images_blocked` à zéro, donc pas
+        // de bandeau). Trois lectures indexées au pire (point-lookups
+        // sur PK), et aucune quand `show_images` tranche déjà.
+        let images_accordees = if show_images {
+            true
+        } else {
+            store
+                .sync_state(account_id, &mailbox)
+                .map_err(|err| err.to_string())?
+                .map(|s| store.images_allowed(s.mailbox_id, uid))
+                .transpose()
+                .map_err(|err| err.to_string())?
+                .unwrap_or(false)
+        };
         (
             store
                 .attachments(account_id, &mailbox, uid)
@@ -1960,10 +1976,11 @@ pub async fn message_body(
                 .invitation(account_id, &mailbox, uid)
                 .map_err(|err| err.to_string())?
                 .map(vue_invitation),
+            images_accordees,
         )
     };
 
-    let policy = if show_images {
+    let policy = if images_accordees {
         mail_render::ImagePolicy::AllowRemote
     } else {
         mail_render::ImagePolicy::BlockRemote
@@ -2685,12 +2702,94 @@ pub async fn toggle_pin(
         else {
             return Ok(false);
         };
-        let epoch = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0);
         store
-            .toggle_pin(state.mailbox_id, uid, epoch)
+            .toggle_pin(state.mailbox_id, uid, epoch_maintenant())
+            .map_err(|err| err.to_string())
+    })
+    .await
+}
+
+fn epoch_maintenant() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// R1 (PLAN-RETOURS-11, D1-D2) : mémorise « Afficher les images » pour
+/// CE message — clé d'enveloppe, la garde ne redemandera plus.
+#[tauri::command]
+pub async fn allow_images_message(
+    app: AppHandle,
+    account_id: i64,
+    mailbox: String,
+    uid: u32,
+) -> Result<(), String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        // Boîte inconnue = échec DIT, jamais un succès de façade : l'UI
+        // afficherait « mémorisé » alors que rien n'est écrit (revue
+        // 2026-08-28).
+        let Some(state) = store
+            .sync_state(account_id, &mailbox)
+            .map_err(|err| err.to_string())?
+        else {
+            return Err(format!("boîte inconnue : {mailbox}"));
+        };
+        store
+            .allow_images_message(state.mailbox_id, uid, epoch_maintenant())
+            .map_err(|err| err.to_string())
+    })
+    .await
+}
+
+/// D3 : « Toujours afficher les images de cet expéditeur » — l'adresse
+/// est résolue de l'ENVELOPPE côté cœur (l'UI ne parse jamais une
+/// adresse), normalisée, globale au poste. Rend l'adresse posée (None :
+/// enveloppe sans adresse, rien n'est écrit).
+#[tauri::command]
+pub async fn allow_images_sender(
+    app: AppHandle,
+    account_id: i64,
+    mailbox: String,
+    uid: u32,
+) -> Result<Option<String>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        // Même contrat : l'échec se dit. Le `None` restant (enveloppe
+        // sans adresse — rien n'est écrit) est un vrai cas métier que
+        // l'UI doit distinguer.
+        let Some(state) = store
+            .sync_state(account_id, &mailbox)
+            .map_err(|err| err.to_string())?
+        else {
+            return Err(format!("boîte inconnue : {mailbox}"));
+        };
+        store
+            .allow_images_sender_of(state.mailbox_id, uid, epoch_maintenant())
+            .map_err(|err| err.to_string())
+    })
+    .await
+}
+
+/// D4 : les règles d'expéditeur, pour la liste des Réglages.
+#[tauri::command]
+pub async fn images_senders(app: AppHandle) -> Result<Vec<String>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store.images_senders().map_err(|err| err.to_string())
+    })
+    .await
+}
+
+/// D4 : retire une règle d'expéditeur — la porte de sortie du
+/// « toujours ».
+#[tauri::command]
+pub async fn revoke_images_sender(app: AppHandle, address: String) -> Result<(), String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store
+            .revoke_images_sender(&address)
             .map_err(|err| err.to_string())
     })
     .await

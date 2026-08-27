@@ -276,7 +276,9 @@ test('les dossiers canoniques servent leurs listes', async () => {
 
 test("la Boîte d'un compte borne la liste", async () => {
   await page.locator('[data-testid="nav-boite"]').nth(2).click();
-  await expect(page.locator('[data-testid="ligne"]')).toHaveCount(2);
+  // 3 depuis RETOURS-11 : le décor gagne un second message Registrar
+  // (le filet de la règle d'expéditeur).
+  await expect(page.locator('[data-testid="ligne"]')).toHaveCount(3);
   await page.locator('[data-testid="nav-boite"]').first().click();
   await expect(page.locator('[data-testid="ligne"]').nth(4)).toBeVisible();
 });
@@ -664,20 +666,6 @@ test('la croix vide la recherche en un clic (verdict terrain)', async () => {
   await expect(page.locator('[data-testid="resultats"]')).toHaveCount(0);
 });
 
-test("les images distantes restent bloquées, l'opt-in est par message", async () => {
-  await page.locator('[data-testid="ligne"]', { hasText: 'renouvellement du domaine' }).click();
-  await expect(page.locator('[data-testid="garde-images"]')).toContainText(
-    '1 image distante bloquée',
-  );
-  await page.locator('[data-testid="afficher-images"]').click();
-  await expect(page.locator('[data-testid="garde-images"]')).toHaveCount(0);
-  // Revenir sur le message : la garde est DE RETOUR — l'opt-in ne
-  // survit pas à la sélection.
-  await page.locator('[data-testid="ligne"]').first().click();
-  await page.locator('[data-testid="ligne"]', { hasText: 'renouvellement du domaine' }).click();
-  await expect(page.locator('[data-testid="garde-images"]')).toBeVisible();
-});
-
 test('R3 : le corps reste sur dalle claire même sous un thème sombre (PLAN-RETOURS-4, D3)', async () => {
   // La dalle sombre d'A42 rendait illisible le texte à couleurs
   // d'expéditeur (terrain 2026-08-18). Le corps bake désormais TOUJOURS
@@ -687,6 +675,9 @@ test('R3 : le corps reste sur dalle claire même sous un thème sombre (PLAN-RET
   // vide le cache des corps → relève fraîche sous ce thème) ; l'ancien
   // code aurait baké un fond sombre ici — réintroduire une palette de
   // thème casserait ce test.
+  // Il joue AVANT les tests de mémoire d'images (RETOURS-11) : il
+  // attend la garde visible, donc un message dont rien n'est encore
+  // écrit en base.
   await page.evaluate(() => { document.documentElement.dataset.theme = 'elements-nuit'; });
   await page.locator('[data-testid="ligne"]', { hasText: 'renouvellement du domaine' }).click();
   await expect(page.locator('[data-testid="garde-images"]')).toBeVisible();
@@ -695,6 +686,64 @@ test('R3 : le corps reste sur dalle claire même sous un thème sombre (PLAN-RET
   expect(srcdoc).toContain('color:#222222');
   expect(srcdoc).not.toContain('color-scheme:dark');
   await page.evaluate(() => { delete document.documentElement.dataset.theme; });
+});
+
+test("les images distantes restent bloquées ; « Afficher les images » SURVIT à la sélection (RETOURS-11, D1-D2)", async () => {
+  await page.locator('[data-testid="ligne"]', { hasText: 'renouvellement du domaine' }).click();
+  await expect(page.locator('[data-testid="garde-images"]')).toContainText(
+    '1 image distante bloquée',
+  );
+  await page.locator('[data-testid="afficher-images"]').click();
+  await expect(page.locator('[data-testid="garde-images"]')).toHaveCount(0);
+  // Revenir sur le message : la garde ne revient PAS — le choix est
+  // écrit en base par MESSAGE (D1 renverse l'invariant A43 ; D2 : clé
+  // d'enveloppe). L'ancre est le srcdoc : l'URL RÉELLE de l'image ne
+  // s'y trouve que si le rendu a accordé les images (bloquée, c'est le
+  // pixel neutre) — jamais un compte à 0 lu avant la peinture.
+  await page.locator('[data-testid="ligne"]').first().click();
+  await page.locator('[data-testid="ligne"]', { hasText: 'renouvellement du domaine' }).click();
+  await expect(page.locator('iframe.corps').first()).toHaveAttribute(
+    'srcdoc',
+    /registrar\.exemple\/logo\.png/,
+  );
+  await expect(page.locator('[data-testid="garde-images"]')).toHaveCount(0);
+});
+
+test("« Toujours afficher » : la règle d'expéditeur se pose au bandeau et se révoque aux Réglages (RETOURS-11, D3-D4)", async () => {
+  // L'AUTRE message de Registrar : le choix PAR MESSAGE du test
+  // précédent ne déteint pas sur lui (D2) — sa garde est là. Par la
+  // Boîte du compte personnel : vieux de 21 jours, ce message trie au
+  // fond de la Réception, où la liste fenêtrée ne matérialise pas
+  // forcément sa rangée (selon la hauteur de fenêtre) — la boîte à
+  // 3 rangées, elle, le montre toujours.
+  await page.locator('[data-testid="nav-boite"]').nth(2).click();
+  await page.locator('[data-testid="ligne"]', { hasText: 'domaine renouvelé' }).click();
+  await expect(page.locator('[data-testid="garde-images"]')).toBeVisible();
+  await page.locator('[data-testid="toujours-afficher-images"]').click();
+  await expect(page.locator('iframe.corps').first()).toHaveAttribute(
+    'srcdoc',
+    /registrar\.exemple\/logo\.png/,
+  );
+  await expect(page.locator('[data-testid="garde-images"]')).toHaveCount(0);
+  // Réglages > Affichage : la règle est LISTÉE, et se retire (D4).
+  await page.locator('[data-testid="reglages"]').click();
+  await page.locator('[data-testid="reglages-groupe"][data-groupe="affichage"]').click();
+  const regle = page.locator('[data-testid="expediteur-images"]', {
+    hasText: 'no-reply@registrar.fr',
+  });
+  await expect(regle).toBeVisible();
+  await regle.locator('[data-testid="retirer-expediteur-images"]').click();
+  await expect(page.locator('[data-testid="expediteur-images"]')).toHaveCount(0);
+  await page.locator('[data-testid="reglages-termine"]').click();
+  // Révoquée, la garde REVIENT sur ce message : la preuve que l'accord
+  // venait de la règle d'expéditeur SEULE (« Toujours » n'écrit pas de
+  // choix par message) — le filet est non-vacant par construction.
+  await page.locator('[data-testid="ligne"]').first().click();
+  await page.locator('[data-testid="ligne"]', { hasText: 'domaine renouvelé' }).click();
+  await expect(page.locator('[data-testid="garde-images"]')).toBeVisible();
+  // Rendre la Réception aux tests suivants.
+  await page.locator('[data-testid="nav-boite"]').first().click();
+  await expect(page.locator('[data-testid="ligne"]').nth(4)).toBeVisible();
 });
 
 test('le brouillon vit en liste : mention sur le fil, reprise au dossier, fente muette', async () => {
@@ -785,6 +834,29 @@ test("la ligne de progression porte l'attente non fautive de la boîte d'envoi",
   );
 });
 
+test("le bouton Feedback ouvre le formulaire, et le retour part par la boîte d'envoi (RETOURS-11, terrain bêta)", async () => {
+  // APRÈS le test « 1 envoi en attente » : le retour envoyé ici en fait
+  // un deuxième — l'ordre est l'idiome du fichier (état porté, serial).
+  await page.locator('[data-testid="feedback"]').click();
+  const carte = page.locator('[data-testid="retour-carte"]');
+  await expect(carte).toBeVisible();
+  // « Envoyer » ABSENT tant que le champ est vide — jamais grisé
+  // (la règle maison du parcours d'accueil, D4/RETOURS-8).
+  await expect(carte.locator('[data-testid="retour-envoyer"]')).toHaveCount(0);
+  await carte
+    .locator('[data-testid="retour-texte"]')
+    .fill('La liste défile mal sur mon poste.');
+  await carte.locator('[data-testid="retour-envoyer"]').click();
+  await expect(page.locator('[data-testid="retour-carte"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Merci');
+  // Les comptes du décor n'ont pas de serveur : le retour reste
+  // JOURNALISÉ en boîte d'envoi (queue_send, la règle d'or « jamais
+  // d'envoi perdu ») — la ligne de progression passe à DEUX envois.
+  await expect(page.locator('[data-testid="progression"]')).toContainText(
+    "Boîte d'envoi · 2 envois en attente",
+  );
+});
+
 test('les raccourcis servent le clavier (D3)', async () => {
   // c : écrire ; Échap sort d'abord du champ (les lettres y redeviennent
   // des lettres), le second ferme — vide, rien n'est conservé.
@@ -856,6 +928,12 @@ test("les réglages en deux volets se parcourent au clic ET au clavier (A13)", a
   // À propos : la version RÉELLE de l'application, pas un texte posé.
   await expect(page.locator('[data-testid="apropos-version"]')).toHaveText(/^\d+\.\d+\.\d+/);
   await expect(page.locator('[data-testid="reglages-apropos"]')).toContainText('Apache 2.0');
+  // R2 (PLAN-RETOURS-11, D5) : la mention d'origine — le drapeau UE
+  // (SVG dédié, couleurs figées) et « Made in EU » tel quel.
+  await expect(page.locator('[data-testid="apropos-origine"]')).toContainText('Made in EU');
+  await expect(
+    page.locator('[data-testid="apropos-origine"] svg[data-nom="drapeau-ue"]'),
+  ).toBeVisible();
   // « Vérifier les mises à jour » traverse update_check pour de vrai ;
   // en E2E la commande répond « à jour » (aucun réseau, passation §7.5).
   await page.locator('[data-testid="apropos-verifier"]').click();

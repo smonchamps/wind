@@ -1,4 +1,5 @@
-// Le jeu d'icônes « Elements » (V8 — PLAN-ELEMENTS) : 78 glyphes
+// Le jeu d'icônes « Elements » (V8 — PLAN-ELEMENTS) : 80 glyphes
+// (78 à V8 ; `check` A86, `feedback` RETOURS-11)
 // dessinés en SVG, grille 24, trait 2 unités, bouts nets (butt),
 // jonctions vives (miter). Ce catalogue est LE jeu livré ; le Système
 // (docs/design/systeme.dc.html, section Icônes) porte le relevé — un
@@ -64,6 +65,9 @@ export const JEU = {
   person: { d:['M12 5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 1 0 0-7','M5 20v-1a7 7 0 0 1 14 0v1'] },
   person_add: { d:['M9 5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 1 0 0-7','M2 20v-1a7 7 0 0 1 14 0v1','M19 4v6','M16 7h6'] },
   group_add: { d:['M8 5a3 3 0 1 0 0 6 3 3 0 1 0 0-6','M2 19v-1a6 6 0 0 1 12 0v1','M19 4v6','M16 7h6'] },
+  // Le retour beta (PLAN-RETOURS-11 R3) : bulle a queue + deux lignes
+  // de texte. `forum` garde « conversation » (la puce de fil).
+  feedback: { d:['M4 4h16v12H10l-4 4v-4H4z','M8 9h8','M8 12h5'] },
   settings: { d:['M4 8h16','M14 5v6','M4 16h16','M9 13v6'] },
   display_settings: { d:['M3 5h18v12H3z','M6 11h12','M10 9v4','M9 20h6'] },
   keyboard: { d:['M3 7h18v10H3z','M7 14h10','M7 10h2','M11 10h2','M15 10h2'] },

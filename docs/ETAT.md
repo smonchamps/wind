@@ -12,7 +12,33 @@
 
 ## Où on en est, et quoi faire en premier
 
-✅ **AUCUN CHANTIER EN COURS.** Dernier soldé :
+🔧 **CHANTIER EN COURS : [PLAN-RETOURS-11](PLAN-RETOURS-11.md)**
+(ouvert 2026-08-27, GO CE D1-D9 le jour même, **terrain VALIDÉ le
+2026-08-28 en deux passes**). Trois retours : (1) **la garde d'images
+a une mémoire** — « Afficher les images » persiste par MESSAGE (clé
+d'enveloppe, patron `pins` ; renverse l'invariant A43, décision D1) et
+« Toujours afficher les images de cet expéditeur » pose une règle
+globale au poste (adresse exacte normalisée, autorité au CŒUR dans
+`message_body`), révocable aux Réglages > Affichage (D4) — A89 ;
+(2) **« Made in EU »** + drapeau UE (SVG figé hors thèmes, hors
+registre) dans À propos — A90 ; (3) **la bêta est lancée** :
+[PLAN-BETA.md](PLAN-BETA.md) (actions datées), [BETA.md](BETA.md)
+(guide testeur), et — constats terrain du 28, corrigés le jour même —
+le **bouton Feedback** à l'entête (glyphe neuf, envoi par `queue_send`
+vers feedback-wind@fcts.io, `flush_outbox` immédiat) et l'**étape
+d'accueil 4/5 « Wind est en bêta »** (A91, textes CE mot pour mot).
+⚠️ L'adresse des retours **ne reçoit pas encore** (alias fcts.io,
+prouvé hors Wind — action CE bloquante avant toute invitation, au
+PLAN-BETA). Revue à regard neuf 8 angles / 10 retenues / 9 corrigées
+(dont la purge `reset_mailbox` de la mémoire d'images — un UID recyclé
+aurait hérité d'un consentement, TDD) ; dette neuve **D-42**
+(révocation par message absente). e2e 148 → **150**, gates complètes
+vertes (2,1-2,6 min). **Reste : commit, push, CI verte — puis release
+0.12.0 (MINEUR, D6) et `/solde`.**
+
+---
+
+Dernier chantier soldé :
 **[PLAN-RETOURS-10](PLAN-RETOURS-10.md)** (2026-08-27, ouvert et clos
 le même jour, commit `a72f341`, CI verte run 33111561147) — quatre
 retours CE : **sélection multiple** (Ctrl-clic qui coche ET déplace le
@@ -228,7 +254,11 @@ alors que le travail d'un repère est de distinguer douze comptes. À ne
 pas re-proposer sans raison neuve.
 
 **Ensuite : la bêta fermée 20-50 utilisateurs** ([PLAN.md](PLAN.md)
-§4, dernière étape avant le gate 5) — rien n'est engagé.
+§4, dernière étape avant le gate 5) — **ENGAGÉE le 2026-08-28**
+(PLAN-RETOURS-11 R3) : plan d'actions à [PLAN-BETA.md](PLAN-BETA.md),
+guide testeur à [BETA.md](BETA.md), bouton Feedback dans l'app (A91).
+Première vague D9 : 5-10 proches, dès que l'adresse des retours
+reçoit (action CE bloquante).
 
 **perf-lecture est éteint** (décision CE D1 du 2026-08-21) : le
 symptôme (corps à la demande bridé à ~7 s au lancement, terrain du
@@ -896,7 +926,11 @@ non rendu → SMIL). Dette ouverte : D-8 (sondes chères, hors pompe).
 ### Le chantier suivant : bêta fermée 20-50 utilisateurs
 
 Dernière étape avant le gate 5 ([PLAN.md](PLAN.md) §4). Kaizen
-hebdomadaire sur les frictions **observées**. Rien n'est engagé.
+hebdomadaire sur les frictions **observées**. **Engagée le
+2026-08-28** (PLAN-RETOURS-11 R3) : actions à
+[PLAN-BETA.md](PLAN-BETA.md), guide à [BETA.md](BETA.md), canal de
+retours dans l'app (bouton Feedback, A91) — bloquant restant : faire
+recevoir `feedback-wind@fcts.io` (alias fcts.io, côté CE).
 
 ### La longue traîne en cours
 

@@ -23,6 +23,14 @@ export const FR = {
   'entete.effacerRecherche': 'Effacer la recherche',
   'entete.ecrire': 'Écrire',
   'entete.reglages': 'Réglages',
+  // Le retour bêta (RETOURS-11 R3) : le mot du CE, tel quel.
+  'entete.feedback': 'Feedback',
+  'retour.titre': 'Feedback',
+  // Texte arrêté par le CE au terrain du 2026-08-28, mot pour mot.
+  'retour.sous':
+    'Dites-nous ce qui cloche ou ce qui manque dans ce formulaire. Lorsque vous cliquez sur Envoyer, il nous transmet votre retour par email à feedback-wind@fcts.io. Nous lisons tous les retours, ils nous sont très précieux !',
+  'retour.placeholder': 'Votre retour…',
+  'retour.merci': 'Merci pour votre retour !',
 
   // --- Barre de statut --------------------------------------------------
   'statut.recherche': 'Recherche · {n} résultat|Recherche · {n} résultats',
@@ -210,6 +218,7 @@ export const FR = {
   'lecture.ouvrir': 'Ouvrir',
   'lecture.imagesBloquees': '{n} image distante bloquée pour protéger votre vie privée.|{n} images distantes bloquées pour protéger votre vie privée.',
   'lecture.afficherImages': 'Afficher les images',
+  'lecture.toujoursAfficherImages': 'Toujours afficher les images de cet expéditeur',
   'lecture.corps': 'Contenu du message',
   'lecture.enregistrer': 'Enregistrer…',
   'lecture.voileEnregistrer': 'Enregistrer',
@@ -333,6 +342,13 @@ export const FR = {
   'accueil.voletsSous': 'Vous pourrez la changer plus tard dans Réglages > Affichage.',
   'accueil.themeTitre': 'Choisissez votre thème',
   'accueil.themeSous': 'Vous pourrez le changer plus tard dans Réglages > Thèmes.',
+  'accueil.betaTitre': 'Wind est en bêta',
+  // Textes arrêtés par le CE au terrain du 2026-08-28 ; le texte du
+  // bouton est LE MÊME que celui de la fenêtre de feedback (retour.sous).
+  'accueil.betaSous':
+    'Vous utilisez une version Bêta de Wind. Certaines fonctionnalités peuvent évoluer, mais toutes doivent fonctionner sans problème.',
+  'accueil.betaBouton':
+    'Dites-nous ce qui cloche ou ce qui manque dans ce formulaire. Lorsque vous cliquez sur Envoyer, il nous transmet votre retour par email à feedback-wind@fcts.io. Nous lisons tous les retours, ils nous sont très précieux !',
   'accueil.finTitre': 'Tout est prêt.',
   'accueil.finTexte': 'Vérifiez vos choix avant de continuer.',
   'accueil.revenir': 'Revenir à cette étape',
@@ -391,6 +407,10 @@ export const FR = {
   'espacement.faible': 'Faible',
   'espacement.moyen': 'Moyen',
   'espacement.eleve': 'Élevé',
+  'reglages.imagesExpediteurs': 'Images distantes',
+  'reglages.imagesExpediteursDesc':
+    "Les images des messages de ces expéditeurs s'affichent toujours, sans demande.",
+  'reglages.retirerExpediteur': 'Retirer',
   'nav.ouvrirTiroir': 'Ouvrir la navigation',
   'nav.fermerTiroir': 'Fermer la navigation',
   'volets.poigneeNav': 'Régler la largeur de la navigation',
@@ -415,6 +435,9 @@ export const FR = {
   'reglages.signatureTous': 'Appliquer à tous les comptes',
   'reglages.icones': 'Icônes',
   'reglages.iconesValeur': "Jeu original de Wind, dessiné d'après Material Symbols (Google, Apache 2.0) ; aucun réseau.",
+  // D5 (PLAN-RETOURS-11) : le label tel quel, identique dans les deux
+  // langues ; sans clé (verdict CE du STOP visuel).
+  'reglages.origineValeur': 'Made in EU',
 
   // --- Raccourcis (table D3, référence) ---------------------------------
   'raccourci.touche.c': 'c',

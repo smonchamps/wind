@@ -21,6 +21,12 @@ export const EN = {
   'entete.effacerRecherche': 'Clear search',
   'entete.ecrire': 'Compose',
   'entete.reglages': 'Settings',
+  'entete.feedback': 'Feedback',
+  'retour.titre': 'Feedback',
+  'retour.sous':
+    'Tell us what is broken or missing in this form. When you click Send, it forwards your feedback by email to feedback-wind@fcts.io. We read every piece of feedback — it is invaluable to us!',
+  'retour.placeholder': 'Your feedback…',
+  'retour.merci': 'Thank you for your feedback!',
 
   // --- Barre de statut --------------------------------------------------
   'statut.recherche': 'Search · {n} result|Search · {n} results',
@@ -206,6 +212,7 @@ export const EN = {
   'lecture.ouvrir': 'Open',
   'lecture.imagesBloquees': '{n} remote image blocked to protect your privacy.|{n} remote images blocked to protect your privacy.',
   'lecture.afficherImages': 'Show images',
+  'lecture.toujoursAfficherImages': 'Always show images from this sender',
   'lecture.corps': 'Message content',
   'lecture.enregistrer': 'Save…',
   'lecture.voileEnregistrer': 'Save',
@@ -329,6 +336,11 @@ export const EN = {
   'accueil.voletsSous': 'You can change it later in Settings > Display.',
   'accueil.themeTitre': 'Choose your theme',
   'accueil.themeSous': 'You can change it later in Settings > Themes.',
+  'accueil.betaTitre': 'Wind is in beta',
+  'accueil.betaSous':
+    'You are using a beta version of Wind. Some features may still evolve, but everything should work without problems.',
+  'accueil.betaBouton':
+    'Tell us what is broken or missing in this form. When you click Send, it forwards your feedback by email to feedback-wind@fcts.io. We read every piece of feedback — it is invaluable to us!',
   'accueil.finTitre': 'All set.',
   'accueil.finTexte': 'Check your choices before finishing.',
   'accueil.revenir': 'Return to this step',
@@ -385,6 +397,10 @@ export const EN = {
   'espacement.faible': 'Low',
   'espacement.moyen': 'Medium',
   'espacement.eleve': 'High',
+  'reglages.imagesExpediteurs': 'Remote images',
+  'reglages.imagesExpediteursDesc':
+    'Images in messages from these senders always load, without asking.',
+  'reglages.retirerExpediteur': 'Remove',
   'nav.ouvrirTiroir': 'Open navigation',
   'nav.fermerTiroir': 'Close navigation',
   'volets.poigneeNav': 'Resize the navigation pane',
@@ -408,6 +424,7 @@ export const EN = {
   'reglages.signatureTous': 'Apply to all accounts',
   'reglages.icones': 'Icons',
   'reglages.iconesValeur': "Wind's original set, drawn after Material Symbols (Google, Apache 2.0); no network.",
+  'reglages.origineValeur': 'Made in EU',
 
   // --- Raccourcis (table D3, référence) ---------------------------------
   'raccourci.touche.c': 'c',

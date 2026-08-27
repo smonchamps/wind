@@ -167,7 +167,7 @@ test('le parcours de premier démarrage : quatre étapes, retour compris', async
   const accueil = page.locator('[data-testid="onboarding"]');
   await expect(accueil).toBeVisible();
   await expect(page.locator('[data-testid="accueil-progression"]')).toHaveText(
-    'Étape 1/4',
+    'Étape 1/5',
   );
   await expect(page.locator('[data-testid="accueil-comptes"]')).toContainText(
     'un@exemple.fr',
@@ -183,11 +183,11 @@ test('le parcours de premier démarrage : quatre étapes, retour compris', async
   // Étape 2 : les trois aperçus de volets. Retour d'abord : l'étape 1
   // revient, comptes toujours là — la progression ne se perd pas.
   await expect(page.locator('[data-testid="accueil-progression"]')).toHaveText(
-    'Étape 2/4',
+    'Étape 2/5',
   );
   await page.locator('[data-testid="accueil-retour"]').click();
   await expect(page.locator('[data-testid="accueil-progression"]')).toHaveText(
-    'Étape 1/4',
+    'Étape 1/5',
   );
   await expect(page.locator('[data-testid="accueil-comptes"]')).toContainText(
     'deux@exemple.fr',
@@ -210,18 +210,26 @@ test('le parcours de premier démarrage : quatre étapes, retour compris', async
   // Étape 3 : les deux fiches en aperçu (V7) ; choisir « Elements ·
   // nuit » pose le thème sur l'instant (data-theme sur la racine).
   await expect(page.locator('[data-testid="accueil-progression"]')).toHaveText(
-    'Étape 3/4',
+    'Étape 3/5',
   );
   await expect(page.locator('[data-testid="accueil-theme"]')).toHaveCount(2);
   await page.locator('[data-testid="accueil-theme"][data-theme-id="elements-nuit"]').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'elements-nuit');
   await page.locator('[data-testid="accueil-continuer"]').click();
 
-  // Étape 4 : le récapitulatif (constat 8) — les trois choix, chacun
+  // Étape 4 (RETOURS-11, terrain bêta) : Wind est en bêta — l'étape
+  // présente le bouton Feedback de l'entête et ce qu'il fait.
+  await expect(page.locator('[data-testid="accueil-progression"]')).toHaveText(
+    'Étape 4/5',
+  );
+  await expect(page.locator('[data-testid="accueil-beta"]')).toContainText('Feedback');
+  await page.locator('[data-testid="accueil-continuer"]').click();
+
+  // Étape 5 : le récapitulatif (constat 8) — les trois choix, chacun
   // porte vers son étape. Le clic sur « Disposition » y RETOURNE, puis
   // le parcours revient.
   await expect(page.locator('[data-testid="accueil-progression"]')).toHaveText(
-    'Étape 4/4',
+    'Étape 5/5',
   );
   const recap = page.locator('[data-testid="accueil-recap"]');
   await expect(recap).toContainText('un@exemple.fr');
@@ -233,12 +241,13 @@ test('le parcours de premier démarrage : quatre étapes, retour compris', async
   );
   await page.locator('[data-testid="recap-volets"]').click();
   await expect(page.locator('[data-testid="accueil-progression"]')).toHaveText(
-    'Étape 2/4',
+    'Étape 2/5',
   );
   await page.locator('[data-testid="accueil-continuer"]').click();
   await page.locator('[data-testid="accueil-continuer"]').click();
+  await page.locator('[data-testid="accueil-continuer"]').click();
   await expect(page.locator('[data-testid="accueil-progression"]')).toHaveText(
-    'Étape 4/4',
+    'Étape 5/5',
   );
   // Terminer ouvre la fenêtre standard — en DEUX volets (le choix de
   // l'étape 2 a tenu) : pas de volet de lecture dans la grille. Sous la
@@ -268,10 +277,11 @@ test('un parcours abandonné à mi-course REPREND — jamais réputé accueilli'
   await page.reload();
   await expect(page.locator('[data-testid="onboarding"]')).toBeVisible();
   await expect(page.locator('[data-testid="accueil-progression"]')).toHaveText(
-    'Étape 1/4',
+    'Étape 1/5',
   );
   // Terminer proprement : la clé se pose (le VRAI chemin d'écriture),
   // l'app revient aux suites suivantes.
+  await page.locator('[data-testid="accueil-continuer"]').click();
   await page.locator('[data-testid="accueil-continuer"]').click();
   await page.locator('[data-testid="accueil-continuer"]').click();
   await page.locator('[data-testid="accueil-continuer"]').click();

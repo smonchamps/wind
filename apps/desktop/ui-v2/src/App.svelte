@@ -27,6 +27,7 @@
   import Conversation from './Conversation.svelte';
   import Composition from './Composition.svelte';
   import Reglages from './Reglages.svelte';
+  import Retour from './Retour.svelte';
   import Onboarding from './Onboarding.svelte';
   import FenteAvis from './FenteAvis.svelte';
   import ModaleMigration from './ModaleMigration.svelte';
@@ -44,6 +45,8 @@
   let conversation = $state(null);
   let composition = $state(null);
   let reglages = $state(null);
+  // Le formulaire de retour bêta (RETOURS-11 R3, terrain 2026-08-28).
+  let retour = $state(null);
   let modaleMigration = $state(null);
   let champRecherche = $state(null);
 
@@ -1489,6 +1492,12 @@
       {/if}</span>
     <button type="button" class="principal" data-testid="ecrire" onclick={ecrire}>
       <Icone nom="edit_square" />{t('entete.ecrire')}</button>
+    <!-- Le retour bêta (RETOURS-11 R3) : sans compte, pas de bouton —
+         le message part par email depuis le premier compte du poste. -->
+    {#if comptes.length > 0}
+      <button type="button" data-testid="feedback" onclick={() => retour.ouvrir()}>
+        <Icone nom="feedback" />{t('entete.feedback')}</button>
+    {/if}
     <button type="button" data-testid="reglages" onclick={() => reglages.ouvrir()}>
       <Icone nom="settings" />{t('entete.reglages')}</button>
   </header>
@@ -1627,6 +1636,7 @@
                  onflash={flash} onenvoye={apresEnvoi}
                  oncourrier={apresCourrierEnvoye}
                  onbrouillon={sonderBrouillons} />
+    <Retour bind:this={retour} {comptes} onflash={flash} />
     <Reglages bind:this={reglages} {comptes} {connectes} {reperes} {noms}
               onrepere={patcherRepere} onnom={patcherNom} onajoute={compteAjoute}
               onsupprime={compteRetire}
