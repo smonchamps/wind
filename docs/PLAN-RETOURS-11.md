@@ -1,18 +1,31 @@
 # PLAN-RETOURS-11 — trois retours CE (mémoire d'images, Made in EU, bêta)
 
-> Ouvert le 2026-08-27, GO CE au STOP 1 le jour même (D1-D9, §5).
-> **Terrain VALIDÉ le 2026-08-28 en DEUX passes** : première passe —
-> R1 « OK », R2 « OK », et DEUX constats bêta posés en route (T1
-> bouton Feedback, T2 étape d'accueil bêta — §7), **corrigés dans la
-> session** ; seconde passe : « Ok sur les gestes ». La non-réception
-> à l'adresse des retours est tranchée HORS Wind (des emails d'un
-> autre client n'arrivent pas non plus — alias fcts.io, action CE).
+> **CHANTIER SOLDÉ le 2026-08-28 — terrain complet.** Ouvert le
+> 2026-08-27, GO CE au STOP 1 le jour même (D1-D9, §5) ; **terrain
+> VALIDÉ le 2026-08-28 en DEUX passes** : première passe — R1 « OK »,
+> R2 « OK », DEUX constats bêta posés en route (T1 bouton Feedback,
+> T2 étape d'accueil — §6), **corrigés dans la session** (+ le départ
+> immédiat `flush_outbox`, constat de seconde passe) ; seconde passe :
+> « Ok sur les gestes ». La non-réception à l'adresse des retours est
+> tranchée HORS Wind (échec identique depuis un autre client — alias
+> fcts.io, action CE au PLAN-BETA). Commits `a562fdd` (feat, CI verte
+> run 33127472066) et `a9f93e0` (release, CI verte run 33127940550).
+> **LIVRÉ en 0.12.0, PUBLIÉE le 2026-08-28** (MINEUR, D6), **vérifiée
+> §2.10 : 18/18 PASS** (5 assets, latest.json sans BOM 1 590 o aux
+> deux clés, signatures distinctes, exe arm64 5 663 062 o / x64
+> 6 397 363 o) et **prouvée au terrain : « Release ok, auto update ok
+> sur les deux postes »** — le jour même.
+>
 > Revue à regard neuf 8 angles / 22 candidats / 10 retenus / 9
 > corrigés avant terrain (dont la purge `reset_mailbox` de la mémoire
 > d'images — bug de vie privée, TDD) ; dette D-42. e2e 148 → **150** ;
-> glyphe `feedback` neuf (80) ; A89-A91. Trois STOP visuels R2, un
-> STOP visuel R1, deux STOP visuels bêta (textes CE mot pour mot).
-> Reste : commit, push, CI — puis release **0.12.0** (D6).
+> glyphe `feedback` neuf (80) ; A89-A91. Six STOP visuels (3 R2, 1 R1,
+> 2 bêta — textes CE mot pour mot).
+>
+> Chiffres kaizen : 4 gates complètes jouées (1 rouge fmt corrigée sur
+> place, 3 vertes 2,2-2,6 min) + 2 pre-push ; 3 constats KO au STOP 2
+> (T1, T2, flush), tous corrigés le jour même ; session 3,3 h, 540
+> tours, équiv. input 24,3 M (fil) + 4,8 M (10 agents).
 
 ## 1. Constat — instruction sur pièces (2026-08-27)
 

@@ -12,9 +12,12 @@
 
 ## Où on en est, et quoi faire en premier
 
-🔧 **CHANTIER EN COURS : [PLAN-RETOURS-11](PLAN-RETOURS-11.md)**
-(ouvert 2026-08-27, GO CE D1-D9 le jour même, **terrain VALIDÉ le
-2026-08-28 en deux passes**). Trois retours : (1) **la garde d'images
+✅ **AUCUN CHANTIER EN COURS.** Dernier soldé :
+**[PLAN-RETOURS-11](PLAN-RETOURS-11.md)** (2026-08-27 → 28, commits
+`a562fdd`/`a9f93e0`, CI verte runs 33127472066/33127940550, **LIVRÉ
+en 0.12.0 PUBLIÉE le 2026-08-28, vérifiée 18/18 et auto-update prouvé
+aux DEUX postes le jour même** — GO CE : « Release ok, auto update ok
+sur les deux postes »). Trois retours : (1) **la garde d'images
 a une mémoire** — « Afficher les images » persiste par MESSAGE (clé
 d'enveloppe, patron `pins` ; renverse l'invariant A43, décision D1) et
 « Toujours afficher les images de cet expéditeur » pose une règle
@@ -32,13 +35,15 @@ prouvé hors Wind — action CE bloquante avant toute invitation, au
 PLAN-BETA). Revue à regard neuf 8 angles / 10 retenues / 9 corrigées
 (dont la purge `reset_mailbox` de la mémoire d'images — un UID recyclé
 aurait hérité d'un consentement, TDD) ; dette neuve **D-42**
-(révocation par message absente). e2e 148 → **150**, gates complètes
-vertes (2,1-2,6 min). **Reste : commit, push, CI verte — puis release
-0.12.0 (MINEUR, D6) et `/solde`.**
+(révocation par message absente). e2e 148 → **150**, 4 gates
+complètes (2,2-2,6 min). Plus rien n'est dû sur cette version. **Le
+prochain sujet : la première vague bêta** (PLAN-BETA — bloquant CE :
+faire recevoir `feedback-wind@fcts.io`, prouvé en panne le 28 depuis
+tout client ; puis inviter 5-10 proches, D9).
 
 ---
 
-Dernier chantier soldé :
+Le chantier soldé précédent :
 **[PLAN-RETOURS-10](PLAN-RETOURS-10.md)** (2026-08-27, ouvert et clos
 le même jour, commit `a72f341`, CI verte run 33111561147) — quatre
 retours CE : **sélection multiple** (Ctrl-clic qui coche ET déplace le
@@ -268,7 +273,15 @@ le redit ; le WIP d'alors avait été retiré (décision CE du
 2026-08-20), sa matière reste au § revue de
 [PLAN-COMPOSITION-HTML](PLAN-COMPOSITION-HTML.md).
 
-**Dernière version livrée : 0.11.0** (publiée **2026-08-27**, tag nu
+**Dernière version livrée : 0.12.0** (publiée **2026-08-28**, tag nu
+sur `a9f93e0`, marquée Latest, **vérifiée 18/18** par
+`scripts/verifier-release.ps1` et **auto-update 0.11.0 → 0.12.0
+prouvé aux DEUX postes le jour même**). Elle porte PLAN-RETOURS-11 :
+la mémoire de la garde d'images (par message et par expéditeur,
+révocable), le bouton Feedback et l'étape d'accueil bêta, « Made in
+EU » dans À propos.
+
+**La version précédente, 0.11.0** (publiée **2026-08-27**, tag nu
 sur `d0f9c8c`, marquée Latest, vérifiée 18/18 et prouvée aux deux
 postes le jour même — détail plus haut). Elle porte PLAN-RETOURS-10 :
 la sélection multiple (fil entier, D6), l'icône Windows Elements, la
