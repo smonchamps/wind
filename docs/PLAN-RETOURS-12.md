@@ -1,11 +1,21 @@
 # PLAN-RETOURS-12 — cinq retours CE du 2026-08-28
 
-> Statut : **TERRAIN VALIDÉ** — GO CE du 2026-08-28 (STOP 1), D1-D6
-> tranchées ; E1-E5 implémentées le jour même, STOP visuel validé
-> (« GO, continuer ») ; revue à regard neuf 8 angles / 10 retenues / 8
-> corrigées (§4bis) ; gate complète VERTE (2,8 min, e2e 150 → 153) ;
-> **terrain CE 4/4 le 2026-08-29** (« Terrain ok sur les 4 points, tu
-> peux commiter et pousser »). Reste : commit, push, CI verte, /solde.
+> **CHANTIER SOLDÉ le 2026-08-29 — terrain complet.** GO CE du
+> 2026-08-28 (STOP 1, D1-D6 tranchées) ; E1-E5 implémentées le jour
+> même, STOP visuel validé (« GO, continuer ») ; revue à regard neuf
+> 8 angles / 10 retenues / 8 corrigées (§4bis), dettes D-43/D-44 ;
+> gate complète VERTE (2,8 min, e2e 150 → **153**) ; **terrain CE 4/4
+> le 2026-08-29, zéro constat** (« Terrain ok sur les 4 points ») ;
+> commits `60225b0` (chantier) + `331832d` (piège d'outillage payé au
+> pre-push : le gabarit de seed périme à MINUIT, pas seulement au TTL
+> — deux specs rouges à 00 h, verts après purge ; launch.mjs exige
+> désormais le même jour calendaire) ; **CI verte run 33216010954**.
+> Journal A92 (entête deux lignes) / A93 (marque 28 px). À livrer à la
+> prochaine release (entrée CHANGELOG 0.13.0 écrite au solde, §2.9).
+>
+> Kaizen : 2 gates complètes jouées (1 rouge fmt) + 2 pre-push (1
+> rouge minuit) ; 0 constat KO au STOP 2 ; agents : 3 reconnaissance +
+> 8 revue (~370 k tokens agents).
 >
 > Livré : E1 (compteAjoute rappelle connecter(), e2e RED→GREEN,
 > couture `__e2eAjout`), E2 (entête deux lignes + `noms_adresses`

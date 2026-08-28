@@ -12,6 +12,26 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.13.0] - à venir
+
+L'entête des messages dit tout, et les petits accrocs s'effacent.
+
+### Ajouté
+
+- **L'entête d'un message dit qui, à qui, en toutes lettres.** En tête
+  de chaque message ouvert : l'expéditeur avec son adresse
+  (« Camille Rousseau <c.rousseau@…> »), puis « À : » avec chaque
+  destinataire — et « Cc : » quand il y en a. Wind retrouve les noms
+  des destinataires grâce aux correspondants qu'il connaît déjà.
+
+### Corrigé
+
+- **Un compte ajouté pendant que Wind est ouvert se dit connecté.**
+  Réglages > Comptes le marquait « Déconnecté » jusqu'au prochain
+  démarrage, alors qu'il venait d'être connecté.
+- **Le logo Wind en haut à gauche est plus présent** (28 px au lieu
+  de 24).
+
 ## [0.12.0] - 2026-08-28
 
 Wind se souvient de vos choix d'images, et la bêta s'outille.

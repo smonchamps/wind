@@ -13,6 +13,42 @@
 ## Où on en est, et quoi faire en premier
 
 ✅ **AUCUN CHANTIER EN COURS.** Dernier soldé :
+**[PLAN-RETOURS-12](PLAN-RETOURS-12.md)** (2026-08-28 → 29, commits
+`60225b0`/`331832d`, CI verte run 33216010954, terrain CE **4/4 le
+2026-08-29, zéro constat**). Cinq retours : (1) **un compte ajouté
+Wind ouvert se dit connecté** — `compteAjoute()` rappelle
+`connecter()` (le tableau `connectes` n'était rempli qu'au démarrage),
+la nav se recharge AVANT le réseau ; couture e2e `__e2eAjout` ;
+(2) **la taille du package est PLATE, fait mesuré sur 12 releases**
+(arm64 5,04 → 5,66 Mo, une seule marche +0,44 Mo à la 0.6.0 bi-arch ;
+x64 ±1 %) — le bandeau de MAJ plus long vient du chemin honnête de la
+0.10.2, pas des octets ; chemin instrumenté (durées manifeste /
+téléchargement / écriture / spawn), **traces visibles SEULEMENT via
+`lancer-wind.ps1`** (app fenêtrée sans stderr) ; (3) **marque
+d'entête 28 px** (A93 — au passage, la fiche V11 portait « Wind
+15 px », faux : 18 px réels, corrigée) ; (4) **les versions du
+workspace Cargo suivent la version produit** (0.1.0 gelé depuis
+l'origine → 0.12.0 ; `faire-release.ps1` bumpe désormais les deux,
+validations avant toute écriture) ; (5) **l'entête du message en deux
+lignes** (A92) : « Nom <adresse> sur Boîte » (règle D7 conservée) puis
+« À : Nom <adresse>, … » et « Cc : … » si présents — les noms des
+destinataires viennent de l'**annuaire des correspondants**
+(commande `noms_adresses`, lookup PK borné aux À/Cc du fil, ~0,2 ms ;
+cache `cacheNoms` survivant à la bascule de cadre). Revue à regard
+neuf 8 angles / 10 retenues / **8 corrigées** ; dettes neuves
+**D-43** (écho sans Cc) et **D-44** (`connectes` sans cycle de
+rafraîchissement — le symptôme miroir de R1). e2e 150 → **153**.
+**Piège d'outillage payé et gravé** : le gabarit de seed e2e périme à
+MINUIT même « frais » au TTL (deux specs rouges au pre-push de 00 h ;
+`launch.mjs` exige désormais le même jour calendaire). À livrer à la
+prochaine release — l'entrée CHANGELOG 0.13.0 est écrite. **Le
+prochain sujet reste la première vague bêta** (PLAN-BETA — bloquant
+CE : faire recevoir `feedback-wind@fcts.io` ; puis inviter 5-10
+proches, D9).
+
+---
+
+Le chantier soldé précédent :
 **[PLAN-RETOURS-11](PLAN-RETOURS-11.md)** (2026-08-27 → 28, commits
 `a562fdd`/`a9f93e0`, CI verte runs 33127472066/33127940550, **LIVRÉ
 en 0.12.0 PUBLIÉE le 2026-08-28, vérifiée 18/18 et auto-update prouvé

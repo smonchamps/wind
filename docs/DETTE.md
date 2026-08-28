@@ -699,3 +699,36 @@ motivée.)
   un UID recyclé.
 - **Rouvre si** : le terrain ou la bêta rapporte un « je veux
   re-bloquer les images de CE message ».
+
+### D-43 · L'écho local n'a pas de colonne Cc — l'entête change à la réconciliation
+
+- **Fait (PLAN-RETOURS-12, revue à regard neuf du 2026-08-28)** : la
+  table `echos` ne copie que `outbox.recipients` (les À) alors
+  qu'`outbox.cc_addrs` existe ; la ligne « Cc : … » de l'entête A92
+  n'apparaît donc jamais pendant la fenêtre d'écho. Un envoi avec Cc
+  ouvert aussitôt dans Envoyés montre « À : … » seul, puis gagne sa
+  ligne Cc quand l'enveloppe serveur remplace l'écho — deux entêtes
+  pour le même message selon le moment.
+- **Raison du report** : colonne + migration + recopie pour une
+  fenêtre de quelques secondes en usage normal ; le filet RETOURS-5
+  (« l'écho dit ses destinataires ») reste vrai pour les À.
+- **Rouvre si** : le terrain rapporte l'entête qui « change tout
+  seul », ou si un chantier touche déjà le schéma des échos.
+
+### D-44 · `connectes` n'est rafraîchi par aucun cycle — un jeton révoqué Wind ouvert dit « Connecté »
+
+- **Fait (PLAN-RETOURS-12, revue à regard neuf du 2026-08-28)** : le
+  tableau `connectes` (App.svelte) n'est réhydraté qu'aux gestes —
+  démarrage, « Reconnecter », et désormais l'ajout (R1). Aucun cycle
+  (synchro 30 min, relève 5 min, ouverture des Réglages) ne le remet
+  d'équerre, et `accounts_failed` du bilan de synchro n'y est jamais
+  reflété : un jeton OAuth révoqué pendant que Wind tourne laisse
+  Réglages > Comptes dire « Connecté » jusqu'au redémarrage — le
+  symptôme miroir de R1.
+- **Raison du report** : hors périmètre du retour R1 (corrigé au
+  geste, tous les chemins d'ajout couverts) ; le bon niveau est un
+  rafraîchissement par le cycle ou un état dérivé du bilan du cœur —
+  sa propre forme à instruire.
+- **Rouvre si** : un constat terrain « déconnecté qui se dit
+  connecté » (l'inverse de R1), ou au premier chantier qui touche le
+  cycle de synchro.
