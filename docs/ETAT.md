@@ -57,6 +57,19 @@ bandeau attend une MAJ acceptée depuis un Wind lancé par
 (PLAN-BETA — bloquant CE : faire recevoir `feedback-wind@fcts.io` ;
 puis inviter 5-10 proches, D9).
 
+**Audit de la suite e2e (2026-08-29, commit `84651bb`, CI verte run
+33217676308)** : les 20 specs (153 tests) confrontés statiquement au
+source `apps/desktop/ui-v2/src` — **0 obsolète, 0 vacant, 0 doublon** ;
+chaque sélecteur, testid et texte de catalogue retrouvé. Seul défaut :
+le titre et l'entête de `refonte-retours-8.spec.js` disaient « quatre
+étapes » quand le corps prouve les 5 (bêta 4/5, A91) — deux chaînes
+corrigées (GO CE), zéro comportement touché. ~10 tests FRAGILES
+recensés (assertions sur `__e2eJournal`, `outbox_status`,
+`getComputedStyle`, focus, calage 2 px au pixel) — compromis assumés
+et documentés dans les specs, laissés en l'état ; à surveiller au
+prochain refactor CSS/IPC. Refus de périmètre §2.6 : rien de sain n'a
+été réécrit.
+
 ---
 
 Le chantier soldé précédent :
