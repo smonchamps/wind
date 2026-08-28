@@ -40,11 +40,22 @@ neuf 8 angles / 10 retenues / **8 corrigées** ; dettes neuves
 rafraîchissement — le symptôme miroir de R1). e2e 150 → **153**.
 **Piège d'outillage payé et gravé** : le gabarit de seed e2e périme à
 MINUIT même « frais » au TTL (deux specs rouges au pre-push de 00 h ;
-`launch.mjs` exige désormais le même jour calendaire). À livrer à la
-prochaine release — l'entrée CHANGELOG 0.13.0 est écrite. **Le
-prochain sujet reste la première vague bêta** (PLAN-BETA — bloquant
-CE : faire recevoir `feedback-wind@fcts.io` ; puis inviter 5-10
-proches, D9).
+`launch.mjs` exige désormais le même jour calendaire). **LIVRÉ en
+0.13.0, PUBLIÉE le 2026-08-29** (commit `9599b31`, CI verte run
+33217432151, tag nu, Latest, **vérifiée 18/18** par
+`verifier-release.ps1` — exe arm64 200 / 5 667 616 o, x64
+200 / 6 405 481 o, signatures distinctes — et **auto-update 0.12.0 →
+0.13.0 prouvé aux DEUX postes le jour même**, GO CE : « Autoupdate OK
+sur les deux postes »). Première release où `faire-release.ps1` a
+bumpé AUSSI le workspace Cargo (0.13.0 partout — E4 prouvé en
+condition réelle). Un flaky consigné à la gate pre-push de release
+(refonte-volets:86, scrim de composition qui intercepte le clic —
+retry vert, 152 passed). NB : les traces `maj :` n'ont pas été
+captées à cette MAJ (postes lancés normalement) — la mesure du
+bandeau attend une MAJ acceptée depuis un Wind lancé par
+`lancer-wind.ps1`. **Le prochain sujet reste la première vague bêta**
+(PLAN-BETA — bloquant CE : faire recevoir `feedback-wind@fcts.io` ;
+puis inviter 5-10 proches, D9).
 
 ---
 
@@ -309,7 +320,14 @@ le redit ; le WIP d'alors avait été retiré (décision CE du
 2026-08-20), sa matière reste au § revue de
 [PLAN-COMPOSITION-HTML](PLAN-COMPOSITION-HTML.md).
 
-**Dernière version livrée : 0.12.0** (publiée **2026-08-28**, tag nu
+**Dernière version livrée : 0.13.0** (publiée **2026-08-29**, tag nu
+sur `9599b31`, marquée Latest, **vérifiée 18/18** et **auto-update
+0.12.0 → 0.13.0 prouvé aux DEUX postes le jour même**). Elle porte
+PLAN-RETOURS-12 : l'entête du message en deux lignes avec les noms
+des destinataires (annuaire), le compte ajouté dit connecté, le logo
+28 px, les versions workspace alignées, le chemin de MAJ instrumenté.
+
+**La version précédente, 0.12.0** (publiée **2026-08-28**, tag nu
 sur `a9f93e0`, marquée Latest, **vérifiée 18/18** par
 `scripts/verifier-release.ps1` et **auto-update 0.11.0 → 0.12.0
 prouvé aux DEUX postes le jour même**). Elle porte PLAN-RETOURS-11 :
