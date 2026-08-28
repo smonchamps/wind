@@ -66,10 +66,15 @@ function seeder(db, etapes) {
   // 1 heure » à la barre d'état (rouge PAYÉ à la gate du push,
   // 2026-08-23 — une clé à la journée ne suffisait pas). Fraîcheur par
   // TTL : au-delà de 30 min, on reconstruit (~1-4 s), le décor reste
-  // dans la minute de son vocabulaire.
+  // dans la minute de son vocabulaire. ET par jour calendaire (rouge
+  // payé au pre-push du 2026-08-28→29) : un gabarit bâti à 23 h 50
+  // reste « frais » à 00 h 15, mais son « Aujourd'hui, 09:12 » est
+  // devenu « Hier » — minuit périme, quel que soit le TTL.
   let frais = false;
   try {
-    frais = Date.now() - statSync(gabarit).mtimeMs < 30 * 60 * 1000;
+    const bati = statSync(gabarit).mtimeMs;
+    frais = Date.now() - bati < 30 * 60 * 1000
+      && new Date(bati).toDateString() === new Date().toDateString();
   } catch {
     /* pas de gabarit : à construire */
   }
