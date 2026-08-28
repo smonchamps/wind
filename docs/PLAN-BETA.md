@@ -32,7 +32,7 @@
   2026-08-27) : pas d'inscription préalable des testeurs, mais un
   écran dissuasif au premier login Gmail. Traitement : le guide
   l'explique et donne le chemin (« Paramètres avancés »). Le dossier
-  CASA reste le chemin critique du PUBLIC, hors bêta (PLAN §7).
+  CASA reste le chemin critique du PUBLIC, hors bêta — détaillé au §4.
 
 ## 3. Les actions
 
@@ -65,7 +65,59 @@ Cochées au fil de l'eau ; les actions CE sont marquées **[CE]**.
 - [ ] Gate 5 : deux semaines sans défaut critique → préparer le
   lancement (avec, sur son chemin : CASA, signature).
 
-## 4. Ce que la bêta ne fait pas (refus §2.6)
+## 4. Le dossier de vérification Google (chemin du lancement PUBLIC)
+
+> Ajouté le 2026-08-28 sur décision CE. **Rien ici ne bloque la bêta** :
+> les 5-10 proches passent par l'app publiée non vérifiée (§2). Ce
+> dossier est le chemin du lancement PUBLIC — il entre au PLAN-BETA
+> parce que ses délais sont longs et que son premier jalon (un
+> domaine) n'est pas posé.
+
+Le formulaire est refusé d'entrée sans **domaine** : le dépôt GitHub ne
+peut pas tenir lieu de page d'accueil (Google exclut explicitement les
+liens de plateforme). C'est la brique manquante, et tout le reste en
+dépend.
+
+- [ ] **[CE]** **Le domaine**, et sa propriété prouvée dans la Google
+  Search Console (vérification de marque : 2-3 jours ouvrés annoncés).
+  Piste : `fcts.io`, déjà retenu pour l'adresse des retours (§3).
+- [ ] **[CE]** **Page d'accueil publique** sur ce domaine : accessible
+  sans connexion, manifestement liée à Wind.
+- [ ] **Politique de confidentialité** sur le MÊME domaine : comment
+  Wind accède, utilise, stocke et partage les données Google, et
+  conformité **Limited Use** (pas de publicité, pas de revente, pas
+  d'entraînement de modèles, pas de lecture humaine). Wind est en
+  position forte — rien ne quitte le poste, aucune télémétrie réseau
+  (ADR 0014) — mais la position doit être ÉCRITE, pas déduite.
+- [ ] **Écran de consentement exact** : nom, logo, email de support,
+  liens — tous cohérents avec le domaine.
+- [ ] **Justification scope par scope**, au moindre privilège. Le point
+  dur attendu : `https://mail.google.com/` est le scope le plus large,
+  et le réviseur demandera pourquoi pas `gmail.readonly` +
+  `gmail.send`. La réponse est vérifiable — **XOAUTH2 sur IMAP/SMTP
+  n'accepte que celui-là** — mais elle doit figurer au dossier.
+- [ ] **Vidéo de démonstration** : YouTube non répertoriée, en anglais,
+  montrant le parcours OAuth complet, le nom de l'app à l'écran de
+  consentement, le **`client_id` lisible dans la barre d'adresse**, et
+  chaque scope restreint à l'œuvre.
+
+**Question ouverte, en amont de tout coût.** L'évaluation de sécurité
+CASA (Tier 2, labo agréé App Defense Alliance, ~540 $ relevés pour le
+scan DAST, **à refaire tous les 12 mois**) est conditionnée par Google
+à un critère précis : elle est due si l'app « accède ou a la capacité
+d'accéder aux données utilisateur Google **depuis ou via un serveur** ».
+**Wind n'a aucun serveur** — jetons au coffre de l'OS, IMAP/SMTP en
+direct poste ↔ Google, aucun backend qui voie passer un message. Si
+l'exemption couvre cette architecture, il ne reste que la liste
+ci-dessus. La documentation publique ne tranche pas (la page CASA ne
+détaille pas ses exceptions ; des sources tierces affirment l'inverse
+sans distinguer les clients purs). Le formulaire de vérification pose
+la question du serveur, le labo aussi. **À faire trancher AVANT de
+payer ou de planifier quoi que ce soit** : c'est ce qui rouvrirait
+l'affirmation « long, coûteux » de [PLAN.md](PLAN.md) §2.3 — posée en
+Phase 0, jamais vérifiée depuis.
+
+## 5. Ce que la bêta ne fait pas (refus §2.6)
 
 - Pas de télémétrie réseau ni de crash reporting distant (ADR 0014
   tient : local et opt-in). Les retours passent par l'email D7.
