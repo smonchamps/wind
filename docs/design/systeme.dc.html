@@ -200,7 +200,7 @@ svg.g{flex:none}
 .app-entete{height:52px;flex:none;display:flex;align-items:center;gap:12px;padding:0 14px 0 12px;
   border-bottom:1px solid var(--border)}
 .app-marque{display:flex;align-items:center;gap:9px;width:212px;flex:none;color:var(--ink)}
-.app-marque b{font-size:15px;font-weight:600;letter-spacing:-.012em}
+.app-marque b{font-size:18px;font-weight:600;letter-spacing:-.012em}
 .recherche{flex:1;max-width:520px;height:32px;border:1px solid var(--border);border-radius:var(--r-controle);
   background:var(--surface);display:flex;align-items:center;gap:9px;padding:0 12px;color:var(--muted);font-size:13px}
 .recherche.active{color:var(--ink);border-color:var(--accent)}
@@ -670,7 +670,7 @@ svg.g{flex:none}
         <div class="bande">
           <span class="marque-tuile" style="width:48px;height:48px;border-radius:11px"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><rect width="24" height="24" fill="#F2EDE3"/><g fill="none" stroke="#141414" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="#1F8A8A"/></svg></span>
           <span class="app-entete" style="border:1px solid var(--border);border-radius:var(--r-controle);flex:1;min-width:220px">
-            <span class="app-marque" style="width:auto"><svg class="g marque" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--marque)"/></svg><b>Wind</b></span>
+            <span class="app-marque" style="width:auto"><svg class="g marque" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--marque)"/></svg><b>Wind</b></span>
           </span>
         </div>
         <p><b>En tuile</b> — icône d'application, écran d'accueil, modale de migration — la marque est
@@ -2724,8 +2724,9 @@ svg.g{flex:none}
     <div class="carte">
       <div class="msg-tete"><span class="tuileini">CR</span>
         <span style="min-width:0"><span style="display:flex;align-items:baseline;gap:6px;min-width:0"><span class="nom">Camille Rousseau</span>
+        <span class="adr">&lt;c.rousseau@atelier-nord.fr&gt;</span>
         <span class="boite"><span class="mot">sur</span><span class="lib">paul@atelier-nord.fr</span></span></span>
-        <span class="adr">c.rousseau@atelier-nord.fr · à Paul Mérand</span></span>
+        <span class="adr">À : Paul Mérand &lt;paul.merand@atelier-nord.fr&gt;</span></span>
         <span class="h">Aujourd'hui, 09:12</span></div>
       <div class="joints">
         <span class="etiqchamp">Fichiers joints</span>
@@ -2999,8 +3000,9 @@ svg.g{flex:none}
     <div class="carte">
       <div class="msg-tete"><span class="tuileini">CR</span>
         <span style="min-width:0"><span style="display:flex;align-items:baseline;gap:6px;min-width:0"><span class="nom">Camille Rousseau</span>
+        <span class="adr">&lt;c.rousseau@atelier-nord.fr&gt;</span>
         <span class="boite"><span class="mot">sur</span><span class="lib">paul@atelier-nord.fr</span></span></span>
-        <span class="adr">c.rousseau@atelier-nord.fr · à Paul Mérand</span></span>
+        <span class="adr">À : Paul Mérand &lt;paul.merand@atelier-nord.fr&gt;</span></span>
         <span class="h">Aujourd'hui, 09:12</span></div>
       <div class="joints">
         <span class="etiqchamp">Fichiers joints</span>
@@ -3301,8 +3303,9 @@ svg.g{flex:none}
         <div class="carte">
           <div class="msg-tete"><span class="tuileini">CR</span>
             <span style="min-width:0"><span style="display:flex;align-items:baseline;gap:6px;min-width:0"><span class="nom">Camille Rousseau</span>
+            <span class="adr">&lt;c.rousseau@atelier-nord.fr&gt;</span>
             <span class="boite"><span class="mot">sur</span><span class="lib">paul@atelier-nord.fr</span></span></span>
-            <span class="adr">c.rousseau@atelier-nord.fr · à Paul Mérand</span></span>
+            <span class="adr">À : Paul Mérand &lt;paul.merand@atelier-nord.fr&gt;</span></span>
             <span class="h">Aujourd'hui, 09:12</span></div>
           <div class="joints">
             <span class="etiqchamp">Fichiers joints</span>
@@ -4528,10 +4531,16 @@ svg.g{flex:none}
         <tr>
           <td class="nw">2026-08-28</td>
           <th scope="row">A91</th><td><b>Le retour bêta : un bouton Feedback à l'entête, une étape d'accueil qui le présente</b> (PLAN-RETOURS-11 R3 ; verdict terrain CE du 2026-08-28). L'entête gagne, entre « Écrire » et « Réglages », un bouton <b>Feedback</b> (glyphe <code>feedback</code> neuf — bulle à queue et deux lignes de texte, 79 → <b>80</b> ; <code>forum</code> garde « conversation ») qui ouvre une petite surimpression : un champ, « Annuler », « Envoyer » — <b>absent tant que le champ est vide</b>, jamais grisé (la règle du parcours d'accueil, RETOURS-8 D4). Le message part par <b>LA boîte d'envoi</b> (<code>queue_send</code>, expéditeur = premier compte du poste) vers l'adresse des retours (constante produit, D7) avec la version de Wind au sujet — la règle d'or « jamais d'envoi perdu », le filet hors-ligne et la barre d'état valent gratuitement, aucun chemin d'envoi neuf ; sans compte, le bouton n'existe pas. Le parcours de premier démarrage passe de quatre à <b>cinq étapes</b> (A75 amendé) : l'étape 4, « Wind est en bêta », dit le test fermé et montre un <b>échantillon inerte</b> du bouton (le dessin exact de l'entête) avec ce qu'il fait ; le récapitulatif devient l'étape 5, ses portes inchangées. Aucune couleur neuve, aucune paire de contraste neuve.</td></tr>
+        <tr>
+          <td class="nw">2026-08-28</td>
+          <th scope="row">A92</th><td><b>L'entête du message déplié dit tout en deux lignes — et l'annuaire rend leurs noms aux destinataires</b> (PLAN-RETOURS-12 R5 ; décisions CE D4-D6 du 2026-08-28). La tête de carte du fil (volet ET écran 03) passe de « nom / adresse · à destinataire » à : <b>ligne 1</b> « Nom de l'expéditeur <code>&lt;adresse&gt;</code> [sur Boîte] » — l'adresse en encre atténuée derrière le nom, le bloc de boîte d'A80 inchangé et toujours sous la garde D7 (≥ 2 comptes / vue mélangée) — puis <b>ligne 2</b> « À : Nom <code>&lt;adresse&gt;</code>, … » et, seulement quand des Cc existent, une ligne « Cc : … » de même forme (D6). Les <b>noms</b> des destinataires n'existent nulle part dans l'enveloppe stockée (<code>to_addrs</code>/<code>cc_addrs</code> sont des adresses nues) : ils viennent de l'<b>annuaire des correspondants</b> (D4 — commande <code>noms_adresses</code>, recherche par clé primaire bornée aux À/Cc du fil ouvert, jamais un parcours d'enveloppes, leçon A64) ; une adresse inconnue s'affiche nue, le repli des messages sans À stocké garde l'heuristique du prototype au même format. À l'étroit, <b>l'adresse de l'expéditeur cède trois fois plus vite que le nom</b> (le patron d'A80 : l'identité d'abord). Aucun glyphe neuf, aucune couleur, aucune paire de contraste neuve.</td></tr>
+        <tr>
+          <td class="nw">2026-08-28</td>
+          <th scope="row">A93</th><td><b>La marque d'entête passe à 28 px</b> (PLAN-RETOURS-12 R3 ; décision CE D2 du 2026-08-28, verdict au STOP visuel). Dans l'entête et la tête du tiroir, la marque en glyphe passe de 24 (A87) à <b>28 px</b> — le retour CE : à 24 px elle restait discrète dans l'entête de 52 px. Le mot « Wind » ne bouge pas (18 px dans l'app — la revue a corrigé au passage les 15 px que ce document portait, en retard sur l'UI) ; le régime glyphe (encre courante + <code>--marque</code>, V11) est inchangé. La fiche V11 porte les deux cotes.</td></tr>
       </tbody>
     </table>
     <p class="note">Les
-    105 lignes — 14 décisions d'adoption V1-V14, 91 amendements A1-A91 — portent leurs trois
+    107 lignes — 14 décisions d'adoption V1-V14, 93 amendements A1-A93 — portent leurs trois
     cellules : le défaut d'A48 relevé en V12 est <b>réparé à la
     source</b>, ce document n'a plus rien à restituer.</p>
   </section>

@@ -318,12 +318,12 @@ test('le volet de lecture montre le FIL en cartes — anciens repliés, dernier 
   );
 });
 
-test('le fil au dessin exact de la maquette — avatars, adresse · destinataire, heure longue (terrain A45)', async () => {
+test('le fil au dessin exact de la maquette — avatars, entête deux lignes, heure longue (A45/A92)', async () => {
   // Retour CE du 2026-08-16 (captures du volet du prototype Classique,
   // ANNOTATIONS-V3 §6) : puces d'inventaire à gauche — n messages
   // TOUJOURS dit, fichiers SOMMÉS sur le fil —, boutons nus à droite,
-  // cartes aux avatars, en-tête déplié « adresse · à destinataire »,
-  // heure longue ; le bloc De/À/Objet a disparu.
+  // cartes aux avatars, en-tête déplié en deux lignes « Nom <adresse> »
+  // puis « À : … » (A92), heure longue ; le bloc De/À/Objet a disparu.
   await page.locator('[data-testid="ligne"]').first().click();
   const volet = page.locator('[data-testid="volet-lecture"]');
   const puces = volet.locator('[data-testid="fil-puces"]');
@@ -346,10 +346,12 @@ test('le fil au dessin exact de la maquette — avatars, adresse · destinataire
   await expect(replies.nth(1).locator('.avatar')).toHaveText('SN');
   const deplie = volet.locator('[data-testid="message-deplie"]');
   await expect(deplie.locator('.avatar')).toHaveText('CR');
-  // L'en-tête déplié : « adresse · à destinataire » — le nom du compte
-  // vient de notre propre copie du fil (Envoyés) — et l'heure longue.
-  await expect(deplie.locator('.adr')).toHaveText(
-    'c.rousseau@atelier-nord.fr · à Paul Mérand',
+  // L'en-tête déplié (PLAN-RETOURS-12 R5) : « Nom <adresse> » puis
+  // « À : … » — le nom du compte vient de notre propre copie du fil
+  // (Envoyés) — et l'heure longue.
+  await expect(deplie.locator('.adr-exp')).toHaveText('<c.rousseau@atelier-nord.fr>');
+  await expect(deplie.locator('[data-testid="ligne-a"]')).toHaveText(
+    'À : Paul Mérand <paul.merand@atelier-nord.fr>',
   );
   await expect(deplie.locator('.tete-message .quand')).toHaveText(/^Aujourd'hui, 09:12$/);
   await expect(replies.nth(0).locator('.quand')).toHaveText(/, 18:20$/);
@@ -376,9 +378,10 @@ test('le fil au message seul dit « 1 message » — et s\'ouvre sur « Tout rep
   const deplie = volet.locator('[data-testid="message-deplie"]');
   await expect(deplie.locator('.avatar')).toHaveText('YB');
   // Sans copie à nous dans le fil, le destinataire est l'adresse du
-  // compte — le fait honnête, le cœur ne connaît pas notre nom.
-  await expect(deplie.locator('.adr')).toHaveText(
-    'y.belkacem@atelier-nord.fr · à paul.merand@atelier-nord.fr',
+  // compte, nue — le fait honnête, le cœur ne connaît pas notre nom.
+  await expect(deplie.locator('.adr-exp')).toHaveText('<y.belkacem@atelier-nord.fr>');
+  await expect(deplie.locator('[data-testid="ligne-a"]')).toHaveText(
+    'À : paul.merand@atelier-nord.fr',
   );
   await expect(deplie.locator('.tete-message .quand')).toHaveText(/^Aujourd'hui, 08:40$/);
   await dossier('reception').click();
@@ -1399,8 +1402,9 @@ test("l'écho d'envoi dit ses destinataires et sa pièce — jamais « À : envo
   await ligne.click();
   const volet = page.locator('[data-testid="volet-lecture"]');
   await expect(volet.locator('[data-testid="fil-sujet"]')).toContainText('Bordereau signé');
-  // La tête du message déplié : « adresse · à DESTINATAIRE ».
-  await expect(volet.locator('.adr').first()).toContainText('c.rousseau@atelier-nord.fr');
+  // La tête du message déplié : la ligne « À : » (A92) dit le vrai
+  // destinataire.
+  await expect(volet.locator('[data-testid="ligne-a"]').first()).toContainText('c.rousseau@atelier-nord.fr');
   // La pièce du journal d'envoi : nom + poids dans la puce, inerte.
   const piece = volet.locator('[data-testid="piece-jointe"]');
   await expect(piece).toHaveCount(1);

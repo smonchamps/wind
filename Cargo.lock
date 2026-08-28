@@ -2331,7 +2331,7 @@ dependencies = [
 
 [[package]]
 name = "mail-auth"
-version = "0.1.0"
+version = "0.12.0"
 dependencies = [
  "keyring",
  "oauth2",
@@ -2349,7 +2349,7 @@ checksum = "4c942e8a4b83f9351236c1e531ea9fa0237913d63c7fc36818430e0128a1ddf3"
 
 [[package]]
 name = "mail-core"
-version = "0.1.0"
+version = "0.12.0"
 dependencies = [
  "chrono",
  "mail-ical",
@@ -2359,7 +2359,7 @@ dependencies = [
 
 [[package]]
 name = "mail-ical"
-version = "0.1.0"
+version = "0.12.0"
 dependencies = [
  "calcard",
  "chrono",
@@ -2368,7 +2368,7 @@ dependencies = [
 
 [[package]]
 name = "mail-imap"
-version = "0.1.0"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2393,7 +2393,7 @@ dependencies = [
 
 [[package]]
 name = "mail-render"
-version = "0.1.0"
+version = "0.12.0"
 dependencies = [
  "ammonia",
  "mail-parser",
@@ -2401,7 +2401,7 @@ dependencies = [
 
 [[package]]
 name = "mail-smtp"
-version = "0.1.0"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "lettre",
@@ -4239,7 +4239,7 @@ dependencies = [
 
 [[package]]
 name = "spike-web-bridge"
-version = "0.1.0"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "imap",
@@ -5654,7 +5654,7 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "wind-desktop"
-version = "0.1.0"
+version = "0.12.0"
 dependencies = [
  "chrono",
  "fs4",

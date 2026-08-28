@@ -25,9 +25,35 @@ const brut = invoke
 // `window.__e2eJournal` recoit un releve {commande, depart, arrivee}
 // par appel — l'assertion « jamais plus de N pages en vol » compte les
 // vols ouverts a chaque instant. Meme regle : hors e2e, rien.
+// Couture e2e (PLAN-RETOURS-12 R1) : le consentement OAuth n'est pas
+// pilotable par Playwright — des adresses posees dans `window.__e2eAjout`
+// font reussir l'ajout sans navigateur, et le bilan de `connect_accounts`
+// les porte comme connectees, a l'image de la session que le coeur pose
+// a l'ajout reel (add_oauth_account). Hors e2e la variable n'existe pas.
+// Rend un LANCEUR (pas une promesse) : la retenue `__e2eRetenue`
+// s'applique aussi a ces vols — la couture module le transport, jamais
+// l'ordre des choses (revue). Les retours sont minimaux : personne ne
+// lit le bilan d'ajout, et seul `email` est consomme du bilan de
+// connexion — un contrat plus riche serait un mensonge de test.
+const ajoutFactice = (commande, args) => {
+  const ajout = globalThis.window?.__e2eAjout;
+  if (!Array.isArray(ajout)) return null;
+  if (commande === 'add_account' || commande === 'add_microsoft_account') {
+    return () => Promise.resolve();
+  }
+  if (commande === 'connect_accounts') {
+    return () => brut(commande, args).then((bilan) => ({
+      ...bilan,
+      accounts: [...bilan.accounts, ...ajout.map((email) => ({ email }))],
+    }));
+  }
+  return null;
+};
+
 export const appel = (commande, args) => {
+  const lancer = ajoutFactice(commande, args) ?? (() => brut(commande, args));
   const retenue = globalThis.window?.__e2eRetenue;
-  const vol = retenue ? retenue.then(() => brut(commande, args)) : brut(commande, args);
+  const vol = retenue ? retenue.then(lancer) : lancer();
   const journal = globalThis.window?.__e2eJournal;
   if (journal) {
     const releve = { commande, depart: performance.now(), arrivee: null };

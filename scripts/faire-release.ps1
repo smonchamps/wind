@@ -116,9 +116,27 @@ $pattern = '("version"\s*:\s*")[^"]*(")'
 if (([regex]::Matches($json, $pattern)).Count -ne 1) {
     throw "tauri.conf.json : cle « version » introuvable ou multiple — bump automatique refuse, a faire a la main."
 }
+# La version du workspace Cargo SUIT la version produit (PLAN-RETOURS-12
+# R4, decision D3) : un seul nombre partout — les crates disent la
+# version de l'app qui les embarque. Regex ancree sur la section
+# [workspace.package] : les `version = "..."` des dependances ne bougent
+# jamais. Cargo.lock se met a jour de lui-meme aux builds ci-dessous et
+# part dans le commit de release. Les DEUX validations passent AVANT la
+# premiere ecriture (revue) : un throw ne laisse jamais l'arbre a
+# moitie bumpe.
+$cargoToml = Join-Path $PSScriptRoot "..\Cargo.toml"
+$toml = Get-Content -Raw -Encoding UTF8 $cargoToml
+$patternCargo = '(?ms)(\[workspace\.package\][^\[]*?^version\s*=\s*")[^"]*(")'
+if (([regex]::Matches($toml, $patternCargo)).Count -ne 1) {
+    throw "Cargo.toml : version de [workspace.package] introuvable ou multiple — bump automatique refuse, a faire a la main."
+}
+
 $json = [regex]::Replace($json, $pattern, "`${1}$Version`${2}")
 [System.IO.File]::WriteAllText($conf, $json, (New-Object System.Text.UTF8Encoding $false))
 Write-Host "tauri.conf.json bumpe a $Version."
+$toml = [regex]::Replace($toml, $patternCargo, "`${1}$Version`${2}")
+[System.IO.File]::WriteAllText($cargoToml, $toml, (New-Object System.Text.UTF8Encoding $false))
+Write-Host "Cargo.toml (workspace.package) bumpe a $Version."
 
 # (2) Les DEUX builds signes, arm64 puis x64. TOUT-OU-RIEN (D7) : le
 # premier echec jette, rien n'est publie, jamais un canal decale. Le
@@ -216,7 +234,7 @@ Push-Location $racine
 try {
     # Commit de release : les fichiers du bump seulement (jamais `git add -A`
     # qui emporterait du travail voisin). Message SANS accents (STANDARD §2.8).
-    git add apps/desktop/tauri.conf.json CHANGELOG.md scripts/faire-release.ps1
+    git add apps/desktop/tauri.conf.json Cargo.toml Cargo.lock CHANGELOG.md scripts/faire-release.ps1
     # Reprise apres un echec partiel (constat terrain 2026-08-23) : si un run
     # precedent a deja commis et pousse le bump puis est mort avant le tag,
     # l'index est vide ici — `git commit` echouerait sur « rien a commettre »

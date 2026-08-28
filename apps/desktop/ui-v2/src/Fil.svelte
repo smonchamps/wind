@@ -3,7 +3,7 @@
   // 2026-08-16, décision D4 ; dessin au trait de la maquette depuis le
   // terrain A45) : titre, puces d'inventaire, boutons nus à droite,
   // cartes aux avatars — repliées une ligne, dépliées en carte pleine
-  // (« adresse · à destinataire », heure longue) —, fichiers joints,
+  // (« Nom <adresse> » / « À : … », heure longue — A92) —, fichiers joints,
   // brouillon du fil, barre des cinq gestes directs (D5 — jamais de
   // menu « Plus », exception b des annotations ; le « ⋯ » par message
   // de la maquette attend ses actions). Le volet de lecture
@@ -16,7 +16,7 @@
   import Icone from './Icone.svelte';
   import {
     fil, cleMsg, basculerMessage, toutDeplier, toutReplier, afficherImages,
-    toujoursAfficherImages, estEcho,
+    toujoursAfficherImages, estEcho, cacheNoms,
   } from './lib/fil.svelte.js';
   import { appel, choisirDestination } from './lib/transport.js';
   import { brancherLiens } from './lib/liens.js';
@@ -122,26 +122,75 @@
       : (fil.ligne ? nbPiecesDe(fil.ligne) : 0),
   );
 
-  // « À » n'est pas stocké par le cœur : la règle du prototype —
-  // message de soi → premier autre correspondant, sinon le compte.
-  // Depuis A45 l'en-tête déplié dit « adresse · à NOM » (maquette) :
-  // pour un message d'autrui, notre nom vient de notre propre copie du
-  // fil (Envoyés) ; sans elle, l'adresse du compte — le fait honnête.
   const propre = (m) => fil.ligne && m.sender_address === fil.ligne.account_email;
-  // R4 (PLAN-RETOURS-MAIL) : pour NOTRE message, le destinataire stocké
-  // (`to_addrs`, tiré de la même ENVELOPE à la synchro) dit à qui il est
-  // parti — un envoi ISOLÉ n'a personne d'autre à deviner dans le fil, et
-  // le repli sur l'adresse du compte affichait « à soi-même » (le cas
-  // « Test PJ 3 »). Ordre : la donnée stockée d'abord, puis l'ancienne
-  // heuristique (autre correspondant du fil), enfin l'adresse du compte.
-  function destinataire(m) {
-    if (propre(m) && (m.to_addrs?.length ?? 0) > 0) {
-      return m.to_addrs.join(', ');
+
+  // R5 (PLAN-RETOURS-12, décision D4) : les noms des destinataires
+  // viennent de l'ANNUAIRE des correspondants — `to_addrs`/`cc_addrs`
+  // ne stockent que des adresses nues (address_literal), et le courrier
+  // vu a déjà appris les noms. UNE requête par jeu d'adresses, bornée
+  // aux À/Cc du fil (jamais un parcours d'enveloppes — leçon A64) ;
+  // adresse inconnue : nue. La clé mémoïse : une repose de
+  // `fil.messages` ou un remontage (bascule volet ↔ écran 03) aux mêmes
+  // adresses ne repart pas en RPC (revue). L'invalidation vit dans le
+  // cleanup de l'effet — le cycle de vie que Svelte fournit.
+  let annuaire = $state({});
+  $effect(() => {
+    const adresses = [...new Set(
+      fil.messages.flatMap((m) => [...(m.to_addrs ?? []), ...(m.cc_addrs ?? [])]),
+    )];
+    const cle = adresses.join('\n');
+    // Le cache survit au composant (cacheNoms, lib/fil.svelte.js) : une
+    // repose de fil.messages ou un remontage aux mêmes adresses ne
+    // repart pas en RPC.
+    if (cle === cacheNoms.cle) {
+      annuaire = cacheNoms.noms;
+      return;
+    }
+    if (!adresses.length) {
+      cacheNoms.cle = '';
+      cacheNoms.noms = {};
+      annuaire = {};
+      return;
+    }
+    let perime = false;
+    appel('noms_adresses', { addresses: adresses }).then(
+      (noms) => {
+        cacheNoms.cle = cle;
+        cacheNoms.noms = noms;
+        if (!perime) annuaire = noms;
+      },
+      // L'échec se DIT (revue) : le repli visible est l'adresse nue,
+      // sans ce signal une régression de la commande serait muette.
+      (err) => console.error('noms_adresses :', err),
+    );
+    return () => { perime = true; };
+  });
+  // LA forme « Nom <adresse> » — une seule règle pour les trois lignes
+  // de l'entête : nom absent, vide ou égal à l'adresse → adresse nue.
+  const etiquette = (nom, adresse) =>
+    (nom && nom !== adresse ? `${nom} <${adresse}>` : adresse);
+  // Le nom vient de l'annuaire (clé en minuscules, sa forme).
+  const nomAdr = (adresse) => etiquette(annuaire[adresse.trim().toLowerCase()], adresse);
+  // Le nom est déjà PORTÉ (l'expéditeur d'une copie du fil).
+  const nomAdrPorte = (nom, adresse) => (adresse ? etiquette(nom, adresse) : (nom ?? ''));
+  // R4 (PLAN-RETOURS-MAIL) : les destinataires stockés (`to_addrs`,
+  // tirés de la même ENVELOPE à la synchro) disent à qui le message est
+  // parti. Repli des messages d'avant leur stockage : l'heuristique du
+  // prototype — message de soi → premier autre correspondant du fil,
+  // message d'autrui → notre propre copie (Envoyés), sinon l'adresse du
+  // compte.
+  function destinataires(m) {
+    if ((m.to_addrs?.length ?? 0) > 0) {
+      return m.to_addrs.map(nomAdr).join(', ');
     }
     const vise = propre(m)
       ? fil.messages.find((x) => x.sender_address && x.sender_address !== m.sender_address)
       : fil.messages.find((x) => propre(x));
-    return vise ? vise.sender : (fil.ligne?.account_email ?? '');
+    if (vise) return nomAdrPorte(vise.sender, vise.sender_address);
+    // Dernier repli : l'adresse du compte, nue — le fait honnête (le
+    // cœur ne connaît pas notre nom, et l'annuaire n'est requêté que
+    // sur les À/Cc du fil).
+    return fil.ligne?.account_email ?? '';
   }
 
   // La hauteur du corps suit le CONTENU (terrain A47), jamais un
@@ -290,9 +339,10 @@
         {@const boite = boiteDe(m)}
         {#if fil.deplies[k]}
           <article class="deplie" data-testid="message-deplie">
-            <!-- L'en-tête de la maquette (A45) : avatar, nom sur
-                 l'adresse · destinataire, heure longue — le bloc
-                 De/À/Objet a disparu, la tête dit tout. -->
+            <!-- L'en-tête en deux lignes (PLAN-RETOURS-12 R5) :
+                 « Nom <adresse> sur Boîte » puis « À : Nom <adresse>, … »
+                 (et « Cc : … » si des Cc existent, D6) — le bloc
+                 De/À/Objet reste mort, la tête dit tout (A45). -->
             <div class="tete-message" role="button" tabindex="0"
                  aria-expanded="true"
                  onclick={() => basculerMessage(m)} onkeydown={activation(() => basculerMessage(m))}>
@@ -302,6 +352,9 @@
                      que la ligne de liste (systeme.css). -->
                 <span class="rang-nom">
                   <span class="auteur">{m.sender}</span>
+                  {#if m.sender_address && m.sender_address !== m.sender}
+                    <span class="adr adr-exp">{`<${m.sender_address}>`}</span>
+                  {/if}
                   {#if boite}
                     <span class="boite" title={boite.titre}>
                       <span class="mot">{t('liste.sur')}</span>
@@ -313,7 +366,10 @@
                     </span>
                   {/if}
                 </span>
-                <span class="adr">{t('conv.adrDest', { adr: m.sender_address || m.sender, qui: destinataire(m) })}</span>
+                <span class="adr" data-testid="ligne-a">{t('conv.ligneA', { liste: destinataires(m) })}</span>
+                {#if (m.cc_addrs?.length ?? 0) > 0}
+                  <span class="adr" data-testid="ligne-cc">{t('conv.ligneCc', { liste: m.cc_addrs.map(nomAdr).join(', ') })}</span>
+                {/if}
               </span>
               <span class="quand">{quandLong(m.epoch)}</span>
             </div>
@@ -610,7 +666,7 @@
     border-radius:var(--r-surface); box-shadow:var(--shadow); margin-top:12px;
     display:flex; flex-direction:column;
   }
-  /* L'en-tête de la maquette : avatar · (nom / adresse · à X) · quand. */
+  /* L'en-tête A92 : avatar · (nom <adresse> [sur boîte] / À : … / Cc : …) · quand. */
   .tete-message {
     display:flex; align-items:center; gap:10px; padding:12px 20px;
     border-bottom:1px solid var(--border); cursor:pointer;
@@ -634,6 +690,11 @@
     font-size:12px; color:var(--muted);
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
+  /* R5 : l'adresse de l'expéditeur, en ligne 1 derrière le nom — elle
+     PORTE .adr (même encre que les lignes À/Cc, structurellement) et
+     n'ajoute que sa règle de cession : TROIS fois plus vite que le nom
+     (le patron d'A80 : l'identité d'abord, le détail cède). */
+  .tete-message .adr-exp { flex:0 3 auto; min-width:0; }
   .contenu { padding:14px 20px 18px; display:flex; flex-direction:column; gap:12px; }
   /* La carte d'invitation (A76) : une carte DANS la carte de message —
      rayon surface 10 px, sans élévation (elle appartient au flot du

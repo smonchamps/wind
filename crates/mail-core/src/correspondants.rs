@@ -152,6 +152,35 @@ impl Store {
             .collect())
     }
 
+    /// Les noms connus d'un lot d'adresses (entête du fil,
+    /// PLAN-RETOURS-12 R5) : une recherche par clé primaire, bornée aux
+    /// destinataires de la page de messages affichée — JAMAIS un
+    /// parcours d'enveloppes (leçon A64). Clés rendues en minuscules
+    /// (la forme de l'annuaire) ; une adresse inconnue ou sans nom est
+    /// absente du bilan — l'UI replie sur l'adresse nue.
+    pub fn noms_adresses(
+        &self,
+        adresses: &[String],
+    ) -> Result<std::collections::HashMap<String, String>, Error> {
+        let mut noms = std::collections::HashMap::new();
+        // `name IS NOT NULL` dans le SQL : ligne absente et nom absent
+        // ont la même issue (hors bilan) — un seul niveau d'Option.
+        let mut stmt = self.conn().prepare_cached(
+            "SELECT name FROM correspondants WHERE address = ?1 AND name IS NOT NULL",
+        )?;
+        for adresse in adresses {
+            let cle = adresse.trim().to_lowercase();
+            if cle.is_empty() || noms.contains_key(&cle) {
+                continue;
+            }
+            let nom: Option<String> = stmt.query_row(params![cle], |row| row.get(0)).optional()?;
+            if let Some(nom) = nom {
+                noms.insert(cle, nom);
+            }
+        }
+        Ok(noms)
+    }
+
     /// Le rattrapage UNIQUE de l'existant : peuple l'annuaire depuis les
     /// enveloppes déjà en base (set-based, le nom du message le plus
     /// récent gagne — bare column du MAX, comportement documenté de
@@ -373,6 +402,37 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM correspondants", [], |row| row.get(0))
             .unwrap();
         assert_eq!(total, 0);
+    }
+
+    /// R5 (PLAN-RETOURS-12) : l'entête du fil résout les adresses des
+    /// destinataires en noms par l'annuaire — un nom connu revient (clé
+    /// en minuscules quelle que soit la casse demandée), une adresse
+    /// sans nom ou inconnue est ABSENTE du bilan (l'UI replie sur
+    /// l'adresse nue).
+    #[test]
+    fn noms_adresses_rend_les_noms_connus_et_tait_le_reste() {
+        let store = Store::open_in_memory().unwrap();
+        noter(
+            store.conn(),
+            "Camille@Exemple.fr",
+            Some("Camille Rousseau"),
+            10,
+        )
+        .unwrap();
+        noter(store.conn(), "muette@exemple.fr", None, 10).unwrap();
+
+        let noms = store
+            .noms_adresses(&[
+                "CAMILLE@exemple.fr".to_string(),
+                "muette@exemple.fr".to_string(),
+                "inconnue@exemple.fr".to_string(),
+            ])
+            .unwrap();
+        assert_eq!(noms.len(), 1);
+        assert_eq!(
+            noms.get("camille@exemple.fr").map(String::as_str),
+            Some("Camille Rousseau")
+        );
     }
 
     /// D4 : le dossier d'envois apprend AUSSI les destinataires (adresse

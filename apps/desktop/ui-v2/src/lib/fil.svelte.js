@@ -48,6 +48,14 @@ export const fil = $state({
 
 let jeton = 0;
 
+// R5 (PLAN-RETOURS-12) : le dernier bilan de `noms_adresses`, clé =
+// adresses jointes. Il vit ICI et non dans le composant : Fil est
+// démonté/remonté à chaque bascule de cadre (volet ↔ écran 03), et sans
+// ce cache chaque bascule repartait en RPC pour les MÊMES adresses
+// (revue). Un objet nu suffit — l'effet du composant le consulte et le
+// repose.
+export const cacheNoms = { cle: '', noms: {} };
+
 export const cleMsg = (m) => `${m.account_id}/${m.mailbox}/${m.uid}`;
 
 // Un écho local (PLAN-REACTIVITE E3) se reconnaît à sa boîte

@@ -1163,12 +1163,17 @@
     chargerNav();
     liste?.recharger();
   }
-  // Porte simple (D4) : le compte est ajouté, la nav se recharge,
-  // l'écran 01 s'efface de lui-même — et la première synchro part
-  // aussitôt (la session vient d'être posée par l'ajout).
-  function compteAjoute() {
+  // Porte simple (D4) : le compte est ajouté, la nav se recharge
+  // AUSSITÔT (lecture locale — jamais derrière le réseau, revue), et la
+  // première synchro part dès que la reconnexion a rendu son bilan.
+  // `connectes` ne se remplit qu'au retour de connect_accounts : sans le
+  // rappel, Réglages disait « Déconnecté » d'un compte qu'on venait de
+  // connecter, jusqu'au redémarrage (PLAN-RETOURS-12 R1 — le motif du
+  // geste « Reconnecter »).
+  async function compteAjoute() {
     flash(t('toast.compteAjoute'));
     chargerNav();
+    await connecter();
     synchroniser();
   }
   // Le pendant du retrait : le courrier du compte a quitté la base, donc
@@ -1475,9 +1480,10 @@
     <!-- V1/V11 : la marque EN GLYPHE — l'enveloppe à l'encre courante,
          rabat --marque, devant le mot « Wind » (18 px). Le trait
          hitofude est mort (V2) ; la tuile figée reste aux contextes OS,
-         à l'accueil, à la migration et à « À propos ». 24 px depuis
-         PLAN-RETOURS-10 (D2) — 20 px se perdait dans l'entête de 52. -->
-    <span class="marque" class:marque--libre={volets === 1}><Marque taille={24} />Wind</span>
+         à l'accueil, à la migration et à « À propos ». 28 px depuis
+         PLAN-RETOURS-12 (D2) — 24 px (RETOURS-10) restait discret, 20 px
+         se perdait dans l'entête de 52. -->
+    <span class="marque" class:marque--libre={volets === 1}><Marque taille={28} />Wind</span>
     <span class="recherche" data-testid="recherche">
       <Icone nom="search" />
       <input type="text" bind:this={champRecherche} bind:value={recherche}
@@ -1593,7 +1599,7 @@
       <div class="tiroir" data-testid="tiroir" role="dialog" aria-modal="true"
            aria-label={t('nav.aria')}>
         <div class="tete-tiroir">
-          <Marque taille={24} />Wind
+          <Marque taille={28} />Wind
           <button type="button" class="btn-tiroir fermer-tiroir" data-testid="tiroir-fermer"
                   aria-label={t('nav.fermerTiroir')}
                   onclick={() => (tiroirOuvert = false)}>

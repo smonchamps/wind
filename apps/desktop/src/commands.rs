@@ -5453,6 +5453,24 @@ pub async fn lang_set(app: AppHandle, lang: String) -> Result<(), String> {
     .await
 }
 
+/// Les noms connus d'un lot d'adresses (entete du fil, PLAN-RETOURS-12
+/// R5) : pure lecture de l'annuaire des correspondants, bornee a la
+/// page de messages affichee. Une adresse inconnue est absente du
+/// bilan — l'UI replie sur l'adresse nue.
+#[tauri::command]
+pub async fn noms_adresses(
+    app: AppHandle,
+    addresses: Vec<String>,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store
+            .noms_adresses(&addresses)
+            .map_err(|err| err.to_string())
+    })
+    .await
+}
+
 /// Telecharge, verifie la signature, lance l'installateur, et NE QUITTE
 /// QUE SI ce lancement a reussi.
 ///
@@ -5491,11 +5509,23 @@ pub async fn update_install(app: AppHandle, version: String) -> Result<(), Strin
 static MAJ_EN_COURS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 async fn telecharger_et_lancer(app: AppHandle, version: String) -> Result<(), String> {
+    // Instrumentation (PLAN-RETOURS-12 R2, decision D1) : la taille du
+    // paquet est mesuree PLATE sur 12 releases (±1 % depuis la 0.7.0) —
+    // si le bandeau « Téléchargement et installation… » dure, le temps
+    // part ici : reseau (CDN GitHub), ecriture, ou scan
+    // antivirus/verdict SAC au spawn. Chaque etape se date dans la
+    // trace (lancer-wind.ps1, piege §9) pour le dire sur chiffres a la
+    // prochaine MAJ reelle.
+    let chrono = std::time::Instant::now();
     let update = updater_wind(&app)?
         .check()
         .await
         .map_err(|err| err.to_string())?
         .ok_or_else(|| "aucune mise à jour à installer".to_string())?;
+    eprintln!(
+        "maj : manifeste verifie en {} ms",
+        chrono.elapsed().as_millis()
+    );
     // Le manifeste peut avoir bouge entre le bandeau et le clic : on
     // n'installe que la version ANNONCEE — jamais une autre en silence.
     // L'UI re-verifie sur cet echec et redit la version neuve.
@@ -5505,10 +5535,16 @@ async fn telecharger_et_lancer(app: AppHandle, version: String) -> Result<(), St
             update.version
         ));
     }
+    let depart_telechargement = std::time::Instant::now();
     let octets = update
         .download(|_, _| {}, || {})
         .await
         .map_err(|err| err.to_string())?;
+    eprintln!(
+        "maj : {} octets telecharges en {} ms",
+        octets.len(),
+        depart_telechargement.elapsed().as_millis()
+    );
     // Filet de format : le plugin sniffait zip/exe/msi (extract,
     // updater.rs:882) ; l'artefact de Wind est l'exe NSIS nu
     // (createUpdaterArtifacts: true, cible nsis seule). Tout autre
@@ -5533,11 +5569,24 @@ async fn telecharger_et_lancer(app: AppHandle, version: String) -> Result<(), St
         std::fs::create_dir_all(&dossier)
             .map_err(|err| format!("préparation du répertoire ({}) : {err}", dossier.display()))?;
         let temoin = dossier.join(format!("Wind_{}_maj-setup.exe", update.version));
+        let depart_ecriture = std::time::Instant::now();
         std::fs::write(&temoin, &octets)
             .map_err(|err| format!("écriture de l'installateur ({}) : {err}", temoin.display()))?;
+        eprintln!(
+            "maj : installateur ecrit en {} ms",
+            depart_ecriture.elapsed().as_millis()
+        );
+        // Le spawn porte le scan antivirus synchrone et le verdict cloud
+        // Smart App Control (par binaire) : c'est le suspect n°1 du
+        // bandeau qui dure — la mesure le dira.
+        let depart_spawn = std::time::Instant::now();
         commande_installateur(&temoin)
             .spawn()
             .map_err(|err| format!("lancement de l'installateur refusé par Windows : {err}"))?;
+        eprintln!(
+            "maj : installateur lance en {} ms",
+            depart_spawn.elapsed().as_millis()
+        );
         // Lancement REUSSI seulement : l'installateur (mode /UPDATE)
         // attend la fin du processus pour remplacer le binaire, puis
         // /R relance Wind — la version neuve.

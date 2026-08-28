@@ -294,6 +294,7 @@ fn main() {
             commands::migration_cancel,
             commands::update_check,
             commands::update_install,
+            commands::noms_adresses,
             commands::app_version,
             commands::open_link,
             commands::notif_pref_get,
