@@ -1,7 +1,7 @@
 // PLAN-RETOURS-8 : R1 — le repère de compte (icône + teinte, Réglages >
 // Comptes → nav → badge de liste, D3 : boîte unifiée seule) et R2 — le
-// parcours de premier démarrage en quatre étapes (comptes, volets,
-// thème, fin). Décor : deux comptes réels — le badge n'a de sens qu'en
+// parcours de premier démarrage en cinq étapes (comptes, volets,
+// thème, bêta, fin — A91). Décor : deux comptes réels — le badge n'a de sens qu'en
 // multi-comptes.
 //
 // Hygiène : le profil WebView2 est PARTAGÉ entre suites — les clés
@@ -149,7 +149,7 @@ test('retirer le repère rend le glyphe neutre — le bloc reste, sans tracé', 
 
 // ---------------------------------------------------------------- R2 --
 
-test('le parcours de premier démarrage : quatre étapes, retour compris', async () => {
+test('le parcours de premier démarrage : cinq étapes, retour compris', async () => {
   // La couture force le parcours sur ce décor semé — et sous elle,
   // RIEN ne s'écrit dans le profil (accueil.js) : le vrai chemin de la
   // clé est prouvé par le test « installation existante » ci-dessus et
