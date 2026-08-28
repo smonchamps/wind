@@ -294,7 +294,7 @@ Lecture des écarts :
 | W1 gate complète | 4 min 34 s (W0) | ≤ 6 min | 2,1–2,6 min (148 e2e) ✓ | | |
 | W2 1 spec e2e | 74 s | ≤ 45 s | 13,5–19 s (vague 2) ✓ | | |
 | W3 gates complètes / chantier | 10+ | ≤ 3 | 2 / 2 / 4 / 7 ~ | | |
-| W5 push docs-only | ~2 min | ≤ 30 s | à chronométrer ce soir | | |
+| W5 push docs-only | ~2 min | ≤ 30 s | 7,6 s ✓ (commit b8d8aa0) | | |
 | T5 (opt.) tokens de sortie / session (Concise) | réf. sem. 1 | baisse sans perte qualité | 7,09 M ; 1 464/tour (sans) | avec | |
 | M1 coût haut de gamme hors chantiers | ~10–15 % | ≤ 5 % | agents 40 % abaissés ; fil 0 % ~ | | |
 | M2 revues high / chantier | jusqu'à 3 | 1 | 1 ✓ | | |
