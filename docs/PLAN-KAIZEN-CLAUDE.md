@@ -202,8 +202,13 @@ prouver d'abord).
 
 ### Contre-mesure optionnelle T5 — output style `Concise` (à instruire dans une future session)
 
-Réglage Claude Code : `"outputStyle": "Concise"` dans
-`~/.claude/settings.local.json` (portée utilisateur ; exige Claude Code
+**✓ Activé le 2026-08-28 au soir** (début de semaine 2), dans
+`~/.claude/settings.json` — le vrai fichier de portée utilisateur,
+`settings.local.json` n'existant qu'au niveau projet. Prend effet aux
+prochaines sessions.
+
+Réglage Claude Code : `"outputStyle": "Concise"` (portée utilisateur ;
+exige Claude Code
 v2.1.237+ ; la commande `/output-style` n'existe plus, passer par
 `/config` ou l'app desktop Settings > Claude Code). Effet : réponses
 courtes par défaut, narration réduite ; les verdicts chiffrés des
@@ -239,25 +244,61 @@ joue aucun e2e).
   cause ; les contre-mesures qui n'ont pas produit leur chiffre sont
   amendées ou retirées (standard work : on garde ce qui marche mesuré).
 
+### Mesure hebdomadaire S1 — 2026-08-28 (fenêtre 24–28/08, 13 sessions)
+
+`node scripts/mesurer-sessions.mjs --depuis 2026-08-24 --jusqua 2026-08-28` :
+121 prompts CE, 5 430 tours, 283 M équiv. input fil principal + 22,3 M
+agents (7,3 %). Chantiers soldés dans la semaine avec chiffres au PLAN :
+RETOURS-9 (11,4 M, 2 gates), RETOURS-10 (2 gates 2,1–2,2 min),
+RETOURS-11 (29,1 M, 4 gates), ELEMENTS (29,6 M, 7 gates).
+
+Lecture des écarts :
+
+- **Ce qui tient** : T1 (tous les chantiers ≤ 30 M, −50 % et plus vs
+  baseline), W1 (gates 2,1–2,6 min avec une suite passée de 121 à
+  148 e2e), M2 (1 revue par chantier), garde-fou qualité (KO terrain
+  corrigés le jour même, 0 CI rouge).
+- **T3 raté (3 sessions > 24 h)** : dont la session kaizen elle-même
+  (81d387ca, 141 h de mur — rouverte à chaque rite au lieu d'un fil
+  neuf) et 6e998992 (24,2 h, 55,7 M). La règle « clore au /solde »
+  n'est pas encore un réflexe pour les sessions hors chantier.
+- **T2 raté (364 k/tour)** : conséquence directe de T3 — les sessions
+  qui durent traînent 300–484 k de contexte.
+- **T4 brouillé (44,9)** : l'indicateur mélange les sessions agentiques
+  (a02fb764 : 519 tours / 0 prompt) avec le pilotage CE ; à re-lire au
+  bilan par session pilotée. RETOURS-9 (320 tours / 1 prompt) est au
+  contraire le fonctionnement voulu : un énoncé complet, zéro relance.
+- **P1 raté (100 min > 30 s au 1er plan)** : dominé par les e2e joués
+  au premier plan (54 min, dont b8eb0fe7 : 14 runs / 38 min) — la
+  consigne « arrière-plan au-delà de 60 s » (vague 1.4) couvre la CI
+  mais pas encore les suites e2e pendant l'implémentation.
+- **M1 à moitié appliqué** : agents 40 % abaissés (Sonnet 553 + Haiku 7
+  sur 1 411 appels) ✓, mais fil principal encore 100 % haut de gamme
+  (Opus 5 + Fable 5) — la règle « session mécanique = Sonnet 5 » de
+  WORKFLOW.md n'a pas encore été utilisée une seule fois.
+- **T5 (référence « sans Concise »)** : 7,09 M tokens de sortie sur la
+  fenêtre, ~1 464 par tour, ~591 k par session. Concise activé ce soir
+  pour la semaine 2, conformément au protocole.
+
 ### Tableau de suivi
 
 | Indicateur | Baseline | Cible | Sem. 1 | Sem. 2 | Verdict |
 |---|---|---|---|---|---|
-| T1 équiv. input / chantier | ~60 M | ≤ 35 M | | | |
-| T2 contexte moyen / tour | 410–540 k | ≤ 200 k | | | |
-| T3 sessions > 24 h non closes | 8+ | 0 | | | |
-| T4 tours / prompt | 36,6 | ≤ 25 | | | |
-| P1 mur bloqué > 60 s au 1er plan | ~3,5 h | ≤ 15 min | | | |
-| P2 re-runs / flake | ≤ 11 | ≤ 2 | | | |
-| P3 allers-retours évitables | 24 | 0 | | | |
-| W1 gate complète | 4 min 34 s (W0) | ≤ 6 min | | | |
-| W2 1 spec e2e | 74 s | ≤ 45 s | | | |
-| W3 gates complètes / chantier | 10+ | ≤ 3 | | | |
-| W5 push docs-only | ~2 min | ≤ 30 s | | | |
-| T5 (opt.) tokens de sortie / session (Concise) | réf. sem. 1 | baisse sans perte qualité | sans | avec | |
-| M1 coût haut de gamme hors chantiers | ~10–15 % | ≤ 5 % | | | |
-| M2 revues high / chantier | jusqu'à 3 | 1 | | | |
-| Qualité : KO au STOP 2 / CI rouges | réf. sem. passée | stable ou ↓ | | | |
+| T1 équiv. input / chantier | ~60 M | ≤ 35 M | 11–30 M ✓ | | |
+| T2 contexte moyen / tour | 410–540 k | ≤ 200 k | 364 k ✗ | | |
+| T3 sessions > 24 h non closes | 8+ | 0 | 3 ✗ | | |
+| T4 tours / prompt | 36,6 | ≤ 25 | 44,9 ✗ (brouillé, cf. note) | | |
+| P1 mur bloqué > 60 s au 1er plan | ~3,5 h | ≤ 15 min | 100 min (> 30 s) ✗ | | |
+| P2 re-runs / flake | ≤ 11 | ≤ 2 | aucun flake à trancher — | | |
+| P3 allers-retours évitables | 24 | 0 | 0 observé ✓ | | |
+| W1 gate complète | 4 min 34 s (W0) | ≤ 6 min | 2,1–2,6 min (148 e2e) ✓ | | |
+| W2 1 spec e2e | 74 s | ≤ 45 s | 13,5–19 s (vague 2) ✓ | | |
+| W3 gates complètes / chantier | 10+ | ≤ 3 | 2 / 2 / 4 / 7 ~ | | |
+| W5 push docs-only | ~2 min | ≤ 30 s | à chronométrer ce soir | | |
+| T5 (opt.) tokens de sortie / session (Concise) | réf. sem. 1 | baisse sans perte qualité | 7,09 M ; 1 464/tour (sans) | avec | |
+| M1 coût haut de gamme hors chantiers | ~10–15 % | ≤ 5 % | agents 40 % abaissés ; fil 0 % ~ | | |
+| M2 revues high / chantier | jusqu'à 3 | 1 | 1 ✓ | | |
+| Qualité : KO au STOP 2 / CI rouges | réf. sem. passée | stable ou ↓ | KO corrigés j.-même ; 0 CI rouge ✓ | | |
 
 ---
 
