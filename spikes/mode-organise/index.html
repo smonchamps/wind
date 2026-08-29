@@ -1,0 +1,1544 @@
+<title>Wind · Mode organisé</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+/* ================================================================
+   Planche cliquable — Mode organisé (exploration, 2026-08-29).
+   Système « Elements » repris verbatim de apps/desktop/ui-v2/src/
+   systeme.css : 17 rôles × 2 thèmes, coin vif partout (V14), glyphes
+   grille 24 / trait 2 / butt / miter. AUCUN code de production.
+   ================================================================ */
+html { --r-surface:0; --r-controle:0; --r-tuile:0; }
+
+:root {
+  --bg:#F3F2EE; --surface:#FFFFFF;
+  --ink:#191D1E; --ink2:#565C5E; --muted:#606668;
+  --border:#CBC8BB; --accent:#1A7A7A; --accentH:#14625E;
+  --marque:#1F8A8A; --sel:#DDE9E6; --hover:#EAE8E1;
+  --tuile:#F2EDE3; --tuileInk:#4A4436;
+  --alert:#C42D24; --onAccent:#FFFFFF;
+  --shadow:0 2px 8px rgba(25,29,30,0.08); --scrim:rgba(25,29,30,0.28);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:#0D100F; --surface:#171B1A;
+    --ink:#ECEDEA; --ink2:#B4BAB8; --muted:#98A0A1;
+    --border:#333B3A; --accent:#3FA39C; --accentH:#55B7B0;
+    --marque:#3FA39C; --sel:#1E322F; --hover:#141817;
+    --tuile:#241F17; --tuileInk:#DFCFAE;
+    --alert:#EA9A90; --onAccent:#06211F;
+    --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
+  }
+}
+:root[data-theme="dark"] {
+  --bg:#0D100F; --surface:#171B1A;
+  --ink:#ECEDEA; --ink2:#B4BAB8; --muted:#98A0A1;
+  --border:#333B3A; --accent:#3FA39C; --accentH:#55B7B0;
+  --marque:#3FA39C; --sel:#1E322F; --hover:#141817;
+  --tuile:#241F17; --tuileInk:#DFCFAE;
+  --alert:#EA9A90; --onAccent:#06211F;
+  --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
+}
+
+* { box-sizing:border-box; }
+html, body { margin:0; padding:0; height:100%; }
+body {
+  font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background:var(--bg); color:var(--ink); overflow:hidden;
+}
+input, textarea, button { font-family:inherit; }
+.ic { flex:none; vertical-align:middle; }
+.ic.miroir { transform:scaleX(-1); }
+.disque {
+  width:9px; height:9px; border-radius:50%;
+  background:var(--marque); flex:none;
+}
+.display {
+  font-family:'Segoe UI Variable Display', -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-weight:340; letter-spacing:-.03em;
+}
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration:0.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:0.01ms !important;
+  }
+}
+
+/* ---------- Écran ---------- */
+.ecran {
+  display:flex; flex-direction:column; height:100vh; position:relative;
+  background:var(--bg); overflow:hidden;
+}
+.entete {
+  height:52px; flex:none; background:var(--bg);
+  border-bottom:1px solid var(--border); display:flex;
+  align-items:center; gap:12px; padding:0 14px;
+}
+.marque {
+  font-size:18px; font-weight:600; width:212px; color:var(--ink);
+  display:flex; align-items:center; gap:10px;
+}
+.recherche {
+  flex:1; max-width:520px; height:32px; display:flex; align-items:center; gap:10px;
+  padding:0 14px; font-size:13px; color:var(--ink2);
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r-controle);
+}
+.recherche .ic { color:var(--ink2); }
+.recherche input {
+  flex:1; font-size:13px; color:var(--ink); border:none; outline:none;
+  background:transparent; min-width:0;
+}
+.recherche input::placeholder { color:var(--ink2); }
+.entete .principal { margin-left:auto; }
+button {
+  height:32px; padding:0 16px; display:inline-flex; align-items:center;
+  gap:8px; font-size:13px; color:var(--ink); background:var(--surface);
+  border:1px solid var(--border); border-radius:var(--r-controle); cursor:pointer;
+}
+button:hover { background:var(--sel); }
+.principal {
+  font-weight:600; color:var(--onAccent); background:var(--accent);
+  border-color:var(--accent);
+}
+.principal:hover { background:var(--accentH); border-color:var(--accentH); }
+
+/* Le va-et-vient du mode — à droite de la barre de recherche. La
+   pilule (999px) et le disque de poignée : les deux seules formes
+   rondes légitimes du Système (V14). */
+.bascule-mode {
+  height:32px; padding:0 12px; display:inline-flex; align-items:center;
+  gap:9px; font-size:13px; font-weight:600; color:var(--ink2);
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r-controle); cursor:pointer; flex:none;
+}
+.bascule-mode:hover { background:var(--sel); color:var(--ink); }
+.bascule-mode[aria-pressed="true"] { color:var(--ink); }
+.piste {
+  width:34px; height:18px; border-radius:999px; flex:none;
+  background:var(--border); position:relative; transition:background .15s;
+}
+.bascule-mode[aria-pressed="true"] .piste { background:var(--accent); }
+.poignee-b {
+  position:absolute; top:2px; left:2px; width:14px; height:14px;
+  border-radius:50%; background:var(--surface); transition:left .15s;
+}
+.bascule-mode[aria-pressed="true"] .poignee-b { left:18px; }
+
+/* ---------- Colonnes ---------- */
+.colonnes {
+  flex:1; display:grid;
+  grid-template-columns:248px 400px minmax(0,1fr);
+  min-height:0; position:relative;
+}
+.colonnes.large { grid-template-columns:248px minmax(0,1fr); }
+
+/* ---------- Nav ---------- */
+nav {
+  background:var(--bg); border-right:1px solid var(--border);
+  padding:20px 12px; display:flex; flex-direction:column; gap:2px;
+  min-height:0; overflow:auto;
+}
+.rang {
+  display:flex; align-items:baseline; gap:10px; flex:none;
+  padding:8px 10px; border-radius:var(--r-controle); cursor:pointer;
+  border:1px solid transparent;
+}
+.rang .icone .ic { vertical-align:baseline; transform:translateY(2px); }
+.rang:hover { background:var(--hover); }
+.rang.actif { background:var(--sel); border-color:var(--accent); }
+.rang .icone { color:var(--muted); }
+.rang.actif .icone { color:var(--accent); }
+.rang .libelle {
+  font-size:14px; color:var(--ink2); flex:1; min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.rang.actif .libelle { font-weight:600; color:var(--ink); }
+.pastille {
+  flex:none; font-size:12px; font-weight:600; color:var(--accent);
+  font-variant-numeric:tabular-nums;
+}
+.nav-titre {
+  margin:14px 0 4px; padding:0 10px; font-size:11px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--muted); font-weight:600;
+}
+.nav-filet { border-top:1px solid var(--border); margin:12px 2px 8px; }
+.boites { margin-top:auto; padding-top:16px; border-top:1px solid var(--border);
+  display:flex; flex-direction:column; gap:6px; }
+.tuile {
+  display:flex; align-items:baseline; gap:10px; flex:none;
+  padding:9px 12px; border-radius:var(--r-controle); cursor:pointer;
+  background:var(--tuile); color:var(--tuileInk);
+  border:1px solid var(--border);
+}
+.tuile .icone-tuile { color:var(--tuileInk); }
+.tuile .icone-tuile .ic { vertical-align:baseline; transform:translateY(2px); }
+.tuile .titre-tuile {
+  font-size:13px; font-weight:600; min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+
+/* ---------- Liste ---------- */
+.colonne {
+  display:flex; flex-direction:column; min-height:0;
+  background:var(--bg); border-right:1px solid var(--border);
+}
+.bandeau {
+  flex:none; height:52px; display:flex; align-items:center; gap:8px;
+  padding:0 16px; background:var(--bg);
+  border-bottom:1px solid var(--border);
+}
+.bandeau h1 {
+  margin:0; font-size:16px; font-weight:600; line-height:1.3;
+  color:var(--ink); flex:1; min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.cadre { flex:1; overflow:auto; position:relative; }
+.vide {
+  position:absolute; inset:0; display:flex; align-items:center;
+  justify-content:center; padding:40px; text-align:center;
+}
+.vide p { margin:0; font-size:13px; line-height:1.5; color:var(--muted); }
+
+/* La section de l'Imbox organisée : « Nouveau pour vous » /
+   « Déjà consulté » — le dessin des titres de nav, posé sur la liste. */
+.section-titre {
+  margin:0; padding:14px 16px 6px; font-size:11px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--muted); font-weight:600;
+  display:flex; align-items:center; gap:8px;
+}
+.section-titre .n { color:var(--accent); font-variant-numeric:tabular-nums; }
+
+.ligne {
+  padding:13px 16px; border-top:1px solid var(--border);
+  border-left:2px solid transparent;
+  display:grid; grid-template-columns:1fr;
+  row-gap:3px; align-items:start; cursor:pointer;
+  position:relative;
+}
+.ligne:first-child { border-top-color:transparent; }
+.ligne:hover { background:var(--hover); }
+.ligne.choisie { background:var(--sel); border-left-color:var(--accent); }
+.l1 { display:flex; align-items:baseline; gap:6px; min-width:0; }
+.l1 .disque { align-self:center; }
+.exp {
+  font-size:14px; color:var(--ink); flex:0 1 auto; min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.essor { flex:1 1 0; min-width:0; }
+.nonlu .exp { font-weight:700; }
+.heure { font-size:12px; color:var(--muted); flex:none; }
+.objet {
+  margin:0; font-size:14px; font-weight:400; line-height:1.3;
+  color:var(--ink); min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.nonlu .objet { font-weight:700; }
+.apercu {
+  margin:0; font-size:13px; line-height:1.45; color:var(--ink2); min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  min-height:1.45em;
+}
+.puces { height:24px; display:flex; align-items:center; gap:6px; overflow:hidden; }
+.puce {
+  display:inline-flex; align-items:center; gap:5px; height:24px;
+  padding:0 9px; font-size:12px; color:var(--ink2);
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r-controle); white-space:nowrap;
+}
+.puce .ic { width:14px; height:14px; }
+.puce .ic { color:var(--accent); }
+.puce.neutre .ic { color:var(--muted); }
+
+/* Le geste de rangée (⋯) : dans la ligne d'entête, à GAUCHE de
+   l'heure — révélé au survol, la grammaire de la case à cocher
+   (opacité seule : sa place est réservée, la géométrie ne bouge pas). */
+.geste {
+  width:22px; height:20px; padding:0; flex:none; align-self:center;
+  display:inline-flex; align-items:center; justify-content:center;
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r-controle); color:var(--ink2); cursor:pointer;
+  opacity:0; margin:-2px 2px -2px 0;
+}
+.ligne:hover .geste, .geste[aria-expanded="true"] { opacity:1; }
+.geste:hover { background:var(--sel); color:var(--ink); }
+
+/* ---------- Menu contextuel ---------- */
+.menu {
+  position:fixed; z-index:30; min-width:230px;
+  background:var(--surface); border:1px solid var(--border);
+  box-shadow:var(--shadow); padding:6px; display:flex; flex-direction:column;
+}
+.menu button {
+  height:30px; padding:0 10px; justify-content:flex-start; gap:9px;
+  border:none; background:transparent; font-size:13px; width:100%;
+  text-align:left;
+}
+.menu button:hover { background:var(--sel); }
+.menu .filet { border-top:1px solid var(--border); margin:5px 2px; }
+.menu .titre-menu {
+  padding:5px 10px 3px; font-size:11px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--muted); font-weight:600;
+}
+
+/* ---------- Lecture ---------- */
+.lecture {
+  display:flex; flex-direction:column; min-height:0; min-width:0;
+  background:var(--bg); position:relative;
+}
+.lecture-cadre { flex:1; overflow:auto; padding:28px 36px 120px; }
+.lecture-int { max-width:760px; margin:0 auto; }
+.fil-titre { margin:0 0 18px; font-size:24px; line-height:1.25; color:var(--ink); }
+.msg-tete { display:flex; flex-direction:column; gap:3px; padding:14px 0; }
+.msg-tete .qui { font-size:14px; color:var(--ink); }
+.msg-tete .qui b { font-weight:600; }
+.msg-tete .adr, .msg-tete .a { font-size:13px; color:var(--ink2); }
+.msg-tete .mot { color:var(--muted); }
+.corps { font-size:14px; line-height:1.6; color:var(--ink); padding:6px 0 18px; }
+.corps p { margin:0 0 14px; max-width:66ch; }
+.filet-h { border-top:1px solid var(--border); }
+
+/* La barre du fil (bas du volet) */
+.barre-fil {
+  flex:none; height:52px; display:flex; align-items:center; gap:8px;
+  padding:0 16px; border-top:1px solid var(--border); background:var(--bg);
+}
+.barre-fil { overflow-x:auto; }
+.barre-fil button { height:32px; white-space:nowrap; flex:none; }
+
+/* L'écran 03 — la surimpression plein écran du classique 1-2 volets
+   (Conversation.svelte) : entête 52 px sur --surface, scène défilante,
+   colonne centrée 960 px (D2). */
+.ecran03 {
+  position:absolute; inset:0; display:flex; flex-direction:column;
+  background:var(--bg); z-index:25;
+}
+.entete03 {
+  height:52px; flex:none; background:var(--surface);
+  border-bottom:1px solid var(--border); display:flex;
+  align-items:center; gap:12px; padding:0 14px;
+}
+.scene03 { flex:1; padding:18px 28px 28px; overflow-y:auto; min-height:0; }
+.colonne03 { max-width:960px; margin:0 auto; }
+.barre-fil .actif-cote { background:var(--sel); border-color:var(--accent); font-weight:600; }
+
+/* ---------- Filtrage (Screener) ---------- */
+.filtrage-cadre { flex:1; overflow:auto; padding:28px 36px 60px; }
+.filtrage-int { max-width:820px; margin:0 auto; }
+.filtrage-int > h2 { margin:0 0 6px; font-size:24px; line-height:1.25; color:var(--ink); }
+.sous-titre { margin:0 0 24px; font-size:13px; line-height:1.5; color:var(--ink2); max-width:66ch; }
+/* Le Portier simplifié (verdict CE) : titre et sous-titre centrés,
+   une règle-libellé, puis UNE rangée par expéditeur — Oui / Non à
+   gauche, l'identité et l'extrait à droite. Rien d'autre à décider. */
+.portier-int h2 { text-align:center; }
+.portier-int > .sous-titre { text-align:center; margin-left:auto; margin-right:auto; }
+.portier-regle { display:flex; align-items:center; gap:12px; margin:30px 0 2px; }
+.portier-regle .lab {
+  font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--muted); font-weight:600; flex:none;
+}
+.portier-regle .trait { flex:1; border-top:1px solid var(--border); }
+/* La règle du Portier suit le dessin de « Historique du Portier » :
+   libellé nu (sans trait à sa droite), 8 px d'écart, puis le filet
+   supérieur du premier rang fait séparateur. */
+.rang-portier {
+  display:flex; align-items:center; gap:18px; padding:20px 0;
+  border-top:1px solid var(--border);
+}
+/* Les choix vivent à DROITE du message (verdict CE, passe 3). Chaque
+   bouton porte un mini ⋯ au coin haut-droit — le Oui qui oriente
+   (Réception / Kiosque / Registre), le Non qui pose une règle
+   (indésirable / archivage / suppression). */
+.rang-portier .choix { display:flex; gap:12px; flex:none; }
+.rang-portier .choix button.gros { height:44px; padding:0 18px; font-weight:600; }
+.btn-oui .ic { color:var(--accent); }
+.btn-non .ic { color:var(--alert); }
+.btn-portier { position:relative; display:inline-flex; }
+.btn-portier .mini {
+  position:absolute; top:-8px; right:-8px; width:19px; height:19px; padding:0;
+  display:inline-flex; align-items:center; justify-content:center;
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r-controle); color:var(--muted); cursor:pointer;
+}
+.btn-portier .mini:hover, .btn-portier .mini[aria-expanded="true"] {
+  background:var(--sel); color:var(--ink);
+}
+.btn-portier .mini .ic { width:12px; height:12px; }
+/* Le message d'un rang du Portier : LE format des rangées du volet
+   central (l1 expéditeur/heure, objet, aperçu — mêmes classes), avec
+   l'adresse en clair, la seule donnée que le Portier ajoute. */
+.rang-portier .msg-p {
+  flex:1; min-width:0; display:grid; grid-template-columns:1fr;
+  row-gap:3px; align-items:start;
+}
+.adr-p { font-size:13px; color:var(--muted); flex:0 1 auto; min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* La Réception organisée : fil de messages centré, sans volet — les
+   sections au dessin du Portier (libellé + trait). */
+.imbox-int { max-width:760px; margin:0 auto; }
+.portier-regle .n { color:var(--accent); font-variant-numeric:tabular-nums; }
+.section-lignes { margin-bottom:26px; }
+.imbox-int .portier-regle { margin:22px 0 2px; }
+.decision {
+  display:flex; align-items:center; gap:8px; padding:12px 0;
+  font-size:13px; color:var(--ink2);
+}
+.decision .ic { color:var(--accent); }
+.historique-titre {
+  margin:34px 0 8px; font-size:11px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--muted); font-weight:600;
+}
+.rang-historique {
+  display:flex; align-items:center; gap:10px; padding:10px 2px;
+  border-top:1px solid var(--border); font-size:13px; color:var(--ink2);
+}
+.rang-historique .ic { color:var(--alert); }
+.rang-historique .qui-h { flex:1; min-width:0; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; }
+.rang-historique button { height:28px; padding:0 12px; font-size:12px; }
+
+/* ---------- Le Fil (Feed) ---------- */
+.fil-cadre { flex:1; overflow:auto; padding:28px 36px 60px; }
+.fil-int { max-width:720px; margin:0 auto; }
+.note-vue {
+  display:flex; align-items:baseline; gap:8px; margin:0 0 22px;
+  font-size:13px; line-height:1.5; color:var(--ink2); max-width:70ch;
+}
+.note-vue .ic { color:var(--muted); align-self:center; }
+.carte-fil { padding:26px 0 10px; border-top:1px solid var(--border); position:relative; }
+.carte-fil:first-of-type { border-top:none; padding-top:4px; }
+.carte-fil .de { display:flex; align-items:baseline; gap:8px; margin-bottom:10px; }
+.carte-fil .de .nom { font-size:13px; font-weight:600; color:var(--ink2); }
+.carte-fil .de .heure { margin-left:auto; }
+.carte-fil h3 { margin:0 0 12px; font-size:24px; line-height:1.25; color:var(--ink); }
+.carte-fil .corps { padding-bottom:8px; }
+
+/* ---------- Registre (Paper Trail) ---------- */
+.montant { font-size:13px; color:var(--ink2); font-variant-numeric:tabular-nums; flex:none; }
+
+/* ---------- Groupé (Bundle) ---------- */
+.bandeau-groupe { display:flex; align-items:center; gap:10px; }
+.bandeau-groupe .retour-b {
+  width:32px; height:32px; padding:0; justify-content:center; flex:none;
+}
+
+/* ---------- Mis de côté (Set Aside) ---------- */
+.pile-zone {
+  position:absolute; right:28px; bottom:64px; z-index:20;
+  display:flex; flex-direction:column; align-items:flex-end; gap:10px;
+}
+.pile-bouton {
+  height:auto; padding:10px 14px 12px; display:flex; flex-direction:column;
+  align-items:center; gap:8px; background:var(--surface);
+  border:1px solid var(--border); box-shadow:var(--shadow); cursor:pointer;
+}
+.pile-bouton:hover { background:var(--sel); }
+.pile-visuel { position:relative; width:52px; height:38px; }
+.pile-visuel span {
+  position:absolute; left:0; right:0; height:30px;
+  background:var(--tuile); border:1px solid var(--border);
+}
+.pile-visuel span:nth-child(1) { top:8px; transform:rotate(-3deg); }
+.pile-visuel span:nth-child(2) { top:4px; transform:rotate(2deg); }
+.pile-visuel span:nth-child(3) { top:0; background:var(--surface); }
+.pile-libelle { font-size:12px; font-weight:600; color:var(--ink2); display:flex; gap:5px; }
+.pile-libelle .n { color:var(--accent); font-variant-numeric:tabular-nums; }
+.eventail {
+  width:330px; max-height:420px; overflow:auto; display:flex; flex-direction:column;
+  background:var(--surface); border:1px solid var(--border); box-shadow:var(--shadow);
+}
+.eventail .tete-e {
+  padding:12px 14px 8px; font-size:11px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--muted); font-weight:600;
+}
+.carte-e {
+  display:flex; flex-direction:column; gap:2px; padding:10px 14px;
+  border-top:1px solid var(--border); cursor:pointer; text-align:left;
+  background:var(--tuile); color:var(--tuileInk);
+}
+.carte-e:hover { filter:brightness(0.97); }
+.carte-e .o { font-size:13px; font-weight:600; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; }
+.carte-e .e { font-size:12px; opacity:.85; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; }
+.eventail .pied-e { padding:10px 14px; border-top:1px solid var(--border); }
+.eventail .pied-e button { width:100%; justify-content:center; }
+
+/* Le tableau des mis de côté */
+.tableau-cadre { flex:1; overflow:auto; padding:28px 36px 60px; }
+.tableau-int { max-width:960px; margin:0 auto; }
+.tableau-grille {
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr));
+  gap:14px; margin-top:20px;
+}
+.carte-t {
+  background:var(--tuile); color:var(--tuileInk); border:1px solid var(--border);
+  padding:16px; display:flex; flex-direction:column; gap:6px; min-height:150px;
+}
+.carte-t .e { font-size:12px; font-weight:600; opacity:.85; }
+.carte-t .o { font-size:15px; font-weight:600; line-height:1.3; }
+.carte-t .x { font-size:13px; line-height:1.45; opacity:.9; flex:1;
+  display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.carte-t .actions-t { display:flex; gap:8px; margin-top:8px; }
+.carte-t button { height:28px; padding:0 12px; font-size:12px; }
+
+/* ---------- Fente d'avis ---------- */
+.fente {
+  flex:none; display:flex; align-items:center; gap:10px;
+  padding:9px 16px; background:var(--tuile); color:var(--tuileInk);
+  border-bottom:1px solid var(--border); font-size:13px; line-height:1.4;
+}
+.fente .ic { color:var(--tuileInk); }
+.fente .texte-f { flex:1; min-width:0; }
+.fente button { height:26px; padding:0 12px; font-size:12px; flex:none; }
+
+/* ---------- Statut ---------- */
+.statut {
+  position:relative; height:36px; flex:none; background:var(--bg);
+  border-top:1px solid var(--border); display:flex; align-items:center;
+  gap:14px; padding:0 24px; font-size:12px; color:var(--muted);
+}
+.statut .texte { display:flex; align-items:center; gap:8px; min-width:0; flex:1; }
+.statut .texte span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* ---------- Toast ---------- */
+.toast {
+  position:fixed; bottom:52px; left:50%; transform:translateX(-50%);
+  background:var(--ink); color:var(--bg); font-size:13px;
+  padding:9px 16px; box-shadow:var(--shadow); z-index:40;
+  opacity:0; pointer-events:none; transition:opacity .2s;
+}
+.toast.visible { opacity:1; }
+</style>
+
+<div class="ecran" id="ecran"></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/* ================================================================
+   Le jeu d'icônes — sous-ensemble du catalogue livré (lib/icones.js),
+   plus CINQ glyphes d'exploration dessinés à la grammaire du jeu
+   (grille 24, trait 2, butt, miter) : filtre, fil, registre, pile,
+   groupe. S'ils survivent à l'exploration, ils entreront au Système
+   par la voie normale (relevé + gate de cohérence).
+   ================================================================ */
+const JEU = {
+  inbox: { d:['M4 6h16v12H4z','M4 13h5l2 2h2l2-2h5'] },
+  all_inbox: { d:['M4 12h16v7H4z','M6 9h12','M8 6h8'] },
+  send: { d:['M3 4l18 8-18 8 3-8z'] },
+  edit_note: { d:['M4 6h10','M4 11h7','M11 19l1-3 6-6 2 2-6 6z'] },
+  edit_square: { d:['M4 6h8','M4 6v14h14v-8','M11 15l1-3 6-6 2 2-6 6z'] },
+  report: { d:['M9 3h6l6 6v6l-6 6H9l-6-6V9z','M12 8v5','M12 16v2'] },
+  inventory_2: { d:['M3 4h18v5H3z','M5 9h14v11H5z','M10 6h4'] },
+  delete: { d:['M4 7h16','M6 7v12h12V7','M10 4h4','M10 11v5','M14 11v5'] },
+  search: { d:['M11 4a7 7 0 1 0 0 14 7 7 0 1 0 0-14','M16 16l4 4'] },
+  close: { d:['M5 5l14 14','M19 5L5 19'] },
+  settings: { d:['M4 8h16','M14 5v6','M4 16h16','M9 13v6'] },
+  feedback: { d:['M4 4h16v12H10l-4 4v-4H4z','M8 9h8','M8 12h5'] },
+  sync: { d:['M20 12a8 8 0 1 1-2.3-5.7','M20 4v5h-5'] },
+  check: { d:['M4 13l5 5L20 7'] },
+  check_circle: { d:['M12 4a8 8 0 1 0 0 16 8 8 0 1 0 0-16','M8 12l3 3 5-5'] },
+  cancel: { d:['M12 4a8 8 0 1 0 0 16 8 8 0 1 0 0-16','M9 9l6 6','M15 9l-6 6'] },
+  forum: { d:['M6 5V2h16v10h-6','M2 5h14v9H7l-5 5z'] },
+  keep: { d:['M10 3h4v7l2 4H8l2-4z','M12 14v7'] },
+  keep_off: { d:['M10 3h4v7l2 4H8l2-4z','M12 14v7','M4 4l16 16'] },
+  reply: { d:['M9 6L3 12l6 6','M3 12h11a6 6 0 0 1 6 6v1'] },
+  arrow_back: { d:['M20 12H4','M10 6l-6 6 6 6'] },
+  visibility_off: { d:['M3 12l4-4h10l4 4-4 4H7z','M4 4l16 16'] },
+  info: { d:['M12 4a8 8 0 1 0 0 16 8 8 0 1 0 0-16','M12 11v6','M12 7v2'] },
+  attach_file: { d:['M19 7v9a6 6 0 0 1-12 0V6a4 4 0 0 1 8 0v10a2 2 0 0 1-4 0V8'] },
+  more_horiz: { pleins:[[5,12,1.7],[12,12,1.7],[19,12,1.7]] },
+  /* — Glyphes d'exploration (hors catalogue) — */
+  /* Le Portier : un majordome — tête, buste (le tracé de `person`),
+     nœud papillon en deux triangles fermés. */
+  portier: { d:['M12 4a3 3 0 1 0 0 6 3 3 0 1 0 0-6','M5 20v-1a7 7 0 0 1 14 0v1','M9.5 13.5v3l2.5-1.5z','M14.5 13.5v3l-2.5-1.5z'] },
+  fil: { d:['M4 4h16v6H4z','M4 14h16','M4 18h10'] },
+  registre: { d:['M6 3h12v18l-3-2-3 2-3-2-3 2z','M9 8h6','M9 12h4'] },
+  pile: { d:['M4 16l8 4 8-4','M4 12l8 4 8-4','M4 8l8-4 8 4-8 4z'] },
+  groupe: { d:['M4 10h16v9H4z','M4 14h5l2 2h2l2-2h5','M7 6h10'] },
+};
+const MARQUE = { d:['M4 8h16v9H4z'], trait:2.3, flap:'M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z' };
+
+function icone(nom, taille = 16, miroir = false) {
+  const g = JEU[nom] ?? { d: [] };
+  let s = `<svg class="ic${miroir ? ' miroir' : ''}" data-nom="${nom}" viewBox="0 0 24 24" width="${taille}" height="${taille}" aria-hidden="true">`;
+  s += `<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter">`;
+  for (const d of g.d ?? []) s += `<path d="${d}"/>`;
+  s += `</g>`;
+  for (const [cx, cy, r] of g.pleins ?? []) s += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="currentColor"/>`;
+  s += `</svg>`;
+  return s;
+}
+function marque(taille = 28) {
+  let s = `<svg class="ic" data-nom="marque" viewBox="0 0 24 24" width="${taille}" height="${taille}" aria-hidden="true">`;
+  s += `<g fill="none" stroke="currentColor" stroke-width="${MARQUE.trait}" stroke-linecap="butt" stroke-linejoin="miter">`;
+  for (const d of MARQUE.d) s += `<path d="${d}"/>`;
+  s += `</g><path d="${MARQUE.flap}" fill="var(--marque)"/></svg>`;
+  return s;
+}
+
+/* ================================================================
+   Données fictives — aucun courrier réel. `dest` dit la boîte du
+   mode organisé : imbox | fil | registre | filtrage.
+   ================================================================ */
+const EXPEDITEURS = {
+  camille:  { nom:'Camille Roy',        adr:'camille.roy@exemple.fr',        dest:'imbox' },
+  julien:   { nom:'Julien Mercier',     adr:'julien@atelier-nord.fr',        dest:'imbox' },
+  elise:    { nom:'Élise Fontaine',     adr:'elise.fontaine@campanule.org',  dest:'imbox' },
+  github:   { nom:'GitHub',             adr:'notifications@github.com',      dest:'imbox', groupe:true },
+  sncf:     { nom:'SNCF Connect',       adr:'no-reply@sncf-connect.com',     dest:'registre' },
+  paypal:   { nom:'PayPal',             adr:'service@paypal.fr',             dest:'registre' },
+  edf:      { nom:'EDF',                adr:'serviceclients@edf.fr',         dest:'registre' },
+  amazon:   { nom:'Amazon.fr',          adr:'expedition@amazon.fr',          dest:'registre' },
+  lemonde:  { nom:'Le Monde',           adr:'newsletters@lemonde.fr',        dest:'fil' },
+  designw:  { nom:'Design Hebdo',       adr:'bonjour@designhebdo.fr',        dest:'fil' },
+  quadrat:  { nom:'La Quadrature',      adr:'contact@laquadrature.net',      dest:'fil' },
+  nova:     { nom:'Studio Nova',        adr:'hello@studionova.io',           dest:'filtrage' },
+  delcourt: { nom:'Marc Delcourt',      adr:'m.delcourt@prospection-plus.fr',dest:'filtrage' },
+  techhebdo:{ nom:'Lettre Tech Hebdo',  adr:'redaction@techhebdo.media',     dest:'filtrage' },
+  moi:      { nom:'Vous',               adr:'vous@exemple.fr',               dest:'imbox' },
+};
+
+let SUIVANT = 1;
+const M = (exp, objet, apercu, corps, opts = {}) => ({
+  id: SUIVANT++, exp, objet, apercu, corps,
+  heure: opts.heure ?? 'Hier',
+  nonlu: opts.nonlu ?? false,
+  envoye: opts.envoye ?? false,
+  cote: opts.cote ?? false,
+  dossier: opts.dossier ?? 'reception',
+  pieces: opts.pieces ?? 0,
+  filDe: opts.filDe ?? 1,
+});
+
+const MESSAGES = [
+  M('camille', 'Relecture du dossier avant vendredi',
+    'J’ai repris tes remarques sur les trois premières parties, il reste la conclusion…',
+    ['J’ai repris tes remarques sur les trois premières parties, il reste la conclusion à retravailler.',
+     'Est-ce que tu peux me dire si le tableau de la page 12 te semble juste ? Je préfère qu’on le vérifie à deux avant l’envoi.',
+     'On se cale un point demain matin si tu veux.'],
+    { heure:'09:12', nonlu:true, filDe:3 }),
+  M('julien', 'Devis menuiserie — version corrigée',
+    'Voici la version corrigée du devis, avec la reprise de l’escalier en option…',
+    ['Voici la version corrigée du devis, avec la reprise de l’escalier en option comme convenu.',
+     'Le délai reste de six semaines à compter de la validation. Dites-moi si le calendrier vous va.'],
+    { heure:'08:47', nonlu:true, pieces:1 }),
+  M('github', 'wind — la CI est verte sur main (run 33217)',
+    'Toutes les étapes ont réussi : fmt, clippy, tests, e2e…',
+    ['Toutes les étapes ont réussi : fmt, clippy, tests, e2e.', 'Voir le détail du run sur la page des actions.'],
+    { heure:'08:31', nonlu:true }),
+  M('github', 'wind — nouvelle issue #214 : accents dans la recherche',
+    'La recherche ne trouve pas « réunion » quand on tape « reunion »…',
+    ['La recherche ne trouve pas « réunion » quand on tape « reunion ».', 'Proposition : normaliser les diacritiques à l’indexation.'],
+    { heure:'07:58', nonlu:true }),
+  M('github', 'wind — revue demandée sur la PR #87',
+    'Une revue est demandée : « liste — fenêtrage des sondes »…',
+    ['Une revue est demandée : « liste — fenêtrage des sondes ».'],
+    { heure:'Hier', nonlu:true }),
+  M('github', 'wind — la release 0.13.0 est publiée',
+    'Le tag 0.13.0 a été publié avec 5 assets…',
+    ['Le tag 0.13.0 a été publié avec 5 assets.'],
+    { heure:'Hier', nonlu:false }),
+  M('elise', 'Photos du week-end',
+    'Comme promis, les photos de samedi — la lumière du soir est superbe…',
+    ['Comme promis, les photos de samedi — la lumière du soir est superbe sur les dernières.',
+     'Tu me diras lesquelles tu veux en tirage.'],
+    { heure:'Mar.', nonlu:false, pieces:3 }),
+  M('camille', 'Re : point d’équipe de lundi',
+    'Très bien pour 10 h, je réserve la salle du fond…',
+    ['Très bien pour 10 h, je réserve la salle du fond.'],
+    { heure:'Lun.', nonlu:false, filDe:2 }),
+  M('moi', 'Compte rendu de la visite du chantier',
+    'Bonjour Julien, voici le compte rendu de la visite de jeudi…',
+    ['Bonjour Julien, voici le compte rendu de la visite de jeudi.', 'Les réserves portent sur la ventilation et le seuil de la porte d’entrée.'],
+    { heure:'Jeu.', envoye:true, dossier:'envoyes' }),
+  M('sncf', 'Votre billet Paris → Lyon du 4 septembre',
+    'Votre billet électronique est disponible. Départ 08:56, voiture 12, place 74…',
+    ['Votre billet électronique est disponible.', 'Départ 08:56 — Paris Gare de Lyon, voiture 12, place 74. Arrivée 10:52 — Lyon Part-Dieu.'],
+    { heure:'09:02', nonlu:true, cote:true, pieces:1 }),
+  M('paypal', 'Reçu de votre paiement à Atelier Nord',
+    'Vous avez envoyé 240,00 € à Atelier Nord. Numéro de transaction 7HK220…',
+    ['Vous avez envoyé 240,00 € à Atelier Nord.', 'Numéro de transaction : 7HK220419C. Le détail est disponible dans votre historique.'],
+    { heure:'Hier', nonlu:true }),
+  M('edf', 'Votre facture d’août est disponible',
+    'Votre facture de 87,32 € est disponible dans votre espace client…',
+    ['Votre facture d’août, d’un montant de 87,32 €, est disponible dans votre espace client.',
+     'Le prélèvement interviendra le 5 septembre.'],
+    { heure:'Mar.', nonlu:false }),
+  M('amazon', 'Votre commande a été expédiée',
+    'Votre colis arrivera jeudi. Suivre la livraison…',
+    ['Votre colis « Lampe d’architecte » a été expédié.', 'Livraison prévue jeudi avant 22 h.'],
+    { heure:'Lun.', nonlu:false }),
+  M('lemonde', 'La matinale : ce qu’il faut retenir ce matin',
+    'Au sommaire : le budget en débat, la rentrée scolaire, et la sélection culture…',
+    ['Au sommaire ce matin : le budget en débat à l’Assemblée, une rentrée scolaire sous le signe des effectifs, et notre sélection culture du week-end.',
+     'Le dossier du jour revient sur dix ans de politique du logement, avec trois regards d’économistes qui ne tirent pas les mêmes conclusions des mêmes chiffres.',
+     'Et comme chaque vendredi, le tour des idées : trois essais, une controverse, un entretien.'],
+    { heure:'07:30', nonlu:true }),
+  M('designw', 'N° 142 — la fin des interfaces bavardes',
+    'Cette semaine : pourquoi les meilleurs produits parlent moins, et ce que ça change…',
+    ['Cette semaine : pourquoi les meilleurs produits parlent moins, et ce que ça change pour nos métiers.',
+     'On y regarde trois refontes récentes qui ont retiré plus qu’elles n’ont ajouté — et les chiffres d’usage qui leur donnent raison. La sobriété n’est pas une esthétique : c’est une discipline de décision.',
+     'En fin de numéro, notre veille : huit liens, pas un de plus.'],
+    { heure:'Hier', nonlu:true }),
+  M('quadrat', 'Lettre d’information — été 2026',
+    'Le point sur les dossiers de l’été et la rentrée qui s’annonce…',
+    ['Le point sur les dossiers de l’été : surveillance aux frontières, données de santé, et la consultation européenne qui s’ouvre en septembre.',
+     'Merci à toutes celles et ceux qui ont soutenu la campagne de juin.'],
+    { heure:'Mer.', nonlu:false }),
+  M('nova', 'Un site qui vous ressemble, en trois semaines',
+    'Bonjour ! Nous avons repéré votre activité et nous serions ravis de vous accompagner…',
+    ['Bonjour ! Nous avons repéré votre activité et nous serions ravis de vous accompagner dans la refonte de votre présence en ligne.'],
+    { heure:'08:20', nonlu:true }),
+  M('delcourt', 'Prise de contact — solutions d’assurance pro',
+    'Je me permets de revenir vers vous suite à votre inscription au salon des indépendants…',
+    ['Je me permets de revenir vers vous suite à votre inscription au salon des indépendants.', 'Auriez-vous 15 minutes cette semaine pour un échange téléphonique ?'],
+    { heure:'Hier', nonlu:true }),
+  M('techhebdo', 'Bienvenue dans la Lettre Tech Hebdo !',
+    'Vous recevez ce message car votre adresse a été inscrite à notre lettre hebdomadaire…',
+    ['Vous recevez ce message car votre adresse a été inscrite à notre lettre hebdomadaire.', 'Chaque jeudi : l’actualité tech triée, commentée, sans bruit.'],
+    { heure:'Jeu.', nonlu:true }),
+];
+
+/* ================================================================
+   État de la planche.
+   ================================================================ */
+const etat = {
+  mode: 'classique',          // 'classique' | 'organise'
+  vue: 'reception',           // reception | fil | registre | filtrage | envoyes | brouillons | indesirables | archives | corbeille | tableau | groupe:<exp>
+  choisi: null,               // id du message ouvert
+  recherche: '',
+  eventail: false,            // la pile est-elle déployée
+  avisMode: true,             // la fente d'explication du mode organisé
+  ecartes: [ { nom:'Promos Outlet', adr:'promo@boutique-mail.io' } ], // historique du filtrage
+  decisions: {},              // cle exp -> 'imbox' | 'fil' | 'registre' | 'non'
+  groupes: { github:true },   // expéditeurs groupés
+  menu: null,                 // { id, x, y } menu contextuel ouvert
+  menuPortier: null,          // { exp, type:'oui'|'non', x, y } — le mini ⋯
+  ouvert: null,               // id du message ouvert en écran 03 (mode organisé)
+};
+try { const m = localStorage.getItem('planche-mode'); if (m) etat.mode = m; } catch (e) {}
+
+const $ = (sel) => document.querySelector(sel);
+const ech = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+let minuterieToast = null;
+function toast(texte) {
+  const t = $('#toast');
+  t.textContent = texte;
+  t.classList.add('visible');
+  clearTimeout(minuterieToast);
+  minuterieToast = setTimeout(() => t.classList.remove('visible'), 2600);
+}
+
+/* Le routage d'un message : en classique tout vit en Réception ; en
+   organisé la destination de l'expéditeur (ou la décision du
+   Filtrage) fait loi. */
+function destination(m) {
+  const e = EXPEDITEURS[m.exp];
+  const decision = etat.decisions[m.exp];
+  if (decision === 'non') return 'ecarte';
+  if (decision) return decision;
+  return e.dest;
+}
+function visibleEnListe(m, dossier) {
+  if (m.dossier !== 'reception') return m.dossier === dossier;
+  return dossier === 'reception';
+}
+const parId = (id) => MESSAGES.find((m) => m.id === id);
+const chercheOk = (m) => {
+  if (!etat.recherche) return true;
+  const r = etat.recherche.toLowerCase();
+  const e = EXPEDITEURS[m.exp];
+  return (m.objet + ' ' + m.apercu + ' ' + e.nom + ' ' + e.adr).toLowerCase().includes(r);
+};
+
+const enFiltrage = () => Object.keys(EXPEDITEURS).filter((k) =>
+  EXPEDITEURS[k].dest === 'filtrage' && !etat.decisions[k]);
+const nbFiltrage = () => enFiltrage().reduce((n, k) =>
+  n + MESSAGES.filter((m) => m.exp === k).length, 0);
+const misDeCote = () => MESSAGES.filter((m) => m.cote);
+
+/* ================================================================
+   Rendu.
+   ================================================================ */
+function rendre() {
+  const organise = etat.mode === 'organise';
+  /* En mode organisé la Réception n'a PAS de volet de lecture : le fil
+     de messages est centré, un clic ouvre l'écran 03 (la surimpression
+     plein écran des modes 1-2 volets du classique). */
+  const vuePleine = organise && ['reception', 'fil', 'registre', 'filtrage', 'tableau'].includes(etat.vue)
+    || etat.vue.startsWith('groupe:');
+  document.title = 'Wind · Mode organisé';
+
+  $('#ecran').innerHTML = `
+    ${rendreEntete(organise)}
+    ${organise && etat.avisMode ? rendreFente() : ''}
+    <div class="colonnes ${vuePleine ? 'large' : ''}">
+      ${rendreNav(organise)}
+      ${vuePleine ? rendreVuePleine() : rendreListe(organise) + rendreLecture(organise)}
+      ${organise && misDeCote().length && etat.vue === 'reception' ? rendrePile() : ''}
+    </div>
+    <div class="statut">
+      <span class="texte"><span class="disque" aria-hidden="true"></span>
+        <span>Planche cliquable — données fictives. Le va-et-vient « Organisé » vit à droite de la recherche.</span></span>
+      <span style="font-variant-numeric:tabular-nums">spikes/mode-organise</span>
+    </div>
+    ${etat.ouvert ? rendreEcran03(etat.ouvert) : ''}
+    ${etat.menu ? rendreMenu() : ''}
+    ${etat.menuPortier ? rendreMenuPortier() : ''}
+  `;
+  brancher();
+}
+
+function rendreEntete(organise) {
+  return `
+  <header class="entete">
+    <span class="marque">${marque(28)}Wind</span>
+    <span class="recherche">${icone('search')}
+      <input type="text" id="champ-recherche" placeholder="Rechercher" aria-label="Rechercher"
+             value="${ech(etat.recherche)}">
+      ${etat.recherche ? `<button type="button" id="vider" aria-label="Effacer la recherche"
+        style="height:22px;width:22px;padding:0;border:none;background:transparent;color:var(--muted)">${icone('close')}</button>` : ''}
+    </span>
+    <button type="button" class="bascule-mode" id="bascule-mode" aria-pressed="${organise}"
+            title="${organise ? 'Revenir au mode classique' : 'Passer en mode organisé'}">
+      Organisé<span class="piste" aria-hidden="true"><span class="poignee-b"></span></span>
+    </button>
+    <button type="button" class="principal" id="btn-ecrire">${icone('edit_square')}Écrire</button>
+    <button type="button" id="btn-feedback">${icone('feedback')}Feedback</button>
+    <button type="button" id="btn-reglages">${icone('settings')}Réglages</button>
+  </header>`;
+}
+
+function rendreFente() {
+  return `
+  <div class="fente" role="status">
+    ${icone('info')}
+    <span class="texte-f"><b>Mode organisé.</b> Les nouveaux expéditeurs attendent au
+    <b>Portier</b> — un oui ou un non, rien d’autre. Les lettres d’information se lisent au
+    <b>Kiosque</b>, les reçus et confirmations vivent au <b>Registre</b>. Un message utile plus
+    tard se met <b>de côté</b> ; un expéditeur bavard se <b>groupe</b> en une seule rangée.</span>
+    <button type="button" id="fermer-fente">Compris</button>
+  </div>`;
+}
+
+function rendreNav(organise) {
+  const nonLusImbox = MESSAGES.filter((m) => m.dossier === 'reception' && m.nonlu && !m.envoye
+    && (!organise || destination(m) === 'imbox') && !m.cote).length;
+  const nonLusFil = MESSAGES.filter((m) => m.dossier === 'reception' && m.nonlu && destination(m) === 'fil').length;
+  const nonLusReg = MESSAGES.filter((m) => m.dossier === 'reception' && m.nonlu && destination(m) === 'registre').length;
+  const nFiltrage = nbFiltrage();
+
+  const estActif = (id) => etat.vue === id || (id === 'reception'
+    && (etat.vue === 'tableau' || etat.vue.startsWith('groupe:')));
+  const rang = (id, ic, libelle, pastille) => `
+    <div class="rang ${estActif(id) ? 'actif' : ''}" role="button" tabindex="0" data-vue="${id}">
+      <span class="icone">${icone(ic)}</span>
+      <span class="libelle">${libelle}</span>
+      ${pastille ? `<span class="pastille">${pastille}</span>` : ''}
+    </div>`;
+
+  let haut;
+  if (organise) {
+    haut = `
+      ${rang('reception', 'inbox', 'Réception', nonLusImbox || '')}
+      ${rang('fil', 'fil', 'Kiosque', nonLusFil || '')}
+      ${rang('registre', 'registre', 'Registre', nonLusReg || '')}
+      ${rang('filtrage', 'portier', 'Portier', nFiltrage || '')}
+      <div class="nav-filet"></div>
+      ${rang('envoyes', 'send', 'Envoyés')}
+      ${rang('brouillons', 'edit_note', 'Brouillons')}
+      ${rang('indesirables', 'report', 'Indésirables')}
+      ${rang('archives', 'inventory_2', 'Archives')}
+      ${rang('corbeille', 'delete', 'Corbeille')}`;
+  } else {
+    haut = `
+      ${rang('reception', 'inbox', 'Réception', MESSAGES.filter((m) => m.dossier === 'reception' && m.nonlu && !m.envoye).length || '')}
+      ${rang('envoyes', 'send', 'Envoyés')}
+      ${rang('brouillons', 'edit_note', 'Brouillons')}
+      ${rang('indesirables', 'report', 'Indésirables')}
+      ${rang('archives', 'inventory_2', 'Archives')}
+      ${rang('corbeille', 'delete', 'Corbeille')}`;
+  }
+  return `
+  <nav aria-label="Boîtes et dossiers">
+    ${haut}
+    <div class="boites">
+      <p class="nav-titre" style="margin-top:0">Boîtes</p>
+      <div class="tuile" role="button" tabindex="0" aria-current="true">
+        <span class="icone-tuile">${icone('all_inbox')}</span>
+        <span class="titre-tuile">Toutes les boîtes</span>
+      </div>
+      <div class="rang" role="button" tabindex="0">
+        <span class="icone">${icone('all_inbox')}</span>
+        <span class="libelle">vous@exemple.fr</span>
+      </div>
+    </div>
+  </nav>`;
+}
+
+/* --------- la liste (Réception et dossiers classiques) --------- */
+function lignesDe(vue, organise) {
+  let base = MESSAGES.filter((m) => visibleEnListe(m, vue)).filter(chercheOk);
+  if (vue === 'reception') {
+    base = base.filter((m) => !m.envoye || organise); // l'écho d'envoi ne vit qu'en Imbox « Déjà consulté »
+    if (organise) {
+      base = base.filter((m) => destination(m) === 'imbox' && !m.cote);
+    } else {
+      base = base.filter((m) => !m.envoye && destination(m) !== 'ecarte'
+        && (etat.decisions[m.exp] || EXPEDITEURS[m.exp].dest !== 'filtrage' ? true : true));
+    }
+  }
+  return base;
+}
+
+function rendreLigne(m, opts = {}) {
+  const e = EXPEDITEURS[m.exp];
+  const puces = [];
+  if (opts.groupeN) puces.push(`<span class="puce">${icone('groupe')}Groupé · ${opts.groupeN} nouveau${opts.groupeN > 1 ? 'x' : ''}</span>`);
+  if (m.filDe > 1) puces.push(`<span class="puce neutre">${icone('forum')}${m.filDe} messages</span>`);
+  if (m.pieces) puces.push(`<span class="puce neutre">${icone('attach_file')}${m.pieces} fichier${m.pieces > 1 ? 's' : ''}</span>`);
+  return `
+  <div class="ligne ${m.nonlu ? 'nonlu' : ''} ${etat.choisi === m.id ? 'choisie' : ''}"
+       role="button" tabindex="0" data-id="${m.id}" ${opts.groupeDe ? `data-groupe="${opts.groupeDe}"` : ''}>
+    <div class="l1">
+      ${m.nonlu ? '<span class="disque"></span>' : ''}
+      <span class="exp">${m.envoye ? 'À : ' + ech(EXPEDITEURS.julien.nom) : ech(e.nom)}</span>
+      <span class="essor"></span>
+      <button type="button" class="geste" data-menu="${m.id}" aria-label="Gestes du message"
+              aria-expanded="${etat.menu && etat.menu.id === m.id ? 'true' : 'false'}">${icone('more_horiz')}</button>
+      <span class="heure">${ech(m.heure)}</span>
+    </div>
+    <p class="objet">${ech(m.objet)}</p>
+    <p class="apercu">${ech(m.apercu)}</p>
+    ${puces.length ? `<div class="puces">${puces.join('')}</div>` : ''}
+  </div>`;
+}
+
+function rendreListe(organise) {
+  const vue = etat.vue;
+  const titres = { reception:'Réception', envoyes:'Envoyés', brouillons:'Brouillons',
+    indesirables:'Indésirables', archives:'Archives', corbeille:'Corbeille' };
+  const lignes = lignesDe(vue, organise);
+  const corps = lignes.length
+    ? lignes.map((m) => rendreLigne(m)).join('')
+    : '<div class="vide"><p>Aucun message ici.</p></div>';
+
+  return `
+  <div class="colonne">
+    <div class="bandeau"><h1>${titres[vue] ?? 'Réception'}</h1></div>
+    <div class="cadre">${corps}</div>
+  </div>`;
+}
+
+/* --------- la lecture --------- */
+function rendreLecture(organise) {
+  const m = etat.choisi ? parId(etat.choisi) : null;
+  if (!m) {
+    return `<div class="lecture"><div class="vide"><p>Choisissez un message dans la liste.</p></div></div>`;
+  }
+  const e = EXPEDITEURS[m.exp];
+  const d = organise ? destination(m) : null;
+  const nomBoite = { imbox:'Réception', fil:'Kiosque', registre:'Registre' }[d] ?? 'Réception';
+  return `
+  <div class="lecture">
+    <div class="lecture-cadre"><div class="lecture-int">
+      <h2 class="fil-titre display">${ech(m.objet)}</h2>
+      <div class="filet-h"></div>
+      <div class="msg-tete">
+        <span class="qui"><b>${ech(e.nom)}</b> <span class="adr">&lt;${ech(e.adr)}&gt;</span>
+          <span class="mot">sur</span> ${ech(nomBoite)}</span>
+        <span class="a"><span class="mot">À :</span> Vous &lt;vous@exemple.fr&gt;</span>
+      </div>
+      <div class="corps">${m.corps.map((p) => `<p>${ech(p)}</p>`).join('')}</div>
+      ${m.pieces ? `<div class="puces" style="margin-bottom:16px">
+        <span class="puce neutre">${icone('attach_file')}${m.pieces} fichier${m.pieces > 1 ? 's' : ''} — Enregistrer</span></div>` : ''}
+    </div></div>
+    <div class="barre-fil">
+      <button type="button" data-inerte>${icone('reply')}Répondre</button>
+      <button type="button" data-inerte>${icone('reply', 16, true)}Transférer</button>
+      ${organise ? `
+        <button type="button" id="btn-cote" class="${m.cote ? 'actif-cote' : ''}"
+                aria-pressed="${m.cote}">
+          ${icone(m.cote ? 'keep_off' : 'pile')}${m.cote ? 'Reprendre' : 'Mettre de côté'}</button>
+        <button type="button" id="btn-deplacer" data-menu-deplacer="${m.id}">${icone('groupe')}Déplacer vers…</button>
+        <button type="button" id="btn-grouper">${icone('groupe')}${etat.groupes[m.exp] ? 'Dégrouper l’expéditeur' : 'Grouper l’expéditeur'}</button>
+      ` : ''}
+      <span style="flex:1"></span>
+      <button type="button" data-inerte>${icone('inventory_2')}Archiver</button>
+      <button type="button" data-inerte>${icone('delete')}Supprimer</button>
+    </div>
+  </div>`;
+}
+
+/* --------- les vues pleines du mode organisé --------- */
+function rendreVuePleine() {
+  if (etat.vue === 'reception') return rendreImbox();
+  if (etat.vue === 'filtrage') return rendrePortier();
+  if (etat.vue === 'fil') return rendreFil();
+  if (etat.vue === 'registre') return rendreRegistre();
+  if (etat.vue === 'tableau') return rendreTableau();
+  if (etat.vue.startsWith('groupe:')) return rendreGroupe(etat.vue.slice(7));
+  return '';
+}
+
+/* La Réception organisée : SANS volet de lecture — le fil de messages
+   centré, deux sections au dessin du Portier (libellé + trait), les
+   expéditeurs groupés repliés en UNE rangée. Un clic ouvre l'écran 03. */
+function rendreImbox() {
+  const lignes = lignesDe('reception', true);
+  const grouperVus = new Set();
+  const neufs = [];
+  const vus = [];
+  for (const m of lignes) {
+    if (etat.groupes[m.exp]) {
+      if (grouperVus.has(m.exp)) continue;
+      grouperVus.add(m.exp);
+      const paquet = lignes.filter((x) => x.exp === m.exp);
+      const nNeufs = paquet.filter((x) => x.nonlu).length;
+      const ligne = rendreLigne({ ...paquet[0], filDe:1, pieces:0, nonlu:nNeufs > 0 },
+        { groupeN:nNeufs, groupeDe:m.exp });
+      (nNeufs > 0 ? neufs : vus).push(ligne);
+      continue;
+    }
+    (m.nonlu ? neufs : vus).push(rendreLigne(m));
+  }
+  const section = (libelle, n, rangs) => `
+    <div class="portier-regle">
+      <span class="lab">${libelle}${n ? ` <span class="n">${n}</span>` : ''}</span>
+      <span class="trait"></span>
+    </div>
+    <div class="section-lignes">${rangs.join('')}</div>`;
+  return `
+  <div class="lecture"><div class="fil-cadre"><div class="imbox-int">
+    <h2 class="display" style="margin:0 0 6px;font-size:24px">Réception</h2>
+    ${neufs.length ? section('Nouveau pour vous', neufs.length, neufs) : ''}
+    ${vus.length ? section('Déjà consulté', 0, vus) : ''}
+    ${!neufs.length && !vus.length ? '<p class="sous-titre" style="margin-top:16px">Aucun message ici.</p>' : ''}
+  </div></div></div>`;
+}
+
+/* L'écran 03 — la surimpression plein écran des modes 1-2 volets du
+   classique (Conversation.svelte, D4 UI v3) : entête 52 px sur
+   --surface avec « ← Réception » et « Écrire », scène défilante,
+   colonne centrée 960 px, la barre du fil au pied. */
+function rendreEcran03(id) {
+  const m = parId(id);
+  if (!m) return '';
+  const e = EXPEDITEURS[m.exp];
+  const organise = etat.mode === 'organise';
+  const d = organise ? destination(m) : null;
+  const nomBoite = { imbox:'Réception', fil:'Kiosque', registre:'Registre' }[d] ?? 'Réception';
+  return `
+  <div class="ecran03">
+    <header class="entete03">
+      <button type="button" id="retour-message">${icone('arrow_back')}${ech(nomBoite)}</button>
+      <span style="flex:1"></span>
+      <button type="button" class="principal" data-inerte>${icone('edit_square')}Écrire</button>
+    </header>
+    <div class="scene03"><div class="colonne03">
+      <h2 class="fil-titre display">${ech(m.objet)}</h2>
+      <div class="filet-h"></div>
+      <div class="msg-tete">
+        <span class="qui"><b>${ech(e.nom)}</b> <span class="adr">&lt;${ech(e.adr)}&gt;</span>
+          <span class="mot">sur</span> ${ech(nomBoite)}</span>
+        <span class="a"><span class="mot">À :</span> Vous &lt;vous@exemple.fr&gt;</span>
+      </div>
+      <div class="corps">${m.corps.map((p) => `<p>${ech(p)}</p>`).join('')}</div>
+      ${m.pieces ? `<div class="puces" style="margin-bottom:16px">
+        <span class="puce neutre">${icone('attach_file')}${m.pieces} fichier${m.pieces > 1 ? 's' : ''} — Enregistrer</span></div>` : ''}
+    </div></div>
+    <div class="barre-fil">
+      <button type="button" data-inerte>${icone('reply')}Répondre</button>
+      <button type="button" data-inerte>${icone('reply', 16, true)}Transférer</button>
+      ${organise ? `
+      <button type="button" id="btn-cote" class="${m.cote ? 'actif-cote' : ''}" aria-pressed="${m.cote}">
+        ${icone(m.cote ? 'keep_off' : 'pile')}${m.cote ? 'Reprendre' : 'Mettre de côté'}</button>
+      <button type="button" id="btn-deplacer" data-menu-deplacer="${m.id}">${icone('groupe')}Déplacer vers…</button>
+      <button type="button" id="btn-grouper">${icone('groupe')}${etat.groupes[m.exp] ? 'Dégrouper l’expéditeur' : 'Grouper l’expéditeur'}</button>` : ''}
+      <span style="flex:1"></span>
+      <button type="button" data-inerte>${icone('inventory_2')}Archiver</button>
+      <button type="button" data-inerte>${icone('delete')}Supprimer</button>
+    </div>
+  </div>`;
+}
+
+/* Le Portier — un OUI ou un NON sur l'expéditeur, rien d'autre : ni
+   tri, ni traitement du message (verdict CE sur la première planche).
+   Le routage fin (Kiosque, Registre) se fait plus tard, depuis un
+   message, par « Déplacer vers… ». */
+function rendrePortier() {
+  const attente = enFiltrage();
+  const rangs = attente.map((k) => {
+    const e = EXPEDITEURS[k];
+    const tenus = MESSAGES.filter((m) => m.exp === k);
+    const t0 = tenus[0] ?? {};
+    return `
+    <div class="rang-portier" data-exp="${k}">
+      <div class="msg-p ${t0.nonlu ? 'nonlu' : ''}">
+        <div class="l1">
+          ${t0.nonlu ? '<span class="disque"></span>' : ''}
+          <span class="exp">${ech(e.nom)}</span>
+          <span class="adr-p">&lt;${ech(e.adr)}&gt;</span>
+          <span class="essor"></span>
+          <span class="heure">${ech(t0.heure ?? '')}</span>
+        </div>
+        <p class="objet">${ech(t0.objet ?? '')}</p>
+        <p class="apercu">${ech(t0.apercu ?? '')}</p>
+      </div>
+      <div class="choix">
+        <span class="btn-portier">
+          <button type="button" class="btn-oui gros" data-oui="${k}">${icone('check_circle')}Oui</button>
+          <button type="button" class="mini" data-mini-oui="${k}"
+                  aria-label="Oui, en choisissant la destination"
+                  aria-expanded="${etat.menuPortier && etat.menuPortier.exp === k && etat.menuPortier.type === 'oui' ? 'true' : 'false'}">${icone('more_horiz', 12)}</button>
+        </span>
+        <span class="btn-portier">
+          <button type="button" class="btn-non gros" data-non="${k}">${icone('cancel')}Non</button>
+          <button type="button" class="mini" data-mini-non="${k}"
+                  aria-label="Non, en choisissant la règle"
+                  aria-expanded="${etat.menuPortier && etat.menuPortier.exp === k && etat.menuPortier.type === 'non' ? 'true' : 'false'}">${icone('more_horiz', 12)}</button>
+        </span>
+      </div>
+    </div>`;
+  }).join('');
+
+  const LIBELLE_REGLE = {
+    spam: 'écarté — signalé indésirable',
+    archive: 'écarté — archivage automatique',
+    suppression: 'écarté — suppression automatique',
+  };
+  const historique = etat.ecartes.map((x, i) => `
+    <div class="rang-historique">
+      ${icone('visibility_off')}
+      <span class="qui-h"><b>${ech(x.nom)}</b> &lt;${ech(x.adr)}&gt; — ${LIBELLE_REGLE[x.regle] ?? 'écarté'}</span>
+      <button type="button" data-reintegrer="${i}">Réintégrer</button>
+    </div>`).join('');
+
+  return `
+  <div class="lecture"><div class="filtrage-cadre"><div class="filtrage-int portier-int">
+    <h2 class="display">Portier</h2>
+    <p class="sous-titre">Ces expéditeurs vous écrivent pour la première fois.<br>
+    Vous décidez si vous voulez les entendre.</p>
+    ${attente.length ? `
+    <p class="historique-titre" style="margin-top:30px">Voulez-vous recevoir leurs messages ?</p>
+    ${rangs}` : `<div class="decision" style="justify-content:center">${icone('check_circle')}Personne n’attend au Portier. Les nouveaux expéditeurs apparaîtront ici.</div>`}
+    <p class="historique-titre">Historique du Portier</p>
+    ${historique || '<p class="sous-titre" style="margin:8px 0 0;text-align:left">Aucun expéditeur écarté. Votre choix reste privé — un expéditeur écarté n’en sait rien, et tout se rejoue ici.</p>'}
+  </div></div></div>`;
+}
+
+function rendreFil() {
+  const lettres = MESSAGES.filter((m) => m.dossier === 'reception' && destination(m) === 'fil').filter(chercheOk);
+  const cartes = lettres.map((m) => {
+    const e = EXPEDITEURS[m.exp];
+    return `
+    <article class="carte-fil" data-id-fil="${m.id}">
+      <div class="de">
+        <span class="nom">${ech(e.nom)}</span>
+        <span class="heure">${ech(m.heure)}</span>
+      </div>
+      <h3 class="display">${ech(m.objet)}</h3>
+      <div class="corps">${m.corps.map((p) => `<p>${ech(p)}</p>`).join('')}</div>
+      <div class="puces" style="margin-bottom:8px">
+        <button type="button" class="puce" data-menu="${m.id}" style="cursor:pointer">${icone('more_horiz')}Gestes</button>
+      </div>
+    </article>`;
+  }).join('');
+  return `
+  <div class="lecture"><div class="fil-cadre"><div class="fil-int">
+    <h2 class="display" style="margin:0 0 6px;font-size:24px">Kiosque</h2>
+    <p class="note-vue">${icone('info')}Les lettres d’information arrivent déjà ouvertes, la plus
+    récente en tête — faites défiler pour lire. Rien n’est marqué à lire : le Kiosque se parcourt,
+    il ne se traite pas.</p>
+    ${cartes || '<p class="sous-titre">Rien au Kiosque. Depuis un message, « Déplacer vers le Kiosque » y envoie les lettres d’information de cet expéditeur.</p>'}
+  </div></div></div>`;
+}
+
+function rendreRegistre() {
+  const recus = MESSAGES.filter((m) => m.dossier === 'reception' && destination(m) === 'registre' && !m.cote).filter(chercheOk);
+  const lignes = recus.map((m) => rendreLigne(m)).join('');
+  return `
+  <div class="lecture"><div class="fil-cadre"><div class="imbox-int">
+    <h2 class="display" style="margin:0 0 6px;font-size:24px">Registre</h2>
+    <p class="note-vue">${icone('info')}Reçus, confirmations, factures : hors de votre chemin,
+    faciles à retrouver le jour où vous en avez besoin. Rien à traiter ici non plus.</p>
+    ${recus.length ? `<div class="section-lignes">${lignes}</div>`
+      : '<p class="sous-titre" style="margin-top:14px">Registre vide.</p>'}
+  </div></div></div>`;
+}
+
+function rendreGroupe(exp) {
+  const e = EXPEDITEURS[exp];
+  const paquet = MESSAGES.filter((m) => m.exp === exp && m.dossier === 'reception');
+  const neufs = paquet.filter((m) => m.nonlu);
+  const montre = neufs.length ? neufs : paquet;
+  return `
+  <div class="lecture">
+    <div class="bandeau bandeau-groupe" style="border-bottom:1px solid var(--border)">
+      <button type="button" class="retour-b" id="retour-groupe" aria-label="Retour à la Réception">${icone('arrow_back')}</button>
+      <h1 style="margin:0;font-size:16px;font-weight:600;flex:1">${ech(e.nom)} — groupé</h1>
+      <button type="button" id="degrouper-vue">${icone('groupe')}Dégrouper</button>
+      <button type="button" id="tout-lu">${icone('check')}Tout marquer lu</button>
+    </div>
+    <div class="fil-cadre"><div class="fil-int">
+      <p class="note-vue">${icone('info')}${neufs.length
+        ? `Les ${neufs.length} nouveaux messages du groupe, sur une seule page.`
+        : 'Rien de nouveau — voici tous les messages de cet expéditeur.'}</p>
+      ${montre.map((m) => `
+        <article class="carte-fil">
+          <div class="de"><span class="nom">${ech(m.heure)}</span>
+            ${m.nonlu ? '<span class="disque" style="align-self:center"></span>' : ''}</div>
+          <h3 class="display" style="font-size:18px;letter-spacing:0">${ech(m.objet)}</h3>
+          <div class="corps">${m.corps.map((p) => `<p>${ech(p)}</p>`).join('')}</div>
+        </article>`).join('')}
+    </div></div>
+  </div>`;
+}
+
+/* --------- la pile Mis de côté --------- */
+function rendrePile() {
+  const pile = misDeCote();
+  const eventail = etat.eventail ? `
+    <div class="eventail" role="dialog" aria-label="Messages mis de côté">
+      <p class="tete-e">Mis de côté</p>
+      ${pile.map((m) => {
+        const e = EXPEDITEURS[m.exp];
+        return `
+        <div class="carte-e" role="button" tabindex="0" data-ouvrir-cote="${m.id}">
+          <span class="o">${ech(m.objet)}</span>
+          <span class="e">${ech(e.nom)} · ${ech(m.heure)}</span>
+        </div>`;
+      }).join('')}
+      <div class="pied-e"><button type="button" id="voir-tableau">${icone('pile')}Voir le tableau</button></div>
+    </div>` : '';
+  return `
+  <div class="pile-zone">
+    ${eventail}
+    <button type="button" class="pile-bouton" id="pile-bouton" aria-expanded="${etat.eventail}">
+      <span class="pile-visuel" aria-hidden="true"><span></span><span></span><span></span></span>
+      <span class="pile-libelle">Mis de côté <span class="n">${pile.length}</span></span>
+    </button>
+  </div>`;
+}
+
+function rendreTableau() {
+  const pile = misDeCote();
+  return `
+  <div class="lecture"><div class="tableau-cadre"><div class="tableau-int">
+    <div style="display:flex;align-items:center;gap:10px">
+      <button type="button" class="retour-b" id="retour-tableau" aria-label="Retour"
+        style="width:32px;height:32px;padding:0;justify-content:center">${icone('arrow_back')}</button>
+      <h2 class="display" style="margin:0;font-size:24px">Le tableau des mis de côté</h2>
+    </div>
+    <p class="note-vue" style="margin-top:10px">${icone('info')}Tout ce que vous avez mis de côté,
+    en aperçu sur un seul écran. « Terminé » renvoie le message d’où il vient.</p>
+    <div class="tableau-grille">
+      ${pile.map((m) => {
+        const e = EXPEDITEURS[m.exp];
+        return `
+        <div class="carte-t">
+          <span class="e">${ech(e.nom)} · ${ech(m.heure)}</span>
+          <span class="o">${ech(m.objet)}</span>
+          <span class="x">${ech(m.corps.join(' '))}</span>
+          <div class="actions-t">
+            <button type="button" data-ouvrir-cote="${m.id}">Ouvrir</button>
+            <button type="button" data-terminer="${m.id}">${icone('check')}Terminé</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    ${!pile.length ? '<p class="sous-titre" style="margin-top:20px">La pile est vide.</p>' : ''}
+  </div></div></div>`;
+}
+
+/* --------- le mini ⋯ du Portier --------- */
+function rendreMenuPortier() {
+  const { exp, type, x, y } = etat.menuPortier;
+  const item = (icn, texte, attr) => `<button type="button" ${attr}>${icone(icn)}${texte}</button>`;
+  const corps = type === 'oui' ? `
+    <p class="titre-menu">Oui, et ses messages vont vers…</p>
+    ${item('inbox', 'La Réception', `data-portier-vers="imbox" data-exp="${exp}"`)}
+    ${item('fil', 'Le Kiosque', `data-portier-vers="fil" data-exp="${exp}"`)}
+    ${item('registre', 'Le Registre', `data-portier-vers="registre" data-exp="${exp}"`)}` : `
+    <p class="titre-menu">Non, et ses messages seront…</p>
+    ${item('report', 'Signalés indésirables', `data-portier-regle="spam" data-exp="${exp}"`)}
+    ${item('inventory_2', 'Archivés automatiquement', `data-portier-regle="archive" data-exp="${exp}"`)}
+    ${item('delete', 'Supprimés automatiquement', `data-portier-regle="suppression" data-exp="${exp}"`)}`;
+  return `
+  <div class="menu" style="left:${Math.min(x, window.innerWidth - 250)}px;top:${Math.min(y, window.innerHeight - 170)}px" role="menu">
+    ${corps}
+  </div>`;
+}
+
+/* --------- le menu contextuel d'une rangée --------- */
+function rendreMenu() {
+  const { id, x, y } = etat.menu;
+  const m = parId(id);
+  const e = EXPEDITEURS[m.exp];
+  const d = destination(m);
+  const item = (icn, texte, attr) => `<button type="button" ${attr}>${icone(icn)}${texte}</button>`;
+  return `
+  <div class="menu" style="left:${Math.min(x, window.innerWidth - 250)}px;top:${Math.min(y, window.innerHeight - 260)}px" role="menu">
+    <p class="titre-menu">${ech(e.nom)}</p>
+    ${d !== 'imbox' ? item('inbox', 'Déplacer vers la Réception', `data-vers="imbox" data-m="${id}"`) : ''}
+    ${d !== 'fil' ? item('fil', 'Déplacer vers le Kiosque', `data-vers="fil" data-m="${id}"`) : ''}
+    ${d !== 'registre' ? item('registre', 'Déplacer vers le Registre', `data-vers="registre" data-m="${id}"`) : ''}
+    <div class="filet"></div>
+    ${item(m.cote ? 'keep_off' : 'pile', m.cote ? 'Reprendre de la pile' : 'Mettre de côté', `data-cote="${id}"`)}
+    ${item('groupe', etat.groupes[m.exp] ? 'Dégrouper l’expéditeur' : 'Grouper l’expéditeur', `data-grouper="${m.exp}"`)}
+    <div class="filet"></div>
+    ${item('visibility_off', 'Écarter cet expéditeur', `data-ecarter="${m.exp}"`)}
+  </div>`;
+}
+
+/* ================================================================
+   Branchement des gestes.
+   ================================================================ */
+function brancher() {
+  // Le va-et-vient du mode.
+  $('#bascule-mode')?.addEventListener('click', () => {
+    etat.mode = etat.mode === 'organise' ? 'classique' : 'organise';
+    etat.vue = 'reception'; etat.choisi = null; etat.eventail = false;
+    etat.menu = null; etat.menuPortier = null; etat.ouvert = null;
+    try { localStorage.setItem('planche-mode', etat.mode); } catch (e) {}
+    toast(etat.mode === 'organise' ? 'Mode organisé.' : 'Mode classique.');
+    rendre();
+  });
+  $('#fermer-fente')?.addEventListener('click', () => { etat.avisMode = false; rendre(); });
+
+  // Recherche.
+  const champ = $('#champ-recherche');
+  champ?.addEventListener('input', () => {
+    etat.recherche = champ.value;
+    const pos = champ.selectionStart;
+    rendre();
+    const c2 = $('#champ-recherche'); c2.focus(); c2.setSelectionRange(pos, pos);
+  });
+  $('#vider')?.addEventListener('click', () => { etat.recherche = ''; rendre(); $('#champ-recherche')?.focus(); });
+
+  // Nav.
+  document.querySelectorAll('[data-vue]').forEach((el) => {
+    const aller = () => { etat.vue = el.dataset.vue; etat.choisi = null; etat.eventail = false;
+      etat.menu = null; etat.menuPortier = null; etat.ouvert = null; rendre(); };
+    el.addEventListener('click', aller);
+    el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); aller(); } });
+  });
+
+  // Rangées. En mode organisé un clic ouvre le message À PLAT (pas de
+  // volet de lecture) ; en classique il choisit dans le volet.
+  document.querySelectorAll('.ligne[data-id]').forEach((el) => {
+    const ouvrir = (ev) => {
+      if (ev.target.closest('.geste')) return;
+      const groupe = el.dataset.groupe;
+      if (groupe) { etat.vue = 'groupe:' + groupe; etat.menu = null; rendre(); return; }
+      const m = parId(Number(el.dataset.id));
+      m.nonlu = false; etat.menu = null;
+      if (etat.mode === 'organise') {
+        etat.ouvert = m.id;   // l'écran 03, la surimpression du classique 1-2 volets
+      } else {
+        etat.choisi = m.id;
+      }
+      rendre();
+    };
+    el.addEventListener('click', ouvrir);
+    el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ouvrir(ev); } });
+  });
+
+  // Menus (⋯).
+  document.querySelectorAll('[data-menu]').forEach((el) => {
+    el.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const id = Number(el.dataset.menu);
+      const r = el.getBoundingClientRect();
+      etat.menu = etat.menu && etat.menu.id === id ? null : { id, x: r.left, y: r.bottom + 4 };
+      rendre();
+    });
+  });
+  document.querySelectorAll('[data-vers]').forEach((el) => el.addEventListener('click', () => {
+    const m = parId(Number(el.dataset.m));
+    etat.decisions[m.exp] = el.dataset.vers;
+    const nom = { imbox:'la Réception', fil:'le Kiosque', registre:'le Registre' }[el.dataset.vers];
+    etat.menu = null;
+    toast(`Les messages de ${EXPEDITEURS[m.exp].nom} vont désormais vers ${nom} — les existants ont suivi.`);
+    rendre();
+  }));
+  document.querySelectorAll('[data-cote]').forEach((el) => el.addEventListener('click', () => {
+    const m = parId(Number(el.dataset.cote));
+    m.cote = !m.cote; etat.menu = null;
+    toast(m.cote ? 'Mis de côté — la pile vit en bas à droite de la Réception.' : 'Repris de la pile.');
+    rendre();
+  }));
+  document.querySelectorAll('[data-grouper]').forEach((el) => el.addEventListener('click', () => {
+    const exp = el.dataset.grouper;
+    etat.groupes[exp] = !etat.groupes[exp];
+    etat.menu = null;
+    toast(etat.groupes[exp]
+      ? `${EXPEDITEURS[exp].nom} est groupé : une seule rangée, quel que soit le volume.`
+      : `${EXPEDITEURS[exp].nom} est dégroupé.`);
+    rendre();
+  }));
+  document.querySelectorAll('[data-ecarter]').forEach((el) => el.addEventListener('click', () => {
+    const exp = el.dataset.ecarter;
+    etat.decisions[exp] = 'non';
+    etat.ecartes.push({ nom: EXPEDITEURS[exp].nom, adr: EXPEDITEURS[exp].adr, exp });
+    etat.menu = null; etat.choisi = null;
+    toast(`${EXPEDITEURS[exp].nom} est écarté. Rien ne lui est envoyé — le choix se rejoue au Portier.`);
+    rendre();
+  }));
+
+  // Portier : un OUI ou un NON, rien d'autre — l'expéditeur accepté
+  // arrive en Réception ; le routage fin se fait plus tard, depuis un
+  // de ses messages.
+  document.querySelectorAll('[data-oui]').forEach((el) => el.addEventListener('click', () => {
+    const exp = el.dataset.oui;
+    etat.decisions[exp] = 'imbox';
+    etat.menuPortier = null;
+    toast(`${EXPEDITEURS[exp].nom} peut vous écrire — ses messages arrivent en Réception.`);
+    rendre();
+  }));
+  document.querySelectorAll('[data-non]').forEach((el) => el.addEventListener('click', () => {
+    const exp = el.dataset.non;
+    etat.decisions[exp] = 'non';
+    etat.ecartes.push({ nom: EXPEDITEURS[exp].nom, adr: EXPEDITEURS[exp].adr, exp });
+    etat.menuPortier = null;
+    toast(`${EXPEDITEURS[exp].nom} est écarté — il n’en saura rien.`);
+    rendre();
+  }));
+  // Les mini ⋯ des deux boutons : le Oui qui ORIENTE, le Non qui pose
+  // une RÈGLE — la décision reste un oui/non, le détail vit au menu.
+  const ouvrirMiniPortier = (el, type) => (ev) => {
+    ev.stopPropagation();
+    const exp = el.dataset.miniOui ?? el.dataset.miniNon;
+    const r = el.getBoundingClientRect();
+    etat.menuPortier = etat.menuPortier && etat.menuPortier.exp === exp && etat.menuPortier.type === type
+      ? null : { exp, type, x: r.left - 120, y: r.bottom + 6 };
+    rendre();
+  };
+  document.querySelectorAll('[data-mini-oui]').forEach((el) =>
+    el.addEventListener('click', ouvrirMiniPortier(el, 'oui')));
+  document.querySelectorAll('[data-mini-non]').forEach((el) =>
+    el.addEventListener('click', ouvrirMiniPortier(el, 'non')));
+  document.querySelectorAll('[data-portier-vers]').forEach((el) => el.addEventListener('click', () => {
+    const exp = el.dataset.exp;
+    etat.decisions[exp] = el.dataset.portierVers;
+    etat.menuPortier = null;
+    const nom = { imbox:'la Réception', fil:'le Kiosque', registre:'le Registre' }[el.dataset.portierVers];
+    toast(`${EXPEDITEURS[exp].nom} peut vous écrire — ses messages vont vers ${nom}.`);
+    rendre();
+  }));
+  document.querySelectorAll('[data-portier-regle]').forEach((el) => el.addEventListener('click', () => {
+    const exp = el.dataset.exp;
+    const regle = el.dataset.portierRegle;
+    etat.decisions[exp] = 'non';
+    etat.ecartes.push({ nom: EXPEDITEURS[exp].nom, adr: EXPEDITEURS[exp].adr, exp, regle });
+    etat.menuPortier = null;
+    const dit = {
+      spam: 'ses prochains messages partiront aux Indésirables',
+      archive: 'ses prochains messages s’archiveront automatiquement',
+      suppression: 'ses prochains messages iront à la Corbeille',
+    }[regle];
+    toast(`${EXPEDITEURS[exp].nom} est écarté — ${dit}.`);
+    rendre();
+  }));
+  document.querySelectorAll('[data-reintegrer]').forEach((el) => el.addEventListener('click', () => {
+    const i = Number(el.dataset.reintegrer);
+    const x = etat.ecartes[i];
+    etat.ecartes.splice(i, 1);
+    if (x.exp) delete etat.decisions[x.exp];
+    toast(`${x.nom} est réintégré — ses messages des 90 derniers jours réapparaissent au Portier.`);
+    rendre();
+  }));
+
+  // Pile.
+  $('#pile-bouton')?.addEventListener('click', () => { etat.eventail = !etat.eventail; rendre(); });
+  $('#voir-tableau')?.addEventListener('click', () => { etat.vue = 'tableau'; etat.eventail = false; rendre(); });
+  $('#retour-tableau')?.addEventListener('click', () => { etat.vue = 'reception'; rendre(); });
+  document.querySelectorAll('[data-ouvrir-cote]').forEach((el) => {
+    const ouvrir = () => {
+      etat.eventail = false;
+      const id = Number(el.dataset.ouvrirCote ?? el.getAttribute('data-ouvrir-cote'));
+      const m = parId(id); if (m) m.nonlu = false;
+      etat.ouvert = id;
+      rendre();
+    };
+    el.addEventListener('click', ouvrir);
+    el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ouvrir(); } });
+  });
+  document.querySelectorAll('[data-terminer]').forEach((el) => el.addEventListener('click', () => {
+    const m = parId(Number(el.dataset.terminer));
+    m.cote = false;
+    toast('Terminé — le message est retourné d’où il vient.');
+    rendre();
+  }));
+
+  // Barre du fil (volet classique OU message à plat du mode organisé).
+  const idOuvert = () => etat.ouvert ?? etat.choisi;
+  $('#retour-message')?.addEventListener('click', () => {
+    etat.ouvert = null; etat.menu = null; rendre();
+  });
+  $('#btn-cote')?.addEventListener('click', () => {
+    const m = parId(idOuvert());
+    m.cote = !m.cote;
+    toast(m.cote ? 'Mis de côté — la pile vit en bas à droite de la Réception.' : 'Repris de la pile.');
+    rendre();
+  });
+  $('#btn-deplacer')?.addEventListener('click', (ev) => {
+    const r = ev.currentTarget.getBoundingClientRect();
+    etat.menu = { id: idOuvert(), x: r.left, y: r.top - 4 - 230 > 0 ? r.top - 234 : r.bottom + 4 };
+    rendre();
+  });
+  $('#btn-grouper')?.addEventListener('click', () => {
+    const m = parId(idOuvert());
+    etat.groupes[m.exp] = !etat.groupes[m.exp];
+    toast(etat.groupes[m.exp]
+      ? `${EXPEDITEURS[m.exp].nom} est groupé : une seule rangée dans la Réception.`
+      : `${EXPEDITEURS[m.exp].nom} est dégroupé.`);
+    rendre();
+  });
+
+  // Vue groupée.
+  $('#retour-groupe')?.addEventListener('click', () => { etat.vue = 'reception'; rendre(); });
+  $('#degrouper-vue')?.addEventListener('click', () => {
+    const exp = etat.vue.slice(7);
+    etat.groupes[exp] = false; etat.vue = 'reception';
+    toast(`${EXPEDITEURS[exp].nom} est dégroupé.`);
+    rendre();
+  });
+  $('#tout-lu')?.addEventListener('click', () => {
+    const exp = etat.vue.slice(7);
+    MESSAGES.filter((m) => m.exp === exp).forEach((m) => { m.nonlu = false; });
+    toast('Tout est lu.');
+    rendre();
+  });
+
+  // Boutons hors périmètre.
+  document.querySelectorAll('[data-inerte], #btn-ecrire, #btn-feedback, #btn-reglages').forEach((el) =>
+    el.addEventListener('click', () => toast('Hors périmètre de la planche — le vrai Wind fait ça très bien.')));
+
+  // Fermer le menu au clic ailleurs.
+  document.addEventListener('click', fermerMenu, { once: true, capture: true });
+}
+function fermerMenu(ev) {
+  const horsMenu = !ev.target.closest('.menu') && !ev.target.closest('[data-menu]')
+    && !ev.target.closest('#btn-deplacer') && !ev.target.closest('.mini');
+  if ((etat.menu || etat.menuPortier) && horsMenu) {
+    etat.menu = null; etat.menuPortier = null; rendre(); return;
+  }
+  document.addEventListener('click', fermerMenu, { once: true, capture: true });
+}
+document.addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Escape') return;
+  if (etat.menu || etat.menuPortier || etat.eventail) {
+    etat.menu = null; etat.menuPortier = null; etat.eventail = false; rendre();
+  } else if (etat.ouvert) {
+    etat.ouvert = null; rendre();
+  }
+});
+
+rendre();
+</script>
