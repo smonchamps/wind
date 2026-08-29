@@ -1,5 +1,14 @@
 # PLAN-MONA — un troisième thème « Mona » (clair + nuit)
 
+> **CHANTIER SOLDÉ le 2026-08-29 — terrain complet.** Commit
+> `409c8ae`, CI verte run 33270609284. GO CE du plan (D1-D3) et GO du
+> STOP visuel le 2026-08-29 ; terrain CE le jour même : « Terrain OK
+> sur les deux thèmes, GO » — **zéro constat, zéro retouche**.
+> Système : A94 ; ADR 0027 ; dette neuve D-45 (vignettes hors gate).
+> À embarquer dans la prochaine release (entrée CHANGELOG à écrire à
+> ce moment-là, §2.9). Kaizen : session 7b76f83d, 8,7 M équiv. input,
+> 1 gate complète (2,7 min) + 1 pre-push, 0 KO au STOP 2.
+
 > Énoncé CE (2026-08-29) : « Implémente un thème dont la couleur
 > principale est #AD204C et la couleur des tuiles est #A0868F. Ce
 > thème s'appelle "Mona". Fais une version claire et son équivalent

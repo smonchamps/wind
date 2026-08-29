@@ -732,3 +732,24 @@ motivée.)
 - **Rouvre si** : un constat terrain « déconnecté qui se dit
   connecté » (l'inverse de R1), ou au premier chantier qui touche le
   cycle de synchro.
+
+### D-45 · Les vignettes visuelles des thèmes du Système sont la seule copie d'hex hors gate
+
+- **Fait (PLAN-MONA, revue à regard neuf du 2026-08-29)** : chaque
+  thème vit en quatre copies — `systeme.css`, `FICHES` (theme.js), la
+  table de contrat du Système et ses vignettes visuelles. Les trois
+  premières sont tenues entre elles par les gates (contrôles 1 et 3 de
+  `coherence-systeme.mjs`) ; les vignettes ne le sont PAS : le
+  contrôle 1 ne lit que les cellules `data-theme`/`data-jeton`, jamais
+  les `style="background:#…"` ni les `title="--bg #…"` des swatches.
+  Un jeton retouché après un constat terrain laisserait la vignette à
+  l'ancienne couleur, gate verte, pour toujours. ~80 hex exposés
+  (4 thèmes), le format `title="--jeton #hex"` est déjà
+  machine-lisible.
+- **Raison du report** : motif préexistant à Elements (PLAN-MONA n'a
+  fait que doubler l'exposition) ; étendre le contrôle 1 aux swatches
+  est un chantier de gate à part entière, hors périmètre d'un ajout de
+  thème.
+- **Rouvre si** : une retouche de jeton au terrain (le cas qui
+  matérialise la dérive), ou au prochain chantier qui touche
+  `coherence-systeme.mjs`.

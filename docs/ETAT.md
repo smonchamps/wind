@@ -13,6 +13,36 @@
 ## Où on en est, et quoi faire en premier
 
 ✅ **AUCUN CHANTIER EN COURS.** Dernier soldé :
+**[PLAN-MONA](PLAN-MONA.md)** (2026-08-29, ouvert et clos le même
+jour, commit `409c8ae`, CI verte run 33270609284, terrain CE « Terrain
+OK sur les deux thèmes, GO » — zéro constat). **Deux thèmes neufs,
+« Mona » et « Mona · nuit »** (couleurs CE : accent `#AD204C` —
+6,80:1 sur blanc, accent ET marque du clair tel quel — et la teinte
+de tuile `#A0868F` déclinée par polarité `#EFDFE4`/`#2C2126` : la
+valeur brute est impossible aux seuils, 2,04:1 sous ink2, 1,88:1 sous
+le pire repère, 3,33:1 au mieux en nuit). **V7 est AMENDÉE (A94, ADR
+0027)** : la table des thèmes est courte et VIVANTE — ajouts/retraits
+possibles, jamais le retour des 28 Wada. Mécanique : la table claire
+des repères servie par `[data-theme$="-nuit"]` (zéro hex recopié),
+son parseur centralisé dans `jetons.mjs` (`lireReperes` — les deux
+gates portaient chacune leur copie de la regex), la garde de
+migration de `theme.js` dérive de `THEMES` (liste en dur retirée —
+prouvée RED : sans elle un choix `mona-nuit` persisté était réécrit à
+chaque démarrage), `NOMBRE_ATTENDU` 2 → 4. Contraste **440 paires
+(220 → 440), 0 échec** ; cohérence 4 thèmes / 68 jetons ; e2e
+**153/153** (deux specs étendues, comptes 2 → 4, migration prouvée en
+la cassant). Revue à regard neuf 6 angles / 10 retenues /
+**9 corrigées** (dont le chiffre gravé faux 166 → 220 et la fuite de
+thème du test de migration) ; dette neuve **D-45** (vignettes du
+Système = seule copie d'hex hors gate). **Mona part avec la prochaine
+release** — l'entrée CHANGELOG s'écrira à ce moment-là (§2.9). **Le
+prochain sujet reste la première vague bêta** (PLAN-BETA — bloquant
+CE : faire recevoir `feedback-wind@fcts.io` ; puis inviter 5-10
+proches, D9).
+
+---
+
+Le chantier soldé précédent :
 **[PLAN-RETOURS-12](PLAN-RETOURS-12.md)** (2026-08-28 → 29, commits
 `60225b0`/`331832d`, CI verte run 33216010954, terrain CE **4/4 le
 2026-08-29, zéro constat**). Cinq retours : (1) **un compte ajouté
