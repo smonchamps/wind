@@ -1,5 +1,5 @@
-// Le jeu d'icônes « Elements » (V8 — PLAN-ELEMENTS) : 80 glyphes
-// (78 à V8 ; `check` A86, `feedback` RETOURS-11)
+// Le jeu d'icônes « Elements » (V8 — PLAN-ELEMENTS) : 85 glyphes
+// (78 à V8 ; `check` A86, `feedback` RETOURS-11, 5 Mode organisé A96)
 // dessinés en SVG, grille 24, trait 2 unités, bouts nets (butt),
 // jonctions vives (miter). Ce catalogue est LE jeu livré ; le Système
 // (docs/design/systeme.dc.html, section Icônes) porte le relevé — un
@@ -99,6 +99,13 @@ export const JEU = {
   star: { d:['M12 3l3 6 6 1-4 5 1 6-6-3-6 3 1-6-4-5 6-1z'], repere:true },
   work: { d:['M3 8h18v11H3z','M9 8V5h6v3'], repere:true },
   volunteer_activism: { d:['M12 9S9 6 7 6a3 3 0 0 0 0 6l5 4','M12 9s3-3 5-3a3 3 0 0 1 0 6l-5 4','M3 14v7h4l6 2 8-4v-2h-8'] },
+  // Le Mode organisé (PLAN-MODE-ORGANISE, décision D9) : les dessins
+  // du prototype entrent tels quels — planche spikes/mode-organise/.
+  portier: { d:['M12 4a3 3 0 1 0 0 6 3 3 0 1 0 0-6','M5 20v-1a7 7 0 0 1 14 0v1','M9.5 13.5v3l2.5-1.5z','M14.5 13.5v3l-2.5-1.5z'] },
+  kiosque: { d:['M4 4h16v6H4z','M4 14h16','M4 18h10'] },
+  registre: { d:['M6 3h12v18l-3-2-3 2-3-2-3 2z','M9 8h6','M9 12h4'] },
+  pile: { d:['M4 16l8 4 8-4','M4 12l8 4 8-4','M4 8l8-4 8 4-8 4z'] },
+  groupe: { d:['M4 10h16v9H4z','M4 14h5l2 2h2l2-2h5','M7 6h10'] },
 };
 
 // La marque : hors inventaire — le glyphe du document d'icônes,

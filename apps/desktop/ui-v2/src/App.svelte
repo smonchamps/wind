@@ -36,6 +36,11 @@
   import {
     fil, fermerFil, reduireFil, retirerMessage, estEcho, cleMsg,
   } from './lib/fil.svelte.js';
+  // PLAN-MODE-ORGANISE E1 : le va-et-vient « Organisé » — l'état vit
+  // en prefs SQLite (D2 amendée), l'UI le reflète.
+  import {
+    modeOrganise, restaurerModeOrganise, basculerModeOrganise,
+  } from './lib/organise.svelte.js';
 
   let liste = $state(null);
   let lecture = $state(null);
@@ -220,6 +225,8 @@
 
   const LIBELLES = {
     reception: 'boite.reception',
+    kiosque: 'boite.kiosque',
+    registre: 'boite.registre',
     envoyes: 'boite.envoyes',
     brouillons: 'boite.brouillons',
     indesirables: 'boite.indesirables',
@@ -924,6 +931,10 @@
     // (A80), la retarder ferait repeindre toutes les lignes visibles.
     await tick();
     chargerNav();
+    // Le mode organisé se relit APRÈS la première page de la liste
+    // (jamais un await avant elle — leçon PLAN-DEMARRAGE E2) : la nav
+    // se recompose à l'arrivée, une lecture PK.
+    restaurerModeOrganise();
     chargerReperes();
     chargerNoms();
     setInterval(chargerNav, 10000);
@@ -1000,6 +1011,43 @@
     recherche = '';
     selectionnee = null;
     fermerFil();
+  }
+  // « Déplacer vers… » (E1) : l'expéditeur ENTIER change de
+  // destination — l'adresse est résolue de l'enveloppe côté cœur,
+  // le toast dit le geste, la liste se ressert (une vue Kiosque ou
+  // Registre change sous le geste).
+  async function deplacerExpediteur(ligne, destination) {
+    if (gesteSurEcho(ligne)) return;
+    try {
+      const adresse = await appel('router_expediteur_de', {
+        accountId: ligne.account_id,
+        mailbox: ligne.mailbox,
+        uid: ligne.uid,
+        destination,
+      });
+      if (adresse === null) {
+        flash(t('erreur.sansAdresse'));
+        return;
+      }
+      flash(t('toast.expediteurDeplace', { boite: t(LIBELLES[destination]) }));
+      liste?.recharger();
+      chargerNav();
+    } catch (err) {
+      flash(t('erreur.preference', { err }));
+    }
+  }
+  // Le va-et-vient « Organisé » (PLAN-MODE-ORGANISE E1). Quitter le
+  // mode depuis une vue organisée rend la Réception — jamais une vue
+  // orpheline que la nav classique ne sait plus dire.
+  async function basculerOrganise() {
+    try {
+      const actif = await basculerModeOrganise();
+      if (!actif && (categorie === 'kiosque' || categorie === 'registre')) {
+        choisir({ categorie: 'reception' });
+      }
+    } catch (err) {
+      flash(t('erreur.preference', { err }));
+    }
   }
   function surOnglet(id) {
     if (id === 'brouillons') {
@@ -1496,6 +1544,13 @@
                 onclick={() => { recherche = ''; champRecherche?.focus(); }}>
           <Icone nom="close" /></button>
       {/if}</span>
+    <!-- PLAN-MODE-ORGANISE E1 : le va-et-vient « Organisé », à droite
+         de la recherche (forme arrêtée au prototype) — pilule + disque,
+         les deux seules formes rondes légitimes (V14). -->
+    <button type="button" class="organise" data-testid="mode-organise"
+            role="switch" aria-checked={modeOrganise()}
+            onclick={basculerOrganise}>
+      <span class="piste" aria-hidden="true"><span class="disque"></span></span>{t('entete.organise')}</button>
     <button type="button" class="principal" data-testid="ecrire" onclick={ecrire}>
       <Icone nom="edit_square" />{t('entete.ecrire')}</button>
     <!-- Le retour bêta (RETOURS-11 R3) : sans compte, pas de bouton —
@@ -1515,7 +1570,8 @@
          class:colonnes--1={volets === 1}
          style="--l-nav:{lNav}px; --l-liste:{lListe}px">
       {#if volets !== 1}
-        <Nav {comptes} {reperes} {noms} {categorie} {compte} onchoisir={choisir} />
+        <Nav {comptes} {reperes} {noms} {categorie} {compte}
+             organise={modeOrganise()} onchoisir={choisir} />
       {/if}
       <Liste bind:this={liste} {categorie} {compte} {comptes} {reperes} {noms} {onglet} {recherche}
              {brouillons} onreprendre={reprendreBrouillon}
@@ -1530,6 +1586,7 @@
                  ontransferer={transferer}
                  onspam={signalerSpam} onnonspam={marquerLegitime}
                  estIndesirable={categorie === 'indesirables'} onflash={flash}
+                 organise={modeOrganise()} ondeplacer={deplacerExpediteur}
                  {epinglable} onepingler={epinglerFil} />
       {/if}
       <!-- Les poignées (R3) : posées SUR les frontières de la grille,
@@ -1605,7 +1662,8 @@
                   onclick={() => (tiroirOuvert = false)}>
             <Icone nom="close" /></button>
         </div>
-        <Nav {comptes} {reperes} {noms} {categorie} {compte} onchoisir={choisirDuTiroir} />
+        <Nav {comptes} {reperes} {noms} {categorie} {compte}
+             organise={modeOrganise()} onchoisir={choisirDuTiroir} />
       </div>
     {/if}
 
@@ -1627,6 +1685,7 @@
                   estIndesirable={categorie === 'indesirables'}
                   onecrire={ecrire}
                   onflash={flash}
+                  organise={modeOrganise()} ondeplacer={deplacerExpediteur}
                   {epinglable} onepingler={epinglerFil} />
 
     <!-- R2 (A75) : le parcours complet (`accueilAJouer`, première
@@ -1686,6 +1745,29 @@
   /* La recherche est bornée (520 px) : les gestes d'entête tiennent la
      droite, comme au gabarit de la maquette. */
   .entete [data-testid="ecrire"] { margin-left:auto; }
+  /* PLAN-MODE-ORGANISE E1 : le va-et-vient — pilule de piste (999px)
+     et disque (50 %), les deux seules formes rondes légitimes (V14).
+     Actif : la piste prend l'accent, le disque glisse à droite. */
+  .organise {
+    display:inline-flex; align-items:center; gap:8px; flex:none;
+    font-size:13px; color:var(--ink2); background:transparent;
+    border:none; cursor:pointer; padding:6px 8px;
+  }
+  .organise[aria-checked="true"] { color:var(--ink); font-weight:600; }
+  .organise .piste {
+    width:30px; height:16px; border-radius:999px; flex:none;
+    background:var(--bg); border:1px solid var(--border);
+    display:inline-flex; align-items:center; padding:0 2px;
+    transition:background .12s ease;
+  }
+  .organise[aria-checked="true"] .piste {
+    background:var(--accent); border-color:var(--accent);
+    justify-content:flex-end;
+  }
+  .organise .disque {
+    width:10px; height:10px; border-radius:50%; background:var(--muted);
+  }
+  .organise[aria-checked="true"] .disque { background:var(--onAccent); }
   .vider {
     height:22px; width:22px; padding:0; display:inline-flex; flex:none;
     align-items:center; justify-content:center; color:var(--muted);

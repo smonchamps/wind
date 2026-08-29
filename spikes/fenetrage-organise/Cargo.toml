@@ -1,0 +1,16 @@
+# Spike jetable — PLAN-MODE-ORGANISE S1 : sections + repli de groupe,
+# au service (SQL) contre à l'affichage (post-traitement).
+# HORS du workspace de production, comme spikes/search-engine.
+[package]
+name = "spike-fenetrage-organise"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+
+[dependencies]
+anyhow = "1"
+rusqlite = { version = "0.37", features = ["bundled"] }
+
+[profile.release]
+debug = false

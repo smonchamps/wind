@@ -12,7 +12,30 @@
 
 ## Où on en est, et quoi faire en premier
 
-✅ **AUCUN CHANTIER EN COURS.** Dernier soldé :
+🔨 **CHANTIER EN COURS : [PLAN-MODE-ORGANISE](PLAN-MODE-ORGANISE.md)**
+(ouvert le 2026-08-29 — le second mode de tri inspiré de HEY, D1-D9
+tranchées au STOP 1, dont **D3 REJET de la présomption annuaire :
+tout le monde au Portier, arrivées seules**). **E1 (le socle) est
+LIVRÉE et validée terrain le jour même** : va-et-vient « Organisé »
+(prefs SQLite, époque de première activation gravée), nav organisée
+Kiosque/Registre, routage local par expéditeur (**ADR 0028**, table
+`routage_expediteurs`, vocabulaire fermé), « Déplacer vers… » à la
+barre du fil (l'adresse résolue au cœur — jamais soi), 5 glyphes (85
+au jeu), A96. Spikes S1-S3 **mesurés** (verdicts §5bis du plan :
+sections et groupes AU SERVICE avec index partiels/agrégat, exclusion
+par message gratuite, préchargement Kiosque dans le budget). Revue 8/8
+corrigées (deux « perte de courrier » prouvées RED). e2e 153 → **157**.
+**Prochaine étape : E2 — le Portier** (rétention des inconnus,
+page, Oui/Non, historique, réintégration). Puis E3 (règles du Non),
+release MINEUR E1-E3 (D7), puis E4-E6.
+
+Le même jour, deux retours CE réglés : **« Mona » renommée
+« Innamoramento »** (A95, ids migrés, commit `0a25105`, CI verte) et
+**le bloquant bêta levé** (`feedback-wind@fcts.io` reçoit — délai de
+propagation DNS ; la première vague D9 est ouverte, action CE au
+PLAN-BETA).
+
+Dernier soldé :
 **[PLAN-MONA](PLAN-MONA.md)** (2026-08-29, ouvert et clos le même
 jour, commit `409c8ae`, CI verte run 33270609284, terrain CE « Terrain
 OK sur les deux thèmes, GO » — zéro constat). **Deux thèmes neufs,

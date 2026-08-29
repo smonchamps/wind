@@ -1,0 +1,4 @@
+# La base de banc (129 Mo) se regenere par la commande du README.
+banc.db
+banc.db-wal
+banc.db-shm

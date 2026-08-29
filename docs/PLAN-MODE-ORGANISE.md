@@ -1,6 +1,21 @@
 # PLAN-MODE-ORGANISE — Portier, Kiosque, Registre, Mis de côté, Groupes
 
-> **DOSSIER D'INSTRUCTION — chantier NON OUVERT.** Préparé le
+> **CHANTIER OUVERT le 2026-08-29** (STOP 1 : D1-D9 tranchées, §7).
+> **E1 LIVRÉE le jour même** : socle complet — pref `mode_organise`
+> (prefs SQLite + époque de première activation), va-et-vient
+> d'entête, nav organisée (Kiosque, Registre — le Portier vient avec
+> sa page à E2), table `routage_expediteurs` + 6 commandes, vues
+> servies par le squelette exact de la Réception (garde de plan),
+> « Déplacer vers… » à la barre du fil (adresse résolue au cœur,
+> jamais soi — revue), 5 glyphes au jeu (85). ADR 0028 ; Système A96 ;
+> spikes S1-S3 mesurés (§5bis) ; STOP visuel + terrain CE OK (7/7,
+> zéro constat après correction du dist périmé D-33 en séance) ; revue
+> à regard neuf 8/8 corrigées (dont deux « perte de courrier »
+> prouvées RED : tête de fil = Envoyés, épingles exclues) ; e2e 153 →
+> **157**, tests mail-core 383 → **387**, gate verte 2,6 min.
+> **Prochaine étape : E2 — le Portier.**
+
+> **DOSSIER D'INSTRUCTION d'origine.** Préparé le
 > 2026-08-29 sur la base du prototype cliquable validé par le CE en
 > six passes de retours le jour même
 > (`spikes/mode-organise/index.html`, artifact
@@ -205,6 +220,52 @@ présentation, comme `pins`.
 - **S4 — activation du mode** : sur une boîte réelle, combien
   d'expéditeurs « inconnus » au premier jour ? (dimensionne D3 ;
   mesure sur les deux postes du CE).
+
+### 5bis. Verdicts des spikes — mesurés le 2026-08-29 (set-based, §2.2)
+
+Trois spikes joués en worktrees isolés, rapatriés dans `spikes/`
+(`routage-plan/`, `fenetrage-organise/`, `kiosque-precharge/` — READMEs
+= protocoles et chiffres complets). Bases synthétiques 200 k, schémas
+et requêtes de prod reproduits à l'identique, 20 itérations méd/p95.
+
+- **S2 — plan du routage : l'exclusion par MESSAGE est gratuite.**
+  Page unifiée témoin 0,228 ms ; avec `NOT EXISTS` sur
+  `routage_expediteurs` : 0,209 ms (avec époque : 0,178 ms) — sonde
+  PK par index couvrant, jamais de scan, **aucun `CROSS JOIN`
+  directif nécessaire** (le piège des pins ne se pose pas : la table
+  n'entre qu'en corrélé après pagination). L'exclusion **par FIL
+  façon pins** coûte 13,5 ms même avec index couvrant (59×) — le
+  patron pins ne se transpose PAS. Page Kiosque (filtre destination) :
+  0,087 ms. `category_totals` + exclusion : +18 ms (67,1 vs 49,1).
+  ⚠️ Point d'industrialisation : l'exclusion doit se poser DANS les
+  tranches par boîte (avant pagination), sinon pages courtes (37/50
+  mesuré). Garde de plan à écrire en prod (moteur node ≠ rusqlite).
+- **S1 — sections et groupes : AU SERVICE, avec index partiels.**
+  Sections au service SANS index : 310-539 ms en fond de section ;
+  avec **2 index partiels** (`unseen>0`/`=0`) : **1,7-7,5 ms**, profil
+  du témoin, un flot + couture par COUNT (0,37 ms). Sections à
+  l'affichage : le 200ᵉ non-lu est au rang 1 693 → 9 vols de page
+  pour la première page de section — ÉCARTÉ. Repli de groupes au
+  service NAÏF : ~1 510 ms à toute page (UNION+GROUP BY matérialisé)
+  — ÉCARTÉ ; à l'affichage : une rafale de 600 traverse 5 vols pour
+  UNE rangée (rendement 0,17 %, compte n faux) — ÉCARTÉ ;
+  **industrialisé au service** (drapeau `threads.groupe` maintenu en
+  transaction comme `size`/`unseen`, groupes servis À PART sur le
+  motif de `pinned_unified_scoped`) : **1,62-6,59 ms + ~0 ms les
+  rangées de groupe, offset stable par construction** — RETENU.
+  Reste à définir : l'expéditeur d'un fil multi-expéditeurs.
+- **S3 — préchargement Kiosque : dans le budget.** Lot borné à la
+  page (patron `enrichir_lignes`) : page de 20 corps 12,2 ms froid /
+  1,8 ms chaud (1,6 Mo) ; page de 50 : 29,6/3,9 ms. Corps unitaire
+  (`Store::body`) : 1,02 ms froid. Aperçu « d'abord » gratuit (déjà
+  dans SELECT_UNIFIED). Zéro scan aux plans. Réserve : NVMe local —
+  à confirmer au poste x64 avant de graver le budget ; le coût de
+  RENDU WebView de 20 corps n'est pas mesuré.
+- **S4 — volume d'inconnus** : reformulé par D3 (arrivées seules) —
+  la mesure porte sur le FLUX quotidien d'expéditeurs sans ligne de
+  routage, à relever sur les deux postes du CE pendant la première
+  semaine du mode (dimensionne l'ergonomie du Portier, pas le
+  schéma). À faire au terrain d'E2.
 
 ## 6. Découpage proposé — six étapes, chacune gate-verte et commitée
 

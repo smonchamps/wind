@@ -1753,6 +1753,23 @@ pub async fn list_category(
                 elapsed_us: timer.elapsed().as_micros() as u64,
             });
         }
+        // PLAN-MODE-ORGANISE E1 : le Kiosque et le Registre sont des
+        // vues du flot unifié filtrées par le routage d'expéditeur —
+        // jamais des boîtes canoniques.
+        if category == "kiosque" || category == "registre" {
+            let mut lignes = store
+                .routage_unified_scoped(&category, account_id, non_lus, offset, limit)
+                .map_err(|err| err.to_string())?;
+            store
+                .enrichir_lignes(&mut lignes)
+                .map_err(|err| err.to_string())?;
+            let rows = lignes.into_iter().map(to_message_row).collect();
+            return Ok(MessagePage {
+                offset,
+                rows,
+                elapsed_us: timer.elapsed().as_micros() as u64,
+            });
+        }
         let portee = resoudre_categorie(&store, &category, account_id)?;
         // E3 (PLAN-REACTIVITE) : les échos locaux des destinations de geste
         // entrent dans la page et le total — la Corbeille montre la
@@ -1855,6 +1872,11 @@ pub async fn category_total(
         if category == "reception" {
             return store
                 .unified_count_scoped(account_id, non_lus)
+                .map_err(|err| err.to_string());
+        }
+        if category == "kiosque" || category == "registre" {
+            return store
+                .routage_count_scoped(&category, account_id, non_lus)
                 .map_err(|err| err.to_string());
         }
         let portee = resoudre_categorie(&store, &category, account_id)?;
@@ -2791,6 +2813,128 @@ pub async fn revoke_images_sender(app: AppHandle, address: String) -> Result<(),
         store
             .revoke_images_sender(&address)
             .map_err(|err| err.to_string())
+    })
+    .await
+}
+
+/// PLAN-MODE-ORGANISE E1 — l'état du mode organisé (D2 amendée :
+/// `prefs` SQLite, le cœur lit l'état) et sa borne de rétention
+/// (l'époque de première activation, D3 « arrivées seules »).
+#[tauri::command]
+pub async fn mode_organise_get(app: AppHandle) -> Result<bool, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store.mode_organise().map_err(|err| err.to_string())
+    })
+    .await
+}
+
+/// Bascule le mode organisé. La borne de première activation s'écrit
+/// côté cœur, dans le même geste — l'UI ne porte jamais l'époque.
+#[tauri::command]
+pub async fn mode_organise_set(app: AppHandle, actif: bool) -> Result<(), String> {
+    hors_pompe(app, move |app| {
+        let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store
+            .set_mode_organise(actif, epoch_maintenant())
+            .map_err(|err| err.to_string())
+    })
+    .await
+}
+
+/// Une ligne de l'historique du Portier, telle que l'UI la montre.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutagePayload {
+    pub address: String,
+    pub destination: String,
+    pub regle: Option<String>,
+    pub epoch: i64,
+}
+
+/// Le verdict du Portier sur un expéditeur (Oui nu/orienté, Non
+/// nu/avec règle, « Déplacer vers… ») — vocabulaire fermé, refusé côté
+/// cœur avant toute écriture.
+#[tauri::command]
+pub async fn router_expediteur(
+    app: AppHandle,
+    address: String,
+    destination: String,
+    regle: Option<String>,
+) -> Result<(), String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store
+            .router_expediteur(&address, &destination, regle.as_deref(), epoch_maintenant())
+            .map_err(|err| err.to_string())
+    })
+    .await
+}
+
+/// « Déplacer vers… » (E1) : le verdict est posé DEPUIS un message —
+/// l'adresse est résolue de l'enveloppe côté cœur, l'UI ne parse
+/// jamais une adresse (patron `allow_images_sender`). Rend l'adresse
+/// routée ; None = enveloppe sans adresse, rien n'est écrit — un vrai
+/// cas métier que l'UI doit dire.
+#[tauri::command]
+pub async fn router_expediteur_de(
+    app: AppHandle,
+    account_id: i64,
+    mailbox: String,
+    uid: u32,
+    destination: String,
+    regle: Option<String>,
+) -> Result<Option<String>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let Some(state) = store
+            .sync_state(account_id, &mailbox)
+            .map_err(|err| err.to_string())?
+        else {
+            return Err(format!("boîte inconnue : {mailbox}"));
+        };
+        store
+            .router_expediteur_of(
+                state.mailbox_id,
+                uid,
+                &destination,
+                regle.as_deref(),
+                epoch_maintenant(),
+            )
+            .map_err(|err| err.to_string())
+    })
+    .await
+}
+
+/// « Réintégrer » à l'historique du Portier : le verdict disparaît.
+#[tauri::command]
+pub async fn retirer_routage(app: AppHandle, address: String) -> Result<(), String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store
+            .retirer_routage(&address)
+            .map_err(|err| err.to_string())
+    })
+    .await
+}
+
+/// L'historique du Portier — toutes les décisions, la plus récente en
+/// tête.
+#[tauri::command]
+pub async fn routages(app: AppHandle) -> Result<Vec<RoutagePayload>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        Ok(store
+            .routages()
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .map(|r| RoutagePayload {
+                address: r.address,
+                destination: r.destination,
+                regle: r.regle,
+                epoch: r.epoch,
+            })
+            .collect())
     })
     .await
 }

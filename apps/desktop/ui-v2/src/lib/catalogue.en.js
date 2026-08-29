@@ -6,6 +6,9 @@
 export const EN = {
   // --- Dossiers canoniques (nav, statut, conversation) ----------------
   'boite.reception': 'Inbox',
+  // PLAN-MODE-ORGANISE E1 — the organized-mode views (HEY-inspired names).
+  'boite.kiosque': 'Feed',
+  'boite.registre': 'Paper trail',
   'boite.envoyes': 'Sent',
   'boite.brouillons': 'Drafts',
   'boite.indesirables': 'Junk',
@@ -20,6 +23,10 @@ export const EN = {
   'entete.chercher': 'Search messages, people, files',
   'entete.effacerRecherche': 'Clear search',
   'entete.ecrire': 'Compose',
+  'entete.organise': 'Organized',
+  'action.deplacerVers': 'Move to…',
+  'toast.expediteurDeplace': 'Sender moved to {boite} — their messages follow.',
+  'erreur.sansAdresse': 'This message has no sender address.',
   'entete.reglages': 'Settings',
   'entete.feedback': 'Feedback',
   'retour.titre': 'Feedback',

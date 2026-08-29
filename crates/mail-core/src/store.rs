@@ -320,6 +320,24 @@ CREATE TABLE IF NOT EXISTS images_expediteurs (
     address TEXT PRIMARY KEY,
     epoch   INTEGER NOT NULL
 );
+-- Le routage du Mode organise (PLAN-MODE-ORGANISE E1, decision D1 :
+-- routage LOCAL seul — la destination est une PRESENTATION, jamais un
+-- deplacement IMAP ; les autres clients voient le courrier inchange).
+-- Cle : adresse exacte en minuscules (la MEME autorite de
+-- normalisation que la garde d'images), GLOBALE au poste comme
+-- images_expediteurs — le verdict sur un expediteur survit au retrait
+-- d'un compte. `regle` : l'automatisme du Non (spam/archive/corbeille
+-- — D4 : JAMAIS une suppression definitive), NULL = ecarte sans
+-- regle ; une regle n'existe que sur un expediteur `ecarte`.
+-- « Reintegrer » a l'historique du Portier = DELETE de la ligne. Le
+-- vocabulaire est verifie en Rust AVANT l'ecriture ; les CHECK ne
+-- sont que la ceinture.
+CREATE TABLE IF NOT EXISTS routage_expediteurs (
+    address     TEXT PRIMARY KEY,
+    destination TEXT NOT NULL CHECK (destination IN ('reception','kiosque','registre','ecarte')),
+    regle       TEXT CHECK (regle IN ('spam','archive','corbeille')),
+    epoch       INTEGER NOT NULL
+);
 -- L'invitation de reunion d'un message (PLAN-INVITATIONS) : le CACHE de
 -- la partie text/calendar, extrait au scan du corps (save_body_full) ou
 -- a l'ouverture pour un message d'avant la fonctionnalite (write-back,
@@ -2507,6 +2525,175 @@ impl Store {
         }
     }
 
+    /// L'état du Mode organisé (PLAN-MODE-ORGANISE E1, D2 amendée :
+    /// `prefs` SQLite — le cœur doit savoir, les règles du Non
+    /// s'éteignent avec le mode). Éteint tant que rien n'est posé.
+    pub fn mode_organise(&self) -> Result<bool, Error> {
+        Ok(self.text_pref(PREF_MODE_ORGANISE)?.as_deref() == Some("1"))
+    }
+
+    /// L'époque de PREMIÈRE activation du mode — la borne de la
+    /// rétention du Portier (D3 « arrivées seules »). None tant que le
+    /// mode n'a jamais été activé.
+    pub fn mode_organise_epoch(&self) -> Result<Option<i64>, Error> {
+        Ok(self
+            .text_pref(PREF_MODE_ORGANISE_EPOCH)?
+            .and_then(|v| v.parse().ok()))
+    }
+
+    /// Bascule le mode. À la PREMIÈRE activation, l'état et l'époque
+    /// s'écrivent ENSEMBLE (transaction — jamais un mode actif sans sa
+    /// borne) ; l'époque ne se réécrit JAMAIS ensuite : la réécrire à
+    /// une réactivation déverserait au Portier (ou en Réception) du
+    /// courrier arrivé entre-temps, en silence.
+    pub fn set_mode_organise(&mut self, actif: bool, epoch: i64) -> Result<(), Error> {
+        if actif && self.text_pref(PREF_MODE_ORGANISE_EPOCH)?.is_none() {
+            self.set_text_prefs(&[
+                (PREF_MODE_ORGANISE, "1"),
+                (PREF_MODE_ORGANISE_EPOCH, &epoch.to_string()),
+            ])
+        } else {
+            self.set_text_pref(PREF_MODE_ORGANISE, if actif { "1" } else { "0" })
+        }
+    }
+
+    /// Pose le verdict du Mode organisé sur un expéditeur
+    /// (PLAN-MODE-ORGANISE E1, D1 : routage LOCAL seul). Un seul
+    /// verdict par adresse — la pose écrase la décision précédente
+    /// (changer d'avis est un droit, patron du Portier). Le vocabulaire
+    /// est fermé et vérifié AVANT l'écriture (décision pure) ; une
+    /// règle du Non n'a de sens que sur un expéditeur écarté.
+    pub fn router_expediteur(
+        &self,
+        address: &str,
+        destination: &str,
+        regle: Option<&str>,
+        epoch: i64,
+    ) -> Result<(), Error> {
+        valider_routage(destination, regle)?;
+        let Some(adresse) = adresse_images(Some(address.to_string())) else {
+            return Err(Error::InvalidEmailAddress(address.to_string()));
+        };
+        self.0.execute(
+            "INSERT OR REPLACE INTO routage_expediteurs (address, destination, regle, epoch)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![adresse, destination, regle, epoch],
+        )?;
+        Ok(())
+    }
+
+    /// « Déplacer vers… » (E1) : pose le verdict DEPUIS un message —
+    /// l'adresse est lue en base (jamais de l'UI), normalisée et
+    /// validée par [`Store::router_expediteur`], LA porte unique.
+    ///
+    /// Revue E1 : la ligne servie est la TÊTE du fil — le dernier
+    /// message toutes boîtes confondues, Envoyés compris. S'ancrer
+    /// dessus routerait la PROPRE adresse de l'utilisateur dès qu'il a
+    /// répondu en dernier. L'adresse routée est donc celle du dernier
+    /// message du fil qui ne vient PAS du compte (les alias d'envoi
+    /// restent hors de cette garde — limite dite) ; un message hors
+    /// fil retombe sur sa propre enveloppe. Rend l'adresse routée ;
+    /// None si rien ne porte d'adresse (jamais un verdict fantôme).
+    pub fn router_expediteur_of(
+        &self,
+        mailbox_id: i64,
+        uid: Uid,
+        destination: &str,
+        regle: Option<&str>,
+        epoch: i64,
+    ) -> Result<Option<String>, Error> {
+        // La porte de validation d'abord — un vocabulaire troué ne se
+        // cache jamais derrière « message sans adresse » (revue E1).
+        valider_routage(destination, regle)?;
+        let du_fil: Option<String> = self
+            .0
+            .query_row(
+                "SELECT te.sender_address
+                   FROM envelopes te
+                  WHERE te.thread_id = (SELECT thread_id FROM envelopes
+                                         WHERE mailbox_id = ?1 AND uid = ?2)
+                    AND te.sender_address IS NOT NULL
+                    AND lower(trim(te.sender_address)) <> (
+                          SELECT lower(trim(a.email)) FROM accounts a
+                            JOIN mailboxes m ON m.account_id = a.id
+                           WHERE m.id = ?1)
+                  ORDER BY te.date_epoch DESC, te.uid DESC
+                  LIMIT 1",
+                params![mailbox_id, uid],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let adresse = match du_fil {
+            Some(a) => Some(a),
+            None => self.sender_address_of(mailbox_id, uid)?,
+        };
+        let Some(adresse) = adresse_images(adresse) else {
+            return Ok(None);
+        };
+        self.router_expediteur(&adresse, destination, regle, epoch)?;
+        Ok(Some(adresse))
+    }
+
+    /// L'adresse d'expéditeur d'UNE enveloppe — la lecture partagée
+    /// des portes qui résolvent côté cœur (garde d'images, routage) :
+    /// une seule copie, jamais une divergence (leçon A80).
+    fn sender_address_of(&self, mailbox_id: i64, uid: Uid) -> Result<Option<String>, Error> {
+        Ok(self
+            .0
+            .query_row(
+                "SELECT sender_address FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
+                params![mailbox_id, uid],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten())
+    }
+
+    /// « Réintégrer » à l'historique du Portier : le verdict disparaît,
+    /// l'expéditeur redevient inconnu. La normalisation passe par LA
+    /// même autorité que la pose — sinon un verdict deviendrait
+    /// irrévocable le jour où elle évolue (leçon `revoke_images_sender`).
+    pub fn retirer_routage(&self, address: &str) -> Result<(), Error> {
+        let Some(adresse) = adresse_images(Some(address.to_string())) else {
+            return Ok(());
+        };
+        self.0.execute(
+            "DELETE FROM routage_expediteurs WHERE address = ?1",
+            params![adresse],
+        )?;
+        Ok(())
+    }
+
+    /// Le verdict posé sur un expéditeur, s'il existe.
+    pub fn routage_de(&self, address: &str) -> Result<Option<Routage>, Error> {
+        let Some(adresse) = adresse_images(Some(address.to_string())) else {
+            return Ok(None);
+        };
+        let routage = self
+            .0
+            .query_row(
+                "SELECT address, destination, regle, epoch
+                 FROM routage_expediteurs WHERE address = ?1",
+                params![adresse],
+                lire_routage,
+            )
+            .optional()?;
+        Ok(routage)
+    }
+
+    /// L'historique du Portier : toutes les décisions, la plus récente
+    /// en tête — l'œil y cherche le dernier verdict.
+    pub fn routages(&self) -> Result<Vec<Routage>, Error> {
+        let mut stmt = self.0.prepare(
+            "SELECT address, destination, regle, epoch
+             FROM routage_expediteurs ORDER BY epoch DESC, address",
+        )?;
+        let routages = stmt
+            .query_map([], lire_routage)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(routages)
+    }
+
     /// Les messages d'une conversation, du plus ancien au plus récent —
     /// l'ordre de lecture d'un échange.
     pub fn thread_messages(&self, thread_id: i64) -> Result<Vec<UnifiedRow>, Error> {
@@ -2710,6 +2897,55 @@ pub(crate) fn unified_page_sql(par_compte: bool, non_lues: bool) -> String {
          FROM (SELECT account_id, last_mailbox_id, last_uid, last_epoch, size, unseen
                  FROM threads
                 WHERE inbox_size > 0 AND id NOT IN ({PINNED_THREADS}){filtre}{non_lues_seulement}
+                ORDER BY last_epoch DESC, last_uid DESC, account_id
+                LIMIT ?1 OFFSET ?2) t{UNIFIED_JOIN_TAIL}"
+    )
+}
+
+/// Le filtre du Kiosque et du Registre (PLAN-MODE-ORGANISE E1, revue) :
+/// un fil appartient à la destination si N'IMPORTE LEQUEL de ses
+/// messages vient d'un expéditeur routé là — jamais la seule TÊTE, qui
+/// est le dernier message toutes boîtes confondues : y répondre la
+/// déplace en Envoyés et le fil s'éjectait de sa destination (prouvé
+/// RED). Sonde par `idx_envelopes_thread` puis PK routage (spike S2),
+/// posée DANS le squelette paginé — jamais après le LIMIT (pages
+/// courtes, réserve S2). Le `lower(trim(...))` SQLite diverge de
+/// `adresse_images` (Rust) sur les majuscules non-ASCII, les blancs
+/// Unicode (NBSP, tab de header plié) et les local-parts SMTPUTF8 —
+/// limites assumées et dites : une adresse réelle est ASCII.
+pub(crate) fn fil_route_sql(param_destination: &str) -> String {
+    format!(
+        "EXISTS (
+                   SELECT 1 FROM envelopes te
+                     JOIN routage_expediteurs r
+                       ON r.address = lower(trim(te.sender_address))
+                      AND r.destination = {param_destination}
+                    WHERE te.thread_id = threads.id
+               )"
+    )
+}
+
+/// La page du Kiosque/Registre — le squelette EXACT de
+/// [`unified_page_sql`] plus [`fil_route_sql`] : même tri, mêmes
+/// jointures. Les ÉPINGLÉES ne sont PAS exclues (revue E1) : leur
+/// section préposée n'existe qu'en Réception — les exclure ici ferait
+/// disparaître un fil épinglé routé de TOUTES les vues organisées.
+/// `?1` limit, `?2` offset, `?3` destination, `?4` compte (si
+/// `par_compte`).
+pub(crate) fn routage_page_sql(par_compte: bool, non_lues: bool) -> String {
+    let filtre = if par_compte {
+        " AND account_id = ?4"
+    } else {
+        ""
+    };
+    let non_lues_seulement = if non_lues { " AND unseen > 0" } else { "" };
+    let fil_route = fil_route_sql("?3");
+    format!(
+        "{SELECT_UNIFIED}{THREAD_AGGREGATE}
+         FROM (SELECT account_id, last_mailbox_id, last_uid, last_epoch, size, unseen
+                 FROM threads
+                WHERE inbox_size > 0
+                  AND {fil_route}{filtre}{non_lues_seulement}
                 ORDER BY last_epoch DESC, last_uid DESC, account_id
                 LIMIT ?1 OFFSET ?2) t{UNIFIED_JOIN_TAIL}"
     )
@@ -3191,6 +3427,58 @@ fn adresse_images(adresse: Option<String>) -> Option<String> {
     adresse
         .map(|a| a.trim().to_lowercase())
         .filter(|a| !a.is_empty())
+}
+
+/// Les vocabulaires FERMÉS du routage (PLAN-MODE-ORGANISE E1) — la
+/// même table sert la validation Rust et, en ceinture, les CHECK du
+/// schéma. `ecarte` est la seule destination qui accepte une règle.
+const DESTINATIONS_ROUTAGE: [&str; 4] = ["reception", "kiosque", "registre", "ecarte"];
+const REGLES_ROUTAGE: [&str; 3] = ["spam", "archive", "corbeille"];
+
+/// Les clés `prefs` du Mode organisé — l'état, et la borne de
+/// rétention du Portier (première activation, jamais réécrite).
+const PREF_MODE_ORGANISE: &str = "mode_organise";
+const PREF_MODE_ORGANISE_EPOCH: &str = "mode_organise_epoch";
+
+/// La porte UNIQUE de validation du vocabulaire de routage — appelée
+/// avant toute écriture ET avant toute résolution d'adresse (un
+/// vocabulaire troué ne se cache jamais derrière un autre refus).
+fn valider_routage(destination: &str, regle: Option<&str>) -> Result<(), Error> {
+    if !DESTINATIONS_ROUTAGE.contains(&destination) {
+        return Err(Error::InvalidRouting(format!(
+            "destination inconnue : {destination:?}"
+        )));
+    }
+    if let Some(r) = regle {
+        if destination != "ecarte" {
+            return Err(Error::InvalidRouting(format!(
+                "une règle du Non exige un expéditeur écarté, pas {destination:?}"
+            )));
+        }
+        if !REGLES_ROUTAGE.contains(&r) {
+            return Err(Error::InvalidRouting(format!("règle inconnue : {r:?}")));
+        }
+    }
+    Ok(())
+}
+
+/// Le verdict du Portier sur un expéditeur — une ligne de
+/// `routage_expediteurs`, telle que l'historique la montre.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Routage {
+    pub address: String,
+    pub destination: String,
+    pub regle: Option<String>,
+    pub epoch: i64,
+}
+
+fn lire_routage(row: &rusqlite::Row<'_>) -> rusqlite::Result<Routage> {
+    Ok(Routage {
+        address: row.get(0)?,
+        destination: row.get(1)?,
+        regle: row.get(2)?,
+        epoch: row.get(3)?,
+    })
 }
 
 fn row_to_envelope(row: &rusqlite::Row<'_>) -> rusqlite::Result<Envelope> {
@@ -6494,5 +6782,272 @@ Etape : {etape}\nPlan :\n{}",
         assert!(store.pinned_unified_scoped(None, false).unwrap().is_empty());
         assert!(!store.pin_state(inbox, 1).unwrap());
         assert_eq!(store.unified_count_scoped(None, false).unwrap(), 1);
+    }
+
+    /// PLAN-MODE-ORGANISE E1 (D1 : routage LOCAL seul, patron
+    /// `images_expediteurs`). La pose normalise l'adresse par LA même
+    /// autorité que la garde d'images, écrase la décision précédente
+    /// (un seul verdict par expéditeur), et « Réintégrer » = DELETE —
+    /// quelle que soit la casse fournie par l'appelant.
+    #[test]
+    fn routage_pose_normalise_ecrase_et_se_retire() {
+        let store = Store::open_in_memory().unwrap();
+        store
+            .router_expediteur("  Ada@Exemple.FR ", "kiosque", None, 1_700_000_000)
+            .unwrap();
+        let r = store.routage_de("ada@exemple.fr").unwrap().unwrap();
+        assert_eq!(
+            (r.destination.as_str(), r.regle.as_deref()),
+            ("kiosque", None)
+        );
+        store
+            .router_expediteur("ada@exemple.fr", "ecarte", Some("corbeille"), 1_700_000_100)
+            .unwrap();
+        let r = store.routage_de("ADA@EXEMPLE.FR").unwrap().unwrap();
+        assert_eq!(
+            (r.destination.as_str(), r.regle.as_deref()),
+            ("ecarte", Some("corbeille"))
+        );
+        store.retirer_routage(" ada@EXEMPLE.fr ").unwrap();
+        assert!(store.routage_de("ada@exemple.fr").unwrap().is_none());
+    }
+
+    /// Le vocabulaire est FERMÉ : une destination ou une règle hors
+    /// table est refusée AVANT toute écriture (décision pure, jamais un
+    /// CHECK SQLite en première ligne) ; une règle n'a de sens que sur
+    /// un expéditeur écarté ; une adresse vide n'écrit jamais une règle
+    /// fantôme.
+    #[test]
+    fn routage_refuse_hors_vocabulaire() {
+        let store = Store::open_in_memory().unwrap();
+        assert!(
+            store
+                .router_expediteur("a@b.fr", "poubelle", None, 1)
+                .is_err()
+        );
+        assert!(
+            store
+                .router_expediteur("a@b.fr", "ecarte", Some("suppression-definitive"), 1)
+                .is_err()
+        );
+        assert!(
+            store
+                .router_expediteur("a@b.fr", "kiosque", Some("corbeille"), 1)
+                .is_err(),
+            "une règle du Non sur une destination servie n'a pas de sens"
+        );
+        assert!(store.router_expediteur("   ", "kiosque", None, 1).is_err());
+        assert!(store.routages().unwrap().is_empty(), "rien n'a été écrit");
+    }
+
+    /// PLAN-MODE-ORGANISE E1 : une page du Kiosque ou du Registre —
+    /// le flot unifié de la Réception, borné aux fils dont la TÊTE
+    /// vient d'un expéditeur routé vers cette destination. Même
+    /// squelette, mêmes exclusions (épingles), même tri que la
+    /// Réception ; la sonde est PK → PK (spike S2 : 0,209 ms à 200 k,
+    /// jamais un scan).
+    #[test]
+    fn le_kiosque_ne_sert_que_les_expediteurs_routes() {
+        let (mut store, inbox) = store_with_mailbox();
+        let mut lettre = envelope(1, "La lettre", 100, true);
+        lettre.sender_address = Some("Lettre@infolettre.fr".to_string());
+        lettre.message_id = Some("<l1@infolettre.fr>".to_string());
+        let ordinaire = envelope(2, "Bonjour", 200, false);
+        store.upsert_envelopes(inbox, &[lettre, ordinaire]).unwrap();
+        store
+            .router_expediteur("lettre@infolettre.fr", "kiosque", None, 300)
+            .unwrap();
+
+        let kiosque = store
+            .routage_unified_scoped("kiosque", None, false, 0, 10)
+            .unwrap();
+        assert_eq!(kiosque.len(), 1);
+        assert_eq!(kiosque[0].envelope.uid, 1);
+        assert_eq!(
+            store.routage_count_scoped("kiosque", None, false).unwrap(),
+            1
+        );
+        // Le Registre est vide : la destination filtre vraiment.
+        assert!(
+            store
+                .routage_unified_scoped("registre", None, false, 0, 10)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            store.routage_count_scoped("registre", None, false).unwrap(),
+            0
+        );
+        // La Réception, elle, montre TOUJOURS tout (E1 : le retrait du
+        // flot est l'affaire de l'étape E2 — rétention du Portier).
+        assert_eq!(store.unified_count_scoped(None, false).unwrap(), 2);
+    }
+
+    /// La garde de plan du service du Kiosque (leçon `pins`) : la sonde
+    /// de routage se joue par CLÉS (envelopes PK, routage PK) — jamais
+    /// un parcours d'`envelopes`.
+    #[test]
+    fn le_kiosque_ne_scanne_jamais_les_enveloppes() {
+        let store = Store::open_in_memory().unwrap();
+        let plan: Vec<String> = store
+            .0
+            .prepare(&format!(
+                "EXPLAIN QUERY PLAN {}",
+                routage_page_sql(false, false)
+            ))
+            .unwrap()
+            .query_map(params![10, 0, "kiosque"], |row| row.get::<_, String>(3))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let scans: Vec<&String> = plan
+            .iter()
+            .filter(|l| l.starts_with("SCAN") && l.contains("envelopes"))
+            .collect();
+        assert!(scans.is_empty(), "plan avec scan d'envelopes : {plan:?}");
+    }
+
+    /// Revue E1 : la TÊTE d'un fil est le dernier message TOUTES
+    /// boîtes confondues — Envoyés compris. Le geste et le filtre ne
+    /// doivent jamais s'ancrer dessus : (1) « Déplacer vers… » depuis
+    /// un fil où l'utilisateur a répondu en dernier doit router le
+    /// CORRESPONDANT, jamais soi ; (2) un fil routé au Kiosque n'en
+    /// sort pas parce qu'on y a répondu ; (3) un fil épinglé routé
+    /// reste visible dans sa destination (les épingles ne se préposent
+    /// qu'en Réception — l'exclure ici le ferait disparaître partout).
+    #[test]
+    fn le_routage_ignore_sa_propre_reponse_et_garde_les_epingles() {
+        let (mut store, inbox) = store_with_mailbox();
+        // Les envois entrent dans la portée du regroupement (ADR 0009)
+        // — sans quoi la réponse resterait hors fil et le décor ne
+        // rejouerait pas la racine (tête = Envoyés).
+        store
+            .set_thread_scope(test_account(&store), Some("Envoyes"))
+            .unwrap();
+        let envoyes = store
+            .create_mailbox(test_account(&store), "Envoyes", 1)
+            .unwrap();
+        let mut lettre = envelope(1, "La lettre", 100, true);
+        lettre.sender_address = Some("lettre@infolettre.fr".to_string());
+        lettre.message_id = Some("<l1@infolettre.fr>".to_string());
+        store.upsert_envelopes(inbox, &[lettre]).unwrap();
+        // La réponse de l'utilisateur, en Envoyés — elle devient la
+        // TÊTE du fil (date la plus récente).
+        let mut reponse = envelope(1, "Re: La lettre", 500, true);
+        reponse.sender_address = Some("test@exemple.fr".to_string());
+        reponse.message_id = Some("<r1@exemple.fr>".to_string());
+        reponse.in_reply_to = Some("<l1@infolettre.fr>".to_string());
+        store.upsert_envelopes(envoyes, &[reponse]).unwrap();
+
+        // (1) Le geste depuis la tête (la propre réponse) route le
+        // correspondant, jamais soi.
+        let adresse = store
+            .router_expediteur_of(envoyes, 1, "kiosque", None, 600)
+            .unwrap();
+        assert_eq!(adresse.as_deref(), Some("lettre@infolettre.fr"));
+        // (2) Le fil est au Kiosque malgré sa tête « Envoyés ».
+        let kiosque = store
+            .routage_unified_scoped("kiosque", None, false, 0, 10)
+            .unwrap();
+        assert_eq!(kiosque.len(), 1);
+        assert_eq!(
+            store.routage_count_scoped("kiosque", None, false).unwrap(),
+            1
+        );
+        // (3) Épinglé, il reste visible au Kiosque — page ET total.
+        assert!(store.toggle_pin(inbox, 1, 700).unwrap());
+        assert_eq!(
+            store
+                .routage_unified_scoped("kiosque", None, false, 0, 10)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            store.routage_count_scoped("kiosque", None, false).unwrap(),
+            1
+        );
+    }
+
+    /// « Déplacer vers… » (E1) : l'adresse est résolue de l'ENVELOPPE
+    /// côté cœur — l'UI ne parse jamais une adresse (patron
+    /// `allow_images_sender_of`). Rend l'adresse routée ; None si
+    /// l'enveloppe n'a pas d'adresse (jamais un verdict fantôme).
+    #[test]
+    fn le_routage_depuis_l_enveloppe_resout_l_adresse_au_coeur() {
+        let (mut store, inbox) = store_with_mailbox();
+        let mut env = envelope(1, "sujet", 100, true);
+        env.sender_address = Some("  ADA@Exemple.FR ".to_string());
+        let mut sans_adresse = envelope(2, "anonyme", 200, true);
+        sans_adresse.sender_address = None;
+        store.upsert_envelopes(inbox, &[env, sans_adresse]).unwrap();
+
+        let adresse = store
+            .router_expediteur_of(inbox, 1, "registre", None, 300)
+            .unwrap();
+        assert_eq!(adresse.as_deref(), Some("ada@exemple.fr"));
+        assert_eq!(
+            store
+                .routage_de("ada@exemple.fr")
+                .unwrap()
+                .unwrap()
+                .destination,
+            "registre"
+        );
+        assert_eq!(
+            store
+                .router_expediteur_of(inbox, 2, "kiosque", None, 400)
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            store.routages().unwrap().len(),
+            1,
+            "rien d'écrit sans adresse"
+        );
+    }
+
+    /// Le mode organisé vit en `prefs` SQLite (D2 amendée : le Rust
+    /// doit lire l'état — les règles du Non s'éteignent avec lui) et
+    /// l'ÉPOQUE DE PREMIÈRE ACTIVATION ne bouge JAMAIS (D3 « arrivées
+    /// seules » : c'est elle qui borne la rétention du Portier ; la
+    /// réécrire à chaque bascule déverserait ou retiendrait du courrier
+    /// en silence). Éteint par défaut, l'état et l'époque s'écrivent
+    /// ENSEMBLE à la première activation (jamais l'un sans l'autre).
+    #[test]
+    fn mode_organise_garde_l_epoque_de_premiere_activation() {
+        let mut store = Store::open_in_memory().unwrap();
+        assert!(!store.mode_organise().unwrap());
+        assert_eq!(store.mode_organise_epoch().unwrap(), None);
+        store.set_mode_organise(true, 100).unwrap();
+        assert!(store.mode_organise().unwrap());
+        assert_eq!(store.mode_organise_epoch().unwrap(), Some(100));
+        store.set_mode_organise(false, 200).unwrap();
+        assert!(!store.mode_organise().unwrap());
+        store.set_mode_organise(true, 300).unwrap();
+        assert_eq!(
+            store.mode_organise_epoch().unwrap(),
+            Some(100),
+            "l'époque de PREMIÈRE activation est gravée"
+        );
+    }
+
+    /// L'historique du Portier lit la liste du plus récent décidé au
+    /// plus ancien — l'œil y cherche la dernière décision.
+    #[test]
+    fn routages_se_listent_du_plus_recent() {
+        let store = Store::open_in_memory().unwrap();
+        store
+            .router_expediteur("ancien@ex.fr", "registre", None, 100)
+            .unwrap();
+        store
+            .router_expediteur("recent@ex.fr", "ecarte", Some("archive"), 200)
+            .unwrap();
+        let liste = store.routages().unwrap();
+        assert_eq!(
+            liste.iter().map(|r| r.address.as_str()).collect::<Vec<_>>(),
+            vec!["recent@ex.fr", "ancien@ex.fr"]
+        );
+        assert_eq!(liste[0].regle.as_deref(), Some("archive"));
     }
 }

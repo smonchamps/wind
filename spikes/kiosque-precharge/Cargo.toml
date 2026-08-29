@@ -1,0 +1,18 @@
+# Banc de mesure S3 (PLAN-MODE-ORGANISE), hors du workspace de
+# production. Il n'emprunte RIEN aux crates de prod : il reproduit le
+# schéma réel de store.rs (envelopes, bodies, threads, index) sur une
+# base synthétique, parce que ce qu'on mesure ici est un PATRON de
+# lecture SQLite, pas un chemin de code.
+[workspace]
+
+[package]
+name = "spike-kiosque-precharge"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[profile.release]
+debug = false

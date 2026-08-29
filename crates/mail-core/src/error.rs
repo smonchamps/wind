@@ -16,6 +16,12 @@ pub enum Error {
     #[error("donnée locale invalide : {0}")]
     Corrupt(String),
 
+    /// Un vocabulaire fermé du Mode organisé (destination du routage,
+    /// règle du Non) a reçu un mot hors table — refusé avant toute
+    /// écriture (PLAN-MODE-ORGANISE E1).
+    #[error("routage invalide : {0}")]
+    InvalidRouting(String),
+
     /// La pièce ferait déborder le plafond d'un message (PJ-D3) : rien
     /// n'est joint — le refus se joue au geste, jamais à l'envoi. Les
     /// tailles permettent à la surface de dire la place restante.

@@ -61,7 +61,23 @@
     // qu'en tête de la Réception — D4) ; l'App décide.
     epinglable = false,
     onepingler = () => {},
+    // PLAN-MODE-ORGANISE E1 : « Déplacer vers… » — l'expéditeur ENTIER
+    // change de destination (Réception / Kiosque / Registre), ses
+    // messages suivent par construction (la requête lit le routage).
+    // Offert par le seul mode organisé ; l'App décide.
+    organise = false,
+    ondeplacer = () => {},
   } = $props();
+
+  // Le menu de « Déplacer vers… » — fermé par le choix, un second
+  // clic, ou un CHANGEMENT de fil (revue E1 : le composant survit au
+  // changement de ligne — sans ce reflet, le menu du fil A resterait
+  // ouvert au-dessus du fil B et un clic distrait routerait B).
+  let menuDeplacer = $state(false);
+  $effect(() => {
+    void fil.ligne;
+    menuDeplacer = false;
+  });
 
   // Depuis R4 (PLAN-RETOURS-3, D4) Répondre / Répondre à tous /
   // Transférer visent CHAQUE message (barre par message) — plus de
@@ -591,6 +607,28 @@
           <Icone nom={fil.epingle ? 'keep_off' : 'keep'} />
           {fil.epingle ? t('action.desepingler') : t('action.epingler')}</button>
       {/if}
+      <!-- PLAN-MODE-ORGANISE E1 : le routage manuel — un expéditeur,
+           une destination. Jamais sur un écho (pas d'enveloppe). Sans
+           glyphe : aucun dessin existant ne porte ce sens (A3), le
+           texte suffit dans la barre. -->
+      {#if organise && !estEcho(fil.ligne)}
+        <span class="deplacer">
+          <button type="button" data-testid="deplacer-vers"
+                  aria-haspopup="menu" aria-expanded={menuDeplacer}
+                  onclick={() => (menuDeplacer = !menuDeplacer)}>
+            {t('action.deplacerVers')}</button>
+          {#if menuDeplacer}
+            <div class="deplacer-menu" role="menu">
+              {#each ['reception', 'kiosque', 'registre'] as dest (dest)}
+                <button type="button" role="menuitem"
+                        data-testid={`deplacer-${dest}`}
+                        onclick={() => { menuDeplacer = false; ondeplacer(fil.ligne, dest); }}>
+                  {t(`boite.${dest}`)}</button>
+              {/each}
+            </div>
+          {/if}
+        </span>
+      {/if}
     </div>
   </div>
 {/if}
@@ -790,6 +828,19 @@
     border:1px solid var(--border); border-radius:var(--r-controle); cursor:pointer;
   }
   .actions button:hover { background:var(--sel); }
+  /* E1 : le menu de « Déplacer vers… » — une carte au-dessus du
+     bouton (l'idiome du nuancier, A62), boutons au gabarit de la
+     barre, texte aligné à gauche. */
+  .deplacer { position:relative; display:inline-flex; }
+  .deplacer-menu {
+    position:absolute; bottom:calc(100% + 6px); left:0; z-index:5;
+    min-width:170px; display:flex; flex-direction:column;
+    background:var(--surface); border:1px solid var(--border);
+    box-shadow:var(--shadow); padding:4px;
+  }
+  .deplacer-menu button {
+    border:none; justify-content:flex-start; width:100%;
+  }
 
   /* R4/D4 : la barre de réponse d'UN message — en bas de la carte, un
      filet la sépare du corps ; même gabarit de boutons que la barre du

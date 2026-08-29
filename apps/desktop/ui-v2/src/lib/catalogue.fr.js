@@ -8,6 +8,9 @@
 export const FR = {
   // --- Dossiers canoniques (nav, statut, conversation) ----------------
   'boite.reception': 'Boîte de réception',
+  // PLAN-MODE-ORGANISE E1 — les vues du mode organisé (noms CE).
+  'boite.kiosque': 'Kiosque',
+  'boite.registre': 'Registre',
   'boite.envoyes': 'Envoyés',
   'boite.brouillons': 'Brouillons',
   'boite.indesirables': 'Indésirables',
@@ -22,6 +25,10 @@ export const FR = {
   'entete.chercher': 'Chercher un message, une personne, un fichier',
   'entete.effacerRecherche': 'Effacer la recherche',
   'entete.ecrire': 'Écrire',
+  'entete.organise': 'Organisé',
+  'action.deplacerVers': 'Déplacer vers…',
+  'toast.expediteurDeplace': 'Expéditeur déplacé vers {boite} — ses messages suivent.',
+  'erreur.sansAdresse': "Ce message n'a pas d'adresse d'expéditeur.",
   'entete.reglages': 'Réglages',
   // Le retour bêta (RETOURS-11 R3) : le mot du CE, tel quel.
   'entete.feedback': 'Feedback',

@@ -22,7 +22,7 @@ use rusqlite::{OptionalExtension, params, params_from_iter};
 use crate::error::Error;
 use crate::store::{
     InvitationRang, PINNED_THREADS, SELECT_UNIFIED, Store, THREAD_AGGREGATE, UNIFIED_JOIN_TAIL,
-    UnifiedRow, row_to_threaded, unified_page_sql,
+    UnifiedRow, fil_route_sql, routage_page_sql, row_to_threaded, unified_page_sql,
 };
 use crate::thread::RECEIVED_MAILBOX;
 
@@ -361,6 +361,74 @@ impl Store {
         let count: i64 = match account_id {
             None => self.conn().query_row(&sql, [], |row| row.get(0))?,
             Some(id) => self.conn().query_row(&sql, params![id], |row| row.get(0))?,
+        };
+        Ok(count as u64)
+    }
+
+    /// La page du Kiosque ou du Registre (PLAN-MODE-ORGANISE E1) —
+    /// le flot unifié borné aux fils dont la tête vient d'un
+    /// expéditeur routé vers `destination` ([`routage_page_sql`] :
+    /// même squelette, mêmes exclusions, même tri que la Réception).
+    pub fn routage_unified_scoped(
+        &self,
+        destination: &str,
+        account_id: Option<i64>,
+        non_lues: bool,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<UnifiedRow>, Error> {
+        let mut stmt = self
+            .conn()
+            .prepare(&routage_page_sql(account_id.is_some(), non_lues))?;
+        let rows = match account_id {
+            None => stmt
+                .query_map(
+                    params![limit as i64, offset as i64, destination],
+                    row_to_threaded,
+                )?
+                .collect::<Result<Vec<_>, _>>()?,
+            Some(id) => stmt
+                .query_map(
+                    params![limit as i64, offset as i64, destination, id],
+                    row_to_threaded,
+                )?
+                .collect::<Result<Vec<_>, _>>()?,
+        };
+        Ok(rows)
+    }
+
+    /// Total du Kiosque/Registre, sous les mêmes bornes que sa page —
+    /// épinglées COMPRISES (revue E1 : leur section préposée n'existe
+    /// qu'en Réception ; l'exclusion partagée de `pins` ne vaut que là
+    /// où les épingles sont servies à part).
+    pub fn routage_count_scoped(
+        &self,
+        destination: &str,
+        account_id: Option<i64>,
+        non_lues: bool,
+    ) -> Result<u64, Error> {
+        let filtre_compte = if account_id.is_some() {
+            " AND account_id = ?2"
+        } else {
+            ""
+        };
+        let filtre_non_lues = if non_lues { " AND unseen > 0" } else { "" };
+        // Le COUNT renumérote ses paramètres (?1 destination, ?2
+        // compte) — le fragment partagé prend l'index en argument,
+        // jamais une copie divergente du EXISTS.
+        let fil_route = fil_route_sql("?1");
+        let sql = format!(
+            "SELECT COUNT(*) FROM threads
+              WHERE inbox_size > 0
+                AND {fil_route}{filtre_compte}{filtre_non_lues}"
+        );
+        let count: i64 = match account_id {
+            None => self
+                .conn()
+                .query_row(&sql, params![destination], |row| row.get(0))?,
+            Some(id) => self
+                .conn()
+                .query_row(&sql, params![destination, id], |row| row.get(0))?,
         };
         Ok(count as u64)
     }
