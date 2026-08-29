@@ -899,12 +899,12 @@ test('les réglages appliquent et persistent le thème', async () => {
   // A13 : les thèmes vivent dans leur groupe, choisi au rail.
   await page.locator('[data-testid="reglages-groupe"][data-groupe="themes"]').click();
   // V7 amendée (A94) : quatre fiches — Elements, Elements · nuit,
-  // Mona, Mona · nuit.
+  // Innamoramento, Innamoramento · nuit (« Mona » renommée, A95).
   await expect(page.locator('[data-testid="theme"]')).toHaveCount(4);
-  // Mona s'applique et s'affiche (A94) — la fiche neuve n'est pas
-  // décorative, elle pose l'attribut comme les deux d'origine.
-  await page.locator('[data-theme-id="mona"]').click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'mona');
+  // Innamoramento s'applique et s'affiche (A94) — la fiche neuve n'est
+  // pas décorative, elle pose l'attribut comme les deux d'origine.
+  await page.locator('[data-theme-id="innamoramento"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'innamoramento');
   await page.locator('[data-theme-id="elements-nuit"]').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'elements-nuit');
   await page.locator('[data-testid="reglages-termine"]').click();
@@ -1079,17 +1079,31 @@ test("les anciens choix migrent : tout -nuit vers elements-nuit, le reste au dé
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   await expect(page.locator('html')).not.toHaveAttribute('data-theme');
   // A94 : un choix VALIDE suffixé -nuit n'est PAS une relique — la
-  // garde de migration connaît Mona, `mona-nuit` survit au démarrage
-  // tel quel (sans l'ajout à sa liste, il était réécrit en
-  // elements-nuit — prouvé rouge en retirant l'identifiant).
+  // garde de migration connaît Innamoramento, `innamoramento-nuit`
+  // survit au démarrage tel quel (sans l'identifiant dans THEMES, il
+  // était réécrit en elements-nuit — prouvé rouge en le retirant).
+  await page.evaluate(() => localStorage.setItem('wind-theme', 'innamoramento-nuit'));
+  await page.reload();
+  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'innamoramento-nuit');
+  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('innamoramento-nuit');
+  // A95 : le thème « Mona » est RENOMMÉ « Innamoramento » (CE,
+  // 2026-08-29, jamais publié en release) — un choix persisté sous
+  // l'ancien id suit le renommage, dans les deux polarités, et la
+  // migration est ÉCRITE (pas un repli silencieux vers le défaut).
   await page.evaluate(() => localStorage.setItem('wind-theme', 'mona-nuit'));
   await page.reload();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'mona-nuit');
-  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('mona-nuit');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'innamoramento-nuit');
+  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('innamoramento-nuit');
+  await page.evaluate(() => localStorage.setItem('wind-theme', 'mona'));
+  await page.reload();
+  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'innamoramento');
+  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('innamoramento');
   // Retour au défaut pour ne pas teinter d'autres parcours — et un
   // reload : retirer la clé ne dé-pose pas l'attribut, la page
-  // resterait AFFICHÉE en mona-nuit pour le test suivant (revue).
+  // resterait AFFICHÉE en nuit pour le test suivant (revue).
   await page.evaluate(() => localStorage.removeItem('wind-theme'));
   await page.reload();
   await expect(page.locator('html')).not.toHaveAttribute('data-theme');

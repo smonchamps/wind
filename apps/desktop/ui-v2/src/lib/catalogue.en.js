@@ -451,10 +451,10 @@ export const EN = {
   'theme.elements.desc': 'Light paper, the brand teal — the Elements direction.',
   'theme.elements-nuit.nom': 'Elements · night',
   'theme.elements-nuit.desc': 'Dark variant. Same 17 tokens.',
-  'theme.mona.nom': 'Mona',
-  'theme.mona.desc': 'Deep rose, mauve tiles — the Mona direction.',
-  'theme.mona-nuit.nom': 'Mona · night',
-  'theme.mona-nuit.desc': 'Dark variant. Same 17 tokens.',
+  'theme.innamoramento.nom': 'Innamoramento',
+  'theme.innamoramento.desc': 'Deep rose, mauve tiles — the Innamoramento direction.',
+  'theme.innamoramento-nuit.nom': 'Innamoramento · night',
+  'theme.innamoramento-nuit.desc': 'Dark variant. Same 17 tokens.',
 
   // --- Langues (chaque langue se nomme dans SA langue) ------------------
   'langue.fr': 'Français',

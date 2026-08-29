@@ -85,6 +85,67 @@ message en synchro (où se joue une règle du Non) ; le budget du
 préchargement des corps du Kiosque ; le volume d'expéditeurs inconnus
 sur les vraies boîtes du CE (dimensionne D3).
 
+### 3bis. Phase 0 jouée le 2026-08-29 — faits relevés au code
+
+- **Requêtes chaudes confirmées** : `list_category`
+  (`apps/desktop/src/commands.rs:1727`) sert la Réception par
+  `unified_recent_scoped` puis `enrichir_lignes` (borné à la page,
+  `nav.rs:421`) ; `category_total` est une commande SÉPARÉE, appelée
+  APRÈS le premier rendu (~240 ms/200 k pour une intégrale — jamais
+  sur le chemin d'affichage). L'exclusion des épinglées passe par
+  `PINNED_THREADS` (`store.rs:575`, `CROSS JOIN` directif) dans le
+  flot ET les totaux, garde de plan
+  `la_boite_unifiee_ne_materialise_pas_son_tri` (`store.rs:6135`,
+  `EXPLAIN QUERY PLAN`). L'exclusion « retenu au Portier » suivra ce
+  patron exact, garde de plan comprise (S2).
+- **`images_expediteurs`** confirmée (`store.rs:319`) : clé
+  `address TEXT PRIMARY KEY` en minuscules, normalisation UNIQUE
+  `adresse_images()` (`store.rs:3190`) — à réutiliser, jamais une
+  seconde. **Nuance relevée : cette table n'est PAS purgée à
+  `delete_account`/`reset_mailbox`** — c'est voulu (mémoire globale au
+  poste). `routage_expediteurs` et `groupes_expediteurs` (clé adresse,
+  globales) suivront ce statut ; `mis_de_cote` (clé d'enveloppe) suit
+  au contraire `pins`/`images_messages` : purge obligatoire.
+- **Chemin d'arrivée** : insertion par `upsert_envelopes`
+  (`store.rs:1372`), appelée d'`initial_sync`/`incremental_sync`
+  (`sync.rs:117/141`) — le point de greffe des règles du Non.
+  `pending_actions` (`store.rs:141`) porte déjà `Archive`, `Delete`,
+  `MoveTo(dossier)` (`action.rs:11`) : les trois règles du Non
+  s'écrivent avec l'existant, rejouées par `replay_actions`
+  (`sync.rs:207`) en tête de chaque synchro.
+- **« Déjà connu »** : `correspondants` (`store.rs:287`, clé adresse
+  minuscule) n'a pas encore de test de présence nue — à écrire sur le
+  patron d'`images_allowed` (`store.rs:2502`), une sonde PK.
+- **⚠️ Écart factuel au §3** : le thème ET l'espacement vivent en
+  **`localStorage`** (`wind-theme`, `wind-espacement`), PAS dans
+  `prefs` SQLite — « comme le thème » signifierait un mode invisible
+  du Rust. Or **les règles du Non se jouent côté Rust à la synchro** :
+  si elles doivent s'éteindre quand le mode se désactive, le cœur
+  doit savoir l'état du mode → `prefs` SQLite (lisible des deux
+  côtés). Tranché en D2 (amendée).
+- **Écran 03 réutilisable tel quel, confirmé** :
+  `Conversation.svelte` est piloté par le store partagé `fil`
+  (`cadre === 'plein'`), rien n'y présuppose le mode classique ; les
+  props/callbacks sont déjà normalisés dans `App.svelte:1526`.
+- **Va-et-vient** : l'entête (`App.svelte:1471`) est un flex
+  `gap:12px`, recherche bornée à 520 px, `margin-left:auto` sur
+  « Écrire » — la pilule s'insère entre la recherche et « Écrire »
+  sans toucher au flex.
+- **Nav** : `Nav.svelte` construit `dossiers` par un tableau statique
+  `{id, icone, libelle}` + `onchoisir({categorie})` — l'extension
+  Kiosque/Registre/Portier est mécanique.
+- **Fenêtrage** : `Liste.svelte` (PAGE=200, OVER=8), un vol de page
+  (`lancer`, réponse ignorée si la source a changé), sondes
+  permanentes en cage `bind:offsetHeight`. Sections et repli de
+  groupes s'intègrent soit au service (patron de la tranche `echos`
+  de `category_page`, `nav.rs:626`), soit à l'affichage — S1 les
+  départage au banc.
+- **Glyphes** : `lib/icones.js` (JEU, 80 glyphes) ; la gate de
+  cohérence (`e2e/coherence-systeme.mjs:252`) exige l'entrée au JEU
+  ET la `figcaption` au Système dans les DEUX sens, chaque tracé `d`
+  littéralement présent dans le doc. Les 5 glyphes neufs ne sont PAS
+  des repères de compte (pas de cinquième liste).
+
 ## 4. Architecture proposée (à confirmer set-based en Phase 1)
 
 **Le routage est LOCAL et l'autorité est au CŒUR.** Rien ne déplace
@@ -167,7 +228,38 @@ minimum** (§2.9) — proposition : E1-E3 puis E4-E6.
 5. **E5 — Mis de côté** : table, pile, éventail, tableau, bascules.
 6. **E6 — Groupes** : repli en une rangée, page de groupe, bascules.
 
-## 7. Décisions CE — à trancher au STOP 1
+## 7. Décisions CE — tranchées au STOP 1 le 2026-08-29
+
+> **Réponses CE du 2026-08-29, mot pour mot** (AskUserQuestion, ordre
+> posé) :
+>
+> - **D1** : « Oui, local seul » — jamais de déplacement IMAP.
+> - **D2 (amendée)** : « Par poste, prefs SQLite » — le Rust lit
+>   l'état du mode, les règles du Non s'éteignent avec lui.
+> - **D3** : « **Non, tout le monde au Portier** » — la
+>   recommandation (annuaire = pré-accepté) est REJETÉE : chaque
+>   expéditeur, même connu de l'annuaire, doit être validé une fois.
+>   Précision demandée et tranchée : « **Arrivées seules** » —
+>   l'historique reste en Réception ; un expéditeur passe au Portier
+>   à son PREMIER message reçu APRÈS l'activation. Conséquences :
+>   pas de présomption `correspondants`, une époque d'activation à
+>   stocker (`prefs`), S4 mesure le flux d'inconnus (pas le stock).
+> - **D4** : « Oui, corbeille » — jamais de suppression définitive.
+> - **D5** : « Oui, page servie » — préchargement des corps du
+>   Kiosque borné à la page, budget mesuré S3.
+> - **D6** : « Oui, globale » — la recherche traverse tout.
+> - **D7** : « Oui, E1-E3 puis E4-E6 » — deux releases MINEUR.
+> - **D8** : « Oui, maintenant » — le chantier démarre (le bloquant
+>   bêta est levé le 2026-08-29 : `feedback-wind@fcts.io` reçoit,
+>   c'était la propagation DNS ; les invitations courent en
+>   parallèle, côté CE). Le renommage « Mona » → « Innamoramento »
+>   se fait d'abord (ids + libellés, avec migration — décision CE du
+>   même STOP).
+> - **D9** : « Oui, les cinq du prototype » — les dessins validés en
+>   six passes entrent par la voie normale ; ajustements par STOP
+>   visuel.
+
+Le texte d'instruction d'origine des décisions :
 
 - **D1 — routage local seul.** Jamais de déplacement IMAP : la
   destination est une présentation locale (patron `pins`/A89) ; les
@@ -175,8 +267,12 @@ minimum** (§2.9) — proposition : E1-E3 puis E4-E6.
   *Recommandation : oui — déplacer côté serveur ferait de Wind un
   client qui réécrit la boîte, et le retour arrière serait
   irréversible.*
-- **D2 — portée du mode** : préférence par POSTE (recommandé, comme
-  le thème) ou par compte ?
+- **D2 — portée ET stockage du mode** (amendée en Phase 0) : par
+  POSTE (recommandé) ou par compte ; et **`prefs` SQLite** (le Rust
+  lit l'état — les règles du Non s'éteignent quand le mode se
+  désactive) ou `localStorage` (patron du thème, mais le cœur est
+  aveugle : les règles du Non joueraient même en mode classique).
+  *Recommandation : par poste, dans `prefs` SQLite.*
 - **D3 — qui est « déjà connu » à l'activation** : tout expéditeur
   présent à l'annuaire `correspondants` est réputé accepté →
   Réception (patron HEY « contacts = pré-screenés ») ; seuls les

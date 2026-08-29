@@ -1,8 +1,9 @@
 /* Système « Elements » (PLAN-ELEMENTS, V1-V14 au journal du Système)
    — jetons et styles de base. 17 rôles × 4 thèmes : « Elements »
    (défaut, sans attribut), « Elements · nuit », et depuis A94 (V7
-   amendée — la table est courte et VIVANTE, ADR 0027) « Mona » et
-   « Mona · nuit » (accent CE #AD204C, tuile déclinée de #A0868F).
+   amendée — la table est courte et VIVANTE, ADR 0027)
+   « Innamoramento » et « Innamoramento · nuit » (née « Mona »,
+   renommée A95 ; accent CE #AD204C, tuile déclinée de #A0868F).
    --panel est mort (V3) : le
    fond est le sol UNIQUE, le filet de 1 px porte seul la séparation —
    ses paires sont MESURÉES (e2e/contraste.mjs, seuil = le filet
@@ -50,8 +51,9 @@ html {
   --alert:#EA9A90; --onAccent:#06211F;
   --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
 }
-:root[data-theme="mona"] {
-  /* Mona — clair (A94). L'accent CE #AD204C tient 6,80:1 sur blanc :
+:root[data-theme="innamoramento"] {
+  /* Innamoramento — clair (A94, née « Mona », renommée A95).
+     L'accent CE #AD204C tient 6,80:1 sur blanc :
      il sert d'accent ET de marque tel quel, sans le dédoublement
      d'Elements (remède A8 sans objet ici). La tuile décline la TEINTE
      de #A0868F (mi-ton impossible aux seuils — mesuré 2,04:1 sous
@@ -65,8 +67,8 @@ html {
   --alert:#B02A21; --onAccent:#FFFFFF;
   --shadow:0 2px 8px rgba(29,24,26,0.08); --scrim:rgba(29,24,26,0.28);
 }
-:root[data-theme="mona-nuit"] {
-  /* Mona · nuit — le rose éclairci à teinte constante (#E58BA4), le
+:root[data-theme="innamoramento-nuit"] {
+  /* Innamoramento · nuit — le rose éclairci à teinte constante (#E58BA4), le
      motif d'Elements-nuit (#1A7A7A → #3FA39C) ; la tuile assombrie
      (#A0868F ne peut porter AUCUNE encre à 4,5:1 — blanc pur : 3,33). */
   --bg:#151012; --surface:#1E171A;

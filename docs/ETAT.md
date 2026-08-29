@@ -16,7 +16,10 @@
 **[PLAN-MONA](PLAN-MONA.md)** (2026-08-29, ouvert et clos le même
 jour, commit `409c8ae`, CI verte run 33270609284, terrain CE « Terrain
 OK sur les deux thèmes, GO » — zéro constat). **Deux thèmes neufs,
-« Mona » et « Mona · nuit »** (couleurs CE : accent `#AD204C` —
+« Mona » et « Mona · nuit »** — **renommés « Innamoramento » /
+« Innamoramento · nuit » le 2026-08-29 (A95, retour CE, avant toute
+release ; ids migrés, migration prouvée au filet)** — (couleurs CE :
+accent `#AD204C` —
 6,80:1 sur blanc, accent ET marque du clair tel quel — et la teinte
 de tuile `#A0868F` déclinée par polarité `#EFDFE4`/`#2C2126` : la
 valeur brute est impossible aux seuils, 2,04:1 sous ink2, 1,88:1 sous
@@ -34,11 +37,13 @@ chaque démarrage), `NOMBRE_ATTENDU` 2 → 4. Contraste **440 paires
 la cassant). Revue à regard neuf 6 angles / 10 retenues /
 **9 corrigées** (dont le chiffre gravé faux 166 → 220 et la fuite de
 thème du test de migration) ; dette neuve **D-45** (vignettes du
-Système = seule copie d'hex hors gate). **Mona part avec la prochaine
-release** — l'entrée CHANGELOG s'écrira à ce moment-là (§2.9). **Le
-prochain sujet reste la première vague bêta** (PLAN-BETA — bloquant
-CE : faire recevoir `feedback-wind@fcts.io` ; puis inviter 5-10
-proches, D9).
+Système = seule copie d'hex hors gate). **Innamoramento part avec la
+prochaine release** — l'entrée CHANGELOG s'écrira à ce moment-là,
+sous ce nom (§2.9). **Le
+bloquant bêta est LEVÉ le 2026-08-29** : `feedback-wind@fcts.io`
+reçoit — les mails du 28 sont arrivés, c'était un délai de
+propagation DNS, pas une panne d'alias. **La première vague bêta
+(5-10 proches, D9) est ouverte** — action CE au PLAN-BETA.
 
 ---
 

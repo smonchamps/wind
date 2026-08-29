@@ -1,5 +1,10 @@
 # PLAN-MONA — un troisième thème « Mona » (clair + nuit)
 
+> **Renommé le 2026-08-29 (A95)** : le thème s'appelle désormais
+> **« Innamoramento »** (retour CE du jour même, avant toute release ;
+> ids `innamoramento`/`innamoramento-nuit`, migration écrite). Ce plan
+> garde le nom de naissance — c'est l'archive du chantier d'entrée.
+
 > **CHANTIER SOLDÉ le 2026-08-29 — terrain complet.** Commit
 > `409c8ae`, CI verte run 33270609284. GO CE du plan (D1-D3) et GO du
 > STOP visuel le 2026-08-29 ; terrain CE le jour même : « Terrain OK

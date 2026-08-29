@@ -221,7 +221,7 @@ compareListes('teinte du tracé', teintesRust, 'commands.rs', teintesTrace, 'sys
 // une table par polarité. Un jeton manquant rendrait `color:var(--rep-x)`
 // sans valeur — le glyphe retomberait sur l'encre courante, en silence.
 // A94 : la table nuit vit sous `$="-nuit"` — une table par polarité,
-// servie à TOUT thème sombre (mona-nuit compris), jamais recopiée. Le
+// servie à TOUT thème sombre (innamoramento-nuit compris), jamais recopiée. Le
 // parseur des blocs est PARTAGÉ avec contraste.mjs (jetons.mjs) : une
 // seule regex à faire suivre le CSS.
 for (const [polarite, nuit] of [['clair', false], ['nuit', true]]) {

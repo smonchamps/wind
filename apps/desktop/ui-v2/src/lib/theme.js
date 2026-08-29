@@ -1,6 +1,7 @@
 // Thèmes de Wind (V7 amendée par A94/ADR 0027 : la table est courte
 // et VIVANTE) : `elements` (défaut, aucun attribut posé) et sa nuit,
-// puis `mona` et sa nuit (PLAN-MONA). La table Wada de 28 thèmes
+// puis `innamoramento` et sa nuit (PLAN-MONA, né « Mona », renommé
+// par le CE le 2026-08-29 — A95). La table Wada de 28 thèmes
 // (A42) reste retirée ; la mécanique du suivi OS est inchangée : quand
 // le suivi de l'OS sombre est actif et que l'OS est en sombre, la
 // déclinaison -nuit du thème CHOISI s'affiche — le choix persisté
@@ -23,8 +24,8 @@ const CLE_AUTO = 'wind-theme-auto';
 export const FICHES = [
   { id: 'elements', pastilles: ['#1A7A7A', '#F3F2EE', '#CBC8BB', '#FFFFFF', '#191D1E'] },
   { id: 'elements-nuit', pastilles: ['#3FA39C', '#0D100F', '#333B3A', '#171B1A', '#ECEDEA'] },
-  { id: 'mona', pastilles: ['#AD204C', '#F4F0F1', '#CDBFC4', '#FFFFFF', '#1D181A'] },
-  { id: 'mona-nuit', pastilles: ['#E58BA4', '#151012', '#3E3339', '#1E171A', '#EEEAEC'] },
+  { id: 'innamoramento', pastilles: ['#AD204C', '#F4F0F1', '#CDBFC4', '#FFFFFF', '#1D181A'] },
+  { id: 'innamoramento-nuit', pastilles: ['#E58BA4', '#151012', '#3E3339', '#1E171A', '#EEEAEC'] },
 ];
 
 // La liste des identifiants se DÉRIVE des fiches : une seule table à
@@ -52,9 +53,21 @@ try {
   // `elements-nuit`. Les anciens choix CLAIRS retombent sur le défaut
   // par le garde-fou de themeActuel(), silencieusement — comme les
   // cinq thèmes retirés d'A42 avant eux.
+  // A95 : « Mona » est renommée « Innamoramento » (CE, 2026-08-29,
+  // jamais publiée en release) — un choix persisté sous l'ancien id
+  // suit le renommage, AVANT la règle des orphelins -nuit (sinon
+  // `mona-nuit` retombait en elements-nuit). Les polarités se
+  // DÉRIVENT de la paire de base (le motif de THEMES : une paire
+  // -nuit en dur oubliée raterait la migration en silence).
+  const choixARenommer = localStorage.getItem(CLE);
+  for (const [ancien, neuf] of [['mona', 'innamoramento']]) {
+    for (const suffixe of ['', '-nuit']) {
+      if (choixARenommer === ancien + suffixe) localStorage.setItem(CLE, neuf + suffixe);
+    }
+  }
   // A94 : les choix VALIDES se dérivent de THEMES (déclarée au-dessus,
   // revue PLAN-MONA) — une liste en dur ici réarmait le bug à chaque
-  // ajout : sans « mona-nuit », un choix Mona sombre persisté était
+  // ajout : sans « innamoramento-nuit », un choix sombre persisté était
   // réécrit en elements-nuit à chaque démarrage (prouvé RED).
   const choix = localStorage.getItem(CLE);
   if (choix !== null && !THEMES.includes(choix)

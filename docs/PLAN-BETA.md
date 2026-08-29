@@ -44,11 +44,11 @@ Cochées au fil de l'eau ; les actions CE sont marquées **[CE]**.
   désormais DANS l'app : le bouton **Feedback** de l'entête (A91)
   envoie par email depuis le compte du testeur ; l'adresse reste au
   guide comme repli (Wind bloqué à l'installation).
-- [ ] **[CE — BLOQUANT avant toute invitation]** L'adresse
-  `feedback-wind@fcts.io` **ne reçoit pas** (constat du 2026-08-28 :
-  échec identique depuis un autre client — alias/redirection fcts.io
-  à régler, hors Wind). La prouver par un aller simple depuis un
-  client tiers, PUIS par le bouton Feedback de Wind.
+- [x] **[CE]** L'adresse `feedback-wind@fcts.io` **reçoit** —
+  constat CE du 2026-08-29 : les mails du 28 sont bien arrivés, le
+  défaut était un délai de propagation de la configuration DNS, pas
+  une panne d'alias. Le bloquant du 2026-08-28 est levé ; la voie des
+  invitations est ouverte.
 - [ ] **[CE]** Première vague (D9) : 5-10 proches — les inviter par
   email personnel avec le lien du guide
   (https://github.com/smonchamps/wind/blob/main/docs/BETA.md).

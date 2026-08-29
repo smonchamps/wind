@@ -2,6 +2,12 @@
 
 Date : 2026-08-29 · Statut : accepté
 
+> **Addendum (2026-08-29, A95)** : le thème est renommé
+> « Innamoramento » par le CE le jour même, avant toute release —
+> identifiants `innamoramento`/`innamoramento-nuit`, migration écrite
+> des anciens ids persistés. Les décisions D1-D3 ci-dessous sont
+> inchangées ; « Mona » y reste le nom de naissance.
+
 ## Contexte
 
 V7 (ADR 0026, 2026-08-24) avait figé la table à « deux thèmes, et

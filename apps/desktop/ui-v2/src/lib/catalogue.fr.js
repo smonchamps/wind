@@ -465,10 +465,10 @@ export const FR = {
   'theme.elements.desc': 'Papier clair, teal de la marque — la direction Elements.',
   'theme.elements-nuit.nom': 'Elements · nuit',
   'theme.elements-nuit.desc': 'Déclinaison sombre. Mêmes 17 jetons.',
-  'theme.mona.nom': 'Mona',
-  'theme.mona.desc': 'Rose profond, tuiles mauves — la direction Mona.',
-  'theme.mona-nuit.nom': 'Mona · nuit',
-  'theme.mona-nuit.desc': 'Déclinaison sombre. Mêmes 17 jetons.',
+  'theme.innamoramento.nom': 'Innamoramento',
+  'theme.innamoramento.desc': 'Rose profond, tuiles mauves — la direction Innamoramento.',
+  'theme.innamoramento-nuit.nom': 'Innamoramento · nuit',
+  'theme.innamoramento-nuit.desc': 'Déclinaison sombre. Mêmes 17 jetons.',
 
   // --- Langues (chaque langue se nomme dans SA langue, les deux
   //     catalogues portent les mêmes valeurs) --------------------------
