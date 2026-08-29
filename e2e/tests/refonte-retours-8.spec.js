@@ -207,12 +207,13 @@ test('le parcours de premier démarrage : cinq étapes, retour compris', async (
   );
   await page.locator('[data-testid="accueil-continuer"]').click();
 
-  // Étape 3 : les deux fiches en aperçu (V7) ; choisir « Elements ·
-  // nuit » pose le thème sur l'instant (data-theme sur la racine).
+  // Étape 3 : les quatre fiches en aperçu (V7 amendée, A94) ; choisir
+  // « Elements · nuit » pose le thème sur l'instant (data-theme sur la
+  // racine).
   await expect(page.locator('[data-testid="accueil-progression"]')).toHaveText(
     'Étape 3/5',
   );
-  await expect(page.locator('[data-testid="accueil-theme"]')).toHaveCount(2);
+  await expect(page.locator('[data-testid="accueil-theme"]')).toHaveCount(4);
   await page.locator('[data-testid="accueil-theme"][data-theme-id="elements-nuit"]').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'elements-nuit');
   await page.locator('[data-testid="accueil-continuer"]').click();

@@ -457,12 +457,18 @@ export const FR = {
   'raccourci.geste.echap': 'Fermer la surimpression, sortir du champ, revenir à la boîte',
 
   // --- Thèmes (fiches du sélecteur : Réglages, accueil) -----------------
-  // V7 (PLAN-ELEMENTS) : deux thèmes, et deux seulement — la table
-  // Wada de 28 fiches est retirée.
+  // V7 amendée par A94 : la table des thèmes est courte et vivante
+  // (la table Wada de 28 fiches reste retirée) —
+  // les clés suivent FICHES (lib/theme.js), la gate de cohérence y
+  // veille dans les deux sens.
   'theme.elements.nom': 'Elements',
   'theme.elements.desc': 'Papier clair, teal de la marque — la direction Elements.',
   'theme.elements-nuit.nom': 'Elements · nuit',
   'theme.elements-nuit.desc': 'Déclinaison sombre. Mêmes 17 jetons.',
+  'theme.mona.nom': 'Mona',
+  'theme.mona.desc': 'Rose profond, tuiles mauves — la direction Mona.',
+  'theme.mona-nuit.nom': 'Mona · nuit',
+  'theme.mona-nuit.desc': 'Déclinaison sombre. Mêmes 17 jetons.',
 
   // --- Langues (chaque langue se nomme dans SA langue, les deux
   //     catalogues portent les mêmes valeurs) --------------------------

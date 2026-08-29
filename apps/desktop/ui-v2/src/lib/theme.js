@@ -1,7 +1,7 @@
-// Thèmes « Elements » (V7 — PLAN-ELEMENTS) : deux thèmes, et deux
-// seulement — `elements` (défaut, aucun attribut posé) et sa
-// déclinaison sombre `elements-nuit`. La table Wada de 28 thèmes
-// (A42) est retirée ; la mécanique du suivi OS est conservée : quand
+// Thèmes de Wind (V7 amendée par A94/ADR 0027 : la table est courte
+// et VIVANTE) : `elements` (défaut, aucun attribut posé) et sa nuit,
+// puis `mona` et sa nuit (PLAN-MONA). La table Wada de 28 thèmes
+// (A42) reste retirée ; la mécanique du suivi OS est inchangée : quand
 // le suivi de l'OS sombre est actif et que l'OS est en sombre, la
 // déclinaison -nuit du thème CHOISI s'affiche — le choix persisté
 // reste le thème de base, le suffixe est un état dérivé, jamais
@@ -9,6 +9,29 @@
 
 const CLE = 'wind-theme';
 const CLE_AUTO = 'wind-theme-auto';
+
+// Les fiches du sélecteur (Réglages, accueil) — pastilles VERBATIM de
+// la table du contrat, dans l'ordre accent, fond, filet, surface,
+// encre (`panel` est mort — V3 ; le filet entre à sa place : depuis V3
+// c'est LUI qui dessine la séparation, les vignettes le montrent).
+// Les mêmes valeurs vivent en jetons dans systeme.css : les pastilles
+// doivent montrer chaque thème SANS l'appliquer, d'où les hex répétés
+// ici — la gate coherence-systeme.mjs les tient égales aux jetons
+// livrés. Libellés et descriptions vivent au catalogue
+// (`theme.<id>.nom` / `theme.<id>.desc` — PLAN-LANGUES, A15).
+// Déclarées AVANT la migration ci-dessous : la garde en dérive.
+export const FICHES = [
+  { id: 'elements', pastilles: ['#1A7A7A', '#F3F2EE', '#CBC8BB', '#FFFFFF', '#191D1E'] },
+  { id: 'elements-nuit', pastilles: ['#3FA39C', '#0D100F', '#333B3A', '#171B1A', '#ECEDEA'] },
+  { id: 'mona', pastilles: ['#AD204C', '#F4F0F1', '#CDBFC4', '#FFFFFF', '#1D181A'] },
+  { id: 'mona-nuit', pastilles: ['#E58BA4', '#151012', '#3E3339', '#1E171A', '#EEEAEC'] },
+];
+
+// La liste des identifiants se DÉRIVE des fiches : une seule table à
+// maintenir — une fiche sans thème (ou l'inverse) est impossible par
+// construction, et la gate coherence-systeme.mjs tient les pastilles
+// égales aux jetons livrés.
+export const THEMES = FICHES.map((f) => f.id);
 
 // Recopie des clés Discovery d'avant la bascule (PLAN-WIND E3) : le
 // choix survit au renommage, les anciennes clés sont retirées. Le
@@ -29,32 +52,16 @@ try {
   // `elements-nuit`. Les anciens choix CLAIRS retombent sur le défaut
   // par le garde-fou de themeActuel(), silencieusement — comme les
   // cinq thèmes retirés d'A42 avant eux.
+  // A94 : les choix VALIDES se dérivent de THEMES (déclarée au-dessus,
+  // revue PLAN-MONA) — une liste en dur ici réarmait le bug à chaque
+  // ajout : sans « mona-nuit », un choix Mona sombre persisté était
+  // réécrit en elements-nuit à chaque démarrage (prouvé RED).
   const choix = localStorage.getItem(CLE);
-  if (choix !== null && !['elements', 'elements-nuit'].includes(choix)
+  if (choix !== null && !THEMES.includes(choix)
       && (choix === 'nuit' || choix.endsWith('-nuit'))) {
     localStorage.setItem(CLE, 'elements-nuit');
   }
 } catch { /* stockage indisponible : rien à migrer */ }
-
-// Les fiches du sélecteur (Réglages, accueil) — pastilles VERBATIM de
-// la table du contrat, dans l'ordre accent, fond, filet, surface,
-// encre (`panel` est mort — V3 ; le filet entre à sa place : depuis V3
-// c'est LUI qui dessine la séparation, les vignettes le montrent).
-// Les mêmes valeurs vivent en jetons dans systeme.css : les pastilles
-// doivent montrer chaque thème SANS l'appliquer, d'où les hex répétés
-// ici — la gate coherence-systeme.mjs les tient égales aux jetons
-// livrés. Libellés et descriptions vivent au catalogue
-// (`theme.<id>.nom` / `theme.<id>.desc` — PLAN-LANGUES, A15).
-export const FICHES = [
-  { id: 'elements', pastilles: ['#1A7A7A', '#F3F2EE', '#CBC8BB', '#FFFFFF', '#191D1E'] },
-  { id: 'elements-nuit', pastilles: ['#3FA39C', '#0D100F', '#333B3A', '#171B1A', '#ECEDEA'] },
-];
-
-// La liste des identifiants se DÉRIVE des fiches : une seule table à
-// maintenir — une fiche sans thème (ou l'inverse) est impossible par
-// construction, et la gate coherence-systeme.mjs tient les pastilles
-// égales aux jetons livrés.
-export const THEMES = FICHES.map((f) => f.id);
 
 export function themeActuel() {
   let nom = 'elements';

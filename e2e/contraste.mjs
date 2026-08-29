@@ -1,6 +1,7 @@
-// Banc de contraste WCAG des jetons Elements (systeme.css) : chaque
-// paire (encre, fond) réellement posée par ui-v2, dans les 2 thèmes
-// (V7). Seuils : 4,5:1 pour le texte courant, 3:1 pour le grand texte
+// Banc de contraste WCAG des jetons de thème (systeme.css) : chaque
+// paire (encre, fond) réellement posée par ui-v2, dans TOUS les thèmes
+// de la table (V7 amendée A94 — 4 thèmes, NOMBRE_ATTENDU fait foi).
+// Seuils : 4,5:1 pour le texte courant, 3:1 pour le grand texte
 // et les composants d'interface (icônes, disques, anneaux) — plus les
 // paires de FILET (V3 : le filet porte SEUL la séparation), au seuil
 // du filet expédié par Clarity (1,49:1 sur le fond, 1,26:1 sur une
@@ -12,7 +13,7 @@
 // c'est ce que l'utilisateur voit qui se mesure.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { lireThemes, NOMBRE_ATTENDU } from './jetons.mjs';
+import { lireThemes, lireReperes, NOMBRE_ATTENDU } from './jetons.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const css = readFileSync(
@@ -116,7 +117,7 @@ for (const [nom, t] of Object.entries(themes)) {
 }
 // --- REPERES (A74, PLAN-RETOURS-8 R1 ; jetons depuis A82) ------------
 // Le nuancier des repères de compte : 12 familles × 2 déclinaisons
-// (sombre pour le thème clair, claire pour elements-nuit — V5 : le
+// (sombre pour les thèmes clairs, claire pour les -nuit — V5 : le
 // nuancier SUIT la polarité). Depuis A82 chaque hex sert deux fois
 // (pastille des Réglages en background, tracé en color) : les hex
 // EXPÉDIÉS vivent en jetons --rep-<teinte> dans les blocs :root de
@@ -128,28 +129,12 @@ const REPERE_FAMILLES = 12;
 // COURS se pose sur la tuile de nav — l'oublier laissait ce fond-là,
 // précisément, sans mesure. `panel` est mort (V3).
 const FONDS_REPERE = ['bg', 'sel', 'hover', 'surface', 'tuile'];
-// Le bloc :root de la polarité demandée peut exister en PLUSIEURS
-// exemplaires (les 17 jetons de thème d'un côté, les --rep-* de
-// l'autre) : on balaie chaque bloc et on ne garde que les --rep-*.
-// lireThemes (jetons.mjs) ne peut pas servir ici : sa classe de nom
+// Le parseur des blocs --rep-* est PARTAGÉ avec la gate de cohérence
+// (jetons.mjs, A94 — lireThemes ne peut pas servir : sa classe de nom
 // [a-zA-Z0-9] laisse volontairement passer le trait d'union des
-// --rep-* (voir le commentaire du nuancier dans systeme.css).
-function lireReperes(nuit) {
-  const reperes = {};
-  for (const [, theme, corps] of css.matchAll(
-    /:root(\[data-theme="elements-nuit"\])?\s*\{([^}]+)\}/g,
-  )) {
-    if (Boolean(theme) !== nuit) continue;
-    for (const [, teinte, hex] of corps.matchAll(
-      /--rep-([a-z]+)\s*:\s*(#[0-9a-fA-F]{6})/g,
-    )) {
-      reperes[teinte] = hex;
-    }
-  }
-  return reperes;
-}
-const sombres = lireReperes(false);
-const claires = lireReperes(true);
+// --rep-*, voir le commentaire du nuancier dans systeme.css).
+const sombres = lireReperes(css, { nuit: false });
+const claires = lireReperes(css, { nuit: true });
 // Les encres des glyphes se LISENT du CSS expédié, comme les fonds —
 // une copie locale mentirait dès que systeme.css bouge (revue).
 const encreSombre = css.match(/\.repere\s*\{[^}]*color:(#[0-9a-fA-F]{6})/)?.[1];

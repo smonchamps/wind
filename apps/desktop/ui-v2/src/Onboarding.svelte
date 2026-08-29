@@ -313,7 +313,9 @@
   .ajoutes :global(.ic) { color:var(--accent); }
 
   .cartes { display:flex; gap:14px; flex-wrap:wrap; }
-  /* V7 : deux fiches, côte à côte — la grille de 28 est morte. */
+  /* V7/A94 : la table vivante en deux colonnes (2×2 à quatre fiches —
+     quatre de front écraserait les vignettes) ; la grille de 28 est
+     morte. L'écran défile si la grille dépasse (.ecran01). */
   .cartes.themes {
     display:grid; grid-template-columns:repeat(2, 1fr); gap:14px;
   }

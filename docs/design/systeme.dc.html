@@ -405,7 +405,7 @@ svg.g{flex:none}
 
 /* Le corps du courriel : la dalle BAKÉE par mail-render — encre #222222,
    fond #ffffff (crates/mail-render/src/lib.rs, Palette::default), dans
-   les DEUX thèmes (A61). Wind ne pose QUE ces deux valeurs : le lien
+   TOUS les thèmes (A61). Wind ne pose QUE ces deux valeurs : le lien
    garde ce que le message, ou le navigateur, lui donne. */
 .corps-mail{background:#ffffff;color:#222222;border-radius:var(--r-controle);padding:14px 16px;font-size:15px;
   line-height:1.65;border:1px solid var(--border)}
@@ -547,8 +547,9 @@ svg.g{flex:none}
     <p class="lede">Une seule règle de forme, appliquée partout. Grille de 24, trait de 2 unités,
     bouts nets, jonctions vives, coordonnées entières — <b>aucune correction optique</b> dans tout le
     système. Le disque n'a qu'un emploi : il dit l'état. La couleur ne décore jamais ; elle dit
-    l'élément à la marque, et un état partout ailleurs. Deux thèmes, une polarité chacun, tous deux
-    tirés des couleurs posées autour de l'icône Wind. Ce document est <b>généré</b> depuis le
+    l'élément à la marque, et un état partout ailleurs. Une table de thèmes courte et vivante
+    (V7/A94) — Elements, tiré des couleurs posées autour de l'icône Wind, et Mona, tiré de deux
+    couleurs CE, chacun en clair et en nuit. Ce document est <b>généré</b> depuis le
     catalogue des glyphes : il ne peut pas montrer un dessin différent de celui qui est mesuré.</p>
   </header>
 
@@ -869,17 +870,20 @@ svg.g{flex:none}
   <section id="themes">
     <a class="haut" href="#haut">↑ Haut du document</a>
     <h2>Thèmes de couleur</h2>
-    <p class="sub"><b>Deux thèmes</b>, et deux seulement (V7, renverse A42) : « Elements » — le
-    défaut, sans attribut — et sa déclinaison sombre « Elements · nuit », d'identifiant suffixé
-    <code>-nuit</code>. Les quatorze combinaisons Wada et leurs quatorze nuits sont <b>retirées</b> :
-    la direction est <b>une</b> palette, pas quatorze. Les deux thèmes sortent des couleurs posées
-    autour de l'icône Wind — la tuile <code>#F2EDE3</code> devient <code>--tuile</code>, le teal
-    <code>#1F8A8A</code> devient <code>--marque</code>, et le reste est composé autour d'eux. Le
-    réglage « Sombre automatique » affiche la déclinaison <code>-nuit</code> quand le réglage sombre
-    du système est actif ; le thème de base est la seule valeur persistée, le suffixe est un état
-    dérivé.</p>
+    <p class="sub">La table des thèmes est <b>courte et vivante</b> (V7 amendée par A94, décision
+    CE du 2026-08-29 / ADR 0027 : des thèmes peuvent s'ajouter ou se retirer de temps à autre —
+    jamais le retour d'une table de vingt-huit). Quatre thèmes : « Elements » — le défaut, sans
+    attribut — et « Mona », chacun avec sa déclinaison sombre d'identifiant suffixé
+    <code>-nuit</code>. Les quatorze combinaisons Wada et leurs quatorze nuits restent
+    <b>retirées</b> (V7). Elements sort des couleurs posées autour de l'icône Wind — la tuile
+    <code>#F2EDE3</code> devient <code>--tuile</code>, le teal <code>#1F8A8A</code> devient
+    <code>--marque</code>, et le reste est composé autour d'eux. Mona sort de deux couleurs CE —
+    l'accent <code>#AD204C</code>, la teinte de tuile <code>#A0868F</code> déclinée par polarité
+    (A94). Le réglage « Sombre automatique » affiche la déclinaison <code>-nuit</code> du thème
+    choisi quand le réglage sombre du système est actif ; le thème de base est la seule valeur
+    persistée, le suffixe est un état dérivé.</p>
 
-    <p class="etiq">Les deux fenêtres, à la vignette des Réglages</p>
+    <p class="etiq">Les quatre fenêtres, à la vignette des Réglages</p>
     <div class="fiches duo">
       <div class="fiche" style="background:#F3F2EE;border-color:#CBC8BB;color:#191D1E">
         <h3 class="sourcil" style="color:#606668">Elements — clair · défaut</h3>
@@ -931,6 +935,60 @@ svg.g{flex:none}
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           <span class="swatch" title="--bg #0D100F" style="background:#0D100F;border-color:#333B3A"></span><span class="swatch" title="--surface #171B1A" style="background:#171B1A;border-color:#333B3A"></span><span class="swatch" title="--tuile #241F17" style="background:#241F17;border-color:#333B3A"></span><span class="swatch" title="--sel #1E322F" style="background:#1E322F;border-color:#333B3A"></span><span class="swatch" title="--hover #141817" style="background:#141817;border-color:#333B3A"></span><span class="swatch" title="--accent #3FA39C" style="background:#3FA39C;border-color:#333B3A"></span><span class="swatch" title="--marque #3FA39C" style="background:#3FA39C;border-color:#333B3A"></span><span class="swatch" title="--alert #EA9A90" style="background:#EA9A90;border-color:#333B3A"></span>
+        </div>
+      </div>
+    </div>
+    <div class="fiches duo">
+      <div class="fiche" style="background:#F4F0F1;border-color:#CDBFC4;color:#1D181A">
+        <h3 class="sourcil" style="color:#5F4C53">Mona — clair</h3>
+        <div style="display:flex;height:132px;border:1px solid #CDBFC4;border-radius:var(--r-controle);overflow:hidden">
+          <div style="width:60px;background:#F4F0F1;border-right:1px solid #CDBFC4;padding:8px 6px;
+            display:flex;flex-direction:column;gap:5px">
+            <span style="height:14px;border-radius:var(--r-tuile);background:#F4DCE4"></span>
+            <span style="height:14px;border-radius:var(--r-tuile);background:#EFDFE4"></span>
+            <span style="height:14px;border-radius:var(--r-tuile);background:#ECE3E5"></span>
+          </div>
+          <div style="width:96px;background:#F4F0F1;border-right:1px solid #CDBFC4;padding:8px 6px;
+            display:flex;flex-direction:column;gap:6px">
+            <span style="height:10px;border-radius:var(--r-tuile);background:#1D181A;opacity:.85"></span>
+            <span style="height:8px;border-radius:var(--r-tuile);background:#59484E;opacity:.5"></span>
+            <span style="height:10px;border-radius:var(--r-tuile);background:#F4DCE4"></span>
+            <span style="height:8px;border-radius:var(--r-tuile);background:#59484E;opacity:.5"></span>
+          </div>
+          <div style="flex:1;background:#F4F0F1;padding:8px;display:flex;flex-direction:column;gap:6px">
+            <span style="height:34px;border-radius:var(--r-controle);background:#FFFFFF;border:1px solid #CDBFC4"></span>
+            <span style="height:34px;border-radius:var(--r-controle);background:#FFFFFF;border:1px solid #CDBFC4"></span>
+            <span style="width:64px;height:18px;border-radius:var(--r-controle);background:#AD204C"></span>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <span class="swatch" title="--bg #F4F0F1" style="background:#F4F0F1;border-color:#CDBFC4"></span><span class="swatch" title="--surface #FFFFFF" style="background:#FFFFFF;border-color:#CDBFC4"></span><span class="swatch" title="--tuile #EFDFE4" style="background:#EFDFE4;border-color:#CDBFC4"></span><span class="swatch" title="--sel #F4DCE4" style="background:#F4DCE4;border-color:#CDBFC4"></span><span class="swatch" title="--hover #ECE3E5" style="background:#ECE3E5;border-color:#CDBFC4"></span><span class="swatch" title="--accent #AD204C" style="background:#AD204C;border-color:#CDBFC4"></span><span class="swatch" title="--marque #AD204C" style="background:#AD204C;border-color:#CDBFC4"></span><span class="swatch" title="--alert #B02A21" style="background:#B02A21;border-color:#CDBFC4"></span>
+        </div>
+      </div>
+      <div class="fiche" style="background:#151012;border-color:#3E3339;color:#EEEAEC">
+        <h3 class="sourcil" style="color:#A2969C">Mona — nuit</h3>
+        <div style="display:flex;height:132px;border:1px solid #3E3339;border-radius:var(--r-controle);overflow:hidden">
+          <div style="width:60px;background:#151012;border-right:1px solid #3E3339;padding:8px 6px;
+            display:flex;flex-direction:column;gap:5px">
+            <span style="height:14px;border-radius:var(--r-tuile);background:#3A2029"></span>
+            <span style="height:14px;border-radius:var(--r-tuile);background:#2C2126"></span>
+            <span style="height:14px;border-radius:var(--r-tuile);background:#191316"></span>
+          </div>
+          <div style="width:96px;background:#151012;border-right:1px solid #3E3339;padding:8px 6px;
+            display:flex;flex-direction:column;gap:6px">
+            <span style="height:10px;border-radius:var(--r-tuile);background:#EEEAEC;opacity:.85"></span>
+            <span style="height:8px;border-radius:var(--r-tuile);background:#BCB1B6;opacity:.5"></span>
+            <span style="height:10px;border-radius:var(--r-tuile);background:#3A2029"></span>
+            <span style="height:8px;border-radius:var(--r-tuile);background:#BCB1B6;opacity:.5"></span>
+          </div>
+          <div style="flex:1;background:#151012;padding:8px;display:flex;flex-direction:column;gap:6px">
+            <span style="height:34px;border-radius:var(--r-controle);background:#1E171A;border:1px solid #3E3339"></span>
+            <span style="height:34px;border-radius:var(--r-controle);background:#1E171A;border:1px solid #3E3339"></span>
+            <span style="width:64px;height:18px;border-radius:var(--r-controle);background:#E58BA4"></span>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <span class="swatch" title="--bg #151012" style="background:#151012;border-color:#3E3339"></span><span class="swatch" title="--surface #1E171A" style="background:#1E171A;border-color:#3E3339"></span><span class="swatch" title="--tuile #2C2126" style="background:#2C2126;border-color:#3E3339"></span><span class="swatch" title="--sel #3A2029" style="background:#3A2029;border-color:#3E3339"></span><span class="swatch" title="--hover #191316" style="background:#191316;border-color:#3E3339"></span><span class="swatch" title="--accent #E58BA4" style="background:#E58BA4;border-color:#3E3339"></span><span class="swatch" title="--marque #E58BA4" style="background:#E58BA4;border-color:#3E3339"></span><span class="swatch" title="--alert #EF9C93" style="background:#EF9C93;border-color:#3E3339"></span>
         </div>
       </div>
     </div>
@@ -994,6 +1052,64 @@ svg.g{flex:none}
         </tr>
       </tbody>
     </table>
+    <table class="tbl">
+      <thead><tr><th scope="col" style="width:130px">Jeton</th>
+        <th scope="col">Mona — clair</th><th scope="col">Mona — nuit</th>
+      </tr></thead>
+      <tbody>
+        <tr><th scope="row" class="mono" style="font-weight:400">--bg</th>
+          <td data-theme="mona" data-jeton="bg" class="mono">#F4F0F1</td><td data-theme="mona-nuit" data-jeton="bg" class="mono">#151012</td>
+        </tr>
+        <tr><th scope="row" class="mono" style="font-weight:400">--surface</th>
+          <td data-theme="mona" data-jeton="surface" class="mono">#FFFFFF</td><td data-theme="mona-nuit" data-jeton="surface" class="mono">#1E171A</td>
+        </tr>
+        <tr><th scope="row" class="mono" style="font-weight:400">--ink</th>
+          <td data-theme="mona" data-jeton="ink" class="mono">#1D181A</td><td data-theme="mona-nuit" data-jeton="ink" class="mono">#EEEAEC</td>
+        </tr>
+        <tr><th scope="row" class="mono" style="font-weight:400">--ink2</th>
+          <td data-theme="mona" data-jeton="ink2" class="mono">#59484E</td><td data-theme="mona-nuit" data-jeton="ink2" class="mono">#BCB1B6</td>
+        </tr>
+        <tr><th scope="row" class="mono" style="font-weight:400">--muted</th>
+          <td data-theme="mona" data-jeton="muted" class="mono">#5F4C53</td><td data-theme="mona-nuit" data-jeton="muted" class="mono">#A2969C</td>
+        </tr>
+        <tr><th scope="row" class="mono" style="font-weight:400">--border</th>
+          <td data-theme="mona" data-jeton="border" class="mono">#CDBFC4</td><td data-theme="mona-nuit" data-jeton="border" class="mono">#3E3339</td>
+        </tr>
+        <tr><th scope="row" class="mono" style="font-weight:400">--accent</th>
+          <td data-theme="mona" data-jeton="accent" class="mono">#AD204C</td><td data-theme="mona-nuit" data-jeton="accent" class="mono">#E58BA4</td>
+        </tr>
+        <tr><th scope="row" class="mono" style="font-weight:400">--accentH</th>
+          <td data-theme="mona" data-jeton="accentH" class="mono">#8E1A3E</td><td data-theme="mona-nuit" data-jeton="accentH" class="mono">#EFA5B9</td>
+        </tr>
+        <tr><th scope="row" class="mono" style="font-weight:400">--marque</th>
+          <td data-theme="mona" data-jeton="marque" class="mono">#AD204C</td><td data-theme="mona-nuit" data-jeton="marque" class="mono">#E58BA4</td>
+        </tr>
+        <tr><th scope="row" class="mono" style="font-weight:400">--sel</th>
+          <td data-theme="mona" data-jeton="sel" class="mono">#F4DCE4</td><td data-theme="mona-nuit" data-jeton="sel" class="mono">#3A2029</td>
+        </tr>
+        <tr><th scope="row" class="mono" style="font-weight:400">--hover</th>
+          <td data-theme="mona" data-jeton="hover" class="mono">#ECE3E5</td><td data-theme="mona-nuit" data-jeton="hover" class="mono">#191316</td>
+        </tr>
+        <tr><th scope="row" class="mono" style="font-weight:400">--tuile</th>
+          <td data-theme="mona" data-jeton="tuile" class="mono">#EFDFE4</td><td data-theme="mona-nuit" data-jeton="tuile" class="mono">#2C2126</td>
+        </tr>
+        <tr><th scope="row" class="mono" style="font-weight:400">--tuileInk</th>
+          <td data-theme="mona" data-jeton="tuileInk" class="mono">#54333F</td><td data-theme="mona-nuit" data-jeton="tuileInk" class="mono">#DFC9D1</td>
+        </tr>
+        <tr><th scope="row" class="mono" style="font-weight:400">--alert</th>
+          <td data-theme="mona" data-jeton="alert" class="mono">#B02A21</td><td data-theme="mona-nuit" data-jeton="alert" class="mono">#EF9C93</td>
+        </tr>
+        <tr><th scope="row" class="mono" style="font-weight:400">--onAccent</th>
+          <td data-theme="mona" data-jeton="onAccent" class="mono">#FFFFFF</td><td data-theme="mona-nuit" data-jeton="onAccent" class="mono">#33101B</td>
+        </tr>
+        <tr><th scope="row" class="mono" style="font-weight:400">--shadow</th>
+          <td data-theme="mona" data-jeton="shadow" class="mono">0 2px 8px rgba(29,24,26,0.08)</td><td data-theme="mona-nuit" data-jeton="shadow" class="mono">0 2px 12px rgba(0,0,0,0.40)</td>
+        </tr>
+        <tr><th scope="row" class="mono" style="font-weight:400">--scrim</th>
+          <td data-theme="mona" data-jeton="scrim" class="mono">rgba(29,24,26,0.28)</td><td data-theme="mona-nuit" data-jeton="scrim" class="mono">rgba(0,0,0,0.55)</td>
+        </tr>
+      </tbody>
+    </table>
 
     <p class="etiq">Ce que coûte l'adoption — sept fichiers, et trois contrôles de la gate à revoir</p>
     <p class="sub">La forme de la table ci-dessus est <b>celle que la gate sait déjà lire</b>
@@ -1018,7 +1134,7 @@ svg.g{flex:none}
         <tr><th scope="row"><code>e2e/coherence-systeme.mjs</code> · contrôles 4 et 5</th><td>Ils
           comparent les <b>28 fiches</b> de <code>lib/theme.js</code> et les clés
           <code>theme.&lt;id&gt;.nom</code> des deux catalogues. Deux fiches, deux clés × deux
-          langues.</td></tr>
+          langues (quatre depuis A94 — la table vivante).</td></tr>
         <tr><th scope="row"><code>lib/theme.js</code>, <code>catalogue.fr.js</code>,
           <code>catalogue.en.js</code></th><td>Les 28 fiches et leurs libellés. Les pastilles de fiche
           citent <code>panel</code> parmi cinq rôles : <b>V3 le supprime</b>, la forme de
@@ -2488,17 +2604,26 @@ svg.g{flex:none}
     La sélection se dit comme une ligne choisie : fond <code>--sel</code> + contour d'accent, en
     liseré interne, <b>aucun décalage</b>.</p>
 
-    <p class="etiq">Étape 3 — le thème : deux fiches, et non plus vingt-huit (V7)</p>
+    <p class="etiq">Étape 3 — le thème : les fiches de la table vivante, quatre à ce jour, en
+    grille de deux colonnes (V7/A94)</p>
     <div class="scene" style="padding:34px;display:flex;justify-content:center">
       <div class="colonne large">
         <h3 class="display" style="font-size:32px">Choisissez votre thème</h3>
-        <p class="note" style="color:var(--muted)">Étape 3/4</p>
+        <p class="note" style="color:var(--muted)">Étape 3/5</p>
         <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px">
           <div class="porte choisi"><span class="etiqchamp">Elements</span><span class="mini">
   <i style="width:22%;background:var(--bg);border-right:1px solid var(--border)"></i>
   <i style="width:32%;background:var(--bg);border-right:1px solid var(--border)"></i>
   <i style="flex:1;background:var(--surface)"></i></span></div>
           <div class="porte"><span class="etiqchamp">Elements · nuit</span><span class="mini">
+  <i style="width:22%;background:var(--bg);border-right:1px solid var(--border)"></i>
+  <i style="width:32%;background:var(--bg);border-right:1px solid var(--border)"></i>
+  <i style="flex:1;background:var(--surface)"></i></span></div>
+          <div class="porte"><span class="etiqchamp">Mona</span><span class="mini">
+  <i style="width:22%;background:var(--bg);border-right:1px solid var(--border)"></i>
+  <i style="width:32%;background:var(--bg);border-right:1px solid var(--border)"></i>
+  <i style="flex:1;background:var(--surface)"></i></span></div>
+          <div class="porte"><span class="etiqchamp">Mona · nuit</span><span class="mini">
   <i style="width:22%;background:var(--bg);border-right:1px solid var(--border)"></i>
   <i style="width:32%;background:var(--bg);border-right:1px solid var(--border)"></i>
   <i style="flex:1;background:var(--surface)"></i></span></div>
@@ -3714,7 +3839,8 @@ svg.g{flex:none}
         offre « Reconnecter ».</p>
       </div>
       <div class="fiche">
-        <h3 class="sourcil">Thèmes — deux fiches, et non plus vingt-huit (V7)</h3>
+        <h3 class="sourcil">Thèmes — les fiches de la table vivante, quatre à ce jour
+        (V7/A94 ; les deux d'Elements en vignette)</h3>
         <div style="display:flex;gap:12px">
           <span style="flex:1;display:flex;flex-direction:column;gap:7px">
             <span style="display:flex;height:70px;border:1px solid #CBC8BB;border-radius:var(--r-controle);overflow:hidden;
@@ -4537,10 +4663,13 @@ svg.g{flex:none}
         <tr>
           <td class="nw">2026-08-28</td>
           <th scope="row">A93</th><td><b>La marque d'entête passe à 28 px</b> (PLAN-RETOURS-12 R3 ; décision CE D2 du 2026-08-28, verdict au STOP visuel). Dans l'entête et la tête du tiroir, la marque en glyphe passe de 24 (A87) à <b>28 px</b> — le retour CE : à 24 px elle restait discrète dans l'entête de 52 px. Le mot « Wind » ne bouge pas (18 px dans l'app — la revue a corrigé au passage les 15 px que ce document portait, en retard sur l'UI) ; le régime glyphe (encre courante + <code>--marque</code>, V11) est inchangé. La fiche V11 porte les deux cotes.</td></tr>
+        <tr>
+          <td class="nw">2026-08-29</td>
+          <th scope="row">A94</th><td><b>« Mona » entre — la table des thèmes devient courte et VIVANTE</b> (PLAN-MONA ; décisions CE D1-D3 du 2026-08-29, ADR 0027). <b>Amende V7</b> : « deux thèmes, et deux seulement » devient « une table courte, où des thèmes s'ajoutent ou se retirent de temps à autre » — jamais le retour des vingt-huit. Mona et Mona · nuit sont les 3<sup>e</sup> et 4<sup>e</sup> thèmes, sortis de deux couleurs CE : l'accent <code>#AD204C</code> (6,80:1 sur blanc — il sert d'accent ET de marque du clair <b>tel quel</b>, le dédoublement d'A8 sans objet ; c'est aussi l'hex de <code>--rep-rose</code>, coïncidence assumée) et la teinte de tuile <code>#A0868F</code>, <b>déclinée par polarité</b> (D2) : mesurée au banc de la gate, la valeur brute est arithmétiquement impossible — 2,04:1 sous <code>ink2</code> (seuil 4,5), 1,88:1 sous le pire repère partagé (seuil 3), et en nuit le blanc pur ne donne que 3,33:1 — d'où <code>#EFDFE4</code> clair / <code>#2C2126</code> nuit, le geste exact d'Elements sur sa propre tuile. L'accent nuit <code>#E58BA4</code> éclaircit à teinte constante (D3, le motif <code>#1A7A7A</code> → <code>#3FA39C</code>). L'alerte reste un rouge-orangé, volontairement distinct de l'accent rose. Mécanique : les 24 <code>--rep-*</code> ne bougent pas d'un hex mais leur table claire est servie par <code>[data-theme$="-nuit"]</code> (toute polarité sombre, comme le <code>color-scheme</code> d'A44) ; la garde de migration V7 apprend les identifiants Mona (sans elle, un choix <code>mona-nuit</code> persisté était réécrit au démarrage — prouvé rouge) ; <code>NOMBRE_ATTENDU</code> passe à 4. Les 220 paires des deux thèmes neufs (110 chacun : 38 paires de jetons, 60 repère × fond, 12 glyphes de pastille) sont <b>vertes</b> aux seuils existants — aucun seuil touché, aucune paire neuve, aucun glyphe neuf.</td></tr>
       </tbody>
     </table>
     <p class="note">Les
-    107 lignes — 14 décisions d'adoption V1-V14, 93 amendements A1-A93 — portent leurs trois
+    108 lignes — 14 décisions d'adoption V1-V14, 94 amendements A1-A94 — portent leurs trois
     cellules : le défaut d'A48 relevé en V12 est <b>réparé à la
     source</b>, ce document n'a plus rien à restituer.</p>
   </section>

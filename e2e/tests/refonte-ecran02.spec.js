@@ -898,8 +898,13 @@ test('les réglages appliquent et persistent le thème', async () => {
   await page.locator('[data-testid="reglages"]').click();
   // A13 : les thèmes vivent dans leur groupe, choisi au rail.
   await page.locator('[data-testid="reglages-groupe"][data-groupe="themes"]').click();
-  // V7 : deux fiches, et deux seulement — Elements et Elements · nuit.
-  await expect(page.locator('[data-testid="theme"]')).toHaveCount(2);
+  // V7 amendée (A94) : quatre fiches — Elements, Elements · nuit,
+  // Mona, Mona · nuit.
+  await expect(page.locator('[data-testid="theme"]')).toHaveCount(4);
+  // Mona s'applique et s'affiche (A94) — la fiche neuve n'est pas
+  // décorative, elle pose l'attribut comme les deux d'origine.
+  await page.locator('[data-theme-id="mona"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'mona');
   await page.locator('[data-theme-id="elements-nuit"]').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'elements-nuit');
   await page.locator('[data-testid="reglages-termine"]').click();
@@ -974,7 +979,7 @@ test("Affichage : le suivi de l'OS sombre suffixe le thème choisi en -nuit (D6,
   // OS sombre : la déclinaison nuit du thème choisi (elements)
   // s'affiche ; le choix persisté reste le thème de BASE — le suffixe
   // est un état dérivé, jamais enregistré (A42, mécanique conservée
-  // par V7 sur les deux thèmes restants).
+  // par V7/A94 sur toute la table).
   await page.emulateMedia({ colorScheme: 'dark' });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'elements-nuit');
   expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).not.toBe('elements-nuit');
@@ -1073,8 +1078,21 @@ test("les anciens choix migrent : tout -nuit vers elements-nuit, le reste au dé
   await page.reload();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   await expect(page.locator('html')).not.toHaveAttribute('data-theme');
-  // Retour au défaut pour ne pas teinter d'autres parcours.
+  // A94 : un choix VALIDE suffixé -nuit n'est PAS une relique — la
+  // garde de migration connaît Mona, `mona-nuit` survit au démarrage
+  // tel quel (sans l'ajout à sa liste, il était réécrit en
+  // elements-nuit — prouvé rouge en retirant l'identifiant).
+  await page.evaluate(() => localStorage.setItem('wind-theme', 'mona-nuit'));
+  await page.reload();
+  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'mona-nuit');
+  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('mona-nuit');
+  // Retour au défaut pour ne pas teinter d'autres parcours — et un
+  // reload : retirer la clé ne dé-pose pas l'attribut, la page
+  // resterait AFFICHÉE en mona-nuit pour le test suivant (revue).
   await page.evaluate(() => localStorage.removeItem('wind-theme'));
+  await page.reload();
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme');
 });
 
 test("Notifications : les bulles d'arrivée se coupent et la préférence tient en base (R-D2)", async () => {

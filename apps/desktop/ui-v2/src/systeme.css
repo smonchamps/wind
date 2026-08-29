@@ -1,7 +1,9 @@
 /* Système « Elements » (PLAN-ELEMENTS, V1-V14 au journal du Système)
-   — jetons et styles de base. 17 rôles × 2 thèmes : « Elements »
-   (défaut, sans attribut) et « Elements · nuit » (V7 — la table Wada
-   de 28 thèmes est retirée, A42 renversé). --panel est mort (V3) : le
+   — jetons et styles de base. 17 rôles × 4 thèmes : « Elements »
+   (défaut, sans attribut), « Elements · nuit », et depuis A94 (V7
+   amendée — la table est courte et VIVANTE, ADR 0027) « Mona » et
+   « Mona · nuit » (accent CE #AD204C, tuile déclinée de #A0868F).
+   --panel est mort (V3) : le
    fond est le sol UNIQUE, le filet de 1 px porte seul la séparation —
    ses paires sont MESURÉES (e2e/contraste.mjs, seuil = le filet
    qu'expédiait Clarity). --marque est le teal EXACT du jeu d'icônes
@@ -46,6 +48,33 @@ html {
   --marque:#3FA39C; --sel:#1E322F; --hover:#141817;
   --tuile:#241F17; --tuileInk:#DFCFAE;
   --alert:#EA9A90; --onAccent:#06211F;
+  --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
+}
+:root[data-theme="mona"] {
+  /* Mona — clair (A94). L'accent CE #AD204C tient 6,80:1 sur blanc :
+     il sert d'accent ET de marque tel quel, sans le dédoublement
+     d'Elements (remède A8 sans objet ici). La tuile décline la TEINTE
+     de #A0868F (mi-ton impossible aux seuils — mesuré 2,04:1 sous
+     ink2, 1,88:1 sous le pire repère) : éclaircie en clair, comme
+     Elements décline la sienne. */
+  --bg:#F4F0F1; --surface:#FFFFFF;
+  --ink:#1D181A; --ink2:#59484E; --muted:#5F4C53;
+  --border:#CDBFC4; --accent:#AD204C; --accentH:#8E1A3E;
+  --marque:#AD204C; --sel:#F4DCE4; --hover:#ECE3E5;
+  --tuile:#EFDFE4; --tuileInk:#54333F;
+  --alert:#B02A21; --onAccent:#FFFFFF;
+  --shadow:0 2px 8px rgba(29,24,26,0.08); --scrim:rgba(29,24,26,0.28);
+}
+:root[data-theme="mona-nuit"] {
+  /* Mona · nuit — le rose éclairci à teinte constante (#E58BA4), le
+     motif d'Elements-nuit (#1A7A7A → #3FA39C) ; la tuile assombrie
+     (#A0868F ne peut porter AUCUNE encre à 4,5:1 — blanc pur : 3,33). */
+  --bg:#151012; --surface:#1E171A;
+  --ink:#EEEAEC; --ink2:#BCB1B6; --muted:#A2969C;
+  --border:#3E3339; --accent:#E58BA4; --accentH:#EFA5B9;
+  --marque:#E58BA4; --sel:#3A2029; --hover:#191316;
+  --tuile:#2C2126; --tuileInk:#DFC9D1;
+  --alert:#EF9C93; --onAccent:#33101B;
   --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
 }
 
@@ -103,8 +132,9 @@ html {
    pas des jetons de thème. Fait mesuré (banc sur les jetons réels) :
    aucune teinte unique ne tient 3:1 sur les fonds clairs ET sur les
    fonds -nuit — chaque famille vit donc en DEUX déclinaisons, la
-   sombre servie au thème clair (glyphe blanc), la claire à
-   elements-nuit (glyphe #1c1b1b). Depuis A82 chaque hex sert DEUX
+   sombre servie aux thèmes clairs (glyphe blanc), la claire à toute
+   polarité -nuit (glyphe #1c1b1b — sélecteur $="-nuit" depuis A94).
+   Depuis A82 chaque hex sert DEUX
    fois — en background (pastille des Réglages) et en color (tracé) :
    les 24 hex vivent en JETONS --rep-<teinte>, une table par polarité,
    jamais recopiés.
@@ -123,7 +153,10 @@ html {
   --rep-bleu:#0a5a8f; --rep-indigo:#3f4dbb; --rep-violet:#712cb0;
   --rep-magenta:#991d7c; --rep-rose:#ad204c; --rep-brun:#7a4a1b;
 }
-:root[data-theme="elements-nuit"] {
+/* A94 : la table claire sert TOUTE polarité -nuit (le sélecteur du
+   color-scheme, plus bas, fait pareil depuis A44) — un thème sombre de
+   plus n'a pas à recopier 12 hex. */
+:root[data-theme$="-nuit"] {
   --rep-rouge:#f1998e; --rep-orange:#f2a76c; --rep-ocre:#e5c04b;
   --rep-olive:#c3cc4e; --rep-vert:#7fd18c; --rep-sapin:#5ecec4;
   --rep-bleu:#72bdf0; --rep-indigo:#aab4fa; --rep-violet:#cba4f5;

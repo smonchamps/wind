@@ -24,7 +24,7 @@
 // fautif (DC-D2) — jamais tordre la gate.
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import { lireThemes, NOMBRE_ATTENDU } from './jetons.mjs';
+import { lireThemes, lireReperes, NOMBRE_ATTENDU } from './jetons.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const css = readFileSync(
@@ -220,19 +220,12 @@ compareListes('teinte du tracé', teintesRust, 'commands.rs', teintesTrace, 'sys
 // Et les jetons eux-mêmes : depuis A82 les 24 hex vivent en --rep-<teinte>,
 // une table par polarité. Un jeton manquant rendrait `color:var(--rep-x)`
 // sans valeur — le glyphe retomberait sur l'encre courante, en silence.
-for (const [polarite, motif] of [
-  ['clair', /:root\s*\{([^}]+)\}/],
-  ['nuit', /:root\[data-theme="elements-nuit"\]\s*\{([^}]+)\}/],
-]) {
-  // Les --rep-* vivent dans LEUR propre bloc :root (le contrat des 17
-  // jetons de thème ne s'en gonfle pas) : on rassemble tous les blocs de
-  // la polarité avant de compter.
-  const blocs = [...css.matchAll(new RegExp(motif.source, 'g'))]
-    .map(([, corps]) => corps)
-    .filter((corps) => corps.includes('--rep-'));
-  const jetons = new Set(
-    blocs.flatMap((corps) => [...corps.matchAll(/--rep-([a-z]+)\s*:/g)].map(([, t]) => t)),
-  );
+// A94 : la table nuit vit sous `$="-nuit"` — une table par polarité,
+// servie à TOUT thème sombre (mona-nuit compris), jamais recopiée. Le
+// parseur des blocs est PARTAGÉ avec contraste.mjs (jetons.mjs) : une
+// seule regex à faire suivre le CSS.
+for (const [polarite, nuit] of [['clair', false], ['nuit', true]]) {
+  const jetons = new Set(Object.keys(lireReperes(css, { nuit })));
   for (const teinte of teintesRust) {
     if (!jetons.has(teinte)) {
       echec(`systeme.css : le jeton --rep-${teinte} manque en polarité ${polarite} (A82) — le tracé de ce repère n'aurait pas de couleur`);

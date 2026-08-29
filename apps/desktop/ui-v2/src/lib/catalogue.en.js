@@ -444,12 +444,17 @@ export const EN = {
   'raccourci.geste.echap': 'Close the overlay, leave the field, return to the inbox',
 
   // --- Thèmes (fiches du sélecteur : Réglages, accueil) -----------------
-  // V7 (PLAN-ELEMENTS) : deux thèmes, et deux seulement — la table
-  // Wada de 28 fiches est retirée.
+  // V7 amended by A94: the theme table is short and living (the
+  // 28-entry Wada table stays retired) — the keys
+  // follow FICHES (lib/theme.js), the coherence gate checks both ways.
   'theme.elements.nom': 'Elements',
   'theme.elements.desc': 'Light paper, the brand teal — the Elements direction.',
   'theme.elements-nuit.nom': 'Elements · night',
   'theme.elements-nuit.desc': 'Dark variant. Same 17 tokens.',
+  'theme.mona.nom': 'Mona',
+  'theme.mona.desc': 'Deep rose, mauve tiles — the Mona direction.',
+  'theme.mona-nuit.nom': 'Mona · night',
+  'theme.mona-nuit.desc': 'Dark variant. Same 17 tokens.',
 
   // --- Langues (chaque langue se nomme dans SA langue) ------------------
   'langue.fr': 'Français',
