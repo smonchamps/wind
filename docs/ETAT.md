@@ -12,18 +12,20 @@
 
 ## Où on en est, et quoi faire en premier
 
-✅ **Aucun chantier en cours.** Le prochain sujet inscrit : **la
-première vague bêta** (PLAN-BETA — inviter 5-10 proches, D9) — et
-**une release est due avant l'invitation** : main porte RETOURS-13
-ET PLAN-HORIZON-NETTOYAGE, non publiés (décision D12 du 2026-08-30 :
-la release les embarque ensemble ; l'entrée CHANGELOG — les deux
-chantiers — s'écrira à la publication, datée ce jour-là, §2.9).
-Ensuite, au choix du CE : **E6 — Groupes** (report écrit, dossier et
-spike S1 prêts) ou les retours de la bêta. Mesures en cours : **S4**
-(flux d'inconnus au Portier, une semaine, engagée le 2026-08-30) ;
-encore dues : le bandeau de MAJ via `lancer-wind.ps1` à la prochaine
-MAJ acceptée, et **le coût de `nettoyage_groupes` sur une vraie base
-(200 k)** — non mesuré, à chronométrer au premier vrai nettoyage.
+✅ **Aucun chantier en cours.** La release due avant la bêta est
+**FAITE : 0.15.0 publiée le 2026-08-30** (D12 tenue — elle embarque
+RETOURS-13 ET PLAN-HORIZON-NETTOYAGE, entrée CHANGELOG des deux
+écrite à la publication ; détail à « Dernière version livrée »
+ci-dessous). **La voie est libre pour le prochain sujet inscrit : la
+première vague bêta** (PLAN-BETA — inviter 5-10 proches, D9 ; action
+CE : les invitations). Ensuite, au choix du CE : **E6 — Groupes**
+(report écrit, dossier et spike S1 prêts) ou les retours de la bêta.
+Mesures en cours : **S4** (flux d'inconnus au Portier, une semaine,
+engagée le 2026-08-30) ; encore dues : le bandeau de MAJ via
+`lancer-wind.ps1` (non captée à la MAJ 0.14.0 → 0.15.0 sauf si les
+postes étaient lancés tracés — à la prochaine MAJ acceptée sinon), et
+**le coût de `nettoyage_groupes` sur une vraie base (200 k)** — non
+mesuré, à chronométrer au premier vrai nettoyage.
 
 Dernier soldé :
 **[PLAN-HORIZON-NETTOYAGE](PLAN-HORIZON-NETTOYAGE.md)** (2026-08-30,
@@ -503,9 +505,19 @@ le redit ; le WIP d'alors avait été retiré (décision CE du
 2026-08-20), sa matière reste au § revue de
 [PLAN-COMPOSITION-HTML](PLAN-COMPOSITION-HTML.md).
 
-**Dernière version livrée : 0.14.0** (publiée **2026-08-30**, tag nu
-sur `40771ab`, marquée Latest, **vérifiée 18/18** et **auto-update
-0.13.0 → 0.14.0 prouvé aux DEUX postes le jour même**). Elle porte
+**Dernière version livrée : 0.15.0** (publiée **2026-08-30**, tag nu
+sur `52db74f`, marquée Latest, CI verte run 33334129022, **vérifiée**
+par `verifier-release.ps1` et **auto-update 0.14.0 → 0.15.0 prouvé
+aux DEUX postes le jour même** — GO CE : « release ok verification
+ok auto update ok sur les deux postes »). Elle porte PLAN-RETOURS-13
+(douze retours Mode organisé, A101) et PLAN-HORIZON-NETTOYAGE
+(horizon d'import par compte ADR 0029/A102, Nettoyage de printemps
+A103). Plus rien n'est dû sur cette version.
+
+**La version précédente, 0.14.0** (publiée **2026-08-30**, tag nu
+sur `40771ab`, marquée Latest jusqu'à la 0.15.0, **vérifiée 18/18**
+et **auto-update 0.13.0 → 0.14.0 prouvé aux DEUX postes le jour
+même**). Elle porte
 PLAN-MODE-ORGANISE E1-E5bis (le Mode organisé : Réception à
 sections, Portier, règles du Non, Mis de côté, Kiosque en cartes,
 Registre) et le thème Innamoramento clair + nuit (PLAN-MONA).
