@@ -21,10 +21,13 @@ première vague bêta** (PLAN-BETA — inviter 5-10 proches, D9 ; action
 CE : les invitations). Ensuite, au choix du CE : **E6 — Groupes**
 (report écrit, dossier et spike S1 prêts) ou les retours de la bêta.
 Mesures en cours : **S4** (flux d'inconnus au Portier, une semaine,
-engagée le 2026-08-30) ; encore dues : le bandeau de MAJ via
-`lancer-wind.ps1` (non captée à la MAJ 0.14.0 → 0.15.0 — postes
-lancés normalement, 3e occasion manquée : **lancer les DEUX postes
-par le script AVANT d'accepter la prochaine MAJ**), et
+engagée le 2026-08-30) ; encore dues : le bandeau de MAJ — non captée à la
+MAJ 0.14.0 → 0.15.0 (3e occasion manquée, postes lancés
+normalement) ; **poka-yoke posé le 2026-08-30** (`13c7681`,
+/terrain) : les durées `maj :` s'écrivent désormais AUSSI en append
+daté dans `maj.log` à côté de la base — à la prochaine MAJ acceptée,
+la mesure se lira après coup, quel que soit le lancement
+(`%APPDATA%\dev.elements.wind\maj.log`) ; et
 **le coût de `nettoyage_groupes` sur une vraie base (200 k)** — non
 mesuré, à chronométrer au premier vrai nettoyage.
 
