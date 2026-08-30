@@ -45,10 +45,11 @@ test('la bascule recompose la nav, le Kiosque sert les expéditeurs routés, et 
   await expect(page.locator('[data-testid="nav-dossier"]')).toHaveCount(9);
 
   // Le Kiosque avant tout routage : rien — le filtre est réel, pas un
-  // décor (le Registre le reprouve plus bas après routage).
+  // décor (le Registre le reprouve plus bas après routage). E5bis :
+  // le Kiosque est une scène de CARTES, plus une liste.
   await page.locator('[data-testid="nav-dossier"][data-categorie="kiosque"]').click();
-  await expect(page.locator('[data-testid="statut"]')).toContainText('Kiosque');
-  await expect(page.locator('[data-testid="ligne"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="kiosque-vide"]')).toBeVisible();
+  await expect(page.locator('[data-testid="kiosque-carte"]')).toHaveCount(0);
 
   // Route les expéditeurs du jeu d'essai vers le Kiosque, par LA
   // commande du produit (le geste « Déplacer vers… » arrive plus tard
@@ -70,9 +71,21 @@ test('la bascule recompose la nav, le Kiosque sert les expéditeurs routés, et 
   await expect(page.locator('[data-testid="mode-organise"]')).toHaveAttribute('aria-checked', 'true');
   await expect(page.locator('[data-testid="nav-dossier"]')).toHaveCount(9);
 
-  // Le Kiosque montre désormais le courrier des expéditeurs routés…
+  // Le Kiosque montre désormais le courrier des expéditeurs routés,
+  // en cartes DÉJÀ OUVERTES : le corps se lit sans un clic (E5bis —
+  // la preuve du préchargement D5/S3, dans l'iframe assainie S1).
   await page.locator('[data-testid="nav-dossier"][data-categorie="kiosque"]').click();
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="kiosque-carte"]').first()).toBeVisible();
+  await expect(
+    page.frameLocator('[data-testid="kiosque-carte"] iframe').first().locator('body'),
+  ).toContainText('contenu de démonstration');
+  // Le pli (constat CE) : replier remplace le corps par l'aperçu,
+  // déplier le rend.
+  const premiere = page.locator('[data-testid="kiosque-carte"]').first();
+  await premiere.locator('[data-testid="kiosque-pli"]').click();
+  await expect(premiere.locator('iframe')).toHaveCount(0);
+  await premiere.locator('[data-testid="kiosque-pli"]').click();
+  await expect(premiere.locator('iframe')).toHaveCount(1);
   // …le Registre reste vide (la destination filtre vraiment)…
   await page.locator('[data-testid="nav-dossier"][data-categorie="registre"]').click();
   await expect(page.locator('[data-testid="statut"]')).toContainText('Registre');
@@ -87,17 +100,23 @@ test('la bascule recompose la nav, le Kiosque sert les expéditeurs routés, et 
   await expect(page.locator('[data-testid="ligne"]')).toHaveCount(0);
 });
 
-test("« Déplacer vers… » route l'expéditeur ENTIER depuis la barre du fil", async () => {
-  // Tout est au Kiosque (test précédent) ; on ouvre un fil et on
-  // déplace son expéditeur au Registre — ce que l'utilisateur VOIT :
-  // le menu, le toast, puis le courrier de l'expéditeur au Registre.
+test("« Déplacer vers… » route l'expéditeur ENTIER — le ⋯ des cartes et la barre du fil", async () => {
+  // Tout est au Kiosque (test précédent) ; le ⋯ d'une carte envoie
+  // son expéditeur au Registre — ce que l'utilisateur VOIT : le menu,
+  // le toast, puis le courrier au Registre (une liste, elle).
   await page.locator('[data-testid="nav-dossier"][data-categorie="kiosque"]').click();
-  await page.locator('[data-testid="ligne"]').first().click();
-  await page.locator('[data-testid="deplacer-vers"]').click();
-  await page.locator('[data-testid="deplacer-registre"]').click();
+  const carte = page.locator('[data-testid="kiosque-carte"]').first();
+  await carte.hover();
+  await carte.locator('[data-testid="kiosque-gestes"]').click();
+  await page.locator('[data-testid="kiosque-vers-registre"]').click();
   await expect(page.locator('[data-testid="toast"]')).toContainText('Registre');
   await page.locator('[data-testid="nav-dossier"][data-categorie="registre"]').click();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  // La barre du fil, depuis le Registre : le menu Déplacer vers…
+  await page.locator('[data-testid="ligne"]').first().click();
+  await page.locator('[data-testid="deplacer-vers"]').click();
+  await expect(page.locator('[data-testid="deplacer-kiosque"]')).toBeVisible();
+  await page.keyboard.press('Escape');
   // Le geste n'existe qu'en mode organisé : la garde du classique.
   await page.locator('[data-testid="mode-organise"]').click();
   await page.locator('[data-testid="ligne"]').first().click();
@@ -269,7 +288,7 @@ test("le ⋯ d'une rangée déplace l'expéditeur — à gauche de l'heure, sans
   await expect(page.locator('[data-testid="toast"]')).toContainText('Kiosque');
   await expect(page.locator('[data-testid="ligne"]', { hasText: 'Suite du dossier' })).toHaveCount(0);
   await page.locator('[data-testid="nav-dossier"][data-categorie="kiosque"]').click();
-  await expect(page.locator('[data-testid="ligne"]', { hasText: 'Suite du dossier' })).toHaveCount(1);
+  await expect(page.locator('[data-testid="kiosque-carte"]', { hasText: 'Suite du dossier' })).toHaveCount(1);
   await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
   // Décor rendu (revue E5) : le verdict posé par CE test se retire —
   // les tests suivants héritent d'une Réception complète, jamais d'un

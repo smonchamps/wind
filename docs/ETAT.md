@@ -81,12 +81,27 @@ qui marquait lue une conversation jamais montrée, pastille comptant
 les mis de côté, couture d'une autre source, testid vacant…), un
 refus motivé (« Terminé » sur un expéditeur écarté suit le verdict).
 Système **A99** ; dette **D-47** (menus ×3, jumeaux pins/pile).
-Tests mail-core **410**. ⚠️ **Périmètre à trancher CE : le « Kiosque
-en cartes déjà ouvertes » du prototype n'est assigné à AUCUNE étape**
-(S3 l'a mesuré, personne ne l'a bâti — le Kiosque livré est une
-liste). **Reste : terrain E4+E5, puis LA RELEASE MINEUR E1-E5** —
-l'entrée CHANGELOG s'écrira à ce moment-là (§2.9, `gh release list`
-d'abord), avec Innamoramento qui attend aussi cette release. Puis E6.
+Tests mail-core **410**. L'écart de périmètre relevé (le « Kiosque en
+cartes » n'était assigné à aucune étape) a été TRANCHÉ par le CE :
+« avant la release ».
+
+**E5bis (le Kiosque en cartes) est LIVRÉE le 2026-08-30** (Système
+A100) : la vue routée devient une scène de lecture — cartes déjà
+ouvertes (corps ENTIER : le document auto-CSP de l'écran de lecture,
+iframe S1, `corpsAuto` extrait vers `lib/corps.js`, garde d'images R1
+par carte avec ses deux gestes), corps du CACHE par page servie de 20
+(D5/S3 — jamais un réseau par carte), pages ajoutées au défilement
+avec dédoublonnage (limite dite : pas de fenêtrage), ⋯ de gestes par
+carte, bouton Replier/Déplier sur la ligne de l'objet (STOP visuel CE
+en TROIS passes, chaque constat corrigé en séance ; GO final). La
+scène suit les relèves et rattrapages (revue : une arrivée décalait
+les offsets — collision de clés — et les cartes fraîches restaient en
+aperçu). Revue ciblée 6 trouvailles / 5 corrigées, 1 consignée
+(précédence d'Échap, patron partagé avec la Liste). Le « déjà
+ouvert » prouvé au filet en le cassant. **Reste : terrain Kiosque,
+puis LA RELEASE MINEUR E1-E5bis** — l'entrée CHANGELOG s'écrira à ce
+moment-là (§2.9, `gh release list` d'abord), avec Innamoramento qui
+attend aussi cette release. Puis E6 (Groupes).
 
 Le même jour, deux retours CE réglés : **« Mona » renommée
 « Innamoramento »** (A95, ids migrés, commit `0a25105`, CI verte) et

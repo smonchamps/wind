@@ -90,6 +90,11 @@ export const FR = {
   'pile.aria': 'Messages mis de côté',
   'toast.misDeCote': 'Mis de côté — la pile vit en bas à droite de la Réception.',
   'toast.reprisPile': 'Repris de la pile.',
+  // E5bis — le Kiosque en cartes (textes du prototype).
+  'kiosque.note':
+    "Les lettres d'information arrivent déjà ouvertes, la plus récente en tête — faites défiler pour lire. Rien n'est marqué à lire : le Kiosque se parcourt, il ne se traite pas.",
+  'kiosque.vide':
+    "Rien au Kiosque. Depuis un message, « Déplacer vers le Kiosque » y envoie les lettres d'information de cet expéditeur.",
   'toast.portierReintegre':
     '{qui} est réintégré — ses messages des 90 derniers jours réapparaissent au Portier.',
   'entete.reglages': 'Réglages',
@@ -170,6 +175,7 @@ export const FR = {
   'action.continuer': 'Continuer',
   'action.fermer': 'Fermer',
   'action.replier': 'Replier',
+  'action.deplier': 'Déplier',
   'action.retirer': 'Retirer',
   'action.termine': 'Terminé',
   'action.annulerEnvoi': "Annuler l'envoi",

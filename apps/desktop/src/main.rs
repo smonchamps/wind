@@ -259,6 +259,7 @@ fn main() {
             commands::portier_total,
             commands::toggle_mis_de_cote,
             commands::pile_mis_de_cote,
+            commands::kiosque_cartes,
             commands::pinned_rows,
             commands::archive_message,
             commands::list_folders,

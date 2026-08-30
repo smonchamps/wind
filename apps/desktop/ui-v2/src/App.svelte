@@ -25,6 +25,7 @@
   import Liste from './Liste.svelte';
   import Portier from './Portier.svelte';
   import PileMisDeCote from './PileMisDeCote.svelte';
+  import Kiosque from './Kiosque.svelte';
   import Lecture from './Lecture.svelte';
   import Conversation from './Conversation.svelte';
   import Composition from './Composition.svelte';
@@ -487,6 +488,7 @@
         restants = await appel('preview_catchup', { limit: 500 });
       }
       liste?.recharger();
+      kiosque?.recharger();
     } catch (err) {
       console.error('preview_catchup :', err);
     } finally {
@@ -505,6 +507,10 @@
       if (generation !== null) {
         if (generationVue !== null && generation !== generationVue) {
           liste?.recharger();
+          // E5bis (revue) : la scène du Kiosque suit les relèves — sans
+          // quoi une arrivée décale les offsets des pages suivantes
+          // (clés en collision) et une carte fraîche reste un aperçu.
+          kiosque?.recharger();
           chargerNav();
           // E4 (PLAN-REACTIVITE) : la génération a bougé — un lot vient
           // d'entrer. Ses corps sont déjà là (relève, R-D2) SAUF s'il a
@@ -540,8 +546,10 @@
         if (bilan.fetched === 0) break;
         // E4 : les aperçus rattrapés se montrent au fil des lots — la
         // resservie est invisible depuis E1, plus besoin d'attendre une
-        // recharge fortuite.
+        // recharge fortuite. E5bis : les cartes du Kiosque gagnent
+        // leurs corps au même rythme.
         liste?.recharger();
+        kiosque?.recharger();
       }
     } catch (err) {
       console.error('backfill_bodies :', err);
@@ -1025,8 +1033,9 @@
       onglet = 'tous';
       // Le Portier n'est pas une liste : personne n'émettra de total —
       // la barre de statut dit le nom de la vue, jamais un compte
-      // périmé de la vue précédente.
-      if (quoi.categorie === 'portier') totalListe = null;
+      // périmé de la vue précédente. Même règle au Kiosque en cartes,
+      // le temps que sa propre sonde réponde.
+      if (quoi.categorie === 'portier' || quoi.categorie === 'kiosque') totalListe = null;
     }
     if ('compte' in quoi) compte = quoi.compte;
     recherche = '';
@@ -1037,6 +1046,7 @@
   // d'une rangée. Mis de côté : le fil quitte sa vue, la pile le
   // garde ; « Reprendre »/« Terminé » le rend d'où il vient.
   let pile = $state(null);
+  let kiosque = $state(null);
   async function basculerCote(ligne, depuisFil = false) {
     if (gesteSurEcho(ligne)) return;
     try {
@@ -1046,6 +1056,7 @@
         uid: ligne.uid,
       });
       flash(t(cote ? 'toast.misDeCote' : 'toast.reprisPile'));
+      kiosque?.recharger();
       // La discipline de jeton du store (patron d'epinglerFil) : le
       // bouton de la barre suit le geste — un « Reprendre » qui ne
       // changerait pas d'étiquette re-mettrait de côté au clic suivant
@@ -1091,6 +1102,7 @@
         flash(t('toast.expediteurDeplace', { boite: t(LIBELLES[destination]) }));
       }
       liste?.recharger();
+      kiosque?.recharger();
       chargerNav();
     } catch (err) {
       flash(t('erreur.preference', { err }));
@@ -1334,6 +1346,9 @@
   // ouvre l'écran 03 (la surimpression existante), quel que soit le
   // réglage de volets.
   const receptionOrganisee = $derived(modeOrganise() && categorie === 'reception');
+  // E5bis : le Kiosque en CARTES — une scène de lecture, pas une
+  // liste ; comme le Portier et la Réception organisée, pas de volet.
+  const kiosqueCartes = $derived(modeOrganise() && categorie === 'kiosque');
   function surSelection(ligne) {
     selectionnee = ligne;
     // V-D2 : en deux volets, l'ouverture EST l'écran 03 — qui sait
@@ -1664,6 +1679,14 @@
         <div class="cadre-portier">
           <Portier onflash={flash} onchange={chargerNav} />
         </div>
+      {:else if kiosqueCartes}
+        <!-- E5bis : le Kiosque en cartes — les lettres déjà ouvertes,
+             la scène entière (décision CE du 2026-08-30). -->
+        <div class="cadre-portier">
+          <Kiosque bind:this={kiosque} {compte}
+                   ondeplacer={deplacerExpediteur} oncote={basculerCote}
+                   ontotal={(t) => (totalListe = t)} />
+        </div>
       {:else}
         <Liste bind:this={liste} {categorie} {compte} {comptes} {reperes} {noms} {onglet} {recherche}
                {brouillons} onreprendre={reprendreBrouillon}
@@ -1673,7 +1696,7 @@
                oncote={basculerCote}
                onresultats={(n, total) => { nResultats = n; nTotal = total; }} onflash={flash} />
       {/if}
-      {#if volets === 3 && categorie !== 'portier' && !receptionOrganisee}
+      {#if volets === 3 && categorie !== 'portier' && !receptionOrganisee && !kiosqueCartes}
         <Lecture bind:this={lecture} {brouillons} {reperes} {noms} {comptes} melange={melangeComptes} onreprendre={reprendreBrouillon}
                  onarchiver={archiver} onsupprimer={supprimer}
                  onconversation={ouvrirConversation}
@@ -1716,7 +1739,7 @@
       {#if volets !== 1}
         {@render poignee('nav', t('volets.poigneeNav'), lNav - 3)}
       {/if}
-      {#if volets === 3 && categorie !== 'portier' && !receptionOrganisee}
+      {#if volets === 3 && categorie !== 'portier' && !receptionOrganisee && !kiosqueCartes}
         {@render poignee('liste', t('volets.poigneeListe'), lNav + lListe - 3)}
       {/if}
     </div>

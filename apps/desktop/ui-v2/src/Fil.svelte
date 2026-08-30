@@ -29,6 +29,7 @@
   import { initiales } from './lib/initiales.js';
   import { activation } from './lib/clavier.js';
   import { t } from './lib/texte.svelte.js';
+  import { corpsAuto } from './lib/corps.js';
 
   let {
     brouillons = [],
@@ -210,38 +211,8 @@
     return fil.ligne?.account_email ?? '';
   }
 
-  // La hauteur du corps suit le CONTENU (terrain A47), jamais un
-  // gabarit fixe : l'iframe est same-origin SANS scripts (S1) — le
-  // parent mesure le document assaini et pose la hauteur. Re-mesure au
-  // chargement (srcdoc posé, images accordées) et au changement de
-  // LARGEUR seulement (re-flow du texte) — jamais sur sa propre pose
-  // de hauteur, pour ne pas boucler l'observateur.
-  function corpsAuto(iframe) {
-    let largeur = 0;
-    const mesurer = () => {
-      const doc = iframe.contentDocument;
-      if (!doc?.documentElement) return;
-      iframe.style.height = '0';
-      iframe.style.height = `${doc.documentElement.scrollHeight}px`;
-    };
-    const surLoad = () => {
-      largeur = iframe.offsetWidth;
-      mesurer();
-    };
-    iframe.addEventListener('load', surLoad);
-    const observateur = new ResizeObserver(() => {
-      if (iframe.offsetWidth === largeur) return;
-      largeur = iframe.offsetWidth;
-      mesurer();
-    });
-    observateur.observe(iframe);
-    return {
-      destroy() {
-        observateur.disconnect();
-        iframe.removeEventListener('load', surLoad);
-      },
-    };
-  }
+  // E5bis : `corpsAuto` vit dans lib/corps.js — le Kiosque en cartes
+  // mesure les mêmes corps, une seule porte (A47/S1).
 
   // La réponse à une invitation (D5-D6) : sujet et corps dans la langue
   // de l'UI, l'email iTIP journalisé côté cœur (repondre_invitation),

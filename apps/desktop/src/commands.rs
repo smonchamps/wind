@@ -3057,6 +3057,99 @@ pub async fn pile_mis_de_cote(app: AppHandle) -> Result<Vec<MessageRow>, String>
     .await
 }
 
+/// Une carte du Kiosque (E5bis) : la rangée ET son corps assaini —
+/// « les lettres arrivent déjà ouvertes », le défilement lit sans
+/// cliquer. `document` est le MÊME document auto-CSP que l'écran de
+/// lecture (mail_render, iframe sandbox S1) ; None = corps pas encore
+/// en cache (la carte montre l'aperçu, le rattrapage normal suivra —
+/// D5 : le préchargement est borné à la page SERVIE, jamais un réseau
+/// par carte).
+#[derive(Serialize)]
+pub struct CarteKiosque {
+    pub row: MessageRow,
+    pub document: Option<String>,
+    pub remote_images_blocked: usize,
+}
+
+/// La page du Kiosque en CARTES (E5bis, D5/S3) : les rangées de la vue
+/// routée + leurs corps lus du CACHE seul (S3 : 12,2 ms froid la page
+/// de 20), assainis par LA porte de la lecture — garde d'images
+/// consultée par message (autorité au cœur, R1).
+#[tauri::command]
+pub async fn kiosque_cartes(
+    app: AppHandle,
+    account_id: Option<i64>,
+    offset: usize,
+    limit: usize,
+) -> Result<Vec<CarteKiosque>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let limit = limit.min(LIST_LIMIT_MAX);
+        let mut lignes = store
+            .routage_unified_scoped("kiosque", account_id, false, offset, limit)
+            .map_err(|err| err.to_string())?;
+        store
+            .enrichir_lignes(&mut lignes)
+            .map_err(|err| err.to_string())?;
+        let mut cartes = Vec::with_capacity(lignes.len());
+        // La résolution (compte, boîte) → id, UNE fois par boîte de la
+        // page — pas vingt sondes identiques par page de vingt cartes
+        // (revue E5bis).
+        let mut boites: std::collections::HashMap<(i64, String), Option<i64>> =
+            std::collections::HashMap::new();
+        for ligne in lignes {
+            let row = to_message_row(ligne);
+            // Cache SEUL — un Kiosque hors ligne se lit tel quel.
+            let corps = store
+                .body(row.account_id, &row.mailbox, row.uid)
+                .map_err(|err| err.to_string())?;
+            let (document, remote_images_blocked) = match corps {
+                Some(html) => {
+                    let cle = (row.account_id, row.mailbox.clone());
+                    let mailbox_id = match boites.get(&cle) {
+                        Some(id) => *id,
+                        None => {
+                            let id = store
+                                .sync_state(row.account_id, &row.mailbox)
+                                .map_err(|err| err.to_string())?
+                                .map(|s| s.mailbox_id);
+                            boites.insert(cle, id);
+                            id
+                        }
+                    };
+                    let accordees = mailbox_id
+                        .map(|id| store.images_allowed(id, row.uid))
+                        .transpose()
+                        .map_err(|err| err.to_string())?
+                        .unwrap_or(false);
+                    let policy = if accordees {
+                        mail_render::ImagePolicy::AllowRemote
+                    } else {
+                        mail_render::ImagePolicy::BlockRemote
+                    };
+                    let sanitized = mail_render::sanitize_with(&html, policy);
+                    (
+                        Some(mail_render::email_document(
+                            &sanitized.html,
+                            policy,
+                            &mail_render::Palette::default(),
+                        )),
+                        sanitized.remote_images_blocked,
+                    )
+                }
+                None => (None, 0),
+            };
+            cartes.push(CarteKiosque {
+                row,
+                document,
+                remote_images_blocked,
+            });
+        }
+        Ok(cartes)
+    })
+    .await
+}
+
 /// Les conversations épinglées de la Réception (D4 : Réception seule),
 /// servies À PART — le front les prépose à la page 0, le flot paginé
 /// les exclut (D5).

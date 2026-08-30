@@ -84,6 +84,11 @@ export const EN = {
   'pile.aria': 'Set-aside messages',
   'toast.misDeCote': 'Set aside \u2014 the pile lives at the bottom right of the Inbox.',
   'toast.reprisPile': 'Brought back from the pile.',
+  // E5bis — the Feed as cards.
+  'kiosque.note':
+    'Newsletters arrive already open, most recent first — scroll to read. Nothing is marked to-do: the Feed is browsed, never processed.',
+  'kiosque.vide':
+    'Nothing in the Feed. From a message, “Move to the Feed” sends that sender’s newsletters here.',
   'toast.portierReintegre':
     '{qui} is reinstated — their messages from the last 90 days reappear at the Screener.',
   'entete.reglages': 'Settings',
@@ -162,6 +167,7 @@ export const EN = {
   'action.continuer': 'Continue',
   'action.fermer': 'Close',
   'action.replier': 'Collapse',
+  'action.deplier': 'Expand',
   'action.retirer': 'Remove',
   'action.termine': 'Done',
   'action.annulerEnvoi': 'Cancel send',

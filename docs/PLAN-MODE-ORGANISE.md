@@ -1,5 +1,20 @@
 # PLAN-MODE-ORGANISE — Portier, Kiosque, Registre, Mis de côté, Groupes
 
+> **E5bis LIVRÉE le 2026-08-30 — le Kiosque en cartes** (décision CE :
+> « avant la release » ; Système A100). La vue routée devient une
+> scène de lecture : cartes déjà ouvertes (corps ENTIER — le document
+> auto-CSP de l'écran de lecture, iframe S1, `corpsAuto` extrait vers
+> `lib/corps.js`, garde d'images par message), corps du CACHE par page
+> servie de 20 (D5/S3 — jamais un réseau par carte), cartes ajoutées
+> page à page au défilement (LIMITE DITE : pas de fenêtrage — un
+> Kiosque se compte en dizaines, pas en milliers), ⋯ de gestes par
+> carte, bouton Replier/Déplier sur la ligne de l'objet (STOP visuel
+> CE en TROIS passes, chaque constat corrigé en séance). Le « déjà
+> ouvert » prouvé au filet en le cassant. Revue ciblée 6/5 corrigées
+> (dédoublonnage des pages, recharge aux relèves, vide honnête, garde
+> d'images par carte, sync_state hors boucle). **Terrain CE OK le
+> 2026-08-30, zéro constat. Reste : LA RELEASE MINEUR E1-E5bis.**
+
 > **E4 et E5 LIVRÉES le 2026-08-30** (D7 amendée : la première MINEUR
 > porte E1-E5). **E4 — la Réception organisée** : sections « Nouveau
 > pour vous · n » / « Déjà consulté » servies par UN flot ordonné
