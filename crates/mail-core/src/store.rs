@@ -303,6 +303,18 @@ CREATE TABLE IF NOT EXISTS pins (
     epoch      INTEGER NOT NULL,
     PRIMARY KEY (mailbox_id, uid)
 );
+-- Mis de côté (PLAN-MODE-ORGANISE E5) : la pile du mode organisé —
+-- copie du patron `pins` (clé d'ENVELOPPE : survit à la reconstruction
+-- des fils, meurt avec sa boîte — purges `reset_mailbox`/`remove_local`
+-- comprises, leçon RETOURS-11). Un fil mis de côté quitte TOUTES les
+-- vues organisées ; « Terminé » (DELETE) le rend d'où il vient. Le
+-- classique n'en sait rien.
+CREATE TABLE IF NOT EXISTS mis_de_cote (
+    mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+    uid        INTEGER NOT NULL,
+    epoch      INTEGER NOT NULL,
+    PRIMARY KEY (mailbox_id, uid)
+);
 -- La mémoire de la garde d'images (PLAN-RETOURS-11, R1 — D1 renverse
 -- l'invariant A43) : deux exceptions EXPLICITES au blocage par défaut,
 -- jamais un réglage global. Par MESSAGE : clé d'enveloppe, patron de
@@ -605,17 +617,45 @@ pub(crate) const THREAD_AGGREGATE: &str = ", t.size, t.unseen";
 /// plan `la_boite_unifiee_ne_materialise_pas_son_tri` le prouve.
 pub(crate) const PINNED_THREADS: &str = "SELECT pe.thread_id FROM pins p CROSS JOIN envelopes pe ON pe.mailbox_id = p.mailbox_id AND pe.uid = p.uid WHERE pe.thread_id IS NOT NULL";
 
+/// Les fils MIS DE CÔTÉ (E5) — le jumeau de [`PINNED_THREADS`], mêmes
+/// raisons : liste matérialisée une fois, petite par construction, et
+/// `CROSS JOIN` directif (sans ANALYZE, SQLite choisirait `envelopes`
+/// en extérieure — le scan complet sur le chemin le plus chaud).
+pub(crate) const MIS_DE_COTE_THREADS: &str = "SELECT ce.thread_id FROM mis_de_cote c CROSS JOIN envelopes ce ON ce.mailbox_id = c.mailbox_id AND ce.uid = c.uid WHERE ce.thread_id IS NOT NULL";
+
+/// L'exclusion de la Réception ORGANISÉE — LA seule écriture (revue
+/// E4/E5 : le fragment vivait en quatre copies, la prochaine exclusion
+/// — E6 les groupes — en aurait oublié une, exactement la panne
+/// « pastille à 2 devant une liste vide » que la capture E5 a payée) :
+/// les fils retenus/routés (drapeau) et les fils MIS DE CÔTÉ (pile).
+pub(crate) fn exclusion_organisee() -> String {
+    format!(" AND organise_hors = 0 AND id NOT IN ({MIS_DE_COTE_THREADS})")
+}
+
 /// La queue de la liste unifiée — jointures et tri final — partagée
 /// par la page ([`unified_page_sql`]) et la section épinglée
 /// ([`Store::pinned_unified_scoped`]) : UNE écriture, les deux
 /// requêtes ne peuvent plus dériver (revue 2026-08-21 — la copie du
 /// squelette aurait décalé les colonnes au premier ajout).
-pub(crate) const UNIFIED_JOIN_TAIL: &str = "
+pub(crate) const UNIFIED_JOINS: &str = "
          JOIN envelopes e ON e.mailbox_id = t.last_mailbox_id AND e.uid = t.last_uid
          JOIN mailboxes m ON m.id = e.mailbox_id
          JOIN accounts a ON a.id = t.account_id
-         LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
-         ORDER BY t.last_epoch DESC, t.last_uid DESC, a.id";
+         LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid";
+
+/// Le tri du flot unifié — la date seule (classique) ou les SECTIONS de
+/// la Réception organisée (E4, verdict S1/A2) : les non-lus d'abord —
+/// « Nouveau pour vous » — puis le reste — « Déjà consulté » —, la date
+/// à l'intérieur de chaque section. UN flot, UN offset : l'ordre porte
+/// les sections, la couture est le COUNT des non-lus (0,37 ms mesurés).
+pub(crate) fn unified_join_tail(sections: bool) -> String {
+    let ordre = if sections {
+        "ORDER BY (t.unseen > 0) DESC, t.last_epoch DESC, t.last_uid DESC, a.id"
+    } else {
+        "ORDER BY t.last_epoch DESC, t.last_uid DESC, a.id"
+    };
+    format!("{UNIFIED_JOINS}\n         {ordre}")
+}
 
 /// Les préfixes des prefs suffixées par compte (`{prefixe}.{account_id}`).
 /// LA liste que `delete_account` purge : `accounts.id` est un INTEGER
@@ -1368,6 +1408,12 @@ impl Store {
             "DELETE FROM images_messages WHERE mailbox_id = ?1",
             [mailbox_id],
         )?;
+        // E5 : la mise de côté suit le même contrat — un UID recyclé
+        // n'hérite d'aucune pile.
+        self.0.execute(
+            "DELETE FROM mis_de_cote WHERE mailbox_id = ?1",
+            [mailbox_id],
+        )?;
         self.0
             .execute("DELETE FROM envelopes WHERE mailbox_id = ?1", [mailbox_id])?;
         // L'attente du Portier est DÉRIVÉE du courrier (E2) : un rang
@@ -1859,6 +1905,10 @@ impl Store {
         )?;
         self.0.execute(
             "DELETE FROM images_messages WHERE mailbox_id = ?1 AND uid = ?2",
+            params![mailbox_id, uid],
+        )?;
+        self.0.execute(
+            "DELETE FROM mis_de_cote WHERE mailbox_id = ?1 AND uid = ?2",
             params![mailbox_id, uid],
         )?;
         self.0.execute(
@@ -2601,6 +2651,82 @@ impl Store {
         Ok(epingle)
     }
 
+    /// E5 — Mis de côté : le MÊME contrat que l'épingle (patron
+    /// `toggle_pin`, résolution du fil UNE fois) — posé sur un message,
+    /// l'état vaut pour le fil entier ; « Terminé » depuis n'importe
+    /// quelle tête libère tout. Rend l'état APRÈS le geste.
+    pub fn toggle_mis_de_cote(&self, mailbox_id: i64, uid: Uid, epoch: i64) -> Result<bool, Error> {
+        let fil = thread::thread_of(&self.0, mailbox_id, uid)?;
+        if self.mis_de_cote_du_fil(fil, mailbox_id, uid)? {
+            match fil {
+                Some(fil) => self.0.execute(
+                    "DELETE FROM mis_de_cote WHERE (mailbox_id, uid) IN
+                       (SELECT mailbox_id, uid FROM envelopes WHERE thread_id = ?1)",
+                    params![fil],
+                )?,
+                None => self.0.execute(
+                    "DELETE FROM mis_de_cote WHERE mailbox_id = ?1 AND uid = ?2",
+                    params![mailbox_id, uid],
+                )?,
+            };
+            Ok(false)
+        } else {
+            self.0.execute(
+                "INSERT OR REPLACE INTO mis_de_cote (mailbox_id, uid, epoch) VALUES (?1, ?2, ?3)",
+                params![mailbox_id, uid, epoch],
+            )?;
+            Ok(true)
+        }
+    }
+
+    /// Le fil de ce message est-il mis de côté ? — l'état par le FIL,
+    /// tête nouvelle comprise (même règle que `pin_state`).
+    pub fn etat_mis_de_cote(&self, mailbox_id: i64, uid: Uid) -> Result<bool, Error> {
+        let fil = thread::thread_of(&self.0, mailbox_id, uid)?;
+        self.mis_de_cote_du_fil(fil, mailbox_id, uid)
+    }
+
+    fn mis_de_cote_du_fil(
+        &self,
+        fil: Option<i64>,
+        mailbox_id: i64,
+        uid: Uid,
+    ) -> Result<bool, Error> {
+        let cote = match fil {
+            Some(fil) => self
+                .0
+                .prepare(
+                    "SELECT 1 FROM mis_de_cote c JOIN envelopes e
+                       ON e.mailbox_id = c.mailbox_id AND e.uid = c.uid
+                     WHERE e.thread_id = ?1",
+                )?
+                .exists(params![fil])?,
+            None => self
+                .0
+                .prepare("SELECT 1 FROM mis_de_cote WHERE mailbox_id = ?1 AND uid = ?2")?
+                .exists(params![mailbox_id, uid])?,
+        };
+        Ok(cote)
+    }
+
+    /// La pile (E5) : les têtes des fils mis de côté, au squelette
+    /// unifié — l'ordre des listes (la date), l'éventail et le tableau
+    /// s'en servent tels quels. Petite par construction.
+    pub fn pile_mis_de_cote(&self) -> Result<Vec<UnifiedRow>, Error> {
+        let queue = unified_join_tail(false);
+        let sql = format!(
+            "{SELECT_UNIFIED}{THREAD_AGGREGATE}
+             FROM (SELECT account_id, last_mailbox_id, last_uid, last_epoch, size, unseen
+                     FROM threads
+                    WHERE inbox_size > 0 AND id IN ({MIS_DE_COTE_THREADS})) t{queue}"
+        );
+        let mut stmt = self.0.prepare(&sql)?;
+        let rows = stmt
+            .query_map([], row_to_threaded)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// R1 (PLAN-RETOURS-11, D1-D2) : le choix « Afficher les images »
     /// du message — clé d'enveloppe, patron de `pins`. Rejouer le
     /// geste ne change rien (REPLACE).
@@ -3174,11 +3300,22 @@ pub(crate) fn unified_page_sql(par_compte: bool, non_lues: bool, organise: bool)
         ""
     };
     let non_lues_seulement = if non_lues { " AND unseen > 0" } else { "" };
+    // E5 : en mode organisé, les fils MIS DE CÔTÉ quittent le flot —
+    // ils vivent dans la pile (exclusion partagée, patron pins). Le
+    // classique n'exclut rien.
     let retenue = if organise {
-        " AND organise_hors = 0"
+        exclusion_organisee()
     } else {
-        ""
+        String::new()
     };
+    // E4 : l'ordre INTERNE (celui que l'index partiel porte) suit les
+    // sections en mode organisé — même clé que la queue de jointures.
+    let tri = if organise {
+        "ORDER BY (unseen > 0) DESC, last_epoch DESC, last_uid DESC, account_id"
+    } else {
+        "ORDER BY last_epoch DESC, last_uid DESC, account_id"
+    };
+    let queue = unified_join_tail(organise);
     // R4 (PLAN-RETOURS-7, D5) : les conversations ÉPINGLÉES quittent le
     // flot paginé — elles se servent À PART, en tête de page 0
     // (`pinned_unified_scoped`) ; la liste ne montre jamais deux fois le
@@ -3189,8 +3326,8 @@ pub(crate) fn unified_page_sql(par_compte: bool, non_lues: bool, organise: bool)
          FROM (SELECT account_id, last_mailbox_id, last_uid, last_epoch, size, unseen
                  FROM threads
                 WHERE inbox_size > 0{retenue} AND id NOT IN ({PINNED_THREADS}){filtre}{non_lues_seulement}
-                ORDER BY last_epoch DESC, last_uid DESC, account_id
-                LIMIT ?1 OFFSET ?2) t{UNIFIED_JOIN_TAIL}"
+                {tri}
+                LIMIT ?1 OFFSET ?2) t{queue}"
     )
 }
 
@@ -3271,14 +3408,18 @@ pub(crate) fn routage_page_sql(par_compte: bool, non_lues: bool) -> String {
     };
     let non_lues_seulement = if non_lues { " AND unseen > 0" } else { "" };
     let fil_route = fil_route_sql("?3");
+    let queue = unified_join_tail(false);
+    // E5 : le Kiosque et le Registre sont des vues ORGANISÉES — un fil
+    // mis de côté les quitte aussi (il vit dans la pile).
+    let hors_pile = format!(" AND id NOT IN ({MIS_DE_COTE_THREADS})");
     format!(
         "{SELECT_UNIFIED}{THREAD_AGGREGATE}
          FROM (SELECT account_id, last_mailbox_id, last_uid, last_epoch, size, unseen
                  FROM threads
                 WHERE inbox_size > 0
-                  AND {fil_route}{filtre}{non_lues_seulement}
+                  AND {fil_route}{hors_pile}{filtre}{non_lues_seulement}
                 ORDER BY last_epoch DESC, last_uid DESC, account_id
-                LIMIT ?1 OFFSET ?2) t{UNIFIED_JOIN_TAIL}"
+                LIMIT ?1 OFFSET ?2) t{queue}"
     )
 }
 
@@ -3669,6 +3810,23 @@ fn migrate(
     // `thread::SCHEMA` APRÈS ce point, échouerait sans elle : c'est le
     // piège documenté de `drop_if_outdated`. Une base neuve n'a pas
     // encore la table : le schéma des fils la crée complète.
+    // E4 : l'index de la Réception organisée gagne les SECTIONS dans sa
+    // clé — un index d'E2 (sans l'expression `unseen`) ne porterait
+    // plus le tri et chaque page paierait un tri matérialisé (S1 :
+    // 548 ms). Même patron que la reconstruction d'idx_envelopes_date :
+    // le nom ne suffit pas, on lit la DÉFINITION. Le schéma des fils
+    // (appliqué après) recrée la forme neuve.
+    let organise_sql: Option<String> = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master
+              WHERE type = 'index' AND name = 'idx_threads_date_organise'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if organise_sql.is_some_and(|sql| !sql.contains("unseen")) {
+        conn.execute_batch("DROP INDEX idx_threads_date_organise;")?;
+    }
     let colonnes_threads = table_columns(conn, "threads")?;
     if colonnes_threads.contains("id") && !colonnes_threads.contains("organise_hors") {
         add_missing_columns(
@@ -8263,6 +8421,203 @@ Etape : {etape}\nPlan :\n{}",
         );
     }
 
+    /// PLAN-MODE-ORGANISE E4 — les sections de la Réception organisée
+    /// (verdict S1, variante A2) : UN flot ordonné « non-lus d'abord,
+    /// puis la date » — « Nouveau pour vous » puis « Déjà consulté »
+    /// sont DEUX bornes de la même source paginée, la couture est le
+    /// COUNT des non-lus. Le classique, lui, ne bouge pas d'un rang.
+    #[test]
+    fn la_reception_organisee_sert_les_non_lus_en_tete() {
+        let (mut store, inbox) = store_with_mailbox();
+        store.set_mode_organise(true, 1_000).unwrap();
+        store
+            .upsert_envelopes(
+                inbox,
+                &[
+                    envelope(1, "lu ancien", 100, true),
+                    envelope(2, "nonlu recent", 200, false),
+                    envelope(3, "lu recent", 300, true),
+                    envelope(4, "nonlu ancien", 150, false),
+                ],
+            )
+            .unwrap();
+        let organise = store
+            .reception_organisee_scoped(None, false, 0, 10)
+            .unwrap();
+        assert_eq!(
+            organise.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
+            vec![2, 4, 3, 1],
+            "les non-lus d'abord (par date), puis les lus (par date)"
+        );
+        let compte = test_account(&store);
+        let borne = store
+            .reception_organisee_scoped(Some(compte), false, 0, 10)
+            .unwrap();
+        assert_eq!(
+            borne.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
+            vec![2, 4, 3, 1],
+            "même ordre borné à un compte"
+        );
+        assert_eq!(
+            store.reception_organisee_count_scoped(None, true).unwrap(),
+            2,
+            "la couture : le COUNT des non-lus dit où la seconde section commence"
+        );
+        // Le classique, INTACT : la date seule.
+        let classique = store.unified_recent_scoped(None, false, 0, 10).unwrap();
+        assert_eq!(
+            classique.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
+            vec![3, 2, 4, 1]
+        );
+    }
+
+    /// PLAN-MODE-ORGANISE E5 — Mis de côté (patron `pins` : clé
+    /// d'ENVELOPPE qui survit à la reconstruction des fils, état par
+    /// FIL). Un fil mis de côté quitte TOUTES les vues organisées —
+    /// Réception, sa vue de routage, les épingles préposées — et vit
+    /// dans la pile ; « Terminé » le rend d'où il vient. Le mode
+    /// CLASSIQUE ne bouge pas d'un message.
+    #[test]
+    fn un_fil_mis_de_cote_vit_dans_la_pile_et_revient_termine() {
+        let (mut store, inbox) = store_with_mailbox();
+        store.set_mode_organise(true, 1_000).unwrap();
+        let mut lettre = envelope(1, "la lettre", 100, false);
+        lettre.sender_address = Some("lettre@exemple.fr".to_string());
+        let ordinaire = envelope(2, "bonjour", 200, false);
+        store.upsert_envelopes(inbox, &[lettre, ordinaire]).unwrap();
+        store
+            .router_expediteur("lettre@exemple.fr", "kiosque", None, 300)
+            .unwrap();
+
+        assert!(store.toggle_mis_de_cote(inbox, 2, 1_000).unwrap());
+        assert!(store.etat_mis_de_cote(inbox, 2).unwrap());
+        assert!(
+            store
+                .reception_organisee_scoped(None, false, 0, 10)
+                .unwrap()
+                .is_empty(),
+            "le fil mis de côté quitte la Réception organisée"
+        );
+        assert_eq!(
+            store.reception_organisee_count_scoped(None, false).unwrap(),
+            0,
+            "le total suit (exclusion partagée)"
+        );
+        assert_eq!(
+            store.unified_count_scoped(None, false).unwrap(),
+            2,
+            "le classique montre TOUJOURS tout"
+        );
+        // La pile : la mini-carte du fil, la plus récente en tête.
+        assert!(store.toggle_mis_de_cote(inbox, 1, 1_100).unwrap());
+        let pile = store.pile_mis_de_cote().unwrap();
+        assert_eq!(
+            pile.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
+            vec![2, 1],
+            "la pile, du plus récent au plus ancien"
+        );
+        assert!(
+            store
+                .routage_unified_scoped("kiosque", None, false, 0, 10)
+                .unwrap()
+                .is_empty(),
+            "mis de côté, la lettre quitte AUSSI sa vue de routage"
+        );
+
+        // « Terminé » : le fil revient D'OÙ IL VIENT.
+        assert!(!store.toggle_mis_de_cote(inbox, 2, 1_200).unwrap());
+        assert_eq!(
+            store.reception_organisee_count_scoped(None, false).unwrap(),
+            1,
+            "l'ordinaire revient en Réception"
+        );
+        assert!(!store.toggle_mis_de_cote(inbox, 1, 1_300).unwrap());
+        assert_eq!(
+            store
+                .routage_unified_scoped("kiosque", None, false, 0, 10)
+                .unwrap()
+                .len(),
+            1,
+            "la lettre revient au Kiosque"
+        );
+        assert!(store.pile_mis_de_cote().unwrap().is_empty());
+
+        // La pastille de la nav suit la pile (constat de capture E5) :
+        // un non-lu mis de côté ne compte plus en mode organisé.
+        assert!(store.toggle_mis_de_cote(inbox, 2, 1_400).unwrap());
+        let compte = test_account(&store);
+        let dossiers = store.canonical_folders(compte).unwrap();
+        let (organise, _) = store.nav_unread_counts(compte, &dossiers, true).unwrap();
+        assert_eq!(organise, 0, "le non-lu mis de côté quitte la pastille");
+        let (classique, _) = store.nav_unread_counts(compte, &dossiers, false).unwrap();
+        assert_eq!(classique, 2, "le classique ne bouge pas");
+    }
+
+    /// La mise de côté suit le FIL (patron pins) : posée sur un
+    /// message, elle tient quand une réponse déplace la tête ; une
+    /// épingle mise de côté quitte la section préposée de la Réception
+    /// organisée (le classique la garde).
+    #[test]
+    fn la_mise_de_cote_suit_le_fil_et_retire_l_epingle_preposee() {
+        let (mut store, inbox) = store_with_mailbox();
+        store.set_mode_organise(true, 1_000).unwrap();
+        store
+            .upsert_envelopes(inbox, &[envelope(1, "sujet", 100, true)])
+            .unwrap();
+        assert!(store.toggle_pin(inbox, 1, 500).unwrap());
+        assert!(store.toggle_mis_de_cote(inbox, 1, 600).unwrap());
+        let mut reponse = envelope(2, "Re: sujet", 700, true);
+        reponse.in_reply_to = Some("<m1@example.com>".to_string());
+        store.upsert_envelopes(inbox, &[reponse]).unwrap();
+
+        assert!(
+            store.etat_mis_de_cote(inbox, 2).unwrap(),
+            "l'état se lit par le fil, tête nouvelle comprise"
+        );
+        assert!(
+            store
+                .pinned_unified_scoped(None, false, true)
+                .unwrap()
+                .is_empty(),
+            "l'épingle d'un fil mis de côté ne se prépose plus en mode organisé"
+        );
+        assert_eq!(
+            store
+                .pinned_unified_scoped(None, false, false)
+                .unwrap()
+                .len(),
+            1,
+            "le classique garde son épingle"
+        );
+        // « Terminé » depuis la tête NOUVELLE libère le fil entier.
+        assert!(!store.toggle_mis_de_cote(inbox, 2, 800).unwrap());
+        assert!(!store.etat_mis_de_cote(inbox, 1).unwrap());
+    }
+
+    /// A43/A89 : la mise de côté meurt avec son courrier — une boîte
+    /// réinitialisée (UIDVALIDITY) et un retrait local la purgent, un
+    /// UID recyclé n'hérite de rien.
+    #[test]
+    fn la_mise_de_cote_meurt_avec_son_courrier() {
+        let (mut store, inbox) = store_with_mailbox();
+        store
+            .upsert_envelopes(
+                inbox,
+                &[envelope(1, "a", 100, true), envelope(2, "b", 200, true)],
+            )
+            .unwrap();
+        assert!(store.toggle_mis_de_cote(inbox, 1, 300).unwrap());
+        store.remove_local(inbox, 1).unwrap();
+        assert!(store.pile_mis_de_cote().unwrap().is_empty());
+
+        assert!(store.toggle_mis_de_cote(inbox, 2, 400).unwrap());
+        store.reset_mailbox(inbox, 2).unwrap();
+        assert!(
+            store.pile_mis_de_cote().unwrap().is_empty(),
+            "l'UIDVALIDITY neuve ne laisse aucune mise de côté fantôme"
+        );
+    }
+
     /// La garde de plan de la Réception organisée (leçon S2-bis,
     /// spikes/routage-plan) : la page suit l'index PARTIEL miroir
     /// (`idx_threads_date_organise`) — offset stable par construction,
@@ -8291,6 +8646,59 @@ Etape : {etape}\nPlan :\n{}",
                 .any(|l| l.starts_with("SCAN") && l.contains("envelopes")),
             "plan avec scan d'envelopes : {plan:?}"
         );
+        // E4 : l'index PORTE le tri à sections DANS le squelette
+        // paginé — un tri matérialisé AVANT le LIMIT serait le tri de
+        // toute la boîte (548 ms mesurées au spike S1 sans l'index
+        // d'expression). Le re-tri EXTERNE des ≤200 lignes retenues
+        // (après « SCAN t ») est borné et légitime — l'expression de
+        // section ne se dérive pas de la jointure.
+        let jointure = plan
+            .iter()
+            .position(|l| l == "SCAN t")
+            .expect("le plan a perdu sa co-routine paginée");
+        assert!(
+            !plan[..jointure].iter().any(|l| l.contains("TEMP B-TREE")),
+            "tri matérialisé DANS le squelette paginé : {plan:?}"
+        );
+        // Revue E4 : les DEUX autres chemins organisés portent la même
+        // garde — la vue « Boîtes » (index préfixé par compte) et
+        // l'onglet Non lus. Sans elle, un changement de clé d'index
+        // rendrait le tri matérialisé de S1 (548 ms/page) en silence.
+        for (nom, sql, params_n) in [
+            (
+                "par compte",
+                unified_page_sql(true, false, true),
+                params![10, 0, 1].to_vec(),
+            ),
+            (
+                "non-lus",
+                unified_page_sql(false, true, true),
+                params![10, 0].to_vec(),
+            ),
+        ] {
+            let plan: Vec<String> = store
+                .0
+                .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+                .unwrap()
+                .query_map(rusqlite::params_from_iter(params_n), |row| {
+                    row.get::<_, String>(3)
+                })
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
+            assert!(
+                plan.iter().any(|l| l.contains("idx_threads_date_organise")),
+                "chemin organisé « {nom} » sans index partiel : {plan:?}"
+            );
+            let jointure = plan
+                .iter()
+                .position(|l| l == "SCAN t")
+                .expect("co-routine paginée absente");
+            assert!(
+                !plan[..jointure].iter().any(|l| l.contains("TEMP B-TREE")),
+                "chemin organisé « {nom} » : tri matérialisé dans le squelette : {plan:?}"
+            );
+        }
     }
 
     /// L'historique du Portier lit la liste du plus récent décidé au

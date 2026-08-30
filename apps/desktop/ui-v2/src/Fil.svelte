@@ -67,6 +67,7 @@
     // Offert par le seul mode organisé ; l'App décide.
     organise = false,
     ondeplacer = () => {},
+    oncote = () => {},
   } = $props();
 
   // Le menu de « Déplacer vers… » — fermé par le choix, un second
@@ -612,6 +613,16 @@
            glyphe : aucun dessin existant ne porte ce sens (A3), le
            texte suffit dans la barre. -->
       {#if organise && !estEcho(fil.ligne)}
+        <!-- E5 : la bascule de la pile — l'état est SEMÉ de la ligne
+             servie (patron de l'épingle, revue 2026-08-21 : jamais un
+             aller-retour par ouverture) et suit le geste (App, jeton
+             du store) ; le geste remonte à l'App, qui possède la
+             commande. -->
+        <button type="button" data-testid="mettre-de-cote"
+                aria-pressed={fil.cote}
+                onclick={() => oncote(fil.ligne)}>
+          <Icone nom={fil.cote ? 'keep_off' : 'pile'} />
+          {fil.cote ? t('pile.reprendre') : t('pile.mettre')}</button>
         <span class="deplacer">
           <button type="button" data-testid="deplacer-vers"
                   aria-haspopup="menu" aria-expanded={menuDeplacer}

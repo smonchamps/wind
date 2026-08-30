@@ -63,9 +63,30 @@ les règles S'ÉTEIGNENT avec le mode (D2). Limites dites au PLAN
 (Date falsifiée, spam sans dossier résolu, inventaire CONDSTORE
 pendant un rejeu en attente). Tests mail-core 401 → **406**, e2e
 161 → **162** (règle prouvée en la cassant, témoin de synchro au
-filet). **Reste : la release MINEUR E1-E3 (D7)** — l'entrée
-CHANGELOG s'écrira à ce moment-là (§2.9, `gh release list` d'abord),
-avec Innamoramento qui attend aussi cette release. Puis E4-E6.
+filet).
+
+**E4 et E5 sont LIVRÉES le 2026-08-30** (D7 AMENDÉE par le CE : la
+première MINEUR porte E1-E5, E6 suivra). **E4 — la Réception
+organisée** : sections « Nouveau pour vous · n » / « Déjà consulté »
+(UN flot ordonné non-lus d'abord, index partiels d'expression global
++ par compte, gardes de plan sur les trois chemins, banc 200 k
+0,03/1,6 ms), colonne centrée 760 px sans volet, clic → écran 03, ⋯
+de gestes par rangée. **E5 — Mis de côté** : table `mis_de_cote`
+(patron pins, purges), exclusion partagée par UNE écriture
+(`exclusion_organisee()`), pile + éventail + tableau, bascule barre
+du fil (état SEMÉ, patron épingle) et ⋯. STOP visuels CE GO (un
+constat E4 : l'air des titres de section, bande 34 → 52 px, corrigé).
+Revue à regard neuf **10 trouvailles / 9 corrigées** (triage clavier
+qui marquait lue une conversation jamais montrée, pastille comptant
+les mis de côté, couture d'une autre source, testid vacant…), un
+refus motivé (« Terminé » sur un expéditeur écarté suit le verdict).
+Système **A99** ; dette **D-47** (menus ×3, jumeaux pins/pile).
+Tests mail-core **410**. ⚠️ **Périmètre à trancher CE : le « Kiosque
+en cartes déjà ouvertes » du prototype n'est assigné à AUCUNE étape**
+(S3 l'a mesuré, personne ne l'a bâti — le Kiosque livré est une
+liste). **Reste : terrain E4+E5, puis LA RELEASE MINEUR E1-E5** —
+l'entrée CHANGELOG s'écrira à ce moment-là (§2.9, `gh release list`
+d'abord), avec Innamoramento qui attend aussi cette release. Puis E6.
 
 Le même jour, deux retours CE réglés : **« Mona » renommée
 « Innamoramento »** (A95, ids migrés, commit `0a25105`, CI verte) et

@@ -82,6 +82,10 @@ export async function ouvrirFil(nouvelle, cadre = 'volet') {
   // ouverture, dans la file sérialisée, payait pour un bouton le plus
   // souvent absent — et l'état mentait pendant l'aller-retour).
   fil.epingle = nouvelle.pinned ?? false;
+  // E5 : même règle pour la pile — une ligne d'une vue organisée n'est
+  // JAMAIS mise de côté (le cœur l'exclut), une carte de la pile l'est
+  // toujours (elle porte `cote`). Jamais un aller-retour à l'ouverture.
+  fil.cote = nouvelle.cote ?? false;
   // V-D2 : sans fil — écho compris — le MESSAGE SEUL est le fil.
   if (nouvelle.thread_id == null) {
     fil.messages = [nouvelle];

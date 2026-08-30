@@ -55,9 +55,80 @@
     // possède les commandes (archiver, supprimer, spam, lu/non-lu) —
     // la Liste possède la sélection, jamais l'action.
     ongroupe = async () => {},
+    // PLAN-MODE-ORGANISE E4 : en mode organisé, la Réception se
+    // présente en colonne centrée à SECTIONS et chaque rangée porte le
+    // ⋯ de gestes (Déplacer vers…, Écarter) — remontés à l'App, qui
+    // possède les commandes (même règle que la sélection de masse).
+    organise = false,
+    ondeplacer = () => {},
+    oncote = () => {},
   } = $props();
 
   const PAGE = 200;
+
+  // E4 — les sections de la Réception organisée (verdict S1/A2) : le
+  // service rend UN flot ordonné « non-lus d'abord », la couture est
+  // le COUNT des non-lus. Les entêtes vivent HORS des rangées (la
+  // géométrie du fenêtrage gagne un décrochement, patron des puces
+  // d'invitation) — jamais une rangée à hauteur d'exception.
+  const sections = $derived(
+    organise && categorie === 'reception' && onglet === 'tous'
+      && resultats === null && lignesBrouillons === null,
+  );
+  // La colonne centrée de la Réception organisée (~760 px, prototype).
+  const centre = $derived(
+    organise && categorie === 'reception'
+      && resultats === null && lignesBrouillons === null,
+  );
+  // Le ⋯ de gestes par rangée — les vues organisées seulement.
+  const gestesOrganise = $derived(
+    organise && ['reception', 'kiosque', 'registre'].includes(categorie)
+      && resultats === null && lignesBrouillons === null,
+  );
+  let couture = $state(0);
+  // 52 px : l'air AU-DESSUS du libellé (constat CE au STOP visuel E4 —
+  // le dernier mail d'une section et le titre de la suivante doivent
+  // respirer) ; le libellé reste calé en bas de sa bande.
+  const H_ENTETE = 52;
+  const entetes = $derived.by(() => {
+    if (!sections || total === 0) return [];
+    const liste = [];
+    if (couture > 0) liste.push({ index: 0, libelle: t('liste.sectionNouveau', { n: couture }) });
+    if (couture < total) liste.push({ index: couture, libelle: t('liste.sectionConsulte') });
+    return liste;
+  });
+  // Les entêtes POSITIONNÉES — dérivé à part : `decalage` lit des
+  // Maps non réactives (pages/chips), seul `version` signale leurs
+  // mouvements (le canal de `hauteurEspace`).
+  const positionsEntetes = $derived.by(() => {
+    void version;
+    void h1;
+    return entetes.map((e) => ({ ...e, top: decalage(e.index) - H_ENTETE }));
+  });
+  function entetesAvant(i) {
+    let n = 0;
+    for (const e of entetes) if (e.index <= i) n += 1;
+    return n;
+  }
+  // Le menu du ⋯ — le patron du Portier : ancré au clic, borné à la
+  // fenêtre, refermé au clic dehors et à Échap.
+  let menuGestes = $state(null);
+  const cleLigne = (l) => `${l.account_id}:${l.mailbox}:${l.uid}`;
+  function ouvrirGestes(e, ligne) {
+    e.stopPropagation();
+    const r = e.currentTarget.getBoundingClientRect();
+    menuGestes = {
+      ligne,
+      cle: cleLigne(ligne),
+      x: Math.min(r.left, window.innerWidth - 260),
+      y: Math.min(r.bottom + 4, window.innerHeight - 210),
+    };
+  }
+  function geste(destination) {
+    const { ligne } = menuGestes;
+    menuGestes = null;
+    ondeplacer(ligne, destination);
+  }
   const OVER = 8;
 
   // R4 (PLAN-RETOURS-MAIL) : dans le dossier d'envois, l'expéditeur est
@@ -241,7 +312,7 @@
     return extra;
   }
   function decalage(i) {
-    return i * h1 + chipsAvant(i) * extraPuce;
+    return i * h1 + chipsAvant(i) * extraPuce + entetesAvant(i) * H_ENTETE;
   }
 
   const hauteurEspace = $derived.by(() => {
@@ -249,7 +320,7 @@
     if (total === 0) return 0;
     let extra = 0;
     for (const n of chipsParPage.values()) extra += n;
-    return total * h1 + extra * extraPuce;
+    return total * h1 + extra * extraPuce + entetes.length * H_ENTETE;
   });
 
   function indexPour(scrollTop) {
@@ -257,7 +328,9 @@
     for (let tour = 0; tour < 4; tour++) {
       const corrige = Math.max(
         0,
-        Math.floor((scrollTop - chipsAvant(i) * extraPuce) / h1),
+        Math.floor(
+          (scrollTop - chipsAvant(i) * extraPuce - entetesAvant(i) * H_ENTETE) / h1,
+        ),
       );
       if (corrige === i) break;
       i = corrige;
@@ -329,6 +402,15 @@
     ) {
       lancerTotal();
     }
+    if (
+      sections &&
+      pending.size === 0 &&
+      sourceRepondue &&
+      coutureServieA !== generation &&
+      !coutureEnVol
+    ) {
+      lancerCouture();
+    }
   }
 
   // Le total de la source, à part des pages (terrain 2026-08-20) : le
@@ -356,6 +438,34 @@
       })
       .finally(() => {
         totalEnVol = false;
+      });
+    // E4 : la couture des sections — le COUNT des non-lus, même
+    // cadence que le total, jamais devant des lignes.
+  }
+
+  // E4 : la couture des sections — le COUNT des non-lus, sa PROPRE
+  // pompe : le total peut venir d'une page courte sans que
+  // `lancerTotal` ne parte jamais (petite boîte) — greffée dessus, la
+  // couture ne partait pas non plus (prouvé au décor e2e).
+  let coutureEnVol = false;
+  let coutureServieA = -1;
+  function lancerCouture() {
+    const neeSource = source;
+    const nee = generation;
+    coutureEnVol = true;
+    appel('category_total', {
+      category: categorie,
+      accountId: compte,
+      nonLus: true,
+    })
+      .then((n) => {
+        if (neeSource !== source) return;
+        couture = n;
+        coutureServieA = nee;
+      })
+      .catch(() => {})
+      .finally(() => {
+        coutureEnVol = false;
       });
   }
 
@@ -457,6 +567,11 @@
       // leur clôture repompe la fenêtre de la source neuve (la page 0
       // de celle-ci passe devant la jauge, voir pomper).
       total = 0;
+      // E4 (revue) : la couture est un état DE SOURCE — gardée, elle
+      // peindrait le N de l'ancienne boîte sur la nouvelle (et
+      // masquerait « Déjà consulté » tant que couture >= total).
+      couture = 0;
+      coutureServieA = -1;
       sourceRepondue = false;
       totalPrecis = false;
       premier = 0;
@@ -485,6 +600,16 @@
   // pixel de scroll (revue 2026-08-21).
   $effect(() => {
     void hautEpingles;
+    untrack(() => {
+      if (cadre) surDefilement();
+    });
+  });
+
+  // E4 : l'arrivée de la couture (0 → n) déplace la hauteur des
+  // entêtes de section hors de tout événement de défilement — même
+  // recalage que la bande épinglée.
+  $effect(() => {
+    void entetes;
     untrack(() => {
       if (cadre) surDefilement();
     });
@@ -907,7 +1032,13 @@
   }
 </script>
 
-<section class="colonne" aria-label={t('liste.aria')} data-testid="liste">
+<svelte:window
+  onclick={() => (menuGestes = null)}
+  onkeydown={(e) => {
+    if (e.key === 'Escape') menuGestes = null;
+  }} />
+
+<section class="colonne" class:centre aria-label={t('liste.aria')} data-testid="liste">
   <!-- UI v3, E1 (verdict CE 2026-08-16) : le bandeau de la maquette
        Classique — le nom de la boîte courante, SEUL (« Tout marquer
        lu » écarté). Les clés boite.* sont celles de la nav. -->
@@ -1053,6 +1184,15 @@
             </span>
           {/if}
           <span class="essor"></span>
+          {#if gestesOrganise}
+            <!-- E4 : le ⋯ à GAUCHE de l'heure, place RÉSERVÉE —
+                 opacité seule, la géométrie ne bouge jamais. -->
+            <button type="button" class="gestes" data-testid="ligne-gestes"
+                    aria-label={t('liste.gestes')} aria-haspopup="menu"
+                    aria-expanded={menuGestes?.cle === cleLigne(ligne)}
+                    onclick={(e) => ouvrirGestes(e, ligne)}>
+              <Icone nom="more_horiz" taille={14} /></button>
+          {/if}
           <span class="heure">{quand(ligne.epoch)}</span>
         </div>
         <p class="objet">{ligne.subject}</p>
@@ -1197,8 +1337,29 @@
         </div>
       {/if}
       <div class="espace" style="height:{hauteurEspace}px">
+        {#each positionsEntetes as e (e.index)}
+          <!-- E4 : l'entête de section vit HORS des rangées, absolu
+               dans l'espace — la géométrie des lignes reste uniforme,
+               le décrochement est porté par decalage/indexPour. Les
+               positions viennent d'un dérivé qui ÉCOUTE `version`
+               (revue E5) : une puce d'invitation qui pousse les
+               rangées re-cale l'entête dans le même flush. -->
+          <div class="entete-section" data-testid="section"
+               style="top:{e.top}px">
+            <span class="cadre-entete"><span class="lab">{e.libelle}</span></span>
+          </div>
+        {/each}
         <div class="fenetre" style="transform:translateY({decalage(debut)}px)">
           {#each fenetre as { i, ligne } (i)}
+            <!-- E4 : la bande d'entête occupe 34 px RÉELS dans le flux
+                 (les rangées s'empilent en flex — un décrochement qui
+                 ne vivrait que dans decalage/indexPour ferait chevaucher
+                 l'entête et dériver la fenêtre, constat de capture).
+                 Quand la fenêtre COMMENCE à la borne, la bande est déjà
+                 dans le translateY (entetesAvant compte e.index <= i). -->
+            {#if entetes.some((e) => e.index === i && e.index > debut)}
+              <div class="espace-entete" aria-hidden="true"></div>
+            {/if}
             {#if ligne}
               {@render rangee(ligne)}
             {:else}
@@ -1222,6 +1383,33 @@
   </div>
 </section>
 
+{#if menuGestes}
+  <!-- E4 : le menu de gestes d'une rangée organisée — le dessin des
+       menus du produit (patron Portier). « Déplacer vers… » sert les
+       destinations AUTRES que la vue courante ; « Écarter » pose le
+       Non nu (le choix se rejoue à l'historique du Portier). -->
+  <div class="menu-gestes" role="menu" data-testid="menu-gestes"
+       style="left:{menuGestes.x}px; top:{menuGestes.y}px">
+    {#each ['reception', 'kiosque', 'registre'].filter((d) => d !== categorie) as dest (dest)}
+      <button type="button" role="menuitem" data-testid={`gestes-${dest}`}
+              onclick={() => geste(dest)}>
+        <Icone nom={dest === 'reception' ? 'inbox' : dest} />{t('liste.deplacerVers', { boite: t(`boite.${dest}`) })}</button>
+    {/each}
+    <div class="filet-menu"></div>
+    <button type="button" role="menuitem" data-testid="gestes-cote"
+            onclick={() => {
+              const { ligne } = menuGestes;
+              menuGestes = null;
+              oncote(ligne);
+            }}>
+      <Icone nom="pile" />{t('pile.mettre')}</button>
+    <div class="filet-menu"></div>
+    <button type="button" role="menuitem" data-testid="gestes-ecarter"
+            onclick={() => geste('ecarte')}>
+      <Icone nom="visibility_off" />{t('liste.ecarter')}</button>
+  </div>
+{/if}
+
 <style>
   /* Géométrie et états du dessin des pistes (A29/A30) : lignes
      continues séparées au filet, sans carte ni ombre. */
@@ -1244,6 +1432,44 @@
   }
   .cadre { flex:1; overflow:auto; position:relative; }
   .espace { position:relative; }
+  /* E4 : l'entête de section — le dessin de la règle-libellé du
+     Portier (libellé nu, majuscules, encre atténuée), calé au bas de
+     sa bande de 34 px, le filet du premier rang fait séparateur. */
+  .entete-section {
+    position:absolute; left:0; right:0; height:52px;
+    display:flex; align-items:flex-end; padding:0 16px 6px;
+  }
+  /* Le cadre interne porte le centrage : l'auto-marge d'un absolu
+     sur-contraint est fragile — un bloc en flux ne l'est pas. */
+  .cadre-entete { display:block; width:100%; }
+  .espace-entete { flex:none; height:52px; }
+  .entete-section .lab {
+    font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--muted); font-weight:600; white-space:nowrap;
+  }
+  /* E4 : la colonne centrée de la Réception organisée (~760 px du
+     prototype) — rangées et entêtes ensemble, au pixel. */
+  /* `width:100%` d'abord : dans une colonne flex, une marge auto en
+     travers ÉTEINT le stretch — sans elle, la rangée rétrécit à son
+     contenu (constat de capture E4). */
+  .centre :global(.ligne) {
+    width:100%; max-width:760px; margin-inline:auto; box-sizing:border-box;
+  }
+  .centre .cadre-entete { max-width:760px; margin-inline:auto; }
+  /* E4 : le ⋯ de gestes — place RÉSERVÉE à gauche de l'heure (24 px),
+     opacité seule : la géométrie de la rangée ne bouge jamais. */
+  .gestes {
+    flex:none; width:24px; height:24px; padding:0;
+    display:inline-flex; align-items:center; justify-content:center;
+    align-self:center; opacity:0; color:var(--muted);
+    background:none; border:1px solid transparent;
+  }
+  .ligne:hover .gestes, .gestes:focus-visible, .gestes[aria-expanded="true"] {
+    opacity:1;
+  }
+  .gestes:hover, .gestes[aria-expanded="true"] {
+    background:var(--hover); border-color:var(--border); color:var(--ink);
+  }
   .fenetre {
     position:absolute; top:0; left:0; right:0;
     display:flex; flex-direction:column;
@@ -1470,4 +1696,16 @@
     font-weight:600; color:var(--ink); background:var(--sel);
     border-color:var(--accent);
   }
+  .menu-gestes {
+    position:fixed; z-index:30; min-width:240px; padding:6px;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--r-controle); box-shadow:0 8px 24px rgba(0,0,0,.14);
+    display:flex; flex-direction:column; gap:2px;
+  }
+  .menu-gestes button {
+    display:flex; align-items:center; gap:8px; text-align:left;
+    border:1px solid transparent; background:none; height:32px; padding:0 8px;
+  }
+  .menu-gestes button:hover { background:var(--hover); }
+  .filet-menu { border-top:1px solid var(--border); margin:4px 0; }
 </style>

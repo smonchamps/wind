@@ -30,6 +30,7 @@
     onflash = () => {},
     organise = false,
     ondeplacer = () => {},
+    oncote = () => {},
     epinglable = false,
     onepingler = () => {},
   } = $props();
@@ -47,7 +48,7 @@
 
 <main aria-label={t('lecture.aria')} data-testid="volet-lecture">
   {#if fil.cadre === 'volet' && fil.ligne}
-    <Fil {brouillons} {reperes} {noms} {comptes} {melange} {organise} {ondeplacer}
+    <Fil {brouillons} {reperes} {noms} {comptes} {melange} {organise} {ondeplacer} {oncote}
          {onreprendre} {onarchiver} {onsupprimer}
          {onrepondre} {onrepondretous} {ontransferer}
          {onspam} {onnonspam} {estIndesirable} {onflash}

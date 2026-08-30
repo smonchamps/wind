@@ -118,6 +118,12 @@ pub struct MessageRow {
     /// son état d'épingle de ce champ (fil.svelte.js) : c'est lui qui
     /// habille « Épingler »/« Désépingler » sans aller-retour.
     pub pinned: bool,
+    /// E5 : le fil est-il MIS DE CÔTÉ — semé par la seule source qui
+    /// le sait (la pile) : une ligne d'une vue organisée n'est JAMAIS
+    /// mise de côté (le cœur l'exclut), une carte de la pile l'est
+    /// toujours. Même règle que `pinned` (revue 2026-08-21 : jamais un
+    /// aller-retour par ouverture).
+    pub cote: bool,
     /// L'invitation du fil (terrain R10/R11, PLAN-INVITATIONS) : le
     /// rang de puces la dit (réponse donnée, annulation) et porte les
     /// trois gestes — répondre sans ouvrir. `None` = ligne ordinaire.
@@ -1668,6 +1674,7 @@ fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
         thread_size: row.thread_size,
         thread_unseen: row.thread_unseen,
         pinned: false,
+        cote: false,
         invitation: row.invitation.map(|rang| InvitationLigne {
             mailbox: rang.mailbox,
             uid: rang.uid,
@@ -3000,6 +3007,52 @@ pub async fn portier_total(app: AppHandle) -> Result<u64, String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store.portier_total().map_err(|err| err.to_string())
+    })
+    .await
+}
+
+/// E5 — la bascule « Mettre de côté / Reprendre » : l'état vaut pour
+/// le FIL (patron de l'épingle), rendu APRÈS le geste.
+#[tauri::command]
+pub async fn toggle_mis_de_cote(
+    app: AppHandle,
+    account_id: i64,
+    mailbox: String,
+    uid: u32,
+) -> Result<bool, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let Some(state) = store
+            .sync_state(account_id, &mailbox)
+            .map_err(|err| err.to_string())?
+        else {
+            return Err(format!("boîte inconnue : {mailbox}"));
+        };
+        store
+            .toggle_mis_de_cote(state.mailbox_id, uid, epoch_maintenant())
+            .map_err(|err| err.to_string())
+    })
+    .await
+}
+
+/// La pile (E5) : les têtes des fils mis de côté — l'éventail et le
+/// tableau s'en servent tels quels.
+#[tauri::command]
+pub async fn pile_mis_de_cote(app: AppHandle) -> Result<Vec<MessageRow>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let mut lignes = store.pile_mis_de_cote().map_err(|err| err.to_string())?;
+        store
+            .enrichir_lignes(&mut lignes)
+            .map_err(|err| err.to_string())?;
+        Ok(lignes
+            .into_iter()
+            .map(to_message_row)
+            .map(|mut row| {
+                row.cote = true;
+                row
+            })
+            .collect())
     })
     .await
 }

@@ -772,3 +772,22 @@ motivée.)
   typographie) — le constat « le Portier n'a pas suivi » la
   matérialise —, ou au chantier E4 (la Réception organisée réutilise
   ces rangs en sections).
+
+### D-47 · Trois menus contextuels et deux bascules de fil sont des copies main
+
+- **Fait (revue E4/E5, 2026-08-30)** : le dessin du menu du produit vit
+  en trois copies CSS (`Portier.svelte` `.menu`, `Liste.svelte`
+  `.menu-gestes`, l'éventail de `PileMisDeCote.svelte`) — l'ombre
+  `0 8px 24px` y est déjà écrite trois fois, `min-width` diverge de
+  10 px sans raison, et Portier seul passe par `var(--ombre, …)`. Côté
+  cœur, `toggle_mis_de_cote`/`etat_mis_de_cote` sont le jumeau
+  structurel de `toggle_pin`/`pin_state` (~80 lignes, seule la table
+  change), et `pile_mis_de_cote` celui de `pinned_unified_scoped`.
+- **Raison du report** : factoriser le menu = un composant partagé qui
+  touche trois surfaces validées au STOP visuel ; les jumeaux du cœur
+  sont chacun couverts par leurs tests — le refactor n'apporte rien au
+  terrain de la release en cours.
+- **Rouvre si** : un jeton d'ombre/menu entre à la table des thèmes
+  (la copie divergerait à la première retouche), au troisième jumeau
+  (E6 groupes), ou à la prochaine retouche du contrat de résolution de
+  fil (le RED « jamais la tête » devrait être porté deux fois).

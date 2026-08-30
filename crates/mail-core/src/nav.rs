@@ -21,8 +21,8 @@ use rusqlite::{OptionalExtension, params, params_from_iter};
 
 use crate::error::Error;
 use crate::store::{
-    InvitationRang, PINNED_THREADS, SELECT_UNIFIED, Store, THREAD_AGGREGATE, UNIFIED_JOIN_TAIL,
-    UnifiedRow, fil_route_sql, routage_page_sql, row_to_threaded, unified_page_sql,
+    InvitationRang, PINNED_THREADS, SELECT_UNIFIED, Store, THREAD_AGGREGATE, UnifiedRow,
+    fil_route_sql, routage_page_sql, row_to_threaded, unified_page_sql,
 };
 use crate::thread::RECEIVED_MAILBOX;
 
@@ -304,14 +304,15 @@ impl Store {
         dossiers: &CanonicalFolders,
         organise: bool,
     ) -> Result<(u64, u64), Error> {
-        // E2 : en mode organisé, le non-lu d'un fil retenu au Portier ou
-        // routé au Kiosque ne gonfle pas la pastille de la Réception —
-        // elle dirait un message que la liste refuse de montrer (le
-        // retenu a SA pastille, celle du Portier).
+        // E2/E5 : en mode organisé, le non-lu d'un fil retenu au
+        // Portier, routé au Kiosque ou MIS DE CÔTÉ ne gonfle pas la
+        // pastille de la Réception — elle dirait un message que la
+        // liste refuse de montrer (constat de capture E5 : pastille à
+        // 2 devant une liste sans non-lu).
         let retenue = if organise {
-            " AND organise_hors = 0"
+            crate::store::exclusion_organisee()
         } else {
-            ""
+            String::new()
         };
         let reception: i64 = self.conn().query_row(
             &format!(
@@ -375,9 +376,9 @@ impl Store {
         };
         let filtre_non_lues = if non_lues { " AND unseen > 0" } else { "" };
         let retenue = if organise {
-            " AND organise_hors = 0"
+            crate::store::exclusion_organisee()
         } else {
-            ""
+            String::new()
         };
         // R4 (D5) : le total suit le FLOT — les épinglées, servies à
         // part en tête, n'y comptent pas ; sans cette exclusion, la
@@ -484,10 +485,11 @@ impl Store {
         // compte) — le fragment partagé prend l'index en argument,
         // jamais une copie divergente du EXISTS.
         let fil_route = fil_route_sql("?1");
+        let hors_pile = format!(" AND id NOT IN ({})", crate::store::MIS_DE_COTE_THREADS);
         let sql = format!(
             "SELECT COUNT(*) FROM threads
               WHERE inbox_size > 0
-                AND {fil_route}{filtre_compte}{filtre_non_lues}"
+                AND {fil_route}{hors_pile}{filtre_compte}{filtre_non_lues}"
         );
         let count: i64 = match account_id {
             None => self
@@ -526,15 +528,16 @@ impl Store {
         // sa vue, un fil retenu attend au Portier ; le préposer ici
         // afficherait une rangée que le total refuse de compter.
         let retenue = if organise {
-            " AND organise_hors = 0"
+            crate::store::exclusion_organisee()
         } else {
-            ""
+            String::new()
         };
+        let queue = crate::store::unified_join_tail(false);
         let sql = format!(
             "{SELECT_UNIFIED}{THREAD_AGGREGATE}
              FROM (SELECT account_id, last_mailbox_id, last_uid, last_epoch, size, unseen
                      FROM threads
-                    WHERE inbox_size > 0{retenue} AND id IN ({PINNED_THREADS}){filtre}{non_lues_seulement}) t{UNIFIED_JOIN_TAIL}"
+                    WHERE inbox_size > 0{retenue} AND id IN ({PINNED_THREADS}){filtre}{non_lues_seulement}) t{queue}"
         );
         let mut stmt = self.conn().prepare(&sql)?;
         let rows = match account_id {

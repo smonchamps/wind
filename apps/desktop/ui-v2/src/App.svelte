@@ -24,6 +24,7 @@
   import Nav from './Nav.svelte';
   import Liste from './Liste.svelte';
   import Portier from './Portier.svelte';
+  import PileMisDeCote from './PileMisDeCote.svelte';
   import Lecture from './Lecture.svelte';
   import Conversation from './Conversation.svelte';
   import Composition from './Composition.svelte';
@@ -1032,6 +1033,39 @@
     selectionnee = null;
     fermerFil();
   }
+  // E5 : la bascule de la pile — depuis la barre du fil ou le ⋯
+  // d'une rangée. Mis de côté : le fil quitte sa vue, la pile le
+  // garde ; « Reprendre »/« Terminé » le rend d'où il vient.
+  let pile = $state(null);
+  async function basculerCote(ligne, depuisFil = false) {
+    if (gesteSurEcho(ligne)) return;
+    try {
+      const cote = await appel('toggle_mis_de_cote', {
+        accountId: ligne.account_id,
+        mailbox: ligne.mailbox,
+        uid: ligne.uid,
+      });
+      flash(t(cote ? 'toast.misDeCote' : 'toast.reprisPile'));
+      // La discipline de jeton du store (patron d'epinglerFil) : le
+      // bouton de la barre suit le geste — un « Reprendre » qui ne
+      // changerait pas d'étiquette re-mettrait de côté au clic suivant
+      // (revue E5).
+      if (fil.ligne && cleMsg(fil.ligne) === cleMsg(ligne)) fil.cote = cote;
+      liste?.recharger();
+      pile?.recharger();
+      chargerNav();
+      // Depuis la surface de lecture : un fil mis de côté vient de
+      // quitter sa vue — l'écran 03 retourne à la boîte, le volet
+      // (Kiosque/Registre) se ferme (revue E5 : il montrait un fil
+      // parti, bouton menteur compris).
+      if (depuisFil && cote) {
+        if (fil.cadre === 'plein') retourBoite();
+        else fermerFil();
+      }
+    } catch (err) {
+      flash(t('erreur.preference', { err }));
+    }
+  }
   // « Déplacer vers… » (E1) : l'expéditeur ENTIER change de
   // destination — l'adresse est résolue de l'enveloppe côté cœur,
   // le toast dit le geste, la liste se ressert (une vue Kiosque ou
@@ -1049,7 +1083,13 @@
         flash(t('erreur.sansAdresse'));
         return;
       }
-      flash(t('toast.expediteurDeplace', { boite: t(LIBELLES[destination]) }));
+      // E4 : « Écarter cet expéditeur » — le Non nu, depuis le ⋯
+      // d'une rangée ; le choix se rejoue à l'historique du Portier.
+      if (destination === 'ecarte') {
+        flash(t('toast.portierNonNu', { qui: ligne.sender }));
+      } else {
+        flash(t('toast.expediteurDeplace', { boite: t(LIBELLES[destination]) }));
+      }
       liste?.recharger();
       chargerNav();
     } catch (err) {
@@ -1207,7 +1247,14 @@
     }
   }
   function retourBoite() {
-    reduireFil(volets === 3);
+    reduireFil(volets === 3 && !receptionOrganisee);
+    // E4 : au retour d'écran 03, un fil LU quitte « Nouveau pour
+    // vous » — la liste et la couture se resservent, la nav suit.
+    if (receptionOrganisee) {
+      liste?.recharger();
+      pile?.recharger();
+      chargerNav();
+    }
   }
 
   function ecrire() {
@@ -1283,12 +1330,16 @@
       })
       .catch((err) => console.error('mark_seen :', err));
   }
+  // E4 : la Réception ORGANISÉE n'a pas de volet de lecture — un clic
+  // ouvre l'écran 03 (la surimpression existante), quel que soit le
+  // réglage de volets.
+  const receptionOrganisee = $derived(modeOrganise() && categorie === 'reception');
   function surSelection(ligne) {
     selectionnee = ligne;
     // V-D2 : en deux volets, l'ouverture EST l'écran 03 — qui sait
     // servir un message sans fil (écho compris). Le marquage lu ne
     // bouge pas : seule la surface de destination change.
-    if (volets === 3) lecture.ouvrir(ligne);
+    if (volets === 3 && !receptionOrganisee) lecture.ouvrir(ligne);
     else conversation.ouvrir(ligne);
     marquerVue(ligne);
   }
@@ -1512,7 +1563,10 @@
     if (!(await geste(ligne)) || !suivante) return;
     liste?.selectionner(suivante);
     selectionnee = suivante;
-    if (volets === 3) {
+    // Revue E5 : en Réception ORGANISÉE le volet n'existe pas — ouvrir
+    // et marquer lue une conversation jamais montrée mentirait à la
+    // section « Nouveau pour vous » (le disque partait sans lecture).
+    if (volets === 3 && !receptionOrganisee) {
       lecture?.ouvrir(suivante);
       marquerVue(suivante);
     }
@@ -1595,6 +1649,7 @@
   {#if prete}
     <div class="colonnes" class:colonnes--2={volets === 2}
          class:colonnes--1={volets === 1}
+         class:colonnes--organise={receptionOrganisee}
          style="--l-nav:{lNav}px; --l-liste:{lListe}px">
       {#if volets !== 1}
         <Nav {comptes} {reperes} {noms} {categorie} {compte}
@@ -1614,9 +1669,11 @@
                {brouillons} onreprendre={reprendreBrouillon}
                onselect={surSelection} ononglet={surOnglet} ongroupe={groupe}
                ontotal={(t) => (totalListe = t)}
+               organise={modeOrganise()} ondeplacer={deplacerExpediteur}
+               oncote={basculerCote}
                onresultats={(n, total) => { nResultats = n; nTotal = total; }} onflash={flash} />
       {/if}
-      {#if volets === 3 && categorie !== 'portier'}
+      {#if volets === 3 && categorie !== 'portier' && !receptionOrganisee}
         <Lecture bind:this={lecture} {brouillons} {reperes} {noms} {comptes} melange={melangeComptes} onreprendre={reprendreBrouillon}
                  onarchiver={archiver} onsupprimer={supprimer}
                  onconversation={ouvrirConversation}
@@ -1625,6 +1682,7 @@
                  onspam={signalerSpam} onnonspam={marquerLegitime}
                  estIndesirable={categorie === 'indesirables'} onflash={flash}
                  organise={modeOrganise()} ondeplacer={deplacerExpediteur}
+                 oncote={(l) => basculerCote(l, true)}
                  {epinglable} onepingler={epinglerFil} />
       {/if}
       <!-- Les poignées (R3) : posées SUR les frontières de la grille,
@@ -1647,10 +1705,18 @@
              ondblclick={() => defautLargeur(volet)}
              onkeydown={(e) => toucherPoignee(volet, e)}></div>
       {/snippet}
+      {#if receptionOrganisee && !(fil.cadre === 'plein' && fil.ligne)}
+        <!-- E5 : la pile vit en bas à droite de la Réception organisée
+             (prototype) — éventail au clic, tableau plein écran. Elle
+             s'efface sous l'écran 03 (revue E5 : elle flottait
+             par-dessus la lecture, z 20 contre 1). -->
+        <PileMisDeCote bind:this={pile} onouvrir={ouvrirConversation} onflash={flash}
+                       onchange={() => { liste?.recharger(); chargerNav(); }} />
+      {/if}
       {#if volets !== 1}
         {@render poignee('nav', t('volets.poigneeNav'), lNav - 3)}
       {/if}
-      {#if volets === 3 && categorie !== 'portier'}
+      {#if volets === 3 && categorie !== 'portier' && !receptionOrganisee}
         {@render poignee('liste', t('volets.poigneeListe'), lNav + lListe - 3)}
       {/if}
     </div>
@@ -1724,6 +1790,7 @@
                   onecrire={ecrire}
                   onflash={flash}
                   organise={modeOrganise()} ondeplacer={deplacerExpediteur}
+                  oncote={(l) => basculerCote(l, true)}
                   {epinglable} onepingler={epinglerFil} />
 
     <!-- R2 (A75) : le parcours complet (`accueilAJouer`, première
@@ -1844,6 +1911,10 @@
     overflow:hidden; background:var(--bg);
   }
   .colonnes--1 .cadre-portier { grid-column:1 / -1; }
+  /* E4 : la Réception organisée n'a pas de volet de lecture — la
+     liste s'étend de la nav au bord droit (colonne centrée dedans). */
+  .colonnes--organise > :global([data-testid="liste"]) { grid-column:2 / -1; }
+  .colonnes--1.colonnes--organise > :global([data-testid="liste"]) { grid-column:1 / -1; }
   /* La poignée (R3) : 7 px à cheval sur le filet, hors flux ; au
      survol, à la saisie et au focus clavier, un trait d'accent de 2 px
      dit la frontière — la grille, elle, ne bouge pas d'un pixel. */

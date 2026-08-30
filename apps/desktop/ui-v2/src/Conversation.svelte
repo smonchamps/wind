@@ -35,6 +35,7 @@
     onepingler = () => {},
     organise = false,
     ondeplacer = () => {},
+    oncote = () => {},
   } = $props();
 
   export function ouvrir(nouvelle) {
@@ -69,7 +70,7 @@
          lecture centrée et bornée (D2 : ~960 px). -->
     <div class="scene">
       <div class="colonne">
-        <Fil {brouillons} {reperes} {noms} {comptes} {melange} {organise} {ondeplacer}
+        <Fil {brouillons} {reperes} {noms} {comptes} {melange} {organise} {ondeplacer} {oncote}
              {onreprendre} {onarchiver} {onsupprimer}
              {onrepondre} {onrepondretous} {ontransferer}
              {onspam} {onnonspam} {estIndesirable} {onflash}

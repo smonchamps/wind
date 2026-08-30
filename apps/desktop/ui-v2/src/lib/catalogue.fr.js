@@ -70,6 +70,26 @@ export const FR = {
     "{qui} est écarté — ses prochains messages s'archiveront automatiquement.",
   'toast.portierNonCorbeille':
     '{qui} est écarté — ses prochains messages iront à la Corbeille.',
+  // E4 — la Réception organisée : sections et gestes par rangée.
+  'liste.sectionNouveau': 'Nouveau pour vous · {n}',
+  'liste.sectionConsulte': 'Déjà consulté',
+  'liste.gestes': 'Gestes sur ce message',
+  'liste.deplacerVers': 'Déplacer vers {boite}',
+  'liste.ecarter': 'Écarter cet expéditeur',
+  // E5 — Mis de côté : la pile, l'éventail, le tableau (textes du
+  // prototype).
+  'pile.misDeCote': 'Mis de côté',
+  'pile.mettre': 'Mettre de côté',
+  'pile.reprendre': 'Reprendre',
+  'pile.voirTableau': 'Voir le tableau',
+  'pile.ouvrir': 'Ouvrir',
+  'pile.tableauTitre': 'Le tableau des mis de côté',
+  'pile.tableauNote':
+    "Tout ce que vous avez mis de côté, en aperçu sur un seul écran. « Terminé » renvoie le message d'où il vient.",
+  'pile.tableauVide': 'La pile est vide.',
+  'pile.aria': 'Messages mis de côté',
+  'toast.misDeCote': 'Mis de côté — la pile vit en bas à droite de la Réception.',
+  'toast.reprisPile': 'Repris de la pile.',
   'toast.portierReintegre':
     '{qui} est réintégré — ses messages des 90 derniers jours réapparaissent au Portier.',
   'entete.reglages': 'Réglages',

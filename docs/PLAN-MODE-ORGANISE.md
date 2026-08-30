@@ -1,5 +1,42 @@
 # PLAN-MODE-ORGANISE — Portier, Kiosque, Registre, Mis de côté, Groupes
 
+> **E4 et E5 LIVRÉES le 2026-08-30** (D7 amendée : la première MINEUR
+> porte E1-E5). **E4 — la Réception organisée** : sections « Nouveau
+> pour vous · n » / « Déjà consulté » servies par UN flot ordonné
+> non-lus d'abord (S1/A2 industrialisé : index partiels d'expression
+> global + par compte, gardes de plan sur les TROIS chemins — banc
+> 200 k : 0,03 / 1,6 ms aux offsets 0 / 100 k, couture 25 ms hors
+> chemin d'affichage ; migration qui REBÂTIT l'index E2 dont la clé
+> n'a pas les sections) ; colonne centrée 760 px sans volet, clic →
+> écran 03, retour ressert (un lu quitte sa section), ⋯ de gestes à
+> gauche de l'heure (place réservée). Deux pièges de fenêtrage payés
+> en capture : l'entête absolue exige un ESPACEUR RÉEL dans le flux
+> (les rangées s'empilent en flex — un décrochement qui ne vivrait que
+> dans les maths chevauche), et une marge auto en travers d'une
+> colonne flex ÉTEINT le stretch (rangées rétrécies au contenu).
+> STOP visuel CE : un constat (l'air avant le titre de section — bande
+> 34 → 52 px), le reste GO. **E5 — Mis de côté** : table `mis_de_cote`
+> (patron pins, purges comprises), état par FIL semé de la ligne
+> servie (patron épingle — la revue a retiré l'IPC par ouverture),
+> exclusion partagée de TOUTES les vues organisées par UNE écriture
+> (`exclusion_organisee()` — la revue a trouvé la pastille de nav qui
+> comptait encore les mis de côté), pile bas-droite + éventail +
+> tableau plein écran, bascule à la barre du fil et au ⋯, la pile
+> s'efface sous l'écran 03. Revue à regard neuf E4+E5 : **10
+> trouvailles, 9 corrigées** (dont le triage clavier qui marquait lue
+> une conversation jamais montrée, la couture d'une autre source, le
+> testid vacant du filet) ; refus motivé : « Terminé » sur un fil dont
+> l'expéditeur a été écarté suit le VERDICT (caché du mode organisé —
+> le comportement du Non, pas une perte). Dette **D-47** (menus ×3 et
+> jumeaux pins/pile). Tests mail-core 406 → **410**, e2e 162 → **166**
+> (chaque mécanisme prouvé en le cassant). **Système A99.**
+> **Terrain CE E4+E5 OK le 2026-08-30, zéro constat.** L'écart de
+> périmètre relevé — le « Kiosque en cartes déjà ouvertes » du
+> prototype n'était assigné à AUCUNE étape — est TRANCHÉ par le CE le
+> même jour : « Avant la release » → **étape E5bis, le Kiosque en
+> cartes** (corps préchargés par page servie, D5/S3), puis la release
+> MINEUR E1-E5bis.
+
 > **E3 LIVRÉE le 2026-08-30 — les règles du Non à la synchro** (D2/D4,
 > Système A98 ; **terrain CE OK le jour même, zéro constat** —
 > exécution serveur vérifiée au webmail). À l'arrivée d'un message d'un écarté avec règle :
@@ -363,6 +400,9 @@ minimum** (§2.9) — proposition : E1-E3 puis E4-E6.
 >   Kiosque borné à la page, budget mesuré S3.
 > - **D6** : « Oui, globale » — la recherche traverse tout.
 > - **D7** : « Oui, E1-E3 puis E4-E6 » — deux releases MINEUR.
+>   **AMENDÉE le 2026-08-30 (CE)** : « Réalisons maintenant E4 et E5
+>   et faisons la release à la fin » — la première MINEUR porte
+>   E1-E5 ; E6 (Groupes) part avec une release suivante.
 > - **D8** : « Oui, maintenant » — le chantier démarre (le bloquant
 >   bêta est levé le 2026-08-29 : `feedback-wind@fcts.io` reçoit,
 >   c'était la propagation DNS ; les invitations courent en

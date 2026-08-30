@@ -237,6 +237,96 @@ test("la règle du Non s'exécute à l'arrivée — et ne touche jamais l'antér
   await expect(page.locator('[data-testid="mode-organise"]')).toHaveAttribute('aria-checked', 'true');
 });
 
+// ---------------- E4 — la Réception organisée (sections) ----------------
+test("la Réception organisée a ses sections, s'ouvre en écran 03, et un fil lu quitte « Nouveau pour vous »", async () => {
+  // Mode ON, sur la Réception (fin du test E3). Les deux sections du
+  // prototype encadrent UN flot : non-lus d'abord, la couture est le
+  // COUNT — et le volet de lecture n'existe pas ici.
+  const sections = page.locator('[data-testid="section"]');
+  await expect(sections).toHaveCount(2);
+  await expect(sections.first()).toContainText('Nouveau pour vous ·');
+  await expect(sections.last()).toContainText('Déjà consulté');
+  // `volet-lecture` : le VRAI testid du volet (revue E5 — « lecture »
+  // n'existe pas, l'assertion était vacante par construction).
+  await expect(page.locator('[data-testid="volet-lecture"]')).toHaveCount(0);
+
+  const libelle = await sections.first().textContent();
+  const n = Number(libelle.match(/(\d+)/)[1]);
+  // Le clic ouvre l'ÉCRAN 03 (jamais un volet), le retour ressert la
+  // liste : le fil LU a quitté « Nouveau pour vous ».
+  await page.locator('[data-testid="ligne"]').first().click();
+  await expect(page.locator('[data-testid="conversation"]')).toBeVisible();
+  await page.locator('[data-testid="retour-boite"]').click();
+  await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
+  await expect(sections.first()).toContainText(`Nouveau pour vous · ${n - 1}`);
+});
+
+test("le ⋯ d'une rangée déplace l'expéditeur — à gauche de l'heure, sans bouger la géométrie", async () => {
+  const rang = page.locator('[data-testid="ligne"]', { hasText: 'Suite du dossier' });
+  await expect(rang).toHaveCount(1);
+  await rang.locator('[data-testid="ligne-gestes"]').click();
+  await page.locator('[data-testid="gestes-kiosque"]').click();
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Kiosque');
+  await expect(page.locator('[data-testid="ligne"]', { hasText: 'Suite du dossier' })).toHaveCount(0);
+  await page.locator('[data-testid="nav-dossier"][data-categorie="kiosque"]').click();
+  await expect(page.locator('[data-testid="ligne"]', { hasText: 'Suite du dossier' })).toHaveCount(1);
+  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  // Décor rendu (revue E5) : le verdict posé par CE test se retire —
+  // les tests suivants héritent d'une Réception complète, jamais d'un
+  // Kiosque peuplé par accident.
+  await page.evaluate(async () => {
+    await window.__TAURI__.core.invoke('retirer_routage', { address: 'expediteur2@exemple.fr' });
+  });
+  await expect(page.locator('[data-testid="ligne"]', { hasText: 'Suite du dossier' })).toHaveCount(1);
+});
+
+// ------------------------- E5 — Mis de côté -------------------------
+test('mis de côté : le fil quitte la liste, vit dans la pile, et « Terminé » le rend', async () => {
+  const rang = page.locator('[data-testid="ligne"]', { hasText: 'Premiere fois' });
+  await expect(rang).toHaveCount(1);
+  await rang.locator('[data-testid="ligne-gestes"]').click();
+  await page.locator('[data-testid="gestes-cote"]').click();
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Mis de côté');
+  await expect(page.locator('[data-testid="ligne"]', { hasText: 'Premiere fois' })).toHaveCount(0);
+  // La pile, en bas à droite : le compte, l'éventail, le tableau.
+  const pile = page.locator('[data-testid="pile-bouton"]');
+  await expect(pile).toContainText('1');
+  await pile.click();
+  const carte = page.locator('[data-testid="pile-carte"]');
+  await expect(carte).toHaveCount(1);
+  await expect(carte).toContainText('Premiere fois');
+  await page.locator('[data-testid="pile-voir-tableau"]').click();
+  await expect(page.locator('[data-testid="pile-tableau"]')).toBeVisible();
+  await expect(page.locator('[data-testid="pile-tableau-carte"]')).toContainText('Premiere fois');
+  // « Terminé » renvoie le message d'où il vient — la pile se vide.
+  await page.locator('[data-testid="pile-terminer"]').click();
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Repris');
+  await expect(page.locator('[data-testid="pile-tableau"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="ligne"]', { hasText: 'Premiere fois' })).toHaveCount(1);
+  await expect(page.locator('[data-testid="pile-bouton"]')).toHaveCount(0);
+});
+
+test("la barre du fil bascule « Mettre de côté » / « Reprendre »", async () => {
+  await page.locator('[data-testid="ligne"]', { hasText: 'Premiere fois' }).click();
+  await expect(page.locator('[data-testid="conversation"]')).toBeVisible();
+  const bascule = page.locator('[data-testid="mettre-de-cote"]');
+  await expect(bascule).toContainText('Mettre de côté');
+  await bascule.click();
+  // Le fil vient de quitter sa vue : l'écran retourne à la boîte.
+  await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="ligne"]', { hasText: 'Premiere fois' })).toHaveCount(0);
+  // Reprendre depuis l'éventail : la carte ouvre l'écran 03, la barre
+  // dit « Reprendre », le geste rend le fil à la Réception.
+  await page.locator('[data-testid="pile-bouton"]').click();
+  await page.locator('[data-testid="pile-carte"]').click();
+  await expect(page.locator('[data-testid="conversation"]')).toBeVisible();
+  await expect(page.locator('[data-testid="mettre-de-cote"]')).toContainText('Reprendre');
+  await page.locator('[data-testid="mettre-de-cote"]').click();
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Repris');
+  await page.locator('[data-testid="retour-boite"]').click();
+  await expect(page.locator('[data-testid="ligne"]', { hasText: 'Premiere fois' })).toHaveCount(1);
+});
+
 test('quitter le mode depuis une vue organisée rend la Réception et la nav classique', async () => {
   await page.locator('[data-testid="nav-dossier"][data-categorie="kiosque"]').click();
   await page.locator('[data-testid="mode-organise"]').click();

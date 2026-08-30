@@ -65,6 +65,25 @@ export const EN = {
     '{qui} is screened out — their next messages will be archived automatically.',
   'toast.portierNonCorbeille':
     '{qui} is screened out — their next messages will go to the Trash.',
+  // E4 — the organized Inbox: sections and per-row gestures.
+  'liste.sectionNouveau': 'New for you · {n}',
+  'liste.sectionConsulte': 'Previously seen',
+  'liste.gestes': 'Actions on this message',
+  'liste.deplacerVers': 'Move to {boite}',
+  'liste.ecarter': 'Screen out this sender',
+  // E5 — Set Aside: the pile, the fan, the board.
+  'pile.misDeCote': 'Set aside',
+  'pile.mettre': 'Set aside',
+  'pile.reprendre': 'Bring back',
+  'pile.voirTableau': 'See the board',
+  'pile.ouvrir': 'Open',
+  'pile.tableauTitre': 'The Set Aside board',
+  'pile.tableauNote':
+    'Everything you set aside, at a glance on one screen. \u201cDone\u201d sends the message back where it came from.',
+  'pile.tableauVide': 'The pile is empty.',
+  'pile.aria': 'Set-aside messages',
+  'toast.misDeCote': 'Set aside \u2014 the pile lives at the bottom right of the Inbox.',
+  'toast.reprisPile': 'Brought back from the pile.',
   'toast.portierReintegre':
     '{qui} is reinstated — their messages from the last 90 days reappear at the Screener.',
   'entete.reglages': 'Settings',

@@ -271,14 +271,20 @@ CREATE INDEX IF NOT EXISTS idx_threads_date_globale
     ON threads(last_epoch DESC, last_uid DESC, account_id)
     WHERE inbox_size > 0;
 -- Le MIROIR du précédent pour la Réception ORGANISÉE : le filtre de
--- rétention entre DANS l'index — l'offset saute des entrées d'index,
--- jamais des lignes sondées (S2-bis : 4,2 ms à l'offset 100 k, MIEUX
--- que le témoin ; 40 ms de création à 200 k). Sur une base héritée, la
--- colonne existe déjà : `migrate()` l'ajoute AVANT ce schéma (le piège
--- de `drop_if_outdated` — un index partiel sur colonne absente refuse
--- l'ouverture entière).
+-- rétention entre DANS l'index (S2-bis) et, depuis E4, la clé porte
+-- les SECTIONS — les non-lus d'abord (verdict S1/A2 : sans cet index
+-- d'expression, le tri à sections matérialise toute la boîte, 548 ms
+-- par page ; avec lui, le profil du témoin). L'expression est en
+-- CLASSEMENT seulement, jamais en jointure (piège E2). Sur une base
+-- héritée, la colonne existe déjà : `migrate()` l'ajoute AVANT ce
+-- schéma, et REBÂTIT l'index d'E2 dont la clé n'a pas les sections.
 CREATE INDEX IF NOT EXISTS idx_threads_date_organise
-    ON threads(last_epoch DESC, last_uid DESC, account_id)
+    ON threads((unseen > 0) DESC, last_epoch DESC, last_uid DESC, account_id)
+    WHERE inbox_size > 0 AND organise_hors = 0;
+-- La même clé PRÉFIXÉE par compte — la nav « Boîtes » de la Réception
+-- organisée (le patron d'idx_threads_date pour le classique).
+CREATE INDEX IF NOT EXISTS idx_threads_date_organise_compte
+    ON threads(account_id, (unseen > 0) DESC, last_epoch DESC, last_uid DESC)
     WHERE inbox_size > 0 AND organise_hors = 0;
 CREATE TABLE IF NOT EXISTS thread_links (
     account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
