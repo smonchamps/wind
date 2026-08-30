@@ -12,6 +12,38 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.14.0] - 2026-08-30
+
+Le Mode organisé : Wind trie votre courrier — vous gardez la main.
+
+### Ajouté
+
+- **Le Mode organisé, sur invitation.** Un réglage, réversible à tout
+  moment : Wind range alors le courrier en trois lieux — la
+  **Réception** pour les personnes, le **Kiosque** pour les lettres
+  d'information, le **Registre** pour les notifications et reçus.
+  « Déplacer vers » corrige un rangement d'un geste, et Wind s'en
+  souvient pour la suite. Rien n'est jamais perdu : tout reste dans
+  vos dossiers, seule la présentation change.
+- **Le Portier.** Les messages d'expéditeurs inconnus attendent à la
+  porte au lieu d'encombrer la Réception. Une page simple — Oui ou
+  Non — décide pour chacun ; l'historique garde trace de chaque
+  verdict et permet de se raviser.
+- **Le Non agit pour de bon.** Dire Non au Portier peut aussi marquer
+  comme indésirable, archiver ou mettre à la corbeille les prochains
+  messages de l'expéditeur — jamais de suppression définitive, et
+  tout s'éteint si le mode est désactivé.
+- **La Réception à sections.** « Nouveau pour vous » puis « Déjà
+  consulté » : ce qui attend votre regard se détache de ce qui est lu.
+- **Mis de côté.** Une conversation à garder sous la main rejoint une
+  pile discrète en tête de Réception, d'un geste, et en repart de même.
+- **Le Kiosque en cartes déjà ouvertes.** Les lettres d'information se
+  lisent sur place, corps entier, en défilant — sans un clic. Chaque
+  carte garde la garde d'images et ses gestes : replier, mettre de
+  côté, déplacer, écarter.
+- **Le thème Innamoramento.** Le thème Mona devient Innamoramento,
+  en clair et en nuit — accent grenat, contrastes vérifiés.
+
 ## [0.13.0] - 2026-08-29
 
 L'entête des messages dit tout, et les petits accrocs s'effacent.
