@@ -47,7 +47,9 @@ mail-core 387 → **401**, e2e 157 → **161** (rétention prouvée en la
 cassant). Dette neuve **D-46** (l'anatomie de rangée du Portier est
 une copie main de celle de la Liste).
 
-**E3 (les règles du Non) est LIVRÉE le 2026-08-30** (Système A98) : à
+**E3 (les règles du Non) est LIVRÉE le 2026-08-30** (commit
+`59a8378`, CI verte run 33304306395, **terrain CE zéro constat le
+jour même** — exécution serveur vérifiée au webmail ; Système A98) : à
 l'arrivée d'un message d'un écarté avec règle, l'action est
 journalisée **dans la transaction du lot** (revue E3 — l'exécution
 après commit laissait une fenêtre de crash où la règle se perdait
