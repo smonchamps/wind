@@ -1,9 +1,16 @@
 # PLAN-RETOURS-13 — douze retours CE sur le Mode organisé (post-0.14.0)
 
-> Ouvert le 2026-08-30. Douze retours terrain du CE sur la 0.14.0
-> (Mode organisé E1-E5bis). Statut : **livré — terrain validé en DEUX
-> passes le 2026-08-30 (« tout ok »), gate complète verte, commit/CI
-> en cours**. Deux STOP visuels validés (E2/E4 puis E5). Journal A101.
+> **CHANTIER SOLDÉ le 2026-08-30 — terrain complet.** Douze retours
+> CE sur la 0.14.0 (Mode organisé E1-E5bis), ouvert et clos le même
+> jour. GO CE au STOP 1 le 2026-08-30 (D1-D5), deux STOP visuels
+> validés (E2/E4 puis E5), terrain en DEUX passes (5 constats +
+> glyphe kiosque B corrigés le jour même, verdict final « tout ok »).
+> Commit `5ab1f15`, CI verte run 33323808766. Journal A101.
+>
+> Chiffres kaizen : 4 gates jouées (2 arrêtées tôt — fmt, rayon V14 —
+> 2 complètes vertes, 2,5-3,3 min) ; 5 constats KO à la première
+> passe terrain, 0 à la seconde ; mesure T1 cumulative au poste
+> 425,9 M équiv. input (l'outil ne ventile pas par chantier).
 
 ## Constat (instruction sur pièces, 2026-08-30)
 

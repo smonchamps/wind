@@ -791,3 +791,21 @@ motivée.)
   (la copie divergerait à la première retouche), au troisième jumeau
   (E6 groupes), ou à la prochaine retouche du contrat de résolution de
   fil (le RED « jamais la tête » devrait être porté deux fois).
+
+### D-48 · La liste ne suit pas une écriture externe
+
+- **Fait (revue RETOURS-13, 2026-08-30)** : la Réception ne se
+  recharge qu'au battement d'une génération de relève ou par ses
+  propres handlers de gestes. Un `retirer_routage` (ou toute écriture
+  hors des chemins de la Liste — second poste, rejeu, commande e2e)
+  laisse la liste périmée jusqu'à une navigation manuelle. Le pas e2e
+  de `mode-organise.spec.js` qui « passait » vivait d'une recharge
+  FORTUITE de la sonde — il ressert désormais par l'aller-retour de
+  dossier, honnêtement. Même famille que D-44 (`connectes` sans cycle
+  de rafraîchissement).
+- **Raison du report** : le correctif propre est un signal
+  d'invalidation générique (bump de génération à toute écriture du
+  cœur qui change une vue), pas un `liste.recharger()` de plus câblé
+  par surface — un chantier, pas une retouche.
+- **Rouvre si** : un constat terrain « la liste ne bouge pas » sur un
+  geste hors-Liste, ou au chantier multi-fenêtres/second poste.

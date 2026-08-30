@@ -14,8 +14,10 @@
 
 ✅ **Aucun chantier en cours.** Le prochain sujet inscrit : **la
 première vague bêta** (PLAN-BETA — inviter 5-10 proches, D9 ; le
-bloquant `feedback-wind@fcts.io` est levé depuis le 2026-08-29).
-Ensuite, au choix du CE : **E6 — Groupes** (report écrit du
+bloquant `feedback-wind@fcts.io` est levé depuis le 2026-08-29) — et
+**une release est due avant l'invitation** : RETOURS-13 est sur main,
+pas encore publié (l'entrée CHANGELOG s'écrira à la publication,
+§2.9). Ensuite, au choix du CE : **E6 — Groupes** (report écrit du
 PLAN-MODE-ORGANISE, D7 amendée — le dossier et le spike S1 sont
 prêts) ou les retours de la bêta. Mesures en cours : **S4** (flux
 d'inconnus au Portier, une semaine sur les deux postes, engagée le
@@ -23,6 +25,34 @@ d'inconnus au Portier, une semaine sur les deux postes, engagée le
 `lancer-wind.ps1` à la prochaine MAJ acceptée.
 
 Dernier soldé :
+**[PLAN-RETOURS-13](PLAN-RETOURS-13.md)** (2026-08-30, ouvert et
+SOLDÉ le même jour, commit `5ab1f15`, CI verte run 33323808766,
+terrain CE en deux passes — 5 constats corrigés le jour même, verdict
+« tout ok »). **Douze retours CE sur le Mode organisé** (post-0.14.0),
+journal **A101** : Sombre Automatique en tête des Thèmes ; rail des
+Réglages calé baseline+2px (patron nav) ; « Réception » en mode
+organisé (règle UNIQUE `cleLibelleBoite` — quatre copies mortes) +
+filet de nav après Portier ; entête du Portier à gauche (glyphe
+aminci 1,5), sous-titre en 3 phrases CE, historique vide réécrit,
+titre de section toujours visible ; **le clic nu du Portier suit des
+DÉFAUTS réglables** (livrés Oui → Réception, Non → Corbeille ;
+section Réglages > Portier dans les DEUX modes, vocabulaire dérivé
+des tables de routage, refusé côté cœur) ; **le Kiosque gagne une
+mémoire « lu »** (renverse A100 : table `kiosque_lus` au patron pins,
+témoin IntersectionObserver réarmé sur échec, sections « Non lus »
+dépliées / « Lus précédemment » en groupes par expéditeur repliés en
+pile, sectionnement AU SERVICE de la page, tout-lu à la coche) ;
+entête Kiosque au format Portier (classes partagées `.entete-vue` de
+systeme.css) ; **glyphe `kiosque` redessiné** (kiosque à journaux,
+feston — planche de 7, verdict CE « B ») ; « Déplacés automatiquement
+dans la corbeille ». Revue à regard neuf 8 angles : 8 corrigées (dont
+la course des sélecteurs et le témoin jamais réarmé), dette neuve
+**D-48** (la liste ne suit pas une écriture externe — le filet e2e
+chanceux rendu honnête). Tests mail-core 410 → **412**, e2e 166 →
+**169**. Piège gravé au passage : la recharge « fortuite » d'une
+sonde peut faire passer un pas e2e des mois — viser le geste produit.
+
+Le chantier soldé précédent :
 **[PLAN-MODE-ORGANISE](PLAN-MODE-ORGANISE.md)** (2026-08-29 → 30,
 **SOLDÉ le 2026-08-30 — terrain complet, E1-E5bis LIVRÉES et
 PUBLIÉES en 0.14.0** ; E6 — Groupes — reportée, chantier futur).
