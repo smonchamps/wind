@@ -26,7 +26,10 @@ sections et groupes AU SERVICE avec index partiels/agrégat, exclusion
 par message gratuite, préchargement Kiosque dans le budget). Revue 8/8
 corrigées (deux « perte de courrier » prouvées RED). e2e 153 → **157**.
 
-**E2 (le Portier) est LIVRÉE le 2026-08-30** : rétention des inconnus
+**E2 (le Portier) est LIVRÉE le 2026-08-30** (commit `fe33b51`, CI
+verte run 33302233626, STOP visuel CE GO et **terrain CE zéro
+constat le jour même**, mesure S4 engagée une semaine) : rétention
+des inconnus
 (D3 « arrivées seules » — `portier_attente` matérialisée à l'arrivée,
 drapeau `threads.organise_hors` entretenu par `thread::refresh` +
 index partiel miroir, verdict S2-bis : toute forme calculée à la
