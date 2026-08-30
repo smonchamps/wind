@@ -35,8 +35,8 @@ pub use action::{Action, PendingAction};
 pub use address::EmailAddress;
 pub use attachment::{Attachment, human_size};
 pub use backfill::{
-    BACKFILL_BATCH, BackfillReport, NO_HORIZON, THREAD_HEADER_BATCH, backfill_bodies,
-    backfill_percent, backfill_recipients, backfill_thread_headers,
+    BACKFILL_BATCH, BackfillReport, HORIZONS_IMPORT, NO_HORIZON, THREAD_HEADER_BATCH,
+    backfill_bodies, backfill_percent, backfill_recipients, backfill_thread_headers, horizon_epoch,
 };
 pub use body::load_body;
 pub use compose::{
@@ -65,7 +65,8 @@ pub use remote::{
 };
 pub use search::WIDE_QUERY_THRESHOLD;
 pub use store::{
-    Account, AccountConfig, AdoptionProgress, InvitationRang, Store, SyncState, UnifiedRow,
+    Account, AccountConfig, AdoptionProgress, GroupeNettoyage, InvitationRang,
+    PERIMETRES_NETTOYAGE, PLAGES_NETTOYAGE, SessionNettoyage, Store, SyncState, UnifiedRow,
 };
 pub use sync::{
     RepereLocal, SYNC_BYTES_PER_MESSAGE, SyncEngine, SyncMode, SyncReport, disk_shortfall,

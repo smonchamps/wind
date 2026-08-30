@@ -1,5 +1,6 @@
-// Le jeu d'icônes « Elements » (V8 — PLAN-ELEMENTS) : 86 glyphes
-// (78 à V8 ; `check` A86, `feedback` RETOURS-11, 5 Mode organisé A96)
+// Le jeu d'icônes « Elements » (V8 — PLAN-ELEMENTS) : 87 glyphes
+// (78 à V8 ; `check` A86, `feedback` RETOURS-11, 5 Mode organisé A96,
+// `nettoyage` A103)
 // dessinés en SVG, grille 24, trait 2 unités, bouts nets (butt),
 // jonctions vives (miter). Ce catalogue est LE jeu livré ; le Système
 // (docs/design/systeme.dc.html, section Icônes) porte le relevé — un
@@ -107,6 +108,7 @@ export const JEU = {
   // planche de 7 (variante B), remplace le dessin du prototype.
   kiosque: { d:['M3 6h18','M3 6v1.5a1.5 1.5 0 0 0 3 0','M6 7.5a1.5 1.5 0 0 0 3 0','M9 7.5a1.5 1.5 0 0 0 3 0','M12 7.5a1.5 1.5 0 0 0 3 0','M15 7.5a1.5 1.5 0 0 0 3 0','M18 7.5a1.5 1.5 0 0 0 3 0','M21 6v1.5','M5 10v10','M19 10v10','M4 20h16','M5 15h14'] },
   registre: { d:['M6 3h12v18l-3-2-3 2-3-2-3 2z','M9 8h6','M9 12h4'] },
+  nettoyage: { d:['M3 8h11a3 3 0 1 0-3-4','M3 12h15a3 3 0 1 1-3 4','M3 16h7a2 2 0 1 1-2 3'] },
   pile: { d:['M4 16l8 4 8-4','M4 12l8 4 8-4','M4 8l8-4 8 4-8 4z'] },
   groupe: { d:['M4 10h16v9H4z','M4 14h5l2 2h2l2-2h5','M7 6h10'] },
   // E2 : les points de suspension des minis ⋯ du Portier — trois

@@ -17,6 +17,7 @@
   // détecté » ne se montre pas en accueil (2e passe, constat 2).
   import { appel } from './lib/transport.js';
   import { t } from './lib/texte.svelte.js';
+  import { HORIZONS_IMPORT as HORIZONS } from './lib/vocabulaires.js';
 
   let {
     onajoute = () => {},
@@ -29,6 +30,10 @@
   } = $props();
 
   let adresse = $state('');
+  // ADR 0029 (D1/D2) : la profondeur d'historique importée en local —
+  // le choix voyage DANS la commande d'ajout (l'id du compte n'existe
+  // qu'à son retour). Défaut « 1 an » (décision CE D2).
+  let horizon = $state('1a');
   let generique = $state(false);
   let motDePasse = $state('');
   let imapHote = $state('');
@@ -56,8 +61,8 @@
       attente = t('guichet.autorisation');
       try {
         await (estGoogle()
-          ? appel('add_account')
-          : appel('add_microsoft_account', { email: saisie }));
+          ? appel('add_account', { horizon })
+          : appel('add_microsoft_account', { email: saisie, horizon }));
         onajoute();
       } catch (err) {
         erreur = t('erreur.connexion', { err });
@@ -88,6 +93,7 @@
           smtpHost: smtpHote.trim(),
           smtpPort: Number(smtpPort) || 465,
         },
+        horizon,
       });
       onajoute();
     } catch (err) {
@@ -111,6 +117,17 @@
                 data-testid="onboarding-continuer"
                 disabled={occupe} onclick={continuer}>{t('accueil.ajouter')}</button>
       {/if}
+    </div>
+    <!-- ADR 0029 : la profondeur d'historique — visible sur les DEUX
+         surfaces et pour les trois flux (le choix part avec l'ajout). -->
+    <div class="horizon">
+      <label for="ob-horizon">{t('guichet.horizon')}</label>
+      <select id="ob-horizon" bind:value={horizon} disabled={occupe}
+              data-testid="guichet-horizon">
+        {#each HORIZONS as h (h)}
+          <option value={h}>{t(`horizon.${h}`)}</option>
+        {/each}
+      </select>
     </div>
     {#if generique}
       <label for="ob-mdp">{t('guichet.mdp')}</label>
@@ -161,9 +178,9 @@
     <p class="note">{attente}</p>
   {:else if generique}
     <p class="note">{t('guichet.noteGenerique')}</p>
-  {:else if !accueil}
-    <p class="note">{t('guichet.noteAuto')}</p>
   {/if}
+  <!-- La note « serveur détecté automatiquement » est morte (retour CE
+       2026-08-30, STOP visuel EA2) : superflue. -->
 </div>
 
 <style>
@@ -177,6 +194,16 @@
     box-shadow:var(--shadow); outline:none; width:100%;
   }
   .compact input { height:40px; font-size:13px; box-shadow:none; }
+  /* Le sélecteur d'horizon : le dessin des entrées, en hauteur réduite —
+     un réglage, pas une saisie (sélecteur natif, patron d'A26). */
+  .horizon { display:flex; flex-direction:column; gap:12px; }
+  select {
+    height:40px; font-size:13px; padding:0 12px; background:var(--surface);
+    color:var(--ink); border:1px solid var(--border);
+    border-radius:var(--r-controle); outline:none; align-self:flex-start;
+    min-width:220px; cursor:pointer;
+  }
+  select:disabled { opacity:.6; cursor:default; }
   .serveurs { display:flex; gap:12px; }
   .serveurs span { display:flex; flex-direction:column; gap:12px; flex:1; }
   .serveurs .port { flex:0 0 110px; }

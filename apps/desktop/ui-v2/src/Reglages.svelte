@@ -23,6 +23,7 @@
   import { activation } from './lib/clavier.js';
   import { appel } from './lib/transport.js';
   import { REPERE_ICONES, REPERE_TEINTES } from './lib/reperes.js';
+  import { HORIZONS_IMPORT as HORIZONS } from './lib/vocabulaires.js';
   import GuichetCompte from './GuichetCompte.svelte';
 
   // A11 — la section « Comptes » : v1 offrait l'ajout à tout moment,
@@ -148,6 +149,38 @@
     });
   }
 
+  // ADR 0029 (D3) : l'horizon d'import par compte — lu du cœur à
+  // L'OUVERTURE (revue 2026-08-30 : un $effect sur `comptes` re-tirait
+  // toutes les 10 s au rythme de chargerNav, et une lecture tardive
+  // pouvait écraser un choix optimiste en vol) ; le sélecteur ne se
+  // peint qu'avec l'état PERSISTÉ (patron portierDefauts). Sur échec
+  // d'écriture, retour à l'état réellement persisté — l'interface ne
+  // ment pas.
+  let horizons = $state({});
+  let horizonOuvert = $state(null);
+  let horizonErreur = $state(null);
+  function chargerHorizons() {
+    for (const c of comptes) {
+      appel('horizon_import_get', { accountId: c.account_id })
+        .then((v) => (horizons[c.account_id] = v))
+        .catch((err) => console.error('horizon_import_get :', err));
+    }
+  }
+  function ouvrirHorizon(id) {
+    const rouvre = horizonOuvert !== id;
+    fermerCartes();
+    if (rouvre) horizonOuvert = id;
+  }
+  function changerHorizon(id, valeur) {
+    const avant = horizons[id];
+    horizons[id] = valeur;
+    horizonErreur = null;
+    appel('horizon_import_set', { accountId: id, valeur }).catch((err) => {
+      horizons[id] = avant;
+      horizonErreur = t('reglages.horizonImpossible', { err });
+    });
+  }
+
   // « Jamais deux cartes sous la même rangée » (revue 2026-08-22) : LE
   // point unique — la prochaine carte s'ajoute ici, pas dans N sites
   // (revue 2026-08-23 : l'invariant vivait copié en cinq endroits).
@@ -158,6 +191,8 @@
     repereErreur = null;
     nomOuvert = null;
     nomErreur = null;
+    horizonOuvert = null;
+    horizonErreur = null;
   }
 
   export function ouvrir() {
@@ -168,6 +203,12 @@
     espacement = espacementActuel();
     ajoutOuvert = false;
     fermerCartes();
+    // Remise à zéro AVANT le rechargement (patron expediteursImages) :
+    // les portes se peignent depuis la BASE, jamais depuis la mémoire
+    // de l'ouverture précédente — un choix qui n'a pas persisté ne doit
+    // pas se montrer persisté (filet prouvé vacant sans cette ligne).
+    horizons = {};
+    chargerHorizons();
     reconnexion = null;
     reconnexionErreur = null;
     groupe = 'comptes';
@@ -542,6 +583,14 @@
                     {/if}
                     <span class="adresse" class:sous-nom={noms[c.account_id]}>{c.email}</span>
                   </button>
+                  <!-- ADR 0029 (D3) : la porte de l'horizon d'import —
+                       la VALEUR est la porte (pas de glyphe neuf, A3),
+                       la carte s'ouvre sous la rangée. -->
+                  <button type="button" class="btn-horizon" data-testid="compte-horizon"
+                          aria-expanded={horizonOuvert === c.account_id}
+                          aria-label={t('reglages.horizonCompte', { email: c.email })}
+                          onclick={() => ouvrirHorizon(c.account_id)}>
+                    {horizons[c.account_id] ? t(`horizon.${horizons[c.account_id]}`) : '…'}</button>
                   {#if estDeconnecte(c)}
                     <!-- Jeton mort : l'état se DIT (link_off, le glyphe de
                          la reconnexion — même sens qu'à la fente d'avis)
@@ -633,6 +682,27 @@
                               onclick={() => (nomOuvert = null)}>
                         {t('action.annuler')}</button>
                     </div>
+                  </div>
+                {/if}
+                {#if horizonOuvert === c.account_id}
+                  <!-- La carte de l'horizon, sous la rangée (patron du
+                       nom). Application immédiate — le geste du thème ;
+                       la note dit ce qu'étendre et réduire FONT. -->
+                  <div class="carte-nom" data-testid="reglages-horizon">
+                    <p class="titre-repere">{t('reglages.horizonTitre')}</p>
+                    {#if horizons[c.account_id]}
+                      <select class="select-horizon" data-testid="horizon-select"
+                              value={horizons[c.account_id]}
+                              onchange={(e) => changerHorizon(c.account_id, e.currentTarget.value)}>
+                        {#each HORIZONS as h (h)}
+                          <option value={h}>{t(`horizon.${h}`)}</option>
+                        {/each}
+                      </select>
+                    {/if}
+                    <p class="note-horizon">{t('reglages.horizonNote')}</p>
+                    {#if horizonErreur}
+                      <p class="erreur-repere" data-testid="horizon-erreur">{horizonErreur}</p>
+                    {/if}
                   </div>
                 {/if}
                 {#if retrait === c.account_id}
@@ -1138,7 +1208,24 @@
   .reconnecter:disabled { opacity:.6; cursor:default; }
   /* Un compte déconnecté a déjà son état à droite : la corbeille du
      retrait perd son ressort automatique. */
-  .compte:has(.deconnecte) .retirer { margin-left:0; }
+  .compte:has(.deconnecte) .retirer, .compte:has(.btn-horizon) .retirer { margin-left:0; }
+  /* La porte de l'horizon : la valeur en texte, discrète au repos —
+     le dessin du retrait, sans l'alerte. */
+  .btn-horizon {
+    height:28px; padding:0 10px; margin-left:auto; flex:none;
+    display:inline-flex; align-items:center; font-size:12.5px;
+    white-space:nowrap; color:var(--muted); background:transparent;
+    border:1px solid transparent; border-radius:var(--r-controle); cursor:pointer;
+  }
+  .btn-horizon:hover { color:var(--ink); background:var(--sel); border-color:var(--border); }
+  .compte:has(.deconnecte) .btn-horizon { margin-left:0; }
+  .select-horizon {
+    height:32px; font-size:13px; padding:0 10px; align-self:flex-start;
+    min-width:200px; color:var(--ink); background:var(--surface);
+    border:1px solid var(--border); border-radius:var(--r-controle);
+    outline:none; cursor:pointer;
+  }
+  .note-horizon { margin:0; font-size:12px; line-height:1.5; color:var(--muted); }
   .erreur-reconnexion {
     margin:0; padding:0 16px 6px; font-size:12px; line-height:1.4;
     color:var(--alert);

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Planche — glyphe « Nettoyage de printemps »</title>
+<style>
+  body { font:14px/1.5 "Segoe UI", sans-serif; margin:24px; color:#1a1a1a; background:#fafafa; }
+  h1 { font-size:18px; } h2 { font-size:14px; margin:28px 0 8px; }
+  .grille { display:flex; gap:28px; flex-wrap:wrap; }
+  .carte { border:1px solid #ddd; border-radius:6px; padding:14px 18px; background:#fff; width:210px; }
+  .carte.nuit { background:#1d1d20; color:#e8e8e8; border-color:#333; }
+  .nom { font-weight:600; margin-bottom:8px; }
+  .tailles { display:flex; align-items:flex-end; gap:16px; }
+  svg { display:block; }
+  .l { stroke:currentColor; stroke-width:2; fill:none; stroke-linecap:butt; stroke-linejoin:miter; }
+  .note { color:#777; font-size:12.5px; margin-top:6px; }
+  .repere { display:flex; gap:14px; align-items:center; padding:10px 0; }
+</style>
+</head>
+<body>
+<h1>Glyphe « Nettoyage de printemps » — planche de candidats</h1>
+<p>Grille 24, trait 2, bouts nets, jonctions vives — les règles du jeu
+Elements (V8). Trois tailles (26 / 20 / 16 px), deux polarités. En bas :
+les glyphes du Mode organisé, pour juger la distance des silhouettes.</p>
+
+<div id="planche"></div>
+
+<h2>Les voisins de nav (distance de silhouette)</h2>
+<div class="repere" id="voisins"></div>
+
+<script>
+const CANDIDATS = {
+  'A — balai droit': {
+    d: ['M12 3v8','M7 11h10l2 9H5z','M10 14v6','M14 14v6'],
+    note: 'Le geste littéral, silhouette pleine et stable à 16 px.',
+  },
+  'B — balai en action (diagonal)': {
+    d: ['M20 4l-8 8','M13 11l-2 1-6 5 3 3 5-6 1-2z','M7 20l-3 1'],
+    note: 'Le balai qui balaie — dynamique, manche en diagonale.',
+  },
+  'C — plumeau': {
+    d: ['M13 11l7 9','M13 11C7 10 4 7 4 3','M13 11c-3-4-3-8-1-8','M13 11c0-5 2-7 5-7'],
+    note: 'Dépoussiérer — plumes en éventail, plus doux.',
+  },
+  'D — courant d’air': {
+    d: ['M3 8h11a3 3 0 1 0-3-4','M3 12h15a3 3 0 1 1-3 4','M3 16h7a2 2 0 1 1-2 3'],
+    note: 'L’air frais du printemps — abstrait, aucune anse ni boîte.',
+  },
+  'E — étincelles': {
+    d: ['M11 4l1.8 5.2L18 11l-5.2 1.8L11 18l-1.8-5.2L4 11l5.2-1.8z','M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z'],
+    note: 'Le propre qui brille — risque de lecture « IA ».',
+  },
+  'F — tulipe': {
+    d: ['M8 3v5a4 4 0 0 0 8 0V3','M8 3c1 2 3 3 4 3s3-1 4-3','M12 12v9','M12 18c-3 0-5-1-6-4 3 0 5 1 6 4z','M12 20c3 0 5-1 6-4-3 0-5 1-6 4z'],
+    note: 'Le printemps lui-même — saison plutôt que geste.',
+  },
+};
+
+const VOISINS = {
+  portier: ['M12 4a3 3 0 1 0 0 6 3 3 0 1 0 0-6','M5 20v-1a7 7 0 0 1 14 0v1','M9.5 13.5v3l2.5-1.5z','M14.5 13.5v3l-2.5-1.5z'],
+  kiosque: ['M3 6h18','M3 6v1.5a1.5 1.5 0 0 0 3 0','M6 7.5a1.5 1.5 0 0 0 3 0','M9 7.5a1.5 1.5 0 0 0 3 0','M12 7.5a1.5 1.5 0 0 0 3 0','M15 7.5a1.5 1.5 0 0 0 3 0','M18 7.5a1.5 1.5 0 0 0 3 0','M21 6v1.5','M5 10v10','M19 10v10','M4 20h16','M5 15h14'],
+  registre: ['M6 3h12v18l-3-2-3 2-3-2-3 2z','M9 8h6','M9 12h4'],
+  pile: ['M4 16l8 4 8-4','M4 12l8 4 8-4','M4 8l8-4 8 4-8 4z'],
+};
+
+function svg(trace, taille) {
+  const chemins = trace.map((d) => `<path class="l" d="${d}"/>`).join('');
+  return `<svg width="${taille}" height="${taille}" viewBox="0 0 24 24">${chemins}</svg>`;
+}
+
+const planche = document.getElementById('planche');
+for (const [nom, { d, note }] of Object.entries(CANDIDATS)) {
+  const rangee = document.createElement('div');
+  rangee.className = 'grille';
+  rangee.style.marginBottom = '18px';
+  for (const nuit of [false, true]) {
+    const carte = document.createElement('div');
+    carte.className = 'carte' + (nuit ? ' nuit' : '');
+    carte.innerHTML = `<div class="nom">${nom}</div>
+      <div class="tailles">${svg(d, 26)}${svg(d, 20)}${svg(d, 16)}</div>
+      ${nuit ? '' : `<div class="note">${note}</div>`}`;
+    rangee.appendChild(carte);
+  }
+  planche.appendChild(rangee);
+}
+
+const voisins = document.getElementById('voisins');
+voisins.innerHTML = Object.entries(VOISINS)
+  .map(([nom, d]) => `<span title="${nom}">${svg(d, 20)}</span>`)
+  .join('');
+</script>
+</body>
+</html>

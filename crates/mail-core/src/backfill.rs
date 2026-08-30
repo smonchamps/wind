@@ -47,6 +47,38 @@ pub const BACKFILL_BATCH: usize = 50;
 /// [ADR 0010]: ../../../docs/adr/0010-synchronisation-integrale.md
 pub const NO_HORIZON: i64 = i64::MIN;
 
+/// Le vocabulaire FERMÉ du réglage « profondeur d'historique » (ADR 0029,
+/// PLAN-HORIZON-NETTOYAGE D1) — les valeurs offertes au guichet d'ajout
+/// de compte, dans l'ordre du sélecteur. La valeur vit en pref par compte
+/// (`horizon_import.{id}`, [`crate::store::PREFS_PAR_COMPTE`]).
+pub const HORIZONS_IMPORT: &[&str] = &["1m", "2m", "3m", "6m", "1a", "2a", "tout"];
+
+/// Traduit la valeur symbolique en borne d'epoch pour les pompes de
+/// CORPS (les enveloppes restent intégrales — D1 : la liste et la
+/// recherche par objet/expéditeur portent sur tout).
+///
+/// Jours pleins, dérivés à la LECTURE : la borne suit l'horloge, jamais
+/// une date figée au moment de l'ajout du compte. L'inconnu ne borne
+/// RIEN : amputer l'import sur une pref corrompue serait une perte
+/// silencieuse — le défaut sûr est « tout » (D4).
+pub fn horizon_epoch(valeur: &str, now: i64) -> i64 {
+    const JOUR: i64 = 86_400;
+    let jours = match valeur {
+        "1m" => 30,
+        "2m" => 61,
+        "3m" => 91,
+        "6m" => 183,
+        "1a" => 365,
+        "2a" => 730,
+        // « 5 ans » n'appartient qu'au vocabulaire du Nettoyage de
+        // printemps (PLAGES_NETTOYAGE) — HORIZONS_IMPORT garde la porte
+        // du réglage d'import, la traduction est commune.
+        "5a" => 1826,
+        _ => return NO_HORIZON,
+    };
+    now - jours * JOUR
+}
+
 /// Le pourcentage de corps DÉJÀ rapatriés sur le corpus en portée
 /// (R1, PLAN-RETOURS-3) — `done` = messages avec un corps, `total` = tous
 /// les messages en portée.
@@ -296,6 +328,69 @@ mod percent_tests {
     #[test]
     fn le_fait_qui_depasse_est_plafonne() {
         assert_eq!(backfill_percent(210, 200), Some(100));
+    }
+}
+
+#[cfg(test)]
+mod horizon_tests {
+    use super::{NO_HORIZON, horizon_epoch};
+
+    const JOUR: i64 = 86_400;
+    const NOW: i64 = 1_756_500_000;
+
+    /// Chaque valeur du vocabulaire borne à sa durée — en jours pleins,
+    /// dérivés à la LECTURE : la borne suit l'horloge, jamais une date
+    /// figée au moment de l'ajout du compte.
+    #[test]
+    fn le_vocabulaire_borne_a_sa_duree() {
+        assert_eq!(horizon_epoch("1m", NOW), NOW - 30 * JOUR);
+        assert_eq!(horizon_epoch("2m", NOW), NOW - 61 * JOUR);
+        assert_eq!(horizon_epoch("3m", NOW), NOW - 91 * JOUR);
+        assert_eq!(horizon_epoch("6m", NOW), NOW - 183 * JOUR);
+        assert_eq!(horizon_epoch("1a", NOW), NOW - 365 * JOUR);
+        assert_eq!(horizon_epoch("2a", NOW), NOW - 730 * JOUR);
+    }
+
+    /// « Tout depuis le début » ne borne rien — y compris les epochs
+    /// négatifs (horloge fausse, en-tête corrompu), même règle que
+    /// `NO_HORIZON`.
+    #[test]
+    fn tout_ne_borne_rien() {
+        assert_eq!(horizon_epoch("tout", NOW), NO_HORIZON);
+    }
+
+    /// Une valeur inconnue (pref corrompue, vocabulaire futur) ne borne
+    /// rien : amputer l'import sur une valeur illisible serait une perte
+    /// silencieuse — le défaut sûr est « tout ».
+    #[test]
+    fn l_inconnu_ne_borne_rien() {
+        assert_eq!(horizon_epoch("6 semaines", NOW), NO_HORIZON);
+        assert_eq!(horizon_epoch("", NOW), NO_HORIZON);
+    }
+
+    /// Le filet d'exhaustivité (revue 2026-08-30) : chaque membre des
+    /// DEUX vocabulaires (import ET nettoyage) a son bras dans
+    /// `horizon_epoch` — sauf « tout ». Sans lui, ajouter « 10a » à
+    /// `PLAGES_NETTOYAGE` sans toucher au match ferait tomber la plage
+    /// au défaut « tout » : un nettoyage-corbeille balaierait TOUT
+    /// l'historique au lieu des 10 ans choisis. Pour l'import, le même
+    /// trou est bénin (on importe plus) — pour le nettoyage il est
+    /// DESTRUCTIF.
+    #[test]
+    fn chaque_valeur_des_vocabulaires_a_sa_duree() {
+        for valeur in crate::store::PLAGES_NETTOYAGE
+            .iter()
+            .chain(super::HORIZONS_IMPORT)
+        {
+            if *valeur == "tout" {
+                continue;
+            }
+            assert_ne!(
+                horizon_epoch(valeur, NOW),
+                NO_HORIZON,
+                "{valeur:?} tombe au défaut « tout » — le match de horizon_epoch n'a pas suivi le vocabulaire"
+            );
+        }
     }
 }
 

@@ -791,6 +791,17 @@ motivée.)
   (la copie divergerait à la première retouche), au troisième jumeau
   (E6 groupes), ou à la prochaine retouche du contrat de résolution de
   fil (le RED « jamais la tête » devrait être porté deux fois).
+- **ROUVERTE le 2026-08-30 (PLAN-HORIZON-NETTOYAGE, revue)** : le
+  Nettoyage de printemps est le jumeau annoncé — `Nettoyage.svelte`
+  recopie du Portier le menu ⋯ entier (markup, `ouvrirMini` et ses
+  bornes 250/170 en dur, cartes `BOITE_DE`/`TOAST_NON`, CSS
+  `.btn-portier`/`.mini`/`.menu`), 4e copie du dessin. Non factorisée
+  dans le chantier (trois surfaces validées au STOP visuel, même
+  raison qu'au report) — **à traiter en dette dédiée** : un
+  `MenuVerdict.svelte` partagé Portier/Nettoyage, et les classes
+  communes en `systeme.css` (le précédent `.entete-vue`). S'y ajoute
+  la paire de styles `select` née en deux copies (GuichetCompte 40 px
+  / Réglages 32 px).
 
 ### D-48 · La liste ne suit pas une écriture externe
 

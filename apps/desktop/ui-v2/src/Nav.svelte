@@ -51,6 +51,8 @@
           { id: 'kiosque', icone: 'kiosque', libelle: t('boite.kiosque') },
           { id: 'registre', icone: 'registre', libelle: t('boite.registre') },
           { id: 'portier', icone: 'portier', libelle: t('boite.portier'), nonLus: portier },
+          // Volet B (PLAN-HORIZON-NETTOYAGE) : la 5e section du mode.
+          { id: 'nettoyage', icone: 'nettoyage', libelle: t('boite.nettoyage') },
         ]
       : []),
     { id: 'envoyes', icone: 'send', libelle: t('boite.envoyes') },
@@ -87,8 +89,8 @@
         <span class="pastille">{d.nonLus}</span>
       {/if}
     </div>
-    {#if organise && d.id === 'portier'}
-      <!-- RETOURS-13 R12 : le filet entre les 4 dossiers organisés et
+    {#if organise && d.id === 'nettoyage'}
+      <!-- RETOURS-13 R12 : le filet entre les dossiers organisés et
            le reste — le dessin du filet de `.boites`. -->
       <div class="separateur" data-testid="nav-separateur"></div>
     {/if}

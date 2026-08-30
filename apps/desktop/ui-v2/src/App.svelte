@@ -24,6 +24,7 @@
   import Nav from './Nav.svelte';
   import Liste from './Liste.svelte';
   import Portier from './Portier.svelte';
+  import Nettoyage from './Nettoyage.svelte';
   import PileMisDeCote from './PileMisDeCote.svelte';
   import Kiosque from './Kiosque.svelte';
   import Lecture from './Lecture.svelte';
@@ -1028,7 +1029,11 @@
       // la barre de statut dit le nom de la vue, jamais un compte
       // périmé de la vue précédente. Même règle au Kiosque en cartes,
       // le temps que sa propre sonde réponde.
-      if (quoi.categorie === 'portier' || quoi.categorie === 'kiosque') totalListe = null;
+      if (
+        quoi.categorie === 'portier'
+        || quoi.categorie === 'kiosque'
+        || quoi.categorie === 'nettoyage'
+      ) totalListe = null;
     }
     if ('compte' in quoi) compte = quoi.compte;
     recherche = '';
@@ -1107,7 +1112,11 @@
   async function basculerOrganise() {
     try {
       const actif = await basculerModeOrganise();
-      if (!actif && (categorie === 'kiosque' || categorie === 'registre' || categorie === 'portier')) {
+      if (
+        !actif
+        && (categorie === 'kiosque' || categorie === 'registre'
+          || categorie === 'portier' || categorie === 'nettoyage')
+      ) {
         choisir({ categorie: 'reception' });
       } else {
         // La Réception affichée change de CONTENU avec le mode (E2 :
@@ -1342,6 +1351,12 @@
   // E5bis : le Kiosque en CARTES — une scène de lecture, pas une
   // liste ; comme le Portier et la Réception organisée, pas de volet.
   const kiosqueCartes = $derived(modeOrganise() && categorie === 'kiosque');
+  // LES scènes sans volet de lecture — UN prédicat (revue 2026-08-30 :
+  // l'énumération vivait copiée aux deux gardes Lecture/poignée ; la
+  // prochaine section pleine scène s'ajoute ICI, pas dans N sites).
+  const sceneSansLecture = $derived(
+    categorie === 'portier' || categorie === 'nettoyage' || receptionOrganisee || kiosqueCartes,
+  );
   function surSelection(ligne) {
     selectionnee = ligne;
     // V-D2 : en deux volets, l'ouverture EST l'écran 03 — qui sait
@@ -1663,7 +1678,13 @@
         <Nav {comptes} {reperes} {noms} {categorie} {compte}
              organise={modeOrganise()} portier={portierTotal} onchoisir={choisir} />
       {/if}
-      {#if categorie === 'portier'}
+      {#if categorie === 'nettoyage'}
+        <!-- Volet B : le Nettoyage de printemps — même régime de scène
+             que le Portier (colonne, pas de volet de lecture). -->
+        <div class="cadre-portier">
+          <Nettoyage onflash={flash} onchange={chargerNav} />
+        </div>
+      {:else if categorie === 'portier'}
         <!-- E2 : le Portier n'est pas une liste — un rang par
              EXPÉDITEUR en attente, un oui/non et rien d'autre. Sa
              scène prend TOUTE la place à droite de la nav (colonne
@@ -1689,7 +1710,7 @@
                oncote={basculerCote}
                onresultats={(n, total) => { nResultats = n; nTotal = total; }} onflash={flash} />
       {/if}
-      {#if volets === 3 && categorie !== 'portier' && !receptionOrganisee && !kiosqueCartes}
+      {#if volets === 3 && !sceneSansLecture}
         <Lecture bind:this={lecture} {brouillons} {reperes} {noms} {comptes} melange={melangeComptes} onreprendre={reprendreBrouillon}
                  onarchiver={archiver} onsupprimer={supprimer}
                  onconversation={ouvrirConversation}
@@ -1732,7 +1753,7 @@
       {#if volets !== 1}
         {@render poignee('nav', t('volets.poigneeNav'), lNav - 3)}
       {/if}
-      {#if volets === 3 && categorie !== 'portier' && !receptionOrganisee && !kiosqueCartes}
+      {#if volets === 3 && !sceneSansLecture}
         {@render poignee('liste', t('volets.poigneeListe'), lNav + lListe - 3)}
       {/if}
     </div>

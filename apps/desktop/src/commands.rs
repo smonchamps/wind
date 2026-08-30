@@ -293,8 +293,9 @@ fn connect_generic(
 pub async fn add_account(
     app: AppHandle,
     state: State<'_, AppState>,
+    horizon: Option<String>,
 ) -> Result<AccountInfo, String> {
-    add_oauth_account(app, state, &mail_auth::GOOGLE, None).await
+    add_oauth_account(app, state, &mail_auth::GOOGLE, None, horizon).await
 }
 
 /// Ajoute un compte Microsoft 365 / Outlook.com.
@@ -306,6 +307,7 @@ pub async fn add_microsoft_account(
     app: AppHandle,
     state: State<'_, AppState>,
     email: String,
+    horizon: Option<String>,
 ) -> Result<AccountInfo, String> {
     let email = email.trim().to_string();
     // Validation à la frontière : l'adresse déclarée devient la clé du
@@ -314,7 +316,7 @@ pub async fn add_microsoft_account(
     if !is_plausible_address(&email) {
         return Err("adresse invalide — saisissez l'adresse complète du compte".to_string());
     }
-    add_oauth_account(app, state, &mail_auth::MICROSOFT, Some(email)).await
+    add_oauth_account(app, state, &mail_auth::MICROSOFT, Some(email), horizon).await
 }
 
 /// Le tronc commun des ajouts OAuth2 : consentement navigateur, puis
@@ -324,7 +326,12 @@ async fn add_oauth_account(
     state: State<'_, AppState>,
     provider: &'static mail_auth::Provider,
     declared_email: Option<String>,
+    horizon: Option<String>,
 ) -> Result<AccountInfo, String> {
+    // Validation à la frontière, AVANT le parcours navigateur : refuser
+    // un horizon illisible après le consentement laisserait un compte
+    // créé sous un geste qui a échoué.
+    valider_horizon(horizon.as_deref())?;
     let account = tauri::async_runtime::spawn_blocking(move || {
         Authenticator::from_env(provider)
             .map_err(|err| err.to_string())?
@@ -338,6 +345,7 @@ async fn add_oauth_account(
     let id = store
         .adopt_or_create_account(&account.email, account.provider.account_kind)
         .map_err(|err| err.to_string())?;
+    ecrire_horizon_premier_ajout(&store, id, horizon.as_deref())?;
     let info = AccountInfo {
         id,
         email: account.email.clone(),
@@ -438,6 +446,40 @@ pub struct GenericAccountInput {
     pub smtp_port: u16,
 }
 
+/// Le miroir côté commande de `Store::set_horizon_import` : refuser une
+/// valeur hors vocabulaire AVANT tout travail (connexion, consentement).
+fn valider_horizon(horizon: Option<&str>) -> Result<(), String> {
+    match horizon {
+        Some(h) if !mail_core::HORIZONS_IMPORT.contains(&h) => {
+            Err(format!("horizon inconnu : {h:?}"))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// L'horizon du guichet ne s'écrit qu'au PREMIER ajout (revue
+/// 2026-08-30) : re-jouer l'ajout d'un compte existant (le chemin
+/// d'adoption — un geste de réparation) ne doit pas écraser en silence
+/// un horizon déjà choisi (ou le « tout » réputé de D4) avec le défaut
+/// du sélecteur. Après coup, le réglage vit aux Réglages > Comptes (D3).
+fn ecrire_horizon_premier_ajout(
+    store: &Store,
+    account_id: i64,
+    horizon: Option<&str>,
+) -> Result<(), String> {
+    let Some(h) = horizon else { return Ok(()) };
+    let deja = store
+        .text_pref(&format!("horizon_import.{account_id}"))
+        .map_err(|err| err.to_string())?
+        .is_some();
+    if !deja {
+        store
+            .set_horizon_import(account_id, h)
+            .map_err(|err| err.to_string())?;
+    }
+    Ok(())
+}
+
 /// Ajoute un compte IMAP/SMTP générique : teste la connexion, stocke le
 /// mot de passe dans le coffre, puis enregistre le compte en base.
 #[tauri::command]
@@ -445,7 +487,9 @@ pub async fn add_generic_account(
     app: AppHandle,
     state: State<'_, AppState>,
     input: GenericAccountInput,
+    horizon: Option<String>,
 ) -> Result<AccountInfo, String> {
+    valider_horizon(horizon.as_deref())?;
     let username = input.username.unwrap_or_else(|| input.email.clone());
     let email = input.email.clone();
     let imap_host = input.imap_host.clone();
@@ -479,6 +523,7 @@ pub async fn add_generic_account(
             &email, &username, &imap_host, imap_port, &smtp_host, smtp_port,
         )
         .map_err(|err| err.to_string())?;
+    ecrire_horizon_premier_ajout(&store, id, horizon.as_deref())?;
 
     let session = AccountSession::Generic(GenericCredentials {
         email: email.clone(),
@@ -714,15 +759,15 @@ fn relever_inbox(
         }
     };
     let corps = corps_a_l_arrivee(arrivees);
+    // L'horizon d'import s'applique ici aussi (uniforme avec la pompe).
+    // La borne compare la DATE du message, pas son arrivée : une
+    // arrivée à l'en-tête Date ancien (renvoi différé, message déplacé
+    // vers INBOX par un autre client) reste hors portée — voulu, c'est
+    // la sémantique D1 : son corps se charge au clic.
+    let horizon = horizon_corps(store, account_id);
     if corps > 0
-        && let Err(err) = mail_core::backfill_bodies(
-            server,
-            store,
-            account_id,
-            MAILBOX,
-            mail_core::NO_HORIZON,
-            corps,
-        )
+        && let Err(err) =
+            mail_core::backfill_bodies(server, store, account_id, MAILBOX, horizon, corps)
     {
         problems.push(format!("corps des arrivées : {err}"));
     }
@@ -2770,6 +2815,26 @@ fn epoch_maintenant() -> i64 {
         .unwrap_or(0)
 }
 
+/// La borne d'epoch des pompes de CORPS pour un compte (ADR 0029,
+/// PLAN-HORIZON-NETTOYAGE D1) : l'horizon d'import lu de la pref,
+/// dérivé à la LECTURE — la borne suit l'horloge. Les enveloppes et les
+/// en-têtes de fil restent intégraux, seuls les corps sont bornés.
+/// Best effort : une lecture qui échoue ne borne rien — jamais une
+/// perte silencieuse sur une erreur.
+fn horizon_corps(store: &Store, account_id: i64) -> i64 {
+    match store.horizon_import(account_id) {
+        Ok(valeur) => mail_core::horizon_epoch(&valeur, epoch_maintenant()),
+        Err(err) => {
+            // §9 : l'échec se DIT (trace lisible via lancer-wind.ps1),
+            // même quand le repli est sûr.
+            eprintln!(
+                "horizon_import illisible (compte {account_id}) : {err} — import intégral par prudence"
+            );
+            mail_core::NO_HORIZON
+        }
+    }
+}
+
 /// R1 (PLAN-RETOURS-11, D1-D2) : mémorise « Afficher les images » pour
 /// CE message — clé d'enveloppe, la garde ne redemandera plus.
 #[tauri::command]
@@ -2869,6 +2934,37 @@ pub async fn mode_organise_set(app: AppHandle, actif: bool) -> Result<(), String
         let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
             .set_mode_organise(actif, epoch_maintenant())
+            .map_err(|err| err.to_string())
+    })
+    .await
+}
+
+/// L'horizon d'import d'un compte (ADR 0029, D3 : réglable après coup).
+/// Absent = « tout » — le défaut sûr, côté cœur.
+#[tauri::command]
+pub async fn horizon_import_get(app: AppHandle, account_id: i64) -> Result<String, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store
+            .horizon_import(account_id)
+            .map_err(|err| err.to_string())
+    })
+    .await
+}
+
+/// Pose l'horizon d'import (vocabulaire fermé, refusé côté cœur).
+/// Étendre rend des corps éligibles — la pompe les rattrape à sa
+/// prochaine passe ; réduire n'efface RIEN de ce qui est déjà en local.
+#[tauri::command]
+pub async fn horizon_import_set(
+    app: AppHandle,
+    account_id: i64,
+    valeur: String,
+) -> Result<(), String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store
+            .set_horizon_import(account_id, &valeur)
             .map_err(|err| err.to_string())
     })
     .await
@@ -3038,6 +3134,151 @@ pub async fn portier_total(app: AppHandle) -> Result<u64, String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store.portier_total().map_err(|err| err.to_string())
+    })
+    .await
+}
+
+// ---------------------------------------------------------------------
+// Le Nettoyage de printemps (PLAN-HORIZON-NETTOYAGE volet B) — la
+// session, les groupes, le verdict de groupe. Vocabulaires fermés,
+// refusés côté cœur.
+// ---------------------------------------------------------------------
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionNettoyagePayload {
+    pub plage: String,
+    pub perimetre: String,
+    pub total: u64,
+    pub traites: u64,
+}
+
+impl From<mail_core::SessionNettoyage> for SessionNettoyagePayload {
+    fn from(s: mail_core::SessionNettoyage) -> Self {
+        SessionNettoyagePayload {
+            plage: s.plage,
+            perimetre: s.perimetre,
+            total: s.total,
+            traites: s.traites,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupeNettoyagePayload {
+    pub address: String,
+    pub qui: Option<String>,
+    pub messages: u64,
+    pub dernier_epoch: i64,
+    pub dernier_objet: Option<String>,
+}
+
+impl From<mail_core::GroupeNettoyage> for GroupeNettoyagePayload {
+    fn from(g: mail_core::GroupeNettoyage) -> Self {
+        GroupeNettoyagePayload {
+            address: g.address,
+            qui: g.qui,
+            messages: g.messages,
+            dernier_epoch: g.dernier_epoch,
+            dernier_objet: g.dernier_objet,
+        }
+    }
+}
+
+/// La session en cours — `null` : rien d'entamé (l'écran d'intro).
+#[tauri::command]
+pub async fn nettoyage_etat(app: AppHandle) -> Result<Option<SessionNettoyagePayload>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        Ok(store
+            .nettoyage_etat()
+            .map_err(|err| err.to_string())?
+            .map(Into::into))
+    })
+    .await
+}
+
+/// Démarre (ou remplace) la session : la borne se fige ici.
+#[tauri::command]
+pub async fn nettoyage_demarrer(
+    app: AppHandle,
+    plage: String,
+    perimetre: String,
+) -> Result<SessionNettoyagePayload, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store
+            .nettoyage_demarrer(&plage, &perimetre, epoch_maintenant())
+            .map(Into::into)
+            .map_err(|err| err.to_string())
+    })
+    .await
+}
+
+/// Les groupes restants (expéditeur × courrier de la plage), le plus
+/// récent en tête.
+#[tauri::command]
+pub async fn nettoyage_groupes(app: AppHandle) -> Result<Vec<GroupeNettoyagePayload>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        Ok(store
+            .nettoyage_groupes()
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    })
+    .await
+}
+
+/// Le courrier d'un groupe — VOIR, jamais trier au message.
+#[tauri::command]
+pub async fn nettoyage_messages(
+    app: AppHandle,
+    address: String,
+) -> Result<Vec<MessageRow>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        Ok(store
+            .nettoyage_messages(&address)
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .map(to_message_row)
+            .collect())
+    })
+    .await
+}
+
+/// Le verdict de GROUPE (D5 : le stock de la plage ET l'avenir) — rend
+/// l'état à jour, la barre de progression suit dans le même
+/// aller-retour.
+#[tauri::command]
+pub async fn nettoyage_verdict(
+    app: AppHandle,
+    address: String,
+    destination: String,
+    regle: Option<String>,
+) -> Result<Option<SessionNettoyagePayload>, String> {
+    hors_pompe(app, move |app| {
+        let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store
+            .nettoyage_verdict(&address, &destination, regle.as_deref(), epoch_maintenant())
+            .map_err(|err| err.to_string())?;
+        Ok(store
+            .nettoyage_etat()
+            .map_err(|err| err.to_string())?
+            .map(Into::into))
+    })
+    .await
+}
+
+/// Clôt la session — les verdicts restent posés (routage).
+#[tauri::command]
+pub async fn nettoyage_terminer(app: AppHandle) -> Result<(), String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store.nettoyage_terminer().map_err(|err| err.to_string())
     })
     .await
 }
@@ -5322,43 +5563,35 @@ pub(crate) fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
 // Rattrapage des corps (ADR 0007, horizon levé par l'ADR 0010).
 // ---------------------------------------------------------------------
 
-/// Combien de messages attendent encore leur corps, tous comptes et
-/// TOUTES boîtes confondus (ADR 0010 §1). Purement local : aucune
-/// connexion réseau.
-fn pending_total(store: &Store) -> Result<u64, String> {
-    let mut total = 0;
+/// Combien de messages attendent leur corps, et combien peuvent en
+/// porter — tous comptes et TOUTES boîtes confondus (ADR 0010 §1,
+/// dénominateur R1 PLAN-RETOURS-3 : `corpus - pending` = corps
+/// présents). Purement local : aucune connexion réseau.
+/// (en attente, corpus) en UNE passe : l'horizon du compte et sa liste
+/// de boîtes se lisent une fois pour les DEUX compteurs (revue
+/// 2026-08-30 : deux passes indépendantes payaient deux fois les prefs
+/// et les listes — et sur une erreur intermittente, numérateur et
+/// dénominateur pouvaient se calculer sous des horizons DIFFÉRENTS).
+/// L'horizon borne les deux COMME la pompe : sans lui, la barre d'un
+/// compte borné n'atteindrait jamais 100 %.
+fn totaux_corps(store: &Store) -> Result<(u64, u64), String> {
+    let mut pending = 0;
+    let mut corpus = 0;
     for account in store.accounts().map_err(|err| err.to_string())? {
+        let horizon = horizon_corps(store, account.id);
         for boite in store
             .mailbox_names(account.id)
             .map_err(|err| err.to_string())?
         {
-            total += store
-                .bodies_pending_count(account.id, &boite, mail_core::NO_HORIZON)
+            pending += store
+                .bodies_pending_count(account.id, &boite, horizon)
+                .map_err(|err| err.to_string())?;
+            corpus += store
+                .bodies_total_count(account.id, &boite, horizon)
                 .map_err(|err| err.to_string())?;
         }
     }
-    Ok(total)
-}
-
-/// Le CORPUS en portée — tous les messages qui peuvent porter un corps,
-/// tous comptes et boîtes confondus. Dénominateur du pourcentage de
-/// rattrapage (R1, PLAN-RETOURS-3) : `corpus - pending` = corps présents.
-/// Même parcours que [`pending_total`] ; requête par boîte plus légère
-/// (pas de sous-requête `NOT EXISTS`). Coût à re-mesurer au terrain sur
-/// la vraie base (DETTE D-8, sondes chères).
-fn corpus_total(store: &Store) -> Result<u64, String> {
-    let mut total = 0;
-    for account in store.accounts().map_err(|err| err.to_string())? {
-        for boite in store
-            .mailbox_names(account.id)
-            .map_err(|err| err.to_string())?
-        {
-            total += store
-                .bodies_total_count(account.id, &boite, mail_core::NO_HORIZON)
-                .map_err(|err| err.to_string())?;
-        }
-    }
-    Ok(total)
+    Ok((pending, corpus))
 }
 
 #[derive(Serialize)]
@@ -5508,15 +5741,10 @@ pub async fn backfill_status(app: AppHandle) -> Result<BackfillStatus, String> {
             let _jalon = tracing::debug_span!("mesure::store_open").entered();
             Store::open(&db_path(&app)?).map_err(|err| err.to_string())?
         };
-        let remaining = {
+        let (remaining, total) = {
             #[cfg(feature = "mesure")]
-            let _jalon = tracing::debug_span!("mesure::pending_total").entered();
-            pending_total(&store)?
-        };
-        let total = {
-            #[cfg(feature = "mesure")]
-            let _jalon = tracing::debug_span!("mesure::corpus_total").entered();
-            corpus_total(&store)?
+            let _jalon = tracing::debug_span!("mesure::totaux_corps").entered();
+            totaux_corps(&store)?
         };
         Ok(BackfillStatus {
             remaining,
@@ -5690,11 +5918,14 @@ fn run_backfill_all(
         let boites = store
             .mailbox_names(account_id)
             .map_err(|err| err.to_string())?;
+        // La pompe travaille DANS l'horizon d'import du compte (ADR 0029) :
+        // au-delà, les corps restent au serveur et se chargent au clic.
+        let horizon = horizon_corps(&store, account_id);
         // Ne pas ouvrir une connexion pour un compte qui n'a rien à faire.
         let mut pending = 0;
         for boite in &boites {
             pending += store
-                .bodies_pending_count(account_id, boite, mail_core::NO_HORIZON)
+                .bodies_pending_count(account_id, boite, horizon)
                 .map_err(|err| err.to_string())?;
         }
         if pending == 0 {
@@ -5715,7 +5946,7 @@ fn run_backfill_all(
                         &mut store,
                         account_id,
                         boite,
-                        mail_core::NO_HORIZON,
+                        horizon,
                         budget,
                     ) {
                         Ok(report) => {
@@ -5732,8 +5963,8 @@ fn run_backfill_all(
         }
     }
 
-    summary.remaining = pending_total(&store)?;
-    let total = corpus_total(&store)?;
+    let (remaining, total) = totaux_corps(&store)?;
+    summary.remaining = remaining;
     summary.percent = mail_core::backfill_percent(total.saturating_sub(summary.remaining), total);
     summary.errors.sort();
     Ok((summary, refreshed_list))

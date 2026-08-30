@@ -4,7 +4,7 @@
 //! (PHASE0.md §2.1) et les tests utilisent une base en mémoire — l'abstraction
 //! du réseau ([`crate::MailServer`]) est la seule frontière nécessaire.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::ops::ControlFlow;
 use std::path::Path;
 
@@ -374,6 +374,20 @@ CREATE TABLE IF NOT EXISTS routage_expediteurs (
 CREATE TABLE IF NOT EXISTS portier_attente (
     address TEXT PRIMARY KEY
 );
+-- La session du Nettoyage de printemps (PLAN-HORIZON-NETTOYAGE volet
+-- B, D8 : persistee — un nettoyage entame reprend apres redemarrage).
+-- UNE ligne au plus (id = 1). La borne est FIGEE au demarrage
+-- (borne_epoch, derivee de la plage choisie) ; les verdicts vivent
+-- dans routage_expediteurs — la session ne porte que la plage, le
+-- perimetre et la progression (total de groupes au depart, traites).
+CREATE TABLE IF NOT EXISTS nettoyage_session (
+    id          INTEGER PRIMARY KEY CHECK (id = 1),
+    plage       TEXT NOT NULL,
+    perimetre   TEXT NOT NULL,
+    borne_epoch INTEGER NOT NULL,
+    total       INTEGER NOT NULL,
+    traites     INTEGER NOT NULL DEFAULT 0
+);
 -- L'invitation de reunion d'un message (PLAN-INVITATIONS) : le CACHE de
 -- la partie text/calendar, extrait au scan du corps (save_body_full) ou
 -- a l'ouverture pour un message d'avant la fonctionnalite (write-back,
@@ -682,7 +696,34 @@ pub const PREFS_PAR_COMPTE: &[&str] = &[
     "repere_icone",
     "repere_teinte",
     "nom_compte",
+    "horizon_import",
 ];
+
+/// Les vocabulaires FERMÉS du Nettoyage de printemps (volet B, D6) —
+/// vérifiés côté cœur avant toute écriture, comme le routage.
+pub const PLAGES_NETTOYAGE: &[&str] = &["3m", "6m", "1a", "2a", "5a", "tout"];
+pub const PERIMETRES_NETTOYAGE: &[&str] =
+    &["reception", "dossiers", "dossiersArchives", "archives"];
+
+/// La session de nettoyage en cours (une seule, persistée — D8).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionNettoyage {
+    pub plage: String,
+    pub perimetre: String,
+    pub borne_epoch: i64,
+    pub total: u64,
+    pub traites: u64,
+}
+
+/// Un groupe du Nettoyage : un expéditeur × son courrier de la plage.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GroupeNettoyage {
+    pub address: String,
+    pub qui: Option<String>,
+    pub messages: u64,
+    pub dernier_epoch: i64,
+    pub dernier_objet: Option<String>,
+}
 
 pub struct Store(Connection);
 
@@ -978,6 +1019,28 @@ impl Store {
             params![key, value],
         )?;
         Ok(())
+    }
+
+    /// L'horizon d'import d'un compte (PLAN-HORIZON-NETTOYAGE D1/D3) —
+    /// pref `horizon_import.{id}`, vocabulaire
+    /// [`crate::backfill::HORIZONS_IMPORT`]. Sans pref, ou sur une valeur
+    /// hors vocabulaire : « tout » (D4 — un compte d'avant le réglage, ou
+    /// une pref corrompue, importe tout ; jamais une perte silencieuse).
+    pub fn horizon_import(&self, account_id: i64) -> Result<String, Error> {
+        Ok(self
+            .text_pref(&format!("horizon_import.{account_id}"))?
+            .filter(|v| crate::backfill::HORIZONS_IMPORT.contains(&v.as_str()))
+            .unwrap_or_else(|| "tout".to_string()))
+    }
+
+    /// Pose l'horizon d'import — la porte valide le vocabulaire AVANT
+    /// d'écrire (même règle que `valider_routage` : un vocabulaire troué
+    /// ne se cache pas derrière un autre refus).
+    pub fn set_horizon_import(&self, account_id: i64, valeur: &str) -> Result<(), Error> {
+        if !crate::backfill::HORIZONS_IMPORT.contains(&valeur) {
+            return Err(Error::Corrupt(format!("horizon inconnu : {valeur:?}")));
+        }
+        self.set_text_pref(&format!("horizon_import.{account_id}"), valeur)
     }
 
     /// Plusieurs préférences texte d'un COUP, transactionnelles : des
@@ -2957,17 +3020,7 @@ impl Store {
         // transaction (E2) : un verdict à moitié appliqué laisserait un
         // expéditeur au Portier ET dans sa vue.
         let tx = self.0.unchecked_transaction()?;
-        tx.execute(
-            "INSERT OR REPLACE INTO routage_expediteurs (address, destination, regle, epoch)
-             VALUES (?1, ?2, ?3, ?4)",
-            params![adresse, destination, regle, epoch],
-        )?;
-        // Le verdict prend le relais de l'attente — Oui comme Non.
-        tx.execute(
-            "DELETE FROM portier_attente WHERE address = ?1",
-            params![adresse],
-        )?;
-        rafraichir_fils_de(&tx, &adresse)?;
+        poser_verdict(&tx, &adresse, destination, regle, epoch)?;
         tx.commit()?;
         Ok(())
     }
@@ -3174,6 +3227,342 @@ impl Store {
             |row| row.get(0),
         )?;
         Ok(total as u64)
+    }
+
+    // -----------------------------------------------------------------
+    // Le Nettoyage de printemps (PLAN-HORIZON-NETTOYAGE volet B).
+    // -----------------------------------------------------------------
+
+    /// Les boîtes qu'un périmètre couvre (D6, vocabulaire CE) — résolu
+    /// par compte depuis les canoniques. Envoyés, Brouillons,
+    /// Indésirables et Corbeille sont TOUJOURS hors périmètre (on ne
+    /// trie pas ce qui est déjà traité ou écrit par soi). L'archive
+    /// INTÉGRALE (« Tous les messages ») rejouerait toute la boîte :
+    /// hors périmètre — limite dite au PLAN.
+    fn boites_du_perimetre(&self, perimetre: &str) -> Result<Vec<i64>, Error> {
+        let dossiers_inclus = matches!(perimetre, "dossiers" | "dossiersArchives");
+        let archives_incluses = matches!(perimetre, "archives" | "dossiersArchives");
+        let mut ids = Vec::new();
+        for account in self.accounts()? {
+            let canon = self.canonical_folders(account.id)?;
+            let mut stmt = self
+                .0
+                .prepare("SELECT id, name FROM mailboxes WHERE account_id = ?1")?;
+            let boites = stmt
+                .query_map([account.id], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            for (id, name) in boites {
+                let est = |canonique: &Option<String>| canonique.as_deref() == Some(name.as_str());
+                let inclue = if name == canon.reception {
+                    true
+                } else if est(&canon.archives) {
+                    archives_incluses && !canon.archives_integrale
+                } else if est(&canon.envoyes)
+                    || est(&canon.brouillons)
+                    || est(&canon.indesirables)
+                    || est(&canon.corbeille)
+                {
+                    false
+                } else {
+                    dossiers_inclus
+                };
+                if inclue {
+                    ids.push(id);
+                }
+            }
+        }
+        Ok(ids)
+    }
+
+    /// La liste SQL des ids de boîtes du périmètre — UNE écriture
+    /// (revue 2026-08-30 : trois copies divergeaient en germe). Les ids
+    /// viennent de NOTRE base — jamais d'une saisie.
+    fn liste_ids(ids: &[i64]) -> String {
+        if ids.is_empty() {
+            "NULL".to_string()
+        } else {
+            ids.iter()
+                .map(|id| id.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        }
+    }
+
+    /// Le critère partagé des groupes : le courrier de la plage dans le
+    /// périmètre, hors expéditeurs déjà routés (D7), hors soi, hors
+    /// enveloppes sans adresse. LA seule définition de « la plage dans
+    /// le périmètre » — groupes, stock du verdict et vue d'un groupe la
+    /// partagent. Un message SANS date compte dans toute plage
+    /// (précédent A98 : « sans date = aujourd'hui » — limite dite au
+    /// PLAN : il suit aussi les règles du stock).
+    fn nettoyage_critere(ids: &[i64]) -> String {
+        let liste = Self::liste_ids(ids);
+        format!(
+            "e.mailbox_id IN ({liste})
+               AND (e.date_epoch > ?1 OR e.date_epoch IS NULL)
+               AND e.sender_norm IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM routage_expediteurs r
+                                WHERE r.address = e.sender_norm)
+               AND NOT EXISTS (SELECT 1 FROM accounts a
+                                WHERE lower(trim(a.email)) = e.sender_norm)"
+        )
+    }
+
+    fn nettoyage_compter_groupes(&self, ids: &[i64], borne: i64) -> Result<u64, Error> {
+        let critere = Self::nettoyage_critere(ids);
+        let total: i64 = self.0.query_row(
+            &format!(
+                "SELECT COUNT(*) FROM (SELECT 1 FROM envelopes e
+                  WHERE {critere} GROUP BY e.sender_norm)"
+            ),
+            params![borne],
+            |row| row.get(0),
+        )?;
+        Ok(total as u64)
+    }
+
+    /// La session en cours — `None` : aucun nettoyage entamé.
+    pub fn nettoyage_etat(&self) -> Result<Option<SessionNettoyage>, Error> {
+        Ok(self
+            .0
+            .query_row(
+                "SELECT plage, perimetre, borne_epoch, total, traites
+                   FROM nettoyage_session WHERE id = 1",
+                [],
+                |row| {
+                    Ok(SessionNettoyage {
+                        plage: row.get(0)?,
+                        perimetre: row.get(1)?,
+                        borne_epoch: row.get(2)?,
+                        total: row.get::<_, i64>(3)? as u64,
+                        traites: row.get::<_, i64>(4)? as u64,
+                    })
+                },
+            )
+            .optional()?)
+    }
+
+    /// Démarre un nettoyage (remplace la session en cours) : la borne
+    /// est FIGÉE ici — une session ne glisse pas avec l'horloge — et le
+    /// total de groupes devient le dénominateur de la progression.
+    pub fn nettoyage_demarrer(
+        &self,
+        plage: &str,
+        perimetre: &str,
+        now: i64,
+    ) -> Result<SessionNettoyage, Error> {
+        if !PLAGES_NETTOYAGE.contains(&plage) {
+            return Err(Error::Corrupt(format!("plage inconnue : {plage:?}")));
+        }
+        if !PERIMETRES_NETTOYAGE.contains(&perimetre) {
+            return Err(Error::Corrupt(format!("périmètre inconnu : {perimetre:?}")));
+        }
+        let borne = crate::backfill::horizon_epoch(plage, now);
+        let ids = self.boites_du_perimetre(perimetre)?;
+        let total = self.nettoyage_compter_groupes(&ids, borne)?;
+        self.0.execute(
+            "INSERT OR REPLACE INTO nettoyage_session
+               (id, plage, perimetre, borne_epoch, total, traites)
+             VALUES (1, ?1, ?2, ?3, ?4, 0)",
+            params![plage, perimetre, borne, total as i64],
+        )?;
+        Ok(SessionNettoyage {
+            plage: plage.to_string(),
+            perimetre: perimetre.to_string(),
+            borne_epoch: borne,
+            total,
+            traites: 0,
+        })
+    }
+
+    /// Les groupes restants de la session : un expéditeur × son
+    /// courrier de la plage, le plus récent en tête. Vide sans session.
+    pub fn nettoyage_groupes(&self) -> Result<Vec<GroupeNettoyage>, Error> {
+        let Some(session) = self.nettoyage_etat()? else {
+            return Ok(Vec::new());
+        };
+        let ids = self.boites_du_perimetre(&session.perimetre)?;
+        let critere = Self::nettoyage_critere(&ids);
+        // UNE passe : avec un max() SEUL, SQLite garantit que les
+        // colonnes nues (sender, subject) viennent de la ligne du max —
+        // le rang montre l'objet du dernier message DE LA PORTÉE (revue
+        // 2026-08-30 : deux sous-requêtes corrélées non bornées
+        // pouvaient afficher l'objet d'un message hors session, et
+        // repayaient le tri de l'expéditeur quatre fois par groupe).
+        let mut stmt = self.0.prepare(&format!(
+            "SELECT e.sender_norm, COUNT(*), MAX(e.date_epoch), e.sender, e.subject
+               FROM envelopes e
+              WHERE {critere}
+              GROUP BY e.sender_norm
+              ORDER BY MAX(e.date_epoch) DESC, e.sender_norm"
+        ))?;
+        let groupes = stmt
+            .query_map(params![session.borne_epoch], |row| {
+                Ok(GroupeNettoyage {
+                    address: row.get(0)?,
+                    messages: row.get::<_, i64>(1)? as u64,
+                    dernier_epoch: row.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                    qui: row.get(3)?,
+                    dernier_objet: row.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(groupes)
+    }
+
+    /// Le verdict de GROUPE (D5 : le stock ET l'avenir) — la porte du
+    /// Portier pour l'avenir (routage, sortie d'attente, drapeaux),
+    /// plus l'application de la règle au stock DE LA PLAGE : une action
+    /// par message en `pending_actions`, DANS la transaction du verdict
+    /// (patron E3 — jamais une fenêtre de crash entre le courrier et
+    /// l'intention), garde anti-doublon, `corbeille` → la corbeille du
+    /// serveur, JAMAIS une suppression définitive (D4) ; `spam` sans
+    /// dossier résolu ne fait RIEN (jamais une destination inventée).
+    /// Rend le nombre de messages du stock traités.
+    pub fn nettoyage_verdict(
+        &mut self,
+        address: &str,
+        destination: &str,
+        regle: Option<&str>,
+        epoch: i64,
+    ) -> Result<usize, Error> {
+        let Some(session) = self.nettoyage_etat()? else {
+            return Err(Error::Corrupt("aucun nettoyage en cours".to_string()));
+        };
+        valider_routage(destination, regle)?;
+        let Some(adresse) = adresse_images(Some(address.to_string())) else {
+            return Err(Error::InvalidEmailAddress(address.to_string()));
+        };
+        let ids = self.boites_du_perimetre(&session.perimetre)?;
+        // Le dossier indésirable de CHAQUE compte, résolu AVANT la
+        // transaction (même règle que l'arrivée E3).
+        let mut indesirables: BTreeMap<i64, Option<String>> = BTreeMap::new();
+        if destination == "ecarte" && regle == Some("spam") {
+            for account in self.accounts()? {
+                indesirables.insert(account.id, self.canonical_folders(account.id)?.indesirables);
+            }
+        }
+        let mut retraits: Vec<(i64, Uid)> = Vec::new();
+        let tx = self.0.unchecked_transaction()?;
+        if destination == "ecarte"
+            && let Some(regle) = regle
+        {
+            // Le stock : LE critère partagé (même définition que les
+            // groupes et la vue), restreint à l'adresse — lu AVANT
+            // `poser_verdict`, qui ferait sortir l'expéditeur du
+            // critère (D7 exclut les routés).
+            let critere = Self::nettoyage_critere(&ids);
+            let stock: Vec<(i64, Uid, i64)> = {
+                let mut stmt = tx.prepare(&format!(
+                    "SELECT e.mailbox_id, e.uid, m.account_id
+                       FROM envelopes e JOIN mailboxes m ON m.id = e.mailbox_id
+                      WHERE e.sender_norm = ?2 AND {critere}"
+                ))?;
+                stmt.query_map(params![session.borne_epoch, adresse], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+            };
+            for (mailbox_id, uid, account_id) in stock {
+                let action = match regle {
+                    "archive" => Some(Action::Archive),
+                    "corbeille" => Some(Action::Delete),
+                    "spam" => indesirables
+                        .get(&account_id)
+                        .cloned()
+                        .flatten()
+                        .map(Action::MoveTo),
+                    _ => None,
+                };
+                let Some(action) = action else { continue };
+                // Une action DÉJÀ en file (un geste utilisateur d'il y a
+                // quelques secondes — mark_seen, archivage) : on ne
+                // journalise PAS la nôtre ET on ne retire PAS la copie
+                // locale (revue 2026-08-30 : le patron d'arrivée E3
+                // suppose un message NEUF sans action possible ; sur du
+                // stock, retirer sans avoir posé l'intention ferait
+                // croire au nettoyage un message que le serveur garde —
+                // il reviendrait à la relève suivante). Le message reste
+                // visible, cohérent avec le serveur — limite dite.
+                let deja = tx
+                    .prepare_cached(
+                        "SELECT 1 FROM pending_actions WHERE mailbox_id = ?1 AND uid = ?2",
+                    )?
+                    .exists(params![mailbox_id, uid])?;
+                if deja {
+                    continue;
+                }
+                tx.prepare_cached(
+                    "INSERT INTO pending_actions (mailbox_id, uid, kind) VALUES (?1, ?2, ?3)",
+                )?
+                .execute(params![mailbox_id, uid, action.to_kind()])?;
+                retraits.push((mailbox_id, uid));
+            }
+        }
+        poser_verdict(&tx, &adresse, destination, regle, epoch)?;
+        tx.execute(
+            "UPDATE nettoyage_session SET traites = traites + 1 WHERE id = 1",
+            [],
+        )?;
+        tx.commit()?;
+        // Le retrait local APRÈS le commit (patron E3) : l'intention est
+        // en base, un crash ici ne perd rien — la copie locale partira à
+        // la réconciliation suivante. En UNE transaction (revue
+        // 2026-08-30 : un retrait par autocommit payait un fsync par
+        // message — des secondes sur un gros groupe, sous le verrou des
+        // commandes).
+        let traites = retraits.len();
+        if !retraits.is_empty() {
+            let tx = self.0.unchecked_transaction()?;
+            for (mailbox_id, uid) in retraits {
+                self.remove_local(mailbox_id, uid)?;
+            }
+            tx.commit()?;
+        }
+        Ok(traites)
+    }
+
+    /// Le courrier d'un groupe, dans la plage et le périmètre de la
+    /// session — la lecture que l'écran de tri offre quand on entre
+    /// dans un groupe (voir, jamais trier au message : le verdict
+    /// reste au groupe, refus de périmètre du PLAN). Le plus récent en
+    /// tête. Vide sans session.
+    pub fn nettoyage_messages(&self, address: &str) -> Result<Vec<UnifiedRow>, Error> {
+        let Some(session) = self.nettoyage_etat()? else {
+            return Ok(Vec::new());
+        };
+        let Some(adresse) = adresse_images(Some(address.to_string())) else {
+            return Ok(Vec::new());
+        };
+        let ids = self.boites_du_perimetre(&session.perimetre)?;
+        // LE critère partagé : la vue d'un groupe montre exactement ce
+        // que le verdict traitera.
+        let critere = Self::nettoyage_critere(&ids);
+        let sql = format!(
+            "{SELECT_UNIFIED}, COALESCE(t.size, 1), COALESCE(t.unseen, 1 - e.seen)
+             FROM envelopes e
+             JOIN mailboxes m ON m.id = e.mailbox_id
+             JOIN accounts a ON a.id = m.account_id
+             LEFT JOIN threads t ON t.id = e.thread_id
+             LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
+             WHERE e.sender_norm = ?2 AND {critere}
+             ORDER BY e.date_epoch DESC, e.uid DESC"
+        );
+        let mut stmt = self.0.prepare(&sql)?;
+        let rangs = stmt
+            .query_map(params![session.borne_epoch, adresse], row_to_threaded)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rangs)
+    }
+
+    /// Clôt la session (la progression s'efface ; les verdicts, eux,
+    /// restent posés — ils vivent dans le routage).
+    pub fn nettoyage_terminer(&self) -> Result<(), Error> {
+        self.0
+            .execute("DELETE FROM nettoyage_session WHERE id = 1", [])?;
+        Ok(())
     }
 
     /// Les messages d'une conversation, du plus ancien au plus récent —
@@ -4168,6 +4557,32 @@ fn fils_de(conn: &Connection, adresse: &str) -> Result<Vec<i64>, Error> {
     Ok(fils)
 }
 
+/// Le CŒUR transactionnel du verdict — LA porte unique, partagée par
+/// [`Store::router_expediteur`] (Portier, « Déplacer vers… ») et
+/// [`Store::nettoyage_verdict`] (revue 2026-08-30 : le Nettoyage en
+/// recopiait le corps ; un futur ajout à « poser un verdict » aurait
+/// divergé selon l'écran d'origine). L'appelant valide le vocabulaire
+/// et normalise l'adresse AVANT.
+fn poser_verdict(
+    tx: &Connection,
+    adresse: &str,
+    destination: &str,
+    regle: Option<&str>,
+    epoch: i64,
+) -> Result<(), Error> {
+    tx.execute(
+        "INSERT OR REPLACE INTO routage_expediteurs (address, destination, regle, epoch)
+         VALUES (?1, ?2, ?3, ?4)",
+        params![adresse, destination, regle, epoch],
+    )?;
+    // Le verdict prend le relais de l'attente — Oui comme Non.
+    tx.execute(
+        "DELETE FROM portier_attente WHERE address = ?1",
+        params![adresse],
+    )?;
+    rafraichir_fils_de(tx, adresse)
+}
+
 /// Recalcule les drapeaux des fils d'UN expéditeur par LA porte unique
 /// (`thread::refresh`) — après un verdict ou une réintégration. Borné
 /// aux fils de l'adresse (63 ms mesurées sur un expéditeur de 10 000
@@ -4507,6 +4922,32 @@ mod tests {
             store.mailbox_names(account).unwrap(),
             vec!["INBOX", "Messages envoyés", "Archive", "Corbeille"]
         );
+    }
+
+    /// L'horizon d'import (PLAN-HORIZON-NETTOYAGE, D1-D4) : pref par
+    /// compte au vocabulaire FERMÉ ; sans pref, « tout » — un compte
+    /// d'avant le réglage garde l'import intégral (D4) ; la valeur meurt
+    /// avec le compte, et le rowid réutilisé n'en hérite pas
+    /// (PREFS_PAR_COMPTE).
+    #[test]
+    fn horizon_import_defaut_tout_vocabulaire_ferme_purge_au_retrait() {
+        let mut store = Store::open_in_memory().unwrap();
+        let id = store
+            .adopt_or_create_account("h@exemple.fr", "gmail")
+            .unwrap();
+
+        assert_eq!(store.horizon_import(id).unwrap(), "tout");
+        store.set_horizon_import(id, "1a").unwrap();
+        assert_eq!(store.horizon_import(id).unwrap(), "1a");
+        assert!(store.set_horizon_import(id, "42 jours").is_err());
+        assert_eq!(store.horizon_import(id).unwrap(), "1a");
+
+        store.delete_account(id).unwrap();
+        let heritier = store
+            .adopt_or_create_account("h2@exemple.fr", "gmail")
+            .unwrap();
+        assert_eq!(heritier, id, "décor : le rowid doit se réutiliser");
+        assert_eq!(store.horizon_import(heritier).unwrap(), "tout");
     }
 
     /// Le retrait d'un compte ne laisse RIEN derrière lui : ni les lignes
@@ -8382,6 +8823,158 @@ Etape : {etape}\nPlan :\n{}",
 
     /// PLAN-MODE-ORGANISE E3 — les règles du Non à la synchro. Un
     /// message qui ARRIVE d'un expéditeur écarté AVEC règle est traité
+    /// PLAN-HORIZON-NETTOYAGE volet B (D5-D8) — la session de
+    /// nettoyage : une seule, persistée ; démarrer fige la borne et
+    /// compte les groupes ; le verdict de GROUPE route l'avenir ET
+    /// traite le stock DE LA PLAGE (jamais l'antérieur) ; la
+    /// progression avance ; terminer efface la session.
+    #[test]
+    fn nettoyage_session_groupes_verdicts_et_progression() {
+        const JOUR: i64 = 86_400;
+        let now = 100 * JOUR;
+        let (mut store, inbox) = store_with_mailbox();
+        store.set_mode_organise(true, 1_000).unwrap();
+
+        let sème = |uid, sujet: &str, epoch, adresse: &str| {
+            let mut e = envelope(uid, sujet, epoch, true);
+            e.sender_address = Some(adresse.to_string());
+            e
+        };
+        store
+            .upsert_envelopes(
+                inbox,
+                &[
+                    sème(1, "lettre", now - 2 * JOUR, "un@exemple.fr"),
+                    sème(2, "relance", now - JOUR, "un@exemple.fr"),
+                    sème(3, "offre", now - 3 * JOUR, "deux@exemple.fr"),
+                    // Le stock ANTÉRIEUR à la plage du même expéditeur :
+                    // jamais touché par le verdict.
+                    sème(5, "tres vieille offre", 500, "deux@exemple.fr"),
+                    // Un expéditeur entièrement hors plage : pas un groupe.
+                    sème(4, "archives", 1_000, "vieux@exemple.fr"),
+                    // Déjà routé (D7) : jamais re-demandé.
+                    sème(6, "news", now - JOUR, "route@exemple.fr"),
+                    // Soi-même : jamais un groupe.
+                    sème(7, "note a moi", now - JOUR, "test@exemple.fr"),
+                ],
+            )
+            .unwrap();
+        store
+            .router_expediteur("route@exemple.fr", "kiosque", None, 2_000)
+            .unwrap();
+
+        assert!(store.nettoyage_etat().unwrap().is_none());
+        assert!(
+            store
+                .nettoyage_demarrer("un siecle", "reception", now)
+                .is_err(),
+            "le vocabulaire des plages est fermé"
+        );
+        assert!(
+            store.nettoyage_demarrer("3m", "le grenier", now).is_err(),
+            "le vocabulaire des périmètres est fermé"
+        );
+
+        let session = store.nettoyage_demarrer("3m", "reception", now).unwrap();
+        assert_eq!((session.total, session.traites), (2, 0));
+        let groupes = store.nettoyage_groupes().unwrap();
+        assert_eq!(
+            groupes
+                .iter()
+                .map(|g| (g.address.as_str(), g.messages))
+                .collect::<Vec<_>>(),
+            vec![("un@exemple.fr", 2), ("deux@exemple.fr", 1)],
+            "les groupes de la plage, le plus récent en tête — routés, soi et hors-plage exclus"
+        );
+
+        // Oui de groupe : routage seul, aucune action serveur.
+        store
+            .nettoyage_verdict("un@exemple.fr", "reception", None, now)
+            .unwrap();
+        assert!(store.pending_actions(inbox).unwrap().is_empty());
+        let etat = store.nettoyage_etat().unwrap().unwrap();
+        assert_eq!((etat.total, etat.traites), (2, 1));
+        assert_eq!(store.nettoyage_groupes().unwrap().len(), 1);
+
+        // Naviguer dans un groupe : SES messages de la plage, jamais
+        // l'antérieur — la lecture que l'écran de tri offre au clic.
+        let dedans = store.nettoyage_messages("deux@exemple.fr").unwrap();
+        assert_eq!(
+            dedans.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
+            vec![3],
+            "le groupe montre son courrier de la plage seulement"
+        );
+
+        // Non + corbeille : le stock DE LA PLAGE part (uid 3), jamais
+        // l'antérieur (uid 5) ; l'action est la corbeille du serveur.
+        store
+            .nettoyage_verdict("deux@exemple.fr", "ecarte", Some("corbeille"), now)
+            .unwrap();
+        let actions = store.pending_actions(inbox).unwrap();
+        assert_eq!(
+            actions
+                .iter()
+                .map(|a| (a.uid, a.action.clone()))
+                .collect::<Vec<_>>(),
+            vec![(3, Action::Delete)],
+            "le stock de la plage seulement — D4 : jamais une suppression définitive"
+        );
+        let compte = test_account(&store);
+        assert!(
+            store.envelope(compte, "INBOX", 5).unwrap().is_some(),
+            "l'antérieur à la plage reste en base"
+        );
+        assert!(
+            store.envelope(compte, "INBOX", 3).unwrap().is_none(),
+            "le stock traité quitte la copie locale"
+        );
+        let etat = store.nettoyage_etat().unwrap().unwrap();
+        assert_eq!((etat.total, etat.traites), (2, 2));
+
+        store.nettoyage_terminer().unwrap();
+        assert!(store.nettoyage_etat().unwrap().is_none());
+        assert!(
+            store
+                .nettoyage_verdict("vieux@exemple.fr", "reception", None, now)
+                .is_err(),
+            "un verdict sans session en cours se refuse"
+        );
+    }
+
+    /// D6 (CE, mot pour mot) : le périmètre se choisit — « Réception
+    /// seule » ignore les dossiers utilisateur, « Réception +
+    /// Dossiers » les couvre.
+    #[test]
+    fn nettoyage_perimetre_reception_ou_dossiers() {
+        const JOUR: i64 = 86_400;
+        let now = 100 * JOUR;
+        let (mut store, inbox) = store_with_mailbox();
+        let account = test_account(&store);
+        store.set_mode_organise(true, 1_000).unwrap();
+        let projets = store.create_mailbox(account, "Projets", 1).unwrap();
+
+        let mut boite = envelope(1, "bonjour", now - JOUR, true);
+        boite.sender_address = Some("un@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[boite]).unwrap();
+        let mut range = envelope(1, "range", now - JOUR, true);
+        range.sender_address = Some("proj@exemple.fr".to_string());
+        store.upsert_envelopes(projets, &[range]).unwrap();
+
+        let session = store.nettoyage_demarrer("tout", "reception", now).unwrap();
+        assert_eq!(session.total, 1, "Réception seule : le dossier n'entre pas");
+        store.nettoyage_terminer().unwrap();
+
+        let session = store.nettoyage_demarrer("tout", "dossiers", now).unwrap();
+        assert_eq!(session.total, 2, "Réception + Dossiers : les deux groupes");
+        let adresses: Vec<_> = store
+            .nettoyage_groupes()
+            .unwrap()
+            .into_iter()
+            .map(|g| g.address)
+            .collect();
+        assert!(adresses.contains(&"proj@exemple.fr".to_string()));
+    }
+
     /// par le chemin des gestes : action journalisée (`pending_actions`,
     /// rejouée en tête de chaque synchro) + disparition locale — sans
     /// écho (ce n'est pas un geste utilisateur). `archive` → Archive,

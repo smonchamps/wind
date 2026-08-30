@@ -46,9 +46,9 @@ test('le mode classique est intact : va-et-vient éteint, nav aux six dossiers',
 test('la bascule recompose la nav, le Kiosque sert les expéditeurs routés, et le mode PERSISTE', async () => {
   await page.locator('[data-testid="mode-organise"]').click();
   await expect(page.locator('[data-testid="mode-organise"]')).toHaveAttribute('aria-checked', 'true');
-  await expect(page.locator('[data-testid="nav-dossier"]')).toHaveCount(9);
+  await expect(page.locator('[data-testid="nav-dossier"]')).toHaveCount(10);
   // R3/R12 (RETOURS-13) : en mode organisé la Réception se dit
-  // « Réception », et un filet sépare les 4 dossiers organisés du reste.
+  // « Réception », et un filet sépare les 5 dossiers organisés du reste.
   const rangReception = page.locator('[data-testid="nav-dossier"][data-categorie="reception"]');
   await expect(rangReception).toContainText('Réception');
   await expect(rangReception).not.toContainText('Boîte de réception');
@@ -79,7 +79,7 @@ test('la bascule recompose la nav, le Kiosque sert les expéditeurs routés, et 
   // relit le mode du cœur — jamais du localStorage.
   await page.reload();
   await expect(page.locator('[data-testid="mode-organise"]')).toHaveAttribute('aria-checked', 'true');
-  await expect(page.locator('[data-testid="nav-dossier"]')).toHaveCount(9);
+  await expect(page.locator('[data-testid="nav-dossier"]')).toHaveCount(10);
 
   // Le Kiosque montre désormais le courrier des expéditeurs routés,
   // en cartes DÉJÀ OUVERTES : le corps se lit sans un clic (E5bis —
