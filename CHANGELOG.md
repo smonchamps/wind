@@ -12,6 +12,42 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.15.0] - 2026-08-30
+
+La profondeur d'historique se choisit, et le grand ménage arrive.
+
+### Ajouté
+
+- **La profondeur d'historique se choisit à l'ajout d'un compte.**
+  D'un mois à tout l'historique (un an par défaut). La liste, la
+  recherche et les entêtes restent complètes sur tout l'historique :
+  seuls les corps des messages plus anciens restent au serveur, et
+  s'ouvrent à la demande, d'un clic. Le choix se règle ensuite dans
+  Réglages > Comptes ; les comptes déjà en place gardent tout.
+- **Le Nettoyage de printemps** (mode organisé). Une page pour faire
+  le ménage par expéditeur : une plage (de trois mois à tout) et un
+  périmètre choisis, chaque groupe se tranche d'un geste — le verdict
+  s'applique au courrier déjà là ET aux prochains messages, dans le
+  vocabulaire du Portier. Jamais de suppression définitive : la
+  corbeille reste rattrapable. La session se reprend là où on l'a
+  laissée, une jauge suit l'avancement.
+- **Le clic du Portier suit des défauts réglables.** Oui envoie en
+  Réception, Non à la corbeille — modifiables dans
+  Réglages > Portier, dans les deux modes.
+- **Le Kiosque se souvient de ce qui est lu.** Les nouveautés se
+  présentent dépliées, le déjà-lu se replie en piles par expéditeur ;
+  une coche marque tout lu. Son glyphe est redessiné.
+
+### Modifié
+
+- **Douze retours sur le Mode organisé** : la boîte principale se
+  nomme « Réception » en mode organisé, et on y revient après le
+  Portier ; l'entête du Portier est revue (texte d'accueil,
+  historique) ; les entêtes du Portier et du Kiosque partagent le
+  même format ; « Sombre — Automatique » passe en tête des Thèmes ;
+  le rail des Réglages est aligné ; le Registre dit « Déplacés
+  automatiquement dans la corbeille ».
+
 ## [0.14.0] - 2026-08-30
 
 Le Mode organisé : Wind trie votre courrier — vous gardez la main.
