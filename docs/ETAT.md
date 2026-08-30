@@ -13,18 +13,58 @@
 ## Où on en est, et quoi faire en premier
 
 ✅ **Aucun chantier en cours.** Le prochain sujet inscrit : **la
-première vague bêta** (PLAN-BETA — inviter 5-10 proches, D9 ; le
-bloquant `feedback-wind@fcts.io` est levé depuis le 2026-08-29) — et
-**une release est due avant l'invitation** : RETOURS-13 est sur main,
-pas encore publié (l'entrée CHANGELOG s'écrira à la publication,
-§2.9). Ensuite, au choix du CE : **E6 — Groupes** (report écrit du
-PLAN-MODE-ORGANISE, D7 amendée — le dossier et le spike S1 sont
-prêts) ou les retours de la bêta. Mesures en cours : **S4** (flux
-d'inconnus au Portier, une semaine sur les deux postes, engagée le
-2026-08-30) ; encore due : la mesure du bandeau de MAJ via
-`lancer-wind.ps1` à la prochaine MAJ acceptée.
+première vague bêta** (PLAN-BETA — inviter 5-10 proches, D9) — et
+**une release est due avant l'invitation** : main porte RETOURS-13
+ET PLAN-HORIZON-NETTOYAGE, non publiés (décision D12 du 2026-08-30 :
+la release les embarque ensemble ; l'entrée CHANGELOG — les deux
+chantiers — s'écrira à la publication, datée ce jour-là, §2.9).
+Ensuite, au choix du CE : **E6 — Groupes** (report écrit, dossier et
+spike S1 prêts) ou les retours de la bêta. Mesures en cours : **S4**
+(flux d'inconnus au Portier, une semaine, engagée le 2026-08-30) ;
+encore dues : le bandeau de MAJ via `lancer-wind.ps1` à la prochaine
+MAJ acceptée, et **le coût de `nettoyage_groupes` sur une vraie base
+(200 k)** — non mesuré, à chronométrer au premier vrai nettoyage.
 
 Dernier soldé :
+**[PLAN-HORIZON-NETTOYAGE](PLAN-HORIZON-NETTOYAGE.md)** (2026-08-30,
+ouvert et SOLDÉ le même jour, commit `f66d1e6`, CI verte run
+33333151630, terrain CE **12/12 « Tout OK »**, zéro constat). Deux
+volets, D1-D12 tranchées au STOP 1 :
+
+- **Volet A — l'horizon d'import** (ADR 0029, amende 0010, A102) :
+  à l'ajout d'un compte, la profondeur d'historique se choisit
+  (1 mois → tout, défaut 1 an — D2) ; seuls les CORPS sont bornés
+  (D1/A2 : enveloppes intégrales, liste et recherche objet/expéditeur
+  entières, corps hors horizon au clic) ; pref
+  `horizon_import.{id}` (PREFS_PAR_COMPTE), borne dérivée à la
+  LECTURE, réglable aux Réglages > Comptes (D3 — porte textuelle,
+  carte au patron du nom), écrite au PREMIER ajout seul (un re-ajout
+  n'écrase pas un choix), comptes existants réputés « tout » (D4).
+- **Volet B — le Nettoyage de printemps** (A103) : 5e section du
+  mode organisé, glyphe neuf `nettoyage` (courant d'air, verdict CE
+  « D » sur planche de six, jeu 86 → 87). Intro (plage 3m→tout +
+  périmètre D6 au choix, textes CE mot pour mot), tri par GROUPES
+  d'expéditeur au vocabulaire du Portier : le verdict vaut pour le
+  groupe et s'applique au stock de la plage ET à l'avenir (D5), par
+  `poser_verdict` — LA porte partagée avec `router_expediteur` —
+  actions du stock DANS la transaction (patron E3), corbeille jamais
+  définitive (D4), retraits locaux en UNE transaction. Session
+  unique persistée (`nettoyage_session`, D8, borne FIGÉE au
+  démarrage), jauge dérivée des groupes RESTANTS, défauts du Portier
+  partagés (D9), routés exclus (D7), navigation dans un groupe.
+
+Revue à regard neuf 8 angles / ~35 candidats / 10 retenues /
+**8 corrigées** (dont l'anti-doublon qui retirait la copie locale
+sans poser l'action — le message serait revenu à la relève) ;
+**D-47 ROUVERTE** (4e copie du menu ⋯, consignée à DETTE). Limites
+dites au PLAN (sans-date dans toute plage — précédent A98 ; archive
+intégrale hors périmètre ; stock non touché si action déjà en file
+ou spam sans dossier résolu ; dates du gabarit e2e figées en 2020).
+Tests mail-core 412 → **419**, e2e 169 → **177**. Vocabulaires UI en
+une copie (`lib/vocabulaires.js`), filet d'exhaustivité
+`horizon_epoch` × vocabulaires.
+
+Le chantier soldé précédent :
 **[PLAN-RETOURS-13](PLAN-RETOURS-13.md)** (2026-08-30, ouvert et
 SOLDÉ le même jour, commit `5ab1f15`, CI verte run 33323808766,
 terrain CE en deux passes — 5 constats corrigés le jour même, verdict

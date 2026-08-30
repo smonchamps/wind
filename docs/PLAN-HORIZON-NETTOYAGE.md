@@ -1,9 +1,22 @@
 # PLAN-HORIZON-NETTOYAGE — profondeur d'historique à l'ajout d'un compte, et « Nettoyage de printemps »
 
 > Ouvert le 2026-08-30. Deux volets demandés ensemble par le CE.
-> Statut : **livré — STOP 1 GO, quatre STOP visuels CE validés,
-> gate complète VERTE (2,9 min, e2e 177/177), terrain CE
-> « Tout OK » 12/12 le 2026-08-30.** Reste : CI verte, puis /solde.
+>
+> **CHANTIER SOLDÉ le 2026-08-30 — terrain complet.** STOP 1 GO
+> (D1-D12 tranchées le jour même), quatre STOP visuels CE validés
+> (guichet, planche de glyphes, intro, tri), gate complète VERTE
+> (2,9 min, e2e 177/177), terrain CE **« Tout OK » 12/12** le
+> 2026-08-30, zéro constat. Commit **`f66d1e6`**, CI verte run
+> **33333151630** (2 min 28 s). Retouche terrain EA2 au fil de l'eau :
+> la note « serveur détecté automatiquement » retirée (retour CE au
+> STOP visuel). **Non publié — partira avec RETOURS-13 dans la
+> release due avant la bêta (D12)** ; l'entrée CHANGELOG s'écrira à
+> la publication, datée ce jour-là (§2.9, piège du 2026-08-25).
+>
+> **Chiffres kaizen** : ~24 M équiv. input (session 7f4bb0d2, 2,7 h,
+> 508 tours), 3 appels `gate.ps1` (2 rouges — fmt puis un
+> `let_and_return` clippy, corrigés sur-le-champ — puis verte) +
+> pre-push verte, **0 constat KO au STOP 2**.
 > Rappel d'état : une release portant RETOURS-13 est due avant la
 > première vague bêta (ETAT) — l'ordre de passage est une décision CE (D12).
 
