@@ -25,9 +25,28 @@ au jeu), A96. Spikes S1-S3 **mesurés** (verdicts §5bis du plan :
 sections et groupes AU SERVICE avec index partiels/agrégat, exclusion
 par message gratuite, préchargement Kiosque dans le budget). Revue 8/8
 corrigées (deux « perte de courrier » prouvées RED). e2e 153 → **157**.
-**Prochaine étape : E2 — le Portier** (rétention des inconnus,
-page, Oui/Non, historique, réintégration). Puis E3 (règles du Non),
-release MINEUR E1-E3 (D7), puis E4-E6.
+
+**E2 (le Portier) est LIVRÉE le 2026-08-30** : rétention des inconnus
+(D3 « arrivées seules » — `portier_attente` matérialisée à l'arrivée,
+drapeau `threads.organise_hors` entretenu par `thread::refresh` +
+index partiel miroir, verdict S2-bis : toute forme calculée à la
+requête s'effondre à l'offset profond, le drapeau vaut MIEUX que le
+témoin 4,2 vs 6,5 ms ; colonne générée `envelopes.sender_norm` —
+piège gravé : un index d'EXPRESSION SQLite ne sert jamais une
+jointure), exclusion partagée flot + totaux + épingles + pastilles de
+nav, page du guichet à la forme du prototype (STOP visuel CE GO),
+Oui/Non + minis ⋯, historique, réintégration aux mêmes règles que
+l'arrivée, glyphe `more_horiz` (86), Système A97. Revue à regard neuf
+**10/10 corrigées** — dont la règle d'or prouvée RED (un fil mêlé à
+un écarté RESTE — `ecarte` n'a pas de vue), le message SANS Date qui
+contournait le guichet, et le rattrapage E1→E2 à la migration. Tests
+mail-core 387 → **401**, e2e 157 → **161** (rétention prouvée en la
+cassant). Dette neuve **D-46** (l'anatomie de rangée du Portier est
+une copie main de celle de la Liste). NOTE : les toasts du Non
+promettent l'exécution — tenue à E3, même release (D7). **Prochaine étape : E3 — les règles du Non à
+la synchro** (spam / archive / corbeille via `pending_actions`, dites
+à l'historique, éteintes avec le mode — D2). Puis release MINEUR
+E1-E3 (D7), puis E4-E6.
 
 Le même jour, deux retours CE réglés : **« Mona » renommée
 « Innamoramento »** (A95, ids migrés, commit `0a25105`, CI verte) et

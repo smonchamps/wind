@@ -753,3 +753,22 @@ motivée.)
 - **Rouvre si** : une retouche de jeton au terrain (le cas qui
   matérialise la dérive), ou au prochain chantier qui touche
   `coherence-systeme.mjs`.
+
+### D-46 · L'anatomie de rangée du Portier est une copie main de celle de la Liste
+
+- **Fait (PLAN-MODE-ORGANISE E2, revue à regard neuf du 2026-08-30)** :
+  `Portier.svelte` recopie le dessin des rangées du volet central
+  (`l1`/`exp`/`essor`/`heure`/`objet`/`apercu`, graisse du non-lu,
+  disque centré) dans son propre `<style>` — le composant promet « LE
+  format des rangées » mais aucun mécanisme ne le tient : la prochaine
+  retouche du gabarit dans `Liste.svelte` (padding d'A83, calages
+  optiques) n'atteindra pas le guichet, dérive silencieuse au pixel.
+  Seul `.disque` vit déjà en global (`systeme.css:100`).
+- **Raison du report** : promouvoir l'anatomie partagée au
+  `systeme.css` touche `Liste.svelte` (le composant le plus chaud de
+  l'UI, 8 tests fragiles recensés à l'audit e2e) — hors périmètre
+  d'E2 ; la forme actuelle est celle validée au STOP visuel.
+- **Rouvre si** : une retouche du gabarit de rangée (espacement,
+  typographie) — le constat « le Portier n'a pas suivi » la
+  matérialise —, ou au chantier E4 (la Réception organisée réutilise
+  ces rangs en sections).

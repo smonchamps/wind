@@ -116,3 +116,60 @@ tout est déterministe).
   stratégie (matérialisation entretenue), pas la sous-requête.
 - Le point dur n'est pas le SQL : c'est la sémantique de page courte
   (verdict 1) — décision de conception, pas de plan.
+
+---
+
+## S2-bis (E2, 2026-08-30) — la RÉTENTION du Portier dans le chemin chaud
+
+La question : « expéditeur en attente » = SANS ligne de routage ET
+premier message POSTÉRIEUR à l'époque (D3 arrivées seules). Où se paie
+ce prédicat ? Scripts : `bench-portier.mjs` (V1/V2), `diag-v3b.mjs`
+(V3), `diag-v4.mjs` (V4, verdict), `diag-pv.mjs` (page du Portier).
+Décor : 200 k, 2 000 adresses zipf, 300 nouveaux post-époque (dont 20
+décidés), 50 anciens routés. Sémantique bancée : un fil quitte la
+Réception s'il porte un message d'un expéditeur routé AILLEURS (miroir
+de `fil_route_sql`) ; il n'est RETENU au Portier que si TOUS ses
+messages viennent d'inconnus en attente (un fil mêlé RESTE — règle
+d'or, jamais perdre de courrier).
+
+| Variante | page off. 0 | page off. 100 k | count | verdict |
+|---|---|---|---|---|
+| U0 témoin (existant) | 0,236 ms | 6,49 ms | 10,6 ms | — |
+| V1 sondes corrélées à la requête | 0,331 ms | **299 ms** | 310 ms | ÉCARTÉ |
+| V2 idem, attente matérialisée | 0,311 ms | **145 ms** | 158 ms | ÉCARTÉ |
+| V3 listes NOT IN (patron pins) | — | 75-112 ms/req | idem | ÉCARTÉ |
+| **V4 drapeau `threads` + index partiel** | **0,212 ms** | **4,24 ms** | **4,15 ms** | **RETENU** |
+
+- **V1/V2 s'effondrent en profondeur** : la sonde par fil se paie sur
+  CHAQUE rangée sautée par l'OFFSET — la réserve d'industrialisation
+  de S2 (« pages courtes ») devenue réelle sur le squelette paginé.
+- **Piège SQLite payé** : l'index d'EXPRESSION
+  `(lower(trim(sender_address)), date_epoch)` n'est employé que
+  contre un littéral/paramètre — dans une JOINTURE (`= r.address`),
+  SCAN complet (2,3 s la liste V3). Contre-mesure prouvée : colonne
+  générée `sender_norm` VIRTUAL (ALTER 14 ms) + index réel (188 ms à
+  200 k) — la jointure redevient SEARCH.
+- **V3 (listes matérialisées par requête)** : 52 583 messages routés
+  au décor (les newsletters dominent) → 112 ms à CHAQUE requête. La
+  liste n'est pas « minuscule par construction » comme les pins.
+- **V4 = le patron déjà RETENU à S1 pour les groupes** : drapeau
+  `threads.organise_hors` maintenu en transaction (comme
+  `size`/`unseen`), index partiel MIROIR de `idx_threads_date_globale`
+  (`WHERE inbox_size > 0 AND organise_hors = 0`, 40 ms). Offset stable
+  par construction, et MOINS de rangées que le témoin (4,2 < 6,5 ms).
+  Entretien mesuré : recompute d'UN fil 26 µs ; décision sur le plus
+  gros expéditeur du décor (10 000 fils) 63 ms — geste unique ;
+  rattrapage complet des drapeaux 370 ms (activation/migration).
+- **`portier_attente(address PK, premiere_epoch)` matérialisée** :
+  décision d'arrivée (3 sondes : routage PK, attente PK, « connu avant
+  l'époque » par index) **7,4 µs/message** ; rattrapage complet 21 ms.
+- **Page du Portier** (attente → dernier message + compte par
+  expéditeur, via `sender_norm`) : **0,32 ms** ; pastille de nav
+  (messages en attente) : **0,26 ms**.
+
+Coût d'industrialisation V4 : colonne générée + index `sender_norm`
+(~190 ms de migration à 200 k, une fois), table `portier_attente`,
+colonne `threads.organise_hors` + index partiel, entretien aux trois
+points d'écriture (arrivée, décision de routage, réintégration) +
+rattrapage à l'activation. Garde de plan à écrire : la page organisée
+emploie l'index partiel, jamais un scan.

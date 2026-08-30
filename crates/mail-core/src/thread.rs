@@ -243,7 +243,15 @@ CREATE TABLE IF NOT EXISTS threads (
     -- Combien de messages REÇUS. Un fil purement sortant — j'écris,
     -- personne ne répond — vaut 0 et n'a pas de ligne dans la liste
     -- (ADR 0009 §2).
-    inbox_size INTEGER NOT NULL DEFAULT 0
+    inbox_size INTEGER NOT NULL DEFAULT 0,
+    -- Le fil est-il HORS de la Réception ORGANISÉE (Mode organisé E2) :
+    -- il porte un message d'un expéditeur routé AILLEURS (il vit dans
+    -- sa vue — miroir de fil_route_sql), ou TOUS ses messages viennent
+    -- d'inconnus en attente au Portier (un fil mêlé RESTE — règle
+    -- d'or). Entretenu par `refresh`, comme size/unseen — verdict
+    -- S2-bis : toute forme calculée à la requête s'effondre à l'offset
+    -- profond (299 ms), le drapeau + index partiel vaut le témoin.
+    organise_hors INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_threads_date
     ON threads(account_id, last_epoch DESC, last_uid DESC);
@@ -262,6 +270,16 @@ CREATE INDEX IF NOT EXISTS idx_threads_date
 CREATE INDEX IF NOT EXISTS idx_threads_date_globale
     ON threads(last_epoch DESC, last_uid DESC, account_id)
     WHERE inbox_size > 0;
+-- Le MIROIR du précédent pour la Réception ORGANISÉE : le filtre de
+-- rétention entre DANS l'index — l'offset saute des entrées d'index,
+-- jamais des lignes sondées (S2-bis : 4,2 ms à l'offset 100 k, MIEUX
+-- que le témoin ; 40 ms de création à 200 k). Sur une base héritée, la
+-- colonne existe déjà : `migrate()` l'ajoute AVANT ce schéma (le piège
+-- de `drop_if_outdated` — un index partiel sur colonne absente refuse
+-- l'ouverture entière).
+CREATE INDEX IF NOT EXISTS idx_threads_date_organise
+    ON threads(last_epoch DESC, last_uid DESC, account_id)
+    WHERE inbox_size > 0 AND organise_hors = 0;
 CREATE TABLE IF NOT EXISTS thread_links (
     account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     message_id TEXT NOT NULL,
@@ -388,11 +406,20 @@ pub(crate) fn refresh(conn: &Connection, thread: ThreadId) -> Result<(), Error> 
 
     match aggregate {
         Some((last_mailbox, last_uid, last_epoch, size, unseen, inbox_size)) => {
-            conn.prepare_cached(
+            // `organise_hors` se recalcule AVEC l'agrégat — même règle
+            // que size/unseen : jamais incrémenter, une dérive se voit
+            // pour toujours. La règle vit dans UN fragment partagé
+            // (`store::organise_hors_sql` — règle d'or comprise : un
+            // fil mêlé reste) ; sondes par clés, ~0 quand le mode n'a
+            // jamais servi (tables vides, garde O(1) en tête de CASE).
+            // Le texte SQL est stable : `prepare_cached` tient.
+            conn.prepare_cached(&format!(
                 "UPDATE threads SET last_mailbox_id = ?2, last_uid = ?3, last_epoch = ?4,
-                                    size = ?5, unseen = ?6, inbox_size = ?7
+                                    size = ?5, unseen = ?6, inbox_size = ?7,
+                                    organise_hors = {}
                  WHERE id = ?1",
-            )?
+                crate::store::organise_hors_sql("?1")
+            ))?
             .execute(params![
                 thread,
                 last_mailbox,

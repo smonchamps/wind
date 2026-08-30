@@ -1,5 +1,30 @@
 # PLAN-MODE-ORGANISE — Portier, Kiosque, Registre, Mis de côté, Groupes
 
+> **E2 LIVRÉE le 2026-08-30 — le Portier.** La rétention (D3 « arrivées
+> seules ») : `envelopes.sender_norm` (colonne générée + index — piège
+> payé : SQLite n'emploie un index d'EXPRESSION que contre un littéral,
+> jamais en jointure), `portier_attente` matérialisée à l'arrivée
+> (spike S2-bis : toute forme calculée à la requête s'effondre à
+> l'offset profond — 299 ms ; le drapeau `threads.organise_hors`
+> entretenu par `thread::refresh` + index partiel miroir vaut MIEUX que
+> le témoin, 4,2 vs 6,5 ms) ; exclusion partagée flot + totaux +
+> épingles préposées + pastille de nav. Page du guichet (forme du
+> prototype, STOP visuel CE GO le 2026-08-30, **terrain CE OK le même
+> jour — zéro constat**, mesure S4 du flux d'inconnus ENGAGÉE sur les
+> deux postes pour une semaine), Oui/Non + minis ⋯,
+> historique, réintégration (mêmes règles que l'arrivée), glyphe
+> `more_horiz` (86ᵉ). Revue à regard neuf 10/10 corrigées — dont
+> QUATRE prouvées RED : la règle d'or (un fil mêlé à un écarté
+> RESTE — `ecarte` n'a pas de vue), le message SANS Date qui
+> contournait le guichet, la réintégration hors-arrivées, et le
+> rattrapage E1→E2 de la migration (les postes du terrain E1 ont pu
+> graver l'époque). Tests mail-core 387 → **401**, e2e 157 → **161**
+> (filet prouvé en cassant la rétention). Système A97. NOTE E3 : les
+> toasts du Non promettent l'exécution automatique (« partiront aux
+> Indésirables ») — textes CE du prototype ; la promesse n'est tenue
+> qu'à E3, les deux partent dans la MÊME release (D7).
+> **Prochaine étape : E3 — les règles du Non à la synchro.**
+
 > **CHANTIER OUVERT le 2026-08-29** (STOP 1 : D1-D9 tranchées, §7).
 > **E1 LIVRÉE le jour même** : socle complet — pref `mode_organise`
 > (prefs SQLite + époque de première activation), va-et-vient

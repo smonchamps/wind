@@ -255,6 +255,8 @@ fn main() {
             commands::router_expediteur_de,
             commands::retirer_routage,
             commands::routages,
+            commands::portier_attente,
+            commands::portier_total,
             commands::pinned_rows,
             commands::archive_message,
             commands::list_folders,

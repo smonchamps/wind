@@ -302,10 +302,22 @@ impl Store {
         &self,
         account_id: i64,
         dossiers: &CanonicalFolders,
+        organise: bool,
     ) -> Result<(u64, u64), Error> {
+        // E2 : en mode organisé, le non-lu d'un fil retenu au Portier ou
+        // routé au Kiosque ne gonfle pas la pastille de la Réception —
+        // elle dirait un message que la liste refuse de montrer (le
+        // retenu a SA pastille, celle du Portier).
+        let retenue = if organise {
+            " AND organise_hors = 0"
+        } else {
+            ""
+        };
         let reception: i64 = self.conn().query_row(
-            "SELECT COALESCE(SUM(unseen > 0), 0)
-             FROM threads WHERE account_id = ?1 AND inbox_size > 0",
+            &format!(
+                "SELECT COALESCE(SUM(unseen > 0), 0)
+                 FROM threads WHERE account_id = ?1 AND inbox_size > 0{retenue}"
+            ),
             params![account_id],
             |row| row.get(0),
         )?;
@@ -324,9 +336,9 @@ impl Store {
         offset: usize,
         limit: usize,
     ) -> Result<Vec<UnifiedRow>, Error> {
-        let mut stmt = self
-            .conn()
-            .prepare(&unified_page_sql(account_id.is_some(), non_lues))?;
+        let mut stmt =
+            self.conn()
+                .prepare(&unified_page_sql(account_id.is_some(), non_lues, false))?;
         let rows = match account_id {
             None => stmt
                 .query_map(params![limit as i64, offset as i64], row_to_threaded)?
@@ -344,25 +356,80 @@ impl Store {
         account_id: Option<i64>,
         non_lues: bool,
     ) -> Result<u64, Error> {
+        self.compte_unifie(account_id, non_lues, false)
+    }
+
+    /// LE comptage unifié des deux modes (E2) — une seule écriture :
+    /// classique et organisé ne peuvent pas diverger sur ce que la
+    /// barre de défilement réserve.
+    fn compte_unifie(
+        &self,
+        account_id: Option<i64>,
+        non_lues: bool,
+        organise: bool,
+    ) -> Result<u64, Error> {
         let filtre_compte = if account_id.is_some() {
             " AND account_id = ?1"
         } else {
             ""
         };
         let filtre_non_lues = if non_lues { " AND unseen > 0" } else { "" };
+        let retenue = if organise {
+            " AND organise_hors = 0"
+        } else {
+            ""
+        };
         // R4 (D5) : le total suit le FLOT — les épinglées, servies à
         // part en tête, n'y comptent pas ; sans cette exclusion, la
         // barre de défilement réserverait des lignes fantômes et le
         // total d'une page courte contredirait `category_total`.
         let sql = format!(
             "SELECT COUNT(*) FROM threads
-              WHERE inbox_size > 0 AND id NOT IN ({PINNED_THREADS}){filtre_compte}{filtre_non_lues}"
+              WHERE inbox_size > 0{retenue} AND id NOT IN ({PINNED_THREADS}){filtre_compte}{filtre_non_lues}"
         );
         let count: i64 = match account_id {
             None => self.conn().query_row(&sql, [], |row| row.get(0))?,
             Some(id) => self.conn().query_row(&sql, params![id], |row| row.get(0))?,
         };
         Ok(count as u64)
+    }
+
+    /// La page de la Réception ORGANISÉE (E2) : le flot unifié MOINS
+    /// les fils routés ailleurs et les fils retenus au Portier — le
+    /// drapeau `organise_hors`, entretenu par `thread::refresh`, servi
+    /// par l'index partiel miroir (S2-bis : au niveau du témoin, offset
+    /// stable par construction). MÊME requête que le classique
+    /// ([`unified_page_sql`], paramètre `organise`) — jamais une copie.
+    pub fn reception_organisee_scoped(
+        &self,
+        account_id: Option<i64>,
+        non_lues: bool,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<UnifiedRow>, Error> {
+        let mut stmt =
+            self.conn()
+                .prepare(&unified_page_sql(account_id.is_some(), non_lues, true))?;
+        let rows = match account_id {
+            None => stmt
+                .query_map(params![limit as i64, offset as i64], row_to_threaded)?
+                .collect::<Result<Vec<_>, _>>()?,
+            Some(id) => stmt
+                .query_map(params![limit as i64, offset as i64, id], row_to_threaded)?
+                .collect::<Result<Vec<_>, _>>()?,
+        };
+        Ok(rows)
+    }
+
+    /// Total de la Réception organisée, sous les MÊMES bornes que sa
+    /// page (exclusion partagée, leçon `pins`) — le comptage unifié,
+    /// jamais une copie.
+    pub fn reception_organisee_count_scoped(
+        &self,
+        account_id: Option<i64>,
+        non_lues: bool,
+    ) -> Result<u64, Error> {
+        self.compte_unifie(account_id, non_lues, true)
     }
 
     /// La page du Kiosque ou du Registre (PLAN-MODE-ORGANISE E1) —
@@ -446,6 +513,7 @@ impl Store {
         &self,
         account_id: Option<i64>,
         non_lues: bool,
+        organise: bool,
     ) -> Result<Vec<UnifiedRow>, Error> {
         let filtre = if account_id.is_some() {
             " AND account_id = ?1"
@@ -453,11 +521,20 @@ impl Store {
             ""
         };
         let non_lues_seulement = if non_lues { " AND unseen > 0" } else { "" };
+        // E2 : l'exclusion partagée s'étend à la section préposée — en
+        // Réception organisée, un fil épinglé routé au Kiosque vit dans
+        // sa vue, un fil retenu attend au Portier ; le préposer ici
+        // afficherait une rangée que le total refuse de compter.
+        let retenue = if organise {
+            " AND organise_hors = 0"
+        } else {
+            ""
+        };
         let sql = format!(
             "{SELECT_UNIFIED}{THREAD_AGGREGATE}
              FROM (SELECT account_id, last_mailbox_id, last_uid, last_epoch, size, unseen
                      FROM threads
-                    WHERE inbox_size > 0 AND id IN ({PINNED_THREADS}){filtre}{non_lues_seulement}) t{UNIFIED_JOIN_TAIL}"
+                    WHERE inbox_size > 0{retenue} AND id IN ({PINNED_THREADS}){filtre}{non_lues_seulement}) t{UNIFIED_JOIN_TAIL}"
         );
         let mut stmt = self.conn().prepare(&sql)?;
         let rows = match account_id {
@@ -933,7 +1010,7 @@ mod tests {
             .unwrap();
         let canon = store.canonical_folders(account).unwrap();
         let complet = store.nav_counts(account, &canon).unwrap();
-        let (reception, indesirables) = store.nav_unread_counts(account, &canon).unwrap();
+        let (reception, indesirables) = store.nav_unread_counts(account, &canon, false).unwrap();
         assert_eq!(reception, complet.reception_non_lues);
         assert_eq!(indesirables, complet.indesirables_non_lus);
         assert_eq!(reception, 1);

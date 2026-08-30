@@ -11,6 +11,7 @@ export const FR = {
   // PLAN-MODE-ORGANISE E1 — les vues du mode organisé (noms CE).
   'boite.kiosque': 'Kiosque',
   'boite.registre': 'Registre',
+  'boite.portier': 'Portier',
   'boite.envoyes': 'Envoyés',
   'boite.brouillons': 'Brouillons',
   'boite.indesirables': 'Indésirables',
@@ -29,6 +30,48 @@ export const FR = {
   'action.deplacerVers': 'Déplacer vers…',
   'toast.expediteurDeplace': 'Expéditeur déplacé vers {boite} — ses messages suivent.',
   'erreur.sansAdresse': "Ce message n'a pas d'adresse d'expéditeur.",
+
+  // --- Le Portier (PLAN-MODE-ORGANISE E2) — textes du prototype, mot
+  // pour mot (six passes CE).
+  'portier.sousTitre1': 'Ces expéditeurs vous écrivent pour la première fois.',
+  'portier.sousTitre2': 'Vous décidez si vous voulez les entendre.',
+  'portier.question': 'Voulez-vous recevoir leurs messages ?',
+  'portier.oui': 'Oui',
+  'portier.non': 'Non',
+  'portier.ouiChoix': 'Oui, en choisissant la destination',
+  'portier.nonChoix': 'Non, en choisissant la règle',
+  'portier.ouiVers': 'Oui, et ses messages vont vers…',
+  'portier.nonSeront': 'Non, et ses messages seront…',
+  'portier.versReception': 'La Réception',
+  'portier.versKiosque': 'Le Kiosque',
+  'portier.versRegistre': 'Le Registre',
+  'portier.laReception': 'la Réception',
+  'portier.leKiosque': 'le Kiosque',
+  'portier.leRegistre': 'le Registre',
+  'portier.regleSpam': 'Signalés indésirables',
+  'portier.regleArchive': 'Archivés automatiquement',
+  'portier.regleCorbeille': 'Supprimés automatiquement',
+  'portier.vide':
+    "Personne n'attend au Portier. Les nouveaux expéditeurs apparaîtront ici.",
+  'portier.historique': 'Historique du Portier',
+  'portier.historiqueVide':
+    "Aucun expéditeur écarté. Votre choix reste privé — un expéditeur écarté n'en sait rien, et tout se rejoue ici.",
+  'portier.reintegrer': 'Réintégrer',
+  'portier.ecarte': 'écarté',
+  'portier.ecarteSpam': 'écarté — signalé indésirable',
+  'portier.ecarteArchive': 'écarté — archivage automatique',
+  'portier.ecarteCorbeille': 'écarté — suppression automatique',
+  'toast.portierOuiNu': '{qui} peut vous écrire — ses messages arrivent en Réception.',
+  'toast.portierOuiVers': '{qui} peut vous écrire — ses messages vont vers {boite}.',
+  'toast.portierNonNu': "{qui} est écarté — il n'en saura rien.",
+  'toast.portierNonSpam':
+    '{qui} est écarté — ses prochains messages partiront aux Indésirables.',
+  'toast.portierNonArchive':
+    "{qui} est écarté — ses prochains messages s'archiveront automatiquement.",
+  'toast.portierNonCorbeille':
+    '{qui} est écarté — ses prochains messages iront à la Corbeille.',
+  'toast.portierReintegre':
+    '{qui} est réintégré — ses messages des 90 derniers jours réapparaissent au Portier.',
   'entete.reglages': 'Réglages',
   // Le retour bêta (RETOURS-11 R3) : le mot du CE, tel quel.
   'entete.feedback': 'Feedback',

@@ -147,6 +147,26 @@ export async function launchAppV2({ vierge = false, comptes = null } = {}) {
   return attacher(db, ['paul.merand@atelier-nord.fr', 'paul@merand.fr']);
 }
 
+// L'ARRIVÉE de courrier en cours de spec (PLAN-MODE-ORGANISE E2) : des
+// enveloppes datées de MAINTENANT entrent par le chemin de production
+// (`upsert_envelopes` — la décision d'arrivée du Portier y vit), dans
+// la base VIVANTE de la spec (WAL : l'app tourne, comme une synchro).
+// Les exemples sont déjà compilés par `seeder` ; l'appelant recharge la
+// page pour voir l'état neuf.
+// ⚠️ `db` par défaut = la base du décor `comptes` (parcours-v2-inbox) —
+// une spec lancée sous un AUTRE décor (Clarity, vierge) doit passer sa
+// base, sinon l'arrivée part dans un fichier que l'app ne lit pas (le
+// seeder sortirait vert, l'assertion rougirait sans indice).
+export function injecterArrivee({ email, expediteur, n = 1, nom = null, sujet = null, db = null }) {
+  db ??= path.join(root, 'target', 'e2e', 'parcours-v2-inbox.db');
+  statSync(db); // la base doit EXISTER — jamais une arrivée dans le vide
+  const exe = path.join(root, 'target', 'debug', 'examples', 'seed_arrivee.exe');
+  const args = [`"${db}"`, email, expediteur, String(n)];
+  if (nom || sujet) args.push(`"${nom ?? expediteur}"`);
+  if (sujet) args.push(`"${sujet}"`);
+  execSync(`"${exe}" ${args.join(' ')}`, { cwd: root, stdio: 'inherit' });
+}
+
 async function attacher(db, emails) {
   // Profil WebView2 explicite et inscriptible : sur un runner CI,
   // l'emplacement par défaut peut être refusé. Stable d'un lancement à

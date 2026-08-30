@@ -20,11 +20,13 @@
   // repère, le rendu D7 d'origine ne change pas.
   // PLAN-RETOURS-9 (D4) : le nom personnalisé REMPLACE l'adresse sur
   // la tuile — la nav dit l'identité choisie, pas la donnée technique.
-  // PLAN-MODE-ORGANISE E1 : en mode organisé, Kiosque et Registre
-  // s'insèrent sous la Réception (le Portier arrive à l'étape E2) —
-  // le patron rang/pastille/onchoisir est le même, seule la table des
-  // dossiers se recompose. Mode classique : zéro diff.
-  let { comptes = [], reperes = {}, noms = {}, categorie, compte, organise = false, onchoisir = () => {} } = $props();
+  // PLAN-MODE-ORGANISE E1/E2 : en mode organisé, Kiosque, Registre et
+  // Portier s'insèrent sous la Réception — le patron rang/pastille/
+  // onchoisir est le même, seule la table des dossiers se recompose.
+  // La pastille du Portier (`portier`, E2) compte les MESSAGES en
+  // attente au guichet — le dessin du prototype. Mode classique :
+  // zéro diff.
+  let { comptes = [], reperes = {}, noms = {}, categorie, compte, organise = false, portier = 0, onchoisir = () => {} } = $props();
 
   const somme = (champ) => comptes.reduce((n, c) => n + c[champ], 0);
 
@@ -44,6 +46,7 @@
       ? [
           { id: 'kiosque', icone: 'kiosque', libelle: t('boite.kiosque') },
           { id: 'registre', icone: 'registre', libelle: t('boite.registre') },
+          { id: 'portier', icone: 'portier', libelle: t('boite.portier'), nonLus: portier },
         ]
       : []),
     { id: 'envoyes', icone: 'send', libelle: t('boite.envoyes') },

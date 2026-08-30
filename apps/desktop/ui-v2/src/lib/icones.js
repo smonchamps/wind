@@ -1,4 +1,4 @@
-// Le jeu d'icônes « Elements » (V8 — PLAN-ELEMENTS) : 85 glyphes
+// Le jeu d'icônes « Elements » (V8 — PLAN-ELEMENTS) : 86 glyphes
 // (78 à V8 ; `check` A86, `feedback` RETOURS-11, 5 Mode organisé A96)
 // dessinés en SVG, grille 24, trait 2 unités, bouts nets (butt),
 // jonctions vives (miter). Ce catalogue est LE jeu livré ; le Système
@@ -106,6 +106,10 @@ export const JEU = {
   registre: { d:['M6 3h12v18l-3-2-3 2-3-2-3 2z','M9 8h6','M9 12h4'] },
   pile: { d:['M4 16l8 4 8-4','M4 12l8 4 8-4','M4 8l8-4 8 4-8 4z'] },
   groupe: { d:['M4 10h16v9H4z','M4 14h5l2 2h2l2-2h5','M7 6h10'] },
+  // E2 : les points de suspension des minis ⋯ du Portier — trois
+  // disques pleins à l'encre, la forme Material redessinée à la
+  // grammaire du jeu (le prototype les portait déjà).
+  more_horiz: { pleins:[[5,12,2],[12,12,2],[19,12,2]] },
 };
 
 // La marque : hors inventaire — le glyphe du document d'icônes,

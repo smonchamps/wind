@@ -338,6 +338,19 @@ CREATE TABLE IF NOT EXISTS routage_expediteurs (
     regle       TEXT CHECK (regle IN ('spam','archive','corbeille')),
     epoch       INTEGER NOT NULL
 );
+-- L'attente du Portier (PLAN-MODE-ORGANISE E2, D3 « arrivées
+-- seules ») : les expéditeurs SANS ligne de routage dont le courrier
+-- n'existe QU'APRÈS l'époque d'activation. MATÉRIALISÉE et entretenue
+-- à l'arrivée (spike S2-bis : la calculer dans la requête chaude coûte
+-- 299 ms à l'offset profond, la sonde PK est gratuite ; l'entretien
+-- vaut 7 µs/message). DÉRIVÉE du courrier — jamais une décision : elle
+-- se défait quand le courrier ancien arrive (backfill) ou disparaît
+-- (réinitialisation), et meurt au verdict (la ligne de routage prend
+-- le relais). Une seule colonne : l'appartenance EST la donnée — tout
+-- le reste (dernier message, comptes) se lit du courrier.
+CREATE TABLE IF NOT EXISTS portier_attente (
+    address TEXT PRIMARY KEY
+);
 -- L'invitation de reunion d'un message (PLAN-INVITATIONS) : le CACHE de
 -- la partie text/calendar, extrait au scan du corps (save_body_full) ou
 -- a l'ouverture pour un message d'avant la fonctionnalite (write-back,
@@ -1313,6 +1326,11 @@ impl Store {
             )?;
         }
         tx.execute("DELETE FROM accounts WHERE id = ?1", [account_id])?;
+        // L'attente du Portier suit le courrier (E2) : les rangs que
+        // les cascades viennent de vider meurent avec le compte. Le
+        // routage, lui, est GLOBAL au poste et survit (patron
+        // `images_expediteurs`).
+        purger_attente_orpheline(&tx)?;
         tx.commit()?;
         Ok(())
     }
@@ -1352,6 +1370,10 @@ impl Store {
         )?;
         self.0
             .execute("DELETE FROM envelopes WHERE mailbox_id = ?1", [mailbox_id])?;
+        // L'attente du Portier est DÉRIVÉE du courrier (E2) : un rang
+        // qui ne s'appuie plus sur rien meurt avec la boîte — un UID
+        // recyclé n'hérite d'aucune attente (A43/A89).
+        purger_attente_orpheline(&self.0)?;
         self.0.execute(
             "UPDATE mailboxes
              SET uid_validity = ?2, last_uid = 0, highest_modseq = NULL
@@ -1395,6 +1417,10 @@ impl Store {
         // Ce que l'annuaire des correspondants apprend de CETTE boîte —
         // résolu une fois par lot, comme le fil (PLAN-RETOURS-5, D4).
         let (noter_expediteurs, noter_destinataires) = self.role_annuaire(mailbox_id)?;
+        // L'époque du Portier (E2) — lue AVANT la transaction (une
+        // pref, jamais réécrite pendant un lot). None = le mode n'a
+        // jamais été activé, la décision d'arrivée ne coûte rien.
+        let epoque_portier = self.mode_organise_epoch()?;
         let tx = self.0.transaction()?;
         // Résolu UNE fois : la boîte ne change pas dans un lot, et le fil
         // se raisonne désormais au compte (ADR 0009). Le faire par message
@@ -1403,11 +1429,21 @@ impl Store {
         // Même raison pour la portée : elle est propre à la boîte, pas au
         // message. Hors portée, on stocke et on indexe sans regrouper —
         // `thread_id` reste NULL (ADR 0010 §3).
-        let (account_id, threaded): (i64, bool) = tx.query_row(
-            "SELECT account_id, threaded FROM mailboxes WHERE id = ?1",
+        let (account_id, threaded, nom_boite): (i64, bool, String) = tx.query_row(
+            "SELECT account_id, threaded, name FROM mailboxes WHERE id = ?1",
             [mailbox_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )?;
+        // Le Portier ne juge que les ARRIVÉES (E2, D3) : la boîte du
+        // courrier entrant, comme `inbox_size`. Un expéditeur vu
+        // d'abord aux Indésirables ou en Archives n'attend pas au
+        // guichet — mais son courrier, où qu'il soit, compte comme
+        // « connu avant l'époque ».
+        let arrivee = nom_boite == thread::RECEIVED_MAILBOX;
+        // Les adresses dont l'attente s'est DÉFAITE dans ce lot (leur
+        // courrier ancien arrive après coup) : leurs fils des lots
+        // précédents recalculent leur drapeau après la boucle.
+        let mut attente_defaite: BTreeSet<String> = BTreeSet::new();
         // Un ENSEMBLE, pas une liste : même défaut quadratique que celui
         // mesuré dans l'adoption (`Vec::contains` est linéaire). Borné ici
         // par la taille du lot, donc moins spectaculaire — mais c'est le
@@ -1467,6 +1503,50 @@ impl Store {
                     join_addrs(&envelope.cc_addrs),
                 ])?;
 
+                // La décision d'arrivée du Portier (E2) — sondes par
+                // clés, toutes cachées, 7 µs/message mesurées
+                // (S2-bis) : un inconnu (aucune ligne de routage, aucun
+                // courrier avant l'époque, jamais soi) entre en attente
+                // à son premier message d'arrivée postérieur à
+                // l'époque ; le courrier ANCIEN qui arrive après coup
+                // (désordre de synchro) prouve le connu et DÉFAIT
+                // l'attente posée à tort. Un message SANS date ne
+                // prouve JAMAIS le connu (revue E2) : le spam sans
+                // en-tête Date contournerait sinon le guichet même —
+                // il est traité comme une arrivée d'aujourd'hui.
+                if nouveau
+                    && let Some(epoque) = epoque_portier
+                    && let Some(adresse) = adresse_images(envelope.sender_address.clone())
+                {
+                    let date = envelope.date.map(|d| d.timestamp());
+                    if let Some(date) = date
+                        && date <= epoque
+                    {
+                        if tx
+                            .prepare_cached("DELETE FROM portier_attente WHERE address = ?1")?
+                            .execute(params![adresse])?
+                            > 0
+                        {
+                            attente_defaite.insert(adresse);
+                        }
+                    } else if arrivee {
+                        let deja = tx
+                            .prepare_cached("SELECT 1 FROM portier_attente WHERE address = ?1")?
+                            .exists(params![adresse])?
+                            || tx
+                                .prepare_cached(
+                                    "SELECT 1 FROM routage_expediteurs WHERE address = ?1",
+                                )?
+                                .exists(params![adresse])?
+                            || adresse_d_un_compte(&tx, &adresse)?
+                            || connu_avant_epoque(&tx, &adresse, epoque)?;
+                        if !deja {
+                            tx.prepare_cached("INSERT INTO portier_attente (address) VALUES (?1)")?
+                                .execute(params![adresse])?;
+                        }
+                    }
+                }
+
                 if nouveau {
                     let date = envelope.date.map(|d| d.timestamp()).unwrap_or(0);
                     if noter_expediteurs && let Some(adresse) = envelope.sender_address.as_deref() {
@@ -1524,6 +1604,12 @@ impl Store {
                         body_html: html.as_deref(),
                     },
                 )?;
+            }
+            // Les fils des lots PRÉCÉDENTS d'une attente défaite : leur
+            // drapeau de rétention date d'un état démenti — ils entrent
+            // dans la même passe de recalcul.
+            for adresse in &attente_defaite {
+                touched.extend(fils_de(&tx, adresse)?);
             }
             // Après la boucle, et une seule fois par fil : recalculer à
             // chaque message ferait N fois le travail sur une conversation
@@ -2339,7 +2425,7 @@ impl Store {
         //
         // La pagination vit dans une SOUS-REQUÊTE sur `threads` seul :
         // voir `unified_page_sql`.
-        let mut stmt = self.0.prepare(&unified_page_sql(false, false))?;
+        let mut stmt = self.0.prepare(&unified_page_sql(false, false, false))?;
         let rows = stmt
             .query_map(params![limit as i64, offset as i64], row_to_threaded)?
             .collect::<Result<Vec<_>, _>>()?;
@@ -2574,11 +2660,22 @@ impl Store {
         let Some(adresse) = adresse_images(Some(address.to_string())) else {
             return Err(Error::InvalidEmailAddress(address.to_string()));
         };
-        self.0.execute(
+        // Verdict, sortie de l'attente et drapeaux des fils dans UNE
+        // transaction (E2) : un verdict à moitié appliqué laisserait un
+        // expéditeur au Portier ET dans sa vue.
+        let tx = self.0.unchecked_transaction()?;
+        tx.execute(
             "INSERT OR REPLACE INTO routage_expediteurs (address, destination, regle, epoch)
              VALUES (?1, ?2, ?3, ?4)",
             params![adresse, destination, regle, epoch],
         )?;
+        // Le verdict prend le relais de l'attente — Oui comme Non.
+        tx.execute(
+            "DELETE FROM portier_attente WHERE address = ?1",
+            params![adresse],
+        )?;
+        rafraichir_fils_de(&tx, &adresse)?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -2657,10 +2754,40 @@ impl Store {
         let Some(adresse) = adresse_images(Some(address.to_string())) else {
             return Ok(());
         };
-        self.0.execute(
+        let epoque = self.mode_organise_epoch()?;
+        let tx = self.0.unchecked_transaction()?;
+        tx.execute(
             "DELETE FROM routage_expediteurs WHERE address = ?1",
             params![adresse],
         )?;
+        // « Réintégrer » (E2) : un INCONNU — aucun courrier avant
+        // l'époque — redevient un expéditeur en attente, ses messages
+        // réapparaissent au Portier ; un ancien est simplement rendu à
+        // la Réception, jamais au guichet (D3 : son historique fait
+        // foi). Jamais soi (leçon E1). La porte de sortie suit la MÊME
+        // règle que l'arrivée (revue E2) : seul du courrier ARRIVÉ
+        // après l'époque réintègre — un expéditeur vu seulement en
+        // Archives ou aux Indésirables n'a jamais passé le guichet.
+        if let Some(epoque) = epoque
+            && !adresse_d_un_compte(&tx, &adresse)?
+            && !connu_avant_epoque(&tx, &adresse, epoque)?
+            && tx
+                .prepare(
+                    "SELECT 1 FROM envelopes e
+                       JOIN mailboxes m ON m.id = e.mailbox_id
+                      WHERE e.sender_norm = ?1
+                        AND (e.date_epoch > ?2 OR e.date_epoch IS NULL)
+                        AND m.name = ?3 LIMIT 1",
+                )?
+                .exists(params![adresse, epoque, thread::RECEIVED_MAILBOX])?
+        {
+            tx.execute(
+                "INSERT OR IGNORE INTO portier_attente (address) VALUES (?1)",
+                params![adresse],
+            )?;
+        }
+        rafraichir_fils_de(&tx, &adresse)?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -2692,6 +2819,68 @@ impl Store {
             .query_map([], lire_routage)?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(routages)
+    }
+
+    /// Le guichet du Portier (E2) : un rang par expéditeur en attente —
+    /// l'adresse normalisée (la clé que le verdict prendra) et sa
+    /// DERNIÈRE arrivée postérieure à l'époque, au format des rangées
+    /// de la liste. Le plus récent en tête. Vide tant que le mode n'a
+    /// jamais été activé. Le guichet ne dit que les ARRIVÉES (revue
+    /// E2) : un message du même expéditeur déjà jeté ou archivé n'est
+    /// ni le rang ni le compte — la boîte du rang, c'est l'INBOX. Les
+    /// sondes suivent `idx_envelopes_sender` (0,32 ms à 200 k,
+    /// S2-bis) ; un rang dont le courrier a disparu ne se sert pas.
+    pub fn portier_attente(&self) -> Result<Vec<RangPortier>, Error> {
+        let Some(epoque) = self.mode_organise_epoch()? else {
+            return Ok(Vec::new());
+        };
+        // `COALESCE` sur l'agrégat : le rang montre UN message — si son
+        // fil n'existe pas (boîte hors portée), il compte pour lui-même.
+        let sql = format!(
+            "{SELECT_UNIFIED}, COALESCE(t.size, 1), COALESCE(t.unseen, 1 - e.seen), pa.address
+             FROM portier_attente pa
+             JOIN envelopes e ON e.rowid = (
+                  SELECT e2.rowid FROM envelopes e2
+                    JOIN mailboxes m2 ON m2.id = e2.mailbox_id AND m2.name = ?2
+                   WHERE e2.sender_norm = pa.address
+                     AND (e2.date_epoch > ?1 OR e2.date_epoch IS NULL)
+                   ORDER BY e2.date_epoch DESC, e2.uid DESC LIMIT 1)
+             JOIN mailboxes m ON m.id = e.mailbox_id
+             JOIN accounts a ON a.id = m.account_id
+             LEFT JOIN threads t ON t.id = e.thread_id
+             LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
+             ORDER BY e.date_epoch DESC, e.uid DESC"
+        );
+        let mut stmt = self.0.prepare(&sql)?;
+        let rangs = stmt
+            .query_map(params![epoque, thread::RECEIVED_MAILBOX], |row| {
+                Ok(RangPortier {
+                    ligne: row_to_threaded(row)?,
+                    address: row.get(19)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rangs)
+    }
+
+    /// La pastille du Portier : combien de MESSAGES attendent — les
+    /// arrivées postérieures à l'époque des expéditeurs en attente, la
+    /// même portée que le guichet (jamais un compte que la page ne
+    /// saurait montrer). Somme d'intervalles d'index, 0,26 ms à 200 k.
+    pub fn portier_total(&self) -> Result<u64, Error> {
+        let Some(epoque) = self.mode_organise_epoch()? else {
+            return Ok(0);
+        };
+        let total: i64 = self.0.query_row(
+            "SELECT COALESCE(SUM((SELECT COUNT(*) FROM envelopes e
+                     JOIN mailboxes m ON m.id = e.mailbox_id AND m.name = ?2
+                     WHERE e.sender_norm = pa.address
+                       AND (e.date_epoch > ?1 OR e.date_epoch IS NULL))), 0)
+             FROM portier_attente pa",
+            params![epoque, thread::RECEIVED_MAILBOX],
+            |row| row.get(0),
+        )?;
+        Ok(total as u64)
     }
 
     /// Les messages d'une conversation, du plus ancien au plus récent —
@@ -2858,7 +3047,14 @@ pub(crate) fn bodies_to_backfill_sql() -> String {
 /// Isolée pour qu'un test puisse interroger **son** plan d'exécution, et
 /// non une copie qui divergerait le jour où l'une des deux change. Le
 /// coût de cette requête est le chemin le plus chaud du produit.
-pub(crate) fn unified_page_sql(par_compte: bool, non_lues: bool) -> String {
+/// `organise` (E2) : la Réception ORGANISÉE — le MÊME squelette plus le
+/// drapeau de rétention, sous la forme EXACTE de l'index partiel
+/// `idx_threads_date_organise` qui porte alors tri, filtre et
+/// pagination (S2-bis : l'offset saute des entrées d'index, jamais des
+/// lignes sondées). UNE écriture pour les deux modes — la revue E1
+/// avait isolé cette requête précisément pour qu'aucune copie ne
+/// diverge.
+pub(crate) fn unified_page_sql(par_compte: bool, non_lues: bool, organise: bool) -> String {
     // La pagination (`LIMIT`/`OFFSET`) s'applique dans une sous-requête
     // sur `threads` SEUL, pas sur la jointure : `OFFSET` produit puis
     // jette chaque ligne sautée, donc tout ce qui se calcule par ligne —
@@ -2887,6 +3083,11 @@ pub(crate) fn unified_page_sql(par_compte: bool, non_lues: bool) -> String {
         ""
     };
     let non_lues_seulement = if non_lues { " AND unseen > 0" } else { "" };
+    let retenue = if organise {
+        " AND organise_hors = 0"
+    } else {
+        ""
+    };
     // R4 (PLAN-RETOURS-7, D5) : les conversations ÉPINGLÉES quittent le
     // flot paginé — elles se servent À PART, en tête de page 0
     // (`pinned_unified_scoped`) ; la liste ne montre jamais deux fois le
@@ -2896,9 +3097,47 @@ pub(crate) fn unified_page_sql(par_compte: bool, non_lues: bool) -> String {
         "{SELECT_UNIFIED}{THREAD_AGGREGATE}
          FROM (SELECT account_id, last_mailbox_id, last_uid, last_epoch, size, unseen
                  FROM threads
-                WHERE inbox_size > 0 AND id NOT IN ({PINNED_THREADS}){filtre}{non_lues_seulement}
+                WHERE inbox_size > 0{retenue} AND id NOT IN ({PINNED_THREADS}){filtre}{non_lues_seulement}
                 ORDER BY last_epoch DESC, last_uid DESC, account_id
                 LIMIT ?1 OFFSET ?2) t{UNIFIED_JOIN_TAIL}"
+    )
+}
+
+/// Le calcul du drapeau `organise_hors` d'UN fil (E2) — LE fragment
+/// partagé par `thread::refresh` (entretien) et le rattrapage de
+/// migration : une seule écriture de la règle, jamais deux copies qui
+/// divergent. `param_fil` désigne le fil (paramètre ou colonne).
+///
+/// Règle d'or (revue E2) — jamais perdre de courrier :
+/// - un expéditeur routé vers une VUE (kiosque/registre) éjecte le fil
+///   dès UN message — le fil vit dans sa vue (miroir de
+///   [`fil_route_sql`]), rien n'est perdu ;
+/// - un écarté ou un expéditeur en attente n'a PAS de vue : le fil ne
+///   se cache que s'il est ENTIÈREMENT à eux — un fil mêlé (un intrus
+///   écarté répond dans le fil d'un connu) RESTE en Réception.
+///
+/// Premier WHEN : les deux tables vides (mode jamais employé) — deux
+/// sondes O(1), l'adoption d'une base héritée ne paie rien.
+pub(crate) fn organise_hors_sql(param_fil: &str) -> String {
+    format!(
+        "CASE
+           WHEN NOT EXISTS (SELECT 1 FROM routage_expediteurs LIMIT 1)
+            AND NOT EXISTS (SELECT 1 FROM portier_attente LIMIT 1) THEN 0
+           WHEN EXISTS (
+             SELECT 1 FROM envelopes te
+               JOIN routage_expediteurs r
+                 ON r.address = te.sender_norm
+                AND r.destination IN ('kiosque', 'registre')
+              WHERE te.thread_id = {param_fil}) THEN 1
+           WHEN NOT EXISTS (
+             SELECT 1 FROM envelopes o
+              WHERE o.thread_id = {param_fil}
+                AND NOT EXISTS (SELECT 1 FROM portier_attente pa
+                                 WHERE pa.address = o.sender_norm)
+                AND NOT EXISTS (SELECT 1 FROM routage_expediteurs re
+                                 WHERE re.address = o.sender_norm
+                                   AND re.destination = 'ecarte')) THEN 1
+           ELSE 0 END"
     )
 }
 
@@ -2909,16 +3148,17 @@ pub(crate) fn unified_page_sql(par_compte: bool, non_lues: bool) -> String {
 /// déplace en Envoyés et le fil s'éjectait de sa destination (prouvé
 /// RED). Sonde par `idx_envelopes_thread` puis PK routage (spike S2),
 /// posée DANS le squelette paginé — jamais après le LIMIT (pages
-/// courtes, réserve S2). Le `lower(trim(...))` SQLite diverge de
-/// `adresse_images` (Rust) sur les majuscules non-ASCII, les blancs
-/// Unicode (NBSP, tab de header plié) et les local-parts SMTPUTF8 —
-/// limites assumées et dites : une adresse réelle est ASCII.
+/// courtes, réserve S2). `sender_norm` (colonne générée, E2) EST le
+/// `lower(trim(sender_address))` d'origine — une seule expression,
+/// définie une fois ; sa divergence avec `adresse_images` (Rust) sur
+/// le non-ASCII reste la limite assumée E1 : une adresse réelle est
+/// ASCII.
 pub(crate) fn fil_route_sql(param_destination: &str) -> String {
     format!(
         "EXISTS (
                    SELECT 1 FROM envelopes te
                      JOIN routage_expediteurs r
-                       ON r.address = lower(trim(te.sender_address))
+                       ON r.address = te.sender_norm
                       AND r.destination = {param_destination}
                     WHERE te.thread_id = threads.id
                )"
@@ -3310,6 +3550,89 @@ fn migrate(
         "CREATE INDEX IF NOT EXISTS idx_envelopes_thread
              ON envelopes(thread_id, date_epoch DESC);",
     )?;
+    // L'adresse d'expéditeur NORMALISÉE, en colonne générée (Mode
+    // organisé E2, spike S2-bis) : SQLite n'emploie un index
+    // d'EXPRESSION que contre un littéral — dans une jointure
+    // (`= r.address`), il scanne (2,3 s mesurées à 200 k). La colonne
+    // VIRTUAL ne stocke rien (ALTER 14 ms) ; l'index réel (188 ms à
+    // 200 k, une fois) rend SEARCH toutes les sondes par expéditeur du
+    // routage et du Portier. Même expression que `fil_route_sql` —
+    // divergence connue avec `adresse_images` (Rust) sur le non-ASCII,
+    // limite assumée E1 : une adresse réelle est ASCII.
+    add_missing_columns(
+        conn,
+        "envelopes",
+        &[(
+            "sender_norm",
+            "TEXT GENERATED ALWAYS AS (lower(trim(sender_address))) VIRTUAL",
+        )],
+    )?;
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_envelopes_sender
+             ON envelopes(sender_norm, date_epoch);",
+    )?;
+    // Le drapeau de rétention des fils (E2, verdict S2-bis : V4 —
+    // entretenu par `thread::refresh` comme `size`/`unseen`, servi par
+    // l'index partiel miroir). Sur une base héritée, `threads` existe
+    // déjà sans la colonne — et son index partiel, créé par
+    // `thread::SCHEMA` APRÈS ce point, échouerait sans elle : c'est le
+    // piège documenté de `drop_if_outdated`. Une base neuve n'a pas
+    // encore la table : le schéma des fils la crée complète.
+    let colonnes_threads = table_columns(conn, "threads")?;
+    if colonnes_threads.contains("id") && !colonnes_threads.contains("organise_hors") {
+        add_missing_columns(
+            conn,
+            "threads",
+            &[("organise_hors", "INTEGER NOT NULL DEFAULT 0")],
+        )?;
+        // Rattrapage UNIQUE d'une base d'AVANT E2 où le mode a déjà
+        // servi (terrain E1 : l'époque a pu être gravée et des inconnus
+        // arriver AVANT cette mise à jour — sans rattrapage ils
+        // passeraient le guichet pour toujours, en silence). D'abord
+        // l'attente (la définition de l'arrivée, rejouée sur le stock :
+        // 21 ms mesurées à 200 k), puis les drapeaux des fils touchés,
+        // par LE fragment partagé — jamais une copie de la règle.
+        let epoque: Option<i64> = conn
+            .query_row(
+                "SELECT value FROM prefs WHERE key = 'mode_organise_epoch'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .and_then(|v| v.parse().ok());
+        if let Some(epoque) = epoque {
+            conn.execute(
+                "INSERT OR IGNORE INTO portier_attente (address)
+                 SELECT e.sender_norm FROM envelopes e
+                   JOIN mailboxes m ON m.id = e.mailbox_id AND m.name = ?2
+                  WHERE (e.date_epoch > ?1 OR e.date_epoch IS NULL)
+                    AND e.sender_norm IS NOT NULL
+                  GROUP BY e.sender_norm
+                 HAVING NOT EXISTS (SELECT 1 FROM routage_expediteurs r
+                                     WHERE r.address = e.sender_norm)
+                    AND NOT EXISTS (SELECT 1 FROM envelopes v
+                                     WHERE v.sender_norm = e.sender_norm
+                                       AND v.date_epoch <= ?1)
+                    AND NOT EXISTS (SELECT 1 FROM accounts a
+                                     WHERE lower(trim(a.email)) = e.sender_norm)",
+                params![epoque, thread::RECEIVED_MAILBOX],
+            )?;
+        }
+        conn.execute(
+            &format!(
+                "UPDATE threads SET organise_hors = {}
+                  WHERE id IN (
+                    SELECT DISTINCT te.thread_id FROM envelopes te
+                     WHERE te.thread_id IS NOT NULL
+                       AND (EXISTS (SELECT 1 FROM routage_expediteurs r
+                                     WHERE r.address = te.sender_norm)
+                            OR EXISTS (SELECT 1 FROM portier_attente pa
+                                        WHERE pa.address = te.sender_norm)))",
+                organise_hors_sql("threads.id")
+            ),
+            [],
+        )?;
+    }
     // L'adoption des fils ne vit PAS ici : elle appartient à l'unité
     // transactionnelle de `init_with`, pour être rembobinable (§8). Elle
     // vient après ce module — la colonne et l'index doivent exister avant
@@ -3371,7 +3694,10 @@ fn migrate_multi_account(conn: &Connection) -> Result<(), Error> {
 }
 
 fn table_columns(conn: &Connection, table: &str) -> Result<HashSet<String>, Error> {
-    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    // `table_xinfo`, pas `table_info` : le second MASQUE les colonnes
+    // générées (`sender_norm`) — la sonde d'existence les recréait à
+    // chaque réouverture, « duplicate column name » (prouvé rouge E2).
+    let mut stmt = conn.prepare(&format!("PRAGMA table_xinfo({table})"))?;
     let columns = stmt
         .query_map([], |row| row.get(1))?
         .collect::<Result<_, _>>()?;
@@ -3479,6 +3805,76 @@ fn lire_routage(row: &rusqlite::Row<'_>) -> rusqlite::Result<Routage> {
         regle: row.get(2)?,
         epoch: row.get(3)?,
     })
+}
+
+/// Un rang du guichet du Portier (E2) : l'adresse EN ATTENTE —
+/// normalisée, la clé que le verdict prendra — et son dernier message.
+#[derive(Debug)]
+pub struct RangPortier {
+    pub address: String,
+    pub ligne: UnifiedRow,
+}
+
+/// Les fils d'UN expéditeur — LA définition unique, partagée par le
+/// recalcul des verdicts et la défaite d'attente du chemin de synchro.
+fn fils_de(conn: &Connection, adresse: &str) -> Result<Vec<i64>, Error> {
+    let fils = conn
+        .prepare_cached(
+            "SELECT DISTINCT thread_id FROM envelopes
+              WHERE sender_norm = ?1 AND thread_id IS NOT NULL",
+        )?
+        .query_map(params![adresse], |row| row.get(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(fils)
+}
+
+/// Recalcule les drapeaux des fils d'UN expéditeur par LA porte unique
+/// (`thread::refresh`) — après un verdict ou une réintégration. Borné
+/// aux fils de l'adresse (63 ms mesurées sur un expéditeur de 10 000
+/// fils, geste unique).
+fn rafraichir_fils_de(conn: &Connection, adresse: &str) -> Result<(), Error> {
+    for fil in fils_de(conn, adresse)? {
+        thread::refresh(conn, fil)?;
+    }
+    Ok(())
+}
+
+/// L'adresse est-elle celle d'UN de nos comptes ? Jamais soi au
+/// Portier (leçon E1 : la propre adresse de l'utilisateur n'est jamais
+/// un expéditeur à trier). `prepare_cached` : la sonde vit sur le
+/// chemin chaud de la synchro (revue E2).
+fn adresse_d_un_compte(conn: &Connection, adresse: &str) -> Result<bool, Error> {
+    Ok(conn
+        .prepare_cached("SELECT 1 FROM accounts WHERE lower(trim(email)) = ?1")?
+        .exists(params![adresse])?)
+}
+
+/// L'expéditeur a-t-il du courrier ANTÉRIEUR à l'époque d'activation ?
+/// C'est LA définition du « connu » de D3 (arrivées seules) — une seule
+/// écriture, partagée par la décision d'arrivée et la réintégration :
+/// deux copies divergeraient sur le sens même du guichet. Toutes
+/// boîtes confondues : un historique en Archives ou aux Indésirables
+/// est un historique.
+fn connu_avant_epoque(conn: &Connection, adresse: &str, epoque: i64) -> Result<bool, Error> {
+    Ok(conn
+        .prepare_cached(
+            "SELECT 1 FROM envelopes
+              WHERE sender_norm = ?1 AND date_epoch <= ?2 LIMIT 1",
+        )?
+        .exists(params![adresse, epoque])?)
+}
+
+/// Purge les rangs du Portier qui ne s'appuient plus sur AUCUN
+/// courrier (E2) : l'attente est DÉRIVÉE — un UID recyclé n'hérite
+/// d'aucune décision (A43/A89). Partagée par le retrait de compte et
+/// la réinitialisation de boîte.
+fn purger_attente_orpheline(conn: &Connection) -> Result<(), Error> {
+    conn.execute(
+        "DELETE FROM portier_attente WHERE NOT EXISTS (
+             SELECT 1 FROM envelopes e WHERE e.sender_norm = portier_attente.address)",
+        [],
+    )?;
+    Ok(())
 }
 
 fn row_to_envelope(row: &rusqlite::Row<'_>) -> rusqlite::Result<Envelope> {
@@ -6423,7 +6819,7 @@ mod tests {
             .0
             .prepare(&format!(
                 "EXPLAIN QUERY PLAN {}",
-                unified_page_sql(false, false)
+                unified_page_sql(false, false, false)
             ))
             .unwrap();
         let plan: Vec<String> = stmt
@@ -6619,10 +7015,15 @@ Etape : {etape}\nPlan :\n{}",
                 ],
             )
             .unwrap();
-        assert!(store.pinned_unified_scoped(None, false).unwrap().is_empty());
+        assert!(
+            store
+                .pinned_unified_scoped(None, false, false)
+                .unwrap()
+                .is_empty()
+        );
 
         assert!(store.toggle_pin(inbox, 1, 1_000).unwrap(), "épinglé");
-        let epingles = store.pinned_unified_scoped(None, false).unwrap();
+        let epingles = store.pinned_unified_scoped(None, false, false).unwrap();
         assert_eq!(epingles.len(), 1);
         assert_eq!(epingles[0].envelope.uid, 1);
         let flot = store.unified_recent_scoped(None, false, 0, 10).unwrap();
@@ -6636,14 +7037,24 @@ Etape : {etape}\nPlan :\n{}",
         // et l'onglet « Non lus » ne la montre pas (tout est lu ici).
         assert!(
             store
-                .pinned_unified_scoped(Some(999), false)
+                .pinned_unified_scoped(Some(999), false, false)
                 .unwrap()
                 .is_empty()
         );
-        assert!(store.pinned_unified_scoped(None, true).unwrap().is_empty());
+        assert!(
+            store
+                .pinned_unified_scoped(None, true, false)
+                .unwrap()
+                .is_empty()
+        );
 
         assert!(!store.toggle_pin(inbox, 1, 1_001).unwrap(), "désépinglé");
-        assert!(store.pinned_unified_scoped(None, false).unwrap().is_empty());
+        assert!(
+            store
+                .pinned_unified_scoped(None, false, false)
+                .unwrap()
+                .is_empty()
+        );
         assert_eq!(store.unified_count_scoped(None, false).unwrap(), 3);
     }
 
@@ -6766,7 +7177,7 @@ Etape : {etape}\nPlan :\n{}",
         reponse.in_reply_to = Some("<m1@example.com>".to_string());
         store.upsert_envelopes(inbox, &[reponse]).unwrap();
 
-        let epingles = store.pinned_unified_scoped(None, false).unwrap();
+        let epingles = store.pinned_unified_scoped(None, false, false).unwrap();
         assert_eq!(epingles.len(), 1, "un fil épinglé = UNE ligne");
         assert_eq!(epingles[0].envelope.uid, 2, "la ligne est la tête du fil");
         assert_eq!(epingles[0].thread_size, 2);
@@ -6779,7 +7190,12 @@ Etape : {etape}\nPlan :\n{}",
             !store.toggle_pin(inbox, 2, 1_001).unwrap(),
             "désépinglé depuis la tête nouvelle"
         );
-        assert!(store.pinned_unified_scoped(None, false).unwrap().is_empty());
+        assert!(
+            store
+                .pinned_unified_scoped(None, false, false)
+                .unwrap()
+                .is_empty()
+        );
         assert!(!store.pin_state(inbox, 1).unwrap());
         assert_eq!(store.unified_count_scoped(None, false).unwrap(), 1);
     }
@@ -7029,6 +7445,570 @@ Etape : {etape}\nPlan :\n{}",
             store.mode_organise_epoch().unwrap(),
             Some(100),
             "l'époque de PREMIÈRE activation est gravée"
+        );
+    }
+
+    /// PLAN-MODE-ORGANISE E2 — la rétention du Portier (D3 « arrivées
+    /// seules »). Un expéditeur SANS ligne de routage dont le courrier
+    /// n'existe QU'APRÈS l'époque d'activation attend au Portier : son
+    /// fil quitte le flot ET les totaux de la Réception organisée
+    /// (exclusion partagée, leçon `pins`). L'historique d'un connu
+    /// reste en Réception, et le mode CLASSIQUE ne bouge pas d'un
+    /// message.
+    #[test]
+    fn un_inconnu_apres_l_epoque_attend_au_portier_hors_flot_et_totaux() {
+        let (mut store, inbox) = store_with_mailbox();
+        store.set_mode_organise(true, 1_000).unwrap();
+        // L'ancien : du courrier avant ET après l'époque.
+        let mut avant = envelope(1, "d'hier", 500, true);
+        avant.sender_address = Some("ancien@exemple.fr".to_string());
+        let mut apres = envelope(2, "d'aujourd'hui", 1_500, false);
+        apres.sender_address = Some("ancien@exemple.fr".to_string());
+        // L'inconnu : premier message POSTÉRIEUR à l'époque.
+        let mut inconnu = envelope(3, "premiere fois", 1_600, false);
+        inconnu.sender = Some("Nouvelle Venue".to_string());
+        inconnu.sender_address = Some("Nouv@Exemple.FR".to_string());
+        store
+            .upsert_envelopes(inbox, &[avant, apres, inconnu])
+            .unwrap();
+
+        let page = store
+            .reception_organisee_scoped(None, false, 0, 10)
+            .unwrap();
+        assert_eq!(
+            page.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
+            vec![2, 1],
+            "la Réception organisée ne sert que l'ancien"
+        );
+        assert_eq!(
+            store.reception_organisee_count_scoped(None, false).unwrap(),
+            2,
+            "le total suit le flot (exclusion partagée)"
+        );
+        assert_eq!(
+            store.unified_count_scoped(None, false).unwrap(),
+            3,
+            "le mode classique montre TOUJOURS tout"
+        );
+        let attente = store.portier_attente().unwrap();
+        assert_eq!(attente.len(), 1);
+        assert_eq!(attente[0].address, "nouv@exemple.fr");
+        assert_eq!(
+            attente[0].ligne.envelope.uid, 3,
+            "le rang porte son dernier message"
+        );
+        assert_eq!(store.portier_total().unwrap(), 1);
+    }
+
+    /// Le guichet du Portier : le Oui nu rend l'expéditeur à la
+    /// Réception, le Non avec règle l'écarte — dans les DEUX cas il
+    /// quitte l'attente, et l'historique dit la règle choisie.
+    #[test]
+    fn le_oui_libere_le_non_ecarte_et_l_attente_se_vide() {
+        let (mut store, inbox) = store_with_mailbox();
+        store.set_mode_organise(true, 1_000).unwrap();
+        let mut a = envelope(1, "bonjour", 1_500, false);
+        a.sender_address = Some("a@exemple.fr".to_string());
+        let mut b = envelope(2, "offre", 1_600, false);
+        b.sender_address = Some("b@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[a, b]).unwrap();
+        assert_eq!(store.portier_attente().unwrap().len(), 2);
+        assert_eq!(
+            store.reception_organisee_count_scoped(None, false).unwrap(),
+            0
+        );
+
+        // Oui nu → Réception : le fil revient, page ET total.
+        store
+            .router_expediteur("a@exemple.fr", "reception", None, 2_000)
+            .unwrap();
+        assert_eq!(
+            store
+                .portier_attente()
+                .unwrap()
+                .iter()
+                .map(|r| r.address.as_str())
+                .collect::<Vec<_>>(),
+            vec!["b@exemple.fr"]
+        );
+        let page = store
+            .reception_organisee_scoped(None, false, 0, 10)
+            .unwrap();
+        assert_eq!(page.len(), 1);
+        assert_eq!(page[0].envelope.uid, 1);
+        assert_eq!(
+            store.reception_organisee_count_scoped(None, false).unwrap(),
+            1
+        );
+
+        // Non avec règle → écarté : hors Réception, hors vues servies,
+        // et l'historique porte la règle.
+        store
+            .router_expediteur("b@exemple.fr", "ecarte", Some("archive"), 2_100)
+            .unwrap();
+        assert!(store.portier_attente().unwrap().is_empty());
+        assert_eq!(store.portier_total().unwrap(), 0);
+        assert_eq!(
+            store.reception_organisee_count_scoped(None, false).unwrap(),
+            1,
+            "l'écarté ne revient pas en Réception"
+        );
+        assert!(
+            store
+                .routage_unified_scoped("kiosque", None, false, 0, 10)
+                .unwrap()
+                .is_empty(),
+            "écarté n'est pas une vue servie"
+        );
+        let verdict = store.routage_de("b@exemple.fr").unwrap().unwrap();
+        assert_eq!(
+            (verdict.destination.as_str(), verdict.regle.as_deref()),
+            ("ecarte", Some("archive"))
+        );
+    }
+
+    /// « Réintégrer » à l'historique = DELETE de la ligne : un inconnu
+    /// écarté REVIENT au Portier (ses messages réapparaissent), un
+    /// ancien routé revient simplement en Réception — jamais au
+    /// Portier, son courrier d'avant l'époque fait foi.
+    #[test]
+    fn la_reintegration_rend_l_inconnu_au_portier_et_l_ancien_a_la_reception() {
+        let (mut store, inbox) = store_with_mailbox();
+        store.set_mode_organise(true, 1_000).unwrap();
+        let mut ancien = envelope(1, "d'hier", 500, true);
+        ancien.sender_address = Some("ancien@exemple.fr".to_string());
+        let mut inconnu = envelope(2, "premiere fois", 1_500, false);
+        inconnu.sender_address = Some("nouv@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[ancien, inconnu]).unwrap();
+        store
+            .router_expediteur("nouv@exemple.fr", "ecarte", Some("spam"), 2_000)
+            .unwrap();
+        store
+            .router_expediteur("ancien@exemple.fr", "kiosque", None, 2_000)
+            .unwrap();
+        assert!(store.portier_attente().unwrap().is_empty());
+        assert_eq!(
+            store.reception_organisee_count_scoped(None, false).unwrap(),
+            0
+        );
+
+        store.retirer_routage("nouv@exemple.fr").unwrap();
+        let attente = store.portier_attente().unwrap();
+        assert_eq!(attente.len(), 1, "l'inconnu réintégré re-attend au Portier");
+        assert_eq!(attente[0].address, "nouv@exemple.fr");
+
+        store.retirer_routage("ancien@exemple.fr").unwrap();
+        assert_eq!(
+            store.portier_attente().unwrap().len(),
+            1,
+            "l'ancien ne passe JAMAIS au Portier : son courrier d'avant l'époque fait foi"
+        );
+        assert_eq!(
+            store.reception_organisee_count_scoped(None, false).unwrap(),
+            1,
+            "l'ancien est rendu à la Réception"
+        );
+    }
+
+    /// Règle d'or — jamais perdre de courrier : un fil MÊLÉ (un inconnu
+    /// répond dans le fil d'un connu) RESTE en Réception ; l'inconnu
+    /// attend quand même au Portier. La rétention ne prend un fil que
+    /// s'il est ENTIÈREMENT à des expéditeurs en attente.
+    #[test]
+    fn un_fil_mele_reste_en_reception_et_l_inconnu_attend_quand_meme() {
+        let (mut store, inbox) = store_with_mailbox();
+        store.set_mode_organise(true, 1_000).unwrap();
+        let mut hier = envelope(1, "hier", 500, true);
+        hier.sender_address = Some("connu@exemple.fr".to_string());
+        let mut racine = envelope(2, "projet", 1_500, false);
+        racine.sender_address = Some("connu@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[hier, racine]).unwrap();
+        let mut intrus = envelope(3, "Re: projet", 1_600, false);
+        intrus.sender_address = Some("nouv@exemple.fr".to_string());
+        intrus.in_reply_to = Some("<m2@example.com>".to_string());
+        store.upsert_envelopes(inbox, &[intrus]).unwrap();
+
+        assert_eq!(
+            store.reception_organisee_count_scoped(None, false).unwrap(),
+            2,
+            "le fil mêlé et le fil d'hier restent en Réception"
+        );
+        let attente = store.portier_attente().unwrap();
+        assert_eq!(
+            attente
+                .iter()
+                .map(|r| r.address.as_str())
+                .collect::<Vec<_>>(),
+            vec!["nouv@exemple.fr"],
+            "l'inconnu attend au Portier même si son fil est mêlé"
+        );
+    }
+
+    /// Jamais soi au Portier (leçon E1 « jamais sa propre adresse »),
+    /// et jamais une attente sans adresse.
+    #[test]
+    fn jamais_soi_ni_sans_adresse_au_portier() {
+        let (mut store, inbox) = store_with_mailbox();
+        store.set_mode_organise(true, 1_000).unwrap();
+        let mut soi = envelope(1, "note a moi-meme", 1_500, false);
+        soi.sender_address = Some("Test@Exemple.FR".to_string());
+        let mut muet = envelope(2, "anonyme", 1_600, false);
+        muet.sender_address = None;
+        store.upsert_envelopes(inbox, &[soi, muet]).unwrap();
+        assert!(store.portier_attente().unwrap().is_empty());
+        assert_eq!(
+            store.reception_organisee_count_scoped(None, false).unwrap(),
+            2,
+            "rien n'est retenu : ni soi, ni un message sans adresse"
+        );
+    }
+
+    /// La synchro n'arrive pas dans l'ordre : si le courrier ANCIEN
+    /// d'un expéditeur (antérieur à l'époque) arrive APRÈS son courrier
+    /// neuf, l'attente posée à tort se défait et le fil est libéré —
+    /// l'expéditeur était connu, la base ne le savait pas encore.
+    #[test]
+    fn le_courrier_ancien_qui_arrive_apres_coup_defait_l_attente() {
+        let (mut store, inbox) = store_with_mailbox();
+        store.set_mode_organise(true, 1_000).unwrap();
+        let mut neuf = envelope(1, "recent", 1_500, false);
+        neuf.sender_address = Some("connu@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[neuf]).unwrap();
+        assert_eq!(store.portier_attente().unwrap().len(), 1);
+
+        let mut ancien = envelope(2, "l'historique arrive", 500, true);
+        ancien.sender_address = Some("connu@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[ancien]).unwrap();
+        assert!(
+            store.portier_attente().unwrap().is_empty(),
+            "le courrier d'avant l'époque prouve le connu"
+        );
+        assert_eq!(
+            store.reception_organisee_count_scoped(None, false).unwrap(),
+            2,
+            "ses fils sont libérés, page et totaux"
+        );
+    }
+
+    /// L'attente est DÉRIVÉE du courrier : quand la boîte se
+    /// réinitialise (UIDVALIDITY), les rangs du Portier qui ne
+    /// s'appuient plus sur rien meurent avec elle (leçon A43/A89 — un
+    /// UID recyclé ne doit hériter d'aucune décision).
+    #[test]
+    fn l_attente_meurt_avec_le_courrier_qui_la_portait() {
+        let (mut store, inbox) = store_with_mailbox();
+        store.set_mode_organise(true, 1_000).unwrap();
+        let mut inconnu = envelope(1, "premiere fois", 1_500, false);
+        inconnu.sender_address = Some("nouv@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[inconnu]).unwrap();
+        assert_eq!(store.portier_attente().unwrap().len(), 1);
+
+        store.reset_mailbox(inbox, 2).unwrap();
+        assert!(
+            store.portier_attente().unwrap().is_empty(),
+            "plus de courrier, plus d'attente"
+        );
+        assert_eq!(store.portier_total().unwrap(), 0);
+    }
+
+    /// Revue E2, règle d'or — jamais perdre de courrier : le Non sur un
+    /// INTRUS (un écarté qui a répondu dans le fil d'un connu) ne cache
+    /// pas le fil du connu. `ecarte` n'a AUCUNE vue servie : cacher le
+    /// fil mêlé le ferait disparaître de partout. Seul un fil
+    /// ENTIÈREMENT aux écartés/attente se cache.
+    #[test]
+    fn le_non_sur_un_intrus_ne_cache_pas_le_fil_du_connu() {
+        let (mut store, inbox) = store_with_mailbox();
+        store.set_mode_organise(true, 1_000).unwrap();
+        let mut hier = envelope(1, "hier", 500, true);
+        hier.sender_address = Some("connu@exemple.fr".to_string());
+        let mut racine = envelope(2, "projet", 1_500, false);
+        racine.sender_address = Some("connu@exemple.fr".to_string());
+        let mut intrus = envelope(3, "Re: projet", 1_600, false);
+        intrus.sender_address = Some("spam@exemple.fr".to_string());
+        intrus.in_reply_to = Some("<m2@example.com>".to_string());
+        store
+            .upsert_envelopes(inbox, &[hier, racine, intrus])
+            .unwrap();
+        // Un inconnu SEUL, écarté lui aussi : son fil, entièrement à
+        // lui, se cache — le contraste qui prouve la règle.
+        let mut seul = envelope(4, "offre", 1_700, false);
+        seul.sender_address = Some("promo@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[seul]).unwrap();
+
+        store
+            .router_expediteur("spam@exemple.fr", "ecarte", Some("spam"), 2_000)
+            .unwrap();
+        store
+            .router_expediteur("promo@exemple.fr", "ecarte", None, 2_000)
+            .unwrap();
+        let page = store
+            .reception_organisee_scoped(None, false, 0, 10)
+            .unwrap();
+        assert_eq!(
+            page.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
+            vec![3, 1],
+            "le fil mêlé du connu RESTE (tête intruse comprise), le fil du promo seul se cache"
+        );
+        assert_eq!(
+            store.reception_organisee_count_scoped(None, false).unwrap(),
+            2
+        );
+        assert!(
+            store
+                .routage_unified_scoped("kiosque", None, false, 0, 10)
+                .unwrap()
+                .is_empty(),
+            "écarté n'est pas une vue servie"
+        );
+    }
+
+    /// Un message SANS en-tête Date ne prouve JAMAIS le connu : le
+    /// traiter comme antérieur à l'époque ferait contourner le guichet
+    /// par les expéditeurs mêmes qu'il existe pour trier (le spam sans
+    /// Date est courant) — et défairait une attente légitime.
+    #[test]
+    fn un_message_sans_date_n_est_jamais_une_preuve_de_connu() {
+        let (mut store, inbox) = store_with_mailbox();
+        store.set_mode_organise(true, 1_000).unwrap();
+        let mut sans_date = envelope(1, "sans date", 0, false);
+        sans_date.sender_address = Some("nouv@exemple.fr".to_string());
+        sans_date.date = None;
+        store.upsert_envelopes(inbox, &[sans_date]).unwrap();
+        assert_eq!(
+            store.portier_attente().unwrap().len(),
+            1,
+            "l'inconnu sans date attend au guichet — jamais un contournement"
+        );
+
+        let mut datee = envelope(2, "datee", 1_500, false);
+        datee.sender_address = Some("autre@exemple.fr".to_string());
+        let mut sans_date2 = envelope(3, "re-sans date", 0, false);
+        sans_date2.sender_address = Some("autre@exemple.fr".to_string());
+        sans_date2.date = None;
+        store.upsert_envelopes(inbox, &[datee, sans_date2]).unwrap();
+        assert_eq!(
+            store
+                .portier_attente()
+                .unwrap()
+                .iter()
+                .filter(|r| r.address == "autre@exemple.fr")
+                .count(),
+            1,
+            "un second message sans date ne défait pas l'attente"
+        );
+    }
+
+    /// La réintégration suit la MÊME règle que l'arrivée (D3) : seul un
+    /// expéditeur dont du courrier est ARRIVÉ (INBOX) après l'époque
+    /// re-attend au Portier — un expéditeur vu seulement en Archives ou
+    /// aux Indésirables n'a jamais passé le guichet, il n'y entre pas
+    /// par la porte de sortie.
+    #[test]
+    fn la_reintegration_n_admet_que_les_arrivees() {
+        let (mut store, inbox) = store_with_mailbox();
+        store.set_mode_organise(true, 1_000).unwrap();
+        let archives = store
+            .create_mailbox(test_account(&store), "Archives", 1)
+            .unwrap();
+        let mut hors_guichet = envelope(1, "vu en archives", 1_500, true);
+        hors_guichet.sender_address = Some("ailleurs@exemple.fr".to_string());
+        store.upsert_envelopes(archives, &[hors_guichet]).unwrap();
+        let mut arrive = envelope(1, "arrive", 1_600, false);
+        arrive.sender_address = Some("guichet@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[arrive]).unwrap();
+
+        store
+            .router_expediteur("ailleurs@exemple.fr", "ecarte", None, 2_000)
+            .unwrap();
+        store
+            .router_expediteur("guichet@exemple.fr", "ecarte", None, 2_000)
+            .unwrap();
+        store.retirer_routage("ailleurs@exemple.fr").unwrap();
+        store.retirer_routage("guichet@exemple.fr").unwrap();
+        assert_eq!(
+            store
+                .portier_attente()
+                .unwrap()
+                .iter()
+                .map(|r| r.address.as_str())
+                .collect::<Vec<_>>(),
+            vec!["guichet@exemple.fr"],
+            "seule l'arrivée réintègre au guichet"
+        );
+    }
+
+    /// La pastille et le guichet ne disent que les ARRIVÉES : un
+    /// message du même expéditeur vivant ailleurs (corbeille,
+    /// archives) n'est ni compté ni servi comme rang.
+    #[test]
+    fn le_guichet_ne_compte_que_les_arrivees() {
+        let (mut store, inbox) = store_with_mailbox();
+        store.set_mode_organise(true, 1_000).unwrap();
+        let corbeille = store
+            .create_mailbox(test_account(&store), "Corbeille", 1)
+            .unwrap();
+        let mut arrive = envelope(1, "arrive", 1_500, false);
+        arrive.sender_address = Some("nouv@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[arrive]).unwrap();
+        let mut jetee = envelope(1, "deja jetee", 1_600, false);
+        jetee.sender_address = Some("nouv@exemple.fr".to_string());
+        store.upsert_envelopes(corbeille, &[jetee]).unwrap();
+
+        assert_eq!(
+            store.portier_total().unwrap(),
+            1,
+            "la corbeille ne compte pas"
+        );
+        let attente = store.portier_attente().unwrap();
+        assert_eq!(attente.len(), 1);
+        assert_eq!(
+            attente[0].ligne.envelope.uid, 1,
+            "le rang montre l'arrivée, jamais le message jeté"
+        );
+        assert_eq!(attente[0].ligne.mailbox, "INBOX");
+    }
+
+    /// L'exclusion partagée s'étend aux ÉPINGLES et au compteur de la
+    /// nav : en Réception organisée, un fil épinglé routé au Kiosque ne
+    /// se prépose plus (il vit dans sa vue), et le non-lu d'un retenu ne
+    /// gonfle pas la pastille de la Réception — le classique, lui, ne
+    /// bouge pas.
+    #[test]
+    fn les_epingles_et_la_pastille_suivent_l_exclusion_partagee() {
+        let (mut store, inbox) = store_with_mailbox();
+        store.set_mode_organise(true, 1_000).unwrap();
+        let mut lettre = envelope(1, "la lettre", 500, false);
+        lettre.sender_address = Some("lettre@exemple.fr".to_string());
+        let ordinaire = envelope(2, "bonjour", 600, false);
+        store.upsert_envelopes(inbox, &[lettre, ordinaire]).unwrap();
+        assert!(store.toggle_pin(inbox, 1, 700).unwrap());
+        store
+            .router_expediteur("lettre@exemple.fr", "kiosque", None, 2_000)
+            .unwrap();
+        let mut retenu = envelope(3, "premiere fois", 1_500, false);
+        retenu.sender_address = Some("nouv@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[retenu]).unwrap();
+
+        assert!(
+            store
+                .pinned_unified_scoped(None, false, true)
+                .unwrap()
+                .is_empty(),
+            "l'épingle d'un fil routé ne se prépose plus en Réception organisée"
+        );
+        assert_eq!(
+            store
+                .pinned_unified_scoped(None, false, false)
+                .unwrap()
+                .len(),
+            1,
+            "le classique garde son épingle"
+        );
+        let compte = test_account(&store);
+        let dossiers = store.canonical_folders(compte).unwrap();
+        let (organise, _) = store.nav_unread_counts(compte, &dossiers, true).unwrap();
+        assert_eq!(
+            organise, 1,
+            "seul l'ordinaire non-lu compte (le routé épinglé et le retenu, non)"
+        );
+        let (classique, _) = store.nav_unread_counts(compte, &dossiers, false).unwrap();
+        assert_eq!(classique, 3);
+    }
+
+    /// E1 → E2 au terrain : le mode a pu être ACTIVÉ avant cette
+    /// version (terrain E1 sur les postes du CE) — les inconnus
+    /// arrivés entre l'activation et la mise à jour se rattrapent à la
+    /// migration, sinon ils passeraient le guichet pour toujours, en
+    /// silence. Décor : une base E2 dont on efface les artefacts E2
+    /// (colonne + attente) pour rejouer l'état E1 exact, puis une
+    /// réouverture.
+    #[test]
+    fn la_migration_rattrape_l_attente_d_une_base_d_avant_e2() {
+        let path = std::env::temp_dir().join(format!(
+            "wind-test-rattrapage-portier-{}.db",
+            std::process::id()
+        ));
+        for suffixe in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffixe}", path.display()));
+        }
+        {
+            let mut store = Store::open(&path).unwrap();
+            let account = store
+                .adopt_or_create_account("test@exemple.fr", "gmail")
+                .unwrap();
+            let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+            store.set_mode_organise(true, 1_000).unwrap();
+            let mut ancien = envelope(1, "d'hier", 500, true);
+            ancien.sender_address = Some("ancien@exemple.fr".to_string());
+            let mut inconnu = envelope(2, "premiere fois", 1_500, false);
+            inconnu.sender_address = Some("nouv@exemple.fr".to_string());
+            store.upsert_envelopes(inbox, &[ancien, inconnu]).unwrap();
+            // Rejoue l'état E1 : ni colonne de drapeau, ni attente.
+            // Reconstruction (pas de DROP COLUMN : SQLite bute sur les
+            // commentaires du SQL stocké — « incomplete input »).
+            store
+                .0
+                .execute_batch(
+                    "DELETE FROM portier_attente;
+                     PRAGMA foreign_keys = OFF;
+                     CREATE TABLE threads_e1 AS
+                       SELECT id, account_id, last_mailbox_id, last_uid,
+                              last_epoch, size, unseen, inbox_size FROM threads;
+                     DROP TABLE threads;
+                     ALTER TABLE threads_e1 RENAME TO threads;
+                     PRAGMA foreign_keys = ON;",
+                )
+                .unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        let attente = store.portier_attente().unwrap();
+        assert_eq!(
+            attente
+                .iter()
+                .map(|r| r.address.as_str())
+                .collect::<Vec<_>>(),
+            vec!["nouv@exemple.fr"],
+            "l'inconnu d'avant la mise à jour re-attend au guichet"
+        );
+        assert_eq!(
+            store.reception_organisee_count_scoped(None, false).unwrap(),
+            1,
+            "son fil est retenu, celui de l'ancien reste"
+        );
+        drop(store);
+        for suffixe in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffixe}", path.display()));
+        }
+    }
+
+    /// La garde de plan de la Réception organisée (leçon S2-bis,
+    /// spikes/routage-plan) : la page suit l'index PARTIEL miroir
+    /// (`idx_threads_date_organise`) — offset stable par construction,
+    /// jamais une sonde par rangée sautée, jamais un scan d'envelopes.
+    #[test]
+    fn la_reception_organisee_suit_l_index_partiel_jamais_un_scan() {
+        let store = Store::open_in_memory().unwrap();
+        let plan: Vec<String> = store
+            .0
+            .prepare(&format!(
+                "EXPLAIN QUERY PLAN {}",
+                unified_page_sql(false, false, true)
+            ))
+            .unwrap()
+            .query_map(params![10, 0], |row| row.get::<_, String>(3))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert!(
+            plan.iter().any(|l| l.contains("idx_threads_date_organise")),
+            "la page ne suit pas l'index partiel : {plan:?}"
+        );
+        assert!(
+            !plan
+                .iter()
+                .any(|l| l.starts_with("SCAN") && l.contains("envelopes")),
+            "plan avec scan d'envelopes : {plan:?}"
         );
     }
 

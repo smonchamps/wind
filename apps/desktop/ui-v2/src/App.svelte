@@ -23,6 +23,7 @@
   import { vueMelange } from './lib/boite.js';
   import Nav from './Nav.svelte';
   import Liste from './Liste.svelte';
+  import Portier from './Portier.svelte';
   import Lecture from './Lecture.svelte';
   import Conversation from './Conversation.svelte';
   import Composition from './Composition.svelte';
@@ -68,6 +69,9 @@
   // pendant le premier chargement, sinon il clignoterait à chaque
   // démarrage.
   let navPrete = $state(false);
+  // E2 : la pastille du Portier — le nombre de MESSAGES en attente au
+  // guichet, rechargée avec la nav (jamais sur le chemin d'affichage).
+  let portierTotal = $state(0);
   // R2 (PLAN-RETOURS-8, A75) : le parcours de premier démarrage —
   // null = pas encore décidé (un seul état, revue 2026-08-22), décidé
   // une fois au premier instantané de nav, éteint au Terminer.
@@ -227,6 +231,7 @@
     reception: 'boite.reception',
     kiosque: 'boite.kiosque',
     registre: 'boite.registre',
+    portier: 'boite.portier',
     envoyes: 'boite.envoyes',
     brouillons: 'boite.brouillons',
     indesirables: 'boite.indesirables',
@@ -395,6 +400,17 @@
       if (jeton !== jetonNav) return;
       comptes = instantane;
       navPrete = true;
+      // E2 : la pastille du Portier suit la nav. SANS condition de
+      // mode (revue E2) : au démarrage, `restaurerModeOrganise()` n'a
+      // pas encore répondu quand le premier instantané arrive — un
+      // garde-fou `modeOrganise()` laisserait la pastille vide jusqu'à
+      // la sonde suivante (10 s). La commande vaut 0,26 ms ; hors
+      // mode, la valeur ne se peint nulle part.
+      appel('portier_total')
+        .then((n) => {
+          if (jeton === jetonNav) portierTotal = n;
+        })
+        .catch(() => {});
       // R2 (A75) : la décision « accueil à jouer » se prend UNE fois,
       // au premier instantané. Une installation existante (des comptes
       // déjà là SANS parcours commencé) est réputée accueillie — la
@@ -1006,6 +1022,10 @@
     if ('categorie' in quoi) {
       categorie = quoi.categorie;
       onglet = 'tous';
+      // Le Portier n'est pas une liste : personne n'émettra de total —
+      // la barre de statut dit le nom de la vue, jamais un compte
+      // périmé de la vue précédente.
+      if (quoi.categorie === 'portier') totalListe = null;
     }
     if ('compte' in quoi) compte = quoi.compte;
     recherche = '';
@@ -1042,9 +1062,16 @@
   async function basculerOrganise() {
     try {
       const actif = await basculerModeOrganise();
-      if (!actif && (categorie === 'kiosque' || categorie === 'registre')) {
+      if (!actif && (categorie === 'kiosque' || categorie === 'registre' || categorie === 'portier')) {
         choisir({ categorie: 'reception' });
+      } else {
+        // La Réception affichée change de CONTENU avec le mode (E2 :
+        // rétention et routage) — la liste se ressert, comme après un
+        // « Déplacer vers… » ; sans quoi l'écran garde la page de
+        // l'autre mode jusqu'au prochain aller-retour.
+        liste?.recharger();
       }
+      chargerNav();
     } catch (err) {
       flash(t('erreur.preference', { err }));
     }
@@ -1571,14 +1598,25 @@
          style="--l-nav:{lNav}px; --l-liste:{lListe}px">
       {#if volets !== 1}
         <Nav {comptes} {reperes} {noms} {categorie} {compte}
-             organise={modeOrganise()} onchoisir={choisir} />
+             organise={modeOrganise()} portier={portierTotal} onchoisir={choisir} />
       {/if}
-      <Liste bind:this={liste} {categorie} {compte} {comptes} {reperes} {noms} {onglet} {recherche}
-             {brouillons} onreprendre={reprendreBrouillon}
-             onselect={surSelection} ononglet={surOnglet} ongroupe={groupe}
-             ontotal={(t) => (totalListe = t)}
-             onresultats={(n, total) => { nResultats = n; nTotal = total; }} onflash={flash} />
-      {#if volets === 3}
+      {#if categorie === 'portier'}
+        <!-- E2 : le Portier n'est pas une liste — un rang par
+             EXPÉDITEUR en attente, un oui/non et rien d'autre. Sa
+             scène prend TOUTE la place à droite de la nav (colonne
+             centrée, comme l'écran 03) — le volet de lecture n'a
+             rien à y lire. -->
+        <div class="cadre-portier">
+          <Portier onflash={flash} onchange={chargerNav} />
+        </div>
+      {:else}
+        <Liste bind:this={liste} {categorie} {compte} {comptes} {reperes} {noms} {onglet} {recherche}
+               {brouillons} onreprendre={reprendreBrouillon}
+               onselect={surSelection} ononglet={surOnglet} ongroupe={groupe}
+               ontotal={(t) => (totalListe = t)}
+               onresultats={(n, total) => { nResultats = n; nTotal = total; }} onflash={flash} />
+      {/if}
+      {#if volets === 3 && categorie !== 'portier'}
         <Lecture bind:this={lecture} {brouillons} {reperes} {noms} {comptes} melange={melangeComptes} onreprendre={reprendreBrouillon}
                  onarchiver={archiver} onsupprimer={supprimer}
                  onconversation={ouvrirConversation}
@@ -1612,7 +1650,7 @@
       {#if volets !== 1}
         {@render poignee('nav', t('volets.poigneeNav'), lNav - 3)}
       {/if}
-      {#if volets === 3}
+      {#if volets === 3 && categorie !== 'portier'}
         {@render poignee('liste', t('volets.poigneeListe'), lNav + lListe - 3)}
       {/if}
     </div>
@@ -1663,7 +1701,7 @@
             <Icone nom="close" /></button>
         </div>
         <Nav {comptes} {reperes} {noms} {categorie} {compte}
-             organise={modeOrganise()} onchoisir={choisirDuTiroir} />
+             organise={modeOrganise()} portier={portierTotal} onchoisir={choisirDuTiroir} />
       </div>
     {/if}
 
@@ -1799,6 +1837,13 @@
      (E2) la liste est seule : son filet droit n'a plus de voisin. */
   .colonnes--2 { grid-template-columns:var(--l-nav, 248px) minmax(0,1fr); }
   .colonnes--1 { grid-template-columns:minmax(0,1fr); }
+  /* E2 : la scène du Portier s'étend de la nav au bord droit — le
+     volet de lecture n'existe pas au guichet. */
+  .cadre-portier {
+    grid-column:2 / -1; display:flex; min-width:0; min-height:0;
+    overflow:hidden; background:var(--bg);
+  }
+  .colonnes--1 .cadre-portier { grid-column:1 / -1; }
   /* La poignée (R3) : 7 px à cheval sur le filet, hors flux ; au
      survol, à la saisie et au focus clavier, un trait d'accent de 2 px
      dit la frontière — la grille, elle, ne bouge pas d'un pixel. */

@@ -1700,13 +1700,17 @@ pub struct NavAccount {
 pub async fn nav_snapshot(app: AppHandle) -> Result<Vec<NavAccount>, String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        // E2 : en mode organisé, la pastille de la Réception suit
+        // l'exclusion partagée — le non-lu d'un retenu appartient à la
+        // pastille du Portier, jamais aux deux.
+        let organise = store.mode_organise().map_err(|err| err.to_string())?;
         let mut sortie = Vec::new();
         for compte in store.accounts().map_err(|err| err.to_string())? {
             let dossiers = store
                 .canonical_folders(compte.id)
                 .map_err(|err| err.to_string())?;
             let (reception_non_lues, indesirables_non_lus) = store
-                .nav_unread_counts(compte.id, &dossiers)
+                .nav_unread_counts(compte.id, &dossiers, organise)
                 .map_err(|err| err.to_string())?;
             sortie.push(NavAccount {
                 account_id: compte.id,
@@ -1737,9 +1741,21 @@ pub async fn list_category(
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let limit = limit.min(LIST_LIMIT_MAX);
         if category == "reception" {
-            let mut lignes = store
-                .unified_recent_scoped(account_id, non_lus, offset, limit)
-                .map_err(|err| err.to_string())?;
+            // E2 : en Mode organisé, la Réception RETIENT les fils des
+            // expéditeurs en attente au Portier et ceux routés ailleurs
+            // (drapeau + index partiel — jamais une sonde par rangée).
+            // Le mode classique passe par la requête HISTORIQUE, au
+            // caractère près : zéro diff (garde e2e).
+            let organise = store.mode_organise().map_err(|err| err.to_string())?;
+            let mut lignes = if organise {
+                store
+                    .reception_organisee_scoped(account_id, non_lus, offset, limit)
+                    .map_err(|err| err.to_string())?
+            } else {
+                store
+                    .unified_recent_scoped(account_id, non_lus, offset, limit)
+                    .map_err(|err| err.to_string())?
+            };
             // Terrain R10-R12 : pièces sommées par fil, invitations au
             // rang — une passe bornée à la PAGE, la requête chaude ne
             // paie rien.
@@ -1870,9 +1886,18 @@ pub async fn category_total(
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         if category == "reception" {
-            return store
-                .unified_count_scoped(account_id, non_lus)
-                .map_err(|err| err.to_string());
+            // E2 : le total suit le flot — exclusion PARTAGÉE avec la
+            // page (leçon `pins`), et le classique reste intact.
+            let organise = store.mode_organise().map_err(|err| err.to_string())?;
+            return if organise {
+                store
+                    .reception_organisee_count_scoped(account_id, non_lus)
+                    .map_err(|err| err.to_string())
+            } else {
+                store
+                    .unified_count_scoped(account_id, non_lus)
+                    .map_err(|err| err.to_string())
+            };
         }
         if category == "kiosque" || category == "registre" {
             return store
@@ -2939,6 +2964,46 @@ pub async fn routages(app: AppHandle) -> Result<Vec<RoutagePayload>, String> {
     .await
 }
 
+/// Un rang du guichet du Portier (E2) : l'adresse en attente — LA clé
+/// que le verdict prendra — et son dernier message au format des
+/// rangées de la liste.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PortierRow {
+    pub address: String,
+    pub row: MessageRow,
+}
+
+/// Le guichet du Portier : un rang par expéditeur en attente, le plus
+/// récent en tête. Vide tant que le mode n'a jamais été activé.
+#[tauri::command]
+pub async fn portier_attente(app: AppHandle) -> Result<Vec<PortierRow>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        Ok(store
+            .portier_attente()
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .map(|rang| PortierRow {
+                address: rang.address,
+                row: to_message_row(rang.ligne),
+            })
+            .collect())
+    })
+    .await
+}
+
+/// La pastille du Portier : combien de MESSAGES attendent au guichet
+/// (le dessin du prototype — nav et rechargements légers).
+#[tauri::command]
+pub async fn portier_total(app: AppHandle) -> Result<u64, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store.portier_total().map_err(|err| err.to_string())
+    })
+    .await
+}
+
 /// Les conversations épinglées de la Réception (D4 : Réception seule),
 /// servies À PART — le front les prépose à la page 0, le flot paginé
 /// les exclut (D5).
@@ -2950,8 +3015,11 @@ pub async fn pinned_rows(
 ) -> Result<Vec<MessageRow>, String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        // E2 : la section préposée suit l'exclusion partagée de la
+        // Réception organisée — un épinglé routé vit dans sa vue.
+        let organise = store.mode_organise().map_err(|err| err.to_string())?;
         let mut lignes = store
-            .pinned_unified_scoped(account_id, non_lus)
+            .pinned_unified_scoped(account_id, non_lus, organise)
             .map_err(|err| err.to_string())?;
         store
             .enrichir_lignes(&mut lignes)
