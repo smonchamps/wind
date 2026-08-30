@@ -1421,7 +1421,9 @@ impl Store {
         // pref, jamais réécrite pendant un lot). None = le mode n'a
         // jamais été activé, la décision d'arrivée ne coûte rien.
         let epoque_portier = self.mode_organise_epoch()?;
-        let tx = self.0.transaction()?;
+        // Les règles du Non (E3, D2) : elles ne jouent que le mode
+        // ACTIF — désactivé, elles DORMENT (le verdict reste posé).
+        let regles_actives = self.mode_organise()?;
         // Résolu UNE fois : la boîte ne change pas dans un lot, et le fil
         // se raisonne désormais au compte (ADR 0009). Le faire par message
         // ajouterait une requête par enveloppe sur le chemin le plus chaud
@@ -1429,11 +1431,29 @@ impl Store {
         // Même raison pour la portée : elle est propre à la boîte, pas au
         // message. Hors portée, on stocke et on indexe sans regrouper —
         // `thread_id` reste NULL (ADR 0010 §3).
-        let (account_id, threaded, nom_boite): (i64, bool, String) = tx.query_row(
+        let (account_id, threaded, nom_boite): (i64, bool, String) = self.0.query_row(
             "SELECT account_id, threaded, name FROM mailboxes WHERE id = ?1",
             [mailbox_id],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )?;
+        // Le dossier indésirable du compte, résolu AVANT la transaction
+        // (la règle `spam` en a besoin) ; None = pas de dossier reconnu,
+        // la règle spam ne fait RIEN — jamais une destination inventée.
+        // Le message dégrade alors en « Non nu » : caché du mode
+        // organisé (drapeau), jamais déplacé — limite dite au PLAN.
+        let indesirables = if regles_actives {
+            self.canonical_folders(account_id)?.indesirables
+        } else {
+            None
+        };
+        // Les retraits locaux décidés pendant le lot — appliqués APRÈS
+        // le commit (`remove_local` recalcule fil et index dans sa
+        // propre transaction). L'ACTION, elle, est journalisée DANS la
+        // transaction du lot (revue E3) : un crash entre les deux ne
+        // perd rien — l'intention est en base, le rejeu l'applique au
+        // serveur et la copie locale part à la réconciliation suivante.
+        let mut retraits_du_non: Vec<Uid> = Vec::new();
+        let tx = self.0.transaction()?;
         // Le Portier ne juge que les ARRIVÉES (E2, D3) : la boîte du
         // courrier entrant, comme `inbox_size`. Un expéditeur vu
         // d'abord aux Indésirables ou en Archives n'attend pas au
@@ -1514,6 +1534,68 @@ impl Store {
                 // prouve JAMAIS le connu (revue E2) : le spam sans
                 // en-tête Date contournerait sinon le guichet même —
                 // il est traité comme une arrivée d'aujourd'hui.
+                // La règle du Non (E3) : un message qui ARRIVE d'un
+                // expéditeur écarté avec règle, POSTÉRIEUR au verdict
+                // (« ses prochains messages » — un backfill d'historique
+                // n'archive ni ne jette jamais ; sans date = arrivée
+                // d'aujourd'hui ; limite DITE : un en-tête Date falsifié
+                // antérieur au verdict esquive la règle — le message
+                // reste caché du mode organisé par le drapeau, c'est le
+                // serveur qu'il n'atteint pas). L'action est journalisée
+                // ICI, dans la transaction du lot (revue E3 — jamais une
+                // fenêtre de crash entre le commit et l'intention) ;
+                // `corbeille` → Delete, la corbeille du serveur, JAMAIS
+                // une suppression définitive (D4). La garde anti-doublon
+                // couvre la re-livraison (le retrait local fait reculer
+                // `max_uid`, un rejeu en échec re-présentait le message —
+                // une seconde action identique coincerait la file).
+                if nouveau
+                    && arrivee
+                    && regles_actives
+                    && let Some(adresse) = adresse_images(envelope.sender_address.clone())
+                    && let Some((regle, verdict)) = tx
+                        .prepare_cached(
+                            "SELECT regle, epoch FROM routage_expediteurs
+                              WHERE address = ?1 AND destination = 'ecarte'
+                                AND regle IS NOT NULL",
+                        )?
+                        .query_row(params![adresse], |row| {
+                            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                        })
+                        .optional()?
+                    && envelope
+                        .date
+                        .map(|d| d.timestamp())
+                        .is_none_or(|date| date > verdict)
+                {
+                    let action = match regle.as_str() {
+                        "archive" => Some(Action::Archive),
+                        "corbeille" => Some(Action::Delete),
+                        "spam" => indesirables.clone().map(Action::MoveTo),
+                        _ => None,
+                    };
+                    if let Some(action) = action {
+                        let deja_en_file = tx
+                            .prepare_cached(
+                                "SELECT 1 FROM pending_actions
+                                  WHERE mailbox_id = ?1 AND uid = ?2",
+                            )?
+                            .exists(params![mailbox_id, envelope.uid])?;
+                        if !deja_en_file {
+                            tx.prepare_cached(
+                                "INSERT INTO pending_actions (mailbox_id, uid, kind)
+                                 VALUES (?1, ?2, ?3)",
+                            )?
+                            .execute(params![
+                                mailbox_id,
+                                envelope.uid,
+                                action.to_kind()
+                            ])?;
+                        }
+                        retraits_du_non.push(envelope.uid);
+                    }
+                }
+
                 if nouveau
                     && let Some(epoque) = epoque_portier
                     && let Some(adresse) = adresse_images(envelope.sender_address.clone())
@@ -1619,6 +1701,15 @@ impl Store {
             }
         }
         tx.commit()?;
+        // Le retrait local des messages traités (E3) — SANS écho (pas
+        // un geste utilisateur ; l'historique du Portier dit déjà la
+        // règle). L'action, elle, est DÉJÀ commise avec le lot : un
+        // échec ici laisse la copie locale, que la réconciliation
+        // serveur emportera après le rejeu — jamais un message qui
+        // échappe à sa règle.
+        for uid in retraits_du_non {
+            self.remove_local(mailbox_id, uid)?;
+        }
         Ok(())
     }
 
@@ -7980,6 +8071,196 @@ Etape : {etape}\nPlan :\n{}",
         for suffixe in ["", "-wal", "-shm"] {
             let _ = std::fs::remove_file(format!("{}{suffixe}", path.display()));
         }
+    }
+
+    /// PLAN-MODE-ORGANISE E3 — les règles du Non à la synchro. Un
+    /// message qui ARRIVE d'un expéditeur écarté AVEC règle est traité
+    /// par le chemin des gestes : action journalisée (`pending_actions`,
+    /// rejouée en tête de chaque synchro) + disparition locale — sans
+    /// écho (ce n'est pas un geste utilisateur). `archive` → Archive,
+    /// `corbeille` → Delete (la corbeille du serveur, JAMAIS une
+    /// suppression définitive — D4).
+    #[test]
+    fn la_regle_du_non_s_execute_a_l_arrivee() {
+        let (mut store, inbox) = store_with_mailbox();
+        store.set_mode_organise(true, 1_000).unwrap();
+        store
+            .router_expediteur("promo@exemple.fr", "ecarte", Some("archive"), 2_000)
+            .unwrap();
+        store
+            .router_expediteur("pub@exemple.fr", "ecarte", Some("corbeille"), 2_000)
+            .unwrap();
+        let mut offre = envelope(1, "offre", 2_500, false);
+        offre.sender_address = Some("promo@exemple.fr".to_string());
+        let mut relance = envelope(2, "relance", 2_600, false);
+        relance.sender_address = Some("pub@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[offre, relance]).unwrap();
+
+        assert_eq!(
+            store.count(inbox).unwrap(),
+            0,
+            "les deux ont quitté la boîte locale"
+        );
+        let actions = store.pending_actions(inbox).unwrap();
+        assert_eq!(
+            actions
+                .iter()
+                .map(|a| (a.uid, a.action.clone()))
+                .collect::<Vec<_>>(),
+            vec![(1, Action::Archive), (2, Action::Delete)],
+            "archive → Archive, corbeille → Delete (jamais définitive)"
+        );
+    }
+
+    /// La règle `spam` part vers le dossier indésirable RÉSOLU du compte
+    /// (`canonical_folders`, comme le geste) ; sans dossier reconnu, on
+    /// ne fait RIEN — jamais une destination inventée (règle d'or).
+    #[test]
+    fn la_regle_spam_va_au_dossier_indesirable_resolu() {
+        let (mut store, inbox) = store_with_mailbox();
+        let account = test_account(&store);
+        store.set_mode_organise(true, 1_000).unwrap();
+        store
+            .router_expediteur("arnaque@exemple.fr", "ecarte", Some("spam"), 2_000)
+            .unwrap();
+        // Sans dossier indésirable reconnu : le message RESTE.
+        let mut avant = envelope(1, "avant", 2_500, false);
+        avant.sender_address = Some("arnaque@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[avant]).unwrap();
+        assert_eq!(
+            store.count(inbox).unwrap(),
+            1,
+            "sans dossier reconnu, rien ne bouge"
+        );
+        assert!(store.pending_actions(inbox).unwrap().is_empty());
+
+        store
+            .replace_folders(
+                account,
+                &[crate::Folder {
+                    wire: "Junk".to_string(),
+                    display: "Junk".to_string(),
+                    selectable: true,
+                }],
+            )
+            .unwrap();
+        let mut apres = envelope(2, "apres", 2_600, false);
+        apres.sender_address = Some("arnaque@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[apres]).unwrap();
+        assert_eq!(
+            store.count(inbox).unwrap(),
+            1,
+            "le nouveau est parti, l'ancien reste"
+        );
+        assert_eq!(
+            store
+                .pending_actions(inbox)
+                .unwrap()
+                .iter()
+                .map(|a| (a.uid, a.action.clone()))
+                .collect::<Vec<_>>(),
+            vec![(2, Action::MoveTo("Junk".to_string()))]
+        );
+    }
+
+    /// D2 — les règles du Non S'ÉTEIGNENT avec le mode : mode désactivé,
+    /// un message d'un écarté avec règle arrive et RESTE. Et un écarté
+    /// SANS règle ne déclenche jamais rien (le Non nu ne fait que
+    /// cacher).
+    #[test]
+    fn les_regles_du_non_s_eteignent_avec_le_mode() {
+        let (mut store, inbox) = store_with_mailbox();
+        store.set_mode_organise(true, 1_000).unwrap();
+        store
+            .router_expediteur("promo@exemple.fr", "ecarte", Some("archive"), 2_000)
+            .unwrap();
+        store
+            .router_expediteur("muet@exemple.fr", "ecarte", None, 2_000)
+            .unwrap();
+        store.set_mode_organise(false, 3_000).unwrap();
+        let mut pendant_off = envelope(1, "pendant off", 3_500, false);
+        pendant_off.sender_address = Some("promo@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[pendant_off]).unwrap();
+        assert_eq!(
+            store.count(inbox).unwrap(),
+            1,
+            "mode éteint : la règle dort"
+        );
+        assert!(store.pending_actions(inbox).unwrap().is_empty());
+
+        store.set_mode_organise(true, 4_000).unwrap();
+        let mut sans_regle = envelope(2, "sans regle", 4_500, false);
+        sans_regle.sender_address = Some("muet@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[sans_regle]).unwrap();
+        assert_eq!(store.count(inbox).unwrap(), 2, "le Non nu ne traite rien");
+        assert!(store.pending_actions(inbox).unwrap().is_empty());
+    }
+
+    /// Re-livraison (revue E3) : le retrait local fait reculer
+    /// `max_uid` — si le rejeu échoue, la synchro suivante re-présente
+    /// le même uid. La règle re-retire localement mais ne JOURNALISE
+    /// jamais deux fois : une seconde action identique sur un uid déjà
+    /// parti du serveur coincerait toute la file du rejeu derrière un
+    /// échec permanent.
+    #[test]
+    fn une_re_livraison_ne_journalise_jamais_deux_fois() {
+        let (mut store, inbox) = store_with_mailbox();
+        store.set_mode_organise(true, 1_000).unwrap();
+        store
+            .router_expediteur("promo@exemple.fr", "ecarte", Some("archive"), 2_000)
+            .unwrap();
+        let mut offre = envelope(1, "offre", 2_500, false);
+        offre.sender_address = Some("promo@exemple.fr".to_string());
+        store
+            .upsert_envelopes(inbox, std::slice::from_ref(&offre))
+            .unwrap();
+        // Le serveur re-présente le même uid (rejeu pas encore passé).
+        store.upsert_envelopes(inbox, &[offre]).unwrap();
+        assert_eq!(store.count(inbox).unwrap(), 0, "re-retiré localement");
+        assert_eq!(
+            store
+                .pending_actions(inbox)
+                .unwrap()
+                .iter()
+                .map(|a| (a.uid, a.action.clone()))
+                .collect::<Vec<_>>(),
+            vec![(1, Action::Archive)],
+            "UNE seule action journalisée"
+        );
+    }
+
+    /// « Ses PROCHAINS messages » (les toasts du guichet) : la règle ne
+    /// touche que le courrier POSTÉRIEUR au verdict — un backfill de
+    /// courrier ancien (ajout d'un compte, désordre de synchro)
+    /// n'archive ni ne jette jamais l'historique. Un message SANS date
+    /// est une arrivée d'aujourd'hui : la règle s'applique.
+    #[test]
+    fn la_regle_ne_touche_jamais_le_courrier_anterieur_au_verdict() {
+        let (mut store, inbox) = store_with_mailbox();
+        store.set_mode_organise(true, 1_000).unwrap();
+        store
+            .router_expediteur("promo@exemple.fr", "ecarte", Some("corbeille"), 2_000)
+            .unwrap();
+        let mut ancien = envelope(1, "d'avant le verdict", 1_500, true);
+        ancien.sender_address = Some("promo@exemple.fr".to_string());
+        let mut sans_date = envelope(2, "sans date", 0, false);
+        sans_date.sender_address = Some("promo@exemple.fr".to_string());
+        sans_date.date = None;
+        store.upsert_envelopes(inbox, &[ancien, sans_date]).unwrap();
+        assert_eq!(
+            store.count(inbox).unwrap(),
+            1,
+            "l'antérieur au verdict reste ; le sans-date (arrivée d'aujourd'hui) est traité"
+        );
+        assert_eq!(
+            store
+                .pending_actions(inbox)
+                .unwrap()
+                .iter()
+                .map(|a| (a.uid, a.action.clone()))
+                .collect::<Vec<_>>(),
+            vec![(2, Action::Delete)]
+        );
     }
 
     /// La garde de plan de la Réception organisée (leçon S2-bis,

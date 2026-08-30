@@ -1,5 +1,33 @@
 # PLAN-MODE-ORGANISE — Portier, Kiosque, Registre, Mis de côté, Groupes
 
+> **E3 LIVRÉE le 2026-08-30 — les règles du Non à la synchro** (D2/D4,
+> Système A98 ; **terrain CE OK le jour même, zéro constat** —
+> exécution serveur vérifiée au webmail). À l'arrivée d'un message d'un écarté avec règle :
+> action journalisée **dans la transaction du lot** (revue E3 — la
+> première forme, exécution après commit, laissait une fenêtre de
+> crash où la règle se perdait pour toujours) via `pending_actions`
+> (rejouée en tête de chaque synchro), retrait local sans écho.
+> `archive` → Archive, `corbeille` → Delete (la corbeille serveur,
+> jamais définitive — D4), `spam` → le dossier indésirable résolu.
+> Garde anti-doublon (le retrait local fait reculer `max_uid` : une
+> re-livraison sur rejeu en échec re-retirait ET re-journalisait — la
+> seconde action identique aurait coincé la file). « Ses prochains
+> messages » seulement : rien d'antérieur au verdict (un backfill ne
+> jette jamais l'historique). **Limites dites** : un en-tête Date
+> falsifié antérieur au verdict esquive la règle (le drapeau cache le
+> message du mode organisé quand même) ; spam sans dossier indésirable
+> reconnu ne fait RIEN (dégrade en Non nu) — jamais une destination
+> inventée ; pendant qu'une action attend son rejeu hors ligne, le
+> cycle CONDSTORE paie l'inventaire complet (comportement préexistant
+> des gestes, aggravé en fréquence — à surveiller au terrain).
+> « Dites à l'historique » (§6) est lu comme : l'historique DIT la
+> règle posée (E2) — pas de compteur d'exécutions ; arbitrage CE au
+> terrain si l'intention était autre. Tests mail-core 401 → **406**
+> (re-livraison, extinction D2, antériorité, spam résolu/irrésolu),
+> e2e 161 → **162** (règle prouvée en la cassant + témoin de synchro
+> au filet — un négatif seul serait vacant).
+> **Reste : la release MINEUR E1-E3 (D7), puis E4-E6.**
+
 > **E2 LIVRÉE le 2026-08-30 — le Portier.** La rétention (D3 « arrivées
 > seules ») : `envelopes.sender_norm` (colonne générée + index — piège
 > payé : SQLite n'emploie un index d'EXPRESSION que contre un littéral,

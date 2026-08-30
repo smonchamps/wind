@@ -195,6 +195,48 @@ test('le mode classique montre TOUJOURS tout — la rétention est une affaire d
   await expect(page.locator('[data-testid="ligne"]', { hasText: 'Premiere fois' })).toHaveCount(1);
 });
 
+// ------------------- E3 — les règles du Non exécutées -------------------
+test("la règle du Non s'exécute à l'arrivée — et ne touche jamais l'antérieur au verdict", async () => {
+  // promo@ re-attend au guichet (test précédent) : le Non avec règle
+  // « Supprimés automatiquement » (corbeille au cœur, D4).
+  await page.locator('[data-testid="nav-dossier"][data-categorie="portier"]').click();
+  await page.locator('[data-testid="portier-mini-non"]').click();
+  await page.locator('[data-testid="portier-regle-corbeille"]').click();
+  await expect(page.locator('[data-testid="toast"]')).toContainText('iront à la Corbeille');
+  // Le verdict est daté à la SECONDE : une arrivée dans la même
+  // seconde compte comme antérieure (« > verdict », limite assumée) —
+  // on laisse la borne passer avant d'injecter.
+  await page.waitForTimeout(1500);
+  // Son PROCHAIN message arrive : la règle le traite — journal d'action
+  // + disparition locale, il n'apparaît NULLE PART, pas même au
+  // classique. Son courrier d'AVANT le verdict, lui, ne bouge pas.
+  injecterArrivee({
+    email: 'principal@exemple.fr', expediteur: 'promo@exemple.fr',
+    nom: 'Promo Eclair', sujet: 'Relance finale',
+  });
+  // Le TÉMOIN (revue E3) : une seconde arrivée, d'un inconnu — sa
+  // présence prouve que l'injection et son traitement ont bien eu
+  // lieu ; sans lui, « Relance finale absente » serait aussi vraie si
+  // rien n'était arrivé du tout (filet vacant).
+  injecterArrivee({
+    email: 'principal@exemple.fr', expediteur: 'temoin@exemple.fr',
+    nom: 'Temoin', sujet: 'Temoin de synchro',
+  });
+  await page.reload();
+  await expect(page.locator('[data-testid="mode-organise"]')).toHaveAttribute('aria-checked', 'true');
+  await page.locator('[data-testid="nav-dossier"][data-categorie="portier"]').click();
+  await expect(page.locator('[data-testid="portier-rang"]')).toContainText('temoin@exemple.fr');
+  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  await expect(page.locator('[data-testid="ligne"]', { hasText: 'Relance finale' })).toHaveCount(0);
+  await page.locator('[data-testid="mode-organise"]').click();
+  await expect(page.locator('[data-testid="mode-organise"]')).toHaveAttribute('aria-checked', 'false');
+  await expect(page.locator('[data-testid="ligne"]', { hasText: 'Temoin de synchro' })).toHaveCount(1);
+  await expect(page.locator('[data-testid="ligne"]', { hasText: 'Offre eclair' }).first()).toBeVisible();
+  await expect(page.locator('[data-testid="ligne"]', { hasText: 'Relance finale' })).toHaveCount(0);
+  await page.locator('[data-testid="mode-organise"]').click();
+  await expect(page.locator('[data-testid="mode-organise"]')).toHaveAttribute('aria-checked', 'true');
+});
+
 test('quitter le mode depuis une vue organisée rend la Réception et la nav classique', async () => {
   await page.locator('[data-testid="nav-dossier"][data-categorie="kiosque"]').click();
   await page.locator('[data-testid="mode-organise"]').click();

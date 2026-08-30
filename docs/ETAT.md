@@ -45,11 +45,25 @@ un écarté RESTE — `ecarte` n'a pas de vue), le message SANS Date qui
 contournait le guichet, et le rattrapage E1→E2 à la migration. Tests
 mail-core 387 → **401**, e2e 157 → **161** (rétention prouvée en la
 cassant). Dette neuve **D-46** (l'anatomie de rangée du Portier est
-une copie main de celle de la Liste). NOTE : les toasts du Non
-promettent l'exécution — tenue à E3, même release (D7). **Prochaine étape : E3 — les règles du Non à
-la synchro** (spam / archive / corbeille via `pending_actions`, dites
-à l'historique, éteintes avec le mode — D2). Puis release MINEUR
-E1-E3 (D7), puis E4-E6.
+une copie main de celle de la Liste).
+
+**E3 (les règles du Non) est LIVRÉE le 2026-08-30** (Système A98) : à
+l'arrivée d'un message d'un écarté avec règle, l'action est
+journalisée **dans la transaction du lot** (revue E3 — l'exécution
+après commit laissait une fenêtre de crash où la règle se perdait
+pour toujours) via `pending_actions`, rejouée en tête de chaque
+synchro, retrait local sans écho ; `corbeille` → la corbeille
+serveur, jamais définitive (D4) ; garde anti-doublon de la file (la
+re-livraison après un rejeu en échec aurait coincé toutes les
+actions derrière une seconde action identique) ; « ses prochains
+messages » seulement — un backfill ne touche jamais l'historique ;
+les règles S'ÉTEIGNENT avec le mode (D2). Limites dites au PLAN
+(Date falsifiée, spam sans dossier résolu, inventaire CONDSTORE
+pendant un rejeu en attente). Tests mail-core 401 → **406**, e2e
+161 → **162** (règle prouvée en la cassant, témoin de synchro au
+filet). **Reste : la release MINEUR E1-E3 (D7)** — l'entrée
+CHANGELOG s'écrira à ce moment-là (§2.9, `gh release list` d'abord),
+avec Innamoramento qui attend aussi cette release. Puis E4-E6.
 
 Le même jour, deux retours CE réglés : **« Mona » renommée
 « Innamoramento »** (A95, ids migrés, commit `0a25105`, CI verte) et
