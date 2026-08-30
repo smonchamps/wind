@@ -8,6 +8,8 @@
 export const FR = {
   // --- Dossiers canoniques (nav, statut, conversation) ----------------
   'boite.reception': 'Boîte de réception',
+  // RETOURS-13 R3 : en mode organisé, la boîte se dit « Réception ».
+  'boite.receptionOrganisee': 'Réception',
   // PLAN-MODE-ORGANISE E1 — les vues du mode organisé (noms CE).
   'boite.kiosque': 'Kiosque',
   'boite.registre': 'Registre',
@@ -31,10 +33,11 @@ export const FR = {
   'toast.expediteurDeplace': 'Expéditeur déplacé vers {boite} — ses messages suivent.',
   'erreur.sansAdresse': "Ce message n'a pas d'adresse d'expéditeur.",
 
-  // --- Le Portier (PLAN-MODE-ORGANISE E2) — textes du prototype, mot
-  // pour mot (six passes CE).
+  // --- Le Portier (PLAN-MODE-ORGANISE E2 ; sous-titre en trois
+  // phrases, RETOURS-13 R4, textes CE — D1 : traits d'union posés).
   'portier.sousTitre1': 'Ces expéditeurs vous écrivent pour la première fois.',
-  'portier.sousTitre2': 'Vous décidez si vous voulez les entendre.',
+  'portier.sousTitre2': 'Les autorisez-vous à vous contacter ?',
+  'portier.sousTitre3': 'Les expéditeurs ne seront jamais informés de votre décision.',
   'portier.question': 'Voulez-vous recevoir leurs messages ?',
   'portier.oui': 'Oui',
   'portier.non': 'Non',
@@ -50,12 +53,18 @@ export const FR = {
   'portier.leRegistre': 'le Registre',
   'portier.regleSpam': 'Signalés indésirables',
   'portier.regleArchive': 'Archivés automatiquement',
-  'portier.regleCorbeille': 'Supprimés automatiquement',
+  // Terrain RETOURS-13 (C3) : le mot CE — rien n'est « supprimé »,
+  // c'est la corbeille du serveur (D4).
+  'portier.regleCorbeille': 'Déplacés automatiquement dans la corbeille',
+  // RETOURS-13 R9 : le quatrième choix du Non — le comportement 0.14.0.
+  'portier.regleEcarte': 'Écartés sans déplacer',
   'portier.vide':
     "Personne n'attend au Portier. Les nouveaux expéditeurs apparaîtront ici.",
   'portier.historique': 'Historique du Portier',
+  // RETOURS-13 R6 : le texte CE — la note de confidentialité vit
+  // désormais au sous-titre (R4).
   'portier.historiqueVide':
-    "Aucun expéditeur écarté. Votre choix reste privé — un expéditeur écarté n'en sait rien, et tout se rejoue ici.",
+    "Vous n'avez écarté aucun expéditeur pour le moment.",
   'portier.reintegrer': 'Réintégrer',
   'portier.ecarte': 'écarté',
   'portier.ecarteSpam': 'écarté — signalé indésirable',
@@ -90,13 +99,29 @@ export const FR = {
   'pile.aria': 'Messages mis de côté',
   'toast.misDeCote': 'Mis de côté — la pile vit en bas à droite de la Réception.',
   'toast.reprisPile': 'Repris de la pile.',
-  // E5bis — le Kiosque en cartes (textes du prototype).
-  'kiosque.note':
-    "Les lettres d'information arrivent déjà ouvertes, la plus récente en tête — faites défiler pour lire. Rien n'est marqué à lire : le Kiosque se parcourt, il ne se traite pas.",
+  // E5bis — le Kiosque en cartes ; entête et sections RETOURS-13
+  // R10/R11 (textes CE mot pour mot).
+  'kiosque.sousTitre1': "Tous vos emails d'information sont regroupés ici.",
+  'kiosque.sousTitre2': 'Il vous suffit de les faire défiler pour les lire.',
+  'kiosque.sectionNonLus': 'Non lus',
+  'kiosque.sectionLus': 'Lus précédemment',
+  // Terrain C5 (texte CE, accord posé comme en D1).
+  'kiosque.toutLu':
+    'Vous avez lu toutes les nouvelles actualités de votre Kiosque.',
   'kiosque.vide':
     "Rien au Kiosque. Depuis un message, « Déplacer vers le Kiosque » y envoie les lettres d'information de cet expéditeur.",
   'toast.portierReintegre':
     '{qui} est réintégré — ses messages des 90 derniers jours réapparaissent au Portier.',
+  // RETOURS-13 R9 : la section Portier des Réglages — les défauts des
+  // deux boutons du guichet.
+  'groupe.portier': 'Portier',
+  'reglages.portierDesc':
+    'Les actions par défaut des boutons du Portier. Le mini ⋯ de chaque bouton permet toujours un autre choix, au cas par cas.',
+  'reglages.portierOui': 'Le bouton « Oui »',
+  'reglages.portierOuiDesc': "Où vont les messages d'un expéditeur autorisé.",
+  'reglages.portierNon': 'Le bouton « Non »',
+  'reglages.portierNonDesc':
+    "Ce que deviennent les prochains messages d'un expéditeur écarté.",
   'entete.reglages': 'Réglages',
   // Le retour bêta (RETOURS-11 R3) : le mot du CE, tel quel.
   'entete.feedback': 'Feedback',

@@ -19,6 +19,17 @@ export function modeOrganise() {
   return etat.actif;
 }
 
+// RETOURS-13 R3 : LA règle du libellé de boîte — en mode organisé la
+// Réception se dit « Réception », le classique garde « Boîte de
+// réception ». Une seule expression pour toutes les surfaces (nav,
+// entête de liste, retour du fil, statut, toasts) ; la revue a compté
+// quatre copies qui divergeaient déjà de forme.
+export function cleLibelleBoite(id) {
+  return id === 'reception' && etat.actif
+    ? 'boite.receptionOrganisee'
+    : `boite.${id}`;
+}
+
 // Lu une fois au démarrage, APRÈS la première page de la liste (l'App
 // décide du moment — leçon PLAN-DEMARRAGE E2). Un échec laisse le
 // mode éteint : le classique est le défaut.

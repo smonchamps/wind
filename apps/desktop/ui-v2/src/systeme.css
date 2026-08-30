@@ -234,6 +234,30 @@ html {
   font-weight:340; letter-spacing:-.03em;
 }
 
+/* RETOURS-13 R7/R11 — l'ENTÊTE D'UNE VUE ORGANISÉE (Portier, Kiosque) :
+   glyphe + titre 24 px sur une ligne, sous-titre 13 px, règle-libellé
+   de section en capitales. UNE copie ici — les deux scènes la
+   partagent ; deux copies divergeraient en silence (leçon .boite). */
+.entete-vue {
+  margin:0 0 6px; font-size:24px; line-height:1.25; color:var(--ink);
+  display:flex; align-items:center; gap:10px;
+}
+.entete-vue .glyphe-titre { display:inline-flex; color:var(--ink); }
+/* Terrain RETOURS-13 (C1) : le glyphe du titre en NON GRAS — agrandi à
+   26 px, le tracé de 2 s'épaissit à l'échelle et pèse face au display
+   340 ; on l'amincit en unités du viewBox (1.5 → ~1,6 px rendus). */
+.entete-vue .glyphe-titre .ic g { stroke-width:1.5; }
+.sous-titre-vue {
+  margin:0 0 24px; font-size:13px; line-height:1.5; color:var(--ink2);
+  max-width:66ch;
+}
+/* La règle-libellé : libellé nu, 8 px d'écart — le filet supérieur du
+   premier rang dessous fait séparateur (verdict CE, prototype E2). */
+.regle-libelle {
+  margin:30px 0 8px; font-size:11px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--muted); font-weight:600;
+}
+
 /* A8 — le focus est VISIBLE, partout, au clavier seulement : anneau
    accent 2 px décalé de 2 px. Jamais supprimé sans remplacement. */
 :focus-visible {

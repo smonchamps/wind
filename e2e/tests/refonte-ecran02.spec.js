@@ -924,7 +924,9 @@ test("les réglages en deux volets se parcourent au clic ET au clavier (A13)", a
   await page.locator('[data-testid="reglages"]').click();
   // Le rail porte les sept groupes (Signature entrée avec RETOURS-6) ;
   // Comptes est le groupe d'ouverture.
-  await expect(page.locator('[data-testid="reglages-groupe"]')).toHaveCount(7);
+  // RETOURS-13 terrain C4 : le groupe Portier est là quel que soit le
+  // mode — 8 groupes.
+  await expect(page.locator('[data-testid="reglages-groupe"]')).toHaveCount(8);
   await expect(page.locator('[data-testid="reglages-comptes"]')).toBeVisible();
   // Au clic : Raccourcis — la table D3 en référence, lecture seule.
   await page.locator('[data-testid="reglages-groupe"][data-groupe="raccourcis"]').click();
@@ -970,9 +972,11 @@ test("la section Comptes liste les comptes réels et ouvre le guichet d'ajout (A
 
 // ——— E2 des Réglages : les groupes à décision (R-D1, R-D2) —————————————
 
-test("Affichage : le suivi de l'OS sombre suffixe le thème choisi en -nuit (D6, A42/V7)", async () => {
+test("Thèmes : le suivi de l'OS sombre suffixe le thème choisi en -nuit (D6, A42/V7, R1 RETOURS-13)", async () => {
+  // R1 (PLAN-RETOURS-13) : la bascule vit désormais en TÊTE de la
+  // section Thèmes — elle gouverne le thème, pas l'affichage.
   await page.locator('[data-testid="reglages"]').click();
-  await page.locator('[data-testid="reglages-groupe"][data-groupe="affichage"]').click();
+  await page.locator('[data-testid="reglages-groupe"][data-groupe="themes"]').click();
   const bascule = page.locator('[data-testid="affichage-auto"]');
   await expect(bascule).toHaveAttribute('aria-checked', 'false');
   await bascule.click();
@@ -1008,9 +1012,8 @@ test("Affichage : le suivi de l'OS sombre suffixe le thème choisi en -nuit (D6,
   await expect(page.locator('[data-theme-id="elements"] .coche')).toBeVisible();
   // Persistance : le booléen survit comme le thème.
   expect(await page.evaluate(() => localStorage.getItem('wind-theme-auto'))).toBe('1');
-  // Retour au groupe Affichage : la bascule n'existe que sous son
-  // groupe — le rail est resté sur Thèmes depuis le choix explicite.
-  await page.locator('[data-testid="reglages-groupe"][data-groupe="affichage"]').click();
+  // Le rail est resté sur Thèmes depuis le choix explicite — la
+  // bascule est là, en tête de section (R1 RETOURS-13).
   await bascule.click();
   await page.emulateMedia({ colorScheme: null });
   await page.locator('[data-testid="reglages-termine"]').click();
@@ -1034,7 +1037,7 @@ test("le suivi OS lit l'API Tauri : une vraie bascule Windows suffixe et revient
   );
   try {
     await page.locator('[data-testid="reglages"]').click();
-    await page.locator('[data-testid="reglages-groupe"][data-groupe="affichage"]').click();
+    await page.locator('[data-testid="reglages-groupe"][data-groupe="themes"]').click();
     const bascule = page.locator('[data-testid="affichage-auto"]');
     await bascule.click();
     await expect(bascule).toHaveAttribute('aria-checked', 'true');

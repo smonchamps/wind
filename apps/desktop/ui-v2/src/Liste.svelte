@@ -23,6 +23,7 @@
   import { initiales } from './lib/initiales.js';
   import { activation } from './lib/clavier.js';
   import { t } from './lib/texte.svelte.js';
+  import { cleLibelleBoite } from './lib/organise.svelte.js';
 
   let {
     categorie = 'reception',
@@ -1068,7 +1069,8 @@
     </header>
   {:else}
     <header class="bandeau" data-testid="liste-titre">
-      <h1>{t(`boite.${categorie}`)}</h1>
+      <!-- RETOURS-13 R3 : le libellé sort de LA règle partagée. -->
+      <h1>{t(cleLibelleBoite(categorie))}</h1>
     </header>
   {/if}
   <!-- A83 : le cran d'espacement se pose EN JETON sur le cadre — les

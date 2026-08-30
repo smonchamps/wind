@@ -102,7 +102,10 @@ export const JEU = {
   // Le Mode organisé (PLAN-MODE-ORGANISE, décision D9) : les dessins
   // du prototype entrent tels quels — planche spikes/mode-organise/.
   portier: { d:['M12 4a3 3 0 1 0 0 6 3 3 0 1 0 0-6','M5 20v-1a7 7 0 0 1 14 0v1','M9.5 13.5v3l2.5-1.5z','M14.5 13.5v3l-2.5-1.5z'] },
-  kiosque: { d:['M4 4h16v6H4z','M4 14h16','M4 18h10'] },
+  // RETOURS-13 terrain : le kiosque devient un kiosque À JOURNAUX —
+  // auvent festonné (arches), guérite, comptoir. Verdict CE devant la
+  // planche de 7 (variante B), remplace le dessin du prototype.
+  kiosque: { d:['M3 6h18','M3 6v1.5a1.5 1.5 0 0 0 3 0','M6 7.5a1.5 1.5 0 0 0 3 0','M9 7.5a1.5 1.5 0 0 0 3 0','M12 7.5a1.5 1.5 0 0 0 3 0','M15 7.5a1.5 1.5 0 0 0 3 0','M18 7.5a1.5 1.5 0 0 0 3 0','M21 6v1.5','M5 10v10','M19 10v10','M4 20h16','M5 15h14'] },
   registre: { d:['M6 3h12v18l-3-2-3 2-3-2-3 2z','M9 8h6','M9 12h4'] },
   pile: { d:['M4 16l8 4 8-4','M4 12l8 4 8-4','M4 8l8-4 8 4-8 4z'] },
   groupe: { d:['M4 10h16v9H4z','M4 14h5l2 2h2l2-2h5','M7 6h10'] },

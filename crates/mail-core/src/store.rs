@@ -315,6 +315,17 @@ CREATE TABLE IF NOT EXISTS mis_de_cote (
     epoch      INTEGER NOT NULL,
     PRIMARY KEY (mailbox_id, uid)
 );
+-- La mémoire « lu » du Kiosque (RETOURS-13 R10) : une carte défilée
+-- jusqu'en bas est lue — copie du patron `pins`/`mis_de_cote` (clé
+-- d'enveloppe, locale au poste, meurt avec sa boîte et son message).
+-- Le lu IMAP (`seen`) est une autre sémantique : il est écrasé par la
+-- vérité serveur à chaque synchro, et le Kiosque ne « traite » pas.
+CREATE TABLE IF NOT EXISTS kiosque_lus (
+    mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+    uid        INTEGER NOT NULL,
+    epoch      INTEGER NOT NULL,
+    PRIMARY KEY (mailbox_id, uid)
+);
 -- La mémoire de la garde d'images (PLAN-RETOURS-11, R1 — D1 renverse
 -- l'invariant A43) : deux exceptions EXPLICITES au blocage par défaut,
 -- jamais un réglage global. Par MESSAGE : clé d'enveloppe, patron de
@@ -1414,6 +1425,11 @@ impl Store {
             "DELETE FROM mis_de_cote WHERE mailbox_id = ?1",
             [mailbox_id],
         )?;
+        // R10 (RETOURS-13) : la mémoire « lu » du Kiosque, même contrat.
+        self.0.execute(
+            "DELETE FROM kiosque_lus WHERE mailbox_id = ?1",
+            [mailbox_id],
+        )?;
         self.0
             .execute("DELETE FROM envelopes WHERE mailbox_id = ?1", [mailbox_id])?;
         // L'attente du Portier est DÉRIVÉE du courrier (E2) : un rang
@@ -1909,6 +1925,10 @@ impl Store {
         )?;
         self.0.execute(
             "DELETE FROM mis_de_cote WHERE mailbox_id = ?1 AND uid = ?2",
+            params![mailbox_id, uid],
+        )?;
+        self.0.execute(
+            "DELETE FROM kiosque_lus WHERE mailbox_id = ?1 AND uid = ?2",
             params![mailbox_id, uid],
         )?;
         self.0.execute(
@@ -2858,6 +2878,62 @@ impl Store {
         } else {
             self.set_text_pref(PREF_MODE_ORGANISE, if actif { "1" } else { "0" })
         }
+    }
+
+    /// RETOURS-13 R10 — marque une carte du Kiosque comme lue (le bas
+    /// de son élévation a été affiché). Idempotente ; clé d'enveloppe,
+    /// patron `pins` — jamais le `seen` IMAP (autre sémantique,
+    /// écrasée par la synchro).
+    pub fn marquer_kiosque_lu(&self, mailbox_id: i64, uid: Uid, epoch: i64) -> Result<(), Error> {
+        self.0.execute(
+            "INSERT OR IGNORE INTO kiosque_lus (mailbox_id, uid, epoch) VALUES (?1, ?2, ?3)",
+            params![mailbox_id, uid, epoch],
+        )?;
+        Ok(())
+    }
+
+    /// Une carte du Kiosque a-t-elle déjà été lue ? (sonde PK)
+    pub fn kiosque_lu(&self, mailbox_id: i64, uid: Uid) -> Result<bool, Error> {
+        Ok(self
+            .0
+            .prepare("SELECT 1 FROM kiosque_lus WHERE mailbox_id = ?1 AND uid = ?2")?
+            .exists(params![mailbox_id, uid])?)
+    }
+
+    /// RETOURS-13 R5/R9 — les actions par défaut des boutons Oui/Non du
+    /// Portier. Livrées : Oui → `reception`, Non → `corbeille`. Une
+    /// valeur hors vocabulaire en base (écrite hors porte) retombe au
+    /// défaut : le clic nu ne pose JAMAIS un verdict troué.
+    pub fn portier_defauts(&self) -> Result<(String, String), Error> {
+        let oui = self
+            .text_pref(PREF_PORTIER_DEFAUT_OUI)?
+            .filter(|v| defaut_portier_oui_valide(v))
+            .unwrap_or_else(|| "reception".to_string());
+        let non = self
+            .text_pref(PREF_PORTIER_DEFAUT_NON)?
+            .filter(|v| defaut_portier_non_valide(v))
+            .unwrap_or_else(|| "corbeille".to_string());
+        Ok((oui, non))
+    }
+
+    /// Règle les défauts du Portier — vocabulaire FERMÉ, vérifié avant
+    /// toute écriture (décision pure) : le Oui prend une destination
+    /// (jamais `ecarte`), le Non une règle ou « écarter sans déplacer ».
+    pub fn set_portier_defauts(&mut self, oui: &str, non: &str) -> Result<(), Error> {
+        if !defaut_portier_oui_valide(oui) {
+            return Err(Error::InvalidRouting(format!(
+                "défaut du Oui inconnu : {oui:?}"
+            )));
+        }
+        if !defaut_portier_non_valide(non) {
+            return Err(Error::InvalidRouting(format!(
+                "défaut du Non inconnu : {non:?}"
+            )));
+        }
+        self.set_text_prefs(&[
+            (PREF_PORTIER_DEFAUT_OUI, oui),
+            (PREF_PORTIER_DEFAUT_NON, non),
+        ])
     }
 
     /// Pose le verdict du Mode organisé sur un expéditeur
@@ -4014,6 +4090,21 @@ const REGLES_ROUTAGE: [&str; 3] = ["spam", "archive", "corbeille"];
 /// rétention du Portier (première activation, jamais réécrite).
 const PREF_MODE_ORGANISE: &str = "mode_organise";
 const PREF_MODE_ORGANISE_EPOCH: &str = "mode_organise_epoch";
+
+/// RETOURS-13 R5/R9 — les défauts des boutons du Portier : le Oui
+/// prend une destination (jamais `ecarte`), le Non une règle du
+/// vocabulaire d'écarté ou `ecarte` nu (« écarter sans déplacer »).
+/// DÉRIVÉS des tables de routage — jamais une seconde copie du
+/// vocabulaire (revue : une destination ajoutée à DESTINATIONS_ROUTAGE
+/// aurait laissé le sélecteur des Réglages la refuser en silence).
+const PREF_PORTIER_DEFAUT_OUI: &str = "portier_defaut_oui";
+const PREF_PORTIER_DEFAUT_NON: &str = "portier_defaut_non";
+fn defaut_portier_oui_valide(v: &str) -> bool {
+    v != "ecarte" && DESTINATIONS_ROUTAGE.contains(&v)
+}
+fn defaut_portier_non_valide(v: &str) -> bool {
+    v == "ecarte" || REGLES_ROUTAGE.contains(&v)
+}
 
 /// La porte UNIQUE de validation du vocabulaire de routage — appelée
 /// avant toute écriture ET avant toute résolution d'adresse (un
@@ -7695,6 +7786,64 @@ Etape : {etape}\nPlan :\n{}",
             Some(100),
             "l'époque de PREMIÈRE activation est gravée"
         );
+    }
+
+    /// RETOURS-13 R10 — la mémoire « lu » du Kiosque (patron
+    /// `pins`/`mis_de_cote` : clé d'enveloppe, locale au poste). Une
+    /// carte lue jusqu'en bas se marque ; la marque est idempotente,
+    /// meurt avec sa boîte (`reset_mailbox`) et avec son message
+    /// (`remove_local`) — un UID recyclé n'hérite d'aucune lecture.
+    #[test]
+    fn kiosque_lu_se_marque_et_meurt_avec_sa_boite_et_son_message() {
+        let (mut store, inbox) = store_with_mailbox();
+        store
+            .upsert_envelopes(inbox, &[envelope(1, "lettre", 1_000, false)])
+            .unwrap();
+        store
+            .upsert_envelopes(inbox, &[envelope(2, "autre", 1_100, false)])
+            .unwrap();
+        assert!(!store.kiosque_lu(inbox, 1).unwrap());
+        store.marquer_kiosque_lu(inbox, 1, 2_000).unwrap();
+        store.marquer_kiosque_lu(inbox, 1, 2_100).unwrap(); // idempotent
+        assert!(store.kiosque_lu(inbox, 1).unwrap());
+        store.marquer_kiosque_lu(inbox, 2, 2_200).unwrap();
+        // Le message part : sa marque aussi.
+        store.remove_local(inbox, 1).unwrap();
+        assert!(!store.kiosque_lu(inbox, 1).unwrap());
+        // La boîte se réinitialise : plus aucune marque.
+        store.reset_mailbox(inbox, 2).unwrap();
+        assert!(!store.kiosque_lu(inbox, 2).unwrap());
+    }
+
+    /// RETOURS-13 R5/R9 — les actions PAR DÉFAUT des boutons du
+    /// Portier : livrées Oui → Réception, Non → Corbeille ; réglables
+    /// dans un vocabulaire FERMÉ (les destinations du Oui, les règles
+    /// du Non plus « écarter sans déplacer ») ; une pref corrompue
+    /// retombe au défaut — jamais un verdict au vocabulaire troué.
+    #[test]
+    fn portier_defauts_livres_puis_reglables_au_vocabulaire_ferme() {
+        let mut store = Store::open_in_memory().unwrap();
+        assert_eq!(
+            store.portier_defauts().unwrap(),
+            ("reception".to_string(), "corbeille".to_string()),
+            "les défauts livrés : Oui → Réception, Non → Corbeille"
+        );
+        store.set_portier_defauts("kiosque", "archive").unwrap();
+        assert_eq!(
+            store.portier_defauts().unwrap(),
+            ("kiosque".to_string(), "archive".to_string())
+        );
+        store.set_portier_defauts("reception", "ecarte").unwrap();
+        assert_eq!(store.portier_defauts().unwrap().1, "ecarte");
+        // Le vocabulaire est fermé : « ecarte » n'est pas un Oui, une
+        // destination n'est pas une règle du Non.
+        assert!(store.set_portier_defauts("ecarte", "corbeille").is_err());
+        assert!(store.set_portier_defauts("reception", "registre").is_err());
+        // Une pref corrompue (écrite hors porte) retombe au défaut.
+        store
+            .set_text_pref("portier_defaut_oui", "poubelle")
+            .unwrap();
+        assert_eq!(store.portier_defauts().unwrap().0, "reception");
     }
 
     /// PLAN-MODE-ORGANISE E2 — la rétention du Portier (D3 « arrivées

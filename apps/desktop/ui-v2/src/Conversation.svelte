@@ -10,6 +10,7 @@
   import Fil from './Fil.svelte';
   import { fil, ouvrirFil, agrandirFil } from './lib/fil.svelte.js';
   import { t } from './lib/texte.svelte.js';
+  import { cleLibelleBoite } from './lib/organise.svelte.js';
 
   let {
     brouillons = [],
@@ -58,7 +59,7 @@
   <div class="ecran03" data-testid="conversation">
     <header class="entete">
       <button type="button" class="retour" data-testid="retour-boite" onclick={onretour}>
-        <Icone nom="arrow_back" />{t('boite.reception')}</button>
+        <Icone nom="arrow_back" />{t(cleLibelleBoite('reception'))}</button>
       <span class="espace"></span>
       <button type="button" class="principal" onclick={onecrire}>
         <Icone nom="edit_square" />{t('entete.ecrire')}</button>

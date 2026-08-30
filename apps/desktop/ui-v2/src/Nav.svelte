@@ -10,6 +10,7 @@
   // le dessin de la tuile d'événement (--tuile/--tuileInk, W2-D5).
   import Icone from './Icone.svelte';
   import { activation } from './lib/clavier.js';
+  import { cleLibelleBoite } from './lib/organise.svelte.js';
   import { t } from './lib/texte.svelte.js';
 
   // R1 (PLAN-RETOURS-8, A74), amendé A82 : un compte peut porter un
@@ -39,7 +40,10 @@
 
   const dossiers = $derived([
     {
-      id: 'reception', icone: 'inbox', libelle: t('boite.reception'),
+      // RETOURS-13 R3 : le libellé sort de LA règle partagée — en mode
+      // organisé « Réception », au classique le libellé long.
+      id: 'reception', icone: 'inbox',
+      libelle: t(cleLibelleBoite('reception')),
       nonLus: de('reception_non_lues'),
     },
     ...(organise
@@ -83,6 +87,11 @@
         <span class="pastille">{d.nonLus}</span>
       {/if}
     </div>
+    {#if organise && d.id === 'portier'}
+      <!-- RETOURS-13 R12 : le filet entre les 4 dossiers organisés et
+           le reste — le dessin du filet de `.boites`. -->
+      <div class="separateur" data-testid="nav-separateur"></div>
+    {/if}
   {/each}
 
   <div class="boites">
@@ -159,6 +168,9 @@
   .pastille {
     flex:none; font-size:12px; font-weight:600; color:var(--accent);
     font-variant-numeric:tabular-nums;
+  }
+  .separateur {
+    margin:6px 0; border-top:1px solid var(--border); flex:none;
   }
   .boites {
     margin-top:auto; padding-top:16px; border-top:1px solid var(--border);

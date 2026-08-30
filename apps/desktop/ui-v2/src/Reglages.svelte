@@ -55,6 +55,10 @@
     { id: 'themes', icone: 'bookmark', libelle: 'groupe.themes' },
     { id: 'affichage', icone: 'display_settings', libelle: 'groupe.affichage' },
     { id: 'notifications', icone: 'notifications', libelle: 'groupe.notifications' },
+    // RETOURS-13 R9, terrain C4 : les défauts du Portier — le groupe
+    // reste visible QUEL QUE SOIT le mode (verdict CE du terrain, qui
+    // renverse le choix « organisé seul » de la première passe).
+    { id: 'portier', icone: 'portier', libelle: 'groupe.portier' },
     // R1 (PLAN-RETOURS-6) : le gestionnaire de signature — du contenu
     // réel (un éditeur par compte), la règle des groupes est tenue.
     { id: 'signature', icone: 'signature', libelle: 'groupe.signature' },
@@ -118,6 +122,31 @@
   // cet expéditeur » — lues du cœur à chaque ouverture, retirées sur
   // place. La porte de sortie du « toujours ».
   let expediteursImages = $state([]);
+  // RETOURS-13 R9 : les défauts des boutons du Portier — lus du cœur
+  // quand le groupe s'ouvre. `null` tant que la base n'a pas répondu :
+  // les sélecteurs ne se peignent qu'avec l'état PERSISTÉ (revue — un
+  // clic avant la réponse aurait réécrit l'autre défaut avec la valeur
+  // livrée, pas la sienne). Sur échec d'écriture, l'interface ne ment
+  // pas : elle revient à l'état réellement persisté.
+  let portierDefauts = $state(null);
+  $effect(() => {
+    if (visible && groupe === 'portier') {
+      appel('portier_defauts_get')
+        .then((d) => (portierDefauts = d))
+        .catch((err) => console.error('portier_defauts_get :', err));
+    }
+  });
+  function changerPortier(champ, valeur) {
+    if (!portierDefauts) return;
+    const avant = { ...portierDefauts };
+    portierDefauts = { ...portierDefauts, [champ]: valeur };
+    appel('portier_defauts_set', {
+      oui: portierDefauts.oui,
+      non: portierDefauts.non,
+    }).catch(() => {
+      portierDefauts = avant;
+    });
+  }
 
   // « Jamais deux cartes sous la même rangée » (revue 2026-08-22) : LE
   // point unique — la prochaine carte s'ajoute ici, pas dans N sites
@@ -649,6 +678,21 @@
           {:else if groupe === 'themes'}
             <p class="section">{t('reglages.sectionThemes')}</p>
             <div class="rangees">
+              <!-- R1 (PLAN-RETOURS-13) : le suivi de l'OS sombre vit en
+                   TÊTE des Thèmes — il gouverne le thème affiché, pas
+                   l'affichage. Le testid historique reste (deux specs
+                   et la doc le portent). -->
+              <div class="reglage">
+                <span class="libelles">
+                  <span class="nom">{t('reglages.sombreAuto')}</span>
+                  <span class="desc">{t('reglages.sombreAutoDesc')}</span>
+                </span>
+                <button type="button" class="bascule" role="switch"
+                        aria-checked={auto} aria-label={t('reglages.sombreAuto')}
+                        data-testid="affichage-auto" onclick={basculerAuto}>
+                  <span class="bille"></span>
+                </button>
+              </div>
               {#each FICHES as fiche (fiche.id)}
                 <div class="rangee" class:active={actif === fiche.id}
                      data-testid="theme" data-theme-id={fiche.id}
@@ -673,17 +717,6 @@
           {:else if groupe === 'affichage'}
             <p class="section">{t('groupe.affichage')}</p>
             <div class="rangees" data-testid="reglages-affichage">
-              <div class="reglage">
-                <span class="libelles">
-                  <span class="nom">{t('reglages.sombreAuto')}</span>
-                  <span class="desc">{t('reglages.sombreAutoDesc')}</span>
-                </span>
-                <button type="button" class="bascule" role="switch"
-                        aria-checked={auto} aria-label={t('reglages.sombreAuto')}
-                        data-testid="affichage-auto" onclick={basculerAuto}>
-                  <span class="bille"></span>
-                </button>
-              </div>
               <div class="reglage">
                 <span class="libelles">
                   <span class="nom">{t('reglages.langue')}</span>
@@ -748,6 +781,40 @@
                       {t('reglages.retirerExpediteur')}</button>
                   </div>
                 {/each}
+              {/if}
+            </div>
+          {:else if groupe === 'portier'}
+            <p class="section">{t('groupe.portier')}</p>
+            <div class="rangees" data-testid="reglages-portier">
+              <p class="desc-groupe">{t('reglages.portierDesc')}</p>
+              {#if portierDefauts}
+              <div class="reglage">
+                <span class="libelles">
+                  <span class="nom">{t('reglages.portierOui')}</span>
+                  <span class="desc">{t('reglages.portierOuiDesc')}</span>
+                </span>
+                <select class="langue" data-testid="portier-defaut-oui"
+                        aria-label={t('reglages.portierOui')} value={portierDefauts.oui}
+                        onchange={(e) => changerPortier('oui', e.target.value)}>
+                  <option value="reception">{t('portier.versReception')}</option>
+                  <option value="kiosque">{t('portier.versKiosque')}</option>
+                  <option value="registre">{t('portier.versRegistre')}</option>
+                </select>
+              </div>
+              <div class="reglage">
+                <span class="libelles">
+                  <span class="nom">{t('reglages.portierNon')}</span>
+                  <span class="desc">{t('reglages.portierNonDesc')}</span>
+                </span>
+                <select class="langue" data-testid="portier-defaut-non"
+                        aria-label={t('reglages.portierNon')} value={portierDefauts.non}
+                        onchange={(e) => changerPortier('non', e.target.value)}>
+                  <option value="corbeille">{t('portier.regleCorbeille')}</option>
+                  <option value="archive">{t('portier.regleArchive')}</option>
+                  <option value="spam">{t('portier.regleSpam')}</option>
+                  <option value="ecarte">{t('portier.regleEcarte')}</option>
+                </select>
+              </div>
               {/if}
             </div>
           {:else if groupe === 'notifications'}
@@ -946,8 +1013,15 @@
     border-right:1px solid var(--border); padding:20px 16px;
     display:flex; flex-direction:column; gap:4px; overflow:auto;
   }
+  /* R2 (PLAN-RETOURS-13) : le glyphe du rail se cale comme celui des
+     dossiers de la nav — baseline du libellé + 2 px (le calage optique
+     CE, variante C, terrain 2026-08-27) ; le centrage flex posait le
+     SVG plus bas que dans la nav. Même mécanique que Nav.svelte : la
+     descente est un transform, hors géométrie. La rangée garde ses
+     36 px (grammaire du rail, A13/A29) : le libellé porte la baseline
+     au centre par sa line-height, l'icône s'y accroche. */
   .rang {
-    display:flex; align-items:center; gap:10px; height:36px; flex:none;
+    display:flex; align-items:baseline; gap:10px; height:36px; flex:none;
     padding:0 12px; border-radius:var(--r-controle); cursor:pointer;
     border:1px solid transparent;
   }
@@ -957,10 +1031,11 @@
     box-shadow:var(--shadow);
   }
   .icone { color:var(--muted); }
+  .icone :global(.ic) { vertical-align:baseline; transform:translateY(2px); }
   .actif .icone { color:var(--accent); }
   .libelle {
-    font-size:13px; color:var(--ink2); flex:1; min-width:0;
-    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    font-size:13px; line-height:36px; color:var(--ink2); flex:1;
+    min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
   .actif .libelle { font-weight:600; color:var(--ink); }
 

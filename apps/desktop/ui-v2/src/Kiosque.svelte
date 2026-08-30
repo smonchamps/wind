@@ -1,22 +1,23 @@
 <script>
-  // Le Kiosque en CARTES (PLAN-MODE-ORGANISE E5bis, décision CE du
-  // 2026-08-30 : « avant la release ») — la forme du prototype : les
-  // lettres d'information arrivent DÉJÀ OUVERTES, la plus récente en
-  // tête, colonne centrée ~720 px, une carte = expéditeur + heure,
-  // objet en display, le CORPS entier (le même document auto-CSP que
-  // l'écran de lecture, iframe sandbox S1, liens vers le navigateur
-  // système), et le ⋯ de gestes. Rien n'est « à lire » : le Kiosque se
-  // parcourt, il ne se traite pas — aucun marquage lu, aucun clic
-  // d'ouverture. Les corps viennent du CACHE par page servie (D5/S3 —
-  // jamais un réseau par carte) ; pas de fenêtrage : les cartes
-  // s'ajoutent page à page au défilement (limite dite au PLAN — un
-  // Kiosque se compte en dizaines, pas en milliers).
+  // Le Kiosque en CARTES (PLAN-MODE-ORGANISE E5bis, puis RETOURS-13
+  // R10/R11) — les lettres d'information arrivent DÉJÀ OUVERTES,
+  // colonne centrée ~720 px, une carte = expéditeur + heure, objet en
+  // display, le CORPS entier (document auto-CSP, iframe sandbox S1),
+  // le ⋯ de gestes. R10 renverse le « rien n'est marqué lu » d'A100 :
+  // une carte dont le BAS de l'élévation a été affiché est LUE (témoin
+  // IntersectionObserver → `kiosque_marquer_lu`, patron pins) — la
+  // scène se coupe en « Non lus » (dépliées, chronologique) et « Lus
+  // précédemment » (groupes par expéditeur à l'alphabet, repliés en
+  // pile — D5). Le sectionnement se calcule AU SERVICE de la page :
+  // une carte ne saute jamais pendant la lecture. Les corps viennent
+  // du CACHE par page servie (D5/S3) ; pas de fenêtrage : les cartes
+  // s'ajoutent page à page au défilement (limite dite au PLAN).
   import Icone from './Icone.svelte';
   import { appel } from './lib/transport.js';
   import { corpsAuto } from './lib/corps.js';
   import { brancherLiens } from './lib/liens.js';
   import { quand } from './lib/quand.js';
-  import { t } from './lib/texte.svelte.js';
+  import { t, langueActuelle } from './lib/texte.svelte.js';
 
   let {
     compte = null,
@@ -111,11 +112,88 @@
 
   // Le pli d'une carte (constat CE au STOP visuel E5bis) : chaque
   // carte se replie/déplie à droite, comme les messages du volet de
-  // lecture — DÉPLIÉE par défaut (les lettres arrivent ouvertes).
+  // lecture. R10 : une carte NON LUE arrive dépliée, une carte LUE
+  // (dans son groupe) arrive repliée sur la ligne de l'objet.
   let replies = $state({});
+  const estRepliee = (carte) => replies[cleCarte(carte.row)] ?? carte.lu;
   function basculerPli(carte) {
+    replies[cleCarte(carte.row)] = !estRepliee(carte);
+  }
+
+  // R10 — les deux sections, calculées de l'état SERVI (carte.lu) :
+  // les marques posées en vol n'y touchent pas.
+  const nonLues = $derived(cartes.filter((c) => !c.lu));
+  const groupes = $derived.by(() => {
+    const parQui = new Map();
+    for (const c of cartes) {
+      if (!c.lu) continue;
+      const qui = c.row.sender ?? '';
+      if (!parQui.has(qui)) parQui.set(qui, []);
+      parQui.get(qui).push(c);
+    }
+    return [...parQui.entries()]
+      .map(([qui, siennes]) => ({ qui, cartes: siennes }))
+      // La collation suit la langue de l'UI (revue : la locale de
+      // l'hôte n'est pas un contrat — sur un poste non francophone le
+      // tri divergerait de ce que le test et l'utilisateur attendent).
+      .sort((a, b) => a.qui.localeCompare(b.qui, langueActuelle(), { sensitivity: 'base' }));
+  });
+  let groupesOuverts = $state({});
+
+  // R10 — le témoin de lecture : un nœud au PIED de chaque carte non
+  // lue ; quand il entre dans la scène, le bas de l'élévation a été
+  // affiché — la carte se marque (idempotent, une écriture par carte).
+  let scene = $state(null);
+  const temoins = new Map();
+  let observateur = null;
+  $effect(() => {
+    if (!scene) return;
+    observateur = new IntersectionObserver((entrees) => {
+      for (const e of entrees) {
+        if (!e.isIntersecting) continue;
+        const carte = temoins.get(e.target);
+        if (!carte) continue;
+        observateur?.unobserve(e.target);
+        marquerLue(carte, e.target);
+      }
+    }, { root: scene });
+    // Les témoins montés avant l'effet (le premier rendu) s'observent
+    // ici — l'action court avant l'observateur.
+    for (const nœud of temoins.keys()) observateur.observe(nœud);
+    return () => {
+      observateur?.disconnect();
+      observateur = null;
+    };
+  });
+  function temoinLu(nœud, carte) {
+    temoins.set(nœud, carte);
+    observateur?.observe(nœud);
+    return {
+      destroy() {
+        temoins.delete(nœud);
+        observateur?.unobserve(nœud);
+      },
+    };
+  }
+  const marquees = new Set();
+  async function marquerLue(carte, temoin) {
     const k = cleCarte(carte.row);
-    replies[k] = !replies[k];
+    if (marquees.has(k)) return;
+    marquees.add(k);
+    try {
+      await appel('kiosque_marquer_lu', {
+        accountId: carte.row.account_id,
+        mailbox: carte.row.mailbox,
+        uid: carte.row.uid,
+      });
+    } catch (err) {
+      // L'écriture a manqué : le témoin se RÉARME (revue — sans le
+      // re-observe, « au prochain passage » était un mensonge : un
+      // nœud désobservé ne repasse jamais) et la marque se rejouera.
+      marquees.delete(k);
+      if (temoins.has(temoin)) observateur?.observe(temoin);
+      console.error('kiosque_marquer_lu :', err);
+    }
   }
 
   // Le menu de gestes d'une carte (le patron du ⋯ des rangées).
@@ -143,56 +221,100 @@
     if (e.key === 'Escape') menu = null;
   }} />
 
-<div class="scene" data-testid="kiosque" onscroll={surDefilement}>
+{#snippet blocCarte(carte)}
+  <article class="carte" data-testid="kiosque-carte">
+    <div class="de">
+      <span class="nom">{carte.row.sender}</span>
+      <button type="button" class="gestes" data-testid="kiosque-gestes"
+              aria-label={t('liste.gestes')} aria-haspopup="menu"
+              aria-expanded={menu?.cle === cleCarte(carte.row)}
+              onclick={(e) => ouvrirMenu(e, carte)}>
+        <Icone nom="more_horiz" taille={14} /></button>
+      <span class="heure">{quand(carte.row.epoch)}</span>
+    </div>
+    <!-- Le pli (constat CE, 3 passes) : le bouton exact du volet
+         de lecture — glyphe + texte, bouton nu —, SUR LA LIGNE DE
+         L'OBJET, aligné à droite. -->
+    <div class="rang-objet">
+      <h3 class="display">{carte.row.subject}</h3>
+      <button type="button" class="nu" data-testid="kiosque-pli"
+              aria-expanded={!estRepliee(carte)}
+              onclick={() => basculerPli(carte)}>
+        <Icone nom={estRepliee(carte) ? 'unfold_more' : 'unfold_less'} />
+        {estRepliee(carte) ? t('action.deplier') : t('action.replier')}</button>
+    </div>
+    {#if estRepliee(carte)}
+      <p class="apercu">{carte.row.preview ?? ''}</p>
+    {:else if carte.document !== null}
+      {#if carte.remote_images_blocked > 0}
+        <!-- R1 : la garde d'images, comme au volet de lecture —
+             sans elle, une lettre toute en images distantes serait
+             une dalle vide sans recours (revue E5bis). -->
+        <div class="garde-images" data-testid="kiosque-garde-images">
+          <span>{t('lecture.imagesBloquees', { n: carte.remote_images_blocked })}</span>
+          <button type="button" onclick={() => accorderImages(carte, false)}>
+            {t('lecture.afficherImages')}</button>
+          <button type="button" onclick={() => accorderImages(carte, true)}>
+            {t('lecture.toujoursAfficherImages')}</button>
+        </div>
+      {/if}
+      <iframe class="corps" sandbox="allow-same-origin" srcdoc={carte.document}
+              title={carte.row.subject} use:corpsAuto
+              onload={(ev) => brancherLiens(ev.currentTarget)}></iframe>
+    {:else}
+      <!-- Corps pas encore en cache : l'aperçu dit l'essentiel, le
+           rattrapage normal remplira la carte. -->
+      <p class="apercu">{carte.row.preview ?? ''}</p>
+    {/if}
+    {#if !carte.lu && !estRepliee(carte)}
+      <!-- R10 : le témoin de lecture — le PIED de l'élévation ; le
+           voir passer, c'est avoir lu la carte jusqu'en bas. -->
+      <div class="temoin-lu" use:temoinLu={carte} aria-hidden="true"></div>
+    {/if}
+  </article>
+{/snippet}
+
+<div class="scene" data-testid="kiosque" onscroll={surDefilement} bind:this={scene}>
   <div class="colonne">
-    <p class="note"><Icone nom="info" />{t('kiosque.note')}</p>
-    {#each cartes as carte (cleCarte(carte.row))}
-      <article class="carte" data-testid="kiosque-carte">
-        <div class="de">
-          <span class="nom">{carte.row.sender}</span>
-          <button type="button" class="gestes" data-testid="kiosque-gestes"
-                  aria-label={t('liste.gestes')} aria-haspopup="menu"
-                  aria-expanded={menu?.cle === cleCarte(carte.row)}
-                  onclick={(e) => ouvrirMenu(e, carte)}>
-            <Icone nom="more_horiz" taille={14} /></button>
-          <span class="heure">{quand(carte.row.epoch)}</span>
+    <!-- R11 (RETOURS-13) : l'entête au format du Portier — glyphe +
+         titre + deux phrases CE, justifiés à gauche sur la colonne. -->
+    <h2 class="display entete-vue" data-testid="kiosque-titre">
+      <span class="glyphe-titre" aria-hidden="true"><Icone nom="kiosque" taille={26} /></span>{t('boite.kiosque')}</h2>
+    <p class="sous-titre-vue">{t('kiosque.sousTitre1')}<br />{t('kiosque.sousTitre2')}</p>
+    {#if cartes.length}
+      <!-- Terrain RETOURS-13 (C5) : le titre de section reste visible
+           quand tout est lu — la coche du Portier dit le travail fait. -->
+      <p class="regle-libelle" data-testid="kiosque-section-nonlus">{t('kiosque.sectionNonLus')}</p>
+      {#if nonLues.length}
+        {#each nonLues as carte (cleCarte(carte.row))}
+          {@render blocCarte(carte)}
+        {/each}
+      {:else}
+        <div class="tout-lu" data-testid="kiosque-tout-lu">
+          <span class="ic-oui" aria-hidden="true"><Icone nom="check_circle" /></span>{t('kiosque.toutLu')}
         </div>
-        <!-- Le pli (constat CE, 3 passes) : le bouton exact du volet
-             de lecture — glyphe + texte, bouton nu —, SUR LA LIGNE DE
-             L'OBJET, aligné à droite. -->
-        <div class="rang-objet">
-          <h3 class="display">{carte.row.subject}</h3>
-          <button type="button" class="nu" data-testid="kiosque-pli"
-                  aria-expanded={!replies[cleCarte(carte.row)]}
-                  onclick={() => basculerPli(carte)}>
-            <Icone nom={replies[cleCarte(carte.row)] ? 'unfold_more' : 'unfold_less'} />
-            {replies[cleCarte(carte.row)] ? t('action.deplier') : t('action.replier')}</button>
-        </div>
-        {#if replies[cleCarte(carte.row)]}
-          <p class="apercu">{carte.row.preview ?? ''}</p>
-        {:else if carte.document !== null}
-          {#if carte.remote_images_blocked > 0}
-            <!-- R1 : la garde d'images, comme au volet de lecture —
-                 sans elle, une lettre toute en images distantes serait
-                 une dalle vide sans recours (revue E5bis). -->
-            <div class="garde-images" data-testid="kiosque-garde-images">
-              <span>{t('lecture.imagesBloquees', { n: carte.remote_images_blocked })}</span>
-              <button type="button" onclick={() => accorderImages(carte, false)}>
-                {t('lecture.afficherImages')}</button>
-              <button type="button" onclick={() => accorderImages(carte, true)}>
-                {t('lecture.toujoursAfficherImages')}</button>
-            </div>
-          {/if}
-          <iframe class="corps" sandbox="allow-same-origin" srcdoc={carte.document}
-                  title={carte.row.subject} use:corpsAuto
-                  onload={(ev) => brancherLiens(ev.currentTarget)}></iframe>
-        {:else}
-          <!-- Corps pas encore en cache : l'aperçu dit l'essentiel, le
-               rattrapage normal remplira la carte. -->
-          <p class="apercu">{carte.row.preview ?? ''}</p>
+      {/if}
+    {/if}
+    {#if groupes.length}
+      <p class="regle-libelle" data-testid="kiosque-section-lus">{t('kiosque.sectionLus')}</p>
+      {#each groupes as g (g.qui)}
+        <!-- D5 : la rangée d'un groupe replié montre une PILE
+             d'élévations (le visuel des mis de côté) ; le clic déplie
+             ses cartes, repliées sur la ligne de l'objet. -->
+        <button type="button" class="rang-groupe" data-testid="kiosque-groupe"
+                aria-expanded={!!groupesOuverts[g.qui]}
+                onclick={() => (groupesOuverts[g.qui] = !groupesOuverts[g.qui])}>
+          <span class="empile" aria-hidden="true"><span></span><span></span><span></span></span>
+          <span class="qui" data-testid="kiosque-groupe-nom">{g.qui}</span>
+          <span class="nb">{g.cartes.length}</span>
+        </button>
+        {#if groupesOuverts[g.qui]}
+          {#each g.cartes as carte (cleCarte(carte.row))}
+            {@render blocCarte(carte)}
+          {/each}
         {/if}
-      </article>
-    {/each}
+      {/each}
+    {/if}
     {#if servi && cartes.length === 0 && !enVol}
       <p class="vide" data-testid="kiosque-vide">{t('kiosque.vide')}</p>
     {/if}
@@ -221,13 +343,48 @@
 <style>
   .scene { flex:1; overflow:auto; padding:28px 36px 60px; min-width:0; }
   .colonne { max-width:720px; margin:0 auto; }
-  .note {
-    display:flex; align-items:baseline; gap:8px; margin:0 0 22px;
-    font-size:13px; line-height:1.5; color:var(--ink2); max-width:70ch;
-  }
-  .note :global(.ic) { color:var(--muted); align-self:center; flex:none; }
+  /* R11 : l'entête et la règle-libellé sont les classes PARTAGÉES de
+     systeme.css (.entete-vue / .sous-titre-vue / .regle-libelle —
+     une copie, Portier et Kiosque). */
   .carte { padding:26px 0 10px; border-top:1px solid var(--border); }
-  .carte:first-of-type { border-top:none; padding-top:4px; }
+  /* R10 — la rangée d'un groupe replié : pile d'élévations + nom +
+     nombre, le dessin d'une rangée (jamais un bouton plein). */
+  .rang-groupe {
+    width:100%; display:flex; align-items:center; gap:12px;
+    padding:12px 10px; font-size:13px; color:var(--ink); text-align:left;
+    background:none; border:none; border-top:1px solid var(--border);
+    cursor:pointer;
+  }
+  .rang-groupe:hover { background:var(--hover); }
+  .rang-groupe .qui {
+    flex:1; min-width:0; font-weight:600;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .rang-groupe .nb {
+    flex:none; font-size:12px; font-weight:600; color:var(--accent);
+    font-variant-numeric:tabular-nums;
+  }
+  /* La pile (D5) : trois élévations décalées, le visuel de l'éventail
+     des mis de côté en miniature. */
+  .empile { position:relative; width:20px; height:16px; flex:none; }
+  /* V14 : zéro rayon — les feuilles de la pile sont des rectangles
+     nus, comme le visuel de la pile des mis de côté. */
+  .empile span {
+    position:absolute; inset:0; background:var(--surface);
+    border:1px solid var(--border);
+  }
+  .empile span:nth-child(1) { transform:translate(4px, -4px); }
+  .empile span:nth-child(2) { transform:translate(2px, -2px); }
+  /* Le témoin de lecture : un nœud sans géométrie — il ne déplace
+     rien, il n'existe que pour l'observateur. */
+  .temoin-lu { height:1px; }
+  /* C5 : « tout lu » — la coche du Portier (accent), le dessin de son
+     vide (filet supérieur par la section, texte atténué). */
+  .tout-lu {
+    display:flex; align-items:center; gap:8px; padding:12px 0;
+    font-size:13px; color:var(--ink2); border-top:1px solid var(--border);
+  }
+  .ic-oui :global(.ic) { color:var(--accent); }
   .de { display:flex; align-items:baseline; gap:8px; margin-bottom:10px; }
   .de .nom { font-size:13px; font-weight:600; color:var(--ink2); flex:1; min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

@@ -9,8 +9,9 @@
   // 44 px à droite, chacun coiffé d'un mini ⋯ : sur Oui il ORIENTE
   // (Réception / Kiosque / Registre), sur Non il pose la RÈGLE
   // (indésirables / archivage / suppression — `corbeille` au cœur, D4 :
-  // jamais une suppression définitive). Le clic nu : Oui → Réception,
-  // Non → écarté sans règle. **Un oui/non, rien d'autre** — ni tri ni
+  // jamais une suppression définitive). Le clic nu suit les DÉFAUTS
+  // réglés (RETOURS-13 R5/R9 : livrés Oui → Réception, Non → Corbeille ;
+  // Réglages > Portier les change). **Un oui/non, rien d'autre** — ni tri ni
   // traitement du message au guichet (verdict CE, passe 1) : le rang ne
   // s'ouvre pas. L'expéditeur n'est jamais prévenu ; l'historique dit
   // la règle choisie et « Réintégrer » la défait.
@@ -23,6 +24,10 @@
 
   let rangs = $state([]);
   let ecartes = $state([]);
+  // RETOURS-13 R5/R9 : les actions par défaut du clic nu — lues du
+  // cœur (Réglages > Portier les règle) ; les défauts livrés tiennent
+  // tant que la base n'a pas répondu.
+  let defauts = $state({ oui: 'reception', non: 'corbeille' });
   // Le mini ⋯ ouvert : { address, qui, type: 'oui'|'non', x, y }.
   let menu = $state(null);
 
@@ -41,7 +46,19 @@
     }
   }
   $effect(() => {
-    recharger();
+    (async () => {
+      // Revue RETOURS-13 : les défauts se lisent UNE fois, AVANT le
+      // guichet — le premier rang ne se peint qu'avec les défauts
+      // connus (jamais un clic nu sur un défaut livré périmé), un
+      // échec de lecture garde les livrés SANS bloquer les rangs, et
+      // les décisions suivantes ne repayent pas l'IPC.
+      try {
+        defauts = await appel('portier_defauts_get');
+      } catch (err) {
+        console.error('portier_defauts_get :', err);
+      }
+      recharger();
+    })();
   });
 
   const LIBELLE_ECARTE = {
@@ -114,11 +131,17 @@
 
 <div class="scene" data-testid="portier">
   <div class="colonne">
-    <h2 class="display">{t('boite.portier')}</h2>
-    <p class="sous-titre">{t('portier.sousTitre1')}<br />{t('portier.sousTitre2')}</p>
+    <!-- RETOURS-13 R4/R7 : le glyphe portier coiffe le titre ; glyphe,
+         titre et sous-titre (trois phrases CE) se justifient à GAUCHE
+         sur la colonne des rangs — l'entête centrée est morte. -->
+    <h2 class="display entete-vue" data-testid="portier-titre">
+      <span class="glyphe-titre" aria-hidden="true"><Icone nom="portier" taille={26} /></span>{t('boite.portier')}</h2>
+    <p class="sous-titre-vue">{t('portier.sousTitre1')}<br />{t('portier.sousTitre2')}<br />{t('portier.sousTitre3')}</p>
 
+    <!-- Terrain RETOURS-13 (C2) : le titre de section reste visible
+         même sans nouvel expéditeur — le vide s'affiche dessous. -->
+    <p class="regle-libelle">{t('portier.question')}</p>
     {#if rangs.length}
-      <p class="regle-libelle">{t('portier.question')}</p>
       {#each rangs as rang (rang.address)}
         <div class="rang-portier" data-testid="portier-rang" data-adresse={rang.address}>
           <div class="msg" class:nonlu={rang.row.thread_unseen > 0}>
@@ -135,7 +158,7 @@
           <div class="choix">
             <span class="btn-portier">
               <button type="button" class="gros" data-testid="portier-oui"
-                      onclick={() => decider(rang.address, rang.row.sender, 'reception')}>
+                      onclick={() => decider(rang.address, rang.row.sender, defauts.oui)}>
                 <span class="ic-oui"><Icone nom="check_circle" /></span>{t('portier.oui')}</button>
               <button type="button" class="mini" data-testid="portier-mini-oui"
                       aria-label={t('portier.ouiChoix')} aria-haspopup="menu"
@@ -145,7 +168,8 @@
             </span>
             <span class="btn-portier">
               <button type="button" class="gros" data-testid="portier-non"
-                      onclick={() => decider(rang.address, rang.row.sender, 'ecarte')}>
+                      onclick={() => decider(rang.address, rang.row.sender, 'ecarte',
+                        defauts.non === 'ecarte' ? null : defauts.non)}>
                 <span class="ic-non"><Icone nom="cancel" /></span>{t('portier.non')}</button>
               <button type="button" class="mini" data-testid="portier-mini-non"
                       aria-label={t('portier.nonChoix')} aria-haspopup="menu"
@@ -210,18 +234,9 @@
 <style>
   .scene { flex:1; overflow:auto; padding:28px 36px 60px; min-width:0; }
   .colonne { max-width:820px; margin:0 auto; }
-  h2 { margin:0 0 6px; font-size:24px; line-height:1.25; color:var(--ink); text-align:center; }
-  .sous-titre {
-    margin:0 auto 24px; font-size:13px; line-height:1.5; color:var(--ink2);
-    max-width:66ch; text-align:center;
-  }
-  /* La règle-libellé : le dessin de « Historique du Portier » — libellé
-     nu, 8 px d'écart, le filet supérieur du premier rang fait
-     séparateur (verdict CE, passe finale du prototype). */
-  .regle-libelle {
-    margin:30px 0 8px; font-size:11px; letter-spacing:.1em;
-    text-transform:uppercase; color:var(--muted); font-weight:600;
-  }
+  /* L'entête et la règle-libellé vivent en UNE copie dans systeme.css
+     (.entete-vue / .sous-titre-vue / .regle-libelle — RETOURS-13,
+     partagées avec le Kiosque) ; seule la variante locale reste ici. */
   .regle-libelle.historique { margin-top:34px; }
   .rang-portier {
     display:flex; align-items:center; gap:18px; padding:20px 0;
@@ -258,8 +273,9 @@
     border-radius:var(--r-controle); color:var(--muted); cursor:pointer;
   }
   .mini:hover, .mini[aria-expanded="true"] { background:var(--sel); color:var(--ink); }
+  /* RETOURS-13 R8 : le vide se justifie à gauche, comme l'entête. */
   .vide {
-    display:flex; align-items:center; justify-content:center; gap:8px;
+    display:flex; align-items:center; gap:8px;
     padding:12px 0; font-size:13px; color:var(--ink2);
   }
   .rang-historique {

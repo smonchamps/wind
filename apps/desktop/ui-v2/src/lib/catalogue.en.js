@@ -6,6 +6,8 @@
 export const EN = {
   // --- Dossiers canoniques (nav, statut, conversation) ----------------
   'boite.reception': 'Inbox',
+  // RETOURS-13 R3 : the organized mode keeps the short name.
+  'boite.receptionOrganisee': 'Inbox',
   // PLAN-MODE-ORGANISE E1 — the organized-mode views (HEY-inspired names).
   'boite.kiosque': 'Feed',
   'boite.registre': 'Paper trail',
@@ -31,7 +33,8 @@ export const EN = {
 
   // --- The Screener (PLAN-MODE-ORGANISE E2) ---------------------------
   'portier.sousTitre1': 'These senders are writing to you for the first time.',
-  'portier.sousTitre2': 'You decide whether you want to hear from them.',
+  'portier.sousTitre2': 'Do you allow them to contact you?',
+  'portier.sousTitre3': 'Senders will never be told of your decision.',
   'portier.question': 'Do you want to receive their messages?',
   'portier.oui': 'Yes',
   'portier.non': 'No',
@@ -47,11 +50,12 @@ export const EN = {
   'portier.leRegistre': 'the Paper trail',
   'portier.regleSpam': 'Marked as junk',
   'portier.regleArchive': 'Archived automatically',
-  'portier.regleCorbeille': 'Deleted automatically',
+  'portier.regleCorbeille': 'Moved automatically to the Trash',
+  'portier.regleEcarte': 'Screened out without moving',
   'portier.vide': 'No one is waiting at the Screener. New senders will appear here.',
   'portier.historique': 'Screener history',
   'portier.historiqueVide':
-    'No senders screened out. Your choice stays private — a screened-out sender never knows, and everything can be replayed here.',
+    'You have not screened out any senders yet.',
   'portier.reintegrer': 'Reinstate',
   'portier.ecarte': 'screened out',
   'portier.ecarteSpam': 'screened out — marked as junk',
@@ -84,13 +88,24 @@ export const EN = {
   'pile.aria': 'Set-aside messages',
   'toast.misDeCote': 'Set aside \u2014 the pile lives at the bottom right of the Inbox.',
   'toast.reprisPile': 'Brought back from the pile.',
-  // E5bis — the Feed as cards.
-  'kiosque.note':
-    'Newsletters arrive already open, most recent first — scroll to read. Nothing is marked to-do: the Feed is browsed, never processed.',
+  // E5bis — the Feed as cards; header and sections RETOURS-13 R10/R11.
+  'kiosque.sousTitre1': 'All your informational emails are gathered here.',
+  'kiosque.sousTitre2': 'Just scroll through them to read.',
+  'kiosque.sectionNonLus': 'Unread',
+  'kiosque.sectionLus': 'Previously read',
+  'kiosque.toutLu': 'You have read all the new stories in your Feed.',
   'kiosque.vide':
     'Nothing in the Feed. From a message, “Move to the Feed” sends that sender’s newsletters here.',
   'toast.portierReintegre':
     '{qui} is reinstated — their messages from the last 90 days reappear at the Screener.',
+  'groupe.portier': 'Screener',
+  'reglages.portierDesc':
+    'The default actions of the Screener buttons. The mini ⋯ on each button still offers a one-off choice.',
+  'reglages.portierOui': 'The “Yes” button',
+  'reglages.portierOuiDesc': 'Where an allowed sender’s messages go.',
+  'reglages.portierNon': 'The “No” button',
+  'reglages.portierNonDesc':
+    'What happens to a screened-out sender’s next messages.',
   'entete.reglages': 'Settings',
   'entete.feedback': 'Feedback',
   'retour.titre': 'Feedback',

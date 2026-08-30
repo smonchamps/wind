@@ -43,6 +43,7 @@
   // en prefs SQLite (D2 amendée), l'UI le reflète.
   import {
     modeOrganise, restaurerModeOrganise, basculerModeOrganise,
+    cleLibelleBoite,
   } from './lib/organise.svelte.js';
 
   let liste = $state(null);
@@ -229,17 +230,9 @@
       : null;
   }
 
-  const LIBELLES = {
-    reception: 'boite.reception',
-    kiosque: 'boite.kiosque',
-    registre: 'boite.registre',
-    portier: 'boite.portier',
-    envoyes: 'boite.envoyes',
-    brouillons: 'boite.brouillons',
-    indesirables: 'boite.indesirables',
-    archives: 'boite.archives',
-    corbeille: 'boite.corbeille',
-  };
+  // RETOURS-13 R3 : le libellé d'une boîte sort de LA règle partagée
+  // (cleLibelleBoite, lib/organise) — l'ancienne table LIBELLES ne
+  // faisait que recopier `boite.${id}`.
 
   // La ligne de statut ENTIÈRE — texte, paire disque/anneau (V2 :
   // l'anneau `fil` dès qu'une action tourne, disque plein au repos
@@ -265,8 +258,8 @@
       return {
         texte:
           totalListe === null
-            ? t(LIBELLES[categorie])
-            : t('statut.categorie', { boite: t(LIBELLES[categorie]), n: totalListe }),
+            ? t(cleLibelleBoite(categorie))
+            : t('statut.categorie', { boite: t(cleLibelleBoite(categorie)), n: totalListe }),
         fil: null,
         alerte: false,
       };
@@ -1099,7 +1092,7 @@
       if (destination === 'ecarte') {
         flash(t('toast.portierNonNu', { qui: ligne.sender }));
       } else {
-        flash(t('toast.expediteurDeplace', { boite: t(LIBELLES[destination]) }));
+        flash(t('toast.expediteurDeplace', { boite: t(cleLibelleBoite(destination)) }));
       }
       liste?.recharger();
       kiosque?.recharger();

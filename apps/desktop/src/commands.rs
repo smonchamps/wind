@@ -2874,6 +2874,37 @@ pub async fn mode_organise_set(app: AppHandle, actif: bool) -> Result<(), String
     .await
 }
 
+/// RETOURS-13 R5/R9 — les actions par défaut des boutons Oui/Non du
+/// Portier (livrées : Réception / Corbeille), réglables aux Réglages.
+#[derive(serde::Serialize)]
+pub struct PortierDefauts {
+    pub oui: String,
+    pub non: String,
+}
+
+#[tauri::command]
+pub async fn portier_defauts_get(app: AppHandle) -> Result<PortierDefauts, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let (oui, non) = store.portier_defauts().map_err(|err| err.to_string())?;
+        Ok(PortierDefauts { oui, non })
+    })
+    .await
+}
+
+/// Le vocabulaire est fermé et refusé côté cœur — l'UI ne peut pas
+/// écrire un défaut troué.
+#[tauri::command]
+pub async fn portier_defauts_set(app: AppHandle, oui: String, non: String) -> Result<(), String> {
+    hors_pompe(app, move |app| {
+        let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store
+            .set_portier_defauts(&oui, &non)
+            .map_err(|err| err.to_string())
+    })
+    .await
+}
+
 /// Une ligne de l'historique du Portier, telle que l'UI la montre.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -3069,6 +3100,10 @@ pub struct CarteKiosque {
     pub row: MessageRow,
     pub document: Option<String>,
     pub remote_images_blocked: usize,
+    /// RETOURS-13 R10 : la carte a déjà été lue jusqu'en bas — la
+    /// section « Lus précédemment » s'en sert au SERVICE de la page
+    /// (jamais en vol : une carte ne saute pas pendant la lecture).
+    pub lu: bool,
 }
 
 /// La page du Kiosque en CARTES (E5bis, D5/S3) : les rangées de la vue
@@ -3099,24 +3134,32 @@ pub async fn kiosque_cartes(
             std::collections::HashMap::new();
         for ligne in lignes {
             let row = to_message_row(ligne);
+            // La résolution de boîte sert le corps ET la marque « lu »
+            // (R10) : hoistée hors du match du corps.
+            let cle = (row.account_id, row.mailbox.clone());
+            let mailbox_id = match boites.get(&cle) {
+                Some(id) => *id,
+                None => {
+                    let id = store
+                        .sync_state(row.account_id, &row.mailbox)
+                        .map_err(|err| err.to_string())?
+                        .map(|s| s.mailbox_id);
+                    boites.insert(cle, id);
+                    id
+                }
+            };
+            // R10 : le « lu » de la carte — sonde PK, une par carte.
+            let lu = mailbox_id
+                .map(|id| store.kiosque_lu(id, row.uid))
+                .transpose()
+                .map_err(|err| err.to_string())?
+                .unwrap_or(false);
             // Cache SEUL — un Kiosque hors ligne se lit tel quel.
             let corps = store
                 .body(row.account_id, &row.mailbox, row.uid)
                 .map_err(|err| err.to_string())?;
             let (document, remote_images_blocked) = match corps {
                 Some(html) => {
-                    let cle = (row.account_id, row.mailbox.clone());
-                    let mailbox_id = match boites.get(&cle) {
-                        Some(id) => *id,
-                        None => {
-                            let id = store
-                                .sync_state(row.account_id, &row.mailbox)
-                                .map_err(|err| err.to_string())?
-                                .map(|s| s.mailbox_id);
-                            boites.insert(cle, id);
-                            id
-                        }
-                    };
                     let accordees = mailbox_id
                         .map(|id| store.images_allowed(id, row.uid))
                         .transpose()
@@ -3143,9 +3186,34 @@ pub async fn kiosque_cartes(
                 row,
                 document,
                 remote_images_blocked,
+                lu,
             });
         }
         Ok(cartes)
+    })
+    .await
+}
+
+/// RETOURS-13 R10 — une carte du Kiosque défilée jusqu'en bas se
+/// marque lue (idempotent ; patron d'adressage de `toggle_mis_de_cote`).
+#[tauri::command]
+pub async fn kiosque_marquer_lu(
+    app: AppHandle,
+    account_id: i64,
+    mailbox: String,
+    uid: u32,
+) -> Result<(), String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let Some(state) = store
+            .sync_state(account_id, &mailbox)
+            .map_err(|err| err.to_string())?
+        else {
+            return Err(format!("boîte inconnue : {mailbox}"));
+        };
+        store
+            .marquer_kiosque_lu(state.mailbox_id, uid, epoch_maintenant())
+            .map_err(|err| err.to_string())
     })
     .await
 }
