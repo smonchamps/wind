@@ -6170,18 +6170,29 @@ async fn telecharger_et_lancer(app: AppHandle, version: String) -> Result<(), St
     // paquet est mesuree PLATE sur 12 releases (±1 % depuis la 0.7.0) —
     // si le bandeau « Téléchargement et installation… » dure, le temps
     // part ici : reseau (CDN GitHub), ecriture, ou scan
-    // antivirus/verdict SAC au spawn. Chaque etape se date dans la
-    // trace (lancer-wind.ps1, piege §9) pour le dire sur chiffres a la
-    // prochaine MAJ reelle.
+    // antivirus/verdict SAC au spawn. Chaque etape se trace sur stderr
+    // ET dans `maj.log` a cote de la base (`trace_maj`) : la mesure se
+    // lit apres coup, quel que soit le lancement.
+    let dossier_trace = app.path().app_data_dir().ok();
+    trace_maj(
+        dossier_trace.as_deref(),
+        &format!(
+            "maj : {} -> {version} : installation demandee",
+            app.package_info().version
+        ),
+    );
     let chrono = std::time::Instant::now();
     let update = updater_wind(&app)?
         .check()
         .await
         .map_err(|err| err.to_string())?
         .ok_or_else(|| "aucune mise à jour à installer".to_string())?;
-    eprintln!(
-        "maj : manifeste verifie en {} ms",
-        chrono.elapsed().as_millis()
+    trace_maj(
+        dossier_trace.as_deref(),
+        &format!(
+            "maj : manifeste verifie en {} ms",
+            chrono.elapsed().as_millis()
+        ),
     );
     // Le manifeste peut avoir bouge entre le bandeau et le clic : on
     // n'installe que la version ANNONCEE — jamais une autre en silence.
@@ -6197,10 +6208,13 @@ async fn telecharger_et_lancer(app: AppHandle, version: String) -> Result<(), St
         .download(|_, _| {}, || {})
         .await
         .map_err(|err| err.to_string())?;
-    eprintln!(
-        "maj : {} octets telecharges en {} ms",
-        octets.len(),
-        depart_telechargement.elapsed().as_millis()
+    trace_maj(
+        dossier_trace.as_deref(),
+        &format!(
+            "maj : {} octets telecharges en {} ms",
+            octets.len(),
+            depart_telechargement.elapsed().as_millis()
+        ),
     );
     // Filet de format : le plugin sniffait zip/exe/msi (extract,
     // updater.rs:882) ; l'artefact de Wind est l'exe NSIS nu
@@ -6229,9 +6243,12 @@ async fn telecharger_et_lancer(app: AppHandle, version: String) -> Result<(), St
         let depart_ecriture = std::time::Instant::now();
         std::fs::write(&temoin, &octets)
             .map_err(|err| format!("écriture de l'installateur ({}) : {err}", temoin.display()))?;
-        eprintln!(
-            "maj : installateur ecrit en {} ms",
-            depart_ecriture.elapsed().as_millis()
+        trace_maj(
+            dossier_trace.as_deref(),
+            &format!(
+                "maj : installateur ecrit en {} ms",
+                depart_ecriture.elapsed().as_millis()
+            ),
         );
         // Le spawn porte le scan antivirus synchrone et le verdict cloud
         // Smart App Control (par binaire) : c'est le suspect n°1 du
@@ -6240,9 +6257,12 @@ async fn telecharger_et_lancer(app: AppHandle, version: String) -> Result<(), St
         commande_installateur(&temoin)
             .spawn()
             .map_err(|err| format!("lancement de l'installateur refusé par Windows : {err}"))?;
-        eprintln!(
-            "maj : installateur lance en {} ms",
-            depart_spawn.elapsed().as_millis()
+        trace_maj(
+            dossier_trace.as_deref(),
+            &format!(
+                "maj : installateur lance en {} ms",
+                depart_spawn.elapsed().as_millis()
+            ),
         );
         // Lancement REUSSI seulement : l'installateur (mode /UPDATE)
         // attend la fin du processus pour remplacer le binaire, puis
@@ -6266,6 +6286,30 @@ fn updater_wind(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, String
         .map_err(|err| err.to_string())
 }
 
+/// Trace une etape de mise a jour : sur stderr (visible via
+/// `lancer-wind.ps1`) ET en append date dans `maj.log`, a cote de la
+/// base. L'app fenetree n'a pas de stderr : trois MAJ acceptees
+/// (0.13.0 → 0.15.0) sont passees sans qu'aucune mesure ne survive —
+/// le fichier rend la trace lisible APRES COUP, quel que soit le
+/// lancement (constat terrain 2026-08-30). Quelques dizaines d'octets
+/// en append, cinq fois par MAJ : rien de commun avec l'ecriture de
+/// l'installateur (~6 Mo) que l'ADR 0019 envoie hors pompe. Toute
+/// erreur s'ignore — la trace ne fait jamais echouer une installation.
+fn trace_maj(dossier: Option<&Path>, ligne: &str) {
+    eprintln!("{ligne}");
+    let Some(dossier) = dossier else { return };
+    let _ = std::fs::create_dir_all(dossier);
+    let datee = format!(
+        "{} {ligne}\n",
+        chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ")
+    );
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dossier.join("maj.log"))
+        .and_then(|mut fichier| std::io::Write::write_all(&mut fichier, datee.as_bytes()));
+}
+
 /// L'invocation de l'installateur NSIS — la decision pure, figee par le
 /// test `l_installateur_est_invoque_en_passif_relance_et_mise_a_jour`.
 fn commande_installateur(temoin: &std::path::Path) -> std::process::Command {
@@ -6285,6 +6329,36 @@ mod tests {
     /// JAMAIS de `/ARGS` : le plugin le fait suivre des arguments du
     /// binaire courant, Wind se lance sans argument — un `/ARGS` vide
     /// serait une hypothèse non mesurée sur le parseur NSIS.
+    /// La mesure du bandeau de MAJ ne depend plus du lancement (constat
+    /// terrain 2026-08-30 : trois MAJ acceptees sans capture — stderr
+    /// d'une app fenetree est nul) : chaque etape s'append DATEE dans
+    /// `maj.log`, lisible apres coup. Deux appels = deux lignes — le
+    /// fichier s'append d'une MAJ a l'autre, il ne s'ecrase pas.
+    #[test]
+    fn la_trace_de_maj_survit_dans_maj_log_et_s_append() {
+        let dossier = std::env::temp_dir().join(format!("wind-maj-log-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dossier);
+
+        trace_maj(Some(&dossier), "maj : manifeste verifie en 42 ms");
+        trace_maj(Some(&dossier), "maj : installateur lance en 7 ms");
+
+        let contenu = std::fs::read_to_string(dossier.join("maj.log")).unwrap();
+        let lignes: Vec<_> = contenu.lines().collect();
+        assert_eq!(lignes.len(), 2, "chaque etape ajoute UNE ligne");
+        assert!(lignes[0].ends_with("maj : manifeste verifie en 42 ms"));
+        assert!(lignes[1].ends_with("maj : installateur lance en 7 ms"));
+        // Datee : le fichier se relit des semaines plus tard, et les
+        // MAJ successives s'y distinguent.
+        assert!(
+            lignes
+                .iter()
+                .all(|l| l.starts_with("20") && l.contains("Z maj : ")),
+            "chaque ligne porte son horodatage UTC : {contenu:?}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dossier);
+    }
+
     #[test]
     fn l_installateur_est_invoque_en_passif_relance_et_mise_a_jour() {
         let temoin = std::path::Path::new("C:\\tmp\\Wind_0.10.2_x64-setup.exe");
