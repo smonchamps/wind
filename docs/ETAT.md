@@ -12,105 +12,73 @@
 
 ## Où on en est, et quoi faire en premier
 
-🔨 **CHANTIER EN COURS : [PLAN-MODE-ORGANISE](PLAN-MODE-ORGANISE.md)**
-(ouvert le 2026-08-29 — le second mode de tri inspiré de HEY, D1-D9
-tranchées au STOP 1, dont **D3 REJET de la présomption annuaire :
-tout le monde au Portier, arrivées seules**). **E1 (le socle) est
-LIVRÉE et validée terrain le jour même** : va-et-vient « Organisé »
-(prefs SQLite, époque de première activation gravée), nav organisée
-Kiosque/Registre, routage local par expéditeur (**ADR 0028**, table
-`routage_expediteurs`, vocabulaire fermé), « Déplacer vers… » à la
-barre du fil (l'adresse résolue au cœur — jamais soi), 5 glyphes (85
-au jeu), A96. Spikes S1-S3 **mesurés** (verdicts §5bis du plan :
-sections et groupes AU SERVICE avec index partiels/agrégat, exclusion
-par message gratuite, préchargement Kiosque dans le budget). Revue 8/8
-corrigées (deux « perte de courrier » prouvées RED). e2e 153 → **157**.
-
-**E2 (le Portier) est LIVRÉE le 2026-08-30** (commit `fe33b51`, CI
-verte run 33302233626, STOP visuel CE GO et **terrain CE zéro
-constat le jour même**, mesure S4 engagée une semaine) : rétention
-des inconnus
-(D3 « arrivées seules » — `portier_attente` matérialisée à l'arrivée,
-drapeau `threads.organise_hors` entretenu par `thread::refresh` +
-index partiel miroir, verdict S2-bis : toute forme calculée à la
-requête s'effondre à l'offset profond, le drapeau vaut MIEUX que le
-témoin 4,2 vs 6,5 ms ; colonne générée `envelopes.sender_norm` —
-piège gravé : un index d'EXPRESSION SQLite ne sert jamais une
-jointure), exclusion partagée flot + totaux + épingles + pastilles de
-nav, page du guichet à la forme du prototype (STOP visuel CE GO),
-Oui/Non + minis ⋯, historique, réintégration aux mêmes règles que
-l'arrivée, glyphe `more_horiz` (86), Système A97. Revue à regard neuf
-**10/10 corrigées** — dont la règle d'or prouvée RED (un fil mêlé à
-un écarté RESTE — `ecarte` n'a pas de vue), le message SANS Date qui
-contournait le guichet, et le rattrapage E1→E2 à la migration. Tests
-mail-core 387 → **401**, e2e 157 → **161** (rétention prouvée en la
-cassant). Dette neuve **D-46** (l'anatomie de rangée du Portier est
-une copie main de celle de la Liste).
-
-**E3 (les règles du Non) est LIVRÉE le 2026-08-30** (commit
-`59a8378`, CI verte run 33304306395, **terrain CE zéro constat le
-jour même** — exécution serveur vérifiée au webmail ; Système A98) : à
-l'arrivée d'un message d'un écarté avec règle, l'action est
-journalisée **dans la transaction du lot** (revue E3 — l'exécution
-après commit laissait une fenêtre de crash où la règle se perdait
-pour toujours) via `pending_actions`, rejouée en tête de chaque
-synchro, retrait local sans écho ; `corbeille` → la corbeille
-serveur, jamais définitive (D4) ; garde anti-doublon de la file (la
-re-livraison après un rejeu en échec aurait coincé toutes les
-actions derrière une seconde action identique) ; « ses prochains
-messages » seulement — un backfill ne touche jamais l'historique ;
-les règles S'ÉTEIGNENT avec le mode (D2). Limites dites au PLAN
-(Date falsifiée, spam sans dossier résolu, inventaire CONDSTORE
-pendant un rejeu en attente). Tests mail-core 401 → **406**, e2e
-161 → **162** (règle prouvée en la cassant, témoin de synchro au
-filet).
-
-**E4 et E5 sont LIVRÉES le 2026-08-30** (D7 AMENDÉE par le CE : la
-première MINEUR porte E1-E5, E6 suivra). **E4 — la Réception
-organisée** : sections « Nouveau pour vous · n » / « Déjà consulté »
-(UN flot ordonné non-lus d'abord, index partiels d'expression global
-+ par compte, gardes de plan sur les trois chemins, banc 200 k
-0,03/1,6 ms), colonne centrée 760 px sans volet, clic → écran 03, ⋯
-de gestes par rangée. **E5 — Mis de côté** : table `mis_de_cote`
-(patron pins, purges), exclusion partagée par UNE écriture
-(`exclusion_organisee()`), pile + éventail + tableau, bascule barre
-du fil (état SEMÉ, patron épingle) et ⋯. STOP visuels CE GO (un
-constat E4 : l'air des titres de section, bande 34 → 52 px, corrigé).
-Revue à regard neuf **10 trouvailles / 9 corrigées** (triage clavier
-qui marquait lue une conversation jamais montrée, pastille comptant
-les mis de côté, couture d'une autre source, testid vacant…), un
-refus motivé (« Terminé » sur un expéditeur écarté suit le verdict).
-Système **A99** ; dette **D-47** (menus ×3, jumeaux pins/pile).
-Tests mail-core **410**. L'écart de périmètre relevé (le « Kiosque en
-cartes » n'était assigné à aucune étape) a été TRANCHÉ par le CE :
-« avant la release ».
-
-**E5bis (le Kiosque en cartes) est LIVRÉE le 2026-08-30** (Système
-A100) : la vue routée devient une scène de lecture — cartes déjà
-ouvertes (corps ENTIER : le document auto-CSP de l'écran de lecture,
-iframe S1, `corpsAuto` extrait vers `lib/corps.js`, garde d'images R1
-par carte avec ses deux gestes), corps du CACHE par page servie de 20
-(D5/S3 — jamais un réseau par carte), pages ajoutées au défilement
-avec dédoublonnage (limite dite : pas de fenêtrage), ⋯ de gestes par
-carte, bouton Replier/Déplier sur la ligne de l'objet (STOP visuel CE
-en TROIS passes, chaque constat corrigé en séance ; GO final). La
-scène suit les relèves et rattrapages (revue : une arrivée décalait
-les offsets — collision de clés — et les cartes fraîches restaient en
-aperçu). Revue ciblée 6 trouvailles / 5 corrigées, 1 consignée
-(précédence d'Échap, patron partagé avec la Liste). Le « déjà
-ouvert » prouvé au filet en le cassant. **Reste : terrain Kiosque,
-puis LA RELEASE MINEUR E1-E5bis** — l'entrée CHANGELOG s'écrira à ce
-moment-là (§2.9, `gh release list` d'abord), avec Innamoramento qui
-attend aussi cette release. Puis E6 (Groupes).
-
-Le même jour, deux retours CE réglés : **« Mona » renommée
-« Innamoramento »** (A95, ids migrés, commit `0a25105`, CI verte) et
-**le bloquant bêta levé** (`feedback-wind@fcts.io` reçoit — délai de
-propagation DNS ; la première vague D9 est ouverte, action CE au
-PLAN-BETA).
+✅ **Aucun chantier en cours.** Le prochain sujet inscrit : **la
+première vague bêta** (PLAN-BETA — inviter 5-10 proches, D9 ; le
+bloquant `feedback-wind@fcts.io` est levé depuis le 2026-08-29).
+Ensuite, au choix du CE : **E6 — Groupes** (report écrit du
+PLAN-MODE-ORGANISE, D7 amendée — le dossier et le spike S1 sont
+prêts) ou les retours de la bêta. Mesures en cours : **S4** (flux
+d'inconnus au Portier, une semaine sur les deux postes, engagée le
+2026-08-30) ; encore due : la mesure du bandeau de MAJ via
+`lancer-wind.ps1` à la prochaine MAJ acceptée.
 
 Dernier soldé :
-**[PLAN-MONA](PLAN-MONA.md)** (2026-08-29, ouvert et clos le même
+**[PLAN-MODE-ORGANISE](PLAN-MODE-ORGANISE.md)** (2026-08-29 → 30,
+**SOLDÉ le 2026-08-30 — terrain complet, E1-E5bis LIVRÉES et
+PUBLIÉES en 0.14.0** ; E6 — Groupes — reportée, chantier futur).
+**Le Mode organisé** — le second mode de tri inspiré de HEY, D1-D9
+tranchées au STOP 1, réversible, règle d'or « jamais perdre de
+courrier » prouvée RED à chaque étape :
+
+- **E1 — le socle** (`f6a81f6`, ADR 0028, A96) : pref
+  `mode_organise` + époque d'activation, nav Kiosque/Registre,
+  table `routage_expediteurs`, « Déplacer vers… ».
+- **E2 — le Portier** (`fe33b51`, A97) : rétention des inconnus
+  « arrivées seules » (D3) — `portier_attente` matérialisée,
+  drapeau `threads.organise_hors` entretenu par `thread::refresh`
+  (verdict S2-bis : toute forme calculée à la requête s'effondre à
+  l'offset profond), colonne générée `sender_norm` (piège gravé :
+  un index d'EXPRESSION SQLite ne sert jamais une jointure) ; page
+  Oui/Non, historique, réintégration.
+- **E3 — les règles du Non** (`59a8378`, A98) : action journalisée
+  DANS la transaction du lot (jamais une fenêtre de crash entre
+  courrier et intention), `pending_actions` rejouée en tête de
+  synchro, garde anti-doublon, corbeille jamais définitive (D4),
+  extinction avec le mode (D2).
+- **E4 — la Réception organisée** (`5493bef`, A99) : sections
+  « Nouveau pour vous » / « Déjà consulté » en UN flot ordonné
+  (banc 200 k : 0,03/1,6 ms), colonne centrée, écran 03 ; deux
+  pièges de fenêtrage payés (l'espaceur RÉEL exigé par l'entête
+  absolue ; la marge auto qui éteint le stretch flex).
+- **E5 — Mis de côté** (même commit) : table `mis_de_cote` (patron
+  pins), exclusion partagée par UNE écriture
+  (`exclusion_organisee()`), pile + éventail + tableau, état SEMÉ.
+- **E5bis — le Kiosque en cartes** (`0f61506`, A100, décision CE
+  « avant la release ») : cartes déjà ouvertes, corps ENTIER du
+  CACHE par page de 20 (D5/S3 : 12 ms), garde d'images R1 par carte,
+  pli sur la ligne de l'objet (STOP visuel en trois passes), ⋯ de
+  gestes, dédoublonnage à l'append, iframe S1 sans scripts.
+
+Revues à regard neuf par étape : 8/8, 10/10, 10/9, 6/5 corrigées —
+dont six défauts « perte de courrier » prouvés RED. Tests mail-core
+383 → **410**, e2e 153 → **166**. Dettes neuves **D-46** (anatomie
+de rangée du Portier copiée) et **D-47** (menus ⋯ ×3, jumeaux
+pins/pile). Limites dites au PLAN (Date falsifiée, spam sans dossier
+résolu, inventaire CONDSTORE pendant un rejeu, pas de fenêtrage
+Kiosque, précédence d'Échap). **La 0.14.0 est PUBLIÉE le
+2026-08-30** (`40771ab`, CI verte run 33316584480, tag nu, Latest,
+**vérifiée 18/18** et **auto-update 0.13.0 → 0.14.0 prouvé aux DEUX
+postes le jour même** — GO CE). Elle porte E1-E5bis ET le thème
+**Innamoramento** clair + nuit (PLAN-MONA, A94/A95). Chiffres kaizen
+au PLAN soldé (≈ 80 M, 5 gates, 0 KO terrain).
+
+Le même 2026-08-29/30, deux retours CE réglés hors chantier :
+**« Mona » renommée « Innamoramento »** (A95, ids migrés, commit
+`0a25105`) et **le bloquant bêta levé** (`feedback-wind@fcts.io`
+reçoit — délai de propagation DNS).
+
+Le chantier soldé précédent :
+**[PLAN-MONA](PLAN-MONA.md)****[PLAN-MONA](PLAN-MONA.md)** (2026-08-29, ouvert et clos le même
 jour, commit `409c8ae`, CI verte run 33270609284, terrain CE « Terrain
 OK sur les deux thèmes, GO » — zéro constat). **Deux thèmes neufs,
 « Mona » et « Mona · nuit »** — **renommés « Innamoramento » /
@@ -465,7 +433,14 @@ le redit ; le WIP d'alors avait été retiré (décision CE du
 2026-08-20), sa matière reste au § revue de
 [PLAN-COMPOSITION-HTML](PLAN-COMPOSITION-HTML.md).
 
-**Dernière version livrée : 0.13.0** (publiée **2026-08-29**, tag nu
+**Dernière version livrée : 0.14.0** (publiée **2026-08-30**, tag nu
+sur `40771ab`, marquée Latest, **vérifiée 18/18** et **auto-update
+0.13.0 → 0.14.0 prouvé aux DEUX postes le jour même**). Elle porte
+PLAN-MODE-ORGANISE E1-E5bis (le Mode organisé : Réception à
+sections, Portier, règles du Non, Mis de côté, Kiosque en cartes,
+Registre) et le thème Innamoramento clair + nuit (PLAN-MONA).
+
+**La version précédente, 0.13.0** (publiée **2026-08-29**, tag nu
 sur `9599b31`, marquée Latest, **vérifiée 18/18** et **auto-update
 0.12.0 → 0.13.0 prouvé aux DEUX postes le jour même**). Elle porte
 PLAN-RETOURS-12 : l'entête du message en deux lignes avec les noms

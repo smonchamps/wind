@@ -1,5 +1,34 @@
 # PLAN-MODE-ORGANISE — Portier, Kiosque, Registre, Mis de côté, Groupes
 
+> **CHANTIER SOLDÉ le 2026-08-30 — terrain complet, E1-E5bis
+> LIVRÉES et PUBLIÉES en 0.14.0** (commits `f6a81f6` E1, `fe33b51`
+> E2, `59a8378` E3, `5493bef` E4+E5, `0f61506` E5bis, `40771ab`
+> release — CI verte run 33316584480). **Release vérifiée 18/18 et
+> auto-update 0.13.0 → 0.14.0 prouvé aux DEUX postes le jour même**
+> (GO CE : « La release est faite, vérifiée 18/18, auto update ok
+> sur les deux postes »). Elle embarque aussi le thème
+> **Innamoramento** (A94/A95, PLAN-MONA — entrée CHANGELOG écrite à
+> la release, §2.9 tenu, `gh release list` vérifié avant).
+> Cinq passes terrain CE (E1 à E5bis), **zéro constat KO au STOP 2**
+> — les quatre constats du chantier sont tombés aux STOP visuels
+> (l'air des titres de section à E4 ; le pli du Kiosque en trois
+> passes à E5bis) et chacun a été corrigé en séance.
+>
+> **Report écrit (§2.6) : E6 — Groupes** (repli en une rangée, page
+> de groupe, bascules) part avec une release suivante (D7 amendée) ;
+> chantier futur, à relancer sur ce dossier (§6.6, spike S1 déjà
+> mesuré : groupes AU SERVICE par agrégat). Encore dûs par ailleurs :
+> la mesure **S4** (flux d'inconnus, engagée une semaine sur les deux
+> postes le 2026-08-30) et la mesure du bandeau de MAJ via
+> `lancer-wind.ps1` (à la prochaine MAJ acceptée).
+>
+> **Chiffres kaizen du chantier** (PLAN-KAIZEN-CLAUDE) : équiv. input
+> fil principal ≈ **80 M** (sessions dcc2f031 16,2 M + c9a2462e
+> 63,6 M, `scripts/mesurer-sessions.mjs` du 2026-08-30) ; **5 gates
+> complètes** jouées (E1, E2, E3, E4+E5, E5bis — toutes vertes,
+> 2,0-2,6 min d'e2e) ; **0 constat KO au STOP 2** sur cinq passes
+> terrain. Tests à la clôture : mail-core **410**, e2e **166**.
+
 > **E5bis LIVRÉE le 2026-08-30 — le Kiosque en cartes** (décision CE :
 > « avant la release » ; Système A100). La vue routée devient une
 > scène de lecture : cartes déjà ouvertes (corps ENTIER — le document
