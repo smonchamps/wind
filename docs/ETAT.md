@@ -76,7 +76,14 @@ compte visé, dates, retours — le dépôt est PUBLIC, décision CE du
 2026-08-31 : noms, adresses et rapprochement restent chez le CE, hors
 dépôt ; aucun retour recopié ne porte de nom ni de contenu de
 message), mot d'invitation modèle au §3 ter — l'envoi reste au CE,
-qui s'en charge. Prérequis vérifiés le jour même : dépôt
+qui s'en charge. **Les CINQ invitations sont parties le 2026-08-31**
+(constat CE) : la vague court. Ce qui manque encore au registre, et
+qui vaut plus que les retours d'usage à ce stade — **les postures du
+lot** : tant qu'aucune ligne ne porte un poste Smart App Control
+`On` ni un compte Gmail, les deux risques assumés du PLAN-BETA §2
+(installeur non signé, app Google non vérifiée) restent NON éprouvés.
+Relance des silencieux prévue au **2026-09-03** (règle des trois
+jours). Prérequis vérifiés le jour même : dépôt
 PUBLIC et `main` poussé (`f8cc0f4`), **0.15.0** dernière release avec
 ses deux installeurs (x64 + arm64), leurs `.sig` et `latest.json`,
 `feedback-wind@fcts.io` qui reçoit (constat du 2026-08-29), bouton

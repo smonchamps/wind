@@ -49,15 +49,16 @@ Cochées au fil de l'eau ; les actions CE sont marquées **[CE]**.
   défaut était un délai de propagation de la configuration DNS, pas
   une panne d'alias. Le bloquant du 2026-08-28 est levé ; la voie des
   invitations est ouverte.
-- [ ] **[CE]** Première vague (D9) : 5-10 proches — les inviter par
+- [x] **[CE]** Première vague (D9) : 5-10 proches — les inviter par
   email personnel avec le lien du guide
   (https://github.com/smonchamps/wind/blob/main/docs/BETA.md).
   Viser au moins UN poste Smart App Control `On` et UN compte
   Gmail : les deux risques du §2 doivent être éprouvés tôt.
   **Vague ouverte le 2026-08-31** : registre nominatif au **§3 bis**,
   mot d'invitation modèle au **§3 ter**, guide relu et corrigé le
-  jour même (parcours à cinq étapes, § « Organisé »). Reste le
-  geste CE : envoyer, puis remplir le registre.
+  jour même (parcours à cinq étapes, § « Organisé »). **Les cinq
+  invitations sont parties le 2026-08-31** ; reste à remplir le
+  registre au fil des réponses.
 - [ ] **[CE]** Dépouiller chaque retour ; les frictions confirmées
   entrent au dépôt par `/chantier` ou `/terrain` (le kaizen
   hebdomadaire du PLAN §4 — la mécanique existe déjà, rien de neuf).
@@ -88,11 +89,19 @@ message — le fait, la version, la date.
 
 | # | Poste (arch. / SAC) | Compte visé | Invité le | Installé le | Retours |
 |---|---------------------|-------------|-----------|-------------|---------|
-| T1 | — | — | — | — | — |
-| T2 | — | — | — | — | — |
-| T3 | — | — | — | — | — |
-| T4 | — | — | — | — | — |
-| T5 | — | — | — | — | — |
+| T1 | — | — | **2026-08-31** | — | — |
+| T2 | — | — | **2026-08-31** | — | — |
+| T3 | — | — | **2026-08-31** | — | — |
+| T4 | — | — | **2026-08-31** | — | — |
+| T5 | — | — | **2026-08-31** | — | — |
+
+**Les cinq invitations sont PARTIES le 2026-08-31** (constat CE du
+jour). Postures du lot **non encore renseignées** : tant qu'aucune
+ligne ne porte un poste Smart App Control `On` ni un compte Gmail,
+les deux risques du §2 ne sont pas éprouvés — c'est la première chose
+à remplir quand les testeurs répondent, avant même les retours
+d'usage. Prochaine échéance : **relance des silencieux le 2026-09-03**
+(règle des trois jours ci-dessous).
 
 Règles de tenue du registre :
 
