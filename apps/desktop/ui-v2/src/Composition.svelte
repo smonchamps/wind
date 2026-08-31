@@ -73,7 +73,7 @@
   // sélecteur et le texte figé mono-compte ne peuvent pas dériver
   // l'un de l'autre (revue 2026-08-23).
   const libelleDe = (c) =>
-    c ? (noms[c.account_id] ? `${noms[c.account_id]} — ${c.email}` : c.email) : '';
+    c ? (noms[c.account_id] ? `${noms[c.account_id]} (${c.email})` : c.email) : '';
 
   let visible = $state(false);
   let mode = $state('new');

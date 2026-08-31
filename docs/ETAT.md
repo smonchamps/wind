@@ -12,7 +12,30 @@
 
 ## Où on en est, et quoi faire en premier
 
-✅ **Aucun chantier en cours.** La release due avant la bêta est
+⏳ **Chantier EN COURS : [PLAN-RETOURS-14](PLAN-RETOURS-14.md)**
+(ouvert le 2026-08-31 — sept retours d'utilisation réelle, D1-D8
+tranchées au STOP 1, E1-E7 IMPLÉMENTÉES le jour même, revue à regard
+neuf 5 angles / 10 corrigées, gate complète VERTE 3,1 min, 186/186
+e2e). Livré : barre du fil en tête COLLANTE (deux cadres), Réception
+organisée à l'entête normalisé sans onglets + section courante collée
+au scroll, badge « En attente au Portier » du fil mêlé (D5 — le
+« bug » R4 est la règle d'or, prouvée et désormais DITE), liste
+exhaustive des décisions aux Réglages > Portier (alphabet, recherche,
+réintégrer), Registre GROUPÉ par expéditeur (récence, ⋯ de groupe,
+Voir plus), pastilles nav Kiosque (`kiosque_lus`) et Registre
+(unseen), zéro cadratin dans les textes (filet `catalogues.test.mjs`
+prouvé en le cassant). **Terrain passe 1 : 1-7 OK**, trois retours
+corrigés le jour même : R8 un Oui au Portier pose la règle d'images
+de l'expéditeur (dans LA transaction du verdict), R9 le bouton de
+TRI des sections (menu déroulant à quatre tris, chaque entrée son
+glyphe — 4 glyphes neufs `tri_*`, jeu 87 → 91 ; `TriSection.svelte`,
+quatre surfaces), R10 « Modifier » remplace « Réintégrer » aux Réglages
+(toutes les règles + « Renvoyer au portier »). Journal **A104**,
+tests mail-core 419 → **422**, e2e 177 → **187**. **Reste : le
+verdict terrain de la 2e passe (R8-R10), puis commit, push, CI,
+`/solde`.** D-47 amendée (copies pile/menu du Registre).
+
+La release due avant la bêta est
 **FAITE : 0.15.0 publiée le 2026-08-30** (D12 tenue — elle embarque
 RETOURS-13 ET PLAN-HORIZON-NETTOYAGE, entrée CHANGELOG des deux
 écrite à la publication ; détail à « Dernière version livrée »

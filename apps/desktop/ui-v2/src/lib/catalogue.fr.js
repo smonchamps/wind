@@ -30,7 +30,7 @@ export const FR = {
   'entete.ecrire': 'Écrire',
   'entete.organise': 'Organisé',
   'action.deplacerVers': 'Déplacer vers…',
-  'toast.expediteurDeplace': 'Expéditeur déplacé vers {boite} — ses messages suivent.',
+  'toast.expediteurDeplace': 'Expéditeur déplacé vers {boite} : ses messages suivent.',
   'erreur.sansAdresse': "Ce message n'a pas d'adresse d'expéditeur.",
 
   // --- Le Portier (PLAN-MODE-ORGANISE E2 ; sous-titre en trois
@@ -66,20 +66,32 @@ export const FR = {
   'portier.historiqueVide':
     "Vous n'avez écarté aucun expéditeur pour le moment.",
   'portier.reintegrer': 'Réintégrer',
+  // RETOURS-14 R4 (D5) : le signe du fil mêlé.
+  'fil.attentePortier': 'En attente au Portier',
   'portier.ecarte': 'écarté',
-  'portier.ecarteSpam': 'écarté — signalé indésirable',
-  'portier.ecarteArchive': 'écarté — archivage automatique',
-  'portier.ecarteCorbeille': 'écarté — suppression automatique',
-  'toast.portierOuiNu': '{qui} peut vous écrire — ses messages arrivent en Réception.',
-  'toast.portierOuiVers': '{qui} peut vous écrire — ses messages vont vers {boite}.',
-  'toast.portierNonNu': "{qui} est écarté — il n'en saura rien.",
+  'portier.ecarteSpam': 'écarté (signalé indésirable)',
+  'portier.ecarteArchive': 'écarté (archivage automatique)',
+  'portier.ecarteCorbeille': 'écarté (suppression automatique)',
+  'toast.portierOuiNu': '{qui} peut vous écrire : ses messages arrivent en Réception.',
+  'toast.portierOuiVers': '{qui} peut vous écrire : ses messages vont vers {boite}.',
+  'toast.portierNonNu': "{qui} est écarté ; il n'en saura rien.",
   'toast.portierNonSpam':
-    '{qui} est écarté — ses prochains messages partiront aux Indésirables.',
+    '{qui} est écarté ; ses prochains messages partiront aux Indésirables.',
   'toast.portierNonArchive':
-    "{qui} est écarté — ses prochains messages s'archiveront automatiquement.",
+    "{qui} est écarté ; ses prochains messages s'archiveront automatiquement.",
   'toast.portierNonCorbeille':
-    '{qui} est écarté — ses prochains messages iront à la Corbeille.',
+    '{qui} est écarté ; ses prochains messages iront à la Corbeille.',
   // E4 — la Réception organisée : sections et gestes par rangée.
+  // RETOURS-14 R6 : le rang d'un groupe du Registre compte des FILS.
+  'registre.fil': '{n} conversation',
+  'registre.fils': '{n} conversations',
+  'registre.voirPlus': 'Voir plus',
+  // RETOURS-14 R9 : le bouton de tri des sections (cycle à 4 états).
+  'tri.dateDesc': "Plus récents d'abord",
+  'tri.dateAsc': "Plus anciens d'abord",
+  'tri.alphaAZ': 'Expéditeur A → Z',
+  'tri.alphaZA': 'Expéditeur Z → A',
+  'tri.aria': 'Changer le tri de la section',
   'liste.sectionNouveau': 'Nouveau pour vous · {n}',
   'liste.sectionConsulte': 'Déjà consulté',
   'liste.gestes': 'Gestes sur ce message',
@@ -97,7 +109,7 @@ export const FR = {
     "Tout ce que vous avez mis de côté, en aperçu sur un seul écran. « Terminé » renvoie le message d'où il vient.",
   'pile.tableauVide': 'La pile est vide.',
   'pile.aria': 'Messages mis de côté',
-  'toast.misDeCote': 'Mis de côté — la pile vit en bas à droite de la Réception.',
+  'toast.misDeCote': 'Mis de côté : la pile vit en bas à droite de la Réception.',
   'toast.reprisPile': 'Repris de la pile.',
   // E5bis — le Kiosque en cartes ; entête et sections RETOURS-13
   // R10/R11 (textes CE mot pour mot).
@@ -111,7 +123,7 @@ export const FR = {
   'kiosque.vide':
     "Rien au Kiosque. Depuis un message, « Déplacer vers le Kiosque » y envoie les lettres d'information de cet expéditeur.",
   'toast.portierReintegre':
-    '{qui} est réintégré — ses messages des 90 derniers jours réapparaissent au Portier.',
+    '{qui} est réintégré ; ses messages des 90 derniers jours réapparaissent au Portier.',
   // RETOURS-13 R9 : la section Portier des Réglages — les défauts des
   // deux boutons du guichet.
   'groupe.portier': 'Portier',
@@ -122,6 +134,15 @@ export const FR = {
   'reglages.portierNon': 'Le bouton « Non »',
   'reglages.portierNonDesc':
     "Ce que deviennent les prochains messages d'un expéditeur écarté.",
+  // RETOURS-14 R5 (D6) : la liste exhaustive des décisions.
+  'reglages.portierDecisions': 'Décisions par expéditeur',
+  'reglages.portierDecisionsDesc':
+    'Toutes les décisions prises au Portier, par ordre alphabétique. Réintégrer un expéditeur le représentera au Portier à son prochain message.',
+  'reglages.portierModifier': 'Modifier',
+  'reglages.renvoyerPortier': 'Renvoyer au portier',
+  'reglages.portierRecherche': 'Rechercher un expéditeur',
+  'reglages.portierAucuneDecision': 'Aucune décision pour le moment.',
+  'reglages.portierAucunResultat': 'Aucun expéditeur ne correspond.',
   'entete.reglages': 'Réglages',
   // Le retour bêta (RETOURS-11 R3) : le mot du CE, tel quel.
   'entete.feedback': 'Feedback',
@@ -171,7 +192,7 @@ export const FR = {
   'avis.crash': "Wind a rencontré un problème lors d'une session précédente ({n} rapport(s) en attente). Rien n'est envoyé sans vous.",
   'avis.telemetrie': "Aider à améliorer Wind ? En cas de plantage, un rapport technique serait enregistré sur votre machine, jamais le contenu de vos mails. Vous choisissez ensuite de l'envoyer.",
   'avis.connexion': 'Compte non reconnecté : {details}',
-  'avis.programme': '« {sujet} » partira {quand} — si Wind est ouvert à ce moment-là.',
+  'avis.programme': '« {sujet} » partira {quand}, si Wind est ouvert à ce moment-là.',
 
   // --- Actions partagées ------------------------------------------------
   'action.renvoyer': 'Renvoyer',
@@ -254,7 +275,7 @@ export const FR = {
   'toast.groupePasSpam': 'Conversation remise en réception.|{n} conversations remises en réception.',
   'toast.groupeLues': 'Conversation marquée lue.|{n} conversations marquées lues.',
   'toast.groupeNonLues': 'Conversation marquée non lue.|{n} conversations marquées non lues.',
-  'erreur.groupePartiel': '{faits} sur {total} — le reste a échoué.',
+  'erreur.groupePartiel': '{faits} sur {total} ; le reste a échoué.',
   'toast.pieceEnregistree': 'Pièce enregistrée : {chemin}',
   'toast.brouillonEnregistre': 'Brouillon enregistré.',
   'toast.brouillonSupprime': 'Brouillon supprimé.',
@@ -428,7 +449,7 @@ export const FR = {
   // R2 : l'envoi différé — la carte au-dessus du pied.
   'compo.plusTard': 'Envoyer plus tard',
   'compo.differeQuand': 'Départ',
-  'compo.differeNote': 'Le message partira à cette heure si Wind est ouvert — sinon au prochain lancement.',
+  'compo.differeNote': 'Le message partira à cette heure si Wind est ouvert, sinon au prochain lancement.',
   'compo.programmer': 'Programmer',
 
   // --- Écran 01 et guichet de compte ------------------------------------
@@ -534,7 +555,7 @@ export const FR = {
   'volets.1': 'Un volet',
   'reglages.espacement': 'Espacement des messages',
   'reglages.espacementDesc':
-    "L'air entre deux messages dans la liste. Plus il est grand, plus la liste respire — et moins elle montre de messages à la fois.",
+    "L'air entre deux messages dans la liste. Plus il est grand, plus la liste respire, et moins elle montre de messages à la fois.",
   'espacement.faible': 'Faible',
   'espacement.moyen': 'Moyen',
   'espacement.eleve': 'Élevé',
@@ -592,11 +613,11 @@ export const FR = {
   // les clés suivent FICHES (lib/theme.js), la gate de cohérence y
   // veille dans les deux sens.
   'theme.elements.nom': 'Elements',
-  'theme.elements.desc': 'Papier clair, teal de la marque — la direction Elements.',
+  'theme.elements.desc': 'Papier clair, teal de la marque : la direction Elements.',
   'theme.elements-nuit.nom': 'Elements · nuit',
   'theme.elements-nuit.desc': 'Déclinaison sombre. Mêmes 17 jetons.',
   'theme.innamoramento.nom': 'Innamoramento',
-  'theme.innamoramento.desc': 'Rose profond, tuiles mauves — la direction Innamoramento.',
+  'theme.innamoramento.desc': 'Rose profond, tuiles mauves : la direction Innamoramento.',
   'theme.innamoramento-nuit.nom': 'Innamoramento · nuit',
   'theme.innamoramento-nuit.desc': 'Déclinaison sombre. Mêmes 17 jetons.',
 

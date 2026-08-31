@@ -66,6 +66,10 @@
   main {
     background:var(--bg); padding:18px 22px; min-width:0;
     display:flex; flex-direction:column; min-height:0; overflow-y:auto;
+    /* RETOURS-14 R1 (revue) : la barre du fil est collante avec un
+       z-index — sans contexte d'empilement ici, elle passerait
+       AU-DESSUS des voiles modaux (Composition/Réglages, z-index 2). */
+    isolation:isolate;
   }
   .vide {
     margin:auto; font-size:13px; line-height:1.5; color:var(--muted);

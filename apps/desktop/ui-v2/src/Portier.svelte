@@ -19,6 +19,9 @@
   import { appel } from './lib/transport.js';
   import { quand } from './lib/quand.js';
   import { t } from './lib/texte.svelte.js';
+  import { LIBELLE_ECARTE } from './lib/portier.js';
+  import TriSection from './TriSection.svelte';
+  import { comparateurTri } from './lib/tri.js';
 
   let { onchange = () => {}, onflash = () => {} } = $props();
 
@@ -30,6 +33,12 @@
   let defauts = $state({ oui: 'reception', non: 'corbeille' });
   // Le mini ⋯ ouvert : { address, qui, type: 'oui'|'non', x, y }.
   let menu = $state(null);
+  // R9 : le tri de l'historique — plus récents d'abord par défaut
+  // (l'ordre servi), le bouton cycle ; présentation seule.
+  let triHistorique = $state('date-desc');
+  const ecartesTries = $derived(
+    [...ecartes].sort(comparateurTri(triHistorique, (r) => r.epoch, (r) => r.address)),
+  );
 
   export async function recharger() {
     try {
@@ -61,11 +70,6 @@
     })();
   });
 
-  const LIBELLE_ECARTE = {
-    spam: 'portier.ecarteSpam',
-    archive: 'portier.ecarteArchive',
-    corbeille: 'portier.ecarteCorbeille',
-  };
   const TOAST_NON = {
     spam: 'toast.portierNonSpam',
     archive: 'toast.portierNonArchive',
@@ -186,12 +190,16 @@
       </div>
     {/if}
 
-    <p class="regle-libelle historique">{t('portier.historique')}</p>
+    <!-- R9 : le tri, à droite sur la ligne du titre de section. -->
+    <div class="ligne-section historique">
+      <p class="regle-libelle">{t('portier.historique')}</p>
+      {#if ecartes.length}<TriSection valeur={triHistorique} onchanger={(v) => (triHistorique = v)} />{/if}
+    </div>
     {#if ecartes.length}
-      {#each ecartes as routage (routage.address)}
+      {#each ecartesTries as routage (routage.address)}
         <div class="rang-historique" data-testid="portier-historique">
           <span class="ic-hist" aria-hidden="true"><Icone nom="visibility_off" /></span>
-          <span class="qui"><b>{routage.address}</b> — {t(LIBELLE_ECARTE[routage.regle] ?? 'portier.ecarte')}</span>
+          <span class="qui"><b>{routage.address}</b> : {t(LIBELLE_ECARTE[routage.regle] ?? 'portier.ecarte')}</span>
           <button type="button" data-testid="portier-reintegrer"
                   onclick={() => reintegrer(routage)}>{t('portier.reintegrer')}</button>
         </div>
@@ -237,7 +245,13 @@
   /* L'entête et la règle-libellé vivent en UNE copie dans systeme.css
      (.entete-vue / .sous-titre-vue / .regle-libelle — RETOURS-13,
      partagées avec le Kiosque) ; seule la variante locale reste ici. */
-  .regle-libelle.historique { margin-top:34px; }
+  /* R9 : la ligne de section porte le tri à droite ; l'espacement de
+     l'historique vit sur la LIGNE désormais. */
+  .ligne-section {
+    display:flex; align-items:center; gap:10px;
+  }
+  .ligne-section .regle-libelle { flex:1; min-width:0; }
+  .ligne-section.historique { margin-top:34px; }
   .rang-portier {
     display:flex; align-items:center; gap:18px; padding:20px 0;
     border-top:1px solid var(--border);

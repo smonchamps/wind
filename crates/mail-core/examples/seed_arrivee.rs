@@ -7,8 +7,12 @@
 //! synchronisation le ferait.
 //!
 //! ```powershell
-//! cargo run -p mail-core --example seed_arrivee -- <chemin.db> <email-compte> <adresse-expediteur> <n> [nom] [sujet]
+//! cargo run -p mail-core --example seed_arrivee -- <chemin.db> <email-compte> <adresse-expediteur> <n> [nom] [sujet] [reponse-a]
 //! ```
+//!
+//! `reponse-a` (RETOURS-14 R4) : un Message-ID existant — l'arrivée
+//! REJOINT ce fil (In-Reply-To), le décor du « fil mêlé » : un inconnu
+//! répond dans le fil d'un connu.
 
 use chrono::Utc;
 use mail_core::{Envelope, Store};
@@ -33,6 +37,7 @@ fn main() -> Result<(), mail_core::Error> {
         .get(6)
         .cloned()
         .unwrap_or_else(|| "Premier contact".to_string());
+    let reponse_a = args.get(7).cloned();
 
     let mut store = Store::open(std::path::Path::new(path))?;
     let account = store.adopt_or_create_account(email, "gmail")?;
@@ -51,7 +56,7 @@ fn main() -> Result<(), mail_core::Error> {
                 sender: Some(nom.clone()),
                 sender_address: Some(expediteur.clone()),
                 message_id: Some(format!("<arrivee-{uid}@{expediteur}>")),
-                in_reply_to: None,
+                in_reply_to: reponse_a.clone(),
                 date: Some(Utc::now()),
                 seen: false,
                 flagged: false,

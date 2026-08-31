@@ -26,6 +26,18 @@ use crate::store::{
 };
 use crate::thread::RECEIVED_MAILBOX;
 
+/// RETOURS-14 R6 (D7) : un groupe du Registre — l'expéditeur, le
+/// nombre de ses fils, la récence et l'objet du dernier message (le
+/// rang de la vue groupée).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GroupeRegistre {
+    pub address: String,
+    pub fils: u64,
+    pub dernier_epoch: i64,
+    pub qui: Option<String>,
+    pub dernier_objet: Option<String>,
+}
+
 /// Les dossiers canoniques d'UN compte, en noms RÉSEAU (`folders.wire`,
 /// le même vocabulaire que `sync_state`). `None` = la catégorie n'a pas
 /// de dossier reconnu sur ce compte — la nav l'affiche vide, jamais un
@@ -500,6 +512,142 @@ impl Store {
                 .query_row(&sql, params![destination, id], |row| row.get(0))?,
         };
         Ok(count as u64)
+    }
+
+    /// RETOURS-14 R7 (D8) — la pastille nav du Kiosque : le nombre de
+    /// cartes PAS ENCORE OUVERTES. La sémantique est celle de la PAGE
+    /// (mémoire `kiosque_lus`, RETOURS-13 R10), jamais l'`unseen` IMAP
+    /// — les deux divergent dès qu'un autre client marque lu. Mêmes
+    /// bornes que la page ([`routage_page_sql`] : fils routés
+    /// `kiosque`, hors pile) ; l'identité d'une carte est la TÊTE du
+    /// fil (`last_mailbox_id`/`last_uid`), celle que `kiosque_cartes`
+    /// sonde — un fil dont la tête change redevient « à ouvrir »,
+    /// comme sa carte redevient neuve.
+    pub fn kiosque_non_ouverts(&self, account_id: Option<i64>) -> Result<u64, Error> {
+        let filtre_compte = if account_id.is_some() {
+            " AND account_id = ?1"
+        } else {
+            ""
+        };
+        let fil_route = fil_route_sql("'kiosque'");
+        let hors_pile = format!(" AND id NOT IN ({})", crate::store::MIS_DE_COTE_THREADS);
+        let sql = format!(
+            "SELECT COUNT(*) FROM threads
+              WHERE inbox_size > 0
+                AND {fil_route}{hors_pile}{filtre_compte}
+                AND NOT EXISTS (SELECT 1 FROM kiosque_lus kl
+                                 WHERE kl.mailbox_id = threads.last_mailbox_id
+                                   AND kl.uid = threads.last_uid)"
+        );
+        let count: i64 = match account_id {
+            None => self.conn().query_row(&sql, [], |row| row.get(0))?,
+            Some(id) => self.conn().query_row(&sql, params![id], |row| row.get(0))?,
+        };
+        Ok(count as u64)
+    }
+
+    /// RETOURS-14 R6 (D7) — les groupes du Registre : un expéditeur ×
+    /// ses fils, triés par récence du dernier message (le patron de
+    /// `nettoyage_groupes`, jamais l'alphabet — D7). La clé de groupe
+    /// est l'expéditeur de la TÊTE du fil — celle que la vue affiche.
+    /// Une passe : avec un max() SEUL, SQLite garantit que les
+    /// colonnes nues (sender, subject) viennent de la ligne du max.
+    /// `threads` garde son nom plein : [`fil_route_sql`] et
+    /// [`MIS_DE_COTE_THREADS`] le visent tel quel. Un fil dont la tête
+    /// n'a PAS d'adresse d'expéditeur (`sender_norm` NULL — message
+    /// sans From) est passé, jamais une erreur qui viderait la vue
+    /// entière (revue).
+    pub fn registre_groupes(&self, account_id: Option<i64>) -> Result<Vec<GroupeRegistre>, Error> {
+        let filtre = if account_id.is_some() {
+            " AND threads.account_id = ?1"
+        } else {
+            ""
+        };
+        let fil_route = fil_route_sql("'registre'");
+        let hors_pile = format!(
+            " AND threads.id NOT IN ({})",
+            crate::store::MIS_DE_COTE_THREADS
+        );
+        let sql = format!(
+            "SELECT he.sender_norm, COUNT(*), MAX(threads.last_epoch), he.sender, he.subject
+               FROM threads
+               JOIN envelopes he ON he.mailbox_id = threads.last_mailbox_id
+                                AND he.uid = threads.last_uid
+              WHERE threads.inbox_size > 0
+                AND he.sender_norm IS NOT NULL
+                AND {fil_route}{hors_pile}{filtre}
+              GROUP BY he.sender_norm
+              ORDER BY MAX(threads.last_epoch) DESC, he.sender_norm"
+        );
+        let mut stmt = self.conn().prepare(&sql)?;
+        let vers_groupe = |row: &rusqlite::Row<'_>| -> rusqlite::Result<GroupeRegistre> {
+            Ok(GroupeRegistre {
+                address: row.get(0)?,
+                fils: row.get::<_, i64>(1)? as u64,
+                dernier_epoch: row.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                qui: row.get(3)?,
+                dernier_objet: row.get(4)?,
+            })
+        };
+        let groupes = match account_id {
+            None => stmt
+                .query_map([], vers_groupe)?
+                .collect::<Result<Vec<_>, _>>()?,
+            Some(id) => stmt
+                .query_map(params![id], vers_groupe)?
+                .collect::<Result<Vec<_>, _>>()?,
+        };
+        Ok(groupes)
+    }
+
+    /// La page d'UN groupe du Registre — les fils dont la tête vient
+    /// de cet expéditeur, au squelette et au tri de la vue
+    /// ([`routage_page_sql`]). `?1` limit, `?2` offset, `?3` adresse,
+    /// `?4` compte (si borné).
+    pub fn registre_groupe_scoped(
+        &self,
+        address: &str,
+        account_id: Option<i64>,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<UnifiedRow>, Error> {
+        let filtre = if account_id.is_some() {
+            " AND account_id = ?4"
+        } else {
+            ""
+        };
+        let fil_route = fil_route_sql("'registre'");
+        let hors_pile = format!(" AND id NOT IN ({})", crate::store::MIS_DE_COTE_THREADS);
+        let tete = "AND EXISTS (SELECT 1 FROM envelopes he
+                                 WHERE he.mailbox_id = threads.last_mailbox_id
+                                   AND he.uid = threads.last_uid
+                                   AND he.sender_norm = ?3)";
+        let queue = crate::store::unified_join_tail(false);
+        let sql = format!(
+            "{SELECT_UNIFIED}{THREAD_AGGREGATE}
+             FROM (SELECT account_id, last_mailbox_id, last_uid, last_epoch, size, unseen
+                     FROM threads
+                    WHERE inbox_size > 0
+                      AND {fil_route}{hors_pile} {tete}{filtre}
+                    ORDER BY last_epoch DESC, last_uid DESC, account_id
+                    LIMIT ?1 OFFSET ?2) t{queue}"
+        );
+        let mut stmt = self.conn().prepare(&sql)?;
+        let rows = match account_id {
+            None => stmt
+                .query_map(
+                    params![limit as i64, offset as i64, address],
+                    row_to_threaded,
+                )?
+                .collect::<Result<Vec<_>, _>>()?,
+            Some(id) => stmt
+                .query_map(
+                    params![limit as i64, offset as i64, address, id],
+                    row_to_threaded,
+                )?
+                .collect::<Result<Vec<_>, _>>()?,
+        };
+        Ok(rows)
     }
 
     /// Les conversations ÉPINGLÉES de la portée (R4) — servies À PART,

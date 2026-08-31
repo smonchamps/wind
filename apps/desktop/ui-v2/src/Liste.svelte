@@ -111,6 +111,20 @@
     for (const e of entetes) if (e.index <= i) n += 1;
     return n;
   }
+  // RETOURS-14 R2 : le nom de la section courante reste VISIBLE au
+  // défilement — une bande collée en tête du cadre, servie dès que la
+  // bande réelle est partie au-dessus. `premier` est déjà la vérité
+  // réactive du scroll (fenêtrage) : à `premier > 0`, la bande de la
+  // section en cours n'est plus à l'écran.
+  const sectionCollee = $derived.by(() => {
+    if (!sections || premier <= 0) return null;
+    let courante = null;
+    for (const e of entetes) {
+      if (e.index <= premier) courante = e;
+      else break;
+    }
+    return courante;
+  });
   // Le menu du ⋯ — le patron du Portier : ancré au clic, borné à la
   // fenêtre, refermé au clic dehors et à Échap.
   let menuGestes = $state(null);
@@ -1067,6 +1081,15 @@
               aria-label={t('action.annulerSelection')} title={t('action.annulerSelection')}
               onclick={viderSelection}><Icone nom="close" /></button>
     </header>
+  {:else if centre}
+    <!-- RETOURS-14 R2 (D2/D3) : la Réception organisée prend l'entête
+         normalisé des vues du mode (classes partagées .entete-vue de
+         systeme.css, patron Kiosque/Portier R7/R11) — titre seul (D2),
+         ni bandeau générique ni onglets (D3, plus bas). -->
+    <header class="tete-organisee" data-testid="liste-titre">
+      <h2 class="display entete-vue" data-testid="reception-titre">
+        <span class="glyphe-titre" aria-hidden="true"><Icone nom="inbox" taille={26} /></span>{t(cleLibelleBoite('reception'))}</h2>
+    </header>
   {:else}
     <header class="bandeau" data-testid="liste-titre">
       <!-- RETOURS-13 R3 : le libellé sort de LA règle partagée. -->
@@ -1084,6 +1107,15 @@
        class:selection-en-cours={cochees.size > 0}
        onscroll={surDefilement}
        style="--rangee-pad:{padRangee()}px">
+    <!-- RETOURS-14 R2 : la section courante, collée en tête du cadre.
+         `height:0` : la bande vit HORS de la géométrie du fenêtrage
+         (decalage/indexPour ne la connaissent pas — le piège E4 des
+         espaceurs ne la concerne donc pas). -->
+    {#if sectionCollee}
+      <div class="section-collee" data-testid="section-collee" aria-hidden="true">
+        <span class="cadre-entete"><span class="lab">{sectionCollee.libelle}</span></span>
+      </div>
+    {/if}
     <!-- A81 : les sondes suivent la rangée réelle — plus de colonne de
          tuile ; une sonde qui rendrait un objet mort mentirait sur la
          géométrie.
@@ -1372,6 +1404,10 @@
       </div>
     {/if}
   </div>
+  <!-- RETOURS-14 R2 (D3) : la Réception organisée n'a pas de pied —
+       les onglets (et leur filtre Tous / Non lus) appartiennent au
+       classique ; Brouillons reste accessible par la nav. -->
+  {#if !centre}
   <div class="onglets" data-testid="onglets">
     {#each ONGLETS as o (o.id)}
       <span class="onglet" class:actif={ongletActif === o.id}
@@ -1383,6 +1419,7 @@
       </span>
     {/each}
   </div>
+  {/if}
 </section>
 
 {#if menuGestes}
@@ -1432,8 +1469,26 @@
     color:var(--ink); flex:1; min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
-  .cadre { flex:1; overflow:auto; position:relative; }
+  /* `isolation` (RETOURS-14 R2, revue) : la bande de section collée
+     porte un z-index — confiné ICI, sinon elle passerait au-dessus
+     des voiles modaux (z-index 2) du contexte racine. */
+  .cadre { flex:1; overflow:auto; position:relative; isolation:isolate; }
   .espace { position:relative; }
+  /* RETOURS-14 R2 : l'entête normalisé de la Réception organisée —
+     même géométrie de page que Kiosque/Portier (marge 24/28), sans
+     filet : la vue est une page du mode, pas un bandeau d'outil. */
+  .tete-organisee { flex:none; padding:24px 28px 0; }
+  .tete-organisee .entete-vue { max-width:760px; margin-inline:auto; }
+  /* La section courante collée : hauteur NULLE (hors géométrie du
+     fenêtrage), l'étiquette peinte par-dessus les rangées sur fond
+     opaque — le dessin de la bande réelle (.entete-section). */
+  .section-collee {
+    position:sticky; top:0; z-index:3; height:0; overflow:visible;
+  }
+  .section-collee .cadre-entete {
+    display:block; background:var(--bg);
+    padding:10px 16px 6px; border-bottom:1px solid var(--border);
+  }
   /* E4 : l'entête de section — le dessin de la règle-libellé du
      Portier (libellé nu, majuscules, encre atténuée), calé au bas de
      sa bande de 34 px, le filet du premier rang fait séparateur. */
@@ -1445,7 +1500,7 @@
      sur-contraint est fragile — un bloc en flux ne l'est pas. */
   .cadre-entete { display:block; width:100%; }
   .espace-entete { flex:none; height:52px; }
-  .entete-section .lab {
+  .entete-section .lab, .section-collee .lab {
     font-size:11px; letter-spacing:.1em; text-transform:uppercase;
     color:var(--muted); font-weight:600; white-space:nowrap;
   }

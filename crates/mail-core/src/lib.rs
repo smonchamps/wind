@@ -56,7 +56,7 @@ pub use imap_quoted::{unescape_imap_quoted, unescape_imap_quoted_str};
 pub use invitation::{
     InvitationRow, InvitationStockee, extraire_invitation, participation_de_stable,
 };
-pub use nav::{CanonicalFolders, NavCounts};
+pub use nav::{CanonicalFolders, GroupeRegistre, NavCounts};
 pub use notify::{Lang, Notification, arrivals_to_notify, notification_for};
 pub use outbox::{OutboxAttachment, OutboxMessage, OutboxReport, OutboxState, flush_outbox};
 pub use remote::{

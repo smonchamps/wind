@@ -62,7 +62,8 @@ test('nommer un compte depuis Réglages : la nav ET le bloc de boîte prennent l
   await expect(nomme).toBeVisible();
   await expect(nomme.locator('.lib')).toHaveText('Boulot');
   // L'infobulle garde l'adresse : elle reste la vérité technique (A78).
-  await expect(nomme).toHaveAttribute('title', 'Boulot — un@exemple.fr');
+  // RETOURS-14 R3 (D4) : « Nom (adresse) » — plus de cadratin.
+  await expect(nomme).toHaveAttribute('title', 'Boulot (un@exemple.fr)');
 
   // Le compte NON nommé retombe sur son adresse — et son infobulle ne
   // la dit qu'UNE fois : « adresse — adresse » serait un bégaiement
@@ -73,10 +74,10 @@ test('nommer un compte depuis Réglages : la nav ET le bloc de boîte prennent l
   await expect(anonyme).toHaveAttribute('title', 'deux@exemple.fr');
 });
 
-test('au composeur, le sélecteur d’expéditeur dit « Nom — adresse »', async () => {
+test('au composeur, le sélecteur d’expéditeur dit « Nom (adresse) »', async () => {
   await page.locator('[data-testid="ecrire"]').click();
   const de = page.locator('select[data-testid="composition-de"]');
-  await expect(de.locator('option').first()).toHaveText('Boulot — un@exemple.fr');
+  await expect(de.locator('option').first()).toHaveText('Boulot (un@exemple.fr)');
   await expect(de.locator('option').nth(1)).toHaveText('deux@exemple.fr');
   // Fermer le composeur (vide : rien à conserver) — son voile
   // intercepterait sinon les clics du test suivant.

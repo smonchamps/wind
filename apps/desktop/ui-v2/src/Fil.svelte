@@ -114,6 +114,36 @@
         comptes,
       });
 
+  // RETOURS-14 R4 (D5) : le signe du « fil mêlé » — la règle d'or
+  // laisse un fil entier en Réception dès qu'UN message vient d'un
+  // connu ; un inconnu qui y répond attend au Portier PENDANT que son
+  // message se lit. Le badge le dit, au lieu de laisser croire que le
+  // guichet a été contourné. Chargé à l'ouverture du fil, mode
+  // organisé seul — le guichet est court, l'appel se compte en ms.
+  let attentePortier = $state(new Set());
+  $effect(() => {
+    void fil.ligne;
+    if (!organise || !fil.ligne) {
+      attentePortier = new Set();
+      return;
+    }
+    let perime = false;
+    appel('portier_adresses')
+      .then((adresses) => {
+        if (!perime) attentePortier = new Set(adresses);
+      })
+      .catch(() => {});
+    return () => {
+      perime = true;
+    };
+  });
+  // La clé du guichet est `sender_norm` (lower(trim()) SQLite, donc
+  // ASCII) ; le toLowerCase JS est Unicode — divergence ASSUMÉE sur
+  // une majuscule non-ASCII dans l'adresse (la même limite que
+  // `adresse_images` côté cœur) : le badge peut manquer, jamais mentir.
+  const enAttente = (m) =>
+    !!m.sender_address && attentePortier.has(m.sender_address.trim().toLowerCase());
+
   // Le brouillon du fil ouvert — le plus récent (B-D5).
   const brouillonDuFil = $derived.by(() => {
     if (!fil.ligne || fil.ligne.thread_id == null) return null;
@@ -282,10 +312,10 @@
 {#if fil.ligne}
   <!-- Les DEUX cadres sont À PLAT (terrain A46, étendu à l'écran 03
        par PLAN-RETOURS-7 R3) : pas d'élévation englobante, pas de
-       filets — seules les cartes de message s'élèvent, et TOUT défile
-       en flot, barre d'actions comprise. « L'écran 03 garde sa carte
-       pleine » (A46) est renversé : le cadre plein est une colonne
-       centrée à plat (Conversation.svelte). -->
+       filets — seules les cartes de message s'élèvent, et tout défile
+       en flot SAUF la barre du fil, collante en tête (RETOURS-14 R1).
+       « L'écran 03 garde sa carte pleine » (A46) est renversé : le
+       cadre plein est une colonne centrée à plat (Conversation.svelte). -->
   <div class="objet-fil">
     <div class="tete">
       <h3 class="titre display" data-testid="fil-sujet">{fil.ligne.subject}</h3>
@@ -321,6 +351,66 @@
       </div>
     </div>
 
+    <!-- RETOURS-14 R1 (D1) : la barre du fil vit EN TÊTE, collante au
+         défilement — elle reste visible au fond d'un long fil, dans
+         les DEUX cadres (le scroll appartient au cadre, le sticky
+         s'ancre au scrollport du volet comme de la scène). Gestes de
+         TRI seuls (D5) : Répondre/Répondre à tous/Transférer restent
+         par message (D4). Signaler comme spam s'y range (D2), ou « Ce
+         n'est pas un spam » en vue Indésirables. -->
+    <div class="actions">
+      <button type="button" data-testid="archiver" onclick={() => onarchiver(fil.ligne)}>
+        <Icone nom="archive" />{t('action.archiver')}</button>
+      {#if estIndesirable}
+        <button type="button" data-testid="pas-spam" onclick={() => onnonspam(fil.ligne)}>
+          <Icone nom="inbox" />{t('action.pasSpam')}</button>
+      {:else}
+        <button type="button" data-testid="signaler-spam" onclick={() => onspam(fil.ligne)}>
+          <Icone nom="report" />{t('action.signalerSpam')}</button>
+      {/if}
+      <!-- R4 (PLAN-RETOURS-7) : épingler LA conversation — bascule
+           dite par son libellé ET aria-pressed ; l'état vient du cœur
+           (pin_state) et suit le geste. Jamais sur un écho. -->
+      {#if epinglable && !estEcho(fil.ligne)}
+        <button type="button" data-testid="epingler" aria-pressed={fil.epingle}
+                onclick={() => onepingler(fil.ligne)}>
+          <Icone nom={fil.epingle ? 'keep_off' : 'keep'} />
+          {fil.epingle ? t('action.desepingler') : t('action.epingler')}</button>
+      {/if}
+      <!-- PLAN-MODE-ORGANISE E1 : le routage manuel — un expéditeur,
+           une destination. Jamais sur un écho (pas d'enveloppe). Sans
+           glyphe : aucun dessin existant ne porte ce sens (A3), le
+           texte suffit dans la barre. -->
+      {#if organise && !estEcho(fil.ligne)}
+        <!-- E5 : la bascule de la pile — l'état est SEMÉ de la ligne
+             servie (patron de l'épingle, revue 2026-08-21 : jamais un
+             aller-retour par ouverture) et suit le geste (App, jeton
+             du store) ; le geste remonte à l'App, qui possède la
+             commande. -->
+        <button type="button" data-testid="mettre-de-cote"
+                aria-pressed={fil.cote}
+                onclick={() => oncote(fil.ligne)}>
+          <Icone nom={fil.cote ? 'keep_off' : 'pile'} />
+          {fil.cote ? t('pile.reprendre') : t('pile.mettre')}</button>
+        <span class="deplacer">
+          <button type="button" data-testid="deplacer-vers"
+                  aria-haspopup="menu" aria-expanded={menuDeplacer}
+                  onclick={() => (menuDeplacer = !menuDeplacer)}>
+            {t('action.deplacerVers')}</button>
+          {#if menuDeplacer}
+            <div class="deplacer-menu" role="menu">
+              {#each ['reception', 'kiosque', 'registre'] as dest (dest)}
+                <button type="button" role="menuitem"
+                        data-testid={`deplacer-${dest}`}
+                        onclick={() => { menuDeplacer = false; ondeplacer(fil.ligne, dest); }}>
+                  {t(`boite.${dest}`)}</button>
+              {/each}
+            </div>
+          {/if}
+        </span>
+      {/if}
+    </div>
+
     <div class="fil">
       {#each fil.messages as m (cleMsg(m))}
         {@const k = cleMsg(m)}
@@ -342,6 +432,9 @@
                   <span class="auteur">{m.sender}</span>
                   {#if m.sender_address && m.sender_address !== m.sender}
                     <span class="adr adr-exp">{`<${m.sender_address}>`}</span>
+                  {/if}
+                  {#if enAttente(m)}
+                    <span class="attente-portier" data-testid="attente-portier">{t('fil.attentePortier')}</span>
                   {/if}
                   {#if boite}
                     <span class="boite" title={boite.titre}>
@@ -527,6 +620,9 @@
                onclick={() => basculerMessage(m)} onkeydown={activation(() => basculerMessage(m))}>
             <span class="avatar petit" aria-hidden="true">{initiales(m.sender)}</span>
             <span class="auteur">{m.sender}</span>
+            {#if enAttente(m)}
+              <span class="attente-portier" data-testid="attente-portier">{t('fil.attentePortier')}</span>
+            {/if}
             <!-- A80/D5 : la boîte derrière le nom, ici aussi. -->
             {#if boite}
               <span class="boite" title={boite.titre}>
@@ -553,63 +649,6 @@
           <span class="quand">{quand(Math.floor(brouillonDuFil.updated_epoch / 1000))}</span>
           <span class="reprendre">{t('action.reprendre')}</span>
         </div>
-      {/if}
-    </div>
-
-    <!-- La barre du fil = gestes de TRI seuls (D5) : Répondre/Répondre à
-         tous/Transférer ont rejoint chaque message (D4). Signaler comme
-         spam s'y range (D2), ou « Ce n'est pas un spam » en vue
-         Indésirables. -->
-    <div class="actions">
-      <button type="button" data-testid="archiver" onclick={() => onarchiver(fil.ligne)}>
-        <Icone nom="archive" />{t('action.archiver')}</button>
-      {#if estIndesirable}
-        <button type="button" data-testid="pas-spam" onclick={() => onnonspam(fil.ligne)}>
-          <Icone nom="inbox" />{t('action.pasSpam')}</button>
-      {:else}
-        <button type="button" data-testid="signaler-spam" onclick={() => onspam(fil.ligne)}>
-          <Icone nom="report" />{t('action.signalerSpam')}</button>
-      {/if}
-      <!-- R4 (PLAN-RETOURS-7) : épingler LA conversation — bascule
-           dite par son libellé ET aria-pressed ; l'état vient du cœur
-           (pin_state) et suit le geste. Jamais sur un écho. -->
-      {#if epinglable && !estEcho(fil.ligne)}
-        <button type="button" data-testid="epingler" aria-pressed={fil.epingle}
-                onclick={() => onepingler(fil.ligne)}>
-          <Icone nom={fil.epingle ? 'keep_off' : 'keep'} />
-          {fil.epingle ? t('action.desepingler') : t('action.epingler')}</button>
-      {/if}
-      <!-- PLAN-MODE-ORGANISE E1 : le routage manuel — un expéditeur,
-           une destination. Jamais sur un écho (pas d'enveloppe). Sans
-           glyphe : aucun dessin existant ne porte ce sens (A3), le
-           texte suffit dans la barre. -->
-      {#if organise && !estEcho(fil.ligne)}
-        <!-- E5 : la bascule de la pile — l'état est SEMÉ de la ligne
-             servie (patron de l'épingle, revue 2026-08-21 : jamais un
-             aller-retour par ouverture) et suit le geste (App, jeton
-             du store) ; le geste remonte à l'App, qui possède la
-             commande. -->
-        <button type="button" data-testid="mettre-de-cote"
-                aria-pressed={fil.cote}
-                onclick={() => oncote(fil.ligne)}>
-          <Icone nom={fil.cote ? 'keep_off' : 'pile'} />
-          {fil.cote ? t('pile.reprendre') : t('pile.mettre')}</button>
-        <span class="deplacer">
-          <button type="button" data-testid="deplacer-vers"
-                  aria-haspopup="menu" aria-expanded={menuDeplacer}
-                  onclick={() => (menuDeplacer = !menuDeplacer)}>
-            {t('action.deplacerVers')}</button>
-          {#if menuDeplacer}
-            <div class="deplacer-menu" role="menu">
-              {#each ['reception', 'kiosque', 'registre'] as dest (dest)}
-                <button type="button" role="menuitem"
-                        data-testid={`deplacer-${dest}`}
-                        onclick={() => { menuDeplacer = false; ondeplacer(fil.ligne, dest); }}>
-                  {t(`boite.${dest}`)}</button>
-              {/each}
-            </div>
-          {/if}
-        </span>
       {/if}
     </div>
   </div>
@@ -800,9 +839,13 @@
      le nom à l'encre pleine, le poids atténué, l'espacement au gap. */
   .fichiers .puce .nom { color:var(--ink); }
   .fichiers .puce .taille { font-size:12px; color:var(--muted); }
+  /* RETOURS-14 R1 (D1) : la barre colle au scrollport du CADRE (le
+     volet ou la scène de l'écran 03) — fond opaque --bg pour que les
+     cartes passent dessous, z-index au-dessus des cartes élevées. */
   .actions {
-    flex:none; padding:14px 0 0;
+    flex:none; padding:10px 0 12px;
     display:flex; gap:12px; flex-wrap:wrap;
+    position:sticky; top:0; z-index:4; background:var(--bg);
   }
   .actions button {
     height:32px; padding:0 16px; display:inline-flex; align-items:center;
@@ -810,12 +853,20 @@
     border:1px solid var(--border); border-radius:var(--r-controle); cursor:pointer;
   }
   .actions button:hover { background:var(--sel); }
-  /* E1 : le menu de « Déplacer vers… » — une carte au-dessus du
-     bouton (l'idiome du nuancier, A62), boutons au gabarit de la
-     barre, texte aligné à gauche. */
+  /* RETOURS-14 R4 (D5) : le badge « En attente au Portier » — une
+     étiquette nue à l'encre atténuée, filet de bordure, jamais une
+     alerte : le courrier est légitime, son verdict est juste dû. */
+  .attente-portier {
+    flex:none; padding:1px 6px; font-size:11px; color:var(--ink2);
+    border:1px solid var(--border); border-radius:var(--r-controle);
+    white-space:nowrap;
+  }
+  /* E1 : le menu de « Déplacer vers… » — une carte SOUS le bouton
+     depuis que la barre vit en tête (RETOURS-14 R1 ; l'idiome du
+     nuancier, A62), boutons au gabarit de la barre, texte à gauche. */
   .deplacer { position:relative; display:inline-flex; }
   .deplacer-menu {
-    position:absolute; bottom:calc(100% + 6px); left:0; z-index:5;
+    position:absolute; top:calc(100% + 6px); left:0; z-index:5;
     min-width:170px; display:flex; flex-direction:column;
     background:var(--surface); border:1px solid var(--border);
     box-shadow:var(--shadow); padding:4px;

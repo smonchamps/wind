@@ -19,6 +19,7 @@ let page;
 test.describe.configure({ mode: 'serial' });
 
 test.beforeAll(async () => {
+
   ({ app, browser, page } = await launchAppV2({
     comptes: [{ email: 'principal@exemple.fr', messages: 6 }],
   }));
@@ -132,9 +133,13 @@ test("« Déplacer vers… » route l'expéditeur ENTIER — le ⋯ des cartes e
   await page.locator('[data-testid="kiosque-vers-registre"]').click();
   await expect(page.locator('[data-testid="toast"]')).toContainText('Registre');
   await page.locator('[data-testid="nav-dossier"][data-categorie="registre"]').click();
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  // RETOURS-14 R6 (D7) : le Registre est GROUPÉ par expéditeur — le
+  // groupe se déplie, le fil s'ouvre depuis ses rangées.
+  await expect(page.locator('[data-testid="registre-groupe"]').first()).toBeVisible();
+  await page.locator('[data-testid="registre-groupe"]').first().click();
+  await expect(page.locator('[data-testid="registre-message"]').first()).toBeVisible();
   // La barre du fil, depuis le Registre : le menu Déplacer vers…
-  await page.locator('[data-testid="ligne"]').first().click();
+  await page.locator('[data-testid="registre-message"]').first().click();
   await page.locator('[data-testid="deplacer-vers"]').click();
   await expect(page.locator('[data-testid="deplacer-kiosque"]')).toBeVisible();
   await page.keyboard.press('Escape');

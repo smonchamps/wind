@@ -22,6 +22,7 @@
   } from './lib/espacement.svelte.js';
   import { activation } from './lib/clavier.js';
   import { appel } from './lib/transport.js';
+  import { LIBELLE_ECARTE, LIBELLE_DESTINATION } from './lib/portier.js';
   import { REPERE_ICONES, REPERE_TEINTES } from './lib/reperes.js';
   import { HORIZONS_IMPORT as HORIZONS } from './lib/vocabulaires.js';
   import GuichetCompte from './GuichetCompte.svelte';
@@ -49,6 +50,11 @@
     onajoute = () => {},
     onsupprime = () => {},
     onreconnecte = () => {},
+    // RETOURS-14 R5 (revue) : la réintégration parle et se propage —
+    // le contrat du même geste à la page Portier (toast + resservie
+    // des vues par l'App).
+    onflash = () => {},
+    onroutage = () => {},
   } = $props();
 
   const GROUPES = [
@@ -130,13 +136,105 @@
   // livrée, pas la sienne). Sur échec d'écriture, l'interface ne ment
   // pas : elle revient à l'état réellement persisté.
   let portierDefauts = $state(null);
+  // RETOURS-14 R5 (D6) : la liste EXHAUSTIVE des décisions du Portier
+  // — toutes les destinations (l'historique de la page Portier ne
+  // montre que les écartés), à l'alphabet, filtrable, réintégrable.
+  // `null` tant que la base n'a pas répondu : le vide ne s'affirme
+  // jamais sans preuve.
+  let routagesListe = $state(null);
+  let filtreRoutages = $state('');
   $effect(() => {
     if (visible && groupe === 'portier') {
       appel('portier_defauts_get')
         .then((d) => (portierDefauts = d))
         .catch((err) => console.error('portier_defauts_get :', err));
+      filtreRoutages = '';
+      appel('routages')
+        .then((r) => (routagesListe = r))
+        .catch((err) => console.error('routages :', err));
     }
   });
+  const routagesVisibles = $derived.by(() => {
+    if (!routagesListe) return null;
+    const filtre = filtreRoutages.trim().toLowerCase();
+    return routagesListe
+      .filter((r) => !filtre || r.address.toLowerCase().includes(filtre))
+      .slice()
+      .sort((a, b) => a.address.localeCompare(b.address, langueActuelle(), { sensitivity: 'base' }));
+  });
+  // Le vocabulaire des verdicts : UNE copie (lib/portier.js, partagée
+  // avec la page Portier), jamais des textes recopiés.
+  const libelleRoutage = (r) =>
+    r.destination === 'ecarte'
+      ? t(LIBELLE_ECARTE[r.regle] ?? 'portier.ecarte')
+      : t(LIBELLE_DESTINATION[r.destination] ?? r.destination);
+  // RETOURS-14 R10 (terrain 2026-08-31) : « Réintégrer » devient
+  // « Modifier » — le menu repropose TOUTES les règles du Portier
+  // (les Oui, les règles du Non) plus « Renvoyer au portier »
+  // (l'ancien Réintégrer). Même contrat que la page Portier : le
+  // toast dit ce qui vient d'arriver, `onroutage` fait resservir les
+  // vues et la nav par l'App, l'échec se DIT (jamais un silence).
+  let menuDecision = $state(null);
+  function ouvrirModifier(e, r) {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    menuDecision = {
+      address: r.address,
+      x: Math.min(rect.left, window.innerWidth - 260),
+      y: Math.min(rect.bottom + 4, window.innerHeight - 320),
+    };
+  }
+  $effect(() => {
+    if (!menuDecision) return;
+    const fermer = () => (menuDecision = null);
+    window.addEventListener('click', fermer);
+    window.addEventListener('keydown', fermer);
+    return () => {
+      window.removeEventListener('click', fermer);
+      window.removeEventListener('keydown', fermer);
+    };
+  });
+  const TOAST_NON = {
+    spam: 'toast.portierNonSpam',
+    archive: 'toast.portierNonArchive',
+    corbeille: 'toast.portierNonCorbeille',
+  };
+  const BOITE_DE = {
+    reception: 'portier.laReception',
+    kiosque: 'portier.leKiosque',
+    registre: 'portier.leRegistre',
+  };
+  async function modifierRoutage(destination, regle = null) {
+    const { address } = menuDecision;
+    menuDecision = null;
+    try {
+      await appel('router_expediteur', { address, destination, regle });
+      routagesListe = routagesListe.map((r) =>
+        r.address === address ? { ...r, destination, regle } : r);
+      if (destination === 'ecarte') {
+        onflash(t(regle ? TOAST_NON[regle] : 'toast.portierNonNu', { qui: address }));
+      } else if (destination === 'reception') {
+        onflash(t('toast.portierOuiNu', { qui: address }));
+      } else {
+        onflash(t('toast.portierOuiVers', { qui: address, boite: t(BOITE_DE[destination]) }));
+      }
+      onroutage();
+    } catch (err) {
+      onflash(t('erreur.preference', { err }));
+    }
+  }
+  async function renvoyerAuPortier() {
+    const { address } = menuDecision;
+    menuDecision = null;
+    try {
+      await appel('retirer_routage', { address });
+      routagesListe = routagesListe.filter((r) => r.address !== address);
+      onflash(t('toast.portierReintegre', { qui: address }));
+      onroutage();
+    } catch (err) {
+      onflash(t('erreur.preference', { err }));
+    }
+  }
   function changerPortier(champ, valeur) {
     if (!portierDefauts) return;
     const avant = { ...portierDefauts };
@@ -886,6 +984,46 @@
                 </select>
               </div>
               {/if}
+              <!-- RETOURS-14 R5 (D6) : toutes les décisions, à
+                   l'alphabet, recherche cliente (une liste de
+                   verdicts, pas un corpus — refus §2.6), le geste
+                   « Réintégrer » de la page Portier. -->
+              <div class="reglage">
+                <span class="libelles">
+                  <span class="nom">{t('reglages.portierDecisions')}</span>
+                  <span class="desc">{t('reglages.portierDecisionsDesc')}</span>
+                </span>
+              </div>
+              {#if routagesListe?.length}
+                <div class="recherche-decisions">
+                  <input type="search" data-testid="portier-recherche"
+                         placeholder={t('reglages.portierRecherche')}
+                         aria-label={t('reglages.portierRecherche')}
+                         bind:value={filtreRoutages} />
+                </div>
+              {/if}
+              {#if routagesVisibles}
+                {#if routagesListe.length === 0}
+                  <p class="decisions-vide" data-testid="portier-decisions-vide">{t('reglages.portierAucuneDecision')}</p>
+                {:else if routagesVisibles.length === 0}
+                  <p class="decisions-vide" data-testid="portier-decisions-vide">{t('reglages.portierAucunResultat')}</p>
+                {:else}
+                  <div class="decisions" data-testid="portier-decisions">
+                    {#each routagesVisibles as r (r.address)}
+                      <div class="regle-images decision" data-testid="portier-decision">
+                        <span class="adresse-regle"><b>{r.address}</b>
+                          <span class="verdict">{libelleRoutage(r)}</span></span>
+                        <button type="button" class="ajouter"
+                                data-testid="decision-modifier"
+                                aria-haspopup="menu"
+                                aria-expanded={menuDecision?.address === r.address}
+                                onclick={(e) => ouvrirModifier(e, r)}>
+                          {t('reglages.portierModifier')}</button>
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+              {/if}
             </div>
           {:else if groupe === 'notifications'}
             <p class="section">{t('groupe.notifications')}</p>
@@ -1015,7 +1153,7 @@
                   {:else if maj.version}
                     <!-- L'échec d'INSTALLATION se dit sous son vrai nom
                          (erreur.maj), et l'action reste offerte. -->
-                    {#if maj.erreur}{t('erreur.maj', { err: maj.erreur })} — {/if}
+                    {#if maj.erreur}{t('erreur.maj', { err: maj.erreur })}. {/if}
                     {t('reglages.majDisponible', { version: maj.version })}
                     <button type="button" class="ajouter" onclick={installerMaj}>
                       {t('action.installer')}</button>
@@ -1043,6 +1181,43 @@
           {t('action.termine')}</button>
       </div>
     </div>
+  </div>
+{/if}
+
+{#if menuDecision}
+  <!-- R10 : le menu « Modifier » d'une décision — toutes les règles
+       du Portier (Oui puis Non), plus « Renvoyer au portier »
+       (l'ancien Réintégrer). Le dessin des menus du produit. -->
+  <div class="menu-decision" role="menu" data-testid="decision-menu"
+       style="left:{menuDecision.x}px; top:{menuDecision.y}px">
+    <p class="titre-menu">{t('portier.ouiVers')}</p>
+    <button type="button" role="menuitem" data-testid="decision-vers-reception"
+            onclick={() => modifierRoutage('reception')}>
+      <Icone nom="inbox" />{t('portier.versReception')}</button>
+    <button type="button" role="menuitem" data-testid="decision-vers-kiosque"
+            onclick={() => modifierRoutage('kiosque')}>
+      <Icone nom="kiosque" />{t('portier.versKiosque')}</button>
+    <button type="button" role="menuitem" data-testid="decision-vers-registre"
+            onclick={() => modifierRoutage('registre')}>
+      <Icone nom="registre" />{t('portier.versRegistre')}</button>
+    <div class="filet-menu"></div>
+    <p class="titre-menu">{t('portier.nonSeront')}</p>
+    <button type="button" role="menuitem" data-testid="decision-regle-spam"
+            onclick={() => modifierRoutage('ecarte', 'spam')}>
+      <Icone nom="report" />{t('portier.regleSpam')}</button>
+    <button type="button" role="menuitem" data-testid="decision-regle-archive"
+            onclick={() => modifierRoutage('ecarte', 'archive')}>
+      <Icone nom="inventory_2" />{t('portier.regleArchive')}</button>
+    <button type="button" role="menuitem" data-testid="decision-regle-corbeille"
+            onclick={() => modifierRoutage('ecarte', 'corbeille')}>
+      <Icone nom="delete" />{t('portier.regleCorbeille')}</button>
+    <button type="button" role="menuitem" data-testid="decision-regle-ecarte"
+            onclick={() => modifierRoutage('ecarte')}>
+      <Icone nom="visibility_off" />{t('portier.regleEcarte')}</button>
+    <div class="filet-menu"></div>
+    <button type="button" role="menuitem" data-testid="decision-renvoyer"
+            onclick={renvoyerAuPortier}>
+      <Icone nom="portier" />{t('reglages.renvoyerPortier')}</button>
   </div>
 {/if}
 
@@ -1331,6 +1506,42 @@
     flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;
     white-space:nowrap;
   }
+  /* RETOURS-14 R5 : la liste des décisions du Portier — rangée au
+     dessin de .regle-images, verdict à l'encre atténuée derrière
+     l'adresse ; champ de recherche au gabarit des contrôles (32 px). */
+  .decision .verdict { margin-left:8px; color:var(--muted); }
+  .recherche-decisions { padding:2px 16px 8px; }
+  .recherche-decisions input {
+    width:100%; height:32px; padding:0 12px; font-size:13px;
+    color:var(--ink); background:var(--surface);
+    border:1px solid var(--border); border-radius:var(--r-controle);
+  }
+  .recherche-decisions input:focus-visible {
+    outline:2px solid var(--accent); outline-offset:-1px;
+  }
+  .decisions-vide {
+    margin:0; padding:6px 16px 10px; font-size:13px; color:var(--muted);
+  }
+  /* R10 : le menu « Modifier » — le dessin des menus du produit
+     (famille D-47, consignée). Au-dessus de la surimpression des
+     Réglages (z-index 2). */
+  .menu-decision {
+    position:fixed; z-index:6; min-width:240px; display:flex;
+    flex-direction:column; background:var(--surface);
+    border:1px solid var(--border); box-shadow:var(--shadow); padding:4px;
+  }
+  .menu-decision .titre-menu {
+    margin:4px 0 2px; padding:0 12px; font-size:11px;
+    letter-spacing:.06em; text-transform:uppercase; color:var(--muted);
+    font-weight:600;
+  }
+  .menu-decision button {
+    height:32px; padding:0 12px; display:inline-flex; align-items:center;
+    gap:10px; font-size:13px; color:var(--ink); background:none;
+    border:none; cursor:pointer; text-align:left;
+  }
+  .menu-decision button:hover { background:var(--sel); }
+  .menu-decision .filet-menu { height:1px; background:var(--border); margin:4px 0; }
 
   /* Raccourcis : référence en lecture seule, aux jetons. */
   .raccourci {

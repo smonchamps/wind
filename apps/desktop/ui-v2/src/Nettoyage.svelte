@@ -12,6 +12,8 @@
   //   (D8) : rouvrir la section reprend le tri où il en était. Le clic
   //   nu suit les défauts du Portier (D9), le mini ⋯ déroge.
   import Icone from './Icone.svelte';
+  import TriSection from './TriSection.svelte';
+  import { comparateurTri } from './lib/tri.js';
   import { appel } from './lib/transport.js';
   import { quand } from './lib/quand.js';
   import { t } from './lib/texte.svelte.js';
@@ -27,6 +29,12 @@
   // null = intro ; sinon { plage, perimetre, total, traites }.
   let session = $state(null);
   let groupes = $state([]);
+  // R9 (terrain 2026-08-31) : le tri de la section — récence par
+  // défaut (l'ordre servi), le bouton cycle ; présentation seule.
+  let tri = $state('date-desc');
+  const groupesTries = $derived(
+    [...groupes].sort(comparateurTri(tri, (g) => g.dernierEpoch, (g) => g.qui ?? g.address)),
+  );
   let defauts = $state({ oui: 'reception', non: 'corbeille' });
   // Le groupe déplié (address) et ses messages — VOIR, rien d'autre.
   let ouvert = $state(null);
@@ -208,9 +216,12 @@
       <h2 class="display entete-vue">
         <span class="glyphe-titre" aria-hidden="true"><Icone nom="nettoyage" taille={26} /></span>{t('boite.nettoyage')}</h2>
 
-      <p class="regle-libelle">{t('portier.question')}</p>
+      <div class="ligne-section">
+        <p class="regle-libelle">{t('portier.question')}</p>
+        {#if groupes.length}<TriSection valeur={tri} onchanger={(v) => (tri = v)} />{/if}
+      </div>
       {#if groupes.length}
-        {#each groupes as g (g.address)}
+        {#each groupesTries as g (g.address)}
           <div class="rang-groupe" data-testid="nettoyage-groupe" data-adresse={g.address}>
             <!-- Le corps du rang est la PORTE du groupe : on entre pour
                  voir — le verdict, lui, reste aux boutons. -->
@@ -311,6 +322,9 @@
 {/if}
 
 <style>
+  /* R9 : la ligne de section porte le tri à droite. */
+  .ligne-section { display:flex; align-items:center; gap:10px; }
+  .ligne-section .regle-libelle { flex:1; min-width:0; }
   .scene { flex:1; overflow:auto; padding:28px 36px 60px; min-width:0; }
   .colonne { max-width:820px; margin:0 auto; }
   /* --- Intro --------------------------------------------------------- */

@@ -157,13 +157,16 @@ export async function launchAppV2({ vierge = false, comptes = null } = {}) {
 // une spec lancée sous un AUTRE décor (Clarity, vierge) doit passer sa
 // base, sinon l'arrivée part dans un fichier que l'app ne lit pas (le
 // seeder sortirait vert, l'assertion rougirait sans indice).
-export function injecterArrivee({ email, expediteur, n = 1, nom = null, sujet = null, db = null }) {
+export function injecterArrivee({ email, expediteur, n = 1, nom = null, sujet = null, reponseA = null, db = null }) {
   db ??= path.join(root, 'target', 'e2e', 'parcours-v2-inbox.db');
   statSync(db); // la base doit EXISTER — jamais une arrivée dans le vide
   const exe = path.join(root, 'target', 'debug', 'examples', 'seed_arrivee.exe');
   const args = [`"${db}"`, email, expediteur, String(n)];
-  if (nom || sujet) args.push(`"${nom ?? expediteur}"`);
-  if (sujet) args.push(`"${sujet}"`);
+  // Les arguments sont POSITIONNELS : `reponseA` (RETOURS-14 R4, le
+  // décor du fil mêlé) exige nom et sujet devant lui.
+  if (nom || sujet || reponseA) args.push(`"${nom ?? expediteur}"`);
+  if (sujet || reponseA) args.push(`"${sujet ?? 'Premier contact'}"`);
+  if (reponseA) args.push(`"${reponseA}"`);
   execSync(`"${exe}" ${args.join(' ')}`, { cwd: root, stdio: 'inherit' });
 }
 

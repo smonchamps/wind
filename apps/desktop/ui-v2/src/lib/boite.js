@@ -38,6 +38,6 @@ export function blocBoite({ accountId, adresse, reperes = {}, noms = {}, comptes
     // L'adresse reste la vérité technique de l'infobulle — mais sans
     // nom personnalisé les deux chaînes sont identiques, et « adresse
     // — adresse » serait un bégaiement.
-    titre: libelle === adresse ? libelle : `${libelle} — ${adresse}`,
+    titre: libelle === adresse ? libelle : `${libelle} (${adresse})`,
   };
 }

@@ -28,7 +28,7 @@ export const EN = {
   'entete.ecrire': 'Compose',
   'entete.organise': 'Organized',
   'action.deplacerVers': 'Move to…',
-  'toast.expediteurDeplace': 'Sender moved to {boite} — their messages follow.',
+  'toast.expediteurDeplace': 'Sender moved to {boite}: their messages follow.',
   'erreur.sansAdresse': 'This message has no sender address.',
 
   // --- The Screener (PLAN-MODE-ORGANISE E2) ---------------------------
@@ -57,19 +57,31 @@ export const EN = {
   'portier.historiqueVide':
     'You have not screened out any senders yet.',
   'portier.reintegrer': 'Reinstate',
+  // RETOURS-14 R4 (D5): the mixed-thread marker.
+  'fil.attentePortier': 'Awaiting the Screener',
   'portier.ecarte': 'screened out',
-  'portier.ecarteSpam': 'screened out — marked as junk',
-  'portier.ecarteArchive': 'screened out — archived automatically',
-  'portier.ecarteCorbeille': 'screened out — deleted automatically',
-  'toast.portierOuiNu': '{qui} can write to you — their messages arrive in the Inbox.',
-  'toast.portierOuiVers': '{qui} can write to you — their messages go to {boite}.',
-  'toast.portierNonNu': '{qui} is screened out — they will never know.',
-  'toast.portierNonSpam': '{qui} is screened out — their next messages will go to Junk.',
+  'portier.ecarteSpam': 'screened out (marked as junk)',
+  'portier.ecarteArchive': 'screened out (archived automatically)',
+  'portier.ecarteCorbeille': 'screened out (deleted automatically)',
+  'toast.portierOuiNu': '{qui} can write to you: their messages arrive in the Inbox.',
+  'toast.portierOuiVers': '{qui} can write to you: their messages go to {boite}.',
+  'toast.portierNonNu': '{qui} is screened out; they will never know.',
+  'toast.portierNonSpam': '{qui} is screened out; their next messages will go to Junk.',
   'toast.portierNonArchive':
-    '{qui} is screened out — their next messages will be archived automatically.',
+    '{qui} is screened out; their next messages will be archived automatically.',
   'toast.portierNonCorbeille':
-    '{qui} is screened out — their next messages will go to the Trash.',
+    '{qui} is screened out; their next messages will go to the Trash.',
   // E4 — the organized Inbox: sections and per-row gestures.
+  // RETOURS-14 R6: a Paper trail group row counts THREADS.
+  'registre.fil': '{n} conversation',
+  'registre.fils': '{n} conversations',
+  'registre.voirPlus': 'Show more',
+  // RETOURS-14 R9: the section sort button (4-state cycle).
+  'tri.dateDesc': 'Newest first',
+  'tri.dateAsc': 'Oldest first',
+  'tri.alphaAZ': 'Sender A → Z',
+  'tri.alphaZA': 'Sender Z → A',
+  'tri.aria': 'Change the section sort',
   'liste.sectionNouveau': 'New for you · {n}',
   'liste.sectionConsulte': 'Previously seen',
   'liste.gestes': 'Actions on this message',
@@ -86,7 +98,7 @@ export const EN = {
     'Everything you set aside, at a glance on one screen. \u201cDone\u201d sends the message back where it came from.',
   'pile.tableauVide': 'The pile is empty.',
   'pile.aria': 'Set-aside messages',
-  'toast.misDeCote': 'Set aside \u2014 the pile lives at the bottom right of the Inbox.',
+  'toast.misDeCote': 'Set aside: the pile lives at the bottom right of the Inbox.',
   'toast.reprisPile': 'Brought back from the pile.',
   // E5bis — the Feed as cards; header and sections RETOURS-13 R10/R11.
   'kiosque.sousTitre1': 'All your informational emails are gathered here.',
@@ -97,7 +109,7 @@ export const EN = {
   'kiosque.vide':
     'Nothing in the Feed. From a message, “Move to the Feed” sends that sender’s newsletters here.',
   'toast.portierReintegre':
-    '{qui} is reinstated — their messages from the last 90 days reappear at the Screener.',
+    '{qui} is reinstated; their messages from the last 90 days reappear at the Screener.',
   'groupe.portier': 'Screener',
   'reglages.portierDesc':
     'The default actions of the Screener buttons. The mini ⋯ on each button still offers a one-off choice.',
@@ -106,11 +118,20 @@ export const EN = {
   'reglages.portierNon': 'The “No” button',
   'reglages.portierNonDesc':
     'What happens to a screened-out sender’s next messages.',
+  // RETOURS-14 R5 (D6): the exhaustive list of decisions.
+  'reglages.portierDecisions': 'Decisions by sender',
+  'reglages.portierDecisionsDesc':
+    'Every decision made at the Screener, in alphabetical order. Reinstating a sender will present them at the Screener again on their next message.',
+  'reglages.portierModifier': 'Edit',
+  'reglages.renvoyerPortier': 'Send back to the Screener',
+  'reglages.portierRecherche': 'Search for a sender',
+  'reglages.portierAucuneDecision': 'No decisions yet.',
+  'reglages.portierAucunResultat': 'No sender matches.',
   'entete.reglages': 'Settings',
   'entete.feedback': 'Feedback',
   'retour.titre': 'Feedback',
   'retour.sous':
-    'Tell us what is broken or missing in this form. When you click Send, it forwards your feedback by email to feedback-wind@fcts.io. We read every piece of feedback — it is invaluable to us!',
+    'Tell us what is broken or missing in this form. When you click Send, it forwards your feedback by email to feedback-wind@fcts.io. We read every piece of feedback; it is invaluable to us!',
   'retour.placeholder': 'Your feedback…',
   'retour.merci': 'Thank you for your feedback!',
 
@@ -153,7 +174,7 @@ export const EN = {
   'avis.crash': 'Wind ran into a problem during a previous session ({n} report(s) pending). Nothing is sent without you.',
   'avis.telemetrie': 'Help improve Wind? If it crashes, a technical report would be saved on your machine, never the content of your mail. You then choose whether to send it.',
   'avis.connexion': 'Account not reconnected: {details}',
-  'avis.programme': '“{sujet}” will be sent {quand} — if Wind is open at that time.',
+  'avis.programme': '“{sujet}” will be sent {quand}, if Wind is open at that time.',
 
   // --- Actions partagées ------------------------------------------------
   'action.renvoyer': 'Send again',
@@ -236,7 +257,7 @@ export const EN = {
   'toast.groupePasSpam': 'Conversation moved back to Inbox.|{n} conversations moved back to Inbox.',
   'toast.groupeLues': 'Conversation marked as read.|{n} conversations marked as read.',
   'toast.groupeNonLues': 'Conversation marked as unread.|{n} conversations marked as unread.',
-  'erreur.groupePartiel': '{faits} of {total} — the rest failed.',
+  'erreur.groupePartiel': '{faits} of {total}; the rest failed.',
   'toast.pieceEnregistree': 'Attachment saved: {chemin}',
   'toast.brouillonEnregistre': 'Draft saved.',
   'toast.brouillonSupprime': 'Draft deleted.',
@@ -408,7 +429,7 @@ export const EN = {
   // R2 : l'envoi différé — la carte au-dessus du pied.
   'compo.plusTard': 'Send later',
   'compo.differeQuand': 'Leaves',
-  'compo.differeNote': 'The message will be sent at that time if Wind is open — otherwise at the next launch.',
+  'compo.differeNote': 'The message will be sent at that time if Wind is open, otherwise at the next launch.',
   'compo.programmer': 'Schedule',
 
   // --- Écran 01 et guichet de compte ------------------------------------
@@ -428,7 +449,7 @@ export const EN = {
   'accueil.betaSous':
     'You are using a beta version of Wind. Some features may still evolve, but everything should work without problems.',
   'accueil.betaBouton':
-    'Tell us what is broken or missing in this form. When you click Send, it forwards your feedback by email to feedback-wind@fcts.io. We read every piece of feedback — it is invaluable to us!',
+    'Tell us what is broken or missing in this form. When you click Send, it forwards your feedback by email to feedback-wind@fcts.io. We read every piece of feedback; it is invaluable to us!',
   'accueil.finTitre': 'All set.',
   'accueil.finTexte': 'Check your choices before finishing.',
   'accueil.revenir': 'Return to this step',
@@ -510,7 +531,7 @@ export const EN = {
   'volets.1': 'One pane',
   'reglages.espacement': 'Message spacing',
   'reglages.espacementDesc':
-    'The air between two messages in the list. The more there is, the more the list breathes — and the fewer messages it shows at once.',
+    'The air between two messages in the list. The more there is, the more the list breathes, and the fewer messages it shows at once.',
   'espacement.faible': 'Low',
   'espacement.moyen': 'Medium',
   'espacement.eleve': 'High',
@@ -564,11 +585,11 @@ export const EN = {
   // 28-entry Wada table stays retired) — the keys
   // follow FICHES (lib/theme.js), the coherence gate checks both ways.
   'theme.elements.nom': 'Elements',
-  'theme.elements.desc': 'Light paper, the brand teal — the Elements direction.',
+  'theme.elements.desc': 'Light paper, the brand teal: the Elements direction.',
   'theme.elements-nuit.nom': 'Elements · night',
   'theme.elements-nuit.desc': 'Dark variant. Same 17 tokens.',
   'theme.innamoramento.nom': 'Innamoramento',
-  'theme.innamoramento.desc': 'Deep rose, mauve tiles — the Innamoramento direction.',
+  'theme.innamoramento.desc': 'Deep rose, mauve tiles: the Innamoramento direction.',
   'theme.innamoramento-nuit.nom': 'Innamoramento · night',
   'theme.innamoramento-nuit.desc': 'Dark variant. Same 17 tokens.',
 

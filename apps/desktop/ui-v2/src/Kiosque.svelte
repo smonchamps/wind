@@ -13,11 +13,13 @@
   // du CACHE par page servie (D5/S3) ; pas de fenêtrage : les cartes
   // s'ajoutent page à page au défilement (limite dite au PLAN).
   import Icone from './Icone.svelte';
+  import TriSection from './TriSection.svelte';
+  import { comparateurTri } from './lib/tri.js';
   import { appel } from './lib/transport.js';
   import { corpsAuto } from './lib/corps.js';
   import { brancherLiens } from './lib/liens.js';
   import { quand } from './lib/quand.js';
-  import { t, langueActuelle } from './lib/texte.svelte.js';
+  import { t } from './lib/texte.svelte.js';
 
   let {
     compte = null,
@@ -122,7 +124,17 @@
 
   // R10 — les deux sections, calculées de l'état SERVI (carte.lu) :
   // les marques posées en vol n'y touchent pas.
-  const nonLues = $derived(cartes.filter((c) => !c.lu));
+  // R9 (terrain 2026-08-31) : chaque section porte SON tri — les
+  // défauts restent l'ordre d'avant (non-lus par récence servie,
+  // groupes à l'alphabet A → Z) ; le bouton cycle, présentation seule
+  // (comparateurTri, la collation suit la langue de l'UI).
+  let triNonLus = $state('date-desc');
+  let triLus = $state('alpha-az');
+  const nonLues = $derived(
+    cartes
+      .filter((c) => !c.lu)
+      .sort(comparateurTri(triNonLus, (c) => c.row.epoch, (c) => c.row.sender ?? '')),
+  );
   const groupes = $derived.by(() => {
     const parQui = new Map();
     for (const c of cartes) {
@@ -133,10 +145,11 @@
     }
     return [...parQui.entries()]
       .map(([qui, siennes]) => ({ qui, cartes: siennes }))
-      // La collation suit la langue de l'UI (revue : la locale de
-      // l'hôte n'est pas un contrat — sur un poste non francophone le
-      // tri divergerait de ce que le test et l'utilisateur attendent).
-      .sort((a, b) => a.qui.localeCompare(b.qui, langueActuelle(), { sensitivity: 'base' }));
+      .sort(comparateurTri(
+        triLus,
+        (g) => Math.max(...g.cartes.map((c) => c.row.epoch)),
+        (g) => g.qui,
+      ));
   });
   let groupesOuverts = $state({});
 
@@ -284,7 +297,10 @@
     {#if cartes.length}
       <!-- Terrain RETOURS-13 (C5) : le titre de section reste visible
            quand tout est lu — la coche du Portier dit le travail fait. -->
-      <p class="regle-libelle" data-testid="kiosque-section-nonlus">{t('kiosque.sectionNonLus')}</p>
+      <div class="ligne-section">
+        <p class="regle-libelle" data-testid="kiosque-section-nonlus">{t('kiosque.sectionNonLus')}</p>
+        {#if nonLues.length}<TriSection valeur={triNonLus} onchanger={(v) => (triNonLus = v)} />{/if}
+      </div>
       {#if nonLues.length}
         {#each nonLues as carte (cleCarte(carte.row))}
           {@render blocCarte(carte)}
@@ -296,7 +312,10 @@
       {/if}
     {/if}
     {#if groupes.length}
-      <p class="regle-libelle" data-testid="kiosque-section-lus">{t('kiosque.sectionLus')}</p>
+      <div class="ligne-section">
+        <p class="regle-libelle" data-testid="kiosque-section-lus">{t('kiosque.sectionLus')}</p>
+        <TriSection valeur={triLus} onchanger={(v) => (triLus = v)} />
+      </div>
       {#each groupes as g (g.qui)}
         <!-- D5 : la rangée d'un groupe replié montre une PILE
              d'élévations (le visuel des mis de côté) ; le clic déplie
@@ -347,6 +366,9 @@
      systeme.css (.entete-vue / .sous-titre-vue / .regle-libelle —
      une copie, Portier et Kiosque). */
   .carte { padding:26px 0 10px; border-top:1px solid var(--border); }
+  /* R9 : la ligne de section porte le tri à droite. */
+  .ligne-section { display:flex; align-items:center; gap:10px; }
+  .ligne-section .regle-libelle { flex:1; min-width:0; }
   /* R10 — la rangée d'un groupe replié : pile d'élévations + nom +
      nombre, le dessin d'une rangée (jamais un bouton plein). */
   .rang-groupe {

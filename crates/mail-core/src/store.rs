@@ -3229,6 +3229,20 @@ impl Store {
         Ok(total as u64)
     }
 
+    /// RETOURS-14 R4 (revue) — les ADRESSES seules du guichet, pour le
+    /// badge « En attente au Portier » du fil : `portier_attente()`
+    /// construit une rangée complète par expéditeur, ce que le badge
+    /// n'a que faire — et le guichet n'est pas borné.
+    pub fn portier_adresses(&self) -> Result<Vec<String>, Error> {
+        let mut stmt = self
+            .0
+            .prepare("SELECT address FROM portier_attente ORDER BY address")?;
+        let adresses = stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(adresses)
+    }
+
     // -----------------------------------------------------------------
     // Le Nettoyage de printemps (PLAN-HORIZON-NETTOYAGE volet B).
     // -----------------------------------------------------------------
@@ -4575,6 +4589,17 @@ fn poser_verdict(
          VALUES (?1, ?2, ?3, ?4)",
         params![adresse, destination, regle, epoch],
     )?;
+    // RETOURS-14 R8 (terrain 2026-08-31) : un OUI vaut confiance — le
+    // verdict pose AUSSI la règle « toujours afficher les images de
+    // cet expéditeur » (même table, même normalisation que la garde
+    // R1 ; révocable aux Réglages > Affichage). Un Non ne touche pas
+    // à la garde — elle a sa propre porte de sortie.
+    if destination != "ecarte" {
+        tx.execute(
+            "INSERT OR REPLACE INTO images_expediteurs (address, epoch) VALUES (?1, ?2)",
+            params![adresse, epoch],
+        )?;
+    }
     // Le verdict prend le relais de l'attente — Oui comme Non.
     tx.execute(
         "DELETE FROM portier_attente WHERE address = ?1",
@@ -8254,6 +8279,129 @@ Etape : {etape}\nPlan :\n{}",
         // La boîte se réinitialise : plus aucune marque.
         store.reset_mailbox(inbox, 2).unwrap();
         assert!(!store.kiosque_lu(inbox, 2).unwrap());
+    }
+
+    /// RETOURS-14 R8 (terrain 2026-08-31) — un OUI au Portier vaut
+    /// confiance : le verdict pose AUSSI la règle « toujours afficher
+    /// les images de cet expéditeur » (table `images_expediteurs`,
+    /// révocable aux Réglages > Affichage comme toute règle). Un Non
+    /// ne pose rien et ne retire rien — la garde d'images a sa propre
+    /// porte de sortie.
+    #[test]
+    fn un_oui_au_portier_autorise_les_images_de_l_expediteur() {
+        let (mut store, inbox) = store_with_mailbox();
+        let mut bienvenu = envelope(1, "Bonjour", 100, false);
+        bienvenu.sender_address = Some("Ami@exemple.fr".to_string());
+        bienvenu.message_id = Some("<a1@exemple.fr>".to_string());
+        let mut intrus = envelope(2, "Promo", 200, false);
+        intrus.sender_address = Some("promo@exemple.fr".to_string());
+        intrus.message_id = Some("<p1@exemple.fr>".to_string());
+        store.upsert_envelopes(inbox, &[bienvenu, intrus]).unwrap();
+        assert!(!store.images_allowed(inbox, 1).unwrap());
+
+        // Le Oui (toute destination servie) pose la règle — adresse
+        // normalisée par LA porte (adresse_images).
+        store
+            .router_expediteur("ami@exemple.fr", "reception", None, 300)
+            .unwrap();
+        assert!(store.images_allowed(inbox, 1).unwrap());
+        // Le Non n'autorise rien.
+        store
+            .router_expediteur("promo@exemple.fr", "ecarte", Some("spam"), 300)
+            .unwrap();
+        assert!(!store.images_allowed(inbox, 2).unwrap());
+        // La porte de sortie existante défait la règle posée par le Oui.
+        store.revoke_images_sender("ami@exemple.fr").unwrap();
+        assert!(!store.images_allowed(inbox, 1).unwrap());
+    }
+
+    /// RETOURS-14 R6 (D7) — le Registre se regroupe par EXPÉDITEUR,
+    /// les groupes triés par récence du dernier message (patron du
+    /// Nettoyage), et la page d'UN groupe rend les fils de ce seul
+    /// expéditeur, au tri de la vue.
+    #[test]
+    fn le_registre_se_groupe_par_expediteur_a_la_recence() {
+        let (mut store, inbox) = store_with_mailbox();
+        let mut ancien = envelope(1, "Reçu A", 100, true);
+        ancien.sender_address = Some("recu@boutique.fr".to_string());
+        ancien.message_id = Some("<r1@boutique.fr>".to_string());
+        let mut recent = envelope(2, "Avis B", 300, true);
+        recent.sender_address = Some("avis@banque.fr".to_string());
+        recent.message_id = Some("<b1@banque.fr>".to_string());
+        let mut second = envelope(3, "Reçu C", 200, true);
+        second.sender_address = Some("recu@boutique.fr".to_string());
+        second.message_id = Some("<r2@boutique.fr>".to_string());
+        let hors = envelope(4, "Bonjour", 400, false);
+        store
+            .upsert_envelopes(inbox, &[ancien, recent, second, hors])
+            .unwrap();
+        store
+            .router_expediteur("recu@boutique.fr", "registre", None, 500)
+            .unwrap();
+        store
+            .router_expediteur("avis@banque.fr", "registre", None, 500)
+            .unwrap();
+
+        let groupes = store.registre_groupes(None).unwrap();
+        assert_eq!(groupes.len(), 2, "un groupe par expéditeur routé");
+        // La récence d'abord (D7) : banque (300) avant boutique (200).
+        assert_eq!(groupes[0].address, "avis@banque.fr");
+        assert_eq!(groupes[0].fils, 1);
+        assert_eq!(groupes[1].address, "recu@boutique.fr");
+        assert_eq!(groupes[1].fils, 2);
+        assert_eq!(groupes[1].dernier_epoch, 200);
+        assert_eq!(groupes[1].dernier_objet.as_deref(), Some("Reçu C"));
+
+        // La page d'un groupe : les fils de CE seul expéditeur, les
+        // plus récents en tête.
+        let page = store
+            .registre_groupe_scoped("recu@boutique.fr", None, 0, 10)
+            .unwrap();
+        assert_eq!(page.len(), 2);
+        assert_eq!(page[0].envelope.uid, 3);
+        assert_eq!(page[1].envelope.uid, 1);
+        // Le filtre de compte borne comme partout.
+        let autre = store
+            .registre_groupe_scoped("recu@boutique.fr", Some(999), 0, 10)
+            .unwrap();
+        assert!(autre.is_empty());
+    }
+
+    /// RETOURS-14 R7 (D8) — la pastille nav du Kiosque compte les
+    /// cartes PAS ENCORE OUVERTES (mémoire `kiosque_lus`), jamais le
+    /// `seen` IMAP : c'est la sémantique de la page elle-même (les
+    /// sections Non lus / Lus précédemment). Le décor est vu côté
+    /// serveur (`seen = true`) : si la requête comptait l'`unseen`,
+    /// elle rendrait zéro.
+    #[test]
+    fn la_pastille_du_kiosque_compte_les_cartes_jamais_ouvertes() {
+        let (mut store, inbox) = store_with_mailbox();
+        let mut a = envelope(1, "Lettre A", 100, true);
+        a.sender_address = Some("lettre@infolettre.fr".to_string());
+        a.message_id = Some("<a@infolettre.fr>".to_string());
+        let mut b = envelope(2, "Lettre B", 200, true);
+        b.sender_address = Some("lettre@infolettre.fr".to_string());
+        b.message_id = Some("<b@infolettre.fr>".to_string());
+        let ordinaire = envelope(3, "Bonjour", 300, false);
+        store.upsert_envelopes(inbox, &[a, b, ordinaire]).unwrap();
+        store
+            .router_expediteur("lettre@infolettre.fr", "kiosque", None, 400)
+            .unwrap();
+
+        // Deux cartes au Kiosque, aucune ouverte — le seen IMAP (true)
+        // ne compte pas ; le message non routé non plus.
+        assert_eq!(store.kiosque_non_ouverts(None).unwrap(), 2);
+        // Le filtre de compte se prouve PENDANT qu'il reste du non-lu
+        // (revue : à zéro partout, un filtre ignoré passerait vert) :
+        // le bon compte voit 2, un compte étranger 0.
+        let compte = test_account(&store);
+        assert_eq!(store.kiosque_non_ouverts(Some(compte)).unwrap(), 2);
+        assert_eq!(store.kiosque_non_ouverts(Some(compte + 1)).unwrap(), 0);
+        // Ouvrir une carte la retire du compte.
+        store.marquer_kiosque_lu(inbox, 2, 500).unwrap();
+        assert_eq!(store.kiosque_non_ouverts(None).unwrap(), 1);
+        store.marquer_kiosque_lu(inbox, 1, 600).unwrap();
+        assert_eq!(store.kiosque_non_ouverts(None).unwrap(), 0);
     }
 
     /// RETOURS-13 R5/R9 — les actions PAR DÉFAUT des boutons du

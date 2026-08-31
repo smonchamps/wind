@@ -222,7 +222,7 @@
            (A70). -->
       <div class="recap" data-testid="accueil-recap">
         <button type="button" class="ligne-recap" data-testid="recap-comptes"
-                aria-label="{t('groupe.comptes')} — {t('accueil.revenir')}"
+                aria-label="{t('groupe.comptes')} : {t('accueil.revenir')}"
                 onclick={() => (etape = 1)}>
           <span class="recap-titre">{t('groupe.comptes')}</span>
           <span class="recap-valeur">{comptes.map((c) => c.email).join(' · ')}</span>
@@ -230,7 +230,7 @@
             <Icone nom="arrow_back" />{t('accueil.revenir')}</span>
         </button>
         <button type="button" class="ligne-recap" data-testid="recap-volets"
-                aria-label="{t('reglages.volets')} — {t('accueil.revenir')}"
+                aria-label="{t('reglages.volets')} : {t('accueil.revenir')}"
                 onclick={() => (etape = 2)}>
           <span class="recap-titre">{t('reglages.volets')}</span>
           <!-- 4e passe terrain : le texte AU-DESSUS de l'image. -->
@@ -240,7 +240,7 @@
             <Icone nom="arrow_back" />{t('accueil.revenir')}</span>
         </button>
         <button type="button" class="ligne-recap" data-testid="recap-theme"
-                aria-label="{t('accueil.theme')} — {t('accueil.revenir')}"
+                aria-label="{t('accueil.theme')} : {t('accueil.revenir')}"
                 onclick={() => (etape = 3)}>
           <span class="recap-titre">{t('accueil.theme')}</span>
           <!-- 4e passe terrain : le texte AU-DESSUS de l'image. -->

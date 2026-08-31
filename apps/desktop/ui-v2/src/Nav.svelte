@@ -27,7 +27,14 @@
   // La pastille du Portier (`portier`, E2) compte les MESSAGES en
   // attente au guichet — le dessin du prototype. Mode classique :
   // zéro diff.
-  let { comptes = [], reperes = {}, noms = {}, categorie, compte, organise = false, portier = 0, onchoisir = () => {} } = $props();
+  let {
+    comptes = [], reperes = {}, noms = {}, categorie, compte,
+    organise = false, portier = 0,
+    // RETOURS-14 R7 : les pastilles du Kiosque (cartes jamais
+    // ouvertes, D8) et du Registre (non-lu IMAP), patron `portier`.
+    kiosque = 0, registre = 0,
+    onchoisir = () => {},
+  } = $props();
 
   const somme = (champ) => comptes.reduce((n, c) => n + c[champ], 0);
 
@@ -48,8 +55,8 @@
     },
     ...(organise
       ? [
-          { id: 'kiosque', icone: 'kiosque', libelle: t('boite.kiosque') },
-          { id: 'registre', icone: 'registre', libelle: t('boite.registre') },
+          { id: 'kiosque', icone: 'kiosque', libelle: t('boite.kiosque'), nonLus: kiosque },
+          { id: 'registre', icone: 'registre', libelle: t('boite.registre'), nonLus: registre },
           { id: 'portier', icone: 'portier', libelle: t('boite.portier'), nonLus: portier },
           // Volet B (PLAN-HORIZON-NETTOYAGE) : la 5e section du mode.
           { id: 'nettoyage', icone: 'nettoyage', libelle: t('boite.nettoyage') },

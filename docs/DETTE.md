@@ -775,6 +775,12 @@ motivée.)
 
 ### D-47 · Trois menus contextuels et deux bascules de fil sont des copies main
 
+- **Amendée (RETOURS-14, 2026-08-31)** : deux copies de plus — le
+  `.menu-groupe` du Registre groupé (`Registre.svelte`), et la FAMILLE
+  s'étend au dessin de la PILE (`.empile`/`.rang-groupe` recopiés de
+  `Kiosque.svelte` vers `Registre.svelte`) et au rang deux-lignes du
+  Nettoyage (`.l1/.l2` recopiés). Le vocabulaire des verdicts, lui,
+  a été factorisé au passage (`lib/portier.js`).
 - **Fait (revue E4/E5, 2026-08-30)** : le dessin du menu du produit vit
   en trois copies CSS (`Portier.svelte` `.menu`, `Liste.svelte`
   `.menu-gestes`, l'éventail de `PileMisDeCote.svelte`) — l'ombre

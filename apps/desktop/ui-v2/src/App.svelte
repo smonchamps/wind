@@ -27,6 +27,7 @@
   import Nettoyage from './Nettoyage.svelte';
   import PileMisDeCote from './PileMisDeCote.svelte';
   import Kiosque from './Kiosque.svelte';
+  import Registre from './Registre.svelte';
   import Lecture from './Lecture.svelte';
   import Conversation from './Conversation.svelte';
   import Composition from './Composition.svelte';
@@ -76,6 +77,10 @@
   // E2 : la pastille du Portier — le nombre de MESSAGES en attente au
   // guichet, rechargée avec la nav (jamais sur le chemin d'affichage).
   let portierTotal = $state(0);
+  // RETOURS-14 R7 : les pastilles du Kiosque (cartes jamais ouvertes,
+  // D8) et du Registre (non-lu IMAP) — le patron de `portierTotal`.
+  let kiosqueTotal = $state(0);
+  let registreTotal = $state(0);
   // R2 (PLAN-RETOURS-8, A75) : le parcours de premier démarrage —
   // null = pas encore décidé (un seul état, revue 2026-08-22), décidé
   // une fois au premier instantané de nav, éteint au Terminer.
@@ -407,6 +412,24 @@
           if (jeton === jetonNav) portierTotal = n;
         })
         .catch(() => {});
+      // RETOURS-14 R7 (revue) : contrairement à `portier_total`
+      // (0,26 ms mesuré), ces deux COUNT sondent `threads` entier —
+      // ils ne se paient pas au classique, où les pastilles ne se
+      // peignent nulle part. Le trou du démarrage (mode pas encore
+      // relu) est refermé au retour de `restaurerModeOrganise()`.
+      // Coût réel sur une base de 200 k : à mesurer au terrain.
+      if (modeOrganise()) {
+        appel('kiosque_non_ouverts')
+          .then((n) => {
+            if (jeton === jetonNav) kiosqueTotal = n;
+          })
+          .catch(() => {});
+        appel('category_total', { category: 'registre', accountId: null, nonLus: true })
+          .then((n) => {
+            if (jeton === jetonNav) registreTotal = n;
+          })
+          .catch(() => {});
+      }
       // R2 (A75) : la décision « accueil à jouer » se prend UNE fois,
       // au premier instantané. Une installation existante (des comptes
       // déjà là SANS parcours commencé) est réputée accueillie — la
@@ -481,8 +504,7 @@
         await new Promise((r) => setTimeout(r, 250));
         restants = await appel('preview_catchup', { limit: 500 });
       }
-      liste?.recharger();
-      kiosque?.recharger();
+      rechargerVues();
     } catch (err) {
       console.error('preview_catchup :', err);
     } finally {
@@ -500,11 +522,10 @@
       const generation = synchro?.generation ?? null;
       if (generation !== null) {
         if (generationVue !== null && generation !== generationVue) {
-          liste?.recharger();
-          // E5bis (revue) : la scène du Kiosque suit les relèves — sans
+          // E5bis (revue) : les scènes suivent les relèves — sans
           // quoi une arrivée décale les offsets des pages suivantes
           // (clés en collision) et une carte fraîche reste un aperçu.
-          kiosque?.recharger();
+          rechargerVues();
           chargerNav();
           // E4 (PLAN-REACTIVITE) : la génération a bougé — un lot vient
           // d'entrer. Ses corps sont déjà là (relève, R-D2) SAUF s'il a
@@ -542,8 +563,7 @@
         // resservie est invisible depuis E1, plus besoin d'attendre une
         // recharge fortuite. E5bis : les cartes du Kiosque gagnent
         // leurs corps au même rythme.
-        liste?.recharger();
-        kiosque?.recharger();
+        rechargerVues();
       }
     } catch (err) {
       console.error('backfill_bodies :', err);
@@ -629,7 +649,7 @@
         icone: 'error',
         texte: t(sort, {
           sujet: probleme.subject,
-          erreur: probleme.error ? ` — ${probleme.error}` : '',
+          erreur: probleme.error ? ` : ${probleme.error}` : '',
         }),
         actions: [
           { libelle: t('action.renvoyer'), principale: true, faire: async () => {
@@ -953,7 +973,18 @@
     // Le mode organisé se relit APRÈS la première page de la liste
     // (jamais un await avant elle — leçon PLAN-DEMARRAGE E2) : la nav
     // se recompose à l'arrivée, une lecture PK.
-    restaurerModeOrganise();
+    restaurerModeOrganise().then(() => {
+      // RETOURS-14 (revue, course MESURÉE au décor e2e : page 0 servie
+      // à ~85 ms, relecture du mode à ~105 ms) : la dernière pompe de
+      // la liste part alors avec le mode ÉTEINT — la couture des
+      // sections de la Réception organisée n'est jamais demandée, et
+      // les pastilles organisées ont raté le premier instantané. La
+      // relecture RESSERT donc les vues et la nav ; hors mode, rien.
+      if (modeOrganise()) {
+        rechargerVues();
+        chargerNav();
+      }
+    });
     chargerReperes();
     chargerNoms();
     setInterval(chargerNav, 10000);
@@ -1033,6 +1064,8 @@
         quoi.categorie === 'portier'
         || quoi.categorie === 'kiosque'
         || quoi.categorie === 'nettoyage'
+        // RETOURS-14 R6 : le Registre groupé émet son propre total.
+        || quoi.categorie === 'registre'
       ) totalListe = null;
     }
     if ('compte' in quoi) compte = quoi.compte;
@@ -1045,6 +1078,9 @@
   // garde ; « Reprendre »/« Terminé » le rend d'où il vient.
   let pile = $state(null);
   let kiosque = $state(null);
+  // RETOURS-14 R6 : la vue groupée du Registre — même régime de
+  // rechargement que le Kiosque.
+  let registre = $state(null);
   async function basculerCote(ligne, depuisFil = false) {
     if (gesteSurEcho(ligne)) return;
     try {
@@ -1054,13 +1090,12 @@
         uid: ligne.uid,
       });
       flash(t(cote ? 'toast.misDeCote' : 'toast.reprisPile'));
-      kiosque?.recharger();
       // La discipline de jeton du store (patron d'epinglerFil) : le
       // bouton de la barre suit le geste — un « Reprendre » qui ne
       // changerait pas d'étiquette re-mettrait de côté au clic suivant
       // (revue E5).
       if (fil.ligne && cleMsg(fil.ligne) === cleMsg(ligne)) fil.cote = cote;
-      liste?.recharger();
+      rechargerVues();
       pile?.recharger();
       chargerNav();
       // Depuis la surface de lecture : un fil mis de côté vient de
@@ -1079,6 +1114,23 @@
   // destination — l'adresse est résolue de l'enveloppe côté cœur,
   // le toast dit le geste, la liste se ressert (une vue Kiosque ou
   // Registre change sous le geste).
+  // RETOURS-14 R6 (revue) : router par ADRESSE — le ⋯ d'un groupe du
+  // Registre n'a pas de ligne sous la main, il a l'expéditeur. Même
+  // porte (router_expediteur), mêmes toasts, même resservie.
+  async function routerAdresse(address, qui, destination) {
+    try {
+      await appel('router_expediteur', { address, destination, regle: null });
+      if (destination === 'ecarte') {
+        flash(t('toast.portierNonNu', { qui }));
+      } else {
+        flash(t('toast.expediteurDeplace', { boite: t(cleLibelleBoite(destination)) }));
+      }
+      rechargerVues();
+      chargerNav();
+    } catch (err) {
+      flash(t('erreur.preference', { err }));
+    }
+  }
   async function deplacerExpediteur(ligne, destination) {
     if (gesteSurEcho(ligne)) return;
     try {
@@ -1099,8 +1151,7 @@
       } else {
         flash(t('toast.expediteurDeplace', { boite: t(cleLibelleBoite(destination)) }));
       }
-      liste?.recharger();
-      kiosque?.recharger();
+      rechargerVues();
       chargerNav();
     } catch (err) {
       flash(t('erreur.preference', { err }));
@@ -1119,6 +1170,10 @@
       ) {
         choisir({ categorie: 'reception' });
       } else {
+        // RETOURS-14 R2 (D3) : la Réception organisée n'a plus
+        // d'onglets — un filtre « Non lus » hérité du classique y
+        // resterait posé sans porte de sortie.
+        if (actif) onglet = 'tous';
         // La Réception affichée change de CONTENU avec le mode (E2 :
         // rétention et routage) — la liste se ressert, comme après un
         // « Déplacer vers… » ; sans quoi l'écran garde la page de
@@ -1136,7 +1191,10 @@
       return;
     }
     if (categorie === 'brouillons') categorie = 'reception';
-    onglet = id;
+    // RETOURS-14 R2 (D3, revue) : la Réception organisée n'a pas
+    // d'onglets — un « Non lus » posé depuis Brouillons (ou pendant
+    // une recherche) y resterait sans porte de sortie.
+    onglet = modeOrganise() && categorie === 'reception' ? 'tous' : id;
     selectionnee = null;
     fermerFil();
   }
@@ -1330,6 +1388,17 @@
     liste?.recharger();
   }
 
+  // RETOURS-14 (revue) : UNE resservie des vues — la liste ET les
+  // scènes du mode organisé. Les gestes ne visent plus `liste` nue :
+  // le Registre groupé ouvre ses fils dans le volet, la liste peut
+  // être DÉMONTÉE au moment du geste (TypeError avalé par le catch —
+  // nav et passe d'après-geste sautaient avec).
+  function rechargerVues() {
+    liste?.recharger();
+    kiosque?.recharger();
+    registre?.recharger();
+  }
+
   function marquerVue(ligne) {
     if (!(ligne.thread_unseen > 0)) return;
     appel('mark_seen', {
@@ -1339,7 +1408,7 @@
       seen: true,
     })
       .then(() => {
-        liste.marquerLue(ligne);
+        liste?.marquerLue(ligne);
         chargerNav();
       })
       .catch((err) => console.error('mark_seen :', err));
@@ -1351,6 +1420,9 @@
   // E5bis : le Kiosque en CARTES — une scène de lecture, pas une
   // liste ; comme le Portier et la Réception organisée, pas de volet.
   const kiosqueCartes = $derived(modeOrganise() && categorie === 'kiosque');
+  // RETOURS-14 R6 (D7) : le Registre groupé par expéditeur — la vue
+  // organisée seule ; le volet de lecture RESTE le lecteur.
+  const registreGroupe = $derived(modeOrganise() && categorie === 'registre');
   // LES scènes sans volet de lecture — UN prédicat (revue 2026-08-30 :
   // l'énumération vivait copiée aux deux gardes Lecture/poignée ; la
   // prochaine section pleine scène s'ajoute ICI, pas dans N sites).
@@ -1385,7 +1457,7 @@
       // L'écho de destination est DÉJÀ en base (même transaction que le
       // geste, E3) : la resservie le montre en Archives < 1 s — le
       // serveur suit par la passe, en silence.
-      liste.recharger();
+      rechargerVues();
       chargerNav();
       passeApresGeste(ligne.account_id);
       return true;
@@ -1413,7 +1485,7 @@
       flash(t(ferme ? 'toast.supprimee' : 'toast.messageSupprime'));
       // Même mécanique qu'archiver : l'écho est en base, la Corbeille
       // le montre tout de suite, la passe réconcilie derrière.
-      liste.recharger();
+      rechargerVues();
       chargerNav();
       passeApresGeste(cible.account_id);
       // VRAI = geste abouti (le contrat d'avancerApres) — l'écran 03
@@ -1439,7 +1511,7 @@
       flash(t('toast.spamSignale'));
       liste?.decocher(ligne);
       fermerFil();
-      liste.recharger();
+      rechargerVues();
       chargerNav();
       passeApresGeste(ligne.account_id);
       return true;
@@ -1461,7 +1533,7 @@
       flash(t('toast.pasSpam'));
       liste?.decocher(ligne);
       fermerFil();
-      liste.recharger();
+      rechargerVues();
       chargerNav();
       passeApresGeste(ligne.account_id);
       return true;
@@ -1553,14 +1625,14 @@
     );
     // L'écho local du marquage lu, comme au chemin unitaire (marquerVue) :
     // la graisse tombe à l'instant, la resservie dit la vérité derrière.
-    if (action === 'lu') for (const l of reussies) liste.marquerLue(l);
+    if (action === 'lu') for (const l of reussies) liste?.marquerLue(l);
     // Le fil ouvert ne se ferme que si SON geste a RÉUSSI — un échec le
     // laisse en place, comme au chemin unitaire.
     if (geste.ferme && selectionnee
       && reussies.some((l) => cleMsg(l) === cleMsg(selectionnee))) {
       fermerFil();
     }
-    liste.recharger();
+    rechargerVues();
     chargerNav();
     if (geste.ferme) {
       for (const id of new Set(reussies.map((l) => l.account_id))) passeApresGeste(id);
@@ -1676,7 +1748,8 @@
          style="--l-nav:{lNav}px; --l-liste:{lListe}px">
       {#if volets !== 1}
         <Nav {comptes} {reperes} {noms} {categorie} {compte}
-             organise={modeOrganise()} portier={portierTotal} onchoisir={choisir} />
+             organise={modeOrganise()} portier={portierTotal}
+             kiosque={kiosqueTotal} registre={registreTotal} onchoisir={choisir} />
       {/if}
       {#if categorie === 'nettoyage'}
         <!-- Volet B : le Nettoyage de printemps — même régime de scène
@@ -1701,6 +1774,13 @@
                    ondeplacer={deplacerExpediteur} oncote={basculerCote}
                    ontotal={(t) => (totalListe = t)} />
         </div>
+      {:else if registreGroupe}
+        <!-- R6 : le Registre groupé prend la colonne de la liste — le
+             volet de lecture reste à droite, ouvrir passe par le
+             chemin de la liste (surSelection). -->
+        <Registre bind:this={registre} {compte}
+                  onouvrir={surSelection} onrouter={routerAdresse}
+                  ontotal={(t) => (totalListe = t)} />
       {:else}
         <Liste bind:this={liste} {categorie} {compte} {comptes} {reperes} {noms} {onglet} {recherche}
                {brouillons} onreprendre={reprendreBrouillon}
@@ -1804,7 +1884,8 @@
             <Icone nom="close" /></button>
         </div>
         <Nav {comptes} {reperes} {noms} {categorie} {compte}
-             organise={modeOrganise()} portier={portierTotal} onchoisir={choisirDuTiroir} />
+             organise={modeOrganise()} portier={portierTotal}
+             kiosque={kiosqueTotal} registre={registreTotal} onchoisir={choisirDuTiroir} />
       </div>
     {/if}
 
@@ -1847,6 +1928,8 @@
     <Reglages bind:this={reglages} {comptes} {connectes} {reperes} {noms}
               onrepere={patcherRepere} onnom={patcherNom} onajoute={compteAjoute}
               onsupprime={compteRetire}
+              onflash={flash}
+              onroutage={() => { rechargerVues(); chargerNav(); }}
               onreconnecte={async () => { await connecter(); synchroniser(); }} />
   {/if}
 

@@ -314,7 +314,7 @@ pub async fn add_microsoft_account(
     // compte ET l'identifiant XOAUTH2. Une saisie vide produirait un
     // compte fantôme que rien ne pourrait plus joindre.
     if !is_plausible_address(&email) {
-        return Err("adresse invalide — saisissez l'adresse complète du compte".to_string());
+        return Err("adresse invalide : saisissez l'adresse complète du compte".to_string());
     }
     add_oauth_account(app, state, &mail_auth::MICROSOFT, Some(email), horizon).await
 }
@@ -406,7 +406,7 @@ pub async fn reconnect_account(
         .eq_ignore_ascii_case(account.email.trim())
     {
         return Err(format!(
-            "le consentement a été donné pour {}, pas pour {} — rejouez la reconnexion en choisissant le bon compte",
+            "le consentement a été donné pour {}, pas pour {} ; rejouez la reconnexion en choisissant le bon compte",
             session.email, account.email
         ));
     }
@@ -986,7 +986,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
                 if let Some(reste) = recul_en_cours(&reculs, &email) {
                     accounts_failed += 1;
                     errors.push(format!(
-                        "{email} : en recul après échecs répétés — nouvelle tentative dans {} min",
+                        "{email} : en recul après échecs répétés ; nouvelle tentative dans {} min",
                         reste.as_secs().div_ceil(60).max(1)
                     ));
                     cycle.fait.fetch_add(1, Ordering::Relaxed);
@@ -1106,7 +1106,7 @@ pub async fn sync_inbox_light(
                 if !force && let Some(reste) = recul_en_cours(&reculs, &email) {
                     accounts_failed += 1;
                     errors.push(format!(
-                        "{email} : en recul après échecs répétés — nouvelle tentative dans {} min",
+                        "{email} : en recul après échecs répétés ; nouvelle tentative dans {} min",
                         reste.as_secs().div_ceil(60).max(1)
                     ));
                     cycle.fait.fetch_add(1, Ordering::Relaxed);
@@ -1383,7 +1383,7 @@ fn run_sync(
     if let Some(missing) = shortfall {
         problems.push(format!(
             "espace disque insuffisant : ~{} nécessaires pour {} message(s) \
-             restants, il manque {} — récupération des dossiers suspendue \
+             restants, il manque {} ; récupération des dossiers suspendue \
              jusqu'à ce que de la place soit libérée",
             format_bytes(pending.saturating_mul(mail_core::SYNC_BYTES_PER_MESSAGE)),
             pending,
@@ -2326,7 +2326,7 @@ pub async fn repondre_invitation(
             )
             .map_err(|err| err.to_string())?;
         if journalise.is_none() {
-            return Err("l'invitation n'existe plus — rien n'est parti".to_string());
+            return Err("l'invitation n'existe plus ; rien n'est parti".to_string());
         }
         let maj = store
             .invitation(account_id, &mailbox, uid)
@@ -2828,7 +2828,7 @@ fn horizon_corps(store: &Store, account_id: i64) -> i64 {
             // §9 : l'échec se DIT (trace lisible via lancer-wind.ps1),
             // même quand le repli est sûr.
             eprintln!(
-                "horizon_import illisible (compte {account_id}) : {err} — import intégral par prudence"
+                "horizon_import illisible (compte {account_id}) : {err} ; import intégral par prudence"
             );
             mail_core::NO_HORIZON
         }
@@ -3138,6 +3138,31 @@ pub async fn portier_total(app: AppHandle) -> Result<u64, String> {
     .await
 }
 
+/// RETOURS-14 R4 (revue) — les adresses en attente au guichet, nues :
+/// le badge du fil compare des identités, il ne peint pas de rangées.
+#[tauri::command]
+pub async fn portier_adresses(app: AppHandle) -> Result<Vec<String>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store.portier_adresses().map_err(|err| err.to_string())
+    })
+    .await
+}
+
+/// RETOURS-14 R7 (D8) — la pastille du Kiosque : combien de cartes
+/// n'ont JAMAIS été ouvertes (mémoire `kiosque_lus`, la sémantique de
+/// la page — jamais l'`unseen` IMAP). Globale, comme `portier_total`.
+#[tauri::command]
+pub async fn kiosque_non_ouverts(app: AppHandle) -> Result<u64, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store
+            .kiosque_non_ouverts(None)
+            .map_err(|err| err.to_string())
+    })
+    .await
+}
+
 // ---------------------------------------------------------------------
 // Le Nettoyage de printemps (PLAN-HORIZON-NETTOYAGE volet B) — la
 // session, les groupes, le verdict de groupe. Vocabulaires fermés,
@@ -3184,6 +3209,73 @@ impl From<mail_core::GroupeNettoyage> for GroupeNettoyagePayload {
             dernier_objet: g.dernier_objet,
         }
     }
+}
+
+/// RETOURS-14 R6 (D7) — un groupe du Registre : l'expéditeur, ses
+/// fils, la récence et l'objet du dernier message.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupeRegistrePayload {
+    pub address: String,
+    pub qui: Option<String>,
+    pub fils: u64,
+    pub dernier_epoch: i64,
+    pub dernier_objet: Option<String>,
+}
+
+impl From<mail_core::GroupeRegistre> for GroupeRegistrePayload {
+    fn from(g: mail_core::GroupeRegistre) -> Self {
+        GroupeRegistrePayload {
+            address: g.address,
+            qui: g.qui,
+            fils: g.fils,
+            dernier_epoch: g.dernier_epoch,
+            dernier_objet: g.dernier_objet,
+        }
+    }
+}
+
+/// Les groupes du Registre — un expéditeur × ses fils, récence en
+/// tête (D7, patron du Nettoyage).
+#[tauri::command]
+pub async fn registre_groupes(
+    app: AppHandle,
+    account_id: Option<i64>,
+) -> Result<Vec<GroupeRegistrePayload>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        Ok(store
+            .registre_groupes(account_id)
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    })
+    .await
+}
+
+/// La page d'un groupe du Registre — les fils de CE seul expéditeur,
+/// enrichis comme toute page de liste (invitations).
+#[tauri::command]
+pub async fn registre_groupe_page(
+    app: AppHandle,
+    address: String,
+    account_id: Option<i64>,
+    offset: usize,
+    limit: usize,
+) -> Result<Vec<MessageRow>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let limit = limit.min(LIST_LIMIT_MAX);
+        let mut lignes = store
+            .registre_groupe_scoped(&address, account_id, offset, limit)
+            .map_err(|err| err.to_string())?;
+        store
+            .enrichir_lignes(&mut lignes)
+            .map_err(|err| err.to_string())?;
+        Ok(lignes.into_iter().map(to_message_row).collect())
+    })
+    .await
 }
 
 /// La session en cours — `null` : rien d'entamé (l'écran d'intro).
@@ -3609,7 +3701,7 @@ pub async fn reply_context(
         destinataires = recipients.to;
     }
     if destinataires.is_empty() {
-        return Err("destinataire inconnu — resynchronisez la boîte".to_string());
+        return Err("destinataire inconnu : resynchronisez la boîte".to_string());
     }
     let to = destinataires.join(", ");
     let body_html = citation_reply(&app, &state, account_id, &mailbox, uid, &envelope).await;
@@ -3699,7 +3791,7 @@ pub async fn reply_all_context(
         to.extend(envelope.sender_address.clone());
     }
     if to.is_empty() {
-        return Err("adresse de l'expéditeur inconnue — resynchronisez la boîte".to_string());
+        return Err("adresse de l'expéditeur inconnue : resynchronisez la boîte".to_string());
     }
     let body_html = citation_reply(&app, &state, account_id, &mailbox, uid, &envelope).await;
     Ok(ComposeContext {
@@ -6199,7 +6291,7 @@ async fn telecharger_et_lancer(app: AppHandle, version: String) -> Result<(), St
     // L'UI re-verifie sur cet echec et redit la version neuve.
     if update.version != version {
         return Err(format!(
-            "la version proposée a changé ({version} → {}) — vérifie à nouveau",
+            "la version proposée a changé ({version} → {}) ; vérifie à nouveau",
             update.version
         ));
     }

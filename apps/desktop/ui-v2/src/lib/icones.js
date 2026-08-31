@@ -1,6 +1,6 @@
-// Le jeu d'icônes « Elements » (V8 — PLAN-ELEMENTS) : 87 glyphes
+// Le jeu d'icônes « Elements » (V8 — PLAN-ELEMENTS) : 91 glyphes
 // (78 à V8 ; `check` A86, `feedback` RETOURS-11, 5 Mode organisé A96,
-// `nettoyage` A103)
+// `nettoyage` A103, les 4 `tri_*` A104)
 // dessinés en SVG, grille 24, trait 2 unités, bouts nets (butt),
 // jonctions vives (miter). Ce catalogue est LE jeu livré ; le Système
 // (docs/design/systeme.dc.html, section Icônes) porte le relevé — un
@@ -45,6 +45,10 @@ export const JEU = {
   unfold_less: { d:['M7 5l5 5 5-5','M7 19l5-5 5 5'] },
   download: { d:['M12 4v10','M8 11l4 4 4-4','M4 19h16'] },
   system_update_alt: { d:['M4 4h16v3H4z','M12 9v8','M8 14l4 4 4-4','M4 21h16'] },
+  tri_ancien: { d:['M4 6h10','M4 11h7','M4 16h4','M18 19V6','M15 9l3-3 3 3'] },
+  tri_az: { d:['M4 10l3-6 3 6','M5 8h4','M4 14h6l-6 6h6','M18 5v13','M15 15l3 3 3-3'] },
+  tri_recent: { d:['M4 6h10','M4 11h7','M4 16h4','M18 5v13','M15 15l3 3 3-3'] },
+  tri_za: { d:['M4 4h6l-6 6h6','M4 20l3-6 3 6','M5 18h4','M18 5v13','M15 15l3 3 3-3'] },
   visibility_off: { d:['M3 12l4-4h10l4 4-4 4H7z','M4 4l16 16'] },
   arrow_back: { d:['M20 12H4','M10 6l-6 6 6 6'] },
   close: { d:['M5 5l14 14','M19 5L5 19'] },
