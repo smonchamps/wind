@@ -12,28 +12,54 @@
 
 ## Où on en est, et quoi faire en premier
 
-⏳ **Chantier EN COURS : [PLAN-RETOURS-14](PLAN-RETOURS-14.md)**
-(ouvert le 2026-08-31 — sept retours d'utilisation réelle, D1-D8
-tranchées au STOP 1, E1-E7 IMPLÉMENTÉES le jour même, revue à regard
-neuf 5 angles / 10 corrigées, gate complète VERTE 3,1 min, 186/186
-e2e). Livré : barre du fil en tête COLLANTE (deux cadres), Réception
-organisée à l'entête normalisé sans onglets + section courante collée
-au scroll, badge « En attente au Portier » du fil mêlé (D5 — le
-« bug » R4 est la règle d'or, prouvée et désormais DITE), liste
-exhaustive des décisions aux Réglages > Portier (alphabet, recherche,
-réintégrer), Registre GROUPÉ par expéditeur (récence, ⋯ de groupe,
-Voir plus), pastilles nav Kiosque (`kiosque_lus`) et Registre
-(unseen), zéro cadratin dans les textes (filet `catalogues.test.mjs`
-prouvé en le cassant). **Terrain passe 1 : 1-7 OK**, trois retours
-corrigés le jour même : R8 un Oui au Portier pose la règle d'images
-de l'expéditeur (dans LA transaction du verdict), R9 le bouton de
-TRI des sections (menu déroulant à quatre tris, chaque entrée son
-glyphe — 4 glyphes neufs `tri_*`, jeu 87 → 91 ; `TriSection.svelte`,
-quatre surfaces), R10 « Modifier » remplace « Réintégrer » aux Réglages
-(toutes les règles + « Renvoyer au portier »). Journal **A104**,
-tests mail-core 419 → **422**, e2e 177 → **187**. **Reste : le
-verdict terrain de la 2e passe (R8-R10), puis commit, push, CI,
-`/solde`.** D-47 amendée (copies pile/menu du Registre).
+✅ **Aucun chantier en cours.** Dernier soldé :
+**[PLAN-RETOURS-14](PLAN-RETOURS-14.md)** (2026-08-31, ouvert et
+SOLDÉ le même jour, commit `18a9e61`, CI verte run 33408211506,
+terrain CE en TROIS passes le jour même — 1-7 OK, R8-R10 demandés et
+livrés en session, verdict final « ok », **0 constat KO**). Dix
+retours d'utilisation réelle, journal **A104** :
+
+- **barre du fil EN TÊTE, collante** au scrollport des deux cadres
+  (D1), menu « Déplacer vers… » vers le bas ;
+- **Réception organisée** : entête normalisé titre seul (D2), ni
+  bandeau ni onglets (D3), **nom de la section courante collé** au
+  scroll (bande à hauteur nulle, hors géométrie du fenêtrage) ;
+- **le « bug » R4 est la règle d'or** (fil mêlé, voulu et testé) —
+  désormais DIT : badge « En attente au Portier » (D5, commande
+  `portier_adresses`, scénario d'intrusion prouvé e2e via
+  `seed_arrivee` qui sait répondre à un fil) ;
+- **Réglages > Portier** : liste exhaustive des décisions (alphabet,
+  recherche cliente), « **Modifier** » repropose toutes les règles +
+  « Renvoyer au portier » (R10) ; vocabulaire des verdicts en une
+  copie (`lib/portier.js`) ;
+- **Registre GROUPÉ par expéditeur de tête** (D7, récence ;
+  `registre_groupes`/`registre_groupe_page`), ⋯ de groupe (Déplacer,
+  Écarter), « Voir plus » — le volet de lecture reste le lecteur ;
+- **pastilles nav** Kiosque (cartes jamais ouvertes, `kiosque_lus` —
+  D8) et Registre (non-lu IMAP), bornées au mode organisé ;
+- **zéro cadratin** dans les textes montrés (D4, filet
+  `catalogues.test.mjs` prouvé en le cassant) ;
+- **un Oui au Portier vaut confiance** (R8) : la règle d'images de
+  l'expéditeur se pose DANS la transaction du verdict (tous les
+  chemins), révocable aux Réglages > Affichage ;
+- **tri des sections** (R9) : menu déroulant à quatre tris, chaque
+  entrée son glyphe — **4 glyphes neufs `tri_*`, jeu 87 → 91** ; UN
+  composant (`TriSection.svelte` + `comparateurTri`), quatre
+  surfaces (Kiosque ×2, Registre, historique du Portier, Nettoyage).
+
+Revue à regard neuf 5 angles / 10 corrigées — dont la **course
+relecture-du-mode / première pompe, MESURÉE au décor e2e** (page 0 à
+~85 ms, mode relu à ~105 ms : la couture des sections n'était jamais
+demandée — la relecture ressert désormais les vues) et les collants
+qui passaient au-dessus des voiles modaux (isolation). Tests
+mail-core 419 → **422**, e2e 177 → **187** (+2 node). **D-47
+amendée** (copies pile/menu/rang du Registre). Limites dites au PLAN
+(pastilles globales sous filtre de compte ; divergence Unicode du
+badge ; recouvrement transitoire de la bande collée). Deux pièges
+d'outillage gravés en mémoire : un remplacement par motif qui
+englobe la définition du helper visé (récursion infinie, exception
+avalée), et un `git checkout` de dé-sabotage qui emporte les
+éditions non commises du fichier.
 
 La release due avant la bêta est
 **FAITE : 0.15.0 publiée le 2026-08-30** (D12 tenue — elle embarque

@@ -4,8 +4,17 @@
 > features UI (barre d'actions du fil, entête de la Réception
 > organisée, cadratins, Réglages > Portier, Registre groupé,
 > compteurs nav) et un bug (des inconnus visibles en Réception sans
-> passage au Portier). Statut : **IMPLÉMENTÉ le 2026-08-31 (E1-E7 +
-> revue à regard neuf) — STOP 2 terrain dû.**
+> passage au Portier). **CHANTIER SOLDÉ le 2026-08-31 — terrain
+> complet** (trois passes CE le jour même : 1-7 OK, R8-R10 demandés
+> puis corrigés en session, verdict final « ok ») ; commit `18a9e61`,
+> CI verte run 33408211506, journal **A104**.
+>
+> **Chiffres kaizen** : session unique, 3,7 h de mur, 3 prompts CE,
+> ≈ 40,1 M d'équiv. input fil principal + 7,6 M d'agents (9 agents —
+> reconnaissance Sonnet, revue 5 angles) ; **3 gates complètes
+> jouées** (+ la pre-push) ; **0 constat KO au STOP 2** (les trois
+> retours terrain étaient des extensions, pas des défauts) ; 37 runs
+> e2e ciblés (45 min de mur e2e).
 
 ## Constat (instruction sur pièces, 2026-08-31)
 
