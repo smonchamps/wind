@@ -79,16 +79,25 @@ Cochées au fil de l'eau ; les actions CE sont marquées **[CE]**.
 Release en vigueur au lancement de la vague : **0.15.0** (publiée le
 2026-08-30, x64 + arm64, `latest.json` en place).
 
-| # | Testeur | Adresse | Poste (arch. / SAC) | Compte visé | Invité le | Installé le | Retours |
-|---|---------|---------|---------------------|-------------|-----------|-------------|---------|
-| 1 | — | — | — | — | — | — | — |
-| 2 | — | — | — | — | — | — | — |
-| 3 | — | — | — | — | — | — | — |
-| 4 | — | — | — | — | — | — | — |
-| 5 | — | — | — | — | — | — | — |
+**Le registre est ANONYME, et c'est une règle, pas une pudeur**
+(décision CE du 2026-08-31) : le dépôt est PUBLIC. Les noms et les
+adresses des cinq restent chez le CE, hors du dépôt ; ici ne vivent
+que le pseudonyme de rang, la posture du poste et les faits. Aucun
+retour recopié au dépôt ne porte de nom, d'adresse ni de contenu de
+message — le fait, la version, la date.
+
+| # | Poste (arch. / SAC) | Compte visé | Invité le | Installé le | Retours |
+|---|---------------------|-------------|-----------|-------------|---------|
+| T1 | — | — | — | — | — |
+| T2 | — | — | — | — | — |
+| T3 | — | — | — | — | — |
+| T4 | — | — | — | — | — |
+| T5 | — | — | — | — | — |
 
 Règles de tenue du registre :
 
+- **La correspondance reste chez le CE.** Le rapprochement T1-T5 ↔
+  personnes ne s'écrit nulle part dans le dépôt.
 - **Invité le** : la date d'envoi du mot d'invitation (§3 ter).
 - **Installé le** : la date où le testeur DIT que Wind s'est lancé —
   pas une supposition. Un silence de plus de trois jours se relance

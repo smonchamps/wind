@@ -71,9 +71,12 @@ CE : les invitations). Ensuite, au choix du CE : **E6 — Groupes**
 (report écrit, dossier et spike S1 prêts) ou les retours de la bêta.
 
 **Vague 1 de la bêta OUVERTE le 2026-08-31** (PLAN-BETA §3 bis) :
-cinq proches, registre nominatif au plan (posture du poste, compte
-visé, dates, retours), mot d'invitation modèle au §3 ter — l'envoi
-reste au CE, qui s'en charge. Prérequis vérifiés le jour même : dépôt
+cinq proches, registre **ANONYME** au plan (T1-T5 : posture du poste,
+compte visé, dates, retours — le dépôt est PUBLIC, décision CE du
+2026-08-31 : noms, adresses et rapprochement restent chez le CE, hors
+dépôt ; aucun retour recopié ne porte de nom ni de contenu de
+message), mot d'invitation modèle au §3 ter — l'envoi reste au CE,
+qui s'en charge. Prérequis vérifiés le jour même : dépôt
 PUBLIC et `main` poussé (`f8cc0f4`), **0.15.0** dernière release avec
 ses deux installeurs (x64 + arm64), leurs `.sig` et `latest.json`,
 `feedback-wind@fcts.io` qui reçoit (constat du 2026-08-29), bouton
