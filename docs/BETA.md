@@ -36,15 +36,16 @@ Windows > Contrôle des applications et du navigateur) bloque les
 programmes non signés **sans proposer de passer outre** — et son
 verdict peut varier d'une version de Wind à l'autre. C'est la
 limitation connue n° 1 de cette bêta. Si cela vous arrive :
-**dites-le-nous** (voir §4) — c'est un retour précieux, pas une
+**dites-le-nous** (voir §5) — c'est un retour précieux, pas une
 fausse manœuvre de votre part. Nous ne vous demanderons jamais de
 désactiver Smart App Control (sa désactivation est définitive et
 c'est une protection réelle).
 
 ## 2. Connecter votre boîte
 
-Au premier lancement, Wind vous guide en quatre étapes : compte,
-disposition, thème, récapitulatif.
+Au premier lancement, Wind vous guide en cinq étapes : compte,
+disposition, thème, un mot sur la bêta (et le bouton « Feedback » de
+l'entête), récapitulatif.
 
 ### Gmail : l'écran « Google n'a pas validé cette application »
 
@@ -59,14 +60,59 @@ messages ; le jeton d'accès reste chiffré sur votre poste.
 Outlook/Hotmail et les comptes IMAP classiques se connectent sans cet
 écran.
 
-## 3. Les mises à jour
+## 3. Le mode « Organisé » — ce qu'on aimerait que vous essayiez
+
+En haut de la fenêtre, à droite de la recherche, une bascule
+**« Organisé »**. C'est la nouveauté de cette bêta, et le point sur
+lequel votre retour nous intéresse le plus.
+
+Activée, elle ouvre trois destinations au lieu d'une, et un endroit
+où vous décidez :
+
+- **Réception** — ce qui vous est écrit personnellement, et rien
+  d'autre ;
+- **Kiosque** — ce que vous y envoyez : infolettres et courrier
+  d'information, en cartes qu'on fait défiler ;
+- **Registre** — les envois qui se consultent plutôt qu'ils ne se
+  lisent (reçus, alertes, confirmations), groupés par expéditeur ;
+- **Portier** — les expéditeurs qui vous écrivent pour la première
+  fois. Ils ne sont jamais informés de votre décision.
+
+Ce n'est pas un tri automatique : **c'est vous qui rangez**, un
+expéditeur à la fois, une seule fois — Wind applique ensuite votre
+décision à tout ce qu'il envoie. Trois choses à savoir avant
+d'essayer :
+
+1. **Le « Non » du Portier agit chez votre fournisseur.** Par défaut,
+   les messages qui arrivent ENSUITE de cet expéditeur partent **à la
+   corbeille de votre boîte** (jamais une suppression définitive ; ce
+   qui est déjà arrivé n'est pas touché).
+   Vous pouvez choisir une autre règle au moment de décider
+   (indésirable, archivage, ou « Écartés sans déplacer », qui ne
+   touche à rien), et changer le défaut dans Réglages > Portier. Le
+   « Oui » et les trois destinations, eux, ne déplacent rien : ce sont
+   des vues de Wind, vos dossiers Gmail ou Outlook restent intacts.
+2. **Le Portier ne regarde que les arrivées.** Il ne juge pas votre
+   boîte d'hier : seuls les nouveaux expéditeurs, à partir du moment
+   où vous activez le mode, passent devant lui.
+3. **Tant que vous n'avez pas tranché**, le courrier en attente reste
+   visible dans votre fil, marqué « En attente au Portier » — rien ne
+   disparaît sans votre décision.
+
+La bascule se rend dans l'autre sens à tout moment, et vos décisions
+sont conservées (Réglages > Portier les liste, et permet de les
+changer). Dites-nous ce qui vous a manqué, ce qui a été mal rangé, et
+si vous avez gardé le mode allumé — ce dernier point est celui qui
+nous apprend le plus.
+
+## 4. Les mises à jour
 
 Automatiques et signées : Wind vérifie au lancement, installe sur
 votre accord, redémarre. Vous pouvez vérifier à la main dans
 Réglages > À propos. Si une mise à jour échoue (Smart App Control,
 encore lui), Wind vous le dit et vous laisse réessayer — signalez-le.
 
-## 4. Donner un retour
+## 5. Donner un retour
 
 **Cliquez le bouton « Feedback », en haut à droite de la fenêtre** :
 écrivez votre message, il part par email depuis votre compte, avec la
@@ -85,7 +131,7 @@ Le retour le plus utile tient en trois lignes :
 
 La version installée se lit dans Réglages > À propos — mentionnez-la.
 
-## 5. Ce que la bêta n'est pas encore
+## 6. Ce que la bêta n'est pas encore
 
 - Pas de signature commerciale de l'installeur (les avertissements du
   §1 — en attente de l'ouverture de la validation d'émetteur).

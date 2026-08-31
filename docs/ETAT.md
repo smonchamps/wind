@@ -69,6 +69,25 @@ ci-dessous). **La voie est libre pour le prochain sujet inscrit : la
 première vague bêta** (PLAN-BETA — inviter 5-10 proches, D9 ; action
 CE : les invitations). Ensuite, au choix du CE : **E6 — Groupes**
 (report écrit, dossier et spike S1 prêts) ou les retours de la bêta.
+
+**Vague 1 de la bêta OUVERTE le 2026-08-31** (PLAN-BETA §3 bis) :
+cinq proches, registre nominatif au plan (posture du poste, compte
+visé, dates, retours), mot d'invitation modèle au §3 ter — l'envoi
+reste au CE, qui s'en charge. Prérequis vérifiés le jour même : dépôt
+PUBLIC et `main` poussé (`f8cc0f4`), **0.15.0** dernière release avec
+ses deux installeurs (x64 + arm64), leurs `.sig` et `latest.json`,
+`feedback-wind@fcts.io` qui reçoit (constat du 2026-08-29), bouton
+Feedback en place dans l'entête (`App.svelte`, sous condition d'au
+moins un compte). Deux défauts du GUIDE corrigés avant envoi :
+(1) « quatre étapes » d'accueil quand le parcours en compte **cinq**
+(l'étape bêta A91) — exactement la staleness corrigée dans la spec le
+2026-08-29, BETA.md avait été oublié ; (2) le mode **« Organisé »**,
+la nouveauté de la 0.14/0.15 et une bascule VISIBLE dans l'entête,
+que le guide ne disait pas — décision CE du 2026-08-31 : un §
+court (BETA.md §3, sections renumérotées 3→4→5→6, renvoi « voir §4 »
+corrigé en « §5 »). Deux postures OBLIGATOIRES dans le lot des cinq,
+sans quoi la vague n'éprouve aucun des deux risques du §2 : au moins
+un poste **Smart App Control `On`**, au moins un **compte Gmail**.
 Mesures en cours : **S4** (flux d'inconnus au Portier, une semaine,
 engagée le 2026-08-30) ; encore dues : le bandeau de MAJ — non captée à la
 MAJ 0.14.0 → 0.15.0 (3e occasion manquée, postes lancés

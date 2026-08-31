@@ -54,6 +54,10 @@ Cochées au fil de l'eau ; les actions CE sont marquées **[CE]**.
   (https://github.com/smonchamps/wind/blob/main/docs/BETA.md).
   Viser au moins UN poste Smart App Control `On` et UN compte
   Gmail : les deux risques du §2 doivent être éprouvés tôt.
+  **Vague ouverte le 2026-08-31** : registre nominatif au **§3 bis**,
+  mot d'invitation modèle au **§3 ter**, guide relu et corrigé le
+  jour même (parcours à cinq étapes, § « Organisé »). Reste le
+  geste CE : envoyer, puis remplir le registre.
 - [ ] **[CE]** Dépouiller chaque retour ; les frictions confirmées
   entrent au dépôt par `/chantier` ou `/terrain` (le kaizen
   hebdomadaire du PLAN §4 — la mécanique existe déjà, rien de neuf).
@@ -64,6 +68,80 @@ Cochées au fil de l'eau ; les actions CE sont marquées **[CE]**.
   D-39 — c'est la mesure qui rouvrira le chantier signature.
 - [ ] Gate 5 : deux semaines sans défaut critique → préparer le
   lancement (avec, sur son chemin : CASA, signature).
+
+## 3 bis. Vague 1 (D9) — le registre des cinq
+
+> Ouvert le 2026-08-31. Cinq proches, pas plus : la vague se dépouille
+> à la main. Deux postures sont OBLIGATOIRES dans le lot (§2) — au
+> moins **un poste Smart App Control `On`** et **au moins un compte
+> Gmail**. Sans elles, la vague n'éprouve aucun des deux risques.
+
+Release en vigueur au lancement de la vague : **0.15.0** (publiée le
+2026-08-30, x64 + arm64, `latest.json` en place).
+
+| # | Testeur | Adresse | Poste (arch. / SAC) | Compte visé | Invité le | Installé le | Retours |
+|---|---------|---------|---------------------|-------------|-----------|-------------|---------|
+| 1 | — | — | — | — | — | — | — |
+| 2 | — | — | — | — | — | — | — |
+| 3 | — | — | — | — | — | — | — |
+| 4 | — | — | — | — | — | — | — |
+| 5 | — | — | — | — | — | — | — |
+
+Règles de tenue du registre :
+
+- **Invité le** : la date d'envoi du mot d'invitation (§3 ter).
+- **Installé le** : la date où le testeur DIT que Wind s'est lancé —
+  pas une supposition. Un silence de plus de trois jours se relance
+  une fois, puis se consigne comme tel.
+- **Refus d'installation** : ligne au registre de dette **D-39**
+  (poste, version, date) — c'est la mesure qui rouvrira le chantier
+  signature, elle ne vaut que si elle est écrite.
+- **Retours** : chaque retour instruit entre au dépôt par `/terrain`
+  (constat du jour) ou `/chantier` (friction de fond) ; la case porte
+  le numéro du PLAN qui l'a traité.
+
+## 3 ter. Le mot d'invitation (modèle)
+
+> Envoyé personnellement, un destinataire par mail — jamais en copie
+> cachée collective : un testeur invité en lot répond en lot,
+> c'est-à-dire jamais.
+
+**Objet** : Wind — tu veux bien l'essayer ?
+
+```
+Bonjour <prénom>,
+
+Je te sollicite comme cobaye. Wind est le client email Windows sur
+lequel je travaille : rapide, sobre, local — tes messages restent sur
+ta machine, aucune télémétrie. Il est en bêta fermée, vous êtes cinq.
+
+Le guide d'installation (5 minutes, tout est dedans) :
+https://github.com/smonchamps/wind/blob/main/docs/BETA.md
+
+Deux avertissements t'attendent, et ils sont normaux — le guide les
+explique : Windows peut afficher « Windows a protégé votre
+ordinateur » (l'installeur n'est pas encore signé), et Google un
+écran « application non validée » si tu connectes un Gmail (l'audit
+est en cours). Sur certains PC récents, l'installation peut être
+refusée SANS recours : si ça t'arrive, dis-le-moi — c'est un retour
+précieux, pas une fausse manœuvre, et surtout ne désactive rien.
+
+Il y a dans l'entête une bascule « Organisé » : c'est la nouveauté de
+cette version — elle range le courrier en quatre endroits (Réception,
+Kiosque, Registre, Portier), le guide l'explique au §3, et rien n'est
+déplacé chez ton fournisseur. C'est là-dessus que ton avis
+m'intéresse le plus.
+
+Ce que j'attends de toi : que tu t'en serves pour de vrai, quelques
+jours, et que tu me dises ce qui cloche. Le bouton « Feedback » en
+haut à droite envoie directement. Le retour le plus utile tient en
+trois lignes : ce que tu faisais, ce que tu attendais, ce qui s'est
+passé. Un texte pas clair ou un geste qui te manque comptent autant
+qu'un bug.
+
+Merci,
+<signature>
+```
 
 ## 4. Le dossier de vérification Google (chemin du lancement PUBLIC)
 
