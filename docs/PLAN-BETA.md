@@ -127,10 +127,13 @@ refusée SANS recours : si ça t'arrive, dis-le-moi — c'est un retour
 précieux, pas une fausse manœuvre, et surtout ne désactive rien.
 
 Il y a dans l'entête une bascule « Organisé » : c'est la nouveauté de
-cette version — elle range le courrier en quatre endroits (Réception,
-Kiosque, Registre, Portier), le guide l'explique au §3, et rien n'est
-déplacé chez ton fournisseur. C'est là-dessus que ton avis
-m'intéresse le plus.
+cette version — elle ouvre trois destinations (Réception, Kiosque,
+Registre) et un Portier où TU décides, expéditeur par expéditeur.
+Lis le §3 du guide avant de t'en servir : les trois destinations ne
+déplacent rien chez ton fournisseur, mais le « Non » du Portier, lui,
+agit sur ta vraie boîte (par défaut : la corbeille, sur les messages
+qui arrivent ensuite). C'est là-dessus que ton avis m'intéresse le
+plus.
 
 Ce que j'attends de toi : que tu t'en serves pour de vrai, quelques
 jours, et que tu me dises ce qui cloche. Le bouton « Feedback » en
