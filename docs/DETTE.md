@@ -641,6 +641,15 @@ motivée.)
   et GELÉES — outillage poste, `signCommand` injecté par
   `faire-release.ps1` seulement, contrôle Authenticode ajouté à
   `verifier-release.ps1` (18 → 20).
+- **Relevés de la bêta (registre PLAN-BETA §3 bis)** — la mesure qui
+  rouvrira ce chantier ; un verdict par ligne, poste/version/date,
+  sans identité :
+  - 2026-08-31, **T1, x64, poste SAC `On` (hors CE) : la 0.15.0
+    s'installe** — premier verdict FAVORABLE relevé hors du poste de
+    développement. Il ne referme rien (le verdict est rendu par hash,
+    donc muet sur la version suivante), mais il donne le **banc** qui
+    manquait à la mesure due du filet PLAN-SIGNATURE : le jour où ce
+    poste refusera une MAJ, l'échec doit être VISIBLE.
 - **Rouvre si** : un retour bêta bute sur SAC, ou la porte Azure
   rouvre, ou le lancement public approche (ADR 0013 le lie au public).
 

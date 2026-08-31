@@ -89,19 +89,33 @@ message — le fait, la version, la date.
 
 | # | Poste (arch. / SAC) | Compte visé | Invité le | Installé le | Retours |
 |---|---------------------|-------------|-----------|-------------|---------|
-| T1 | — | — | **2026-08-31** | — | — |
+| T1 | x64 / **SAC `On`** | **Gmail** | 2026-08-31 | **2026-08-31** | — |
 | T2 | — | — | **2026-08-31** | — | — |
 | T3 | — | — | **2026-08-31** | — | — |
 | T4 | — | — | **2026-08-31** | — | — |
 | T5 | — | — | **2026-08-31** | — | — |
 
 **Les cinq invitations sont PARTIES le 2026-08-31** (constat CE du
-jour). Postures du lot **non encore renseignées** : tant qu'aucune
-ligne ne porte un poste Smart App Control `On` ni un compte Gmail,
-les deux risques du §2 ne sont pas éprouvés — c'est la première chose
-à remplir quand les testeurs répondent, avant même les retours
-d'usage. Prochaine échéance : **relance des silencieux le 2026-09-03**
-(règle des trois jours ci-dessous).
+jour). **Les deux postures obligatoires du §2 sont couvertes dès T1**
+(x64, Smart App Control `On`, compte Gmail, installé le jour même) :
+la vague éprouve bien les deux risques assumés. Deux faits neufs en
+découlent, et ils ne sont pas du même poids :
+
+- **D-39 — la 0.15.0 x64 PASSE sur un poste SAC `On` qui n'est pas
+  celui du CE.** Premier verdict favorable relevé hors du poste de
+  développement. Il ne referme rien : le verdict est rendu **par
+  binaire** (par hash), donc il ne dit RIEN de la prochaine version —
+  c'est précisément la loterie. Ce qu'il ouvre, en revanche : ce poste
+  est le banc dont on manquait pour la **mesure due du filet
+  PLAN-SIGNATURE** (échec de MAJ visible en condition de refus SAC
+  réel). À guetter à la première MAJ que ce poste refusera.
+- **L'écran Google « application non validée » est éprouvé** : T1 a
+  connecté un Gmail et l'installation a abouti le jour même. Reste à
+  savoir si l'écran l'a fait hésiter — c'est une question à poser, le
+  guide (§2) ne prouve pas qu'il a été lu.
+
+Prochaine échéance : **relance des silencieux le 2026-09-03** (règle
+des trois jours ci-dessous).
 
 Règles de tenue du registre :
 

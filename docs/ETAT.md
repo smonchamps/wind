@@ -77,13 +77,17 @@ compte visé, dates, retours — le dépôt est PUBLIC, décision CE du
 dépôt ; aucun retour recopié ne porte de nom ni de contenu de
 message), mot d'invitation modèle au §3 ter — l'envoi reste au CE,
 qui s'en charge. **Les CINQ invitations sont parties le 2026-08-31**
-(constat CE) : la vague court. Ce qui manque encore au registre, et
-qui vaut plus que les retours d'usage à ce stade — **les postures du
-lot** : tant qu'aucune ligne ne porte un poste Smart App Control
-`On` ni un compte Gmail, les deux risques assumés du PLAN-BETA §2
-(installeur non signé, app Google non vérifiée) restent NON éprouvés.
-Relance des silencieux prévue au **2026-09-03** (règle des trois
-jours). Prérequis vérifiés le jour même : dépôt
+(constat CE) : la vague court. **Les deux postures obligatoires sont
+couvertes dès T1** (x64, Smart App Control `On`, Gmail, installé le
+2026-08-31) : les deux risques assumés du PLAN-BETA §2 sont éprouvés.
+Deux faits neufs, de poids inégal : (1) **la 0.15.0 x64 passe sur un
+poste SAC `On` hors CE** — relevé porté à **D-39** ; il ne referme
+rien (verdict rendu par HASH, muet sur la version suivante) mais donne
+le banc qui manquait à la **mesure due du filet PLAN-SIGNATURE** (échec
+de MAJ visible en refus SAC réel) ; (2) l'écran Google « application
+non validée » a été franchi — reste à savoir s'il a fait hésiter, le
+guide ne prouve pas qu'il a été lu. Relance des silencieux prévue au
+**2026-09-03** (règle des trois jours). Prérequis vérifiés le jour même : dépôt
 PUBLIC et `main` poussé (`f8cc0f4`), **0.15.0** dernière release avec
 ses deux installeurs (x64 + arm64), leurs `.sig` et `latest.json`,
 `feedback-wind@fcts.io` qui reçoit (constat du 2026-08-29), bouton
