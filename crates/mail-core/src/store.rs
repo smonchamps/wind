@@ -1282,6 +1282,8 @@ impl Store {
     /// n'en avoir aucun — auquel cas les fils ne regroupent que les recus,
     /// exactement comme avant l'ADR 0009. Idempotent.
     pub fn set_thread_scope(&self, account_id: i64, sent: Option<&str>) -> Result<(), Error> {
+        // E4 : compte et boîtes d'accord ou rien — une seule transaction.
+        let tx = self.0.unchecked_transaction()?;
         // Mémorisé sur le compte d'ABORD : c'est cette mémoire que
         // `create_mailbox` consultera pour les boîtes que la boucle de
         // synchronisation n'a pas encore créées.
@@ -1294,6 +1296,7 @@ impl Store {
              WHERE account_id = ?1",
             params![account_id, thread::RECEIVED_MAILBOX, sent],
         )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -1473,6 +1476,11 @@ impl Store {
     /// ne veulent plus rien dire — corps et actions en attente compris (une
     /// intention sur un UID invalidé est irréalisable par construction).
     pub fn reset_mailbox(&self, mailbox_id: i64, uid_validity: u32) -> Result<(), Error> {
+        // PLAN-AUDIT-V1 E4 : UNE transaction — neuf écritures en
+        // autocommit laissaient, sur un crash entre deux, des fils sans
+        // enveloppes (la « pastille devant une liste vide »). Prouvé par
+        // un déclencheur qui refuse la suppression des enveloppes.
+        let tx = self.0.unchecked_transaction()?;
         search::deindex_mailbox(&self.0, mailbox_id)?;
         self.0.execute(
             "DELETE FROM pending_actions WHERE mailbox_id = ?1",
@@ -1538,6 +1546,7 @@ impl Store {
             |row| row.get(0),
         )?;
         thread::rebuild_account(&self.0, account_id)?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -1855,8 +1864,14 @@ impl Store {
         // échec ici laisse la copie locale, que la réconciliation
         // serveur emportera après le rejeu — jamais un message qui
         // échappe à sa règle.
-        for uid in retraits_du_non {
-            self.remove_local(mailbox_id, uid)?;
+        if !retraits_du_non.is_empty() {
+            // E4 : en UNE transaction (le patron de `nettoyage_verdict`) —
+            // un retrait par autocommit payait huit fsync par message.
+            let tx = self.0.unchecked_transaction()?;
+            for uid in retraits_du_non {
+                purger_message(&tx, mailbox_id, uid)?;
+            }
+            tx.commit()?;
         }
         Ok(())
     }
@@ -1960,26 +1975,18 @@ impl Store {
             .filter(|uid| !present.contains(uid))
             .collect();
         let tx = self.0.transaction()?;
-        let mut touched: BTreeSet<i64> = BTreeSet::new();
         {
-            let mut envelopes =
-                tx.prepare("DELETE FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2")?;
-            let mut bodies = tx.prepare("DELETE FROM bodies WHERE mailbox_id = ?1 AND uid = ?2")?;
+            // E4 : LA liste des tables par message (`purger_message`) —
+            // avant, trois tables sur sept : pièces, invitation, mémoire
+            // d'images, mise de côté et « lu » du Kiosque restaient
+            // orphelins (aucune clé étrangère sur `envelopes`). Un message
+            // parti du serveur emporte aussi ses actions en attente : une
+            // intention sur un UID disparu est irréalisable.
             let mut actions =
                 tx.prepare("DELETE FROM pending_actions WHERE mailbox_id = ?1 AND uid = ?2")?;
             for uid in &stale {
-                // Relever le fil AVANT de supprimer l'enveloppe : après,
-                // le lien est perdu et l'agrégat resterait faux.
-                if let Some(thread) = thread::thread_of(&tx, mailbox_id, *uid)? {
-                    touched.insert(thread);
-                }
-                search::deindex_message(&tx, mailbox_id, *uid)?;
-                envelopes.execute(params![mailbox_id, uid])?;
-                bodies.execute(params![mailbox_id, uid])?;
+                purger_message(&tx, mailbox_id, *uid)?;
                 actions.execute(params![mailbox_id, uid])?;
-            }
-            for thread in &touched {
-                thread::refresh(&tx, *thread)?;
             }
         }
         tx.commit()?;
@@ -1987,44 +1994,21 @@ impl Store {
     }
 
     /// Retire localement une enveloppe et son corps (archivage/suppression
-    /// optimiste) ; le serveur suivra via la file d'actions.
+    /// optimiste) ; le serveur suivra via la file d'actions — les actions
+    /// en attente ne sont PAS touchées, c'est elles qui portent le geste.
+    ///
+    /// Atomique (E4) : dans la transaction de l'appelant s'il en a une
+    /// (`geste_avec_echo`, `nettoyage_verdict`, `upsert_envelopes`),
+    /// sinon dans la sienne — jamais huit écritures en autocommit.
     pub fn remove_local(&self, mailbox_id: i64, uid: Uid) -> Result<(), Error> {
-        let thread = thread::thread_of(&self.0, mailbox_id, uid)?;
-        search::deindex_message(&self.0, mailbox_id, uid)?;
-        self.0.execute(
-            "DELETE FROM bodies WHERE mailbox_id = ?1 AND uid = ?2",
-            params![mailbox_id, uid],
-        )?;
-        // Mêmes clés, même sort que le corps (revue PLAN-INVITATIONS) :
-        // un message parti ne laisse ni carte ni lignes de pièces.
-        self.0.execute(
-            "DELETE FROM invitations WHERE mailbox_id = ?1 AND uid = ?2",
-            params![mailbox_id, uid],
-        )?;
-        self.0.execute(
-            "DELETE FROM attachments WHERE mailbox_id = ?1 AND uid = ?2",
-            params![mailbox_id, uid],
-        )?;
-        self.0.execute(
-            "DELETE FROM images_messages WHERE mailbox_id = ?1 AND uid = ?2",
-            params![mailbox_id, uid],
-        )?;
-        self.0.execute(
-            "DELETE FROM mis_de_cote WHERE mailbox_id = ?1 AND uid = ?2",
-            params![mailbox_id, uid],
-        )?;
-        self.0.execute(
-            "DELETE FROM kiosque_lus WHERE mailbox_id = ?1 AND uid = ?2",
-            params![mailbox_id, uid],
-        )?;
-        self.0.execute(
-            "DELETE FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
-            params![mailbox_id, uid],
-        )?;
-        if let Some(thread) = thread {
-            thread::refresh(&self.0, thread)?;
+        if self.0.is_autocommit() {
+            let tx = self.0.unchecked_transaction()?;
+            purger_message(&tx, mailbox_id, uid)?;
+            tx.commit()?;
+            Ok(())
+        } else {
+            purger_message(&self.0, mailbox_id, uid)
         }
-        Ok(())
     }
 
     /// Applique localement un changement lu/non-lu (optimisme UI).
@@ -2591,6 +2575,8 @@ impl Store {
         to: &[String],
         cc: &[String],
     ) -> Result<(), Error> {
+        // E4 : destinataires et annuaire d'accord ou rien.
+        let tx = self.0.unchecked_transaction()?;
         self.0.execute(
             "UPDATE envelopes SET to_addrs = ?3, cc_addrs = ?4
              WHERE mailbox_id = ?1 AND uid = ?2",
@@ -2616,6 +2602,7 @@ impl Store {
                 crate::correspondants::noter(self.conn(), adresse, None, date.unwrap_or(0))?;
             }
         }
+        tx.commit()?;
         Ok(())
     }
 
@@ -4744,6 +4731,36 @@ fn connu_avant_epoque(conn: &Connection, adresse: &str, epoque: i64) -> Result<b
 /// courrier (E2) : l'attente est DÉRIVÉE — un UID recyclé n'hérite
 /// d'aucune décision (A43/A89). Partagée par le retrait de compte et
 /// la réinitialisation de boîte.
+/// LA liste des tables « par message », pour les trois purges
+/// (`remove_local`, `remove_absent`, `reset_mailbox`) — PLAN-AUDIT-V1 E4.
+/// Avant : trois copies divergentes, `remove_absent` en oubliait cinq.
+/// Le fil est relevé AVANT la suppression de l'enveloppe (après, le lien
+/// est perdu) et rafraîchi après. Les actions en attente ne sont PAS
+/// dans la liste : selon la purge, elles portent le geste
+/// (`remove_local`) ou sont irréalisables (`remove_absent`).
+pub(crate) fn purger_message(conn: &Connection, mailbox_id: i64, uid: Uid) -> Result<(), Error> {
+    let thread = thread::thread_of(conn, mailbox_id, uid)?;
+    search::deindex_message(conn, mailbox_id, uid)?;
+    for table in [
+        "bodies",
+        "invitations",
+        "attachments",
+        "images_messages",
+        "mis_de_cote",
+        "kiosque_lus",
+        "envelopes",
+    ] {
+        conn.execute(
+            &format!("DELETE FROM {table} WHERE mailbox_id = ?1 AND uid = ?2"),
+            params![mailbox_id, uid],
+        )?;
+    }
+    if let Some(thread) = thread {
+        thread::refresh(conn, thread)?;
+    }
+    Ok(())
+}
+
 fn purger_attente_orpheline(conn: &Connection) -> Result<(), Error> {
     conn.execute(
         "DELETE FROM portier_attente WHERE NOT EXISTS (
@@ -4852,6 +4869,142 @@ mod tests {
         let account = test_account(&store);
         let id = store.create_mailbox(account, "INBOX", 1).unwrap();
         (store, id)
+    }
+
+    /// Toutes les tables « par message » garnies pour un UID : ce que
+    /// chaque purge doit emporter (PLAN-AUDIT-V1 E4).
+    fn garnir_message(store: &mut Store, inbox: i64, uid: Uid) {
+        store
+            .upsert_envelopes(inbox, &[envelope(uid, "sujet", 100, false)])
+            .unwrap();
+        store.save_body(inbox, uid, "<p>corps</p>", &[]).unwrap();
+        let conn = store.conn();
+        conn.execute(
+            "INSERT INTO attachments (mailbox_id, uid, idx, name, mime, size) VALUES (?1, ?2, 0, 'a.pdf', 'application/pdf', 1)",
+            params![inbox, uid],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO invitations (mailbox_id, uid, methode, event_uid) VALUES (?1, ?2, 'REQUEST', 'evt')",
+            params![inbox, uid],
+        )
+        .unwrap();
+        for table in ["images_messages", "mis_de_cote", "kiosque_lus"] {
+            conn.execute(
+                &format!("INSERT INTO {table} (mailbox_id, uid, epoch) VALUES (?1, ?2, 1)"),
+                params![inbox, uid],
+            )
+            .unwrap();
+        }
+    }
+
+    /// Combien de lignes, toutes tables par message confondues, portent
+    /// encore cet UID.
+    fn lignes_du_message(store: &Store, inbox: i64, uid: Uid) -> Vec<(&'static str, i64)> {
+        [
+            "envelopes",
+            "bodies",
+            "attachments",
+            "invitations",
+            "images_messages",
+            "mis_de_cote",
+            "kiosque_lus",
+        ]
+        .into_iter()
+        .map(|table| {
+            let n: i64 = store
+                .conn()
+                .query_row(
+                    &format!("SELECT COUNT(*) FROM {table} WHERE mailbox_id = ?1 AND uid = ?2"),
+                    params![inbox, uid],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            (table, n)
+        })
+        .filter(|(_, n)| *n > 0)
+        .collect()
+    }
+
+    /// Audit 2026-09-01 S2 (E4) : `remove_absent` ne purgeait que 3 tables
+    /// sur 7 — un message disparu du serveur laissait pièces, invitation,
+    /// mémoire d'images, mise de côté et « lu » du Kiosque orphelins (aucune
+    /// clé étrangère sur `envelopes`). UNE liste, la même pour les trois
+    /// purges.
+    #[test]
+    fn un_message_disparu_du_serveur_ne_laisse_aucun_orphelin() {
+        let (mut store, inbox) = store_with_mailbox();
+        garnir_message(&mut store, inbox, 1);
+        assert_eq!(lignes_du_message(&store, inbox, 1).len(), 7, "décor garni");
+
+        let retires = store.remove_absent(inbox, &HashSet::new()).unwrap();
+
+        assert_eq!(retires, 1);
+        assert_eq!(
+            lignes_du_message(&store, inbox, 1),
+            Vec::<(&str, i64)>::new(),
+            "aucune ligne ne doit survivre au message"
+        );
+    }
+
+    /// Un déclencheur SQLite qui refuse la suppression des enveloppes
+    /// simule une panne au milieu de la purge : tout ce qui précédait
+    /// (corps, actions…) doit être REMBOBINÉ. Avant E4, `reset_mailbox`
+    /// enchaînait neuf écritures en autocommit — un crash entre deux
+    /// laissait des fils sans enveloppes (la « pastille devant une liste
+    /// vide » déjà payée à E5 du mode organisé).
+    fn bloquer_les_suppressions_d_enveloppes(store: &Store) {
+        store
+            .conn()
+            .execute_batch(
+                "CREATE TEMP TRIGGER panne BEFORE DELETE ON envelopes
+                 BEGIN SELECT RAISE(ABORT, 'panne simulee'); END;",
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn reset_mailbox_est_atomique() {
+        let (mut store, inbox) = store_with_mailbox();
+        garnir_message(&mut store, inbox, 1);
+        store.enqueue_action(inbox, 1, Action::MarkSeen).unwrap();
+        bloquer_les_suppressions_d_enveloppes(&store);
+
+        assert!(
+            store.reset_mailbox(inbox, 2).is_err(),
+            "la panne doit remonter"
+        );
+
+        assert_eq!(
+            lignes_du_message(&store, inbox, 1).len(),
+            7,
+            "rien n'a été effacé avant la panne : une seule transaction"
+        );
+        assert_eq!(store.pending_actions(inbox).unwrap().len(), 1);
+        assert_eq!(
+            store
+                .sync_state(test_account(&store), "INBOX")
+                .unwrap()
+                .unwrap()
+                .uid_validity,
+            1,
+            "l'UIDVALIDITY n'a pas bougé non plus"
+        );
+    }
+
+    #[test]
+    fn remove_local_est_atomique() {
+        let (mut store, inbox) = store_with_mailbox();
+        garnir_message(&mut store, inbox, 1);
+        bloquer_les_suppressions_d_enveloppes(&store);
+
+        assert!(store.remove_local(inbox, 1).is_err());
+
+        assert_eq!(
+            lignes_du_message(&store, inbox, 1).len(),
+            7,
+            "corps, pièces, invitation… tous encore là : rembobinés avec l'enveloppe"
+        );
     }
 
     /// Audit 2026-09-01 (PLAN-AUDIT-V1 E3) : une ligne `pending_actions`

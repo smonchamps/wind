@@ -319,6 +319,28 @@ courtes (E7+E8, E9 seul).
   sait faire refuser une action au serveur) — couverte par le cœur et
   la parité des catalogues ; à voir au terrain (STOP 2).
 
+- **E4 — livrée le 2026-09-01 (soir).** Le constat s'est affiné à la
+  lecture : `geste_avec_echo` ET `nettoyage_verdict` enveloppaient déjà
+  `remove_local` dans leur transaction ; seuls `upsert_envelopes`
+  (retraits de la règle du Non, après commit, un autocommit par
+  message) et `reset_mailbox` étaient nus. Livré : `purger_message(conn,
+  mailbox_id, uid)` — LA liste des sept tables par message (fil relevé
+  avant, rafraîchi après) — appelée par `remove_local`, `remove_absent`
+  (qui en oubliait cinq : `attachments`, `invitations`,
+  `images_messages`, `mis_de_cote`, `kiosque_lus`) et les retraits
+  d'`upsert_envelopes` (désormais en UNE transaction) ; `remove_local`
+  ouvre sa transaction seulement s'il n'en a pas (`is_autocommit`),
+  sinon vit dans celle de l'appelant ; `reset_mailbox`,
+  `set_thread_scope`, `set_recipients` sous `unchecked_transaction`.
+  TDD, **RED prouvé par un déclencheur SQLite** (`RAISE(ABORT)` sur la
+  suppression des enveloppes = panne au milieu de la purge) : avant,
+  6 tables sur 7 déjà effacées quand la panne survient ; après, les 7
+  intactes et l'UIDVALIDITY inchangée. `un_message_disparu_du_serveur_
+  ne_laisse_aucun_orphelin` : 5 tables orphelines avant, 0 après.
+  Au passage, une première version laissait `set_recipients` sans
+  `commit` — deux tests d'annuaire l'ont attrapé (rollback au drop).
+  Tests mail-core 428 → 431, clippy propre.
+
 ## Gate & terrain
 
 - Boucle intérieure : `cargo test -p <crate> <nom>` par étape ;
