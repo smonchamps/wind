@@ -377,18 +377,133 @@ courtes (E7+E8, E9 seul).
   tests desktop 27 → 28. Mesure due au STOP 2 : `sonde-gel.py` 60 s
   avec ouverture d'un corps lourd pendant une relève.
 
+- **E6 — livrée le 2026-09-02 (nuit), après deux fausses pistes que
+  les tests ont tuées.** (1) Le plan disait « socket clonée +
+  `set_read_timeout` » : le test de la propriété a **PENDU** — sur
+  Windows, `SO_RCVTIMEO` est propre au handle, un clone
+  (`WSADuplicateSocket`) n'en hérite pas. (2) Chien de garde qui fait
+  `shutdown()` par le clone : la lecture bloquée n'est revenue qu'après
+  120 s, pas 200 ms — le `shutdown` d'un handle dupliqué n'interrompt
+  pas non plus un `recv` en cours. Le remède qui tient, et le plus
+  simple : **`FluxBorne`**, notre propre type de flux que la crate
+  emballe (`ImapConnection` est un trait public à impl blanket) —
+  `set_read_timeout(None)` y vaut le PLANCHER (`IO_TIMEOUT`, 120 s) :
+  la crate ne peut plus désarmer la borne en sortie de veille, le `+`
+  de l'IDLE suivant et la réponse au `DONE` sont bornés sur le MÊME
+  handle qui lit. Tests : `un_flux_borne_refuse_de_perdre_sa_borne`
+  (None ⇒ plancher, explicite ⇒ tel quel) et
+  `une_lecture_sur_un_serveur_muet_expire_au_plancher` (le geste de la
+  crate, puis un serveur muet : la lecture expire à 200 ms). Tests
+  mail-imap 70 → 72, clippy propre. Piège gravé : jamais de timeout ni
+  de shutdown par un clone de socket sur Windows.
+
+- **E7 — livrée le 2026-09-02 (nuit).** `mail-smtp` : `classer_echec`
+  pure (530/534/535/538 ⇒ transitoire même en 5xx — c'est la session
+  qu'il faut refaire, pas le message ; les autres 5xx restent
+  définitifs) ; `test_transport` préfixe « connexion : » (aucune réponse
+  du serveur) ou « authentification : » ; `is_connection_error` jumeau
+  de mail-imap, et le shell (`connect_smtp`) ne refait la session OAuth
+  que sur un refus d'authentification. `References` : `Draft.references`
+  / `OutboxMessage.references` / colonne `outbox.refs` (**pas
+  `references` : mot réservé SQLite — toutes les bases refusaient de
+  s'ouvrir, 400 tests rouges d'un coup**), `Store::references_de` (refs
+  du parent + son Message-ID, RFC 5322 §3.6.4) posée à la composition
+  (`queue_send`, réponse iTIP) ; l'adaptateur recopie, parent seul en
+  repli. TDD : RED de compilation (4 tests), GREEN — mail-core 431 → 432,
+  mail-smtp 26 → 29, clippy propre.
+
+- **E8 — livrée le 2026-09-02 (nuit).** `authenticate_silent` stocke le
+  refresh token RENOUVELÉ s'il diffère (Azure AD en renvoie un neuf à
+  chaque échange et fait expirer l'ancien à 90 j — déconnexion
+  silencieuse différée ; à confirmer au terrain sur un compte
+  Microsoft, le coffre ne se simule pas en test) ; `wait_for_redirect`
+  en `accept` non bloquant avec échéance **5 min** (D3) et lecture
+  bornée à 2 s par connexion (une connexion muette — sonde,
+  pré-ouverture du navigateur — n'immobilise plus l'attente) ; `Debug`
+  manuels sur `Authenticated` et `GenericCredentials` (`<masqué>`).
+  Tests : `l_attente_de_redirection_expire`,
+  `une_connexion_muette_n_immobilise_pas_l_attente`,
+  `debug_ne_montre_aucun_secret` — mail-auth 21 → 24. Limite dite : le
+  repli « ouvrez manuellement » (`BrowserFallback`) rend toujours la
+  main sans attendre — cas rare (aucun navigateur), inchangé.
+- **E9 — livrée le 2026-09-02 (nuit).** `apps/desktop/src/trace.rs` :
+  `trace(ligne)` = stderr + append daté dans `wind.log` à côté de la
+  base, **tronqué au méga** (D4) ; dossier posé dans `main` avant tout
+  geste. Les `eprintln!` de la relève, de la passe d'après-geste, de
+  la vidange, de l'horizon illisible et des quatre du veilleur passent
+  par lui ; la ligne des envois en attente perd le SUJET (§6.8).
+  `maj.log` garde son fichier (la mesure de MAJ que le CE attend).
+  Tests `la_trace_est_bornee_a_un_mega`, `chaque_ligne_est_datee` —
+  desktop 28 → 30.
+
 ## Gate & terrain
 
 - Boucle intérieure : `cargo test -p <crate> <nom>` par étape ;
   `garde-thread-principal.mjs` seul pour E5.
-- Gate complète après E5 et avant le commit final ; `/code-review high`
-  sur le diff complet avant le dernier commit.
-- STOP 2 (terrain CE) : double lancement ; boîte vidée puis un
-  message neuf ⇒ bulle ; une action vers un dossier supprimé côté
-  serveur ⇒ ligne dans la fente, les gestes suivants passent ; clic de
-  lien + corps lourd pendant une relève sous `sonde-gel.py` ; mise en
-  veille du poste 5 min avec IDLE actif ⇒ reprise sous 2 min ;
-  `wind.log` présent, sans sujet.
+- Gates complètes jouées : E1, E2+E3, E4, E5, E6-E9 (toutes vertes,
+  e2e 187/187), puis la finale avant le dernier commit ;
+  `/code-review high` sur l'ensemble de la vague avant ce commit.
+
+## STOP 2 — checklist de terrain (CE)
+
+Préparer le poste (build release + trace) :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\terrain.ps1
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\lancer-wind.ps1
+```
+
+1. **E1 — mono-instance.** Wind ouvert, lancer une seconde fois
+   `target\release\wind-desktop.exe` (double-clic) : une boîte
+   « Wind est déjà ouvert. », aucune seconde fenêtre, la première
+   intacte. Fermer la boîte : le processus a disparu.
+2. **E2 — boîte vidée.** Sur un compte de test, archiver TOUT ce que
+   la Réception montre, relever (bouton), puis s'envoyer un message
+   depuis un autre compte : **la bulle apparaît**. Avant : silence.
+3. **E3 — action refusée.** Créer un dossier « Temp » côté webmail,
+   relever, déplacer un message vers « Temp » depuis Wind HORS LIGNE
+   (Wi-Fi coupé), supprimer « Temp » côté webmail depuis le téléphone,
+   revenir en ligne, relever : la fente d'avis dit **« 1 action
+   refusée par le serveur… »**, le message est resté en Réception, et
+   un marquage lu/non-lu fait juste après **passe** (contrôle au
+   webmail). Avant : rien de dit, et plus aucun geste de cette boîte
+   ne passait.
+4. **E5 — gel.** Sonde 60 s, pendant laquelle : ouvrir le plus gros
+   message connu (une infolettre lourde) PENDANT une relève (bouton),
+   puis cliquer un lien. Attendu : « OK : aucun gel > 150 ms ».
+   **Jamais pendant une gate.**
+
+```powershell
+python e2e\sonde-gel.py C:\mesure\clarity.db 60
+```
+
+5. **E6 — veille bornée.** Wind ouvert avec IDLE actif (compte
+   Gmail), mettre le poste en veille 5 min, le réveiller : dans les
+   2 min, un message envoyé depuis le téléphone arrive avec sa bulle.
+   `wind.log` montre « veilleur compte N : reconnexion dans … s ».
+6. **E7 — fil chez le destinataire.** Répondre au 3e message d'un fil
+   reçu depuis Gmail, et vérifier dans Gmail que la réponse reste DANS
+   la conversation (avant : elle pouvait la casser).
+7. **E8 — attente OAuth.** Réglages > Comptes > ajouter un compte
+   Google, FERMER l'onglet de consentement sans répondre : au bout de
+   5 min, Wind rend « consentement non reçu en 5 min — relancez… » et
+   le guichet est de nouveau utilisable (avant : commande gelée pour
+   toujours).
+8. **E9 — trace.** Après une relève et une vidange :
+
+```powershell
+Get-Content "$env:APPDATA\dev.elements.wind\wind.log" -Tail 20
+```
+
+   Attendu : lignes datées « relève compte … », « vidange : … » —
+   **aucun sujet, aucune adresse** ; taille du fichier < 1 Mo.
+
+Budgets à re-mesurer (STANDARD §3) : gel de la pompe 0 > 150 ms
+(point 4) ; démarrage inchangé (`scripts\terrain.ps1` lit
+`demarrage`).
 
 ## § Décisions CE — tranchées au STOP 1, le 2026-09-01 (soir)
 

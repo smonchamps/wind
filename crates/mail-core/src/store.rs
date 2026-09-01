@@ -229,6 +229,10 @@ CREATE TABLE IF NOT EXISTS outbox (
     -- (chemin historique, octet pour octet inchangé).
     body_html    TEXT,
     in_reply_to  TEXT,
+    -- E7 : la chaine References complete (RFC 5322 §3.6.4), NULL = le
+    -- parent seul (chemin d'avant). `refs` comme dans envelopes :
+    -- REFERENCES est un mot reserve de SQLite.
+    refs         TEXT,
     -- Marqué « important » (R3) : la remise posera les en-têtes de
     -- priorité (X-Priority + Importance).
     important    INTEGER NOT NULL DEFAULT 0,
@@ -3683,6 +3687,38 @@ impl Store {
         Ok(envelope)
     }
 
+    /// La chaîne `References` qu'une réponse à ce message doit porter
+    /// (RFC 5322 §3.6.4) : les `References` du parent + son `Message-ID`.
+    /// `None` : message inconnu ou sans Message-ID. E7 : avant, l'envoi ne
+    /// portait que le parent et cassait le fil chez le destinataire.
+    pub fn references_de(
+        &self,
+        account_id: i64,
+        mailbox: &str,
+        uid: Uid,
+    ) -> Result<Option<String>, Error> {
+        let ligne: Option<(Option<String>, Option<String>)> = self
+            .0
+            .query_row(
+                "SELECT e.refs, e.message_id
+                 FROM envelopes e JOIN mailboxes m ON m.id = e.mailbox_id
+                 WHERE m.account_id = ?1 AND m.name = ?2 AND e.uid = ?3",
+                params![account_id, mailbox, uid],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        Ok(ligne.and_then(|(refs, message_id)| {
+            let message_id = message_id?;
+            let refs = refs.unwrap_or_default();
+            let refs = refs.trim();
+            Some(if refs.is_empty() {
+                message_id
+            } else {
+                format!("{refs} {message_id}")
+            })
+        }))
+    }
+
     pub fn count(&self, mailbox_id: i64) -> Result<u64, Error> {
         let count: i64 = self.0.query_row(
             "SELECT COUNT(*) FROM envelopes WHERE mailbox_id = ?1",
@@ -4020,7 +4056,10 @@ fn migrate(
     add_missing_columns(
         conn,
         "outbox",
-        &[("account_id", "INTEGER NOT NULL DEFAULT 1")],
+        &[
+            ("account_id", "INTEGER NOT NULL DEFAULT 1"),
+            ("refs", "TEXT"),
+        ],
     )?;
     add_missing_columns(
         conn,
@@ -5347,6 +5386,7 @@ mod tests {
                         body_text: "corps".to_string(),
                         body_html: None,
                         in_reply_to: None,
+                        references: None,
                         important: false,
                         ics_reply: None,
                     },

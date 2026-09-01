@@ -99,9 +99,42 @@ impl SmtpMailer {
                 "le serveur SMTP ne répond pas".to_string(),
             )),
             // Échec d'ouverture (réseau OU authentification) : transitoire
-            // par définition — le message n'a même pas été présenté.
-            Err(err) => Err(SendError::Transient(err.to_string())),
+            // par définition — le message n'a même pas été présenté. Le
+            // PRÉFIXE dit lequel (E7) : le shell ne refait la session
+            // OAuth que sur un refus d'authentification, jamais sur une
+            // panne réseau (le défaut P0 corrigé côté IMAP).
+            Err(err) if err.status().is_none() => {
+                Err(SendError::Transient(format!("connexion : {err}")))
+            }
+            Err(err) => Err(SendError::Transient(format!("authentification : {err}"))),
         }
+    }
+}
+
+/// Le discriminant du shell (E7), jumeau de `mail_imap::is_connection_error` :
+/// une panne d'ouverture SANS réponse du serveur — réseau, TLS, délai.
+pub fn is_connection_error(err: &SendError) -> bool {
+    matches!(err, SendError::Transient(msg) if msg.starts_with("connexion "))
+}
+
+/// Comment traiter un échec d'envoi. Décision pure (STANDARD §4), testée
+/// sans réseau.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Classe {
+    Transitoire,
+    Permanent,
+}
+
+/// E7 : `lettre` sans `pool` rouvre et ré-authentifie à CHAQUE envoi — un
+/// jeton OAuth expiré au milieu d'une vidange rend un 5xx d'AUTHENTIFICATION
+/// (530/534/535/538) sur un message sain. C'est la session qu'il faut
+/// refaire, pas le message : transitoire. Les autres 5xx (destinataire
+/// inexistant, message rejeté) restent définitifs.
+fn classer_echec(status: Option<u16>, permanent: bool) -> Classe {
+    match status {
+        Some(530 | 534 | 535 | 538) => Classe::Transitoire,
+        _ if permanent => Classe::Permanent,
+        _ => Classe::Transitoire,
     }
 }
 
@@ -117,8 +150,15 @@ impl MailTransport for SmtpMailer {
         let raw = email.formatted();
         match self.transport.send_raw(&envelope, &raw) {
             Ok(_) => Ok(()),
-            Err(err) if err.is_permanent() => Err(SendError::Permanent(err.to_string())),
-            Err(err) => Err(SendError::Transient(err.to_string())),
+            Err(err) => {
+                let status = err
+                    .status()
+                    .and_then(|code| code.to_string().parse::<u16>().ok());
+                match classer_echec(status, err.is_permanent()) {
+                    Classe::Permanent => Err(SendError::Permanent(err.to_string())),
+                    Classe::Transitoire => Err(SendError::Transient(err.to_string())),
+                }
+            }
         }
     }
 }
@@ -203,9 +243,10 @@ fn build_message(message: &OutboxMessage) -> Result<Message, SendError> {
         builder = builder.cc(parse_mailbox(recipient)?);
     }
     if let Some(parent) = &message.in_reply_to {
-        builder = builder
-            .in_reply_to(parent.clone())
-            .references(parent.clone());
+        // E7 : la chaîne entière si le cœur la connaît (References du
+        // parent + son Message-ID, RFC 5322 §3.6.4), sinon le parent seul.
+        let references = message.references.clone().unwrap_or_else(|| parent.clone());
+        builder = builder.in_reply_to(parent.clone()).references(references);
     }
     // R3 : le marquage vient du journal — c'est lui qui part, jamais un
     // état d'écran. Ordinaire = aucun en-tête (chemin historique intact).
@@ -371,6 +412,73 @@ fn parse_mailbox(address: &str) -> Result<Mailbox, SendError> {
 mod tests {
     use super::*;
     use mail_core::{OutboxAttachment, OutboxState};
+
+    /// PLAN-AUDIT-V1 E7 (audit S2) : `lettre` sans `pool` rouvre et
+    /// ré-authentifie à CHAQUE envoi — un jeton OAuth expiré au milieu
+    /// d'une longue vidange rend un 535 sur un message sain, et le code
+    /// classait tout 5xx en `Permanent` : message « refusé », geste
+    /// utilisateur requis. Un refus d'AUTHENTIFICATION est transitoire —
+    /// c'est la session qu'il faut refaire, pas le message.
+    #[test]
+    fn un_535_en_plein_flush_est_transitoire() {
+        assert!(matches!(
+            classer_echec(Some(535), true),
+            Classe::Transitoire
+        ));
+        assert!(matches!(
+            classer_echec(Some(530), true),
+            Classe::Transitoire
+        ));
+        assert!(matches!(
+            classer_echec(Some(534), true),
+            Classe::Transitoire
+        ));
+        assert!(matches!(
+            classer_echec(Some(538), true),
+            Classe::Transitoire
+        ));
+        assert!(
+            matches!(classer_echec(Some(550), true), Classe::Permanent),
+            "un destinataire inexistant reste un refus définitif"
+        );
+        assert!(matches!(classer_echec(None, false), Classe::Transitoire));
+        assert!(matches!(
+            classer_echec(Some(451), false),
+            Classe::Transitoire
+        ));
+    }
+
+    /// RFC 5322 §3.6.4 : `References` = celles du parent + son Message-ID.
+    /// Avant E7, l'adaptateur n'y mettait que le parent : nos propres
+    /// envois cassaient le fil chez le destinataire au 3e message — et
+    /// dans notre dossier Envoyés relu par `fetch_thread_headers`.
+    #[test]
+    fn references_porte_la_chaine_entiere() {
+        let mut message = outbox_message(Some("<c@x>"));
+        message.references = Some("<a@x> <b@x> <c@x>".to_string());
+        let servi = formatted(&message);
+        assert!(servi.contains("In-Reply-To: <c@x>"), "{servi}");
+        assert!(servi.contains("References: <a@x> <b@x> <c@x>"), "{servi}");
+        // Sans chaîne connue, le parent seul (chemin d'avant).
+        let seul = formatted(&outbox_message(Some("<c@x>")));
+        assert!(seul.contains("References: <c@x>"), "{seul}");
+    }
+
+    /// Le shell faisait « toute erreur d'ouverture SMTP ⇒ refresh OAuth » :
+    /// chaque panne réseau martelait l'endpoint du fournisseur (le défaut
+    /// P0 corrigé côté IMAP). Même discriminant, même préfixe.
+    #[test]
+    fn une_panne_reseau_smtp_n_est_pas_un_refus_d_auth() {
+        assert!(is_connection_error(&SendError::Transient(
+            "connexion smtp.exemple.fr:587 : délai dépassé".to_string()
+        )));
+        assert!(!is_connection_error(&SendError::Transient(
+            "authentification : 535 5.7.8 Username and Password not accepted".to_string()
+        )));
+        assert!(!is_connection_error(&SendError::Permanent(
+            "connexion refusée par le destinataire".to_string()
+        )));
+    }
     use std::net::TcpListener;
     use std::sync::mpsc;
     use std::thread;
@@ -389,6 +497,7 @@ mod tests {
             body_text: "Premier essai.\nDeuxième ligne.".to_string(),
             body_html: None,
             in_reply_to: in_reply_to.map(str::to_string),
+            references: None,
             important: false,
             send_at_epoch: None,
             ics_reply: None,

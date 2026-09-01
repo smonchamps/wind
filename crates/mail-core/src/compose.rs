@@ -37,6 +37,10 @@ pub struct Draft {
     pub body_html: Option<String>,
     /// Message-ID du message auquel on répond (fil de discussion).
     pub in_reply_to: Option<String>,
+    /// La chaîne `References` (RFC 5322 §3.6.4) : celles du parent + son
+    /// Message-ID — lue en base par `Store::references_de` (E7). `None`
+    /// = le parent seul (`in_reply_to`), chemin d'avant.
+    pub references: Option<String>,
     /// Marqué « important » par l'expéditeur (PLAN-RETOURS-6, R3) :
     /// l'envoi portera les en-têtes `X-Priority: 1` + `Importance:
     /// high` — la paire que posent les clients mûrs. `compose()` rend
@@ -82,6 +86,7 @@ pub fn compose(
         body_text: body_text.to_string(),
         body_html: None,
         in_reply_to: in_reply_to.and_then(normalize_message_id),
+        references: None,
         important: false,
         ics_reply: None,
     })

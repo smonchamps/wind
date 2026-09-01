@@ -36,17 +36,29 @@ const KEYRING_REFRESH_LEGACY: &str = "gmail-refresh-token";
 ///
 /// Le fournisseur voyage avec la session : c'est lui qui porte les serveurs
 /// à joindre, plus une constante d'application.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Authenticated {
     pub provider: &'static Provider,
     pub email: String,
     pub access_token: String,
 }
 
+/// E8 : jamais le jeton dans un `{:?}` — un `eprintln!` de diagnostic
+/// futur ne doit pas pouvoir le tracer.
+impl std::fmt::Debug for Authenticated {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Authenticated")
+            .field("provider", &self.provider.account_kind)
+            .field("email", &self.email)
+            .field("access_token", &"<masqué>")
+            .finish()
+    }
+}
+
 /// Credentials d'un compte IMAP/SMTP générique (serveur, port, mot de
 /// passe). Le mot de passe est en mémoire uniquement pendant la session ;
 /// il est lu depuis le coffre de l'OS au démarrage.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct GenericCredentials {
     pub email: String,
     pub username: String,
@@ -55,6 +67,21 @@ pub struct GenericCredentials {
     pub imap_port: u16,
     pub smtp_host: String,
     pub smtp_port: u16,
+}
+
+/// E8 : jamais le mot de passe dans un `{:?}`.
+impl std::fmt::Debug for GenericCredentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GenericCredentials")
+            .field("email", &self.email)
+            .field("username", &self.username)
+            .field("password", &"<masqué>")
+            .field("imap_host", &self.imap_host)
+            .field("imap_port", &self.imap_port)
+            .field("smtp_host", &self.smtp_host)
+            .field("smtp_port", &self.smtp_port)
+            .finish()
+    }
 }
 
 /// Session d'un compte connecté, quelle que soit sa méthode
@@ -182,7 +209,15 @@ impl Authenticator {
         let http = flow::http_client()?;
         let tokens = flow::refresh_access_token(&client, &http, refresh.clone())?;
         flow::ensure_mail_scope(self.provider, &tokens)?;
-        let account = self.finish(&http, &tokens, Some(email), None)?;
+        // E8 (audit S2) : Azure AD renvoie un refresh token NEUF à chaque
+        // échange et fait expirer l'ancien (90 j par défaut) ; Google le
+        // fait à l'occasion. Le jeter, c'était une déconnexion silencieuse
+        // différée. S'il change, il remplace l'ancien au coffre.
+        let renouvele = tokens
+            .refresh_token()
+            .map(|token| token.secret().clone())
+            .filter(|neuf| *neuf != refresh);
+        let account = self.finish(&http, &tokens, Some(email), renouvele)?;
         if from_legacy {
             // Migration du coffre : l'entrée devient par-compte, sous
             // l'email RÉEL du jeton (celui que le fournisseur confirme).

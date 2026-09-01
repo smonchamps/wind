@@ -101,7 +101,9 @@ fn boucle(app: tauri::AppHandle, email: String, vivant: Arc<AtomicBool>) {
             // le réseau est parti — la boucle décidera.
             Ok(()) => continue,
             Err(err) => {
-                eprintln!("veilleur compte {compte_id} : session tombée : {err}");
+                crate::trace::trace(&format!(
+                    "veilleur compte {compte_id} : session tombée : {err}"
+                ));
             }
         }
         if !vivant.load(Ordering::Relaxed) {
@@ -110,10 +112,10 @@ fn boucle(app: tauri::AppHandle, email: String, vivant: Arc<AtomicBool>) {
         if debut.elapsed() > SESSION_STABLE {
             pause = PAUSE_MIN;
         }
-        eprintln!(
+        crate::trace::trace(&format!(
             "veilleur compte {compte_id} : reconnexion dans {} s",
             pause.as_secs()
-        );
+        ));
         std::thread::sleep(pause);
         pause = (pause * 2).min(PAUSE_MAX);
     }
@@ -147,7 +149,7 @@ fn veille_session(
     // signalera (2ᵉ terrain). Best effort : son échec n'abat pas la
     // veille, le courrier suivant la déclenchera.
     if let Err(err) = commands::passe_legere_compte(app, email) {
-        eprintln!("veilleur : passe de connexion en échec : {err}");
+        crate::trace::trace(&format!("veilleur : passe de connexion en échec : {err}"));
     }
     loop {
         if !vivant.load(Ordering::Relaxed) {
@@ -170,7 +172,7 @@ fn veille_session(
                 // sur SA connexion à elle (timeouts P0 intacts), pendant
                 // que celle-ci retourne veiller.
                 if let Err(err) = commands::passe_legere_compte(app, email) {
-                    eprintln!("veilleur : passe légère en échec : {err}");
+                    crate::trace::trace(&format!("veilleur : passe légère en échec : {err}"));
                 }
             }
             // Battement de cœur : le DONE/re-IDLE du prochain tour

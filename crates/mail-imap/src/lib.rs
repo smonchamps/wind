@@ -81,7 +81,8 @@ fn connect_client(
         let tls = connector
             .connect(host, tcp)
             .map_err(|err| contexte(err.to_string()))?;
-        let mut client = imap::Client::new(Box::new(tls) as imap::Connection);
+        let mut client =
+            imap::Client::new(Box::new(FluxBorne::new(tls, io_timeout)) as imap::Connection);
         client.read_greeting().map_err(server_err)?;
         Ok(client)
     } else {
@@ -109,7 +110,72 @@ fn connect_client(
             .map_err(|err| contexte(err.to_string()))?;
         // Pas de salutation à lire : elle a été consommée en clair, le
         // serveur n'en renvoie pas après STARTTLS (RFC 3501 §6.2.1).
-        Ok(imap::Client::new(Box::new(tls) as imap::Connection))
+        Ok(imap::Client::new(
+            Box::new(FluxBorne::new(tls, io_timeout)) as imap::Connection
+        ))
+    }
+}
+
+/// La socket TCP sous un flux (nue, ou sous TLS) : c'est SUR ELLE que le
+/// timeout de lecture se pose — jamais sur un clone (Windows :
+/// `SO_RCVTIMEO` est propre au handle, prouvé par un test qui a pendu).
+trait SocketSous {
+    fn socket(&self) -> &TcpStream;
+}
+
+impl SocketSous for TcpStream {
+    fn socket(&self) -> &TcpStream {
+        self
+    }
+}
+
+impl SocketSous for native_tls::TlsStream<TcpStream> {
+    fn socket(&self) -> &TcpStream {
+        self.get_ref()
+    }
+}
+
+/// Le flux que la crate `imap` emballe — avec un PLANCHER de timeout de
+/// lecture (PLAN-AUDIT-V1 E6, audit 2026-09-01 S1-5). La crate pose son
+/// propre timeout pour la veille IDLE puis le RETIRE en sortie
+/// (`set_read_timeout(None)`, `idle.rs`) : le `+` de l'IDLE suivant et la
+/// réponse au `DONE` se lisaient sans borne — sur un serveur ou un NAT
+/// qui acquitte et se tait, le veilleur gelait sans erreur ni
+/// reconnexion. Ici, `None` vaut le plancher : la crate ne peut plus
+/// désarmer la borne. Le reste (lecture, écriture) est délégué tel quel.
+struct FluxBorne<S: Read + Write + Send + SocketSous> {
+    flux: S,
+    plancher: Duration,
+}
+
+impl<S: Read + Write + Send + SocketSous> FluxBorne<S> {
+    fn new(flux: S, plancher: Duration) -> Self {
+        Self { flux, plancher }
+    }
+}
+
+impl<S: Read + Write + Send + SocketSous> Read for FluxBorne<S> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.flux.read(buf)
+    }
+}
+
+impl<S: Read + Write + Send + SocketSous> Write for FluxBorne<S> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.flux.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.flux.flush()
+    }
+}
+
+impl<S: Read + Write + Send + SocketSous> imap::extensions::idle::SetReadTimeout for FluxBorne<S> {
+    fn set_read_timeout(&mut self, timeout: Option<Duration>) -> imap::error::Result<()> {
+        self.flux
+            .socket()
+            .set_read_timeout(Some(timeout.unwrap_or(self.plancher)))
+            .map_err(imap::Error::Io)
     }
 }
 
@@ -929,7 +995,52 @@ fn body_from_raw(raw: &[u8]) -> Option<FetchedBody> {
 
 #[cfg(test)]
 mod body_from_raw_tests {
-    use super::body_from_raw;
+    use super::{FluxBorne, body_from_raw};
+
+    /// E6 : `None` ne retire jamais la borne — c'est le geste que la crate
+    /// fait en sortie de veille, et c'est lui qui laissait le `DONE` et
+    /// l'IDLE suivant sans timeout.
+    #[test]
+    fn un_flux_borne_refuse_de_perdre_sa_borne() {
+        use imap::extensions::idle::SetReadTimeout;
+        use std::net::{TcpListener, TcpStream};
+        use std::time::Duration;
+        let ecoute = TcpListener::bind("127.0.0.1:0").unwrap();
+        let origine = TcpStream::connect(ecoute.local_addr().unwrap()).unwrap();
+        let _serveur = ecoute.accept().unwrap();
+        let mut flux = FluxBorne::new(origine.try_clone().unwrap(), Duration::from_secs(7));
+        flux.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+        assert_eq!(
+            flux.flux.read_timeout().unwrap(),
+            Some(Duration::from_secs(1)),
+            "un timeout explicite passe tel quel"
+        );
+        flux.set_read_timeout(None).unwrap();
+        assert_eq!(
+            flux.flux.read_timeout().unwrap(),
+            Some(Duration::from_secs(7)),
+            "None vaut le plancher, jamais « sans borne »"
+        );
+    }
+
+    /// Et la lecture d'un serveur muet rend bien la main au plancher —
+    /// sur le MÊME handle que celui qui lit (la leçon des clones).
+    #[test]
+    fn une_lecture_sur_un_serveur_muet_expire_au_plancher() {
+        use imap::extensions::idle::SetReadTimeout;
+        use std::io::Read;
+        use std::net::{TcpListener, TcpStream};
+        use std::time::{Duration, Instant};
+        let ecoute = TcpListener::bind("127.0.0.1:0").unwrap();
+        let origine = TcpStream::connect(ecoute.local_addr().unwrap()).unwrap();
+        let _serveur_muet = ecoute.accept().unwrap();
+        let mut flux = FluxBorne::new(origine, Duration::from_millis(200));
+        flux.set_read_timeout(None).unwrap(); // le geste de la crate
+        let depart = Instant::now();
+        let mut octet = [0u8; 1];
+        assert!(flux.read(&mut octet).is_err());
+        assert!(depart.elapsed() < Duration::from_secs(5));
+    }
 
     /// Le cas C du constat PLAN-INVITATIONS : la racine EST l'invitation.
     #[test]

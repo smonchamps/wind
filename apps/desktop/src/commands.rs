@@ -914,7 +914,7 @@ pub(crate) fn passe_legere_compte(app: &AppHandle, email: &str) -> Result<(), St
                 let _ = store.set_text_pref(PREF_DERNIERE_SYNCHRO, &epoch.as_secs().to_string());
             }
             for problem in problems {
-                eprintln!("veilleur compte {account_id} : {problem}");
+                crate::trace::trace(&format!("veilleur compte {account_id} : {problem}"));
             }
             Ok(())
         }
@@ -1504,14 +1504,14 @@ fn run_sync(
     // La trace qui transforme « c'est bloqué » en mesure — lisible dans
     // la console d'un `cargo run`. AVANT logout : un logout qui cale ne
     // doit pas emporter la trace avec lui.
-    eprintln!(
+    crate::trace::trace(&format!(
         "relève compte {account_id} : INBOX {:.1}s · inventaire {:.1}s · {n_dossiers} dossiers ({n_sautes} sautés) {:.1}s · fils {:.1}s · brouillons {:.1}s",
         duree_inbox.as_secs_f32(),
         duree_inventaire.as_secs_f32(),
         duree_dossiers.as_secs_f32(),
         duree_fils.as_secs_f32(),
         duree_brouillons.as_secs_f32(),
-    );
+    ));
 
     server.logout();
 
@@ -2303,6 +2303,10 @@ pub async fn repondre_invitation(
             in_reply_to.as_deref(),
         )
         .map_err(|err| err.to_string())?;
+        // E7 : la chaîne References entière (RFC 5322 §3.6.4).
+        draft.references = store
+            .references_de(account_id, &mailbox, uid)
+            .map_err(|err| err.to_string())?;
         draft.ics_reply = Some(mail_ical::reponse_itip(&mail_ical::DemandeReponse {
             uid: &stockee.row.event_uid,
             sequence: stockee.row.sequence,
@@ -2830,9 +2834,9 @@ fn horizon_corps(store: &Store, account_id: i64) -> i64 {
         Err(err) => {
             // §9 : l'échec se DIT (trace lisible via lancer-wind.ps1),
             // même quand le repli est sûr.
-            eprintln!(
+            crate::trace::trace(&format!(
                 "horizon_import illisible (compte {account_id}) : {err} ; import intégral par prudence"
-            );
+            ));
             mail_core::NO_HORIZON
         }
     }
@@ -3927,9 +3931,10 @@ pub async fn queue_send(
         // d'autre. L'omettre coupe un fil — « un fil coupé en deux est
         // réparable et honnête ; deux messages étrangers réunis ne le sont
         // pas » (ADR 0008 §2).
-        let in_reply_to = reply_to_uid
-            .zip(reply_to_mailbox)
-            .and_then(|(uid, mailbox)| store.envelope(account_id, &mailbox, uid).ok().flatten())
+        let parent = reply_to_uid.zip(reply_to_mailbox);
+        let in_reply_to = parent
+            .as_ref()
+            .and_then(|(uid, mailbox)| store.envelope(account_id, mailbox, *uid).ok().flatten())
             .and_then(|envelope| envelope.message_id);
         let mut draft = mail_core::compose(
             &from,
@@ -3941,6 +3946,14 @@ pub async fn queue_send(
             in_reply_to.as_deref(),
         )
         .map_err(|err| err.to_string())?;
+        // E7 : la chaîne References entière (RFC 5322 §3.6.4) — le cœur
+        // la sait, l'adaptateur la recopie.
+        draft.references = parent.as_ref().and_then(|(uid, mailbox)| {
+            store
+                .references_de(account_id, mailbox, *uid)
+                .ok()
+                .flatten()
+        });
         draft.body_html = corps_riche;
         draft.important = important;
         // Une échéance déjà passée vaut « tout de suite » : la garde vit
@@ -4355,12 +4368,12 @@ fn passe_apres_geste_compte(
             server.logout();
             // La trace qui instruira D-7 (§6.8 : durées et décomptes
             // seuls) — à lire contre l'horodatage du geste en console.
-            eprintln!(
+            crate::trace::trace(&format!(
                 "passe geste compte {account_id} : {n_sources} source(s) {:.1}s · inventaire + {releves} relevé(s) {:.1}s · {reconcilies} réconcilié(s) · total {:.1}s",
                 duree_actions.as_secs_f32(),
                 duree_inventaire.as_secs_f32(),
                 chrono_total.elapsed().as_secs_f32(),
-            );
+            ));
             if courrier_tentative > 0 {
                 cycle
                     .courrier
@@ -4486,7 +4499,7 @@ fn run_flush_all(
     // dernière erreur de chaque envoi resté en file — c'est elle que la
     // barre d'état ne montre pas (« en attente » n'est pas fautif) et
     // qu'un constat terrain doit pouvoir lire.
-    eprintln!(
+    crate::trace::trace(&format!(
         "vidange : {} parti(s), {} differe(s), {} refuse(s), {} quarantaine, {} en file{}",
         summary.sent,
         summary.deferred,
@@ -4498,13 +4511,15 @@ fn run_flush_all(
             .as_deref()
             .map(|err| format!(" · connexion : {err}"))
             .unwrap_or_default(),
-    );
+    ));
     for message in &restants {
         if let Some(err) = &message.last_error {
-            eprintln!(
-                "vidange : envoi {} « {} » attend ({} tentative(s)) : {err}",
-                message.id, message.subject, message.attempts
-            );
+            // §6.8 : l'identifiant, les tentatives, l'erreur — JAMAIS le
+            // sujet (E9 ; avant, le sujet partait dans la trace).
+            crate::trace::trace(&format!(
+                "vidange : envoi {} attend ({} tentative(s)) : {err}",
+                message.id, message.attempts
+            ));
         }
     }
     Ok((summary, refreshed_list))
@@ -5552,6 +5567,10 @@ fn connect_smtp(session: &AccountSession) -> Result<(SmtpMailer, Option<AccountS
             match SmtpMailer::connect_xoauth2(smtp.host, smtp.port, &auth.email, &auth.access_token)
             {
                 Ok(mailer) => Ok((mailer, None)),
+                // E7 : une panne RÉSEAU n'est pas un refus d'authentification —
+                // refaire la session OAuth n'y changerait rien et martelait
+                // l'endpoint du fournisseur (le défaut P0 corrigé côté IMAP).
+                Err(err) if mail_smtp::is_connection_error(&err) => Err(err.to_string()),
                 Err(_) => {
                     let fresh = Authenticator::from_env(auth.provider)
                         .map_err(|err| err.to_string())?

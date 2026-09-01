@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
+use std::time::{Duration, Instant};
 
 use oauth2::basic::{BasicClient, BasicTokenResponse};
 use oauth2::{
@@ -112,7 +113,7 @@ pub(crate) fn interactive_tokens(
         return Err(AuthError::BrowserFallback(auth_url.to_string()));
     }
 
-    let (code, state) = wait_for_redirect(&listener)?;
+    let (code, state) = wait_for_redirect(&listener, ECHEANCE_CONSENTEMENT)?;
     if state != *csrf.secret() {
         return Err(AuthError::OAuth("état CSRF inattendu".to_string()));
     }
@@ -190,11 +191,46 @@ fn fetch_email(http: &HttpClient, url: &str, access_token: &str) -> Result<Strin
         .ok_or_else(|| AuthError::OAuth("email absent de la réponse userinfo".to_string()))
 }
 
-fn wait_for_redirect(listener: &TcpListener) -> Result<(String, String), AuthError> {
-    for stream in listener.incoming() {
-        let mut stream = stream?;
+/// Combien de temps le consentement navigateur peut se faire attendre
+/// (PLAN-AUDIT-V1 E8, décision CE D3 : 5 minutes). Avant : sans limite —
+/// un onglet fermé gelait la commande « ajouter un compte » pour toujours,
+/// et le port loopback restait lié.
+const ECHEANCE_CONSENTEMENT: Duration = Duration::from_secs(300);
+
+/// Une connexion acceptée qui ne dit rien (sonde, navigateur qui
+/// pré-ouvre) ne doit pas bloquer l'attente non plus.
+const DELAI_LECTURE_REDIRECTION: Duration = Duration::from_secs(2);
+
+fn wait_for_redirect(
+    listener: &TcpListener,
+    echeance: Duration,
+) -> Result<(String, String), AuthError> {
+    listener.set_nonblocking(true)?;
+    let depart = Instant::now();
+    loop {
+        let mut stream = match listener.accept() {
+            Ok((stream, _)) => stream,
+            Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                if depart.elapsed() >= echeance {
+                    return Err(AuthError::OAuth(format!(
+                        "consentement non reçu en {} min — relancez l'ajout du compte",
+                        echeance.as_secs() / 60
+                    )));
+                }
+                std::thread::sleep(Duration::from_millis(50));
+                continue;
+            }
+            Err(err) => return Err(err.into()),
+        };
+        stream.set_nonblocking(false)?;
+        stream.set_read_timeout(Some(DELAI_LECTURE_REDIRECTION))?;
         let mut request_line = String::new();
-        BufReader::new(&mut stream).read_line(&mut request_line)?;
+        if BufReader::new(&mut stream)
+            .read_line(&mut request_line)
+            .is_err()
+        {
+            continue; // connexion muette ou coupée : on attend la vraie
+        }
         let Some(params) = parse_redirect_query(&request_line) else {
             respond(&mut stream, "Requête ignorée.")?;
             continue;
@@ -212,9 +248,6 @@ fn wait_for_redirect(listener: &TcpListener) -> Result<(String, String), AuthErr
         }
         respond(&mut stream, "Paramètres inattendus.")?;
     }
-    Err(AuthError::OAuth(
-        "redirection jamais reçue sur le port loopback".to_string(),
-    ))
 }
 
 /// Extrait les paramètres de requête de la première ligne HTTP de la
@@ -251,6 +284,72 @@ fn network_err(err: oauth2::reqwest::Error) -> AuthError {
 mod tests {
     use oauth2::basic::BasicTokenType;
     use oauth2::{AccessToken, EmptyExtraTokenFields, StandardTokenResponse};
+
+    /// E8 : un onglet fermé ne gèle plus la commande pour toujours —
+    /// l'attente expire (D3 : 5 min en prod, 200 ms ici).
+    #[test]
+    fn l_attente_de_redirection_expire() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let depart = std::time::Instant::now();
+        let issue = super::wait_for_redirect(&listener, std::time::Duration::from_millis(200));
+        assert!(issue.is_err(), "sans redirection, l'attente doit expirer");
+        assert!(depart.elapsed() < std::time::Duration::from_secs(5));
+        assert!(
+            issue
+                .unwrap_err()
+                .to_string()
+                .contains("consentement non reçu"),
+            "le message dit quoi faire"
+        );
+    }
+
+    /// E8 : une connexion acceptée qui se tait (sonde, pré-ouverture du
+    /// navigateur) n'immobilise pas l'attente — la vraie redirection
+    /// qui suit est servie.
+    #[test]
+    fn une_connexion_muette_n_immobilise_pas_l_attente() {
+        use std::io::Write;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let adresse = listener.local_addr().unwrap();
+        let _muette = std::net::TcpStream::connect(adresse).unwrap();
+        let vraie = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            let mut vraie = std::net::TcpStream::connect(adresse).unwrap();
+            vraie
+                .write_all(b"GET /?code=abc&state=xyz HTTP/1.1\r\n\r\n")
+                .unwrap();
+            vraie
+        });
+        let issue = super::wait_for_redirect(&listener, std::time::Duration::from_secs(10));
+        let _ = vraie.join();
+        assert_eq!(issue.unwrap(), ("abc".to_string(), "xyz".to_string()));
+    }
+
+    /// E8 : `Debug` ne montre jamais un secret — un `{:?}` de diagnostic
+    /// futur n'imprimera ni jeton ni mot de passe.
+    #[test]
+    fn debug_ne_montre_aucun_secret() {
+        let session = crate::Authenticated {
+            provider: &crate::GOOGLE,
+            email: "a@x.fr".to_string(),
+            access_token: "JETON-SECRET".to_string(),
+        };
+        let texte = format!("{session:?}");
+        assert!(!texte.contains("JETON-SECRET"), "{texte}");
+        assert!(texte.contains("a@x.fr"));
+        let creds = crate::GenericCredentials {
+            email: "a@x.fr".to_string(),
+            username: "a".to_string(),
+            password: "MDP-SECRET".to_string(),
+            imap_host: "imap.x.fr".to_string(),
+            imap_port: 993,
+            smtp_host: "smtp.x.fr".to_string(),
+            smtp_port: 587,
+        };
+        let texte = format!("{creds:?}");
+        assert!(!texte.contains("MDP-SECRET"), "{texte}");
+        assert!(texte.contains("imap.x.fr"));
+    }
 
     use super::*;
     use crate::provider::{GOOGLE, MICROSOFT};

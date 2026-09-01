@@ -119,6 +119,9 @@ pub struct OutboxMessage {
     /// multipart/alternative ; `None` = envoi texte seul (historique).
     pub body_html: Option<String>,
     pub in_reply_to: Option<String>,
+    /// E7 : la chaîne `References` complète (parent + ses References),
+    /// telle que composée ; `None` = le parent seul.
+    pub references: Option<String>,
     /// Marqué « important » à la composition (R3) : la remise posera
     /// les en-têtes de priorité.
     pub important: bool,
@@ -138,7 +141,7 @@ pub struct OutboxMessage {
 
 const OUTBOX_SELECT: &str = "SELECT id, account_id, message_id, sender, recipients, subject,
         body_text, in_reply_to, state, attempts, last_error, queued_epoch, cc_addrs, bcc_addrs,
-        body_html, important, send_at_epoch, ics_reply
+        body_html, important, send_at_epoch, ics_reply, refs
  FROM outbox";
 
 impl Store {
@@ -149,8 +152,8 @@ impl Store {
         self.conn().execute(
             "INSERT INTO outbox
              (account_id, message_id, sender, recipients, cc_addrs, bcc_addrs, subject, body_text,
-              body_html, in_reply_to, important, ics_reply, state, queued_epoch)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+              body_html, in_reply_to, important, ics_reply, state, queued_epoch, refs)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 account_id,
                 draft.message_id,
@@ -166,6 +169,7 @@ impl Store {
                 draft.ics_reply,
                 OutboxState::Queued.as_str(),
                 Utc::now().timestamp(),
+                draft.references,
             ],
         )?;
         let outbox_id = self.conn().last_insert_rowid();
@@ -483,6 +487,7 @@ fn row_to_outbox(row: &rusqlite::Row<'_>) -> rusqlite::Result<OutboxMessage> {
         body_text: row.get(6)?,
         body_html: row.get(14)?,
         in_reply_to: row.get(7)?,
+        references: row.get(18)?,
         important: row.get(15)?,
         send_at_epoch: row.get(16)?,
         ics_reply: row.get(17)?,
@@ -603,6 +608,35 @@ mod tests {
             .adopt_or_create_account("test@exemple.fr", "gmail")
             .unwrap();
         (store, account)
+    }
+
+    /// E7 : la chaîne `References` d'une réponse = les `References` du
+    /// parent + son `Message-ID` (RFC 5322 §3.6.4), lue en base — c'est le
+    /// cœur qui la sait, l'adaptateur ne fait que la recopier.
+    #[test]
+    fn references_de_porte_la_chaine_entiere() {
+        let (mut store, account) = store();
+        let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+        let mut parent = crate::test_support::FakeServer::envelope_simple(1, "sujet");
+        parent.message_id = Some("<c@x>".to_string());
+        store.upsert_envelopes(inbox, &[parent]).unwrap();
+        assert_eq!(
+            store.references_de(account, "INBOX", 1).unwrap().as_deref(),
+            Some("<c@x>"),
+            "sans References connues, le Message-ID du parent seul"
+        );
+        store
+            .conn()
+            .execute(
+                "UPDATE envelopes SET refs = '<a@x> <b@x>' WHERE mailbox_id = ?1 AND uid = 1",
+                [inbox],
+            )
+            .unwrap();
+        assert_eq!(
+            store.references_de(account, "INBOX", 1).unwrap().as_deref(),
+            Some("<a@x> <b@x> <c@x>")
+        );
+        assert_eq!(store.references_de(account, "INBOX", 9).unwrap(), None);
     }
 
     #[test]

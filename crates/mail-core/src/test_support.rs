@@ -87,6 +87,27 @@ impl FakeServer {
         }
     }
 
+    /// Une enveloppe nue pour les tests qui n'ont pas besoin du simulateur.
+    pub(crate) fn envelope_simple(uid: Uid, subject: &str) -> Envelope {
+        Envelope {
+            uid,
+            subject: Some(subject.to_string()),
+            sender: Some("Alice".to_string()),
+            sender_address: Some("alice@exemple.fr".to_string()),
+            message_id: Some(format!("<m{uid}@exemple.fr>")),
+            in_reply_to: None,
+            date: Some(
+                chrono::Utc
+                    .timestamp_opt(1_700_000_000 + i64::from(uid), 0)
+                    .unwrap(),
+            ),
+            seen: false,
+            flagged: false,
+            to_addrs: Vec::new(),
+            cc_addrs: Vec::new(),
+        }
+    }
+
     pub(crate) fn add(&mut self, uid: Uid, subject: &str) {
         self.modseq += 1;
         let envelope = Envelope {

@@ -16,6 +16,7 @@ mod commands;
 mod demenagement;
 mod instance;
 mod telemetry;
+mod trace;
 mod veilleur;
 
 use std::collections::HashMap;
@@ -224,14 +225,21 @@ fn main() {
     // fenêtre — deux pompes concurrentes mettraient en quarantaine les
     // envois l'une de l'autre, doubleraient veilleurs et bulles. La
     // garde vit jusqu'à la fin du processus ; l'OS relâche le verrou.
-    let _garde_instance = match instance::dossier_de_la_base().map(|d| instance::verrouiller(&d)) {
+    let dossier = instance::dossier_de_la_base();
+    // E9 : la trace terrain sait où écrire dès le premier geste.
+    if let Some(dossier) = &dossier {
+        trace::initialiser(dossier.clone());
+    }
+    let _garde_instance = match dossier.as_deref().map(instance::verrouiller) {
         Some(Ok(Some(garde))) => Some(garde),
         Some(Ok(None)) => avertir_et_sortir("Wind est déjà ouvert.", 0),
         // Verrou impossible (dossier en lecture seule, disque plein…) :
         // on ne prive pas l'utilisateur de son courrier pour un fichier
         // de verrou — dit à la trace, sans garde.
         Some(Err(err)) => {
-            eprintln!("verrou d'instance impossible : {err} — lancement sans garde");
+            trace::trace(&format!(
+                "verrou d'instance impossible : {err} — lancement sans garde"
+            ));
             None
         }
         None => None,
