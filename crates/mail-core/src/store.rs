@@ -44,6 +44,11 @@ CREATE TABLE IF NOT EXISTS mailboxes (
     uid_validity   INTEGER NOT NULL,
     last_uid       INTEGER NOT NULL DEFAULT 0,
     highest_modseq INTEGER,
+    -- La boite a-t-elle DEJA ete synchronisee une fois (PLAN-AUDIT-V1
+    -- E2) ? C'est CE drapeau qui decide initiale / incrementale — jamais
+    -- `last_uid == 0` : une boite VIDEE (tout archive) a un max(uid) nul
+    -- et redevenait « initiale », donc muette (aucune bulle) et chere.
+    initialisee    INTEGER NOT NULL DEFAULT 0,
     -- Cette boite participe-t-elle au REGROUPEMENT en fils ?
     --
     -- Depuis l'ADR 0010 on synchronise TOUTES les boites, mais la portee
@@ -142,8 +147,16 @@ CREATE TABLE IF NOT EXISTS pending_actions (
     id         INTEGER PRIMARY KEY,
     mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
     uid        INTEGER NOT NULL,
-    kind       TEXT NOT NULL
+    kind       TEXT NOT NULL,
+    -- PLAN-AUDIT-V1 E3 : une action que le serveur refuse (NO/BAD) ou qui
+    -- echoue SEUIL_QUARANTAINE fois entre en QUARANTAINE (refusee = 1) :
+    -- elle sort de la file active — plus rien ne bloque les suivantes —
+    -- mais reste visible (fente d'avis, D2) avec son motif.
+    attempts   INTEGER NOT NULL DEFAULT 0,
+    refusee    INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_pending_actions_message ON pending_actions(mailbox_id, uid);
 CREATE TABLE IF NOT EXISTS drafts (
     id            INTEGER PRIMARY KEY,
     account_id    INTEGER NOT NULL DEFAULT 1,
@@ -537,6 +550,9 @@ pub struct SyncState {
     pub uid_validity: u32,
     pub last_uid: Uid,
     pub highest_modseq: Option<u64>,
+    /// La boîte a déjà été synchronisée une fois : c'est ce qui décide
+    /// initiale / incrémentale (E2), jamais `last_uid`.
+    pub initialisee: bool,
 }
 
 /// Un compte connecté au client.
@@ -1068,7 +1084,7 @@ impl Store {
         let state = self
             .0
             .query_row(
-                "SELECT id, uid_validity, last_uid, highest_modseq
+                "SELECT id, uid_validity, last_uid, highest_modseq, initialisee
                  FROM mailboxes WHERE account_id = ?1 AND name = ?2",
                 params![account_id, mailbox],
                 |row| {
@@ -1077,6 +1093,7 @@ impl Store {
                         uid_validity: row.get(1)?,
                         last_uid: row.get(2)?,
                         highest_modseq: row.get::<_, Option<i64>>(3)?.map(|m| m as u64),
+                        initialisee: row.get::<_, i64>(4)? != 0,
                     })
                 },
             )
@@ -1189,7 +1206,7 @@ impl Store {
     /// EXISTS et non la liste : la question est fermée, la réponse aussi.
     pub fn has_pending_actions(&self, mailbox_id: i64) -> Result<bool, Error> {
         Ok(self.0.query_row(
-            "SELECT EXISTS(SELECT 1 FROM pending_actions WHERE mailbox_id = ?1)",
+            "SELECT EXISTS(SELECT 1 FROM pending_actions WHERE mailbox_id = ?1 AND refusee = 0)",
             params![mailbox_id],
             |row| row.get(0),
         )?)
@@ -1230,7 +1247,7 @@ impl Store {
                         (SELECT COUNT(*) FROM envelopes e WHERE e.mailbox_id = m.id)), 0),
                     COALESCE(SUM(MAX(0, m.remote_total -
                         (SELECT COUNT(*) FROM pending_actions p
-                          WHERE p.mailbox_id = m.id
+                          WHERE p.mailbox_id = m.id AND p.refusee = 0
                             AND (p.kind IN ('archive', 'delete')
                                  OR p.kind LIKE 'move_to:%')))), 0)
              FROM mailboxes m WHERE m.remote_total > 0",
@@ -1530,8 +1547,11 @@ impl Store {
         last_uid: Uid,
         highest_modseq: Option<u64>,
     ) -> Result<(), Error> {
+        // `initialisee = 1` : une passe qui s'est soldée — la prochaine
+        // est incrémentale quoi qu'il reste en base (E2).
         self.0.execute(
-            "UPDATE mailboxes SET last_uid = ?2, highest_modseq = ?3 WHERE id = ?1",
+            "UPDATE mailboxes SET last_uid = ?2, highest_modseq = ?3, initialisee = 1
+             WHERE id = ?1",
             params![mailbox_id, last_uid, highest_modseq.map(|m| m as i64)],
         )?;
         Ok(())
@@ -1706,7 +1726,7 @@ impl Store {
                         let deja_en_file = tx
                             .prepare_cached(
                                 "SELECT 1 FROM pending_actions
-                                  WHERE mailbox_id = ?1 AND uid = ?2",
+                                  WHERE mailbox_id = ?1 AND uid = ?2 AND refusee = 0",
                             )?
                             .exists(params![mailbox_id, envelope.uid])?;
                         if !deja_en_file {
@@ -2051,23 +2071,71 @@ impl Store {
         Ok(())
     }
 
-    /// La file d'actions, dans l'ordre d'émission.
+    /// La file ACTIVE d'actions, dans l'ordre d'émission — les refusées
+    /// (quarantaine, E3) n'y sont plus. Une ligne au `kind` illisible
+    /// (version future, corruption) est mise en quarantaine avec son
+    /// motif, jamais fatale : avant E3 elle faisait échouer TOUTE la file.
     pub fn pending_actions(&self, mailbox_id: i64) -> Result<Vec<PendingAction>, Error> {
         let mut stmt = self.0.prepare(
-            "SELECT id, uid, kind FROM pending_actions WHERE mailbox_id = ?1 ORDER BY id",
+            "SELECT id, uid, kind FROM pending_actions
+              WHERE mailbox_id = ?1 AND refusee = 0 ORDER BY id",
         )?;
         let rows = stmt
             .query_map([mailbox_id], |row| {
                 Ok((row.get::<_, i64>(0)?, row.get(1)?, row.get::<_, String>(2)?))
             })?
             .collect::<Result<Vec<(i64, Uid, String)>, _>>()?;
-        rows.into_iter()
-            .map(|(id, uid, kind)| {
-                let action = Action::parse(&kind)
-                    .ok_or_else(|| Error::Corrupt(format!("action inconnue : {kind}")))?;
-                Ok(PendingAction { id, uid, action })
-            })
-            .collect()
+        let mut file = Vec::with_capacity(rows.len());
+        for (id, uid, kind) in rows {
+            match Action::parse(&kind) {
+                Some(action) => file.push(PendingAction { id, uid, action }),
+                None => self.refuser_action(id, &format!("action illisible : {kind}"))?,
+            }
+        }
+        Ok(file)
+    }
+
+    /// Échecs transitoires consécutifs au-delà desquels une action entre
+    /// en quarantaine (D2 : cinq cycles).
+    pub const SEUIL_QUARANTAINE: i64 = 5;
+
+    /// Un échec TRANSITOIRE de plus sur cette action. Rend `true` quand
+    /// le seuil est atteint : l'action vient d'entrer en quarantaine.
+    pub fn noter_echec_action(&self, action_id: i64, erreur: &str) -> Result<bool, Error> {
+        self.0.execute(
+            "UPDATE pending_actions
+                SET attempts = attempts + 1,
+                    last_error = ?2,
+                    refusee = CASE WHEN attempts + 1 >= ?3 THEN 1 ELSE refusee END
+              WHERE id = ?1",
+            params![action_id, erreur, Self::SEUIL_QUARANTAINE],
+        )?;
+        let refusee: i64 = self.0.query_row(
+            "SELECT refusee FROM pending_actions WHERE id = ?1",
+            [action_id],
+            |row| row.get(0),
+        )?;
+        Ok(refusee != 0)
+    }
+
+    /// Refus DÉFINITIF : quarantaine immédiate, avec le motif.
+    pub fn refuser_action(&self, action_id: i64, erreur: &str) -> Result<(), Error> {
+        self.0.execute(
+            "UPDATE pending_actions SET refusee = 1, last_error = ?2 WHERE id = ?1",
+            params![action_id, erreur],
+        )?;
+        Ok(())
+    }
+
+    /// Combien d'actions sont en quarantaine, tous comptes confondus —
+    /// la ligne de la fente d'avis (D2).
+    pub fn actions_refusees(&self) -> Result<u64, Error> {
+        let n: i64 = self.0.query_row(
+            "SELECT COUNT(*) FROM pending_actions WHERE refusee = 1",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(u64::try_from(n).unwrap_or(0))
     }
 
     pub fn remove_action(&self, action_id: i64) -> Result<(), Error> {
@@ -3937,6 +4005,31 @@ fn migrate(
     // relève gardée n'a eu lieu, donc une base héritée relève tout à son
     // premier cycle (conservateur), puis devient sobre.
     add_missing_columns(conn, "mailboxes", &[("remote_uidnext", "INTEGER")])?;
+    // PLAN-AUDIT-V1 E3 : la quarantaine des actions refusées.
+    add_missing_columns(
+        conn,
+        "pending_actions",
+        &[
+            ("attempts", "INTEGER NOT NULL DEFAULT 0"),
+            ("refusee", "INTEGER NOT NULL DEFAULT 0"),
+            ("last_error", "TEXT"),
+        ],
+    )?;
+    // PLAN-AUDIT-V1 E2 : le drapeau d'initialisation. Sur une base
+    // héritée, UNE fois, à la pose de la colonne : toute boîte qui a déjà
+    // un repère est réputée initialisée — les lignes à 0 gardent le
+    // comportement d'avant (première passe = initiale).
+    if !table_columns(conn, "mailboxes")?.contains("initialisee") {
+        add_missing_columns(
+            conn,
+            "mailboxes",
+            &[("initialisee", "INTEGER NOT NULL DEFAULT 0")],
+        )?;
+        conn.execute(
+            "UPDATE mailboxes SET initialisee = 1 WHERE last_uid > 0",
+            [],
+        )?;
+    }
     add_missing_columns(
         conn,
         "outbox",
@@ -4761,6 +4854,36 @@ mod tests {
         (store, id)
     }
 
+    /// Audit 2026-09-01 (PLAN-AUDIT-V1 E3) : une ligne `pending_actions`
+    /// au `kind` illisible (version future, corruption) faisait échouer
+    /// TOUT `pending_actions(mailbox_id)` — la file entière coincée par
+    /// une ligne. Elle est mise en quarantaine avec son motif, la file
+    /// continue.
+    #[test]
+    fn une_ligne_illisible_ne_fait_pas_echouer_la_file() {
+        let (store, id) = store_with_mailbox();
+        store.enqueue_action(id, 1, Action::MarkSeen).unwrap();
+        store
+            .conn()
+            .execute(
+                "INSERT INTO pending_actions (mailbox_id, uid, kind) VALUES (?1, 2, 'teleporter')",
+                [id],
+            )
+            .unwrap();
+        store.enqueue_action(id, 3, Action::Archive).unwrap();
+
+        let file = store.pending_actions(id).unwrap();
+        assert_eq!(
+            file.iter().map(|p| p.uid).collect::<Vec<_>>(),
+            vec![1, 3],
+            "les lisibles passent, l'illisible est écartée"
+        );
+        assert_eq!(store.actions_refusees().unwrap(), 1);
+        // Idempotent : une seconde lecture ne la recompte pas.
+        store.pending_actions(id).unwrap();
+        assert_eq!(store.actions_refusees().unwrap(), 1);
+    }
+
     /// D-36 (soldée à l'audit du 2026-09-01) : un `\n` dans un
     /// commentaire `--` du littéral `SCHEMA` devenait un vrai saut de
     /// ligne, SQLite avalait la suite du commentaire comme une COLONNE,
@@ -5242,6 +5365,7 @@ mod tests {
                 uid_validity: 1,
                 last_uid: 0,
                 highest_modseq: None,
+                initialisee: false,
             })
         );
         store.update_state(id, 42, Some(9000)).unwrap();

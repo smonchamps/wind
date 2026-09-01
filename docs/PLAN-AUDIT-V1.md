@@ -283,6 +283,42 @@ courtes (E7+E8, E9 seul).
   A toujours vivante. `demenagement::IDENTIFIANT` passe `pub(crate)`
   (une seule copie de l'identifiant côté Rust).
 
+- **E2 — livrée le 2026-09-01 (soir).** `sync.rs` : `SyncPlan::{Reset,
+  Initial, Incremental{modseq}}` et `plan_sync(etat, instantané)` pur ;
+  `sync()` ne fait que l'exécuter. `mailboxes.initialisee` (SCHEMA +
+  `add_missing_columns`, UNE fois : `UPDATE … SET initialisee = 1 WHERE
+  last_uid > 0` à la pose de la colonne — les lignes à 0 gardent le
+  comportement d'avant), posée à 1 par `update_state`. TDD : RED de
+  compilation (2 tests), GREEN 425/425 mail-core ; **le scénario prouvé
+  en le cassant** — décision sabotée en `last_uid == 0` ⇒ `left:
+  Initial, right: Incremental`, restaurée ⇒ vert. Clippy workspace
+  propre. Le filet D-36 (colonnes saines) a vu passer la colonne neuve.
+
+- **E3 — livrée le 2026-09-01 (soir).** Le plus simple et sûr :
+  `Error::Server(String)` reste (transitoire par défaut — on retente),
+  une variante **`Error::Refus`** naît pour le refus explicite ;
+  `mail-imap::server_err` y range `imap::Error::{No, Bad}` (dossier
+  disparu, `[CANNOT]`, `[TRYCREATE]`), tout le reste (I/O, TLS,
+  connexion perdue, réponse inattendue) reste `Server`.
+  `pending_actions` : colonnes `attempts`, `refusee`, `last_error` +
+  index `(mailbox_id, uid)` (le scan quadratique de `nettoyage_verdict`
+  tombe avec) ; `replay_actions` rend (rejouées, refusées) — `Refus` ⇒
+  quarantaine immédiate et le rejeu CONTINUE ; transitoire ⇒
+  `attempts + 1`, `break`, quarantaine au 5e (`SEUIL_QUARANTAINE`, D2) ;
+  une ligne au `kind` illisible est mise en quarantaine avec son motif,
+  jamais fatale. `has_pending_actions`, `sync_progress`, l'anti-doublon
+  de la règle du Non, les trois requêtes d'`echo.rs` (balayage,
+  dossiers/comptes avec travail) sont aveugles aux refusées.
+  `SyncReport.refusees`. Surface (D2) : `OutboxStatus.actions_refusees`,
+  `avisRefus` dans la fente (alerte, glyphe `error`, sans bouton,
+  priorité juste après l'échec d'envoi), catalogues fr/en avec pluriel
+  `|` — Système **A106**. TDD : RED de compilation (3 tests), GREEN
+  428/428 mail-core, 70/70 mail-imap, clippy propre, build ui-v2 0
+  avertissement, contraste 440 paires, cohérence 68 jetons. Limite
+  dite : la ligne de la fente n'a pas de scénario e2e (aucun décor ne
+  sait faire refuser une action au serveur) — couverte par le cœur et
+  la parité des catalogues ; à voir au terrain (STOP 2).
+
 ## Gate & terrain
 
 - Boucle intérieure : `cargo test -p <crate> <nom>` par étape ;

@@ -861,8 +861,16 @@ impl MailServer for ImapServer {
     }
 }
 
+/// NO/BAD = le serveur a compris et REFUSE (dossier disparu, `[CANNOT]`,
+/// `[TRYCREATE]`) : `Error::Refus`, définitif — le journal d'actions met
+/// en quarantaine au lieu de retenter à vie (E3). Tout le reste (I/O,
+/// TLS, connexion perdue, réponse inattendue) reste `Error::Server`,
+/// réputé transitoire.
 fn server_err(err: imap::Error) -> Error {
-    Error::Server(err.to_string())
+    match err {
+        imap::Error::No(_) | imap::Error::Bad(_) => Error::Refus(err.to_string()),
+        autre => Error::Server(autre.to_string()),
+    }
 }
 
 /// Un `Name` IMAP (issu de LIST ou LIST-STATUS) devient un `Folder` du

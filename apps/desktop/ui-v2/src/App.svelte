@@ -188,6 +188,10 @@
   // Les brouillons n'y vivent plus (PLAN-BROUILLONS) : ils sont en
   // liste — dossier Brouillons et mention sur le fil.
   let avisEnvoi = $state(null);
+  // PLAN-AUDIT-V1 E3 (D2) : des actions du journal en quarantaine —
+  // le serveur les a refusées. Un incident : juste après l'échec
+  // d'envoi, avant tout le reste. Sans bouton (vague 2).
+  let avisRefus = $state(null);
   let avisConnexion = $state(null);
   let avisMaj = $state(null);
   let avisCrash = $state(null);
@@ -196,7 +200,7 @@
   // d'ici — informatif, donc DERNIER de la priorité (un incident prime).
   let avisProgramme = $state(null);
   const avis = $derived(
-    avisEnvoi ?? avisConnexion ?? avisMaj ?? avisCrash ?? avisTelemetrie ?? avisProgramme,
+    avisEnvoi ?? avisRefus ?? avisConnexion ?? avisMaj ?? avisCrash ?? avisTelemetrie ?? avisProgramme,
   );
 
   // --- Ligne de progression (§6) : au plus UNE ------------------------
@@ -608,6 +612,10 @@
   async function sonderEnvois() {
     try {
       const etat = await appel('outbox_status');
+      const refusees = etat.actions_refusees ?? 0;
+      avisRefus = refusees > 0
+        ? { alerte: true, icone: 'error', texte: t('avis.actionsRefusees', { n: refusees }), actions: [] }
+        : null;
       envoisEnAttente = etat.queued;
       envoisProgrammes = etat.scheduled ?? 0;
       prochainProgramme = etat.next_scheduled_epoch ?? null;

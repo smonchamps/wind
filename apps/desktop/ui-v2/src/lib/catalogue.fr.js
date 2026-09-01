@@ -193,6 +193,7 @@ export const FR = {
   'avis.telemetrie': "Aider à améliorer Wind ? En cas de plantage, un rapport technique serait enregistré sur votre machine, jamais le contenu de vos mails. Vous choisissez ensuite de l'envoyer.",
   'avis.connexion': 'Compte non reconnecté : {details}',
   'avis.programme': '« {sujet} » partira {quand}, si Wind est ouvert à ce moment-là.',
+  'avis.actionsRefusees': "{n} action refusée par le serveur (dossier introuvable ou refus) : le message est resté où il était.|{n} actions refusées par le serveur (dossier introuvable ou refus) : les messages sont restés où ils étaient.",
 
   // --- Actions partagées ------------------------------------------------
   'action.renvoyer': 'Renvoyer',

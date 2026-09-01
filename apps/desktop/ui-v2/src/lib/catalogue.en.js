@@ -175,6 +175,7 @@ export const EN = {
   'avis.telemetrie': 'Help improve Wind? If it crashes, a technical report would be saved on your machine, never the content of your mail. You then choose whether to send it.',
   'avis.connexion': 'Account not reconnected: {details}',
   'avis.programme': '“{sujet}” will be sent {quand}, if Wind is open at that time.',
+  'avis.actionsRefusees': '{n} action refused by the server (folder not found or rejected): the message stayed where it was.|{n} actions refused by the server (folder not found or rejected): the messages stayed where they were.',
 
   // --- Actions partagées ------------------------------------------------
   'action.renvoyer': 'Send again',

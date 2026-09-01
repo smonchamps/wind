@@ -352,7 +352,8 @@ impl Store {
                  WHERE account_id = ?1
                    AND (origin_action_id IS NULL
                         OR NOT EXISTS (SELECT 1 FROM pending_actions p
-                                        WHERE p.id = origin_action_id))",
+                                        WHERE p.id = origin_action_id
+                                          AND p.refusee = 0))",
             )?
             .query_map([account_id], |row| Ok((row.get(0)?, row.get(1)?)))?
             .collect::<Result<_, _>>()?;
@@ -387,7 +388,7 @@ impl Store {
             .prepare(
                 "SELECT DISTINCT m.name FROM pending_actions p
                  JOIN mailboxes m ON m.id = p.mailbox_id
-                 WHERE m.account_id = ?1",
+                 WHERE m.account_id = ?1 AND p.refusee = 0",
             )?
             .query_map([account_id], |row| row.get(0))?
             .collect::<Result<_, _>>()?;
@@ -403,6 +404,7 @@ impl Store {
             .prepare(
                 "SELECT DISTINCT m.account_id FROM pending_actions p
                  JOIN mailboxes m ON m.id = p.mailbox_id
+                 WHERE p.refusee = 0
                  UNION
                  SELECT DISTINCT account_id FROM echos",
             )?

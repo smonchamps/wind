@@ -42,6 +42,9 @@ pub(crate) struct FakeServer {
     pub(crate) action_calls: Vec<String>,
     /// Simule une coupure sur les actions (test « zéro perte »).
     pub(crate) actions_fail: bool,
+    /// E3 : le serveur REFUSE les déplacements (NO/BAD — dossier disparu),
+    /// un refus définitif, pas une coupure.
+    pub(crate) deplacements_refuses: bool,
 }
 
 impl FakeServer {
@@ -65,6 +68,7 @@ impl FakeServer {
             attachment_bytes: BTreeMap::new(),
             action_calls: Vec::new(),
             actions_fail: false,
+            deplacements_refuses: false,
         }
     }
 
@@ -280,6 +284,9 @@ impl MailServer for FakeServer {
     fn move_to(&mut self, _mailbox: &str, uid: Uid, target: &str) -> Result<(), Error> {
         if self.actions_fail {
             return Err(Error::Server("coupure simulée".to_string()));
+        }
+        if self.deplacements_refuses {
+            return Err(Error::Refus(format!("[TRYCREATE] {target} n'existe pas")));
         }
         self.moved.push((uid, target.to_string()));
         self.messages.remove(&uid);

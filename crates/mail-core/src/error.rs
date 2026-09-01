@@ -12,6 +12,15 @@ pub enum Error {
     #[error("serveur : {0}")]
     Server(String),
 
+    /// Refus EXPLICITE du serveur (NO/BAD : dossier disparu, `[CANNOT]`,
+    /// `[TRYCREATE]`) — réessayer ne changera rien. Tout le reste
+    /// (`Server`) est réputé transitoire : réseau, bridage, timeout.
+    /// C'est la distinction que la boîte d'envoi a depuis l'ADR 0003
+    /// (`SendError::{Transient, Permanent}`) et que le journal d'actions
+    /// n'avait pas (audit 2026-09-01 S1-7, PLAN-AUDIT-V1 E3).
+    #[error("refus du serveur : {0}")]
+    Refus(String),
+
     /// Donnée locale inattendue (base modifiée hors de l'application).
     #[error("donnée locale invalide : {0}")]
     Corrupt(String),

@@ -731,6 +731,7 @@ fn relever_inbox(
             fetched: 0,
             deleted: 0,
             replayed: 0,
+            refusees: 0,
         }
     };
 
@@ -3654,6 +3655,10 @@ pub struct OutboxStatus {
     pub next_scheduled_epoch: Option<i64>,
     /// Tout sauf les envois aboutis, dans l'ordre d'émission.
     pub entries: Vec<OutboxEntry>,
+    /// PLAN-AUDIT-V1 E3 (D2) : actions du journal en QUARANTAINE (refus
+    /// du serveur, ou cinq échecs) — tous comptes. La fente le dit ;
+    /// l'intention n'est plus perdue en silence.
+    pub actions_refusees: u64,
 }
 
 /// Pré-remplissage d'une réponse : destinataire = adresse brute de
@@ -4448,6 +4453,7 @@ pub async fn outbox_status(app: AppHandle) -> Result<OutboxStatus, String> {
             scheduled: 0,
             next_scheduled_epoch: None,
             entries: Vec::new(),
+            actions_refusees: store.actions_refusees().map_err(|err| err.to_string())?,
         };
         let maintenant = chrono::Utc::now().timestamp();
         for message in store.outbox().map_err(|err| err.to_string())? {

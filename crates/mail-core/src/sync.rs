@@ -13,10 +13,38 @@ use std::collections::HashSet;
 use crate::action::Action;
 use crate::envelope::Uid;
 use crate::error::Error;
-use crate::remote::MailServer;
+use crate::remote::{MailServer, MailboxSnapshot};
 use crate::store::{Store, SyncState};
 
 const DEFAULT_BATCH_SIZE: usize = 500;
+
+/// Ce qu'une passe doit faire, décidé AVANT tout I/O d'écriture (STANDARD
+/// §4 : la décision pure, l'exécution ailleurs). Audit 2026-09-01 S1-6 :
+/// la décision lisait `last_uid == 0`, et une boîte VIDÉE redevenait
+/// « initiale » — muette (aucune bulle) et chère (inventaire complet).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SyncPlan {
+    /// UIDVALIDITY changée : tout ce qu'on sait de la boîte est faux.
+    Reset,
+    /// Boîte inconnue, ou connue mais jamais synchronisée jusqu'au bout.
+    Initial,
+    /// Boîte déjà initialisée : delta CONDSTORE si `modseq`, sinon
+    /// différentiel d'UIDs.
+    Incremental { modseq: Option<u64> },
+}
+
+/// La décision, sur la FRAÎCHEUR de l'état — jamais sur le plus grand UID
+/// en base.
+pub(crate) fn plan_sync(etat: Option<&SyncState>, instantane: &MailboxSnapshot) -> SyncPlan {
+    match etat {
+        None => SyncPlan::Initial,
+        Some(etat) if etat.uid_validity != instantane.uid_validity => SyncPlan::Reset,
+        Some(etat) if !etat.initialisee => SyncPlan::Initial,
+        Some(etat) => SyncPlan::Incremental {
+            modseq: etat.highest_modseq,
+        },
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyncMode {
@@ -33,6 +61,9 @@ pub struct SyncReport {
     pub deleted: usize,
     /// Actions locales rejouées vers le serveur en tête de synchro.
     pub replayed: usize,
+    /// Actions entrées en QUARANTAINE pendant ce rejeu (E3) : refus
+    /// définitif du serveur, ou cinquième échec transitoire.
+    pub refusees: usize,
 }
 
 pub struct SyncEngine {
@@ -63,18 +94,23 @@ impl SyncEngine {
     ) -> Result<SyncReport, Error> {
         let snapshot = server.select(mailbox)?;
 
-        let state = match store.sync_state(account_id, mailbox)? {
-            Some(state) if state.uid_validity == snapshot.uid_validity => state,
-            Some(stale) => {
+        // La DÉCISION est pure (`plan_sync`, STANDARD §4) ; ici on ne
+        // fait que l'exécuter.
+        let connu = store.sync_state(account_id, mailbox)?;
+        let plan = plan_sync(connu.as_ref(), &snapshot);
+        let state = match (plan, connu) {
+            (SyncPlan::Reset, Some(stale)) => {
                 store.reset_mailbox(stale.mailbox_id, snapshot.uid_validity)?;
                 SyncState {
                     uid_validity: snapshot.uid_validity,
                     last_uid: 0,
                     highest_modseq: None,
+                    initialisee: false,
                     ..stale
                 }
             }
-            None => {
+            (_, Some(state)) => state,
+            (_, None) => {
                 let mailbox_id =
                     store.create_mailbox(account_id, mailbox, snapshot.uid_validity)?;
                 SyncState {
@@ -82,6 +118,7 @@ impl SyncEngine {
                     uid_validity: snapshot.uid_validity,
                     last_uid: 0,
                     highest_modseq: None,
+                    initialisee: false,
                 }
             }
         };
@@ -94,14 +131,18 @@ impl SyncEngine {
 
         // Les intentions locales d'abord : la synchro qui suit reflète
         // ainsi leur effet (le rejeu bump le modseq côté serveur).
-        let replayed = replay_actions(server, store, mailbox, state.mailbox_id)?;
+        let (replayed, refusees) = replay_actions(server, store, mailbox, state.mailbox_id)?;
 
-        let mut report = if state.last_uid == 0 {
-            self.initial_sync(server, store, mailbox, state.mailbox_id)?
-        } else {
-            self.incremental_sync(server, store, mailbox, &state, snapshot.exists)?
+        let mut report = match plan {
+            SyncPlan::Incremental { .. } => {
+                self.incremental_sync(server, store, mailbox, &state, snapshot.exists)?
+            }
+            SyncPlan::Initial | SyncPlan::Reset => {
+                self.initial_sync(server, store, mailbox, state.mailbox_id)?
+            }
         };
         report.replayed = replayed;
+        report.refusees = refusees;
 
         let last_uid = store.max_uid(state.mailbox_id)?;
         store.update_state(state.mailbox_id, last_uid, snapshot.highest_modseq)?;
@@ -135,6 +176,7 @@ impl SyncEngine {
             fetched,
             deleted: 0,
             replayed: 0,
+            refusees: 0,
         })
     }
 
@@ -197,20 +239,29 @@ impl SyncEngine {
             fetched,
             deleted,
             replayed: 0,
+            refusees: 0,
         })
     }
 }
 
 /// Rejoue la file d'actions vers le serveur, dans l'ordre d'émission.
-/// Au premier échec, le rejeu s'arrête et le reste de la file survit :
-/// il sera retenté à la synchro suivante — aucune intention n'est perdue.
+/// Rend (rejouées, mises en quarantaine).
+///
+/// Un échec TRANSITOIRE (réseau, `Error::Server`) arrête le rejeu et le
+/// reste de la file survit pour la synchro suivante — au cinquième
+/// échec consécutif de la MÊME action, elle entre en quarantaine et
+/// libère la file. Un REFUS définitif (`Error::Refus`, NO/BAD) met
+/// l'action en quarantaine sur-le-champ et le rejeu CONTINUE : avant E3,
+/// un dossier disparu côté serveur bloquait toute la boîte à vie, en
+/// silence (audit 2026-09-01 S1-7).
 fn replay_actions(
     server: &mut dyn MailServer,
     store: &mut Store,
     mailbox: &str,
     mailbox_id: i64,
-) -> Result<usize, Error> {
+) -> Result<(usize, usize), Error> {
     let mut replayed = 0;
+    let mut refusees = 0;
     for pending in store.pending_actions(mailbox_id)? {
         let outcome = match &pending.action {
             Action::MarkSeen => server.set_seen(mailbox, pending.uid, true),
@@ -226,10 +277,19 @@ fn replay_actions(
                 store.remove_action(pending.id)?;
                 replayed += 1;
             }
-            Err(_) => break,
+            Err(Error::Refus(motif)) => {
+                store.refuser_action(pending.id, &motif)?;
+                refusees += 1;
+            }
+            Err(err) => {
+                if store.noter_echec_action(pending.id, &err.to_string())? {
+                    refusees += 1;
+                }
+                break;
+            }
         }
     }
-    Ok(replayed)
+    Ok((replayed, refusees))
 }
 
 /// Dans quel ORDRE synchroniser les boîtes d'un compte — décision pure,
@@ -737,6 +797,156 @@ mod tests {
 
         assert_eq!(report.fetched, 0);
         assert!(server.fetch_batches.is_empty());
+    }
+
+    /// Audit 2026-09-01 S1-6 (PLAN-AUDIT-V1 E2) : une boîte VIDÉE (tout
+    /// archivé) redevenait « synchro initiale » parce que la décision
+    /// lisait `last_uid == 0` — et `SyncMode::Initial` ne bulle jamais
+    /// (`notify::arrivals_to_notify`). L'utilisateur « inbox zéro »
+    /// perdait la première notification après chaque vidage, et payait
+    /// un `list_uids` + fetch complet. La décision se prend sur la
+    /// FRAÎCHEUR de l'état (boîte déjà initialisée), jamais sur le plus
+    /// grand UID en base.
+    #[test]
+    fn une_boite_videe_reste_en_incremental_et_bulle() {
+        for condstore in [false, true] {
+            let mut server = FakeServer::new(condstore);
+            server.add(1, "premier");
+            let mut store = Store::open_in_memory().unwrap();
+            let engine = SyncEngine::default();
+
+            synced(&mut server, &mut store, &engine);
+            server.expunge(1);
+            let vide = synced(&mut server, &mut store, &engine);
+            assert_eq!(vide.mode, SyncMode::Incremental, "condstore={condstore}");
+            assert_eq!(vide.deleted, 1);
+
+            server.add(2, "second");
+            let arrivee = synced(&mut server, &mut store, &engine);
+            assert_eq!(
+                arrivee.mode,
+                SyncMode::Incremental,
+                "condstore={condstore} : une boîte vidée puis regarnie n'est PAS une synchro initiale"
+            );
+            assert_eq!(arrivee.fetched, 1);
+            let arrivees = server.fetch_envelopes("INBOX", &[2]).unwrap();
+            let bulles = crate::notify::arrivals_to_notify(arrivee.mode, arrivees);
+            assert_eq!(bulles.len(), 1, "l'arrivée après un vidage doit buller");
+        }
+    }
+
+    fn snapshot(uid_validity: u32, highest_modseq: Option<u64>) -> MailboxSnapshot {
+        MailboxSnapshot {
+            uid_validity,
+            highest_modseq,
+            exists: 0,
+        }
+    }
+
+    fn etat(uid_validity: u32, initialisee: bool, highest_modseq: Option<u64>) -> SyncState {
+        SyncState {
+            mailbox_id: 7,
+            uid_validity,
+            last_uid: 0,
+            highest_modseq,
+            initialisee,
+        }
+    }
+
+    /// Audit 2026-09-01 S1-7 (PLAN-AUDIT-V1 E3) : un refus DÉFINITIF du
+    /// serveur (NO/BAD — dossier disparu, `[CANNOT]`) sur une action
+    /// bloquait TOUTE la file de la boîte, à vie, en silence : `break` au
+    /// premier échec, aucune sortie de file. L'action refusée entre en
+    /// quarantaine (elle se voit, elle ne bloque plus) et les suivantes
+    /// se rejouent dans la même passe.
+    #[test]
+    fn une_action_refusee_ne_bloque_pas_les_suivantes() {
+        let mut server = FakeServer::new(false);
+        server.add(1, "a");
+        server.add(2, "b");
+        let mut store = Store::open_in_memory().unwrap();
+        let engine = SyncEngine::default();
+        synced(&mut server, &mut store, &engine);
+
+        let id = mailbox_id(&store);
+        store
+            .enqueue_action(id, 1, Action::MoveTo("Disparu".to_string()))
+            .unwrap();
+        store.enqueue_action(id, 2, Action::MarkSeen).unwrap();
+        server.deplacements_refuses = true;
+
+        let report = synced(&mut server, &mut store, &engine);
+
+        assert_eq!(report.refusees, 1, "le déplacement refusé sort de la file");
+        assert_eq!(report.replayed, 1, "le marquage qui suivait a été rejoué");
+        assert!(server.messages[&2].0.seen);
+        assert!(
+            store.pending_actions(id).unwrap().is_empty(),
+            "la file ACTIVE est vide : la refusée n'y est plus"
+        );
+        assert_eq!(store.actions_refusees().unwrap(), 1);
+        assert!(
+            !store.has_pending_actions(id).unwrap(),
+            "une refusée ne force plus la relève à chaque cycle (faut_relever)"
+        );
+    }
+
+    /// Un échec TRANSITOIRE (réseau) reste retenté — mais pas à vie : au
+    /// cinquième, l'action entre en quarantaine et libère la file.
+    #[test]
+    fn cinq_echecs_transitoires_mettent_en_quarantaine() {
+        let mut server = FakeServer::new(false);
+        server.add(1, "a");
+        let mut store = Store::open_in_memory().unwrap();
+        let engine = SyncEngine::default();
+        synced(&mut server, &mut store, &engine);
+        let id = mailbox_id(&store);
+        store
+            .enqueue_action(id, 1, Action::MoveTo("Factures".to_string()))
+            .unwrap();
+        server.actions_fail = true;
+
+        for essai in 1..=4 {
+            let report = synced(&mut server, &mut store, &engine);
+            assert_eq!(report.refusees, 0, "essai {essai} : encore en file");
+            assert_eq!(store.pending_actions(id).unwrap().len(), 1);
+        }
+        let cinquieme = synced(&mut server, &mut store, &engine);
+        assert_eq!(cinquieme.refusees, 1, "cinquième échec : quarantaine");
+        assert!(store.pending_actions(id).unwrap().is_empty());
+
+        // La file est libre : une intention neuve passe dès que le réseau revient.
+        server.actions_fail = false;
+        store.enqueue_action(id, 1, Action::MarkSeen).unwrap();
+        let apres = synced(&mut server, &mut store, &engine);
+        assert_eq!(apres.replayed, 1);
+        assert!(server.messages[&1].0.seen);
+    }
+
+    /// La décision pure (STANDARD §4) : ce que `sync` faisait en ligne
+    /// avec `select`, `record_remote_total` et `replay_actions`.
+    #[test]
+    fn plan_sync_decide_sur_la_fraicheur_de_l_etat() {
+        assert_eq!(plan_sync(None, &snapshot(1, None)), SyncPlan::Initial);
+        assert_eq!(
+            plan_sync(Some(&etat(1, true, Some(9))), &snapshot(2, None)),
+            SyncPlan::Reset,
+            "UIDVALIDITY changée : tout est à refaire"
+        );
+        assert_eq!(
+            plan_sync(Some(&etat(1, false, None)), &snapshot(1, None)),
+            SyncPlan::Initial,
+            "boîte connue mais jamais initialisée (passe précédente morte en route)"
+        );
+        assert_eq!(
+            plan_sync(Some(&etat(1, true, None)), &snapshot(1, None)),
+            SyncPlan::Incremental { modseq: None }
+        );
+        assert_eq!(
+            plan_sync(Some(&etat(1, true, Some(42))), &snapshot(1, Some(50))),
+            SyncPlan::Incremental { modseq: Some(42) },
+            "le modseq de l'état local, pas celui du serveur"
+        );
     }
 
     #[test]
