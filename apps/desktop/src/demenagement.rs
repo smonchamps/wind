@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 /// à le citer : le pont vit tant que des postes Discovery existent.
 const ANCIEN_IDENTIFIANT: &str = "dev.discovery.app";
 /// Doit égaler `identifier` de `tauri.conf.json`.
-const IDENTIFIANT: &str = "dev.elements.wind";
+pub(crate) const IDENTIFIANT: &str = "dev.elements.wind";
 
 /// Déménage les données d'un poste Discovery vers les chemins Wind.
 /// Répétable : un poste déjà déménagé — ou neuf — ne fait rien.

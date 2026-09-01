@@ -5628,6 +5628,7 @@ dependencies = [
  "mail-render",
  "mail-smtp",
  "open",
+ "rfd",
  "serde",
  "serde_json",
  "tauri",

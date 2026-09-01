@@ -14,6 +14,7 @@
 
 mod commands;
 mod demenagement;
+mod instance;
 mod telemetry;
 mod veilleur;
 
@@ -181,6 +182,24 @@ fn armer_les_spans() {
         .try_init();
 }
 
+/// Un message modal AVANT toute fenêtre Tauri, puis la sortie. `rfd`
+/// est ce que le plugin dialog emballe ; ici il n'y a pas encore
+/// d'`AppHandle` (la fenêtre naîtrait avant `setup`, tauri `app.rs`).
+/// La trace le dit aussi, pour les lancements en console.
+fn avertir_et_sortir(message: &str, code: i32) -> ! {
+    eprintln!("{message}");
+    rfd::MessageDialog::new()
+        .set_title("Wind")
+        .set_level(if code == 0 {
+            rfd::MessageLevel::Info
+        } else {
+            rfd::MessageLevel::Error
+        })
+        .set_description(message)
+        .show();
+    std::process::exit(code)
+}
+
 fn main() {
     #[cfg(feature = "mesure")]
     armer_les_spans();
@@ -190,10 +209,33 @@ fn main() {
     // net — continuer offrirait une application vide à un utilisateur
     // dont les données sont à un rename de là.
     if let Err(err) = demenagement::demenager() {
-        eprintln!("échec du déménagement des données Discovery → Wind : {err}");
-        eprintln!("Fermez toute autre instance de l'application, puis relancez.");
-        std::process::exit(1);
+        // En release le binaire n'a pas de console : sans boîte de
+        // dialogue, « l'application ne démarre pas » sans un mot (audit
+        // 2026-09-01).
+        avertir_et_sortir(
+            &format!(
+                "Échec du déménagement des données Discovery → Wind : {err}\n\
+                 Fermez toute autre instance de l'application, puis relancez."
+            ),
+            1,
+        );
     }
+    // Mono-instance (PLAN-AUDIT-V1 E1, D1) : AVANT toute base et toute
+    // fenêtre — deux pompes concurrentes mettraient en quarantaine les
+    // envois l'une de l'autre, doubleraient veilleurs et bulles. La
+    // garde vit jusqu'à la fin du processus ; l'OS relâche le verrou.
+    let _garde_instance = match instance::dossier_de_la_base().map(|d| instance::verrouiller(&d)) {
+        Some(Ok(Some(garde))) => Some(garde),
+        Some(Ok(None)) => avertir_et_sortir("Wind est déjà ouvert.", 0),
+        // Verrou impossible (dossier en lecture seule, disque plein…) :
+        // on ne prive pas l'utilisateur de son courrier pour un fichier
+        // de verrou — dit à la trace, sans garde.
+        Some(Err(err)) => {
+            eprintln!("verrou d'instance impossible : {err} — lancement sans garde");
+            None
+        }
+        None => None,
+    };
     let state = AppState {
         accounts: Mutex::new(HashMap::new()),
         outbox_flush: Arc::new(Mutex::new(())),

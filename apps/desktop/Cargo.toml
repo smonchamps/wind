@@ -51,6 +51,10 @@ tauri-plugin-dialog = "2"
 # dans mail-core : interroger le systeme de fichiers est de l'I/O de
 # plateforme, la DECISION (disk_shortfall) reste pure dans le coeur.
 fs4 = "0.13"
+# Boite de dialogue AVANT toute fenetre Tauri (mono-instance E1, echec du
+# demenagement) : rfd est ce que tauri-plugin-dialog utilise deja — aucune
+# compilation ni feature de plus, et pas de dependance windows-sys directe.
+rfd = { version = "0.16", default-features = false }
 # Liens du corps vers le navigateur SYSTEME (open_link) : ShellExecuteW
 # bien emballe, la ou `explorer` (patron de telemetry_open_folder) est
 # fait pour des dossiers, pas des URL. Le schema est valide en Rust
