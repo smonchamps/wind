@@ -60,7 +60,7 @@
   <div class="menu-tri" role="menu" data-testid="tri-menu"
        style="left:{x}px; top:{y}px">
     {#each TRIS as choix (choix.id)}
-      <button type="button" role="menuitem" data-testid={`tri-${choix.id}`}
+      <button type="button" role="menuitemradio" data-testid={`tri-${choix.id}`}
               aria-checked={choix.id === valeur}
               onclick={() => choisir(choix.id)}>
         <Icone nom={choix.icone} />{t(choix.libelle)}</button>

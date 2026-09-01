@@ -45,7 +45,18 @@ Etape 1 "format" { cargo fmt --all -- --check }
 
 Etape 2 "build ui-v2" {
     Push-Location (Join-Path $root "apps\desktop\ui-v2")
-    try { npm run build } finally { Pop-Location }
+    # « Zero avertissement exige » n'etait verifie par personne : seul le
+    # code de sortie comptait, et un avertissement a11y de
+    # vite-plugin-svelte a traverse deux gates vertes le 2026-09-01
+    # (A105). Un avertissement du plugin = rouge, comme un warning clippy.
+    try {
+        $sortie = & npm run build 2>&1 | ForEach-Object { "$_" }
+        $sortie | ForEach-Object { Write-Host $_ }
+        if ($LASTEXITCODE -eq 0 -and ($sortie -match '\[vite-plugin-svelte\]')) {
+            Write-Host "avertissement vite-plugin-svelte = rouge (zero avertissement exige)" -ForegroundColor Red
+            $global:LASTEXITCODE = 1
+        }
+    } finally { Pop-Location }
 }
 
 Etape 3 "contrastes WCAG (A8)" { node e2e/contraste.mjs }

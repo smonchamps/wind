@@ -54,7 +54,15 @@ cargo fmt --all -- --check
 echo "[2/8] build ui-v2 (Svelte + Vite)"
 # Rapide (~3 s) : echoue tot si la refonte ne compile plus. `npm ci`
 # n'est PAS rejoue ici — installer une fois, le build suffit ensuite.
-(cd apps/desktop/ui-v2 && npm run build)
+# « Zero avertissement exige » : un avertissement [vite-plugin-svelte]
+# (a11y, props) est un rouge, comme un warning clippy — il en a traverse
+# deux gates vertes le 2026-09-01 (A105) quand seul le code de sortie
+# comptait. La sortie est REMONTREE (jamais avalee, cf. etapes 3-5).
+sortie_build=$(cd apps/desktop/ui-v2 && npm run build 2>&1) || { printf '%s\n' "$sortie_build"; exit 1; }
+printf '%s\n' "$sortie_build"
+case "$sortie_build" in
+  *"[vite-plugin-svelte]"*) echo "avertissement vite-plugin-svelte = rouge (zero avertissement exige)"; exit 1 ;;
+esac
 
 echo "[3/8] contrastes WCAG (A8)"
 # Millisecondes : chaque paire (encre, fond) des 7 themes doit tenir
