@@ -89,6 +89,11 @@ impl Store {
             |row| row.get(0),
         )?;
         let tx = self.conn().unchecked_transaction()?;
+        // Un geste neuf remplace les refusées du message (revue E3).
+        tx.execute(
+            "DELETE FROM pending_actions WHERE mailbox_id = ?1 AND uid = ?2 AND refusee = 1",
+            params![mailbox_id, uid],
+        )?;
         tx.execute(
             "INSERT INTO pending_actions (mailbox_id, uid, kind) VALUES (?1, ?2, ?3)",
             params![mailbox_id, uid, action.to_kind()],

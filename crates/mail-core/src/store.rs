@@ -1486,47 +1486,24 @@ impl Store {
         // un déclencheur qui refuse la suppression des enveloppes.
         let tx = self.0.unchecked_transaction()?;
         search::deindex_mailbox(&self.0, mailbox_id)?;
+        // Les actions en attente : une intention sur un UID invalidé est
+        // irréalisable par construction.
         self.0.execute(
             "DELETE FROM pending_actions WHERE mailbox_id = ?1",
             [mailbox_id],
         )?;
-        self.0
-            .execute("DELETE FROM bodies WHERE mailbox_id = ?1", [mailbox_id])?;
-        // Les tables à clé (mailbox_id, uid) suivent les corps : après un
-        // changement d'UIDVALIDITY les UIDs ne veulent plus rien dire —
-        // une invitation qui survivrait collerait sa carte (et sa
-        // réponse !) au message qui recycle l'UID (revue PLAN-INVITATIONS).
-        // `attachments` avait le même trou depuis toujours ; corrigé au
-        // passage — une ligne de pièce périmée servait un index faux.
-        self.0.execute(
-            "DELETE FROM invitations WHERE mailbox_id = ?1",
-            [mailbox_id],
-        )?;
-        self.0.execute(
-            "DELETE FROM attachments WHERE mailbox_id = ?1",
-            [mailbox_id],
-        )?;
-        // La mémoire d'images (R1, RETOURS-11) suit le même contrat :
-        // un accord qui survivrait ferait charger les images distantes
-        // — pixel espion compris — du message qui recycle l'UID, sans
-        // bandeau ni geste (revue 2026-08-28).
-        self.0.execute(
-            "DELETE FROM images_messages WHERE mailbox_id = ?1",
-            [mailbox_id],
-        )?;
-        // E5 : la mise de côté suit le même contrat — un UID recyclé
-        // n'hérite d'aucune pile.
-        self.0.execute(
-            "DELETE FROM mis_de_cote WHERE mailbox_id = ?1",
-            [mailbox_id],
-        )?;
-        // R10 (RETOURS-13) : la mémoire « lu » du Kiosque, même contrat.
-        self.0.execute(
-            "DELETE FROM kiosque_lus WHERE mailbox_id = ?1",
-            [mailbox_id],
-        )?;
-        self.0
-            .execute("DELETE FROM envelopes WHERE mailbox_id = ?1", [mailbox_id])?;
+        // Les tables par message suivent TOUTES (revue PLAN-INVITATIONS,
+        // R1 RETOURS-11, E5, R10 RETOURS-13) : après un changement
+        // d'UIDVALIDITY les UIDs ne veulent plus rien dire — une
+        // invitation, un accord d'images, une mise de côté ou un « lu » qui
+        // survivraient colleraient au message qui recycle l'UID. LA liste
+        // est `TABLES_PAR_MESSAGE` (revue PLAN-AUDIT-V1 : plus de copie).
+        for table in TABLES_PAR_MESSAGE {
+            self.0.execute(
+                &format!("DELETE FROM {table} WHERE mailbox_id = ?1"),
+                [mailbox_id],
+            )?;
+        }
         // L'attente du Portier est DÉRIVÉE du courrier (E2) : un rang
         // qui ne s'appuie plus sur rien meurt avec la boîte — un UID
         // recyclé n'hérite d'aucune attente (A43/A89).
@@ -1872,8 +1849,14 @@ impl Store {
             // E4 : en UNE transaction (le patron de `nettoyage_verdict`) —
             // un retrait par autocommit payait huit fsync par message.
             let tx = self.0.unchecked_transaction()?;
+            let mut fils: BTreeSet<i64> = BTreeSet::new();
             for uid in retraits_du_non {
-                purger_message(&tx, mailbox_id, uid)?;
+                if let Some(thread) = purger_message(&tx, mailbox_id, uid)? {
+                    fils.insert(thread);
+                }
+            }
+            for thread in &fils {
+                thread::refresh(&tx, *thread)?;
             }
             tx.commit()?;
         }
@@ -1988,9 +1971,16 @@ impl Store {
             // intention sur un UID disparu est irréalisable.
             let mut actions =
                 tx.prepare("DELETE FROM pending_actions WHERE mailbox_id = ?1 AND uid = ?2")?;
+            let mut touched: BTreeSet<i64> = BTreeSet::new();
             for uid in &stale {
-                purger_message(&tx, mailbox_id, *uid)?;
+                if let Some(thread) = purger_message(&tx, mailbox_id, *uid)? {
+                    touched.insert(thread);
+                }
                 actions.execute(params![mailbox_id, uid])?;
+            }
+            // UNE fois par fil touché, jamais par message.
+            for thread in &touched {
+                thread::refresh(&tx, *thread)?;
             }
         }
         tx.commit()?;
@@ -2007,11 +1997,16 @@ impl Store {
     pub fn remove_local(&self, mailbox_id: i64, uid: Uid) -> Result<(), Error> {
         if self.0.is_autocommit() {
             let tx = self.0.unchecked_transaction()?;
-            purger_message(&tx, mailbox_id, uid)?;
+            if let Some(thread) = purger_message(&tx, mailbox_id, uid)? {
+                thread::refresh(&tx, thread)?;
+            }
             tx.commit()?;
             Ok(())
         } else {
-            purger_message(&self.0, mailbox_id, uid)
+            if let Some(thread) = purger_message(&self.0, mailbox_id, uid)? {
+                thread::refresh(&self.0, thread)?;
+            }
+            Ok(())
         }
     }
 
@@ -2050,8 +2045,12 @@ impl Store {
         Ok(changed > 0)
     }
 
-    /// Journalise une intention à rejouer vers le serveur.
+    /// Journalise une intention à rejouer vers le serveur. Un geste neuf
+    /// sur un message REMPLACE ses refusées (revue PLAN-AUDIT-V1) : sans
+    /// cela, une action en quarantaine y restait pour toujours et la
+    /// ligne de la fente ne pouvait que croître.
     pub fn enqueue_action(&self, mailbox_id: i64, uid: Uid, action: Action) -> Result<(), Error> {
+        oublier_les_refusees(&self.0, mailbox_id, uid)?;
         self.0.execute(
             "INSERT INTO pending_actions (mailbox_id, uid, kind) VALUES (?1, ?2, ?3)",
             params![mailbox_id, uid, action.to_kind()],
@@ -2090,17 +2089,14 @@ impl Store {
     /// Un échec TRANSITOIRE de plus sur cette action. Rend `true` quand
     /// le seuil est atteint : l'action vient d'entrer en quarantaine.
     pub fn noter_echec_action(&self, action_id: i64, erreur: &str) -> Result<bool, Error> {
-        self.0.execute(
+        let refusee: i64 = self.0.query_row(
             "UPDATE pending_actions
                 SET attempts = attempts + 1,
                     last_error = ?2,
                     refusee = CASE WHEN attempts + 1 >= ?3 THEN 1 ELSE refusee END
-              WHERE id = ?1",
+              WHERE id = ?1
+              RETURNING refusee",
             params![action_id, erreur, Self::SEUIL_QUARANTAINE],
-        )?;
-        let refusee: i64 = self.0.query_row(
-            "SELECT refusee FROM pending_actions WHERE id = ?1",
-            [action_id],
             |row| row.get(0),
         )?;
         Ok(refusee != 0)
@@ -4773,30 +4769,47 @@ fn connu_avant_epoque(conn: &Connection, adresse: &str, epoque: i64) -> Result<b
 /// LA liste des tables « par message », pour les trois purges
 /// (`remove_local`, `remove_absent`, `reset_mailbox`) — PLAN-AUDIT-V1 E4.
 /// Avant : trois copies divergentes, `remove_absent` en oubliait cinq.
-/// Le fil est relevé AVANT la suppression de l'enveloppe (après, le lien
-/// est perdu) et rafraîchi après. Les actions en attente ne sont PAS
-/// dans la liste : selon la purge, elles portent le geste
-/// (`remove_local`) ou sont irréalisables (`remove_absent`).
-pub(crate) fn purger_message(conn: &Connection, mailbox_id: i64, uid: Uid) -> Result<(), Error> {
+/// Les actions en attente ne sont PAS dans la liste : selon la purge,
+/// elles portent le geste (`remove_local`) ou sont irréalisables
+/// (`remove_absent`, `reset_mailbox` — qui les retire à part).
+pub(crate) const TABLES_PAR_MESSAGE: [&str; 7] = [
+    "bodies",
+    "invitations",
+    "attachments",
+    "images_messages",
+    "mis_de_cote",
+    "kiosque_lus",
+    "envelopes",
+];
+
+/// Purge UN message de toutes ses tables et rend son fil, RELEVÉ AVANT
+/// la suppression (après, le lien est perdu) — sans le rafraîchir :
+/// c'est l'appelant qui rafraîchit, UNE fois par fil touché (revue
+/// PLAN-AUDIT-V1 : un rafraîchissement par message coûtait ~500× sur un
+/// fil de 500 disparus).
+pub(crate) fn purger_message(
+    conn: &Connection,
+    mailbox_id: i64,
+    uid: Uid,
+) -> Result<Option<thread::ThreadId>, Error> {
     let thread = thread::thread_of(conn, mailbox_id, uid)?;
     search::deindex_message(conn, mailbox_id, uid)?;
-    for table in [
-        "bodies",
-        "invitations",
-        "attachments",
-        "images_messages",
-        "mis_de_cote",
-        "kiosque_lus",
-        "envelopes",
-    ] {
+    for table in TABLES_PAR_MESSAGE {
         conn.execute(
             &format!("DELETE FROM {table} WHERE mailbox_id = ?1 AND uid = ?2"),
             params![mailbox_id, uid],
         )?;
     }
-    if let Some(thread) = thread {
-        thread::refresh(conn, thread)?;
-    }
+    Ok(thread)
+}
+
+/// Les refusées d'un message (quarantaine E3) : un geste neuf de
+/// l'utilisateur les remplace.
+fn oublier_les_refusees(conn: &Connection, mailbox_id: i64, uid: Uid) -> Result<(), Error> {
+    conn.execute(
+        "DELETE FROM pending_actions WHERE mailbox_id = ?1 AND uid = ?2 AND refusee = 1",
+        params![mailbox_id, uid],
+    )?;
     Ok(())
 }
 
@@ -5044,6 +5057,27 @@ mod tests {
             7,
             "corps, pièces, invitation… tous encore là : rembobinés avec l'enveloppe"
         );
+    }
+
+    /// Revue PLAN-AUDIT-V1 : une refusée n'est pas éternelle — un geste
+    /// neuf de l'utilisateur sur le même message la remplace, et la ligne
+    /// de la fente retombe.
+    #[test]
+    fn un_nouveau_geste_remplace_l_ancienne_refusee() {
+        let (store, id) = store_with_mailbox();
+        store
+            .enqueue_action(id, 1, Action::MoveTo("Disparu".to_string()))
+            .unwrap();
+        let refusee = store.pending_actions(id).unwrap().remove(0).id;
+        store.refuser_action(refusee, "[TRYCREATE]").unwrap();
+        assert_eq!(store.actions_refusees().unwrap(), 1);
+
+        store.enqueue_action(id, 1, Action::MarkSeen).unwrap();
+
+        assert_eq!(store.actions_refusees().unwrap(), 0, "remplacée");
+        let file = store.pending_actions(id).unwrap();
+        assert_eq!(file.len(), 1);
+        assert_eq!(file[0].action, Action::MarkSeen);
     }
 
     /// Audit 2026-09-01 (PLAN-AUDIT-V1 E3) : une ligne `pending_actions`

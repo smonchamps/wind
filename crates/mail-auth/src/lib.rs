@@ -196,8 +196,11 @@ impl Authenticator {
             Ok(token) => (token, false),
             Err(keyring::Error::NoEntry) => {
                 let legacy = coffre_lire(KEYRING_REFRESH_LEGACY).map_err(|err| match err {
+                    // §6.8 : jamais l'adresse dans une erreur — elle finit
+                    // dans wind.log (revue PLAN-AUDIT-V1). Le compte se
+                    // reconnaît à son identifiant, tracé par l'appelant.
                     keyring::Error::NoEntry => {
-                        AuthError::Vault(format!("aucun jeton pour {email}"))
+                        AuthError::Vault("aucun jeton au coffre pour ce compte".to_string())
                     }
                     other => AuthError::Vault(other.to_string()),
                 })?;

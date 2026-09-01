@@ -56,7 +56,30 @@ part avec la vague 1 en **0.16.0** (MINEURE : comportements changés),
 clause de réouverture : un gel au clic de lien ou un pixel HTTP
 signalé par un testeur ⇒ 0.15.1 le jour même.
 
-✅ **Aucun chantier en cours.** Dernier soldé :
+🚧 **Chantier EN COURS : [PLAN-AUDIT-V1](PLAN-AUDIT-V1.md)** — la vague
+1 de l'audit (les S1 du cœur et du shell), ouverte le 2026-09-01 au
+soir, GO CE au STOP 1 (D1-D4 tranchées), **implémentée en une nuit
+(2026-09-02), neuf étapes livrées** : mono-instance par verrou fichier
+(E1), `plan_sync` pur contre la synchro « initiale » d'une boîte vidée
+(E2), quarantaine des actions refusées + ligne dans la fente (E3,
+A106), purges atomiques et une seule liste de tables (E4), garde du
+thread principal étendue aux commandes `async` + 17 commandes migrées
++ `VolGarde` + `into_inner` (E5), veille IDLE bornée par `FluxBorne`
+(E6 — deux fausses pistes tuées par les tests : sur Windows ni le
+timeout ni le `shutdown` par un clone de socket n'agissent), SMTP 53x
+transitoire + `References` complet + refresh OAuth réservé aux refus
+d'auth (E7), refresh token renouvelé stocké + attente OAuth bornée à
+5 min + `Debug` masqués (E8), `wind.log` borné au méga sans PII (E9).
+Revue à regard neuf 8 angles / 10 vérifiés / **10 corrigés** (dont la
+course déménagement-verrou, la refusée éternelle, l'adresse dans
+`wind.log`). Cinq gates complètes vertes + la finale. **STOP 2 — terrain
+CE dû** : checklist de huit gestes au PLAN (double lancement, boîte
+vidée ⇒ bulle, action refusée ⇒ fente, sonde de gel 60 s, veille 5 min,
+fil chez le destinataire, attente OAuth, `wind.log`). Tests : mail-core
+422 → 433, mail-imap 70 → 72, mail-smtp 26 → 29, mail-auth 21 → 24,
+desktop 27 → 31, e2e 187. Puis `/solde` et **0.16.0** (décision B).
+
+Chantier précédent :
 **[PLAN-RETOURS-14](PLAN-RETOURS-14.md)** (2026-08-31, ouvert et
 SOLDÉ le même jour, commit `18a9e61`, CI verte run 33408211506,
 terrain CE en TROIS passes le jour même — 1-7 OK, R8-R10 demandés et

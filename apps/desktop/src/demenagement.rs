@@ -48,9 +48,23 @@ pub fn demenager() -> io::Result<()> {
 /// l'écraser détruirait l'état le plus récent.
 fn demenager_dossier(ancien: &Path, nouveau: &Path) -> io::Result<()> {
     if ancien.is_dir() && !nouveau.exists() {
-        std::fs::rename(ancien, nouveau)?;
+        rename_tolerant(ancien, nouveau)?;
     }
     Ok(())
+}
+
+/// Un `rename` qui échoue alors que la CIBLE existe et que la SOURCE a
+/// disparu, c'est l'autre instance qui l'a fait entre notre test et
+/// notre geste (revue PLAN-AUDIT-V1 : le verrou mono-instance ne peut
+/// pas précéder le déménagement — il créerait le dossier cible et le
+/// ferait sauter). Le résultat voulu est là : succès, pas « Échec du
+/// déménagement » sur un poste où tout s'est bien passé.
+fn rename_tolerant(source: &Path, cible: &Path) -> io::Result<()> {
+    match std::fs::rename(source, cible) {
+        Ok(()) => Ok(()),
+        Err(_) if cible.exists() && !source.exists() => Ok(()),
+        Err(err) => Err(err),
+    }
 }
 
 /// `discovery.db` → `wind.db` dans le dossier déménagé. Les compagnons
@@ -64,7 +78,7 @@ fn renommer_base(dossier: &Path) -> io::Result<()> {
     for suffixe in ["-wal", "-shm", ""] {
         let source = dossier.join(format!("discovery.db{suffixe}"));
         if source.is_file() {
-            std::fs::rename(&source, dossier.join(format!("wind.db{suffixe}")))?;
+            rename_tolerant(&source, &dossier.join(format!("wind.db{suffixe}")))?;
         }
     }
     Ok(())
@@ -73,6 +87,27 @@ fn renommer_base(dossier: &Path) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Revue PLAN-AUDIT-V1 : deux instances lancées ensemble sur un poste
+    /// Discovery — la seconde arrive après le `rename` de la première.
+    /// Son propre `rename` échoue, mais la cible est là : c'est un succès.
+    #[test]
+    fn un_rename_perdu_contre_l_autre_instance_est_un_succes() {
+        let racine =
+            std::env::temp_dir().join(format!("wind-demenagement-course-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&racine);
+        let cible = racine.join("dev.elements.wind");
+        std::fs::create_dir_all(&cible).unwrap();
+        let source = racine.join("dev.discovery.app");
+        assert!(!source.exists());
+        // La source a déjà été déplacée par l'autre : rename échoue,
+        // la cible existe — tolérance.
+        rename_tolerant(&source, &cible).unwrap();
+        // Une vraie erreur (ni source ni cible) reste une erreur.
+        let nulle_part = racine.join("ailleurs");
+        assert!(rename_tolerant(&source, &nulle_part).is_err());
+        let _ = std::fs::remove_dir_all(&racine);
+    }
 
     fn bac(nom: &str) -> PathBuf {
         let dossier = std::env::temp_dir().join(format!(

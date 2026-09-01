@@ -809,6 +809,15 @@ fn relever_inbox(
         }
         Err(err) => problems.push(format!("arrivées à annoncer : {err}")),
     }
+    // Revue PLAN-AUDIT-V1 : le cycle qui met une action en quarantaine le
+    // DIT — sinon seul le compteur global de la fente le révèle, sans
+    // lien avec le cycle fautif. Point de sortie unique des quatre chemins.
+    if report.refusees > 0 {
+        crate::trace::trace(&format!(
+            "relève compte {account_id} : {} action(s) mise(s) en quarantaine",
+            report.refusees
+        ));
+    }
     Ok((report, statut_inbox))
 }
 
@@ -2036,14 +2045,47 @@ pub async fn message_body(
     uid: u32,
     show_images: bool,
 ) -> Result<BodyView, String> {
+    // Chemin courant — corps en cache : UNE prise du verrou, UNE ouverture
+    // (revue PLAN-AUDIT-V1 : `raw_body` puis un second `hors_pompe`
+    // prenaient le verrou deux fois pour rien).
+    let boite = mailbox.clone();
+    let en_cache = hors_pompe(app.clone(), move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        match store
+            .body(account_id, &boite, uid)
+            .map_err(|err| err.to_string())?
+        {
+            Some(html) => {
+                vue_du_corps(&store, account_id, &boite, uid, show_images, &html).map(Some)
+            }
+            None => Ok(None),
+        }
+    })
+    .await?;
+    if let Some(vue) = en_cache {
+        return Ok(vue);
+    }
+    // Corps absent : rapatriement réseau (nu), puis la vue sous le verrou.
     let html = raw_body(&app, account_id, &mailbox, uid).await?;
-    // APRÈS raw_body : si le corps vient d'être rapatrié, ses pièces —
-    // et son éventuelle invitation — viennent d'entrer en base : ces
-    // comptes-ci sont les frais. Le tout — trois lectures et
-    // l'assainissement (du CPU : un corps de 28 Mo, D-1) — sous le
-    // verrou des commandes (E5), pas sur un worker async nu.
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        vue_du_corps(&store, account_id, &mailbox, uid, show_images, &html)
+    })
+    .await
+}
+
+/// La vue d'un corps déjà en base : garde d'images, pièces, invitation,
+/// assainissement (du CPU : un corps de 28 Mo, D-1) — sous le verrou des
+/// commandes (E5), jamais sur un worker async nu.
+fn vue_du_corps(
+    store: &Store,
+    account_id: i64,
+    mailbox: &str,
+    uid: u32,
+    show_images: bool,
+    html: &str,
+) -> Result<BodyView, String> {
+    {
         // R1 (PLAN-RETOURS-11, D1) : la mémoire de la garde d'images se
         // consulte ICI — l'autorité est le cœur, l'UI ne décide rien
         // (elle ne voit qu'un `remote_images_blocked` à zéro, donc pas
@@ -2053,7 +2095,7 @@ pub async fn message_body(
             true
         } else {
             store
-                .sync_state(account_id, &mailbox)
+                .sync_state(account_id, mailbox)
                 .map_err(|err| err.to_string())?
                 .map(|s| store.images_allowed(s.mailbox_id, uid))
                 .transpose()
@@ -2061,11 +2103,11 @@ pub async fn message_body(
                 .unwrap_or(false)
         };
         let attachment_count = store
-            .attachments(account_id, &mailbox, uid)
+            .attachments(account_id, mailbox, uid)
             .map_err(|err| err.to_string())?
             .len();
         let invitation = store
-            .invitation(account_id, &mailbox, uid)
+            .invitation(account_id, mailbox, uid)
             .map_err(|err| err.to_string())?
             .map(vue_invitation);
 
@@ -2074,7 +2116,7 @@ pub async fn message_body(
         } else {
             mail_render::ImagePolicy::BlockRemote
         };
-        let sanitized = mail_render::sanitize_with(&html, policy);
+        let sanitized = mail_render::sanitize_with(html, policy);
         // R3 (PLAN-RETOURS-4, D3, 2026-08-18) : le corps s'affiche TOUJOURS
         // sur dalle claire (`Palette::default` = encre sombre / fond blanc),
         // quel que soit le thème. La dalle sombre d'A42 rendait illisible le
@@ -2092,8 +2134,7 @@ pub async fn message_body(
             attachment_count,
             invitation,
         })
-    })
-    .await
+    }
 }
 
 fn fetch_body(

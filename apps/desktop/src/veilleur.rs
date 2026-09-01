@@ -42,12 +42,16 @@ const SOMMEIL: Duration = Duration::from_secs(5);
 /// de compte.
 pub(crate) fn reconcilier(app: &tauri::AppHandle) {
     let state = app.state::<AppState>();
+    // Revue PLAN-AUDIT-V1 : un verrou empoisonné se REPREND ici comme dans
+    // `lock_accounts` (E5) — abandonner en silence laissait les veilleurs
+    // ni démarrés ni arrêtés jusqu'au redémarrage, sans un mot.
     let connectes: Vec<String> = match state.accounts.lock() {
         Ok(accounts) => accounts.keys().cloned().collect(),
-        Err(_) => return,
+        Err(empoisonne) => empoisonne.into_inner().keys().cloned().collect(),
     };
-    let Ok(mut veilleurs) = state.veilleurs.lock() else {
-        return;
+    let mut veilleurs = match state.veilleurs.lock() {
+        Ok(veilleurs) => veilleurs,
+        Err(empoisonne) => empoisonne.into_inner(),
     };
     veilleurs.retain(|email, vivant| {
         let garde = connectes.iter().any(|connecte| connecte == email);

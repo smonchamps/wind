@@ -444,6 +444,58 @@ courtes (E7+E8, E9 seul).
   e2e 187/187), puis la finale avant le dernier commit ;
   `/code-review high` sur l'ensemble de la vague avant ce commit.
 
+## Revue à regard neuf (2026-09-02, `/code-review high` sur 3097d22..67ad6e0)
+
+Huit angles (Sonnet) / ~27 candidats / 16 dédoublonnés / 10 vérifiés
+un à un (8 CONFIRMED, 2 PLAUSIBLE, 3 REFUTED) — **10 corrigés** :
+
+1. **Course déménagement / verrou (CONFIRMED)** — le verrou mono-
+   instance ne PEUT pas précéder `demenager()` (il créerait le dossier
+   cible et ferait sauter la migration) ; deux lancements concurrents
+   sur un poste Discovery faisaient échouer le second `rename` avec
+   « Échec du déménagement ». `rename_tolerant` : un `rename` raté
+   alors que la cible existe et que la source a disparu est un succès.
+   Test `un_rename_perdu_contre_l_autre_instance_est_un_succes`.
+2. **`veilleur::reconcilier` sur verrou empoisonné (CONFIRMED)** —
+   retour silencieux, plus aucun veilleur démarré ni arrêté ; repris
+   (`into_inner`) comme `lock_accounts`.
+3. **Adresse dans `wind.log` (CONFIRMED, §6.8)** —
+   `AuthError::Vault("aucun jeton pour {email}")` tracé par quatre
+   sites ; corrigé à la source (« aucun jeton au coffre pour ce compte »).
+4. **Refusée éternelle (CONFIRMED)** — rien ne retirait une action en
+   quarantaine tant que son message existait : la ligne de la fente ne
+   pouvait que croître. Un geste neuf sur le même message REMPLACE ses
+   refusées (`enqueue_action`, `geste_avec_echo`) — sans toucher à D2.
+   Test `un_nouveau_geste_remplace_l_ancienne_refusee`.
+5. **`thread::refresh` par message (CONFIRMED)** — `purger_message`
+   rend le fil sans rafraîchir ; `remove_absent` et les retraits du Non
+   dédoublonnent par fil (~500× sur un fil de 500 disparus).
+6. **`SyncReport.refusees` jamais tracé (CONFIRMED)** — une ligne dans
+   `relever_inbox`, point de sortie unique des quatre chemins.
+7. **Quatrième copie de la liste des tables (CONFIRMED)** —
+   `TABLES_PAR_MESSAGE` partagée par `purger_message` et `reset_mailbox`.
+8. **`message_body` en deux prises du verrou (CONFIRMED)** — une seule
+   (`vue_du_corps`), le réseau seul reste nu ; `reply_*`/`forward`
+   (3 prises, chemins rares) laissés — vague 2.
+9. **Premier `db_path` hors `setup` (PLAUSIBLE)** — appelé une fois
+   dans `.setup`, thread principal, avant la fenêtre.
+10. **`noter_echec_action` UPDATE + SELECT (PLAUSIBLE)** — `RETURNING`
+    (SQLite embarqué 3.50.2).
+
+Réfutés : `fetch_body` écrit hors verrou (état antérieur, consigné à
+l'audit 2.3), refresh OAuth sur `Refus` (comportement identique à
+avant), index sur `refusee` (table petite par construction).
+Candidats de propreté non retenus (vague 3) : `into_inner` ×7 → une
+aide ; `session_de(app, id)` ×4 ; `trace` / `trace_maj` deux writers ;
+`is_connection_error` dupliqué IMAP/SMTP ; `dossier_de_la_base` vs
+`db_path` (deux sources du chemin, sans test qui les lie) ;
+`sync_inbox`/`sync_inbox_light` toujours jumeaux ; `remove_local` à
+deux chemins (`is_autocommit`) ; `compose()` sans `references` ;
+`SEUIL_QUARANTAINE` dans le Store.
+
+Tests après revue : mail-core 432 → 433, desktop 30 → 31, mail-auth 24,
+clippy propre, garde 110/0.
+
 ## STOP 2 — checklist de terrain (CE)
 
 Préparer le poste (build release + trace) :

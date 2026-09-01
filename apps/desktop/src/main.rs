@@ -270,6 +270,11 @@ fn main() {
         // l'utilisateur a consenti). Ne touche jamais la base (ADR 0014).
         .setup(|app| {
             telemetry::init(app);
+            // Revue PLAN-AUDIT-V1 : le SEUL appel de `db_path` qui fait de
+            // l'I/O (dossier créé, chemin mémorisé) se joue ici, sur le
+            // thread principal avant la fenêtre — jamais dans le corps
+            // async nu d'une commande.
+            let _ = commands::db_path(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
