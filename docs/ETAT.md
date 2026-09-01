@@ -20,8 +20,17 @@ exhaustifs, plan en quatre vagues, **sept décisions CE** en attente
 CONDSTORE absent, `failOnFlakyTests`, une pile TLS, type du client
 OAuth Google). **Vague 0 LIVRÉE le jour même** : journaux TRACE du
 terrain (9,1 Mo, 99 adresses de tiers) retirés du dépôt PUBLIC et
-`*.log`/`target/` globaux au `.gitignore` — **la réécriture
-d'historique reste due (décision CE)** ; `open` avec
+`*.log`/`target/` globaux au `.gitignore` — **historique RÉÉCRIT le
+jour même** (décision CE, `git filter-repo`, main + les 26 tags
+poussés en force ; vérifié : `journaux` introuvable depuis tout tag,
+release 0.15.0 et `latest.json` intacts). Ce que la réécriture ne
+purge PAS : les refs `refs/pull/1-4/head` et les objets pendants
+(l'ancien `051bb01` répond encore par hash) — **demande au support
+GitHub due** (formulaire « remove sensitive data »). Deux pièges
+gravés au passage : le hook pre-push mourait sur un `remote_sha`
+absent (`git diff` invalide sous `set -e`) — corrigé, gate entière à
+la place ; et la protection de `main` (`allow_force_pushes: false`)
+se lève et se referme par `gh api PUT …/protection` ; `open` avec
 `shellexecute-on-windows` (sans elle, `open_link` lançait
 `powershell.exe` de façon synchrone sur la pompe — mesure `sonde-gel.py`
 due) ; CI en `--all-targets` + `--doc` (elle ne jouait pas les tests

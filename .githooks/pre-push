@@ -25,7 +25,12 @@ docs_only=1
 while read -r local_ref local_sha remote_ref remote_sha; do
   case "$local_sha" in *[!0]*) ;; *) docs_only=0; break ;; esac   # suppression de ref
   case "$remote_sha" in *[!0]*) ;; *) docs_only=0; break ;; esac  # ref neuve
-  fichiers=$(git diff --name-only "$remote_sha".."$local_sha")
+  # Un remote_sha inconnu en local (historique reecrit, clone
+  # superficiel, remote avance) faisait mourir le hook sous `set -e`
+  # avec « Invalid revision range » — et le push avec lui (2026-09-01,
+  # apres git filter-repo). Prudence : gate entiere, pas un refus.
+  fichiers=$(git diff --name-only "$remote_sha".."$local_sha" 2>/dev/null) \
+    || { docs_only=0; break; }
   [ -n "$fichiers" ] || continue
   # Itération par LIGNE (jamais par mot : un chemin avec espace serait
   # scindé et chaque fragment classé séparément).
