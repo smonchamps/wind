@@ -32,8 +32,12 @@ absent (`git diff` invalide sous `set -e`) — corrigé, gate entière à
 la place ; et la protection de `main` (`allow_force_pushes: false`)
 se lève et se referme par `gh api PUT …/protection` ; `open` avec
 `shellexecute-on-windows` (sans elle, `open_link` lançait
-`powershell.exe` de façon synchrone sur la pompe — mesure `sonde-gel.py`
-due) ; CI en `--all-targets` + `--doc` (elle ne jouait pas les tests
+`powershell.exe` de façon synchrone sur la pompe — **MESURÉ le
+2026-09-01** : `sonde-gel.py` 60 s sur décor Clarity, clics répétés
+sur le lien du fil Vantis, **0 gel > 150 ms**) ; piège gravé au
+passage : la sonde ne se joue JAMAIS pendant une gate, le lanceur e2e
+tue tout `wind-desktop` sous `target\` (code -1, faux crash — deux
+fausses alertes ce jour) ; CI en `--all-targets` + `--doc` (elle ne jouait pas les tests
 des exemples, dont celui de non-divulgation d'identifiants) ; hook sans
 `> /dev/null` sur les trois gates textuelles ; **D-36 soldée** avec le
 filet `une_base_neuve_n_a_aucune_colonne_fantome` (prouvé en le
@@ -44,7 +48,13 @@ la vague 1 de l'audit** (S1 du cœur : `plan_sync` pur contre la
 synchro « initiale » d'une boîte vidée, quarantaine des actions
 refusées, purges atomiques, garde du thread principal étendue aux
 commandes `async`, veille IDLE bornée, mono-instance) — ou les retours
-de la bêta s'ils arrivent d'abord.
+de la bêta s'ils arrivent d'abord. **Deux décisions CE prises le
+2026-09-01 (soir)** : (1) **mono-instance par verrou fichier `fs4`**
+à côté de `wind.db` (déjà en dépendance, zéro plugin), message clair
+si une seconde instance démarre ; (2) **pas de 0.15.1** — la vague 0
+part avec la vague 1 en **0.16.0** (MINEURE : comportements changés),
+clause de réouverture : un gel au clic de lien ou un pixel HTTP
+signalé par un testeur ⇒ 0.15.1 le jour même.
 
 ✅ **Aucun chantier en cours.** Dernier soldé :
 **[PLAN-RETOURS-14](PLAN-RETOURS-14.md)** (2026-08-31, ouvert et

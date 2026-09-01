@@ -13,6 +13,14 @@
 #
 #   python e2e/sonde-gel.py <base.db> [duree_s=40] [seuil_ms=150]
 #
+# JAMAIS pendant une gate ou une suite e2e (2026-09-01) : le lanceur
+# e2e balaie à chaque spec tout `wind-desktop` situé sous target\
+# (`balayerZombies`, Stop-Process -Force) — l'instance release de la
+# sonde comprise. Symptôme : « l'application s'est arrêtée … code
+# 4294967295 » (-1, le code de TerminateProcess) à quelques secondes,
+# WebView2 arrêtée proprement, aucune panique. Ce n'est pas un crash
+# du produit, c'est la gate qui a tué la sonde.
+#
 # La base de mesure se place HORS du dépôt (OneDrive fausserait la
 # mesure) — PASSATION §7.3. Le constat fondateur (2026-08-15, base
 # réelle 251 062 enveloppes, 17 761 aperçus NULL) : 25,2 s de gels
