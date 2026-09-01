@@ -63,6 +63,14 @@ foreach ($c in $cibles) {
 if ($Version -notmatch '^\d+\.\d+\.\d+$') {
     throw "Version « $Version » invalide — attendu MAJEUR.MINEUR.CORRECTIF (ex. 0.1.10), sans « v »."
 }
+# La release se tague et se pousse depuis `main` SEULEMENT (audit 2026-09-01) :
+# le script pousse la branche COURANTE et le tag Latest vise son commit ;
+# depuis une branche de travail, l'auto-update (irreversible) livrerait un
+# commit hors main. Refus franc avant le bump.
+$branche = (git branch --show-current).Trim()
+if ($branche -ne 'main') {
+    throw "Branche courante « $branche » : une release se fait depuis main."
+}
 # La publication finale passe par gh : le refuser tot, pas apres 8 min de build.
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
     throw "gh (GitHub CLI) introuvable — installe-le (winget install GitHub.cli) et « gh auth login », ou publie la Release a la main."

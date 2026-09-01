@@ -8,8 +8,12 @@ members = [
     "crates/mail-render",
     "crates/mail-smtp",
     "apps/desktop",
-    "spikes/web-bridge",
 ]
+# Aucun spike ici (audit 2026-09-01) : `spikes/web-bridge` etait membre
+# et se faisait compiler, linter, tester et auditer a chaque gate et
+# chaque run CI depuis le 2026-07-12, pour rien — seule raison de
+# compiler tiny_http et une seconde rusqlite bundled. Chaque spike porte
+# son propre `[workspace]`, comme spikes/idle.
 
 [workspace.package]
 # La version produit (celle de tauri.conf.json) — bumpee par

@@ -12,6 +12,31 @@
 
 ## Où on en est, et quoi faire en premier
 
+🔎 **Audit de code complet le 2026-09-01** —
+**[AUDIT-2026-09-01.md](AUDIT-2026-09-01.md)** : six auditeurs par
+couche + outillage transversal, sur la 0.15.0. **11 S1**, ~90 S2, S3
+exhaustifs, plan en quatre vagues, **sept décisions CE** en attente
+(réécriture d'historique, mono-instance, images au « Transférer »,
+CONDSTORE absent, `failOnFlakyTests`, une pile TLS, type du client
+OAuth Google). **Vague 0 LIVRÉE le jour même** : journaux TRACE du
+terrain (9,1 Mo, 99 adresses de tiers) retirés du dépôt PUBLIC et
+`*.log`/`target/` globaux au `.gitignore` — **la réécriture
+d'historique reste due (décision CE)** ; `open` avec
+`shellexecute-on-windows` (sans elle, `open_link` lançait
+`powershell.exe` de façon synchrone sur la pompe — mesure `sonde-gel.py`
+due) ; CI en `--all-targets` + `--doc` (elle ne jouait pas les tests
+des exemples, dont celui de non-divulgation d'identifiants) ; hook sans
+`> /dev/null` sur les trois gates textuelles ; **D-36 soldée** avec le
+filet `une_base_neuve_n_a_aucune_colonne_fantome` (prouvé en le
+cassant, deux fois) ; `faire-release.ps1` refuse une branche ≠ `main` ;
+`spikes/web-bridge` sorti du workspace ; `mail-render` : `img-src`
+sans `http:` + `no-referrer` même images accordées. **Prochain sujet :
+la vague 1 de l'audit** (S1 du cœur : `plan_sync` pur contre la
+synchro « initiale » d'une boîte vidée, quarantaine des actions
+refusées, purges atomiques, garde du thread principal étendue aux
+commandes `async`, veille IDLE bornée, mono-instance) — ou les retours
+de la bêta s'ils arrivent d'abord.
+
 ✅ **Aucun chantier en cours.** Dernier soldé :
 **[PLAN-RETOURS-14](PLAN-RETOURS-14.md)** (2026-08-31, ouvert et
 SOLDÉ le même jour, commit `18a9e61`, CI verte run 33408211506,

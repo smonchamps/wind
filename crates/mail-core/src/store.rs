@@ -269,9 +269,12 @@ CREATE TABLE IF NOT EXISTS echos (
     html             TEXT,
     attachment_count INTEGER NOT NULL DEFAULT 0,
     -- PLAN-RETOURS-5 : les destinataires de l'echo, au format des
-    -- enveloppes (adresses jointes par '\n') — la liste d'Envoyes dit
-    -- « A : X », jamais le slug de destination. NULL sur l'existant
-    -- (echos morts a la reconciliation de toute facon).
+    -- enveloppes (adresses jointes par un saut de ligne) — la liste
+    -- d'Envoyes dit « A : X », jamais le slug de destination. NULL sur
+    -- l'existant (echos morts a la reconciliation de toute facon).
+    -- D-36 : JAMAIS de sequence d'echappement Rust (antislash-n) dans ce
+    -- commentaire SQL — elle y devenait un vrai saut de ligne et SQLite
+    -- avalait la suite comme une colonne fantome (base neuve, 2026-08-26).
     to_addrs         TEXT,
     origin_action_id INTEGER,
     origin_outbox_id INTEGER,
@@ -4756,6 +4759,49 @@ mod tests {
         let account = test_account(&store);
         let id = store.create_mailbox(account, "INBOX", 1).unwrap();
         (store, id)
+    }
+
+    /// D-36 (soldée à l'audit du 2026-09-01) : un `\n` dans un
+    /// commentaire `--` du littéral `SCHEMA` devenait un vrai saut de
+    /// ligne, SQLite avalait la suite du commentaire comme une COLONNE,
+    /// et toute base NEUVE naissait avec une colonne fantôme dans
+    /// `echos`. Le filet manquant : chaque colonne de chaque table d'une
+    /// base neuve porte un nom sain — un identifiant, jamais un bout de
+    /// phrase.
+    #[test]
+    fn une_base_neuve_n_a_aucune_colonne_fantome() {
+        let store = Store::open_in_memory().unwrap();
+        let conn = store.conn();
+        let mut tables = conn
+            .prepare(
+                "SELECT name FROM sqlite_master \
+                 WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+            )
+            .unwrap();
+        let noms: Vec<String> = tables
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(noms.iter().any(|t| t == "echos"), "la table echos manque");
+        for table in noms {
+            let mut colonnes = conn
+                .prepare(&format!("PRAGMA table_info(\"{table}\")"))
+                .unwrap();
+            let noms_colonnes: Vec<String> = colonnes
+                .query_map([], |row| row.get(1))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap();
+            for colonne in &noms_colonnes {
+                assert!(
+                    colonne
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'),
+                    "colonne fantôme « {colonne} » dans {table} : {noms_colonnes:?}"
+                );
+            }
+        }
     }
 
     fn recent(store: &Store, offset: usize, limit: usize) -> Vec<Envelope> {

@@ -1,10 +1,15 @@
+# Spike Phase 4 (pont web) — JETABLE, hors du workspace de production
+# depuis l'audit du 2026-09-01 (il se faisait compiler et tester a chaque
+# gate pour rien). Son propre [workspace], comme spikes/idle.
+[workspace]
+
 [package]
 name = "spike-web-bridge"
-version.workspace = true
-edition.workspace = true
+version = "0.1.0"
+edition = "2024"
 
 [dependencies]
-anyhow.workspace = true
+anyhow = "1"
 imap = "3.0.0-alpha.14"
 keyring = { version = "3", features = ["windows-native"] }
 mail-parser = "0.11"
@@ -13,5 +18,9 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 serde_json = "1"
 tiny_http = "0.12"
 
-[lints]
-workspace = true
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"

@@ -44,7 +44,10 @@ const sources = path.join(root, 'apps', 'desktop', 'src');
 //   (clear d'une petite map au retour du réseau) — même garde-fou que
 //   sync_activity : la sonde mesure, le budget tranche ;
 // - app_version : lecture du manifeste en mémoire ;
-// - open_link : ShellExecuteW DÉTACHÉ (open::that_detached) ;
+// - open_link : ShellExecuteW DÉTACHÉ (open::that_detached) — vrai
+//   SEULEMENT avec la feature `shellexecute-on-windows` de la crate
+//   `open` (apps/desktop/Cargo.toml) ; sans elle, powershell.exe
+//   synchrone sur la pompe (audit 2026-09-01) ;
 // - telemetry_selftest_panic : ne bloque pas, elle PANIQUE — et
 //   l'ADR 0014 a validé le double-panic du THREAD PRINCIPAL (frontière
 //   FFI WebView2) : la déplacer changerait ce que l'auto-test exerce.

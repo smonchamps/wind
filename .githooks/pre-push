@@ -54,19 +54,19 @@ echo "[2/8] build ui-v2 (Svelte + Vite)"
 echo "[3/8] contrastes WCAG (A8)"
 # Millisecondes : chaque paire (encre, fond) des 7 themes doit tenir
 # 4,5:1 texte / 3:1 composants. Un jeton retouche sous le seuil = stop.
-node e2e/contraste.mjs > /dev/null
+node e2e/contraste.mjs
 
 echo "[4/8] coherence du Systeme (DC-D6)"
 # Le Systeme (docs/design/systeme.dc.html) ne doit jamais deriver du
 # livre (systeme.css) : la CI le verifie deja, le dernier rempart local
 # aussi desormais — un commit UI sans son amendement DC-D2 s'arrete ici.
-node e2e/coherence-systeme.mjs > /dev/null
+node e2e/coherence-systeme.mjs
 
 echo "[5/8] garde du thread principal (PLAN-GELS)"
 # Millisecondes : une commande Tauri synchrone qui ouvre la base gele la
 # fenetre pour toute sa duree (pompe de messages bloquee). Toute commande
 # bloquante doit etre `async fn`.
-node e2e/garde-thread-principal.mjs > /dev/null
+node e2e/garde-thread-principal.mjs
 
 if [ "$docs_only" = 1 ]; then
   echo "Diff documentaire seul (docs/** + *.md, hors docs/design/**) :"

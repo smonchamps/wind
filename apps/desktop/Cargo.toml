@@ -55,7 +55,12 @@ fs4 = "0.13"
 # bien emballe, la ou `explorer` (patron de telemetry_open_folder) est
 # fait pour des dossiers, pas des URL. Le schema est valide en Rust
 # AVANT l'appel — la garde vit ici, pas dans l'UI.
-open = "5"
+# `shellexecute-on-windows` n'est PAS decoratif (audit 2026-09-01) : sans
+# la feature, `open::that_detached` lance `powershell.exe Start-Process`
+# par un CreateProcess SYNCHRONE — sur le thread principal, puisque
+# `open_link` est exemptee de la garde (PLAN-GELS). Avec, c'est
+# ShellExecuteW, l'appel detache que le commentaire promettait.
+open = { version = "5", features = ["shellexecute-on-windows"] }
 # Banc de demarrage seulement (feature `mesure`) : le collecteur qui imprime
 # la duree des spans d'amont a leur fermeture.
 tracing-subscriber = { version = "0.3", optional = true }

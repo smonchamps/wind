@@ -39,8 +39,14 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Lints (warnings = erreurs)
         run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: Tests
-        run: cargo test --workspace
+      # --all-targets n'est PAS decoratif : sans lui, cargo ignore les tests
+      # des EXEMPLES (crates/mail-core/examples/) — dont celui qui empeche
+      # un diagnostic de divulguer des identifiants. Le hook pre-push le
+      # savait, la CI non (audit 2026-09-01). Meme perimetre que gate.ps1.
+      - name: Tests (--all-targets)
+        run: cargo test --workspace --all-targets
+      - name: Tests (--doc)
+        run: cargo test --workspace --doc
 
   # Pas de job E2E ici : un runner GitHub hébergé n'ouvre pas de fenêtre
   # WebView2 (mesuré — voir ADR 0005). Les parcours E2E sont joués par le

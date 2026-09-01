@@ -6131,7 +6131,9 @@ pub fn app_version(app: AppHandle) -> String {
 /// La GARDE vit ici, pas dans l'UI : seuls http, https et mailto
 /// passent — tout autre schema (file, smb, chemins UNC…) est refuse
 /// nommement. `open::that_detached` emballe ShellExecuteW sans bloquer
-/// le thread de commande.
+/// le thread de commande — SEULEMENT avec la feature
+/// `shellexecute-on-windows` de la crate (Cargo.toml) ; sans elle, c'est
+/// un `powershell.exe` lancé de façon synchrone (audit 2026-09-01).
 #[tauri::command]
 pub fn open_link(url: String) -> Result<(), String> {
     let propre = url.trim();

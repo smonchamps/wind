@@ -1,17 +1,18 @@
-/target
+# Cibles Cargo, ou qu'elles soient (racine, spikes/*, worktrees) —
+# patron GLOBAL depuis l'audit 2026-09-01 : l'enumeration par spike
+# laissait des trous (spikes/kiosque-precharge/target n'y etait pas).
+target/
 .claude/settings.local.json
 .claude/worktrees/
 apps/desktop/gen/
-spikes/search-engine/target/
-spikes/microsoft/target/
-spikes/body-backfill/target/
-spikes/idle/target/
-spikes/demarrage/target/
 e2e/node_modules/
 apps/desktop/ui-v2/node_modules/
 apps/desktop/ui-v2/dist/
 e2e/test-results/
 e2e/playwright-report/
 
-# Traces terrain de scripts/lancer-wind.ps1 (racine du depot, jamais versees)
-/*.log
+# Journaux : traces terrain de scripts/lancer-wind.ps1, journaux de
+# spans des bancs, maj.log — JAMAIS verses, ou qu'ils soient. Le patron
+# racine seul (`/*.log`) a laisse entrer 9 Mo de journaux du terrain
+# (99 adresses reelles) par spikes/demarrage/journaux (audit 2026-09-01).
+*.log

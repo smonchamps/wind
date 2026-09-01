@@ -265,6 +265,37 @@ motivée.)
 
 ## Soldée
 
+### ~~D-36 · La colonne fantôme de `echos` naît sur toute base neuve~~ — soldée le 2026-09-01
+
+- **Fait (PLAN-DEMARRAGE, 2026-08-26)** : le littéral `SCHEMA` de
+  `store.rs` contient un `antislash-n` **à l'intérieur d'un commentaire SQL
+  `--`** d'une chaîne Rust ordinaire. Rust en fait un vrai saut de
+  ligne : le commentaire s'arrête là, et SQLite avale la suite comme
+  une **colonne**. Reproduit sur base fraîche — une colonne nommée
+  `) — la liste d` dont le type absorbe la déclaration de `to_addrs`.
+  La vraie `to_addrs` n'existe que parce qu'`add_missing_columns` la
+  rajoute plus tard. Les bases du parc sont saines (créées avant ce
+  commentaire) ; **toute base neuve ne l'est pas**.
+- **Raison du report** : ce n'est pas un défaut de performance, et
+  retirer une colonne d'une base existante demande une réécriture de
+  table. Hors périmètre d'un chantier de démarrage (refus §2.6).
+- **Piste** : corriger le littéral, plus un test asserant les noms de
+  colonnes de `echos` sur une base NEUVE — c'est lui qui manque, et son
+  absence est la vraie cause.
+- **Rouvre si** : une base neuve montre un défaut lié à `to_addrs`, ou
+  au premier chantier qui réécrit `echos`.
+- **Soldée à la vague 0 de l'[audit du 2026-09-01](AUDIT-2026-09-01.md)**
+  (S1-11) : le littéral corrigé (« jointes par un saut de ligne », plus
+  aucune séquence d'échappement dans un commentaire SQL) ET le filet qui
+  manquait — `une_base_neuve_n_a_aucune_colonne_fantome` : chaque
+  colonne de chaque table d'une base neuve porte un nom sain. Prouvé en
+  le cassant : RED sur la base d'avant (« ) — la liste d »), puis RED de
+  nouveau quand la correction elle-même a réintroduit un `antislash-n` dans le
+  commentaire explicatif — le filet a attrapé sa propre correction.
+  Les cinq bases de la vague bêta 1 (installées avant) portent la
+  colonne fantôme ; inoffensive (`to_addrs` existe par
+  `add_missing_columns`), elle ne se retire qu'en réécrivant `echos`.
+
 ### ~~D-6 · Flake e2e v1 : « étoiler » (parcours-critiques)~~ — soldée le 2026-08-15
 
 - **Fait (2026-08-13)** : flake une passe sur trois du test v1
@@ -564,27 +595,6 @@ motivée.)
 - **Rouvre si** : le terrain ou la bêta voit le flou à 16 px ou sur
   les repères 10-12 px — alors chantier de dessin dédié, glyphe par
   glyphe (`format_list_numbered` plaide le premier).
-
-### D-36 · La colonne fantôme de `echos` naît sur toute base neuve
-
-- **Fait (PLAN-DEMARRAGE, 2026-08-26)** : le littéral `SCHEMA` de
-  `store.rs` contient un `
-` **à l'intérieur d'un commentaire SQL
-  `--`** d'une chaîne Rust ordinaire. Rust en fait un vrai saut de
-  ligne : le commentaire s'arrête là, et SQLite avale la suite comme
-  une **colonne**. Reproduit sur base fraîche — une colonne nommée
-  `) — la liste d` dont le type absorbe la déclaration de `to_addrs`.
-  La vraie `to_addrs` n'existe que parce qu'`add_missing_columns` la
-  rajoute plus tard. Les bases du parc sont saines (créées avant ce
-  commentaire) ; **toute base neuve ne l'est pas**.
-- **Raison du report** : ce n'est pas un défaut de performance, et
-  retirer une colonne d'une base existante demande une réécriture de
-  table. Hors périmètre d'un chantier de démarrage (refus §2.6).
-- **Piste** : corriger le littéral, plus un test asserant les noms de
-  colonnes de `echos` sur une base NEUVE — c'est lui qui manque, et son
-  absence est la vraie cause.
-- **Rouvre si** : une base neuve montre un défaut lié à `to_addrs`, ou
-  au premier chantier qui réécrit `echos`.
 
 ### D-37 · `sync_progress` recompte toutes les boîtes, toutes les 5 s, à vie
 

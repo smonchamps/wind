@@ -120,13 +120,18 @@ fn teinte_sure(teinte: Option<&str>, defaut: &str) -> String {
 ///
 /// **Contrainte d'hébergement (prouvée par l'expérience, 2026-07-12)** : un
 /// document `srcdoc` hérite de la CSP de la page hôte, et une CSP ne peut que
-/// se resserrer. L'hôte doit donc autoriser `img-src data: https: http:` et
-/// `style-src 'unsafe-inline'` — c'est CE document qui reste la couche
-/// restrictive par message (images distantes bloquées par défaut).
+/// se resserrer. L'hôte doit donc autoriser au moins `img-src data: https:`
+/// et `style-src 'unsafe-inline'` — c'est CE document qui reste la couche
+/// restrictive par message (images distantes bloquées par défaut, et
+/// jamais en clair `http:` même accordées).
 pub fn email_document(sanitized_html: &str, policy: ImagePolicy, palette: &Palette) -> String {
+    // Audit 2026-09-01 : accorder les images distantes, c'est accorder
+    // HTTPS — jamais le clair. Et `no-referrer` : sans lui, chaque image
+    // distante recevait un `Referer` d'origine `tauri.localhost`, une
+    // signature « client Wind » offerte au pisteur.
     let img_sources = match policy {
         ImagePolicy::BlockRemote => "data: cid:",
-        ImagePolicy::AllowRemote => "data: cid: https: http:",
+        ImagePolicy::AllowRemote => "data: cid: https:",
     };
     let Palette { encre, fond } = palette;
     // A44 (PLAN-RETOURS-V3 R4) : les barres du document sont natives en
@@ -136,6 +141,7 @@ pub fn email_document(sanitized_html: &str, policy: ImagePolicy, palette: &Palet
     let scheme = scheme_du_fond(fond);
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\">\
+         <meta name=\"referrer\" content=\"no-referrer\">\
          <meta http-equiv=\"Content-Security-Policy\" \
          content=\"default-src 'none'; img-src {img_sources}; style-src 'unsafe-inline'\">\
          <style>:root{{color-scheme:{scheme}}}\
@@ -212,13 +218,19 @@ mod tests {
         assert!(document.contains("default-src 'none'"));
         assert!(document.contains("img-src data: cid:;"));
         assert!(document.contains("<p>bonjour</p>"));
+        assert!(document.contains("<meta name=\"referrer\" content=\"no-referrer\">"));
     }
 
+    /// Audit 2026-09-01 : accorder les images distantes, c'est accorder
+    /// HTTPS — jamais le clair (`http:`), et jamais un `Referer` qui
+    /// signe « client Wind » au pisteur.
     #[test]
     fn email_document_opens_https_images_only_on_request() {
         let document = email_document("<p>x</p>", ImagePolicy::AllowRemote, &Palette::default());
-        assert!(document.contains("img-src data: cid: https: http:;"));
+        assert!(document.contains("img-src data: cid: https:;"));
+        assert!(!document.contains("http:"), "{document}");
         assert!(document.contains("default-src 'none'"));
+        assert!(document.contains("<meta name=\"referrer\" content=\"no-referrer\">"));
     }
 
     #[test]
