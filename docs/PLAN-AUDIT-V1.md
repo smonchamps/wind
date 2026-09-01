@@ -341,6 +341,42 @@ courtes (E7+E8, E9 seul).
   `commit` — deux tests d'annuaire l'ont attrapé (rollback au drop).
   Tests mail-core 428 → 431, clippy propre.
 
+- **E5 — livrée le 2026-09-02 (nuit).** **La garde d'abord, RED** :
+  `garde-thread-principal.mjs` retire du corps d'une commande `async`
+  les appels `hors_pompe(…)`/`spawn_blocking(…)` (parenthèses
+  équilibrées) et refuse dans la glu restante `Store::`, `std::fs`,
+  `File::`, `keyring`, `auth_for(`, `connected_jobs(`,
+  `account_email(`, `mail_render::sanitize`, `connect_imap(`,
+  `trace_maj(` — **17 rouges nommés sur `main` d'avant**, le compte de
+  l'audit. Puis GREEN : `db_path` devient une lecture pure (`OnceLock`,
+  dossier créé au premier appel — il quitte les marqueurs de glu, reste
+  interdit aux exemptées) ; `connected_jobs(app)` et `auth_for(app,
+  id)` sur l'`AppHandle`, appelés SOUS `hors_pompe` ; `raw_body`
+  (cache + session sous `hors_pompe`, réseau nu), `citation_reply` et
+  `forward_context` (assainissement sous le verrou : du CPU, un corps
+  de 28 Mo), `message_body` (trois lectures + assainissement sous le
+  verrou), `save_attachment` (écriture disque sous le verrou),
+  `fetch_source_attachment` (lecture → réseau → écriture, plus de
+  connexion SQLite tenue à travers l'attente réseau — le TOCTOU nommé
+  par l'ADR 0019), `connect_accounts`/`reconnect_account`/
+  `add_generic_account`/`remove_account` (base et sessions sous le
+  verrou, OAuth/IMAP/coffre en `spawn_blocking` nu), les cinq boucles
+  (`sync_inbox`, `sync_inbox_light`, `flush_outbox`, `sync_drafts`,
+  `backfill_bodies` : `connected_jobs` sous le verrou, la boucle réseau
+  reste nue — l'audit 2.3 « verrou global ≠ boucles réseau » reste à
+  confirmer sur traces, hors vague), `solder_releve` partagé par les
+  deux cycles. **`VolGarde`** (RAII) : `en_vol` retombe à la
+  libération, `?` compris ; test `le_vol_retombe_quand_la_garde_est_
+  relachee_meme_par_une_sortie_precoce` (RED sans enseignement : c'est
+  le `Drop`). **`into_inner` uniforme** : `lock_accounts` et les trois
+  verrous de boucle (vidange, brouillons, rattrapage) ne condamnent
+  plus jusqu'au redémarrage (ADR 0019 tenu ; le panic est consigné par
+  la télémétrie). Cinq commandes perdent un paramètre `state` devenu
+  inutile ; `envelope_of` meurt (remplacé par `enveloppe_et_compte`).
+  Garde : **110 commandes vérifiées, 0 défaut** ; clippy propre ;
+  tests desktop 27 → 28. Mesure due au STOP 2 : `sonde-gel.py` 60 s
+  avec ouverture d'un corps lourd pendant une relève.
+
 ## Gate & terrain
 
 - Boucle intérieure : `cargo test -p <crate> <nom>` par étape ;

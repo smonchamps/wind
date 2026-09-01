@@ -67,6 +67,55 @@ const PURES = new Set([
 // c'est pour cela que l'exemption est une LISTE et pas une heuristique.)
 const MARQUEURS = ['Store::', 'db_path(', 'std::fs', 'File::', 'keyring', 'read_to_string'];
 
+// PLAN-AUDIT-V1 E5 (audit 2026-09-01 S1-2) : la garde s'arrêtait au
+// mot-clé `async` — dix-sept commandes ouvraient la base, lisaient le
+// coffre ou écrivaient un fichier DANS le corps async, hors
+// `hors_pompe` : le blocage quittait la pompe pour un worker tokio
+// (workers = cœurs) et échappait au verrou des commandes (ADR 0019).
+// Règle : le corps d'une commande async, une fois RETIRÉS les appels
+// `hors_pompe(...)` et `spawn_blocking(...)` (parenthèses équilibrées),
+// n'est que de la glu — aucun de ces marqueurs n'y a sa place.
+// `db_path(` n'y est PAS : depuis E5 c'est une lecture pure (OnceLock,
+// le dossier est créé au premier appel) — il reste dans MARQUEURS pour
+// les exemptées, qui ne doivent même pas nommer la base. `lock_accounts`
+// et `veilleur::reconcilier` sont des verrous mémoire de quelques
+// microsecondes, pas de l'I/O : la sonde (`sonde-gel.py`) tranche.
+const MARQUEURS_GLU = [
+  ...MARQUEURS.filter((m) => m !== 'db_path('),
+  'auth_for(',
+  'connected_jobs(',
+  'account_email(',
+  'mail_render::sanitize',
+  'connect_imap(',
+  'trace_maj(',
+];
+const HORS_POMPE = ['hors_pompe(', 'spawn_blocking('];
+
+// Retire du texte chaque appel `nom(...)` avec ses parenthèses
+// équilibrées — ce qui reste est la glu que la commande exécute
+// elle-même, sur le worker async.
+function sansLesAppels(texte, noms) {
+  let reste = texte;
+  for (const nom of noms) {
+    let depart = reste.indexOf(nom);
+    while (depart !== -1) {
+      const ouvrante = depart + nom.length - 1;
+      let profondeur = 0;
+      let fin = ouvrante;
+      for (; fin < reste.length; fin += 1) {
+        if (reste[fin] === '(') profondeur += 1;
+        else if (reste[fin] === ')') {
+          profondeur -= 1;
+          if (profondeur === 0) break;
+        }
+      }
+      reste = reste.slice(0, depart) + reste.slice(fin + 1);
+      depart = reste.indexOf(nom);
+    }
+  }
+  return reste;
+}
+
 let echecs = 0;
 const echec = (message) => {
   echecs += 1;
@@ -104,6 +153,17 @@ for (const fichier of readdirSync(sources).filter((f) => f.endsWith('.rs'))) {
       if (PURES.has(nom)) {
         echec(
           `${fichier} : \`${nom}\` est async mais figure dans l'exemption des pures — retirer l'un ou l'autre`,
+        );
+        continue;
+      }
+      // E5 : async ne suffit pas — le bloquant passe par hors_pompe.
+      const ouvranteAsync = texte.indexOf('{', prise.index + prise[0].length);
+      if (ouvranteAsync === -1) continue;
+      const glu = sansLesAppels(corps(texte, ouvranteAsync), HORS_POMPE);
+      const dansLaGlu = MARQUEURS_GLU.filter((m) => glu.includes(m));
+      if (dansLaGlu.length > 0) {
+        echec(
+          `${fichier} : la commande async \`${nom}\` touche ${dansLaGlu.join(', ')} HORS de hors_pompe/spawn_blocking — bloque un worker tokio sans le verrou des commandes (ADR 0019)`,
         );
       }
       continue;

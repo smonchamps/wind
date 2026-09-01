@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use mail_auth::{AccountSession, Authenticated, Authenticator, GenericCredentials};
@@ -21,7 +21,7 @@ use mail_smtp::SmtpMailer;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
-use crate::AppState;
+use crate::{AppState, VolPasse};
 
 pub(crate) const MAILBOX: &str = "INBOX";
 const LIST_LIMIT_MAX: usize = 500;
@@ -162,48 +162,49 @@ pub struct ConnectReport {
 /// périmé de l'un ne doit jamais empêcher les autres de revenir. Même
 /// principe que [`sync_inbox`].
 #[tauri::command]
-pub async fn connect_accounts(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<ConnectReport, String> {
-    let path = db_path(&app)?;
-
+pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, String> {
     // Crochet E2E : comptes factices (emails séparés par des virgules),
     // jetons invalides par construction — hors ligne garanti.
     if let Ok(list) = std::env::var("WIND_E2E_ACCOUNT") {
-        let store = Store::open(&path).map_err(|err| err.to_string())?;
-        let mut infos = Vec::new();
-        for email in list.split(',').map(str::trim).filter(|e| !e.is_empty()) {
-            let id = store
-                .adopt_or_create_account(email, mail_auth::GOOGLE.account_kind)
-                .map_err(|err| err.to_string())?;
-            lock_accounts(&state)?.insert(
-                email.to_string(),
-                AccountSession::OAuth(Authenticated {
-                    provider: &mail_auth::GOOGLE,
+        return hors_pompe(app, move |app| {
+            let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+            let state = app.state::<AppState>();
+            let mut infos = Vec::new();
+            for email in list.split(',').map(str::trim).filter(|e| !e.is_empty()) {
+                let id = store
+                    .adopt_or_create_account(email, mail_auth::GOOGLE.account_kind)
+                    .map_err(|err| err.to_string())?;
+                lock_accounts(&state)?.insert(
+                    email.to_string(),
+                    AccountSession::OAuth(Authenticated {
+                        provider: &mail_auth::GOOGLE,
+                        email: email.to_string(),
+                        access_token: "jeton-e2e-invalide".to_string(),
+                    }),
+                );
+                infos.push(AccountInfo {
+                    id,
                     email: email.to_string(),
-                    access_token: "jeton-e2e-invalide".to_string(),
-                }),
-            );
-            infos.push(AccountInfo {
-                id,
-                email: email.to_string(),
-            });
-        }
-        // E4 : les comptes du décor gagnent aussi leurs veilleurs — même
-        // chemin que le réel, leurs échecs de connexion sont bornés
-        // (timeouts P0) et espacés (délai doublé).
-        crate::veilleur::reconcilier(&app);
-        return Ok(ConnectReport {
-            accounts: infos,
-            problems: Vec::new(),
-        });
+                });
+            }
+            // E4 : les comptes du décor gagnent aussi leurs veilleurs — même
+            // chemin que le réel, leurs échecs de connexion sont bornés
+            // (timeouts P0) et espacés (délai doublé).
+            crate::veilleur::reconcilier(&app);
+            Ok(ConnectReport {
+                accounts: infos,
+                problems: Vec::new(),
+            })
+        })
+        .await;
     }
 
-    let accounts = {
-        let store = Store::open(&path).map_err(|err| err.to_string())?;
-        store.accounts().map_err(|err| err.to_string())?
-    };
+    let path = db_path(&app)?;
+    let accounts = hors_pompe(app.clone(), |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store.accounts().map_err(|err| err.to_string())
+    })
+    .await?;
 
     let path_for_spawn = path.clone();
     let (connected, mut problems) = tauri::async_runtime::spawn_blocking(move || {
@@ -244,32 +245,38 @@ pub async fn connect_accounts(
     .await
     .map_err(|err| err.to_string())?;
 
-    let store = Store::open(&path).map_err(|err| err.to_string())?;
-    let mut infos = Vec::new();
-    for session in connected {
-        let email = session.email().to_string();
-        let provider = match &session {
-            AccountSession::OAuth(auth) => auth.provider.account_kind,
-            AccountSession::Generic(_) => "imap",
-        };
-        let id = store
-            .adopt_or_create_account(&email, provider)
-            .map_err(|err| err.to_string())?;
-        infos.push(AccountInfo {
-            id,
-            email: email.clone(),
-        });
-        lock_accounts(&state)?.insert(email, session);
-    }
-    problems.sort();
-    // E4 : un veilleur IDLE par compte reconnecté (ADR 0018) — démarrés
-    // ICI, après que les sessions sont posées, jamais au boot (rien à
-    // veiller sans session).
-    crate::veilleur::reconcilier(&app);
-    Ok(ConnectReport {
-        accounts: infos,
-        problems,
+    // E5 : l'écriture des comptes et la pose des sessions sous le verrou
+    // des commandes — plus jamais sur le worker async nu.
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let state = app.state::<AppState>();
+        let mut infos = Vec::new();
+        for session in connected {
+            let email = session.email().to_string();
+            let provider = match &session {
+                AccountSession::OAuth(auth) => auth.provider.account_kind,
+                AccountSession::Generic(_) => "imap",
+            };
+            let id = store
+                .adopt_or_create_account(&email, provider)
+                .map_err(|err| err.to_string())?;
+            infos.push(AccountInfo {
+                id,
+                email: email.clone(),
+            });
+            lock_accounts(&state)?.insert(email, session);
+        }
+        problems.sort();
+        // E4 : un veilleur IDLE par compte reconnecté (ADR 0018) — démarrés
+        // ICI, après que les sessions sont posées, jamais au boot (rien à
+        // veiller sans session).
+        crate::veilleur::reconcilier(&app);
+        Ok(ConnectReport {
+            accounts: infos,
+            problems,
+        })
     })
+    .await
 }
 
 /// Reconnecte un compte IMAP générique depuis le coffre et sa
@@ -367,20 +374,17 @@ async fn add_oauth_account(
 /// garde y est structurelle. Un compte IMAP générique n'a pas de jeton :
 /// refus franc avec la marche à suivre.
 #[tauri::command]
-pub async fn reconnect_account(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    account_id: i64,
-) -> Result<AccountInfo, String> {
-    let account = {
+pub async fn reconnect_account(app: AppHandle, account_id: i64) -> Result<AccountInfo, String> {
+    let account = hors_pompe(app.clone(), move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
             .accounts()
             .map_err(|err| err.to_string())?
             .into_iter()
             .find(|account| account.id == account_id)
-            .ok_or_else(|| "compte inconnu".to_string())?
-    };
+            .ok_or_else(|| "compte inconnu".to_string())
+    })
+    .await?;
     if account.provider == "imap" {
         return Err(
             "compte IMAP générique : retirez puis rajoutez le compte pour ressaisir le mot de passe"
@@ -410,13 +414,17 @@ pub async fn reconnect_account(
             session.email, account.email
         ));
     }
-    lock_accounts(&state)?.insert(account.email.clone(), AccountSession::OAuth(session));
-    // Le compte retrouve son veilleur IDLE sans attendre un relancement.
-    crate::veilleur::reconcilier(&app);
-    Ok(AccountInfo {
-        id: account.id,
-        email: account.email,
+    hors_pompe(app, move |app| {
+        let state = app.state::<AppState>();
+        lock_accounts(&state)?.insert(account.email.clone(), AccountSession::OAuth(session));
+        // Le compte retrouve son veilleur IDLE sans attendre un relancement.
+        crate::veilleur::reconcilier(&app);
+        Ok(AccountInfo {
+            id: account.id,
+            email: account.email,
+        })
     })
+    .await
 }
 
 /// Filtre minimal d'adresse : ce qui suit est vérifié par le fournisseur
@@ -485,7 +493,6 @@ fn ecrire_horizon_premier_ajout(
 #[tauri::command]
 pub async fn add_generic_account(
     app: AppHandle,
-    state: State<'_, AppState>,
     input: GenericAccountInput,
     horizon: Option<String>,
 ) -> Result<AccountInfo, String> {
@@ -517,28 +524,31 @@ pub async fn add_generic_account(
     .await
     .map_err(|err| err.to_string())??;
 
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    let id = store
-        .create_generic_account(
-            &email, &username, &imap_host, imap_port, &smtp_host, smtp_port,
-        )
-        .map_err(|err| err.to_string())?;
-    ecrire_horizon_premier_ajout(&store, id, horizon.as_deref())?;
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let id = store
+            .create_generic_account(
+                &email, &username, &imap_host, imap_port, &smtp_host, smtp_port,
+            )
+            .map_err(|err| err.to_string())?;
+        ecrire_horizon_premier_ajout(&store, id, horizon.as_deref())?;
 
-    let session = AccountSession::Generic(GenericCredentials {
-        email: email.clone(),
-        username: username.clone(),
-        password,
-        imap_host,
-        imap_port,
-        smtp_host,
-        smtp_port,
-    });
-    lock_accounts(&state)?.insert(email.clone(), session);
-    // E4 : le compte neuf gagne son veilleur IDLE sans attendre.
-    crate::veilleur::reconcilier(&app);
-
-    Ok(AccountInfo { id, email })
+        let session = AccountSession::Generic(GenericCredentials {
+            email: email.clone(),
+            username: username.clone(),
+            password,
+            imap_host,
+            imap_port,
+            smtp_host,
+            smtp_port,
+        });
+        let state = app.state::<AppState>();
+        lock_accounts(&state)?.insert(email.clone(), session);
+        // E4 : le compte neuf gagne son veilleur IDLE sans attendre.
+        crate::veilleur::reconcilier(&app);
+        Ok(AccountInfo { id, email })
+    })
+    .await
 }
 
 /// Retire un compte : ses secrets quittent le coffre de l'OS, ses données
@@ -550,21 +560,17 @@ pub async fn add_generic_account(
 /// pour… ») et le retrait se rejoue ; l'inverse — un jeton orphelin qui
 /// survit au compte — resterait invisible pour toujours.
 #[tauri::command]
-pub async fn remove_account(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    account_id: i64,
-) -> Result<(), String> {
-    let path = db_path(&app)?;
-    let account = {
-        let store = Store::open(&path).map_err(|err| err.to_string())?;
+pub async fn remove_account(app: AppHandle, account_id: i64) -> Result<(), String> {
+    let account = hors_pompe(app.clone(), move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
             .accounts()
             .map_err(|err| err.to_string())?
             .into_iter()
             .find(|account| account.id == account_id)
-            .ok_or_else(|| format!("compte inconnu : {account_id}"))?
-    };
+            .ok_or_else(|| format!("compte inconnu : {account_id}"))
+    })
+    .await?;
 
     // Le coffre est une API bloquante de l'OS : hors du fil de la fenêtre,
     // comme tous ses autres accès.
@@ -578,14 +584,18 @@ pub async fn remove_account(
         .map_err(|err| err.to_string())??;
     }
 
-    let mut store = Store::open(&path).map_err(|err| err.to_string())?;
-    store
-        .delete_account(account_id)
-        .map_err(|err| err.to_string())?;
-    lock_accounts(&state)?.remove(&account.email);
-    // E4 : son veilleur IDLE s'éteint au prochain tour.
-    crate::veilleur::reconcilier(&app);
-    Ok(())
+    hors_pompe(app, move |app| {
+        let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store
+            .delete_account(account_id)
+            .map_err(|err| err.to_string())?;
+        let state = app.state::<AppState>();
+        lock_accounts(&state)?.remove(&account.email);
+        // E4 : son veilleur IDLE s'éteint au prochain tour.
+        crate::veilleur::reconcilier(&app);
+        Ok(())
+    })
+    .await
 }
 
 /// Construit une session générique à partir du mot de passe et de la
@@ -949,7 +959,7 @@ impl Drop for FinDeCycle {
 #[tauri::command]
 pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<SyncSummary, String> {
     let path = db_path(&app)?;
-    let jobs = connected_jobs(&path, &state)?;
+    let jobs = hors_pompe(app.clone(), |app| connected_jobs(&app)).await?;
     let timer = Instant::now();
     let cycle = state.sync_cycle.clone();
     // Le manche traverse la boucle : les bulles partent PAR COMPTE, dès
@@ -1037,18 +1047,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
         .map_err(|err| err.to_string())?;
 
     reposer_sessions(&state, refreshed)?;
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    let total = store.unified_count().map_err(|err| err.to_string())?;
-    // L'horodatage de la dernière relève réussie (E1) : posé seulement
-    // quand AU MOINS un compte a répondu — un cycle à vide ne rajeunit
-    // pas « dernière synchronisation ». L'échec d'écriture est rapporté,
-    // jamais avalé ; il ne fait pas échouer la relève, le courrier est là.
-    if accounts > 0
-        && let Ok(epoch) = SystemTime::now().duration_since(UNIX_EPOCH)
-        && let Err(err) = store.set_text_pref(PREF_DERNIERE_SYNCHRO, &epoch.as_secs().to_string())
-    {
-        errors.push(format!("horodatage de la relève : {err}"));
-    }
+    let total = solder_releve(&app, accounts, &mut errors).await?;
 
     Ok(SyncSummary {
         accounts,
@@ -1075,7 +1074,7 @@ pub async fn sync_inbox_light(
     force: bool,
 ) -> Result<SyncSummary, String> {
     let path = db_path(&app)?;
-    let jobs = connected_jobs(&path, &state)?;
+    let jobs = hors_pompe(app.clone(), |app| connected_jobs(&app)).await?;
     let timer = Instant::now();
     let cycle = state.sync_cycle.clone();
     let app_bulles = app.clone();
@@ -1166,18 +1165,11 @@ pub async fn sync_inbox_light(
         .map_err(|err| err.to_string())?;
 
     reposer_sessions(&state, refreshed)?;
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    let total = store.unified_count().map_err(|err| err.to_string())?;
     // L'horodatage vaut aussi pour la passe légère : chaque INBOX vient
     // d'être vérifiée — c'est la relève du courrier au sens du prototype,
     // et un bouton qui laisserait « il y a 12 minutes » après un clic
     // réussi aurait l'air cassé. Les dossiers, eux, gardent leur cadence.
-    if accounts > 0
-        && let Ok(epoch) = SystemTime::now().duration_since(UNIX_EPOCH)
-        && let Err(err) = store.set_text_pref(PREF_DERNIERE_SYNCHRO, &epoch.as_secs().to_string())
-    {
-        errors.push(format!("horodatage de la relève : {err}"));
-    }
+    let total = solder_releve(&app, accounts, &mut errors).await?;
 
     Ok(SyncSummary {
         accounts,
@@ -2039,17 +2031,18 @@ pub struct BodyView {
 #[tauri::command]
 pub async fn message_body(
     app: AppHandle,
-    state: State<'_, AppState>,
     account_id: i64,
     mailbox: String,
     uid: u32,
     show_images: bool,
 ) -> Result<BodyView, String> {
-    let html = raw_body(&app, &state, account_id, &mailbox, uid).await?;
+    let html = raw_body(&app, account_id, &mailbox, uid).await?;
     // APRÈS raw_body : si le corps vient d'être rapatrié, ses pièces —
     // et son éventuelle invitation — viennent d'entrer en base : ces
-    // comptes-ci sont les frais.
-    let (attachment_count, invitation, images_accordees) = {
+    // comptes-ci sont les frais. Le tout — trois lectures et
+    // l'assainissement (du CPU : un corps de 28 Mo, D-1) — sous le
+    // verrou des commandes (E5), pas sur un worker async nu.
+    hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         // R1 (PLAN-RETOURS-11, D1) : la mémoire de la garde d'images se
         // consulte ICI — l'autorité est le cœur, l'UI ne décide rien
@@ -2067,42 +2060,40 @@ pub async fn message_body(
                 .map_err(|err| err.to_string())?
                 .unwrap_or(false)
         };
-        (
-            store
-                .attachments(account_id, &mailbox, uid)
-                .map_err(|err| err.to_string())?
-                .len(),
-            store
-                .invitation(account_id, &mailbox, uid)
-                .map_err(|err| err.to_string())?
-                .map(vue_invitation),
-            images_accordees,
-        )
-    };
+        let attachment_count = store
+            .attachments(account_id, &mailbox, uid)
+            .map_err(|err| err.to_string())?
+            .len();
+        let invitation = store
+            .invitation(account_id, &mailbox, uid)
+            .map_err(|err| err.to_string())?
+            .map(vue_invitation);
 
-    let policy = if images_accordees {
-        mail_render::ImagePolicy::AllowRemote
-    } else {
-        mail_render::ImagePolicy::BlockRemote
-    };
-    let sanitized = mail_render::sanitize_with(&html, policy);
-    // R3 (PLAN-RETOURS-4, D3, 2026-08-18) : le corps s'affiche TOUJOURS
-    // sur dalle claire (`Palette::default` = encre sombre / fond blanc),
-    // quel que soit le thème. La dalle sombre d'A42 rendait illisible le
-    // texte à couleurs d'expéditeur (fréquent : infolettres pensées pour
-    // fond blanc — terrain 2026-08-18) ; le courriel se lit tel qu'il a
-    // été composé, comme chez les clients mûrs. Le texte SANS couleur
-    // propre était déjà lisible ; celui qui en porte l'est désormais aussi.
-    Ok(BodyView {
-        document: mail_render::email_document(
-            &sanitized.html,
-            policy,
-            &mail_render::Palette::default(),
-        ),
-        remote_images_blocked: sanitized.remote_images_blocked,
-        attachment_count,
-        invitation,
+        let policy = if images_accordees {
+            mail_render::ImagePolicy::AllowRemote
+        } else {
+            mail_render::ImagePolicy::BlockRemote
+        };
+        let sanitized = mail_render::sanitize_with(&html, policy);
+        // R3 (PLAN-RETOURS-4, D3, 2026-08-18) : le corps s'affiche TOUJOURS
+        // sur dalle claire (`Palette::default` = encre sombre / fond blanc),
+        // quel que soit le thème. La dalle sombre d'A42 rendait illisible le
+        // texte à couleurs d'expéditeur (fréquent : infolettres pensées pour
+        // fond blanc — terrain 2026-08-18) ; le courriel se lit tel qu'il a
+        // été composé, comme chez les clients mûrs. Le texte SANS couleur
+        // propre était déjà lisible ; celui qui en porte l'est désormais aussi.
+        Ok(BodyView {
+            document: mail_render::email_document(
+                &sanitized.html,
+                policy,
+                &mail_render::Palette::default(),
+            ),
+            remote_images_blocked: sanitized.remote_images_blocked,
+            attachment_count,
+            invitation,
+        })
     })
+    .await
 }
 
 fn fetch_body(
@@ -2124,19 +2115,27 @@ fn fetch_body(
 /// serveur du compte sinon — chemin partagé lecture/réponse/transfert.
 async fn raw_body(
     app: &AppHandle,
-    state: &State<'_, AppState>,
     account_id: i64,
     mailbox: &str,
     uid: u32,
 ) -> Result<String, String> {
-    let path = db_path(app)?;
-    let cached = Store::open(&path)
-        .and_then(|store| store.body(account_id, mailbox, uid))
-        .map_err(|err| err.to_string())?;
-    match cached {
-        Some(html) => Ok(html),
-        None => {
-            let session = auth_for(&path, state, account_id)?;
+    // E5 : la lecture du cache et la session sous `hors_pompe` (base +
+    // verrou des commandes) ; seul le rapatriement réseau part nu.
+    let boite = mailbox.to_string();
+    let en_cache = hors_pompe(app.clone(), move |app| {
+        let cached = Store::open(&db_path(&app)?)
+            .and_then(|store| store.body(account_id, &boite, uid))
+            .map_err(|err| err.to_string())?;
+        match cached {
+            Some(html) => Ok(Ok(html)),
+            None => Ok(Err(auth_for(&app, account_id)?)),
+        }
+    })
+    .await?;
+    match en_cache {
+        Ok(html) => Ok(html),
+        Err(session) => {
+            let path = db_path(app)?;
             // Copie possedee : la fermeture part sur un autre fil.
             let boite = mailbox.to_string();
             tauri::async_runtime::spawn_blocking(move || {
@@ -2397,15 +2396,13 @@ pub async fn chemin_enregistrement_suggere(app: AppHandle, name: String) -> Resu
 #[tauri::command]
 pub async fn save_attachment(
     app: AppHandle,
-    state: State<'_, AppState>,
     account_id: i64,
     mailbox: String,
     uid: u32,
     index: usize,
     dest: String,
 ) -> Result<String, String> {
-    let path = db_path(&app)?;
-    let session = auth_for(&path, &state, account_id)?;
+    let session = hors_pompe(app.clone(), move |app| auth_for(&app, account_id)).await?;
     let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
         let (mut server, _refreshed) = connect_imap(&session)?;
         let bytes = server
@@ -2417,8 +2414,13 @@ pub async fn save_attachment(
     .await
     .map_err(|err| err.to_string())??;
 
-    std::fs::write(&dest, &bytes).map_err(|err| format!("écriture impossible : {err}"))?;
-    Ok(dest)
+    // E5 : l'écriture sur disque (des octets choisis par l'expéditeur,
+    // jusqu'à 25 Mo) hors du worker async nu.
+    hors_pompe(app, move |_| {
+        std::fs::write(&dest, &bytes).map_err(|err| format!("écriture impossible : {err}"))?;
+        Ok(dest)
+    })
+    .await
 }
 
 /// Réduit un nom venu du RÉSEAU à un nom de fichier inoffensif.
@@ -3667,17 +3669,11 @@ pub struct OutboxStatus {
 #[tauri::command]
 pub async fn reply_context(
     app: AppHandle,
-    state: State<'_, AppState>,
     account_id: i64,
     mailbox: String,
     uid: u32,
 ) -> Result<ComposeContext, String> {
-    let envelope = envelope_of(&app, account_id, &mailbox, uid)?;
-    let path = db_path(&app)?;
-    let own = {
-        let store = Store::open(&path).map_err(|err| err.to_string())?;
-        account_email(&store, account_id)?
-    };
+    let (envelope, own) = enveloppe_et_compte(&app, account_id, &mailbox, uid).await?;
     // Notre propre message ? (l'expéditeur est le compte). Répondre à
     // l'expéditeur nous écrirait à nous-mêmes.
     let is_own = envelope
@@ -3696,7 +3692,7 @@ pub async fn reply_context(
     // relève serveur UNE fois — même repli que « répondre à tous », jamais
     // un « À » vide sur son propre message.
     if destinataires.is_empty() && is_own {
-        let session = auth_for(&path, &state, account_id)?;
+        let session = hors_pompe(app.clone(), move |app| auth_for(&app, account_id)).await?;
         let boite = mailbox.clone();
         let recipients = tauri::async_runtime::spawn_blocking(move || {
             fetch_recipients_remote(&session, &boite, uid)
@@ -3709,7 +3705,7 @@ pub async fn reply_context(
         return Err("destinataire inconnu : resynchronisez la boîte".to_string());
     }
     let to = destinataires.join(", ");
-    let body_html = citation_reply(&app, &state, account_id, &mailbox, uid, &envelope).await;
+    let body_html = citation_reply(&app, account_id, &mailbox, uid, &envelope).await;
     Ok(ComposeContext {
         account_id,
         mailbox,
@@ -3722,6 +3718,28 @@ pub async fn reply_context(
     })
 }
 
+/// L'enveloppe d'un message et l'adresse de son compte, en UNE passe
+/// sous `hors_pompe` (E5) — la matière commune des trois contextes de
+/// composition.
+async fn enveloppe_et_compte(
+    app: &AppHandle,
+    account_id: i64,
+    mailbox: &str,
+    uid: u32,
+) -> Result<(mail_core::Envelope, String), String> {
+    let boite = mailbox.to_string();
+    hors_pompe(app.clone(), move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let envelope = store
+            .envelope(account_id, &boite, uid)
+            .map_err(|err| err.to_string())?
+            .ok_or_else(|| "message introuvable".to_string())?;
+        let own = account_email(&store, account_id)?;
+        Ok((envelope, own))
+    })
+    .await
+}
+
 /// La citation riche d'une réponse — un corps inaccessible rend une
 /// citation vide (on répond sans elle). Le corps cité est assaini
 /// `BlockRemote` : cette chaîne sera REPOSÉE dans l'éditeur
@@ -3729,20 +3747,27 @@ pub async fn reply_context(
 /// le pixel espion du message au simple clic « Répondre » (§6.4).
 async fn citation_reply(
     app: &AppHandle,
-    state: &State<'_, AppState>,
     account_id: i64,
     mailbox: &str,
     uid: u32,
     envelope: &mail_core::Envelope,
 ) -> String {
-    match raw_body(app, state, account_id, mailbox, uid).await {
-        Ok(html) => mail_core::quote_reply_html(
-            envelope.sender.as_deref(),
-            quote_date(envelope).as_deref(),
+    let Ok(html) = raw_body(app, account_id, mailbox, uid).await else {
+        return String::new();
+    };
+    // L'assainissement est du CPU (un corps de 28 Mo, D-1) : sous le
+    // verrou des commandes, pas sur un worker async (E5).
+    let expediteur = envelope.sender.clone();
+    let date = quote_date(envelope);
+    hors_pompe(app.clone(), move |_| {
+        Ok(mail_core::quote_reply_html(
+            expediteur.as_deref(),
+            date.as_deref(),
             &mail_render::sanitize(&html).html,
-        ),
-        Err(_) => String::new(),
-    }
+        ))
+    })
+    .await
+    .unwrap_or_default()
 }
 
 /// Pré-remplissage d'un « Répondre à tous » : expéditeur + À + Cc du
@@ -3760,24 +3785,18 @@ async fn citation_reply(
 #[tauri::command]
 pub async fn reply_all_context(
     app: AppHandle,
-    state: State<'_, AppState>,
     account_id: i64,
     mailbox: String,
     uid: u32,
 ) -> Result<ComposeContext, String> {
-    let envelope = envelope_of(&app, account_id, &mailbox, uid)?;
-    let path = db_path(&app)?;
-    let own = {
-        let store = Store::open(&path).map_err(|err| err.to_string())?;
-        account_email(&store, account_id)?
-    };
+    let (envelope, own) = enveloppe_et_compte(&app, account_id, &mailbox, uid).await?;
     // Destinataires connus en base : chemin instantané, aucun réseau. Non
     // vide = « lu » (un reçu porte toujours au moins soi en À) ; vide =
     // pas encore rattrapé, on relit le serveur une fois.
     let (to_list, cc_list) = if !envelope.to_addrs.is_empty() || !envelope.cc_addrs.is_empty() {
         (envelope.to_addrs.clone(), envelope.cc_addrs.clone())
     } else {
-        let session = auth_for(&path, &state, account_id)?;
+        let session = hors_pompe(app.clone(), move |app| auth_for(&app, account_id)).await?;
         let boite = mailbox.clone();
         let recipients = tauri::async_runtime::spawn_blocking(move || {
             fetch_recipients_remote(&session, &boite, uid)
@@ -3798,7 +3817,7 @@ pub async fn reply_all_context(
     if to.is_empty() {
         return Err("adresse de l'expéditeur inconnue : resynchronisez la boîte".to_string());
     }
-    let body_html = citation_reply(&app, &state, account_id, &mailbox, uid, &envelope).await;
+    let body_html = citation_reply(&app, account_id, &mailbox, uid, &envelope).await;
     Ok(ComposeContext {
         account_id,
         mailbox,
@@ -3830,48 +3849,37 @@ fn fetch_recipients_remote(
 #[tauri::command]
 pub async fn forward_context(
     app: AppHandle,
-    state: State<'_, AppState>,
     account_id: i64,
     mailbox: String,
     uid: u32,
 ) -> Result<ComposeContext, String> {
-    let envelope = envelope_of(&app, account_id, &mailbox, uid)?;
-    let html = raw_body(&app, &state, account_id, &mailbox, uid).await?;
+    let (envelope, _own) = enveloppe_et_compte(&app, account_id, &mailbox, uid).await?;
+    let html = raw_body(&app, account_id, &mailbox, uid).await?;
     // Verdict terrain D5 (2026-08-20) : un transfert TRANSMET — les
     // images distantes sont CONSERVÉES (`AllowRemote`), le destinataire
     // reçoit le message entier. L'exception §6.4 est assumée et
     // consignée : composer le transfert charge ces images dans
     // l'éditeur, comme un « afficher les images » implicite — c'est le
     // geste de transférer qui le dit. La RÉPONSE, elle, reste au pixel
-    // neutre (`citation_reply`).
-    Ok(ComposeContext {
-        account_id,
-        mailbox,
-        uid,
-        to: String::new(),
-        cc: String::new(),
-        subject: mail_core::forward_subject(envelope.subject.as_deref()),
-        body_html: mail_core::quote_forward_html(
-            envelope.sender.as_deref(),
-            quote_date(&envelope).as_deref(),
-            envelope.subject.as_deref(),
-            &mail_render::sanitize_with(&html, mail_render::ImagePolicy::AllowRemote).html,
-        ),
-        reply: false,
+    // neutre (`citation_reply`). L'assainissement sous `hors_pompe` (E5).
+    hors_pompe(app, move |_| {
+        Ok(ComposeContext {
+            account_id,
+            mailbox,
+            uid,
+            to: String::new(),
+            cc: String::new(),
+            subject: mail_core::forward_subject(envelope.subject.as_deref()),
+            body_html: mail_core::quote_forward_html(
+                envelope.sender.as_deref(),
+                quote_date(&envelope).as_deref(),
+                envelope.subject.as_deref(),
+                &mail_render::sanitize_with(&html, mail_render::ImagePolicy::AllowRemote).html,
+            ),
+            reply: false,
+        })
     })
-}
-
-fn envelope_of(
-    app: &AppHandle,
-    account_id: i64,
-    mailbox: &str,
-    uid: u32,
-) -> Result<mail_core::Envelope, String> {
-    let store = Store::open(&db_path(app)?).map_err(|err| err.to_string())?;
-    store
-        .envelope(account_id, mailbox, uid)
-        .map_err(|err| err.to_string())?
-        .ok_or_else(|| "message introuvable".to_string())
+    .await
 }
 
 /// Date au format de la ligne d'attribution d'une citation.
@@ -3949,6 +3957,35 @@ pub async fn queue_send(
     .await
 }
 
+/// La fin d'un cycle (complet ou léger) : le total pour la barre et
+/// l'horodatage de la dernière relève réussie (E1) — posé seulement
+/// quand AU MOINS un compte a répondu ; un cycle à vide ne rajeunit pas
+/// « dernière synchronisation ». L'échec d'écriture est rapporté, jamais
+/// avalé ; il ne fait pas échouer la relève, le courrier est là. Sous
+/// `hors_pompe` (E5) : base + verrou des commandes.
+async fn solder_releve(
+    app: &AppHandle,
+    accounts: usize,
+    errors: &mut Vec<String>,
+) -> Result<u64, String> {
+    let (total, horodatage) = hors_pompe(app.clone(), move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let total = store.unified_count().map_err(|err| err.to_string())?;
+        let mut horodatage = None;
+        if accounts > 0
+            && let Ok(epoch) = SystemTime::now().duration_since(UNIX_EPOCH)
+            && let Err(err) =
+                store.set_text_pref(PREF_DERNIERE_SYNCHRO, &epoch.as_secs().to_string())
+        {
+            horodatage = Some(format!("horodatage de la relève : {err}"));
+        }
+        Ok((total, horodatage))
+    })
+    .await?;
+    errors.extend(horodatage);
+    Ok(total)
+}
+
 /// Vide les boîtes d'envoi de TOUS les comptes connectés — chacun par
 /// SA connexion SMTP. Hors ligne = bilan, pas une erreur. Réentrance
 /// interdite (verrou).
@@ -3958,7 +3995,7 @@ pub async fn flush_outbox(
     state: State<'_, AppState>,
 ) -> Result<OutboxSummary, String> {
     let path = db_path(&app)?;
-    let jobs = connected_jobs(&path, &state)?;
+    let jobs = hors_pompe(app.clone(), |app| connected_jobs(&app)).await?;
     let lock = state.outbox_flush.clone();
 
     let (summary, refreshed) =
@@ -4060,15 +4097,16 @@ pub async fn sync_apres_geste(
     let cibles: Vec<i64> = match account_id {
         Some(id) => vec![id],
         None => {
-            let store = Store::open(&path).map_err(|err| err.to_string())?;
-            store
-                .comptes_avec_travail()
-                .map_err(|err| err.to_string())?
+            hors_pompe(app.clone(), |app| {
+                let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+                store.comptes_avec_travail().map_err(|err| err.to_string())
+            })
+            .await?
         }
     };
     let mut rapport = PasseReport::default();
     for compte in cibles {
-        let session = match auth_for(&path, &state, compte) {
+        let session = match hors_pompe(app.clone(), move |app| auth_for(&app, compte)).await {
             Ok(session) => session,
             Err(reason) => {
                 rapport.errors.push(reason);
@@ -4077,19 +4115,13 @@ pub async fn sync_apres_geste(
         };
         let email = session.email().to_string();
         // Un vol par compte : une passe en cours ABSORBE la demande — le
-        // drapeau la fera rejouer une fois, pas dix.
-        {
-            let mut passes = match state.passes_geste.lock() {
-                Ok(passes) => passes,
-                Err(empoisonne) => empoisonne.into_inner(),
-            };
-            let vol = passes.entry(email.clone()).or_default();
-            if vol.en_vol {
-                vol.redemande = true;
-                continue;
-            }
-            vol.en_vol = true;
-        }
+        // drapeau la fera rejouer une fois, pas dix. Le vol est une GARDE
+        // (E5) : un `?` au milieu de la passe le rendait jadis éternel,
+        // et toute passe suivante du compte était absorbée jusqu'au
+        // redémarrage.
+        let Some(vol) = VolGarde::prendre(&state.passes_geste, &email) else {
+            continue;
+        };
         loop {
             let issue = {
                 let path = path.clone();
@@ -4115,28 +4147,64 @@ pub async fn sync_apres_geste(
                 }
                 Err(reason) => rapport.errors.push(format!("{email} : {reason}")),
             }
-            // Libérer le vol — et rejouer UNE fois si un geste est
-            // arrivé pendant la passe.
-            let encore = {
-                let mut passes = match state.passes_geste.lock() {
-                    Ok(passes) => passes,
-                    Err(empoisonne) => empoisonne.into_inner(),
-                };
-                let vol = passes.entry(email.clone()).or_default();
-                if vol.redemande {
-                    vol.redemande = false;
-                    true
-                } else {
-                    vol.en_vol = false;
-                    false
-                }
-            };
-            if !encore {
+            // Rejouer UNE fois si un geste est arrivé pendant la passe.
+            if !vol.redemande_consommee() {
                 break;
             }
         }
+        drop(vol);
     }
     Ok(rapport)
+}
+
+/// La garde du vol d'une passe d'après-geste (E5) : `en_vol` retombe
+/// quand elle est relâchée — par le `drop` explicite comme par un `?`.
+struct VolGarde<'a> {
+    passes: &'a Mutex<HashMap<String, VolPasse>>,
+    email: String,
+}
+
+impl<'a> VolGarde<'a> {
+    /// `None` : une passe est déjà en vol pour ce compte — la demande
+    /// est absorbée (le drapeau la fera rejouer une fois).
+    fn prendre(passes: &'a Mutex<HashMap<String, VolPasse>>, email: &str) -> Option<Self> {
+        let mut table = match passes.lock() {
+            Ok(table) => table,
+            Err(empoisonne) => empoisonne.into_inner(),
+        };
+        let vol = table.entry(email.to_string()).or_default();
+        if vol.en_vol {
+            vol.redemande = true;
+            return None;
+        }
+        vol.en_vol = true;
+        Some(Self {
+            passes,
+            email: email.to_string(),
+        })
+    }
+
+    /// Un geste est-il arrivé pendant la passe ? Consomme le drapeau.
+    fn redemande_consommee(&self) -> bool {
+        let mut table = match self.passes.lock() {
+            Ok(table) => table,
+            Err(empoisonne) => empoisonne.into_inner(),
+        };
+        let vol = table.entry(self.email.clone()).or_default();
+        std::mem::take(&mut vol.redemande)
+    }
+}
+
+impl Drop for VolGarde<'_> {
+    fn drop(&mut self) {
+        let mut table = match self.passes.lock() {
+            Ok(table) => table,
+            Err(empoisonne) => empoisonne.into_inner(),
+        };
+        if let Some(vol) = table.get_mut(&self.email) {
+            vol.en_vol = false;
+        }
+    }
 }
 
 /// La passe d'UN compte — le corps bloquant de `sync_apres_geste`.
@@ -4367,9 +4435,11 @@ fn run_flush_all(
     db_path: &Path,
     lock: &Mutex<()>,
 ) -> Result<(OutboxSummary, Vec<AccountSession>), String> {
-    let _guard = lock
-        .lock()
-        .map_err(|_| "vidange précédente interrompue".to_string())?;
+    // E5 : verrou empoisonné = repris (le panic est consigné, ADR 0014).
+    let _guard = match lock.lock() {
+        Ok(garde) => garde,
+        Err(empoisonne) => empoisonne.into_inner(),
+    };
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
 
     // Un crash antérieur se constate même hors ligne : quarantaine d'abord.
@@ -5165,23 +5235,29 @@ pub struct FetchPieceReport {
 #[tauri::command]
 pub async fn fetch_source_attachment(
     app: AppHandle,
-    state: State<'_, AppState>,
     account_id: i64,
     mailbox: String,
     uid: u32,
     index: usize,
     draft_id: Option<i64>,
 ) -> Result<FetchPieceReport, String> {
-    let path = db_path(&app)?;
-    let store = Store::open(&path).map_err(|err| err.to_string())?;
-    let attachment = store
-        .attachments(account_id, &mailbox, uid)
-        .map_err(|err| err.to_string())?
-        .into_iter()
-        .find(|candidate| candidate.index == index)
-        .ok_or_else(|| "pièce jointe inconnue".to_string())?;
+    // E5 : lecture (pièce + session) sous `hors_pompe`, réseau nu, puis
+    // écriture sous `hors_pompe` — plus jamais une connexion SQLite tenue
+    // à travers l'attente réseau, ni un brouillon écrit hors du verrou
+    // des commandes (le TOCTOU `save_draft`/`delete_draft` de l'ADR 0019).
+    let boite = mailbox.clone();
+    let (attachment, session) = hors_pompe(app.clone(), move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let attachment = store
+            .attachments(account_id, &boite, uid)
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .find(|candidate| candidate.index == index)
+            .ok_or_else(|| "pièce jointe inconnue".to_string())?;
+        Ok((attachment, auth_for(&app, account_id)?))
+    })
+    .await?;
 
-    let session = auth_for(&path, &state, account_id)?;
     let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
         let (mut server, _refreshed) = connect_imap(&session)?;
         let bytes = server
@@ -5193,63 +5269,67 @@ pub async fn fetch_source_attachment(
     .await
     .map_err(|err| err.to_string())??;
 
-    let cree = draft_id.is_none();
-    let draft_id = match draft_id {
-        Some(id) => id,
-        None => {
-            store
-                .save_draft(
-                    account_id,
-                    None,
-                    None,
-                    mail_core::DraftContent {
-                        to_raw: "",
-                        cc_raw: "",
-                        bcc_raw: "",
-                        body_html: None,
-                        subject: "",
-                        body: "",
-                        reply_to_uid: None,
-                        reply_to_mailbox: None,
-                        important: false,
-                    },
-                )
-                .map_err(|err| err.to_string())?
-                .id
-        }
-    };
-    match store.add_draft_attachment(draft_id, &attachment.name, &attachment.mime, &bytes) {
-        Ok(saved) => Ok(FetchPieceReport {
-            draft_id: Some(draft_id),
-            updated_epoch: Some(saved.updated_epoch),
-            piece: Some(piece_row(saved.attachment)),
-            refused: None,
-        }),
-        Err(mail_core::Error::AttachmentOverBudget {
-            name, remaining, ..
-        }) => {
-            // L'ancre créée pour rien est reprise — même règle
-            // qu'`attach_files` : pas de brouillon vide fantôme.
-            let draft_id = if cree {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let cree = draft_id.is_none();
+        let draft_id = match draft_id {
+            Some(id) => id,
+            None => {
                 store
-                    .delete_draft(draft_id)
-                    .map_err(|err| err.to_string())?;
-                None
-            } else {
-                Some(draft_id)
-            };
-            Ok(FetchPieceReport {
-                draft_id,
-                updated_epoch: None,
-                piece: None,
-                refused: Some(RefusedPiece {
-                    name,
-                    remaining: mail_core::human_size(remaining),
-                }),
-            })
+                    .save_draft(
+                        account_id,
+                        None,
+                        None,
+                        mail_core::DraftContent {
+                            to_raw: "",
+                            cc_raw: "",
+                            bcc_raw: "",
+                            body_html: None,
+                            subject: "",
+                            body: "",
+                            reply_to_uid: None,
+                            reply_to_mailbox: None,
+                            important: false,
+                        },
+                    )
+                    .map_err(|err| err.to_string())?
+                    .id
+            }
+        };
+        match store.add_draft_attachment(draft_id, &attachment.name, &attachment.mime, &bytes) {
+            Ok(saved) => Ok(FetchPieceReport {
+                draft_id: Some(draft_id),
+                updated_epoch: Some(saved.updated_epoch),
+                piece: Some(piece_row(saved.attachment)),
+                refused: None,
+            }),
+            Err(mail_core::Error::AttachmentOverBudget {
+                name, remaining, ..
+            }) => {
+                // L'ancre créée pour rien est reprise — même règle
+                // qu'`attach_files` : pas de brouillon vide fantôme.
+                let draft_id = if cree {
+                    store
+                        .delete_draft(draft_id)
+                        .map_err(|err| err.to_string())?;
+                    None
+                } else {
+                    Some(draft_id)
+                };
+                Ok(FetchPieceReport {
+                    draft_id,
+                    updated_epoch: None,
+                    piece: None,
+                    refused: Some(RefusedPiece {
+                        name,
+                        remaining: mail_core::human_size(remaining),
+                    }),
+                })
+            }
+            Err(err) => Err(err.to_string()),
         }
-        Err(err) => Err(err.to_string()),
-    }
+    })
+    .await
 }
 
 /// Retire une pièce. Rend le nouvel `updated_epoch` du brouillon, ou
@@ -5302,7 +5382,7 @@ pub async fn sync_drafts(
     state: State<'_, AppState>,
 ) -> Result<DraftSyncSummary, String> {
     let path = db_path(&app)?;
-    let jobs = connected_jobs(&path, &state)?;
+    let jobs = hors_pompe(app.clone(), |app| connected_jobs(&app)).await?;
     let lock = state.drafts_push.clone();
 
     let (summary, refreshed) =
@@ -5319,9 +5399,11 @@ fn run_draft_sync_all(
     db_path: &Path,
     lock: &Mutex<()>,
 ) -> Result<(DraftSyncSummary, Vec<AccountSession>), String> {
-    let _guard = lock
-        .lock()
-        .map_err(|_| "poussée précédente interrompue".to_string())?;
+    // E5 : verrou empoisonné = repris (le panic est consigné, ADR 0014).
+    let _guard = match lock.lock() {
+        Ok(garde) => garde,
+        Err(empoisonne) => empoisonne.into_inner(),
+    };
     let store = Store::open(db_path).map_err(|err| err.to_string())?;
     let mut summary = DraftSyncSummary {
         pushed: 0,
@@ -5548,13 +5630,13 @@ pub(crate) fn connect_imap(
 
 /// Les comptes du registre qui sont connectés (session en mémoire) —
 /// l'unité de travail des boucles synchro/vidange/brouillons.
-fn connected_jobs(
-    path: &Path,
-    state: &State<'_, AppState>,
-) -> Result<Vec<(i64, AccountSession)>, String> {
-    let store = Store::open(path).map_err(|err| err.to_string())?;
+/// Les comptes connus ET connectés — ouvre la base : à appeler SOUS
+/// `hors_pompe` (E5), jamais dans la glu d'une commande async.
+fn connected_jobs(app: &AppHandle) -> Result<Vec<(i64, AccountSession)>, String> {
+    let store = Store::open(&db_path(app)?).map_err(|err| err.to_string())?;
     let known = store.accounts().map_err(|err| err.to_string())?;
-    let connected = lock_accounts(state)?;
+    let state = app.state::<AppState>();
+    let connected = lock_accounts(&state)?;
     Ok(known
         .into_iter()
         .filter_map(|account| {
@@ -5566,14 +5648,12 @@ fn connected_jobs(
         .collect())
 }
 
-fn auth_for(
-    path: &Path,
-    state: &State<'_, AppState>,
-    account_id: i64,
-) -> Result<AccountSession, String> {
-    let store = Store::open(path).map_err(|err| err.to_string())?;
+/// La session d'un compte — ouvre la base : SOUS `hors_pompe` (E5).
+fn auth_for(app: &AppHandle, account_id: i64) -> Result<AccountSession, String> {
+    let store = Store::open(&db_path(app)?).map_err(|err| err.to_string())?;
     let email = account_email(&store, account_id)?;
-    lock_accounts(state)?
+    let state = app.state::<AppState>();
+    lock_accounts(&state)?
         .get(&email)
         .cloned()
         .ok_or_else(|| format!("compte non connecté : {email}"))
@@ -5593,10 +5673,14 @@ fn account_email(store: &Store, account_id: i64) -> Result<String, String> {
 pub(crate) fn lock_accounts<'a>(
     state: &'a State<'_, AppState>,
 ) -> Result<MutexGuard<'a, HashMap<String, AccountSession>>, String> {
-    state
-        .accounts
-        .lock()
-        .map_err(|_| "état interne verrouillé".to_string())
+    // E5 : un verrou empoisonné (panic d'une commande) se REPREND — le
+    // panic est déjà consigné par la télémétrie (ADR 0014) ; condamner
+    // toutes les commandes suivantes jusqu'au redémarrage, comme avant,
+    // contredisait l'ADR 0019.
+    Ok(match state.accounts.lock() {
+        Ok(garde) => garde,
+        Err(empoisonne) => empoisonne.into_inner(),
+    })
 }
 
 /// Repose les sessions rafraîchies par une boucle (jeton OAuth renouvelé)
@@ -5647,14 +5731,23 @@ where
 }
 
 pub(crate) fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
+    // PLAN-AUDIT-V1 E5 : calculé UNE fois (le dossier est créé à ce
+    // premier appel), puis une lecture pure — 107 appels par session
+    // faisaient chacun leur `create_dir_all`.
+    static CHEMIN: OnceLock<PathBuf> = OnceLock::new();
+    if let Some(chemin) = CHEMIN.get() {
+        return Ok(chemin.clone());
+    }
     // Crochet E2E : base isolée fournie par le pilote de test — la vraie
     // base de l'utilisateur ne doit jamais être touchée par un test.
-    if let Ok(path) = std::env::var("WIND_DB_PATH") {
-        return Ok(PathBuf::from(path));
-    }
-    let dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
-    std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
-    Ok(dir.join("wind.db"))
+    let chemin = if let Ok(path) = std::env::var("WIND_DB_PATH") {
+        PathBuf::from(path)
+    } else {
+        let dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
+        std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+        dir.join("wind.db")
+    };
+    Ok(CHEMIN.get_or_init(|| chemin).clone())
 }
 
 // ---------------------------------------------------------------------
@@ -5970,7 +6063,7 @@ pub async fn backfill_bodies(
     state: State<'_, AppState>,
 ) -> Result<BackfillSummary, String> {
     let path = db_path(&app)?;
-    let jobs = connected_jobs(&path, &state)?;
+    let jobs = hors_pompe(app.clone(), |app| connected_jobs(&app)).await?;
     let lock = state.bodies_backfill.clone();
 
     let (summary, refreshed) =
@@ -5987,9 +6080,11 @@ fn run_backfill_all(
     db_path: &Path,
     lock: &Mutex<()>,
 ) -> Result<(BackfillSummary, Vec<AccountSession>), String> {
-    let _guard = lock
-        .lock()
-        .map_err(|_| "rattrapage précédent interrompu".to_string())?;
+    // E5 : verrou empoisonné = repris (le panic est consigné, ADR 0014).
+    let _guard = match lock.lock() {
+        Ok(garde) => garde,
+        Err(empoisonne) => empoisonne.into_inner(),
+    };
 
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
     let mut summary = BackfillSummary {
@@ -6712,5 +6807,42 @@ mod tests {
 
         store.set_text_pref("nom_compte.1", "   ").unwrap();
         assert_eq!(nom_de(&store, 1).unwrap(), None);
+    }
+
+    /// PLAN-AUDIT-V1 E5 : le vol d'une passe d'apres-geste est une GARDE.
+    /// Avant, un `?` entre la prise et la liberation laissait `en_vol`
+    /// leve a vie : toute passe suivante du compte etait absorbee jusqu'au
+    /// redemarrage. RED sans enseignement (le comportement est celui du
+    /// `Drop`) — le test dit le contrat.
+    #[test]
+    fn le_vol_retombe_quand_la_garde_est_relachee_meme_par_une_sortie_precoce() {
+        let passes = Mutex::new(HashMap::<String, VolPasse>::new());
+        let en_vol = |passes: &Mutex<HashMap<String, VolPasse>>| {
+            passes
+                .lock()
+                .unwrap()
+                .get("a@x.fr")
+                .map(|v| v.en_vol)
+                .unwrap_or(false)
+        };
+
+        let sortie_precoce = |passes: &Mutex<HashMap<String, VolPasse>>| -> Result<(), String> {
+            let _vol = VolGarde::prendre(passes, "a@x.fr").expect("premiere prise");
+            assert!(en_vol(passes));
+            // Une seconde demande pendant le vol est absorbee et notee.
+            assert!(VolGarde::prendre(passes, "a@x.fr").is_none());
+            assert!(passes.lock().unwrap()["a@x.fr"].redemande);
+            Err("panne au milieu de la passe".to_string())?;
+            Ok(())
+        };
+        assert!(sortie_precoce(&passes).is_err());
+        assert!(!en_vol(&passes), "la sortie precoce a relache le vol");
+
+        // La redemande notee pendant le vol se consomme UNE fois.
+        let vol = VolGarde::prendre(&passes, "a@x.fr").expect("le vol est libre");
+        assert!(vol.redemande_consommee());
+        assert!(!vol.redemande_consommee());
+        drop(vol);
+        assert!(!en_vol(&passes));
     }
 }
