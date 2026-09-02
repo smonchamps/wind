@@ -1,21 +1,20 @@
-//! Recherche plein-texte locale — FTS5, la décision gelée de l'ADR 0004.
+//! Local full-text search — FTS5, the decision frozen by ADR 0004.
 //!
-//! Trois invariants structurent ce module :
-//! - **l'index vit DANS la base** : chaque point de mutation des messages
-//!   ([`Store::upsert_envelopes`], suppressions, [`Store::save_body`],
-//!   remise à zéro UIDVALIDITY) entretient l'index dans SA transaction —
-//!   pas de second magasin, pas de réconciliation après crash ;
-//! - **l'index est « sans contenu »** (`content=''`, `contentless_delete`) :
-//!   aucun texte n'est dupliqué, seul l'index inversé est stocké — la
-//!   vigilance taille de l'ADR 0004 ;
-//! - **la saisie n'est JAMAIS de la syntaxe FTS5** : chaque terme est
-//!   neutralisé entre guillemets — `AND`, `(`, `*` sont des mots comme
-//!   les autres.
+//! Three invariants structure this module:
+//! - **the index lives INSIDE the database**: every mutation point of the
+//!   messages ([`Store::upsert_envelopes`], deletions, [`Store::save_body`],
+//!   UIDVALIDITY reset) maintains the index within ITS OWN transaction —
+//!   no second store, no reconciliation after a crash;
+//! - **the index is "contentless"** (`content=''`, `contentless_delete`):
+//!   no text is duplicated, only the inverted index is stored — the size
+//!   vigilance of ADR 0004;
+//! - **input is NEVER FTS5 syntax**: every term is neutralized inside
+//!   quotes — `AND`, `(`, `*` are words like any other.
 //!
-//! Les rowids d'`envelopes` sont instables (`INSERT OR REPLACE`) : la
-//! table `search_docs` attribue un docid stable par `(mailbox_id, uid)`.
-//! Elle est sans clé étrangère à dessein — l'entretien passe uniquement
-//! par les fonctions de ce module, jamais par un CASCADE silencieux.
+//! `envelopes` rowids are unstable (`INSERT OR REPLACE`): the
+//! `search_docs` table assigns a stable docid per `(mailbox_id, uid)`.
+//! It has no foreign key by design — maintenance goes exclusively
+//! through this module's functions, never through a silent CASCADE.
 
 use std::collections::HashMap;
 use std::ops::ControlFlow;
@@ -28,28 +27,28 @@ use crate::envelope::Uid;
 use crate::error::Error;
 use crate::store::{AdoptionProgress, SELECT_UNIFIED, Store, UnifiedRow, row_to_unified};
 
-/// Crée l'index à la première ouverture qui le découvre absent, et le
-/// reconstruit depuis les messages déjà en base : une base des phases
-/// précédentes devient cherchable sans resynchroniser.
+/// Creates the index on the first opening that finds it absent, and
+/// rebuilds it from the messages already in the database: a database from
+/// earlier phases becomes searchable without resyncing.
 ///
-/// La reconstruction est **visible et interruptible** (ADR 0012) : elle
-/// relève son avancement par `on_progress` et, sur `ControlFlow::Break`,
-/// rend [`Error::Interrupted`] — la transaction interne rembobine (le
-/// `DROP` de l'ancien index est défait), et la passe se rejoue au
-/// prochain lancement. C'est [`Store::pending_adoption`] qui fait
-/// afficher l'écran : sans lui, cette reconstruction gèlerait le
-/// démarrage en silence (constat terrain 2026-08-17).
+/// The rebuild is **visible and interruptible** (ADR 0012): it reports
+/// its progress through `on_progress` and, on `ControlFlow::Break`,
+/// returns [`Error::Interrupted`] — the inner transaction rewinds (the
+/// `DROP` of the old index is undone), and the pass replays on the
+/// next launch. It is [`Store::pending_adoption`] that makes the screen
+/// show up: without it, this rebuild would freeze startup silently
+/// (field finding 2026-08-17).
 pub(crate) fn migrate_search(
     conn: &Connection,
     on_progress: &mut dyn FnMut(AdoptionProgress) -> ControlFlow<()>,
 ) -> Result<(), Error> {
-    // Le schéma courant porte la colonne `recipients` et l'option
-    // `prefix='2 3'`. Une base d'avant (`search_fts` à trois colonnes, sans
-    // préfixe) est reconstruite : FTS5 ne sait pas ajouter une colonne, et
-    // `prefix=` doit exister dès la création. Drop + rebuild dans UNE
-    // transaction — l'index est reconstructible depuis les messages, jamais
-    // une source de vérité. Le marqueur est la présence de `recipients`
-    // dans le `CREATE` mémorisé par `sqlite_master`.
+    // The current schema carries the `recipients` column and the
+    // `prefix='2 3'` option. An earlier database (`search_fts` with three
+    // columns, no prefix) is rebuilt: FTS5 cannot add a column, and
+    // `prefix=` must exist at creation. Drop + rebuild in ONE
+    // transaction — the index is rebuildable from the messages, never
+    // a source of truth. The marker is the presence of `recipients`
+    // in the `CREATE` recorded by `sqlite_master`.
     let fts_sql: Option<String> = conn
         .query_row(
             "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'search_fts'",
@@ -85,17 +84,17 @@ pub(crate) fn migrate_search(
     Ok(())
 }
 
-/// Combien de messages entre deux relevés d'avancement : assez rare pour
-/// ne pas payer un appel par message, assez fréquent pour que l'annulation
-/// réponde en une fraction de seconde.
+/// How many messages between two progress reports: rare enough not to pay
+/// a call per message, frequent enough for cancellation to answer within
+/// a fraction of a second.
 const REBUILD_STEP: u64 = 1000;
 
 fn rebuild(
     conn: &Connection,
     on_progress: &mut dyn FnMut(AdoptionProgress) -> ControlFlow<()>,
 ) -> Result<(), Error> {
-    // Le dénominateur exact de l'avancement — `pending_adoption` ne pouvait
-    // qu'en donner un ordre de grandeur (sonde en lecture seule).
+    // The exact denominator of the progress — `pending_adoption` could only
+    // give an order of magnitude (a read-only probe).
     let total: u64 = conn.query_row("SELECT COUNT(*) FROM envelopes", [], |row| {
         row.get::<_, i64>(0)
     })? as u64;
@@ -105,11 +104,11 @@ fn rebuild(
          FROM envelopes e
          LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid",
     )?;
-    // Flux, jamais collecte : un `Vec` de toutes les lignes chargerait TOUS
-    // les corps en mémoire (~7 Go au terrain). On indexe au fil du curseur —
-    // il lit `envelopes`/`bodies`, l'écriture va dans `search_fts`/
-    // `search_docs`, tables disjointes : SQLite sert les deux sur la même
-    // connexion.
+    // Stream, never collect: a `Vec` of all rows would load ALL bodies
+    // into memory (~7 GB in the field). Indexing follows the cursor —
+    // it reads `envelopes`/`bodies`, the write goes to `search_fts`/
+    // `search_docs`, disjoint tables: SQLite serves both on the same
+    // connection.
     let mut rows = stmt.query([])?;
     let mut done: u64 = 0;
     while let Some(row) = rows.next()? {
@@ -133,22 +132,22 @@ fn rebuild(
             },
         )?;
         done += 1;
-        // Palier : relever l'avancement et guetter l'annulation.
+        // Step: report progress and watch for cancellation.
         if done.is_multiple_of(REBUILD_STEP) {
             report(on_progress, done, total)?;
         }
     }
-    // « Fini » ne se dit qu'ici, la passe faite — et jamais sur une base
-    // sans message (rien à raconter, pas de faux bandeau : contrat des fils).
+    // "Done" is only said here, the pass complete — and never on a database
+    // with no message (nothing to report, no fake banner: the threads' contract).
     if total > 0 {
         report(on_progress, total, total)?;
     }
     Ok(())
 }
 
-/// Transmet un relevé d'avancement, et traduit la réponse : `Break`
-/// devient [`Error::Interrupted`], que la transaction de l'appelant
-/// convertit en `ROLLBACK` — le rembobinage du §8, comme pour les fils.
+/// Passes on a progress report, and translates the response: `Break`
+/// becomes [`Error::Interrupted`], which the caller's transaction
+/// turns into a `ROLLBACK` — the §8 rewind, as for threads.
 fn report(
     on_progress: &mut dyn FnMut(AdoptionProgress) -> ControlFlow<()>,
     done: u64,
@@ -160,10 +159,10 @@ fn report(
     }
 }
 
-/// Les champs d'un message tels qu'ils entrent dans l'index. Nommés à
-/// dessein : six `Option<&str>` positionnels s'intervertiraient sans que le
-/// compilateur ni les tests ne le voient (`to`/`cc` et
-/// `sender`/`sender_address` fusionnent dans un même champ FTS).
+/// The fields of a message as they enter the index. Named by design: six
+/// positional `Option<&str>` would swap places without the compiler or
+/// the tests ever seeing it (`to`/`cc` and `sender`/`sender_address`
+/// merge into a single FTS field).
 pub(crate) struct Indexed<'a> {
     pub subject: Option<&'a str>,
     pub sender: Option<&'a str>,
@@ -173,8 +172,8 @@ pub(crate) struct Indexed<'a> {
     pub body_html: Option<&'a str>,
 }
 
-/// Réunit les champs présents en un seul champ cherchable, séparés par une
-/// espace (unicode61 tokenise sur tout blanc, `\n` compris).
+/// Joins the present fields into a single searchable field, separated by
+/// a space (unicode61 tokenizes on any whitespace, `\n` included).
 fn join_present(a: Option<&str>, b: Option<&str>) -> String {
     [a, b]
         .iter()
@@ -184,8 +183,8 @@ fn join_present(a: Option<&str>, b: Option<&str>) -> String {
         .join(" ")
 }
 
-/// (Ré)indexe un message. À appeler dans la transaction qui écrit le
-/// message lui-même — l'index et la donnée vivent ou meurent ensemble.
+/// (Re)indexes a message. Call it in the transaction that writes the
+/// message itself — the index and the data live or die together.
 pub(crate) fn index_message(
     conn: &Connection,
     mailbox_id: i64,
@@ -199,8 +198,8 @@ pub(crate) fn index_message(
     )?;
     let docid = conn.last_insert_rowid();
     let sender_field = join_present(msg.sender, msg.sender_address);
-    // `to` et `cc` sont un seul champ cherchable : un destinataire reste un
-    // destinataire, en direct ou en copie.
+    // `to` and `cc` are a single searchable field: a recipient stays a
+    // recipient, whether direct or in copy.
     let recipients_field = join_present(msg.to_addrs, msg.cc_addrs);
     conn.execute(
         "INSERT INTO search_fts (rowid, subject, sender, recipients, body)
@@ -246,51 +245,51 @@ pub(crate) fn deindex_mailbox(conn: &Connection, mailbox_id: i64) -> Result<(), 
     Ok(())
 }
 
-/// Au-delà de ce nombre de correspondances, [`Store::search_capped`] bascule
-/// du classement BM25 au tri par date : le BM25 sur autant de correspondances
-/// dépasse le budget (ADR 0004), et pour une requête aussi large le classement
-/// de pertinence ne veut de toute façon rien dire. Valeur calée au terrain
-/// (2026-08-17) : les requêtes à ~8 000 correspondances tiennent le budget en
-/// BM25 (~45 ms), celle à 36 000 le dépassait (~101 ms). Le coût BM25 par
-/// correspondance étant stable, ce seuil tient quand le corpus grandit.
+/// Beyond this number of matches, [`Store::search_capped`] switches from
+/// BM25 ranking to date sort: BM25 over this many matches exceeds the
+/// budget (ADR 0004), and for such a broad query relevance ranking does
+/// not mean anything anyway. Value calibrated in the field (2026-08-17):
+/// queries with ~8,000 matches hold the BM25 budget (~45 ms), one at
+/// 36,000 exceeded it (~101 ms). Since the BM25 cost per match is stable,
+/// this threshold holds as the corpus grows.
 pub const WIDE_QUERY_THRESHOLD: u64 = 10_000;
 
 impl Store {
-    /// Recherche sur TOUS les comptes — les résultats sont des lignes de
-    /// la boîte unifiée, triées par pertinence (BM25 ; un mot du sujet
-    /// pèse plus lourd qu'un mot du corps). Le dernier terme est un
-    /// préfixe : « budg » trouve « budgétaire » pendant la frappe.
+    /// Search across ALL accounts — the results are rows of the unified
+    /// mailbox, sorted by relevance (BM25; a word in the subject weighs
+    /// more than a word in the body). The last term is a prefix: "budg"
+    /// finds "budgétaire" while typing.
     ///
-    /// Filtres : `from:`/`de:` (nom ou adresse de l'expéditeur),
-    /// `to:`/`à:` (nom ou adresse d'un destinataire, direct ou en copie),
-    /// `date:AAAA`, `date:AAAA-MM`, `date:AAAA-MM-JJ`. Un filtre seul,
-    /// sans terme, liste les messages correspondants par date.
+    /// Filters: `from:`/`de:` (name or address of the sender),
+    /// `to:`/`à:` (name or address of a recipient, direct or in copy),
+    /// `date:YYYY`, `date:YYYY-MM`, `date:YYYY-MM-DD`. A filter alone,
+    /// with no term, lists the matching messages by date.
     pub fn search(&self, input: &str, limit: usize) -> Result<Vec<UnifiedRow>, Error> {
         self.run_search(input, limit, 0, false)
     }
 
-    /// Recherche classée par DATE (le plus récent d'abord), pertinence
-    /// ignorée. Le classement BM25 d'une requête très large (un préfixe de
-    /// 3 caractères, des dizaines de milliers de correspondances) ne veut
-    /// rien dire, et son coût dépasse le budget (ADR 0004) ; la date est
-    /// alors le meilleur ordre. [`Store::search_capped`] y bascule au-delà
-    /// de [`WIDE_QUERY_THRESHOLD`].
+    /// Search sorted by DATE (most recent first), relevance ignored. BM25
+    /// ranking of a very broad query (a 3-character prefix, tens of
+    /// thousands of matches) does not mean anything, and its cost exceeds
+    /// the budget (ADR 0004); date is then the best order.
+    /// [`Store::search_capped`] switches to it beyond
+    /// [`WIDE_QUERY_THRESHOLD`].
     pub fn search_recent(&self, input: &str, limit: usize) -> Result<Vec<UnifiedRow>, Error> {
         self.run_search(input, limit, 0, true)
     }
 
-    /// La recherche telle que l'UI la consomme : les lignes de la tranche
-    /// `[offset, offset+limit)` ET le total exact des correspondances, pour
-    /// dire « N sur M » et servir « charger plus ». Bascule sur le tri par
-    /// date au-delà de [`WIDE_QUERY_THRESHOLD`] correspondances — le COUNT du
-    /// total, calculé de toute façon, informe la bascule ET dit combien de
-    /// lots restent. Le tri ne dépend que du total : il est le même d'une
-    /// page à l'autre, donc les tranches s'enchaînent sans trou ni doublon.
+    /// Search as the UI consumes it: the rows of the `[offset,
+    /// offset+limit)` slice AND the exact total of matches, to say "N of
+    /// M" and serve "load more". Switches to date sort beyond
+    /// [`WIDE_QUERY_THRESHOLD`] matches — the total COUNT, computed
+    /// anyway, informs the switch AND says how many batches remain. The
+    /// sort depends only on the total: it is the same from one page to
+    /// the next, so the slices chain without gap or duplicate.
     ///
-    /// Le COUNT par frappe n'est PAS le coût (mesuré à PLAN-AUDIT-V2 E2 sur
-    /// 200 k : 1,5 ms d'un total de 57 ms pour un préfixe de trois lettres,
-    /// le reste est la page triée par date) — `banc_recherche` le
-    /// re-mesure, section « comptage seul ».
+    /// The COUNT per keystroke is NOT the cost (measured at PLAN-AUDIT-V2
+    /// E2 on 200k: 1.5 ms out of a total of 57 ms for a three-letter
+    /// prefix, the rest is the page sorted by date) — `bench_search`
+    /// re-measures it, "count only" section.
     pub fn search_capped(
         &self,
         input: &str,
@@ -302,13 +301,13 @@ impl Store {
         Ok((rows, total))
     }
 
-    /// En DEUX temps, pour que « charger plus » tienne le budget en
-    /// profondeur (terrain 2026-08-17 : `LIMIT ? OFFSET ?` sur la requête
-    /// hydratée dégrade en O(offset) — SQLite hydrate les lignes sautées via
-    /// `SELECT_UNIFIED` puis les jette). Phase 1 : les CLÉS ordonnées de la
-    /// tranche, l'OFFSET ne saute alors que des clés, bon marché. Phase 2 :
-    /// hydrater UNIQUEMENT les clés de la page, réordonnées comme la phase 1.
-    /// `force_date` impose le tri par date (soupape des requêtes trop larges).
+    /// In TWO steps, so that "load more" holds the budget in depth (field
+    /// 2026-08-17: `LIMIT ? OFFSET ?` on the hydrated query degrades to
+    /// O(offset) — SQLite hydrates the skipped rows via `SELECT_UNIFIED`
+    /// then discards them). Phase 1: the ordered KEYS of the slice, the
+    /// OFFSET then only skips keys, cheap. Phase 2: hydrate ONLY the
+    /// page's keys, reordered as in phase 1. `force_date` forces the date
+    /// sort (the safety valve for too-broad queries).
     fn run_search(
         &self,
         input: &str,
@@ -320,12 +319,11 @@ impl Store {
         self.hydrate_in_order(&keys)
     }
 
-    /// Phase 1 : les `(mailbox_id, uid)` de la tranche, dans l'ordre, SANS
-    /// hydratation (ni jointures de sortie, ni sous-requête pièces jointes, ni
-    /// corps) — l'OFFSET ne saute que ces clés légères. L'ordre est TOTAL
-    /// (`… , e.uid DESC` en dernier départage) pour que les tranches
-    /// s'enchaînent sans trou ni doublon même à correspondances et dates
-    /// égales.
+    /// Phase 1: the `(mailbox_id, uid)` of the slice, in order, WITHOUT
+    /// hydration (no output joins, no attachment subquery, no body) — the
+    /// OFFSET only skips these lightweight keys. The order is TOTAL
+    /// (`… , e.uid DESC` as the final tiebreaker) so that the slices
+    /// chain without gap or duplicate even at equal matches and dates.
     fn page_keys(
         &self,
         input: &str,
@@ -346,9 +344,10 @@ impl Store {
         values.push((limit as i64).into());
         values.push((offset as i64).into());
         let sql = if match_expr.is_some() {
-            // Pertinence quand il y a des termes ET que la requête n'est pas
-            // trop large ; date sinon — filtre seul (le BM25 n'a alors aucun
-            // sens), ou requête très large (`force_date`, la soupape).
+            // Relevance when there are terms AND the query is not too
+            // broad; date otherwise — filter alone (BM25 then means
+            // nothing), or very broad query (`force_date`, the safety
+            // valve).
             let order = if has_terms && !force_date {
                 "bm25(search_fts, 10.0, 5.0, 3.0, 1.0), e.date_epoch DESC, e.uid DESC"
             } else {
@@ -381,10 +380,10 @@ impl Store {
         Ok(keys)
     }
 
-    /// Phase 2 : hydrate UNIQUEMENT ces clés (jamais les lignes sautées), puis
-    /// les remet dans l'ordre de la phase 1 — le `IN` de SQL ne le préserve
-    /// pas. `mailbox_id` est relu par NOM (`mbid`), pour ne pas coupler au
-    /// nombre de colonnes de `SELECT_UNIFIED`.
+    /// Phase 2: hydrates ONLY these keys (never the skipped rows), then
+    /// puts them back in phase 1's order — SQL's `IN` does not preserve
+    /// it. `mailbox_id` is read back by NAME (`mbid`), so as not to
+    /// couple to `SELECT_UNIFIED`'s column count.
     fn hydrate_in_order(&self, keys: &[(i64, Uid)]) -> Result<Vec<UnifiedRow>, Error> {
         if keys.is_empty() {
             return Ok(Vec::new());
@@ -404,21 +403,21 @@ impl Store {
             values.push(i64::from(*uid).into());
         }
         let mut stmt = self.conn().prepare(&sql)?;
-        let mut par_cle: HashMap<(i64, Uid), UnifiedRow> = stmt
+        let mut by_key: HashMap<(i64, Uid), UnifiedRow> = stmt
             .query_map(params_from_iter(values), |row| {
                 let mbid: i64 = row.get("mbid")?;
                 let unified = row_to_unified(row)?;
                 Ok(((mbid, unified.envelope.uid), unified))
             })?
             .collect::<Result<_, _>>()?;
-        Ok(keys.iter().filter_map(|k| par_cle.remove(k)).collect())
+        Ok(keys.iter().filter_map(|k| by_key.remove(k)).collect())
     }
 
-    /// Le nombre EXACT de correspondances d'une recherche — sans classement
-    /// ni hydratation, un simple COUNT sur l'index (mêmes termes et filtres
-    /// que [`Store::search`]). Sert à afficher « 100 sur N » et à décider la
-    /// soupape tri-date de [`Store::search_capped`], qui le demande à chaque
-    /// frappe — pour 1,5 ms sur 200 k (voir là-bas).
+    /// The EXACT number of matches for a search — no ranking or
+    /// hydration, a plain COUNT on the index (same terms and filters as
+    /// [`Store::search`]). Used to display "100 of N" and to decide
+    /// [`Store::search_capped`]'s date-sort safety valve, which asks for
+    /// it on every keystroke — for 1.5 ms on 200k (see above).
     pub fn search_total(&self, input: &str) -> Result<u64, Error> {
         let (match_expr, _has_terms, filters) = build_match(input);
         if match_expr.is_none() && filters.since.is_none() && filters.until.is_none() {
@@ -430,14 +429,14 @@ impl Store {
             values.push(expr.clone().into());
         }
         values.extend(date_values);
-        let interieur = if match_expr.is_some() {
+        let inner = if match_expr.is_some() {
             if clauses.is_empty() {
-                // Sans borne de date, le COUNT n'a besoin d'aucune jointure :
-                // l'index seul porte la réponse (le chemin le plus cher, le
-                // plus fréquent — c'est là que le plafond mord).
+                // Without a date bound, the COUNT needs no join: the
+                // index alone carries the answer (the most expensive
+                // path, the most frequent — this is where the cap bites).
                 "SELECT rowid FROM search_fts WHERE search_fts MATCH ?".to_string()
             } else {
-                // Une borne de date vit dans `envelopes` : il faut la jointure.
+                // A date bound lives in `envelopes`: the join is needed.
                 format!(
                     "SELECT search_fts.rowid
                      FROM search_fts
@@ -449,7 +448,7 @@ impl Store {
         } else {
             format!("SELECT e.rowid FROM envelopes e WHERE 1 = 1{clauses}")
         };
-        let sql = format!("SELECT COUNT(*) FROM ({interieur})");
+        let sql = format!("SELECT COUNT(*) FROM ({inner})");
         let total: i64 = self
             .conn()
             .query_row(&sql, params_from_iter(values), |row| row.get(0))?;
@@ -457,12 +456,12 @@ impl Store {
     }
 }
 
-/// Traduit la saisie en une expression MATCH conjointe — termes (dernier en
-/// préfixe) et filtres `from:`/`to:` vers les colonnes `sender`/`recipients`,
-/// qui replient casse ET accents (`unicode61 remove_diacritics` ; un LIKE SQL
-/// ne replie que l'ASCII et raterait « Étienne »). `has_terms` dit si un
-/// classement BM25 a un sens (sinon, tri par date). Partagé par `search` et
-/// `search_total` : la même requête, comptée puis rendue.
+/// Translates the input into a joint MATCH expression — terms (last one as
+/// a prefix) and `from:`/`to:` filters toward the `sender`/`recipients`
+/// columns, which fold case AND accents (`unicode61 remove_diacritics`; a
+/// SQL LIKE only folds ASCII and would miss "Étienne"). `has_terms` says
+/// whether a BM25 ranking makes sense (otherwise, date sort). Shared by
+/// `search` and `search_total`: the same query, counted then rendered.
 fn build_match(input: &str) -> (Option<String>, bool, Filters) {
     let (terms_expr, filters) = parse_query(input);
     let from_expr = filters
@@ -482,9 +481,9 @@ fn build_match(input: &str) -> (Option<String>, bool, Filters) {
     (match_expr, has_terms, filters)
 }
 
-/// Les bornes de date en fragment SQL et leurs valeurs, dans l'ordre.
-/// Partagé par `search` et `search_total` : le filtre de date ne peut pas
-/// diverger entre le compte et le rendu.
+/// The date bounds as a SQL fragment and their values, in order. Shared
+/// by `search` and `search_total`: the date filter must not diverge
+/// between the count and the render.
 fn date_clauses(filters: &Filters) -> (String, Vec<Value>) {
     let mut clauses = String::new();
     let mut values: Vec<Value> = Vec::new();
@@ -507,9 +506,9 @@ struct Filters {
     until: Option<i64>,
 }
 
-/// Découpe la saisie en termes et filtres. Chaque terme est neutralisé
-/// entre guillemets FTS5 (les guillemets de l'utilisateur sont retirés) :
-/// la syntaxe du moteur est inatteignable depuis le champ de recherche.
+/// Splits the input into terms and filters. Each term is neutralized
+/// inside FTS5 quotes (the user's own quotes are stripped): the engine's
+/// syntax is unreachable from the search field.
 fn parse_query(input: &str) -> (Option<String>, Filters) {
     let mut terms: Vec<String> = Vec::new();
     let mut filters = Filters::default();
@@ -519,8 +518,8 @@ fn parse_query(input: &str) -> (Option<String>, Filters) {
             .strip_prefix("from:")
             .or_else(|| lower.strip_prefix("de:"))
         {
-            // Neutralisé comme un terme : injecté dans la syntaxe FTS
-            // (`sender:"…"*`), il ne doit pas pouvoir la casser.
+            // Neutralized like a term: injected into the FTS syntax
+            // (`sender:"…"*`), it must not be able to break it.
             let clean: String = value.chars().filter(|c| *c != '"').collect();
             if !clean.is_empty() {
                 filters.from = Some(clean);
@@ -529,14 +528,14 @@ fn parse_query(input: &str) -> (Option<String>, Filters) {
             .strip_prefix("to:")
             .or_else(|| lower.strip_prefix("à:"))
         {
-            // Symétrique de `from:`, vers la colonne `recipients`.
+            // Symmetric to `from:`, toward the `recipients` column.
             let clean: String = value.chars().filter(|c| *c != '"').collect();
             if !clean.is_empty() {
                 filters.to = Some(clean);
             }
         } else if let Some(value) = lower.strip_prefix("date:") {
-            // Un filtre de date illisible est ignoré plutôt qu'appliqué
-            // de travers : pas de résultat surprise.
+            // An unreadable date filter is ignored rather than misapplied:
+            // no surprise result.
             if let Some((since, until)) = parse_date_range(value) {
                 filters.since = Some(since);
                 filters.until = Some(until);
@@ -566,8 +565,8 @@ fn parse_query(input: &str) -> (Option<String>, Filters) {
     (match_expr, filters)
 }
 
-/// `2026` → l'année, `2026-07` → le mois, `2026-07-18` → le jour.
-/// Bornes UTC, intervalle semi-ouvert `[début, fin)`.
+/// `2026` → the year, `2026-07` → the month, `2026-07-18` → the day.
+/// UTC bounds, half-open interval `[start, end)`.
 fn parse_date_range(value: &str) -> Option<(i64, i64)> {
     let mut parts = value.splitn(3, '-');
     let year: i32 = parts
@@ -608,31 +607,31 @@ fn parse_date_range(value: &str) -> Option<(i64, i64)> {
     ))
 }
 
-/// Réduit un HTML en mots indexables : balises et contenus `<script>` /
-/// `<style>` disparaissent, les entités courantes (dont les accents
-/// français) sont décodées, les blancs s'effondrent. Volontairement
-/// minimal : l'index a besoin de mots, pas de mise en forme —
-/// `mail-render` garde l'extraction fidèle pour la citation.
+/// Reduces an HTML string to indexable words: tags and `<script>` /
+/// `<style>` contents disappear, common entities (French accents
+/// included) are decoded, whitespace collapses. Deliberately minimal:
+/// the index needs words, not formatting — `mail-render` keeps the
+/// faithful extraction for quoting.
 fn indexable_text(html: &str) -> String {
-    // UNE passe, UNE allocation (PLAN-AUDIT-V2 E2) : la forme d'avant
-    // faisait cinq copies pleine taille d'un corps (ombre en minuscules,
-    // texte débalisé, entités décodées, mots, jointure) — ~140 Mo alloués
-    // pour 28 Mo. Ici les balises se reconnaissent sans ombre (comparaison
-    // ASCII insensible à la casse à la volée), les entités se décodent en
-    // écrivant, les blancs se replient en écrivant.
-    let mut out = Sortie::new(html.len() / 2);
-    let octets = html.as_bytes();
+    // ONE pass, ONE allocation (PLAN-AUDIT-V2 E2): the earlier shape made
+    // five full-size copies of a body (lowercase shadow, tag-stripped
+    // text, decoded entities, words, join) — ~140 MB allocated for 28 MB.
+    // Here tags are recognized without a shadow (case-insensitive ASCII
+    // comparison on the fly), entities decode while writing, whitespace
+    // collapses while writing.
+    let mut out = Output::new(html.len() / 2);
+    let bytes = html.as_bytes();
     let mut i = 0;
-    while let Some(open) = trouver(octets, i, b'<') {
-        texte_vers(&mut out, &html[i..open]);
-        out.blanc();
-        let Some(close) = trouver(octets, open, b'>') else {
-            // Balise jamais fermée : la fin est du bruit de balisage.
+    while let Some(open) = find(bytes, i, b'<') {
+        text_into(&mut out, &html[i..open]);
+        out.blank();
+        let Some(close) = find(bytes, open, b'>') else {
+            // Tag never closed: the rest is markup noise.
             i = html.len();
             break;
         };
         i = close + 1;
-        let inner = &octets[open + 1..close];
+        let inner = &bytes[open + 1..close];
         let is_closing = inner.first() == Some(&b'/');
         let inner = if is_closing { &inner[1..] } else { inner };
         let name_end = inner
@@ -643,71 +642,70 @@ fn indexable_text(html: &str) -> String {
         if !is_closing
             && (name.eq_ignore_ascii_case(b"script") || name.eq_ignore_ascii_case(b"style"))
         {
-            i = skip_past_closing_tag(octets, i, name);
+            i = skip_past_closing_tag(bytes, i, name);
         }
     }
-    texte_vers(&mut out, &html[i..]);
-    out.finir()
+    text_into(&mut out, &html[i..]);
+    out.finish()
 }
 
-/// La sortie d'`indexable_text` : les blancs s'y replient à l'écriture —
-/// jamais deux de suite, jamais en tête, jamais en queue.
-struct Sortie {
-    texte: String,
-    blanc_en_attente: bool,
+/// The output of `indexable_text`: whitespace collapses here as it is
+/// written — never two in a row, never at the start, never at the end.
+struct Output {
+    text: String,
+    pending_blank: bool,
 }
 
-impl Sortie {
-    fn new(capacite: usize) -> Self {
+impl Output {
+    fn new(capacity: usize) -> Self {
         Self {
-            texte: String::with_capacity(capacite),
-            blanc_en_attente: false,
+            text: String::with_capacity(capacity),
+            pending_blank: false,
         }
     }
 
-    fn blanc(&mut self) {
-        self.blanc_en_attente = true;
+    fn blank(&mut self) {
+        self.pending_blank = true;
     }
 
-    fn caractere(&mut self, c: char) {
+    fn char(&mut self, c: char) {
         if c.is_whitespace() {
-            self.blanc_en_attente = true;
+            self.pending_blank = true;
             return;
         }
-        if self.blanc_en_attente && !self.texte.is_empty() {
-            self.texte.push(' ');
+        if self.pending_blank && !self.text.is_empty() {
+            self.text.push(' ');
         }
-        self.blanc_en_attente = false;
-        self.texte.push(c);
+        self.pending_blank = false;
+        self.text.push(c);
     }
 
-    fn finir(self) -> String {
-        self.texte
+    fn finish(self) -> String {
+        self.text
     }
 }
 
-/// Le premier octet `cible` à partir de `depuis` — un `<` ou un `>` ne
-/// peut apparaître qu'en tête d'un caractère UTF-8, l'indice est donc
-/// toujours une frontière de caractère.
-fn trouver(octets: &[u8], depuis: usize, cible: u8) -> Option<usize> {
-    octets[depuis..]
+/// The first `target` byte from `from` onward — a `<` or `>` can only
+/// appear at the start of a UTF-8 character, so the index is always a
+/// character boundary.
+fn find(bytes: &[u8], from: usize, target: u8) -> Option<usize> {
+    bytes[from..]
         .iter()
-        .position(|c| *c == cible)
-        .map(|p| depuis + p)
+        .position(|c| *c == target)
+        .map(|p| from + p)
 }
 
-/// Écrit `texte` en décodant les entités et en repliant les blancs.
-fn texte_vers(out: &mut Sortie, texte: &str) {
-    let mut rest = texte;
+/// Writes `text` while decoding entities and collapsing whitespace.
+fn text_into(out: &mut Output, text: &str) {
+    let mut rest = text;
     while let Some(pos) = rest.find('&') {
         for c in rest[..pos].chars() {
-            out.caractere(c);
+            out.char(c);
         }
         rest = &rest[pos..];
-        // Une entité plausible tient en peu de caractères ; au-delà,
-        // c'est une esperluette littérale. On limite en CARACTÈRES,
-        // pas en octets, pour ne pas couper un caractère multi-octets
-        // (ex. 'è') en plein milieu.
+        // A plausible entity fits in a few characters; beyond that, it's
+        // a literal ampersand. We limit by CHARACTERS, not bytes, so as
+        // not to cut a multi-byte character (e.g. 'è') in the middle.
         let semi = rest
             .char_indices()
             .take(12)
@@ -715,36 +713,37 @@ fn texte_vers(out: &mut Sortie, texte: &str) {
             .map(|(i, _)| i);
         match semi.and_then(|s| decode_entity(&rest[1..s]).map(|c| (c, s))) {
             Some((decoded, s)) => {
-                out.caractere(decoded);
+                out.char(decoded);
                 rest = &rest[s + 1..];
             }
             None => {
-                out.caractere('&');
+                out.char('&');
                 rest = &rest[1..];
             }
         }
     }
     for c in rest.chars() {
-        out.caractere(c);
+        out.char(c);
     }
 }
 
-/// Position juste après `</name...>`, ou la fin si la fermeture manque.
-fn skip_past_closing_tag(octets: &[u8], from: usize, name: &[u8]) -> usize {
+/// Position right after `</name...>`, or the end if the closing tag is
+/// missing.
+fn skip_past_closing_tag(bytes: &[u8], from: usize, name: &[u8]) -> usize {
     let mut i = from;
-    while i + 2 + name.len() <= octets.len() {
-        if octets[i] == b'<'
-            && octets[i + 1] == b'/'
-            && octets[i + 2..i + 2 + name.len()].eq_ignore_ascii_case(name)
+    while i + 2 + name.len() <= bytes.len() {
+        if bytes[i] == b'<'
+            && bytes[i + 1] == b'/'
+            && bytes[i + 2..i + 2 + name.len()].eq_ignore_ascii_case(name)
         {
-            return match trouver(octets, i, b'>') {
+            return match find(bytes, i, b'>') {
                 Some(p) => p + 1,
-                None => octets.len(),
+                None => bytes.len(),
             };
         }
         i += 1;
     }
-    octets.len()
+    bytes.len()
 }
 
 fn decode_entity(entity: &str) -> Option<char> {
@@ -830,10 +829,10 @@ mod tests {
         }
     }
 
-    /// Rétrograde l'index vers l'ancien schéma à trois colonnes (ni
-    /// `recipients`, ni `prefix=`) : l'état exact d'une base installée
-    /// avant ce chantier, celui que la reconstruction doit rattraper.
-    fn retrograde_ancien_schema(store: &Store) {
+    /// Downgrades the index to the old three-column schema (neither
+    /// `recipients` nor `prefix=`): the exact state of a database
+    /// installed before this job, the one the rebuild must catch up on.
+    fn downgrade_old_schema(store: &Store) {
         store
             .conn()
             .execute_batch(
@@ -876,101 +875,106 @@ mod tests {
 
     #[test]
     fn finds_by_subject_across_accounts() {
-        let (mut store, inbox_one) = store_with_inbox("un@exemple.fr");
+        let (mut store, inbox_one) = store_with_inbox("one@example.com");
         let account_two = store
-            .adopt_or_create_account("deux@exemple.fr", "gmail")
+            .adopt_or_create_account("two@example.com", "gmail")
             .unwrap();
         let inbox_two = store.create_mailbox(account_two, "INBOX", 1).unwrap();
         store
             .upsert_envelopes(
                 inbox_one,
-                &[envelope(1, "Rapport mensuel", "Alice", "alice@ex.fr", 100)],
+                &[envelope(1, "Monthly report", "Alice", "alice@ex.fr", 100)],
             )
             .unwrap();
         store
             .upsert_envelopes(
                 inbox_two,
-                &[envelope(1, "Rapport annuel", "Bob", "bob@ex.fr", 200)],
+                &[envelope(1, "Annual report", "Bob", "bob@ex.fr", 200)],
             )
             .unwrap();
 
-        let rows = store.search("rapport", 50).unwrap();
+        let rows = store.search("report", 50).unwrap();
         assert_eq!(rows.len(), 2);
         let emails: Vec<&str> = rows.iter().map(|r| r.account_email.as_str()).collect();
-        assert!(emails.contains(&"un@exemple.fr"));
-        assert!(emails.contains(&"deux@exemple.fr"));
+        assert!(emails.contains(&"one@example.com"));
+        assert!(emails.contains(&"two@example.com"));
     }
 
     #[test]
     fn accents_fold_in_both_directions() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("test@example.com");
         store
             .upsert_envelopes(
                 inbox,
-                &[envelope(1, "Réunion budgétaire", "Alice", "a@ex.fr", 100)],
+                &[envelope(1, "Réunion budgétaire", "Alice", "a@ex.fr", 100)], // lang:fr
             )
             .unwrap();
 
-        assert_eq!(store.search("reunion", 50).unwrap().len(), 1);
-        assert_eq!(store.search("réunion", 50).unwrap().len(), 1);
-        assert_eq!(store.search("budgetaire", 50).unwrap().len(), 1);
+        assert_eq!(store.search("reunion", 50).unwrap().len(), 1); // lang:fr
+        assert_eq!(store.search("réunion", 50).unwrap().len(), 1); // lang:fr
+        assert_eq!(store.search("budgetaire", 50).unwrap().len(), 1); // lang:fr
     }
 
     #[test]
     fn last_term_is_a_prefix_while_typing() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("test@example.com");
         store
             .upsert_envelopes(
                 inbox,
-                &[envelope(1, "Budget prévisionnel", "Alice", "a@ex.fr", 100)],
+                &[envelope(1, "Preliminary budget", "Alice", "a@ex.fr", 100)],
             )
             .unwrap();
 
-        assert_eq!(store.search("prévi", 50).unwrap().len(), 1);
-        assert_eq!(store.search("budget prévi", 50).unwrap().len(), 1);
+        assert_eq!(store.search("prelim", 50).unwrap().len(), 1);
+        assert_eq!(store.search("budget prelim", 50).unwrap().len(), 1);
         assert_eq!(
-            store.search("prévi budget", 50).unwrap().len(),
+            store.search("prelim budget", 50).unwrap().len(),
             0,
-            "seul le dernier terme est un préfixe : les autres sont des mots entiers"
+            "only the last term is a prefix: the others are whole words"
         );
     }
 
     #[test]
     fn body_words_are_indexed_markup_is_not() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("test@example.com");
         store
-            .upsert_envelopes(
-                inbox,
-                &[envelope(1, "Sans indice", "Alice", "a@ex.fr", 100)],
-            )
+            .upsert_envelopes(inbox, &[envelope(1, "No clue", "Alice", "a@ex.fr", 100)])
             .unwrap();
-        assert_eq!(store.search("contrat", 50).unwrap().len(), 0);
+        assert_eq!(store.search("contract", 50).unwrap().len(), 0);
 
         store
             .save_body(
                 inbox,
                 1,
-                "<div style=\"color:red\">le contrat est sign\u{e9}</div>\
+                "<div style=\"color:red\">the contract is signed</div>\
                  <style>.x{font-size:12px}</style>\
-                 <script>var couleur = \"bleu\";</script>",
+                 <script>var color = \"blue\";</script>",
                 &[],
             )
             .unwrap();
 
-        assert_eq!(store.search("contrat", 50).unwrap().len(), 1);
-        assert_eq!(store.search("signe", 50).unwrap().len(), 1, "accent replié");
+        assert_eq!(store.search("contract", 50).unwrap().len(), 1);
+        assert_eq!(
+            store.search("signed", 50).unwrap().len(),
+            1,
+            "word from the body"
+        );
         assert_eq!(
             store.search("color", 50).unwrap().len(),
             0,
-            "attributs exclus"
+            "attributes excluded"
         );
-        assert_eq!(store.search("div", 50).unwrap().len(), 0, "balises exclues");
-        assert_eq!(store.search("bleu", 50).unwrap().len(), 0, "scripts exclus");
+        assert_eq!(store.search("div", 50).unwrap().len(), 0, "tags excluded");
+        assert_eq!(
+            store.search("blue", 50).unwrap().len(),
+            0,
+            "scripts excluded"
+        );
     }
 
     #[test]
     fn html_entities_decode_for_french_words() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("test@example.com");
         store
             .upsert_envelopes(inbox, &[envelope(1, "Invitation", "Alice", "a@ex.fr", 100)])
             .unwrap();
@@ -978,86 +982,84 @@ mod tests {
             .save_body(
                 inbox,
                 1,
-                "<p>r&eacute;union &amp; caf&eacute; &#233;quipe</p>",
+                "<p>r&eacute;union &amp; caf&eacute; &#233;quipe</p>", // lang:fr
                 &[],
             )
             .unwrap();
 
-        assert_eq!(store.search("reunion", 50).unwrap().len(), 1);
-        assert_eq!(store.search("cafe", 50).unwrap().len(), 1);
-        assert_eq!(store.search("equipe", 50).unwrap().len(), 1);
+        assert_eq!(store.search("reunion", 50).unwrap().len(), 1); // lang:fr
+        assert_eq!(store.search("cafe", 50).unwrap().len(), 1); // lang:fr
+        assert_eq!(store.search("equipe", 50).unwrap().len(), 1); // lang:fr
     }
 
     #[test]
     fn subject_hit_outranks_body_hit() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("test@example.com");
         store
             .upsert_envelopes(
                 inbox,
                 &[
-                    envelope(1, "Divers", "Alice", "a@ex.fr", 300),
-                    envelope(2, "Facture du mois", "Alice", "a@ex.fr", 100),
+                    envelope(1, "Miscellaneous", "Alice", "a@ex.fr", 300),
+                    envelope(2, "Monthly invoice", "Alice", "a@ex.fr", 100),
                 ],
             )
             .unwrap();
         store
-            .save_body(inbox, 1, "<p>la facture est jointe</p>", &[])
+            .save_body(inbox, 1, "<p>the invoice is attached</p>", &[])
             .unwrap();
 
-        let rows = store.search("facture", 50).unwrap();
+        let rows = store.search("invoice", 50).unwrap();
         assert_eq!(
             subjects(&rows),
-            vec!["Facture du mois", "Divers"],
-            "le sujet pèse plus lourd que le corps, malgré une date plus ancienne"
+            vec!["Monthly invoice", "Miscellaneous"],
+            "the subject weighs more than the body, despite an older date"
         );
     }
 
     #[test]
     fn reupsert_replaces_the_index_entry() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("test@example.com");
         store
-            .upsert_envelopes(inbox, &[envelope(1, "avant", "Alice", "a@ex.fr", 100)])
+            .upsert_envelopes(inbox, &[envelope(1, "before", "Alice", "a@ex.fr", 100)])
             .unwrap();
         store
-            .upsert_envelopes(inbox, &[envelope(1, "après", "Alice", "a@ex.fr", 100)])
+            .upsert_envelopes(inbox, &[envelope(1, "after", "Alice", "a@ex.fr", 100)])
             .unwrap();
 
-        assert_eq!(store.search("avant", 50).unwrap().len(), 0);
-        assert_eq!(store.search("après", 50).unwrap().len(), 1);
-        assert_eq!(
-            indexed_count(&store),
-            1,
-            "une seule entrée d'index par message"
-        );
+        assert_eq!(store.search("before", 50).unwrap().len(), 0);
+        assert_eq!(store.search("after", 50).unwrap().len(), 1);
+        assert_eq!(indexed_count(&store), 1, "a single index entry per message");
     }
 
     #[test]
     fn reupsert_keeps_the_indexed_body() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("test@example.com");
         store
-            .upsert_envelopes(inbox, &[envelope(1, "Sujet", "Alice", "a@ex.fr", 100)])
+            .upsert_envelopes(inbox, &[envelope(1, "Subject", "Alice", "a@ex.fr", 100)])
             .unwrap();
-        store.save_body(inbox, 1, "<p>le contrat</p>", &[]).unwrap();
-        // Une synchro repasse sur l'enveloppe (drapeau lu, par exemple).
         store
-            .upsert_envelopes(inbox, &[envelope(1, "Sujet", "Alice", "a@ex.fr", 100)])
+            .save_body(inbox, 1, "<p>the contract</p>", &[])
+            .unwrap();
+        // A resync passes over the envelope again (the read flag, for example).
+        store
+            .upsert_envelopes(inbox, &[envelope(1, "Subject", "Alice", "a@ex.fr", 100)])
             .unwrap();
 
         assert_eq!(
-            store.search("contrat", 50).unwrap().len(),
+            store.search("contract", 50).unwrap().len(),
             1,
-            "le corps déjà en cache reste indexé après réécriture de l'enveloppe"
+            "the body already cached stays indexed after the envelope is rewritten"
         );
     }
 
-    /// PLAN-AUDIT-V2 E2 : une re-synchronisation (drapeau lu, delta
-    /// CONDSTORE) repassait CHAQUE enveloppe par `index_message` — le corps
-    /// relu et re-tokenisé sous le verrou d'écriture, pour rien. L'entrée
-    /// d'index est stable (même docid) tant que sujet, expéditeur et
-    /// destinataires n'ont pas changé.
+    /// PLAN-AUDIT-V2 E2: a resync (read flag, CONDSTORE delta) used to
+    /// pass EVERY envelope back through `index_message` — the body reread
+    /// and re-tokenized under the write lock, for nothing. The index
+    /// entry is stable (same docid) as long as the subject, sender and
+    /// recipients have not changed.
     #[test]
-    fn une_enveloppe_resynchronisee_sans_changement_garde_son_docid() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+    fn a_resynced_envelope_without_change_keeps_its_docid() {
+        let (mut store, inbox) = store_with_inbox("test@example.com");
         let docid = |store: &Store| -> i64 {
             store
                 .conn()
@@ -1068,55 +1070,55 @@ mod tests {
                 )
                 .unwrap()
         };
-        // Deux messages : SQLite réutilise le dernier rowid supprimé, un
-        // message seul ré-indexé garderait son numéro par accident. Avec un
-        // second docid derrière, toute ré-indexation en prend un neuf.
+        // Two messages: SQLite reuses the last deleted rowid, a single
+        // message re-indexed would keep its number by accident. With a
+        // second docid behind it, any re-indexing takes a fresh one.
         store
             .upsert_envelopes(
                 inbox,
                 &[
-                    envelope(1, "Sujet", "Alice", "a@ex.fr", 100),
+                    envelope(1, "Subject", "Alice", "a@ex.fr", 100),
                     envelope(2, "Second", "Bob", "b@ex.fr", 200),
                 ],
             )
             .unwrap();
-        let avant = docid(&store);
+        let before = docid(&store);
 
-        // Même enveloppe, drapeau changé : la synchro repasse dessus.
-        let mut relue = envelope(1, "Sujet", "Alice", "a@ex.fr", 100);
-        relue.seen = true;
-        store.upsert_envelopes(inbox, &[relue]).unwrap();
-        assert_eq!(docid(&store), avant, "ré-indexée sans raison");
+        // Same envelope, flag changed: the sync passes over it again.
+        let mut reread = envelope(1, "Subject", "Alice", "a@ex.fr", 100);
+        reread.seen = true;
+        store.upsert_envelopes(inbox, &[reread]).unwrap();
+        assert_eq!(docid(&store), before, "re-indexed for no reason");
 
-        // Le sujet change : là, l'index doit suivre.
+        // The subject changes: this time, the index must follow.
         store
-            .upsert_envelopes(inbox, &[envelope(1, "Autre", "Alice", "a@ex.fr", 100)])
+            .upsert_envelopes(inbox, &[envelope(1, "Other", "Alice", "a@ex.fr", 100)])
             .unwrap();
-        assert_ne!(docid(&store), avant, "un sujet changé se ré-indexe");
-        assert_eq!(store.search("autre", 50).unwrap().len(), 1);
+        assert_ne!(docid(&store), before, "a changed subject re-indexes");
+        assert_eq!(store.search("other", 50).unwrap().len(), 1);
     }
 
     #[test]
     fn local_removal_cleans_the_index() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("test@example.com");
         store
-            .upsert_envelopes(inbox, &[envelope(1, "Éphémère", "Alice", "a@ex.fr", 100)])
+            .upsert_envelopes(inbox, &[envelope(1, "Ephemeral", "Alice", "a@ex.fr", 100)])
             .unwrap();
         store.remove_local(inbox, 1).unwrap();
 
-        assert_eq!(store.search("éphémère", 50).unwrap().len(), 0);
+        assert_eq!(store.search("ephemeral", 50).unwrap().len(), 0);
         assert_eq!(indexed_count(&store), 0);
     }
 
     #[test]
     fn absent_removal_cleans_the_index() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("test@example.com");
         store
             .upsert_envelopes(
                 inbox,
                 &[
-                    envelope(1, "Disparu du serveur", "Alice", "a@ex.fr", 100),
-                    envelope(2, "Toujours là", "Alice", "a@ex.fr", 200),
+                    envelope(1, "Gone from the server", "Alice", "a@ex.fr", 100),
+                    envelope(2, "Still there", "Alice", "a@ex.fr", 200),
                 ],
             )
             .unwrap();
@@ -1124,45 +1126,42 @@ mod tests {
             .remove_absent(inbox, &std::collections::HashSet::from([2]))
             .unwrap();
 
-        assert_eq!(store.search("disparu", 50).unwrap().len(), 0);
-        assert_eq!(store.search("toujours", 50).unwrap().len(), 1);
+        assert_eq!(store.search("gone", 50).unwrap().len(), 0);
+        assert_eq!(store.search("still", 50).unwrap().len(), 1);
     }
 
     #[test]
     fn uidvalidity_reset_clears_only_that_mailbox() {
-        let (mut store, inbox_one) = store_with_inbox("un@exemple.fr");
+        let (mut store, inbox_one) = store_with_inbox("one@example.com");
         let account_two = store
-            .adopt_or_create_account("deux@exemple.fr", "gmail")
+            .adopt_or_create_account("two@example.com", "gmail")
             .unwrap();
         let inbox_two = store.create_mailbox(account_two, "INBOX", 1).unwrap();
         store
-            .upsert_envelopes(inbox_one, &[envelope(1, "Rapport un", "A", "a@ex.fr", 100)])
+            .upsert_envelopes(inbox_one, &[envelope(1, "Report one", "A", "a@ex.fr", 100)])
             .unwrap();
         store
-            .upsert_envelopes(
-                inbox_two,
-                &[envelope(1, "Rapport deux", "B", "b@ex.fr", 200)],
-            )
+            .upsert_envelopes(inbox_two, &[envelope(1, "Report two", "B", "b@ex.fr", 200)])
             .unwrap();
 
         store.reset_mailbox(inbox_one, 2).unwrap();
 
         assert_eq!(
-            subjects(&store.search("rapport", 50).unwrap()),
-            vec!["Rapport deux"]
+            subjects(&store.search("report", 50).unwrap()),
+            vec!["Report two"]
         );
         assert_eq!(indexed_count(&store), 1);
     }
 
     #[test]
     fn hostile_input_is_literal_never_fts_syntax() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("test@example.com");
         store
             .upsert_envelopes(
                 inbox,
                 &[envelope(
                     1,
-                    "budget (T3) \"spécial\"",
+                    "budget (Q3) \"special\"",
                     "Alice",
                     "a@ex.fr",
                     100,
@@ -1181,92 +1180,92 @@ mod tests {
             "\" OR \"",
             "NEAR(",
             "bud*get",
-            "sujet:x",
+            "subject:x",
             "-budget",
         ] {
             assert!(
                 store.search(hostile, 50).is_ok(),
-                "la saisie « {hostile} » ne doit jamais être de la syntaxe FTS5"
+                "input \"{hostile}\" must never be FTS5 syntax"
             );
         }
-        // Les opérateurs sont des mots : « AND » seul ne matche rien ici.
+        // Operators are words: "AND" alone matches nothing here.
         assert_eq!(store.search("AND", 50).unwrap().len(), 0);
     }
 
     #[test]
     fn from_filter_narrows_by_name_or_address() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("test@example.com");
         store
             .upsert_envelopes(
                 inbox,
                 &[
-                    envelope(1, "Rapport ventes", "Alice Martin", "alice@ex.fr", 100),
-                    envelope(2, "Rapport achats", "Bob Durand", "bob@ex.fr", 200),
+                    envelope(1, "Sales report", "Alice Martin", "alice@ex.fr", 100),
+                    envelope(2, "Purchases report", "Bob Durand", "bob@ex.fr", 200),
                 ],
             )
             .unwrap();
 
         assert_eq!(
-            subjects(&store.search("rapport from:alice", 50).unwrap()),
-            vec!["Rapport ventes"]
+            subjects(&store.search("report from:alice", 50).unwrap()),
+            vec!["Sales report"]
         );
         assert_eq!(
-            subjects(&store.search("rapport de:durand", 50).unwrap()),
-            vec!["Rapport achats"],
-            "le filtre matche le nom affiché comme l'adresse"
+            subjects(&store.search("report de:durand", 50).unwrap()),
+            vec!["Purchases report"],
+            "the filter matches the display name as well as the address"
         );
     }
 
-    /// Régression (bug #3) : le filtre from: repliait seulement l'ASCII
-    /// (LIKE SQL) et ratait un nom à capitale accentuée. Il passe désormais
-    /// par la colonne `sender` de l'index FTS, qui replie casse ET accents
-    /// (`unicode61 remove_diacritics`).
+    /// Regression (bug #3): the from: filter only folded ASCII (SQL LIKE)
+    /// and missed a name with an accented capital. It now goes through
+    /// the `sender` column of the FTS index, which folds case AND
+    /// accents (`unicode61 remove_diacritics`).
     #[test]
     fn from_filter_folds_case_and_accents() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("test@example.com");
         store
             .upsert_envelopes(
                 inbox,
                 &[envelope(
                     1,
-                    "Rapport",
-                    "Étienne Bernard",
+                    "Report",
+                    "Étienne Bernard", // lang:fr
                     "e.bernard@ex.fr",
                     100,
                 )],
             )
             .unwrap();
 
-        // La capitale « É » doit être trouvée, avec ou sans accent saisi.
-        assert_eq!(store.search("from:etienne", 50).unwrap().len(), 1);
-        assert_eq!(store.search("from:étienne", 50).unwrap().len(), 1);
-        assert_eq!(store.search("from:ETIENNE", 50).unwrap().len(), 1);
-        assert_eq!(store.search("rapport from:etienne", 50).unwrap().len(), 1);
-        // Un expéditeur qui ne correspond pas reste exclu.
+        // The "É" capital must be found, with or without the accent typed. // lang:fr
+        assert_eq!(store.search("from:etienne", 50).unwrap().len(), 1); // lang:fr
+        assert_eq!(store.search("from:étienne", 50).unwrap().len(), 1); // lang:fr
+        assert_eq!(store.search("from:ETIENNE", 50).unwrap().len(), 1); // lang:fr
+        assert_eq!(store.search("report from:etienne", 50).unwrap().len(), 1); // lang:fr
+        // A sender that does not match stays excluded.
         assert_eq!(store.search("from:durand", 50).unwrap().len(), 0);
     }
 
     #[test]
     fn to_filter_narrows_by_recipient_name_or_address() {
-        let (mut store, inbox) = store_with_inbox("moi@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("me@example.com");
         store
             .upsert_envelopes(
                 inbox,
                 &[
                     envelope_to(
                         1,
-                        "Compte rendu",
-                        "Moi",
-                        "moi@ex.fr",
+                        "Minutes",
+                        "Me",
+                        "me@ex.fr",
                         &["Alice Martin <alice@ex.fr>"],
                         &[],
                         100,
                     ),
                     envelope_to(
                         2,
-                        "Devis",
-                        "Moi",
-                        "moi@ex.fr",
+                        "Quote",
+                        "Me",
+                        "me@ex.fr",
                         &["Bob Durand <bob@ex.fr>"],
                         &[],
                         200,
@@ -1277,56 +1276,56 @@ mod tests {
 
         assert_eq!(
             subjects(&store.search("to:alice", 50).unwrap()),
-            vec!["Compte rendu"]
+            vec!["Minutes"]
         );
         assert_eq!(
-            subjects(&store.search("à:durand", 50).unwrap()),
-            vec!["Devis"],
-            "le filtre destinataire répond aussi à « à: »"
+            subjects(&store.search("à:durand", 50).unwrap()), // lang:fr
+            vec!["Quote"],
+            "the recipient filter also answers to \"à:\""
         );
         assert_eq!(
             subjects(&store.search("to:bob@ex.fr", 50).unwrap()),
-            vec!["Devis"],
-            "le filtre matche l'adresse comme le nom affiché"
+            vec!["Quote"],
+            "the filter matches the address as well as the display name"
         );
     }
 
     #[test]
     fn cc_recipients_fold_case_and_accents() {
-        let (mut store, inbox) = store_with_inbox("moi@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("me@example.com");
         store
             .upsert_envelopes(
                 inbox,
                 &[envelope_to(
                     1,
-                    "Réunion",
-                    "Moi",
-                    "moi@ex.fr",
+                    "Meeting",
+                    "Me",
+                    "me@ex.fr",
                     &["alice@ex.fr"],
-                    &["Étienne Bernard <e.bernard@ex.fr>"],
+                    &["Étienne Bernard <e.bernard@ex.fr>"], // lang:fr
                     100,
                 )],
             )
             .unwrap();
 
-        // Une adresse en copie est un destinataire ; « É » se replie.
-        assert_eq!(store.search("to:etienne", 50).unwrap().len(), 1);
-        assert_eq!(store.search("to:étienne", 50).unwrap().len(), 1);
+        // An address in copy is a recipient; "É" folds. // lang:fr
+        assert_eq!(store.search("to:etienne", 50).unwrap().len(), 1); // lang:fr
+        assert_eq!(store.search("to:étienne", 50).unwrap().len(), 1); // lang:fr
     }
 
     #[test]
     fn bare_term_finds_a_message_by_its_recipient() {
-        // « alice » retrouve un mail que je LUI ai envoyé, pas seulement
-        // ceux reçus d'elle : le destinataire est un champ cherchable.
-        let (mut store, inbox) = store_with_inbox("moi@exemple.fr");
+        // "alice" finds a mail I sent HER, not only the ones received from
+        // her: the recipient is a searchable field.
+        let (mut store, inbox) = store_with_inbox("me@example.com");
         store
             .upsert_envelopes(
                 inbox,
                 &[envelope_to(
                     1,
-                    "Sans son nom ailleurs",
-                    "Moi",
-                    "moi@ex.fr",
+                    "Without her name elsewhere",
+                    "Me",
+                    "me@ex.fr",
                     &["Alice Martin <alice@ex.fr>"],
                     &[],
                     100,
@@ -1339,28 +1338,28 @@ mod tests {
 
     #[test]
     fn to_filter_alone_lists_by_date() {
-        let (mut store, inbox) = store_with_inbox("moi@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("me@example.com");
         store
             .upsert_envelopes(
                 inbox,
                 &[
-                    envelope_to(1, "Premier", "Moi", "moi@ex.fr", &["alice@ex.fr"], &[], 100),
-                    envelope_to(2, "À Bob", "Moi", "moi@ex.fr", &["bob@ex.fr"], &[], 200),
-                    envelope_to(3, "Second", "Moi", "moi@ex.fr", &["alice@ex.fr"], &[], 300),
+                    envelope_to(1, "First", "Me", "me@ex.fr", &["alice@ex.fr"], &[], 100),
+                    envelope_to(2, "To Bob", "Me", "me@ex.fr", &["bob@ex.fr"], &[], 200),
+                    envelope_to(3, "Second", "Me", "me@ex.fr", &["alice@ex.fr"], &[], 300),
                 ],
             )
             .unwrap();
 
         assert_eq!(
             subjects(&store.search("to:alice", 50).unwrap()),
-            vec!["Second", "Premier"],
-            "un filtre destinataire seul liste par date, du plus récent au plus ancien"
+            vec!["Second", "First"],
+            "a recipient filter alone lists by date, most recent first"
         );
     }
 
     #[test]
     fn date_filter_bounds_by_year_month_or_day() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("test@example.com");
         let in_2025 = Utc
             .with_ymd_and_hms(2025, 6, 15, 12, 0, 0)
             .unwrap()
@@ -1373,68 +1372,68 @@ mod tests {
             .upsert_envelopes(
                 inbox,
                 &[
-                    envelope(1, "Rapport ancien", "Alice", "a@ex.fr", in_2025),
-                    envelope(2, "Rapport récent", "Alice", "a@ex.fr", in_2026),
+                    envelope(1, "Old report", "Alice", "a@ex.fr", in_2025),
+                    envelope(2, "Recent report", "Alice", "a@ex.fr", in_2026),
                 ],
             )
             .unwrap();
 
         assert_eq!(
-            subjects(&store.search("rapport date:2026", 50).unwrap()),
-            vec!["Rapport récent"]
+            subjects(&store.search("report date:2026", 50).unwrap()),
+            vec!["Recent report"]
         );
         assert_eq!(
-            subjects(&store.search("rapport date:2026-07", 50).unwrap()),
-            vec!["Rapport récent"]
+            subjects(&store.search("report date:2026-07", 50).unwrap()),
+            vec!["Recent report"]
         );
         assert_eq!(
-            subjects(&store.search("rapport date:2025-06-15", 50).unwrap()),
-            vec!["Rapport ancien"]
+            subjects(&store.search("report date:2025-06-15", 50).unwrap()),
+            vec!["Old report"]
         );
-        assert_eq!(store.search("rapport date:2024", 50).unwrap().len(), 0);
+        assert_eq!(store.search("report date:2024", 50).unwrap().len(), 0);
         assert_eq!(
-            store.search("rapport date:n'importe", 50).unwrap().len(),
+            store.search("report date:whatever", 50).unwrap().len(),
             2,
-            "un filtre de date illisible est ignoré, pas appliqué de travers"
+            "an unreadable date filter is ignored, not misapplied"
         );
     }
 
     #[test]
     fn filter_alone_lists_by_date_without_terms() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("test@example.com");
         store
             .upsert_envelopes(
                 inbox,
                 &[
-                    envelope(1, "Premier d'Alice", "Alice", "alice@ex.fr", 100),
-                    envelope(2, "De Bob", "Bob", "bob@ex.fr", 200),
-                    envelope(3, "Second d'Alice", "Alice", "alice@ex.fr", 300),
+                    envelope(1, "First from Alice", "Alice", "alice@ex.fr", 100),
+                    envelope(2, "From Bob", "Bob", "bob@ex.fr", 200),
+                    envelope(3, "Second from Alice", "Alice", "alice@ex.fr", 300),
                 ],
             )
             .unwrap();
 
         assert_eq!(
             subjects(&store.search("from:alice", 50).unwrap()),
-            vec!["Second d'Alice", "Premier d'Alice"],
-            "un filtre seul liste par date, du plus récent au plus ancien"
+            vec!["Second from Alice", "First from Alice"],
+            "a filter alone lists by date, most recent first"
         );
     }
 
-    /// Migration : une base d'avant ce chantier porte un `search_fts` à
-    /// trois colonnes (ni `recipients`, ni `prefix=`). À l'ouverture,
-    /// `migrate_search` la reconstruit depuis les messages — sans
-    /// resynchroniser — et les destinataires deviennent cherchables.
+    /// Migration: a database from before this job carries a `search_fts`
+    /// with three columns (neither `recipients` nor `prefix=`). On
+    /// opening, `migrate_search` rebuilds it from the messages — without
+    /// resyncing — and recipients become searchable.
     #[test]
     fn migration_rebuilds_an_old_index_with_recipients() {
-        let (mut store, inbox) = store_with_inbox("moi@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("me@example.com");
         store
             .upsert_envelopes(
                 inbox,
                 &[envelope_to(
                     1,
-                    "Devis",
-                    "Moi",
-                    "moi@ex.fr",
+                    "Quote",
+                    "Me",
+                    "me@ex.fr",
                     &["Alice Martin <alice@ex.fr>"],
                     &[],
                     100,
@@ -1443,26 +1442,26 @@ mod tests {
             .unwrap();
         assert_eq!(store.search("to:alice", 50).unwrap().len(), 1);
 
-        retrograde_ancien_schema(&store);
+        downgrade_old_schema(&store);
 
-        // La reconstruction est déclenchée par la détection de l'ancien
-        // schéma (pas de colonne `recipients`).
+        // The rebuild is triggered by detecting the old schema (no
+        // `recipients` column).
         migrate_search(store.conn(), &mut |_| ControlFlow::Continue(())).unwrap();
 
         assert_eq!(
-            store.search("devis", 50).unwrap().len(),
+            store.search("quote", 50).unwrap().len(),
             1,
-            "le message reste cherchable après reconstruction"
+            "the message stays searchable after the rebuild"
         );
         assert_eq!(
             store.search("to:alice", 50).unwrap().len(),
             1,
-            "la reconstruction réindexe les destinataires depuis les enveloppes"
+            "the rebuild re-indexes the recipients from the envelopes"
         );
-        assert_eq!(indexed_count(&store), 1, "une seule entrée d'index");
+        assert_eq!(indexed_count(&store), 1, "a single index entry");
 
-        // Le levier de performance (D3) doit survivre à la reconstruction :
-        // sans cette garde, un retrait de `prefix='2 3'` passerait en vert.
+        // The performance lever (D3) must survive the rebuild: without
+        // this guard, a removal of `prefix='2 3'` would pass unnoticed.
         let schema: String = store
             .conn()
             .query_row(
@@ -1473,22 +1472,22 @@ mod tests {
             .unwrap();
         assert!(
             schema.contains("prefix='2 3'"),
-            "le schéma reconstruit garde l'option prefix='2 3'"
+            "the rebuilt schema keeps the prefix='2 3' option"
         );
     }
 
     #[test]
     fn migration_reports_progress_and_indexes_every_message() {
-        let (mut store, inbox) = store_with_inbox("moi@exemple.fr");
-        // Plusieurs messages, avec et sans corps : le flux (pas de collecte
-        // de tous les corps en mémoire) doit tous les réindexer.
+        let (mut store, inbox) = store_with_inbox("me@example.com");
+        // Several messages, with and without a body: the stream (no
+        // collecting all bodies in memory) must re-index all of them.
         let envelopes: Vec<Envelope> = (1..=5u32)
             .map(|uid| {
                 envelope_to(
                     uid,
-                    &format!("Sujet {uid}"),
-                    "Moi",
-                    "moi@ex.fr",
+                    &format!("Subject {uid}"),
+                    "Me",
+                    "me@ex.fr",
                     &[&format!("dest{uid}@ex.fr")],
                     &[],
                     uid as i64 * 100,
@@ -1497,38 +1496,38 @@ mod tests {
             .collect();
         store.upsert_envelopes(inbox, &envelopes).unwrap();
         store
-            .save_body(inbox, 3, "<p>le contrat spécial</p>", &[])
+            .save_body(inbox, 3, "<p>the special contract</p>", &[])
             .unwrap();
 
-        retrograde_ancien_schema(&store);
+        downgrade_old_schema(&store);
 
-        let mut releves = Vec::new();
+        let mut reports = Vec::new();
         migrate_search(store.conn(), &mut |p| {
-            releves.push((p.done, p.total));
+            reports.push((p.done, p.total));
             ControlFlow::Continue(())
         })
         .unwrap();
 
-        // « Fini » annoncé sur le total exact (5 enveloppes).
-        assert_eq!(releves.last(), Some(&(5, 5)));
-        // Chaque message réindexé, destinataire et corps compris : la preuve
-        // que le flux n'en saute aucun.
+        // "Done" announced on the exact total (5 envelopes).
+        assert_eq!(reports.last(), Some(&(5, 5)));
+        // Every message re-indexed, recipient and body included: the
+        // proof that the stream skips none of them.
         assert_eq!(store.search("to:dest4", 50).unwrap().len(), 1);
-        assert_eq!(store.search("contrat", 50).unwrap().len(), 1);
+        assert_eq!(store.search("contract", 50).unwrap().len(), 1);
         assert_eq!(indexed_count(&store), 5);
     }
 
     #[test]
     fn migration_cancel_rolls_back_and_reruns() {
-        let (mut store, inbox) = store_with_inbox("moi@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("me@example.com");
         store
             .upsert_envelopes(
                 inbox,
                 &[envelope_to(
                     1,
-                    "Devis",
-                    "Moi",
-                    "moi@ex.fr",
+                    "Quote",
+                    "Me",
+                    "me@ex.fr",
                     &["alice@ex.fr"],
                     &[],
                     100,
@@ -1536,15 +1535,15 @@ mod tests {
             )
             .unwrap();
 
-        retrograde_ancien_schema(&store);
+        downgrade_old_schema(&store);
 
-        // L'utilisateur annule : Break → Interrupted.
-        let issue = migrate_search(store.conn(), &mut |_| ControlFlow::Break(()));
-        assert!(matches!(issue, Err(Error::Interrupted)));
+        // The user cancels: Break → Interrupted.
+        let result = migrate_search(store.conn(), &mut |_| ControlFlow::Break(()));
+        assert!(matches!(result, Err(Error::Interrupted)));
 
-        // Rembobiné : le schéma est resté l'ancien (pas de `recipients`), donc
-        // la passe se rejouera au prochain lancement plutôt que de laisser un
-        // index à moitié fait.
+        // Rewound: the schema stayed the old one (no `recipients`), so
+        // the pass will replay on the next launch instead of leaving a
+        // half-done index.
         let schema: String = store
             .conn()
             .query_row(
@@ -1555,38 +1554,38 @@ mod tests {
             .unwrap();
         assert!(
             !schema.contains("recipients"),
-            "l'annulation a rembobiné le DROP/CREATE — rien de partiel persisté"
+            "the cancellation rewound the DROP/CREATE — nothing partial persisted"
         );
 
-        // Rejouée sans annulation : elle aboutit.
+        // Replayed without cancellation: it succeeds.
         migrate_search(store.conn(), &mut |_| ControlFlow::Continue(())).unwrap();
         assert_eq!(store.search("to:alice", 50).unwrap().len(), 1);
     }
 
     #[test]
     fn search_total_counts_all_matches_beyond_the_limit() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("test@example.com");
         let envelopes: Vec<Envelope> = (1..=10)
-            .map(|uid| envelope(uid, "Rapport", "Alice", "a@ex.fr", uid as i64))
+            .map(|uid| envelope(uid, "Report", "Alice", "a@ex.fr", uid as i64))
             .collect();
         store.upsert_envelopes(inbox, &envelopes).unwrap();
 
-        // `search` plafonne à 3 ; `search_total` voit les 10.
-        assert_eq!(store.search("rapport", 3).unwrap().len(), 3);
-        assert_eq!(store.search_total("rapport").unwrap(), 10);
+        // `search` caps at 3; `search_total` sees all 10.
+        assert_eq!(store.search("report", 3).unwrap().len(), 3);
+        assert_eq!(store.search_total("report").unwrap(), 10);
 
-        // Mêmes filtres que la recherche.
-        assert_eq!(store.search_total("rapport from:alice").unwrap(), 10);
-        assert_eq!(store.search_total("rapport from:bob").unwrap(), 0);
+        // Same filters as the search.
+        assert_eq!(store.search_total("report from:alice").unwrap(), 10);
+        assert_eq!(store.search_total("report from:bob").unwrap(), 0);
 
-        // Requête vide : rien à compter.
+        // Empty query: nothing to count.
         assert_eq!(store.search_total("").unwrap(), 0);
         assert_eq!(store.search_total("   ").unwrap(), 0);
     }
 
     #[test]
     fn search_total_respects_the_date_filter() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("test@example.com");
         let in_2025 = Utc
             .with_ymd_and_hms(2025, 6, 15, 12, 0, 0)
             .unwrap()
@@ -1599,101 +1598,101 @@ mod tests {
             .upsert_envelopes(
                 inbox,
                 &[
-                    envelope(1, "Rapport ancien", "Alice", "a@ex.fr", in_2025),
-                    envelope(2, "Rapport récent", "Alice", "a@ex.fr", in_2026),
+                    envelope(1, "Old report", "Alice", "a@ex.fr", in_2025),
+                    envelope(2, "Recent report", "Alice", "a@ex.fr", in_2026),
                 ],
             )
             .unwrap();
 
-        assert_eq!(store.search_total("rapport").unwrap(), 2);
+        assert_eq!(store.search_total("report").unwrap(), 2);
         assert_eq!(
-            store.search_total("rapport date:2026").unwrap(),
+            store.search_total("report date:2026").unwrap(),
             1,
-            "le total suit le filtre de date (chemin avec jointure)"
+            "the total follows the date filter (the joined path)"
         );
-        // Filtre de date SEUL (sans terme) : compté par la branche envelopes.
+        // Date filter ALONE (no term): counted by the envelopes branch.
         assert_eq!(store.search_total("date:2025").unwrap(), 1);
     }
 
     #[test]
     fn search_recent_orders_by_date_ignoring_relevance() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("test@example.com");
         store
             .upsert_envelopes(
                 inbox,
                 &[
-                    // Le terme dans le SUJET, mais ANCIEN.
-                    envelope(1, "Facture du mois", "Alice", "a@ex.fr", 100),
-                    // Le terme dans le CORPS seulement, mais RÉCENT.
-                    envelope(2, "Divers", "Alice", "a@ex.fr", 300),
+                    // The term in the SUBJECT, but OLD.
+                    envelope(1, "Monthly invoice", "Alice", "a@ex.fr", 100),
+                    // The term in the BODY only, but RECENT.
+                    envelope(2, "Miscellaneous", "Alice", "a@ex.fr", 300),
                 ],
             )
             .unwrap();
         store
-            .save_body(inbox, 2, "<p>la facture est jointe</p>", &[])
+            .save_body(inbox, 2, "<p>the invoice is attached</p>", &[])
             .unwrap();
 
-        // BM25 : le sujet pèse plus lourd → « Facture du mois » d'abord.
+        // BM25: the subject weighs more → "Monthly invoice" first.
         assert_eq!(
-            subjects(&store.search("facture", 50).unwrap()),
-            vec!["Facture du mois", "Divers"]
+            subjects(&store.search("invoice", 50).unwrap()),
+            vec!["Monthly invoice", "Miscellaneous"]
         );
-        // Date : le plus récent d'abord, pertinence ignorée → « Divers ».
+        // Date: most recent first, relevance ignored → "Miscellaneous".
         assert_eq!(
-            subjects(&store.search_recent("facture", 50).unwrap()),
-            vec!["Divers", "Facture du mois"],
-            "la soupape des requêtes larges trie par date, pas par BM25"
+            subjects(&store.search_recent("invoice", 50).unwrap()),
+            vec!["Miscellaneous", "Monthly invoice"],
+            "the safety valve for broad queries sorts by date, not by BM25"
         );
     }
 
     #[test]
     fn search_capped_returns_rows_and_exact_total() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("test@example.com");
         let envelopes: Vec<Envelope> = (1..=10)
-            .map(|uid| envelope(uid, "Rapport", "Alice", "a@ex.fr", uid as i64))
+            .map(|uid| envelope(uid, "Report", "Alice", "a@ex.fr", uid as i64))
             .collect();
         store.upsert_envelopes(inbox, &envelopes).unwrap();
 
-        let (rows, total) = store.search_capped("rapport", 3, 0).unwrap();
-        assert_eq!(rows.len(), 3, "rendu plafonné à la limite");
-        assert_eq!(total, 10, "total exact, au-delà du plafond");
-        // 10 correspondances, bien en deçà de WIDE_QUERY_THRESHOLD : classement
-        // BM25 conservé (le sujet prime, prouvé par les tests dédiés).
+        let (rows, total) = store.search_capped("report", 3, 0).unwrap();
+        assert_eq!(rows.len(), 3, "rendered capped at the limit");
+        assert_eq!(total, 10, "exact total, beyond the cap");
+        // 10 matches, well under WIDE_QUERY_THRESHOLD: BM25 ranking
+        // kept (the subject wins, proven by the dedicated tests).
     }
 
     #[test]
     fn search_capped_pages_without_gap_or_overlap() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
-        // Dix messages, tri par date (uid croissant = epoch croissant) : la
-        // recherche les rend du plus récent (uid 10) au plus ancien (uid 1).
+        let (mut store, inbox) = store_with_inbox("test@example.com");
+        // Ten messages, sorted by date (increasing uid = increasing epoch):
+        // the search renders them from most recent (uid 10) to oldest (uid 1).
         let envelopes: Vec<Envelope> = (1..=10)
-            .map(|uid| envelope(uid, "Rapport", "Alice", "a@ex.fr", uid as i64))
+            .map(|uid| envelope(uid, "Report", "Alice", "a@ex.fr", uid as i64))
             .collect();
         store.upsert_envelopes(inbox, &envelopes).unwrap();
 
-        // Trois pages de 4 : [10..7], [6..3], [2..1]. Total constant à 10.
+        // Three pages of 4: [10..7], [6..3], [2..1]. Total constant at 10.
         let uids = |rows: &[UnifiedRow]| rows.iter().map(|r| r.envelope.uid).collect::<Vec<_>>();
-        let (p1, total) = store.search_capped("rapport", 4, 0).unwrap();
-        let (p2, _) = store.search_capped("rapport", 4, 4).unwrap();
-        let (p3, _) = store.search_capped("rapport", 4, 8).unwrap();
+        let (p1, total) = store.search_capped("report", 4, 0).unwrap();
+        let (p2, _) = store.search_capped("report", 4, 4).unwrap();
+        let (p3, _) = store.search_capped("report", 4, 8).unwrap();
 
         assert_eq!(total, 10);
         assert_eq!(uids(&p1), vec![10, 9, 8, 7]);
         assert_eq!(
             uids(&p2),
             vec![6, 5, 4, 3],
-            "la page 2 enchaîne sans trou ni doublon"
+            "page 2 chains without gap or duplicate"
         );
-        assert_eq!(uids(&p3), vec![2, 1], "la dernière page rend le reste");
-        // Au-delà du total : plus rien.
-        assert!(store.search_capped("rapport", 4, 12).unwrap().0.is_empty());
+        assert_eq!(uids(&p3), vec![2, 1], "the last page renders the rest");
+        // Beyond the total: nothing left.
+        assert!(store.search_capped("report", 4, 12).unwrap().0.is_empty());
     }
 
     #[test]
     fn blank_query_returns_nothing() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("test@example.com");
         store
-            .upsert_envelopes(inbox, &[envelope(1, "Sujet", "Alice", "a@ex.fr", 100)])
+            .upsert_envelopes(inbox, &[envelope(1, "Subject", "Alice", "a@ex.fr", 100)])
             .unwrap();
 
         assert!(store.search("", 50).unwrap().is_empty());
@@ -1703,46 +1702,46 @@ mod tests {
 
     #[test]
     fn limit_caps_the_result_set() {
-        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let (mut store, inbox) = store_with_inbox("test@example.com");
         let envelopes: Vec<Envelope> = (1..=10)
-            .map(|uid| envelope(uid, "Rapport", "Alice", "a@ex.fr", uid as i64))
+            .map(|uid| envelope(uid, "Report", "Alice", "a@ex.fr", uid as i64))
             .collect();
         store.upsert_envelopes(inbox, &envelopes).unwrap();
 
-        assert_eq!(store.search("rapport", 3).unwrap().len(), 3);
+        assert_eq!(store.search("report", 3).unwrap().len(), 3);
     }
 
     #[test]
     fn strips_markup_and_collapses_whitespace() {
         assert_eq!(
-            indexable_text("<p>un\n  <b>deux</b></p>   trois"),
-            "un deux trois"
+            indexable_text("<p>one\n  <b>two</b></p>   three"),
+            "one two three"
         );
         assert_eq!(
-            indexable_text("avant <img src=x"),
-            "avant",
-            "balise jamais fermée"
+            indexable_text("before <img src=x"),
+            "before",
+            "tag never closed"
         );
         assert_eq!(
-            indexable_text("caf&eacute; &amp; th&eacute; &inconnu; &#x41;"),
-            "café & thé &inconnu; A"
+            indexable_text("caf&eacute; &amp; th&eacute; &inconnu; &#x41;"), // lang:fr
+            "café & thé &inconnu; A"                                         // lang:fr
         );
     }
 
-    /// Régression : une esperluette suivie d'un caractère multi-octets
-    /// juste après la fenêtre de 12 caractères ne doit pas couper le
-    /// caractère en plein milieu.
+    /// Regression: an ampersand followed by a multi-byte character right
+    /// after the 12-character window must not cut the character in the
+    /// middle.
     #[test]
     fn ampersand_before_multibyte_char_does_not_panic() {
         assert_eq!(
-            indexable_text("&quot; (modèle avec médecins)"),
-            "\" (modèle avec médecins)"
+            indexable_text("&quot; (modèle avec médecins)"), // lang:fr
+            "\" (modèle avec médecins)"                      // lang:fr
         );
-        // Esperluette non suivie d'entité, avec un caractère multi-octets
-        // qui déborde de la limite des 12 caractères.
+        // Ampersand not followed by an entity, with a multi-byte character
+        // that overflows the 12-character limit.
         assert_eq!(
-            indexable_text("modèle & clinique de médecins"),
-            "modèle & clinique de médecins"
+            indexable_text("modèle & clinique de médecins"), // lang:fr
+            "modèle & clinique de médecins"                  // lang:fr
         );
     }
 }

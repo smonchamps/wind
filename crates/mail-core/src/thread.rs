@@ -1,27 +1,28 @@
-//! Le regroupement des messages en conversations — l'algorithme, pur.
+//! Grouping messages into conversations — the algorithm, pure.
 //!
-//! Ce module ne connaît ni SQLite, ni le réseau. Il répond à une seule
-//! question : « à quel fil ce message appartient-il ? », à partir des
-//! identifiants RFC 5322 qu'il porte et de ce qui est déjà connu.
+//! This module knows neither SQLite nor the network. It answers a single
+//! question: “which thread does this message belong to?”, from the
+//! RFC 5322 identifiers it carries and from what is already known.
 //!
-//! Le regroupement est un **union-find** : chaque `Message-ID` rencontré —
-//! celui du message ET ceux de ses ancêtres, *même absents de la boîte* —
-//! est inscrit dans un annuaire qui pointe vers un fil. Un message citant
-//! deux identifiants rattachés à deux fils différents les **fusionne**.
+//! The grouping is a **union-find**: every `Message-ID` encountered — the
+//! message's own, AND those of its ancestors, *even absent from the
+//! mailbox* — is entered into a directory that points to a thread. A
+//! message citing two identifiers attached to two different threads
+//! **merges** them.
 //!
-//! Cette fusion n'est pas un cas exotique, c'est ce qui rend le
-//! regroupement **convergent**. Deux raisons pour lesquelles un fil naît
-//! régulièrement en morceaux :
+//! This merge is not an exotic case, it is what makes the grouping
+//! **convergent**. Two reasons why a thread regularly comes to life in
+//! pieces:
 //!
-//! - les messages n'arrivent pas dans l'ordre (une réponse peut être
-//!   synchronisée avant le message qu'elle cite) ;
-//! - les en-têtes n'arrivent pas ensemble — `In-Reply-To` vient de
-//!   l'ENVELOPE, gratuitement, tandis que `References` demande une passe
-//!   séparée sur les en-têtes complets.
+//! - messages do not arrive in order (a reply can be synced before the
+//!   message it cites);
+//! - headers do not arrive together — `In-Reply-To` comes from the
+//!   ENVELOPE, for free, while `References` needs a separate pass over
+//!   the full headers.
 //!
-//! Les morceaux se recollent dès que le lien manquant apparaît, sans
-//! qu'aucune information acquise ne soit perdue en route. C'est la
-//! propriété qui autorise à livrer l'acquisition en deux temps.
+//! The pieces knit back together as soon as the missing link appears,
+//! without any acquired information being lost along the way. That is
+//! the property that allows delivering the acquisition in two stages.
 
 use std::collections::{BTreeSet, HashMap};
 use std::ops::ControlFlow;
@@ -32,32 +33,32 @@ use crate::envelope::Uid;
 use crate::error::Error;
 use crate::store::AdoptionProgress;
 
-/// Identifiant interne d'un fil.
+/// Internal identifier of a thread.
 ///
-/// Un entier, et non le `Message-ID` de la racine : la racine peut arriver
-/// après ses réponses, ou ne jamais arriver du tout (elle est dans
-/// « Envoyés », ou elle a été supprimée). Un fil ne doit pas pouvoir
-/// changer d'identité en cours de route.
+/// An integer, not the root's `Message-ID`: the root can arrive after its
+/// replies, or never arrive at all (it is in “Sent”, or it was deleted).
+/// A thread must not be able to change identity along the way.
 pub(crate) type ThreadId = i64;
 
-/// Nombre maximal d'ancêtres retenus dans `References`.
+/// Maximum number of ancestors kept in `References`.
 ///
-/// L'en-tête est cumulatif : une longue discussion, ou un logiciel fautif,
-/// peut en accumuler des milliers. On garde les deux extrémités — la
-/// racine, qui rattache le fil entier, et les ancêtres immédiats, qui
-/// rattachent le voisinage. Le milieu est redondant : ces messages-là,
-/// s'ils sont dans la boîte, portent leurs propres liens.
+/// The header is cumulative: a long discussion, or a faulty piece of
+/// software, can pile up thousands. We keep the two ends — the root,
+/// which attaches the whole thread, and the immediate ancestors, which
+/// attach the neighborhood. The middle is redundant: those messages, if
+/// they are in the mailbox, carry their own links.
 const MAX_REFERENCES: usize = 32;
 
-/// Part de la borne réservée au début de `References` (la racine).
+/// Share of the limit reserved for the start of `References` (the root).
 const KEPT_AT_ROOT: usize = 8;
 
-/// Découpe un en-tête d'identifiants (`Message-ID`, `In-Reply-To`,
-/// `References`) en identifiants canoniques.
+/// Splits an identifier header (`Message-ID`, `In-Reply-To`,
+/// `References`) into canonical identifiers.
 ///
-/// Forme canonique = le contenu des chevrons, sans eux. La RFC 5322 les
-/// rend obligatoires ; la vraie vie les omet. Comparer les deux formes
-/// sans les normaliser ferait deux fils là où il n'y en a qu'un.
+/// Canonical form = the content of the angle brackets, without them.
+/// RFC 5322 makes them mandatory; real life omits them. Comparing the two
+/// forms without normalizing them would make two threads where there is
+/// only one.
 fn canonical_ids(raw: &str) -> Vec<String> {
     let mut ids = Vec::new();
     let mut bracketed = false;
@@ -73,12 +74,13 @@ fn canonical_ids(raw: &str) -> Vec<String> {
         rest = &after[close + 1..];
     }
     if !bracketed {
-        // Aucun chevron : hors norme, mais assez répandu pour qu'ignorer
-        // ces messages revienne à ne pas les regrouper du tout.
+        // No angle brackets: out of spec, but common enough that ignoring
+        // these messages would amount to not grouping them at all.
         //
-        // Le repli se décide sur la PRÉSENCE de chevrons, jamais sur le
-        // fait qu'on en ait tiré quelque chose : un `Message-ID: <>` — un
-        // logiciel fautif en produit — retomberait sinon ici.
+        // The fallback is decided on the PRESENCE of angle brackets,
+        // never on whether something was extracted from them: a
+        // `Message-ID: <>` — a faulty piece of software produces one —
+        // would otherwise fall through to here.
         ids = raw
             .split_whitespace()
             .filter(|token| is_message_id(token))
@@ -88,37 +90,38 @@ fn canonical_ids(raw: &str) -> Vec<String> {
     ids
 }
 
-/// Ce jeton est-il un `Message-ID` plausible ?
+/// Is this token a plausible `Message-ID`?
 ///
-/// RFC 5322 §3.6.4 : `msg-id = "<" id-left "@" id-right ">"`. **L'arobase
-/// est obligatoire**, et c'est elle qui sépare un identifiant d'un mot.
+/// RFC 5322 §3.6.4: `msg-id = "<" id-left "@" id-right ">"`. **The at sign
+/// is mandatory**, and it is what separates an identifier from a word.
 ///
-/// Ce n'est pas du purisme, c'est le garde-fou qui manquait. Sans lui, un
-/// en-tête rédigé en prose — la forme RFC 822 `In-Reply-To: Votre message
-/// du 3 janvier`, que des répondeurs automatiques produisent encore —
-/// fabrique autant de faux identifiants que de mots. Chaque mot devient
-/// une ancre, tous les messages portant la même phrase s'y accrochent, et
-/// l'union-find les réunit *correctement* dans un fil qui n'a aucun sens.
+/// This is not purism, it is the guard rail that was missing. Without
+/// it, a header written in prose — the RFC 822 form
+/// `In-Reply-To: Your message of January 3rd`, which some autoresponders
+/// still produce — manufactures as many fake identifiers as words. Every
+/// word becomes an anchor, every message carrying the same phrase latches
+/// onto it, and the union-find *correctly* reunites them into a thread
+/// that makes no sense.
 ///
-/// Mesuré sur une vraie boîte avant correction : **43 messages étrangers
-/// en une seule conversation**, accrochés à des jetons de 3 à 11
-/// caractères sans arobase que personne ne portait.
+/// Measured on a real mailbox before the fix: **43 unrelated messages in
+/// a single conversation**, latched onto 3-to-11-character tokens without
+/// an at sign that nobody actually carried.
 ///
-/// Conséquence assumée : un `Message-ID` hors norme (`<1234567890>`) est
-/// ignoré. Le message forme alors son propre fil et les réponses qu'il
-/// reçoit ne s'y rattachent pas. C'est une perte locale et silencieuse,
-/// contre une fusion massive et visible — l'échange est très favorable.
+/// Accepted consequence: an out-of-spec `Message-ID` (`<1234567890>`) is
+/// ignored. The message then forms its own thread and the replies it
+/// receives do not attach to it. That is a local, silent loss, against a
+/// massive and visible merge — the trade is very favorable.
 fn is_message_id(token: &str) -> bool {
     token.contains('@') && !token.chars().any(char::is_whitespace)
 }
 
-/// Tous les identifiants qui rattachent un message à son fil : le sien
-/// d'abord, puis ses ancêtres, du plus ancien au plus proche.
+/// All the identifiers that attach a message to its thread: its own
+/// first, then its ancestors, from oldest to nearest.
 pub(crate) fn linking_ids(
     message_id: Option<&str>,
     in_reply_to: Option<&str>,
     references: Option<&str>,
-    adresses: &[String],
+    addresses: &[String],
 ) -> Vec<String> {
     let mut ids: Vec<String> = Vec::new();
     let mut push = |candidates: Vec<String>| {
@@ -133,19 +136,19 @@ pub(crate) fn linking_ids(
         references.map(canonical_ids).unwrap_or_default(),
     ));
     push(in_reply_to.map(canonical_ids).unwrap_or_default());
-    // Une ADRESSE de l'enveloppe entre chevrons (`In-Reply-To:
-    // <alice@x.fr>`, des répondeurs le font) a la forme d'un identifiant
-    // — elle n'en est pas un (PLAN-AUDIT-V2 E5 : elle fusionnait des fils
-    // étrangers, ADR 0008 à la lettre et pas dans l'esprit).
+    // An envelope ADDRESS between angle brackets (`In-Reply-To:
+    // <alice@x.fr>`, some autoresponders do this) has the shape of an
+    // identifier — it is not one (PLAN-AUDIT-V2 E5: it was merging
+    // unrelated threads, ADR 0008 to the letter but not in spirit).
     ids.retain(|id| {
-        !adresses
+        !addresses
             .iter()
-            .any(|adresse| adresse.trim().eq_ignore_ascii_case(id))
+            .any(|address| address.trim().eq_ignore_ascii_case(id))
     });
     ids
 }
 
-/// Applique [`MAX_REFERENCES`] en gardant les deux extrémités.
+/// Applies [`MAX_REFERENCES`] while keeping both ends.
 fn cap_references(mut refs: Vec<String>) -> Vec<String> {
     if refs.len() <= MAX_REFERENCES {
         return refs;
@@ -156,30 +159,31 @@ fn cap_references(mut refs: Vec<String>) -> Vec<String> {
     refs
 }
 
-/// Ce qu'il faut faire pour rattacher un message, une fois l'annuaire
-/// consulté.
+/// What must be done to attach a message, once the directory has been
+/// consulted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ThreadPlan {
-    /// Le fil d'accueil. `None` : aucun identifiant connu, il faut créer
-    /// un fil neuf.
+    /// The host thread. `None`: no identifier known, a new thread must be
+    /// created.
     pub keep: Option<ThreadId>,
-    /// Les fils que `keep` absorbe. Vide hors fusion.
+    /// The threads that `keep` absorbs. Empty outside of a merge.
     ///
-    /// Repointer leurs identifiants vers `keep` est la charge de
-    /// l'appelant : c'est une écriture, et ce module n'en fait aucune.
+    /// Repointing their identifiers to `keep` is the caller's job: it is
+    /// a write, and this module performs none.
     pub absorb: Vec<ThreadId>,
-    /// Les identifiants encore absents de l'annuaire, à y inscrire.
+    /// The identifiers still absent from the directory, to be entered
+    /// into it.
     ///
-    /// Y compris ceux d'ancêtres **absents de la boîte** : c'est
-    /// précisément ce qui permet à un message arrivé plus tard de
-    /// rejoindre le bon fil.
+    /// Including those of ancestors **absent from the mailbox**: that is
+    /// precisely what lets a message arriving later join the right
+    /// thread.
     pub register: Vec<String>,
 }
 
-/// Consulte l'annuaire et décide du rattachement.
+/// Consults the directory and decides on the attachment.
 ///
-/// `known` n'a besoin de contenir que les identifiants de `ids` — à
-/// l'appelant de faire la seule requête qui les cherche.
+/// `known` only needs to contain the identifiers from `ids` — it is the
+/// caller's job to make the single query that looks them up.
 pub(crate) fn plan(ids: &[String], known: &HashMap<String, ThreadId>) -> ThreadPlan {
     let mut threads: Vec<ThreadId> = Vec::new();
     let mut register: Vec<String> = Vec::new();
@@ -197,11 +201,11 @@ pub(crate) fn plan(ids: &[String], known: &HashMap<String, ThreadId>) -> ThreadP
             }
         }
     }
-    // Le fil le plus ancien l'emporte — son identifiant est le plus petit.
-    // Ce départage doit être le MÊME quel que soit l'ordre d'arrivée des
-    // messages : sinon deux synchronisations de la même boîte ne donnent
-    // pas le même découpage, et le fil « saute » sous les yeux de
-    // l'utilisateur.
+    // The oldest thread wins — its identifier is the smallest. This
+    // tie-break must be the SAME regardless of the order in which
+    // messages arrive: otherwise two syncs of the same mailbox would not
+    // yield the same grouping, and the thread would “jump” before the
+    // user's eyes.
     threads.sort_unstable();
     let mut threads = threads.into_iter();
     ThreadPlan {
@@ -212,87 +216,87 @@ pub(crate) fn plan(ids: &[String], known: &HashMap<String, ThreadId>) -> ThreadP
 }
 
 // ---------------------------------------------------------------------------
-// Persistance — l'algorithme ci-dessus, appliqué à la base.
+// Persistence — the algorithm above, applied to the database.
 //
-// Toutes ces fonctions prennent une `&Connection` et s'appellent DANS la
-// transaction qui écrit le message, comme l'index de recherche (ADR 0004) :
-// un fil à moitié rattaché serait pire qu'un message non rattaché.
+// All these functions take a `&Connection` and are called WITHIN the
+// transaction that writes the message, like the search index (ADR 0004):
+// a half-attached thread would be worse than an unattached message.
 // ---------------------------------------------------------------------------
 
-/// Les deux tables des fils, aux rôles bien distincts.
+/// The two thread tables, with clearly distinct roles.
 ///
-/// `threads` est un **agrégat matérialisé** : la liste doit pouvoir
-/// afficher une page de conversations sans agréger 200 000 enveloppes à
-/// chaque défilement. C'est le même raisonnement que l'index de
-/// recherche — l'agrégat vit dans la base et s'entretient dans la même
-/// transaction que le message.
+/// `threads` is a **materialized aggregate**: the list must be able to
+/// display a page of conversations without aggregating 200,000 envelopes
+/// on every scroll. Same reasoning as the search index — the aggregate
+/// lives in the database and is maintained within the same transaction
+/// as the message.
 ///
-/// `thread_links` est l'**annuaire** : il retient aussi les identifiants
-/// d'ancêtres que la boîte ne contient pas. C'est cette mémoire-là qui
-/// permet à deux moitiés de fil de se reconnaître plus tard.
-/// La boîte dont les messages sont « reçus ».
+/// `thread_links` is the **directory**: it also retains the identifiers
+/// of ancestors that the mailbox does not contain. That memory is what
+/// lets two halves of a thread recognize each other later.
+/// The mailbox whose messages are “received”.
 ///
-/// Un nom en dur, et c'est délibéré : `inbox_size` sert au filtre de la
-/// liste, qui ne montre qu'une boîte — celle du courrier entrant. Le jour
-/// où la liste en montrerait plusieurs, ce compteur perdrait son sens
-/// avant de perdre sa valeur, et il faudrait le repenser plutôt que le
-/// paramétrer.
+/// A hardcoded name, and that is deliberate: `inbox_size` serves the list
+/// filter, which shows only one mailbox — the one for incoming mail. The
+/// day the list would show several, this counter would lose its meaning
+/// before losing its value, and it would need rethinking rather than
+/// parameterizing.
 pub(crate) const RECEIVED_MAILBOX: &str = "INBOX";
 
 pub(crate) const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS threads (
     id         INTEGER PRIMARY KEY,
     account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-    -- Le dernier message peut vivre dans INBOX comme dans « Envoyés » :
-    -- son UID seul n'identifie rien (invariant « identité = compte+UID »).
+    -- The last message can live in INBOX just as well as in “Sent”:
+    -- its UID alone identifies nothing (invariant “identity = account+UID”).
     last_mailbox_id INTEGER,
     last_uid   INTEGER NOT NULL DEFAULT 0,
     last_epoch INTEGER,
     size       INTEGER NOT NULL DEFAULT 0,
     unseen     INTEGER NOT NULL DEFAULT 0,
-    -- Combien de messages REÇUS. Un fil purement sortant — j'écris,
-    -- personne ne répond — vaut 0 et n'a pas de ligne dans la liste
+    -- How many messages were RECEIVED. A purely outgoing thread — I write,
+    -- nobody replies — is worth 0 and has no row in the list
     -- (ADR 0009 §2).
     inbox_size INTEGER NOT NULL DEFAULT 0,
-    -- Le fil est-il HORS de la Réception ORGANISÉE (Mode organisé E2) :
-    -- il porte un message d'un expéditeur routé AILLEURS (il vit dans
-    -- sa vue — miroir de thread_route_sql), ou TOUS ses messages viennent
-    -- d'inconnus en attente au Portier (un fil mêlé RESTE — règle
-    -- d'or). Entretenu par `refresh`, comme size/unseen — verdict
-    -- S2-bis : toute forme calculée à la requête s'effondre à l'offset
-    -- profond (299 ms), le drapeau + index partiel vaut le témoin.
+    -- Is the thread OUTSIDE the ORGANIZED Inbox (Organized mode E2):
+    -- it carries a message from a sender routed ELSEWHERE (it lives in
+    -- its own view — mirror of thread_route_sql), or ALL its messages
+    -- come from unknowns pending at the Screener (a mixed thread STAYS —
+    -- golden rule). Maintained by `refresh`, like size/unseen — verdict
+    -- S2-bis: any form computed at query time collapses at deep offset
+    -- (299 ms), the flag + partial index matches the control.
     organise_hors INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_threads_date
     ON threads(account_id, last_epoch DESC, last_uid DESC);
--- Le même tri, SANS préfixe de boîte : c'est celui dont la boîte unifiée
--- a besoin. Elle couvre la même boîte de TOUS les comptes, donc ne fixe
--- aucun `mailbox_id` — et un index qui commence par cette colonne ne peut
--- alors plus porter l'ordre. SQLite retombait sur un tri matérialisé de
--- toutes les conversations, à CHAQUE page de défilement : 987 ms mesurées
--- sur 160 000 conversations au gate 3, contre 0,66 ms avec cet index.
--- L'index préfixé reste utile aux requêtes bornées à une boîte.
--- PARTIEL : le filtre « au moins un message reçu » entre DANS l'index au
--- lieu d'être évalué après lui. Sans la clause WHERE, SQLite parcourrait
--- puis jetterait tous les fils purement sortants, et le tri matérialisé
--- que le gate 3 vient de supprimer reviendrait par une autre porte
--- (ADR 0009 §4).
+-- The same sort, WITHOUT a mailbox prefix: this is what the unified
+-- mailbox needs. It covers the same mailbox across ALL accounts, so it
+-- fixes no `mailbox_id` — and an index starting with that column can no
+-- longer carry the ordering. SQLite fell back to a materialized sort of
+-- all conversations, on EVERY scroll page: 987 ms measured on 160,000
+-- conversations at gate 3, against 0.66 ms with this index. The prefixed
+-- index remains useful for queries scoped to one mailbox.
+-- PARTIAL: the “at least one received message” filter enters the index
+-- INSTEAD of being evaluated after it. Without the WHERE clause, SQLite
+-- would scan then discard every purely outgoing thread, and the
+-- materialized sort that gate 3 just removed would come back through
+-- another door (ADR 0009 §4).
 CREATE INDEX IF NOT EXISTS idx_threads_date_globale
     ON threads(last_epoch DESC, last_uid DESC, account_id)
     WHERE inbox_size > 0;
--- Le MIROIR du précédent pour la Réception ORGANISÉE : le filtre de
--- rétention entre DANS l'index (S2-bis) et, depuis E4, la clé porte
--- les SECTIONS — les non-lus d'abord (verdict S1/A2 : sans cet index
--- d'expression, le tri à sections matérialise toute la boîte, 548 ms
--- par page ; avec lui, le profil du témoin). L'expression est en
--- CLASSEMENT seulement, jamais en jointure (piège E2). Sur une base
--- héritée, la colonne existe déjà : `migrate()` l'ajoute AVANT ce
--- schéma, et REBÂTIT l'index d'E2 dont la clé n'a pas les sections.
+-- The MIRROR of the previous one for the ORGANIZED Inbox: the retention
+-- filter enters the index (S2-bis) and, since E4, the key carries the
+-- SECTIONS — unread first (verdict S1/A2: without this expression index,
+-- the section sort materializes the whole mailbox, 548 ms per page; with
+-- it, the control's profile). The expression is for ORDERING only, never
+-- for a join (E2 trap). On a legacy database, the column already exists:
+-- `migrate()` adds it BEFORE this schema, and REBUILDS the E2 index whose
+-- key lacked the sections.
 CREATE INDEX IF NOT EXISTS idx_threads_date_organise
     ON threads((unseen > 0) DESC, last_epoch DESC, last_uid DESC, account_id)
     WHERE inbox_size > 0 AND organise_hors = 0;
--- La même clé PRÉFIXÉE par compte — la nav « Boîtes » de la Réception
--- organisée (le patron d'idx_threads_date pour le classique).
+-- The same key PREFIXED by account — the “Mailboxes” nav of the
+-- Organized Inbox (the pattern of idx_threads_date for the classic one).
 CREATE INDEX IF NOT EXISTS idx_threads_date_organise_compte
     ON threads(account_id, (unseen > 0) DESC, last_epoch DESC, last_uid DESC)
     WHERE inbox_size > 0 AND organise_hors = 0;
@@ -305,20 +309,20 @@ CREATE TABLE IF NOT EXISTS thread_links (
 CREATE INDEX IF NOT EXISTS idx_thread_links_thread ON thread_links(thread_id);
 ";
 
-/// Rattache un message à son fil et retourne celui-ci.
+/// Attaches a message to its thread and returns it.
 ///
-/// N'écrit PAS `envelopes.thread_id` : l'appelant le fait, parce que lui
-/// seul sait si l'enveloppe est déjà écrite. Il doit ensuite appeler
-/// [`refresh`] sur le fil retourné.
+/// Does NOT write `envelopes.thread_id`: the caller does that, because
+/// only it knows whether the envelope is already written. It must then
+/// call [`refresh`] on the returned thread.
 pub(crate) fn attach(
     conn: &Connection,
     account_id: i64,
     message_id: Option<&str>,
     in_reply_to: Option<&str>,
     references: Option<&str>,
-    adresses: &[String],
+    addresses: &[String],
 ) -> Result<ThreadId, Error> {
-    let ids = linking_ids(message_id, in_reply_to, references, adresses);
+    let ids = linking_ids(message_id, in_reply_to, references, addresses);
     let decision = plan(&ids, &lookup(conn, account_id, &ids)?);
 
     let thread = match decision.keep {
@@ -330,10 +334,9 @@ pub(crate) fn attach(
         }
     };
     for absorbed in decision.absorb {
-        // L'ordre compte : repointer AVANT de supprimer, sinon la clé
-        // étrangère de `thread_links` refuse la suppression — et la
-        // refuser est la bonne réaction, elle signale qu'on allait
-        // perdre des liens.
+        // Order matters: repoint BEFORE deleting, otherwise the foreign
+        // key on `thread_links` refuses the deletion — and refusing is
+        // the right reaction, it signals we were about to lose links.
         conn.execute(
             "UPDATE thread_links SET thread_id = ?2 WHERE thread_id = ?1",
             params![absorbed, thread],
@@ -354,7 +357,7 @@ pub(crate) fn attach(
     Ok(thread)
 }
 
-/// Les fils déjà connus pour ces identifiants — une seule requête.
+/// The threads already known for these identifiers — a single query.
 fn lookup(
     conn: &Connection,
     account_id: i64,
@@ -371,10 +374,10 @@ fn lookup(
     values.push(account_id.into());
     values.extend(ids.iter().map(|id| id.clone().into()));
 
-    // `prepare_cached` : le cache est indexé par le texte SQL, et il n'y a
-    // qu'une poignée de formes (une par nombre d'identifiants cités). Sans
-    // lui, chaque message re-analyse et re-planifie sa requête — c'est le
-    // poste dominant de l'adoption d'une base héritée.
+    // `prepare_cached`: the cache is indexed by the SQL text, and there
+    // are only a handful of shapes (one per number of identifiers cited).
+    // Without it, every message re-parses and re-plans its query — this
+    // is the dominant cost of adopting a legacy database.
     let mut stmt = conn.prepare_cached(&format!(
         "SELECT message_id, thread_id FROM thread_links
          WHERE account_id = ?1 AND message_id IN ({placeholders})"
@@ -387,14 +390,14 @@ fn lookup(
     Ok(known)
 }
 
-/// Recalcule l'agrégat d'un fil depuis ses messages — et le supprime s'il
-/// n'en a plus.
+/// Recomputes a thread's aggregate from its messages — and deletes it if
+/// it no longer has any.
 ///
-/// **Recalculer, jamais incrémenter.** Un compteur entretenu par
-/// additions et soustractions dérive au premier chemin oublié (fusion,
-/// UIDVALIDITY, action rejouée), et une dérive se voit à l'écran pour
-/// toujours : « 4 messages » sur un fil qui en montre 3. Le recalcul est
-/// borné par la taille du fil et passe par l'index.
+/// **Recompute, never increment.** A counter maintained by additions and
+/// subtractions drifts at the first forgotten path (merge, UIDVALIDITY,
+/// replayed action), and a drift shows on screen forever: “4 messages” on
+/// a thread that shows 3. The recompute is bounded by the thread's size
+/// and goes through the index.
 pub(crate) fn refresh(conn: &Connection, thread: ThreadId) -> Result<(), Error> {
     let aggregate = conn
         .prepare_cached(
@@ -423,13 +426,14 @@ pub(crate) fn refresh(conn: &Connection, thread: ThreadId) -> Result<(), Error> 
 
     match aggregate {
         Some((last_mailbox, last_uid, last_epoch, size, unseen, inbox_size)) => {
-            // `organise_hors` se recalcule AVEC l'agrégat — même règle
-            // que size/unseen : jamais incrémenter, une dérive se voit
-            // pour toujours. La règle vit dans UN fragment partagé
-            // (`store::organized_off_sql` — règle d'or comprise : un
-            // fil mêlé reste) ; sondes par clés, ~0 quand le mode n'a
-            // jamais servi (tables vides, garde O(1) en tête de CASE).
-            // Le texte SQL est stable : `prepare_cached` tient.
+            // `organise_hors` is recomputed WITH the aggregate — same
+            // rule as size/unseen: never increment, a drift shows
+            // forever. The rule lives in ONE shared fragment
+            // (`store::organized_off_sql` — golden rule included: a
+            // mixed thread stays); key-based probes, ~0 when the mode
+            // has never been used (empty tables, O(1) guard at the head
+            // of the CASE). The SQL text is stable: `prepare_cached`
+            // holds.
             conn.prepare_cached(&format!(
                 "UPDATE threads SET last_mailbox_id = ?2, last_uid = ?3, last_epoch = ?4,
                                     size = ?5, unseen = ?6, inbox_size = ?7,
@@ -448,13 +452,14 @@ pub(crate) fn refresh(conn: &Connection, thread: ThreadId) -> Result<(), Error> 
             ])?;
         }
         None => {
-            // Le fil s'est vidé : il disparaît avec son annuaire.
+            // The thread emptied out: it disappears along with its
+            // directory.
             //
-            // Conséquence assumée : si une réponse arrive plus tard, elle
-            // ouvre un fil NEUF. C'est honnête — la boîte ne contient plus
-            // rien de cette conversation. Garder l'annuaire ferait
-            // ressusciter des fils vides que la liste devrait ensuite
-            // filtrer, au prix de l'index qui la rend rapide.
+            // Accepted consequence: if a reply arrives later, it opens a
+            // NEW thread. That is honest — the mailbox no longer holds
+            // anything of this conversation. Keeping the directory would
+            // resurrect empty threads that the list would then have to
+            // filter, at the cost of the index that keeps it fast.
             conn.execute("DELETE FROM thread_links WHERE thread_id = ?1", [thread])?;
             conn.execute("DELETE FROM threads WHERE id = ?1", [thread])?;
         }
@@ -462,7 +467,8 @@ pub(crate) fn refresh(conn: &Connection, thread: ThreadId) -> Result<(), Error> 
     Ok(())
 }
 
-/// Le fil d'un message, à rafraîchir APRÈS l'avoir retiré de la boîte.
+/// The thread of a message, to be refreshed AFTER removing it from the
+/// mailbox.
 pub(crate) fn thread_of(
     conn: &Connection,
     mailbox_id: i64,
@@ -479,16 +485,16 @@ pub(crate) fn thread_of(
     Ok(thread)
 }
 
-/// Refait les fils d'UN compte — appelé quand une de ses boîtes est
-/// réinitialisée (UIDVALIDITY changée : plus rien n'y veut dire quoi que
-/// ce soit).
+/// Rebuilds the threads of ONE account — called when one of its mailboxes
+/// is reset (UIDVALIDITY changed: nothing in it means anything anymore).
 ///
-/// **Pourquoi tout le compte, et pas la seule boîte.** Depuis
-/// l'[ADR 0009] un fil réunit les messages de plusieurs boîtes. N'effacer
-/// que ceux de la boîte réinitialisée laisserait les autres pointer sur
-/// des messages disparus — et l'annuaire ne dit pas quelle boîte a inscrit
-/// quel identifiant, par construction : c'est le compte qui le porte. Le
-/// recalcul est borné par la taille du compte, et l'évènement est rare.
+/// **Why the whole account, and not just the mailbox.** Since
+/// [ADR 0009] a thread reunites messages from several mailboxes. Erasing
+/// only those of the reset mailbox would leave the others pointing at
+/// vanished messages — and the directory does not say which mailbox
+/// entered which identifier, by construction: it is the account that
+/// carries it. The recompute is bounded by the account's size, and the
+/// event is rare.
 pub(crate) fn rebuild_account(conn: &Connection, account_id: i64) -> Result<(), Error> {
     conn.execute(
         "DELETE FROM thread_links WHERE account_id = ?1",
@@ -500,63 +506,63 @@ pub(crate) fn rebuild_account(conn: &Connection, account_id: i64) -> Result<(), 
          WHERE mailbox_id IN (SELECT id FROM mailboxes WHERE account_id = ?1)",
         [account_id],
     )?;
-    // Ré-adopter TOUT DE SUITE, et non à la prochaine ouverture : la liste
-    // part de `threads`, donc un message à `thread_id` NULL n'a aucune
-    // ligne. Différer ferait disparaître la boîte de l'écran entre-temps —
-    // le piège de la fonctionnalité qui n'adopte pas ses données.
+    // Re-adopt RIGHT AWAY, not at the next opening: the list starts from
+    // `threads`, so a message with `thread_id` NULL has no row. Deferring
+    // would make the mailbox disappear from the screen in the meantime —
+    // the trap of a feature that does not adopt its own data.
     let orphans = orphans(conn, Some(account_id))?;
     adopt(conn, orphans)
 }
 
-/// Rattache les messages déjà en base — ceux d'avant les fils.
+/// Attaches messages already in the database — those from before threads
+/// existed.
 ///
-/// Sans cette passe, chaque message hérité garderait `thread_id` NULL et
-/// **disparaîtrait** d'une liste groupée par fil. C'est exactement le
-/// piège des pièces jointes, où les métadonnées n'étaient écrites que par
-/// le chemin neuf : une fonctionnalité qui n'adopte pas les données
-/// anciennes est fausse dès la première ouverture, et pour toujours.
+/// Without this pass, every legacy message would keep `thread_id` NULL
+/// and **disappear** from a list grouped by thread. That is exactly the
+/// attachment trap, where metadata was only ever written by the new
+/// path: a feature that does not adopt old data is wrong from the first
+/// opening, and forever.
 ///
-/// Ces messages n'ont que leur `Message-ID` : ils formeront donc surtout
-/// des fils d'un seul message, qui se regrouperont au fil de l'acquisition
-/// des en-têtes (c'est la propriété de convergence, en tête de module).
-/// Version de la règle de regroupement inscrite dans la base
-/// (`PRAGMA user_version`, libre d'usage et gratuite à lire).
+/// These messages only have their `Message-ID`: they will mostly form
+/// single-message threads, which will regroup as headers get acquired
+/// (that is the convergence property, at the top of the module).
+/// Version of the grouping rule recorded in the database
+/// (`PRAGMA user_version`, free to use and free to read).
 ///
-/// **1** — les identifiants sont filtrés par [`is_message_id`].
+/// **1** — identifiers are filtered by [`is_message_id`].
 ///
-/// Les bases plus anciennes ont été regroupées par une règle qui prenait
-/// les mots d'un en-tête rédigé en prose pour des identifiants : leurs
-/// fils sont FAUX, et aucune correction du code ne les répare tout seul.
-/// Il faut les refaire.
+/// Older databases were grouped by a rule that took the words of a
+/// header written in prose for identifiers: their threads are WRONG, and
+/// no code fix repairs them on its own. They must be redone.
 ///
-/// **2** — la portée d'un fil est le COMPTE et non la boîte
+/// **2** — a thread's scope is the ACCOUNT, not the mailbox
 /// ([ADR 0009](../../../docs/adr/0009-portee-des-fils-au-compte.md)).
 ///
-/// Les deux tables changent de clé, et SQLite ne sait pas modifier une
-/// clé primaire en place : elles sont **supprimées puis recréées**, là où
-/// la version 1 se contentait de les vider.
+/// Both tables change key, and SQLite cannot modify a primary key in
+/// place: they are **dropped then recreated**, where version 1 was
+/// content to just empty them.
 pub(crate) const THREADING_VERSION: i64 = 2;
 
-/// Supprime les tables de fils quand la règle qui les a produites a
-/// changé — **à appeler AVANT d'appliquer [`SCHEMA`]**.
+/// Drops the thread tables when the rule that produced them has changed —
+/// **to call BEFORE applying [`SCHEMA`]**.
 ///
-/// `CREATE TABLE IF NOT EXISTS` ne touche pas à une table qui existe :
-/// sur une base d'avant, `threads` garderait donc ses colonnes. Mais
-/// l'index partiel, lui, n'existe pas encore — SQLite le crée vraiment,
-/// et échoue sur `inbox_size`, colonne absente de l'ancienne table.
-/// **L'ouverture entière était refusée, et l'application ne démarrait
-/// plus.**
+/// `CREATE TABLE IF NOT EXISTS` does not touch a table that exists: on an
+/// older database, `threads` would therefore keep its columns. But the
+/// partial index does not exist yet — SQLite actually creates it, and
+/// fails on `inbox_size`, a column absent from the old table. **The
+/// whole opening was refused, and the application no longer started.**
 ///
-/// Défaut trouvé au terrain : aucun test ne pouvait le voir, tous créant
-/// une base neuve, donc déjà au schéma courant. Le décor qui le reproduit
-/// est `une_base_au_schema_des_fils_precedent_s_ouvre_et_se_migre`.
+/// Defect found in the field: no test could see it, all of them creating
+/// a fresh database, hence already at the current schema. The fixture
+/// that reproduces it is
+/// `une_base_au_schema_des_fils_precedent_s_ouvre_et_se_migre`.
 ///
-/// Le marqueur de version n'est PAS avancé ici : c'est
-/// [`migrate_threads_with`] qui le fait, une fois les tables recréées,
-/// les enveloppes détachées ET l'adoption terminée — le tout dans la
-/// même transaction, possédée par `Store::init`. Avancer plus tôt
-/// rendrait l'annulation partielle : le rembobinage (passation §8) exige
-/// que `ROLLBACK` laisse `user_version` inchangé.
+/// The version marker is NOT advanced here: [`migrate_threads_with`]
+/// does that, once the tables are recreated, the envelopes detached AND
+/// the adoption finished — all within the same transaction, owned by
+/// `Store::init`. Advancing it earlier would make cancellation partial:
+/// the rewind (handover §8) requires that `ROLLBACK` leave
+/// `user_version` unchanged.
 pub(crate) fn drop_if_outdated(conn: &Connection) -> Result<(), Error> {
     let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
     if version >= THREADING_VERSION {
@@ -569,9 +575,9 @@ pub(crate) fn drop_if_outdated(conn: &Connection) -> Result<(), Error> {
     Ok(())
 }
 
-/// Transmet un relevé d'avancement, et traduit la réponse : `Break`
-/// devient [`Error::Interrupted`], que la transaction de l'appelant
-/// convertit en `ROLLBACK` — le rembobinage du §8.
+/// Forwards a progress reading, and translates the response: `Break`
+/// becomes [`Error::Interrupted`], which the caller's transaction
+/// converts to `ROLLBACK` — the rewind of §8.
 fn report(
     on_progress: &mut dyn FnMut(AdoptionProgress) -> ControlFlow<()>,
     done: u64,
@@ -583,12 +589,12 @@ fn report(
     }
 }
 
-/// Un message pas encore rattaché : son compte, sa boîte, son UID, puis
-/// les trois en-têtes de regroupement.
+/// A message not yet attached: its account, its mailbox, its UID, then
+/// the three grouping headers.
 ///
-/// Le compte vient de la requête plutôt que d'une résolution par message :
-/// sur 200 000 orphelins, une jointure faite une fois vaut mieux que
-/// 200 000 aller-retours.
+/// The account comes from the query rather than a per-message
+/// resolution: over 200,000 orphans, one join done once beats 200,000
+/// round trips.
 type Orphan = (
     i64,
     i64,
@@ -598,28 +604,29 @@ type Orphan = (
     Option<String>,
 );
 
-/// Les messages sans fil — de tout le stockage, ou d'un seul compte.
+/// The threadless messages — across all storage, or for a single
+/// account.
 fn orphans(conn: &Connection, account: Option<i64>) -> Result<Vec<Orphan>, Error> {
-    // `m.threaded` : hors portée, `thread_id` reste NULL **pour toujours**
-    // (ADR 0010 §3). Sans ce filtre, l'adoption les reprendrait à chaque
-    // ouverture sans jamais les solder — sur le chemin déjà mesuré à 3,7 s
-    // pour 200 000 messages, et que la synchronisation intégrale allonge.
+    // `m.threaded`: out of scope, `thread_id` stays NULL **forever**
+    // (ADR 0010 §3). Without this filter, adoption would pick them back
+    // up on every opening without ever closing them out — on a path
+    // already measured at 3.7 s for 200,000 messages, and that a full
+    // sync lengthens.
     //
-    // Et ce sont les BOÎTES EN PORTÉE qui pilotent le balayage (`CROSS
-    // JOIN` : l'ordre de jointure est figé, l'index (mailbox_id, …)
-    // porte le parcours). Parti des enveloppes, le plan partait de
-    // `idx_envelopes_thread (thread_id=NULL)` et énumérait les NULL
-    // éternels de TOUTE la base pour les écarter après jointure —
-    // 247 835 lignes, 398 ms, à CHAQUE `Store::open`, donc à chaque
-    // commande (mesuré au gate P1 de la refonte,
-    // `diagnostic_ouverture`). Piloté par la portée : 3 229 lignes,
-    // 23 ms — le coût suit ce que l'adoption peut avoir à faire, plus
-    // la taille de la base.
+    // And it is the MAILBOXES IN SCOPE that drive the scan (`CROSS
+    // JOIN`: the join order is fixed, the index (mailbox_id, …) carries
+    // the traversal). Starting from the envelopes, the plan started from
+    // `idx_envelopes_thread (thread_id=NULL)` and enumerated the
+    // everlasting NULLs of the WHOLE database to discard them after the
+    // join — 247,835 rows, 398 ms, on EVERY `Store::open`, hence on every
+    // command (measured at gate P1 of the redesign, `diagnostic_ouverture`).
+    // Driven by scope: 3,229 rows, 23 ms — the cost follows what
+    // adoption may have to do, plus the size of the database.
     const BASE: &str = "SELECT m.account_id, e.mailbox_id, e.uid,
                 e.message_id, e.in_reply_to, e.refs
          FROM mailboxes m CROSS JOIN envelopes e ON e.mailbox_id = m.id
          WHERE m.threaded = 1 AND e.thread_id IS NULL";
-    let lire = |row: &rusqlite::Row<'_>| {
+    let read = |row: &rusqlite::Row<'_>| {
         Ok((
             row.get(0)?,
             row.get(1)?,
@@ -634,23 +641,24 @@ fn orphans(conn: &Connection, account: Option<i64>) -> Result<Vec<Orphan>, Error
             .prepare(&format!(
                 "{BASE} AND m.account_id = ?1 ORDER BY e.mailbox_id, e.uid"
             ))?
-            .query_map([account_id], lire)?
+            .query_map([account_id], read)?
             .collect::<Result<Vec<_>, _>>()?,
         None => conn
             .prepare(&format!("{BASE} ORDER BY e.mailbox_id, e.uid"))?
-            .query_map([], lire)?
+            .query_map([], read)?
             .collect::<Result<Vec<_>, _>>()?,
     };
     Ok(rows)
 }
 
-/// L'unité d'adoption des messages hérités, SANS transaction : c'est
-/// l'appelant qui la possède — `Store::init` l'étend du DROP conditionnel
-/// jusqu'à `user_version`, pour que l'annulation rembobine tout (§8).
+/// The unit of adoption for legacy messages, WITHOUT a transaction: it is
+/// the caller that owns it — `Store::init` extends it from the
+/// conditional DROP through to `user_version`, so that cancellation
+/// rewinds everything (§8).
 ///
-/// Rend le total annoncé à `on_progress` quand une passe a eu lieu :
-/// l'appelant redira `(total, total)` une fois la transaction COMMISE —
-/// « fini » ne se dit jamais avant d'être vrai.
+/// Returns the total announced to `on_progress` when a pass took place:
+/// the caller will report `(total, total)` again once the transaction is
+/// COMMITTED — “done” is never said before it is true.
 pub(crate) fn migrate_threads_with(
     conn: &Connection,
     on_progress: &mut dyn FnMut(AdoptionProgress) -> ControlFlow<()>,
@@ -658,44 +666,45 @@ pub(crate) fn migrate_threads_with(
     let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
     let outdated = version < THREADING_VERSION;
     if outdated {
-        // Les tables ont déjà été supprimées par `drop_if_outdated` puis
-        // recréées vides par `SCHEMA` : il reste à détacher les enveloppes
-        // pour que l'adoption, juste dessous, refasse les fils — un seul
-        // chemin de reconstruction, celui qui est déjà testé. Purement
-        // local : les en-têtes bruts sont intacts en base, seule leur
-        // interprétation était fautive. Rien à redemander au serveur.
+        // The tables were already dropped by `drop_if_outdated` then
+        // recreated empty by `SCHEMA`: what remains is detaching the
+        // envelopes so that the adoption right below redoes the threads
+        // — a single reconstruction path, the one already tested. Purely
+        // local: the raw headers are intact in the database, only their
+        // interpretation was faulty. Nothing to ask the server for
+        // again.
         conn.execute_batch("UPDATE envelopes SET thread_id = NULL")?;
     }
     let orphans = orphans(conn, None)?;
     let mut announced = None;
     if !orphans.is_empty() {
-        // Le total est un MAJORANT déclaré d'emblée : rattacher chaque
-        // orphelin, puis consolider AU PLUS autant de fils. Il ne bouge
-        // plus en route — une barre qui recule est pire qu'une barre
-        // imprécise.
+        // The total is an UPPER BOUND declared up front: attach each
+        // orphan, then consolidate AT MOST that many threads. It never
+        // moves afterwards — a bar that goes backward is worse than an
+        // imprecise bar.
         let total = orphans.len() as u64 * 2;
         announced = Some(total);
         report(on_progress, 0, total)?;
         adopt_with_progress(conn, orphans, total, on_progress)?;
     }
     if outdated {
-        // La version se consigne DANS la même transaction que l'adoption :
-        // annuler laisse `user_version` inchangé, et la passe entière se
-        // rejoue au prochain lancement. Jamais d'adoption partielle
-        // persistée — la liste part de `threads`, une base à moitié
-        // adoptée serait une boîte à moitié vide.
+        // The version is recorded WITHIN the same transaction as the
+        // adoption: cancelling leaves `user_version` unchanged, and the
+        // whole pass replays at the next launch. Never a partially
+        // persisted adoption — the list starts from `threads`, a
+        // half-adopted database would be a half-empty mailbox.
         conn.execute_batch(&format!("PRAGMA user_version = {THREADING_VERSION}"))?;
     }
     Ok(announced)
 }
 
-/// Le même chemin, muet et transactionnel — pour les appels directs des
-/// tests, qui n'ont ni interface à nourrir ni transaction ouverte. La
-/// production passe par `Store::init`, qui possède la transaction.
+/// The same path, silent and transactional — for direct test calls,
+/// which have neither an interface to feed nor an open transaction.
+/// Production goes through `Store::init`, which owns the transaction.
 ///
-/// Une transaction, pas une par message : sur une boîte déjà remplie, un
-/// fsync par enveloppe transformerait l'ouverture de l'application en
-/// minutes d'attente — le budget « démarrage < 1 s » interdit ce chemin.
+/// One transaction, not one per message: on an already-full mailbox, an
+/// fsync per envelope would turn the application's opening into minutes
+/// of waiting — the “startup < 1 s” budget forbids this path.
 #[cfg(test)]
 pub(crate) fn migrate_threads(conn: &Connection) -> Result<(), Error> {
     conn.execute_batch("BEGIN")?;
@@ -705,23 +714,23 @@ pub(crate) fn migrate_threads(conn: &Connection) -> Result<(), Error> {
             Ok(())
         }
         Err(err) => {
-            // L'échec du retour arrière n'apprendrait rien de plus que
-            // l'erreur d'origine, qui est celle qu'il faut remonter.
+            // A failed rollback would teach nothing more than the
+            // original error, which is the one that must be reported.
             let _ = conn.execute_batch("ROLLBACK");
             Err(err)
         }
     }
 }
 
-/// Palier de rapport : ~1 000 messages font ~18 ms au rythme mesuré par
-/// `banc_migration_fils` — le coût du rappel est invisible, et la
-/// latence d'annulation reste sous la perception.
-const PALIER_RAPPORT: u64 = 1_000;
+/// Report step: ~1,000 messages take ~18 ms at the rate measured by
+/// `banc_migration_fils` — the callback's cost is invisible, and the
+/// cancellation latency stays below perception.
+const REPORT_STEP: u64 = 1_000;
 
 fn adopt(conn: &Connection, orphans: Vec<Orphan>) -> Result<(), Error> {
-    // Chemin muet (UIDVALIDITY invalidée, reconstruction ciblée) : mêmes
-    // gestes, sans spectateur ni annulation — l'évènement est rare et
-    // borné par la taille du compte.
+    // Silent path (UIDVALIDITY invalidated, targeted reconstruction):
+    // same steps, without an observer or cancellation — the event is
+    // rare and bounded by the account's size.
     let total = orphans.len() as u64 * 2;
     adopt_with_progress(conn, orphans, total, &mut |_| ControlFlow::Continue(()))
 }
@@ -732,13 +741,13 @@ fn adopt_with_progress(
     total: u64,
     on_progress: &mut dyn FnMut(AdoptionProgress) -> ControlFlow<()>,
 ) -> Result<(), Error> {
-    // Un ENSEMBLE, pas une liste. `Vec::contains` est linéaire : sur une
-    // base héritée où presque chaque message ouvre son propre fil, le
-    // « ai-je déjà vu ce fil ? » devenait quadratique — 160 000 fils font
-    // ~1,3×10¹⁰ comparaisons. Mesuré : 11,1 s d'adoption sur 200 000
-    // messages, contre un budget de démarrage d'une seconde. Invisible
-    // sur les 2 800 messages d'une boîte réelle, écrasant à l'échelle du
-    // gate 3. L'arbre garde en prime un ordre déterministe, sans tri.
+    // A SET, not a list. `Vec::contains` is linear: on a legacy database
+    // where almost every message opens its own thread, “have I already
+    // seen this thread?” became quadratic — 160,000 threads make
+    // ~1.3×10¹⁰ comparisons. Measured: 11.1 s of adoption over 200,000
+    // messages, against a one-second startup budget. Invisible on the
+    // 2,800 messages of a real mailbox, crushing at gate 3 scale. The
+    // tree also keeps a deterministic order, with no sort needed.
     let mut touched: BTreeSet<ThreadId> = BTreeSet::new();
     let mut done: u64 = 0;
     for (account_id, mailbox_id, uid, message_id, in_reply_to, references) in orphans {
@@ -748,8 +757,8 @@ fn adopt_with_progress(
             message_id.as_deref(),
             in_reply_to.as_deref(),
             references.as_deref(),
-            // L'adoption d'une base héritée n'a pas les adresses sous la
-            // main : le garde-fou des adresses ne joue qu'à la synchro.
+            // Adopting a legacy database has no addresses on hand: the
+            // address guard rail only plays during sync.
             &[],
         )?;
         conn.prepare_cached(
@@ -758,16 +767,16 @@ fn adopt_with_progress(
         .execute(params![mailbox_id, uid, thread])?;
         touched.insert(thread);
         done += 1;
-        if done.is_multiple_of(PALIER_RAPPORT) {
+        if done.is_multiple_of(REPORT_STEP) {
             report(on_progress, done, total)?;
         }
     }
     for thread in touched {
-        // Un fil de `touched` a pu être absorbé entre-temps ; `refresh`
-        // le constate et ne fait rien.
+        // A thread from `touched` may have been absorbed in the
+        // meantime; `refresh` notices and does nothing.
         refresh(conn, thread)?;
         done += 1;
-        if done.is_multiple_of(PALIER_RAPPORT) {
+        if done.is_multiple_of(REPORT_STEP) {
             report(on_progress, done, total)?;
         }
     }
@@ -789,179 +798,183 @@ mod tests {
         raw.iter().map(|id| (*id).to_string()).collect()
     }
 
-    /// Un message sans `Message-ID` ni ancêtre n'a AUCUN identifiant. Il
-    /// faut donc qu'il n'en inscrive aucun : deux messages muets doivent
-    /// rester deux fils distincts, et non se rejoindre sur « rien ».
+    /// A message with neither a `Message-ID` nor an ancestor has NO
+    /// identifier at all. It must therefore register none: two silent
+    /// messages must remain two distinct threads, not join up on
+    /// “nothing”.
     #[test]
-    fn un_message_sans_identifiant_ne_se_rattache_a_rien() {
+    fn a_message_with_no_identifier_attaches_to_nothing() {
         assert!(linking_ids(None, None, None, &[]).is_empty());
 
         let plan = plan(&[], &known(&[]));
-        assert_eq!(plan.keep, None, "il lui faut un fil neuf");
+        assert_eq!(plan.keep, None, "it needs a new thread");
         assert!(
             plan.register.is_empty(),
-            "rien à inscrire : sinon le message suivant, muet lui aussi, \
-             tomberait dans le même fil"
+            "nothing to register: otherwise the next message, also \
+             silent, would fall into the same thread"
         );
     }
 
     #[test]
-    fn une_reponse_rejoint_le_fil_de_son_parent() {
-        let liens = linking_ids(Some("<r@b>"), Some("<a@b>"), None, &[]);
-        let plan = plan(&liens, &known(&[("a@b", 7)]));
+    fn a_reply_joins_its_parent_s_thread() {
+        let links = linking_ids(Some("<r@b>"), Some("<a@b>"), None, &[]);
+        let plan = plan(&links, &known(&[("a@b", 7)]));
 
         assert_eq!(plan.keep, Some(7));
         assert!(plan.absorb.is_empty());
         assert_eq!(
             plan.register,
             ids(&["r@b"]),
-            "seul l'identifiant neuf s'inscrit"
+            "only the new identifier is registered"
         );
     }
 
-    /// Le désordre est la règle, pas l'exception : la synchro rapatrie par
-    /// UID, et une réponse peut précéder ce qu'elle cite. L'ancêtre absent
-    /// est donc inscrit lui aussi, en réservation.
+    /// Disorder is the rule, not the exception: sync fetches by UID, and
+    /// a reply can precede what it cites. The absent ancestor is
+    /// therefore registered too, as a reservation.
     #[test]
-    fn un_ancetre_absent_est_inscrit_pour_que_son_arrivee_rejoigne_le_fil() {
-        // La réponse arrive la première : rien n'est connu.
-        let reponse = linking_ids(Some("<r@b>"), Some("<a@b>"), None, &[]);
-        let premier = plan(&reponse, &known(&[]));
-        assert_eq!(premier.keep, None);
+    fn an_absent_ancestor_is_registered_so_its_arrival_joins_the_thread() {
+        // The reply arrives first: nothing is known yet.
+        let reply = linking_ids(Some("<r@b>"), Some("<a@b>"), None, &[]);
+        let first = plan(&reply, &known(&[]));
+        assert_eq!(first.keep, None);
         assert_eq!(
-            premier.register,
+            first.register,
             ids(&["r@b", "a@b"]),
-            "l'ancêtre encore absent est réservé"
+            "the still-absent ancestor is reserved"
         );
 
-        // Le fil 3 est créé et porte les deux réservations. Le parent
-        // arrive ensuite : il se reconnaît.
+        // Thread 3 is created and carries both reservations. The parent
+        // arrives next: it recognizes itself.
         let parent = linking_ids(Some("<a@b>"), None, None, &[]);
-        let ensuite = plan(&parent, &known(&[("r@b", 3), ("a@b", 3)]));
-        assert_eq!(ensuite.keep, Some(3));
-        assert!(ensuite.register.is_empty());
+        let next = plan(&parent, &known(&[("r@b", 3), ("a@b", 3)]));
+        assert_eq!(next.keep, Some(3));
+        assert!(next.register.is_empty());
     }
 
-    /// Le cas qui fait tout marcher : dans une boîte de réception, le
-    /// message intermédiaire d'un échange est celui qu'on a ENVOYÉ — il
-    /// n'est pas là. C'est `References`, qui porte aussi la racine, qui
-    /// recolle les deux moitiés.
+    /// The case that makes everything work: in an inbox, the
+    /// intermediate message of an exchange is the one that was SENT — it
+    /// is not there. It is `References`, which also carries the root,
+    /// that knits the two halves back together.
     #[test]
-    fn le_message_qui_relie_deux_fils_les_fusionne() {
-        let liens = linking_ids(Some("<c@b>"), Some("<b@b>"), Some("<a@b> <b@b>"), &[]);
-        let plan = plan(&liens, &known(&[("a@b", 4), ("b@b", 9)]));
+    fn the_message_that_links_two_threads_merges_them() {
+        let links = linking_ids(Some("<c@b>"), Some("<b@b>"), Some("<a@b> <b@b>"), &[]);
+        let plan = plan(&links, &known(&[("a@b", 4), ("b@b", 9)]));
 
         assert_eq!(plan.keep, Some(4));
         assert_eq!(plan.absorb, vec![9]);
         assert_eq!(plan.register, ids(&["c@b"]));
     }
 
-    /// Le départage ne doit pas dépendre de l'ordre des identifiants dans
-    /// l'en-tête, sinon le même message classé deux fois donne deux
-    /// résultats.
+    /// The tie-break must not depend on the order of identifiers in the
+    /// header, otherwise the same message classified twice gives two
+    /// different results.
     #[test]
-    fn la_fusion_garde_toujours_le_fil_le_plus_ancien() {
-        let annuaire = known(&[("a@b", 4), ("b@b", 9), ("c@b", 6)]);
+    fn the_merge_always_keeps_the_oldest_thread() {
+        let directory = known(&[("a@b", 4), ("b@b", 9), ("c@b", 6)]);
 
-        let direct = plan(&ids(&["a@b", "b@b", "c@b"]), &annuaire);
-        let inverse = plan(&ids(&["b@b", "c@b", "a@b"]), &annuaire);
+        let forward = plan(&ids(&["a@b", "b@b", "c@b"]), &directory);
+        let reversed = plan(&ids(&["b@b", "c@b", "a@b"]), &directory);
 
-        assert_eq!(direct.keep, Some(4));
-        assert_eq!(direct.absorb, vec![6, 9]);
-        assert_eq!(direct, inverse, "le résultat ne dépend pas de l'ordre");
+        assert_eq!(forward.keep, Some(4));
+        assert_eq!(forward.absorb, vec![6, 9]);
+        assert_eq!(forward, reversed, "the result does not depend on order");
     }
 
-    /// Certains logiciels recopient le `Message-ID` du message dans ses
-    /// propres `References`. Se citer soi-même ne doit ni dupliquer, ni
-    /// déclencher une fusion d'un fil avec lui-même.
+    /// Some software copies the message's own `Message-ID` into its own
+    /// `References`. Citing itself must neither duplicate nor trigger a
+    /// thread merging with itself.
     #[test]
-    fn un_message_qui_se_cite_lui_meme_ne_cree_pas_de_second_fil() {
-        let liens = linking_ids(Some("<r@b>"), Some("<r@b>"), Some("<r@b>"), &[]);
-        assert_eq!(liens, ids(&["r@b"]), "un seul identifiant retenu");
+    fn a_message_that_cites_itself_does_not_create_a_second_thread() {
+        let links = linking_ids(Some("<r@b>"), Some("<r@b>"), Some("<r@b>"), &[]);
+        assert_eq!(links, ids(&["r@b"]), "only one identifier retained");
 
-        let plan = plan(&liens, &known(&[("r@b", 2)]));
+        let plan = plan(&links, &known(&[("r@b", 2)]));
         assert_eq!(plan.keep, Some(2));
-        assert!(plan.absorb.is_empty(), "un fil ne s'absorbe pas lui-même");
+        assert!(plan.absorb.is_empty(), "a thread does not absorb itself");
     }
 
-    /// LE défaut du terrain, en une assertion.
+    /// THE field defect, in one assertion.
     ///
-    /// `In-Reply-To: Votre message du 3 janvier` — la forme RFC 822, que
-    /// des répondeurs automatiques produisent encore. L'ancienne règle en
-    /// tirait cinq identifiants : « Votre », « message », « du », « 3 »,
-    /// « janvier ». Tous les messages portant cette phrase s'accrochaient
-    /// aux mêmes ancres et se retrouvaient dans un seul fil. Mesuré sur
-    /// une vraie boîte : 43 messages étrangers réunis.
-    /// PLAN-AUDIT-V2 E5 : `In-Reply-To: <alice@x.fr>` — un répondeur qui
-    /// met l'ADRESSE du destinataire entre chevrons — passait le garde-fou
-    /// (une arobase, pas d'espace) et fusionnait des fils étrangers
-    /// (ADR 0008 à la lettre, pas dans l'esprit). Les adresses de
-    /// l'enveloppe ne sont jamais des identifiants.
+    /// `In-Reply-To: Your message of January 3rd` — the RFC 822 form,
+    /// which some autoresponders still produce. The old rule extracted
+    /// five identifiers from it: “Your”, “message”, “of”, “January”,
+    /// “3rd”. Every message carrying this phrase latched onto the same
+    /// anchors and ended up in a single thread. Measured on a real
+    /// mailbox: 43 unrelated messages reunited.
+    /// PLAN-AUDIT-V2 E5: `In-Reply-To: <alice@x.fr>` — an autoresponder
+    /// that puts the recipient's ADDRESS between angle brackets — passed
+    /// the guard rail (an at sign, no space) and merged unrelated threads
+    /// (ADR 0008 to the letter, not in spirit). Envelope addresses are
+    /// never identifiers.
     #[test]
-    fn une_adresse_entre_chevrons_n_est_pas_un_message_id() {
-        let adresses = vec!["Alice@x.fr".to_string(), "bob@y.fr".to_string()];
-        let liens = linking_ids(Some("<r@b>"), Some("<alice@x.fr>"), None, &adresses);
-        assert_eq!(liens, vec!["r@b".to_string()]);
-        let liens = linking_ids(None, None, Some("<a@b> <bob@y.fr> <c@d>"), &adresses);
-        assert_eq!(liens, vec!["a@b".to_string(), "c@d".to_string()]);
+    fn an_address_between_angle_brackets_is_not_a_message_id() {
+        let addresses = vec!["Alice@x.fr".to_string(), "bob@y.fr".to_string()];
+        let links = linking_ids(Some("<r@b>"), Some("<alice@x.fr>"), None, &addresses);
+        assert_eq!(links, vec!["r@b".to_string()]);
+        let links = linking_ids(None, None, Some("<a@b> <bob@y.fr> <c@d>"), &addresses);
+        assert_eq!(links, vec!["a@b".to_string(), "c@d".to_string()]);
     }
 
     #[test]
-    fn un_en_tete_redige_en_prose_ne_produit_aucun_identifiant() {
-        assert!(canonical_ids("Votre message du 3 janvier").is_empty());
+    fn a_header_written_in_prose_produces_no_identifier() {
+        assert!(canonical_ids("Votre message du 3 janvier").is_empty()); // lang:fr
         assert!(canonical_ids("Your message of Mon, 01 Jan 2024").is_empty());
-        assert!(linking_ids(None, Some("Votre message du 3 janvier"), None, &[]).is_empty());
+        assert!(linking_ids(None, Some("Votre message du 3 janvier"), None, &[]).is_empty()); // lang:fr
     }
 
-    /// RFC 5322 §3.6.4 : l'arobase n'est pas décorative, c'est elle qui
-    /// distingue un identifiant d'un mot.
+    /// RFC 5322 §3.6.4: the at sign is not decorative, it is what
+    /// distinguishes an identifier from a word.
     #[test]
-    fn un_jeton_sans_arobase_n_est_pas_un_identifiant() {
+    fn a_token_without_an_at_sign_is_not_an_identifier() {
         assert!(canonical_ids("NIL").is_empty());
         assert!(canonical_ids("0").is_empty());
         assert!(
             canonical_ids("<1234567890>").is_empty(),
-            "même entre chevrons : hors norme, et court donc collisionnant"
+            "even between angle brackets: out of spec, and short so prone to collision"
         );
         assert_eq!(canonical_ids("<a@b>"), ids(&["a@b"]));
     }
 
-    /// Le repli sans chevrons reste utile — beaucoup de logiciels les
-    /// omettent — mais il ne retient plus que ce qui EST un identifiant.
+    /// The fallback without angle brackets remains useful — many pieces
+    /// of software omit them — but it now only retains what IS an
+    /// identifier.
     #[test]
-    fn le_repli_sans_chevrons_ne_garde_que_les_vrais_identifiants() {
-        assert_eq!(canonical_ids("a@b Votre message c@d"), ids(&["a@b", "c@d"]));
+    fn the_fallback_without_angle_brackets_keeps_only_real_identifiers() {
+        assert_eq!(canonical_ids("a@b Votre message c@d"), ids(&["a@b", "c@d"])); // lang:fr
     }
 
-    /// Un identifiant ne contient pas d'espace : sans cette règle, un
-    /// en-tête en prose entre chevrons repasserait par la fenêtre.
+    /// An identifier does not contain whitespace: without this rule, a
+    /// prose header between angle brackets would sneak back through the
+    /// window.
     #[test]
-    fn un_jeton_contenant_une_espace_est_rejete() {
-        assert!(canonical_ids("<Votre message du 3 janvier@relais>").is_empty());
+    fn a_token_containing_whitespace_is_rejected() {
+        assert!(canonical_ids("<Votre message du 3 janvier@relais>").is_empty()); // lang:fr
     }
 
     #[test]
-    fn les_chevrons_manquants_donnent_le_meme_identifiant() {
+    fn missing_angle_brackets_give_the_same_identifier() {
         assert_eq!(canonical_ids("<a@b>"), ids(&["a@b"]));
         assert_eq!(canonical_ids("  a@b  "), ids(&["a@b"]));
         assert_eq!(canonical_ids("< a@b >"), ids(&["a@b"]));
         assert_eq!(canonical_ids("a@b c@d"), ids(&["a@b", "c@d"]));
     }
 
-    /// Le `References` géant du test voisin doit rester composé de vrais
-    /// identifiants, sinon la borne ne prouverait plus rien.
+    /// The giant `References` of the neighboring test must remain made
+    /// of real identifiers, otherwise the limit would prove nothing
+    /// anymore.
     #[test]
-    fn la_borne_s_applique_apres_le_filtrage() {
+    fn the_limit_applies_after_filtering() {
         let raw: String = (0..40).map(|n| format!("<m{n}@b> mot ")).collect();
-        let liens = linking_ids(None, None, Some(&raw), &[]);
-        assert_eq!(liens.len(), MAX_REFERENCES);
-        assert!(liens.iter().all(|id| id.contains('@')));
+        let links = linking_ids(None, None, Some(&raw), &[]);
+        assert_eq!(links.len(), MAX_REFERENCES);
+        assert!(links.iter().all(|id| id.contains('@')));
     }
 
-    /// `References` se lit replié sur plusieurs lignes ; les blancs qui
-    /// séparent les chevrons n'appartiennent pas aux identifiants.
+    /// `References` reads folded over several lines; the whitespace
+    /// separating the angle brackets does not belong to the identifiers.
     #[test]
-    fn un_references_replie_sur_plusieurs_lignes_se_lit_entierement() {
+    fn a_references_folded_over_several_lines_reads_in_full() {
         assert_eq!(
             canonical_ids("<a@b>\r\n\t<c@d>\r\n <e@f>"),
             ids(&["a@b", "c@d", "e@f"])
@@ -969,46 +982,46 @@ mod tests {
     }
 
     #[test]
-    fn un_en_tete_vide_ou_tronque_ne_produit_aucun_identifiant() {
+    fn an_empty_or_truncated_header_produces_no_identifier() {
         assert!(canonical_ids("").is_empty());
         assert!(canonical_ids("   ").is_empty());
-        assert!(canonical_ids("<>").is_empty(), "chevrons vides");
+        assert!(canonical_ids("<>").is_empty(), "empty angle brackets");
     }
 
-    /// La borne protège la requête d'annuaire : sans elle, un en-tête
-    /// pathologique ferait chercher des milliers d'identifiants pour un
-    /// seul message.
+    /// The limit protects the directory query: without it, a pathological
+    /// header would look up thousands of identifiers for a single
+    /// message.
     #[test]
-    fn un_references_geant_garde_la_racine_et_les_ancetres_immediats() {
+    fn a_giant_references_keeps_the_root_and_the_immediate_ancestors() {
         let raw: String = (0..500).map(|n| format!("<m{n}@b> ")).collect();
-        let liens = linking_ids(Some("<moi@b>"), None, Some(&raw), &[]);
+        let links = linking_ids(Some("<moi@b>"), None, Some(&raw), &[]);
 
-        assert_eq!(liens.len(), MAX_REFERENCES + 1, "le sien, plus la borne");
-        assert_eq!(liens[0], "moi@b");
-        assert_eq!(liens[1], "m0@b", "la racine rattache le fil entier");
+        assert_eq!(links.len(), MAX_REFERENCES + 1, "its own, plus the limit");
+        assert_eq!(links[0], "moi@b");
+        assert_eq!(links[1], "m0@b", "the root attaches the whole thread");
         assert_eq!(
-            liens[KEPT_AT_ROOT + 1],
+            links[KEPT_AT_ROOT + 1],
             "m476@b",
-            "puis le saut vers les ancêtres immédiats"
+            "then the jump to the immediate ancestors"
         );
         assert_eq!(
-            liens[MAX_REFERENCES], "m499@b",
-            "et le plus proche ferme la liste"
+            links[MAX_REFERENCES], "m499@b",
+            "and the nearest one closes the list"
         );
     }
 
-    /// L'identifiant du message précède ses ancêtres : c'est celui que les
-    /// réponses futures citeront.
+    /// The message's own identifier precedes its ancestors: it is the
+    /// one future replies will cite.
     #[test]
-    fn l_identifiant_du_message_vient_en_premier() {
-        let liens = linking_ids(Some("<moi@b>"), Some("<parent@b>"), Some("<racine@b>"), &[]);
-        assert_eq!(liens, ids(&["moi@b", "racine@b", "parent@b"]));
+    fn the_message_s_own_identifier_comes_first() {
+        let links = linking_ids(Some("<moi@b>"), Some("<parent@b>"), Some("<racine@b>"), &[]);
+        assert_eq!(links, ids(&["moi@b", "racine@b", "parent@b"]));
     }
 
-    /// Deux ancêtres déjà rattachés au même fil ne comptent qu'une fois :
-    /// `absorb` ne doit pas contenir le fil gardé.
+    /// Two ancestors already attached to the same thread only count
+    /// once: `absorb` must not contain the kept thread.
     #[test]
-    fn deux_ancetres_du_meme_fil_ne_declenchent_pas_de_fusion() {
+    fn two_ancestors_of_the_same_thread_do_not_trigger_a_merge() {
         let plan = plan(&ids(&["a@b", "c@b"]), &known(&[("a@b", 5), ("c@b", 5)]));
         assert_eq!(plan.keep, Some(5));
         assert!(plan.absorb.is_empty());

@@ -325,6 +325,18 @@ sans objet et s'efface. Mémoire : les pointeurs vers les scripts
 > UI sorts on (caught by the e2e `retours-14`, reproduced in isolation) —
 > both reverted, they are E4's. Oracles: build, clippy, 451 mail-core
 > tests, full gate green in 201 s (flaky 1). Baseline 134 436 → 124 290.
+>
+> **E3c-2 delivered on 2026-09-02** — `sync.rs`, `thread.rs`, `search.rs`,
+> `backfill.rs` (4 822 lines, 120 tests) in English, four agents in
+> parallel on copies, one file each. Public API: `RepereLocal` → `LocalMarker`
+> (fields `uidnext_seen`, `local_messages`, `pending_actions`, `modseq_seen`),
+> `faut_relever` → `must_poll`, `SyncReport.refusees/sans_condstore` →
+> `refused/without_condstore`; the shell updated in the same commit.
+> Internals: `Sortie` → `Output`, `PALIER_RAPPORT` → `REPORT_STEP`, `JOUR` →
+> `DAY`. The French fixtures that ARE the test (accent folding, French
+> entity names, a prose `References` header, the accented "to:" filter alias) stay,
+> marked `lang:fr`. Oracles: build, clippy, 451 mail-core tests, full gate
+> green. Baseline 124 290 → 119 883.
 
 Ordre par dépendances : `mail-ical` (345 l.) → `mail-render` →
 `mail-smtp` (978 l.) → `mail-auth` → `mail-imap` (2 800 l., dont

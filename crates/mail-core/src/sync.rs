@@ -1,12 +1,12 @@
-//! Le moteur de synchronisation « enveloppes d'abord ».
+//! The "envelopes first" synchronization engine.
 //!
-//! Protocole (décisions gelées, PHASE0.md §2) :
-//! - synchro initiale du **plus récent au plus ancien**, par lots — la liste
-//!   devient utilisable dès le premier lot ;
-//! - synchro incrémentale : CONDSTORE quand le serveur l'expose (nouveaux
-//!   messages + changements de flags), sinon différentiel d'UIDs pour les
-//!   nouveaux ; les suppressions passent toujours par le différentiel ;
-//! - changement d'UIDVALIDITY → resynchronisation complète.
+//! Protocol (frozen decisions, PHASE0.md §2):
+//! - initial sync from **newest to oldest**, in batches — the list becomes
+//!   usable from the first batch;
+//! - incremental sync: CONDSTORE when the server exposes it (new messages +
+//!   flag changes), otherwise a UID diff for new messages; deletions always
+//!   go through the diff;
+//! - a UIDVALIDITY change triggers a full resynchronization.
 
 use std::collections::HashSet;
 
@@ -18,30 +18,30 @@ use crate::store::{Store, SyncState};
 
 const DEFAULT_BATCH_SIZE: usize = 500;
 
-/// Ce qu'une passe doit faire, décidé AVANT tout I/O d'écriture (STANDARD
-/// §4 : la décision pure, l'exécution ailleurs). Audit 2026-09-01 S1-6 :
-/// la décision lisait `last_uid == 0`, et une boîte VIDÉE redevenait
-/// « initiale » — muette (aucune bulle) et chère (inventaire complet).
+/// What a pass must do, decided BEFORE any write I/O (STANDARD §4: the
+/// pure decision, the execution elsewhere). Audit 2026-09-01 S1-6: the
+/// decision used to read `last_uid == 0`, and an EMPTIED mailbox went
+/// back to "initial" — silent (no bubble) and expensive (full inventory).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SyncPlan {
-    /// UIDVALIDITY changée : tout ce qu'on sait de la boîte est faux.
+    /// UIDVALIDITY changed: everything we know about the mailbox is wrong.
     Reset,
-    /// Boîte inconnue, ou connue mais jamais synchronisée jusqu'au bout.
+    /// Unknown mailbox, or known but never synchronized to completion.
     Initial,
-    /// Boîte déjà initialisée : delta CONDSTORE si `modseq`, sinon
-    /// différentiel d'UIDs.
+    /// Mailbox already initialized: CONDSTORE delta if `modseq`, otherwise
+    /// UID diff.
     Incremental { modseq: Option<u64> },
 }
 
-/// La décision, sur la FRAÎCHEUR de l'état — jamais sur le plus grand UID
-/// en base.
-pub(crate) fn plan_sync(etat: Option<&SyncState>, instantane: &MailboxSnapshot) -> SyncPlan {
-    match etat {
+/// The decision, on the FRESHNESS of the state — never on the largest UID
+/// in the database.
+pub(crate) fn plan_sync(state: Option<&SyncState>, snapshot: &MailboxSnapshot) -> SyncPlan {
+    match state {
         None => SyncPlan::Initial,
-        Some(etat) if etat.uid_validity != instantane.uid_validity => SyncPlan::Reset,
-        Some(etat) if !etat.initialized => SyncPlan::Initial,
-        Some(etat) => SyncPlan::Incremental {
-            modseq: etat.highest_modseq,
+        Some(state) if state.uid_validity != snapshot.uid_validity => SyncPlan::Reset,
+        Some(state) if !state.initialized => SyncPlan::Initial,
+        Some(state) => SyncPlan::Incremental {
+            modseq: state.highest_modseq,
         },
     }
 }
@@ -55,19 +55,19 @@ pub enum SyncMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SyncReport {
     pub mode: SyncMode,
-    /// Enveloppes récupérées ou mises à jour (nouveaux messages + flags).
+    /// Envelopes fetched or updated (new messages + flags).
     pub fetched: usize,
-    /// Enveloppes locales supprimées car disparues du serveur.
+    /// Local envelopes removed because they vanished from the server.
     pub deleted: usize,
-    /// Actions locales rejouées vers le serveur en tête de synchro.
+    /// Local actions replayed to the server at the head of the sync.
     pub replayed: usize,
-    /// Actions entrées en QUARANTAINE pendant ce rejeu (E3) : refus
-    /// définitif du serveur, ou cinquième échec transitoire.
-    pub refusees: usize,
-    /// Le serveur n'annonce pas CONDSTORE : ses drapeaux ne se
-    /// resynchronisent jamais (D-51, décision CE D3 de PLAN-AUDIT-V2 —
-    /// dette dite, tracée par le shell).
-    pub sans_condstore: bool,
+    /// Actions put into QUARANTINE during this replay (E3): a definitive
+    /// refusal from the server, or a fifth transient failure.
+    pub refused: usize,
+    /// The server does not announce CONDSTORE: its flags never
+    /// resynchronize (D-51, CE decision D3 of PLAN-AUDIT-V2 — declared
+    /// debt, tracked by the shell).
+    pub without_condstore: bool,
 }
 
 pub struct SyncEngine {
@@ -97,13 +97,13 @@ impl SyncEngine {
         mailbox: &str,
     ) -> Result<SyncReport, Error> {
         let snapshot = server.select(mailbox)?;
-        let sans_condstore = snapshot.highest_modseq.is_none();
+        let without_condstore = snapshot.highest_modseq.is_none();
 
-        // La DÉCISION est pure (`plan_sync`, STANDARD §4) ; ici on ne
-        // fait que l'exécuter.
-        let connu = store.sync_state(account_id, mailbox)?;
-        let plan = plan_sync(connu.as_ref(), &snapshot);
-        let state = match (plan, connu) {
+        // The DECISION is pure (`plan_sync`, STANDARD §4); here we only
+        // execute it.
+        let known = store.sync_state(account_id, mailbox)?;
+        let plan = plan_sync(known.as_ref(), &snapshot);
+        let state = match (plan, known) {
             (SyncPlan::Reset, Some(stale)) => {
                 store.reset_mailbox(stale.mailbox_id, snapshot.uid_validity)?;
                 SyncState {
@@ -128,15 +128,15 @@ impl SyncEngine {
             }
         };
 
-        // Ce que le serveur annonce, relevé à CHAQUE passage : c'est le
-        // dénominateur de l'avancement (ADR 0010 §5). Relevé ici et non à
-        // la création de la boîte, sinon il figerait la valeur du premier
-        // jour et l'avancement dériverait à mesure que le courrier arrive.
+        // What the server announces, polled at EVERY pass: this is the
+        // denominator of the progress (ADR 0010 §5). Polled here and not
+        // when the mailbox is created, otherwise it would freeze the
+        // first day's value and progress would drift as mail arrives.
         store.record_remote_total(state.mailbox_id, snapshot.exists)?;
 
-        // Les intentions locales d'abord : la synchro qui suit reflète
-        // ainsi leur effet (le rejeu bump le modseq côté serveur).
-        let (replayed, refusees) = replay_actions(server, store, mailbox, state.mailbox_id)?;
+        // Local intentions first: the sync that follows thus reflects
+        // their effect (the replay bumps the modseq server-side).
+        let (replayed, refused) = replay_actions(server, store, mailbox, state.mailbox_id)?;
 
         let mut report = match plan {
             SyncPlan::Incremental { .. } => {
@@ -147,18 +147,18 @@ impl SyncEngine {
             }
         };
         report.replayed = replayed;
-        report.refusees = refusees;
+        report.refused = refused;
 
         let last_uid = store.max_uid(state.mailbox_id)?;
         store.update_state(state.mailbox_id, last_uid, snapshot.highest_modseq)?;
 
-        // La liste des dossiers n'est PLUS rafraîchie ici : chaque relève
-        // payait un LIST identique — ~51 par compte et par cycle sur le
-        // terrain du 2026-08-13 (ADR 0017). L'orchestrateur la rafraîchit
-        // UNE fois par cycle, à l'inventaire, avec la liste qu'il a déjà
-        // en main — déplacer hors ligne reste servi.
+        // The folder list is NO LONGER refreshed here: every poll used to
+        // pay for an identical LIST — ~51 per account and per cycle on the
+        // 2026-08-13 field data (ADR 0017). The orchestrator refreshes it
+        // ONCE per cycle, at inventory time, with the list it already has
+        // in hand — offline moves stay served.
         Ok(SyncReport {
-            sans_condstore,
+            without_condstore,
             ..report
         })
     }
@@ -171,11 +171,12 @@ impl SyncEngine {
         mailbox_id: i64,
     ) -> Result<SyncReport, Error> {
         let mut uids = server.list_uids(mailbox)?;
-        // Reprenable (PLAN-AUDIT-V2 E5) : une initiale coupée au lot k
-        // (bridage, coupure) repartait de zéro. Ce qui est en base n'est
-        // plus redemandé — la passe reprend là où elle s'est arrêtée.
-        let connus = store.known_uids(mailbox_id)?;
-        uids.retain(|uid| !connus.contains(uid));
+        // Resumable (PLAN-AUDIT-V2 E5): an initial sync cut off at batch k
+        // (throttling, disconnect) used to start over from scratch. What
+        // is already in the database is no longer requested again — the
+        // pass resumes where it stopped.
+        let known = store.known_uids(mailbox_id)?;
+        uids.retain(|uid| !known.contains(uid));
         uids.sort_unstable_by(|a, b| b.cmp(a));
 
         let mut fetched = 0;
@@ -189,8 +190,8 @@ impl SyncEngine {
             fetched,
             deleted: 0,
             replayed: 0,
-            refusees: 0,
-            sans_condstore: false,
+            refused: 0,
+            without_condstore: false,
         })
     }
 
@@ -213,13 +214,13 @@ impl SyncEngine {
             Some(changed) => {
                 fetched += changed.len();
                 store.upsert_envelopes(state.mailbox_id, &changed)?;
-                // CONDSTORE ne signale pas les suppressions (il faudrait
-                // QRESYNC, absent chez Gmail) : le différentiel d'UIDs
-                // reste leur seule détection — mais il ne se paye QUE si
-                // le décompte l'exige (E2b). Delta appliqué, base et
-                // annonce d'accord : rien n'a disparu, et l'inventaire
-                // complet (`UID SEARCH ALL`, 34 s sur l'INBOX du terrain)
-                // n'aurait rien à dire.
+                // CONDSTORE does not signal deletions (that would need
+                // QRESYNC, absent from Gmail): the UID diff remains the
+                // only way to detect them — but it is only paid for WHEN
+                // the count requires it (E2b). Delta applied, database
+                // and announcement agree: nothing has vanished, and the
+                // full inventory (`UID SEARCH ALL`, 34 s on the field
+                // INBOX) would have nothing to say.
                 let local = store.envelope_count(state.mailbox_id)?;
                 if local != u64::from(exists) {
                     let present: HashSet<Uid> = server.list_uids(mailbox)?.into_iter().collect();
@@ -227,8 +228,8 @@ impl SyncEngine {
                 }
             }
             None => {
-                // Sans CONDSTORE : seuls les nouveaux messages sont détectés ;
-                // les changements de flags attendront une resynchro complète.
+                // Without CONDSTORE: only new messages are detected; flag
+                // changes will wait for a full resync.
                 let server_uids = server.list_uids(mailbox)?;
                 let mut new_uids: Vec<Uid> = server_uids
                     .iter()
@@ -241,8 +242,8 @@ impl SyncEngine {
                     fetched += envelopes.len();
                     store.upsert_envelopes(state.mailbox_id, &envelopes)?;
                 }
-                // Ici l'inventaire est déjà payé (il a servi aux nouveaux) :
-                // le différentiel des suppressions est gratuit.
+                // Here the inventory is already paid for (it served the
+                // new messages): the deletion diff is free.
                 let present: HashSet<Uid> = server_uids.into_iter().collect();
                 deleted = store.remove_absent(state.mailbox_id, &present)?;
             }
@@ -253,21 +254,21 @@ impl SyncEngine {
             fetched,
             deleted,
             replayed: 0,
-            refusees: 0,
-            sans_condstore: false,
+            refused: 0,
+            without_condstore: false,
         })
     }
 }
 
-/// Rejoue la file d'actions vers le serveur, dans l'ordre d'émission.
-/// Rend (rejouées, mises en quarantaine).
+/// Replays the action queue to the server, in emission order.
+/// Returns (replayed, put into quarantine).
 ///
-/// Un échec TRANSITOIRE (réseau, `Error::Server`) arrête le rejeu et le
-/// reste de la file survit pour la synchro suivante — au cinquième
-/// échec consécutif de la MÊME action, elle entre en quarantaine et
-/// libère la file. Un REFUS définitif (`Error::Refus`, NO/BAD) met
-/// l'action en quarantaine sur-le-champ et le rejeu CONTINUE : avant E3,
-/// un dossier disparu côté serveur bloquait toute la boîte à vie, en
+/// A TRANSIENT failure (network, `Error::Server`) stops the replay and the
+/// rest of the queue survives for the next sync — on the fifth consecutive
+/// failure of the SAME action, it enters quarantine and frees the queue. A
+/// definitive REFUSAL (`Error::Refus`, NO/BAD) puts the action into
+/// quarantine on the spot and the replay CONTINUES: before E3, a folder
+/// that had vanished server-side blocked the whole mailbox forever, in
 /// silence (audit 2026-09-01 S1-7).
 fn replay_actions(
     server: &mut dyn MailServer,
@@ -276,7 +277,7 @@ fn replay_actions(
     mailbox_id: i64,
 ) -> Result<(usize, usize), Error> {
     let mut replayed = 0;
-    let mut refusees = 0;
+    let mut refused = 0;
     for pending in store.pending_actions(mailbox_id)? {
         let outcome = match &pending.action {
             Action::MarkSeen => server.set_seen(mailbox, pending.uid, true),
@@ -292,83 +293,81 @@ fn replay_actions(
                 store.remove_action(pending.id)?;
                 replayed += 1;
             }
-            Err(Error::Refus(motif)) => {
-                store.refuse_action(pending.id, &motif)?;
-                refusees += 1;
+            Err(Error::Refus(reason)) => {
+                store.refuse_action(pending.id, &reason)?;
+                refused += 1;
             }
             Err(err) => {
                 if store.note_action_failure(pending.id, &err.to_string())? {
-                    refusees += 1;
+                    refused += 1;
                 }
                 break;
             }
         }
     }
-    Ok((replayed, refusees))
+    Ok((replayed, refused))
 }
 
-/// Dans quel ORDRE synchroniser les boîtes d'un compte — décision pure,
-/// sans I/O, testable contre les bizarreries des serveurs réels.
+/// In which ORDER to synchronize an account's mailboxes — a pure decision,
+/// no I/O, testable against the quirks of real servers.
 ///
-/// Depuis l'[ADR 0010] on synchronise **tout**, sans exception : archive,
-/// corbeille et spam compris. L'ordre n'est donc plus un détail, c'est ce
-/// qui décide de ce que l'utilisateur voit en premier.
+/// Since [ADR 0010] we synchronize **everything**, with no exception:
+/// archive, trash and spam included. The order is therefore no longer a
+/// detail — it decides what the user sees first.
 ///
-/// 1. **INBOX d'abord, toujours.** C'est la seule boîte que la liste
-///    affiche : la faire passer après un dossier d'archive de 80 000
-///    messages laisserait un écran vide pendant toute la première
-///    synchronisation.
-/// 2. **« Envoyés » ensuite**, parce que c'est lui qui complète les fils
-///    ([ADR 0009]) — le reste n'est jamais regroupé.
-/// 3. Le reste dans l'ordre du serveur.
+/// 1. **INBOX first, always.** It is the only mailbox the list displays:
+///    running it after an 80,000-message archive folder would leave an
+///    empty screen throughout the whole first synchronization.
+/// 2. **"Sent" next**, because it is the one that completes threads
+///    ([ADR 0009]) — nothing else is ever grouped.
+/// 3. The rest in the server's order.
 ///
-/// Les dossiers non sélectionnables sont écartés : ce sont des conteneurs
-/// sans courrier (`\Noselect`), et les SELECT échoueraient un par un.
+/// Non-selectable folders are excluded: they are containers with no mail
+/// (`\Noselect`), and SELECT would fail on each of them one by one.
 ///
 /// [ADR 0009]: ../../../docs/adr/0009-portee-des-fils-au-compte.md
 /// [ADR 0010]: ../../../docs/adr/0010-synchronisation-integrale.md
 pub fn sync_order(folders: &[crate::remote::Folder], sent: Option<&str>) -> Vec<String> {
     let mut order: Vec<String> = Vec::with_capacity(folders.len() + 1);
-    // INBOX même si le serveur ne la liste pas : elle existe toujours, et
-    // une boîte de réception absente de la liste est une bizarrerie connue
-    // des serveurs qui la traitent à part.
+    // INBOX even if the server does not list it: it always exists, and an
+    // inbox missing from the list is a known quirk of servers that treat
+    // it separately.
     order.push(crate::thread::RECEIVED_MAILBOX.to_string());
     if let Some(sent) = sent.filter(|sent| *sent != crate::thread::RECEIVED_MAILBOX) {
         order.push(sent.to_string());
     }
     for folder in folders {
-        if folder.selectable && !order.iter().any(|deja| deja == &folder.wire) {
+        if folder.selectable && !order.iter().any(|already| already == &folder.wire) {
             order.push(folder.wire.clone());
         }
     }
     order
 }
 
-/// Coût disque estimé d'UN message, tout compris — enveloppe, index,
-/// corps, pièces jointes.
+/// Estimated disk cost of ONE message, all included — envelope, index,
+/// body, attachments.
 ///
-/// Deux mesures du projet, pas un chiffre inventé ([ADR 0010] §4) :
-/// ~49 ko par corps (137 Mo pour 2 801 messages, rattrapage complet de la
-/// boîte réelle) + ~1,2 ko d'enveloppe et d'index (déduit de
-/// `gate3-corps.db` : 778,9 Mo pour 200 000 enveloppes + 16 002 corps).
+/// Two measurements from the project, not a made-up figure ([ADR 0010]
+/// §4): ~49 KB per body (137 MB for 2,801 messages, a full backfill of
+/// the real mailbox) + ~1.2 KB of envelope and index (derived from
+/// `gate3-corps.db`: 778.9 MB for 200,000 envelopes + 16,002 bodies).
 ///
-/// **Délibérément haute** : annoncer trop et tenir vaut mieux que
-/// commencer et échouer à mi-chemin.
+/// **Deliberately high**: announcing too much and delivering beats
+/// starting and failing halfway through.
 ///
 /// [ADR 0010]: ../../../docs/adr/0010-synchronisation-integrale.md
 pub const SYNC_BYTES_PER_MESSAGE: u64 = 50 * 1024;
 
-/// L'espace qui MANQUERAIT pour rapatrier `pending` messages — décision
-/// pure, la garde de l'[ADR 0010] §4.
+/// The space that WOULD BE MISSING to bring `pending` messages home — a
+/// pure decision, the guard from [ADR 0010] §4.
 ///
-/// `None` : ça tient, on y va. `Some(octets)` : on REFUSE avant de
-/// commencer, et le chiffre sert au message — « il manque 1,2 Go » se
-/// comprend, « espace insuffisant » tout court laisse l'utilisateur
-/// deviner s'il doit libérer 100 Mo ou 100 Go.
+/// `None`: it fits, go ahead. `Some(bytes)`: we REFUSE before starting,
+/// and the figure serves the message — "1.2 GB missing" is understood,
+/// while a bare "insufficient space" leaves the user guessing whether to
+/// free up 100 MB or 100 GB.
 ///
-/// Pas de marge cachée en plus : l'estimation par message est déjà haute,
-/// et deux marges empilées finissent par refuser des synchronisations qui
-/// tiendraient.
+/// No hidden margin on top: the per-message estimate is already high, and
+/// two stacked margins end up refusing syncs that would actually fit.
 ///
 /// [ADR 0010]: ../../../docs/adr/0010-synchronisation-integrale.md
 pub fn disk_shortfall(pending: u64, available_bytes: u64) -> Option<u64> {
@@ -384,126 +383,125 @@ pub fn disk_shortfall(pending: u64, available_bytes: u64) -> Option<u64> {
 mod disk_shortfall_tests {
     use super::{SYNC_BYTES_PER_MESSAGE, disk_shortfall};
 
-    /// Rien à rapatrier = rien à refuser, même sur un disque plein. Le
-    /// cas COURANT : toutes les synchronisations incrémentales d'une boîte
-    /// à jour passent par ici, et une garde qui les bloquerait sur un
-    /// disque bien rempli interdirait de relever son courrier.
+    /// Nothing to bring home = nothing to refuse, even on a full disk.
+    /// The COMMON case: every incremental sync of an up-to-date mailbox
+    /// goes through here, and a guard that blocked them on a well-filled
+    /// disk would forbid polling one's mail at all.
     #[test]
-    fn rien_a_rapatrier_passe_meme_disque_plein() {
+    fn nothing_to_bring_home_passes_even_on_a_full_disk() {
         assert_eq!(disk_shortfall(0, 0), None);
         assert_eq!(disk_shortfall(0, u64::MAX), None);
     }
 
     #[test]
-    fn ca_tient_tout_juste() {
+    fn it_fits_exactly() {
         assert_eq!(disk_shortfall(100, 100 * SYNC_BYTES_PER_MESSAGE), None);
     }
 
-    /// Le manque est CHIFFRÉ : c'est lui qui rend le refus actionnable.
+    /// The shortfall is QUANTIFIED: that is what makes the refusal
+    /// actionable.
     #[test]
-    fn le_manque_est_chiffre() {
+    fn the_shortfall_is_quantified() {
         assert_eq!(
             disk_shortfall(100, 99 * SYNC_BYTES_PER_MESSAGE),
             Some(SYNC_BYTES_PER_MESSAGE)
         );
     }
 
-    /// 200 000 messages × 50 ko = ~9,8 Go : le produit déborderait un
-    /// u32, et une boîte encore plus grande ne doit pas faire paniquer la
-    /// garde par un débordement — en debug, une multiplication nue sur
-    /// u64 panique au lieu de boucler.
+    /// 200,000 messages x 50 KB = ~9.8 GB: the product would overflow a
+    /// u32, and an even bigger mailbox must not make the guard panic on
+    /// overflow — in debug builds, a bare multiplication on u64 panics
+    /// instead of wrapping.
     #[test]
-    fn une_boite_immense_ne_deborde_pas() {
+    fn a_huge_mailbox_does_not_overflow() {
         assert_eq!(disk_shortfall(u64::MAX, 0), Some(u64::MAX));
     }
 }
 
-/// L'avancement de la synchronisation, en pourcentage — décision pure.
+/// The sync's progress, as a percentage — a pure decision.
 ///
-/// `None` signifie **« je ne sais pas »**, et c'est un résultat à part
-/// entière : tant qu'aucune boîte n'a été sélectionnée, on n'a pas de
-/// dénominateur. Afficher « 0 % » dirait « je n'ai rien fait », et
-/// « 100 % » dirait « j'ai fini » — deux mensonges. L'appelant n'affiche
-/// alors rien.
+/// `None` means **"I don't know"**, and it is a result in its own right:
+/// as long as no mailbox has been selected, there is no denominator.
+/// Showing "0%" would say "I've done nothing", and "100%" would say "I'm
+/// done" — two lies. The caller then displays nothing.
 ///
-/// Le résultat est plafonné à 100 : le local peut légitimement dépasser
-/// l'annonce du serveur — des messages supprimés côté serveur entre deux
-/// passages vivent encore en base jusqu'au différentiel suivant. Un
-/// « 103 % » ferait douter de tout le reste de l'écran.
+/// The result is capped at 100: the local count can legitimately exceed
+/// the server's announcement — messages deleted server-side between two
+/// passes still live in the database until the next diff. A "103%" would
+/// cast doubt on the rest of the screen.
 ///
-/// Et il ne rend jamais 100 tant qu'il reste quelque chose : l'arrondi
-/// naturel afficherait « 100 % » à 19 999 messages sur 20 000, et
-/// l'utilisateur verrait une barre pleine qui ne se termine pas.
-/// Ce que le stockage sait d'un dossier au moment de décider (ADR 0017).
+/// And it never returns 100 while something remains: naive rounding
+/// would show "100%" at 19,999 messages out of 20,000, and the user
+/// would see a full bar that never finishes.
+/// What storage knows about a folder at decision time (ADR 0017).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RepereLocal {
+pub struct LocalMarker {
     pub uid_validity: u32,
-    /// Le UIDNEXT vu au relevé qui a précédé la DERNIÈRE relève soldée —
-    /// pas `last_uid` : un serveur ne redescend jamais son UIDNEXT, alors
-    /// que `last_uid` retombe quand le message le plus récent est
-    /// supprimé, ce qui condamnerait le dossier à ne plus jamais être
-    /// sauté.
-    pub uidnext_vu: Option<u32>,
-    /// Messages en base pour ce dossier.
-    pub messages_locaux: u64,
-    /// Des actions locales attendent leur rejeu : sauter les abandonnerait.
-    pub actions_en_attente: bool,
-    /// Le HIGHESTMODSEQ vu au SELECT de la dernière relève soldée
-    /// (`sync_state`) — `None` sans CONDSTORE, ou tant qu'aucune relève
-    /// n'a eu lieu depuis E2b.
-    pub modseq_vu: Option<u64>,
+    /// The UIDNEXT seen at the poll that preceded the LAST completed
+    /// poll — not `last_uid`: a server never lowers its UIDNEXT, whereas
+    /// `last_uid` drops when the most recent message is deleted, which
+    /// would condemn the folder to never be skipped again.
+    pub uidnext_seen: Option<u32>,
+    /// Messages in the database for this folder.
+    pub local_messages: u64,
+    /// Local actions are waiting for their replay: skipping would strand them.
+    pub pending_actions: bool,
+    /// The HIGHESTMODSEQ seen at the SELECT of the last completed poll
+    /// (`sync_state`) — `None` without CONDSTORE, or as long as no poll
+    /// has happened since E2b.
+    pub modseq_seen: Option<u64>,
 }
 
-/// Faut-il relever ce dossier, ou rien n'a bougé (ADR 0017) ?
+/// Must this folder be polled, or has nothing moved (ADR 0017)?
 ///
-/// La décision pure du « cycle sobre » — terrain du 2026-08-13 : le
-/// cycle récurrent coûtait ~38 min sur une boîte réelle, chaque dossier
-/// payant SELECT + UID SEARCH ALL même quand rien n'avait changé. Un
-/// STATUS par dossier (déjà payé par la garde d'espace) suffit à
-/// trancher. Toute incertitude — jamais relevé, valeurs tues par le
-/// serveur, UIDVALIDITY changée, actions en attente — relève : la
-/// sobriété n'a pas le droit de coûter un message.
-pub fn faut_relever(distant: &crate::remote::FolderStatus, local: Option<&RepereLocal>) -> bool {
+/// The pure decision behind the "sober cycle" — 2026-08-13 field data:
+/// the recurring cycle cost ~38 min on a real mailbox, each folder
+/// paying for SELECT + UID SEARCH ALL even when nothing had changed. A
+/// per-folder STATUS (already paid for by the space guard) is enough to
+/// decide. Any uncertainty — never polled, values withheld by the
+/// server, UIDVALIDITY changed, pending actions — polls: sobriety has no
+/// right to cost a message.
+pub fn must_poll(remote: &crate::remote::FolderStatus, local: Option<&LocalMarker>) -> bool {
     let Some(local) = local else {
         return true;
     };
-    if local.actions_en_attente {
+    if local.pending_actions {
         return true;
     }
-    let (Some(uid_validity), Some(uid_next)) = (distant.uid_validity, distant.uid_next) else {
+    let (Some(uid_validity), Some(uid_next)) = (remote.uid_validity, remote.uid_next) else {
         return true;
     };
     if uid_validity != local.uid_validity {
         return true;
     }
-    let Some(uidnext_vu) = local.uidnext_vu else {
+    let Some(uidnext_seen) = local.uidnext_seen else {
         return true;
     };
-    if uid_next != uidnext_vu {
+    if uid_next != uidnext_seen {
         return true;
     }
-    if u64::from(distant.messages) != local.messages_locaux {
+    if u64::from(remote.messages) != local.local_messages {
         return true;
     }
-    // E2b : un changement de drapeaux SEUL ne bouge ni UIDNEXT ni
-    // MESSAGES — seul HIGHESTMODSEQ le trahit. Signal exigé des deux
-    // côtés : un serveur muet (pas de CONDSTORE) garde le comportement
-    // d'avant (ADR 0017 : rien n'est perdu qui était servi) ; un repère
-    // local jamais posé (base d'avant E2b) relève UNE fois — le SELECT
-    // de cette relève pose le modseq, et le dossier redevient sobre.
-    match (distant.highest_modseq, local.modseq_vu) {
-        (Some(distant), Some(vu)) => distant != vu,
+    // E2b: a flag change ALONE moves neither UIDNEXT nor MESSAGES — only
+    // HIGHESTMODSEQ betrays it. A signal is required on both sides: a
+    // silent server (no CONDSTORE) keeps the pre-E2b behavior (ADR 0017:
+    // nothing that was served is lost); a local marker never set (a
+    // database from before E2b) polls ONCE — the SELECT of that poll sets
+    // the modseq, and the folder becomes sober again.
+    match (remote.highest_modseq, local.modseq_seen) {
+        (Some(remote), Some(seen)) => remote != seen,
         (Some(_), None) => true,
         (None, _) => false,
     }
 }
 
 #[cfg(test)]
-mod faut_relever_tests {
-    use super::{RepereLocal, faut_relever};
+mod must_poll_tests {
+    use super::{LocalMarker, must_poll};
     use crate::remote::FolderStatus;
 
-    fn distant() -> FolderStatus {
+    fn remote() -> FolderStatus {
         FolderStatus {
             messages: 40,
             uid_next: Some(101),
@@ -511,128 +509,127 @@ mod faut_relever_tests {
             highest_modseq: Some(900),
         }
     }
-    fn local() -> RepereLocal {
-        RepereLocal {
+    fn local() -> LocalMarker {
+        LocalMarker {
             uid_validity: 7,
-            uidnext_vu: Some(101),
-            messages_locaux: 40,
-            actions_en_attente: false,
-            modseq_vu: Some(900),
+            uidnext_seen: Some(101),
+            local_messages: 40,
+            pending_actions: false,
+            modseq_seen: Some(900),
         }
     }
 
-    /// LE cas qui rend le cycle sobre : rien n'a bougé, on saute.
+    /// THE case that makes the cycle sober: nothing has moved, we skip.
     #[test]
-    fn rien_n_a_bouge_on_saute() {
-        assert!(!faut_relever(&distant(), Some(&local())));
+    fn nothing_has_moved_we_skip() {
+        assert!(!must_poll(&remote(), Some(&local())));
     }
 
-    /// Jamais relevé : aucune base de comparaison, on relève.
+    /// Never polled: no basis for comparison, we poll.
     #[test]
-    fn un_dossier_jamais_releve_se_releve() {
-        assert!(faut_relever(&distant(), None));
+    fn a_never_polled_folder_gets_polled() {
+        assert!(must_poll(&remote(), None));
     }
 
-    /// Une arrivée bouge UIDNEXT — même si un départ simultané laisse le
-    /// décompte identique (le glissement qu'un seul des deux tests ne
-    /// verrait pas).
+    /// An arrival moves UIDNEXT — even if a simultaneous departure leaves
+    /// the count identical (the drift that either test alone would miss).
     #[test]
-    fn une_arrivee_bouge_uidnext_meme_a_decompte_egal() {
-        let bouge = FolderStatus {
+    fn an_arrival_moves_uidnext_even_at_equal_count() {
+        let moved = FolderStatus {
             uid_next: Some(102),
-            ..distant()
+            ..remote()
         };
-        assert!(faut_relever(&bouge, Some(&local())));
+        assert!(must_poll(&moved, Some(&local())));
     }
 
-    /// Une suppression baisse MESSAGES sans toucher UIDNEXT.
+    /// A deletion lowers MESSAGES without touching UIDNEXT.
     #[test]
-    fn une_suppression_baisse_le_decompte() {
-        let ampute = FolderStatus {
+    fn a_deletion_lowers_the_count() {
+        let cut = FolderStatus {
             messages: 39,
-            ..distant()
+            ..remote()
         };
-        assert!(faut_relever(&ampute, Some(&local())));
+        assert!(must_poll(&cut, Some(&local())));
     }
 
-    /// UIDVALIDITY changée : les UID locaux ne veulent plus rien dire —
-    /// la relève (et son reset) est obligatoire, invariant §6.6.
+    /// UIDVALIDITY changed: local UIDs no longer mean anything — polling
+    /// (and its reset) is mandatory, invariant §6.6.
     #[test]
-    fn uidvalidity_changee_force_la_releve() {
-        let regenere = FolderStatus {
+    fn a_changed_uidvalidity_forces_a_poll() {
+        let regenerated = FolderStatus {
             uid_validity: Some(8),
-            ..distant()
+            ..remote()
         };
-        assert!(faut_relever(&regenere, Some(&local())));
+        assert!(must_poll(&regenerated, Some(&local())));
     }
 
-    /// Des actions locales attendent leur rejeu : sauter les abandonnerait
-    /// jusqu'à un hypothétique changement distant.
+    /// Local actions are waiting for their replay: skipping would strand
+    /// them until a hypothetical remote change.
     #[test]
-    fn des_actions_en_attente_forcent_la_releve() {
-        let charge = RepereLocal {
-            actions_en_attente: true,
+    fn pending_actions_force_a_poll() {
+        let loaded = LocalMarker {
+            pending_actions: true,
             ..local()
         };
-        assert!(faut_relever(&distant(), Some(&charge)));
+        assert!(must_poll(&remote(), Some(&loaded)));
     }
 
-    /// LE cas d'E2b : un mail lu au téléphone ne bouge ni UIDNEXT ni
-    /// MESSAGES — seul HIGHESTMODSEQ glisse, et le dossier DOIT se
-    /// relever pour refléter le drapeau.
+    /// THE E2b case: mail read on a phone moves neither UIDNEXT nor
+    /// MESSAGES — only HIGHESTMODSEQ shifts, and the folder MUST be
+    /// polled to reflect the flag.
     #[test]
-    fn un_changement_de_drapeaux_seul_reveille_le_dossier() {
-        let drapeaux = FolderStatus {
+    fn a_flag_change_alone_wakes_the_folder() {
+        let flags = FolderStatus {
             highest_modseq: Some(901),
-            ..distant()
+            ..remote()
         };
-        assert!(faut_relever(&drapeaux, Some(&local())));
+        assert!(must_poll(&flags, Some(&local())));
     }
 
-    /// Un serveur SANS CONDSTORE tait HIGHESTMODSEQ : le comportement
-    /// d'avant E2b est conservé — les drapeaux n'étaient déjà pas
-    /// resynchronisés (ADR 0017 : rien n'est perdu qui était servi), et
-    /// forcer la relève ruinerait la sobriété d'E2a pour rien.
+    /// A server WITHOUT CONDSTORE withholds HIGHESTMODSEQ: the pre-E2b
+    /// behavior is kept — flags were already not resynchronized (ADR
+    /// 0017: nothing that was served is lost), and forcing a poll would
+    /// ruin E2a's sobriety for nothing.
     #[test]
-    fn un_serveur_sans_condstore_garde_la_sobriete() {
-        let muet = FolderStatus {
+    fn a_server_without_condstore_keeps_the_sobriety() {
+        let silent = FolderStatus {
             highest_modseq: None,
-            ..distant()
+            ..remote()
         };
-        assert!(!faut_relever(&muet, Some(&local())));
+        assert!(!must_poll(&silent, Some(&local())));
     }
 
-    /// Base d'avant E2b : le modseq local n'a jamais été posé alors que
-    /// le serveur en annonce un — UNE relève de convergence, qui pose le
-    /// repère, puis le dossier redevient sobre.
+    /// A database from before E2b: the local modseq was never set while
+    /// the server announces one — ONE convergence poll, which sets the
+    /// marker, and the folder becomes sober again.
     #[test]
-    fn un_modseq_jamais_vu_releve_une_fois_pour_converger() {
-        let herite = RepereLocal {
-            modseq_vu: None,
+    fn a_never_seen_modseq_polls_once_to_converge() {
+        let inherited = LocalMarker {
+            modseq_seen: None,
             ..local()
         };
-        assert!(faut_relever(&distant(), Some(&herite)));
+        assert!(must_poll(&remote(), Some(&inherited)));
     }
 
-    /// Un serveur qui tait UIDNEXT ou UIDVALIDITY rend la décision
-    /// conservatrice — on relève, on ne devine pas.
+    /// A server that withholds UIDNEXT or UIDVALIDITY makes the decision
+    /// conservative — we poll, we do not guess.
     #[test]
-    fn un_serveur_muet_impose_la_releve() {
-        let muet = FolderStatus {
+    fn a_silent_server_forces_the_poll() {
+        let silent = FolderStatus {
             uid_next: None,
-            ..distant()
+            ..remote()
         };
-        assert!(faut_relever(&muet, Some(&local())));
-        let sans_validity = FolderStatus {
+        assert!(must_poll(&silent, Some(&local())));
+        let without_validity = FolderStatus {
             uid_validity: None,
-            ..distant()
+            ..remote()
         };
-        assert!(faut_relever(&sans_validity, Some(&local())));
-        let jamais_vu = RepereLocal {
-            uidnext_vu: None,
+        assert!(must_poll(&without_validity, Some(&local())));
+        let never_seen = LocalMarker {
+            uidnext_seen: None,
             ..local()
         };
-        assert!(faut_relever(&distant(), Some(&jamais_vu)));
+        assert!(must_poll(&remote(), Some(&never_seen)));
     }
 }
 
@@ -651,34 +648,35 @@ pub fn sync_percent(local: u64, remote: u64) -> Option<u8> {
 mod sync_percent_tests {
     use super::sync_percent;
 
-    /// Sans dénominateur, on ne raconte rien — surtout pas « 0 % », qui
-    /// serait indiscernable d'une synchronisation qui n'avance pas.
+    /// Without a denominator, we say nothing — especially not "0%", which
+    /// would be indistinguishable from a sync that is not progressing.
     #[test]
-    fn sans_denominateur_on_ne_dit_rien() {
+    fn without_a_denominator_we_say_nothing() {
         assert_eq!(sync_percent(0, 0), None);
         assert_eq!(sync_percent(42, 0), None);
     }
 
     #[test]
-    fn le_cas_courant() {
+    fn the_common_case() {
         assert_eq!(sync_percent(0, 200), Some(0));
         assert_eq!(sync_percent(50, 200), Some(25));
         assert_eq!(sync_percent(200, 200), Some(100));
     }
 
-    /// Le local dépasse l'annonce du serveur dès qu'un message y est
-    /// supprimé entre deux passages : il vit encore en base jusqu'au
-    /// différentiel suivant. « 103 % » ferait douter du reste de l'écran.
+    /// The local count exceeds the server's announcement as soon as a
+    /// message is deleted there between two passes: it still lives in
+    /// the database until the next diff. "103%" would cast doubt on the
+    /// rest of the screen.
     #[test]
-    fn le_local_qui_depasse_est_plafonne() {
+    fn a_local_count_that_exceeds_is_capped() {
         assert_eq!(sync_percent(210, 200), Some(100));
     }
 
-    /// LE défaut d'affichage classique : une barre pleine qui continue de
-    /// tourner. 19 999 sur 20 000 arrondit à 100 % — et l'utilisateur
-    /// conclut que l'application est bloquée.
+    /// THE classic display bug: a full bar that keeps spinning. 19,999
+    /// out of 20,000 rounds to 100% — and the user concludes the app is
+    /// stuck.
     #[test]
-    fn presque_fini_n_est_pas_fini() {
+    fn almost_done_is_not_done() {
         assert_eq!(sync_percent(19_999, 20_000), Some(99));
     }
 }
@@ -697,68 +695,67 @@ mod sync_order_tests {
         }
     }
 
-    /// Le cas qui compte : la liste ne montre qu'INBOX. Si un serveur
-    /// annonce ses dossiers dans l'ordre alphabétique, « Archive » passe
-    /// avant — et l'utilisateur regarde un écran vide pendant que 80 000
-    /// messages d'archive descendent.
+    /// The case that matters: the list shows only INBOX. If a server
+    /// announces its folders in alphabetical order, "Archive" comes
+    /// first — and the user stares at an empty screen while 80,000
+    /// archive messages come down.
     #[test]
-    fn inbox_passe_toujours_en_premier() {
-        let dossiers = [
+    fn inbox_always_comes_first() {
+        let folders = [
             folder("Archive", true),
             folder("INBOX", true),
             folder("Spam", true),
         ];
-        assert_eq!(sync_order(&dossiers, None)[0], "INBOX");
+        assert_eq!(sync_order(&folders, None)[0], "INBOX");
     }
 
-    /// « Envoyés » complète les fils (ADR 0009) : il passe avant les
-    /// dossiers qui, eux, ne seront jamais regroupés.
+    /// "Sent" completes threads (ADR 0009): it comes before the folders
+    /// that will never be grouped.
     #[test]
-    fn les_envoyes_passent_avant_le_reste() {
-        let dossiers = [
+    fn sent_comes_before_the_rest() {
+        let folders = [
             folder("Archive", true),
             folder("INBOX", true),
             folder("Sent", true),
         ];
-        let ordre = sync_order(&dossiers, Some("Sent"));
-        assert_eq!(ordre, vec!["INBOX", "Sent", "Archive"]);
+        let order = sync_order(&folders, Some("Sent"));
+        assert_eq!(order, vec!["INBOX", "Sent", "Archive"]);
     }
 
-    /// Une boîte synchronisée deux fois n'est pas une erreur bénigne :
-    /// c'est un aller-retour réseau complet payé pour rien, sur le chemin
-    /// le plus long du produit.
+    /// A mailbox synchronized twice is not a benign bug: it is a full
+    /// network round trip paid for nothing, on the product's longest
+    /// path.
     #[test]
-    fn aucune_boite_n_est_synchronisee_deux_fois() {
-        let dossiers = [
+    fn no_mailbox_is_synchronized_twice() {
+        let folders = [
             folder("INBOX", true),
             folder("Sent", true),
             folder("Sent", true),
         ];
-        let ordre = sync_order(&dossiers, Some("Sent"));
-        assert_eq!(ordre.len(), 2, "ordre obtenu : {ordre:?}");
+        let order = sync_order(&folders, Some("Sent"));
+        assert_eq!(order.len(), 2, "order obtained: {order:?}");
     }
 
-    /// `\Noselect` : un conteneur qui ne porte pas de courrier. Le
-    /// sélectionner échoue — autant ne pas le tenter.
+    /// `\Noselect`: a container that carries no mail. Selecting it
+    /// fails — no point trying.
     #[test]
-    fn les_conteneurs_sans_courrier_sont_ecartes() {
-        let dossiers = [folder("INBOX", true), folder("[Gmail]", false)];
-        assert_eq!(sync_order(&dossiers, None), vec!["INBOX"]);
+    fn mail_less_containers_are_excluded() {
+        let folders = [folder("INBOX", true), folder("[Gmail]", false)];
+        assert_eq!(sync_order(&folders, None), vec!["INBOX"]);
     }
 
-    /// Gmail expose « [Gmail]/Messages envoyés » ET INBOX. Certains
-    /// serveurs génériques, eux, ne listent RIEN — la boîte de réception
-    /// doit rester synchronisée quand même.
+    /// Gmail exposes "[Gmail]/Sent Mail" AND INBOX. Some generic servers,
+    /// however, list NOTHING — the inbox must still be synchronized
+    /// regardless.
     #[test]
-    fn un_serveur_qui_ne_liste_rien_synchronise_quand_meme_la_reception() {
+    fn a_server_that_lists_nothing_still_syncs_the_inbox() {
         assert_eq!(sync_order(&[], None), vec!["INBOX"]);
     }
 
-    /// Un serveur qui désigne INBOX comme dossier d'envois (vu sur des
-    /// configurations exotiques) ne doit pas la faire synchroniser deux
-    /// fois.
+    /// A server that designates INBOX as its sent folder (seen on exotic
+    /// configurations) must not have it synchronized twice.
     #[test]
-    fn un_dossier_d_envois_confondu_avec_la_reception_ne_double_pas() {
+    fn a_sent_folder_mistaken_for_the_inbox_does_not_duplicate() {
         assert_eq!(sync_order(&[], Some("INBOX")), vec!["INBOX"]);
     }
 }
@@ -770,7 +767,7 @@ mod tests {
 
     fn test_account(store: &Store) -> i64 {
         store
-            .adopt_or_create_account("test@exemple.fr", "gmail")
+            .adopt_or_create_account("test@example.com", "gmail")
             .unwrap()
     }
 
@@ -784,12 +781,13 @@ mod tests {
         store.recent(account, "INBOX", offset, limit).unwrap()
     }
 
-    /// PLAN-AUDIT-V2 E5 : une initiale coupée au lot k (bridage Gmail,
-    /// coupure) repartait de zéro — `list_uids` puis TOUS les lots
-    /// rejoués. Les UID déjà en base sont retirés avant le découpage :
-    /// la reprise ne redemande que ce qui manque.
+    /// PLAN-AUDIT-V2 E5: an initial sync cut off at batch 2 (Gmail
+    /// throttling, disconnect) used to start over from scratch —
+    /// `list_uids` then EVERY batch replayed. UIDs already in the
+    /// database are removed before chunking: the resume only requests
+    /// what is missing.
     #[test]
-    fn une_initiale_coupee_au_lot_2_reprend_au_lot_2() {
+    fn an_initial_sync_cut_at_batch_2_resumes_at_batch_2() {
         let mut server = FakeServer::new(false);
         for uid in 1..=6 {
             server.add(uid, "message");
@@ -803,23 +801,23 @@ mod tests {
             engine
                 .sync(&mut server, &mut store, account, "INBOX")
                 .is_err(),
-            "la coupure simulée doit faire échouer la passe"
+            "the simulated disconnect must make the pass fail"
         );
         assert_eq!(
             server.fetch_batches,
             vec![vec![6, 5]],
-            "un seul lot a abouti"
+            "only one batch succeeded"
         );
 
         server.panne_au_lot_envelopes = None;
         server.fetch_batches.clear();
-        let reprise = synced(&mut server, &mut store, &engine);
+        let resumed = synced(&mut server, &mut store, &engine);
         assert_eq!(
             server.fetch_batches,
             vec![vec![4, 3], vec![2, 1]],
-            "la reprise ne redemande que les UID absents de la base"
+            "the resume only requests UIDs absent from the database"
         );
-        assert_eq!(reprise.fetched, 4);
+        assert_eq!(resumed.fetched, 4);
         assert_eq!(recent(&store, 0, 10).len(), 6);
     }
 
@@ -827,7 +825,7 @@ mod tests {
     fn initial_sync_fetches_newest_first_in_batches() {
         let mut server = FakeServer::new(false);
         for uid in 1..=5 {
-            server.add(uid, "sujet");
+            server.add(uid, "subject");
         }
         let mut store = Store::open_in_memory().unwrap();
         let engine = SyncEngine::new(2);
@@ -839,7 +837,7 @@ mod tests {
         assert_eq!(
             server.fetch_batches,
             vec![vec![5, 4], vec![3, 2], vec![1]],
-            "la synchro initiale doit servir le plus récent d'abord"
+            "the initial sync must serve the most recent first"
         );
     }
 
@@ -854,39 +852,43 @@ mod tests {
         assert!(server.fetch_batches.is_empty());
     }
 
-    /// Audit 2026-09-01 S1-6 (PLAN-AUDIT-V1 E2) : une boîte VIDÉE (tout
-    /// archivé) redevenait « synchro initiale » parce que la décision
-    /// lisait `last_uid == 0` — et `SyncMode::Initial` ne bulle jamais
-    /// (`notify::arrivals_to_notify`). L'utilisateur « inbox zéro »
-    /// perdait la première notification après chaque vidage, et payait
-    /// un `list_uids` + fetch complet. La décision se prend sur la
-    /// FRAÎCHEUR de l'état (boîte déjà initialisée), jamais sur le plus
-    /// grand UID en base.
+    /// Audit 2026-09-01 S1-6 (PLAN-AUDIT-V1 E2): an EMPTIED mailbox (all
+    /// archived) went back to "initial sync" because the decision read
+    /// `last_uid == 0` — and `SyncMode::Initial` never bubbles
+    /// (`notify::arrivals_to_notify`). The "inbox zero" user lost the
+    /// first notification after every emptying, and paid for a full
+    /// `list_uids` + fetch. The decision is made on the FRESHNESS of the
+    /// state (mailbox already initialized), never on the largest UID in
+    /// the database.
     #[test]
-    fn une_boite_videe_reste_en_incremental_et_bulle() {
+    fn an_emptied_mailbox_stays_incremental_and_bubbles() {
         for condstore in [false, true] {
             let mut server = FakeServer::new(condstore);
-            server.add(1, "premier");
+            server.add(1, "first");
             let mut store = Store::open_in_memory().unwrap();
             let engine = SyncEngine::default();
 
             synced(&mut server, &mut store, &engine);
             server.expunge(1);
-            let vide = synced(&mut server, &mut store, &engine);
-            assert_eq!(vide.mode, SyncMode::Incremental, "condstore={condstore}");
-            assert_eq!(vide.deleted, 1);
+            let emptied = synced(&mut server, &mut store, &engine);
+            assert_eq!(emptied.mode, SyncMode::Incremental, "condstore={condstore}");
+            assert_eq!(emptied.deleted, 1);
 
             server.add(2, "second");
-            let arrivee = synced(&mut server, &mut store, &engine);
+            let arrival = synced(&mut server, &mut store, &engine);
             assert_eq!(
-                arrivee.mode,
+                arrival.mode,
                 SyncMode::Incremental,
-                "condstore={condstore} : une boîte vidée puis regarnie n'est PAS une synchro initiale"
+                "condstore={condstore}: a mailbox emptied then refilled is NOT an initial sync"
             );
-            assert_eq!(arrivee.fetched, 1);
-            let arrivees = server.fetch_envelopes("INBOX", &[2]).unwrap();
-            let bulles = crate::notify::arrivals_to_notify(arrivee.mode, arrivees);
-            assert_eq!(bulles.len(), 1, "l'arrivée après un vidage doit buller");
+            assert_eq!(arrival.fetched, 1);
+            let arrivals = server.fetch_envelopes("INBOX", &[2]).unwrap();
+            let bubbles = crate::notify::arrivals_to_notify(arrival.mode, arrivals);
+            assert_eq!(
+                bubbles.len(),
+                1,
+                "the arrival after an emptying must bubble"
+            );
         }
     }
 
@@ -898,7 +900,7 @@ mod tests {
         }
     }
 
-    fn etat(uid_validity: u32, initialized: bool, highest_modseq: Option<u64>) -> SyncState {
+    fn state(uid_validity: u32, initialized: bool, highest_modseq: Option<u64>) -> SyncState {
         SyncState {
             mailbox_id: 7,
             uid_validity,
@@ -908,14 +910,14 @@ mod tests {
         }
     }
 
-    /// Audit 2026-09-01 S1-7 (PLAN-AUDIT-V1 E3) : un refus DÉFINITIF du
-    /// serveur (NO/BAD — dossier disparu, `[CANNOT]`) sur une action
-    /// bloquait TOUTE la file de la boîte, à vie, en silence : `break` au
-    /// premier échec, aucune sortie de file. L'action refusée entre en
-    /// quarantaine (elle se voit, elle ne bloque plus) et les suivantes
-    /// se rejouent dans la même passe.
+    /// Audit 2026-09-01 S1-7 (PLAN-AUDIT-V1 E3): a DEFINITIVE refusal
+    /// from the server (NO/BAD — folder gone, `[CANNOT]`) on an action
+    /// used to block the mailbox's ENTIRE queue, forever, in silence:
+    /// `break` on the first failure, no way out of the queue. The
+    /// refused action enters quarantine (it is visible, it no longer
+    /// blocks) and the following ones replay within the same pass.
     #[test]
-    fn une_action_refusee_ne_bloque_pas_les_suivantes() {
+    fn a_refused_action_does_not_block_the_following_ones() {
         let mut server = FakeServer::new(false);
         server.add(1, "a");
         server.add(2, "b");
@@ -932,24 +934,25 @@ mod tests {
 
         let report = synced(&mut server, &mut store, &engine);
 
-        assert_eq!(report.refusees, 1, "le déplacement refusé sort de la file");
-        assert_eq!(report.replayed, 1, "le marquage qui suivait a été rejoué");
+        assert_eq!(report.refused, 1, "the refused move leaves the queue");
+        assert_eq!(report.replayed, 1, "the marking that followed was replayed");
         assert!(server.messages[&2].0.seen);
         assert!(
             store.pending_actions(id).unwrap().is_empty(),
-            "la file ACTIVE est vide : la refusée n'y est plus"
+            "the ACTIVE queue is empty: the refused one is no longer in it"
         );
         assert_eq!(store.refused_actions().unwrap(), 1);
         assert!(
             !store.has_pending_actions(id).unwrap(),
-            "une refusée ne force plus la relève à chaque cycle (faut_relever)"
+            "a refused action no longer forces a poll every cycle (must_poll)"
         );
     }
 
-    /// Un échec TRANSITOIRE (réseau) reste retenté — mais pas à vie : au
-    /// cinquième, l'action entre en quarantaine et libère la file.
+    /// A TRANSIENT failure (network) keeps being retried — but not
+    /// forever: on the fifth, the action enters quarantine and frees the
+    /// queue.
     #[test]
-    fn cinq_echecs_transitoires_mettent_en_quarantaine() {
+    fn five_transient_failures_trigger_quarantine() {
         let mut server = FakeServer::new(false);
         server.add(1, "a");
         let mut store = Store::open_in_memory().unwrap();
@@ -961,46 +964,46 @@ mod tests {
             .unwrap();
         server.actions_fail = true;
 
-        for essai in 1..=4 {
+        for attempt in 1..=4 {
             let report = synced(&mut server, &mut store, &engine);
-            assert_eq!(report.refusees, 0, "essai {essai} : encore en file");
+            assert_eq!(report.refused, 0, "attempt {attempt}: still in the queue");
             assert_eq!(store.pending_actions(id).unwrap().len(), 1);
         }
-        let cinquieme = synced(&mut server, &mut store, &engine);
-        assert_eq!(cinquieme.refusees, 1, "cinquième échec : quarantaine");
+        let fifth = synced(&mut server, &mut store, &engine);
+        assert_eq!(fifth.refused, 1, "fifth failure: quarantine");
         assert!(store.pending_actions(id).unwrap().is_empty());
 
-        // La file est libre : une intention neuve passe dès que le réseau revient.
+        // The queue is free: a new intention gets through as soon as the network returns.
         server.actions_fail = false;
         store.enqueue_action(id, 1, Action::MarkSeen).unwrap();
-        let apres = synced(&mut server, &mut store, &engine);
-        assert_eq!(apres.replayed, 1);
+        let after = synced(&mut server, &mut store, &engine);
+        assert_eq!(after.replayed, 1);
         assert!(server.messages[&1].0.seen);
     }
 
-    /// La décision pure (STANDARD §4) : ce que `sync` faisait en ligne
-    /// avec `select`, `record_remote_total` et `replay_actions`.
+    /// The pure decision (STANDARD §4): what `sync` used to do inline
+    /// with `select`, `record_remote_total` and `replay_actions`.
     #[test]
-    fn plan_sync_decide_sur_la_fraicheur_de_l_etat() {
+    fn plan_sync_decides_on_the_freshness_of_the_state() {
         assert_eq!(plan_sync(None, &snapshot(1, None)), SyncPlan::Initial);
         assert_eq!(
-            plan_sync(Some(&etat(1, true, Some(9))), &snapshot(2, None)),
+            plan_sync(Some(&state(1, true, Some(9))), &snapshot(2, None)),
             SyncPlan::Reset,
-            "UIDVALIDITY changée : tout est à refaire"
+            "UIDVALIDITY changed: everything must be redone"
         );
         assert_eq!(
-            plan_sync(Some(&etat(1, false, None)), &snapshot(1, None)),
+            plan_sync(Some(&state(1, false, None)), &snapshot(1, None)),
             SyncPlan::Initial,
-            "boîte connue mais jamais initialisée (passe précédente morte en route)"
+            "mailbox known but never initialized (previous pass died mid-way)"
         );
         assert_eq!(
-            plan_sync(Some(&etat(1, true, None)), &snapshot(1, None)),
+            plan_sync(Some(&state(1, true, None)), &snapshot(1, None)),
             SyncPlan::Incremental { modseq: None }
         );
         assert_eq!(
-            plan_sync(Some(&etat(1, true, Some(42))), &snapshot(1, Some(50))),
+            plan_sync(Some(&state(1, true, Some(42))), &snapshot(1, Some(50))),
             SyncPlan::Incremental { modseq: Some(42) },
-            "le modseq de l'état local, pas celui du serveur"
+            "the local state's modseq, not the server's"
         );
     }
 
@@ -1024,14 +1027,14 @@ mod tests {
     #[test]
     fn incremental_fetches_only_new_messages() {
         let mut server = FakeServer::new(false);
-        server.add(1, "ancien");
-        server.add(2, "ancien");
+        server.add(1, "old");
+        server.add(2, "old");
         let mut store = Store::open_in_memory().unwrap();
         let engine = SyncEngine::default();
         synced(&mut server, &mut store, &engine);
 
-        server.add(3, "nouveau");
-        server.add(4, "nouveau");
+        server.add(3, "new");
+        server.add(4, "new");
         let report = synced(&mut server, &mut store, &engine);
 
         assert_eq!(report.fetched, 2);
@@ -1043,7 +1046,7 @@ mod tests {
     fn incremental_removes_expunged_messages() {
         let mut server = FakeServer::new(false);
         for uid in 1..=3 {
-            server.add(uid, "sujet");
+            server.add(uid, "subject");
         }
         let mut store = Store::open_in_memory().unwrap();
         let engine = SyncEngine::default();
@@ -1060,7 +1063,7 @@ mod tests {
     #[test]
     fn condstore_propagates_flag_changes() {
         let mut server = FakeServer::new(true);
-        server.add(1, "à lire");
+        server.add(1, "to read");
         let mut store = Store::open_in_memory().unwrap();
         let engine = SyncEngine::default();
         synced(&mut server, &mut store, &engine);
@@ -1075,60 +1078,61 @@ mod tests {
     #[test]
     fn condstore_picks_up_new_messages_too() {
         let mut server = FakeServer::new(true);
-        server.add(1, "ancien");
+        server.add(1, "old");
         let mut store = Store::open_in_memory().unwrap();
         let engine = SyncEngine::default();
         synced(&mut server, &mut store, &engine);
 
-        server.add(2, "nouveau");
+        server.add(2, "new");
         let report = synced(&mut server, &mut store, &engine);
 
         assert_eq!(report.fetched, 1);
         assert_eq!(recent(&store, 0, 10).len(), 2);
     }
 
-    /// La sobriété d'E2b : quand CONDSTORE porte le delta et que les
-    /// décomptes concordent, l'inventaire complet des UIDs — le
-    /// `UID SEARCH ALL` à 34 s de l'INBOX du terrain — ne se paye PAS.
-    /// Il ne se paye que quand une suppression le rend nécessaire.
+    /// E2b's sobriety: when CONDSTORE carries the delta and the counts
+    /// agree, the full UID inventory — the `UID SEARCH ALL` that took
+    /// 34 s on the field INBOX — is NOT paid for. It is only paid for
+    /// when a deletion makes it necessary.
     #[test]
-    fn condstore_ne_paye_l_inventaire_que_si_le_decompte_l_exige() {
+    fn condstore_only_pays_for_the_inventory_if_the_count_requires_it() {
         let mut server = FakeServer::new(true);
         server.add(1, "a");
         server.add(2, "b");
         let mut store = Store::open_in_memory().unwrap();
         let engine = SyncEngine::default();
         synced(&mut server, &mut store, &engine);
-        let apres_initiale = server.uid_list_calls;
+        let after_initial = server.uid_list_calls;
 
-        // Drapeau seul : delta CONDSTORE, décomptes égaux — zéro inventaire.
+        // Flag alone: CONDSTORE delta, equal counts — zero inventory.
         server.mark_seen(1);
         let report = synced(&mut server, &mut store, &engine);
         assert_eq!(report.fetched, 1);
         assert!(recent(&store, 0, 1)[0].seen || recent(&store, 0, 2)[1].seen);
         assert_eq!(
-            server.uid_list_calls, apres_initiale,
-            "un drapeau ne justifie pas d'inventaire complet"
+            server.uid_list_calls, after_initial,
+            "a flag does not justify a full inventory"
         );
 
-        // Suppression : le décompte diverge, l'inventaire redevient dû.
+        // Deletion: the count diverges, the inventory becomes due again.
         server.expunge(2);
         let report = synced(&mut server, &mut store, &engine);
         assert_eq!(report.deleted, 1);
         assert_eq!(
             server.uid_list_calls,
-            apres_initiale + 1,
-            "une suppression exige le différentiel d'UIDs"
+            after_initial + 1,
+            "a deletion requires the UID diff"
         );
     }
 
-    /// Limite connue et assumée : sans CONDSTORE, un flag changé côté serveur
-    /// n'est pas rafraîchi par la synchro incrémentale. Ce test documente le
-    /// comportement pour qu'une future correction soit un choix, pas un hasard.
+    /// A known and accepted limit: without CONDSTORE, a flag changed
+    /// server-side is not refreshed by the incremental sync. This test
+    /// documents the behavior so that a future fix is a choice, not an
+    /// accident.
     #[test]
     fn without_condstore_flag_changes_are_not_detected() {
         let mut server = FakeServer::new(false);
-        server.add(1, "à lire");
+        server.add(1, "to read");
         let mut store = Store::open_in_memory().unwrap();
         let engine = SyncEngine::default();
         synced(&mut server, &mut store, &engine);
@@ -1167,40 +1171,40 @@ mod tests {
         assert_eq!(
             server.action_calls,
             vec!["seen:1:true", "seen:2:true", "seen:1:false"],
-            "le rejeu doit préserver l'ordre d'émission"
+            "the replay must preserve emission order"
         );
         assert!(store.pending_actions(id).unwrap().is_empty());
     }
 
-    /// Depuis l'ADR 0017, la relève d'un dossier ne rafraîchit PLUS la
-    /// liste des dossiers : ce LIST était payé à CHAQUE dossier (~51 par
-    /// cycle au terrain du 2026-08-13). C'est l'orchestrateur qui la met
-    /// en cache, UNE fois par cycle, à l'inventaire — l'offline-first du
-    /// déplacement est tenu là. Ce test tient le nouveau contrat : si le
-    /// moteur se remet à lister, la facture réseau revient en silence.
+    /// Since ADR 0017, polling a folder no longer refreshes the folder
+    /// list: this LIST used to be paid for EVERY folder (~51 per cycle
+    /// on the 2026-08-13 field data). The orchestrator caches it, ONCE
+    /// per cycle, at inventory time — the offline-first move is served
+    /// there. This test holds the new contract: if the engine starts
+    /// listing again, the network bill comes back in silence.
     #[test]
     fn syncing_does_not_refetch_the_folder_list() {
         let mut server = FakeServer::new(false);
         server.add(1, "a");
         server.folders = vec![crate::remote::Folder {
             wire: "Archiv&AOk-s".to_string(),
-            display: "Archivés".to_string(),
+            display: "Archivés".to_string(), // lang:fr
             selectable: true,
             special_use: None,
         }];
         let mut store = Store::open_in_memory().unwrap();
         synced(&mut server, &mut store, &SyncEngine::default());
 
-        // La relève n'a rien mis en cache : la liste appartient à
-        // l'inventaire du cycle, pas au moteur.
+        // The poll cached nothing: the list belongs to the cycle's
+        // inventory, not to the engine.
         let cached = store.folders(test_account(&store)).unwrap();
         assert!(cached.is_empty());
     }
 
-    /// Le déplacement suit la même boucle hors-ligne que le reste :
-    /// journalisé au clic, rejoué à la synchro suivante. Le nom RÉSEAU du
-    /// dossier doit ressortir intact — une action peut être rejouée des
-    /// jours plus tard, sur un dossier accentué.
+    /// A move follows the same offline loop as everything else: logged
+    /// on click, replayed at the next sync. The folder's WIRE name must
+    /// come out intact — an action can be replayed days later, on an
+    /// accented folder.
     #[test]
     fn replay_moves_the_message_to_its_journaled_folder() {
         let mut server = FakeServer::new(false);
@@ -1220,14 +1224,14 @@ mod tests {
         assert_eq!(
             server.moved,
             vec![(1, "Archiv&AOk-s".to_string())],
-            "le nom réseau doit arriver intact au serveur"
+            "the wire name must arrive intact at the server"
         );
         assert!(store.pending_actions(id).unwrap().is_empty());
     }
 
-    /// Une coupure pendant le rejeu ne doit rien perdre : l'action
-    /// reste en file pour la synchro suivante. Même garantie que pour
-    /// les autres actions — le déplacement n'y fait pas exception.
+    /// A disconnect during the replay must lose nothing: the action
+    /// stays in the queue for the next sync. Same guarantee as for the
+    /// other actions — the move is no exception.
     #[test]
     fn a_failed_move_stays_queued() {
         let mut server = FakeServer::new(false);
@@ -1249,14 +1253,14 @@ mod tests {
         assert_eq!(
             store.pending_actions(id).unwrap().len(),
             1,
-            "l'intention doit survivre à la coupure"
+            "the intention must survive the disconnect"
         );
     }
 
     #[test]
     fn replay_stars_and_unstars_on_server() {
         let mut server = FakeServer::new(false);
-        server.add(1, "à étoiler");
+        server.add(1, "to star");
         let mut store = Store::open_in_memory().unwrap();
         let engine = SyncEngine::default();
         synced(&mut server, &mut store, &engine);
@@ -1275,7 +1279,7 @@ mod tests {
     #[test]
     fn condstore_propagates_star_changes() {
         let mut server = FakeServer::new(true);
-        server.add(1, "étoilé ailleurs");
+        server.add(1, "starred elsewhere");
         let mut store = Store::open_in_memory().unwrap();
         let engine = SyncEngine::default();
         synced(&mut server, &mut store, &engine);
@@ -1290,9 +1294,9 @@ mod tests {
     #[test]
     fn replay_archives_and_deletes_on_server() {
         let mut server = FakeServer::new(false);
-        server.add(1, "à archiver");
-        server.add(2, "à supprimer");
-        server.add(3, "à garder");
+        server.add(1, "to archive");
+        server.add(2, "to delete");
+        server.add(3, "to keep");
         let mut store = Store::open_in_memory().unwrap();
         let engine = SyncEngine::default();
         synced(&mut server, &mut store, &engine);
@@ -1310,11 +1314,11 @@ mod tests {
         assert!(!server.messages.contains_key(&1));
         assert!(!server.messages.contains_key(&2));
         let uids: Vec<Uid> = recent(&store, 0, 10).iter().map(|e| e.uid).collect();
-        assert_eq!(uids, vec![3], "seul le message gardé reste localement");
+        assert_eq!(uids, vec![3], "only the kept message stays locally");
     }
 
-    /// Le gate de la Phase 2 : une coupure pendant le rejeu ne perd rien —
-    /// la file survit et repart à la synchro suivante.
+    /// The Phase 2 gate: a disconnect during the replay loses nothing —
+    /// the queue survives and resumes at the next sync.
     #[test]
     fn failed_replay_keeps_actions_queued_for_next_sync() {
         let mut server = FakeServer::new(false);
@@ -1360,21 +1364,21 @@ mod tests {
     #[test]
     fn uid_validity_change_triggers_full_resync() {
         let mut server = FakeServer::new(false);
-        server.add(1, "avant");
-        server.add(2, "avant");
+        server.add(1, "before");
+        server.add(2, "before");
         let mut store = Store::open_in_memory().unwrap();
         let engine = SyncEngine::default();
         synced(&mut server, &mut store, &engine);
 
         server.bump_uid_validity();
         server.messages.clear();
-        server.add(10, "après");
+        server.add(10, "after");
         let report = synced(&mut server, &mut store, &engine);
 
         assert_eq!(report.mode, SyncMode::Initial);
         let rows = recent(&store, 0, 10);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].uid, 10);
-        assert_eq!(rows[0].subject.as_deref(), Some("après"));
+        assert_eq!(rows[0].subject.as_deref(), Some("after"));
     }
 }

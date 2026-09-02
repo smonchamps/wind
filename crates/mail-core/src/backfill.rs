@@ -1,22 +1,22 @@
-//! Rattrapage des corps de messages — la pompe de fond de l'[ADR 0007].
+//! Backfill of message bodies — the background pump of [ADR 0007].
 //!
-//! La synchro « enveloppes d'abord » (PLAN.md §3) rend la liste utilisable
-//! instantanément, mais ne télécharge un corps qu'au clic. Mesuré sur le
-//! terrain : 18 corps sur 537, 1 sur 2193. La recherche « plein texte » ne
-//! portait donc, en pratique, que sur les sujets et les expéditeurs.
+//! The "envelopes first" sync (PLAN.md §3) makes the list usable instantly,
+//! but only downloads a body on click. Measured in the field: 18 bodies out
+//! of 537, 1 out of 2193. Full-text search therefore covered, in practice,
+//! only subjects and senders.
 //!
-//! Cette pompe complète la synchro sans la contredire : elle passe APRÈS,
-//! en tâche de fond, et rapatrie les corps des messages récents.
+//! This pump completes the sync without contradicting it: it runs AFTER, in
+//! the background, and fetches the bodies of recent messages.
 //!
-//! Trois propriétés la définissent :
+//! Three properties define it:
 //!
-//! - **bornée** : un horizon de récence et un budget par passage, pour que
-//!   le coût reste prévisible (< 1 Go, PLAN.md §1) ;
-//! - **reprenable** : elle ne tient aucun curseur — l'état, c'est la base.
-//!   Un corps déjà écrit sort de la liste des manquants, donc une coupure
-//!   ne coûte que le lot en cours ;
-//! - **groupée** : un aller-retour par message coûte ~192 ms sur un
-//!   serveur réel (`spikes/body-backfill`). On demande les corps par lots.
+//! - **bounded**: a recency horizon and a budget per pass, so the cost stays
+//!   predictable (< 1 GB, PLAN.md §1);
+//! - **resumable**: it holds no cursor — the state is the database. A body
+//!   already written falls out of the list of missing ones, so an
+//!   interruption only costs the batch in progress;
+//! - **batched**: a round trip per message costs ~192 ms on a real server
+//!   (`spikes/body-backfill`). Bodies are requested in batches.
 //!
 //! [ADR 0007]: ../../../docs/adr/0007-rattrapage-des-corps.md
 
@@ -27,68 +27,68 @@ use crate::error::Error;
 use crate::remote::MailServer;
 use crate::store::Store;
 
-/// Corps demandés en une commande. 50 est le compromis retenu : assez pour
-/// amortir l'aller-retour, assez peu pour qu'une coupure ne perde qu'un
-/// petit lot et que l'avancement reste vivant à l'écran.
+/// Bodies requested in one command. 50 is the chosen trade-off: enough to
+/// amortize the round trip, few enough that an interruption only loses a
+/// small batch and progress stays alive on screen.
 pub const BACKFILL_BATCH: usize = 50;
 
-/// « Pas d'horizon » : la valeur de `since_epoch` qui ne borne rien.
+/// "No horizon": the value of `since_epoch` that bounds nothing.
 ///
-/// L'horizon de 12 mois de l'[ADR 0007] existait pour tenir le budget
-/// disque (< 1 Go). L'[ADR 0010] lève ce budget : la production passe
-/// désormais cette constante, et la borne ne survit qu'en paramètre —
-/// les tests s'en servent pour rejouer des scénarios bornés, et un futur
-/// réglage utilisateur la retrouverait telle quelle.
+/// The 12-month horizon of [ADR 0007] existed to hold the disk budget
+/// (< 1 GB). [ADR 0010] lifts that budget: production now passes this
+/// constant, and the bound only survives as a parameter — tests use it to
+/// replay bounded scenarios, and a future user setting would find it
+/// unchanged.
 ///
-/// `i64::MIN` et non `0` : une date antérieure à 1970 — horloge fausse,
-/// en-tête corrompu — produit un epoch négatif, et « tout » doit le
-/// couvrir aussi.
+/// `i64::MIN` and not `0`: a date before 1970 — a wrong clock, a corrupt
+/// header — produces a negative epoch, and "everything" must cover that
+/// too.
 ///
 /// [ADR 0010]: ../../../docs/adr/0010-synchronisation-integrale.md
 pub const NO_HORIZON: i64 = i64::MIN;
 
-/// Le vocabulaire FERMÉ du réglage « profondeur d'historique » (ADR 0029,
-/// PLAN-HORIZON-NETTOYAGE D1) — les valeurs offertes au guichet d'ajout
-/// de compte, dans l'ordre du sélecteur. La valeur vit en pref par compte
+/// The CLOSED vocabulary of the "history depth" setting (ADR 0029,
+/// PLAN-HORIZON-NETTOYAGE D1) — the values offered at the account-add desk,
+/// in the order of the selector. The value lives as a per-account pref
 /// (`horizon_import.{id}`, [`crate::store::PREFS_PER_ACCOUNT`]).
 pub const HORIZONS_IMPORT: &[&str] = &["1m", "2m", "3m", "6m", "1a", "2a", "tout"];
 
-/// Traduit la valeur symbolique en borne d'epoch pour les pompes de
-/// CORPS (les enveloppes restent intégrales — D1 : la liste et la
-/// recherche par objet/expéditeur portent sur tout).
+/// Translates the symbolic value into an epoch bound for the BODY pumps
+/// (envelopes stay complete — D1: the list and the subject/sender search
+/// cover everything).
 ///
-/// Jours pleins, dérivés à la LECTURE : la borne suit l'horloge, jamais
-/// une date figée au moment de l'ajout du compte. L'inconnu ne borne
-/// RIEN : amputer l'import sur une pref corrompue serait une perte
-/// silencieuse — le défaut sûr est « tout » (D4).
-pub fn horizon_epoch(valeur: &str, now: i64) -> i64 {
-    const JOUR: i64 = 86_400;
-    let jours = match valeur {
+/// Full days, derived on READ: the bound follows the clock, never a date
+/// frozen at the moment the account was added. The unknown bounds NOTHING:
+/// clipping the import on a corrupt pref would be a silent loss — the safe
+/// default is "everything" (D4).
+pub fn horizon_epoch(value: &str, now: i64) -> i64 {
+    const DAY: i64 = 86_400;
+    let days = match value {
         "1m" => 30,
         "2m" => 61,
         "3m" => 91,
         "6m" => 183,
         "1a" => 365,
         "2a" => 730,
-        // « 5 ans » n'appartient qu'au vocabulaire du Nettoyage de
-        // printemps (CLEANUP_RANGES) — HORIZONS_IMPORT garde la porte
-        // du réglage d'import, la traduction est commune.
+        // "5a" belongs only to the Spring cleaning vocabulary
+        // (CLEANUP_RANGES) — HORIZONS_IMPORT guards the door of the
+        // import setting, the translation is shared.
         "5a" => 1826,
         _ => return NO_HORIZON,
     };
-    now - jours * JOUR
+    now - days * DAY
 }
 
-/// Le pourcentage de corps DÉJÀ rapatriés sur le corpus en portée
-/// (R1, PLAN-RETOURS-3) — `done` = messages avec un corps, `total` = tous
-/// les messages en portée.
+/// The percentage of bodies ALREADY fetched over the corpus in scope
+/// (R1, PLAN-RETOURS-3) — `done` = messages with a body, `total` = all
+/// messages in scope.
 ///
-/// Décision **pure et testable** (motif PASSATION §4), sœur de
-/// [`crate::sync_percent`] dont elle partage les deux gardes : `None` sans
-/// dénominateur (aucun message — « 0 % » se confondrait avec un rattrapage
-/// à l'arrêt), et « 100 % » réservé à un rattrapage VRAIMENT fini —
-/// 255 999/256 000 arrondit à 99, jamais à 100, sinon la barre d'état
-/// annoncerait la fin quand la longue traîne court encore.
+/// A **pure and testable** decision (PASSATION §4 pattern), sibling of
+/// [`crate::sync_percent`] with which it shares both guards: `None` with no
+/// denominator (no message — "0%" would be indistinguishable from a
+/// backfill at a standstill), and "100%" reserved for a backfill that is
+/// TRULY finished — 255,999/256,000 rounds to 99, never to 100, or the
+/// status bar would announce the end while the long tail is still running.
 pub fn backfill_percent(done: u64, total: u64) -> Option<u8> {
     if total == 0 {
         return None;
@@ -99,20 +99,20 @@ pub fn backfill_percent(done: u64, total: u64) -> Option<u8> {
     Some((done * 100 / total).min(99) as u8)
 }
 
-/// Ce qu'un passage a fait, et ce qu'il reste à faire.
+/// What a pass did, and what remains to do.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BackfillReport {
-    /// Corps rapatriés et indexés pendant ce passage.
+    /// Bodies fetched and indexed during this pass.
     pub fetched: usize,
-    /// Messages de l'horizon qui attendent encore leur corps.
+    /// Messages in the horizon still waiting for their body.
     pub remaining: u64,
 }
 
-/// Rapatrie jusqu'à `budget` corps manquants, du plus récent au plus
-/// ancien, et les indexe au passage (c'est [`Store::save_body`] qui s'en
-/// charge, dans sa transaction).
+/// Fetches up to `budget` missing bodies, from newest to oldest, and
+/// indexes them along the way (it is [`Store::save_body`] that handles
+/// that, inside its transaction).
 ///
-/// `since_epoch` est l'horizon : au-delà, on ne rapatrie rien.
+/// `since_epoch` is the horizon: beyond it, nothing is fetched.
 pub fn backfill_bodies(
     server: &mut dyn MailServer,
     store: &mut Store,
@@ -129,9 +129,9 @@ pub fn backfill_bodies(
     };
 
     let mut fetched = 0usize;
-    // Les UIDs déjà tentés dans CE passage. Sans cette mémoire, un message
-    // que le serveur ne sert plus reviendrait à chaque tour dans la liste
-    // des manquants — et la pompe tournerait sans fin.
+    // UIDs already attempted during THIS pass. Without this memory, a
+    // message the server no longer serves would come back into the list
+    // of missing ones on every round — and the pump would run forever.
     let mut attempted: HashSet<Uid> = HashSet::new();
 
     while fetched < budget {
@@ -166,23 +166,22 @@ pub fn backfill_bodies(
     })
 }
 
-/// En-têtes demandés en une commande. Bien plus que les corps : un bloc
-/// d'en-têtes pèse ~3 ko contre ~50 ko pour un message entier, et la
-/// dépense qui compte ici est l'aller-retour, pas les octets.
+/// Headers requested in one command. Much more than bodies: a header block
+/// weighs ~3 KB against ~50 KB for a whole message, and the expense that
+/// matters here is the round trip, not the bytes.
 pub const THREAD_HEADER_BATCH: usize = 200;
 
-/// Rapatrie les destinataires (À/Cc) manquants d'un dossier d'envois, du
-/// plus récent au plus ancien (R4, rattrapage des envois — D2,
-/// PLAN-RETOURS-MAIL).
+/// Fetches the missing recipients (To/Cc) of a Sent folder, from newest to
+/// oldest (R4, backfill of sent messages — D2, PLAN-RETOURS-MAIL).
 ///
-/// Même forme bornée/reprenable/groupée que [`backfill_bodies`], mais elle
-/// relit l'ENVELOPE — où À/Cc voyagent gratuitement avec l'expéditeur, sans
-/// un octet de corps — et n'écrit QUE ces deux colonnes (jamais le fil ni
-/// `refs`). Dans un dossier d'envois l'expéditeur est SOI : sans le
-/// destinataire, ni la liste ni le volet ne peuvent dire à qui le message
-/// est parti. La passe d'en-têtes ayant convergé, les envois déjà
-/// synchronisés n'ont aucun destinataire en base — c'est cette pompe qui
-/// les rattrape.
+/// Same bounded/resumable/batched shape as [`backfill_bodies`], but it
+/// rereads the ENVELOPE — where To/Cc travel for free with the sender,
+/// without a single byte of body — and writes ONLY those two columns
+/// (never the thread nor `refs`). In a Sent folder the sender is ONESELF:
+/// without the recipient, neither the list nor the reading pane can say
+/// who the message went to. Once the header pass has converged, already
+/// synced sent messages have no recipient in the database — this is the
+/// pump that catches them up.
 pub fn backfill_recipients(
     server: &mut dyn MailServer,
     store: &mut Store,
@@ -198,9 +197,9 @@ pub fn backfill_recipients(
     };
 
     let mut fetched = 0usize;
-    // Les UIDs déjà tentés dans CE passage — un message que le serveur ne
-    // sert plus ne doit pas faire tourner la pompe sans fin (même garde
-    // que [`backfill_bodies`]).
+    // UIDs already attempted during THIS pass — a message the server no
+    // longer serves must not make the pump run forever (same guard as
+    // [`backfill_bodies`]).
     let mut attempted: HashSet<Uid> = HashSet::new();
 
     while fetched < budget {
@@ -234,14 +233,13 @@ pub fn backfill_recipients(
     })
 }
 
-/// Rapatrie les en-têtes de fil manquants, du plus récent au plus ancien,
-/// et recolle les conversations au passage.
+/// Fetches the missing thread headers, from newest to oldest, and reglues
+/// the conversations along the way.
 ///
-/// Même forme que [`backfill_bodies`] — bornée, reprenable, groupée — mais
-/// une raison d'être différente : celle-ci ne complète pas la recherche,
-/// elle répare le REGROUPEMENT. Un message dont on n'a jamais lu les
-/// `References` reste seul dans son fil alors qu'il appartient à un
-/// échange.
+/// Same shape as [`backfill_bodies`] — bounded, resumable, batched — but a
+/// different reason to exist: this one does not complete search, it repairs
+/// GROUPING. A message whose `References` were never read stays alone in
+/// its thread even though it belongs to an exchange.
 pub fn backfill_thread_headers(
     server: &mut dyn MailServer,
     store: &mut Store,
@@ -258,8 +256,9 @@ pub fn backfill_thread_headers(
     };
 
     let mut fetched = 0usize;
-    // Même garde que pour les corps : un message que le serveur ne sert
-    // plus reviendrait sinon à chaque tour, et la pompe tournerait sans fin.
+    // Same guard as for bodies: a message the server no longer serves
+    // would otherwise come back on every round, and the pump would run
+    // forever.
     let mut attempted: HashSet<Uid> = HashSet::new();
 
     while fetched < budget {
@@ -298,35 +297,35 @@ pub fn backfill_thread_headers(
 mod percent_tests {
     use super::backfill_percent;
 
-    /// Sans dénominateur, on ne raconte rien — surtout pas « 0 % », qui
-    /// serait indiscernable d'un rattrapage à l'arrêt (même règle que
-    /// `sync_percent`).
+    /// With no denominator, we say nothing — especially not "0%", which
+    /// would be indistinguishable from a backfill at a standstill (same
+    /// rule as `sync_percent`).
     #[test]
-    fn sans_denominateur_on_ne_dit_rien() {
+    fn without_a_denominator_nothing_is_said() {
         assert_eq!(backfill_percent(0, 0), None);
         assert_eq!(backfill_percent(42, 0), None);
     }
 
     #[test]
-    fn le_cas_courant() {
+    fn the_common_case() {
         assert_eq!(backfill_percent(0, 200), Some(0));
         assert_eq!(backfill_percent(50, 200), Some(25));
         assert_eq!(backfill_percent(200, 200), Some(100));
     }
 
-    /// LE défaut classique : « 100 % » alors qu'il reste des corps. Sur la
-    /// vraie base (~256 k), 255 999/256 000 doit dire 99, jamais 100 —
-    /// sinon la ligne annonce la fin quand la traîne court encore.
+    /// THE classic trap: "100%" while bodies still remain. On the real
+    /// database (~256k), 255,999/256,000 must say 99, never 100 — or the
+    /// row would announce the end while the tail is still running.
     #[test]
-    fn presque_fini_n_est_pas_fini() {
+    fn almost_done_is_not_done() {
         assert_eq!(backfill_percent(255_999, 256_000), Some(99));
     }
 
-    /// Le « fait » ne peut pas dépasser le total (remaining ≤ total par
-    /// construction), mais un décor incohérent ne doit pas produire
-    /// « 103 % » : on plafonne, comme `sync_percent`.
+    /// The "done" count cannot exceed the total (remaining ≤ total by
+    /// construction), but an inconsistent fixture must not produce
+    /// "103%": it is capped, like `sync_percent`.
     #[test]
-    fn le_fait_qui_depasse_est_plafonne() {
+    fn the_count_that_exceeds_is_capped() {
         assert_eq!(backfill_percent(210, 200), Some(100));
     }
 }
@@ -335,60 +334,58 @@ mod percent_tests {
 mod horizon_tests {
     use super::{NO_HORIZON, horizon_epoch};
 
-    const JOUR: i64 = 86_400;
+    const DAY: i64 = 86_400;
     const NOW: i64 = 1_756_500_000;
 
-    /// Chaque valeur du vocabulaire borne à sa durée — en jours pleins,
-    /// dérivés à la LECTURE : la borne suit l'horloge, jamais une date
-    /// figée au moment de l'ajout du compte.
+    /// Each vocabulary value bounds to its duration — in full days,
+    /// derived on READ: the bound follows the clock, never a date frozen
+    /// at the moment the account was added.
     #[test]
-    fn le_vocabulaire_borne_a_sa_duree() {
-        assert_eq!(horizon_epoch("1m", NOW), NOW - 30 * JOUR);
-        assert_eq!(horizon_epoch("2m", NOW), NOW - 61 * JOUR);
-        assert_eq!(horizon_epoch("3m", NOW), NOW - 91 * JOUR);
-        assert_eq!(horizon_epoch("6m", NOW), NOW - 183 * JOUR);
-        assert_eq!(horizon_epoch("1a", NOW), NOW - 365 * JOUR);
-        assert_eq!(horizon_epoch("2a", NOW), NOW - 730 * JOUR);
+    fn each_vocabulary_value_bounds_to_its_duration() {
+        assert_eq!(horizon_epoch("1m", NOW), NOW - 30 * DAY);
+        assert_eq!(horizon_epoch("2m", NOW), NOW - 61 * DAY);
+        assert_eq!(horizon_epoch("3m", NOW), NOW - 91 * DAY);
+        assert_eq!(horizon_epoch("6m", NOW), NOW - 183 * DAY);
+        assert_eq!(horizon_epoch("1a", NOW), NOW - 365 * DAY);
+        assert_eq!(horizon_epoch("2a", NOW), NOW - 730 * DAY);
     }
 
-    /// « Tout depuis le début » ne borne rien — y compris les epochs
-    /// négatifs (horloge fausse, en-tête corrompu), même règle que
-    /// `NO_HORIZON`.
+    /// "Everything since the start" bounds nothing — including negative
+    /// epochs (wrong clock, corrupt header), same rule as `NO_HORIZON`.
     #[test]
-    fn tout_ne_borne_rien() {
+    fn everything_bounds_nothing() {
         assert_eq!(horizon_epoch("tout", NOW), NO_HORIZON);
     }
 
-    /// Une valeur inconnue (pref corrompue, vocabulaire futur) ne borne
-    /// rien : amputer l'import sur une valeur illisible serait une perte
-    /// silencieuse — le défaut sûr est « tout ».
+    /// An unknown value (corrupt pref, future vocabulary) bounds nothing:
+    /// clipping the import on an unreadable value would be a silent loss —
+    /// the safe default is "everything".
     #[test]
-    fn l_inconnu_ne_borne_rien() {
+    fn the_unknown_bounds_nothing() {
         assert_eq!(horizon_epoch("6 semaines", NOW), NO_HORIZON);
         assert_eq!(horizon_epoch("", NOW), NO_HORIZON);
     }
 
-    /// Le filet d'exhaustivité (revue 2026-08-30) : chaque membre des
-    /// DEUX vocabulaires (import ET nettoyage) a son bras dans
-    /// `horizon_epoch` — sauf « tout ». Sans lui, ajouter « 10a » à
-    /// `CLEANUP_RANGES` sans toucher au match ferait tomber la plage
-    /// au défaut « tout » : un nettoyage-corbeille balaierait TOUT
-    /// l'historique au lieu des 10 ans choisis. Pour l'import, le même
-    /// trou est bénin (on importe plus) — pour le nettoyage il est
-    /// DESTRUCTIF.
+    /// The completeness net (2026-08-30 review): every member of BOTH
+    /// vocabularies (import AND cleanup) has its arm in `horizon_epoch` —
+    /// except "tout". Without it, adding "10a" to `CLEANUP_RANGES` without
+    /// touching the match would make the range fall to the "tout" default:
+    /// a trash cleanup would sweep the ENTIRE history instead of the 10
+    /// chosen years. For import, the same hole is benign (more gets
+    /// imported) — for cleanup it is DESTRUCTIVE.
     #[test]
-    fn chaque_valeur_des_vocabulaires_a_sa_duree() {
-        for valeur in crate::store::CLEANUP_RANGES
+    fn each_vocabulary_value_has_its_duration() {
+        for value in crate::store::CLEANUP_RANGES
             .iter()
             .chain(super::HORIZONS_IMPORT)
         {
-            if *valeur == "tout" {
+            if *value == "tout" {
                 continue;
             }
             assert_ne!(
-                horizon_epoch(valeur, NOW),
+                horizon_epoch(value, NOW),
                 NO_HORIZON,
-                "{valeur:?} tombe au défaut « tout » — le match de horizon_epoch n'a pas suivi le vocabulaire"
+                "{value:?} falls to the \"tout\" default — horizon_epoch's match did not keep up with the vocabulary"
             );
         }
     }
@@ -399,12 +396,16 @@ mod tests {
     use super::*;
     use crate::test_support::FakeServer;
 
-    /// Décor : `n` messages avec corps sur le serveur, synchronisés (donc
-    /// enveloppes en base) mais aucun corps téléchargé.
+    /// Fixture: `n` messages with a body on the server, synced (so
+    /// envelopes are in the database) but no body downloaded.
     fn synced(n: u32) -> (FakeServer, Store, i64) {
         let mut server = FakeServer::new(false);
         for uid in 1..=n {
-            server.add_with_body(uid, &format!("sujet {uid}"), &format!("<p>corps {uid}</p>"));
+            server.add_with_body(
+                uid,
+                &format!("subject {uid}"),
+                &format!("<p>body {uid}</p>"),
+            );
         }
         let mut store = Store::open_in_memory().unwrap();
         let account = store
@@ -416,14 +417,14 @@ mod tests {
         (server, store, account)
     }
 
-    /// La raison d'être de la pompe : après son passage, un mot du CORPS
-    /// est trouvable — ce qui était impossible avant.
+    /// The pump's reason to exist: after it runs, a word from the BODY
+    /// becomes findable — which was impossible before.
     #[test]
     fn backfilled_bodies_become_searchable() {
         let (mut server, mut store, account) = synced(3);
         server
             .bodies
-            .insert(2, "<p>le contrat de licence</p>".to_string());
+            .insert(2, "<p>le contrat de licence</p>".to_string()); // lang:fr
         assert_eq!(store.search("contrat", 10).unwrap().len(), 0);
 
         let report = backfill_bodies(&mut server, &mut store, account, "INBOX", 0, 100).unwrap();
@@ -433,44 +434,44 @@ mod tests {
         assert_eq!(
             store.search("contrat", 10).unwrap().len(),
             1,
-            "le corps rapatrié doit être indexé"
+            "the fetched body must be indexed"
         );
     }
 
-    /// R4, rattrapage des envois (D2) : un envoi déjà synchronisé sans
-    /// destinataire en base (l'ancien schéma) reçoit, après la passe, l'À
-    /// et le Cc que l'ENVELOPE du serveur portait. La pompe CONVERGE : un
-    /// second passage ne redemande rien.
+    /// R4, backfill of sent messages (D2): a sent message already synced
+    /// with no recipient in the database (the old schema) receives, after
+    /// the pass, the To and Cc that the server's ENVELOPE carried. The
+    /// pump CONVERGES: a second pass requests nothing more.
     #[test]
-    fn backfill_recipients_remplit_les_envois_sans_destinataire() {
+    fn backfill_recipients_fills_sent_messages_without_a_recipient() {
         let (mut server, mut store, account) = synced(3);
-        // L'ENVELOPE complète vit sur le serveur ; la base, elle, n'a rien
-        // (état hérité — `synced` n'écrit aucun destinataire).
+        // The full ENVELOPE lives on the server; the database has nothing
+        // (legacy state — `synced` writes no recipient).
         server.set_envelope_recipients(2, &["sebastien.monchamps@gmail.com"], &["copie@x.fr"]);
         assert_eq!(
             store.recipients_pending_count(account, "INBOX").unwrap(),
             3,
-            "les trois envois attendent leurs destinataires"
+            "all three sent messages are waiting for their recipients"
         );
 
         let report = backfill_recipients(&mut server, &mut store, account, "INBOX", 100).unwrap();
         assert_eq!(report.fetched, 3);
         assert_eq!(report.remaining, 0);
 
-        let relu = store.recent(account, "INBOX", 0, 10).unwrap();
-        let m2 = relu.iter().find(|e| e.uid == 2).unwrap();
+        let reread = store.recent(account, "INBOX", 0, 10).unwrap();
+        let m2 = reread.iter().find(|e| e.uid == 2).unwrap();
         assert_eq!(m2.to_addrs, vec!["sebastien.monchamps@gmail.com"]);
         assert_eq!(m2.cc_addrs, vec!["copie@x.fr"]);
 
-        // Convergence : le second passage ne redemande rien (le message
-        // sans destinataire porte désormais la marque vide, pas NULL).
+        // Convergence: the second pass requests nothing more (the message
+        // with no recipient now carries the empty marker, not NULL).
         let second = backfill_recipients(&mut server, &mut store, account, "INBOX", 100).unwrap();
         assert_eq!(second.fetched, 0);
         assert_eq!(second.remaining, 0);
     }
 
-    /// Le cœur du gain mesuré : une commande pour tout le lot, pas un
-    /// aller-retour par message.
+    /// The heart of the measured gain: one command for the whole batch,
+    /// not one round trip per message.
     #[test]
     fn backfill_groups_its_fetches() {
         let (mut server, mut store, account) = synced(5);
@@ -480,17 +481,17 @@ mod tests {
         assert_eq!(
             server.body_batches.len(),
             1,
-            "5 corps doivent tenir en UNE commande, pas 5"
+            "5 bodies must fit in ONE command, not 5"
         );
         assert_eq!(server.body_batches[0].len(), 5);
         assert_eq!(
             server.body_fetches, 0,
-            "le chemin unitaire ne doit pas être emprunté"
+            "the one-at-a-time path must not be taken"
         );
     }
 
-    /// Le budget borne le passage : c'est lui qui empêche un rattrapage de
-    /// monopoliser le réseau.
+    /// The budget bounds the pass: it is what keeps a backfill from
+    /// monopolizing the network.
     #[test]
     fn backfill_stops_at_its_budget() {
         let (mut server, mut store, account) = synced(10);
@@ -501,8 +502,9 @@ mod tests {
         assert_eq!(report.remaining, 6);
     }
 
-    /// Reprise après coupure : aucun curseur à restaurer, l'état c'est la
-    /// base. Le second passage continue sans refaire le travail du premier.
+    /// Resuming after an interruption: no cursor to restore, the state is
+    /// the database. The second pass continues without redoing the first
+    /// one's work.
     #[test]
     fn backfill_resumes_where_it_stopped_without_redoing_work() {
         let (mut server, mut store, account) = synced(6);
@@ -513,18 +515,18 @@ mod tests {
         assert_eq!(first.fetched, 2);
         assert_eq!(second.fetched, 2);
         assert_eq!(second.remaining, 2);
-        // Les deux passages ont demandé des UIDs DIFFÉRENTS.
-        let demandés: Vec<Uid> = server.body_batches.concat();
-        let uniques: HashSet<Uid> = demandés.iter().copied().collect();
+        // The two passes requested DIFFERENT UIDs.
+        let requested: Vec<Uid> = server.body_batches.concat();
+        let unique: HashSet<Uid> = requested.iter().copied().collect();
         assert_eq!(
-            demandés.len(),
-            uniques.len(),
-            "aucun corps ne doit être redemandé"
+            requested.len(),
+            unique.len(),
+            "no body must be requested twice"
         );
     }
 
-    /// Les plus récents d'abord : c'est là que la recherche a le plus de
-    /// valeur, et ça rend un rattrapage interrompu utile malgré tout.
+    /// Newest first: that is where search has the most value, and it makes
+    /// an interrupted backfill useful anyway.
     #[test]
     fn backfill_starts_with_the_newest() {
         let (mut server, mut store, account) = synced(5);
@@ -534,25 +536,28 @@ mod tests {
         assert_eq!(server.body_batches[0], vec![5, 4]);
     }
 
-    /// LE piège : un message que le serveur ne sert plus reste éternellement
-    /// dans la liste des manquants. Sans mémoire des tentatives, la pompe
-    /// tournerait sans fin.
+    /// THE trap: a message the server no longer serves stays forever in
+    /// the list of missing ones. Without a memory of attempts, the pump
+    /// would run forever.
     #[test]
     fn backfill_does_not_loop_on_a_body_the_server_never_returns() {
         let (mut server, mut store, account) = synced(3);
-        server.bodies.remove(&2); // l'enveloppe existe, le corps non
+        server.bodies.remove(&2); // the envelope exists, the body does not
 
         let report = backfill_bodies(&mut server, &mut store, account, "INBOX", 0, 100).unwrap();
 
-        assert_eq!(report.fetched, 2, "les deux corps servis");
-        assert_eq!(report.remaining, 1, "le muet reste compté comme manquant");
+        assert_eq!(report.fetched, 2, "the two bodies served");
+        assert_eq!(
+            report.remaining, 1,
+            "the silent one is still counted as missing"
+        );
     }
 
-    /// L'horizon borne le coût : au-delà, rien n'est rapatrié.
+    /// The horizon bounds the cost: beyond it, nothing is fetched.
     #[test]
     fn backfill_ignores_what_lies_beyond_the_horizon() {
         let (mut server, mut store, account) = synced(4);
-        // FakeServer date les messages à 1_700_000_000 + uid.
+        // FakeServer dates messages at 1_700_000_000 + uid.
         let horizon = 1_700_000_000 + 3;
 
         let report =
@@ -560,7 +565,7 @@ mod tests {
 
         assert_eq!(
             report.fetched, 2,
-            "seuls les UID 3 et 4 sont dans l'horizon"
+            "only UIDs 3 and 4 are within the horizon"
         );
         assert_eq!(report.remaining, 0);
     }
@@ -579,13 +584,14 @@ mod tests {
         assert!(server.body_batches.is_empty());
     }
 
-    /// Décor du rattrapage d'en-têtes : deux messages du même échange, mais
-    /// le message intermédiaire — celui qu'on aurait envoyé — n'est pas
-    /// dans la boîte. Rien ne les relie tant que `References` n'est pas lu.
-    fn echange_coupe() -> (FakeServer, Store, i64) {
+    /// Fixture for the header backfill: two messages from the same
+    /// exchange, but the middle message — the one that would have been
+    /// sent — is not in the mailbox. Nothing links them until `References`
+    /// is read.
+    fn cut_exchange() -> (FakeServer, Store, i64) {
         let mut server = FakeServer::new(false);
-        server.add(1, "Devis");
-        server.add(3, "Re: Devis");
+        server.add(1, "Quote");
+        server.add(3, "Re: Quote");
         server.set_references(3, "<fake-1@example.com> <fake-2@example.com>");
 
         let mut store = Store::open_in_memory().unwrap();
@@ -602,43 +608,43 @@ mod tests {
         store.unified_recent(0, 50).unwrap().len()
     }
 
-    /// La raison d'être de la passe, en une assertion : deux lignes avant,
-    /// une seule après.
+    /// The pass's reason to exist, in one assertion: two rows before, one
+    /// after.
     #[test]
-    fn les_entetes_rapatries_recollent_un_fil_coupe() {
-        let (mut server, mut store, account) = echange_coupe();
-        assert_eq!(conversations(&store), 2, "faute du chaînon manquant");
+    fn backfilled_headers_reglue_a_cut_thread() {
+        let (mut server, mut store, account) = cut_exchange();
+        assert_eq!(conversations(&store), 2, "missing the link");
 
         let report =
             backfill_thread_headers(&mut server, &mut store, account, "INBOX", 0, 100).unwrap();
 
         assert_eq!(report.fetched, 2);
         assert_eq!(report.remaining, 0);
-        assert_eq!(conversations(&store), 1, "l'échange est reconstitué");
+        assert_eq!(conversations(&store), 1, "the exchange is reconstructed");
     }
 
-    /// Un message SANS `References` doit sortir définitivement de la liste
-    /// des manquants. Sinon la passe le redemanderait à chaque
-    /// synchronisation, pour toujours.
+    /// A message WITHOUT `References` must leave the list of missing ones
+    /// for good. Otherwise the pass would request it again on every sync,
+    /// forever.
     #[test]
-    fn un_message_sans_references_n_est_pas_redemande() {
-        let (mut server, mut store, account) = echange_coupe();
+    fn a_message_without_references_is_not_requested_again() {
+        let (mut server, mut store, account) = cut_exchange();
         backfill_thread_headers(&mut server, &mut store, account, "INBOX", 0, 100).unwrap();
 
-        let encore =
+        let again =
             backfill_thread_headers(&mut server, &mut store, account, "INBOX", 0, 100).unwrap();
 
-        assert_eq!(encore.fetched, 0, "plus rien à lire");
-        assert_eq!(server.header_batches.len(), 1, "aucun second aller-retour");
+        assert_eq!(again.fetched, 0, "nothing left to read");
+        assert_eq!(server.header_batches.len(), 1, "no second round trip");
     }
 
-    /// Groupée, comme les corps : un aller-retour par message rendrait la
-    /// passe intenable sur une boîte remplie.
+    /// Batched, like bodies: a round trip per message would make the pass
+    /// untenable on a full mailbox.
     #[test]
-    fn la_passe_demande_les_entetes_par_lots() {
+    fn the_pass_requests_headers_in_batches() {
         let mut server = FakeServer::new(false);
         for uid in 1..=5 {
-            server.add(uid, &format!("sujet {uid}"));
+            server.add(uid, &format!("subject {uid}"));
         }
         let mut store = Store::open_in_memory().unwrap();
         let account = store
@@ -653,13 +659,13 @@ mod tests {
         assert_eq!(server.header_batches, vec![vec![5, 4, 3, 2, 1]]);
     }
 
-    /// Bornée : un budget épuisé laisse le reste pour le passage suivant,
-    /// et le rapport le dit.
+    /// Bounded: an exhausted budget leaves the rest for the next pass, and
+    /// the report says so.
     #[test]
-    fn le_budget_borne_un_passage_et_le_reste_est_annonce() {
+    fn the_budget_bounds_a_pass_and_the_rest_is_reported() {
         let mut server = FakeServer::new(false);
         for uid in 1..=5 {
-            server.add(uid, &format!("sujet {uid}"));
+            server.add(uid, &format!("subject {uid}"));
         }
         let mut store = Store::open_in_memory().unwrap();
         let account = store

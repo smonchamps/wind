@@ -70,7 +70,7 @@ pub use store::{
     CleanupSession, InvitationRank, Store, SyncState, UnifiedRow,
 };
 pub use sync::{
-    RepereLocal, SYNC_BYTES_PER_MESSAGE, SyncEngine, SyncMode, SyncReport, disk_shortfall,
-    faut_relever, sync_order, sync_percent,
+    LocalMarker, SYNC_BYTES_PER_MESSAGE, SyncEngine, SyncMode, SyncReport, disk_shortfall,
+    must_poll, sync_order, sync_percent,
 };
 pub use transport::{MailTransport, SendError};

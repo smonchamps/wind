@@ -654,22 +654,22 @@ fn doit_relever(
     let Some(statut) = statut else {
         return true;
     };
-    let repere = (|| -> Result<Option<mail_core::RepereLocal>, mail_core::Error> {
+    let repere = (|| -> Result<Option<mail_core::LocalMarker>, mail_core::Error> {
         let Some(state) = store.sync_state(account_id, boite)? else {
             return Ok(None);
         };
-        Ok(Some(mail_core::RepereLocal {
+        Ok(Some(mail_core::LocalMarker {
             uid_validity: state.uid_validity,
-            uidnext_vu: store.remote_uidnext(state.mailbox_id)?,
-            messages_locaux: store.envelope_count(state.mailbox_id)?,
-            actions_en_attente: store.has_pending_actions(state.mailbox_id)?,
+            uidnext_seen: store.remote_uidnext(state.mailbox_id)?,
+            local_messages: store.envelope_count(state.mailbox_id)?,
+            pending_actions: store.has_pending_actions(state.mailbox_id)?,
             // E2b : le modseq du dernier SELECT soldé — c'est lui qui
             // réveille un dossier dont seuls les drapeaux ont glissé.
-            modseq_vu: state.highest_modseq,
+            modseq_seen: state.highest_modseq,
         }))
     })();
     match repere {
-        Ok(repere) => mail_core::faut_relever(statut, repere.as_ref()),
+        Ok(repere) => mail_core::must_poll(statut, repere.as_ref()),
         Err(err) => {
             problems.push(format!("repère de « {boite} » : {err}"));
             true
@@ -740,8 +740,8 @@ fn relever_inbox(
             fetched: 0,
             deleted: 0,
             replayed: 0,
-            refusees: 0,
-            sans_condstore: false,
+            refused: 0,
+            without_condstore: false,
         }
     };
 
@@ -815,15 +815,15 @@ fn relever_inbox(
     // D-51 (décision CE D3, PLAN-AUDIT-V2) : un serveur sans CONDSTORE ne
     // resynchronise jamais ses drapeaux — dette dite, nommée UNE fois par
     // compte et par session dans `wind.log`, pour savoir si le cas existe.
-    if report.sans_condstore && sans_condstore_premiere_fois(account_id) {
+    if report.without_condstore && sans_condstore_premiere_fois(account_id) {
         crate::trace::trace(&format!(
             "compte {account_id} : sans CONDSTORE, drapeaux non resynchronisés (D-51)"
         ));
     }
-    if report.refusees > 0 {
+    if report.refused > 0 {
         crate::trace::trace(&format!(
             "relève compte {account_id} : {} action(s) mise(s) en quarantaine",
-            report.refusees
+            report.refused
         ));
     }
     Ok((report, statut_inbox))
@@ -4326,7 +4326,7 @@ pub struct PasseReport {
 ///    chemin partagé `relever_inbox` : bulles et compteurs, rien ne se
 ///    raconte deux fois).
 /// 2. **L'inventaire** : LIST-STATUS (un aller-retour, E2c) —
-///    `faut_relever` désigne les dossiers qui ont bougé : la destination
+///    `must_poll` désigne les dossiers qui ont bougé : la destination
 ///    du geste, et elle seule en pratique. La destination n'est JAMAIS
 ///    devinée (Corbeille RFC 6154, label Gmail : tout se voit au
 ///    STATUS). INBOX reste au veilleur et au cycle — la relever ici
@@ -4659,7 +4659,7 @@ fn passe_apres_geste_compte(
 }
 
 /// Une relève de dossier de la passe (phase inventaire) : gardée par
-/// `faut_relever`, soldée, comptée. Rend vrai si le dossier a été relevé.
+/// `must_poll`, soldée, comptée. Rend vrai si le dossier a été relevé.
 #[allow(clippy::too_many_arguments)]
 fn relever_dossier_passe(
     server: &mut ImapServer,
