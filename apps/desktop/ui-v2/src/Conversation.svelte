@@ -115,7 +115,9 @@
     border:1px solid var(--border); border-radius:var(--r-controle); cursor:pointer;
   }
   button:hover { background:var(--sel); }
-  .retour { padding:0 14px; }
+  /* Passe 5 (2026-09-02) : dans la grille, un bouton s'étire sur sa
+     piste par défaut — le retour garde sa largeur de contenu. */
+  .retour { padding:0 14px; justify-self:start; }
   .principal {
     font-weight:600; color:var(--onAccent); background:var(--accent);
     border-color:var(--accent);

@@ -797,7 +797,9 @@ jamais un gel muet. mail-core 448 → 449. Enseignement au STANDARD §9.
   défilement de la scène », remplacé par le verdict — réécrit sur le
   fait nouveau : les gestes dans l'entête, au-dessus de la scène), puis
   VERTE en 2,7 min, 197 e2e, flaky 0 ; après la passe 4 : VERTE en
-  2,7 min, 197 e2e, flaky 0.
+  2,7 min, 197 e2e, flaky 0. Après la passe 5 : VERTE en 2,9 min, 196 e2e,
+  flaky 1 — `selection-multiple:174` pour la TROISIÈME gate du jour :
+  D-54, à instruire (D4 : compté, pas rouge).
 
 ## STOP 2 — checklist de terrain (CE)
 
@@ -1045,6 +1047,14 @@ stable both-edges` sur la scène pour que la colonne reste centrée dans
 la même largeur, barre de défilement ou non. Filets ajoutés à
 `barres-fil.spec.js` : la barre collée au haut visible (≤ 1 px) une
 fois défilé ; Archiver aligné sur `.colonne` (≤ 1 px).
+
+## STOP 2 — passe 5 du 2026-09-02 : collant OK, le retour reprend sa largeur
+
+Passe 5 : (1) la barre collée tient le haut visible — OK ; (2) « remets
+le bouton Boîte de réception à sa largeur initiale » : dans la grille de
+l'entête, un élément s'étire sur sa piste par défaut (`justify-self:
+stretch`) — le retour reprend `justify-self:start`. Filet : sa largeur
+reste celle de son contenu (< 300 px).
 
 ## § Décisions CE — tranchées au STOP 1, le 2026-09-02
 

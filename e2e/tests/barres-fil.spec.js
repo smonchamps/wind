@@ -85,4 +85,8 @@ test("écran 03 : les gestes de tri vivent dans la barre d'entête, la barre de 
     return archiver.getBoundingClientRect().left - colonne.getBoundingClientRect().left;
   });
   expect(Math.abs(alignement)).toBeLessThanOrEqual(1);
+  // Passe 5 (2026-09-02, CE) : le retour garde sa largeur de contenu —
+  // dans la grille de l'entête il s'étirait sur toute sa piste.
+  const retour = await page.locator('[data-testid="retour-boite"]').boundingBox();
+  expect(retour.width).toBeLessThan(300);
 });

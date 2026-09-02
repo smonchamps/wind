@@ -370,6 +370,21 @@ motivée.)
 - **Rouvre si** : le budget précisé est dépassé sur le poste du CE après
   D9, ou un gel apparaît au défilement du Kiosque.
 
+### D-54 · `selection-multiple:174` (« le raccourci e archive le LOT coché ») flake une gate sur trois
+
+- **Constat** (2026-09-02, gates de PLAN-AUDIT-V2) : passé au second
+  essai dans trois gates sur six (D4 : compté, jamais rouge). Le geste
+  : plusieurs rangées cochées, `e` au clavier, un seul toast et les
+  fils partent. Sur cette machine seulement jusqu'ici (la CI est verte
+  à chaque fois) — STANDARD §7.5, la CI est la référence.
+- **Raison du report** : hors périmètre du terrain du jour ; un flaky
+  qui passe au second essai ne bloque pas, mais trois occurrences le
+  jour même sortent du bruit.
+- **Piste** : rejouer la spec seule vingt fois (`--repeat-each`), lire
+  la trace du premier échec — course entre la coche et le raccourci
+  (focus laissé sur la case, A38) ou entre le toast et l'assertion.
+- **Rouvre si** : une quatrième occurrence, ou un rouge en CI.
+
 ## Soldée
 
 ### ~~D-36 · La colonne fantôme de `echos` naît sur toute base neuve~~ — soldée le 2026-09-01
