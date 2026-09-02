@@ -788,7 +788,11 @@ jamais un gel muet. mail-core 448 → 449. Enseignement au STANDARD §9.
   193 e2e, flaky 0 ; après la passe 1 de terrain : ROUGE au format
   (deux tests non formatés, `cargo fmt`), puis VERTE en 2,7 min,
   194 e2e + 1 banc ignoré, flaky 0 ; après D9 (fenêtre 5) : VERTE en
-  2,7 min, 193 e2e, flaky 1 (`selection-multiple:174`, connu D4).
+  2,7 min, 193 e2e, flaky 1 (`selection-multiple:174`, connu D4) ;
+  après la passe 2 : ROUGE à la cohérence du Système (icône « mail »
+  hors catalogue dans la sonde — « work », un repère), puis VERTE en
+  3 min, 194 e2e, flaky 1 (`selection-multiple:174` — deux gates de
+  suite : à instruire si une troisième).
 
 ## STOP 2 — checklist de terrain (CE)
 
@@ -962,6 +966,43 @@ préciser le geste.
 **D9 tranchée le 2026-09-02 (CE) : « 5 (Recommandé) »** — `FENETRE = 5`
 (11 iframes vivantes au plus), livré dans la passe 2 de terrain ; la
 racine reste D-53, le budget à préciser au `/solde`.
+
+## STOP 2 — passe 2 du 2026-09-02 : 4 OK, 1 KO, 1 remarque
+
+Après `7d474ad` + `fe5ffec` (fenêtre 5) : journal sain, Répondre à
+tous OK, Kiosque « Toujours afficher » OK, transfert (avant + après)
+OK. **RAM après dix pages de Kiosque : 251,5 Mo sur 6 processus** —
+GPU 132,3 Mo, rendu « Wind » 69,6, gestionnaire 36,3, réseau 8,1,
+stockage 3,2, crashpad 1,8. La fenêtre 5 ne change rien au total
+(249 → 251) : **le processus GPU porte plus de la moitié** — ce sont
+les surfaces composées des iframes (et de leurs images distantes
+accordées), pas le DOM. D9 tenue (5 ne coûte rien), mais le levier est
+ailleurs : D-53 amendée (GPU), budget à préciser au solde.
+
+**KO persistant : « DÉJÀ CONSULTÉ » chevauche la rangée Doctolib**,
+un vide d'une rangée sous elle, en Réception organisée (capture 2 :
+l'écho du transfert de test vient ensuite, section « Déjà consulté »).
+La bande de section est positionnée en absolu d'après le MODÈLE de
+hauteurs (`decalage` : h1 nue, h2 porteuse, entêtes) tandis que les
+rangées s'empilent en flux à leur hauteur RÉELLE — dès qu'une rangée
+au-dessus est plus haute que le modèle, l'entête remonte. **Reproduit
+sur le décor Clarity** (géométrie lue dans le DOM) : bande à 458 px,
+son vide à 481 — 23 px trop haut ; rangées réelles 94 / 121 px, modèle
+h1 = 88 / h2 = 115 : **les sondes ne rendaient ni le bloc de boîte (vue
+mêlée) ni le ⋯ du mode organisé** (24 px centrés dans une ligne de
+14 px) — 6 px de moins par rangée, une rangée entière au bout de vingt
+(le CE). TDD : `sections-liste.spec.js` (la bande calée sur son vide
+au pixel, la première rangée lue juste sous elle) — RED 22,8 px, GREEN
+en donnant aux sondes ce qui donne sa hauteur à la ligne réelle, sous
+les mêmes conditions.
+
+**Remarque d'apparence (CE)** : la barre collante du fil (Archiver /
+Signaler comme spam / Épingler) doit respecter le Système : une
+élévation ou des traits autour — on doit sentir qu'elle flotte
+au-dessus du message. Aujourd'hui : bande à fond `--bg`, sans bord ni
+ombre. Proposition (STOP visuel) : l'objet flottant du produit (A108,
+`Menu.svelte`) — surface, bordure `--border`, rayon des contrôles,
+`--shadow`, décollée de 8 px du haut du scrollport.
 
 ## § Décisions CE — tranchées au STOP 1, le 2026-09-02
 

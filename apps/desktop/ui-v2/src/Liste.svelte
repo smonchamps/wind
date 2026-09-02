@@ -1138,16 +1138,46 @@
          `position:relative` elle n'est pas le bloc conteneur des sondes
          en `position:absolute`, qui se calent alors sur `.cadre` et lui
          ajoutent jusqu'à 85 px de défilement FANTÔME sur une fenêtre
-         courte (mesuré au banc, variante C). -->
+         courte (mesuré au banc, variante C).
+         Terrain 2026-09-02 (STOP 2 de la vague 2, passe 2) : la sonde
+         porte TOUT ce qui donne sa hauteur à la ligne d'entête réelle,
+         sous les mêmes conditions — le bloc de boîte (vue mêlée) et le
+         ⋯ du mode organisé (24 px centrés dans une ligne de 14 px).
+         Sans eux, 6 px de moins par rangée : au bout de vingt rangées,
+         la bande « Déjà consulté » chevauchait une rangée entière. -->
     <div class="sondes-cage" aria-hidden="true">
       <div class="sondes">
         <article class="ligne" bind:offsetHeight={h1}>
-          <div class="l1"><span class="exp">Sonde</span><span class="essor"></span><span class="heure">00:00</span></div>
+          <div class="l1">
+            <span class="exp">Sonde</span>
+            {#if vueMelange(compte, resultats !== null)}
+              <span class="boite"><span class="mot">{t('liste.sur')}</span>
+                <span class="repere-nu" aria-hidden="true"><Icone nom="work" taille={14} /></span>
+                <span class="lib">Sonde</span></span>
+            {/if}
+            <span class="essor"></span>
+            {#if gestesOrganise}
+              <button type="button" class="gestes" tabindex="-1"><Icone nom="more_horiz" taille={14} /></button>
+            {/if}
+            <span class="heure">00:00</span>
+          </div>
           <p class="objet">Sonde</p>
           <p class="apercu">Sonde</p>
         </article>
         <article class="ligne" bind:offsetHeight={h2}>
-          <div class="l1"><span class="exp">Sonde</span><span class="essor"></span><span class="heure">00:00</span></div>
+          <div class="l1">
+            <span class="exp">Sonde</span>
+            {#if vueMelange(compte, resultats !== null)}
+              <span class="boite"><span class="mot">{t('liste.sur')}</span>
+                <span class="repere-nu" aria-hidden="true"><Icone nom="work" taille={14} /></span>
+                <span class="lib">Sonde</span></span>
+            {/if}
+            <span class="essor"></span>
+            {#if gestesOrganise}
+              <button type="button" class="gestes" tabindex="-1"><Icone nom="more_horiz" taille={14} /></button>
+            {/if}
+            <span class="heure">00:00</span>
+          </div>
           <p class="objet">Sonde</p>
           <p class="apercu">Sonde</p>
           <div class="puces"><span class="puce"><Icone nom="forum" />2</span></div>

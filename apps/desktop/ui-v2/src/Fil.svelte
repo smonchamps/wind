@@ -860,12 +860,18 @@
   .fichiers .puce .nom { color:var(--ink); }
   .fichiers .puce .taille { font-size:12px; color:var(--muted); }
   /* RETOURS-14 R1 (D1) : la barre colle au scrollport du CADRE (le
-     volet ou la scène de l'écran 03) — fond opaque --bg pour que les
-     cartes passent dessous, z-index au-dessus des cartes élevées. */
+     volet ou la scène de l'écran 03), z-index au-dessus des cartes
+     élevées. Terrain 2026-09-02 (CE, passe 2 du STOP 2 de la vague
+     2) : elle FLOTTE au-dessus du message — le dessin de l'objet
+     flottant du produit (A108, Menu) : surface, bordure, rayon des
+     contrôles, ombre --shadow, décollée de 8 px du haut du scrollport
+     pour que les cartes passent visiblement dessous. */
   .actions {
-    flex:none; padding:10px 0 12px;
+    flex:none; margin:0 0 12px; padding:8px 10px;
     display:flex; gap:12px; flex-wrap:wrap;
-    position:sticky; top:0; z-index:4; background:var(--bg);
+    position:sticky; top:8px; z-index:4;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--r-controle); box-shadow:var(--shadow);
   }
   .actions button {
     height:32px; padding:0 16px; display:inline-flex; align-items:center;

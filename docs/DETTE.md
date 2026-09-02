@@ -353,8 +353,13 @@ motivée.)
   les documents démontés ne rendent pas leur mémoire (`corpsAuto` et
   `brancherLiens` nettoient — la rétention est ailleurs : documents des
   iframes retirées, heap du rendu qui ne rétrécit pas ?).
+- **Passe 2 (fenêtre 5, poste du CE)** : 251,5 Mo sur 6 processus —
+  **GPU 132,3 Mo**, rendu 69,6, gestionnaire 36,3, réseau 8,1, stockage
+  3,2, crashpad 1,8. La fenêtre ne change rien au total : le processus
+  GPU porte plus de la moitié (surfaces composées des iframes et de
+  leurs images accordées), le DOM n'est pas le levier.
 - **Raison du report** : décision CE D9 sur la fenêtre (réglage
-  immédiat) ; la racine — une iframe par carte — est une question de
+  immédiat, tenu — ne coûte rien) ; la racine — une iframe par carte — est une question de
   conception (une seule iframe pour la carte lue ? cartes repliées par
   défaut ? rendu sans iframe ?) : un chantier set-based, pas un
   réglage. Le budget lui-même est à préciser : « working set privé »
