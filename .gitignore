@@ -11,8 +11,9 @@ apps/desktop/ui-v2/dist/
 e2e/test-results/
 e2e/playwright-report/
 
-# Journaux : traces terrain de scripts/lancer-wind.ps1, journaux de
-# spans des bancs, maj.log — JAMAIS verses, ou qu'ils soient. Le patron
-# racine seul (`/*.log`) a laisse entrer 9 Mo de journaux du terrain
-# (99 adresses reelles) par spikes/demarrage/journaux (audit 2026-09-01).
+# Logs: field traces of scripts/run-wind.ps1, span logs of the benches,
+# maj.log — NEVER committed, wherever they are. The root-only pattern
+# (`/*.log`) let 9 MB of field logs into the PUBLIC repository under
+# spikes/ (audit 2026-09-01, S1-1): global pattern, plus target/ under
+# any spike.
 *.log

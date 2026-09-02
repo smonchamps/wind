@@ -1,61 +1,63 @@
 ---
 name: gate
-description: Rejouer la gate complète de Wind (fmt, build ui-v2, contrastes, cohérence du Système, garde du thread principal, clippy, tests Rust, e2e) et rapporter les faits bruts. Obligatoire avant tout commit — jamais les tests seuls.
+description: Replay Wind's full gate (fmt, ui-v2 build + lint, contrasts, System coherence, main-thread guard, script syntax, language ratchet, IPC contract, markdown links, clippy, Rust tests, e2e) and report the raw facts. Mandatory before any commit — never the tests alone.
 ---
 
-# /gate — la gate complète, du plus rapide au plus lent
+# /gate — the full gate, from the fastest to the slowest
 
-L'ordre est celui du hook `.githooks/pre-push` (échouer tôt), plus la
-vérification de cohérence du Système jouée en CI. Exécuter **tout**,
-rapporter les faits bruts — chiffres, sorties d'échec — sans adoucir.
+The order is the one of the `.githooks/pre-push` hook (fail early), plus
+the System coherence check played in CI. Run **everything**, report the
+raw facts — figures, failure outputs — without softening.
 
-**La gate complète s'exécute en UN appel** (fail-fast, verdict chiffré
-par étape — jamais les 9 commandes en tours d'outil séparés) :
+**The full gate runs in ONE call** (fail-fast, figured verdict per step —
+never the 13 commands as separate tool turns):
 
 ```
 powershell -ExecutionPolicy Bypass -File scripts/gate.ps1
 ```
 
-Les 9 étapes du script, pour la re-gate partielle (rejouées alors une à
-une, seules les étapes concernées) :
+The 13 steps of the script, for a partial re-gate (then replayed one by
+one, only the steps concerned):
 
 ```
 cargo fmt --all -- --check
-(cd apps/desktop/ui-v2 && npm run build)        # zéro avertissement exigé
-node e2e/contraste.mjs                          # paires WCAG (A8)
-node e2e/coherence-systeme.mjs                  # Système ↔ systeme.css, valeur pour valeur
-node e2e/garde-thread-principal.mjs             # aucune commande bloquante sur la pompe (PLAN-GELS)
+(cd apps/desktop/ui-v2 && npm run build && npm run lint)   # zero warnings; eslint no-undef
+node e2e/contraste.mjs                          # WCAG pairs (A8)
+node e2e/coherence-systeme.mjs                  # System ↔ systeme.css, value for value
+node e2e/garde-thread-principal.mjs             # no blocking command on the pump (PLAN-GELS)
+node --check e2e/*.mjs scripts/*.mjs            # + the PowerShell parser on every .ps1
+node e2e/language-gate.mjs                      # French ratchet: no rise per file
+node e2e/ipc-contract.mjs                       # generate_handler! == #[tauri::command] == appel('…')
+node e2e/docs-links.mjs                         # every relative markdown link resolves
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace --all-targets            # --all-targets n'est PAS décoratif (examples/)
+cargo test --workspace --all-targets            # --all-targets is NOT decorative (examples/)
 cargo test --workspace --doc
-(cd e2e && npm test)                            # la vraie fenêtre, CDP WebView2
+(cd e2e && npm test)                            # the real window, CDP WebView2
 ```
 
-## Règles
+## Rules
 
-- **Un rouge = andon.** On arrête, on corrige. Un warning clippy ou un
-  avertissement du build ui-v2 est un rouge.
-- **Re-gate partielle après correction** : rejouer l'étape rouge et ce
-  que la correction peut impacter — si du Rust a bougé, l'amont aussi
-  (fmt, clippy, tests Rust) ; si l'UI a bougé, build ui-v2, contrastes,
-  cohérence, e2e. La **gate complète finale avant commit reste due**,
-  inchangée — la re-gate partielle ne vaut que pour la boucle de
-  correction.
-- **Après un sed/remplacement mécanique, toujours rejouer `fmt`** —
-  la CI rouge du 2026-08-14 vient de là.
-- **E2E rouge en local ≠ régression.** La suite flake sur cette machine
-  (profil WebView2, OneDrive, charge). Playwright rejoue une fois de
-  lui-même (`retries: 1`) : un test qui sort **« flaky » se consigne au
-  verdict de gate**, tel quel — la gate reste verte mais le fait est
-  dit. Un rouge franc (deux échecs de suite) : rejouer le **spec en
-  fichier entier, en isolation, UNE fois** — jamais la suite complète
-  pour trancher un flake ; si le doute persiste, `gh run list` — **la
-  CI est la référence**. Le flake connu : le brouillon fantôme
-  (documenté au commit 0956c85).
-- **La toolchain du gate doit être celle de la CI**
-  (`rust-toolchain.toml` + ref épinglée dans `ci.yml`) — STANDARD §7.4.
-- Le verdict final est la liste : chaque étape, verte ou rouge, avec
-  ses chiffres (nombre de tests, avertissements, paires, valeurs).
-- **Jamais d'attente CI au premier plan** : `git push` (le pre-push
-  rejoue la gate) et `gh run watch` se lancent en arrière-plan ; la
-  session annonce le verdict quand il tombe.
+- **A red = andon.** We stop, we fix. A clippy warning or a ui-v2 build
+  warning is a red.
+- **Partial re-gate after a fix**: replay the red step and what the fix
+  can impact — if Rust moved, upstream too (fmt, clippy, Rust tests); if
+  the UI moved, ui-v2 build, contrasts, coherence, e2e. The **final full
+  gate before the commit is still due**, unchanged — the partial re-gate
+  is only for the fixing loop.
+- **After a sed/mechanical replacement, always replay `fmt`** — the red
+  CI of 2026-08-14 comes from there.
+- **Red E2E locally ≠ regression.** The suite flakes on this machine
+  (WebView2 profile, OneDrive, load). Playwright retries once by itself
+  (`retries: 1`): a test that comes out **"flaky" is recorded in the gate
+  verdict**, as is — the gate stays green but the fact is stated. A
+  frank red (two failures in a row): replay the **spec as a whole file,
+  in isolation, ONCE** — never the full suite to settle a flake; if the
+  doubt persists, `gh run list` — **the CI is the reference**. The known
+  flake: the ghost draft (documented at commit 0956c85).
+- **The gate's toolchain must be the CI's** (`rust-toolchain.toml` +
+  pinned ref in `ci.yml`) — STANDARD §7.4.
+- The final verdict is the list: each step, green or red, with its
+  figures (number of tests, warnings, pairs, values).
+- **Never a CI wait in the foreground**: `git push` (the pre-push replays
+  the gate) and `gh run watch` run in the background; the session
+  announces the verdict when it lands.

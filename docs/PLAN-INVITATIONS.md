@@ -12,7 +12,7 @@
 > **Livré en 0.7.0** (décision D7), publiée le 2026-08-23 et vérifiée
 > **18/18 PASS** le jour même.
 
-> Chantier ouvert le 2026-08-22 (`/chantier`), sur le retour
+> Chantier ouvert le 2026-08-22 (`/job`), sur le retour
 > pré-bêta : « les utilisateurs ne peuvent pas traiter les invitations
 > à des réunions reçues ». Énoncé : afficher une invitation en **carte
 > lisible** (titre, date/heure, organisateur, lieu, statut) et pouvoir

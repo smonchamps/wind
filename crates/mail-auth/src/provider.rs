@@ -73,7 +73,7 @@ pub struct Provider {
     pub imap: Endpoint,
     pub smtp: Endpoint,
     /// Identifiants figés au moment de la COMPILATION (D1,
-    /// PLAN-RETOURS-9) : `faire-release.ps1` pose `WIND_RELEASE_*`
+    /// PLAN-RETOURS-9) : `make-release.ps1` pose `WIND_RELEASE_*`
     /// avant les deux builds — un utilisateur final n'a aucun `setx` à
     /// faire. Tout autre build (dev, tests, CI) n'embarque rien : les
     /// valeurs ne vivent jamais au dépôt, et l'isolation e2e — qui
@@ -280,7 +280,7 @@ mod tests {
 
     /// PLAN-RETOURS-9 D1 : un build de dev ou de test n'embarque AUCUN
     /// identifiant — les variables `WIND_RELEASE_*` n'existent que dans
-    /// le run de `faire-release.ps1`. L'isolation e2e (purge des
+    /// le run de `make-release.ps1`. L'isolation e2e (purge des
     /// variables d'exécution avant chaque lancement) repose sur cette
     /// absence ; un build empoisonné par un environnement qui traîne
     /// doit crier ici.

@@ -20,7 +20,7 @@
 > (sous-ensemble 61 → 64, `?v=64`, preuve apercu 65/65). Tests Rust
 > 355 → **357**, e2e 103 → **108**.
 >
-> Chantier ouvert le 2026-08-21 (`/chantier`), sur quatre retours CE :
+> Chantier ouvert le 2026-08-21 (`/job`), sur quatre retours CE :
 > (1) amélioration — au survol d'une pièce jointe, icône et texte
 > « télécharger » pour que l'UX dise l'action à venir ; (2)
 > amélioration — les pièces jointes en haut du mail plutôt qu'en bas ;

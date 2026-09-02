@@ -19,10 +19,10 @@
 Depuis le 2026-08-15, `CLAUDE.md` (racine) charge le rôle et le renvoi
 vers ce document à chaque session : **plus rien à coller**. Les
 workflows standardisés vivent dans `.claude/skills/` (commitées,
-décision CE du même jour) : `/chantier` déroule un bug ou une feature
+décision CE du même jour) : `/job` déroule un bug ou une feature
 de bout en bout avec ses deux validations manuelles (plan, terrain),
-`/terrain` traite un constat terrain le jour même, `/gate` rejoue la
-gate complète, `/solde` clôt un chantier. L'agent `spike`
+`/field` traite un constat terrain le jour même, `/gate` rejoue la
+gate complète, `/close` clôt un chantier. L'agent `spike`
 (`.claude/agents/`) porte l'exploration set-based en worktree isolé.
 Le mode d'emploi complet : [WORKFLOW.md](WORKFLOW.md).
 
@@ -104,14 +104,22 @@ comportement par défaut : chaque ajout se paie en vitesse et en fiabilité.
 - Fin de phase = **une revue de clôture** `docs/PHASEn.md` : livré contre
   le plan, budgets re-mesurés, enseignements, reports assumés, GO/NO-GO.
 
-### 2.8 Langue et commits
-**Tout est en français** — commits, UI, docs, commentaires de code. Format
-`type: description` (`feat`, `fix`, `refactor`, `docs`, `test`, `chore`,
-`perf`, `ci`). **Jamais de `Co-Authored-By`.**
+### 2.8 Language and commits
 
-⚠️ **Les messages de commit s'écrivent SANS ACCENTS** — convention
-observable dans tout l'historique. Le corps du message porte les chiffres
-et le raisonnement.
+**Everything is in English** — code, identifiers, comments, commits,
+documentation, the System. Amended on 2026-09-02 by
+[PLAN-BASCULE-ANGLAIS](PLAN-BASCULE-ANGLAIS.md) (CE decision D2): until
+then everything was in French, and the switch is carried by the
+language ratchet (`e2e/language-gate.mjs`, gate step 7) — the French
+markers of every file can only go down. What stays French, by decision,
+is listed in [GLOSSARY.md](GLOSSARY.md) §1: the SQLite schema and the
+persisted keys (debt D-54), the French UI catalogue (delivered word for
+word), the archives, `BETA.fr.md`.
+
+Commits: `type: description` (`feat`, `fix`, `refactor`, `docs`, `test`,
+`chore`, `perf`, `ci`), in English; the body carries the figures and the
+reasoning. **Never a `Co-Authored-By`.** The old "no accents" rule of
+the commit messages is void with the language.
 
 ### 2.9 Numérotation des versions
 
@@ -141,7 +149,7 @@ On descend, on s'arrête au premier « oui » :
 3. **CORRECTIF** (`z`+1) — si la release n'inclut que des corrections,
    ajustements de l'existant, perf, allègements internes, nettoyages.
 
-La release se publie par `scripts/faire-release.ps1 <version>`
+La release se publie par `scripts/make-release.ps1 <version>`
 ([ADR 0013](adr/0013-installeur-nsis-maj-signee.md), bi-arch depuis
 [ADR 0023](adr/0023-retour-canal-x64.md) : deux builds `--target`,
 arm64 natif + x64 en cross-build local, **tout-ou-rien** — un build en
@@ -157,7 +165,7 @@ partie de la préparation de release, pas de l'après-coup.
 
 ### 2.10 Vérifier une release publiée
 
-Depuis la 0.1.10 (2026-08-18), `scripts/faire-release.ps1 <v>` fait
+Depuis la 0.1.10 (2026-08-18), `scripts/make-release.ps1 <v>` fait
 **toute** la release (validé au terrain) — à condition que l'entrée
 `## [<v>]` du CHANGELOG existe déjà (§2.9, son premier contrôle) :
 bump de la seule ligne
@@ -170,7 +178,7 @@ commit `release: version <v>`, push (gate rejouée), tag NU + Release
 GitHub `--latest` à **cinq assets**, notes tirées du CHANGELOG.
 
 Contrôle **a posteriori**, avant d'annoncer verte :
-**`scripts/verifier-release.ps1 <v>` joue tous les contrôles de forme**
+**`scripts/verify-release.ps1 <v>` joue tous les contrôles de forme**
 (la friction est encodée une fois — avec deux plateformes, les
 contrôles manuels doublaient). Ce qu'il vérifie, et qui reste la norme
 si on contrôle à la main :
@@ -312,7 +320,7 @@ scénarios du terrain sans réseau.
 | [0010](adr/0010-synchronisation-integrale.md) | **Synchronisation intégrale** — tout, sans horizon ni quota | Gate < 1 Go **levé** ; **stocker ≠ regrouper** (portée = INBOX + Envoyés) ; garde d'espace disque ; avancement en % |
 | [0011](adr/0011-journal-wal.md) | Journal SQLite en **WAL** | Une lecture ne bloque plus une synchro longue ; persistant, bases héritées converties |
 | [0012](adr/0012-migration-visible-interruptible.md) | Migration **visible et interruptible** | L'adoption est UNE transaction rembobinable — annuler laisse `user_version` inchangé, jamais d'adoption partielle ; sonde `pending_adoption` en lecture seule, qui annonce la **portée** |
-| [0013](adr/0013-installeur-nsis-maj-signee.md) | Installeur **NSIS** + mise à jour signée | **Pas MSIX** (virtualiserait `%APPDATA%`, orphelinerait la base) ; updater signé minisign, piloté depuis Rust ; signature Windows reportée ; tag GitHub = **version nue**, `latest.json` sans BOM (`scripts/faire-release.ps1`) |
+| [0013](adr/0013-installeur-nsis-maj-signee.md) | Installeur **NSIS** + mise à jour signée | **Pas MSIX** (virtualiserait `%APPDATA%`, orphelinerait la base) ; updater signé minisign, piloté depuis Rust ; signature Windows reportée ; tag GitHub = **version nue**, `latest.json` sans BOM (`scripts/make-release.ps1`) |
 | [0014](adr/0014-telemetrie-de-crash-locale.md) | Télémétrie de crash **locale, opt-in** | Fichier local seul (aucun réseau/tiers) ; panics seuls ; **message du panic supprimé** (seul vecteur de PII) ; hook qui ne touche jamais la base ; un crash thread principal fait un **double panic** (compteur `SEQ` + filtre `cannot unwind`) |
 | [0015](adr/0015-socle-ui-v2-svelte.md) | **Socle UI v2 = Svelte**, front web unique porté partout (Tauri 2 desktop+mobile + navigateur) | Départage set-based (vanilla / Svelte / WASM) **sur mesure** : liste 256 k + bascule de thème, deux moteurs (Blink desktop, Android-classe CPU ×6) — rendu neutralisé par fenêtrage + thème CSS. **Système écrit une fois** (Stratégie A) ; WASM écarté, vanilla en repli ; **iOS/WKWebView : validation terrain due** ; frontière UI↔cœur = port de transport ; `mail-core` intouché (ADR 0001) |
 | [0019](adr/0019-commandes-hors-du-thread-principal.md) | **Commandes bloquantes hors du thread principal**, une à la fois (`hors_pompe` = spawn_blocking + verrou global) | La pompe ne fait que pomper (gel mesuré : 25,2 s/40 s → 0) ; la sérialisation d'avant est CONSERVÉE ; gate `garde-thread-principal.mjs` + budget « aucun gel > 150 ms » (`sonde-gel.py`) |
@@ -512,9 +520,9 @@ Bash). Syntaxes différentes.
   chaînes.** PowerShell 5.1 (celui de `powershell -File`, au terrain)
   lit un fichier sans BOM en ANSI : un tiret cadratin « — » devient
   `â€”`, et ce `”` est un guillemet fermant pour son analyseur — la
-  chaîne se ferme, le script ne parse plus (`verifier-release.ps1`,
+  chaîne se ferme, le script ne parse plus (`verify-release.ps1`,
   2026-09-02, une release vérifiée à la main). Un `.ps1` qui porte du
-  non-ASCII porte un BOM UTF-8 (`faire-release.ps1`) ; la gate
+  non-ASCII porte un BOM UTF-8 (`make-release.ps1`) ; la gate
   (étape 6) parse chaque `.ps1` avec l'analyseur de ce PowerShell.
 
 ### 7.2 Les notifications exigent l'application INSTALLÉE
@@ -803,7 +811,7 @@ nue** (`0.1.2`) : le bandeau apparaissait — la détection marchait — mais
 l'installation renvoyait 404. **Le chemin entre `cargo tauri build` et
 l'app de l'utilisateur est du terrain lui aussi ; il se diagnostique en
 regardant les vrais assets publiés (API GitHub), pas en supposant.** Les
-deux sont désormais tenus par `scripts/faire-release.ps1`.
+deux sont désormais tenus par `scripts/make-release.ps1`.
 
 Un troisième piège, même famille (constat CE du 2026-08-22) : les **notes
 de release sont parties en mojibake** (« Ã© » pour « é ») sur neuf
@@ -984,8 +992,8 @@ chemin qu'elle touche, pas seulement les specs qu'on surveillait.
 | [`apps/desktop/src/commands.rs`](../apps/desktop/src/commands.rs) | Commandes Tauri (IPC), boucle toutes-boîtes, garde disque, avancement |
 | [`apps/desktop/ui-v2/src/App.svelte`](../apps/desktop/ui-v2/src/App.svelte) | L'UI (Svelte 5, seule depuis B2/PLAN-RETRAIT-V1) : écrans 01-04, fente d'avis, cycle de synchro automatique |
 | [`e2e/README.md`](../e2e/README.md) | Harnais E2E déterministe (CDP) |
-| [`scripts/faire-release.ps1`](../scripts/faire-release.ps1) | **Toute** la release (ADR 0013, bi-arch ADR 0023) : bump, deux builds signés arm64 + x64 (tout-ou-rien), `latest.json` deux plateformes sans BOM, commit + push + Release Latest au tag nu |
-| [`scripts/verifier-release.ps1`](../scripts/verifier-release.ps1) | La vérification §2.10 scriptée — 5 assets nommés, BOM, deux clés de plateforme, signatures == `.sig` et distinctes, URL qui résolvent |
+| [`scripts/make-release.ps1`](../scripts/make-release.ps1) | **Toute** la release (ADR 0013, bi-arch ADR 0023) : bump, deux builds signés arm64 + x64 (tout-ou-rien), `latest.json` deux plateformes sans BOM, commit + push + Release Latest au tag nu |
+| [`scripts/verify-release.ps1`](../scripts/verify-release.ps1) | La vérification §2.10 scriptée — 5 assets nommés, BOM, deux clés de plateforme, signatures == `.sig` et distinctes, URL qui résolvent |
 | [`crates/mail-core/src/crash.rs`](../crates/mail-core/src/crash.rs) | Rédaction PURE d'un rapport de crash — écarte le message (PII) (ADR 0014) |
 | [`apps/desktop/src/telemetry.rs`](../apps/desktop/src/telemetry.rs) | Panic hook, consentement en fichier, écriture locale du rapport (ADR 0014) |
 | [`spikes/ui-socle-v2/`](../spikes/ui-socle-v2/RAPPORT.md) | Spike de départage du socle UI v2 — preuve de l'ADR 0015, **jetable** |

@@ -8,9 +8,9 @@
 > déconnexion mène aux Réglages). Journal Système **A62** (composeur
 > riche) et **A63** (reconnexion). Revue à regard neuf : 10 trouvailles
 > confirmées, corrigées. Reports : DETTE **D-25**. Release **0.2.0** à
-> publier (`scripts/faire-release.ps1`, geste CE).
+> publier (`scripts/make-release.ps1`, geste CE).
 >
-> Chantier ouvert le 2026-08-19 (`/chantier`), issu du report R4 de
+> Chantier ouvert le 2026-08-19 (`/job`), issu du report R4 de
 > PLAN-RETOURS-4 (décision CE D1 du 2026-08-18). Release :
 > **0.2.0** — première capacité nouvelle du 0.x (MINEUR, STANDARD §2.9).
 
@@ -266,8 +266,8 @@ consignée (ADR 0019).
    vérifié à la source du message, reprise d'un vieux brouillon texte,
    brouillon riche poussé/relu, thème sombre), commandes PowerShell
    fournies.
-4. Après terrain : release **0.2.0** (`scripts/faire-release.ps1`),
-   auto-update confirmé, CI verte, `/solde`.
+4. Après terrain : release **0.2.0** (`scripts/make-release.ps1`),
+   auto-update confirmé, CI verte, `/close`.
 
 ## Terrain (STOP 2) — verdicts du 2026-08-20
 

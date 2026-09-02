@@ -151,7 +151,7 @@ impl Authenticator {
             resolve_credential(std::env::var(&id_var).ok(), provider.embedded_client_id)
                 .ok_or_else(|| {
                     // Le lecteur peut être un testeur (binaire construit hors
-                    // faire-release.ps1) : plus de consigne « terminal » seule —
+                    // make-release.ps1) : plus de consigne « terminal » seule —
                     // le premier remède dit est une version officielle (revue
                     // 2026-08-23, promesse du PLAN tenue).
                     AuthError::Config(format!(

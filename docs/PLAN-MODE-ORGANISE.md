@@ -20,11 +20,11 @@
 > mesuré : groupes AU SERVICE par agrégat). Encore dûs par ailleurs :
 > la mesure **S4** (flux d'inconnus, engagée une semaine sur les deux
 > postes le 2026-08-30) et la mesure du bandeau de MAJ via
-> `lancer-wind.ps1` (à la prochaine MAJ acceptée).
+> `run-wind.ps1` (à la prochaine MAJ acceptée).
 >
 > **Chiffres kaizen du chantier** (PLAN-KAIZEN-CLAUDE) : équiv. input
 > fil principal ≈ **80 M** (sessions dcc2f031 16,2 M + c9a2462e
-> 63,6 M, `scripts/mesurer-sessions.mjs` du 2026-08-30) ; **5 gates
+> 63,6 M, `scripts/measure-sessions.mjs` du 2026-08-30) ; **5 gates
 > complètes** jouées (E1, E2, E3, E4+E5, E5bis — toutes vertes,
 > 2,0-2,6 min d'e2e) ; **0 constat KO au STOP 2** sur cinq passes
 > terrain. Tests à la clôture : mail-core **410**, e2e **166**.
@@ -158,7 +158,7 @@
 > vague bêta** (PLAN-BETA, bloquant CE) — ce chantier vient APRÈS,
 > sauf décision contraire du CE.
 >
-> **Pour lancer :** `/chantier Feature : le Mode organisé —
+> **Pour lancer :** `/job Feature : le Mode organisé —
 > PLAN-MODE-ORGANISE.md porte le dossier d'instruction.` La session
 > jouera la Phase 0 (instruction sur pièces, §3-§5 à confirmer), la
 > Phase 1 (conception set-based, spikes du §6), puis présentera le
@@ -548,7 +548,7 @@ Le texte d'instruction d'origine des décisions :
 Journal A-n par étape livrée ; **un ADR « routage local par
 expéditeur »** (D1, structurant) ; relevé Système : 5 glyphes + les
 patrons de vue neufs (règle-libellé, rangs du Portier, pile) ;
-CHANGELOG par release (AVANT `faire-release.ps1`, §2.9 —
+CHANGELOG par release (AVANT `make-release.ps1`, §2.9 —
 `gh release list` d'abord) ; ETAT réécrit ; mémoire mise à jour ;
 `spikes/mode-organise/` conservé tel quel (jetable, référence de
 forme).

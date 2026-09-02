@@ -518,11 +518,11 @@ clippy propre, garde 110/0.
 Préparer le poste (build release + trace) :
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\terrain.ps1
+powershell -ExecutionPolicy Bypass -File scripts\field.ps1
 ```
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\lancer-wind.ps1
+powershell -ExecutionPolicy Bypass -File scripts\run-wind.ps1
 ```
 
 1. **E1 — mono-instance.** Wind ouvert, lancer une seconde fois
@@ -571,7 +571,7 @@ Get-Content "$env:APPDATA\dev.elements.wind\wind.log" -Tail 20
    **aucun sujet, aucune adresse** ; taille du fichier < 1 Mo.
 
 Budgets à re-mesurer (STANDARD §3) : gel de la pompe 0 > 150 ms
-(point 4) ; démarrage inchangé (`scripts\terrain.ps1` lit
+(point 4) ; démarrage inchangé (`scripts\field.ps1` lit
 `demarrage`).
 
 ## § Décisions CE — tranchées au STOP 1, le 2026-09-01 (soir)

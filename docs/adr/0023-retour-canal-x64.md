@@ -7,7 +7,7 @@
 
 Le canal x64 a été **retiré en 0.1.3** (PLAN-WIND E4) : le seul poste
 utilisateur était ARM64 et faisait tourner l'app x64 en émulation.
-Depuis, `faire-release.ps1` ne bâtit que l'hôte (arm64), la Release
+Depuis, `make-release.ps1` ne bâtit que l'hôte (arm64), la Release
 porte 3 assets et `latest.json` une seule clé `windows-aarch64`. La
 directive CE du 2026-08-22 (PLAN-RETOURS-8 R3) rouvre le canal :
 **chaque release livre x64 ET arm64**.
@@ -36,7 +36,7 @@ Faits d'instruction :
 ## Décision
 
 1. **Cross-build local sur le poste ARM64** (D6) — deux
-   `cargo tauri build --target <triple>` dans `faire-release.ps1`, la
+   `cargo tauri build --target <triple>` dans `make-release.ps1`, la
    clé de signature ne quitte jamais le poste (une même clé signe les
    deux canaux), mot de passe demandé une fois. La CI reste une gate,
    jamais un builder de release.
@@ -46,7 +46,7 @@ Faits d'instruction :
    répertoire de SA cible ; **garde anti-croisement encodée** (les
    deux signatures doivent être distinctes) — jamais laissée à la
    vigilance.
-4. **`verifier-release.ps1`** scripte la vérification §2.10 (5 assets
+4. **`verify-release.ps1`** scripte la vérification §2.10 (5 assets
    nommés, BOM, deux clés, signatures == `.sig` et distinctes, URL qui
    résolvent) — avec deux plateformes les contrôles manuels doublaient.
 5. **Preuve terrain par canal** (D5) : arm64 sur ce poste ; x64 sur un
@@ -62,7 +62,7 @@ Faits d'instruction :
 
 - Temps de release ~doublé (deux builds, ~4 min chacun) — assumé, la
   confirmation `OUI` reste après les builds.
-- `installer-poste.ps1` (préparation d'un poste x64) décrivait le
+- `install-workstation.ps1` (préparation d'un poste x64) décrivait le
   bi-arch comme « chantier à part » — retourné.
 - Les six mentions « 3 assets au tag nu » de l'historique d'ETAT
   restent vraies pour LEURS versions ; la norme courante est « 5

@@ -54,7 +54,7 @@ Demande : mettre la nouvelle icône Wind comme icône d'application.
 Faits établis :
 
 - `tauri.conf.json:26-28` pointe `icons/icon.ico`, généré par
-  `scripts/faire-icone.ps1` depuis la géométrie **« W-pastille »**
+  `scripts/make-icon.ps1` depuis la géométrie **« W-pastille »**
   (enveloppe à coins arrondis `#e2ebe8`/`#365a4f` + pastille « W »),
   soit la marque d'AVANT Elements.
 - La marque actuelle (V1/V11, PLAN-ELEMENTS, CE 2026-08-24) est
@@ -63,11 +63,11 @@ Faits établis :
   rabat `#1F8A8A`, rayon de plateforme 15/64 — `Marque.svelte`,
   `MARQUE` dans `lib/icones.js:101`, Système § Marque (l. 618).
 - `git log 84d46ea..HEAD -- apps/desktop/icons assets/marque
-  scripts/faire-icone.ps1` est **vide** : l'icône Windows (barre des
+  scripts/make-icon.ps1` est **vide** : l'icône Windows (barre des
   tâches, exécutable, installeur) est désynchronisée du Système depuis
   le 2026-08-24. Le commit `211a591` l'annonçait déjà comme reste.
 
-Correctif : réécrire le rendu GDI+ de `faire-icone.ps1` sur la géométrie
+Correctif : réécrire le rendu GDI+ de `make-icon.ps1` sur la géométrie
 Elements (tuile + enveloppe + rabat), régénérer `icon.ico`
 (256/48/32/16), mettre `assets/marque/*.svg` d'équerre, PNG d'aperçu
 pour verdict CE. Les tailles 32/16 demandent un arbitrage de lisibilité
@@ -110,7 +110,7 @@ Faits établis :
 - R1 : sélection multiple **dans la liste de l'écran 02** (shift-clic,
   Ctrl-clic, cases à cocher), barre d'actions groupées, actions du
   périmètre D1, exécution séquentielle des commandes cœur existantes.
-- R2 : `faire-icone.ps1` réécrit sur Elements, `icon.ico` régénéré,
+- R2 : `make-icon.ps1` réécrit sur Elements, `icon.ico` régénéré,
   `assets/marque/` d'équerre.
 - R3 : la cote de la marque d'entête (les deux emplois).
 - R4 : l'alignement baseline des glyphes de la nav (trois porteurs).
@@ -170,7 +170,7 @@ couvert, consigné en reste).
 Ordre : du plus petit au plus gros, STOP visuels précoces groupés.
 
 - **E1 — R2, l'icône d'application** : réécrire le rendu de
-  `faire-icone.ps1` (géométrie Elements, régime tuile figé),
+  `make-icon.ps1` (géométrie Elements, régime tuile figé),
   régénérer `icon.ico` + PNG d'aperçu aux 4 tailles → **STOP visuel CE
   sur les aperçus**, avant toute autre étape. `assets/marque/*.svg`
   remis d'équerre. Gate : build + vérification que l'exe emporte la

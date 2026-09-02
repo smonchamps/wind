@@ -2995,7 +2995,7 @@ fn horizon_corps(store: &Store, account_id: i64) -> i64 {
     match store.horizon_import(account_id) {
         Ok(valeur) => mail_core::horizon_epoch(&valeur, epoch_maintenant()),
         Err(err) => {
-            // §9 : l'échec se DIT (trace lisible via lancer-wind.ps1),
+            // §9 : l'échec se DIT (trace lisible via run-wind.ps1),
             // même quand le repli est sûr.
             crate::trace::trace(&format!(
                 "horizon_import illisible (compte {account_id}) : {err} ; import intégral par prudence"
@@ -6765,7 +6765,7 @@ fn updater_wind(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, String
 }
 
 /// Trace une etape de mise a jour : sur stderr (visible via
-/// `lancer-wind.ps1`) ET en append date dans `maj.log`, a cote de la
+/// `run-wind.ps1`) ET en append date dans `maj.log`, a cote de la
 /// base. L'app fenetree n'a pas de stderr : trois MAJ acceptees
 /// (0.13.0 → 0.15.0) sont passees sans qu'aucune mesure ne survive —
 /// le fichier rend la trace lisible APRES COUP, quel que soit le

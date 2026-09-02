@@ -10,47 +10,48 @@ env:
 
 jobs:
   quality:
-    name: fmt + clippy + tests (Windows, cible du produit)
+    name: fmt + clippy + tests (Windows, the product's target)
     runs-on: windows-latest
     steps:
-      # v5 tourne sur Node 24 ; v4 (Node 20) est deprecie par GitHub.
+      # v5 runs on Node 24; v4 (Node 20) is deprecated by GitHub.
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      # Version EPINGLEE (miroir de rust-toolchain.toml, que cette action
-      # ne lit pas). La CI ne suit plus « le dernier stable » : un lint
-      # clippy neuf d'une future version de Rust ne peut plus casser le
-      # build sans qu'on l'ait decide. Monter de version = changer ici ET
-      # dans rust-toolchain.toml.
+      # PINNED version (mirror of rust-toolchain.toml, which this action
+      # does not read). The CI no longer follows "the latest stable": a
+      # new clippy lint of a future Rust version can no longer break the
+      # build without our decision. Bumping = change here AND in
+      # rust-toolchain.toml.
       - uses: dtolnay/rust-toolchain@032958afbdc797a9164d3bc0b56325c1308924a5 # 1.97.1
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      # B1 : la conf expédiée pointe sur ui-v2/dist — `generate_context!`
-      # exige que le dossier EXISTE à la compilation. Le build Vite
-      # précède donc tout cargo qui compile le desktop.
+      # B1: the shipped config points at ui-v2/dist — `generate_context!`
+      # requires the folder to EXIST at compile time. The Vite build
+      # therefore precedes any cargo that compiles the desktop.
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: apps/desktop/ui-v2/package-lock.json
-      - name: Build ui-v2 (requis par generate_context)
+      - name: Build ui-v2 (required by generate_context)
         run: npm ci && npm run build
         working-directory: apps/desktop/ui-v2
       - name: Format
         run: cargo fmt --all -- --check
-      - name: Lints (warnings = erreurs)
+      - name: Lints (warnings = errors)
         run: cargo clippy --workspace --all-targets -- -D warnings
-      # --all-targets n'est PAS decoratif : sans lui, cargo ignore les tests
-      # des EXEMPLES (crates/mail-core/examples/) — dont celui qui empeche
-      # un diagnostic de divulguer des identifiants. Le hook pre-push le
-      # savait, la CI non (audit 2026-09-01). Meme perimetre que gate.ps1.
+      # --all-targets is NOT decorative: without it, cargo ignores the tests
+      # of the EXAMPLES (crates/mail-core/examples/) — including the one
+      # that keeps a diagnostic from disclosing credentials. The pre-push
+      # hook knew it, the CI did not (audit 2026-09-01). Same scope as
+      # gate.ps1.
       - name: Tests (--all-targets)
         run: cargo test --workspace --all-targets
       - name: Tests (--doc)
         run: cargo test --workspace --doc
 
-  # Pas de job E2E ici : un runner GitHub hébergé n'ouvre pas de fenêtre
-  # WebView2 (mesuré — voir ADR 0005). Les parcours E2E sont joués par le
-  # hook `.githooks/pre-push`, sur une vraie session Windows.
+  # No E2E job here: a hosted GitHub runner does not open a WebView2
+  # window (measured — see ADR 0005). The E2E journeys are played by the
+  # `.githooks/pre-push` hook, on a real Windows session.
 
   ui-v2:
     name: build ui-v2 (Svelte + Vite, PLAN-UI-V2)
@@ -62,17 +63,17 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: apps/desktop/ui-v2/package-lock.json
-      - name: Dependances
+      - name: Dependencies
         run: npm ci
         working-directory: apps/desktop/ui-v2
-      - name: Build Vite
+      - name: Vite build
         run: npm run build
         working-directory: apps/desktop/ui-v2
-      - name: Contrastes WCAG (A8)
+      - name: WCAG contrasts (A8)
         run: node e2e/contraste.mjs
-      - name: Coherence du Systeme (DC-D6)
+      - name: System coherence (DC-D6)
         run: node e2e/coherence-systeme.mjs
-      - name: Garde du thread principal (PLAN-GELS)
+      - name: Main-thread guard (PLAN-GELS)
         run: node e2e/garde-thread-principal.mjs
       # PLAN-BASCULE-ANGLAIS E1: the four nets of the switch, same scripts
       # as gate.ps1 (steps 2 and 7-9).
@@ -87,20 +88,20 @@ jobs:
         run: node e2e/docs-links.mjs
 
   audit:
-    name: cargo audit (CVE des dépendances)
+    name: cargo audit (dependency CVEs)
     runs-on: ubuntu-latest
     steps:
-      # v5 tourne sur Node 24 ; v4 (Node 20) est deprecie par GitHub.
+      # v5 runs on Node 24; v4 (Node 20) is deprecated by GitHub.
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      # `cargo audit` en direct, et non l'action rustsec/audit-check :
-      # celle-ci n'existe qu'en Node 20 (aucune version Node 24 publiee),
-      # donc GitHub la forcerait sur Node 24 avec un warning de
-      # depreciation. dtolnay (action composite) et rust-cache (Node 24)
-      # n'ont pas ce probleme. Meme garde qu'avant : `cargo audit` sort
-      # non-zero sur une vulnerabilite et fait echouer le job.
+      # `cargo audit` directly, not the rustsec/audit-check action: that
+      # one only exists for Node 20 (no Node 24 version published), so
+      # GitHub would force it onto Node 24 with a deprecation warning.
+      # dtolnay (composite action) and rust-cache (Node 24) do not have
+      # that problem. Same guard as before: `cargo audit` exits non-zero
+      # on a vulnerability and fails the job.
       - uses: dtolnay/rust-toolchain@032958afbdc797a9164d3bc0b56325c1308924a5 # 1.97.1
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      - name: Installer cargo-audit
+      - name: Install cargo-audit
         run: cargo install cargo-audit --locked
-      - name: Audit (CVE des dépendances)
+      - name: Audit (dependency CVEs)
         run: cargo audit

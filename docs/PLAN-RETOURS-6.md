@@ -19,7 +19,7 @@
 > consigné à ETAT — fait d'instruction : Gmail web n'affiche pas
 > `X-Priority`/`Importance`, marqueur algorithmique maison).
 >
-> Chantier ouvert le 2026-08-21 (`/chantier`), sur quatre retours CE :
+> Chantier ouvert le 2026-08-21 (`/job`), sur quatre retours CE :
 > (1) feature — gestionnaire de signature email ; (2) feature — envoyer
 > un email en différé à une date et heure choisies ; (3) feature —
 > bouton « important » dans le composeur ; (4) amélioration — l'entête

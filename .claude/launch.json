@@ -2,13 +2,13 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "maquettes-design",
+      "name": "design-mockups",
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "4173", "--directory", "docs/design"],
       "port": 4173
     },
     {
-      "name": "icones-apercu",
+      "name": "icons-preview",
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "4174", "--directory", "assets/icones"],
       "port": 4174

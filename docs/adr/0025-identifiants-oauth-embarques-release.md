@@ -29,7 +29,7 @@ avec un message de développeur. Un bêta-testeur ne fera jamais de
   embarqué → erreur ; une variable vide ne compte pas) — les postes
   dev et l'isolation e2e (purge des variables, `isolation-oauth.json`)
   gardent leur levier.
-- Les `WIND_RELEASE_*` ne sont posées QUE par `faire-release.ps1`,
+- Les `WIND_RELEASE_*` ne sont posées QUE par `make-release.ps1`,
   **pour la seule durée des deux builds**, retirées en `finally` —
   la revue à regard neuf a montré que, laissées dans le processus,
   elles faisaient rougir le test `dev_builds_embed_no_credentials`

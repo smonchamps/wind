@@ -678,7 +678,7 @@ motivée.)
 - **Fait (revue PLAN-KAIZEN-CLAUDE vague 2, 2026-08-23)** : le piège
   « generate_context! n'embarque le dist qu'à la compilation de
   main.rs » est tenu par `e2e/rebuild-v2.mjs` (empreinte + bump) et
-  `scripts/construire-wind.mjs` — mais un `cargo build` nu, hors de
+  `scripts/build-wind.mjs` — mais un `cargo build` nu, hors de
   ces deux portes, reste exposé.
 - **Pourquoi assumé** : ajouter la dépendance dans
   `apps/desktop/build.rs` toucherait le code produit avec une
@@ -693,7 +693,7 @@ motivée.)
   `patcherNom` (App.svelte) et `noms_get` (commands.rs) sont des
   clones structurels du duo repères — deuxième occurrence ; chaque
   table paie en outre SON `Store::open` sur la file sérialisée au
-  démarrage (~qq ms). Et la table `$oauth` de `faire-release.ps1`
+  démarrage (~qq ms). Et la table `$oauth` de `make-release.ps1`
   duplique les `option_env!` de `provider.rs` (commentaires croisés
   posés des deux côtés, mais aucun garde-fou).
 - **Pourquoi assumé** : à deux occurrences la factorisation coûterait
@@ -771,8 +771,8 @@ motivée.)
 - **Piste** : guetter la réouverture individuelle Trusted Signing
   (ou Certum si l'attente pèse) ; E2/E3 du PLAN-SIGNATURE sont écrites
   et GELÉES — outillage poste, `signCommand` injecté par
-  `faire-release.ps1` seulement, contrôle Authenticode ajouté à
-  `verifier-release.ps1` (18 → 20).
+  `make-release.ps1` seulement, contrôle Authenticode ajouté à
+  `verify-release.ps1` (18 → 20).
 - **Relevés de la bêta (registre PLAN-BETA §3 bis)** — la mesure qui
   rouvrira ce chantier ; un verdict par ligne, poste/version/date,
   sans identité :

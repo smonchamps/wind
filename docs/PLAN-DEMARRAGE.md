@@ -18,7 +18,7 @@
 > verdict cloud par binaire ET par jour : le même exe refusé puis
 > accepté ~24 h plus tard), le clic a appliqué 0.10.0 → 0.10.1. Le
 > silence de l'échec, lui, a ouvert
-> [PLAN-SIGNATURE](PLAN-SIGNATURE.md). Plus rien de dû : `/solde`.
+> [PLAN-SIGNATURE](PLAN-SIGNATURE.md). Plus rien de dû : `/close`.
 
 ### Gate et flake — 2026-08-26
 
@@ -833,14 +833,14 @@ sur les vrais comptes, **base réelle**.
 L'état du poste — base, version installée, identifiants, traces :
 
 ```bash
-powershell -ExecutionPolicy Bypass -File scripts\terrain.ps1
+powershell -ExecutionPolicy Bypass -File scripts\field.ps1
 ```
 
 Le lancement release **avec trace** (l'exe nu ne trace rien — piège
 STANDARD §9) :
 
 ```bash
-powershell -ExecutionPolicy Bypass -File scripts\lancer-wind.ps1
+powershell -ExecutionPolicy Bypass -File scripts\run-wind.ps1
 ```
 
 Le binaire instrumenté du banc :

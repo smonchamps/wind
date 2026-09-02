@@ -1,61 +1,61 @@
 #!/bin/sh
-# Gate pré-push : le dernier rempart avant que du code quitte la machine.
+# Pre-push gate: the last rampart before code leaves the machine.
 #
-# Il existe parce qu'un runner GitHub hébergé ne peut PAS ouvrir de fenêtre
-# WebView2 (mesuré : application vivante, muette, sans CDP — voir
-# docs/adr/0005-gate-e2e-hors-ci-hebergee.md). Les parcours E2E ne tournent
-# donc que d'ici.
+# It exists because a hosted GitHub runner CANNOT open a WebView2 window
+# (measured: application alive, mute, without CDP — see
+# docs/adr/0005-gate-e2e-hors-ci-hebergee.md). The E2E journeys therefore
+# only run from here.
 #
-# Ce qu'il empêche, concrètement : livrer en annonçant « tests verts » sans
-# qu'un seul parcours réel ait été joué. C'est exactement ce qui a laissé
-# passer le port SMTP ignoré et le menu d'ajout affiché en permanence.
+# What it prevents, concretely: shipping while announcing "tests green"
+# without a single real journey having been played. That is exactly what
+# let the ignored SMTP port and the permanently displayed add menu through.
 #
-# Ordre volontaire : du plus rapide au plus lent, pour échouer tôt.
+# Deliberate order: from the fastest to the slowest, to fail early.
 #
-# Contournement d'urgence : git push --no-verify (en connaissance de cause).
+# Emergency bypass: git push --no-verify (knowingly).
 set -e
 
-# Chemin rapide documentaire (PLAN-KAIZEN-CLAUDE vague 2, E4) : si TOUT
-# ce qui part est de la prose — docs/** ou *.md, en EXCLUANT
-# docs/design/** (le Système est du normatif outillé, DC-D6 : gate
-# entière) — les étapes 6-8 (clippy, tests Rust, e2e, ~4 min) ne
-# peuvent rien attraper : on garde les étapes en secondes (1-5).
-# Prudence par défaut : ref neuve ou suppression => gate entière.
+# Docs-only fast path (PLAN-KAIZEN-CLAUDE wave 2, E4): if EVERYTHING that
+# leaves is prose — docs/** or *.md, EXCLUDING docs/design/** (the System
+# is tooled normative content, DC-D6: full gate) — the steps 10-13
+# (clippy, Rust tests, e2e, ~4 min) can catch nothing: we keep the steps
+# measured in seconds (1-9).
+# Caution by default: new ref or deletion => full gate.
 docs_only=1
 while read -r local_ref local_sha remote_ref remote_sha; do
-  case "$local_sha" in *[!0]*) ;; *) docs_only=0; break ;; esac   # suppression de ref
-  case "$remote_sha" in *[!0]*) ;; *) docs_only=0; break ;; esac  # ref neuve
-  # Un remote_sha inconnu en local (historique reecrit, clone
-  # superficiel, remote avance) faisait mourir le hook sous `set -e`
-  # avec « Invalid revision range » — et le push avec lui (2026-09-01,
-  # apres git filter-repo). Prudence : gate entiere, pas un refus.
-  fichiers=$(git diff --name-only "$remote_sha".."$local_sha" 2>/dev/null) \
+  case "$local_sha" in *[!0]*) ;; *) docs_only=0; break ;; esac   # ref deletion
+  case "$remote_sha" in *[!0]*) ;; *) docs_only=0; break ;; esac  # new ref
+  # A remote_sha unknown locally (rewritten history, shallow clone, remote
+  # ahead) killed the hook under `set -e` with "Invalid revision range" —
+  # and the push with it (2026-09-01, after git filter-repo). Caution:
+  # full gate, not a refusal.
+  files=$(git diff --name-only "$remote_sha".."$local_sha" 2>/dev/null) \
     || { docs_only=0; break; }
-  [ -n "$fichiers" ] || continue
-  # Itération par LIGNE (jamais par mot : un chemin avec espace serait
-  # scindé et chaque fragment classé séparément).
-  vieux_ifs=$IFS
+  [ -n "$files" ] || continue
+  # Iterate by LINE (never by word: a path with a space would be split and
+  # each fragment classified separately).
+  old_ifs=$IFS
   IFS='
 '
-  for f in $fichiers; do
+  for f in $files; do
     case "$f" in
       docs/design/*) docs_only=0 ;;
       docs/*|*.md) ;;
       *) docs_only=0 ;;
     esac
   done
-  IFS=$vieux_ifs
+  IFS=$old_ifs
   [ "$docs_only" = 1 ] || break
 done
 
-# PLAN-AUDIT-V2 E9 (D-32 soldee) : UNE gate, `scripts/gate.ps1` — le hook
-# ne recopie plus ses neuf commandes (deux divergences non voulues y
-# vivaient). Le raccourci documentaire passe par `-DocsSeulement`.
+# PLAN-AUDIT-V2 E9 (D-32 settled): ONE gate, `scripts/gate.ps1` — the hook
+# no longer copies its commands (two unwanted divergences lived there).
+# The docs-only shortcut goes through `-DocsOnly`.
 if [ "$docs_only" = 1 ]; then
-  echo "Diff documentaire seul (docs/** + *.md, hors docs/design/**)."
-  powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gate.ps1 -DocsSeulement
+  echo "Docs-only diff (docs/** + *.md, outside docs/design/**)."
+  powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gate.ps1 -DocsOnly
 else
   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gate.ps1
 fi
 
-echo "Gate pré-push complet : la CI devrait être verte."
+echo "Pre-push gate complete: the CI should be green."

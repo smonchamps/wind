@@ -191,9 +191,9 @@ c'est ici que la dette V9 (D4) se juge sur pièce.
   ETAT ; DETTE (V9 palier 16, et ce que la revue reporte).
 
 Puis **⛔ STOP 2 terrain** (checklist + commandes PowerShell :
-`scripts/terrain.ps1`, `scripts/lancer-wind.ps1`), corrections le jour
+`scripts/field.ps1`, `scripts/run-wind.ps1`), corrections le jour
 même, re-gate, et Phase 5 (commits sans accents, push + CI en arrière-
-plan, `/solde` à la CI verte). Release selon D5.
+plan, `/close` à la CI verte). Release selon D5.
 
 ## 5. § Décisions CE
 
@@ -288,4 +288,4 @@ choix, netteté des icônes aux tailles réelles, coins vifs à côté des
 fenêtres Windows — la réserve V14 levée à la fenêtre réelle —, liste,
 marque et disque/anneau, registre 340, dalle claire du corps en nuit,
 perf perçue), zéro constat. App lancée depuis les sources
-(`scripts\lancer-wind.ps1`).
+(`scripts\run-wind.ps1`).

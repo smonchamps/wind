@@ -10,7 +10,7 @@
 - **Chaîne de livraison prouvée** : dépôt public, releases bi-arch
   signées minisign, auto-update prouvé aux deux postes sur trois
   versions consécutives (0.9.0 → 0.11.0), vérification scriptée
-  18/18 (`scripts/verifier-release.ps1`).
+  18/18 (`scripts/verify-release.ps1`).
 - **Parcours de premier démarrage** (PLAN-RETOURS-8) : un testeur
   neuf est guidé en quatre étapes.
 - **OAuth compilé dans la release** (ADR 0025, prouvé sans `setx`).
@@ -60,7 +60,7 @@ Cochées au fil de l'eau ; les actions CE sont marquées **[CE]**.
   invitations sont parties le 2026-08-31** ; reste à remplir le
   registre au fil des réponses.
 - [ ] **[CE]** Dépouiller chaque retour ; les frictions confirmées
-  entrent au dépôt par `/chantier` ou `/terrain` (le kaizen
+  entrent au dépôt par `/job` ou `/field` (le kaizen
   hebdomadaire du PLAN §4 — la mécanique existe déjà, rien de neuf).
 - [ ] Élargir vers 20-50 quand la première vague tourne (installation
   éprouvée, retours qui arrivent, pas de défaut critique ouvert).
@@ -128,8 +128,8 @@ Règles de tenue du registre :
 - **Refus d'installation** : ligne au registre de dette **D-39**
   (poste, version, date) — c'est la mesure qui rouvrira le chantier
   signature, elle ne vaut que si elle est écrite.
-- **Retours** : chaque retour instruit entre au dépôt par `/terrain`
-  (constat du jour) ou `/chantier` (friction de fond) ; la case porte
+- **Retours** : chaque retour instruit entre au dépôt par `/field`
+  (constat du jour) ou `/job` (friction de fond) ; la case porte
   le numéro du PLAN qui l'a traité.
 
 ## 3 ter. Le mot d'invitation (modèle)

@@ -1,6 +1,6 @@
 # PLAN-RETOURS-8 — repères de comptes, parcours de premier démarrage, release bi-arch
 
-> Chantier ouvert le 2026-08-22 (`/chantier`), sur trois retours CE :
+> Chantier ouvert le 2026-08-22 (`/job`), sur trois retours CE :
 > (1) feature — un repère **icône + couleur** par compte pour
 > différencier les boîtes en mode « toutes les boîtes » : choix dans
 > Réglages > Comptes, affiché à la place de l'icône actuelle dans le
@@ -18,7 +18,7 @@
 > fichiers, **CI verte run 32576771340**). **Livré en 0.6.0** (D8,
 > MINEURE — la PREMIÈRE release bi-arch, publiée le 2026-08-22,
 > `4a72a53`, CI verte run 32584117219) : release **vérifiée** par
-> `verifier-release.ps1 0.6.0` le jour même (**18/18 PASS** — 5
+> `verify-release.ps1 0.6.0` le jour même (**18/18 PASS** — 5
 > assets nommés, deux clés de plateforme, signatures distinctes, exe
 > arm64 200 / 5 504 084 o, exe x64 200 / 6 215 897 o) ; **preuves
 > terrain PAR CANAL : auto-update 0.5.0 → 0.6.0 confirmé (arm64) ET
@@ -34,7 +34,7 @@
 > toutes corrigées. Chiffres : tests Rust +3 (mail-core 357 → 358,
 > wind-desktop 18 → 20), e2e 108 → **117**, contraste 2 716 → **3 052**
 > paires, glyphes 64 → **76** (`?v=76`, preuve 77/77). Journal Système
-> **A74-A75**, **ADR 0023**. Reste : CI verte, `/solde`, puis release
+> **A74-A75**, **ADR 0023**. Reste : CI verte, `/close`, puis release
 > **0.6.0** (D8) — la première bi-arch.
 
 ---
@@ -129,8 +129,8 @@
   a été retiré en 0.1.3 (PLAN-WIND E4) — le seul poste utilisateur est
   ARM64 (Snapdragon X, `rustup` host `aarch64-pc-windows-msvc`). Le
   retour est un **retour du canal x64**, déjà annoncé « chantier à
-  part » (`installer-poste.ps1:236`).
-- `faire-release.ps1` câble l'architecture en dur : `cargo tauri
+  part » (`install-workstation.ps1:236`).
+- `make-release.ps1` câble l'architecture en dur : `cargo tauri
   build` sans `--target` (= hôte arm64), chemin
   `target/release/bundle/nsis`, un seul exe
   `Wind_<v>_arm64-setup.exe`, `latest.json` à une clé
@@ -151,7 +151,7 @@
   le **bundle** NSIS x64. Manque sur le poste : la cible rustup
   `x86_64-pc-windows-msvc` et (à vérifier) le composant VS « MSVC v143
   C++ x64/x86 build tools ». Le patron du miroir existe déjà :
-  `installer-poste.ps1` fait exactement l'inverse (x64 → arm64) avec
+  `install-workstation.ps1` fait exactement l'inverse (x64 → arm64) avec
   option de preuve `-CrossArm64Check`.
 - **Piège documenté qui se rejouera** : `.cargo/config.toml` scope
   `linker = "lld-link"` au SEUL triple aarch64 ; en Git Bash
@@ -173,12 +173,12 @@
 - Normatif à amender : STANDARD §2.9 (critère MAJEUR à évaluer **par
   canal**), §2.10 (« trois assets » → cinq, contrôles dédoublés par
   plateforme + garde anti-croisement), §10 (carte des fichiers déjà
-  périmée sur `faire-release.ps1`), ADR 0013 (« trois assets »,
+  périmée sur `make-release.ps1`), ADR 0013 (« trois assets »,
   « publication manuelle » — périmés), `README.md` (« arm64 natif »,
-  « 0.1.7 »), `installer-poste.ps1:236`.
+  « 0.1.7 »), `install-workstation.ps1:236`.
 - **Il n'existe aucun script de vérification §2.10** — tout est
   manuel. Avec 5 assets et 2 plateformes, les contrôles doublent :
-  un `scripts/verifier-release.ps1` est le candidat naturel (« la
+  un `scripts/verify-release.ps1` est le candidat naturel (« la
   friction est encodée une fois, plus jamais repayée », ADR 0013).
 
 ## Périmètre — et refus explicites
@@ -186,8 +186,8 @@
 **On fait** : R1 (prefs par compte + Réglages > Comptes + nav +
 badge de liste), R2 (parcours 4 étapes au patron ModaleMigration,
 aperçus volets/thèmes sans IPC), R3 (build bi-arch local,
-`faire-release.ps1` à 5 assets, `latest.json` à 2 clés,
-`verifier-release.ps1`, normatif amendé).
+`make-release.ps1` à 5 assets, `latest.json` à 2 clés,
+`verify-release.ps1`, normatif amendé).
 
 **On ne fait pas** :
 - **Couleur libre** (roue chromatique) — hors système de jetons, hors
@@ -307,11 +307,11 @@ aperçus volets/thèmes sans IPC), R3 (build bi-arch local,
   (jamais dans la décision produit ; rien ne s'écrit sous elle) ; e2e :
   parcours complet + reprise (vrai chemin, sans couture) + guichet
   seul + « installation existante réputée accueillie ».
-- **E5 — R3 outillage de release** : `faire-release.ps1` bi-arch (2
+- **E5 — R3 outillage de release** : `make-release.ps1` bi-arch (2
   builds `--target`, chemins `target/<triple>/…`, 2 paires exe/sig,
   manifeste 2 clés, garde anti-croisement des signatures encodée,
   publication 5 assets tout-ou-rien selon D7) ;
-  `scripts/verifier-release.ps1` scriptant §2.10 ×2 plateformes.
+  `scripts/verify-release.ps1` scriptant §2.10 ×2 plateformes.
   **✓ Faite (2026-08-22)**, un écart au plan (revue) : le mot de passe
   de la clé reste demandé par Tauri **à chaque build** (deux saisies)
   — le poser en variable d'environnement l'aurait exposé à tous les
@@ -321,13 +321,13 @@ aperçus volets/thèmes sans IPC), R3 (build bi-arch local,
   prouvé sur la 0.5.0 (arm64 PASS, x64 ECHEC attendu — mono-arch),
   contrôles au TAG de la version (jamais Latest), échec en verdict.
 - **E6 — normatif** : STANDARD §2.9/§2.10/§10, ADR court « retour du
-  canal x64 » (ou amendement 0013), README, `installer-poste.ps1`,
+  canal x64 » (ou amendement 0013), README, `install-workstation.ps1`,
   ETAT.
   **✓ Faite (2026-08-22)** : STANDARD §2.9 (MAJEUR par canal), §2.10
   (cinq assets nommés, deux clés, garde anti-croisement,
-  `verifier-release.ps1`), §10 (carte corrigée — elle était déjà
+  `verify-release.ps1`), §10 (carte corrigée — elle était déjà
   périmée) ; **ADR 0023** ; ADR 0013 annoté (mentions d'époque) ;
-  README ; `installer-poste.ps1` retourné ; gate de cohérence étendue
+  README ; `install-workstation.ps1` retourné ; gate de cohérence étendue
   (contrôle 7 : le jeu dédié UNE liste sur quatre porteurs — Rust,
   reperes.js, systeme.css, catalogues — prouvé mordant par test
   négatif) ; ETAT au solde.
@@ -338,7 +338,7 @@ aperçus volets/thèmes sans IPC), R3 (build bi-arch local,
   spécificité CSS qui éteignait le glyphe « Déconnecté » ; parcours
   abandonné jamais repris ; repère survivant au retrait d'un compte —
   id SQLite réutilisé ; paire icône/teinte non atomique ; BOM perdu de
-  `faire-release.ps1` ; mot de passe de signature exporté à l'env des
+  `make-release.ps1` ; mot de passe de signature exporté à l'env des
   builds ; vérificateur mourant sans verdict ; badge absent de la
   recherche ; couture e2e dans la décision produit). Gate complète
   verte (508 tests Rust, 116 e2e, 3 052 paires).
@@ -401,7 +401,7 @@ comme d'habitude — ce sera la première release bi-arch.
   elle, se constate dès la 0.6.0).
 - **D6 — lieu du build x64** : **« Cross-build local »** (O3a) —
   `--target x86_64-pc-windows-msvc` sur ce poste dans
-  `faire-release.ps1`, clé jamais exportée, temps de release ×2.
+  `make-release.ps1`, clé jamais exportée, temps de release ×2.
 - **D7 — publication** : **« Tout-ou-rien »** — un build en échec
   bloque toute la release ; le script échoue franchement avant toute
   publication, jamais un canal décalé ni un manifeste partiel.

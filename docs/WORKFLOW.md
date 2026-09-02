@@ -1,141 +1,140 @@
-# Mode d'emploi — le workflow standardisé de Wind
+# User guide — Wind's standardized workflow
 
-> Installé le 2026-08-15 (commit `961aab7`, décision CE D1/D2/D3).
-> Ce document explique **comment s'en servir** ; la méthode elle-même
-> vit dans [STANDARD.md](STANDARD.md) §2 et prime sur tout. Les
-> skills sont dans `.claude/skills/`, versionnées au dépôt : les
-> amender est un commit comme un autre.
+> Installed on 2026-08-15 (commit `961aab7`, CE decisions D1/D2/D3).
+> This document explains **how to use it**; the method itself lives in
+> [STANDARD.md](STANDARD.md) §2 and takes precedence over everything.
+> The skills live in `.claude/skills/`, versioned in the repository:
+> amending them is a commit like any other.
 
-## Vue d'ensemble
+## Overview
 
-Une seule commande porte le flux complet ; trois autres servent les
-moments qui reviennent. L'utilisateur est le Chef Ingénieur (*shusa*) :
-le workflow s'arrête net aux deux endroits où c'est lui qui tranche.
+One command carries the full flow; three others serve the moments that
+come back. The user is the Chief Engineer (*shusa*): the workflow stops
+dead at the two places where the decision is theirs.
 
 ```
-/chantier Bug : …  ou  Feature : …
+/job Bug: …  or  Feature: …
    │
-   ├─ Phase 0  Instruction — reproduire, mesurer, lire (jamais de supposition)
-   ├─ Phase 1  Conception — constat, set-based chiffré (agent spike),
-   │           prototype si UI, PLAN-XXX.md avec § Décisions CE
+   ├─ Phase 0  Investigation — reproduce, measure, read (never assume)
+   ├─ Phase 1  Design — finding, figured set-based (spike agent),
+   │           prototype if UI, PLAN-XXX.md with a § CE decisions
    │
-   ├─ ⛔ STOP 1  Le CE valide le plan et tranche les décisions, une à une
+   ├─ ⛔ STOP 1  The CE validates the plan and makes the decisions, one by one
    │
-   ├─ Phase 2  Implémentation TDD, étape par étape (DC-D2 au même commit)
-   ├─ Phase 3  /code-review high (une fois), puis /gate — un rouge = andon
+   ├─ Phase 2  TDD implementation, step by step (DC-D2 in the same commit)
+   ├─ Phase 3  /code-review high (once), then /gate — one red = andon
    │
-   ├─ ⛔ STOP 2  Le CE valide au terrain, sur checklist chiffrée
-   │             (un constat → correction le jour même, re-gate, re-terrain)
+   ├─ ⛔ STOP 2  The CE validates in the field, on a figured checklist
+   │             (a finding → fix the same day, re-gate, re-field)
    │
-   ├─ Phase 4  Documentation — journal A-n, PLAN, ADR, ETAT, mémoire
-   └─ Phase 5  Commit (sans accents) → push + veille CI en arrière-plan
-               → verdict CI annoncé par la session
+   ├─ Phase 4  Documentation — journal A-n, PLAN, ADR, ETAT, memory
+   └─ Phase 5  Commit → push + CI watch in the background
+               → CI verdict announced by the session
 ```
 
-## Quelle commande pour quelle situation
+## Which command for which situation
 
-| Situation | Commande | Exemple |
+| Situation | Command | Example |
 |---|---|---|
-| Un défaut à instruire ou une fonctionnalité à livrer | `/chantier` | `/chantier Bug : freeze de 5 s au démarrage en ligne de commande` |
-| Un constat fait à l'instant au terrain, périmètre étroit | `/terrain` | `/terrain les traits d'accent réapparaissent après un clic` |
-| Vérifier l'état avant un commit, ou après une correction | `/gate` | `/gate` |
-| Un chantier terminé, terrain validé, CI verte | `/solde` | `/solde PLAN-SPAM` |
+| A defect to investigate or a feature to deliver | `/job` | `/job Bug: 5 s freeze at startup from the command line` |
+| A finding made just now in the field, narrow scope | `/field` | `/field the accent strokes reappear after a click` |
+| Check the state before a commit, or after a fix | `/gate` | `/gate` |
+| A finished job, field validated, green CI | `/close` | `/close PLAN-SPAM` |
 
-`/terrain` est la voie rapide de la boucle genchi genbutsu — mais si la
-racine se révèle profonde ou le périmètre s'élargit, la session bascule
-d'elle-même en `/chantier` : la vitesse ne dispense pas de conception.
+`/field` is the fast lane of the genchi genbutsu loop — but if the root
+turns out to be deep or the scope widens, the session switches to
+`/job` by itself: speed does not exempt from design.
 
-## Ce que le workflow attend du Chef Ingénieur
+## What the workflow expects from the Chief Engineer
 
-Le CE n'a que **quatre gestes** ; tout le reste est porté par la session.
+The CE has only **four gestures**; everything else is carried by the
+session.
 
-1. **Lancer** : une phrase — `Bug : …` ou `Feature : …`. Pas besoin de
-   rappeler la méthode, le TDD, les gates : ils sont dans le standard.
-2. **⛔ STOP 1 — arbitrer le plan.** La session présente `PLAN-XXX.md`
-   et pose les décisions du § Décisions CE une à une. Répondre, c'est
-   tout : les réponses sont consignées au PLAN, mot pour mot, datées.
-   Aucun code n'existe avant ce GO.
-3. **⛔ STOP 2 — valider au terrain.** La session remet une checklist :
-   gestes à jouer sur les vrais comptes, chiffres attendus, budgets à
-   re-mesurer. Elle fournit **systématiquement, à ce moment, les
-   commandes PowerShell nécessaires à la réalisation du test terrain**
-   (lancement de l'app, build, préparation des comptes, mesures) —
-   prêtes à copier, une par bloc. Dire ce qui est vu — un constat
-   déclenche la correction le jour même, dans la même session.
-4. **Fournir les mesures que la session ne peut pas prendre** : rappel
-   STANDARD §7.1, elle ne lit pas la base réelle ni le bandeau. Quand
-   la Phase 0 a besoin d'un chiffre du terrain, elle le demande et
-   attend.
+1. **Launch**: one sentence — `Bug: …` or `Feature: …`. No need to
+   recall the method, TDD, the gates: they are in the standard.
+2. **⛔ STOP 1 — arbitrate the plan.** The session presents
+   `PLAN-XXX.md` and asks the decisions of the § CE decisions one by
+   one. Answering is all: the answers are recorded in the PLAN, word for
+   word, dated. No code exists before this GO.
+3. **⛔ STOP 2 — validate in the field.** The session hands over a
+   checklist: gestures to play on the real accounts, expected figures,
+   budgets to re-measure. It provides **systematically, at that moment,
+   the PowerShell commands needed to run the field test** (launching the
+   app, build, preparing the accounts, measurements) — ready to copy,
+   one per block. Say what is seen — a finding triggers the fix the same
+   day, in the same session.
+4. **Provide the measurements the session cannot take**: reminder
+   STANDARD §7.1, it reads neither the real database nor the banner.
+   When Phase 0 needs a field figure, it asks for it and waits.
 
-## Les garanties intégrées (plus besoin de les prompter)
+## The built-in guarantees (no longer need prompting)
 
-Chaque skill embarque les règles payées au fil du projet :
+Every skill carries the rules paid for over the project:
 
-- **TDD strict** — RED montré avant GREEN ; un RED qui n'apprend rien
-  est dit, jamais simulé.
-- **DC-D2** — tout commit UI amende `docs/design/systeme.dc.html` dans
-  le même commit (journal A-n).
-- **Gate complète, jamais les tests seuls** — les neuf étapes de
+- **Strict TDD** — RED shown before GREEN; a RED that teaches nothing
+  is said, never faked.
+- **DC-D2** — every UI commit amends `docs/design/systeme.dc.html` in
+  the same commit (journal A-n).
+- **Full gate, never the tests alone** — the thirteen steps of
   [/gate](../.claude/skills/gate/SKILL.md), `coherence-systeme`
-  comprise, jouées en un appel par `scripts/gate.ps1` ; fmt rejoué
-  après tout remplacement mécanique.
-- **E2E flaky en local** — un rouge local se contre-vérifie
-  (`gh run list`) avant de suspecter une régression : la CI est la
-  référence.
-- **Commits** — `type: description`, sans accents, corps portant
-  chiffres et raisonnement, jamais de Co-Authored-By.
-- **CI verte obligatoire** — le chantier n'est clos qu'après
-  `gh run watch` vert sur le commit poussé ; push et veille CI se font
-  **en arrière-plan**, la session annonce le verdict (jamais d'attente
-  au premier plan — kaizen 2026-08-23, ~3,5 h de mur bloqué mesurées
-  sur 12 jours).
+  included, played in one call by `scripts/gate.ps1`; fmt replayed
+  after any mechanical replacement.
+- **E2E flaky locally** — a local red is cross-checked (`gh run list`)
+  before suspecting a regression: the CI is the reference.
+- **Commits** — `type: description`, in English, body carrying figures
+  and reasoning, never a Co-Authored-By.
+- **Green CI mandatory** — the job is closed only after `gh run watch`
+  is green on the pushed commit; push and CI watch happen **in the
+  background**, the session announces the verdict (never a wait in the
+  foreground — kaizen 2026-08-23, ~3.5 h of blocked wall measured over
+  12 days).
 
-## Politique de modèles (kaizen 2026-08-23, validée CE — axe M)
+## Model policy (kaizen 2026-08-23, CE-validated — axis M)
 
-La règle tient en deux lignes ; elle préserve aussi le quota Fable
-pour ce qui en a besoin.
+The rule fits in two lines; it also preserves the Fable quota for what
+needs it.
 
-- **Chantier = Fable 5, invariant.** Conception, remontée à la racine,
-  TDD, revue : jamais de conception dure sur un modèle moindre
-  (précédent perf-lecture, non prouvé mais suspect).
-- **Session mécanique = Sonnet 5.** Docs/ETAT/CHANGELOG, Notion,
-  veille CI, release scriptée, consolidation mémoire : le CE ouvre ces
-  sessions sur Sonnet 5 (sélecteur de modèle de l'app). Baseline
-  mesurée : le mécanique tournait à 100 % au tarif maximal (M1, cible
-  ≤ 5 % du coût haut de gamme hors chantiers).
+- **Job = Fable 5, invariant.** Design, tracing to the root, TDD,
+  review: never hard design on a lesser model (perf-lecture precedent,
+  not proven but suspect).
+- **Mechanical session = Sonnet 5.** Docs/ETAT/CHANGELOG, Notion, CI
+  watch, scripted release, memory consolidation: the CE opens these
+  sessions on Sonnet 5 (the app's model selector). Measured baseline:
+  the mechanical work ran 100 % at the top rate (M1, target ≤ 5 % of the
+  top-tier cost outside jobs).
 
-## L'agent `spike` — l'exploration set-based
+## The `spike` agent — set-based exploration
 
-Quand la conception rencontre un point dur, le départage se fait sur
-des chiffres (STANDARD §2.2-2.3) : **un agent `spike` par option**, en
-worktree isolé, chacun construisant un prototype jetable dans `spikes/`
-et rapportant un protocole et des mesures — jamais un avis. Le poste
-principal compare les rapports, le CE tranche. Modèle :
+When the design meets a hard point, the decision is made on figures
+(STANDARD §2.2-2.3): **one `spike` agent per option**, in an isolated
+worktree, each building a throw-away prototype in `spikes/` and
+reporting a protocol and measurements — never an opinion. The main
+session compares the reports, the CE decides. Model:
 [ADR 0004](adr/0004-moteur-de-recherche-fts5.md).
 
-C'est le **seul** agent custom, à dessein : découper la conception,
-l'implémentation ou la documentation en agents séparés perdrait à
-chaque transfert le contexte qui fait la qualité des commits. Un seul
-fil porte le constat jusqu'à la CI verte.
+It is the **only** custom agent, on purpose: splitting design,
+implementation or documentation into separate agents would lose, at
+every hand-off, the context that makes the quality of the commits. One
+thread carries the finding all the way to the green CI.
 
-### Modèle des agents (kaizen 2026-08-23 — axe M)
+### Model of the agents (kaizen 2026-08-23 — axis M)
 
-Baseline mesurée : 100 % des sous-agents tournaient haut de gamme, y
-compris le pur balayage. Désormais, au lancement d'un agent (paramètre
-`model` de l'outil Agent) :
+Measured baseline: 100 % of the subagents ran top-tier, including pure
+sweeping. From now on, when launching an agent (`model` parameter of the
+Agent tool):
 
-- **Exploration / reconnaissance** (`Explore`, `Plan`, recherche de
-  code) : **Sonnet 5** ; **Haiku** pour du pur balayage (localiser des
-  fichiers, inventorier des occurrences).
-- **Vérification, revue, `spike`** : inchangés — haut de gamme ou
-  modèle de la session ; ce sont les meilleurs détecteurs de défauts
-  du workflow (une revue a attrapé la reconstruction d'index FTS5 de
-  ~13 Go), on n'y touche pas.
+- **Exploration / reconnaissance** (`Explore`, `Plan`, code search):
+  **Sonnet 5**; **Haiku** for pure sweeping (locating files, counting
+  occurrences).
+- **Verification, review, `spike`**: unchanged — top tier or the
+  session's model; they are the best defect detectors of the workflow
+  (a review caught an FTS5 index rebuild of ~13 GB), we do not touch
+  them.
 
-## Amender le workflow
+## Amending the workflow
 
-Le standard n'est pas figé — c'est du *standard work* : il s'améliore
-par kaizen, sur des faits. Un skill qui frotte à l'usage s'amende par
-un commit ordinaire (`chore:`), avec le constat qui motive le
-changement dans le corps du message. Ce document s'amende au même
-commit que le skill qu'il décrit.
+The standard is not frozen — it is *standard work*: it improves by
+kaizen, on facts. A skill that chafes in use is amended by an ordinary
+commit (`chore:`), with the finding that motivates the change in the
+message body. This document is amended in the same commit as the skill
+it describes.

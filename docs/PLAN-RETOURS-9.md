@@ -37,7 +37,7 @@
   `ClientSecret::Forbidden` (client public, PKCE seul). Trois
   variables vivantes : `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
   `MICROSOFT_CLIENT_ID`.
-- Le build de release est **local** (`scripts/faire-release.ps1`,
+- Le build de release est **local** (`scripts/make-release.ps1`,
   deux `cargo tauri build --target`, tout-ou-rien D7 d'ADR 0023) —
   point d'injection naturel. La CI ne buildera rien.
 - **Contrainte forte relevée** : le harnais e2e PURGE ces variables
@@ -98,7 +98,7 @@
 
 | Option | Verdict |
 |---|---|
-| **A. Identifiants compilés au build de release** via `option_env!` sur des noms DÉDIÉS `WIND_RELEASE_*`, posés par `faire-release.ps1` seul ; à l'exécution la variable d'environnement garde la priorité (dev/tests) | **Recommandée.** Zéro geste utilisateur ; le dépôt reste propre (valeurs jamais commises) ; un build dev n'embarque RIEN (les `WIND_RELEASE_*` n'existent que dans le run du script) → l'isolation e2e et le test onboarding survivent tels quels ; cargo suit les env de `option_env!` (rebuild correct). |
+| **A. Identifiants compilés au build de release** via `option_env!` sur des noms DÉDIÉS `WIND_RELEASE_*`, posés par `make-release.ps1` seul ; à l'exécution la variable d'environnement garde la priorité (dev/tests) | **Recommandée.** Zéro geste utilisateur ; le dépôt reste propre (valeurs jamais commises) ; un build dev n'embarque RIEN (les `WIND_RELEASE_*` n'existent que dans le run du script) → l'isolation e2e et le test onboarding survivent tels quels ; cargo suit les env de `option_env!` (rebuild correct). |
 | B. Fichier de config à côté de l'exe | Rejetée : un fichier de plus à signer/distribuer, modifiable par l'utilisateur, et l'installeur NSIS devrait le porter — complexité sans gain. |
 | C. Statu quo + documentation `setx` | Rejetée : c'est le constat terrain lui-même — un testeur ne le fera pas. |
 
@@ -114,9 +114,9 @@ remède dit ne parle plus de terminal — livré, revue du 2026-08-23).
 
 - **E1 — sujet 1** : fonction pure de résolution (RED d'abord) dans
   `mail-auth` ; constantes `option_env!("WIND_RELEASE_GOOGLE_CLIENT_ID")`
-  etc. ; `faire-release.ps1` mappe les valeurs du poste mainteneur
+  etc. ; `make-release.ps1` mappe les valeurs du poste mainteneur
   vers `WIND_RELEASE_*` avant les deux builds, **tout-ou-rien** (pas
-  de release sans les trois valeurs) ; `installer-poste.ps1` amendé
+  de release sans les trois valeurs) ; `install-workstation.ps1` amendé
   (le `setx` reste un geste de poste dev, dit comme tel). Gate :
   tests mail-auth + e2e onboarding INCHANGÉ vert (preuve que le build
   dev n'embarque rien).
@@ -141,9 +141,9 @@ Phase 4 (docs, ETAT, mémoire), Phase 5 (commit, push + CI en fond).
   (`option_env!("WIND_RELEASE_*")` — Microsoft n'embarque JAMAIS de
   secret, client public) ; test `dev_builds_embed_no_credentials`
   (un build dev/test n'embarque rien — l'isolation e2e garde son
-  levier) ; `faire-release.ps1` : présence des 3 valeurs vérifiée
+  levier) ; `make-release.ps1` : présence des 3 valeurs vérifiée
   AVANT les builds (tout-ou-rien), posées pour la SEULE durée des
-  deux builds, retirées en `finally` ; `installer-poste.ps1` : le
+  deux builds, retirées en `finally` ; `install-workstation.ps1` : le
   `setx` requalifié geste de poste dev. TDD : RED montré (6 erreurs)
   → GREEN 21/21 mail-auth.
 - **E2 livré** : bouton icône + texte « Retirer le compte »
@@ -163,7 +163,7 @@ Phase 4 (docs, ETAT, mémoire), Phase 5 (commit, push + CI en fond).
 ## Revue à regard neuf (2026-08-23, 8 angles)
 
 10 trouvailles confirmées, **toutes corrigées avant le terrain** —
-la plus grave : les `WIND_RELEASE_*` posées par `faire-release.ps1`
+la plus grave : les `WIND_RELEASE_*` posées par `make-release.ps1`
 survivaient aux builds et faisaient rougir le pre-push du push final
 (cargo suit les `option_env!`) — **la release se serait bloquée
 elle-même** ; portée désormais bornée aux deux builds, `finally`.
@@ -190,7 +190,7 @@ dans l'UI en (cohérent avec tout le produit).
 - **D1 — Voie pour les identifiants de release** : tranchée le
   2026-08-23 — **« Compilés au build »** (option A : `option_env!`
   sur noms dédiés `WIND_RELEASE_*`, posés uniquement par
-  `faire-release.ps1`, tout-ou-rien ; à l'exécution la variable
+  `make-release.ps1`, tout-ou-rien ; à l'exécution la variable
   d'environnement garde la priorité).
 - **D2 — Vocabulaire du bouton** : tranchée le 2026-08-23 —
   **« Retirer le compte »** (cohérent avec l'existant, honnête —

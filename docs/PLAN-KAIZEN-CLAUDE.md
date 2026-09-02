@@ -5,7 +5,7 @@
 > multi-agents avec vérification adversariale sur pièces du dépôt ;
 > 7 recommandations sur 44 rejetées à la vérification). Objet : baisser
 > le coût en tokens, le temps de traitement des prompts et le temps
-> d'exécution du workflow /chantier→/gate→/solde, **sans toucher au
+> d'exécution du workflow /job→/gate→/close, **sans toucher au
 > niveau de qualité** — la gate complète avant commit, la CI verte, le
 > TDD montré et le STOP 2 terrain sont des invariants, pas des
 > variables d'ajustement.
@@ -23,7 +23,7 @@
 | cacheRead brut | 5,96 Md de tokens ; **top 10 sessions = 62 %** du volume |
 | Contexte moyen relu par tour | marathons 410–540 k ; sessions courtes 75–140 k |
 | Sessions compactées / closes proprement | 2 compactions sur 46 ; sessions de 90,4 h, 37,3 h, 26,3 h, 25,4 h de mur |
-| Chantiers /chantier sur la période | 15 invocations, ~14 chantiers soldés → **~60 M équiv. input par chantier** |
+| Chantiers /job sur la période | 15 invocations, ~14 chantiers soldés → **~60 M équiv. input par chantier** |
 
 ### Temps
 
@@ -50,7 +50,7 @@
 
 - Sessions multi-chantiers jamais closes : le contexte d'un chantier
   soldé est refacturé à chaque tour du suivant.
-- 9 lancements `/chantier` à vide → un aller-retour perdu chacun.
+- 9 lancements `/job` à vide → un aller-retour perdu chacun.
 - ~15 redemandes des commandes PowerShell du STOP 2, après codification.
 - 11 re-runs de suite complète pour trancher UN flake (la règle
   spec-en-isolation existait déjà).
@@ -74,8 +74,8 @@ chantier soldé pour neutraliser les variations d'activité.
 | Indicateur | Baseline | Cible | Levier principal |
 |---|---|---|---|
 | T1. Équiv. input **par chantier soldé** | ~60 M | **≤ 35 M (−40 %)** | T2+T3+T4 combinés |
-| T2. Contexte moyen relu par tour (toute session) | 410–540 k (marathons) | **≤ 200 k** | /solde = frontière de session ; /compact aux STOP |
-| T3. Sessions closes ou compactées ≤ 24 h de mur ; sessions multi-chantiers | 8+ marathons ; multi-chantiers courant | **100 % ; zéro** | étape finale de /solde |
+| T2. Contexte moyen relu par tour (toute session) | 410–540 k (marathons) | **≤ 200 k** | /close = frontière de session ; /compact aux STOP |
+| T3. Sessions closes ou compactées ≤ 24 h de mur ; sessions multi-chantiers | 8+ marathons ; multi-chantiers courant | **100 % ; zéro** | étape finale de /close |
 | T4. Tours assistant par prompt CE | 36,6 | **≤ 25 (−30 %)** | gate scriptée (−8 tours/gate), vagues groupées |
 | T5. *(optionnel, validé CE 2026-08-23)* Tokens de sortie par session, à activité comparable | réf. semaine 1 | **essai mesuré** : adopté seulement si baisse sans perte de qualité | output style `Concise` (portée utilisateur) |
 
@@ -85,7 +85,7 @@ chantier soldé pour neutraliser les variations d'activité.
 |---|---|---|---|
 | P1. Mur bloqué au premier plan sur commandes > 60 s | ~3,5 h / 12 j (push, watch, e2e) | **≤ 15 min / 2 sem.** | arrière-plan systématique (Monitor), Claude annonce le verdict CI |
 | P2. Re-runs pour trancher un flake e2e | jusqu'à 11 | **≤ 2** (spec entier en isolation, une fois) | rappel de conformité /gate ; retries:1 |
-| P3. Allers-retours évitables (/chantier vide, redemande STOP 2) | 9 + ~15 | **0** | énoncé en argument ; non-conformité signalée |
+| P3. Allers-retours évitables (/job vide, redemande STOP 2) | 9 + ~15 | **0** | énoncé en argument ; non-conformité signalée |
 | Garde-fou qualité (ne doit PAS se dégrader) | — | constats KO au STOP 2 par chantier et CI rouges : **stables ou en baisse** | invariants inchangés |
 
 ### Axe W — temps d'exécution du workflow (121 e2e)
@@ -119,7 +119,7 @@ de ~13 Go).
 
 ### Vague 0 — mesure de référence (avant tout changement, ½ journée)
 
-1. Verser `scripts/mesurer-sessions.mjs` (adaptation du script d'audit :
+1. Verser `scripts/measure-sessions.mjs` (adaptation du script d'audit :
    tokens, tours, contexte moyen, commandes > 30 s par catégorie, par
    session) — on ne pilote que ce qu'on mesure.
 2. Chronométrer UNE gate complète de référence, cache cargo chaud
@@ -138,12 +138,12 @@ de ~13 Go).
 
 | # | Contre-mesure | Fichier(s) | Indicateurs servis |
 |---|---|---|---|
-| 1 | `/solde` : dernière étape « écrire l'entrée CHANGELOG (si release à venir), puis **clore cette session** ; le sujet suivant s'ouvre sur ETAT.md » | `.claude/skills/solde/SKILL.md` | T1 T2 T3 |
-| 2 | `/chantier` et `/terrain` : boucle intérieure ciblée — spec(s) impactée(s) **en fichier entier** (jamais `-g`), 2 runs groupés par vague (RED groupé, GREEN groupé) ; gate complète UNE fois avant commit | `chantier/SKILL.md`, `terrain/SKILL.md`, phrase au STANDARD §2.4 | W3 W4 T4 |
+| 1 | `/close` : dernière étape « écrire l'entrée CHANGELOG (si release à venir), puis **clore cette session** ; le sujet suivant s'ouvre sur ETAT.md » | `.claude/skills/close/SKILL.md` | T1 T2 T3 |
+| 2 | `/job` et `/field` : boucle intérieure ciblée — spec(s) impactée(s) **en fichier entier** (jamais `-g`), 2 runs groupés par vague (RED groupé, GREEN groupé) ; gate complète UNE fois avant commit | `chantier/SKILL.md`, `terrain/SKILL.md`, phrase au STANDARD §2.4 | W3 W4 T4 |
 | 3 | `/gate` : re-gate partielle après un rouge corrigé (étape rouge + ce que la correction peut impacter, amont compris si Rust) ; gate complète finale avant commit inchangée | `gate/SKILL.md`, `chantier/SKILL.md` | W3 W4 |
-| 4 | `/gate` et `/chantier` Phase 5 : push + `gh run watch` **en arrière-plan**, verdict annoncé par la session ; jamais d'attente CI au premier plan | `gate/SKILL.md`, `chantier/SKILL.md` | P1 |
-| 5 | `/chantier` : STOP visuel précoce (UI : verdict d'apparence après le premier incrément TDD minimal) ; STOP mesuré précoce (perf : mesure avant/après au premier incrément, arbitrage CE) | `chantier/SKILL.md` | T1 P3 |
-| 6 | Discipline CE (sans commit) : énoncé complet en argument de `/chantier` ; pièce à conviction au premier énoncé ; non-conformité signalée plutôt que redemandée ; une seule session écrivante à la fois | — | P3 T4 |
+| 4 | `/gate` et `/job` Phase 5 : push + `gh run watch` **en arrière-plan**, verdict annoncé par la session ; jamais d'attente CI au premier plan | `gate/SKILL.md`, `chantier/SKILL.md` | P1 |
+| 5 | `/job` : STOP visuel précoce (UI : verdict d'apparence après le premier incrément TDD minimal) ; STOP mesuré précoce (perf : mesure avant/après au premier incrément, arbitrage CE) | `chantier/SKILL.md` | T1 P3 |
+| 6 | Discipline CE (sans commit) : énoncé complet en argument de `/job` ; pièce à conviction au premier énoncé ; non-conformité signalée plutôt que redemandée ; une seule session écrivante à la fois | — | P3 T4 |
 | 7 | Politique de modèles dans WORKFLOW.md : **chantier = Fable 5** (invariant) ; **session mécanique** (docs/ETAT/CHANGELOG, Notion, veille CI, release scriptée, consolidation mémoire) **= Sonnet 5** ; préserve aussi le quota Fable pour les chantiers | `docs/WORKFLOW.md` | M1 |
 | 8 | Agents d'exploration/recherche abaissés (Sonnet 5, Haiku pour du pur balayage) ; agents de vérification, de revue et `spike` inchangés (haut de gamme / modèle de session) | `.claude/agents/`, WORKFLOW.md | M1 |
 
@@ -155,7 +155,7 @@ de ~13 Go).
 | 2 | `scripts/gate.ps1` fail-fast, 9 étapes dans l'ordre du hook, **sans** les redirections `/dev/null` (le verdict chiffré doit sortir) ; `/gate` l'exécute en un appel | −8 tours/gate ; porte T4 | nouveau script + `gate/SKILL.md` |
 | 3 | `retries:1` dans Playwright + tout flaky consigné au verdict de gate (indissociables : un flaky ne rend pas le run rouge) ; andon = rouge franc | 5–15 min/flake ; porte P2 | `e2e/playwright.config.js`, `gate/SKILL.md` |
 | 4 | Chemin rapide docs-only du pre-push : sauter les étapes 6–8 (clippy, tests Rust, e2e) si le diff ⊆ `docs/**` + `*.md`, en **excluant `docs/design/**`** (DC-D6) ; garder les étapes en secondes | W5 | `.githooks/pre-push` |
-| 5 | `scripts/terrain.ps1` + `scripts/lancer-wind.ps1` compatibles PS 5.1 (CLIENT_ID, chemins OneDrive-sûrs, traces UTF-8 écrites par l'app) | supprime la classe de frictions terminal | nouveaux scripts, référencés au STOP 2 |
+| 5 | `scripts/field.ps1` + `scripts/run-wind.ps1` compatibles PS 5.1 (CLIENT_ID, chemins OneDrive-sûrs, traces UTF-8 écrites par l'app) | supprime la classe de frictions terminal | nouveaux scripts, référencés au STOP 2 |
 | 6 | Base gabarit seed copiée par spec au lieu de ~14 `cargo run --example` par suite | 15–35 s/suite | `e2e/launch.mjs` |
 | 7 | `cargo-nextest` sur `--all-targets` : **mesurer avant/après** (gain attendu inter-binaires, ~20 binaires) ; adopter seulement si le chiffre le justifie ; `--doc` inchangé | ~15–25 s/gate si confirmé | `gate.ps1`, pre-push, ci.yml |
 
@@ -163,8 +163,8 @@ de ~13 Go).
 
 > Commits `ceb59c4` (les 7 contre-mesures) + `a3ed285` (fraîcheur TTL
 > des gabarits — rouge payé à la gate du push, corrigé dans la
-> session). GO terrain CE le 2026-08-23 (checklist 3/3 : terrain.ps1,
-> lancer-wind.ps1 avec trace prouvée, spec 30,3 s). CI verte run
+> session). GO terrain CE le 2026-08-23 (checklist 3/3 : field.ps1,
+> run-wind.ps1 avec trace prouvée, spec 30,3 s). CI verte run
 > 32642956082. **Chiffres kaizen du chantier** : 6,8 M équiv. input
 > (T1 ; baseline ~60 M/chantier), contexte moyen 181 k/tour (T2 ✓),
 > 4 gates complètes jouées (W3 — dont 1 rouge pre-push), 0 KO au
@@ -176,7 +176,7 @@ de ~13 Go).
 | 2 | **✓ livré** — `scripts/gate.ps1`, 9 étapes fail-fast, verdict chiffré par étape, exceptions PS rendues en rouge nommé ; `/gate` l'appelle en un tour | −8 tours d'orchestration par gate (T4) |
 | 3 | **✓ livré** — `retries: 1` + « flaky = consigné au verdict, rouge franc = andon » gravé au skill | porte P2 |
 | 4 | **✓ livré** — chemin rapide docs-only du pre-push (⊆ `docs/**`+`*.md`, hors `docs/design/**` ; ref neuve/suppression ⇒ gate entière ; itération par ligne, jamais par mot) | W5 — à chronométrer au premier push docs-only |
-| 5 | **✓ livré** — `scripts/terrain.ps1` (état du poste : base, version, OAuth User **et** session, traces) + `scripts/lancer-wind.ps1` (build par `construire-wind.mjs` — la maison unique des pièges du rebuild — puis `cargo run` qui TIENT le handle de trace, §9) ; référencés au STOP 2 de `/chantier` | terrain.ps1 prouvé sur ce poste (0.7.0, base 11,83 Go) |
+| 5 | **✓ livré** — `scripts/field.ps1` (état du poste : base, version, OAuth User **et** session, traces) + `scripts/run-wind.ps1` (build par `build-wind.mjs` — la maison unique des pièges du rebuild — puis `cargo run` qui TIENT le handle de trace, §9) ; référencés au STOP 2 de `/job` | field.ps1 prouvé sur ce poste (0.7.0, base 11,83 Go) |
 | 6 | **✓ livré** — gabarits de seed (clé = exe du seeder + recette, **TTL 30 min** — les seeders figent l'horloge à la construction : jours relatifs ET `derniere_synchro` « il y a 2 min » ; une clé à la journée a fait un rouge à la gate du push, corrigé le jour même), copie par spec, construction à côté + rename | compris dans W2 ; ~14 `cargo run --example` → 1 construction / 30 min |
 | — | **W1 re-mesuré après E1+E2+E6** : gate complète via `gate.ps1`, 121/121, zéro flaky | **4 min 34 s (W0) → 1 min 43 s** (103 s ; e2e 256 → 86 s), cache cargo chaud aux deux mesures |
 | 7 | **✗ rejeté sur le chiffre** — `cargo test --all-targets` mesuré à **9,3 s** cache chaud : le gain espéré (15-25 s) excède le poste entier ; nextest n'est ni installé ni adopté | — |
@@ -193,7 +193,7 @@ prouver d'abord).
 
 ### Vague 3 — structurel (à planifier, hors fenêtre de mesure)
 
-1. Sortir le dépôt de OneDrive (doctrine existante d'`installer-poste.ps1`)
+1. Sortir le dépôt de OneDrive (doctrine existante d'`install-workstation.ps1`)
    — à un moment sans travail non commité en vol ; re-pointer la mémoire
    Claude (clé projet = chemin).
 2. Runner self-hosted x64 pour un job e2e CI — l'ADR 0005 planifie cette
@@ -219,7 +219,7 @@ appoint, pas un levier ; il se paie donc en mesure, pas en conviction :
 
 1. Semaine 1 de la fenêtre : baseline sans Concise (déjà en cours).
 2. Semaine 2 : activer Concise, même mix d'activité autant que possible.
-3. Au bilan du 2026-09-06 : comparer via `scripts/mesurer-sessions.mjs`
+3. Au bilan du 2026-09-06 : comparer via `scripts/measure-sessions.mjs`
    les tokens de sortie par session à activité comparable, ET le
    garde-fou qualité (KO au STOP 2, CI rouges, re-demandes de détail
    par le CE). Adopté si baisse nette sans dégradation ; sinon retiré.
@@ -238,7 +238,7 @@ joue aucun e2e).
 - **À chaque /solde** : noter au PLAN du chantier les 3 chiffres du
   chantier — équiv. input (T1), gates complètes jouées (W3), constats
   KO au STOP 2 (garde-fou qualité).
-- **Hebdomadaire (vendredi)** : rejouer `scripts/mesurer-sessions.mjs`
+- **Hebdomadaire (vendredi)** : rejouer `scripts/measure-sessions.mjs`
   sur la semaine, remplir le tableau de suivi ci-dessous.
 - **Bilan le 2026-09-06** : indicateur par indicateur, atteint / raté /
   cause ; les contre-mesures qui n'ont pas produit leur chiffre sont
@@ -246,7 +246,7 @@ joue aucun e2e).
 
 ### Mesure hebdomadaire S1 — 2026-08-28 (fenêtre 24–28/08, 13 sessions)
 
-`node scripts/mesurer-sessions.mjs --depuis 2026-08-24 --jusqua 2026-08-28` :
+`node scripts/measure-sessions.mjs --depuis 2026-08-24 --jusqua 2026-08-28` :
 121 prompts CE, 5 430 tours, 283 M équiv. input fil principal + 22,3 M
 agents (7,3 %). Chantiers soldés dans la semaine avec chiffres au PLAN :
 RETOURS-9 (11,4 M, 2 gates), RETOURS-10 (2 gates 2,1–2,2 min),
@@ -260,7 +260,7 @@ Lecture des écarts :
   corrigés le jour même, 0 CI rouge).
 - **T3 raté (3 sessions > 24 h)** : dont la session kaizen elle-même
   (81d387ca, 141 h de mur — rouverte à chaque rite au lieu d'un fil
-  neuf) et 6e998992 (24,2 h, 55,7 M). La règle « clore au /solde »
+  neuf) et 6e998992 (24,2 h, 55,7 M). La règle « clore au /close »
   n'est pas encore un réflexe pour les sessions hors chantier.
 - **T2 raté (364 k/tour)** : conséquence directe de T3 — les sessions
   qui durent traînent 300–484 k de contexte.
@@ -307,9 +307,9 @@ Lecture des écarts :
 - **D1 — Seuils de session.** Contexte moyen ≤ 200 k (T2) et clôture ≤
   24 h de mur (T3) : valider ou ajuster les deux seuils.
   *Réponse CE (2026-08-23) : « D1 OK » — seuils validés.*
-- **D2 — Script de mesure au dépôt.** Verser `scripts/mesurer-sessions.mjs`
+- **D2 — Script de mesure au dépôt.** Verser `scripts/measure-sessions.mjs`
   (il lit les transcripts locaux sous `~/.claude/projects/…`, chemin
-  propre à la machine — comme `installer-poste.ps1`) : oui / non.
+  propre à la machine — comme `install-workstation.ps1`) : oui / non.
   *Réponse CE (2026-08-23) : « oui » — le script sera versé en vague 0.*
 - **D3 — Ordre de la vague 2.** L'ordre proposé (rebuild mémoïsé en
   premier) : valider ou réordonner.

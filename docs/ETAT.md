@@ -12,7 +12,7 @@
 
 ## Où on en est, et quoi faire en premier
 
-🔧 **Chantier en cours : [PLAN-BASCULE-ANGLAIS](PLAN-BASCULE-ANGLAIS.md)** — basculer tout le code et toute la documentation du français vers l'anglais (commande CE). Plan rédigé et mesuré le 2026-09-02 (~375 000 mots de prose, ~1 200 définitions, ~115 fichiers à renommer ; par couche, un commit par couche, trois filets neufs). **STOP 1 joué le 2026-09-02, quatorze décisions tranchées** (D1 archives gelées, D3 SQL français gardé → dette D-54, D4 anglais par défaut → prochaine release MINEURE, D9 normatifs relus en entier par le CE, D11 `BETA.fr.md` conservé, D14 glossaire validé CE), **GO CE le 2026-09-02** après la publication de 0.16.0 et 0.17.0 et le solde d'AUDIT-V2. **E0 livré et validé le 2026-09-02** ([GLOSSARY.md](GLOSSARY.md) « Validé tel quel », `scripts/rename/` : 1 210 identifiants, 480 clés, 542 ids DOM dérivés de `tokens.csv`). **E1 livré le 2026-09-02** : quatre filets prouvés en les cassant — cliquet de langue (142 113 marqueurs français à la base, `e2e/language-baseline.json`, toute hausse = rouge), contrat IPC (`queue_send` invisible jusque-là), liens markdown, eslint `no-undef` (set-based : svelte-check rejeté sur 1 059 erreurs préexistantes) ; gate à 13 étapes. **Étape en cours : E2, l'outillage méta** (CLAUDE.md, skills, WORKFLOW, scripts renommés, hook, CI, STANDARD §2.8 amendé — commits en anglais dès ce commit).
+🔧 **Chantier en cours : [PLAN-BASCULE-ANGLAIS](PLAN-BASCULE-ANGLAIS.md)** — basculer tout le code et toute la documentation du français vers l'anglais (commande CE). Plan rédigé et mesuré le 2026-09-02 (~375 000 mots de prose, ~1 200 définitions, ~115 fichiers à renommer ; par couche, un commit par couche, trois filets neufs). **STOP 1 joué le 2026-09-02, quatorze décisions tranchées** (D1 archives gelées, D3 SQL français gardé → dette D-54, D4 anglais par défaut → prochaine release MINEURE, D9 normatifs relus en entier par le CE, D11 `BETA.fr.md` conservé, D14 glossaire validé CE), **GO CE le 2026-09-02** après la publication de 0.16.0 et 0.17.0 et le solde d'AUDIT-V2. **E0 livré et validé le 2026-09-02** ([GLOSSARY.md](GLOSSARY.md) « Validé tel quel », `scripts/rename/` : 1 210 identifiants, 480 clés, 542 ids DOM dérivés de `tokens.csv`). **E1 livré le 2026-09-02** : quatre filets prouvés en les cassant — cliquet de langue (142 113 marqueurs français à la base, `e2e/language-baseline.json`, toute hausse = rouge), contrat IPC (`queue_send` invisible jusque-là), liens markdown, eslint `no-undef` (set-based : svelte-check rejeté sur 1 059 erreurs préexistantes) ; gate à 13 étapes. **E2 delivered on 2026-09-02**: scripts renamed and rewritten in English (`make-release.ps1`, `verify-release.ps1`, `run-wind.ps1`, `install-workstation.ps1`, `build-wind.mjs`, `measure-sessions.mjs`, `field.ps1`, `make-icon.ps1`), skills `/job` `/field` `/close` `/gate`, agent, CLAUDE.md, WORKFLOW.md, gate.ps1, hook, CI; STANDARD §2.8 amended — everything new is written in English from here on. **Current step: E3, the crates** (mail-ical → mail-render → mail-smtp → mail-auth → mail-imap → mail-core), identifiers by the dictionary, then comments, then literals; the SQL stays (D3).
 
 🔎 **Audit de code complet le 2026-09-01** —
 **[AUDIT-2026-09-01.md](AUDIT-2026-09-01.md)** : six auditeurs par
@@ -43,7 +43,7 @@ fausses alertes ce jour) ; CI en `--all-targets` + `--doc` (elle ne jouait pas l
 des exemples, dont celui de non-divulgation d'identifiants) ; hook sans
 `> /dev/null` sur les trois gates textuelles ; **D-36 soldée** avec le
 filet `une_base_neuve_n_a_aucune_colonne_fantome` (prouvé en le
-cassant, deux fois) ; `faire-release.ps1` refuse une branche ≠ `main` ;
+cassant, deux fois) ; `make-release.ps1` refuse une branche ≠ `main` ;
 `spikes/web-bridge` sorti du workspace ; `mail-render` : `img-src`
 sans `http:` + `no-referrer` même images accordées. **Prochain sujet :
 la vague 1 de l'audit** (S1 du cœur : `plan_sync` pur contre la
@@ -87,14 +87,14 @@ GPU, budget 200 dépassé → D-53** (racine : une iframe par carte ; le
 budget lui-même reste à préciser : repos, ou geste le plus lourd).
 Dette D-51 (CONDSTORE absent), D-52 (limites dites), D-53, D-54 (flaky
 `selection-multiple:174` ×3). **0.16.0 PUBLIÉE le 2026-09-02** (`343c8d0`,
-vagues 0 et 1 de l'audit ; `verifier-release.ps1` : tout passe, crypto
+vagues 0 et 1 de l'audit ; `verify-release.ps1` : tout passe, crypto
 minisign non prouvée faute d'outil au PATH ; **auto-update prouvé aux
 deux postes**). Au passage, deux filets d'outillage : le script de
 vérification ne parsait plus sous PowerShell 5.1 (tiret cadratin dans
 une chaîne d'un `.ps1` sans BOM, §7.1) — la gate parse désormais chaque
 `.ps1` ; et `barres-fil:25` attend la carte avant de la lire.
 **0.17.0 PUBLIÉE le 2026-09-02, le même jour** (vague 2 ;
-`verifier-release.ps1` : tout passe, crypto minisign non prouvée faute
+`verify-release.ps1` : tout passe, crypto minisign non prouvée faute
 d'outil au PATH ; **auto-update prouvé aux deux postes**). Le ticket support GitHub (purge de `051bb01`,
 données personnelles) est **envoyé le 2026-09-02** — réponse attendue,
 preuve : `gh api repos/smonchamps/wind/commits/051bb01…` ⇒ 404.
@@ -121,8 +121,8 @@ course déménagement-verrou, la refusée éternelle, l'adresse dans
 187. Dette : **D-49** (propreté reportée de la revue, vague 3) et
 **D-50** (refresh token Microsoft et `BrowserFallback` à confirmer).
 **Prochain sujet, au choix du CE : la release 0.16.0** (décision B —
-l'entrée CHANGELOG est écrite, `scripts\faire-release.ps1 0.16.0`
-depuis `main` ; puis `verifier-release.ps1` et la preuve de MAJ n-1→n
+l'entrée CHANGELOG est écrite, `scripts\make-release.ps1 0.16.0`
+depuis `main` ; puis `verify-release.ps1` et la preuve de MAJ n-1→n
 sur les deux postes, `maj.log` lisible après coup), **les retours de la
 bêta** (relance des silencieux le 2026-09-03), ou **la vague 2 de
 l'audit** (dix lots S2 mesurables, `AUDIT-2026-09-01.md` §5). Hors
@@ -392,11 +392,11 @@ la nav se recharge AVANT le réseau ; couture e2e `__e2eAjout` ;
 x64 ±1 %) — le bandeau de MAJ plus long vient du chemin honnête de la
 0.10.2, pas des octets ; chemin instrumenté (durées manifeste /
 téléchargement / écriture / spawn), **traces visibles SEULEMENT via
-`lancer-wind.ps1`** (app fenêtrée sans stderr) ; (3) **marque
+`run-wind.ps1`** (app fenêtrée sans stderr) ; (3) **marque
 d'entête 28 px** (A93 — au passage, la fiche V11 portait « Wind
 15 px », faux : 18 px réels, corrigée) ; (4) **les versions du
 workspace Cargo suivent la version produit** (0.1.0 gelé depuis
-l'origine → 0.12.0 ; `faire-release.ps1` bumpe désormais les deux,
+l'origine → 0.12.0 ; `make-release.ps1` bumpe désormais les deux,
 validations avant toute écriture) ; (5) **l'entête du message en deux
 lignes** (A92) : « Nom <adresse> sur Boîte » (règle D7 conservée) puis
 « À : Nom <adresse>, … » et « Cc : … » si présents — les noms des
@@ -411,17 +411,17 @@ MINUIT même « frais » au TTL (deux specs rouges au pre-push de 00 h ;
 `launch.mjs` exige désormais le même jour calendaire). **LIVRÉ en
 0.13.0, PUBLIÉE le 2026-08-29** (commit `9599b31`, CI verte run
 33217432151, tag nu, Latest, **vérifiée 18/18** par
-`verifier-release.ps1` — exe arm64 200 / 5 667 616 o, x64
+`verify-release.ps1` — exe arm64 200 / 5 667 616 o, x64
 200 / 6 405 481 o, signatures distinctes — et **auto-update 0.12.0 →
 0.13.0 prouvé aux DEUX postes le jour même**, GO CE : « Autoupdate OK
-sur les deux postes »). Première release où `faire-release.ps1` a
+sur les deux postes »). Première release où `make-release.ps1` a
 bumpé AUSSI le workspace Cargo (0.13.0 partout — E4 prouvé en
 condition réelle). Un flaky consigné à la gate pre-push de release
 (refonte-volets:86, scrim de composition qui intercepte le clic —
 retry vert, 152 passed). NB : les traces `maj :` n'ont pas été
 captées à cette MAJ (postes lancés normalement) — la mesure du
 bandeau attend une MAJ acceptée depuis un Wind lancé par
-`lancer-wind.ps1`. **Le prochain sujet reste la première vague bêta**
+`run-wind.ps1`. **Le prochain sujet reste la première vague bêta**
 (PLAN-BETA — bloquant CE : faire recevoir `feedback-wind@fcts.io` ;
 puis inviter 5-10 proches, D9).
 
@@ -481,7 +481,7 @@ de la liste transformée — lu/non-lu/archiver/indésirable/supprimer —,
 raccourcis e/Suppr sur le lot, et **le fil part ENTIER** — D6, tranché
 devant l'exemple Vantis), **icône Windows** remise à la marque Elements
 (elle portait la « W-pastille » d'avant l'adoption du 2026-08-24 ;
-`faire-icone.ps1` réécrit), **marque d'entête 24 px** (D2), **calage
+`make-icon.ps1` réécrit), **marque d'entête 24 px** (D2), **calage
 optique des glyphes de la nav** (planche de trois variantes, verdict
 C — baseline + 2 px, D7). Terrain validé en DEUX passes le jour même
 (8 constats de première passe, tous corrigés dans la session) ; revue
@@ -703,7 +703,7 @@ le redit ; le WIP d'alors avait été retiré (décision CE du
 
 **Dernière version livrée : 0.15.0** (publiée **2026-08-30**, tag nu
 sur `52db74f`, marquée Latest, CI verte run 33334129022, **vérifiée**
-par `verifier-release.ps1` et **auto-update 0.14.0 → 0.15.0 prouvé
+par `verify-release.ps1` et **auto-update 0.14.0 → 0.15.0 prouvé
 aux DEUX postes le jour même** — GO CE : « release ok verification
 ok auto update ok sur les deux postes »). Elle porte PLAN-RETOURS-13
 (douze retours Mode organisé, A101) et PLAN-HORIZON-NETTOYAGE
@@ -727,7 +727,7 @@ des destinataires (annuaire), le compte ajouté dit connecté, le logo
 
 **La version précédente, 0.12.0** (publiée **2026-08-28**, tag nu
 sur `a9f93e0`, marquée Latest, **vérifiée 18/18** par
-`scripts/verifier-release.ps1` et **auto-update 0.11.0 → 0.12.0
+`scripts/verify-release.ps1` et **auto-update 0.11.0 → 0.12.0
 prouvé aux DEUX postes le jour même**). Elle porte PLAN-RETOURS-11 :
 la mémoire de la garde d'images (par message et par expéditeur,
 révocable), le bouton Feedback et l'étape d'accueil bêta, « Made in
@@ -743,7 +743,7 @@ marque d'entête 24 px, le calage nav C.
 tag nu sur `f94a008`, marquée Latest). Elle porte les deux chantiers du
 2026-08-25 : **PLAN-REPERE-LIGNE** (la boîte en toutes lettres sur la
 ligne, A80-A82) et **PLAN-ESPACEMENT** (les trois crans d'air, A83).
-**Release vérifiée par `scripts/verifier-release.ps1 0.10.0` le jour
+**Release vérifiée par `scripts/verify-release.ps1 0.10.0` le jour
 même : 18/18 PASS** — Latest au tag nu, 5 assets nommés, `latest.json`
 sans BOM 1 590 o aux DEUX clés de plateforme, URL au tag nu, signatures
 == `.sig` et distinctes, exe arm64 200 / 5 632 535 o, exe x64
@@ -755,7 +755,7 @@ bi-arch (ADR 0013/0023) est prouvée vivante dans les deux sens pour la
 **La version précédente, 0.9.0** (publiée 2026-08-24 à 16:59, tag
 nu sur `f135791`, marquée Latest). Elle porte PLAN-ELEMENTS : la
 direction « Elements » entière. **Release vérifiée par
-`scripts/verifier-release.ps1 0.9.0` le 2026-08-25 : 18/18 PASS** —
+`scripts/verify-release.ps1 0.9.0` le 2026-08-25 : 18/18 PASS** —
 Latest au tag nu, 5 assets nommés, `latest.json` sans BOM 1 581 o aux
 DEUX clés de plateforme, URL au tag nu, signatures == `.sig` et
 distinctes (garde anti-croisement), exe arm64 200 / 5 629 324 o, exe
@@ -766,7 +766,7 @@ comme à la 0.7.0 — et la **preuve OAuth du second poste SANS `setx`**,
 qui **clôt l'ADR 0025**. Plus rien n'est dû sur cette version.
 
 **La version précédente, 0.8.0** (publiée 2026-08-23, tag nu sur
-`a3d04fb`, release **vérifiée** par `scripts/verifier-release.ps1
+`a3d04fb`, release **vérifiée** par `scripts/verify-release.ps1
 0.8.0` le 2026-08-24 : **tout passe** — Latest au tag nu, 5 assets
 nommés, manifeste aux deux clés de plateforme, signatures == `.sig`
 et distinctes, exe x64 200 / 6 397 182 octets). La 0.8.0 porte
@@ -774,7 +774,7 @@ PLAN-RETOURS-9 (identifiants OAuth compilés — ADR 0025, « Retirer le
 compte » dit, noms de comptes).
 
 **La version précédente, 0.7.0** (publiée 2026-08-23, tag nu sur
-`68384d2`, release **vérifiée** par `scripts/verifier-release.ps1
+`68384d2`, release **vérifiée** par `scripts/verify-release.ps1
 0.7.0` le jour même, **18/18 PASS** : Latest au tag nu, 5 assets
 nommés, manifeste sans BOM 1 278 o aux deux clés de plateforme,
 signatures == `.sig` et distinctes, exe arm64 200 / 5 668 094 octets,
@@ -785,7 +785,7 @@ second poste** : la chaîne signée bi-arch (ADR 0013/0023) est prouvée
 vivante dans les DEUX sens). La 0.7.0 porte les invitations de réunion et
 le « Supprimer » par message (PLAN-INVITATIONS, MINEUR — décision
 D7). **Publication en DEUX temps, enseignement payé** : un premier
-run de `faire-release.ps1` (nuit du 2026-08-22 au 23) a commis et
+run de `make-release.ps1` (nuit du 2026-08-22 au 23) a commis et
 poussé le bump puis est mort avant le tag ; le run du matin a rebâti
 et signé, mais échouait sur « rien à commettre » — publication
 terminée à la main à l'identique du script (tag `0.7.0` ancré sur
@@ -794,7 +794,7 @@ terminée à la main à l'identique du script (tag `0.7.0` ancré sur
 
 **La version précédente, 0.6.0 — la PREMIÈRE release bi-arch**
 (publiée 2026-08-22, `4a72a53`, CI verte run 32584117219 ; release
-**vérifiée** par `scripts/verifier-release.ps1 0.6.0` le jour même,
+**vérifiée** par `scripts/verify-release.ps1 0.6.0` le jour même,
 **18/18 PASS** : Latest au tag nu, **5 assets nommés** (2 exe, 2
 `.sig`, `latest.json`), manifeste sans BOM 1 581 o aux **deux clés de
 plateforme**, signatures == `.sig` et **distinctes** (garde
@@ -819,7 +819,7 @@ PLAN-RETOURS-7 (MINEUR, D6).
 jour même — zéro KO —, CI verte run 32647649916, **à livrer en 0.8.0**
 MINEUR, décision D5). Trois sujets : (1) **identifiants OAuth compilés
 dans la release** (D1, ADR 0025) — `option_env!("WIND_RELEASE_*")`
-posés par le seul `faire-release.ps1` pour la seule durée des deux
+posés par le seul `make-release.ps1` pour la seule durée des deux
 builds (`finally` — la revue a tué la release qui se serait bloquée
 elle-même au pre-push), la variable d'exécution prime (dev/e2e),
 test « un build dev n'embarque rien », message d'échec réécrit pour
@@ -845,8 +845,8 @@ rebuild mémoïsé par empreinte + gabarits de seed copiés par spec, TTL
 30 min — les seeders figent l'horloge, rouge payé et corrigé) ; **une
 spec e2e 74 s → 13-30 s** ; gate en UN appel `scripts/gate.ps1` (9
 étapes, fail-fast) ; `retries: 1` (flaky consigné, deux échecs =
-andon) ; chemin rapide docs-only du pre-push ; `scripts/terrain.ps1` +
-`scripts/lancer-wind.ps1` (l'état du poste et le lancement tracé, PS
+andon) ; chemin rapide docs-only du pre-push ; `scripts/field.ps1` +
+`scripts/run-wind.ps1` (l'état du poste et le lancement tracé, PS
 5.1, plus de one-liners au STOP 2) ; **nextest rejeté sur le chiffre**
 (le poste entier = 9,3 s). Reports : DETTE **D-32** (gate en deux
 encodages), **D-33** (dist périmé tenu en JS seul, pas dans build.rs).
@@ -933,12 +933,12 @@ parcours abandonné REPREND, zéro compte → guichet seul ; couture
 `__e2eAccueil` dans `lib/accueil.js` (jamais dans la décision
 produit). (3) **Release bi-arch** (ADR 0023) : le canal x64 REVIENT
 (retiré en 0.1.3) — cross-build local prouvé (1 min 45 s, override
-`lld-link` étendu au triple x64), `faire-release.ps1` à deux builds
+`lld-link` étendu au triple x64), `make-release.ps1` à deux builds
 `--target` **tout-ou-rien** (D7), `latest.json` à DEUX clés
 construites par plateforme + garde anti-croisement des signatures
 (la panne silencieuse encodée, jamais laissée à la vigilance),
 5 assets dérivés de `$cibles`, BOM UTF-8 restauré (piège PS 5.1) ;
-**`verifier-release.ps1` neuf** (§2.10 scripté ×2 plateformes,
+**`verify-release.ps1` neuf** (§2.10 scripté ×2 plateformes,
 contrôles au TAG de la version, échec en verdict — prouvé sur la
 0.5.0) ; STANDARD §2.9 (MAJEUR évalué **par canal**) et §2.10 (cinq
 assets nommés) amendés. Revue à regard neuf 8 angles : 10 trouvailles
@@ -1055,7 +1055,7 @@ vivante). La 0.2.1 porte le **défilement profond réparé**
 au drag de la barre, l'écran vide ne ment plus, démarrage et premiers
 affichages immédiats. Enseignement gravé au passage (STANDARD §2.9 ⚠️,
 oubli commis trois fois) : **les notes utilisateur au CHANGELOG
-s'écrivent AVANT `faire-release.ps1`** — le script refuse sans elles.
+s'écrivent AVANT `make-release.ps1`** — le script refuse sans elles.
 
 **La version précédente, 0.2.0** (publiée 2026-08-20, **auto-update
 0.1.11 → 0.2.0 confirmé au terrain le 2026-08-20** — la chaîne signée
@@ -1079,7 +1079,7 @@ des messages toujours sur dalle claire (thèmes sombres redevenus lisibles).
 **La 0.1.10** (2026-08-18, `a25c566`, auto-update 0.1.9 → 0.1.10 confirmé)
 portait les quatre retours de PLAN-RETOURS-3 (% de rattrapage ; spam /
 non-spam ; supprimer un brouillon ; réponse par message). **La publication
-est pilotée de bout en bout par `scripts/faire-release.ps1`** : bump de
+est pilotée de bout en bout par `scripts/make-release.ps1`** : bump de
 tauri.conf.json + build signé (clé `C:\Keys\wind.key`, mot de passe à la
 main) + manifeste + — après confirmation `OUI` — commit de release, push
 (gate rejouée), tag nu + Release GitHub marquée Latest, notes tirées du
@@ -1300,7 +1300,7 @@ le trou de pertinence le plus courant.
   télémétrie, bêta.
 - ~~Identifiants OAuth de l'app distribuée ?~~ → **CLOS le 2026-08-25**
   (ADR 0025, décision D1 de PLAN-RETOURS-9). Les client ids sont
-  compilés dans la release par le seul `faire-release.ps1`
+  compilés dans la release par le seul `make-release.ps1`
   (`option_env!("WIND_RELEASE_*")`, tout-ou-rien) ; la variable
   d'exécution garde la priorité en dev et en e2e, et le test
   `dev_builds_embed_no_credentials` crie sur un build empoisonné. **La
@@ -1359,10 +1359,10 @@ NSIS (**pas MSIX** — il
 virtualiserait `%APPDATA%` et orphelinerait la base) ; updater Tauri
 signé minisign, piloté depuis Rust (capabilities au minimum) ; signature
 de code Windows reportée à la bêta. Publication d'une version :
-`scripts/faire-release.ps1 <version>` fait TOUTE la release — depuis
+`scripts/make-release.ps1 <version>` fait TOUTE la release — depuis
 PLAN-RETOURS-8/ADR 0023 en **bi-arch** (arm64 natif + x64 cross,
 tout-ou-rien, 5 assets, `latest.json` à deux clés, tag = version
-nue) ; vérification scriptée par `scripts/verifier-release.ps1`.
+nue) ; vérification scriptée par `scripts/verify-release.ps1`.
 
 ### Le chantier fait : télémétrie de crash locale et opt-in (ADR 0014)
 

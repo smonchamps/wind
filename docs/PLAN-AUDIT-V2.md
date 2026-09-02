@@ -210,7 +210,7 @@ sur 121 ; dernier run local : passé). Assertions nues après hover/drag
 `localStorage` en 5 copies de spec. `demarrage.spec.js:95` `continue`
 sur sonde absente : 8 renommages = test vert vide. `pre-push` et
 `gate.ps1` : mêmes 8 commandes recopiées, divergence `[n/8]`/`[n/9]`
-(D-32). `verifier-release.ps1` : aucune crypto (`minisign` absent du
+(D-32). `verify-release.ps1` : aucune crypto (`minisign` absent du
 PATH du poste). Aucun `node --check`. 11 `waitForTimeout` = 8,4 s.
 
 ## Périmètre — refus explicites (§2.6)
@@ -419,7 +419,7 @@ E8+E9, revue.
   perdent leur copie) ; `demarrage.spec.js` : plancher de présence
   (≥ 5 sondes sur 8, sinon rouge) ; `globalTeardown` restaure
   `AppsUseLightTheme` depuis une valeur écrite AVANT la bascule (D7).
-- `verifier-release.ps1` : `minisign -Vm` si `minisign` est au PATH,
+- `verify-release.ps1` : `minisign -Vm` si `minisign` est au PATH,
   sinon ligne « NON PROUVÉ : minisign absent » (jamais PASS).
 - `gate.ps1` : `node --check` sur `e2e/*.mjs` et `scripts/*.mjs`
   (0,2 s) ; `pre-push` = raccourci docs-seuls puis `gate.ps1`
@@ -839,11 +839,11 @@ jamais un gel muet. mail-core 448 → 449. Enseignement au STANDARD §9.
 Préparer le poste (état de la base, build release AVEC trace) :
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\terrain.ps1
+powershell -ExecutionPolicy Bypass -File scripts\field.ps1
 ```
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\lancer-wind.ps1
+powershell -ExecutionPolicy Bypass -File scripts\run-wind.ps1
 ```
 
 1. **E1 — ouverture, sur la VRAIE base** (durées seules, aucun contenu
@@ -909,7 +909,7 @@ python e2e\sonde-gel.py C:\mesure\clarity.db 60
     CONDSTORE » ne doit PAS apparaître (Gmail, Microsoft).
 
 Budgets à re-mesurer (STANDARD §3) : gel de la pompe 0 > 150 ms
-(point 11) ; démarrage inchangé (`terrain.ps1` lit `demarrage`) ; RAM
+(point 11) ; démarrage inchangé (`field.ps1` lit `demarrage`) ; RAM
 privée < 200 Mo après le point 5.
 
 ## STOP 2 — verdict terrain du 2026-09-02 (passe 1) : 9 OK, 3 KO, 3 observations
@@ -1005,7 +1005,7 @@ préciser le geste.
 
 **D9 tranchée le 2026-09-02 (CE) : « 5 (Recommandé) »** — `FENETRE = 5`
 (11 iframes vivantes au plus), livré dans la passe 2 de terrain ; la
-racine reste D-53, le budget à préciser au `/solde`.
+racine reste D-53, le budget à préciser au `/close`.
 
 ## STOP 2 — passe 2 du 2026-09-02 : 4 OK, 1 KO, 1 remarque
 

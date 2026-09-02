@@ -20,7 +20,7 @@
 > Livré : E1 (compteAjoute rappelle connecter(), e2e RED→GREEN,
 > couture `__e2eAjout`), E2 (entête deux lignes + `noms_adresses`
 > cœur/commande/UI, e2e 2 specs neufs + ecran02 réaligné, A92), E3
-> (marque 28 px, A93), E4 (bump workspace dans faire-release.ps1,
+> (marque 28 px, A93), E4 (bump workspace dans make-release.ps1,
 > Cargo.toml aligné 0.12.0), E5 (instrumentation eprintln du chemin de
 > MAJ — RED impossible : pure trace sur un chemin qui exige une release
 > réelle, dit ici plutôt que simulé).
@@ -111,7 +111,7 @@ Une **unique** déclaration : `Cargo.toml:15`
 l'app `wind-desktop` et le spike membre via `version.workspace = true`.
 Jamais touchée depuis la création du dépôt. La version produit vit
 seule dans `apps/desktop/tauri.conf.json:4` (0.12.0), bumpée par
-`faire-release.ps1:113-121`, qui ne committe jamais `Cargo.toml`.
+`make-release.ps1:113-121`, qui ne committe jamais `Cargo.toml`.
 Les deux axes sont totalement découplés — le grief du CE est fondé.
 Côté JS, `ui-v2/package.json` et `e2e/package.json` n'ont **aucun**
 champ version (rien à corriger : privés, jamais publiés).
@@ -184,7 +184,7 @@ sur mesure** — la taille est hors de cause ; l'action éventuelle
   amendement `systeme.dc.html` dans le même commit (DC-D2, journal A-n).
 - **E3 — R3** : marque d'entête à la taille tranchée (D2) ; **STOP
   visuel** sur capture avant de dérouler ; amendement Système (DC-D2).
-- **E4 — R4** : `faire-release.ps1` bumpe AUSSI
+- **E4 — R4** : `make-release.ps1` bumpe AUSSI
   `[workspace.package] version` (+ `Cargo.lock`) dans le même commit de
   release ; alignement immédiat une fois sur la prochaine version.
 - **E5 — R2** : consignation du constat (ETAT) ; si D1 = instrumenter,
@@ -205,14 +205,14 @@ et retirée par le spec (+ preuve par journal que l'UI relit le cœur),
 échec de `noms_adresses` dit en console, cache `cacheNoms` hissé dans
 `lib/fil.svelte.js` (zéro RPC redondant à la bascule de cadre),
 `Option<Option<>>` absorbé par le SQL, validations de
-`faire-release.ps1` remontées avant toute écriture, fait « Wind 15 px »
+`make-release.ps1` remontées avant toute écriture, fait « Wind 15 px »
 corrigé (18 px réels — plan, fiche V11 et A93). **2 consignées** :
 dette D-43 (l'écho n'a pas de colonne Cc — l'entête change à la
 réconciliation) et D-44 (`connectes` n'est rafraîchi par aucun cycle —
 un jeton révoqué Wind ouvert dit « Connecté » jusqu'au redémarrage, le
 symptôme miroir de R1). Limite consignée sur E5 : les traces `maj :`
 sont invisibles dans le binaire livré (app fenêtrée sans stderr) — la
-mesure exige un lancement par `scripts/lancer-wind.ps1` (piège §9), dit
+mesure exige un lancement par `scripts/run-wind.ps1` (piège §9), dit
 à la checklist terrain. Refus maintenus : la boucle par clé primaire de
 `noms_adresses` reste (mesurée ~0,2 ms pour 40 adresses — un `IN`
 n'achèterait que de la complexité) ; la résolution des noms reste une
@@ -231,7 +231,7 @@ commande dédiée (décision D4) ; l'instrumentation MAJ reste en
   « Wind » — 18 px réels, voir la correction de revue au §1 — reste
   équilibré).
 - **D3 (R4)** : versions internes ? — **« Aligner sur la version
-  produit »** : `faire-release.ps1` bumpe aussi
+  produit »** : `make-release.ps1` bumpe aussi
   `[workspace.package] version` — un seul nombre partout.
 - **D4 (R5)** : noms des destinataires ? — **« Annuaire des
   correspondants »** (résolution locale adresse → nom, repli adresse

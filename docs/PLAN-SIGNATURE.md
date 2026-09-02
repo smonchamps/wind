@@ -99,7 +99,7 @@ Signing ; le repli n'existe que pour l'échec d'E1.
   paie pas un EV pour l'accélérer.
 - **Pas de MSIX, pas de Store** : tranché à l'ADR 0013, rien de neuf.
 - **Pas de signature en CI** : les builds de release sont locaux
-  (`faire-release.ps1`, D6 de PLAN-RETOURS-8) et le restent — les
+  (`make-release.ps1`, D6 de PLAN-RETOURS-8) et le restent — les
   secrets ne montent pas sur GitHub.
 - **Pas de correctif amont du plugin dans ce chantier** : une issue
   est ouverte chez `tauri-plugin-updater` (le retour de `ShellExecuteW`
@@ -127,11 +127,11 @@ puis **le lancer sur le poste x64, SAC On** — la seule preuve qui
 compte. Gate : `Get-AuthenticodeSignature` = `Valid` ET lancement
 accepté par SAC sur ZEPHYRUSSMO.
 
-**E3 — GELÉE (D2) — l'intégration release.** `faire-release.ps1` injecte
+**E3 — GELÉE (D2) — l'intégration release.** `make-release.ps1` injecte
 `bundle.windows.signCommand` au moment du build (`--config` de
 surcharge — `tauri.conf.json` committé reste sans signature : un build
 dev ne signe jamais). Tout-ou-rien conservé : secrets absents = release
-interrompue avant les builds. `verifier-release.ps1` étendu : contrôle
+interrompue avant les builds. `verify-release.ps1` étendu : contrôle
 Authenticode des deux exe publiés (18 → 20 contrôles). Gate : une
 release à blanc (non publiée) sort deux exe signés `Valid`.
 
@@ -184,7 +184,7 @@ reste ouverte.
   porte individuelle rouvre (ou si une autre voie de signature est
   choisie) → consigné en DETTE.
 - **D3 — Les secrets de signature : « Fichier sous C:\Keys ».** Le
-  patron de la clé minisign — chemins lus par `faire-release.ps1`,
+  patron de la clé minisign — chemins lus par `make-release.ps1`,
   jamais le dépôt, jamais de variables persistantes.
 - **D4 — Le filet E4 : « Lancement testé chez nous ».** `download()`
   du plugin puis lancement par nos soins, retour testé, erreur au

@@ -12,7 +12,7 @@
 > **D-26**. e2e : 94 → **97**. Version : CORRECTIF (0.2.1 au moment de
 > publier).
 >
-> Chantier ouvert le 2026-08-20 (`/chantier`), sur constat terrain du
+> Chantier ouvert le 2026-08-20 (`/job`), sur constat terrain du
 > CE : dans Archives, un défilement rapide à la barre (clic tenu)
 > jusqu'à ~1/3 de la liste laisse des blocs « .. », puis la liste se
 > vide ; ensuite TOUS les dossiers disent « Aucun message ici. »

@@ -24,7 +24,7 @@ Les versions et leurs changements sont consignés dans
 - [docs/ETAT.md](docs/ETAT.md) — l'état courant : version livrée,
   prochain chantier, chiffres du terrain.
 - [docs/WORKFLOW.md](docs/WORKFLOW.md) — les workflows standardisés
-  (`/chantier`, `/terrain`, `/gate`, `/solde`).
+  (`/job`, `/field`, `/gate`, `/close`).
 - [CHANGELOG.md](CHANGELOG.md) — le journal des versions.
 
 ## Construire et vérifier

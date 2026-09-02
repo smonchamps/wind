@@ -33,7 +33,7 @@ sous-estime plutôt qu'elle ne surestime).
 | Rust, total | 61 | 43 988 | ~78 800 | **613 / 1 851 (33 %)** | 873 / 3 757 | 664 `#[test]` aux noms français (`une_base_neuve_n_a_aucune_colonne_fantome`) ; 20 messages `#[error]` français ; ~62 000 mots dans des littéraux (SQL, traces, erreurs, jeu d'essai) |
 | UI Svelte + JS (`ui-v2/src`) | 25 composants + 24 modules `lib/` | 11 693 + ~2 800 | ~33 800 | **455 / 844 (54 %)** | 587 / 1 691 | tous les noms de composants sont français (`Reglages`, `Nettoyage`, `Kiosque`, `PileMisDeCote`, `GuichetCompte`, `FenteAvis`…) |
 | e2e + scripts | 29 specs, ~20 outils `.mjs`, 9 `.ps1`, 1 `.py` | ~9 300 | ~22 300 | 140 / 420 | 313 / 1 677 | **2** ancrages seulement sur un libellé français (`getByRole … name: 'Annuler l'envoi'`) : les parcours s'ancrent sur la structure, pas sur les mots |
-| Outillage méta | `CLAUDE.md`, 4 skills (275 l.), agent `spike`, `gate.ps1`, hook `pre-push`, `ci.yml`, `launch.json` | ~700 | — | — | — | noms de scripts français (`faire-release.ps1`, `verifier-release.ps1`, `lancer-wind.ps1`, `installer-poste.ps1`, `construire-wind.mjs`, `mesurer-sessions.mjs`) |
+| Outillage méta | `CLAUDE.md`, 4 skills (275 l.), agent `spike`, `gate.ps1`, hook `pre-push`, `ci.yml`, `launch.json` | ~700 | — | — | — | noms de scripts français (`make-release.ps1`, `verify-release.ps1`, `run-wind.ps1`, `install-workstation.ps1`, `build-wind.mjs`, `measure-sessions.mjs`) |
 
 Surfaces de **contrat** (un nom des deux côtés d'une frontière) :
 
@@ -81,7 +81,7 @@ Surfaces de **contrat** (un nom des deux côtés d'une frontière) :
 | 30 `PLAN-*.md` non archivés | 9 537 lignes | mélange : PLAN-AUDIT-V2 en cours, les autres soldés mais pas encore déplacés |
 | 31 ADR | 2 916 lignes | **décisions gelées**, vivantes ; noms de fichiers français (`0008-regroupement-en-conversations.md`) |
 | 29 archives (`docs/archives/`) | 6 804 lignes | clos ; PHASE0-3, plans soldés |
-| `CHANGELOG.md` | 758 lignes | public ; **lu par `faire-release.ps1`** pour les notes de Release (`## [x.y.z]` obligatoire) ; 5 Releases publiées 0.11→0.15 avec notes françaises |
+| `CHANGELOG.md` | 758 lignes | public ; **lu par `make-release.ps1`** pour les notes de Release (`## [x.y.z]` obligatoire) ; 5 Releases publiées 0.11→0.15 avec notes françaises |
 | `README.md`, `e2e/README.md`, `assets/icones/README.md`, `ANNOTATIONS-V3.md` | 36 + 100 + 18 + 65 l. | vivants |
 | **`docs/design/systeme.dc.html`** | 570 Ko, **~37 000 mots**, 109 amendements A-n | **seul normatif de l'UI** (A18), outillé par la gate ; le journal A-n est cité 3 978 fois (docs + code) |
 | `docs/architecture/index.html` | ~4 300 mots | vivant |
@@ -248,6 +248,21 @@ empruntent le chemin rapide documentaire du hook, étapes 1-6).
 
 ### E2 — Outillage méta (P)
 
+> **Delivered on 2026-09-02** (this note, and every new paragraph from
+> here on, is written in English — D2; the ratchet forbids any rise).
+> Renamed with `git mv` and rewritten in English, ASCII in the `.ps1`
+> (the PowerShell 5.1 trap, no BOM needed any more): `make-release.ps1`,
+> `verify-release.ps1`, `run-wind.ps1`, `install-workstation.ps1`,
+> `build-wind.mjs`, `measure-sessions.mjs` (identifiers too, self-contained),
+> `field.ps1`, `make-icon.ps1`; skills `job`, `field`, `close`, `gate`;
+> the `spike` agent, `CLAUDE.md`, `WORKFLOW.md`, `gate.ps1` (13 steps,
+> `-DocsOnly`), the pre-push hook, `ci.yml`, `dependabot.yml`,
+> `launch.json`, the `.gitignore` comment; **STANDARD §2.8 amended**
+> ("Everything is in English", commits in English, the "no accents" rule
+> void). Every reference to the old names replaced in 38 tracked files
+> (living docs, Rust and TOML comments, memory) — the mapping tables of
+> GLOSSARY.md, the archives, `spikes/` and the design HTML left alone.
+
 `CLAUDE.md`, les 4 skills, l'agent `spike`, `WORKFLOW.md`, `gate.ps1`,
 `.githooks/pre-push`, `ci.yml`, `launch.json`, `dependabot.yml`, les 9
 scripts renommés (`make-release.ps1`, `verify-release.ps1`,
@@ -356,7 +371,7 @@ traduction complète (6 804 lignes + les PLAN soldés déplacés à E7).
 ### E10 — Mémoire, solde (P)
 
 17 fichiers de mémoire et `MEMORY.md` traduits, pointeurs vers les
-scripts renommés corrigés ; `/solde` : ETAT, DETTE (ce qui reste
+scripts renommés corrigés ; `/close` : ETAT, DETTE (ce qui reste
 français par décision — D3 — entre au registre comme dette **assumée**,
 avec ce qui la rouvrirait), chiffres kaizen (T1, W3, KO du STOP 2).
 
@@ -451,7 +466,7 @@ Un constat KO ⇒ correction le jour même, re-gate, re-terrain (§2.5).
   renommé — jouer les renommages en masse dans un lot, vérifier
   `git status` propre.
 - **Un chantier long qui traverse la bêta** : chaque commit est
-  livrable ; un retour testeur passe devant, en `/terrain`, sur `main`.
+  livrable ; un retour testeur passe devant, en `/field`, sur `main`.
 - **Le glossaire figé trop tôt** : un mot mal choisi coûte un second
   passage sur toutes les couches — D14, STOP 1 bis.
 

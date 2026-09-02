@@ -20,7 +20,7 @@
 > `2> fichier` ne trace RIEN — le lanceur doit ATTENDRE le processus
 > (`cargo run … --release 2> fichier`).
 >
-> Chantier ouvert le 2026-08-21 (`/chantier`), sur trois retours CE :
+> Chantier ouvert le 2026-08-21 (`/job`), sur trois retours CE :
 > (1) ETAT périmé — les chantiers perf-lecture et envoi de pièces
 > jointes sont réalisés ; (2) bug — une entrée anormale apparaît dans
 > « Envoyés » à l'envoi d'une pièce jointe (capture fournie), la vraie
