@@ -1002,7 +1002,10 @@ Signaler comme spam / Épingler) doit respecter le Système : une
 au-dessus du message. Aujourd'hui : bande à fond `--bg`, sans bord ni
 ombre. Proposition (STOP visuel) : l'objet flottant du produit (A108,
 `Menu.svelte`) — surface, bordure `--border`, rayon des contrôles,
-`--shadow`, décollée de 8 px du haut du scrollport.
+`--shadow`, décollée de 8 px du haut du scrollport. **Verdict CE
+(2026-09-02, sur captures) : « OK tel quel »** — livré dans `0a42bd9`,
+CI verte 33633517415 ; à confirmer au terrain (passe 3, avec la bande
+« Déjà consulté »).
 
 ## § Décisions CE — tranchées au STOP 1, le 2026-09-02
 
