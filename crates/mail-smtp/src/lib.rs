@@ -1,19 +1,19 @@
-//! Adaptateur SMTP : l'implémentation réelle de [`mail_core::MailTransport`].
+//! SMTP adapter: the real implementation of [`mail_core::MailTransport`].
 //!
-//! Le noyau ne connaît que le trait ; ce crate traduit un
-//! [`OutboxMessage`] en message RFC 5322 (crate `lettre`) et le remet au
-//! serveur en XOAUTH2 — jamais de mot de passe, comme pour IMAP.
+//! The core only knows the trait; this crate turns an [`OutboxMessage`]
+//! into an RFC 5322 message (`lettre` crate) and hands it to the server in
+//! XOAUTH2 — never a password, as for IMAP.
 //!
-//! Classification des échecs (le contrat du port) :
-//! - l'authentification se joue à la CONNEXION (`test_connection`) : un
-//!   token expiré fait échouer l'ouverture, jamais un envoi — sinon un
-//!   simple token périmé enverrait des messages sains en quarantaine ;
-//! - pendant l'envoi, une réponse 5xx du serveur est un refus du MESSAGE
-//!   (`Permanent`), tout le reste (réseau, 4xx) est `Transient`.
+//! Classification of failures (the port's contract):
+//! - authentication happens at CONNECTION time (`test_connection`): an
+//!   expired token fails the opening, never a send — otherwise a merely
+//!   expired token would quarantine healthy messages;
+//! - during the send, a 5xx response of the server is a refusal of the
+//!   MESSAGE (`Permanent`), everything else (network, 4xx) is `Transient`.
 //!
-//! Note Gmail : un message accepté en SMTP est ajouté par Gmail lui-même
-//! au dossier « Envoyés » — aucun APPEND IMAP à faire. D'autres
-//! fournisseurs l'exigeront (Phase 3, multi-comptes).
+//! Gmail note: a message accepted over SMTP is added by Gmail itself to
+//! the "Sent" folder — no IMAP APPEND to do. Other providers will require
+//! it (Phase 3, multi-account).
 
 use lettre::address::Envelope;
 use lettre::message::header::{ContentType, Header, HeaderName, HeaderValue};
@@ -27,11 +27,11 @@ pub struct SmtpMailer {
     transport: SmtpTransport,
 }
 
-/// Mode TLS déduit du port de soumission SMTP. 465 est le port SMTPS
-/// (TLS implicite dès l'ouverture) ; 587 et les autres ports de
-/// soumission montent le chiffrement via STARTTLS. Jamais de repli en
-/// clair — la règle sécurité « TLS partout » tient (un serveur sans
-/// STARTTLS fait échouer l'ouverture, ce qui est le comportement voulu).
+/// TLS mode inferred from the SMTP submission port. 465 is the SMTPS port
+/// (implicit TLS from the opening); 587 and the other submission ports
+/// upgrade the encryption through STARTTLS. Never a cleartext fallback —
+/// the "TLS everywhere" security rule holds (a server without STARTTLS
+/// fails the opening, which is the wanted behavior).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SmtpTls {
     Implicit,
@@ -45,11 +45,11 @@ fn smtp_tls_for_port(port: u16) -> SmtpTls {
     }
 }
 
-/// Ouvre le transport vers `host:port` selon la politique TLS du port.
+/// Opens the transport to `host:port` according to the port's TLS policy.
 ///
-/// Chemin UNIQUE des deux modes d'authentification : c'est ce qui garantit
-/// qu'un correctif sur la politique de port ne peut plus profiter à un
-/// seul des deux. Le bug #3 était né de cette duplication.
+/// SINGLE path of both authentication modes: that is what guarantees a fix
+/// on the port policy can no longer benefit only one of the two. Bug #3
+/// was born of that duplication.
 fn transport_builder(host: &str, port: u16) -> Result<SmtpTransportBuilder, SendError> {
     match smtp_tls_for_port(port) {
         SmtpTls::Implicit => SmtpTransport::relay(host),
@@ -60,11 +60,11 @@ fn transport_builder(host: &str, port: u16) -> Result<SmtpTransportBuilder, Send
 }
 
 impl SmtpMailer {
-    /// Connexion TLS + authentification XOAUTH2, vérifiée immédiatement :
-    /// on ne rend un transport que s'il sait envoyer.
+    /// TLS connection + XOAUTH2 authentication, verified immediately: a
+    /// transport is only returned if it can send.
     ///
-    /// Le `port` est honoré — Gmail écoute en 465 (TLS implicite),
-    /// `smtp.office365.com` uniquement en 587 (STARTTLS).
+    /// The `port` is honored — Gmail listens on 465 (implicit TLS),
+    /// `smtp.office365.com` only on 587 (STARTTLS).
     pub fn connect_xoauth2(
         host: &str,
         port: u16,
@@ -78,8 +78,8 @@ impl SmtpMailer {
         Self::test_transport(transport)
     }
 
-    /// Connexion TLS + authentification par mot de passe (SMTP générique).
-    /// Même politique de port que XOAUTH2. Vérifiée immédiatement.
+    /// TLS connection + password authentication (generic SMTP). Same port
+    /// policy as XOAUTH2. Verified immediately.
     pub fn connect_password(
         host: &str,
         port: u16,
@@ -96,56 +96,56 @@ impl SmtpMailer {
         match transport.test_connection() {
             Ok(true) => Ok(Self { transport }),
             Ok(false) => Err(SendError::Transient(
-                "le serveur SMTP ne répond pas".to_string(),
+                "the SMTP server does not answer".to_string(),
             )),
-            // Échec d'ouverture (réseau OU authentification) : transitoire
-            // par définition — le message n'a même pas été présenté. Le
-            // PRÉFIXE dit lequel (E7) : le shell ne refait la session
-            // OAuth que sur un refus d'authentification, jamais sur une
-            // panne réseau (le défaut P0 corrigé côté IMAP).
+            // Opening failure (network OR authentication): transient by
+            // definition — the message was not even presented. The PREFIX
+            // says which (E7): the shell only redoes the OAuth session on an
+            // authentication refusal, never on a network failure (the P0
+            // defect fixed on the IMAP side).
             Err(err) if err.status().is_none() => {
-                Err(SendError::Transient(format!("connexion : {err}")))
+                Err(SendError::Transient(format!("connection: {err}")))
             }
-            Err(err) => Err(SendError::Transient(format!("authentification : {err}"))),
+            Err(err) => Err(SendError::Transient(format!("authentication: {err}"))),
         }
     }
 }
 
-/// Le discriminant du shell (E7), jumeau de `mail_imap::is_connection_error` :
-/// une panne d'ouverture SANS réponse du serveur — réseau, TLS, délai.
+/// The shell's discriminant (E7), twin of `mail_imap::is_connection_error`:
+/// an opening failure WITHOUT a server response — network, TLS, timeout.
 pub fn is_connection_error(err: &SendError) -> bool {
-    matches!(err, SendError::Transient(msg) if msg.starts_with("connexion "))
+    matches!(err, SendError::Transient(msg) if msg.starts_with("connection"))
 }
 
-/// Comment traiter un échec d'envoi. Décision pure (STANDARD §4), testée
-/// sans réseau.
+/// How to handle a send failure. Pure decision (STANDARD §4), tested
+/// without network.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Classe {
-    Transitoire,
+enum FailureClass {
+    Transient,
     Permanent,
 }
 
-/// E7 : `lettre` sans `pool` rouvre et ré-authentifie à CHAQUE envoi — un
-/// jeton OAuth expiré au milieu d'une vidange rend un 5xx d'AUTHENTIFICATION
-/// (530/534/535/538) sur un message sain. C'est la session qu'il faut
-/// refaire, pas le message : transitoire. Les autres 5xx (destinataire
-/// inexistant, message rejeté) restent définitifs.
-fn classer_echec(status: Option<u16>, permanent: bool) -> Classe {
+/// E7: `lettre` without `pool` reopens and re-authenticates at EACH send —
+/// an OAuth token expired in the middle of a flush yields an AUTHENTICATION
+/// 5xx (530/534/535/538) on a healthy message. It is the session that must
+/// be redone, not the message: transient. The other 5xx (unknown
+/// recipient, rejected message) stay definitive.
+fn classify_failure(status: Option<u16>, permanent: bool) -> FailureClass {
     match status {
-        Some(530 | 534 | 535 | 538) => Classe::Transitoire,
-        _ if permanent => Classe::Permanent,
-        _ => Classe::Transitoire,
+        Some(530 | 534 | 535 | 538) => FailureClass::Transient,
+        _ if permanent => FailureClass::Permanent,
+        _ => FailureClass::Transient,
     }
 }
 
 impl MailTransport for SmtpMailer {
     fn send(&mut self, message: &OutboxMessage) -> Result<(), SendError> {
         let email = build_message(message)?;
-        // Cci : l'enveloppe SMTP porte TOUS les destinataires (À + Cc +
-        // Cci), mais le message servi (`build_message`) n'a PAS d'en-tête
-        // Bcc — c'est pourquoi on envoie via `send_raw` (enveloppe
-        // explicite) plutôt que `send` (qui dériverait l'enveloppe des
-        // en-têtes ET laisserait le Bcc fuiter dans le corps servi à tous).
+        // Bcc: the SMTP envelope carries ALL the recipients (To + Cc + Bcc),
+        // but the served message (`build_message`) has NO Bcc header — that
+        // is why we send through `send_raw` (explicit envelope) rather than
+        // `send` (which would derive the envelope from the headers AND let
+        // the Bcc leak into the body served to everyone).
         let envelope = build_envelope(message)?;
         let raw = email.formatted();
         match self.transport.send_raw(&envelope, &raw) {
@@ -154,22 +154,22 @@ impl MailTransport for SmtpMailer {
                 let status = err
                     .status()
                     .and_then(|code| code.to_string().parse::<u16>().ok());
-                match classer_echec(status, err.is_permanent()) {
-                    Classe::Permanent => Err(SendError::Permanent(err.to_string())),
-                    Classe::Transitoire => Err(SendError::Transient(err.to_string())),
+                match classify_failure(status, err.is_permanent()) {
+                    FailureClass::Permanent => Err(SendError::Permanent(err.to_string())),
+                    FailureClass::Transient => Err(SendError::Transient(err.to_string())),
                 }
             }
         }
     }
 }
 
-/// L'enveloppe SMTP : expéditeur + TOUS les destinataires (À, Cc, Cci).
-/// C'est elle, et non les en-têtes du message, qui commande les `RCPT
-/// TO` — le seul endroit où une adresse Cci a le droit de paraître.
+/// The SMTP envelope: sender + ALL the recipients (To, Cc, Bcc). It, and
+/// not the message headers, drives the `RCPT TO` — the only place where a
+/// Bcc address may appear.
 fn build_envelope(message: &OutboxMessage) -> Result<Envelope, SendError> {
     let parse = |addr: &str| -> Result<Address, SendError> {
         addr.parse::<Address>()
-            .map_err(|err| SendError::Permanent(format!("adresse invalide {addr:?} : {err}")))
+            .map_err(|err| SendError::Permanent(format!("invalid address {addr:?}: {err}")))
     };
     let from = parse(&message.from)?;
     let recipients = message
@@ -180,14 +180,13 @@ fn build_envelope(message: &OutboxMessage) -> Result<Envelope, SendError> {
         .map(|addr| parse(addr))
         .collect::<Result<Vec<_>, _>>()?;
     Envelope::new(Some(from), recipients)
-        .map_err(|err| SendError::Permanent(format!("enveloppe SMTP : {err}")))
+        .map_err(|err| SendError::Permanent(format!("SMTP envelope: {err}")))
 }
 
-/// En-tête `X-Priority: 1` d'un envoi marqué important (R3,
-/// PLAN-RETOURS-6). `lettre` n'a pas d'en-tête de priorité intégré ;
-/// la paire X-Priority + Importance est celle que posent Outlook et
-/// Thunderbird — et que lisent Gmail et les autres. Toujours « 1 » :
-/// Wind ne connaît qu'un cran (important), pas une échelle.
+/// `X-Priority: 1` header of a send marked important (R3, PLAN-RETOURS-6).
+/// `lettre` has no built-in priority header; the X-Priority + Importance
+/// pair is the one Outlook and Thunderbird set — and that Gmail and the
+/// others read. Always "1": Wind knows one notch (important), not a scale.
 #[derive(Debug, Clone)]
 struct XPriority;
 
@@ -205,7 +204,7 @@ impl Header for XPriority {
     }
 }
 
-/// En-tête `Importance: high` — le second de la paire (RFC 2156/4021).
+/// `Importance: high` header — the second of the pair (RFC 2156/4021).
 #[derive(Debug, Clone)]
 struct Importance;
 
@@ -223,11 +222,11 @@ impl Header for Importance {
     }
 }
 
-/// Traduit un message de la boîte d'envoi en message RFC 5322.
+/// Turns an outbox message into an RFC 5322 message.
 ///
-/// Le Message-ID est CELUI du journal — jamais regénéré : c'est lui qui
-/// relie l'entrée de la boîte d'envoi au message réellement parti
-/// (règle « jamais d'envoi fantôme »).
+/// The Message-ID is THE journal's — never regenerated: it is what ties the
+/// outbox entry to the message that really left (the "never a ghost send"
+/// rule).
 fn build_message(message: &OutboxMessage) -> Result<Message, SendError> {
     let mut builder = Message::builder()
         .from(parse_mailbox(&message.from)?)
@@ -237,115 +236,114 @@ fn build_message(message: &OutboxMessage) -> Result<Message, SendError> {
     for recipient in &message.to {
         builder = builder.to(parse_mailbox(recipient)?);
     }
-    // Cc paraît dans les en-têtes ; Cci JAMAIS (elle vit dans l'enveloppe
-    // SMTP seule, `build_envelope`) — c'est toute sa raison d'être.
+    // Cc appears in the headers; Bcc NEVER (it lives in the SMTP envelope
+    // alone, `build_envelope`) — that is its whole reason for being.
     for recipient in &message.cc {
         builder = builder.cc(parse_mailbox(recipient)?);
     }
     if let Some(parent) = &message.in_reply_to {
-        // E7 : la chaîne entière si le cœur la connaît (References du
-        // parent + son Message-ID, RFC 5322 §3.6.4), sinon le parent seul.
+        // E7: the whole chain if the core knows it (References of the
+        // parent + its Message-ID, RFC 5322 §3.6.4), otherwise the parent alone.
         let references = message.references.clone().unwrap_or_else(|| parent.clone());
         builder = builder.in_reply_to(parent.clone()).references(references);
     }
-    // R3 : le marquage vient du journal — c'est lui qui part, jamais un
-    // état d'écran. Ordinaire = aucun en-tête (chemin historique intact).
+    // R3: the marking comes from the journal — it is what leaves, never a
+    // screen state. Ordinary = no header (historical path intact).
     if message.important {
         builder = builder.header(XPriority).header(Importance);
     }
-    // PLAN-INVITATIONS : la réponse iTIP — texte + partie
-    // `text/calendar; method=REPLY` en alternative (le format qu'émet
-    // Outlook, lu par Google/Exchange). Par construction elle n'a ni
-    // HTML ni pièces ; un journal qui en porterait est incohérent —
-    // refus franc, jamais un message ambigu.
+    // PLAN-INVITATIONS: the iTIP reply — text + `text/calendar;
+    // method=REPLY` part as an alternative (the format Outlook emits, read
+    // by Google/Exchange). By construction it has neither HTML nor
+    // attachments; a journal carrying some is inconsistent — frank refusal,
+    // never an ambiguous message.
     if let Some(ics) = &message.ics_reply {
         if !message.attachments.is_empty() || message.body_html.is_some() {
             return Err(SendError::Permanent(
-                "réponse iTIP avec pièces ou HTML : journal incohérent, envoi refusé".to_string(),
+                "iTIP reply with attachments or HTML: inconsistent journal, send refused"
+                    .to_string(),
             ));
         }
-        let calendrier = SinglePart::builder()
+        let calendar = SinglePart::builder()
             .header(
                 ContentType::parse("text/calendar; method=REPLY; charset=utf-8")
-                    .map_err(|err| SendError::Permanent(format!("type calendrier : {err}")))?,
+                    .map_err(|err| SendError::Permanent(format!("calendar type: {err}")))?,
             )
             .body(ics.clone());
         return builder
             .multipart(
                 MultiPart::alternative()
                     .singlepart(SinglePart::plain(message.body_text.clone()))
-                    .singlepart(calendrier),
+                    .singlepart(calendar),
             )
-            .map_err(|err| SendError::Permanent(format!("construction du message : {err}")));
+            .map_err(|err| SendError::Permanent(format!("message construction: {err}")));
     }
     if message.attachments.is_empty() {
-        // Corps riche : multipart/alternative — le texte d'abord (RFC
-        // 2046, du plus simple au plus fidèle), le HTML ensuite. Sans
-        // HTML, le chemin texte historique, octet pour octet.
+        // Rich body: multipart/alternative — the text first (RFC 2046, from
+        // the simplest to the most faithful), the HTML next. Without HTML,
+        // the historical text path, byte for byte.
         return match &message.body_html {
             None => builder.body(message.body_text.clone()),
-            Some(html) => builder.multipart(corps_alternatif(&message.body_text, html)),
+            Some(html) => builder.multipart(alternative_body(&message.body_text, html)),
         }
-        .map_err(|err| SendError::Permanent(format!("construction du message : {err}")));
+        .map_err(|err| SendError::Permanent(format!("message construction: {err}")));
     }
-    // multipart/mixed : le corps d'abord (texte seul, ou alternative
-    // texte+HTML emboîtée), puis chaque pièce telle que le journal la
-    // porte (PJ-D2) — les octets viennent du journal, jamais d'un
-    // fichier relu à l'envoi.
+    // multipart/mixed: the body first (text alone, or nested text+HTML
+    // alternative), then each attachment as the journal carries it (PJ-D2)
+    // — the bytes come from the journal, never from a file re-read at send.
     let mut parts = match &message.body_html {
         None => MultiPart::mixed().singlepart(SinglePart::plain(message.body_text.clone())),
-        Some(html) => MultiPart::mixed().multipart(corps_alternatif(&message.body_text, html)),
+        Some(html) => MultiPart::mixed().multipart(alternative_body(&message.body_text, html)),
     };
-    for piece in &message.attachments {
-        // Des octets absents signent un journal purgé (PJ-D7) : par
-        // construction, un message purgé est `sent`, donc jamais revenu
-        // en file. Si l'invariant casse, refus franc — renvoyer un
-        // message amputé de ses pièces serait pire.
-        let bytes = piece.bytes.clone().ok_or_else(|| {
+    for attachment in &message.attachments {
+        // Absent bytes sign a purged journal (PJ-D7): by construction, a
+        // purged message is `sent`, hence never back in the queue. If the
+        // invariant breaks, frank refusal — resending a message amputated
+        // of its attachments would be worse.
+        let bytes = attachment.bytes.clone().ok_or_else(|| {
             SendError::Permanent(format!(
-                "pièce {:?} sans octets : journal purgé, envoi refusé",
-                piece.name
+                "attachment {:?} without bytes: purged journal, send refused",
+                attachment.name
             ))
         })?;
-        parts = parts.singlepart(file_part(&piece.name, &piece.mime, bytes)?);
+        parts = parts.singlepart(file_part(&attachment.name, &attachment.mime, bytes)?);
     }
     builder
         .multipart(parts)
-        .map_err(|err| SendError::Permanent(format!("construction du message : {err}")))
+        .map_err(|err| SendError::Permanent(format!("message construction: {err}")))
 }
 
-/// L'alternative texte+HTML d'un corps riche — LE constructeur commun
-/// des quatre chemins (envoi/brouillon × avec/sans pièces) : l'ordre des
-/// parties et le repli se décident ICI, une fois.
-fn corps_alternatif(texte: &str, html: &str) -> MultiPart {
-    MultiPart::alternative_plain_html(texte.to_string(), html.to_string())
+/// The text+HTML alternative of a rich body — THE common constructor of
+/// the four paths (send/draft × with/without attachments): the order of
+/// the parts and the fallback are decided HERE, once.
+fn alternative_body(text: &str, html: &str) -> MultiPart {
+    MultiPart::alternative_plain_html(text.to_string(), html.to_string())
 }
 
-/// La partie MIME d'une pièce — LE constructeur commun de l'envoi et du
-/// reflet IMAP : un correctif (nom RFC 2231, repli de type) profite aux
-/// deux, la leçon du bug #3.
+/// The MIME part of an attachment — THE common constructor of the send and
+/// of the IMAP reflection: a fix (RFC 2231 name, type fallback) benefits
+/// both, the lesson of bug #3.
 ///
-/// Un type inconnu ne bloque rien : le flux d'octets générique dit
-/// honnêtement « je ne sais pas ».
+/// An unknown type blocks nothing: the generic octet stream honestly says
+/// "I do not know".
 fn file_part(name: &str, mime: &str, bytes: Vec<u8>) -> Result<SinglePart, SendError> {
     let content_type = ContentType::parse(mime)
         .or_else(|_| ContentType::parse("application/octet-stream"))
-        .map_err(|err| SendError::Permanent(format!("type de pièce : {err}")))?;
+        .map_err(|err| SendError::Permanent(format!("attachment type: {err}")))?;
     Ok(FilePart::new(name.to_string()).body(bytes, content_type))
 }
 
-/// Message RFC 5322 d'un brouillon, prêt pour un APPEND `\Draft` — la
-/// poussée vers le dossier Brouillons Gmail (Phase 2).
+/// RFC 5322 message of a draft, ready for an APPEND `\Draft` — the push to
+/// the Gmail Drafts folder (Phase 2).
 ///
-/// Un brouillon porte du texte brut : les destinataires invalides sont
-/// omis (une adresse à moitié tapée reste locale) ; si le message n'est
-/// pas constructible en l'état, il n'est simplement pas poussé — le
-/// local reste la référence, rien n'est perdu.
+/// A draft carries raw text: invalid recipients are omitted (a half-typed
+/// address stays local); if the message is not constructible as is, it is
+/// simply not pushed — the local copy remains the reference, nothing is lost.
 ///
-/// Les pièces suivent (PJ-D6) : le reflet distant montre le brouillon
-/// ENTIER, même constructeur de partie que l'envoi.
-// Les champs plats d'un brouillon, tous des chaînes du même registre —
-// le même compromis que `insert_draft` côté cœur.
+/// The attachments follow (PJ-D6): the remote reflection shows the WHOLE
+/// draft, same part constructor as the send.
+// The flat fields of a draft, all strings of the same register — the same
+// compromise as `insert_draft` on the core side.
 #[allow(clippy::too_many_arguments)]
 pub fn draft_bytes(
     from: &str,
@@ -355,7 +353,7 @@ pub fn draft_bytes(
     subject: &str,
     body: &str,
     body_html: Option<&str>,
-    pieces: &[DraftAttachmentFull],
+    attachments: &[DraftAttachmentFull],
 ) -> Result<Vec<u8>, SendError> {
     let mut builder = Message::builder()
         .from(parse_mailbox(from)?)
@@ -366,9 +364,9 @@ pub fn draft_bytes(
             builder = builder.to(mailbox);
         }
     }
-    // Un brouillon est le message tel que l'utilisateur le prépare : il
-    // porte SES Cc et Cci (le dossier Brouillons est le sien seul, rien
-    // n'est encore envoyé). Adresses tolérées, comme le champ À.
+    // A draft is the message as the user prepares it: it carries THEIR Cc
+    // and Bcc (the Drafts folder is theirs alone, nothing is sent yet).
+    // Tolerated addresses, like the To field.
     for candidate in cc_raw.split([',', ';']) {
         if let Ok(mailbox) = candidate.trim().parse::<Mailbox>() {
             builder = builder.cc(mailbox);
@@ -379,33 +377,37 @@ pub fn draft_bytes(
             builder = builder.bcc(mailbox);
         }
     }
-    if pieces.is_empty() {
-        // Même bascule que l'envoi : le reflet montre le brouillon riche
-        // en multipart/alternative, le brouillon texte reste mono-partie.
+    if attachments.is_empty() {
+        // Same switch as the send: the reflection shows the rich draft as
+        // multipart/alternative, the text draft stays single-part.
         return match body_html {
             None => builder.body(body.to_string()),
-            Some(html) => builder.multipart(corps_alternatif(body, html)),
+            Some(html) => builder.multipart(alternative_body(body, html)),
         }
         .map(|message| message.formatted())
-        .map_err(|err| SendError::Permanent(format!("construction du brouillon : {err}")));
+        .map_err(|err| SendError::Permanent(format!("draft construction: {err}")));
     }
     let mut parts = match body_html {
         None => MultiPart::mixed().singlepart(SinglePart::plain(body.to_string())),
-        Some(html) => MultiPart::mixed().multipart(corps_alternatif(body, html)),
+        Some(html) => MultiPart::mixed().multipart(alternative_body(body, html)),
     };
-    for piece in pieces {
-        parts = parts.singlepart(file_part(&piece.name, &piece.mime, piece.bytes.clone())?);
+    for attachment in attachments {
+        parts = parts.singlepart(file_part(
+            &attachment.name,
+            &attachment.mime,
+            attachment.bytes.clone(),
+        )?);
     }
     builder
         .multipart(parts)
         .map(|message| message.formatted())
-        .map_err(|err| SendError::Permanent(format!("construction du brouillon : {err}")))
+        .map_err(|err| SendError::Permanent(format!("draft construction: {err}")))
 }
 
 fn parse_mailbox(address: &str) -> Result<Mailbox, SendError> {
     address
         .parse()
-        .map_err(|err| SendError::Permanent(format!("adresse invalide {address:?} : {err}")))
+        .map_err(|err| SendError::Permanent(format!("invalid address {address:?}: {err}")))
 }
 
 #[cfg(test)]
@@ -413,70 +415,73 @@ mod tests {
     use super::*;
     use mail_core::{OutboxAttachment, OutboxState};
 
-    /// PLAN-AUDIT-V1 E7 (audit S2) : `lettre` sans `pool` rouvre et
-    /// ré-authentifie à CHAQUE envoi — un jeton OAuth expiré au milieu
-    /// d'une longue vidange rend un 535 sur un message sain, et le code
-    /// classait tout 5xx en `Permanent` : message « refusé », geste
-    /// utilisateur requis. Un refus d'AUTHENTIFICATION est transitoire —
-    /// c'est la session qu'il faut refaire, pas le message.
+    /// PLAN-AUDIT-V1 E7 (audit S2): `lettre` without `pool` reopens and
+    /// re-authenticates at EACH send — an OAuth token expired in the middle
+    /// of a long flush yields a 535 on a healthy message, and the code
+    /// classified every 5xx as `Permanent`: message "refused", user gesture
+    /// required. An AUTHENTICATION refusal is transient — it is the session
+    /// that must be redone, not the message.
     #[test]
-    fn un_535_en_plein_flush_est_transitoire() {
+    fn a_535_in_the_middle_of_a_flush_is_transient() {
         assert!(matches!(
-            classer_echec(Some(535), true),
-            Classe::Transitoire
+            classify_failure(Some(535), true),
+            FailureClass::Transient
         ));
         assert!(matches!(
-            classer_echec(Some(530), true),
-            Classe::Transitoire
+            classify_failure(Some(530), true),
+            FailureClass::Transient
         ));
         assert!(matches!(
-            classer_echec(Some(534), true),
-            Classe::Transitoire
+            classify_failure(Some(534), true),
+            FailureClass::Transient
         ));
         assert!(matches!(
-            classer_echec(Some(538), true),
-            Classe::Transitoire
+            classify_failure(Some(538), true),
+            FailureClass::Transient
         ));
         assert!(
-            matches!(classer_echec(Some(550), true), Classe::Permanent),
-            "un destinataire inexistant reste un refus définitif"
+            matches!(classify_failure(Some(550), true), FailureClass::Permanent),
+            "an unknown recipient remains a definitive refusal"
         );
-        assert!(matches!(classer_echec(None, false), Classe::Transitoire));
         assert!(matches!(
-            classer_echec(Some(451), false),
-            Classe::Transitoire
+            classify_failure(None, false),
+            FailureClass::Transient
+        ));
+        assert!(matches!(
+            classify_failure(Some(451), false),
+            FailureClass::Transient
         ));
     }
 
-    /// RFC 5322 §3.6.4 : `References` = celles du parent + son Message-ID.
-    /// Avant E7, l'adaptateur n'y mettait que le parent : nos propres
-    /// envois cassaient le fil chez le destinataire au 3e message — et
-    /// dans notre dossier Envoyés relu par `fetch_thread_headers`.
+    /// RFC 5322 §3.6.4: `References` = the parent's + its Message-ID. Before
+    /// E7, the adapter only put the parent there: our own sends broke the
+    /// thread at the recipient's from the 3rd message — and in our Sent
+    /// folder re-read by `fetch_thread_headers`.
     #[test]
-    fn references_porte_la_chaine_entiere() {
+    fn references_carries_the_whole_chain() {
         let mut message = outbox_message(Some("<c@x>"));
         message.references = Some("<a@x> <b@x> <c@x>".to_string());
-        let servi = formatted(&message);
-        assert!(servi.contains("In-Reply-To: <c@x>"), "{servi}");
-        assert!(servi.contains("References: <a@x> <b@x> <c@x>"), "{servi}");
-        // Sans chaîne connue, le parent seul (chemin d'avant).
-        let seul = formatted(&outbox_message(Some("<c@x>")));
-        assert!(seul.contains("References: <c@x>"), "{seul}");
+        let served = formatted(&message);
+        assert!(served.contains("In-Reply-To: <c@x>"), "{served}");
+        assert!(served.contains("References: <a@x> <b@x> <c@x>"), "{served}");
+        // Without a known chain, the parent alone (the path before).
+        let alone = formatted(&outbox_message(Some("<c@x>")));
+        assert!(alone.contains("References: <c@x>"), "{alone}");
     }
 
-    /// Le shell faisait « toute erreur d'ouverture SMTP ⇒ refresh OAuth » :
-    /// chaque panne réseau martelait l'endpoint du fournisseur (le défaut
-    /// P0 corrigé côté IMAP). Même discriminant, même préfixe.
+    /// The shell did "any SMTP opening error ⇒ OAuth refresh": every network
+    /// failure hammered the provider's endpoint (the P0 defect fixed on the
+    /// IMAP side). Same discriminant, same prefix.
     #[test]
-    fn une_panne_reseau_smtp_n_est_pas_un_refus_d_auth() {
+    fn an_smtp_network_failure_is_not_an_auth_refusal() {
         assert!(is_connection_error(&SendError::Transient(
-            "connexion smtp.exemple.fr:587 : délai dépassé".to_string()
+            "connection smtp.exemple.fr:587: timed out".to_string()
         )));
         assert!(!is_connection_error(&SendError::Transient(
-            "authentification : 535 5.7.8 Username and Password not accepted".to_string()
+            "authentication: 535 5.7.8 Username and Password not accepted".to_string()
         )));
         assert!(!is_connection_error(&SendError::Permanent(
-            "connexion refusée par le destinataire".to_string()
+            "connection refused by the recipient".to_string()
         )));
     }
     use std::net::TcpListener;
@@ -493,8 +498,8 @@ mod tests {
             to: vec!["a@exemple.fr".to_string(), "b@exemple.fr".to_string()],
             cc: vec![],
             bcc: vec![],
-            subject: "Bonjour".to_string(),
-            body_text: "Premier essai.\nDeuxième ligne.".to_string(),
+            subject: "Hello".to_string(),
+            body_text: "First try.\nSecond line.".to_string(),
             body_html: None,
             in_reply_to: in_reply_to.map(str::to_string),
             references: None,
@@ -510,48 +515,47 @@ mod tests {
     }
 
     fn formatted(message: &OutboxMessage) -> String {
-        let email = build_message(message).expect("message construisible");
-        String::from_utf8(email.formatted()).expect("en-têtes ASCII")
+        let email = build_message(message).expect("constructible message");
+        String::from_utf8(email.formatted()).expect("ASCII headers")
     }
 
-    /// PLAN-INVITATIONS : la réponse à une invitation part en
-    /// `multipart/alternative` texte + `text/calendar; method=REPLY` —
-    /// c'est le paramètre `method` que Google/Exchange lisent pour
-    /// mettre à jour le calendrier de l'organisateur.
+    /// PLAN-INVITATIONS: the reply to an invitation leaves as
+    /// `multipart/alternative` text + `text/calendar; method=REPLY` — it is
+    /// the `method` parameter that Google/Exchange read to update the
+    /// organizer's calendar.
     #[test]
-    fn une_reponse_itip_part_en_partie_text_calendar_method_reply() {
+    fn an_itip_reply_leaves_as_a_text_calendar_method_reply_part() {
         let mut message = outbox_message(None);
-        message.body_text = "Reponse envoyee depuis Wind.".to_string();
+        message.body_text = "Reply sent from Wind.".to_string();
         message.ics_reply =
             Some("BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nEND:VCALENDAR\r\n".to_string());
         let raw = formatted(&message);
         assert!(
             raw.contains("multipart/alternative"),
-            "texte et calendrier voyagent en alternative :\n{raw}"
+            "text and calendar travel as an alternative:\n{raw}"
         );
         assert!(
             raw.contains("text/calendar") && raw.contains("method=REPLY"),
-            "la partie calendrier doit dire method=REPLY :\n{raw}"
+            "the calendar part must say method=REPLY:\n{raw}"
         );
         assert!(
             raw.contains("METHOD:REPLY"),
-            "le VCALENDAR doit voyager entier :\n{raw}"
+            "the VCALENDAR must travel whole:\n{raw}"
         );
         assert!(
-            raw.contains("Reponse envoyee depuis Wind."),
-            "le texte reste le repli lisible :\n{raw}"
+            raw.contains("Reply sent from Wind."),
+            "the text remains the readable fallback:\n{raw}"
         );
     }
 
-    /// Un journal qui porterait une réponse iTIP AVEC pièces ou HTML est
-    /// incohérent par construction : refus franc, jamais un message
-    /// ambigu.
+    /// A journal that carried an iTIP reply WITH attachments or HTML is
+    /// inconsistent by construction: frank refusal, never an ambiguous message.
     #[test]
-    fn une_reponse_itip_avec_pieces_est_refusee() {
+    fn an_itip_reply_with_attachments_is_refused() {
         let mut message = outbox_message(None);
         message.ics_reply = Some("BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n".to_string());
         message.attachments = vec![OutboxAttachment {
-            name: "piege.pdf".to_string(),
+            name: "trap.pdf".to_string(),
             mime: "application/pdf".to_string(),
             size: 4,
             bytes: Some(vec![1, 2, 3, 4]),
@@ -564,7 +568,7 @@ mod tests {
         let raw = formatted(&outbox_message(None));
         assert!(
             raw.contains("Message-ID: <test.abc123@exemple.fr>"),
-            "le Message-ID du journal doit être celui du message :\n{raw}"
+            "the journal's Message-ID must be the message's:\n{raw}"
         );
     }
 
@@ -576,12 +580,13 @@ mod tests {
         assert!(raw.contains("b@exemple.fr"));
     }
 
-    /// Le cœur de la correctness du Cci : le Cc paraît dans les en-têtes du
-    /// message SERVI, le Cci JAMAIS — il ne vit que dans l'enveloppe SMTP
-    /// (les RCPT TO). Un Cci qui fuit dans le corps servi à tous n'est plus
-    /// un Cci. C'est pourquoi l'envoi passe par `send_raw` + `build_envelope`.
+    /// The heart of the Bcc correctness: the Cc appears in the headers of
+    /// the SERVED message, the Bcc NEVER — it only lives in the SMTP
+    /// envelope (the RCPT TO). A Bcc that leaks into the body served to
+    /// everyone is no longer a Bcc. That is why the send goes through
+    /// `send_raw` + `build_envelope`.
     #[test]
-    fn cc_dans_les_entetes_cci_dans_l_enveloppe_seule() {
+    fn cc_in_the_headers_bcc_in_the_envelope_only() {
         let mut message = outbox_message(None);
         message.cc = vec!["copie@exemple.fr".to_string()];
         message.bcc = vec!["invisible@exemple.fr".to_string()];
@@ -589,32 +594,32 @@ mod tests {
         let raw = formatted(&message);
         assert!(
             raw.contains("Cc: copie@exemple.fr"),
-            "le Cc doit paraître :\n{raw}"
+            "the Cc must appear:\n{raw}"
         );
         assert!(
             !raw.contains("invisible@exemple.fr"),
-            "le Cci ne doit JAMAIS paraître dans le message servi :\n{raw}"
+            "the Bcc must NEVER appear in the served message:\n{raw}"
         );
         assert!(
             !raw.to_lowercase().contains("bcc:"),
-            "aucun en-tête Bcc dans le message servi :\n{raw}"
+            "no Bcc header in the served message:\n{raw}"
         );
 
-        // L'enveloppe, elle, porte TOUS les destinataires — Cci compris :
-        // sans quoi le Cci ne recevrait rien.
-        let envelope = build_envelope(&message).expect("enveloppe construisible");
+        // The envelope, for its part, carries ALL the recipients — Bcc
+        // included: otherwise the Bcc would receive nothing.
+        let envelope = build_envelope(&message).expect("constructible envelope");
         let rcpts: Vec<String> = envelope.to().iter().map(ToString::to_string).collect();
         assert!(rcpts.iter().any(|a| a == "a@exemple.fr"), "{rcpts:?}");
         assert!(rcpts.iter().any(|a| a == "copie@exemple.fr"), "{rcpts:?}");
         assert!(
             rcpts.iter().any(|a| a == "invisible@exemple.fr"),
-            "le Cci DOIT être un destinataire d'enveloppe : {rcpts:?}"
+            "the Bcc MUST be an envelope recipient: {rcpts:?}"
         );
     }
 
-    /// R3 (PLAN-RETOURS-6) : un envoi marqué important porte LA paire
-    /// d'en-têtes que lisent les clients mûrs — `X-Priority: 1` et
-    /// `Importance: high`. Un envoi ordinaire n'en porte aucun.
+    /// R3 (PLAN-RETOURS-6): a send marked important carries THE pair of
+    /// headers that mature clients read — `X-Priority: 1` and
+    /// `Importance: high`. An ordinary send carries none.
     #[test]
     fn important_message_carries_priority_headers() {
         let mut message = outbox_message(None);
@@ -648,65 +653,67 @@ mod tests {
     #[test]
     fn body_is_plain_text_with_preserved_lines() {
         let raw = formatted(&outbox_message(None));
-        assert!(raw.contains("Premier essai."));
-        assert!(raw.contains("Deuxi=C3=A8me ligne.") || raw.contains("Deuxième ligne."));
+        assert!(raw.contains("First try."));
+        assert!(raw.contains("Second line."));
     }
 
-    /// Un message sans pièce reste mono-partie : le chemin historique ne
-    /// paie pas le multipart.
+    /// A message without attachment stays single-part: the historical path
+    /// does not pay the multipart.
     #[test]
-    fn message_without_pieces_stays_single_part() {
+    fn message_without_attachments_stays_single_part() {
         let raw = formatted(&outbox_message(None));
         assert!(!raw.contains("multipart/mixed"));
     }
 
-    /// PLAN-COMPOSITION-HTML E3 : un corps riche part en
-    /// multipart/alternative — le texte d'abord (RFC 2046 : du plus
-    /// simple au plus fidèle), le HTML ensuite. Jamais de HTML seul :
-    /// le repli texte est systématique.
+    /// PLAN-COMPOSITION-HTML E3: a rich body leaves as multipart/alternative
+    /// — the text first (RFC 2046: from the simplest to the most faithful),
+    /// the HTML next. Never HTML alone: the text fallback is systematic.
     #[test]
     fn html_body_travels_as_multipart_alternative_with_plain_fallback() {
         let mut message = outbox_message(None);
-        message.body_html = Some("<b>Premier essai.</b>".to_string());
+        message.body_html = Some("<b>First try.</b>".to_string());
         let raw = formatted(&message);
 
         assert!(raw.contains("multipart/alternative"), "{raw}");
         assert!(raw.contains("text/plain"), "{raw}");
         assert!(raw.contains("text/html"), "{raw}");
-        assert!(raw.contains("<b>Premier essai.</b>"), "{raw}");
+        assert!(raw.contains("<b>First try.</b>"), "{raw}");
         assert!(
-            raw.contains("Premier essai.\r\n") || raw.contains("Premier essai.\n"),
-            "le repli texte doit partir aussi : {raw}"
+            raw.contains("First try.\r\n") || raw.contains("First try.\n"),
+            "the text fallback must leave too: {raw}"
         );
         let plain = raw.find("text/plain").unwrap();
         let html = raw.find("text/html").unwrap();
-        assert!(plain < html, "le texte précède le HTML : {raw}");
-        assert!(!raw.contains("multipart/mixed"), "sans pièce : {raw}");
+        assert!(plain < html, "the text precedes the HTML: {raw}");
+        assert!(
+            !raw.contains("multipart/mixed"),
+            "without attachment: {raw}"
+        );
     }
 
-    /// Avec pièces, l'alternative s'emboîte dans le mixed :
-    /// mixed(alternative(texte, html), pièce…) — la forme canonique.
+    /// With attachments, the alternative nests inside the mixed:
+    /// mixed(alternative(text, html), attachment…) — the canonical form.
     #[test]
-    fn html_body_with_pieces_nests_alternative_inside_mixed() {
+    fn html_body_with_attachments_nests_alternative_inside_mixed() {
         let mut message = outbox_message(None);
-        message.body_html = Some("<b>corps</b>".to_string());
-        message.attachments = vec![piece("rapport.pdf", Some(vec![0xFF, 0xD8, 0xFF, 0xE0]))];
+        message.body_html = Some("<b>body</b>".to_string());
+        message.attachments = vec![attachment("report.pdf", Some(vec![0xFF, 0xD8, 0xFF, 0xE0]))];
         let raw = formatted(&message);
 
         assert!(raw.contains("multipart/mixed"), "{raw}");
         assert!(raw.contains("multipart/alternative"), "{raw}");
-        assert!(raw.contains("<b>corps</b>"), "{raw}");
+        assert!(raw.contains("<b>body</b>"), "{raw}");
         assert!(raw.contains("Content-Disposition: attachment"), "{raw}");
-        assert!(raw.contains("rapport.pdf"), "{raw}");
+        assert!(raw.contains("report.pdf"), "{raw}");
         let mixed = raw.find("multipart/mixed").unwrap();
         let alternative = raw.find("multipart/alternative").unwrap();
         assert!(
             mixed < alternative,
-            "l'alternative vit DANS le mixed : {raw}"
+            "the alternative lives INSIDE the mixed: {raw}"
         );
     }
 
-    fn piece(name: &str, bytes: Option<Vec<u8>>) -> OutboxAttachment {
+    fn attachment(name: &str, bytes: Option<Vec<u8>>) -> OutboxAttachment {
         OutboxAttachment {
             name: name.to_string(),
             mime: "application/pdf".to_string(),
@@ -715,75 +722,72 @@ mod tests {
         }
     }
 
-    /// PJ-D2 côté fil : le message part en multipart/mixed — le texte
-    /// d'abord, puis chaque pièce en `attachment` avec son nom et ses
-    /// octets. Des octets binaires (haut bit posé) forcent le base64 :
-    /// FF D8 FF E0 s'encode « /9j/4A== ».
+    /// PJ-D2 on the wire side: the message leaves as multipart/mixed — the
+    /// text first, then each attachment as `attachment` with its name and
+    /// its bytes. Binary bytes (high bit set) force base64: FF D8 FF E0
+    /// encodes as "/9j/4A==".
     #[test]
-    fn pieces_travel_as_multipart_mixed_attachments() {
+    fn attachments_travel_as_multipart_mixed_attachments() {
         let mut message = outbox_message(None);
-        message.attachments = vec![piece("rapport.pdf", Some(vec![0xFF, 0xD8, 0xFF, 0xE0]))];
+        message.attachments = vec![attachment("report.pdf", Some(vec![0xFF, 0xD8, 0xFF, 0xE0]))];
         let raw = formatted(&message);
 
         assert!(raw.contains("multipart/mixed"), "{raw}");
         assert!(raw.contains("Content-Disposition: attachment"), "{raw}");
-        assert!(raw.contains("rapport.pdf"), "{raw}");
+        assert!(raw.contains("report.pdf"), "{raw}");
+        assert!(raw.contains("/9j/4A=="), "the bytes must leave: {raw}");
         assert!(
-            raw.contains("/9j/4A=="),
-            "les octets doivent partir : {raw}"
-        );
-        assert!(
-            raw.contains("Premier essai."),
-            "le texte reste la première partie : {raw}"
+            raw.contains("First try."),
+            "the text remains the first part: {raw}"
         );
     }
 
-    /// Un nom non-ASCII ne part jamais cru dans les en-têtes : `lettre`
-    /// l'encode RFC 2231 (`filename*0*=utf-8''…`) — encodé, pas perdu.
+    /// A non-ASCII name never leaves raw in the headers: `lettre` encodes it
+    /// RFC 2231 (`filename*0*=utf-8''…`) — encoded, not lost.
     #[test]
-    fn non_ascii_piece_names_are_encoded_in_headers() {
+    fn non_ascii_attachment_names_are_encoded_in_headers() {
         let mut message = outbox_message(None);
-        message.attachments = vec![piece("résumé années.pdf", Some(vec![1]))];
-        let email = build_message(&message).expect("message construisible");
+        message.attachments = vec![attachment("résumé années.pdf", Some(vec![1]))];
+        let email = build_message(&message).expect("constructible message");
         let raw = String::from_utf8_lossy(&email.formatted()).to_string();
 
         assert!(
             !raw.contains("résumé"),
-            "le nom ne part pas cru dans les en-têtes : {raw}"
+            "the name does not leave raw in the headers: {raw}"
         );
         assert!(
             raw.contains("filename*") || raw.contains("=?utf-8?"),
-            "le nom doit être encodé, pas perdu : {raw}"
+            "the name must be encoded, not lost: {raw}"
         );
         assert!(
             raw.contains("r%C3%A9sum%C3%A9") || raw.contains("=?utf-8?"),
-            "les octets UTF-8 du nom doivent se retrouver : {raw}"
+            "the UTF-8 bytes of the name must be found: {raw}"
         );
     }
 
-    /// L'invariant PJ-D7 tient au fil aussi : des octets purgés (message
-    /// déjà parti) ne construisent JAMAIS un message amputé — refus franc.
+    /// The PJ-D7 invariant holds on the wire too: purged bytes (message
+    /// already gone) NEVER build an amputated message — frank refusal.
     #[test]
-    fn purged_piece_is_a_permanent_refusal_never_an_amputated_message() {
+    fn purged_attachment_is_a_permanent_refusal_never_an_amputated_message() {
         let mut message = outbox_message(None);
-        message.attachments = vec![piece("parti.pdf", None)];
+        message.attachments = vec![attachment("gone.pdf", None)];
         match build_message(&message) {
             Err(SendError::Permanent(reason)) => {
-                assert!(reason.contains("parti.pdf"), "{reason}");
+                assert!(reason.contains("gone.pdf"), "{reason}");
             }
-            Err(other) => panic!("attendu un refus permanent, obtenu {other:?}"),
-            Ok(_) => panic!("attendu un refus permanent, obtenu un message construit"),
+            Err(other) => panic!("expected a permanent refusal, got {other:?}"),
+            Ok(_) => panic!("expected a permanent refusal, got a built message"),
         }
     }
 
-    /// Un type MIME illisible ne bloque pas l'envoi : flux d'octets
-    /// générique — le refus au geste ne vit pas ici.
+    /// An unreadable MIME type does not block the send: generic octet
+    /// stream — the refusal at the gesture does not live here.
     #[test]
     fn unparseable_mime_falls_back_to_octet_stream() {
         let mut message = outbox_message(None);
         message.attachments = vec![OutboxAttachment {
-            name: "brut.bin".to_string(),
-            mime: "pas un type".to_string(),
+            name: "raw.bin".to_string(),
+            mime: "not a type".to_string(),
             size: 1,
             bytes: Some(vec![7]),
         }];
@@ -795,28 +799,28 @@ mod tests {
     fn draft_bytes_keeps_valid_recipients_and_omits_the_rest() {
         let raw = draft_bytes(
             "moi@exemple.fr",
-            "valide@exemple.fr, adresse-en-cours-de-fra",
+            "valide@exemple.fr, address-being-typ",
             "",
             "",
-            "Brouillon",
-            "corps",
+            "Draft",
+            "body",
             None,
             &[],
         )
-        .expect("brouillon constructible");
+        .expect("constructible draft");
         let text = String::from_utf8_lossy(&raw);
         assert!(text.contains("valide@exemple.fr"));
-        assert!(!text.contains("adresse-en-cours-de-fra"));
-        assert!(text.contains("Subject: Brouillon"));
+        assert!(!text.contains("address-being-typ"));
+        assert!(text.contains("Subject: Draft"));
     }
 
-    /// Un brouillon sans destinataire (encore) valide n'est pas poussable :
-    /// il reste local, rien n'est perdu — comportement documenté par test.
+    /// A draft without any (yet) valid recipient is not pushable: it stays
+    /// local, nothing is lost — behavior documented by test.
     #[test]
     fn draft_without_any_valid_recipient_stays_local() {
         let result = draft_bytes(
             "moi@exemple.fr",
-            "pas encore d'adresse",
+            "no address yet",
             "",
             "",
             "s",
@@ -824,44 +828,41 @@ mod tests {
             None,
             &[],
         );
-        assert!(result.is_err(), "attendu : non poussable en l'état");
+        assert!(result.is_err(), "expected: not pushable as is");
     }
 
-    /// PJ-D6 : le reflet distant montre le brouillon ENTIER — pièces
-    /// comprises, par le même constructeur de partie que l'envoi.
+    /// PJ-D6: the remote reflection shows the WHOLE draft — attachments
+    /// included, through the same part constructor as the send.
     #[test]
-    fn draft_bytes_carries_pieces_as_multipart_mixed() {
+    fn draft_bytes_carries_attachments_as_multipart_mixed() {
         let raw = draft_bytes(
             "moi@exemple.fr",
             "valide@exemple.fr",
             "",
             "",
-            "Brouillon",
-            "corps",
+            "Draft",
+            "body",
             None,
             &[DraftAttachmentFull {
-                name: "devis.pdf".to_string(),
+                name: "quote.pdf".to_string(),
                 mime: "application/pdf".to_string(),
                 bytes: vec![0xFF, 0xD8, 0xFF, 0xE0],
             }],
         )
-        .expect("brouillon constructible");
+        .expect("constructible draft");
         let text = String::from_utf8_lossy(&raw);
         assert!(text.contains("multipart/mixed"), "{text}");
         assert!(text.contains("Content-Disposition: attachment"), "{text}");
-        assert!(text.contains("devis.pdf"), "{text}");
+        assert!(text.contains("quote.pdf"), "{text}");
+        assert!(text.contains("/9j/4A=="), "the bytes must follow: {text}");
         assert!(
-            text.contains("/9j/4A=="),
-            "les octets doivent suivre : {text}"
-        );
-        assert!(
-            text.contains("corps"),
-            "le texte reste la première partie : {text}"
+            text.contains("body"),
+            "the text remains the first part: {text}"
         );
     }
 
-    /// PLAN-COMPOSITION-HTML : le reflet Brouillons montre le brouillon
-    /// riche ENTIER — multipart/alternative, comme l'envoi.
+    /// PLAN-COMPOSITION-HTML: the Drafts reflection shows the WHOLE rich
+    /// draft — multipart/alternative, like the send.
     #[test]
     fn draft_bytes_with_html_is_multipart_alternative() {
         let raw = draft_bytes(
@@ -869,26 +870,26 @@ mod tests {
             "valide@exemple.fr",
             "",
             "",
-            "Brouillon",
-            "corps",
-            Some("<b>corps</b>"),
+            "Draft",
+            "body",
+            Some("<b>body</b>"),
             &[],
         )
-        .expect("brouillon constructible");
+        .expect("constructible draft");
         let text = String::from_utf8_lossy(&raw);
         assert!(text.contains("multipart/alternative"), "{text}");
         assert!(text.contains("text/html"), "{text}");
-        assert!(text.contains("<b>corps</b>"), "{text}");
+        assert!(text.contains("<b>body</b>"), "{text}");
         assert!(
-            text.contains("corps"),
-            "le repli texte doit suivre : {text}"
+            text.contains("body"),
+            "the text fallback must follow: {text}"
         );
     }
 
-    /// Un brouillon sans pièce reste mono-partie — le chemin historique
-    /// ne paie pas le multipart.
+    /// A draft without attachment stays single-part — the historical path
+    /// does not pay the multipart.
     #[test]
-    fn draft_bytes_without_pieces_stays_single_part() {
+    fn draft_bytes_without_attachments_stays_single_part() {
         let raw = draft_bytes(
             "moi@exemple.fr",
             "valide@exemple.fr",
@@ -899,15 +900,15 @@ mod tests {
             None,
             &[],
         )
-        .expect("brouillon constructible");
+        .expect("constructible draft");
         assert!(!String::from_utf8_lossy(&raw).contains("multipart/mixed"));
     }
 
-    /// Régression (bug #1) : le port de soumission SMTP était ignoré —
-    /// `connect_password` câblait `relay()` = TLS implicite 465 en dur,
-    /// et le port saisi par l'utilisateur était jeté. La politique doit
-    /// distinguer 465 (SMTPS, TLS implicite) de 587 et des autres ports
-    /// de soumission (STARTTLS). Jamais de repli en clair.
+    /// Regression (bug #1): the SMTP submission port was ignored —
+    /// `connect_password` wired `relay()` = implicit TLS 465 hard, and the
+    /// port entered by the user was thrown away. The policy must
+    /// distinguish 465 (SMTPS, implicit TLS) from 587 and the other
+    /// submission ports (STARTTLS). Never a cleartext fallback.
     #[test]
     fn smtp_tls_policy_follows_the_submission_port() {
         assert_eq!(smtp_tls_for_port(465), SmtpTls::Implicit);
@@ -916,13 +917,13 @@ mod tests {
         assert_eq!(smtp_tls_for_port(2525), SmtpTls::StartTls);
     }
 
-    /// Écoute sur un port éphémère, accepte une connexion puis raccroche.
-    /// Renvoie le port et un canal qui signale l'arrivée : ce qu'on teste
-    /// est l'ARRIVÉE de la connexion, pas le dialogue SMTP — un faux
-    /// serveur qui raccroche suffit, et rend le test hors-ligne.
+    /// Listens on an ephemeral port, accepts a connection then hangs up.
+    /// Returns the port and a channel that signals the arrival: what is
+    /// tested is the ARRIVAL of the connection, not the SMTP dialogue — a
+    /// fake server that hangs up is enough, and keeps the test offline.
     fn fake_smtp_server() -> (u16, mpsc::Receiver<()>) {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("port éphémère");
-        let port = listener.local_addr().expect("adresse locale").port();
+        let listener = TcpListener::bind("127.0.0.1:0").expect("ephemeral port");
+        let port = listener.local_addr().expect("local address").port();
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
             if listener.accept().is_ok() {
@@ -936,43 +937,42 @@ mod tests {
         rx.recv_timeout(Duration::from_secs(5)).is_ok()
     }
 
-    /// Régression (bug #3) : `connect_xoauth2` câblait `relay()` — TLS
-    /// implicite sur 465 — et n'offrait aucun port. Le défaut jumeau de
-    /// celui corrigé pour les mots de passe, invisible parce qu'un seul
-    /// fournisseur était branché : Gmail écoute bien en 465, mais
-    /// `smtp.office365.com` n'écoute qu'en 587/STARTTLS.
+    /// Regression (bug #3): `connect_xoauth2` wired `relay()` — implicit TLS
+    /// on 465 — and offered no port. The twin defect of the one fixed for
+    /// passwords, invisible because a single provider was wired: Gmail does
+    /// listen on 465, but `smtp.office365.com` only listens on 587/STARTTLS.
     #[test]
     fn xoauth2_connects_to_the_port_it_is_given() {
         let (port, arrived) = fake_smtp_server();
-        // La connexion échoue forcément (le faux serveur raccroche) ;
-        // seule son arrivée sur LE port demandé est en jeu.
-        let _ = SmtpMailer::connect_xoauth2("127.0.0.1", port, "moi@exemple.fr", "jeton");
+        // The connection necessarily fails (the fake server hangs up); only
+        // its arrival on THE requested port is at stake.
+        let _ = SmtpMailer::connect_xoauth2("127.0.0.1", port, "moi@exemple.fr", "token");
         assert!(
             connection_arrived(&arrived),
-            "XOAUTH2 doit joindre le port demandé, pas un 465 câblé en dur"
+            "XOAUTH2 must reach the requested port, not a hard-wired 465"
         );
     }
 
-    /// Le pendant pour le mot de passe : garde le correctif du bug #1 de
-    /// régresser quand les deux chemins seront unifiés.
+    /// The counterpart for the password: keeps the fix of bug #1 from
+    /// regressing when both paths are unified.
     #[test]
     fn password_connects_to_the_port_it_is_given() {
         let (port, arrived) = fake_smtp_server();
         let _ = SmtpMailer::connect_password("127.0.0.1", port, "moi@exemple.fr", "secret");
         assert!(
             connection_arrived(&arrived),
-            "le mot de passe doit joindre le port demandé"
+            "the password must reach the requested port"
         );
     }
 
     #[test]
     fn malformed_stored_address_is_a_permanent_error() {
         let mut message = outbox_message(None);
-        message.to = vec!["pas une adresse".to_string()];
+        message.to = vec!["not an address".to_string()];
         match build_message(&message) {
             Err(SendError::Permanent(_)) => {}
-            Err(other) => panic!("attendu un refus permanent, obtenu {other:?}"),
-            Ok(_) => panic!("attendu un refus permanent, obtenu un message construit"),
+            Err(other) => panic!("expected a permanent refusal, got {other:?}"),
+            Ok(_) => panic!("expected a permanent refusal, got a built message"),
         }
     }
 }

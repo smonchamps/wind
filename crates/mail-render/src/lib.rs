@@ -1,38 +1,38 @@
-//! Rendu sécurisé des emails HTML — défense en profondeur validée en Phase 0
-//! (PHASE0.md §1, spike html-render) :
+//! Secure rendering of HTML emails — defence in depth validated in Phase 0
+//! (PHASE0.md §1, html-render spike):
 //!
-//! 1. `ammonia` retire scripts, handlers d'événements et URLs dangereuses ;
-//! 2. les images distantes sont remplacées par un pixel neutre (vie privée :
-//!    pas de pixel espion, pas de fuite d'adresse IP) ;
-//! 3. [`email_document`] produit le document à afficher dans une iframe
-//!    `sandbox` : sa CSP `default-src 'none'` garantit que même un
-//!    contournement des couches 1-2 ne peut ni exécuter ni exfiltrer.
+//! 1. `ammonia` removes scripts, event handlers and dangerous URLs;
+//! 2. remote images are replaced by a neutral pixel (privacy: no tracking
+//!    pixel, no IP address leak);
+//! 3. [`email_document`] produces the document to display in a `sandbox`
+//!    iframe: its CSP `default-src 'none'` guarantees that even a bypass
+//!    of layers 1-2 can neither execute nor exfiltrate.
 //!
-//! Limite assumée (documentée par un test) : le filtrage CSS textuel est
-//! contournable par échappement — c'est la couche 3 qui fait foi. Un vrai
-//! parseur CSS (`lightningcss`) viendra pour la fidélité des blocs `<style>`.
+//! Assumed limit (documented by a test): the textual CSS filtering can be
+//! bypassed by escaping — layer 3 is the one that counts. A real CSS parser
+//! (`lightningcss`) will come for the fidelity of `<style>` blocks.
 
 mod sanitize;
 
 pub use sanitize::{BLOCKED_PIXEL, ImagePolicy, Sanitized, sanitize, sanitize_with};
 
-/// Corps d'un message réduit à son texte — la matière première d'une
-/// citation (répondre, transférer — Phase 2).
+/// A message body reduced to its text — the raw material of a quote
+/// (reply, forward — Phase 2).
 ///
-/// Assainissement D'ABORD : `ammonia` élimine scripts et styles avec leur
-/// contenu, pour qu'aucun code ne puisse se déguiser en texte cité. La
-/// conversion est déléguée à `mail-parser` (décision Phase 0), qui ne coupe
-/// que sur `<p>` et `<br>` (mesuré) : une pré-passe traduit donc les fins de
-/// blocs en `<br>` — heuristique d'affichage sur du HTML déjà assaini, pas
-/// du parsing de sécurité.
+/// Sanitizing FIRST: `ammonia` removes scripts and styles with their
+/// content, so that no code can disguise itself as quoted text. The
+/// conversion is delegated to `mail-parser` (Phase 0 decision), which only
+/// breaks on `<p>` and `<br>` (measured): a pre-pass therefore turns block
+/// ends into `<br>` — a display heuristic on already sanitized HTML, not
+/// security parsing.
 pub fn body_text(html: &str) -> String {
     let sanitized = sanitize(html);
     let text = mail_parser::decoders::html::html_to_text(&block_ends_to_breaks(&sanitized.html));
     collapse_blank_lines(text.trim())
 }
 
-/// Fins de blocs → sauts de ligne, cellules de tableau → espaces.
-/// `ammonia` émet des balises en minuscules : la casse est déjà normalisée.
+/// Block ends → line breaks, table cells → spaces.
+/// `ammonia` emits lowercase tags: the case is already normalized.
 fn block_ends_to_breaks(html: &str) -> String {
     const BLOCK_ENDS: [&str; 12] = [
         "</div>",
@@ -55,8 +55,8 @@ fn block_ends_to_breaks(html: &str) -> String {
     result
 }
 
-/// Jamais plus d'une ligne vide d'affilée : les emboîtements de blocs
-/// produisent des rafales de sauts sans valeur pour une citation.
+/// Never more than one blank line in a row: nested blocks produce bursts
+/// of breaks that are worthless in a quote.
 fn collapse_blank_lines(text: &str) -> String {
     let mut lines = Vec::new();
     let mut previous_blank = false;
@@ -72,24 +72,24 @@ fn collapse_blank_lines(text: &str) -> String {
     lines.join("\n")
 }
 
-/// La palette bakée dans le document : l'encre et le fond du thème
-/// actif, passés par le shell (revue A42 — 14 thèmes sombres rendaient
-/// la dalle blanche du corps atteignable par tout utilisateur en OS
-/// sombre). Le document est autonome : l'iframe sandbox ne voit jamais
-/// les jetons CSS de l'hôte, les valeurs sont donc écrites en dur ici.
+/// The palette baked into the document: the ink and the background of the
+/// active theme, passed by the shell (review A42 — 14 dark themes made the
+/// white slab of the body reachable by any user on a dark OS). The
+/// document is self-contained: the sandbox iframe never sees the host's
+/// CSS tokens, so the values are written here verbatim.
 pub struct Palette {
-    encre: String,
-    fond: String,
+    ink: String,
+    bg: String,
 }
 
 impl Palette {
-    /// Une teinte ne rentre que sous la forme `#rrggbb` : tout le reste
-    /// retombe sur le défaut — la valeur est écrite dans un `<style>`,
-    /// jamais de texte libre dans le document.
-    pub fn new(encre: Option<&str>, fond: Option<&str>) -> Self {
+    /// A hue only enters as `#rrggbb`: anything else falls back to the
+    /// default — the value is written inside a `<style>`, never free text
+    /// in the document.
+    pub fn new(ink: Option<&str>, bg: Option<&str>) -> Self {
         Self {
-            encre: teinte_sure(encre, "#222222"),
-            fond: teinte_sure(fond, "#ffffff"),
+            ink: safe_hue(ink, "#222222"),
+            bg: safe_hue(bg, "#ffffff"),
         }
     }
 }
@@ -100,8 +100,8 @@ impl Default for Palette {
     }
 }
 
-fn teinte_sure(teinte: Option<&str>, defaut: &str) -> String {
-    match teinte {
+fn safe_hue(hue: Option<&str>, default: &str) -> String {
+    match hue {
         Some(t)
             if t.len() == 7
                 && t.starts_with('#')
@@ -109,53 +109,53 @@ fn teinte_sure(teinte: Option<&str>, defaut: &str) -> String {
         {
             t.to_ascii_lowercase()
         }
-        _ => defaut.to_string(),
+        _ => default.to_string(),
     }
 }
 
-/// Document complet à charger dans une iframe `sandbox` (via `srcdoc`) :
-/// le modèle de production est « une CSP par message », embarquée dans le
-/// document lui-même. La CSP suit la politique d'images : elle n'ouvre
-/// `https:` que si l'utilisateur a demandé les images distantes.
+/// Complete document to load in a `sandbox` iframe (through `srcdoc`): the
+/// production model is "one CSP per message", embedded in the document
+/// itself. The CSP follows the image policy: it only opens `https:` if the
+/// user asked for the remote images.
 ///
-/// **Contrainte d'hébergement (prouvée par l'expérience, 2026-07-12)** : un
-/// document `srcdoc` hérite de la CSP de la page hôte, et une CSP ne peut que
-/// se resserrer. L'hôte doit donc autoriser au moins `img-src data: https:`
-/// et `style-src 'unsafe-inline'` — c'est CE document qui reste la couche
-/// restrictive par message (images distantes bloquées par défaut, et
-/// jamais en clair `http:` même accordées).
+/// **Hosting constraint (proven by experiment, 2026-07-12)**: a `srcdoc`
+/// document inherits the CSP of the host page, and a CSP can only
+/// tighten. The host must therefore allow at least `img-src data: https:`
+/// and `style-src 'unsafe-inline'` — THIS document remains the restrictive
+/// layer per message (remote images blocked by default, and never
+/// cleartext `http:` even when granted).
 pub fn email_document(sanitized_html: &str, policy: ImagePolicy, palette: &Palette) -> String {
-    // Audit 2026-09-01 : accorder les images distantes, c'est accorder
-    // HTTPS — jamais le clair. Et `no-referrer` : sans lui, chaque image
-    // distante recevait un `Referer` d'origine `tauri.localhost`, une
-    // signature « client Wind » offerte au pisteur.
+    // Audit 2026-09-01: granting remote images is granting HTTPS — never
+    // cleartext. And `no-referrer`: without it, every remote image received
+    // a `Referer` of origin `tauri.localhost`, a "Wind client" signature
+    // offered to the tracker.
     let img_sources = match policy {
         ImagePolicy::BlockRemote => "data: cid:",
         ImagePolicy::AllowRemote => "data: cid: https:",
     };
-    let Palette { encre, fond } = palette;
-    // A44 (PLAN-RETOURS-V3 R4) : les barres du document sont natives en
-    // surimpression — la poignée suit `color-scheme`, dérivé du fond
-    // baké. Sans lui, un fond -nuit garde une poignée claire… sombre,
-    // invisible : le « corps insdéroulable » qui avait ouvert A7.
-    let scheme = scheme_du_fond(fond);
+    let Palette { ink, bg } = palette;
+    // A44 (PLAN-RETOURS-V3 R4): the document's scrollbars are native,
+    // overlaid — the thumb follows `color-scheme`, derived from the baked
+    // background. Without it, a -night background keeps a light… dark,
+    // invisible thumb: the "unscrollable body" that had opened A7.
+    let scheme = scheme_of_bg(bg);
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\">\
          <meta name=\"referrer\" content=\"no-referrer\">\
          <meta http-equiv=\"Content-Security-Policy\" \
          content=\"default-src 'none'; img-src {img_sources}; style-src 'unsafe-inline'\">\
          <style>:root{{color-scheme:{scheme}}}\
-         body{{font-family:system-ui,sans-serif;margin:12px;color:{encre};\
-         background:{fond};overflow-wrap:break-word}}</style>\
+         body{{font-family:system-ui,sans-serif;margin:12px;color:{ink};\
+         background:{bg};overflow-wrap:break-word}}</style>\
          </head><body>{sanitized_html}</body></html>"
     )
 }
 
-/// `dark` ou `light` d'après la luminance du fond (Rec. 601). Le fond
-/// sort de [`teinte_sure`] : toujours `#rrggbb` — le repli couvre
-/// l'impossible sans paniquer (zéro `unwrap` en prod).
-fn scheme_du_fond(fond: &str) -> &'static str {
-    let v = u32::from_str_radix(fond.get(1..).unwrap_or(""), 16).unwrap_or(0xff_ff_ff);
+/// `dark` or `light` from the luminance of the background (Rec. 601). The
+/// background comes out of [`safe_hue`]: always `#rrggbb` — the fallback
+/// covers the impossible without panicking (zero `unwrap` in production).
+fn scheme_of_bg(bg: &str) -> &'static str {
+    let v = u32::from_str_radix(bg.get(1..).unwrap_or(""), 16).unwrap_or(0xff_ff_ff);
     let (r, g, b) = ((v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff);
     if 299 * r + 587 * g + 114 * b < 128_000 {
         "dark"
@@ -170,60 +170,60 @@ mod tests {
 
     #[test]
     fn body_text_strips_tags_and_decodes_entities() {
-        let text = body_text("<p>Bonjour &amp; bienvenue&nbsp;!</p><p>À demain.</p>");
-        assert!(text.contains("Bonjour & bienvenue"));
-        assert!(text.contains("À demain."));
+        let text = body_text("<p>Hello &amp; welcome&nbsp;!</p><p>See you tomorrow.</p>");
+        assert!(text.contains("Hello & welcome"));
+        assert!(text.contains("See you tomorrow."));
         assert!(!text.contains('<'));
     }
 
     #[test]
     fn body_text_separates_block_elements_with_line_breaks() {
-        let text = body_text("<div>ligne 1</div><div>ligne 2</div>");
+        let text = body_text("<div>line 1</div><div>line 2</div>");
         assert_eq!(text.lines().count(), 2, "{text:?}");
     }
 
-    /// Les newsletters sont des soupes de tableaux : les cellules doivent
-    /// rester séparées, les lignes aussi.
+    /// Newsletters are table soups: the cells must stay separated, the
+    /// rows too.
     #[test]
     fn body_text_keeps_table_structure_readable() {
         let text = body_text(
-            "<table><tr><td>gauche</td><td>droite</td></tr><tr><td>bas</td></tr></table>",
+            "<table><tr><td>left</td><td>right</td></tr><tr><td>bottom</td></tr></table>",
         );
-        assert!(text.contains("gauche droite"), "{text:?}");
+        assert!(text.contains("left right"), "{text:?}");
         assert!(text.lines().count() >= 2, "{text:?}");
     }
 
     #[test]
     fn body_text_never_stacks_blank_lines() {
-        let text = body_text("<div><p>haut</p></div><div></div><div><p>bas</p></div>");
+        let text = body_text("<div><p>top</p></div><div></div><div><p>bottom</p></div>");
         assert!(!text.contains("\n\n\n"), "{text:?}");
     }
 
-    /// Le contenu d'un script ne doit jamais se retrouver dans une citation.
+    /// The content of a script must never end up in a quote.
     #[test]
     fn body_text_drops_script_content_entirely() {
-        let text = body_text("<p>visible</p><script>alert('caché')</script>");
+        let text = body_text("<p>visible</p><script>alert('hidden')</script>");
         assert!(text.contains("visible"));
         assert!(!text.contains("alert"));
-        assert!(!text.contains("caché"));
+        assert!(!text.contains("hidden"));
     }
 
     #[test]
     fn email_document_embeds_csp_and_content() {
         let document = email_document(
-            "<p>bonjour</p>",
+            "<p>hello</p>",
             ImagePolicy::BlockRemote,
             &Palette::default(),
         );
         assert!(document.contains("default-src 'none'"));
         assert!(document.contains("img-src data: cid:;"));
-        assert!(document.contains("<p>bonjour</p>"));
+        assert!(document.contains("<p>hello</p>"));
         assert!(document.contains("<meta name=\"referrer\" content=\"no-referrer\">"));
     }
 
-    /// Audit 2026-09-01 : accorder les images distantes, c'est accorder
-    /// HTTPS — jamais le clair (`http:`), et jamais un `Referer` qui
-    /// signe « client Wind » au pisteur.
+    /// Audit 2026-09-01: granting remote images is granting HTTPS — never
+    /// cleartext (`http:`), and never a `Referer` that signs "Wind client"
+    /// to the tracker.
     #[test]
     fn email_document_opens_https_images_only_on_request() {
         let document = email_document("<p>x</p>", ImagePolicy::AllowRemote, &Palette::default());
@@ -234,9 +234,9 @@ mod tests {
     }
 
     #[test]
-    fn email_document_bake_la_palette_du_theme() {
-        // Revue A42 : le corps suit le thème — encre et fond passés par
-        // le shell, écrits dans le <style> du document autonome.
+    fn email_document_bakes_the_theme_palette() {
+        // Review A42: the body follows the theme — ink and background passed
+        // by the shell, written in the <style> of the self-contained document.
         let palette = Palette::new(Some("#EDEFED"), Some("#2b3034"));
         let document = email_document("<p>x</p>", ImagePolicy::BlockRemote, &palette);
         assert!(document.contains("color:#edefed"), "{document}");
@@ -244,24 +244,24 @@ mod tests {
     }
 
     #[test]
-    fn email_document_declare_le_color_scheme_du_fond() {
-        // A44 (PLAN-RETOURS-V3 R4) : les barres du document iframe sont
-        // natives en surimpression — leur poignée suit `color-scheme`.
-        // Sans déclaration, le document est en schéma clair et la
-        // poignée (sombre) disparaît sur les fonds -nuit. Le schéma se
-        // dérive du FOND baké : sombre → dark, clair → light.
-        let sombre = Palette::new(Some("#edefed"), Some("#2b3034"));
-        let document = email_document("<p>x</p>", ImagePolicy::BlockRemote, &sombre);
+    fn email_document_declares_the_color_scheme_of_the_background() {
+        // A44 (PLAN-RETOURS-V3 R4): the iframe document's scrollbars are
+        // native, overlaid — their thumb follows `color-scheme`. Without a
+        // declaration, the document is in the light scheme and the (dark)
+        // thumb disappears on -night backgrounds. The scheme is derived
+        // from the BAKED background: dark → dark, light → light.
+        let dark = Palette::new(Some("#edefed"), Some("#2b3034"));
+        let document = email_document("<p>x</p>", ImagePolicy::BlockRemote, &dark);
         assert!(document.contains("color-scheme:dark"), "{document}");
-        let clair = Palette::default();
-        let document = email_document("<p>x</p>", ImagePolicy::BlockRemote, &clair);
+        let light = Palette::default();
+        let document = email_document("<p>x</p>", ImagePolicy::BlockRemote, &light);
         assert!(document.contains("color-scheme:light"), "{document}");
     }
 
     #[test]
-    fn email_document_refuse_une_teinte_hors_forme() {
-        // Une valeur libre n'entre jamais dans le <style> : hors
-        // #rrggbb, retour au défaut — le document reste inerte.
+    fn email_document_refuses_a_malformed_hue() {
+        // A free value never enters the <style>: outside #rrggbb, back to
+        // the default — the document stays inert.
         let palette = Palette::new(Some("red;}</style><script>"), Some("#12345"));
         let document = email_document("<p>x</p>", ImagePolicy::BlockRemote, &palette);
         assert!(document.contains("color:#222222"), "{document}");

@@ -1,13 +1,12 @@
-//! Authentification OAuth2 de production : PKCE + coffre de l'OS.
+//! Production OAuth2 authentication: PKCE + OS vault.
 //!
-//! Les enseignements des spikes de Phase 0, en qualité bibliothèque :
-//! jamais de mot de passe, refresh token dans le Credential Manager Windows,
-//! vérification systématique des **scopes accordés** (le consentement
-//! granulaire délivre un token même sans la case courrier cochée),
-//! reconnexion silencieuse au lancement suivant.
+//! The lessons of the Phase 0 spikes, in library quality: never a
+//! password, refresh token in the Windows Credential Manager, systematic
+//! verification of the **granted scopes** (granular consent issues a token
+//! even without the mail box ticked), silent reconnection at the next launch.
 //!
-//! Le parcours est UN seul, quel que soit le fournisseur ; ce qui les
-//! distingue est décrit en données dans [`provider`].
+//! The journey is ONE, whatever the provider; what distinguishes them is
+//! described as data in [`provider`].
 
 mod flow;
 mod provider;
@@ -22,20 +21,20 @@ pub use provider::{
 };
 
 const KEYRING_SERVICE: &str = "wind-mail";
-/// Le service d'avant la bascule Wind (PLAN-WIND E3). Toute lecture du
-/// coffre passe par [`coffre_lire`], qui s'y replie et migre l'entrée
-/// trouvée — le pont vit tant que des postes Discovery existent.
-const ANCIEN_KEYRING_SERVICE: &str = "discovery-mail";
-/// Entrée héritée de la Phase 2 (un seul compte) — lue en repli puis
-/// migrée vers l'entrée par compte : pas de ré-authentification après
-/// la mise à jour multi-comptes.
+/// The service from before the Wind switch (PLAN-WIND E3). Every vault read
+/// goes through [`vault_read`], which falls back on it and migrates the
+/// entry found — the bridge lives as long as Discovery workstations exist.
+const OLD_KEYRING_SERVICE: &str = "discovery-mail";
+/// Entry inherited from Phase 2 (a single account) — read as a fallback
+/// then migrated to the per-account entry: no re-authentication after the
+/// multi-account update.
 const KEYRING_REFRESH_LEGACY: &str = "gmail-refresh-token";
 
-/// Session authentifiée : de quoi ouvrir une connexion IMAP XOAUTH2.
-/// L'access token expire (~1 h) : ré-authentifier silencieusement au besoin.
+/// Authenticated session: enough to open an IMAP XOAUTH2 connection.
+/// The access token expires (~1 h): re-authenticate silently when needed.
 ///
-/// Le fournisseur voyage avec la session : c'est lui qui porte les serveurs
-/// à joindre, plus une constante d'application.
+/// The provider travels with the session: it is what carries the servers
+/// to reach, plus an application constant.
 #[derive(Clone)]
 pub struct Authenticated {
     pub provider: &'static Provider,
@@ -43,21 +42,21 @@ pub struct Authenticated {
     pub access_token: String,
 }
 
-/// E8 : jamais le jeton dans un `{:?}` — un `eprintln!` de diagnostic
-/// futur ne doit pas pouvoir le tracer.
+/// E8: never the token in a `{:?}` — a future diagnostic `eprintln!` must
+/// not be able to trace it.
 impl std::fmt::Debug for Authenticated {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Authenticated")
             .field("provider", &self.provider.account_kind)
             .field("email", &self.email)
-            .field("access_token", &"<masqué>")
+            .field("access_token", &"<masked>")
             .finish()
     }
 }
 
-/// Credentials d'un compte IMAP/SMTP générique (serveur, port, mot de
-/// passe). Le mot de passe est en mémoire uniquement pendant la session ;
-/// il est lu depuis le coffre de l'OS au démarrage.
+/// Credentials of a generic IMAP/SMTP account (server, port, password).
+/// The password is in memory only during the session; it is read from the
+/// OS vault at startup.
 #[derive(Clone)]
 pub struct GenericCredentials {
     pub email: String,
@@ -69,13 +68,13 @@ pub struct GenericCredentials {
     pub smtp_port: u16,
 }
 
-/// E8 : jamais le mot de passe dans un `{:?}`.
+/// E8: never the password in a `{:?}`.
 impl std::fmt::Debug for GenericCredentials {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GenericCredentials")
             .field("email", &self.email)
             .field("username", &self.username)
-            .field("password", &"<masqué>")
+            .field("password", &"<masked>")
             .field("imap_host", &self.imap_host)
             .field("imap_port", &self.imap_port)
             .field("smtp_host", &self.smtp_host)
@@ -84,12 +83,11 @@ impl std::fmt::Debug for GenericCredentials {
     }
 }
 
-/// Session d'un compte connecté, quelle que soit sa méthode
-/// d'authentification. C'est ce qui circule dans l'état applicatif du
-/// desktop.
+/// Session of a connected account, whatever its authentication method. It
+/// is what circulates in the desktop's application state.
 #[derive(Debug, Clone)]
 pub enum AccountSession {
-    /// Compte authentifié par OAuth2, quel que soit le fournisseur.
+    /// Account authenticated by OAuth2, whatever the provider.
     OAuth(Authenticated),
     Generic(GenericCredentials),
 }
@@ -103,20 +101,20 @@ impl AccountSession {
     }
 }
 
-/// Authentificateur OAuth2 d'UN fournisseur.
+/// OAuth2 authenticator of ONE provider.
 #[derive(Clone)]
 pub struct Authenticator {
     provider: &'static Provider,
     client_id: String,
-    /// `None` pour un client public (Microsoft) : présenter un secret y
-    /// ferait refuser l'échange.
+    /// `None` for a public client (Microsoft): presenting a secret would
+    /// get the exchange refused.
     client_secret: Option<String>,
 }
 
-/// L'ordre de résolution d'un identifiant OAuth (D1, PLAN-RETOURS-9) :
-/// la variable d'EXÉCUTION prime — c'est le levier des postes dev et de
-/// l'isolation e2e —, la valeur embarquée au build de release ne parle
-/// qu'en son absence. Une variable posée mais vide ne compte pas.
+/// The resolution order of an OAuth credential (D1, PLAN-RETOURS-9): the
+/// RUNTIME variable wins — it is the lever of the dev workstations and of
+/// the e2e isolation —, the value embedded at the release build only
+/// speaks in its absence. A variable set but empty does not count.
 fn resolve_credential(runtime: Option<String>, embedded: Option<&str>) -> Option<String> {
     runtime
         .filter(|v| !v.is_empty())
@@ -140,24 +138,23 @@ impl Authenticator {
         self.provider
     }
 
-    /// Configuration par variables d'environnement `{PREFIXE}_CLIENT_ID`
-    /// et `{PREFIXE}_CLIENT_SECRET`, avec repli sur les identifiants
-    /// embarqués au build de release (D1, PLAN-RETOURS-9). Les valeurs
-    /// ne vivent jamais au dépôt ; en release publique l'utilisateur n'a
-    /// rien à poser, sur un poste dev la variable continue de servir.
+    /// Configuration by environment variables `{PREFIX}_CLIENT_ID` and
+    /// `{PREFIX}_CLIENT_SECRET`, with a fallback on the credentials
+    /// embedded at the release build (D1, PLAN-RETOURS-9). The values never
+    /// live in the repository; in a public release the user has nothing to
+    /// set, on a dev workstation the variable keeps serving.
     pub fn from_env(provider: &'static Provider) -> Result<Self, AuthError> {
         let id_var = format!("{}_CLIENT_ID", provider.env_prefix);
         let client_id =
             resolve_credential(std::env::var(&id_var).ok(), provider.embedded_client_id)
                 .ok_or_else(|| {
-                    // Le lecteur peut être un testeur (binaire construit hors
-                    // make-release.ps1) : plus de consigne « terminal » seule —
-                    // le premier remède dit est une version officielle (revue
-                    // 2026-08-23, promesse du PLAN tenue).
+                    // The reader may be a tester (binary built outside
+                    // make-release.ps1): no more "terminal"-only instruction —
+                    // the first remedy stated is an official version (review
+                    // 2026-08-23, the PLAN's promise kept).
                     AuthError::Config(format!(
-                        "identifiants OAuth absents de ce binaire — installez une \
-                 version officielle de Wind ; en développement, définissez \
-                 {id_var}"
+                        "OAuth credentials absent from this binary — install an \
+                 official version of Wind; in development, set {id_var}"
                     ))
                 })?;
         let client_secret = match provider.client_secret {
@@ -170,9 +167,8 @@ impl Authenticator {
                     )
                     .ok_or_else(|| {
                         AuthError::Config(format!(
-                            "identifiants OAuth incomplets dans ce binaire — \
-                             installez une version officielle de Wind ; en \
-                             développement, définissez {secret_var}"
+                            "OAuth credentials incomplete in this binary — install an \
+                             official version of Wind; in development, set {secret_var}"
                         ))
                     })?,
                 )
@@ -182,25 +178,26 @@ impl Authenticator {
         Ok(Self::new(provider, client_id, client_secret))
     }
 
-    /// Raccourci du fournisseur historique — le seul câblé à l'UI à ce jour.
+    /// Shortcut of the historical provider — the only one wired to the UI
+    /// to this day.
     pub fn google_from_env() -> Result<Self, AuthError> {
         Self::from_env(&GOOGLE)
     }
 
-    /// Reconnexion sans interaction d'UN compte : lit son entrée du
-    /// coffre (une par email), avec repli sur l'entrée héritée de la
-    /// Phase 2 — migrée vers l'entrée par compte au passage. Échoue s'il
-    /// n'y a aucun jeton (→ [`Self::authenticate_interactive`]).
+    /// Reconnection without interaction of ONE account: reads its vault
+    /// entry (one per email), with a fallback on the entry inherited from
+    /// Phase 2 — migrated to the per-account entry on the way. Fails if
+    /// there is no token (→ [`Self::authenticate_interactive`]).
     pub fn authenticate_silent(&self, email: &str) -> Result<Authenticated, AuthError> {
-        let (refresh, from_legacy) = match coffre_lire(&vault_key(self.provider, email)) {
+        let (refresh, from_legacy) = match vault_read(&vault_key(self.provider, email)) {
             Ok(token) => (token, false),
             Err(keyring::Error::NoEntry) => {
-                let legacy = coffre_lire(KEYRING_REFRESH_LEGACY).map_err(|err| match err {
-                    // §6.8 : jamais l'adresse dans une erreur — elle finit
-                    // dans wind.log (revue PLAN-AUDIT-V1). Le compte se
-                    // reconnaît à son identifiant, tracé par l'appelant.
+                let legacy = vault_read(KEYRING_REFRESH_LEGACY).map_err(|err| match err {
+                    // §6.8: never the address in an error — it ends up in
+                    // wind.log (PLAN-AUDIT-V1 review). The account is
+                    // recognized by its id, traced by the caller.
                     keyring::Error::NoEntry => {
-                        AuthError::Vault("aucun jeton au coffre pour ce compte".to_string())
+                        AuthError::Vault("no token in the vault for this account".to_string())
                     }
                     other => AuthError::Vault(other.to_string()),
                 })?;
@@ -212,18 +209,18 @@ impl Authenticator {
         let http = flow::http_client()?;
         let tokens = flow::refresh_access_token(&client, &http, refresh.clone())?;
         flow::ensure_mail_scope(self.provider, &tokens)?;
-        // E8 (audit S2) : Azure AD renvoie un refresh token NEUF à chaque
-        // échange et fait expirer l'ancien (90 j par défaut) ; Google le
-        // fait à l'occasion. Le jeter, c'était une déconnexion silencieuse
-        // différée. S'il change, il remplace l'ancien au coffre.
-        let renouvele = tokens
+        // E8 (audit S2): Azure AD returns a NEW refresh token at every
+        // exchange and expires the old one (90 days by default); Google does
+        // it occasionally. Throwing it away was a deferred silent
+        // disconnection. If it changes, it replaces the old one in the vault.
+        let renewed = tokens
             .refresh_token()
             .map(|token| token.secret().clone())
-            .filter(|neuf| *neuf != refresh);
-        let account = self.finish(&http, &tokens, Some(email), renouvele)?;
+            .filter(|new| *new != refresh);
+        let account = self.finish(&http, &tokens, Some(email), renewed)?;
         if from_legacy {
-            // Migration du coffre : l'entrée devient par-compte, sous
-            // l'email RÉEL du jeton (celui que le fournisseur confirme).
+            // Vault migration: the entry becomes per-account, under the REAL
+            // email of the token (the one the provider confirms).
             self.vault(&account.email)?
                 .set_password(&refresh)
                 .map_err(|err| AuthError::Vault(err.to_string()))?;
@@ -232,14 +229,14 @@ impl Authenticator {
         Ok(account)
     }
 
-    /// Reconnexion héritée Phase 2 : quand la base ne connaît encore
-    /// aucun compte, l'entrée non-keyée du coffre peut en révéler un —
-    /// elle est alors migrée. L'email revient du jeton lui-même.
+    /// Phase 2 legacy reconnection: when the database does not yet know any
+    /// account, the unkeyed vault entry may reveal one — it is then
+    /// migrated. The email comes back from the token itself.
     ///
-    /// Ce chemin est propre à Google : la Phase 2 ne connaissait que lui.
+    /// This path is Google's own: Phase 2 only knew it.
     pub fn authenticate_silent_legacy(&self) -> Result<Authenticated, AuthError> {
-        let refresh = coffre_lire(KEYRING_REFRESH_LEGACY).map_err(|err| match err {
-            keyring::Error::NoEntry => AuthError::Vault("aucun compte enregistré".to_string()),
+        let refresh = vault_read(KEYRING_REFRESH_LEGACY).map_err(|err| match err {
+            keyring::Error::NoEntry => AuthError::Vault("no registered account".to_string()),
             other => AuthError::Vault(other.to_string()),
         })?;
         let client = self.client()?;
@@ -254,11 +251,11 @@ impl Authenticator {
         Ok(account)
     }
 
-    /// Parcours complet : navigateur → consentement → redirection loopback
-    /// → tokens. Le refresh token est stocké dans le coffre de l'OS.
+    /// Full journey: browser → consent → loopback redirect → tokens. The
+    /// refresh token is stored in the OS vault.
     ///
-    /// `declared_email` n'est utilisé que par les fournisseurs qui ne
-    /// livrent pas l'identité du compte ([`Identity::Declared`]).
+    /// `declared_email` is only used by the providers that do not deliver
+    /// the account's identity ([`Identity::Declared`]).
     pub fn authenticate_interactive(
         &self,
         declared_email: Option<&str>,
@@ -271,9 +268,9 @@ impl Authenticator {
         self.finish(&http, &tokens, declared_email, refresh)
     }
 
-    /// Oublie UN compte : supprime son refresh token du coffre.
+    /// Forgets ONE account: removes its refresh token from the vault.
     pub fn forget(&self, email: &str) -> Result<(), AuthError> {
-        coffre_oublier(&vault_key(self.provider, email))
+        vault_forget(&vault_key(self.provider, email))
             .map_err(|err| AuthError::Vault(err.to_string()))
     }
 
@@ -290,9 +287,9 @@ impl Authenticator {
             .map_err(|err| AuthError::Vault(err.to_string()))
     }
 
-    /// Chez un fournisseur qui livre l'identité, l'email n'est connu
-    /// qu'APRÈS l'échange de jetons : le refresh se range donc dans
-    /// l'entrée du compte une fois l'identité confirmée.
+    /// At a provider that delivers the identity, the email is only known
+    /// AFTER the token exchange: the refresh is therefore stored in the
+    /// account's entry once the identity is confirmed.
     fn finish(
         &self,
         http: &flow::HttpClient,
@@ -315,13 +312,13 @@ impl Authenticator {
     }
 }
 
-/// Nom de l'entrée du coffre pour le refresh token d'un compte.
+/// Name of the vault entry for an account's refresh token.
 ///
-/// **Ne jamais changer sans migration.** Ce nom est la seule chose qui
-/// relie l'application aux jetons déjà stockés sur la machine de
-/// l'utilisateur : le modifier ne casse aucun test mais force une
-/// ré-authentification silencieuse de tous les comptes. C'est pour cela
-/// que le préfixe de Google reste `gmail`, hérité de la Phase 2.
+/// **Never change without a migration.** This name is the only thing that
+/// ties the application to the tokens already stored on the user's
+/// machine: changing it breaks no test but forces a silent
+/// re-authentication of every account. That is why Google's prefix stays
+/// `gmail`, inherited from Phase 2.
 fn vault_key(provider: &Provider, email: &str) -> String {
     format!("{}-refresh:{email}", provider.vault_prefix)
 }
@@ -331,34 +328,32 @@ fn legacy_vault() -> Result<keyring::Entry, AuthError> {
         .map_err(|err| AuthError::Vault(err.to_string()))
 }
 
-/// Lit une entrée du coffre sous le service Wind, avec repli sur le
-/// service Discovery d'avant la bascule (PLAN-WIND E3) : l'entrée
-/// trouvée est recopiée sous `wind-mail` puis retirée de
-/// `discovery-mail` — personne ne reconnecte un compte pour un
-/// renommage. Même geste que la migration Phase 2 de
-/// [`OauthConfig::authenticate_silent`] : migrer à la lecture.
-/// Une recopie échouée laisse l'ancienne entrée en place — la lecture
-/// suivante retentera.
-fn coffre_lire(cle: &str) -> Result<String, keyring::Error> {
-    let neuf = keyring::Entry::new(KEYRING_SERVICE, cle)?;
-    match neuf.get_password() {
+/// Reads a vault entry under the Wind service, with a fallback on the
+/// Discovery service from before the switch (PLAN-WIND E3): the entry
+/// found is copied under `wind-mail` then removed from `discovery-mail` —
+/// nobody reconnects an account for a rename. Same gesture as the Phase 2
+/// migration of [`Authenticator::authenticate_silent`]: migrate on read. A
+/// failed copy leaves the old entry in place — the next read will retry.
+fn vault_read(key: &str) -> Result<String, keyring::Error> {
+    let new = keyring::Entry::new(KEYRING_SERVICE, key)?;
+    match new.get_password() {
         Err(keyring::Error::NoEntry) => {
-            let ancien = keyring::Entry::new(ANCIEN_KEYRING_SERVICE, cle)?;
-            let secret = ancien.get_password()?;
-            neuf.set_password(&secret)?;
-            let _ = ancien.delete_credential();
+            let old = keyring::Entry::new(OLD_KEYRING_SERVICE, key)?;
+            let secret = old.get_password()?;
+            new.set_password(&secret)?;
+            let _ = old.delete_credential();
             Ok(secret)
         }
-        autre => autre,
+        other => other,
     }
 }
 
-/// Oublie une entrée sous les DEUX services : un secret retiré ne doit
-/// pas survivre sous l'ancien nom. Une entrée absente n'est pas une
-/// erreur — l'oubli est répétable.
-fn coffre_oublier(cle: &str) -> Result<(), keyring::Error> {
-    for service in [KEYRING_SERVICE, ANCIEN_KEYRING_SERVICE] {
-        match keyring::Entry::new(service, cle)?.delete_credential() {
+/// Forgets an entry under BOTH services: a removed secret must not survive
+/// under the old name. An absent entry is not an error — forgetting is
+/// repeatable.
+fn vault_forget(key: &str) -> Result<(), keyring::Error> {
+    for service in [KEYRING_SERVICE, OLD_KEYRING_SERVICE] {
+        match keyring::Entry::new(service, key)?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => {}
             Err(err) => return Err(err),
         }
@@ -376,38 +371,37 @@ fn generic_vault(email: &str) -> Result<keyring::Entry, AuthError> {
     .map_err(|err| AuthError::Vault(err.to_string()))
 }
 
-/// Stocke le mot de passe d'un compte IMAP/SMTP générique dans le coffre.
+/// Stores the password of a generic IMAP/SMTP account in the vault.
 pub fn store_generic_password(email: &str, password: &str) -> Result<(), AuthError> {
     generic_vault(email)?
         .set_password(password)
         .map_err(|err| AuthError::Vault(err.to_string()))
 }
 
-/// Oublie les secrets d'UN compte au coffre, quel que soit son mode
-/// d'authentification (`account_kind` : `"imap"` pour un compte
-/// générique, sinon le fournisseur OAuth).
+/// Forgets the secrets of ONE account in the vault, whatever its
+/// authentication mode (`account_kind`: `"imap"` for a generic account,
+/// otherwise the OAuth provider).
 ///
-/// N'exige AUCUNE configuration OAuth : le nom de l'entrée ne dépend que
-/// du fournisseur et de l'adresse — le retrait d'un compte ne doit
-/// jamais échouer parce qu'un `CLIENT_ID` manque à l'environnement.
-/// Une entrée déjà absente n'est pas une erreur : le retrait est
-/// répétable.
+/// Requires NO OAuth configuration: the name of the entry only depends on
+/// the provider and the address — removing an account must never fail
+/// because a `CLIENT_ID` is missing from the environment. An already
+/// absent entry is not an error: the removal is repeatable.
 pub fn forget_credentials(account_kind: &str, email: &str) -> Result<(), AuthError> {
-    let cle = match account_kind {
+    let key = match account_kind {
         "imap" => format!("{KEYRING_GENERIC_PASSWORD}:{email}"),
         kind => {
             let provider = provider::for_account_kind(kind)
-                .ok_or_else(|| AuthError::Config(format!("fournisseur inconnu : {kind}")))?;
+                .ok_or_else(|| AuthError::Config(format!("unknown provider: {kind}")))?;
             vault_key(provider, email)
         }
     };
-    coffre_oublier(&cle).map_err(|err| AuthError::Vault(err.to_string()))
+    vault_forget(&key).map_err(|err| AuthError::Vault(err.to_string()))
 }
 
-/// Récupère le mot de passe d'un compte IMAP/SMTP générique depuis le coffre.
+/// Fetches the password of a generic IMAP/SMTP account from the vault.
 pub fn fetch_generic_password(email: &str) -> Result<String, AuthError> {
-    coffre_lire(&format!("{KEYRING_GENERIC_PASSWORD}:{email}")).map_err(|err| match err {
-        keyring::Error::NoEntry => AuthError::Vault(format!("aucun mot de passe pour {email}")),
+    vault_read(&format!("{KEYRING_GENERIC_PASSWORD}:{email}")).map_err(|err| match err {
+        keyring::Error::NoEntry => AuthError::Vault(format!("no password for {email}")),
         other => AuthError::Vault(other.to_string()),
     })
 }
@@ -416,87 +410,83 @@ pub fn fetch_generic_password(email: &str) -> Result<String, AuthError> {
 mod tests {
     use super::*;
 
-    /// D1 (PLAN-RETOURS-9) : la variable d'exécution garde la priorité
-    /// — c'est elle qui sert sur un poste dev et que le harnais e2e
-    /// purge ; la valeur embarquée au build de release ne parle qu'en
-    /// son absence. Sans rien, pas d'identifiant : l'erreur reste due.
+    /// D1 (PLAN-RETOURS-9): the runtime variable keeps priority — it is what
+    /// serves on a dev workstation and what the e2e harness purges; the
+    /// value embedded at the release build only speaks in its absence. With
+    /// nothing, no credential: the error is still due.
     #[test]
-    fn la_variable_d_execution_prime_sur_la_valeur_embarquee() {
+    fn the_runtime_variable_wins_over_the_embedded_value() {
         assert_eq!(
-            resolve_credential(Some("runtime".into()), Some("embarque")),
+            resolve_credential(Some("runtime".into()), Some("embedded")),
             Some("runtime".to_string())
         );
         assert_eq!(
-            resolve_credential(None, Some("embarque")),
-            Some("embarque".to_string())
+            resolve_credential(None, Some("embedded")),
+            Some("embedded".to_string())
         );
         assert_eq!(resolve_credential(None, None), None);
-        // Une variable posée mais vide ne compte pas : `setx VAR ""`
-        // laisse une coquille qui masquerait la valeur embarquée.
+        // A variable set but empty does not count: `setx VAR ""` leaves a
+        // shell that would mask the embedded value.
         assert_eq!(
-            resolve_credential(Some(String::new()), Some("embarque")),
-            Some("embarque".to_string())
+            resolve_credential(Some(String::new()), Some("embedded")),
+            Some("embedded".to_string())
         );
     }
 
-    /// Test de caractérisation, écrit AVANT la généralisation par
-    /// fournisseur : il fige les noms d'entrée du coffre.
+    /// Characterization test, written BEFORE the generalization per
+    /// provider: it freezes the vault entry names.
     ///
-    /// Aucun test ne peut échouer si on les renomme — le coffre est dans
-    /// l'OS, pas dans le dépôt. Le symptôme serait silencieux et différé :
-    /// tous les comptes déjà connectés redemanderaient un consentement au
-    /// prochain lancement. D'où cette épingle.
+    /// No test can fail if they are renamed — the vault is in the OS, not in
+    /// the repository. The symptom would be silent and deferred: every
+    /// already connected account would ask for consent again at the next
+    /// launch. Hence this pin.
     #[test]
     fn vault_entry_names_are_frozen() {
         assert_eq!(
             vault_key(&GOOGLE, "moi@exemple.fr"),
             "gmail-refresh:moi@exemple.fr"
         );
-        // Le service a changé UNE fois, avec sa migration (PLAN-WIND E3,
-        // W-D1) : `coffre_lire` se replie sur l'ancien service et migre
-        // l'entrée trouvée. Les deux noms restent épinglés ensemble —
-        // retirer l'ancien couperait le pont pour les postes Discovery
-        // pas encore relancés.
+        // The service changed ONCE, with its migration (PLAN-WIND E3,
+        // W-D1): `vault_read` falls back on the old service and migrates the
+        // entry found. Both names stay pinned together — removing the old
+        // one would cut the bridge for the Discovery workstations not yet
+        // relaunched.
         assert_eq!(KEYRING_SERVICE, "wind-mail");
-        assert_eq!(ANCIEN_KEYRING_SERVICE, "discovery-mail");
+        assert_eq!(OLD_KEYRING_SERVICE, "discovery-mail");
         assert_eq!(KEYRING_REFRESH_LEGACY, "gmail-refresh-token");
         assert_eq!(KEYRING_GENERIC_PASSWORD, "generic-password");
     }
 
-    /// Le pont Discovery → Wind contre le VRAI coffre de l'OS — ignoré
-    /// par défaut (la suite ne doit pas écrire dans le Credential
-    /// Manager d'un runner CI) : `cargo test -p mail-auth -- --ignored`
-    /// sur un poste Windows. Noms uniques par processus, nettoyage à la
-    /// fin du parcours.
+    /// The Discovery → Wind bridge against the REAL OS vault — ignored by
+    /// default (the suite must not write into the Credential Manager of a
+    /// CI runner): `cargo test -p mail-auth -- --ignored` on a Windows
+    /// workstation. Unique names per process, cleanup at the end of the run.
     #[test]
     #[ignore]
-    fn le_pont_du_coffre_migre_discovery_vers_wind() {
-        let cle = format!("wind-test-pont:{}", std::process::id());
-        let ancien = keyring::Entry::new(ANCIEN_KEYRING_SERVICE, &cle).unwrap();
-        ancien.set_password("secret-du-pont").unwrap();
+    fn the_vault_bridge_migrates_discovery_to_wind() {
+        let key = format!("wind-test-bridge:{}", std::process::id());
+        let old = keyring::Entry::new(OLD_KEYRING_SERVICE, &key).unwrap();
+        old.set_password("bridge-secret").unwrap();
 
-        // Première lecture : trouvée sous Discovery, recopiée sous Wind,
-        // retirée de l'ancien service.
-        assert_eq!(coffre_lire(&cle).unwrap(), "secret-du-pont");
-        let neuf = keyring::Entry::new(KEYRING_SERVICE, &cle).unwrap();
-        assert_eq!(neuf.get_password().unwrap(), "secret-du-pont");
-        assert!(matches!(
-            ancien.get_password(),
-            Err(keyring::Error::NoEntry)
-        ));
+        // First read: found under Discovery, copied under Wind, removed from
+        // the old service.
+        assert_eq!(vault_read(&key).unwrap(), "bridge-secret");
+        let new = keyring::Entry::new(KEYRING_SERVICE, &key).unwrap();
+        assert_eq!(new.get_password().unwrap(), "bridge-secret");
+        assert!(matches!(old.get_password(), Err(keyring::Error::NoEntry)));
 
-        // Relecture : le chemin neuf, sans repli.
-        assert_eq!(coffre_lire(&cle).unwrap(), "secret-du-pont");
+        // Re-read: the new path, without fallback.
+        assert_eq!(vault_read(&key).unwrap(), "bridge-secret");
 
-        // L'oubli purge les deux services et reste répétable.
-        coffre_oublier(&cle).unwrap();
-        coffre_oublier(&cle).unwrap();
-        assert!(matches!(coffre_lire(&cle), Err(keyring::Error::NoEntry)));
+        // Forgetting purges both services and stays repeatable.
+        vault_forget(&key).unwrap();
+        vault_forget(&key).unwrap();
+        assert!(matches!(vault_read(&key), Err(keyring::Error::NoEntry)));
     }
 
-    /// Deux fournisseurs pour la même adresse ne doivent jamais écrire
-    /// dans la même entrée : le second écraserait le jeton du premier, et
-    /// la panne — une déconnexion silencieuse — arriverait bien plus tard.
+    /// Two providers for the same address must never write into the same
+    /// entry: the second would overwrite the first's token, and the failure
+    /// — a silent disconnection — would come much later.
     #[test]
     fn two_providers_never_share_a_vault_entry() {
         assert_ne!(

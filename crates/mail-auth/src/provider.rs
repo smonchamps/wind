@@ -1,41 +1,41 @@
-//! Ce qui change d'un fournisseur OAuth2 à l'autre — et rien d'autre.
+//! What changes from one OAuth2 provider to the next — and nothing else.
 //!
-//! Tout le reste du parcours (PKCE, écoute loopback, vérification CSRF,
-//! coffre de l'OS, reconnexion silencieuse) est commun et vit dans
-//! [`crate::flow`]. Un fournisseur se décrit ici en données ; s'il
-//! demandait du code, c'est que le seam serait au mauvais endroit.
+//! The rest of the journey (PKCE, loopback listener, CSRF check, OS vault,
+//! silent reconnection) is common and lives in [`crate::flow`]. A provider
+//! is described here as data; if it asked for code, the seam would be in
+//! the wrong place.
 //!
-//! Les valeurs Microsoft ne sont pas déduites de la documentation : elles
-//! viennent du spike [`spikes/microsoft`](../../../spikes/microsoft), joué
-//! contre un compte réel. Les tests de ce module les épinglent.
+//! The Microsoft values are not inferred from the documentation: they come
+//! from the [`spikes/microsoft`](../../../spikes/microsoft) spike, played
+//! against a real account. The tests of this module pin them.
 
-/// Comment le fournisseur livre l'identité du compte.
+/// How the provider delivers the identity of the account.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Identity {
-    /// Point de terminaison JSON exposant un champ `email`, appelé avec
-    /// l'access token. C'est le cas Google, mesuré dès la Phase 0.
+    /// JSON endpoint exposing an `email` field, called with the access
+    /// token. That is the Google case, measured since Phase 0.
     Userinfo(&'static str),
-    /// Le fournisseur ne livre pas l'email dans le périmètre de scopes
-    /// demandé : c'est l'utilisateur qui le déclare à l'ajout du compte.
+    /// The provider does not deliver the email within the requested scopes:
+    /// the user declares it when adding the account.
     ///
-    /// Piste connue pour s'en passer côté Microsoft : demander
-    /// `openid profile email` et lire `https://graph.microsoft.com/oidc/userinfo`.
-    /// **Non mesuré** — le spike n'a jamais demandé ces scopes. Tant que
-    /// ce n'est pas vérifié sur un compte réel, on déclare.
+    /// Known lead to do without it on the Microsoft side: request
+    /// `openid profile email` and read `https://graph.microsoft.com/oidc/userinfo`.
+    /// **Not measured** — the spike never asked for those scopes. Until it
+    /// is verified on a real account, we declare.
     Declared,
 }
 
-/// Un client OAuth2 de bureau est tantôt confidentiel, tantôt public.
+/// A desktop OAuth2 client is sometimes confidential, sometimes public.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClientSecret {
-    /// Google délivre un secret même aux applications installées.
+    /// Google issues a secret even to installed applications.
     Required,
-    /// Client PUBLIC : PKCE seul. Envoyer un secret ferait **refuser**
-    /// l'échange par Azure AD.
+    /// PUBLIC client: PKCE only. Sending a secret would make Azure AD
+    /// **refuse** the exchange.
     Forbidden,
 }
 
-/// Serveur de courrier d'un fournisseur.
+/// A provider's mail server.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Endpoint {
     pub host: &'static str,
@@ -44,41 +44,39 @@ pub struct Endpoint {
 
 #[derive(Debug)]
 pub struct Provider {
-    /// Nom affiché à l'utilisateur, y compris dans les messages d'erreur.
+    /// Name shown to the user, including in error messages.
     pub name: &'static str,
-    /// Préfixe des variables d'environnement : `{prefix}_CLIENT_ID`.
+    /// Prefix of the environment variables: `{prefix}_CLIENT_ID`.
     pub env_prefix: &'static str,
-    /// Valeur stockée dans la colonne `accounts.provider`. **Ne jamais
-    /// changer sans migration** : les lignes déjà écrites la portent, et
-    /// un compte dont la clé n'est plus reconnue devient inconnectable.
+    /// Value stored in the `accounts.provider` column. **Never change
+    /// without a migration**: the rows already written carry it, and an
+    /// account whose key is no longer recognized becomes unconnectable.
     pub account_kind: &'static str,
-    /// Préfixe de l'entrée du coffre. **Ne jamais changer sans migration**
-    /// (voir `vault_key`) : ce nom relie l'app aux jetons déjà stockés.
+    /// Prefix of the vault entry. **Never change without a migration**
+    /// (see `vault_key`): this name ties the app to the tokens already stored.
     pub vault_prefix: &'static str,
     pub auth_url: &'static str,
     pub token_url: &'static str,
     pub scopes: &'static [&'static str],
-    /// Fragment qui doit apparaître dans un scope **accordé**. Les deux
-    /// fournisseurs délivrent un jeton même sur consentement partiel :
-    /// seule la liste accordée fait foi (leçon Phase 0, reconfirmée par
-    /// le spike Microsoft).
+    /// Fragment that must appear in a **granted** scope. Both providers
+    /// issue a token even on partial consent: only the granted list counts
+    /// (Phase 0 lesson, reconfirmed by the Microsoft spike).
     pub granted_scope_marker: &'static str,
-    /// Microsoft distingue `localhost` de `127.0.0.1` : avec l'URI
-    /// `http://localhost` enregistrée, n'importe quel port est accepté.
+    /// Microsoft distinguishes `localhost` from `127.0.0.1`: with the URI
+    /// `http://localhost` registered, any port is accepted.
     pub redirect_host: &'static str,
-    /// Paramètres d'autorisation propres au fournisseur.
+    /// Authorization parameters specific to the provider.
     pub extra_auth_params: &'static [(&'static str, &'static str)],
     pub client_secret: ClientSecret,
     pub identity: Identity,
     pub imap: Endpoint,
     pub smtp: Endpoint,
-    /// Identifiants figés au moment de la COMPILATION (D1,
-    /// PLAN-RETOURS-9) : `make-release.ps1` pose `WIND_RELEASE_*`
-    /// avant les deux builds — un utilisateur final n'a aucun `setx` à
-    /// faire. Tout autre build (dev, tests, CI) n'embarque rien : les
-    /// valeurs ne vivent jamais au dépôt, et l'isolation e2e — qui
-    /// purge les variables d'EXÉCUTION — garde son levier. À
-    /// l'exécution, la variable d'environnement prime toujours
+    /// Credentials frozen at COMPILE time (D1, PLAN-RETOURS-9):
+    /// `make-release.ps1` sets `WIND_RELEASE_*` before the two builds — an
+    /// end user has no `setx` to do. Any other build (dev, tests, CI)
+    /// embeds nothing: the values never live in the repository, and the
+    /// e2e isolation — which purges the RUNTIME variables — keeps its
+    /// lever. At runtime, the environment variable always wins
     /// (`resolve_credential`).
     pub embedded_client_id: Option<&'static str>,
     pub embedded_client_secret: Option<&'static str>,
@@ -97,8 +95,8 @@ pub static GOOGLE: Provider = Provider {
     ],
     granted_scope_marker: "https://mail.google.com/",
     redirect_host: "127.0.0.1",
-    // Sans ces deux paramètres, Google ne délivre pas de refresh token :
-    // pas de reconnexion silencieuse au lancement suivant.
+    // Without these two parameters, Google issues no refresh token: no
+    // silent reconnection at the next launch.
     extra_auth_params: &[("access_type", "offline"), ("prompt", "consent")],
     client_secret: ClientSecret::Required,
     identity: Identity::Userinfo("https://www.googleapis.com/oauth2/v2/userinfo"),
@@ -110,9 +108,9 @@ pub static GOOGLE: Provider = Provider {
         host: "smtp.gmail.com",
         port: 465,
     },
-    // Le « secret » d'une app installée Google n'en est pas un (les
-    // clients mûrs le livrent dans leur binaire) ; il n'entre pour
-    // autant jamais au dépôt — seulement dans le build de release.
+    // The "secret" of a Google installed app is not one (mature clients
+    // ship it in their binary); it still never enters the repository — only
+    // the release build.
     embedded_client_id: option_env!("WIND_RELEASE_GOOGLE_CLIENT_ID"),
     embedded_client_secret: option_env!("WIND_RELEASE_GOOGLE_CLIENT_SECRET"),
 };
@@ -122,11 +120,11 @@ pub static MICROSOFT: Provider = Provider {
     env_prefix: "MICROSOFT",
     account_kind: "microsoft",
     vault_prefix: "microsoft",
-    // Point de terminaison « common » : comptes professionnels ET personnels.
+    // "common" endpoint: work AND personal accounts.
     auth_url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
     token_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-    // Scopes de la RESSOURCE Outlook, surtout pas les noms courts de Graph.
-    // C'est le piège n°1 de cette intégration (ADR 0006).
+    // Scopes of the Outlook RESOURCE, never the short Graph names. That is
+    // trap #1 of this integration (ADR 0006).
     scopes: &[
         "https://outlook.office.com/IMAP.AccessAsUser.All",
         "https://outlook.office.com/SMTP.Send",
@@ -134,7 +132,7 @@ pub static MICROSOFT: Provider = Provider {
     ],
     granted_scope_marker: "IMAP.AccessAsUser",
     redirect_host: "localhost",
-    // `offline_access` tient le rôle de `access_type=offline`.
+    // `offline_access` plays the role of `access_type=offline`.
     extra_auth_params: &[],
     client_secret: ClientSecret::Forbidden,
     identity: Identity::Declared,
@@ -142,24 +140,24 @@ pub static MICROSOFT: Provider = Provider {
         host: "outlook.office365.com",
         port: 993,
     },
-    // 587 + STARTTLS : Office 365 n'écoute pas en TLS implicite 465.
+    // 587 + STARTTLS: Office 365 does not listen on implicit TLS 465.
     smtp: Endpoint {
         host: "smtp.office365.com",
         port: 587,
     },
     embedded_client_id: option_env!("WIND_RELEASE_MICROSOFT_CLIENT_ID"),
-    // Client PUBLIC : un secret embarqué serait aussi refusé qu'un
-    // secret d'environnement — il n'existe pas, même en release.
+    // PUBLIC client: an embedded secret would be refused just like an
+    // environment secret — it does not exist, even in release.
     embedded_client_secret: None,
 };
 
-/// Tous les fournisseurs OAuth2 connus. Un compte générique IMAP/SMTP
-/// n'en fait pas partie : il n'a pas de fournisseur, il a des serveurs.
+/// Every known OAuth2 provider. A generic IMAP/SMTP account is not among
+/// them: it has no provider, it has servers.
 pub static ALL: &[&Provider] = &[&GOOGLE, &MICROSOFT];
 
-/// Retrouve le fournisseur d'un compte à partir de la valeur stockée en
-/// base. `None` pour `"imap"` (compte générique) comme pour une valeur
-/// inconnue — l'appelant traite les deux cas distinctement.
+/// Finds an account's provider from the value stored in the database.
+/// `None` for `"imap"` (generic account) as for an unknown value — the
+/// caller handles both cases distinctly.
 pub fn for_account_kind(kind: &str) -> Option<&'static Provider> {
     ALL.iter().copied().find(|p| p.account_kind == kind)
 }
@@ -168,9 +166,9 @@ pub fn for_account_kind(kind: &str) -> Option<&'static Provider> {
 mod tests {
     use super::*;
 
-    /// Régression : la généralisation par fournisseur ne doit RIEN changer
-    /// au parcours Google déjà en production. Ces valeurs sont celles qui
-    /// étaient câblées en constantes avant l'extraction.
+    /// Regression: the generalization per provider must change NOTHING to
+    /// the Google journey already in production. These values are the ones
+    /// that were wired as constants before the extraction.
     #[test]
     fn google_keeps_the_endpoints_it_had_before_extraction() {
         assert_eq!(
@@ -193,10 +191,9 @@ mod tests {
         assert_eq!(GOOGLE.client_secret, ClientSecret::Required);
     }
 
-    /// Sans `access_type=offline` ET `prompt=consent`, Google ne renvoie
-    /// pas de refresh token : la reconnexion silencieuse disparaît, et
-    /// l'utilisateur reconsent à chaque lancement. Défaut discret, coût
-    /// visible — d'où l'épingle.
+    /// Without `access_type=offline` AND `prompt=consent`, Google returns no
+    /// refresh token: silent reconnection disappears, and the user consents
+    /// again at every launch. A discreet defect, a visible cost — hence the pin.
     #[test]
     fn google_asks_for_a_refresh_token() {
         assert!(
@@ -207,7 +204,7 @@ mod tests {
         assert!(GOOGLE.extra_auth_params.contains(&("prompt", "consent")));
     }
 
-    /// Les valeurs mesurées par le spike, pas celles de la documentation.
+    /// The values measured by the spike, not those of the documentation.
     #[test]
     fn microsoft_matches_what_the_spike_measured() {
         assert_eq!(
@@ -226,37 +223,37 @@ mod tests {
         assert_eq!(MICROSOFT.smtp.host, "smtp.office365.com");
     }
 
-    /// Les deux pièges gelés par l'ADR 0006, chacun tenu par une assertion :
-    /// un client public ne doit envoyer aucun secret, et `127.0.0.1` n'est
-    /// pas `localhost` pour Azure AD.
+    /// The two traps frozen by ADR 0006, each held by an assertion: a public
+    /// client must send no secret, and `127.0.0.1` is not `localhost` for
+    /// Azure AD.
     #[test]
     fn microsoft_is_a_public_client_redirecting_to_localhost() {
         assert_eq!(MICROSOFT.client_secret, ClientSecret::Forbidden);
         assert_eq!(MICROSOFT.redirect_host, "localhost");
     }
 
-    /// Le port SMTP de Microsoft est 587/STARTTLS. C'est ce que le bug #3
-    /// rendait injoignable ; la donnée est maintenant portée par le
-    /// fournisseur, plus par une constante d'application.
+    /// Microsoft's SMTP port is 587/STARTTLS. That is what bug #3 made
+    /// unreachable; the datum is now carried by the provider, no longer by
+    /// an application constant.
     #[test]
     fn microsoft_submits_mail_on_587_not_465() {
         assert_eq!(MICROSOFT.smtp.port, 587);
         assert_eq!(GOOGLE.smtp.port, 465);
     }
 
-    /// Deux fournisseurs ne doivent jamais se disputer une entrée du
-    /// coffre : leurs préfixes sont distincts, et celui de Google reste
-    /// `gmail` — le renommer orphelinerait les jetons déjà stockés.
+    /// Two providers must never fight over a vault entry: their prefixes are
+    /// distinct, and Google's stays `gmail` — renaming it would orphan the
+    /// tokens already stored.
     #[test]
     fn vault_prefixes_are_distinct_and_google_keeps_its_historical_one() {
         assert_eq!(GOOGLE.vault_prefix, "gmail");
         assert_ne!(GOOGLE.vault_prefix, MICROSOFT.vault_prefix);
     }
 
-    /// Même classe de piège que la clé du coffre, côté base cette fois :
-    /// les lignes `accounts` déjà écrites portent `"gmail"`. Renommer
-    /// rendrait les comptes existants inconnectables, sans qu'aucun test
-    /// ne s'en aperçoive — d'où l'épingle.
+    /// Same class of trap as the vault key, on the database side this time:
+    /// the `accounts` rows already written carry `"gmail"`. Renaming would
+    /// make the existing accounts unconnectable, without any test noticing
+    /// — hence the pin.
     #[test]
     fn account_kinds_are_frozen_and_resolvable() {
         assert_eq!(GOOGLE.account_kind, "gmail");
@@ -270,20 +267,19 @@ mod tests {
         ));
     }
 
-    /// Un compte générique n'a pas de fournisseur OAuth2 : la table ne
-    /// doit surtout pas lui en inventer un.
+    /// A generic account has no OAuth2 provider: the table must certainly
+    /// not invent one for it.
     #[test]
     fn generic_accounts_have_no_oauth_provider() {
         assert!(for_account_kind("imap").is_none());
         assert!(for_account_kind("").is_none());
     }
 
-    /// PLAN-RETOURS-9 D1 : un build de dev ou de test n'embarque AUCUN
-    /// identifiant — les variables `WIND_RELEASE_*` n'existent que dans
-    /// le run de `make-release.ps1`. L'isolation e2e (purge des
-    /// variables d'exécution avant chaque lancement) repose sur cette
-    /// absence ; un build empoisonné par un environnement qui traîne
-    /// doit crier ici.
+    /// PLAN-RETOURS-9 D1: a dev or test build embeds NO credential — the
+    /// `WIND_RELEASE_*` variables only exist in the run of
+    /// `make-release.ps1`. The e2e isolation (purge of the runtime variables
+    /// before every launch) relies on that absence; a build poisoned by a
+    /// lingering environment must shout here.
     #[test]
     fn dev_builds_embed_no_credentials() {
         for provider in ALL {
@@ -292,9 +288,9 @@ mod tests {
         }
     }
 
-    /// Deux fournisseurs qui partageraient une clé se voleraient leurs
-    /// comptes au démarrage. La table est petite ; l'invariant, lui, doit
-    /// survivre au troisième fournisseur.
+    /// Two providers sharing a key would steal each other's accounts at
+    /// startup. The table is small; the invariant must survive the third
+    /// provider.
     #[test]
     fn no_two_providers_share_an_account_kind() {
         for (index, provider) in ALL.iter().enumerate() {

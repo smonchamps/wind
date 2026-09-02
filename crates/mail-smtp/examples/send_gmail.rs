@@ -1,9 +1,9 @@
-//! Validation de bout en bout : la boîte d'envoi de mail-core branchée sur
-//! l'adaptateur SMTP réel, contre votre compte Gmail — envoi à soi-même.
+//! End-to-end validation: mail-core's outbox wired to the real SMTP adapter,
+//! against your Gmail account — a message sent to yourself.
 //!
-//! Prérequis : `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` dans l'environnement
-//! et un compte déjà connecté via l'application Wind (le refresh token
-//! vit dans le Credential Manager, service « wind-mail »).
+//! Prerequisites: `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` in the environment
+//! and an account already connected through the Wind application (the
+//! refresh token lives in the Credential Manager, service "wind-mail").
 //!
 //! ```powershell
 //! cargo run -p mail-smtp --example send_gmail --release
@@ -17,14 +17,14 @@ use mail_core::{OutboxState, Store};
 use mail_smtp::SmtpMailer;
 
 fn main() -> anyhow::Result<()> {
-    let auth = Authenticator::google_from_env().context("configuration OAuth")?;
+    let auth = Authenticator::google_from_env().context("OAuth configuration")?;
     let account = match std::env::var("WIND_ACCOUNT") {
         Ok(email) => auth.authenticate_silent(&email),
         Err(_) => auth.authenticate_silent_legacy(),
     }
-    .context("connectez d'abord un compte via Wind (ou définissez WIND_ACCOUNT)")?;
+    .context("connect an account through Wind first (or set WIND_ACCOUNT)")?;
 
-    // Le chemin complet du produit : journaliser d'abord, envoyer ensuite.
+    // The product's full path: journal first, send next.
     let db_path = std::path::PathBuf::from("target/mail-smtp-example.db");
     let mut store = Store::open(&db_path)?;
     let account_id = store.adopt_or_create_account(&account.email, "gmail")?;
@@ -33,24 +33,24 @@ fn main() -> anyhow::Result<()> {
         &account.email,
         "",
         "",
-        "Wind — essai de la boîte d'envoi",
-        "Ce message a transité par la boîte d'envoi persistante.\n\
-         S'il arrive une seule fois, les deux règles d'or tiennent.",
+        "Wind — outbox trial",
+        "This message went through the persistent outbox.\n\
+         If it arrives exactly once, both golden rules hold.",
         None,
     )?;
     store.enqueue_outbox(account_id, &draft)?;
-    println!("Journalisé : {}", draft.message_id);
+    println!("Journaled: {}", draft.message_id);
 
     let timer = Instant::now();
     let mut mailer =
         SmtpMailer::connect_xoauth2("smtp.gmail.com", 465, &account.email, &account.access_token)
-            .map_err(|err| anyhow::anyhow!("connexion SMTP : {err}"))?;
-    println!("Connecté ({}) en {:?}", account.email, timer.elapsed());
+            .map_err(|err| anyhow::anyhow!("SMTP connection: {err}"))?;
+    println!("Connected ({}) in {:?}", account.email, timer.elapsed());
 
     let timer = Instant::now();
     let report = mail_core::flush_outbox(&mut mailer, &mut store, account_id)?;
     println!(
-        "Vidange en {:?} : {} envoyé(s), {} reporté(s), {} refusé(s), {} en quarantaine",
+        "Flush in {:?}: {} sent, {} deferred, {} rejected, {} quarantined",
         timer.elapsed(),
         report.sent,
         report.deferred,
@@ -59,10 +59,7 @@ fn main() -> anyhow::Result<()> {
     );
 
     for message in store.outbox_in_state(OutboxState::Queued)? {
-        println!(
-            "Encore en file : {} ({})",
-            message.subject, message.message_id
-        );
+        println!("Still queued: {} ({})", message.subject, message.message_id);
     }
     Ok(())
 }

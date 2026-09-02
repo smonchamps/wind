@@ -1,245 +1,240 @@
-//! Le corpus des spikes de PLAN-INVITATIONS, versé en tests : six
-//! invitations réalistes (Google/IANA, Outlook/TZID Windows, UTC nu,
-//! journée entière, CANCEL, récurrence) + l'épreuve de génération du
-//! METHOD:REPLY. La vérité de référence est celle d'ATTENDU.md des
-//! spikes (2026-08-22), rejouée ici à chaque gate.
+//! The corpus of the PLAN-INVITATIONS spikes, committed as tests: six
+//! realistic invitations (Google/IANA, Outlook/Windows TZID, bare UTC,
+//! whole day, CANCEL, recurrence) + the generation trial of METHOD:REPLY.
+//! The reference truth is the spikes' ATTENDU.md (2026-08-22), replayed
+//! here at every gate.
 
 use mail_ical::{
-    DemandeReponse, ErreurIcal, Invitation, Methode, Participation, Quand, analyser, reponse_itip,
+    IcalError, Invitation, Method, Participation, ReplyRequest, When, itip_reply, parse,
 };
 
-const NOUS: &str = "nous@wind.example";
+const US: &str = "nous@wind.example";
 
-fn charge(nom: &str) -> String {
-    let brut = match nom {
+fn load(name: &str) -> String {
+    let raw = match name {
         "google" => include_str!("fixtures/google-request.ics"),
         "outlook" => include_str!("fixtures/outlook-request.ics"),
         "utc" => include_str!("fixtures/utc-request.ics"),
         "allday" => include_str!("fixtures/allday-request.ics"),
         "cancel" => include_str!("fixtures/cancel.ics"),
         "recurrence" => include_str!("fixtures/recurrence-request.ics"),
-        autre => panic!("fixture inconnue : {autre}"),
+        other => panic!("unknown fixture: {other}"),
     };
-    // Les fixtures du dépôt sont en LF ; le fil réel est CRLF.
-    brut.replace("\r\n", "\n").replace('\n', "\r\n")
+    // The repository's fixtures are LF; the real wire is CRLF.
+    raw.replace("\r\n", "\n").replace('\n', "\r\n")
 }
 
 fn epoch(s: &str) -> i64 {
     chrono::DateTime::parse_from_rfc3339(s)
-        .unwrap_or_else(|e| panic!("date de référence invalide {s} : {e}"))
+        .unwrap_or_else(|e| panic!("invalid reference date {s}: {e}"))
         .timestamp()
 }
 
 #[test]
-fn google_request_tzid_iana_ete() {
-    let inv = analyser(&charge("google"), NOUS).unwrap();
-    assert_eq!(inv.methode, Methode::Requete);
+fn google_request_iana_tzid_summer() {
+    let inv = parse(&load("google"), US).unwrap();
+    assert_eq!(inv.method, Method::Request);
     assert_eq!(inv.uid, "7f3e9a2b1c4d5e6f@google.com");
     assert_eq!(inv.sequence, 0);
-    assert_eq!(inv.titre, "Revue budgétaire T3 — comité de pilotage");
-    // Virgule DÉSÉCHAPPÉE de LOCATION.
-    assert_eq!(inv.lieu.as_deref(), Some("Salle Vosges, 3e étage"));
-    let org = inv.organisateur.expect("organisateur");
-    assert_eq!(org.adresse, "claire.martin@exemple.fr");
-    assert_eq!(org.nom.as_deref(), Some("Claire Martin"));
-    // Europe/Paris en été : 14:30 local = 12:30Z.
+    assert_eq!(inv.title, "Revue budgétaire T3 — comité de pilotage"); // lang:fr fixture
+    // UNESCAPED comma of LOCATION.
+    assert_eq!(inv.location.as_deref(), Some("Salle Vosges, 3e étage")); // lang:fr fixture
+    let org = inv.organizer.expect("organizer");
+    assert_eq!(org.address, "claire.martin@exemple.fr");
+    assert_eq!(org.name.as_deref(), Some("Claire Martin"));
+    // Europe/Paris in summer: 14:30 local = 12:30Z.
     assert_eq!(
-        inv.debut,
-        Some(Quand::Instant(epoch("2026-09-03T12:30:00Z")))
+        inv.start,
+        Some(When::Instant(epoch("2026-09-03T12:30:00Z")))
     );
-    assert_eq!(inv.fin, Some(Quand::Instant(epoch("2026-09-03T13:30:00Z"))));
+    assert_eq!(inv.end, Some(When::Instant(epoch("2026-09-03T13:30:00Z"))));
     assert!(!inv.recurrent);
-    // Ligne ATTENDEE PLIÉE en plein paramètre (RSVP=\r\n TRUE).
-    assert_eq!(inv.notre_participation, Some(Participation::SansReponse));
+    // ATTENDEE line FOLDED in the middle of a parameter (RSVP=\r\n TRUE).
+    assert_eq!(inv.our_participation, Some(Participation::NeedsAction));
 }
 
 #[test]
-fn outlook_request_tzid_windows_hiver() {
-    let inv = analyser(&charge("outlook"), NOUS).unwrap();
-    assert_eq!(inv.methode, Methode::Requete);
+fn outlook_request_windows_tzid_winter() {
+    let inv = parse(&load("outlook"), US).unwrap();
+    assert_eq!(inv.method, Method::Request);
     assert_eq!(
         inv.uid,
         "040000008200E00074C5B7101A82E00800000000B0C3D4E5F6A7B8C9"
     );
-    // Param LANGUAGE ignoré sans casser la valeur.
-    assert_eq!(inv.titre, "Entretien annuel");
-    assert_eq!(inv.lieu.as_deref(), Some("Bureau 204"));
-    let org = inv.organisateur.expect("organisateur");
-    assert_eq!(org.adresse, "paul.durand@contoso.com");
-    // « Romance Standard Time » (TZID Windows) en hiver : 09:00 = 08:00Z.
+    // LANGUAGE parameter ignored without breaking the value.
+    assert_eq!(inv.title, "Entretien annuel"); // lang:fr fixture
+    assert_eq!(inv.location.as_deref(), Some("Bureau 204"));
+    let org = inv.organizer.expect("organizer");
+    assert_eq!(org.address, "paul.durand@contoso.com");
+    // "Romance Standard Time" (Windows TZID) in winter: 09:00 = 08:00Z.
     assert_eq!(
-        inv.debut,
-        Some(Quand::Instant(epoch("2026-12-10T08:00:00Z")))
+        inv.start,
+        Some(When::Instant(epoch("2026-12-10T08:00:00Z")))
     );
-    assert_eq!(inv.fin, Some(Quand::Instant(epoch("2026-12-10T08:30:00Z"))));
-    assert_eq!(inv.notre_participation, Some(Participation::SansReponse));
+    assert_eq!(inv.end, Some(When::Instant(epoch("2026-12-10T08:30:00Z"))));
+    assert_eq!(inv.our_participation, Some(Participation::NeedsAction));
 }
 
 #[test]
-fn utc_request_sans_tzid() {
-    let inv = analyser(&charge("utc"), NOUS).unwrap();
-    assert_eq!(inv.titre, "Appel fournisseur");
-    assert_eq!(inv.lieu, None);
+fn utc_request_without_tzid() {
+    let inv = parse(&load("utc"), US).unwrap();
+    assert_eq!(inv.title, "Appel fournisseur"); // lang:fr fixture
+    assert_eq!(inv.location, None);
     assert_eq!(
-        inv.debut,
-        Some(Quand::Instant(epoch("2026-09-03T12:30:00Z")))
+        inv.start,
+        Some(When::Instant(epoch("2026-09-03T12:30:00Z")))
     );
-    assert_eq!(inv.fin, Some(Quand::Instant(epoch("2026-09-03T13:00:00Z"))));
+    assert_eq!(inv.end, Some(When::Instant(epoch("2026-09-03T13:00:00Z"))));
 }
 
 #[test]
-fn journee_entiere_value_date() {
-    let inv = analyser(&charge("allday"), NOUS).unwrap();
-    assert_eq!(inv.titre, "Séminaire d'équipe");
-    assert_eq!(inv.debut, Some(Quand::Jour("2026-09-07".into())));
-    // DTEND exclusif, restitué tel quel — l'UI décide de l'affichage.
-    assert_eq!(inv.fin, Some(Quand::Jour("2026-09-08".into())));
+fn all_day_value_date() {
+    let inv = parse(&load("allday"), US).unwrap();
+    assert_eq!(inv.title, "Séminaire d'équipe"); // lang:fr fixture
+    assert_eq!(inv.start, Some(When::Day("2026-09-07".into())));
+    // Exclusive DTEND, returned as is — the UI decides the display.
+    assert_eq!(inv.end, Some(When::Day("2026-09-08".into())));
 }
 
 #[test]
-fn cancel_meme_uid_sequence_1() {
-    let inv = analyser(&charge("cancel"), NOUS).unwrap();
-    assert_eq!(inv.methode, Methode::Annulation);
-    // Même UID que google-request : c'est la même réunion.
+fn cancel_same_uid_sequence_1() {
+    let inv = parse(&load("cancel"), US).unwrap();
+    assert_eq!(inv.method, Method::Cancel);
+    // Same UID as google-request: it is the same meeting.
     assert_eq!(inv.uid, "7f3e9a2b1c4d5e6f@google.com");
     assert_eq!(inv.sequence, 1);
 }
 
 #[test]
-fn recurrence_presence_du_rrule() {
-    let inv = analyser(&charge("recurrence"), NOUS).unwrap();
+fn recurrence_presence_of_the_rrule() {
+    let inv = parse(&load("recurrence"), US).unwrap();
     assert!(inv.recurrent);
-    // Première occurrence : mardi 8 sept. 10:00 Paris = 08:00Z.
+    // First occurrence: Tuesday Sept. 8, 10:00 Paris = 08:00Z.
     assert_eq!(
-        inv.debut,
-        Some(Quand::Instant(epoch("2026-09-08T08:00:00Z")))
+        inv.start,
+        Some(When::Instant(epoch("2026-09-08T08:00:00Z")))
     );
 }
 
 #[test]
-fn tzid_inconnu_rend_flottant_jamais_une_heure_fausse() {
-    // Le piège mesuré au spike : un TZID hors tables retomberait en
-    // « flottant traité comme UTC » = décalage d'une heure SILENCIEUX.
-    // La garde D1 : on rend Quand::Flottant, l'UI dit « heure locale de
-    // l'organisateur ».
-    let ics = charge("outlook").replace("Romance Standard Time", "Zone Perso Wind");
-    let inv = analyser(&ics, NOUS).unwrap();
-    assert_eq!(inv.debut, Some(Quand::Flottant("2026-12-10T09:00".into())));
-    assert_eq!(inv.fin, Some(Quand::Flottant("2026-12-10T09:30".into())));
+fn unknown_tzid_renders_floating_never_a_wrong_time() {
+    // The trap measured at the spike: a TZID outside the tables would fall
+    // back to "floating treated as UTC" = SILENT one-hour offset. The D1
+    // guard: we return When::Floating, the UI says "organizer's local time".
+    let ics = load("outlook").replace("Romance Standard Time", "Zone Perso Wind");
+    let inv = parse(&ics, US).unwrap();
+    assert_eq!(inv.start, Some(When::Floating("2026-12-10T09:00".into())));
+    assert_eq!(inv.end, Some(When::Floating("2026-12-10T09:30".into())));
 }
 
 #[test]
-fn notre_adresse_se_compare_sans_la_casse() {
-    let ics = charge("utc").replace("mailto:nous@wind.example", "mailto:NOUS@Wind.Example");
-    let inv = analyser(&ics, NOUS).unwrap();
-    assert_eq!(inv.notre_participation, Some(Participation::SansReponse));
+fn our_address_compares_case_insensitively() {
+    let ics = load("utc").replace("mailto:nous@wind.example", "mailto:NOUS@Wind.Example");
+    let inv = parse(&ics, US).unwrap();
+    assert_eq!(inv.our_participation, Some(Participation::NeedsAction));
 }
 
 #[test]
-fn reply_recu_donne_le_repondant() {
-    // Nous sommes l'organisateur : un REPLY arrive avec le PARTSTAT du
-    // répondant (D2 — l'état « X a accepté »).
-    let demande = DemandeReponse {
+fn a_received_reply_gives_the_attendee() {
+    // We are the organizer: a REPLY arrives with the attendee's PARTSTAT
+    // (D2 — the "X accepted" state).
+    let request = ReplyRequest {
         uid: "7f3e9a2b1c4d5e6f@google.com",
         sequence: 0,
-        organisateur_adresse: NOUS,
-        notre_adresse: "claire.martin@exemple.fr",
-        participation: Participation::Accepte,
+        organizer_address: US,
+        our_address: "claire.martin@exemple.fr",
+        participation: Participation::Accepted,
         dtstamp_epoch: epoch("2026-08-22T12:00:00Z"),
     };
-    let reply = reponse_itip(&demande);
-    let inv = analyser(&reply, NOUS).unwrap();
-    assert_eq!(inv.methode, Methode::Reponse);
-    let repondant = inv.repondant.expect("répondant");
-    assert_eq!(repondant.adresse, "claire.martin@exemple.fr");
-    assert_eq!(inv.participation_du_repondant, Some(Participation::Accepte));
+    let reply = itip_reply(&request);
+    let inv = parse(&reply, US).unwrap();
+    assert_eq!(inv.method, Method::Reply);
+    let attendee = inv.attendee.expect("attendee");
+    assert_eq!(attendee.address, "claire.martin@exemple.fr");
+    assert_eq!(inv.attendee_participation, Some(Participation::Accepted));
 }
 
 #[test]
-fn le_repondant_d_un_reply_n_est_pas_l_organisateur_echo() {
-    // Exchange ÉCHO parfois l'organisateur en tête de la liste ATTENDEE
-    // d'un REPLY (revue) : le répondant est le premier ATTENDEE qui
-    // n'est PAS lui — jamais « nous avons répondu » à notre place.
+fn the_attendee_of_a_reply_is_not_the_echoed_organizer() {
+    // Exchange sometimes ECHOES the organizer at the head of the ATTENDEE
+    // list of a REPLY (review): the attendee is the first ATTENDEE who is
+    // NOT them — never "we replied" in our place.
     let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REPLY\r\n\
         BEGIN:VEVENT\r\nUID:r1@exemple.fr\r\n\
         ORGANIZER;CN=Nous:mailto:nous@wind.example\r\n\
         ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:nous@wind.example\r\n\
         ATTENDEE;PARTSTAT=ACCEPTED;CN=Paul Durand:mailto:paul@contoso.com\r\n\
         END:VEVENT\r\nEND:VCALENDAR\r\n";
-    let inv = analyser(ics, NOUS).unwrap();
-    let repondant = inv.repondant.expect("répondant");
-    assert_eq!(repondant.adresse, "paul@contoso.com");
-    assert_eq!(inv.participation_du_repondant, Some(Participation::Accepte));
+    let inv = parse(ics, US).unwrap();
+    let attendee = inv.attendee.expect("attendee");
+    assert_eq!(attendee.address, "paul@contoso.com");
+    assert_eq!(inv.attendee_participation, Some(Participation::Accepted));
 }
 
 #[test]
-fn reply_genere_conforme_et_reparsable() {
-    let inv = analyser(&charge("google"), NOUS).unwrap();
-    let org = inv.organisateur.expect("organisateur");
-    let demande = DemandeReponse {
+fn generated_reply_is_conforming_and_reparsable() {
+    let inv = parse(&load("google"), US).unwrap();
+    let org = inv.organizer.expect("organizer");
+    let request = ReplyRequest {
         uid: &inv.uid,
         sequence: inv.sequence,
-        organisateur_adresse: &org.adresse,
-        notre_adresse: NOUS,
-        participation: Participation::Refuse,
+        organizer_address: &org.address,
+        our_address: US,
+        participation: Participation::Declined,
         dtstamp_epoch: epoch("2026-08-22T12:00:00Z"),
     };
-    let reply = reponse_itip(&demande);
-    // Forme du fil : CRLF uniquement, lignes ≤ 75 octets.
+    let reply = itip_reply(&request);
+    // Wire form: CRLF only, lines ≤ 75 bytes.
     assert!(
         !reply.replace("\r\n", "").contains('\n'),
-        "LF nu dans la sortie"
+        "bare LF in the output"
     );
-    let plus_longue = reply.split("\r\n").map(str::len).max().unwrap_or(0);
-    assert!(plus_longue <= 75, "ligne de {plus_longue} octets");
+    let longest = reply.split("\r\n").map(str::len).max().unwrap_or(0);
+    assert!(longest <= 75, "line of {longest} bytes");
     assert!(reply.contains("METHOD:REPLY"));
-    // Re-parse : l'identité de la réunion et notre statut survivent.
-    let relu = analyser(&reply, org.adresse.as_str()).unwrap();
-    assert_eq!(relu.methode, Methode::Reponse);
-    assert_eq!(relu.uid, "7f3e9a2b1c4d5e6f@google.com");
-    assert_eq!(relu.sequence, 0);
-    let repondant = relu.repondant.expect("répondant");
-    assert_eq!(repondant.adresse, NOUS);
-    assert_eq!(relu.participation_du_repondant, Some(Participation::Refuse));
+    // Re-parse: the identity of the meeting and our status survive.
+    let reread = parse(&reply, org.address.as_str()).unwrap();
+    assert_eq!(reread.method, Method::Reply);
+    assert_eq!(reread.uid, "7f3e9a2b1c4d5e6f@google.com");
+    assert_eq!(reread.sequence, 0);
+    let attendee = reread.attendee.expect("attendee");
+    assert_eq!(attendee.address, US);
+    assert_eq!(reread.attendee_participation, Some(Participation::Declined));
 }
 
 #[test]
-fn texte_illisible_dit_illisible() {
-    assert_eq!(
-        analyser("pas un calendrier", NOUS),
-        Err(ErreurIcal::Illisible)
-    );
+fn unreadable_text_says_unreadable() {
+    assert_eq!(parse("not a calendar", US), Err(IcalError::Unreadable));
 }
 
 #[test]
-fn calendrier_sans_vevent_dit_sans_evenement() {
+fn calendar_without_vevent_says_no_event() {
     let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REQUEST\r\nEND:VCALENDAR\r\n";
-    assert_eq!(analyser(ics, NOUS), Err(ErreurIcal::SansEvenement));
+    assert_eq!(parse(ics, US), Err(IcalError::NoEvent));
 }
 
 #[test]
-fn methode_absente_dit_methode_inconnue() {
-    // Un .ics de pur export (sans METHOD) n'est pas une invitation.
-    let ics = charge("utc").replace("METHOD:REQUEST\r\n", "");
-    let _ = ics;
+fn absent_method_says_unknown_method() {
+    // A pure export .ics (without METHOD) is not an invitation.
+    let ics = load("utc").replace("METHOD:REQUEST\r\n", "");
     assert_eq!(
-        analyser(&ics, NOUS),
-        Err(ErreurIcal::MethodeInconnue),
-        "un calendrier sans METHOD n'est pas un message iTIP"
+        parse(&ics, US),
+        Err(IcalError::UnknownMethod),
+        "a calendar without METHOD is not an iTIP message"
     );
 }
 
 #[test]
-fn le_lf_nu_est_tolere() {
-    // Certains producteurs livrent du LF nu ; l'extraction est identique.
-    let brut = include_str!("fixtures/google-request.ics").replace("\r\n", "\n");
-    let via_lf = analyser(&brut, NOUS).unwrap();
-    let via_crlf = analyser(&charge("google"), NOUS).unwrap();
+fn bare_lf_is_tolerated() {
+    // Some producers deliver bare LF; the extraction is identical.
+    let raw = include_str!("fixtures/google-request.ics").replace("\r\n", "\n");
+    let via_lf = parse(&raw, US).unwrap();
+    let via_crlf = parse(&load("google"), US).unwrap();
     assert_eq!(via_lf, via_crlf);
 }
 
 #[test]
-fn invitation_est_clonable_et_comparable() {
-    let inv: Invitation = analyser(&charge("google"), NOUS).unwrap();
+fn invitation_is_clonable_and_comparable() {
+    let inv: Invitation = parse(&load("google"), US).unwrap();
     assert_eq!(inv.clone(), inv);
 }

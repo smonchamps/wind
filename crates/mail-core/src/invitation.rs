@@ -11,7 +11,7 @@
 //! découplées des enums de `mail-ical` : la base survit aux refontes du
 //! parseur.
 
-use mail_ical::{Invitation, Methode, Participation, Quand};
+use mail_ical::{Invitation, Method, Participation, When};
 
 /// La ligne `invitations` : l'invitation d'UN message, prête à afficher.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -66,21 +66,21 @@ pub struct InvitationStockee {
 /// d'export sans METHOD n'est PAS une invitation, il reste une simple
 /// pièce jointe.
 pub fn extraire_invitation(ics: &str, notre_adresse: &str) -> Option<InvitationRow> {
-    let invitation = mail_ical::analyser(ics, notre_adresse).ok()?;
+    let invitation = mail_ical::parse(ics, notre_adresse).ok()?;
     Some(row_de(invitation))
 }
 
 fn row_de(invitation: Invitation) -> InvitationRow {
-    let (debut_epoch, debut_texte, journee_entiere) = decompose(invitation.debut);
-    let (fin_epoch, fin_texte, _) = decompose(invitation.fin);
+    let (debut_epoch, debut_texte, journee_entiere) = decompose(invitation.start);
+    let (fin_epoch, fin_texte, _) = decompose(invitation.end);
     InvitationRow {
-        methode: methode_stable(invitation.methode).to_string(),
+        methode: methode_stable(invitation.method).to_string(),
         event_uid: invitation.uid,
         sequence: invitation.sequence,
-        titre: invitation.titre,
-        lieu: invitation.lieu,
-        organisateur_adresse: invitation.organisateur.as_ref().map(|o| o.adresse.clone()),
-        organisateur_nom: invitation.organisateur.and_then(|o| o.nom),
+        titre: invitation.title,
+        lieu: invitation.location,
+        organisateur_adresse: invitation.organizer.as_ref().map(|o| o.address.clone()),
+        organisateur_nom: invitation.organizer.and_then(|o| o.name),
         debut_epoch,
         fin_epoch,
         debut_texte,
@@ -88,42 +88,42 @@ fn row_de(invitation: Invitation) -> InvitationRow {
         journee_entiere,
         recurrent: invitation.recurrent,
         partstat: invitation
-            .notre_participation
+            .our_participation
             .map(|p| statut_stable(p).to_string()),
-        repondant_adresse: invitation.repondant.as_ref().map(|r| r.adresse.clone()),
-        repondant_nom: invitation.repondant.and_then(|r| r.nom),
+        repondant_adresse: invitation.attendee.as_ref().map(|r| r.address.clone()),
+        repondant_nom: invitation.attendee.and_then(|r| r.name),
         repondant_statut: invitation
-            .participation_du_repondant
+            .attendee_participation
             .map(|p| statut_stable(p).to_string()),
         // Un CANCEL est annulé par nature ; le croisement vers le
         // REQUEST de la même réunion appartient au stockage.
-        annule: matches!(invitation.methode, Methode::Annulation),
+        annule: matches!(invitation.method, Method::Cancel),
     }
 }
 
-fn decompose(quand: Option<Quand>) -> (Option<i64>, Option<String>, bool) {
+fn decompose(quand: Option<When>) -> (Option<i64>, Option<String>, bool) {
     match quand {
-        Some(Quand::Instant(epoch)) => (Some(epoch), None, false),
-        Some(Quand::Jour(jour)) => (None, Some(jour), true),
-        Some(Quand::Flottant(texte)) => (None, Some(texte), false),
+        Some(When::Instant(epoch)) => (Some(epoch), None, false),
+        Some(When::Day(jour)) => (None, Some(jour), true),
+        Some(When::Floating(texte)) => (None, Some(texte), false),
         None => (None, None, false),
     }
 }
 
-fn methode_stable(methode: Methode) -> &'static str {
+fn methode_stable(methode: Method) -> &'static str {
     match methode {
-        Methode::Requete => "request",
-        Methode::Annulation => "cancel",
-        Methode::Reponse => "reply",
+        Method::Request => "request",
+        Method::Cancel => "cancel",
+        Method::Reply => "reply",
     }
 }
 
 fn statut_stable(participation: Participation) -> &'static str {
     match participation {
-        Participation::SansReponse => "sans_reponse",
-        Participation::Accepte => "accepte",
-        Participation::Provisoire => "provisoire",
-        Participation::Refuse => "refuse",
+        Participation::NeedsAction => "sans_reponse",
+        Participation::Accepted => "accepte",
+        Participation::Tentative => "provisoire",
+        Participation::Declined => "refuse",
     }
 }
 
@@ -131,10 +131,10 @@ fn statut_stable(participation: Participation) -> &'static str {
 /// réponse iTIP depuis la ligne stockée.
 pub fn participation_de_stable(stable: &str) -> Option<Participation> {
     match stable {
-        "accepte" => Some(Participation::Accepte),
-        "provisoire" => Some(Participation::Provisoire),
-        "refuse" => Some(Participation::Refuse),
-        "sans_reponse" => Some(Participation::SansReponse),
+        "accepte" => Some(Participation::Accepted),
+        "provisoire" => Some(Participation::Tentative),
+        "refuse" => Some(Participation::Declined),
+        "sans_reponse" => Some(Participation::NeedsAction),
         _ => None,
     }
 }
@@ -205,10 +205,10 @@ mod tests {
     #[test]
     fn les_chaines_stables_font_l_aller_retour() {
         for (stable, participation) in [
-            ("accepte", Participation::Accepte),
-            ("provisoire", Participation::Provisoire),
-            ("refuse", Participation::Refuse),
-            ("sans_reponse", Participation::SansReponse),
+            ("accepte", Participation::Accepted),
+            ("provisoire", Participation::Tentative),
+            ("refuse", Participation::Declined),
+            ("sans_reponse", Participation::NeedsAction),
         ] {
             assert_eq!(participation_de_stable(stable), Some(participation));
         }

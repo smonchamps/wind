@@ -2315,7 +2315,7 @@ pub async fn repondre_invitation(
 ) -> Result<Option<InvitationVue>, String> {
     hors_pompe(app, move |app| {
         let participation = mail_core::participation_de_stable(&reponse)
-            .filter(|p| !matches!(p, mail_ical::Participation::SansReponse))
+            .filter(|p| !matches!(p, mail_ical::Participation::NeedsAction))
             .ok_or_else(|| format!("réponse inconnue : {reponse}"))?;
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let stockee = store
@@ -2353,11 +2353,11 @@ pub async fn repondre_invitation(
         draft.references = store
             .references_de(account_id, &mailbox, uid)
             .map_err(|err| err.to_string())?;
-        draft.ics_reply = Some(mail_ical::reponse_itip(&mail_ical::DemandeReponse {
+        draft.ics_reply = Some(mail_ical::itip_reply(&mail_ical::ReplyRequest {
             uid: &stockee.row.event_uid,
             sequence: stockee.row.sequence,
-            organisateur_adresse: &organisateur,
-            notre_adresse: &from,
+            organizer_address: &organisateur,
+            our_address: &from,
             participation,
             dtstamp_epoch: chrono::Utc::now().timestamp(),
         }));

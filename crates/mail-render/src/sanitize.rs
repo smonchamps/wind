@@ -1,23 +1,23 @@
-//! Pipeline d'assainissement HTML pour emails — défense en profondeur :
+//! HTML sanitizing pipeline for emails — defence in depth:
 //!
-//! 1. `ammonia` retire scripts, handlers d'événements et URLs dangereuses ;
-//! 2. les images distantes sont remplacées par un pixel neutre (vie privée :
-//!    pas de pixel espion, pas de fuite d'adresse IP) ;
-//! 3. l'affichage se fait dans une iframe `sandbox` dont le document embarque
-//!    une CSP `default-src 'none'` — même si une astuce d'échappement passait
-//!    les couches 1-2, rien ne peut s'exécuter ni se charger.
+//! 1. `ammonia` removes scripts, event handlers and dangerous URLs;
+//! 2. remote images are replaced by a neutral pixel (privacy: no tracking
+//!    pixel, no IP address leak);
+//! 3. the display happens in a `sandbox` iframe whose document embeds a CSP
+//!    `default-src 'none'` — even if an escaping trick got through layers
+//!    1-2, nothing can execute or load.
 
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// GIF 1×1 gris : remplace chaque image distante bloquée.
+/// 1×1 grey GIF: replaces every blocked remote image.
 pub const BLOCKED_PIXEL: &str =
     "data:image/gif;base64,R0lGODlhAQABAIAAAMLCwgAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==";
 
-/// Sort des images distantes. Le blocage est le défaut non négociable ;
-/// l'affichage est un choix explicite de l'utilisateur, par message.
+/// Fate of the remote images. Blocking is the non-negotiable default;
+/// displaying is an explicit choice of the user, per message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImagePolicy {
     BlockRemote,
@@ -41,17 +41,17 @@ pub fn sanitize_with(html: &str, policy: ImagePolicy) -> Sanitized {
     let styles_counter = Arc::clone(&styles_cleaned);
 
     let clean = ammonia::Builder::default()
-        // R3 : `ammonia` retire une balise interdite mais DÉBALLE son texte
-        // (défaut). Un email dont le `<head><title>` répète l'objet le
-        // faisait fuir en tête de corps, dupliqué. On retire le CONTENU du
-        // `<title>` (script/style le sont déjà par défaut) — comme tout
-        // client mûr qui jette le `<head>`.
+        // R3: `ammonia` removes a forbidden tag but UNWRAPS its text
+        // (default). An email whose `<head><title>` repeats the subject
+        // leaked it at the top of the body, duplicated. We remove the
+        // CONTENT of `<title>` (script/style already are by default) — like
+        // every mature client that throws the `<head>` away.
         .add_clean_content_tags(["title"])
         .add_tags(["font"])
         .add_tag_attributes("font", ["color", "face", "size"])
         .add_generic_attributes([
-            // Le marqueur du bloc transféré (PLAN-AUDIT-V2 E10, D8) —
-            // inerte à la lecture, il dit à l'envoi d'où vient le bloc.
+            // The marker of the forwarded block (PLAN-AUDIT-V2 E10, D8) —
+            // inert when reading, it tells the send where the block comes from.
             "data-wind-transfert",
             "style",
             "width",
@@ -105,7 +105,7 @@ fn filter_attribute<'a>(
         }
         return Some(Cow::Borrowed(value));
     }
-    // `data:` est autorisé pour les images, pas pour les liens (phishing).
+    // `data:` is allowed for images, not for links (phishing).
     if attribute == "href" && value.trim_start().to_ascii_lowercase().starts_with("data:") {
         return None;
     }
@@ -119,10 +119,10 @@ fn filter_attribute<'a>(
     Some(Cow::Borrowed(value))
 }
 
-/// Filtrage CSS par déclaration : supprime tout chargement ou exécution.
-/// Volontairement naïf (les échappements CSS type `\75rl(` passeraient) :
-/// c'est la CSP de l'iframe qui sert de filet de sécurité (doc du crate).
-/// La fidélité des blocs `<style>` viendra avec un vrai parseur CSS.
+/// CSS filtering per declaration: removes any load or execution.
+/// Deliberately naive (CSS escapes such as `\75rl(` would get through):
+/// the iframe's CSP is the safety net (crate doc). The fidelity of `<style>`
+/// blocks will come with a real CSS parser.
 fn clean_style(value: &str) -> String {
     value
         .split(';')
@@ -147,36 +147,36 @@ mod tests {
 
     #[test]
     fn removes_script_tags_and_their_content() {
-        let out = sanitize("<p>contenu</p><script>alert(1)</script>");
+        let out = sanitize("<p>content</p><script>alert(1)</script>");
         assert!(!out.html.contains("script"));
         assert!(!out.html.contains("alert"));
-        assert!(out.html.contains("contenu"));
+        assert!(out.html.contains("content"));
     }
 
-    /// R3 (PLAN-RETOURS-MAIL) : une infolettre porte son objet dans
-    /// `<head><title>…</title>`. `ammonia` retire la balise `<title>` mais
-    /// DÉBALLE son texte par défaut — l'objet fuyait alors en tête de corps,
-    /// dupliqué (terrain CE : Gmail, lui, jette le `<head>`). Son contenu
-    /// doit disparaître, tag ET texte.
+    /// R3 (PLAN-RETOURS-MAIL): a newsletter carries its subject in
+    /// `<head><title>…</title>`. `ammonia` removes the `<title>` tag but
+    /// UNWRAPS its text by default — the subject then leaked at the top of
+    /// the body, duplicated (CE field: Gmail, for its part, throws the
+    /// `<head>` away). Its content must disappear, tag AND text.
     #[test]
     fn drops_head_title_content_entirely() {
         let out = sanitize(
-            "<html><head><title>Objet de l'infolettre</title></head>\
-             <body><h1>Objet de l'infolettre</h1><p>corps</p></body></html>",
+            "<html><head><title>Subject of the newsletter</title></head>\
+             <body><h1>Subject of the newsletter</h1><p>body</p></body></html>",
         );
         assert!(
             !out.html.contains("<title"),
-            "la balise title doit partir : {}",
+            "the title tag must go: {}",
             out.html
         );
-        // Le corps garde SON titre (h1) ; seul le texte du <title> fuyait.
+        // The body keeps ITS title (h1); only the text of the <title> leaked.
         assert_eq!(
-            out.html.matches("Objet de l'infolettre").count(),
+            out.html.matches("Subject of the newsletter").count(),
             1,
-            "le texte du <title> ne doit plus doubler le corps : {}",
+            "the text of the <title> must no longer duplicate the body: {}",
             out.html
         );
-        assert!(out.html.contains("corps"));
+        assert!(out.html.contains("body"));
     }
 
     #[test]
@@ -188,16 +188,16 @@ mod tests {
 
     #[test]
     fn removes_javascript_links() {
-        let out = sanitize(r#"<a href="javascript:alert(1)">cliquer</a>"#);
+        let out = sanitize(r#"<a href="javascript:alert(1)">click</a>"#);
         assert!(!out.html.contains("javascript:"));
-        assert!(out.html.contains("cliquer"));
+        assert!(out.html.contains("click"));
     }
 
-    /// PLAN-AUDIT-V2 E8 : les filets NOMMÉS de la seconde frontière — le
-    /// HTML d'un mail reçu peut être reposé dans le document principal
-    /// (composeur, signature) ; chaque vecteur classique a son test.
+    /// PLAN-AUDIT-V2 E8: the NAMED nets of the second boundary — the HTML
+    /// of a received mail can be put back into the main document (composer,
+    /// signature); every classic vector has its test.
     #[test]
-    fn un_svg_a_gestionnaire_inline_ne_survit_pas() {
+    fn an_svg_with_an_inline_handler_does_not_survive() {
         let out = sanitize(r#"<p>ok</p><svg onload="alert(1)"><circle r="1"/></svg>"#);
         assert!(!out.html.contains("onload"));
         assert!(!out.html.contains("<svg"));
@@ -205,14 +205,14 @@ mod tests {
     }
 
     #[test]
-    fn un_srcset_distant_ne_survit_pas_sous_block_remote() {
-        let out = sanitize(r#"<img src="cid:x" srcset="https://pisteur.example/p.gif 1x">"#);
+    fn a_remote_srcset_does_not_survive_under_block_remote() {
+        let out = sanitize(r#"<img src="cid:x" srcset="https://tracker.example/p.gif 1x">"#);
         assert!(!out.html.contains("srcset"));
-        assert!(!out.html.contains("pisteur.example"));
+        assert!(!out.html.contains("tracker.example"));
     }
 
     #[test]
-    fn un_meta_refresh_ne_survit_pas() {
+    fn a_meta_refresh_does_not_survive() {
         let out =
             sanitize(r#"<meta http-equiv="refresh" content="0;url=https://x.example"><p>ok</p>"#);
         assert!(!out.html.contains("http-equiv"));
@@ -220,17 +220,17 @@ mod tests {
     }
 
     #[test]
-    fn une_base_href_ne_survit_pas() {
-        let out = sanitize(r#"<base href="https://x.example/"><a href="/page">lien</a>"#);
+    fn a_base_href_does_not_survive() {
+        let out = sanitize(r#"<base href="https://x.example/"><a href="/page">link</a>"#);
         assert!(!out.html.contains("<base"));
         assert!(!out.html.contains("x.example"));
     }
 
-    /// Le marqueur du bloc transféré (PLAN-AUDIT-V2 E10, D8) survit à la
-    /// frontière : un brouillon de transfert repris plus tard doit
-    /// encore savoir d'où il vient pour rendre ses images à l'envoi.
+    /// The marker of the forwarded block (PLAN-AUDIT-V2 E10, D8) survives
+    /// the boundary: a forward draft resumed later must still know where
+    /// it comes from to restore its images at send time.
     #[test]
-    fn le_marqueur_de_transfert_survit_a_la_frontiere() {
+    fn the_forward_marker_survives_the_boundary() {
         let out = sanitize(r#"<div data-wind-transfert="3/42/INBOX"><p>x</p></div>"#);
         assert!(
             out.html.contains(r#"data-wind-transfert="3/42/INBOX""#),
@@ -281,9 +281,9 @@ mod tests {
         assert!(!out.html.contains("x.example"));
     }
 
-    /// Limite connue et assumée : un échappement CSS (`\75rl(` = `url(`)
-    /// traverse le filtre naïf. Ce test documente pourquoi la couche 3
-    /// (CSP `default-src 'none'` dans l'iframe) n'est pas optionnelle.
+    /// Known and assumed limit: a CSS escape (`\75rl(` = `url(`) passes the
+    /// naive filter. This test documents why layer 3 (CSP `default-src
+    /// 'none'` in the iframe) is not optional.
     #[test]
     fn css_escape_bypass_passes_the_naive_filter_csp_is_the_backstop() {
         let out = sanitize(r#"<div style="background:\75rl(https://x.example/a)">x</div>"#);
@@ -299,7 +299,7 @@ mod tests {
     #[test]
     fn keeps_table_layout_used_by_newsletters() {
         let out = sanitize(
-            r##"<table width="600" bgcolor="#ffffff" cellpadding="0"><tbody><tr><td align="center" style="color: #333">contenu</td></tr></tbody></table>"##,
+            r##"<table width="600" bgcolor="#ffffff" cellpadding="0"><tbody><tr><td align="center" style="color: #333">content</td></tr></tbody></table>"##,
         );
         assert!(out.html.contains(r#"width="600""#));
         assert!(out.html.contains(r#"align="center""#));

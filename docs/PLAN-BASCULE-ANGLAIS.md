@@ -276,6 +276,22 @@ sans objet et s'efface. Mémoire : les pointeurs vers les scripts
 
 ### E3 — Les crates, du bord vers le cœur (G, en plusieurs commits)
 
+> **E3a delivered on 2026-09-02** — `mail-ical`, `mail-render`, `mail-smtp`,
+> `mail-auth` (3 476 lines) rewritten in English: identifiers by the
+> glossary, comments and doc comments translated, literals in English
+> (D5: `#[error]` messages, HTTP replies of the OAuth loopback, the
+> `is_connection_error` prefix now `connection`), 96 test names turned
+> into English sentences. The public API of `mail-ical` changed
+> (`Method`, `When`, `Person`, `ReplyRequest`, `IcalError`, `parse`,
+> `itip_reply`, fields `title`/`location`/`organizer`/`start`/`end`/
+> `attendee`…): its two dependents (`mail-core/invitation.rs`, the
+> shell's `repondre_invitation`) were updated in the same commit — the
+> stable strings of the database (`"accepte"`, `"sans_reponse"`…) stay
+> (D3). Oracles: `cargo build`, `clippy -D warnings`, 24 + 16 + 27 + 29
+> tests green. Rate measured: four crates in one session hour — the
+> remaining Rust (`mail-imap` 2 800 lines, `mail-core` ~24 000, shell
+> ~7 200) is ten times that volume.
+
 Ordre par dépendances : `mail-ical` (345 l.) → `mail-render` →
 `mail-smtp` (978 l.) → `mail-auth` → `mail-imap` (2 800 l., dont
 `faux_serveur.rs`, `tests_e3.rs`) → **`mail-core`** (~24 000 l., dont
