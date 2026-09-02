@@ -12,7 +12,7 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
-## [0.17.0] - à venir
+## [0.17.0] - 2026-09-02
 
 Wind va plus vite là où il comptait ses pas, et dit ce qu'il ne peut
 pas faire.

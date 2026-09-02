@@ -93,9 +93,11 @@ deux postes**). Au passage, deux filets d'outillage : le script de
 vérification ne parsait plus sous PowerShell 5.1 (tiret cadratin dans
 une chaîne d'un `.ps1` sans BOM, §7.1) — la gate parse désormais chaque
 `.ps1` ; et `barres-fil:25` attend la carte avant de la lire.
-**Encore dû** : 0.17.0 (vague 2 ; CHANGELOG écrite — `faire-release.ps1
-0.17.0` depuis `main`, puis vérification et preuve de MAJ), le ticket
-support GitHub (`051bb01`).
+**0.17.0 PUBLIÉE le 2026-09-02, le même jour** (vague 2 ;
+`verifier-release.ps1` : tout passe, crypto minisign non prouvée faute
+d'outil au PATH ; **auto-update prouvé aux deux postes**). **Encore
+dû** : le ticket support GitHub (`051bb01`) ; la mesure `maj.log`
+(poka-yoke `13c7681`, lisible depuis cette MAJ).
 
 Dernier soldé avant lui :
 **[PLAN-AUDIT-V1](PLAN-AUDIT-V1.md)** (2026-09-02, terrain CE « ok »,
@@ -584,8 +586,8 @@ banc écrivait `$n` dans sa boucle bornée par `$N` — **en PowerShell
 c'est la même variable** ; un `-N 3` partait pour ~550 tours. C'est
 aussi ce qui explique les « 19 lancements » de la campagne du 26/08.
 
-**Reste :** 0.17.0 à publier (0.16.0 l'est), le ticket support
-GitHub ; PLAN-BASCULE-ANGLAIS en cours dans une autre session.
+**Reste :** le ticket support GitHub, la lecture de `maj.log` ;
+PLAN-BASCULE-ANGLAIS en cours dans une autre session.
 
 **Dernier chantier soldé : [PLAN-ESPACEMENT](PLAN-ESPACEMENT.md)**
 (2026-08-25, terrain CE **7/7 zéro constat**, gate verte 2 min, e2e
