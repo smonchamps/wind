@@ -1,5 +1,8 @@
 # PLAN-BASCULE-ANGLAIS — tout le dépôt du français vers l'anglais
 
+> **CHANTIER OUVERT le 2026-09-02** (GO CE après 0.16.0, 0.17.0 et le solde
+> de PLAN-AUDIT-V2 ; quatorze décisions tranchées, §6).
+>
 > Rédigé le 2026-09-02 sur commande du CE (« basculer l'ensemble du
 > code et de la documentation du français vers l'anglais »). **Aucun
 > code n'est écrit avant le GO du STOP 1** (décisions D1-D14 ci-dessous).
@@ -357,28 +360,29 @@ corrige ce chiffre au STOP intermédiaire proposé à D10.
 
 ## 6. Décisions CE — à trancher une à une au STOP 1
 
-> **STOP 1 joué le 2026-09-02, partiel** : quatre décisions tranchées
-> (D1, D3, D4, D10), consignées mot pour mot ci-dessous. Les dix
-> autres (D2, D5-D9, D11-D14) se tranchent à l'ouverture effective du
-> chantier, après la publication 0.16.0 et le solde de PLAN-AUDIT-V2 (D10).
-> Le plan reste au STOP 1 jusque-là : aucun code, aucun filet.
+> **STOP 1 joué le 2026-09-02 en deux temps** : quatre décisions le
+> matin (D1, D3, D4, D10), les dix autres le jour même après la
+> publication de 0.16.0 et 0.17.0 et le solde de PLAN-AUDIT-V2 —
+> **GO CE le 2026-09-02** (« Tu peux lancer les travaux
+> d'implémentation »). Toutes consignées mot pour mot ci-dessous.
+> Prochain arrêt : **STOP 1 bis**, validation du glossaire (D14).
 
 | # | Question | Recommandation | Décision CE (mot pour mot, datée) |
 |---|---|---|---|
 | D1 | Archives (`docs/archives/`, 29 fichiers, 6 804 l.) et PLAN soldés : **geler** avec bandeau anglais, ou **traduire** ? | Geler : clos, jamais relus par la méthode (§0 : on lit STANDARD, ETAT, PLAN, ADR) ; ~40 % du volume doc pour zéro valeur vivante |**2026-09-02 : « Geler avec bandeau »** — dette D-55 à l'ouverture |
-| D2 | Commits : anglais dès le premier commit du chantier (E2 amende §2.8) ; le corps porte toujours chiffres et raisonnement | Oui ; convention « sans accents » abolie au même amendement | |
+| D2 | Commits : anglais dès le premier commit du chantier (E2 amende §2.8) ; le corps porte toujours chiffres et raisonnement | Oui ; convention « sans accents » abolie au même amendement |**2026-09-02 : « Oui, en bloc »** (recommandation prise telle quelle) |
 | D3 | Identifiants persistés (schéma SQLite, clés `prefs`, fichiers disque) : **garder** le français derrière des API anglaises, ou migrer ? | Garder ; dette D-54 « SQL français » avec clause de réouverture (« si une migration de schéma s'ouvre pour une autre raison, y adosser les renommages ») |**2026-09-02 : « Garder, dette D-54 »** |
 | D4 | Langue par défaut de l'UI : aujourd'hui « système si couvert, sinon fr ». Passer à « système si couvert, sinon **en** », l'anglais devenant référence/repli des catalogues ? | Oui : c'est la conséquence logique ; effet visible uniquement sur un système ni fr ni en ⇒ MINEURE (§2.9) ; fr reste livré mot pour mot |**2026-09-02 : « Oui, en par défaut »** — la prochaine release est MINEURE |
-| D5 | Messages techniques (`#[error]`, traces `wind.log`, diagnostics) : anglais seul, l'enveloppe UI restant traduite (L-3 de PLAN-LANGUES) ? | Oui ; un utilisateur fr verra un détail technique anglais après « Transfert impossible : … » — comme aujourd'hui les erreurs serveur | |
-| D6 | Vocabulaire produit dans le code : les mots de `catalogue.en.js` (Feed, Screener, Paper trail, Set aside, Marker, Clean) plutôt que le littéral (Kiosk, Doorman, Register) ? | Les mots du catalogue : déjà tranchés CE, un seul vocabulaire des deux côtés de l'écran | |
-| D7 | Noms de fichiers ADR / PLAN / specs : renommer en anglais (liens corrigés par E1d) ou garder les noms français ? | Renommer ; les numéros (`0008-`, `A-n`, `D-n`) sont l'identité, pas le slug | |
-| D8 | Système : traduction en place (A110) ou nouvelle version V-n ? | En place : une version neuve implique un contrat de jetons neuf, ce n'est pas le cas | |
-| D9 | Relecture : les normatifs (STANDARD, WORKFLOW, ADR, Système, skills) relus **intégralement** par le CE ; commentaires de code et plans relus par échantillon (10 %) et par les oracles ? | Oui ; la dérive de sens d'un normatif est le seul risque que les oracles ne voient pas | |
+| D5 | Messages techniques (`#[error]`, traces `wind.log`, diagnostics) : anglais seul, l'enveloppe UI restant traduite (L-3 de PLAN-LANGUES) ? | Oui ; un utilisateur fr verra un détail technique anglais après « Transfert impossible : … » — comme aujourd'hui les erreurs serveur |**2026-09-02 : « Oui, en bloc »** |
+| D6 | Vocabulaire produit dans le code : les mots de `catalogue.en.js` (Feed, Screener, Paper trail, Set aside, Marker, Clean) plutôt que le littéral (Kiosk, Doorman, Register) ? | Les mots du catalogue : déjà tranchés CE, un seul vocabulaire des deux côtés de l'écran |**2026-09-02 : « Oui, en bloc »** |
+| D7 | Noms de fichiers ADR / PLAN / specs : renommer en anglais (liens corrigés par E1d) ou garder les noms français ? | Renommer ; les numéros (`0008-`, `A-n`, `D-n`) sont l'identité, pas le slug |**2026-09-02 : « Oui, en bloc »** |
+| D8 | Système : traduction en place (A110) ou nouvelle version V-n ? | En place : une version neuve implique un contrat de jetons neuf, ce n'est pas le cas |**2026-09-02 : « Oui, en bloc »** |
+| D9 | Relecture : les normatifs (STANDARD, WORKFLOW, ADR, Système, skills) relus **intégralement** par le CE ; commentaires de code et plans relus par échantillon (10 %) et par les oracles ? | Oui ; la dérive de sens d'un normatif est le seul risque que les oracles ne voient pas |**2026-09-02 : « Normatifs en entier »** |
 | D10 | Séquencement : après la publication 0.16.0 et le solde de PLAN-AUDIT-V2, avant la vague 3 de l'audit ; sur `main`, un commit par couche ; **STOP intermédiaire** après E3a (premier crate) pour re-mesurer le débit ? | Oui ; un chantier qui touche chaque fichier ne cohabite avec aucun autre |**2026-09-02 : « Après 0.16.0 et le solde d'AUDIT-V2 »** — rien ne commence avant, E0-E1 compris |
-| D11 | Documents des testeurs (`BETA.md`, mot d'invitation, guide) : conserver une copie française `docs/BETA.fr.md` tant que la vague 1 (T1-T5) court ? | Oui si les cinq testeurs lisent le français (fait connu du CE seul, mémoire « identités hors dépôt ») | |
-| D12 | Jetons CSS français (`--marque`, `--r-controle`, `--rep-*`) : renommer (trois fichiers, gate DC-D6) ou tolérer ? | Renommer à E5, en un commit dédié — le Système est la référence de l'UI, il ne peut pas rester mixte | |
-| D13 | `CHANGELOG.md` : traduire tout (758 l., public, lu par la release) ou l'en-tête + entrées à venir ? | Tout : un journal public bilingue est illisible ; les Releases déjà publiées gardent leurs notes | |
-| D14 | Le glossaire E0 : relu et **validé CE avant E2** (c'est la conception du chantier) ? | Oui : STOP 1 bis, une heure, sur le tableau des mots | |
+| D11 | Documents des testeurs (`BETA.md`, mot d'invitation, guide) : conserver une copie française `docs/BETA.fr.md` tant que la vague 1 (T1-T5) court ? | Oui si les cinq testeurs lisent le français (fait connu du CE seul, mémoire « identités hors dépôt ») |**2026-09-02 : « Oui, BETA.fr.md conservé »** |
+| D12 | Jetons CSS français (`--marque`, `--r-controle`, `--rep-*`) : renommer (trois fichiers, gate DC-D6) ou tolérer ? | Renommer à E5, en un commit dédié — le Système est la référence de l'UI, il ne peut pas rester mixte |**2026-09-02 : « Oui, en bloc »** |
+| D13 | `CHANGELOG.md` : traduire tout (758 l., public, lu par la release) ou l'en-tête + entrées à venir ? | Tout : un journal public bilingue est illisible ; les Releases déjà publiées gardent leurs notes |**2026-09-02 : « Oui, en bloc »** |
+| D14 | Le glossaire E0 : relu et **validé CE avant E2** (c'est la conception du chantier) ? | Oui : STOP 1 bis, une heure, sur le tableau des mots |**2026-09-02 : « Oui, je valide le glossaire »** — STOP 1 bis |
 
 ## 7. Checklist terrain (STOP 2) — ce que le CE joue
 

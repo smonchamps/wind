@@ -12,7 +12,7 @@
 
 ## Où on en est, et quoi faire en premier
 
-📝 **Plan rédigé le 2026-09-02, STOP 1 attendu : [PLAN-BASCULE-ANGLAIS](PLAN-BASCULE-ANGLAIS.md)** — basculer tout le code et toute la documentation du français vers l'anglais (commande CE). Mesuré : ~375 000 mots de prose, ~1 200 définitions et ~115 fichiers à renommer ; par couche, un commit par couche, trois filets neufs (cliquet de langue, contrat IPC, liens markdown) ; refus : historique git, schéma SQLite, comportement. **STOP 1 joué le 2026-09-02, partiel** : D1 « geler les archives avec bandeau », D3 « garder le SQL français, dette D-54 », D4 « en par défaut » (prochaine release MINEURE), **D10 « après 0.16.0 et le solde d'AUDIT-V2 » — rien ne commence avant**, les dix autres décisions se tranchent à l'ouverture. Aucun code avant.
+🔧 **Chantier en cours : [PLAN-BASCULE-ANGLAIS](PLAN-BASCULE-ANGLAIS.md)** — basculer tout le code et toute la documentation du français vers l'anglais (commande CE). Plan rédigé et mesuré le 2026-09-02 (~375 000 mots de prose, ~1 200 définitions, ~115 fichiers à renommer ; par couche, un commit par couche, trois filets neufs). **STOP 1 joué le 2026-09-02, quatorze décisions tranchées** (D1 archives gelées, D3 SQL français gardé → dette D-54, D4 anglais par défaut → prochaine release MINEURE, D9 normatifs relus en entier par le CE, D11 `BETA.fr.md` conservé, D14 glossaire validé CE), **GO CE le 2026-09-02** après la publication de 0.16.0 et 0.17.0 et le solde d'AUDIT-V2. **Étape en cours : E0, le glossaire — STOP 1 bis attendu.** Aucun renommage avant.
 
 🔎 **Audit de code complet le 2026-09-01** —
 **[AUDIT-2026-09-01.md](AUDIT-2026-09-01.md)** : six auditeurs par
