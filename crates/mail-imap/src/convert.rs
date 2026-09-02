@@ -217,6 +217,12 @@ pub(crate) fn envelope_from_parts(
         .and_then(|envelope| envelope.in_reply_to.as_deref())
         .and_then(text_header);
     Envelope {
+        // `Reply-To` : la première adresse, où l'expéditeur veut la
+        // réponse (PLAN-AUDIT-V2 E5 — jeté avant).
+        reply_to: proto
+            .and_then(|envelope| envelope.reply_to.as_ref())
+            .and_then(|liste| liste.first())
+            .and_then(address_literal),
         uid,
         subject,
         sender: from.and_then(sender_display),
@@ -726,6 +732,30 @@ mod tests {
             in_reply_to: None,
             message_id: None,
         }
+    }
+
+    /// PLAN-AUDIT-V2 E5 : l'ENVELOPE porte `Reply-To` gratuitement ;
+    /// il n'était jamais lu.
+    #[test]
+    fn reply_to_est_lu_de_l_envelope() {
+        let mut proto = proto_envelope(
+            b"Sujet",
+            address(Some(b"Liste"), Some(b"liste"), Some(b"x.fr")),
+        );
+        proto.reply_to = Some(vec![address(None, Some(b"bob"), Some(b"y.fr"))]);
+        let envelope = envelope_from_parts(1, Some(&proto), None, false, false);
+        assert_eq!(envelope.reply_to.as_deref(), Some("bob@y.fr"));
+        let sans = envelope_from_parts(
+            2,
+            Some(&proto_envelope(
+                b"S",
+                address(None, Some(b"a"), Some(b"b.fr")),
+            )),
+            None,
+            false,
+            false,
+        );
+        assert_eq!(sans.reply_to, None);
     }
 
     #[test]

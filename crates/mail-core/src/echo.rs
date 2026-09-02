@@ -14,6 +14,8 @@
 //!   au balayage (intention soldée, destination relevée sans copie : on
 //!   n'affiche pas ce que le serveur dément).
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use rusqlite::{OptionalExtension, params};
 
 use crate::action::Action;
@@ -83,12 +85,27 @@ impl Store {
         action: Action,
         destination: Option<&str>,
     ) -> Result<(), Error> {
+        let tx = self.conn().unchecked_transaction()?;
+        self.geste_sous(&tx, mailbox_id, uid, action, destination)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Le geste DANS une transaction ouverte par l'appelant — le lot
+    /// d'E6 (PLAN-AUDIT-V2) y enchaîne N messages, tout ou rien.
+    fn geste_sous(
+        &self,
+        tx: &rusqlite::Connection,
+        mailbox_id: i64,
+        uid: Uid,
+        action: Action,
+        destination: Option<&str>,
+    ) -> Result<(), Error> {
         let account_id: i64 = self.conn().query_row(
             "SELECT account_id FROM mailboxes WHERE id = ?1",
             [mailbox_id],
             |row| row.get(0),
         )?;
-        let tx = self.conn().unchecked_transaction()?;
         // Un geste neuf remplace les refusées du message (revue E3).
         tx.execute(
             "DELETE FROM pending_actions WHERE mailbox_id = ?1 AND uid = ?2 AND refusee = 1",
@@ -169,7 +186,6 @@ impl Store {
         // La disparition de la source — le même travail que
         // `remove_local`, DANS la transaction (même connexion).
         self.remove_local(mailbox_id, uid)?;
-        tx.commit()?;
         Ok(())
     }
 
@@ -349,16 +365,30 @@ impl Store {
     /// (relèves sans erreur) et ses retentatives : un écho dont l'action
     /// attend encore (hors ligne, recul) VIT — il reflète l'intention.
     /// Rend un incident par écho retiré.
+    ///
+    /// L'écho d'un ENVOI n'a pas d'action d'origine : son intention est
+    /// soldée par construction. Il n'est balayé que si les Envoyés ont été
+    /// RELEVÉS APRÈS lui (`mailboxes.relevee_epoch`) — sinon la copie
+    /// n'a simplement pas encore été vue (PLAN-AUDIT-V2 E5 : il partait
+    /// dès la première passe, le message envoyé disparaissait de l'écran
+    /// jusqu'à la relève suivante). Un compte sans dossier d'envois annoncé
+    /// garde l'écho : c'est la seule trace du message parti.
     pub fn balayer_echos(&self, account_id: i64) -> Result<Vec<String>, Error> {
         let perimes: Vec<(i64, String)> = self
             .conn()
             .prepare(
                 "SELECT id, destination FROM echos
                  WHERE account_id = ?1
-                   AND (origin_action_id IS NULL
-                        OR NOT EXISTS (SELECT 1 FROM pending_actions p
-                                        WHERE p.id = origin_action_id
-                                          AND p.refusee = 0))",
+                   AND ((origin_action_id IS NULL
+                         AND EXISTS (SELECT 1 FROM mailboxes m
+                                       JOIN accounts a ON a.id = m.account_id
+                                      WHERE m.account_id = echos.account_id
+                                        AND m.name = a.sent_mailbox
+                                        AND m.relevee_epoch > echos.created_epoch))
+                        OR (origin_action_id IS NOT NULL
+                            AND NOT EXISTS (SELECT 1 FROM pending_actions p
+                                             WHERE p.id = origin_action_id
+                                               AND p.refusee = 0)))",
             )?
             .query_map([account_id], |row| Ok((row.get(0)?, row.get(1)?)))?
             .collect::<Result<_, _>>()?;
@@ -419,6 +449,121 @@ impl Store {
     }
 }
 
+/// Une conversation visée par un geste de masse — telle que l'UI la
+/// nomme (compte, boîte, UID de la rangée, et son fil s'il en a un).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CibleGeste {
+    pub account_id: i64,
+    pub mailbox: String,
+    pub uid: Uid,
+    pub thread_id: Option<i64>,
+}
+
+/// Les gestes que la barre de sélection sait faire en masse.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GesteGroupe {
+    Archive,
+    Delete,
+    Spam,
+    NotSpam,
+    Seen(bool),
+}
+
+impl Store {
+    /// Le geste de MASSE (PLAN-AUDIT-V2 E6, D6 : tout ou rien) : chaque
+    /// rangée cochée est une CONVERSATION — le fil entier part (D6 de
+    /// PLAN-RETOURS-10) — et le lot entier vit dans UNE transaction : une
+    /// panne au milieu ne laisse rien à moitié fait, l'UI le dit. Avant,
+    /// l'UI rejouait N × k commandes unitaires en série (250 + 50 IPC pour
+    /// 50 conversations), chacune sa transaction, la barre gelée.
+    ///
+    /// Rend le nombre de conversations traitées. `Spam` sans dossier
+    /// indésirable sur un compte visé est un refus franc, AVANT toute
+    /// écriture ; une boîte inconnue en base est sautée (comme l'unitaire).
+    pub fn agir_groupe(&self, cibles: &[CibleGeste], geste: &GesteGroupe) -> Result<usize, Error> {
+        let mut messages: Vec<(i64, String, Uid)> = Vec::new();
+        let mut vus: BTreeSet<(i64, String, Uid)> = BTreeSet::new();
+        for cible in cibles {
+            let seule = vec![(cible.account_id, cible.mailbox.clone(), cible.uid)];
+            let du_fil = match cible.thread_id {
+                Some(thread) => {
+                    let fil = self.thread_messages(thread)?;
+                    if fil.is_empty() {
+                        seule
+                    } else {
+                        fil.into_iter()
+                            .map(|rang| (rang.account_id, rang.mailbox, rang.envelope.uid))
+                            .collect()
+                    }
+                }
+                None => seule,
+            };
+            for message in du_fil {
+                if vus.insert(message.clone()) {
+                    messages.push(message);
+                }
+            }
+        }
+        // Le dossier indésirable de CHAQUE compte, résolu AVANT la
+        // transaction (même règle que l'arrivée E3 et le Nettoyage).
+        let mut indesirables: BTreeMap<i64, String> = BTreeMap::new();
+        if *geste == GesteGroupe::Spam {
+            let comptes: BTreeSet<i64> = cibles.iter().map(|cible| cible.account_id).collect();
+            for account in comptes {
+                let dossier = self
+                    .canonical_folders(account)?
+                    .indesirables
+                    .ok_or_else(|| {
+                        Error::Refus("aucun dossier indesirable reconnu sur ce compte".to_string())
+                    })?;
+                indesirables.insert(account, dossier);
+            }
+        }
+        let tx = self.conn().unchecked_transaction()?;
+        for (account_id, mailbox, uid) in &messages {
+            let Some(state) = self.sync_state(*account_id, mailbox)? else {
+                continue;
+            };
+            let mailbox_id = state.mailbox_id;
+            match geste {
+                GesteGroupe::Archive => {
+                    self.geste_sous(&tx, mailbox_id, *uid, Action::Archive, Some("archives"))?;
+                }
+                GesteGroupe::Delete => {
+                    self.geste_sous(&tx, mailbox_id, *uid, Action::Delete, Some("corbeille"))?;
+                }
+                GesteGroupe::Spam => {
+                    let spam = &indesirables[account_id];
+                    if spam != mailbox {
+                        self.geste_sous(&tx, mailbox_id, *uid, Action::MoveTo(spam.clone()), None)?;
+                    }
+                }
+                GesteGroupe::NotSpam => {
+                    self.geste_sous(
+                        &tx,
+                        mailbox_id,
+                        *uid,
+                        Action::MoveTo(crate::thread::RECEIVED_MAILBOX.to_string()),
+                        None,
+                    )?;
+                }
+                GesteGroupe::Seen(seen) => {
+                    if self.set_seen_local(mailbox_id, *uid, *seen)? {
+                        let action = if *seen {
+                            Action::MarkSeen
+                        } else {
+                            Action::MarkUnseen
+                        };
+                        self.enqueue_action(mailbox_id, *uid, action)?;
+                    }
+                }
+            }
+        }
+        tx.commit()?;
+        Ok(cibles.len())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::{TimeZone, Utc};
@@ -428,6 +573,7 @@ mod tests {
 
     fn envelope(uid: Uid, subject: &str, epoch: i64) -> Envelope {
         Envelope {
+            reply_to: None,
             uid,
             subject: Some(subject.to_string()),
             sender: Some("Alice Martin".to_string()),
@@ -457,11 +603,13 @@ mod tests {
                         wire: "INBOX".into(),
                         display: "INBOX".into(),
                         selectable: true,
+                        special_use: None,
                     },
                     crate::Folder {
                         wire: "Trash".into(),
                         display: "Trash".into(),
                         selectable: true,
+                        special_use: None,
                     },
                 ],
             )
@@ -628,6 +776,114 @@ mod tests {
             .unwrap();
         let (html, _) = store.echo_vue(echo_id).unwrap().unwrap();
         assert!(html.contains("corps<br>ligne 2"), "{html}");
+    }
+
+    /// PLAN-AUDIT-V2 E6 (D6, tout ou rien) : cinquante conversations
+    /// archivées en UN geste et UNE transaction — une panne au trentième
+    /// retrait ne laisse rien à moitié fait ; sans panne, les cinquante
+    /// partent. Avant : N × k commandes unitaires, chacune sa transaction.
+    #[test]
+    fn cinquante_conversations_archivees_en_une_transaction() {
+        use crate::{CibleGeste, GesteGroupe};
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("t@exemple.fr", "gmail")
+            .unwrap();
+        let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+        let decor: Vec<crate::Envelope> = (1..=50)
+            .map(|uid| crate::Envelope {
+                uid,
+                subject: Some(format!("message {uid}")),
+                sender: Some("Alice".to_string()),
+                sender_address: Some("alice@exemple.fr".to_string()),
+                to_addrs: Vec::new(),
+                cc_addrs: Vec::new(),
+                reply_to: None,
+                message_id: Some(format!("<m{uid}@exemple.fr>")),
+                in_reply_to: None,
+                date: None,
+                seen: false,
+                flagged: false,
+            })
+            .collect();
+        store.upsert_envelopes(inbox, &decor).unwrap();
+        let cibles: Vec<CibleGeste> = (1..=50)
+            .map(|uid| CibleGeste {
+                account_id: account,
+                mailbox: "INBOX".to_string(),
+                uid,
+                thread_id: None,
+            })
+            .collect();
+        let compte = |table: &str| -> i64 {
+            store
+                .conn()
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
+                .unwrap()
+        };
+
+        // Panne au trentième retrait : rien ne doit rester à moitié fait.
+        store
+            .conn()
+            .execute_batch(
+                "CREATE TRIGGER panne BEFORE DELETE ON envelopes WHEN OLD.uid = 30
+                 BEGIN SELECT RAISE(ABORT, 'panne simulée'); END;",
+            )
+            .unwrap();
+        assert!(store.agir_groupe(&cibles, &GesteGroupe::Archive).is_err());
+        assert_eq!(compte("envelopes"), 50, "tout ou rien : rien n'est parti");
+        assert_eq!(compte("pending_actions"), 0);
+        assert_eq!(compte("echos"), 0);
+
+        store.conn().execute_batch("DROP TRIGGER panne").unwrap();
+        assert_eq!(
+            store.agir_groupe(&cibles, &GesteGroupe::Archive).unwrap(),
+            50
+        );
+        assert_eq!(compte("envelopes"), 0);
+        assert_eq!(compte("pending_actions"), 50);
+        assert_eq!(compte("echos"), 50, "un écho d'archives par message");
+    }
+
+    /// PLAN-AUDIT-V2 E5 (audit 2.1 « écho d'ENVOI balayé dès la première
+    /// passe ») : l'écho d'un envoi n'a pas d'action d'origine ; le
+    /// balayage `origin_action_id IS NULL` le prenait pour une intention
+    /// soldée et le retirait AVANT toute relève des Envoyés — le message
+    /// parti disparaissait de l'écran jusqu'à la relève suivante.
+    #[test]
+    fn l_echo_d_envoi_survit_au_balayage_sans_releve_des_envoyes() {
+        let store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("t@exemple.fr", "gmail")
+            .unwrap();
+        let draft =
+            crate::compose("t@exemple.fr", "a@b.fr", "", "", "objet", "corps", None).unwrap();
+        store.enqueue_outbox(account, &draft).unwrap();
+        let id = store.outbox_to_send(account).unwrap()[0].id;
+        store
+            .set_outbox_state(id, crate::OutboxState::Sent)
+            .unwrap();
+        assert!(store.echo_envoi(id).unwrap());
+
+        let incidents = store.balayer_echos(account).unwrap();
+        assert!(incidents.is_empty(), "balayé à tort : {incidents:?}");
+        assert_eq!(store.compte_echos("envoyes", Some(account)).unwrap(), 1);
+
+        // Les Envoyés relevés APRÈS l'envoi, sans la copie : là, l'écho
+        // est démenti par le serveur et part.
+        let envoyes = store.create_mailbox(account, "Envoyes", 1).unwrap();
+        store
+            .conn()
+            .execute_batch(&format!(
+                "UPDATE accounts SET sent_mailbox = 'Envoyes' WHERE id = {account};
+                 UPDATE mailboxes SET relevee_epoch = (SELECT MAX(created_epoch) + 1 FROM echos)
+                  WHERE id = {envoyes};"
+            ))
+            .unwrap();
+        assert_eq!(store.balayer_echos(account).unwrap().len(), 1);
+        assert_eq!(store.compte_echos("envoyes", Some(account)).unwrap(), 0);
     }
 
     /// PLAN-COMPOSITION-HTML : l'écho d'un envoi RICHE porte le HTML

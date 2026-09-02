@@ -164,6 +164,9 @@ impl Store {
     /// Résout les six dossiers canoniques d'un compte depuis le cache
     /// `folders` (rempli par la synchro) et `accounts.sent_mailbox`.
     pub fn canonical_folders(&self, account_id: i64) -> Result<CanonicalFolders, Error> {
+        // Une lecture impossible REMONTE (PLAN-AUDIT-V2 E5) : `unwrap_or(None)`
+        // faisait d'une base verrouillée « pas d'Envoyés », fils non
+        // recollés en silence.
         let envoyes: Option<String> = self
             .conn()
             .query_row(
@@ -171,20 +174,37 @@ impl Store {
                 params![account_id],
                 |row| row.get(0),
             )
-            .unwrap_or(None);
-        let dossiers: Vec<(String, String)> = self
+            .optional()?
+            .flatten();
+        let dossiers: Vec<(String, String, Option<String>)> = self
             .conn()
             .prepare(
-                "SELECT wire, display FROM folders
+                "SELECT wire, display, special_use FROM folders
                  WHERE account_id = ?1 AND selectable ORDER BY display",
             )?
-            .query_map(params![account_id], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .query_map(params![account_id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?
             .collect::<Result<_, _>>()?;
+        // Le rôle annoncé par le serveur (RFC 6154) d'abord — c'est ce
+        // qu'il SAIT ; le nom en repli, pour un serveur qui n'annonce rien.
+        let par_role = |role: crate::SpecialUse| {
+            dossiers
+                .iter()
+                .find(|(_, _, code)| code.as_deref() == Some(role.code()))
+                .map(|(wire, _, _)| wire.clone())
+        };
+        let noms: Vec<(String, String)> = dossiers
+            .iter()
+            .map(|(wire, display, _)| (wire.clone(), display.clone()))
+            .collect();
         // Un dossier d'archives PUR d'abord ; l'intégrale Gmail en repli,
         // marquée comme telle.
-        let (archives, archives_integrale) = match retenir(&dossiers, ARCHIVES) {
+        let (archives, archives_integrale) = match par_role(crate::SpecialUse::Archive)
+            .or_else(|| retenir(&noms, ARCHIVES))
+        {
             Some(pur) => (Some(pur), false),
-            None => match retenir(&dossiers, INTEGRALES) {
+            None => match par_role(crate::SpecialUse::All).or_else(|| retenir(&noms, INTEGRALES)) {
                 Some(integrale) => (Some(integrale), true),
                 None => (None, false),
             },
@@ -192,11 +212,12 @@ impl Store {
         Ok(CanonicalFolders {
             reception: RECEIVED_MAILBOX.to_string(),
             envoyes,
-            brouillons: retenir(&dossiers, BROUILLONS),
-            indesirables: retenir(&dossiers, INDESIRABLES),
+            brouillons: par_role(crate::SpecialUse::Drafts).or_else(|| retenir(&noms, BROUILLONS)),
+            indesirables: par_role(crate::SpecialUse::Junk)
+                .or_else(|| retenir(&noms, INDESIRABLES)),
             archives,
             archives_integrale,
-            corbeille: retenir(&dossiers, CORBEILLE),
+            corbeille: par_role(crate::SpecialUse::Trash).or_else(|| retenir(&noms, CORBEILLE)),
         })
     }
 
@@ -1024,8 +1045,63 @@ mod tests {
     use super::*;
     use crate::envelope::Envelope;
 
+    /// PLAN-AUDIT-V2 E5 : `canonical_folders` avalait toute erreur SQLite
+    /// sur la lecture du dossier des envois (`unwrap_or(None)`) — une base
+    /// verrouillée valait « pas d'Envoyés », fils non recollés en silence.
+    #[test]
+    fn une_base_illisible_est_une_erreur_pas_une_absence_d_envoyes() {
+        let store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("moi@exemple.fr", "gmail")
+            .unwrap();
+        store
+            .conn()
+            .execute_batch("ALTER TABLE accounts RENAME TO accounts_indisponibles")
+            .unwrap();
+        assert!(
+            store.canonical_folders(account).is_err(),
+            "une lecture impossible doit remonter, jamais valoir None"
+        );
+    }
+
+    /// PLAN-AUDIT-V2 E5 : `[Gmail]` était en dur — un compte « [Google
+    /// Mail]/… » (Royaume-Uni, Allemagne) perdait Archives, Spam et
+    /// Corbeille. Le rôle RFC 6154 porté par le dossier prime ; le nom
+    /// reste le repli.
+    #[test]
+    fn google_mail_uk_a_ses_archives() {
+        use crate::{Folder, SpecialUse};
+        let store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("moi@exemple.fr", "gmail")
+            .unwrap();
+        let dossier = |nom: &str, role: Option<SpecialUse>| Folder {
+            wire: nom.to_string(),
+            display: nom.to_string(),
+            selectable: true,
+            special_use: role,
+        };
+        store
+            .replace_folders(
+                account,
+                &[
+                    dossier("INBOX", None),
+                    dossier("[Google Mail]/All Mail", Some(SpecialUse::All)),
+                    dossier("[Google Mail]/Spam", Some(SpecialUse::Junk)),
+                    dossier("[Google Mail]/Bin", Some(SpecialUse::Trash)),
+                ],
+            )
+            .unwrap();
+        let canon = store.canonical_folders(account).unwrap();
+        assert_eq!(canon.archives.as_deref(), Some("[Google Mail]/All Mail"));
+        assert!(canon.archives_integrale, "« All Mail » est une intégrale");
+        assert_eq!(canon.indesirables.as_deref(), Some("[Google Mail]/Spam"));
+        assert_eq!(canon.corbeille.as_deref(), Some("[Google Mail]/Bin"));
+    }
+
     fn envelope(uid: u32, subject: &str, epoch: i64, seen: bool) -> Envelope {
         Envelope {
+            reply_to: None,
             uid,
             subject: Some(subject.to_string()),
             sender: Some("Alice Martin".to_string()),
@@ -1045,6 +1121,7 @@ mod tests {
             wire: wire.to_string(),
             display: wire.to_string(),
             selectable: true,
+            special_use: None,
         }
     }
 
@@ -1294,6 +1371,7 @@ mod tests {
                     wire: "Trash".into(),
                     display: "Trash".into(),
                     selectable: true,
+                    special_use: None,
                 }],
             )
             .unwrap();

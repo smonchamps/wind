@@ -17,6 +17,7 @@ use crate::envelope::{Envelope, Uid};
 use crate::error::Error;
 use crate::invitation::{InvitationRow, InvitationStockee};
 use crate::remote::Folder;
+use crate::remote::SpecialUse;
 use crate::search;
 use crate::thread;
 
@@ -49,6 +50,10 @@ CREATE TABLE IF NOT EXISTS mailboxes (
     -- `last_uid == 0` : une boite VIDEE (tout archive) a un max(uid) nul
     -- et redevenait « initiale », donc muette (aucune bulle) et chere.
     initialisee    INTEGER NOT NULL DEFAULT 0,
+    -- Derniere releve REUSSIE de la boite (epoch), posee par update_state :
+    -- le balayage des echos d envoi exige que les Envoyes aient ete releves
+    -- APRES l envoi (PLAN-AUDIT-V2 E5).
+    relevee_epoch  INTEGER,
     -- Cette boite participe-t-elle au REGROUPEMENT en fils ?
     --
     -- Depuis l'ADR 0010 on synchronise TOUTES les boites, mais la portee
@@ -84,6 +89,8 @@ CREATE TABLE IF NOT EXISTS envelopes (
     -- est SOI, seul le destinataire dit a qui le message est parti.
     to_addrs       TEXT,
     cc_addrs       TEXT,
+    -- Reply-To, premiere adresse, de la meme ENVELOPE (PLAN-AUDIT-V2 E5).
+    reply_to       TEXT,
     message_id     TEXT,
     -- Les deux en-tetes du regroupement en fils. `in_reply_to` vient de
     -- l'ENVELOPE (gratuit) ; `refs` vient d'une passe separee sur les
@@ -141,6 +148,9 @@ CREATE TABLE IF NOT EXISTS folders (
     wire       TEXT NOT NULL,
     display    TEXT NOT NULL,
     selectable INTEGER NOT NULL DEFAULT 1,
+    -- Le role RFC 6154 (all, archive, drafts, junk, sent, trash), NULL
+    -- quand le serveur n en annonce pas (PLAN-AUDIT-V2 E5).
+    special_use TEXT,
     PRIMARY KEY (account_id, wire)
 );
 CREATE TABLE IF NOT EXISTS pending_actions (
@@ -910,15 +920,21 @@ impl Store {
         Self::init_with(conn, &mut |_| ControlFlow::Continue(()))
     }
 
-    /// Oublie toute initialisation connue de ce processus — pour les tests
-    /// qui REMBOBINENT une base à la main entre deux ouvertures (le décor
+    /// Oublie l'initialisation d'UN chemin — pour les tests qui
+    /// REMBOBINENT une base à la main entre deux ouvertures (le décor
     /// d'une base d'avant), ce que la mono-instance interdit en
-    /// production. Tout le registre, pas un chemin : un autre test du même
-    /// processus paiera au pire une initialisation de plus, jamais une de
-    /// moins.
+    /// production. Un chemin, jamais tout le registre : les tests tournent
+    /// en parallèle, et vider le registre sous les pieds d'un autre lui
+    /// fait rejouer un schéma qu'il prouve justement ne pas rejouer.
     #[cfg(test)]
-    pub(crate) fn oublier_les_initialisations() {
-        registre_initialisees().verrou().clear();
+    pub(crate) fn oublier_initialisation(path: &Path) {
+        // La MÊME clé que le registre : celle que SQLite donne au fichier.
+        if let Some(cle) = Connection::open(path)
+            .ok()
+            .and_then(|conn| cle_fichier(&conn))
+        {
+            registre_initialisees().verrou().remove(&cle);
+        }
     }
 
     fn init_with(
@@ -1571,7 +1587,8 @@ impl Store {
         // `initialisee = 1` : une passe qui s'est soldée — la prochaine
         // est incrémentale quoi qu'il reste en base (E2).
         self.0.execute(
-            "UPDATE mailboxes SET last_uid = ?2, highest_modseq = ?3, initialisee = 1
+            "UPDATE mailboxes SET last_uid = ?2, highest_modseq = ?3, initialisee = 1,
+                                  relevee_epoch = unixepoch()
              WHERE id = ?1",
             params![mailbox_id, last_uid, highest_modseq.map(|m| m as i64)],
         )?;
@@ -1649,8 +1666,8 @@ impl Store {
             let mut stmt = tx.prepare(
                 "INSERT INTO envelopes
                  (mailbox_id, uid, subject, sender, sender_address, message_id,
-                  in_reply_to, date_epoch, seen, flagged, to_addrs, cc_addrs)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                  in_reply_to, date_epoch, seen, flagged, to_addrs, cc_addrs, reply_to)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
                  ON CONFLICT (mailbox_id, uid) DO UPDATE SET
                      subject = excluded.subject,
                      sender = excluded.sender,
@@ -1661,7 +1678,8 @@ impl Store {
                      seen = excluded.seen,
                      flagged = excluded.flagged,
                      to_addrs = excluded.to_addrs,
-                     cc_addrs = excluded.cc_addrs",
+                     cc_addrs = excluded.cc_addrs,
+                     reply_to = excluded.reply_to",
             )?;
             let mut body_stmt =
                 tx.prepare("SELECT html FROM bodies WHERE mailbox_id = ?1 AND uid = ?2")?;
@@ -1716,6 +1734,7 @@ impl Store {
                     envelope.flagged,
                     join_addrs(&envelope.to_addrs),
                     join_addrs(&envelope.cc_addrs),
+                    envelope.reply_to,
                 ])?;
 
                 // La décision d'arrivée du Portier (E2) — sondes par
@@ -1855,6 +1874,7 @@ impl Store {
                         envelope.message_id.as_deref(),
                         envelope.in_reply_to.as_deref(),
                         references.as_deref(),
+                        &adresses_de(envelope),
                     )?;
                     tx.execute(
                         "UPDATE envelopes SET thread_id = ?3 WHERE mailbox_id = ?1 AND uid = ?2",
@@ -1945,15 +1965,21 @@ impl Store {
             )
             .optional()?
             .flatten();
-        let context: Option<(Option<String>, Option<String>)> = tx
+        let context: Option<(Option<String>, Option<String>, Vec<String>)> = tx
             .query_row(
-                "SELECT message_id, in_reply_to FROM envelopes
-                 WHERE mailbox_id = ?1 AND uid = ?2",
+                "SELECT message_id, in_reply_to, sender_address, to_addrs, cc_addrs
+                 FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
                 params![mailbox_id, uid],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| {
+                    let mut adresses: Vec<String> = Vec::new();
+                    adresses.extend(row.get::<_, Option<String>>(2)?);
+                    adresses.extend(split_addrs(row.get(3)?));
+                    adresses.extend(split_addrs(row.get(4)?));
+                    Ok((row.get(0)?, row.get(1)?, adresses))
+                },
             )
             .optional()?;
-        let Some((message_id, known_parent)) = context else {
+        let Some((message_id, known_parent, adresses)) = context else {
             // Le message a disparu entre la lecture des en-têtes et leur
             // écriture (archivé, supprimé) : il n'y a plus rien à rattacher.
             return Ok(false);
@@ -1990,6 +2016,7 @@ impl Store {
             message_id.as_deref(),
             parent.as_deref(),
             Some(references),
+            &adresses,
         )?;
         tx.execute(
             "UPDATE envelopes SET thread_id = ?3 WHERE mailbox_id = ?1 AND uid = ?2",
@@ -2004,17 +2031,23 @@ impl Store {
     }
 
     /// Supprime les enveloppes absentes du serveur ; retourne leur nombre.
+    /// Les UID qu'une boîte porte déjà en base — ce qu'une synchro
+    /// initiale reprise ne redemande pas (PLAN-AUDIT-V2 E5).
+    pub fn uids_connus(&self, mailbox_id: i64) -> Result<HashSet<Uid>, Error> {
+        Ok(self
+            .0
+            .prepare_cached("SELECT uid FROM envelopes WHERE mailbox_id = ?1")?
+            .query_map([mailbox_id], |row| row.get(0))?
+            .collect::<Result<_, _>>()?)
+    }
+
     pub fn remove_absent(
         &mut self,
         mailbox_id: i64,
         present: &HashSet<Uid>,
     ) -> Result<usize, Error> {
-        let local: Vec<Uid> = self
-            .0
-            .prepare("SELECT uid FROM envelopes WHERE mailbox_id = ?1")?
-            .query_map([mailbox_id], |row| row.get(0))?
-            .collect::<Result<_, _>>()?;
-        let stale: Vec<Uid> = local
+        let stale: Vec<Uid> = self
+            .uids_connus(mailbox_id)?
             .into_iter()
             .filter(|uid| !present.contains(uid))
             .collect();
@@ -2384,9 +2417,15 @@ impl Store {
         )?;
         for folder in folders {
             tx.execute(
-                "INSERT OR REPLACE INTO folders (account_id, wire, display, selectable)
-                 VALUES (?1, ?2, ?3, ?4)",
-                params![account_id, folder.wire, folder.display, folder.selectable],
+                "INSERT OR REPLACE INTO folders (account_id, wire, display, selectable, special_use)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    account_id,
+                    folder.wire,
+                    folder.display,
+                    folder.selectable,
+                    folder.special_use.map(SpecialUse::code)
+                ],
             )?;
         }
         tx.commit()?;
@@ -2396,7 +2435,7 @@ impl Store {
     /// Les dossiers connus d'un compte — lecture LOCALE, jamais de réseau.
     pub fn folders(&self, account_id: i64) -> Result<Vec<Folder>, Error> {
         let mut statement = self.0.prepare(
-            "SELECT wire, display, selectable FROM folders
+            "SELECT wire, display, selectable, special_use FROM folders
              WHERE account_id = ?1 ORDER BY display",
         )?;
         let rows = statement.query_map(params![account_id], |row| {
@@ -2404,6 +2443,10 @@ impl Store {
                 wire: row.get(0)?,
                 display: row.get(1)?,
                 selectable: row.get(2)?,
+                special_use: row
+                    .get::<_, Option<String>>(3)?
+                    .as_deref()
+                    .and_then(SpecialUse::from_code),
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -3390,11 +3433,11 @@ impl Store {
         let dossiers_inclus = matches!(perimetre, "dossiers" | "dossiersArchives");
         let archives_incluses = matches!(perimetre, "archives" | "dossiersArchives");
         let mut ids = Vec::new();
+        let mut stmt = self
+            .0
+            .prepare_cached("SELECT id, name FROM mailboxes WHERE account_id = ?1")?;
         for account in self.accounts()? {
             let canon = self.canonical_folders(account.id)?;
-            let mut stmt = self
-                .0
-                .prepare("SELECT id, name FROM mailboxes WHERE account_id = ?1")?;
             let boites = stmt
                 .query_map([account.id], |row| {
                     Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
@@ -3450,10 +3493,63 @@ impl Store {
             "e.mailbox_id IN ({liste})
                AND (e.date_epoch > ?1 OR e.date_epoch IS NULL)
                AND e.sender_norm IS NOT NULL
-               AND NOT EXISTS (SELECT 1 FROM routage_expediteurs r
-                                WHERE r.address = e.sender_norm)
-               AND NOT EXISTS (SELECT 1 FROM accounts a
-                                WHERE lower(trim(a.email)) = e.sender_norm)"
+               AND e.sender_norm NOT IN (SELECT address FROM routage_expediteurs)
+               AND e.sender_norm NOT IN (SELECT lower(trim(email)) FROM accounts)"
+        )
+    }
+
+    /// Le SQL des groupes — UNE passe : avec un max() SEUL, SQLite
+    /// garantit que les colonnes nues (sender, subject) viennent de la
+    /// ligne du max — le rang montre l'objet du dernier message DE LA
+    /// PORTÉE (revue 2026-08-30 : deux sous-requêtes corrélées non
+    /// bornées pouvaient afficher l'objet d'un message hors session, et
+    /// repayaient le tri de l'expéditeur quatre fois par groupe).
+    ///
+    /// En DEUX phases sur l'index des expéditeurs (PLAN-AUDIT-V2 E4) :
+    /// l'agrégat est COUVERT par `idx_envelopes_sender` (expéditeur,
+    /// date, boîte — jamais une ligne de table lue), puis l'objet et le
+    /// nom du dernier message se cherchent par le même index. Mesuré sur
+    /// 200 k enveloppes et 5 000 expéditeurs : 380 ms → moins de 100
+    /// (l'ancienne passe parcourait l'index de DATE puis un B-tree
+    /// temporaire). `INDEXED BY` : le planificateur préférait l'index de
+    /// date — le test de plan `les_groupes_du_nettoyage_se_lisent_par_
+    /// l_index_des_expediteurs` tient la promesse. Le `GROUP BY` externe
+    /// absorbe une égalité de date (deux messages d'un expéditeur à la
+    /// même seconde) : un rang par groupe, jamais deux.
+    fn nettoyage_groupes_sql(ids: &[i64]) -> String {
+        let critere = Self::nettoyage_critere(ids);
+        let liste = Self::liste_ids(ids);
+        format!(
+            "SELECT g.sender_norm, g.n, g.dernier, e.sender, e.subject
+               FROM (SELECT e.sender_norm AS sender_norm, COUNT(*) AS n,
+                            MAX(e.date_epoch) AS dernier
+                       FROM envelopes e INDEXED BY idx_envelopes_sender
+                      WHERE {critere}
+                      GROUP BY e.sender_norm) g
+               CROSS JOIN envelopes e INDEXED BY idx_envelopes_sender
+                 ON e.sender_norm = g.sender_norm
+                AND e.date_epoch IS g.dernier
+                AND e.mailbox_id IN ({liste})
+              GROUP BY g.sender_norm
+              ORDER BY g.dernier DESC, g.sender_norm"
+        )
+    }
+
+    /// Le courrier d'un groupe — LE critère partagé : la vue montre
+    /// exactement ce que le verdict traitera. `INDEXED BY` (PLAN-AUDIT-V2
+    /// E4) : sans lui, le SQLite embarqué préférait l'index de date et
+    /// balayait la boîte entière pour 40 lignes — 116 ms sur 200 k.
+    fn nettoyage_messages_sql(ids: &[i64]) -> String {
+        let critere = Self::nettoyage_critere(ids);
+        format!(
+            "{SELECT_UNIFIED}, COALESCE(t.size, 1), COALESCE(t.unseen, 1 - e.seen)
+             FROM envelopes e INDEXED BY idx_envelopes_sender
+             JOIN mailboxes m ON m.id = e.mailbox_id
+             JOIN accounts a ON a.id = m.account_id
+             LEFT JOIN threads t ON t.id = e.thread_id
+             LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
+             WHERE e.sender_norm = ?2 AND {critere}
+             ORDER BY e.date_epoch DESC, e.uid DESC"
         )
     }
 
@@ -3461,7 +3557,7 @@ impl Store {
         let critere = Self::nettoyage_critere(ids);
         let total: i64 = self.0.query_row(
             &format!(
-                "SELECT COUNT(*) FROM (SELECT 1 FROM envelopes e
+                "SELECT COUNT(*) FROM (SELECT 1 FROM envelopes e INDEXED BY idx_envelopes_sender
                   WHERE {critere} GROUP BY e.sender_norm)"
             ),
             params![borne],
@@ -3531,20 +3627,7 @@ impl Store {
             return Ok(Vec::new());
         };
         let ids = self.boites_du_perimetre(&session.perimetre)?;
-        let critere = Self::nettoyage_critere(&ids);
-        // UNE passe : avec un max() SEUL, SQLite garantit que les
-        // colonnes nues (sender, subject) viennent de la ligne du max —
-        // le rang montre l'objet du dernier message DE LA PORTÉE (revue
-        // 2026-08-30 : deux sous-requêtes corrélées non bornées
-        // pouvaient afficher l'objet d'un message hors session, et
-        // repayaient le tri de l'expéditeur quatre fois par groupe).
-        let mut stmt = self.0.prepare(&format!(
-            "SELECT e.sender_norm, COUNT(*), MAX(e.date_epoch), e.sender, e.subject
-               FROM envelopes e
-              WHERE {critere}
-              GROUP BY e.sender_norm
-              ORDER BY MAX(e.date_epoch) DESC, e.sender_norm"
-        ))?;
+        let mut stmt = self.0.prepare(&Self::nettoyage_groupes_sql(&ids))?;
         let groupes = stmt
             .query_map(params![session.borne_epoch], |row| {
                 Ok(GroupeNettoyage {
@@ -3663,8 +3746,18 @@ impl Store {
         let traites = retraits.len();
         if !retraits.is_empty() {
             let tx = self.0.unchecked_transaction()?;
+            // UNE fois par fil touché, jamais par message (PLAN-AUDIT-V2
+            // E4, le patron de `remove_absent`) : un groupe de N messages
+            // d'un même expéditeur vit souvent dans quelques fils —
+            // `remove_local` par message rafraîchissait chacun N fois.
+            let mut touched: BTreeSet<i64> = BTreeSet::new();
             for (mailbox_id, uid) in retraits {
-                self.remove_local(mailbox_id, uid)?;
+                if let Some(thread) = purger_message(&tx, mailbox_id, uid)? {
+                    touched.insert(thread);
+                }
+            }
+            for thread in &touched {
+                thread::refresh(&tx, *thread)?;
             }
             tx.commit()?;
         }
@@ -3686,17 +3779,7 @@ impl Store {
         let ids = self.boites_du_perimetre(&session.perimetre)?;
         // LE critère partagé : la vue d'un groupe montre exactement ce
         // que le verdict traitera.
-        let critere = Self::nettoyage_critere(&ids);
-        let sql = format!(
-            "{SELECT_UNIFIED}, COALESCE(t.size, 1), COALESCE(t.unseen, 1 - e.seen)
-             FROM envelopes e
-             JOIN mailboxes m ON m.id = e.mailbox_id
-             JOIN accounts a ON a.id = m.account_id
-             LEFT JOIN threads t ON t.id = e.thread_id
-             LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
-             WHERE e.sender_norm = ?2 AND {critere}
-             ORDER BY e.date_epoch DESC, e.uid DESC"
-        );
+        let sql = Self::nettoyage_messages_sql(&ids);
         let mut stmt = self.0.prepare(&sql)?;
         let rangs = stmt
             .query_map(params![session.borne_epoch, adresse], row_to_threaded)?
@@ -3738,6 +3821,29 @@ impl Store {
 
     /// Une enveloppe précise — le contexte nécessaire pour répondre
     /// (adresse brute de l'expéditeur, Message-ID du fil).
+    /// Le `Reply-To` d'un message, s'il en porte un — lu à la demande
+    /// (« Répondre »), jamais dans les lignes de liste.
+    pub fn reply_to_de(
+        &self,
+        account_id: i64,
+        mailbox: &str,
+        uid: Uid,
+    ) -> Result<Option<String>, Error> {
+        Ok(self
+            .0
+            .query_row(
+                "SELECT e.reply_to FROM envelopes e
+                 JOIN mailboxes m ON m.id = e.mailbox_id
+                 WHERE m.account_id = ?1 AND m.name = ?2 AND e.uid = ?3",
+                params![account_id, mailbox, uid],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten()
+            .map(|adresse| adresse.trim().to_string())
+            .filter(|adresse| !adresse.is_empty()))
+    }
+
     pub fn envelope(
         &self,
         account_id: i64,
@@ -4090,6 +4196,8 @@ fn migrate(
         &[("threaded", "INTEGER NOT NULL DEFAULT 1")],
     )?;
     add_missing_columns(conn, "accounts", &[("sent_mailbox", "TEXT")])?;
+    add_missing_columns(conn, "folders", &[("special_use", "TEXT")])?;
+    add_missing_columns(conn, "mailboxes", &[("relevee_epoch", "INTEGER")])?;
     add_missing_columns(
         conn,
         "mailboxes",
@@ -4130,6 +4238,7 @@ fn migrate(
         &[
             ("account_id", "INTEGER NOT NULL DEFAULT 1"),
             ("refs", "TEXT"),
+            ("reply_to", "TEXT"),
         ],
     )?;
     add_missing_columns(
@@ -4244,51 +4353,12 @@ fn migrate(
     // dizaines de fois par demarrage. Une lecture nue de `sqlite_master`
     // ne prend aucun verrou ; ouvrir une transaction d'ecriture juste
     // pour verifier couterait le verrou d'ecriture a chaque commande.
-    let peut_etre_court: Option<String> = conn
-        .query_row(
-            "SELECT sql FROM sqlite_master
-              WHERE type = 'index' AND name = 'idx_envelopes_date'",
-            [],
-            |row| row.get(0),
-        )
-        .optional()?;
-    if peut_etre_court.is_some_and(|sql| !sql.contains("uid")) {
-        // Second temps, sous verrou : `connect_accounts` appelle
-        // `Store::open` DIRECTEMENT, hors du verrou global des commandes
-        // (commands.rs), donc deux `migrate()` tournent pour de vrai en
-        // parallele au demarrage. Sans re-lecture sous verrou, les deux
-        // reconstruiraient — ~3,5 s de gel au lieu de 1,77 s. Le second
-        // arrivant relit APRES le premier, trouve `uid`, et ne fait rien.
-        conn.execute_batch("BEGIN IMMEDIATE")?;
-        let travail = (|| -> Result<(), Error> {
-            let sql: Option<String> = conn
-                .query_row(
-                    "SELECT sql FROM sqlite_master
-                      WHERE type = 'index' AND name = 'idx_envelopes_date'",
-                    [],
-                    |row| row.get(0),
-                )
-                .optional()?;
-            if sql.is_some_and(|sql| !sql.contains("uid")) {
-                conn.execute_batch(
-                    "DROP INDEX idx_envelopes_date;
-                     CREATE INDEX idx_envelopes_date
-                         ON envelopes(mailbox_id, date_epoch DESC, uid);",
-                )?;
-            }
-            Ok(())
-        })();
-        match travail {
-            Ok(()) => conn.execute_batch("COMMIT")?,
-            Err(err) => {
-                // L'echec du retour arriere n'apprendrait rien de plus
-                // que l'erreur d'origine — meme choix qu'a l'unite des
-                // fils.
-                let _ = conn.execute_batch("ROLLBACK");
-                return Err(err);
-            }
-        }
-    }
+    reconstruire_index_si_ancien(
+        conn,
+        "idx_envelopes_date",
+        "uid",
+        "CREATE INDEX idx_envelopes_date ON envelopes(mailbox_id, date_epoch DESC, uid);",
+    )?;
     // La sonde d'exclusion des intégrales (nav, catégorie Archives sur
     // Gmail) cherche par message_id : sans cet index, chaque ligne de
     // « Tous les messages » paierait un parcours de table.
@@ -4471,9 +4541,20 @@ fn migrate(
             "TEXT GENERATED ALWAYS AS (lower(trim(sender_address))) VIRTUAL",
         )],
     )?;
+    // Trois colonnes (PLAN-AUDIT-V2 E4) : l'agrégat du Nettoyage est
+    // COUVERT — expéditeur, date, boîte — sans lire une ligne de table ;
+    // les sondes par expéditeur (Portier, stock d'un verdict) le servent
+    // toujours par son préfixe. Une base du parc portait l'index à deux
+    // colonnes : reconstruit, même patron que l'index de date.
     conn.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_envelopes_sender
-             ON envelopes(sender_norm, date_epoch);",
+             ON envelopes(sender_norm, date_epoch, mailbox_id);",
+    )?;
+    reconstruire_index_si_ancien(
+        conn,
+        "idx_envelopes_sender",
+        "mailbox_id",
+        "CREATE INDEX idx_envelopes_sender ON envelopes(sender_norm, date_epoch, mailbox_id);",
     )?;
     // Le drapeau de rétention des fils (E2, verdict S2-bis : V4 —
     // entretenu par `thread::refresh` comme `size`/`unseen`, servi par
@@ -4660,6 +4741,51 @@ fn registre_initialisees() -> &'static RegistreInitialisees {
     REGISTRE.get_or_init(|| RegistreInitialisees(std::sync::Mutex::new(HashSet::new())))
 }
 
+/// Reconstruit un index dont la définition en base ne porte pas encore
+/// `marqueur` (une colonne gagnée après coup). DOUBLE VÉRIFICATION, et le
+/// premier temps compte autant que le second : une lecture nue de
+/// `sqlite_master` ne prend aucun verrou ; puis, sous `BEGIN IMMEDIATE`,
+/// relecture — deux `migrate()` peuvent tourner en parallèle au démarrage
+/// (`connect_accounts` ouvre hors du verrou des commandes) : le second
+/// arrivant relit APRÈS le premier, trouve le marqueur, et ne fait rien.
+fn reconstruire_index_si_ancien(
+    conn: &Connection,
+    nom: &str,
+    marqueur: &str,
+    creation: &str,
+) -> Result<(), Error> {
+    let definition = |conn: &Connection| -> Result<Option<String>, Error> {
+        Ok(conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?1",
+                [nom],
+                |row| row.get(0),
+            )
+            .optional()?)
+    };
+    let ancien = |sql: Option<String>| sql.is_some_and(|sql| !sql.contains(marqueur));
+    if !ancien(definition(conn)?) {
+        return Ok(());
+    }
+    conn.execute_batch("BEGIN IMMEDIATE")?;
+    let travail = (|| -> Result<(), Error> {
+        if ancien(definition(conn)?) {
+            conn.execute_batch(&format!("DROP INDEX {nom}; {creation}"))?;
+        }
+        Ok(())
+    })();
+    match travail {
+        Ok(()) => conn.execute_batch("COMMIT")?,
+        Err(err) => {
+            // L'échec du retour arrière n'apprendrait rien de plus que
+            // l'erreur d'origine — même choix qu'à l'unité des fils.
+            let _ = conn.execute_batch("ROLLBACK");
+            return Err(err);
+        }
+    }
+    Ok(())
+}
+
 fn table_columns(conn: &Connection, table: &str) -> Result<HashSet<String>, Error> {
     // `table_xinfo`, pas `table_info` : le second MASQUE les colonnes
     // générées (`sender_norm`) — la sonde d'existence les recréait à
@@ -4691,6 +4817,16 @@ fn add_missing_columns(
 /// Destinataires stockés sur une ligne — un par `\n`, NULL quand vide
 /// (R4). `join`/`split` sont réciproques ; une adresse ne contient jamais
 /// de retour ligne (c'est `mailbox@host`).
+/// Les adresses qu'une enveloppe porte (expéditeur, À, Cc) — jamais des
+/// identifiants de fil, même entre chevrons (PLAN-AUDIT-V2 E5).
+fn adresses_de(envelope: &Envelope) -> Vec<String> {
+    let mut adresses: Vec<String> = Vec::new();
+    adresses.extend(envelope.sender_address.clone());
+    adresses.extend(envelope.to_addrs.iter().cloned());
+    adresses.extend(envelope.cc_addrs.iter().cloned());
+    adresses
+}
+
 fn join_addrs(addrs: &[String]) -> Option<String> {
     if addrs.is_empty() {
         None
@@ -4945,6 +5081,7 @@ fn purger_attente_orpheline(conn: &Connection) -> Result<(), Error> {
 
 fn row_to_envelope(row: &rusqlite::Row<'_>) -> rusqlite::Result<Envelope> {
     Ok(Envelope {
+        reply_to: None,
         uid: row.get(0)?,
         subject: row.get(1)?,
         sender: row.get(2)?,
@@ -4969,6 +5106,7 @@ pub(crate) fn row_to_unified(row: &rusqlite::Row<'_>) -> rusqlite::Result<Unifie
         account_id: row.get(0)?,
         account_email: row.get(1)?,
         envelope: Envelope {
+            reply_to: None,
             uid: row.get(2)?,
             subject: row.get(3)?,
             sender: row.get(4)?,
@@ -5017,6 +5155,7 @@ mod tests {
 
     fn envelope(uid: Uid, subject: &str, epoch: i64, seen: bool) -> Envelope {
         Envelope {
+            reply_to: None,
             uid,
             subject: Some(subject.to_string()),
             sender: Some("Alice Martin".to_string()),
@@ -5420,6 +5559,7 @@ mod tests {
     fn roundtrips_envelope_without_optional_fields() {
         let (mut store, id) = store_with_mailbox();
         let bare = Envelope {
+            reply_to: None,
             uid: 1,
             subject: None,
             sender: None,
@@ -5623,6 +5763,7 @@ mod tests {
     fn un_message_sans_date_reste_a_rattraper() {
         let (mut store, id) = store_with_mailbox();
         let sans_date = Envelope {
+            reply_to: None,
             uid: 9,
             subject: None,
             sender: None,
@@ -6032,6 +6173,7 @@ mod tests {
             wire: wire.to_string(),
             display: display.to_string(),
             selectable: true,
+            special_use: None,
         }
     }
 
@@ -6339,7 +6481,7 @@ mod tests {
                 .unwrap();
         }
 
-        Store::oublier_les_initialisations();
+        Store::oublier_initialisation(&path);
         let store = Store::open(&path).unwrap();
         let account = store
             .adopt_or_create_account("moi@exemple.fr", "gmail")
@@ -6578,7 +6720,7 @@ mod tests {
         );
 
         // Une ouverture pleine reconstruit ; ensuite, plus rien à annoncer.
-        Store::oublier_les_initialisations();
+        Store::oublier_initialisation(&path);
         {
             Store::open(&path).unwrap();
         }
@@ -7513,7 +7655,7 @@ mod tests {
     fn rembobine_au_schema_v1(path: &Path) {
         // Une base rembobinée à la main est une base d'AVANT : le registre
         // de la porte rapide (E1) ne doit plus la connaître.
-        Store::oublier_les_initialisations();
+        Store::oublier_initialisation(path);
         let conn = Connection::open(path).unwrap();
         conn.execute_batch(
             "DROP TABLE thread_links;
@@ -8221,6 +8363,94 @@ mod tests {
         );
     }
 
+    /// PLAN-AUDIT-V2 E4 : les groupes du Nettoyage (un expéditeur × son
+    /// courrier) coûtaient 380 ms sur 200 k enveloppes et 5 000 expéditeurs
+    /// — un parcours par l'index de DATE puis un B-tree temporaire de
+    /// regroupement. L'index des expéditeurs, étendu à la boîte, COUVRE
+    /// l'agrégat : le plan doit passer par lui, jamais par l'index de date
+    /// (un test de plan d'exécution, leçon STANDARD §9).
+    #[test]
+    fn les_groupes_du_nettoyage_se_lisent_par_l_index_des_expediteurs() {
+        let store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("moi@exemple.fr", "gmail")
+            .unwrap();
+        let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+        let sql = Store::nettoyage_groupes_sql(&[inbox]);
+        let plan: Vec<String> = store
+            .conn()
+            .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+            .unwrap()
+            .query_map(params![0i64], |row| row.get::<_, String>(3))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(
+            plan.iter()
+                .any(|ligne| ligne.contains("idx_envelopes_sender")),
+            "l'agrégat ne passe pas par l'index des expéditeurs : {plan:?}"
+        );
+        assert!(
+            !plan
+                .iter()
+                .any(|ligne| ligne.contains("idx_envelopes_date")),
+            "l'agrégat parcourt l'index de date : {plan:?}"
+        );
+        // Le courrier d'un groupe, même exigence (116 ms sur 200 k sinon).
+        let sql = Store::nettoyage_messages_sql(&[inbox]);
+        let plan: Vec<String> = store
+            .conn()
+            .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+            .unwrap()
+            .query_map(params![0i64, "x@y.fr"], |row| row.get::<_, String>(3))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(
+            plan.iter()
+                .any(|ligne| ligne.contains("idx_envelopes_sender (sender_norm=?)")),
+            "le courrier d'un groupe ne se cherche pas par l'expéditeur : {plan:?}"
+        );
+    }
+
+    /// Une base du parc porte l'index des expéditeurs à DEUX colonnes ;
+    /// à la réouverture il gagne la boîte (même patron que l'index de
+    /// date ci-dessous).
+    #[test]
+    fn l_index_des_expediteurs_herite_gagne_la_boite_a_la_reouverture() {
+        let path =
+            std::env::temp_dir().join(format!("wind-test-idx-sender-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let lire_sql = |conn: &Connection| -> String {
+            conn.query_row(
+                "SELECT sql FROM sqlite_master WHERE name = 'idx_envelopes_sender'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+        {
+            let store = Store::open(&path).unwrap();
+            store
+                .conn()
+                .execute_batch(
+                    "DROP INDEX idx_envelopes_sender;
+                     CREATE INDEX idx_envelopes_sender
+                         ON envelopes(sender_norm, date_epoch);",
+                )
+                .unwrap();
+            assert!(!lire_sql(store.conn()).contains("mailbox_id"));
+        }
+        Store::oublier_initialisation(&path);
+        let store = Store::open(&path).unwrap();
+        assert!(
+            lire_sql(store.conn()).contains("mailbox_id"),
+            "l'index hérité n'a pas été reconstruit"
+        );
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+    }
+
     /// PLAN-DEMARRAGE, E1-bis — l'index de date des enveloppes gagne
     /// `uid`, et **`CREATE INDEX IF NOT EXISTS` ne suffit PAS** : sur une
     /// base existante l'index porte déjà ce nom, la création est un no-op
@@ -8266,7 +8496,7 @@ mod tests {
             );
         }
 
-        Store::oublier_les_initialisations();
+        Store::oublier_initialisation(&path);
         let store = Store::open(&path).unwrap();
         let sql = lire_sql(&store);
         assert!(
@@ -9506,7 +9736,7 @@ Etape : {etape}\nPlan :\n{}",
                 )
                 .unwrap();
         }
-        Store::oublier_les_initialisations();
+        Store::oublier_initialisation(&path);
         let store = Store::open(&path).unwrap();
         let attente = store.portier_attente().unwrap();
         assert_eq!(
@@ -9748,6 +9978,7 @@ Etape : {etape}\nPlan :\n{}",
                     wire: "Junk".to_string(),
                     display: "Junk".to_string(),
                     selectable: true,
+                    special_use: None,
                 }],
             )
             .unwrap();

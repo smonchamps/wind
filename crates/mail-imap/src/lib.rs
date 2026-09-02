@@ -969,6 +969,20 @@ fn name_to_folder(name: &imap::types::Name<'_>) -> mail_core::Folder {
             .attributes()
             .iter()
             .any(|attribute| matches!(attribute, NameAttribute::NoSelect)),
+        // Le rôle RFC 6154 que le serveur annonce — ce qu'il SAIT du
+        // dossier, là où le nom laisse deviner (PLAN-AUDIT-V2 E5).
+        special_use: name.attributes().iter().find_map(|attribute| {
+            use mail_core::SpecialUse;
+            Some(match attribute {
+                NameAttribute::All => SpecialUse::All,
+                NameAttribute::Archive => SpecialUse::Archive,
+                NameAttribute::Drafts => SpecialUse::Drafts,
+                NameAttribute::Junk => SpecialUse::Junk,
+                NameAttribute::Sent => SpecialUse::Sent,
+                NameAttribute::Trash => SpecialUse::Trash,
+                _ => return None,
+            })
+        }),
     }
 }
 

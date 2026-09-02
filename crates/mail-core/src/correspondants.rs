@@ -313,6 +313,7 @@ mod tests {
 
     fn envelope(uid: u32, sujet: &str, nom: &str, adresse: &str, epoch: i64) -> Envelope {
         Envelope {
+            reply_to: None,
             uid,
             subject: Some(sujet.to_string()),
             sender: Some(nom.to_string()),
@@ -342,6 +343,7 @@ mod tests {
                         wire: nom.to_string(),
                         display: nom.to_string(),
                         selectable: true,
+                        special_use: None,
                     })
                     .collect::<Vec<_>>(),
             )

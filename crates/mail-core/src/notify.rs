@@ -127,6 +127,7 @@ mod tests {
 
     fn arrival(uid: u32, sender: Option<&str>, subject: Option<&str>) -> Envelope {
         Envelope {
+            reply_to: None,
             uid,
             subject: subject.map(str::to_string),
             sender: sender.map(str::to_string),

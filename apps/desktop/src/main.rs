@@ -332,6 +332,7 @@ fn main() {
             commands::kiosque_marquer_lu,
             commands::pinned_rows,
             commands::archive_message,
+            commands::agir_groupe,
             commands::list_folders,
             commands::move_message,
             commands::delete_message,

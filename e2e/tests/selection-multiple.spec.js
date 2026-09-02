@@ -197,8 +197,21 @@ test('archiver groupé : un seul toast, les fils partent ENTIERS (D6)', async ()
   const partants = [sujets[0].trim(), sujets[1].trim()];
   await caseDe(0).click();
   await caseDe(1).click();
+  // PLAN-AUDIT-V2 E6 : UN appel au cœur pour le lot — plus N × k
+  // commandes unitaires en série (250 + 50 IPC pour 50 conversations).
+  await page.evaluate(() => {
+    window.__e2eJournal = [];
+  });
   await page.locator('[data-testid="barre-archiver"]').click();
   await expect(toast()).toContainText('2 conversations archivées');
+  const gestes = await page.evaluate(() => {
+    const commandes = window.__e2eJournal.map((releve) => releve.commande);
+    delete window.__e2eJournal;
+    return commandes;
+  });
+  expect(gestes.filter((c) => c === 'agir_groupe')).toHaveLength(1);
+  expect(gestes).not.toContain('archive_message');
+  expect(gestes).not.toContain('thread_messages');
   await expect(barre()).toHaveCount(0);
   // Les deux sujets ont quitté la Réception…
   await expect(lignes().first()).toBeVisible();

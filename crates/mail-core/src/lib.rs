@@ -49,7 +49,7 @@ pub use drafts::{
     DraftAttachmentFull, DraftAttachmentMeta, DraftAttachmentSaved, DraftContent, DraftPull,
     DraftSaved, MAX_ATTACHMENTS_BYTES, SavedDraft, plan_draft_pull,
 };
-pub use echo::DESTINATIONS_ECHO;
+pub use echo::{CibleGeste, DESTINATIONS_ECHO, GesteGroupe};
 pub use envelope::{Envelope, Uid};
 pub use error::Error;
 pub use imap_quoted::{unescape_imap_quoted, unescape_imap_quoted_str};
@@ -61,7 +61,7 @@ pub use notify::{Lang, Notification, arrivals_to_notify, notification_for};
 pub use outbox::{OutboxAttachment, OutboxMessage, OutboxReport, OutboxState, flush_outbox};
 pub use remote::{
     FetchedBody, Folder, FolderStatus, FolderWithStatus, MailServer, MailboxSnapshot,
-    MessageRecipients, RemoteDraft, ThreadHeaders,
+    MessageRecipients, RemoteDraft, SpecialUse, ThreadHeaders,
 };
 pub use search::WIDE_QUERY_THRESHOLD;
 pub use store::{

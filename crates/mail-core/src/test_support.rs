@@ -45,6 +45,9 @@ pub(crate) struct FakeServer {
     /// E3 : le serveur REFUSE les déplacements (NO/BAD — dossier disparu),
     /// un refus définitif, pas une coupure.
     pub(crate) deplacements_refuses: bool,
+    /// PLAN-AUDIT-V2 E5 : le serveur coupe au n-ième `fetch_envelopes`
+    /// (1 = le premier) — l'initiale interrompue au lot k.
+    pub(crate) panne_au_lot_envelopes: Option<usize>,
 }
 
 impl FakeServer {
@@ -69,6 +72,7 @@ impl FakeServer {
             action_calls: Vec::new(),
             actions_fail: false,
             deplacements_refuses: false,
+            panne_au_lot_envelopes: None,
         }
     }
 
@@ -90,6 +94,7 @@ impl FakeServer {
     /// Une enveloppe nue pour les tests qui n'ont pas besoin du simulateur.
     pub(crate) fn envelope_simple(uid: Uid, subject: &str) -> Envelope {
         Envelope {
+            reply_to: None,
             uid,
             subject: Some(subject.to_string()),
             sender: Some("Alice".to_string()),
@@ -111,6 +116,7 @@ impl FakeServer {
     pub(crate) fn add(&mut self, uid: Uid, subject: &str) {
         self.modseq += 1;
         let envelope = Envelope {
+            reply_to: None,
             uid,
             subject: Some(subject.to_string()),
             sender: Some("alice@example.com".to_string()),
@@ -192,6 +198,9 @@ impl MailServer for FakeServer {
     }
 
     fn fetch_envelopes(&mut self, _mailbox: &str, uids: &[Uid]) -> Result<Vec<Envelope>, Error> {
+        if self.panne_au_lot_envelopes == Some(self.fetch_batches.len() + 1) {
+            return Err(Error::Server("coupure simulée au lot".to_string()));
+        }
         self.fetch_batches.push(uids.to_vec());
         Ok(uids
             .iter()

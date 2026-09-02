@@ -193,7 +193,21 @@ pub fn reply_all_split(
 /// VIDE — message reçu sans expéditeur connu, ou envoi ancien dont les
 /// destinataires ne sont pas encore en base : l'appelant tranche le repli
 /// (relève serveur, ou échec franc).
-pub fn reply_to(is_own: bool, sender: Option<&str>, to_addrs: &[String]) -> Vec<String> {
+pub fn reply_to(
+    is_own: bool,
+    sender: Option<&str>,
+    to_addrs: &[String],
+    reply_to: Option<&str>,
+) -> Vec<String> {
+    // `Reply-To` dit où l'expéditeur veut la réponse (listes,
+    // notifications) — il prime sur `From` (PLAN-AUDIT-V2 E5), sauf sur
+    // son propre message, où l'on réécrit au même groupe.
+    let reply_to = reply_to
+        .map(str::trim)
+        .filter(|adresse| !adresse.is_empty());
+    if !is_own && let Some(adresse) = reply_to {
+        return vec![adresse.to_string()];
+    }
     if is_own {
         to_addrs
             .iter()
@@ -571,13 +585,36 @@ mod tests {
     }
 
     /// Réponse simple à un message REÇU : l'expéditeur, un seul.
+    /// PLAN-AUDIT-V2 E5 : « Répondre » partait vers `From` même quand le
+    /// message portait un `Reply-To` (listes, notifications) — l'en-tête
+    /// était jeté par l'adaptateur. Sur son PROPRE message, le `Reply-To`
+    /// ne change rien : on réécrit au même groupe.
+    #[test]
+    fn repondre_vise_reply_to() {
+        assert_eq!(
+            reply_to(false, Some("liste@x.fr"), &[], Some("bob@y.fr")),
+            vec!["bob@y.fr".to_string()]
+        );
+        let to = vec!["groupe@x.fr".to_string()];
+        assert_eq!(
+            reply_to(true, Some("moi@exemple.fr"), &to, Some("bob@y.fr")),
+            to
+        );
+        assert_eq!(
+            reply_to(false, Some("liste@x.fr"), &[], Some("  ")),
+            vec!["liste@x.fr".to_string()],
+            "un Reply-To vide ne vaut rien"
+        );
+    }
+
     #[test]
     fn reply_to_recu_vise_l_expediteur() {
         assert_eq!(
             reply_to(
                 false,
                 Some("alice@exemple.fr"),
-                &["bob@exemple.fr".to_string()]
+                &["bob@exemple.fr".to_string()],
+                None
             ),
             vec!["alice@exemple.fr"],
         );
@@ -589,7 +626,7 @@ mod tests {
     fn reply_to_propre_vise_les_destinataires_pas_soi() {
         let to = vec!["client@vantis.fr".to_string(), "chef@vantis.fr".to_string()];
         assert_eq!(
-            reply_to(true, Some("moi@exemple.fr"), &to),
+            reply_to(true, Some("moi@exemple.fr"), &to, None),
             vec!["client@vantis.fr", "chef@vantis.fr"],
         );
     }
@@ -598,13 +635,13 @@ mod tests {
     /// rattrapé) : liste vide — l'appelant relève le serveur.
     #[test]
     fn reply_to_propre_sans_destinataires_est_vide() {
-        assert!(reply_to(true, Some("moi@exemple.fr"), &[]).is_empty());
+        assert!(reply_to(true, Some("moi@exemple.fr"), &[], None).is_empty());
     }
 
     /// Message reçu sans expéditeur connu : vide — l'appelant échoue franc.
     #[test]
     fn reply_to_recu_sans_expediteur_est_vide() {
-        assert!(reply_to(false, None, &["x@y.fr".to_string()]).is_empty());
+        assert!(reply_to(false, None, &["x@y.fr".to_string()], None).is_empty());
     }
 
     /// PLAN-COMPOSITION-HTML E2 : la citation riche d'une réponse — une

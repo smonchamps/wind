@@ -790,6 +790,7 @@ mod tests {
 
     fn envelope(uid: Uid, subject: &str, sender: &str, address: &str, epoch: i64) -> Envelope {
         Envelope {
+            reply_to: None,
             uid,
             subject: Some(subject.to_string()),
             sender: Some(sender.to_string()),
@@ -814,6 +815,7 @@ mod tests {
         epoch: i64,
     ) -> Envelope {
         Envelope {
+            reply_to: None,
             uid,
             subject: Some(subject.to_string()),
             sender: Some(sender.to_string()),

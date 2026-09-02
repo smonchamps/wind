@@ -118,6 +118,7 @@ pub(crate) fn linking_ids(
     message_id: Option<&str>,
     in_reply_to: Option<&str>,
     references: Option<&str>,
+    adresses: &[String],
 ) -> Vec<String> {
     let mut ids: Vec<String> = Vec::new();
     let mut push = |candidates: Vec<String>| {
@@ -132,6 +133,15 @@ pub(crate) fn linking_ids(
         references.map(canonical_ids).unwrap_or_default(),
     ));
     push(in_reply_to.map(canonical_ids).unwrap_or_default());
+    // Une ADRESSE de l'enveloppe entre chevrons (`In-Reply-To:
+    // <alice@x.fr>`, des répondeurs le font) a la forme d'un identifiant
+    // — elle n'en est pas un (PLAN-AUDIT-V2 E5 : elle fusionnait des fils
+    // étrangers, ADR 0008 à la lettre et pas dans l'esprit).
+    ids.retain(|id| {
+        !adresses
+            .iter()
+            .any(|adresse| adresse.trim().eq_ignore_ascii_case(id))
+    });
     ids
 }
 
@@ -306,8 +316,9 @@ pub(crate) fn attach(
     message_id: Option<&str>,
     in_reply_to: Option<&str>,
     references: Option<&str>,
+    adresses: &[String],
 ) -> Result<ThreadId, Error> {
-    let ids = linking_ids(message_id, in_reply_to, references);
+    let ids = linking_ids(message_id, in_reply_to, references, adresses);
     let decision = plan(&ids, &lookup(conn, account_id, &ids)?);
 
     let thread = match decision.keep {
@@ -737,6 +748,9 @@ fn adopt_with_progress(
             message_id.as_deref(),
             in_reply_to.as_deref(),
             references.as_deref(),
+            // L'adoption d'une base héritée n'a pas les adresses sous la
+            // main : le garde-fou des adresses ne joue qu'à la synchro.
+            &[],
         )?;
         conn.prepare_cached(
             "UPDATE envelopes SET thread_id = ?3 WHERE mailbox_id = ?1 AND uid = ?2",
@@ -780,7 +794,7 @@ mod tests {
     /// rester deux fils distincts, et non se rejoindre sur « rien ».
     #[test]
     fn un_message_sans_identifiant_ne_se_rattache_a_rien() {
-        assert!(linking_ids(None, None, None).is_empty());
+        assert!(linking_ids(None, None, None, &[]).is_empty());
 
         let plan = plan(&[], &known(&[]));
         assert_eq!(plan.keep, None, "il lui faut un fil neuf");
@@ -793,7 +807,7 @@ mod tests {
 
     #[test]
     fn une_reponse_rejoint_le_fil_de_son_parent() {
-        let liens = linking_ids(Some("<r@b>"), Some("<a@b>"), None);
+        let liens = linking_ids(Some("<r@b>"), Some("<a@b>"), None, &[]);
         let plan = plan(&liens, &known(&[("a@b", 7)]));
 
         assert_eq!(plan.keep, Some(7));
@@ -811,7 +825,7 @@ mod tests {
     #[test]
     fn un_ancetre_absent_est_inscrit_pour_que_son_arrivee_rejoigne_le_fil() {
         // La réponse arrive la première : rien n'est connu.
-        let reponse = linking_ids(Some("<r@b>"), Some("<a@b>"), None);
+        let reponse = linking_ids(Some("<r@b>"), Some("<a@b>"), None, &[]);
         let premier = plan(&reponse, &known(&[]));
         assert_eq!(premier.keep, None);
         assert_eq!(
@@ -822,7 +836,7 @@ mod tests {
 
         // Le fil 3 est créé et porte les deux réservations. Le parent
         // arrive ensuite : il se reconnaît.
-        let parent = linking_ids(Some("<a@b>"), None, None);
+        let parent = linking_ids(Some("<a@b>"), None, None, &[]);
         let ensuite = plan(&parent, &known(&[("r@b", 3), ("a@b", 3)]));
         assert_eq!(ensuite.keep, Some(3));
         assert!(ensuite.register.is_empty());
@@ -834,7 +848,7 @@ mod tests {
     /// recolle les deux moitiés.
     #[test]
     fn le_message_qui_relie_deux_fils_les_fusionne() {
-        let liens = linking_ids(Some("<c@b>"), Some("<b@b>"), Some("<a@b> <b@b>"));
+        let liens = linking_ids(Some("<c@b>"), Some("<b@b>"), Some("<a@b> <b@b>"), &[]);
         let plan = plan(&liens, &known(&[("a@b", 4), ("b@b", 9)]));
 
         assert_eq!(plan.keep, Some(4));
@@ -862,7 +876,7 @@ mod tests {
     /// déclencher une fusion d'un fil avec lui-même.
     #[test]
     fn un_message_qui_se_cite_lui_meme_ne_cree_pas_de_second_fil() {
-        let liens = linking_ids(Some("<r@b>"), Some("<r@b>"), Some("<r@b>"));
+        let liens = linking_ids(Some("<r@b>"), Some("<r@b>"), Some("<r@b>"), &[]);
         assert_eq!(liens, ids(&["r@b"]), "un seul identifiant retenu");
 
         let plan = plan(&liens, &known(&[("r@b", 2)]));
@@ -878,11 +892,25 @@ mod tests {
     /// « janvier ». Tous les messages portant cette phrase s'accrochaient
     /// aux mêmes ancres et se retrouvaient dans un seul fil. Mesuré sur
     /// une vraie boîte : 43 messages étrangers réunis.
+    /// PLAN-AUDIT-V2 E5 : `In-Reply-To: <alice@x.fr>` — un répondeur qui
+    /// met l'ADRESSE du destinataire entre chevrons — passait le garde-fou
+    /// (une arobase, pas d'espace) et fusionnait des fils étrangers
+    /// (ADR 0008 à la lettre, pas dans l'esprit). Les adresses de
+    /// l'enveloppe ne sont jamais des identifiants.
+    #[test]
+    fn une_adresse_entre_chevrons_n_est_pas_un_message_id() {
+        let adresses = vec!["Alice@x.fr".to_string(), "bob@y.fr".to_string()];
+        let liens = linking_ids(Some("<r@b>"), Some("<alice@x.fr>"), None, &adresses);
+        assert_eq!(liens, vec!["r@b".to_string()]);
+        let liens = linking_ids(None, None, Some("<a@b> <bob@y.fr> <c@d>"), &adresses);
+        assert_eq!(liens, vec!["a@b".to_string(), "c@d".to_string()]);
+    }
+
     #[test]
     fn un_en_tete_redige_en_prose_ne_produit_aucun_identifiant() {
         assert!(canonical_ids("Votre message du 3 janvier").is_empty());
         assert!(canonical_ids("Your message of Mon, 01 Jan 2024").is_empty());
-        assert!(linking_ids(None, Some("Votre message du 3 janvier"), None).is_empty());
+        assert!(linking_ids(None, Some("Votre message du 3 janvier"), None, &[]).is_empty());
     }
 
     /// RFC 5322 §3.6.4 : l'arobase n'est pas décorative, c'est elle qui
@@ -925,7 +953,7 @@ mod tests {
     #[test]
     fn la_borne_s_applique_apres_le_filtrage() {
         let raw: String = (0..40).map(|n| format!("<m{n}@b> mot ")).collect();
-        let liens = linking_ids(None, None, Some(&raw));
+        let liens = linking_ids(None, None, Some(&raw), &[]);
         assert_eq!(liens.len(), MAX_REFERENCES);
         assert!(liens.iter().all(|id| id.contains('@')));
     }
@@ -953,7 +981,7 @@ mod tests {
     #[test]
     fn un_references_geant_garde_la_racine_et_les_ancetres_immediats() {
         let raw: String = (0..500).map(|n| format!("<m{n}@b> ")).collect();
-        let liens = linking_ids(Some("<moi@b>"), None, Some(&raw));
+        let liens = linking_ids(Some("<moi@b>"), None, Some(&raw), &[]);
 
         assert_eq!(liens.len(), MAX_REFERENCES + 1, "le sien, plus la borne");
         assert_eq!(liens[0], "moi@b");
@@ -973,7 +1001,7 @@ mod tests {
     /// réponses futures citeront.
     #[test]
     fn l_identifiant_du_message_vient_en_premier() {
-        let liens = linking_ids(Some("<moi@b>"), Some("<parent@b>"), Some("<racine@b>"));
+        let liens = linking_ids(Some("<moi@b>"), Some("<parent@b>"), Some("<racine@b>"), &[]);
         assert_eq!(liens, ids(&["moi@b", "racine@b", "parent@b"]));
     }
 

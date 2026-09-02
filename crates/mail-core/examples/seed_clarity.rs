@@ -53,6 +53,7 @@ fn message(
     lu: bool,
 ) -> Envelope {
     Envelope {
+        reply_to: None,
         uid,
         subject: Some(sujet.to_string()),
         sender: Some(expediteur.to_string()),
@@ -111,6 +112,7 @@ fn dossiers(store: &Store, compte: i64) -> Result<(), mail_core::Error> {
                 wire: nom.to_string(),
                 display: nom.to_string(),
                 selectable: true,
+                special_use: None,
             })
             .collect::<Vec<_>>(),
     )

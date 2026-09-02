@@ -468,6 +468,107 @@ E8+E9, revue.
   multipart de 51 ko) : **18,2 ms → 11,1 ms** (−39 %). Refus dit :
   `decode_header` inchangé (un parse local par sujet, non mesuré comme
   coût). mail-imap 72 → 78, clippy propre. `Reply-To` va à E5.
+  **Gate complète VERTE** (5,4 min ; e2e 186/187 + 1 flaky :
+  `refonte-retours-7.spec.js:46`, le survol d'une pièce jointe — l'une
+  des assertions nues après hover que l'audit nomme, corrigée à E9).
+  Commit `e0ce62d` (E1-E3 : un commit par gate, pas par étape — la
+  gate se paie 5 min).
+
+- **E4 — livrée le 2026-09-02.** Instruments : `seed_inbox` gagne un
+  7e argument (nombre d'expéditeurs distincts — le décor d'origine n'en
+  a que huit, le GROUP BY du Nettoyage y est gratuit) ;
+  `C:\mesure\banc5000.db` (200 k, 5 000 expéditeurs, 48 s) ;
+  `banc_nettoyage` (durées seules, MUTE la base : mode organisé, session,
+  attente du Portier peuplée à la main, verdict sur le plus gros groupe).
+  **AVANT** : `nettoyage_groupes` 380-430 ms, `nettoyage_demarrer`
+  320-350 ms, `nettoyage_messages` 105-116 ms, `portier_attente` 50 ms,
+  verdict de 40 messages **35 à 580 ms d'une passe à l'autre**.
+  Diagnostic (python sur copie, `EXPLAIN QUERY PLAN`) : l'agrégat
+  passait par l'index de DATE puis un B-tree temporaire ; les deux
+  `NOT EXISTS` corrélés coûtaient un tiers ; un index COUVRANT
+  (expéditeur, date, boîte) rend l'agrégat sans lire une ligne de table
+  (661 → 111 ms en python, ×6 ; comptage 644 → 68). La variance du
+  verdict est la fusion de segments FTS5 à la suppression (23 ms les
+  40 `DELETE` sur l'index, mais l'automerge tombe quand il tombe) — pas
+  un défaut de Wind, borné sous la seconde, dit ici. Livré, **deux RED
+  francs puis GREEN** : `idx_envelopes_sender` étendu à
+  `(sender_norm, date_epoch, mailbox_id)` avec reconstruction sur base
+  héritée (`reconstruire_index_si_ancien`, helper qui factorise aussi
+  l'index de date — le bloc de 40 lignes existait en une copie, il en
+  aurait eu deux) ; `nettoyage_critere` en `NOT IN` non corrélé ;
+  `nettoyage_groupes_sql` en deux phases (agrégat couvert, puis objet et
+  nom par le même index, `GROUP BY` externe contre l'égalité de date) ;
+  `nettoyage_compter_groupes` et `nettoyage_messages_sql` par le même
+  index (**`INDEXED BY` obligatoire : le SQLite embarqué 3.50 préférait
+  l'index de date là où celui de python choisissait bien** — 116 ms
+  contre 0,2 ; leçon STANDARD §9, un test de PLAN d'exécution garde les
+  trois requêtes, prouvé en le cassant) ; retraits du verdict
+  dédoublonnés par fil (patron `remove_absent`) ; `prepare_cached` hors
+  de la boucle de `boites_du_perimetre` ; le shell trace « nettoyage :
+  N groupes en X ms » dans `wind.log` (la mesure due depuis
+  HORIZON-NETTOYAGE, lisible sur la vraie base au STOP 2). **APRÈS** :
+  `nettoyage_groupes` **67-78 ms**, `nettoyage_demarrer` **46-74 ms**,
+  `nettoyage_messages` **1 ms**, verdict 28-150 ms ; première ouverture
+  d'une base héritée : +0,72 s une fois (reconstruction de l'index sur
+  200 k — précédent D9 : 1,77 s sans écran). Bornes UI (pagination) :
+  refusées, la mesure tient le budget. Au passage, l'oubli du registre
+  d'E1 devient PAR CHEMIN (`oublier_initialisation(&path)`, clé de
+  SQLite) : vider tout le registre faisait rejouer le schéma sous les
+  pieds du test d'E1 qui tourne en parallèle. mail-core 435 → 437.
+
+- **E5 — livrée le 2026-09-02.** Six RED (trois d'exécution, trois de
+  compilation) puis GREEN. (1) **Initiale reprenable** : `initial_sync`
+  retire les UID déjà en base avant le découpage (`Store::uids_connus`,
+  partagé avec `remove_absent`) ; `FakeServer.panne_au_lot_envelopes`
+  coupe au n-ième lot — `une_initiale_coupee_au_lot_2_reprend_au_lot_2`
+  : avant `[[6,5],[4,3],[2,1]]` rejoués, après `[[4,3],[2,1]]`.
+  (2) `canonical_folders` : `.optional()?` — une base illisible REMONTE
+  (`une_base_illisible_est_une_erreur_pas_une_absence_d_envoyes`, table
+  `accounts` renommée). (3) **SPECIAL-USE porté par `Folder`** :
+  `SpecialUse { All, Archive, Drafts, Junk, Sent, Trash }` dans le cœur,
+  `folders.special_use` (colonne, migration), `name_to_folder` le lit
+  des attributs LIST, `canonical_folders` préfère le rôle annoncé et
+  garde le nom en repli (`google_mail_uk_a_ses_archives` : « [Google
+  Mail]/All Mail », Spam, Bin résolus). (4) **Une adresse entre chevrons
+  n'est pas un Message-ID** : `linking_ids`/`attach` reçoivent les
+  adresses de l'enveloppe (expéditeur, À, Cc) et les rejettent ; à la
+  synchro comme au rattrapage des en-têtes (le contexte de
+  `set_thread_headers` relit les adresses) ; l'adoption d'une base
+  héritée passe `&[]` (limite dite). (5) **`Reply-To`** :
+  `Envelope.reply_to` (colonne `envelopes.reply_to`, lu de l'ENVELOPE
+  par l'adaptateur), `Store::reply_to_de` à la demande (jamais dans les
+  lignes de liste — `SELECT_UNIFIED` a des index positionnels), la
+  décision pure `reply_to(is_own, sender, to, reply_to)` le préfère à
+  `From` sauf sur son propre message ; « Répondre » ET « Répondre à
+  tous » le suivent. (6) **Écho d'envoi** : le test l'a PROUVÉ balayé
+  dès la première passe (« copie attendue en envoyes jamais vue ») ;
+  remède : `mailboxes.relevee_epoch` posé par `update_state`, et un écho
+  sans action d'origine n'est balayé que si les Envoyés ont été relevés
+  APRÈS lui — un compte sans dossier d'envois annoncé le garde (seule
+  trace du message parti). Refus dit : `References: None` (non-défaut,
+  C5). Piège d'outillage payé cher : un script de remplacement par
+  sous-chaîne (`reply_to: None,` est DANS `in_reply_to: None,`) et un
+  motif `Nom {` qui attrape aussi le `-> Nom {` d'une signature — deux
+  passes de réparation guidées par le compilateur (E0063). mail-core
+  437 → 443, mail-imap 78 → 79, shell compilé, clippy propre.
+
+- **E6 — livrée le 2026-09-02.** `Store::agir_groupe(cibles, geste)` :
+  les fils développés côté cœur (`thread_messages`, dédoublonnés), le
+  dossier indésirable de chaque compte résolu AVANT la transaction
+  (refus franc sans écriture), puis UNE transaction pour tout le lot —
+  `geste_avec_echo` scindé en enveloppe + `geste_sous(tx, …)` pour y
+  enchaîner N messages. RED de compilation puis GREEN :
+  `cinquante_conversations_archivees_en_une_transaction` (déclencheur
+  `RAISE(ABORT)` au 30e retrait ⇒ 50 enveloppes intactes, 0 action, 0
+  écho ; sans panne ⇒ 50/50/50). Shell : commande `agir_groupe(cibles,
+  action)` sous `hors_pompe` (garde 111/0), `CibleArg` en camelCase.
+  UI : `groupe()` fait UN appel ; `messagesDe` et les six commandes
+  unitaires du lot disparaissent ; tout ou rien = un refus laisse le lot
+  intact, le toast le dit (`erreur.groupePartiel`, `spamImpossible`
+  gardé). e2e `selection-multiple` : le journal `__e2eJournal` compte
+  **1 `agir_groupe`, 0 `archive_message`, 0 `thread_messages`** — joué
+  RED avant le changement d'UI, GREEN après (9/9, 25 s). Mesure : 50
+  conversations × 4 messages, IPC 300 → 1 par construction.
 
 ## Gate & terrain
 

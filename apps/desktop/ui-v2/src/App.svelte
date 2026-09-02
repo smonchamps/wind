@@ -1552,39 +1552,23 @@
   }
 
   // PLAN-RETOURS-10 R1 : les gestes de MASSE de la barre de sélection.
-  // Refus §2.6 : aucune commande coeur groupée — les commandes
-  // unitaires existantes rejouent en séquence (une sélection se compte
-  // en dizaines), puis UN toast, UNE resservie, UNE passe par compte.
-  // L'échec d'une cible n'arrête pas les autres ; un lot incomplet se
-  // DIT (« n sur total »), jamais un succès de façade.
+  // PLAN-AUDIT-V2 E6 : UN appel au cœur (`agir_groupe`), UNE
+  // transaction, tout ou rien (D6) — avant, les commandes unitaires
+  // rejouaient en séquence (250 + 50 IPC pour 50 conversations, la
+  // barre gelée). Puis UN toast, UNE resservie, UNE passe par compte.
+  // Le fil ENTIER d'une rangée part (D6 de RETOURS-10) : le cœur le
+  // développe lui-même, `thread_messages` n'est plus demandé.
   const GESTES_GROUPE = {
-    archiver: { commande: 'archive_message', toast: 'toast.groupeArchivees', ferme: true },
-    supprimer: { commande: 'delete_message', toast: 'toast.groupeSupprimees', ferme: true },
-    spam: { commande: 'report_spam', toast: 'toast.groupeSpam', ferme: true },
-    nonspam: { commande: 'mark_not_spam', toast: 'toast.groupePasSpam', ferme: true },
-    lu: { commande: 'mark_seen', toast: 'toast.groupeLues', args: { seen: true } },
-    nonlu: { commande: 'mark_seen', toast: 'toast.groupeNonLues', args: { seen: false } },
+    archiver: { toast: 'toast.groupeArchivees', ferme: true },
+    supprimer: { toast: 'toast.groupeSupprimees', ferme: true },
+    spam: { toast: 'toast.groupeSpam', ferme: true },
+    nonspam: { toast: 'toast.groupePasSpam', ferme: true },
+    lu: { toast: 'toast.groupeLues' },
+    nonlu: { toast: 'toast.groupeNonLues' },
   };
   // La cible d'une commande par message — le cinquième site qui épelait
   // ce triple à la main (revue).
   const cibleDe = (l) => ({ accountId: l.account_id, mailbox: l.mailbox, uid: l.uid });
-  // D6 (CE, 2026-08-27, devant l'exemple Vantis) : une rangée cochée
-  // est une CONVERSATION — le geste de masse emporte le fil ENTIER,
-  // sinon le fil reperd un message par passage et « N conversations
-  // archivées » ment. Un résultat de recherche (thread_size 1 par
-  // construction) et un fil d'un message passent tels quels ; un fil
-  // dont la liste échoue retombe sur sa rangée seule, jamais un
-  // silence.
-  async function messagesDe(l) {
-    if (l.thread_id == null || l.thread_size <= 1) return [l];
-    try {
-      const fil = await appel('thread_messages', { threadId: l.thread_id });
-      return fil.length > 0 ? fil : [l];
-    } catch (err) {
-      console.error('thread_messages (groupe) :', err);
-      return [l];
-    }
-  }
   async function groupe(action, lignes) {
     const geste = GESTES_GROUPE[action];
     if (!geste) {
@@ -1601,28 +1585,20 @@
       return;
     }
     let faits = 0;
-    const reussies = [];
+    let reussies = [];
     let spamRefuse = false;
-    for (const l of cibles) {
-      // Le compte reste en CONVERSATIONS : la rangée n'est réussie que
-      // si TOUS ses messages le sont — un fil à moitié parti se dit.
-      const messages = await messagesDe(l);
-      let entier = true;
-      for (const m of messages) {
-        try {
-          await appel(geste.commande, { ...cibleDe(m), ...(geste.args ?? {}) });
-        } catch (err) {
-          // Le seul échec ATTENDU du lot : pas de dossier indésirable —
-          // la voix de l'unitaire (erreur.spamImpossible) survit au lot.
-          if (action === 'spam') spamRefuse = true;
-          entier = false;
-          console.error(`${geste.commande} (groupe) :`, err);
-        }
-      }
-      if (entier) {
-        faits += 1;
-        reussies.push(l);
-      }
+    try {
+      const bilan = await appel('agir_groupe', {
+        cibles: cibles.map((l) => ({ ...cibleDe(l), threadId: l.thread_id ?? null })),
+        action,
+      });
+      faits = bilan.faits;
+      reussies = cibles;
+    } catch (err) {
+      // Tout ou rien (D6) : un refus laisse le lot intact — le seul
+      // échec ATTENDU est l'absence de dossier indésirable.
+      if (action === 'spam') spamRefuse = true;
+      console.error('agir_groupe :', err);
     }
     flash(
       faits === total

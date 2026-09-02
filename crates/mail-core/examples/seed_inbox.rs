@@ -145,6 +145,14 @@ fn main() -> Result<(), mail_core::Error> {
     // l ADR 0009 §4 vise sans qu on ait jamais pu l eprouver : des fils
     // PUREMENT SORTANTS, que l index partiel doit exclure.
     let boite = args.get(6).map(String::as_str).unwrap_or("INBOX");
+    // Le nombre d'expediteurs distincts (PLAN-AUDIT-V2 E4) : les huit
+    // noms du decor par defaut, ou N adresses synthetiques — c'est le
+    // GROUP BY du Nettoyage et l'attente du Portier qu'on mesure ainsi.
+    let expediteurs: usize = args
+        .get(7)
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(SENDERS.len())
+        .max(1);
 
     let timer = Instant::now();
     let mut store = Store::open(std::path::Path::new(path))?;
@@ -161,12 +169,17 @@ fn main() -> Result<(), mail_core::Error> {
     for uid in 1..=count {
         let index = uid as usize;
         batch.push(Envelope {
+            reply_to: None,
             uid,
             subject: Some(format!("{} n°{uid}", TOPICS[index % TOPICS.len()])),
-            sender: Some(SENDERS[(index * 7) % SENDERS.len()].to_string()),
+            sender: Some(if expediteurs <= SENDERS.len() {
+                SENDERS[(index * 7) % expediteurs].to_string()
+            } else {
+                format!("Expéditeur {}", (index * 7) % expediteurs)
+            }),
             sender_address: Some(format!(
                 "expediteur{}@exemple.fr",
-                (index * 7) % SENDERS.len()
+                (index * 7) % expediteurs
             )),
             message_id: Some(format!("<seed-{boite}-{uid}@exemple.fr>")),
             // Un message sur cinq répond au précédent : sans vraie
@@ -227,11 +240,13 @@ fn main() -> Result<(), mail_core::Error> {
             wire: "Archiv&AOk-s".to_string(),
             display: "Archivés".to_string(),
             selectable: true,
+            special_use: None,
         },
         mail_core::Folder {
             wire: "Factures".to_string(),
             display: "Factures".to_string(),
             selectable: true,
+            special_use: None,
         },
     ];
     if boite != "INBOX" {
@@ -239,6 +254,7 @@ fn main() -> Result<(), mail_core::Error> {
             wire: boite.to_string(),
             display: boite.to_string(),
             selectable: true,
+            special_use: None,
         });
     }
     store.replace_folders(account, &dossiers)?;

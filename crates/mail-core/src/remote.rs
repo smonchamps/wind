@@ -110,6 +110,49 @@ pub struct Folder {
     /// Faux pour les conteneurs qui ne portent pas de courrier
     /// (attribut `\Noselect`) : les proposer produirait un échec au clic.
     pub selectable: bool,
+    /// Le rôle RFC 6154 annoncé par le serveur (`\Trash`, `\All`…) —
+    /// `None` quand il n'en annonce pas. Il prime sur le nom pour les
+    /// dossiers canoniques (PLAN-AUDIT-V2 E5 : `[Gmail]` était en dur, un
+    /// compte « [Google Mail]/… » perdait Archives, Spam et Corbeille).
+    pub special_use: Option<SpecialUse>,
+}
+
+/// Les rôles RFC 6154 qu'un dossier peut porter — ce que le serveur SAIT,
+/// contre ce que le nom laisse deviner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpecialUse {
+    All,
+    Archive,
+    Drafts,
+    Junk,
+    Sent,
+    Trash,
+}
+
+impl SpecialUse {
+    /// Le code stocké en base (`folders.special_use`).
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Archive => "archive",
+            Self::Drafts => "drafts",
+            Self::Junk => "junk",
+            Self::Sent => "sent",
+            Self::Trash => "trash",
+        }
+    }
+
+    pub fn from_code(code: &str) -> Option<Self> {
+        Some(match code {
+            "all" => Self::All,
+            "archive" => Self::Archive,
+            "drafts" => Self::Drafts,
+            "junk" => Self::Junk,
+            "sent" => Self::Sent,
+            "trash" => Self::Trash,
+            _ => return None,
+        })
+    }
 }
 
 /// Le relevé STATUS d'un dossier, sans sélection (ADR 0017).

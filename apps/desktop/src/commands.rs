@@ -18,7 +18,7 @@ use mail_core::AccountConfig;
 use mail_core::{Action, MailServer, OutboxState, Store, SyncEngine};
 use mail_imap::ImapServer;
 use mail_smtp::SmtpMailer;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
 use crate::{AppState, VolPasse};
@@ -2538,6 +2538,61 @@ pub async fn archive_message(
     .await
 }
 
+/// Une rangée cochée, telle que la barre de sélection la nomme.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CibleArg {
+    pub account_id: i64,
+    pub mailbox: String,
+    pub uid: u32,
+    pub thread_id: Option<i64>,
+}
+
+#[derive(Serialize)]
+pub struct BilanGroupe {
+    pub faits: usize,
+    pub total: usize,
+}
+
+/// Le geste de MASSE de la barre de sélection (PLAN-AUDIT-V2 E6) : UN
+/// appel, UNE transaction, tout ou rien (D6) — l'UI rejouait N × k
+/// commandes unitaires en série. `action` : les clés de la barre
+/// (archiver, supprimer, spam, nonspam, lu, nonlu).
+#[tauri::command]
+pub async fn agir_groupe(
+    app: AppHandle,
+    cibles: Vec<CibleArg>,
+    action: String,
+) -> Result<BilanGroupe, String> {
+    let geste = match action.as_str() {
+        "archiver" => mail_core::GesteGroupe::Archive,
+        "supprimer" => mail_core::GesteGroupe::Delete,
+        "spam" => mail_core::GesteGroupe::Spam,
+        "nonspam" => mail_core::GesteGroupe::NotSpam,
+        "lu" => mail_core::GesteGroupe::Seen(true),
+        "nonlu" => mail_core::GesteGroupe::Seen(false),
+        autre => return Err(format!("geste de masse inconnu : {autre}")),
+    };
+    let total = cibles.len();
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let cibles: Vec<mail_core::CibleGeste> = cibles
+            .into_iter()
+            .map(|cible| mail_core::CibleGeste {
+                account_id: cible.account_id,
+                mailbox: cible.mailbox,
+                uid: cible.uid,
+                thread_id: cible.thread_id,
+            })
+            .collect();
+        let faits = store
+            .agir_groupe(&cibles, &geste)
+            .map_err(|err| err.to_string())?;
+        Ok(BilanGroupe { faits, total })
+    })
+    .await
+}
+
 /// Un dossier proposé à l'utilisateur.
 #[derive(Serialize)]
 pub struct FolderRow {
@@ -3354,12 +3409,17 @@ pub async fn nettoyage_demarrer(
 pub async fn nettoyage_groupes(app: AppHandle) -> Result<Vec<GroupeNettoyagePayload>, String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        Ok(store
-            .nettoyage_groupes()
-            .map_err(|err| err.to_string())?
-            .into_iter()
-            .map(Into::into)
-            .collect())
+        // La mesure due depuis HORIZON-NETTOYAGE (« coût sur une vraie
+        // base 200 k »), lisible après coup dans `wind.log` — décompte et
+        // durée, jamais une adresse (§6.8).
+        let depart = std::time::Instant::now();
+        let groupes = store.nettoyage_groupes().map_err(|err| err.to_string())?;
+        crate::trace::trace(&format!(
+            "nettoyage : {} groupes en {} ms",
+            groupes.len(),
+            depart.elapsed().as_millis()
+        ));
+        Ok(groupes.into_iter().map(Into::into).collect())
     })
     .await
 }
@@ -3711,6 +3771,7 @@ pub async fn reply_context(
     uid: u32,
 ) -> Result<ComposeContext, String> {
     let (envelope, own) = enveloppe_et_compte(&app, account_id, &mailbox, uid).await?;
+    let repondre_a = reply_to_de(&app, account_id, &mailbox, uid).await?;
     // Notre propre message ? (l'expéditeur est le compte). Répondre à
     // l'expéditeur nous écrirait à nous-mêmes.
     let is_own = envelope
@@ -3724,6 +3785,7 @@ pub async fn reply_context(
         is_own,
         envelope.sender_address.as_deref(),
         &envelope.to_addrs,
+        repondre_a.as_deref(),
     );
     // Propre envoi sans destinataires en base (ancien, non rattrapé) :
     // relève serveur UNE fois — même repli que « répondre à tous », jamais
@@ -3758,6 +3820,23 @@ pub async fn reply_context(
 /// L'enveloppe d'un message et l'adresse de son compte, en UNE passe
 /// sous `hors_pompe` (E5) — la matière commune des trois contextes de
 /// composition.
+/// Le `Reply-To` du message, lu à la demande (PLAN-AUDIT-V2 E5).
+async fn reply_to_de(
+    app: &AppHandle,
+    account_id: i64,
+    mailbox: &str,
+    uid: u32,
+) -> Result<Option<String>, String> {
+    let boite = mailbox.to_string();
+    hors_pompe(app.clone(), move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store
+            .reply_to_de(account_id, &boite, uid)
+            .map_err(|err| err.to_string())
+    })
+    .await
+}
+
 async fn enveloppe_et_compte(
     app: &AppHandle,
     account_id: i64,
@@ -3827,6 +3906,7 @@ pub async fn reply_all_context(
     uid: u32,
 ) -> Result<ComposeContext, String> {
     let (envelope, own) = enveloppe_et_compte(&app, account_id, &mailbox, uid).await?;
+    let repondre_a = reply_to_de(&app, account_id, &mailbox, uid).await?;
     // Destinataires connus en base : chemin instantané, aucun réseau. Non
     // vide = « lu » (un reçu porte toujours au moins soi en À) ; vide =
     // pas encore rattrapé, on relit le serveur une fois.
@@ -3849,7 +3929,8 @@ pub async fn reply_all_context(
     if to.is_empty() {
         // Message qu'on s'est envoyé à soi seul : l'expéditeur reste le
         // seul destinataire sensé — mieux qu'un champ « À » vide.
-        to.extend(envelope.sender_address.clone());
+        // `Reply-To` prime sur l'expéditeur (PLAN-AUDIT-V2 E5).
+        to.extend(repondre_a.or_else(|| envelope.sender_address.clone()));
     }
     if to.is_empty() {
         return Err("adresse de l'expéditeur inconnue : resynchronisez la boîte".to_string());

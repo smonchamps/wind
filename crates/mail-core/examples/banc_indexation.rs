@@ -43,6 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let inbox = store.create_mailbox(account, "INBOX", 1)?;
     // Le corps s'indexe avec SON enveloppe : sans elle, rien à indexer.
     let enveloppe = mail_core::Envelope {
+        reply_to: None,
         uid: 1,
         subject: Some("Lettre d'information".to_string()),
         sender: Some("La Gazette".to_string()),

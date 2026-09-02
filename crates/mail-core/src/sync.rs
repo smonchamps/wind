@@ -163,6 +163,11 @@ impl SyncEngine {
         mailbox_id: i64,
     ) -> Result<SyncReport, Error> {
         let mut uids = server.list_uids(mailbox)?;
+        // Reprenable (PLAN-AUDIT-V2 E5) : une initiale coupée au lot k
+        // (bridage, coupure) repartait de zéro. Ce qui est en base n'est
+        // plus redemandé — la passe reprend là où elle s'est arrêtée.
+        let connus = store.uids_connus(mailbox_id)?;
+        uids.retain(|uid| !connus.contains(uid));
         uids.sort_unstable_by(|a, b| b.cmp(a));
 
         let mut fetched = 0;
@@ -678,6 +683,7 @@ mod sync_order_tests {
             wire: wire.to_string(),
             display: wire.to_string(),
             selectable,
+            special_use: None,
         }
     }
 
@@ -766,6 +772,45 @@ mod tests {
     fn recent(store: &Store, offset: usize, limit: usize) -> Vec<crate::Envelope> {
         let account = test_account(store);
         store.recent(account, "INBOX", offset, limit).unwrap()
+    }
+
+    /// PLAN-AUDIT-V2 E5 : une initiale coupée au lot k (bridage Gmail,
+    /// coupure) repartait de zéro — `list_uids` puis TOUS les lots
+    /// rejoués. Les UID déjà en base sont retirés avant le découpage :
+    /// la reprise ne redemande que ce qui manque.
+    #[test]
+    fn une_initiale_coupee_au_lot_2_reprend_au_lot_2() {
+        let mut server = FakeServer::new(false);
+        for uid in 1..=6 {
+            server.add(uid, "message");
+        }
+        let mut store = Store::open_in_memory().unwrap();
+        let engine = SyncEngine::new(2);
+        let account = test_account(&store);
+
+        server.panne_au_lot_envelopes = Some(2);
+        assert!(
+            engine
+                .sync(&mut server, &mut store, account, "INBOX")
+                .is_err(),
+            "la coupure simulée doit faire échouer la passe"
+        );
+        assert_eq!(
+            server.fetch_batches,
+            vec![vec![6, 5]],
+            "un seul lot a abouti"
+        );
+
+        server.panne_au_lot_envelopes = None;
+        server.fetch_batches.clear();
+        let reprise = synced(&mut server, &mut store, &engine);
+        assert_eq!(
+            server.fetch_batches,
+            vec![vec![4, 3], vec![2, 1]],
+            "la reprise ne redemande que les UID absents de la base"
+        );
+        assert_eq!(reprise.fetched, 4);
+        assert_eq!(recent(&store, 0, 10).len(), 6);
     }
 
     #[test]
@@ -1131,6 +1176,7 @@ mod tests {
             wire: "Archiv&AOk-s".to_string(),
             display: "Archivés".to_string(),
             selectable: true,
+            special_use: None,
         }];
         let mut store = Store::open_in_memory().unwrap();
         synced(&mut server, &mut store, &SyncEngine::default());

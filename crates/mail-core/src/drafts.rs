@@ -1986,6 +1986,7 @@ mod tests_fil {
 
     fn message(uid: Uid, subject: &str) -> Envelope {
         Envelope {
+            reply_to: None,
             uid,
             subject: Some(subject.to_string()),
             sender: Some("Marie Dubois".to_string()),

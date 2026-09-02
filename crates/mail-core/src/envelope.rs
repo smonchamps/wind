@@ -25,6 +25,11 @@ pub struct Envelope {
     /// tous » hors ligne. Vides quand l'ENVELOPE n'en porte pas.
     pub to_addrs: Vec<String>,
     pub cc_addrs: Vec<String>,
+    /// `Reply-To` (première adresse), tiré de la même ENVELOPE : là où
+    /// « Répondre » doit écrire quand l'expéditeur le dit — listes,
+    /// notifications (PLAN-AUDIT-V2 E5 ; jeté avant). `None` = répondre
+    /// à l'expéditeur.
+    pub reply_to: Option<String>,
     /// `Message-ID` RFC 5322 — pour répondre dans le fil (`In-Reply-To`).
     pub message_id: Option<String>,
     /// `In-Reply-To` : l'ancêtre direct, tel que l'annonce l'expéditeur.

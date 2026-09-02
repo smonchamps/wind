@@ -51,6 +51,7 @@ fn main() -> Result<(), mail_core::Error> {
         .map(|i| {
             let uid = depart + i;
             Envelope {
+                reply_to: None,
                 uid,
                 subject: Some(format!("{sujet} n°{uid}")),
                 sender: Some(nom.clone()),
