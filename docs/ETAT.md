@@ -95,8 +95,9 @@ une chaîne d'un `.ps1` sans BOM, §7.1) — la gate parse désormais chaque
 `.ps1` ; et `barres-fil:25` attend la carte avant de la lire.
 **0.17.0 PUBLIÉE le 2026-09-02, le même jour** (vague 2 ;
 `verifier-release.ps1` : tout passe, crypto minisign non prouvée faute
-d'outil au PATH ; **auto-update prouvé aux deux postes**). **Encore
-dû** : le ticket support GitHub (`051bb01`).
+d'outil au PATH ; **auto-update prouvé aux deux postes**). Le ticket support GitHub (purge de `051bb01`,
+données personnelles) est **envoyé le 2026-09-02** — réponse attendue,
+preuve : `gh api repos/smonchamps/wind/commits/051bb01…` ⇒ 404.
 
 Dernier soldé avant lui :
 **[PLAN-AUDIT-V1](PLAN-AUDIT-V1.md)** (2026-09-02, terrain CE « ok »,
@@ -124,9 +125,10 @@ l'entrée CHANGELOG est écrite, `scripts\faire-release.ps1 0.16.0`
 depuis `main` ; puis `verifier-release.ps1` et la preuve de MAJ n-1→n
 sur les deux postes, `maj.log` lisible après coup), **les retours de la
 bêta** (relance des silencieux le 2026-09-03), ou **la vague 2 de
-l'audit** (dix lots S2 mesurables, `AUDIT-2026-09-01.md` §5). Encore
-dû hors chantier : le ticket support GitHub (purge de `refs/pull/1-4`
-et de l'objet `051bb01`) — vérifier `gh api repos/smonchamps/wind/commits/051bb01…` ⇒ 404.
+l'audit** (dix lots S2 mesurables, `AUDIT-2026-09-01.md` §5). Hors
+chantier : le ticket support GitHub (purge de `refs/pull/1-4` et de
+l'objet `051bb01`) — **envoyé le 2026-09-02**, réponse attendue ;
+vérifier `gh api repos/smonchamps/wind/commits/051bb01…` ⇒ 404.
 
 Chantier précédent :
 **[PLAN-RETOURS-14](PLAN-RETOURS-14.md)** (2026-08-31, ouvert et
@@ -577,8 +579,8 @@ banc écrivait `$n` dans sa boucle bornée par `$N` — **en PowerShell
 c'est la même variable** ; un `-N 3` partait pour ~550 tours. C'est
 aussi ce qui explique les « 19 lancements » de la campagne du 26/08.
 
-**Reste :** le ticket support GitHub ; PLAN-BASCULE-ANGLAIS en cours
-dans une autre session.
+**Reste :** la réponse de GitHub au ticket (vérifier le 404 sur
+`051bb01`) ; PLAN-BASCULE-ANGLAIS en cours dans une autre session.
 
 **Dernier chantier soldé : [PLAN-ESPACEMENT](PLAN-ESPACEMENT.md)**
 (2026-08-25, terrain CE **7/7 zéro constat**, gate verte 2 min, e2e
