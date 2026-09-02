@@ -51,27 +51,27 @@
       // D9 : les défauts du Portier, lus UNE fois — le premier rang ne
       // se peint qu'avec les défauts connus (patron Portier).
       try {
-        defauts = await appel('portier_defauts_get');
+        defauts = await appel('screener_defaults_get');
       } catch (err) {
-        console.error('portier_defauts_get :', err);
+        console.error('screener_defaults_get :', err);
       }
       // D8 : une session entamée reprend — l'intro ne se montre pas.
       try {
-        session = await appel('nettoyage_etat');
+        session = await appel('cleanup_state');
         if (session) await chargerGroupes();
       } catch (err) {
-        console.error('nettoyage_etat :', err);
+        console.error('cleanup_state :', err);
       }
     })();
   });
 
   async function chargerGroupes() {
-    groupes = await appel('nettoyage_groupes');
+    groupes = await appel('cleanup_groups');
   }
 
   async function demarrer() {
     try {
-      session = await appel('nettoyage_demarrer', { plage, perimetre });
+      session = await appel('cleanup_start', { plage, perimetre });
       ouvert = null;
       await chargerGroupes();
     } catch (err) {
@@ -81,7 +81,7 @@
 
   async function terminer() {
     try {
-      await appel('nettoyage_terminer');
+      await appel('cleanup_finish');
       session = null;
       groupes = [];
       ouvert = null;
@@ -102,13 +102,13 @@
   };
 
   // Le verdict de GROUPE — même vocabulaire que le Portier, la porte
-  // `nettoyage_verdict` applique aussi la règle au stock de la plage.
+  // `cleanup_verdict` applique aussi la règle au stock de la plage.
   async function decider(address, qui, destination, regle = null) {
     if (occupe) return;
     occupe = true;
     menu = null;
     try {
-      session = await appel('nettoyage_verdict', { address, destination, regle });
+      session = await appel('cleanup_verdict', { address, destination, regle });
       if (destination === 'ecarte') {
         onflash(t(regle ? TOAST_NON[regle] : 'toast.portierNonNu', { qui }));
       } else if (destination === 'reception') {
@@ -135,7 +135,7 @@
       return;
     }
     try {
-      messagesOuverts = await appel('nettoyage_messages', { address });
+      messagesOuverts = await appel('cleanup_messages', { address });
       ouvert = address;
     } catch (err) {
       onflash(t('erreur.preference', { err }));

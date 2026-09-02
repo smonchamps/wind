@@ -35,7 +35,7 @@ export function cleLibelleBoite(id) {
 // mode éteint : le classique est le défaut.
 export async function restaurerModeOrganise() {
   try {
-    const lu = Boolean(await appel('mode_organise_get'));
+    const lu = Boolean(await appel('organized_mode_get'));
     if (!bascule) etat.actif = lu;
   } catch {
     /* le classique est le défaut, rien à refléter */
@@ -53,7 +53,7 @@ export async function basculerModeOrganise() {
   bascule = true;
   try {
     const cible = !etat.actif;
-    await appel('mode_organise_set', { actif: cible });
+    await appel('organized_mode_set', { actif: cible });
     etat.actif = cible;
     return cible;
   } finally {

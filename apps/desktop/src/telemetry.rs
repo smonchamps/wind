@@ -1,17 +1,18 @@
-//! Télémétrie de crash — capture LOCALE des panics, opt-in (ADR 0014).
+//! Crash telemetry — LOCAL capture of panics, opt-in (ADR 0014).
 //!
-//! Destination : un fichier par plantage dans `app_data_dir/crashes/`.
-//! **Aucun réseau, aucun tiers** — l'app montre les rapports, l'utilisateur
-//! décide de les envoyer. Le contenu est rédigé par [`mail_core::redact`],
-//! qui écarte le message du panic (seul vecteur de donnée personnelle) et
-//! ne garde que des artefacts de code.
+//! Destination: one file per crash in `app_data_dir/crashes/`.
+//! **No network, no third party** — the app shows the reports, the
+//! user decides to send them. The content is redacted by
+//! [`mail_core::redact`], which discards the panic message (the only
+//! vector of personal data) and keeps only code artifacts.
 //!
-//! **Deux règles dures :**
-//! 1. Le panic hook ne touche JAMAIS la base (elle est peut-être la cause
-//!    du panic, ou tient un verrou empoisonné) : consentement en fichier,
-//!    lu au démarrage dans un atomique, rapport écrit en `std::fs` pur.
-//! 2. Le hook ne doit jamais paniquer à son tour (un panic pendant un
-//!    panic = `abort`) : tout y est enveloppé et non-`unwrap`.
+//! **Two hard rules:**
+//! 1. The panic hook NEVER touches the database (it may be the cause
+//!    of the panic, or hold a poisoned lock): consent lives in a
+//!    file, read at startup into an atomic, the report is written in
+//!    pure `std::fs`.
+//! 2. The hook must never panic in turn (a panic during a panic =
+//!    `abort`): everything in it is wrapped and non-`unwrap`.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -20,25 +21,26 @@ use mail_core::{RawPanic, redact};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
-/// Consentement effectif, lu par le panic hook. Un atomique et non la
-/// base : le hook doit rester cheap et sûr même si SQLite est en cause.
+/// Effective consent, read by the panic hook. An atomic and not the
+/// database: the hook must stay cheap and safe even if SQLite is at
+/// fault.
 static ENABLED: AtomicBool = AtomicBool::new(false);
 
-/// Numéro d'ordre des rapports d'une même exécution : il rend le nom de
-/// fichier unique. Un plantage sur le thread principal en produit DEUX
-/// (le panic d'origine, puis le `cannot unwind` de la frontière FFI),
-/// dans la même seconde — sans ce compteur, le second écraserait le
-/// premier, le seul utile. Trouvé au terrain (ADR 0014).
+/// Sequence number of reports within one run: it makes the file name
+/// unique. A crash on the main thread produces TWO (the original
+/// panic, then the FFI boundary's `cannot unwind`), in the same
+/// second — without this counter, the second would overwrite the
+/// first, the only useful one. Found in the field (ADR 0014).
 static SEQ: AtomicU32 = AtomicU32::new(0);
 
-/// Le crochet E2E : sous test, jamais de bandeau ni d'écriture réelle
-/// (mêmes étanchéités que le reste, passation §7.5).
+/// The E2E hook: under test, never a banner nor a real write (same
+/// seams as everything else, handover §7.5).
 fn is_e2e() -> bool {
     std::env::var("WIND_DB_PATH").is_ok()
 }
 
-/// Le dossier de base des données de l'app — où vivent le consentement et
-/// les rapports. En E2E, co-localisé avec la base jetable.
+/// The app's base data folder — where consent and reports live. In
+/// E2E, co-located with the disposable database.
 fn base_dir(app: &AppHandle) -> Result<PathBuf, String> {
     if let Ok(db) = std::env::var("WIND_DB_PATH") {
         return Ok(PathBuf::from(db)
@@ -62,16 +64,16 @@ struct ConsentFile {
     crash_reports: bool,
 }
 
-/// À appeler une fois au démarrage (dans `.setup`) : charge le
-/// consentement et installe le panic hook.
+/// To call once at startup (in `.setup`): loads consent and installs
+/// the panic hook.
 pub fn init(app: &tauri::App) {
     let Ok(base) = base_dir(app.handle()) else {
         return;
     };
     let _ = std::fs::create_dir_all(&base);
-    // Charge le consentement persisté dans l'atomique. Absent = jamais
-    // demandé = désactivé : rien ne s'écrit tant que l'utilisateur n'a
-    // pas dit oui.
+    // Loads the consent persisted into the atomic. Missing = never
+    // asked = disabled: nothing is written until the user has said
+    // yes.
     if let Ok(text) = std::fs::read_to_string(consent_file(&base))
         && let Ok(c) = serde_json::from_str::<ConsentFile>(&text)
     {
@@ -80,14 +82,15 @@ pub fn init(app: &tauri::App) {
     install_hook(crashes_dir(&base), app.package_info().version.to_string());
 }
 
-/// Installe le hook. Il chaîne le hook par défaut : un panic garde son
-/// comportement normal (trace sur stderr), on ajoute juste l'écriture du
-/// rapport quand le consentement est actif.
+/// Installs the hook. It chains the default hook: a panic keeps its
+/// normal behavior (trace on stderr), we just add the report write
+/// when consent is active.
 fn install_hook(dir: PathBuf, app_version: String) {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         if ENABLED.load(Ordering::Relaxed) {
-            // Un panic dans le hook aborterait le process : on borne.
+            // A panic inside the hook would abort the process: we
+            // bound it.
             let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 write_report(&dir, &app_version, info);
             }));
@@ -98,11 +101,11 @@ fn install_hook(dir: PathBuf, app_version: String) {
 
 fn write_report(dir: &Path, app_version: &str, info: &std::panic::PanicHookInfo<'_>) {
     let message = payload_message(info);
-    // Un panic sur le thread principal traverse la frontière FFI de
-    // WebView2 (nounwind) et déclenche un SECOND panic « cannot unwind »
-    // qui aborte. Ce second panic pointe le runtime, pas le bug
-    // d'origine — que le premier panic a déjà rapporté. On ne l'écrit
-    // donc pas.
+    // A panic on the main thread crosses WebView2's FFI boundary
+    // (nounwind) and triggers a SECOND "cannot unwind" panic that
+    // aborts. This second panic points at the runtime, not the
+    // original bug — which the first panic has already reported. We
+    // therefore do not write it.
     if is_secondary_nounwind(&message) {
         return;
     }
@@ -124,13 +127,13 @@ fn write_report(dir: &Path, app_version: &str, info: &std::panic::PanicHookInfo<
     let _ = persist(dir, raw);
 }
 
-/// Rédige puis écrit le rapport sur disque. Séparé de [`write_report`]
-/// pour être TESTABLE : `PanicHookInfo` ne se construit pas à la main, et
-/// ce qui compte n'est pas que la rédaction soit correcte en mémoire mais
-/// que les octets écrits ne portent aucune donnée personnelle.
+/// Redacts then writes the report to disk. Separated from
+/// [`write_report`] to be TESTABLE: `PanicHookInfo` cannot be built by
+/// hand, and what matters is not that the redaction is correct in
+/// memory but that the bytes written to disk carry no personal data.
 fn persist(dir: &Path, raw: RawPanic) -> std::io::Result<PathBuf> {
-    // C'est ICI que la donnée personnelle est écartée — avant toute
-    // écriture. Ce qui suit ne manipule plus que le rapport rédigé.
+    // This is WHERE personal data is discarded — before any write.
+    // What follows only handles the redacted report.
     let report = redact(raw);
 
     #[derive(Serialize)]
@@ -143,8 +146,8 @@ fn persist(dir: &Path, raw: RawPanic) -> std::io::Result<PathBuf> {
     }
 
     std::fs::create_dir_all(dir)?;
-    // ':' est interdit dans un nom de fichier Windows ; le compteur `SEQ`
-    // rend le nom unique même pour deux plantages dans la même seconde.
+    // ':' is forbidden in a Windows file name; the `SEQ` counter makes
+    // the name unique even for two crashes in the same second.
     let seq = SEQ.fetch_add(1, Ordering::Relaxed);
     let name = format!("crash-{}-{seq}.json", report.timestamp.replace(':', "-"));
     let path = dir.join(name);
@@ -160,11 +163,11 @@ fn persist(dir: &Path, raw: RawPanic) -> std::io::Result<PathBuf> {
     Ok(path)
 }
 
-/// Un panic secondaire du runtime — « panic in a function that cannot
-/// unwind », déclenché quand un panic traverse une frontière FFI. Il ne
-/// désigne pas le bug d'origine ; on l'écarte. Filtre au mieux : si le
-/// message du runtime change un jour, on écrit un rapport de trop
-/// (jamais un de moins), et le compteur `SEQ` empêche tout écrasement.
+/// A secondary runtime panic — "panic in a function that cannot
+/// unwind", triggered when a panic crosses an FFI boundary. It does
+/// not name the original bug; we discard it. Best-effort filter: if
+/// the runtime's message ever changes, we write one report too many
+/// (never one too few), and the `SEQ` counter prevents any overwrite.
 fn is_secondary_nounwind(message: &str) -> bool {
     message.contains("cannot unwind")
 }
@@ -176,7 +179,7 @@ fn payload_message(info: &std::panic::PanicHookInfo<'_>) -> String {
     } else if let Some(s) = payload.downcast_ref::<String>() {
         s.clone()
     } else {
-        "panic (charge non textuelle)".to_string()
+        "panic (non-textual payload)".to_string()
     }
 }
 
@@ -188,15 +191,15 @@ fn now_iso8601() -> String {
     chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
-// --- Commandes Tauri -------------------------------------------------
+// --- Tauri commands ----------------------------------------------------
 
-/// État du consentement pour l'UI : `unset` déclenche la demande opt-in,
-/// une seule fois. En E2E, toujours `disabled` — pas de bandeau en test.
+/// Consent state for the UI: `unset` triggers the opt-in prompt, once.
+/// In E2E, always `disabled` — no banner under test.
 #[tauri::command]
 pub async fn telemetry_consent_get(app: AppHandle) -> String {
-    // Lecture de fichier : hors de la pompe (PLAN-GELS). Un échec de
-    // jonction vaut « disabled » — le bandeau opt-in ne s'invente pas.
-    crate::commands::hors_pompe(app, |app| {
+    // File read: off the pump (PLAN-GELS). A join failure is worth
+    // "disabled" — the opt-in banner is not invented.
+    crate::commands::off_pump(app, |app| {
         if is_e2e() {
             return Ok("disabled".to_string());
         }
@@ -216,14 +219,14 @@ pub async fn telemetry_consent_get(app: AppHandle) -> String {
     .unwrap_or_else(|_| "disabled".to_string())
 }
 
-/// Pose le consentement (opt-in ou refus), et l'applique immédiatement au
-/// hook via l'atomique.
+/// Sets consent (opt-in or refusal), and applies it immediately to
+/// the hook via the atomic.
 #[tauri::command]
 pub async fn telemetry_consent_set(app: AppHandle, enabled: bool) -> Result<(), String> {
-    // L'atomique d'abord (le hook doit suivre tout de suite), le fichier
-    // hors de la pompe (PLAN-GELS).
+    // The atomic first (the hook must follow right away), the file
+    // off the pump (PLAN-GELS).
     ENABLED.store(enabled, Ordering::Relaxed);
-    crate::commands::hors_pompe(app, move |app| {
+    crate::commands::off_pump(app, move |app| {
         let base = base_dir(&app)?;
         std::fs::create_dir_all(&base).map_err(|err| err.to_string())?;
         let json = serde_json::to_string(&ConsentFile {
@@ -235,12 +238,12 @@ pub async fn telemetry_consent_set(app: AppHandle, enabled: bool) -> Result<(), 
     .await
 }
 
-/// Combien de rapports attendent d'être envoyés.
+/// How many reports are waiting to be sent.
 #[tauri::command]
 pub async fn telemetry_pending(app: AppHandle) -> u32 {
-    // Parcours de dossier : hors de la pompe (PLAN-GELS). Un échec de
-    // jonction vaut zéro rapport — même repli que le dossier illisible.
-    crate::commands::hors_pompe(app, |app| {
+    // Folder traversal: off the pump (PLAN-GELS). A join failure is
+    // worth zero reports — same fallback as an unreadable folder.
+    crate::commands::off_pump(app, |app| {
         if is_e2e() {
             return Ok(0);
         }
@@ -260,11 +263,11 @@ pub async fn telemetry_pending(app: AppHandle) -> u32 {
     .unwrap_or(0)
 }
 
-/// Ouvre le dossier des rapports dans l'explorateur — de quoi les
-/// retrouver et les envoyer soi-même (destination locale, ADR 0014).
+/// Opens the reports folder in the file explorer — a way to find them
+/// and send them yourself (local destination, ADR 0014).
 #[tauri::command]
 pub async fn telemetry_open_folder(app: AppHandle) -> Result<(), String> {
-    crate::commands::hors_pompe(app, |app| {
+    crate::commands::off_pump(app, |app| {
         let base = base_dir(&app)?;
         let dir = crashes_dir(&base);
         std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
@@ -277,42 +280,42 @@ pub async fn telemetry_open_folder(app: AppHandle) -> Result<(), String> {
     .await
 }
 
-/// Provoque un panic pour VÉRIFIER la capture au terrain (ADR 0014 §5).
+/// Triggers a panic to VERIFY the capture in the field (ADR 0014 §5).
 ///
-/// Deux définitions : en **debug** elle panique, en **release** elle
-/// refuse — le binaire livré ne peut pas paniquer sur commande. Le
-/// message porte une fausse donnée personnelle : le rapport écrit doit
-/// prouver qu'elle a disparu. À invoquer depuis la console de la WebView
+/// Two definitions: in **debug** it panics, in **release** it
+/// refuses — the shipped binary cannot be made to panic on command.
+/// The message carries fake personal data: the written report must
+/// prove it has vanished. To invoke from the WebView console
 /// (`window.__TAURI__.core.invoke('telemetry_selftest_panic')`).
 #[cfg(debug_assertions)]
 #[tauri::command]
 pub fn telemetry_selftest_panic() -> Result<(), String> {
-    panic!("selftest telemetrie: faux@exemple.fr — sujet « secret »")
+    panic!("telemetry selftest: fake@example.com — subject \"secret\"")
 }
 
 #[cfg(not(debug_assertions))]
 #[tauri::command]
 pub fn telemetry_selftest_panic() -> Result<(), String> {
-    Err("indisponible hors build debug".to_string())
+    Err("unavailable outside a debug build".to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// La garantie qui compte : les OCTETS ÉCRITS sur disque ne portent
-    /// aucune donnée du message de panic. Le test de `mail-core` prouve la
-    /// rédaction en mémoire ; celui-ci prouve le fichier réel, sérialisé.
+    /// The guarantee that matters: the BYTES WRITTEN to disk carry no
+    /// data from the panic message. The `mail-core` test proves the
+    /// in-memory redaction; this one proves the real, serialized
+    /// file.
     #[test]
-    fn le_fichier_ecrit_ne_contient_aucune_donnee_du_message() {
+    fn the_written_file_contains_no_data_from_the_message() {
         let dir = std::env::temp_dir().join(format!("disc-telemetry-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
 
         let raw = RawPanic {
-            message: "boom: victime@exemple.fr — sujet « Dossier medical confidentiel »"
-                .to_string(),
+            message: "boom: victim@example.com — subject \"Confidential medical file\"".to_string(),
             location: Some("apps/desktop/src/commands.rs:1".to_string()),
-            backtrace: vec!["wind_desktop::commands::quelque_chose".to_string()],
+            backtrace: vec!["wind_desktop::commands::something".to_string()],
             app_version: "0.1.2".to_string(),
             os: "windows x86_64".to_string(),
             timestamp: "2026-07-26T15:00:00Z".to_string(),
@@ -322,32 +325,33 @@ mod tests {
         let written = std::fs::read_to_string(&path).unwrap();
 
         assert!(
-            !written.contains("victime@exemple.fr"),
-            "l'adresse est dans le fichier écrit"
+            !written.contains("victim@example.com"),
+            "the address is in the written file"
         );
         assert!(
             !written.contains('@'),
-            "une arobase subsiste dans le fichier"
+            "an at-sign remains in the written file"
         );
         assert!(
             !written.to_lowercase().contains("medical"),
-            "le sujet est dans le fichier écrit"
+            "the subject is in the written file"
         );
-        // Mais le fichier GARDE de quoi situer le bug.
+        // But the file KEEPS enough to locate the bug.
         assert!(
             written.contains("apps/desktop/src/commands.rs:1"),
-            "la localisation doit rester"
+            "the location must remain"
         );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Le second panic du runtime (« cannot unwind », à la frontière FFI
-    /// de WebView2) ne pointe pas le bug d'origine : on l'écarte. Défaut
-    /// trouvé au terrain — le self-test produisait deux rapports, et
-    /// l'abort écrasait le premier, seul utile.
+    /// The runtime's secondary panic ("cannot unwind", at the
+    /// WebView2 FFI boundary) does not name the original bug: we
+    /// discard it. Defect found in the field — the self-test produced
+    /// two reports, and the abort overwrote the first, the only
+    /// useful one.
     #[test]
-    fn le_panic_secondaire_du_runtime_est_ecarte() {
+    fn the_runtime_secondary_panic_is_discarded() {
         assert!(is_secondary_nounwind(
             "panic in a function that cannot unwind"
         ));
@@ -355,21 +359,21 @@ mod tests {
             "index out of bounds: len 3 but index 5"
         ));
         assert!(!is_secondary_nounwind(
-            "selftest telemetrie: faux@exemple.fr"
+            "telemetry selftest: fake@example.com"
         ));
     }
 
-    /// Deux rapports écrits dans la même seconde ne se marchent pas
-    /// dessus : le compteur `SEQ` rend chaque nom unique. Sans lui, le
-    /// double panic d'un crash sur le thread principal perdait le rapport
-    /// utile.
+    /// Two reports written in the same second do not step on each
+    /// other: the `SEQ` counter makes each name unique. Without it,
+    /// the double panic of a main-thread crash lost the useful
+    /// report.
     #[test]
-    fn deux_rapports_de_la_meme_seconde_ne_s_ecrasent_pas() {
+    fn two_reports_from_the_same_second_do_not_overwrite_each_other() {
         let dir = std::env::temp_dir().join(format!("disc-telemetry-seq-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
 
         let raw = || RawPanic {
-            message: "peu importe".to_string(),
+            message: "doesn't matter".to_string(),
             location: Some("apps/desktop/src/telemetry.rs:1".to_string()),
             backtrace: vec![],
             app_version: "0.1.2".to_string(),
@@ -377,13 +381,13 @@ mod tests {
             timestamp: "2026-07-26T16:43:47Z".to_string(),
         };
 
-        let un = persist(&dir, raw()).unwrap();
-        let deux = persist(&dir, raw()).unwrap();
-        assert_ne!(un, deux, "même horodatage, mais noms distincts");
+        let one = persist(&dir, raw()).unwrap();
+        let two = persist(&dir, raw()).unwrap();
+        assert_ne!(one, two, "same timestamp, but distinct names");
         assert_eq!(
             std::fs::read_dir(&dir).unwrap().count(),
             2,
-            "les deux rapports coexistent"
+            "both reports coexist"
         );
 
         let _ = std::fs::remove_dir_all(&dir);

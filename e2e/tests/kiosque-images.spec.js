@@ -39,7 +39,7 @@ test("« Toujours afficher les images » lève la garde d'une carte au-delà de 
   // avant cette règle, ou dont la règle a été retirée aux Réglages.
   await page.evaluate(async () => {
     const invoke = window.__TAURI__.core.invoke;
-    await invoke('router_expediteur', {
+    await invoke('route_sender', {
       address: 'lettre@exemple.fr',
       destination: 'kiosque',
       regle: null,

@@ -5,7 +5,7 @@
   // l'ÉVENTAIL des mini-cartes au clic (une carte = objet + expéditeur
   // · heure, au sol de tuile), « Voir le tableau » = les aperçus en
   // grille sur un écran, « Terminé » renvoie le message d'où il vient.
-  // Les données viennent du cœur (`pile_mis_de_cote`, les têtes des
+  // Les données viennent du cœur (`set_aside_pile`, les têtes des
   // fils au squelette unifié) ; les gestes remontent à l'App via
   // `onchange` — le composant possède la pile, jamais les listes.
   import Icone from './Icone.svelte';
@@ -21,7 +21,7 @@
 
   export async function recharger() {
     try {
-      cartes = await appel('pile_mis_de_cote');
+      cartes = await appel('set_aside_pile');
     } catch (err) {
       console.error('pile :', err);
     }
@@ -40,7 +40,7 @@
   // LA commande du produit, puis la pile ET les listes se resservent.
   async function terminer(ligne) {
     try {
-      await appel('toggle_mis_de_cote', {
+      await appel('toggle_set_aside', {
         accountId: ligne.account_id,
         mailbox: ligne.mailbox,
         uid: ligne.uid,

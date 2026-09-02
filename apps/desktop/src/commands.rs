@@ -1,10 +1,10 @@
-//! Commandes Tauri : la passerelle entre l'UI et le noyau.
+//! Tauri commands: the gateway between the UI and the core.
 //!
-//! Multi-comptes (Phase 3) : l'identité d'un message est `(compte, uid)`
-//! — un UID seul ne suffit plus. Chaque opération réseau passe par la
-//! connexion de SON compte ; les boucles (synchro, vidange, brouillons)
-//! agrègent les comptes connectés. Le travail bloquant (OAuth, IMAP,
-//! SMTP) passe par `spawn_blocking` pour ne jamais geler la fenêtre.
+//! Multi-account (Phase 3): a message's identity is `(account, uid)` —
+//! a UID alone is no longer enough. Every network operation goes through
+//! the connection of ITS account; the loops (sync, outbox flush, drafts)
+//! aggregate the connected accounts. Blocking work (OAuth, IMAP, SMTP)
+//! goes through `spawn_blocking` so the window never freezes.
 
 use std::collections::HashMap;
 use std::ops::ControlFlow;
@@ -21,28 +21,28 @@ use mail_smtp::SmtpMailer;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
-use crate::{AppState, VolPasse};
+use crate::{AppState, PassFlight};
 
 pub(crate) const MAILBOX: &str = "INBOX";
 const LIST_LIMIT_MAX: usize = 500;
 const SEARCH_LIMIT: usize = 100;
-/// Corps rapatriés par appel, tous comptes confondus. Borner le lot rend
-/// l'interruption gratuite : l'UI cesse simplement de rappeler.
+/// Bodies backfilled per call, across all accounts. Capping the batch makes
+/// interruption free: the UI simply stops calling back.
 const BACKFILL_BUDGET: usize = 200;
-/// En-têtes de fil rapatriés par compte et par synchronisation.
+/// Thread headers backfilled per account and per synchronization.
 ///
-/// Généreux devant le budget des corps (200) parce que la dépense n'est
-/// pas la même : un bloc d'en-têtes pèse ~3 ko contre ~50 ko pour un
-/// message entier. Sur la boîte de l'utilisateur (~2 700 messages), deux
-/// synchronisations suffisent à regrouper la boîte entière.
+/// Generous compared to the body budget (200) because the cost isn't the
+/// same: a header block weighs ~3 KB against ~50 KB for a whole message.
+/// On the user's mailbox (~2,700 messages), two synchronizations are
+/// enough to group the entire mailbox.
 const THREAD_HEADER_BUDGET: usize = 2_000;
-/// Destinataires rattrapés par compte et par synchronisation (R4/R1),
-/// budget PARTAGÉ entre INBOX et Envoyés. Même dépense qu'un en-tête (une
-/// ENVELOPE), et la portée est celle, déjà convergée, de la passe de fils :
-/// la passe rattrape en quelques cycles, puis se tait.
+/// Recipients backfilled per account and per synchronization (R4/R1),
+/// budget SHARED between INBOX and Sent. Same cost as a header (one
+/// ENVELOPE), and the scope is the same, already converged, one as the
+/// thread pass: the pass catches up over a few cycles, then goes quiet.
 const RECIPIENTS_BUDGET: usize = 2_000;
-/// Arrivees remontees par compte pour les notifications. Au-dela, seul
-/// le NOMBRE compte — la bulle resume de toute facon.
+/// Arrivals surfaced per account for notifications. Beyond that, only the
+/// COUNT matters — the bubble summarizes anyway.
 const NOTIFY_MAX_ARRIVALS: usize = 50;
 
 #[derive(Serialize)]
@@ -53,17 +53,17 @@ pub struct AccountInfo {
 
 #[derive(Serialize)]
 pub struct SyncSummary {
-    /// Comptes synchronisés avec succès.
+    /// Accounts synchronized successfully.
     pub accounts: usize,
-    /// Comptes dont la relève ENTIÈRE a échoué (E3, échec partiel dit) :
-    /// `errors` ne suffit pas à les compter — il porte aussi les
-    /// incidents best-effort des comptes qui ont réussi.
+    /// Accounts whose ENTIRE poll failed (E3, so-called partial failure):
+    /// `errors` isn't enough to count them — it also carries the
+    /// best-effort incidents of the accounts that succeeded.
     pub accounts_failed: usize,
     pub fetched: usize,
     pub deleted: usize,
     pub replayed: usize,
     pub elapsed_ms: u64,
-    /// Échecs par compte — les autres comptes ne sont pas bloqués.
+    /// Failures per account — the other accounts aren't blocked.
     pub errors: Vec<String>,
 }
 
@@ -71,10 +71,10 @@ pub struct SyncSummary {
 pub struct MessageRow {
     pub account_id: i64,
     pub account_email: String,
-    /// La boîte qui contient ce message. **Indispensable** : les UID sont
-    /// attribués par boîte et repartent de 1, donc l'UID seul ne désigne
-    /// plus un message dès qu'un compte en synchronise deux. Toute action
-    /// de l'UI la renvoie.
+    /// The mailbox that contains this message. **Essential**: UIDs are
+    /// assigned per mailbox and restart at 1, so the UID alone no longer
+    /// identifies a message as soon as an account synchronizes two of
+    /// them. Every UI action sends it back.
     pub mailbox: String,
     pub uid: u32,
     pub subject: String,
@@ -83,89 +83,88 @@ pub struct MessageRow {
     pub seen: bool,
     pub flagged: bool,
     pub has_attachment: bool,
-    /// La conversation à laquelle appartient la ligne — c'est par elle
-    /// qu'on demande le reste de l'échange.
+    /// The conversation this row belongs to — it's what the rest of the
+    /// exchange is requested through.
     pub thread_id: Option<i64>,
-    /// Messages de la conversation présents dans la boîte. 1 = isolé.
+    /// Messages of the conversation present in the mailbox. 1 = isolated.
     pub thread_size: u32,
-    /// Non-lus de la conversation : c'est LUI qui décide du gras, et non
-    /// l'état du seul message affiché.
+    /// Unread count of the conversation: it's THIS that decides the bold,
+    /// not the state of the single message shown.
     pub thread_unseen: u32,
-    /// Secondes Unix du message — la v2 formate l'heure côté client
-    /// (« 09:12 », « Hier », « 5 août ») ; `date` reste la chaîne brute
-    /// que la v1 affiche telle quelle. 0 = date inconnue.
+    /// Unix seconds of the message — v2 formats the time client-side
+    /// (“09:12”, “Yesterday”, “Aug 5”); `date` stays the raw string that
+    /// v1 shows as is. 0 = unknown date.
     pub epoch: i64,
-    /// COMBIEN de pièces jointes — la puce du prototype dit « 2
-    /// fichiers ». 0 tant que le corps n'a pas été lu.
+    /// HOW MANY attachments — the prototype's chip says “2 files”. 0 as
+    /// long as the body hasn't been read.
     pub attachment_count: u32,
-    /// L'aperçu sous l'objet (écran 02 v2) ; `None` tant que le corps
-    /// n'est pas rapatrié ou rattrapé.
+    /// The preview under the subject (screen 02 v2); `None` as long as
+    /// the body hasn't been fetched or backfilled.
     pub preview: Option<String>,
-    /// Adresse brute de l'expéditeur — la ligne « De » de l'écran 03
-    /// (`Nom <adresse>`). `sender` reste la chaîne d'affichage.
+    /// Raw sender address — the “From” line of screen 03 (`Name
+    /// <address>`). `sender` stays the display string.
     pub sender_address: Option<String>,
-    /// Destinataires À / Cc bruts (R4). Dans un dossier d'envois — ou pour
-    /// nos propres messages d'un fil — l'expéditeur est SOI : c'est le
-    /// destinataire qui dit à qui le message est parti. Vides quand
-    /// l'ENVELOPE n'en portait pas (anciens envois non rattrapés, reçus
-    /// dont l'À n'a pas été stocké).
+    /// Raw To / Cc recipients (R4). In a sent folder — or for our own
+    /// messages in a thread — the sender is SELF: it's the recipient
+    /// that says who the message went to. Empty when the ENVELOPE didn't
+    /// carry any (old sends not yet backfilled, received messages whose
+    /// To wasn't stored).
     pub to_addrs: Vec<String>,
     pub cc_addrs: Vec<String>,
-    /// R4 (PLAN-RETOURS-7) : la ligne vient de la section ÉPINGLÉE de la
-    /// Réception (`pinned_rows`). Toujours faux dans le flot paginé —
-    /// une conversation épinglée en est exclue (D5). Le fil ouvert SÈME
-    /// son état d'épingle de ce champ (fil.svelte.js) : c'est lui qui
-    /// habille « Épingler »/« Désépingler » sans aller-retour.
+    /// R4 (PLAN-RETOURS-7): the row comes from the PINNED section of the
+    /// Inbox (`pinned_rows`). Always false in the paginated flow — a
+    /// pinned conversation is excluded from it (D5). The open thread
+    /// SEEDS its pin state from this field (fil.svelte.js): it's what
+    /// dresses “Pin”/“Unpin” without a round trip.
     pub pinned: bool,
-    /// E5 : le fil est-il MIS DE CÔTÉ — semé par la seule source qui
-    /// le sait (la pile) : une ligne d'une vue organisée n'est JAMAIS
-    /// mise de côté (le cœur l'exclut), une carte de la pile l'est
-    /// toujours. Même règle que `pinned` (revue 2026-08-21 : jamais un
-    /// aller-retour par ouverture).
+    /// E5: is the thread SET ASIDE — seeded by the only source that
+    /// knows (the pile): a row from an organized view is NEVER set
+    /// aside (the core excludes it), a pile card always is. Same rule
+    /// as `pinned` (2026-08-21 review: never a round trip on open).
     pub cote: bool,
-    /// L'invitation du fil (terrain R10/R11, PLAN-INVITATIONS) : le
-    /// rang de puces la dit (réponse donnée, annulation) et porte les
-    /// trois gestes — répondre sans ouvrir. `None` = ligne ordinaire.
-    pub invitation: Option<InvitationLigne>,
+    /// The thread's invitation (field R10/R11, PLAN-INVITATIONS): the
+    /// chip row states it (reply given, cancellation) and carries the
+    /// three gestures — reply without opening. `None` = ordinary row.
+    pub invitation: Option<InvitationRowPayload>,
 }
 
-/// Le badge d'invitation d'une ligne — la clé pour répondre DEPUIS la
-/// liste vise le MESSAGE d'invitation (pas la tête du fil).
+/// A row's invitation badge — the key to reply FROM the list targets the
+/// invitation MESSAGE (not the thread head).
 #[derive(Serialize)]
-pub struct InvitationLigne {
+pub struct InvitationRowPayload {
     pub mailbox: String,
     pub uid: u32,
-    /// Le titre de la réunion — le sujet de la réponse se construit de
-    /// lui, jamais du sujet de la tête (« Re : … »).
+    /// The meeting title — the reply's subject is built from it, never
+    /// from the head's subject (“Re: …”).
     pub titre: String,
-    /// `accepte` | `provisoire` | `refuse` — la puce du rang.
+    /// `accepte` | `provisoire` | `refuse` — the row's chip.
     pub reponse: Option<String>,
     pub annulee: bool,
     pub peut_repondre: bool,
 }
 
-/// Bilan d'une reconnexion : ce qui est revenu, et POURQUOI le reste ne
-/// l'est pas. Un compte muet est pire qu'un compte en erreur — sans cette
-/// liste, l'utilisateur voit une pastille manquer sans savoir quoi faire.
+/// Outcome of a reconnection: what came back, and WHY the rest didn't.
+/// A silent account is worse than an account in error — without this
+/// list, the user sees a missing badge with no idea what to do.
 #[derive(Serialize)]
 pub struct ConnectReport {
     pub accounts: Vec<AccountInfo>,
     pub problems: Vec<String>,
 }
 
-/// Connexion silencieuse de TOUS les comptes du registre. Registre vide
-/// (base migrée de Phase 2) : l'entrée héritée du coffre peut révéler le
-/// compte — elle est alors migrée et le compte en attente revendiqué.
+/// Silent connection of ALL accounts in the registry. Empty registry
+/// (database migrated from Phase 2): the legacy vault entry can reveal
+/// the account — it is then migrated and the pending account claimed.
 ///
-/// **Chaque compte est isolé** : la configuration manquante ou le jeton
-/// périmé de l'un ne doit jamais empêcher les autres de revenir. Même
-/// principe que [`sync_inbox`].
+/// **Each account is isolated**: the missing configuration or expired
+/// token of one must never prevent the others from coming back. Same
+/// principle as [`sync_inbox`].
 #[tauri::command]
 pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, String> {
-    // Crochet E2E : comptes factices (emails séparés par des virgules),
-    // jetons invalides par construction — hors ligne garanti.
+    // E2E hook: fake accounts (emails separated by commas), tokens
+    // invalid by construction — offline guaranteed.
     if let Ok(list) = std::env::var("WIND_E2E_ACCOUNT") {
-        return hors_pompe(app, move |app| {
+        return off_pump(app, move |app| {
             let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
             let state = app.state::<AppState>();
             let mut infos = Vec::new();
@@ -178,7 +177,7 @@ pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, String> {
                     AccountSession::OAuth(Authenticated {
                         provider: &mail_auth::GOOGLE,
                         email: email.to_string(),
-                        access_token: "jeton-e2e-invalide".to_string(),
+                        access_token: "invalid-e2e-token".to_string(),
                     }),
                 );
                 infos.push(AccountInfo {
@@ -186,10 +185,10 @@ pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, String> {
                     email: email.to_string(),
                 });
             }
-            // E4 : les comptes du décor gagnent aussi leurs veilleurs — même
-            // chemin que le réel, leurs échecs de connexion sont bornés
-            // (timeouts P0) et espacés (délai doublé).
-            crate::veilleur::reconcilier(&app);
+            // E4: the fixture's accounts also get their watchers — same
+            // path as the real ones, their connection failures are
+            // bounded (P0 timeouts) and spaced out (doubling delay).
+            crate::watcher::reconcile(&app);
             Ok(ConnectReport {
                 accounts: infos,
                 problems: Vec::new(),
@@ -199,7 +198,7 @@ pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, String> {
     }
 
     let path = db_path(&app)?;
-    let accounts = hors_pompe(app.clone(), |app| {
+    let accounts = off_pump(app.clone(), |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store.accounts().map_err(|err| err.to_string())
     })
@@ -210,8 +209,9 @@ pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, String> {
         let mut list = Vec::new();
         let mut problems: Vec<String> = Vec::new();
         for account in accounts {
-            // La configuration OAuth manquante d'un fournisseur ne concerne
-            // QUE ses comptes : elle ne doit empêcher aucun autre de revenir.
+            // A provider's missing OAuth configuration concerns ONLY its
+            // accounts: it must never prevent any other one from coming
+            // back.
             let outcome = match account.provider.as_str() {
                 "imap" => connect_generic(&path_for_spawn, &account),
                 kind => match mail_auth::for_account_kind(kind) {
@@ -219,20 +219,20 @@ pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, String> {
                         .and_then(|auth| auth.authenticate_silent(&account.email))
                         .map(|session| Some(AccountSession::OAuth(session)))
                         .map_err(|err| err.to_string()),
-                    None => Err(format!("fournisseur inconnu : {kind}")),
+                    None => Err(format!("unknown provider: {kind}")),
                 },
             };
             match outcome {
                 Ok(Some(session)) => list.push(session),
                 Ok(None) => problems.push(format!(
-                    "{} : configuration serveur incomplète",
+                    "{}: incomplete server configuration",
                     account.email
                 )),
-                Err(reason) => problems.push(format!("{} : {reason}", account.email)),
+                Err(reason) => problems.push(format!("{}: {reason}", account.email)),
             }
         }
-        // Repli hérité Phase 2 : un compte Gmail sans provider explicite.
-        // Propre à Google — la Phase 2 ne connaissait que lui.
+        // Legacy Phase 2 fallback: a Gmail account without an explicit
+        // provider. Specific to Google — Phase 2 only knew that one.
         if list.is_empty()
             && let Ok(auth) = Authenticator::google_from_env()
             && let Ok(account) = auth.authenticate_silent_legacy()
@@ -244,9 +244,9 @@ pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, String> {
     .await
     .map_err(|err| err.to_string())?;
 
-    // E5 : l'écriture des comptes et la pose des sessions sous le verrou
-    // des commandes — plus jamais sur le worker async nu.
-    hors_pompe(app, move |app| {
+    // E5: writing the accounts and setting the sessions under the
+    // commands' lock — never again on the bare async worker.
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let state = app.state::<AppState>();
         let mut infos = Vec::new();
@@ -266,10 +266,10 @@ pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, String> {
             lock_accounts(&state)?.insert(email, session);
         }
         problems.sort();
-        // E4 : un veilleur IDLE par compte reconnecté (ADR 0018) — démarrés
-        // ICI, après que les sessions sont posées, jamais au boot (rien à
-        // veiller sans session).
-        crate::veilleur::reconcilier(&app);
+        // E4: one IDLE watcher per reconnected account (ADR 0018) —
+        // started HERE, after the sessions are set, never at boot
+        // (nothing to watch without a session).
+        crate::watcher::reconcile(&app);
         Ok(ConnectReport {
             accounts: infos,
             problems,
@@ -278,8 +278,8 @@ pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, String> {
     .await
 }
 
-/// Reconnecte un compte IMAP générique depuis le coffre et sa
-/// configuration. `Ok(None)` : la configuration serveur est incomplète.
+/// Reconnects a generic IMAP account from the vault and its
+/// configuration. `Ok(None)`: the server configuration is incomplete.
 fn connect_generic(
     db_path: &Path,
     account: &mail_core::Account,
@@ -293,8 +293,8 @@ fn connect_generic(
     Ok(build_generic_session(&account.email, &password, &config))
 }
 
-/// Ajoute un compte Gmail — parcours navigateur complet, répétable.
-/// Google livre l'identité du compte : rien à déclarer.
+/// Adds a Gmail account — full browser flow, repeatable. Google delivers
+/// the account's identity: nothing to declare.
 #[tauri::command]
 pub async fn add_account(
     app: AppHandle,
@@ -304,10 +304,11 @@ pub async fn add_account(
     add_oauth_account(app, state, &mail_auth::GOOGLE, None, horizon).await
 }
 
-/// Ajoute un compte Microsoft 365 / Outlook.com.
+/// Adds a Microsoft 365 / Outlook.com account.
 ///
-/// L'adresse est SAISIE : dans le périmètre de scopes mesuré par le spike,
-/// Microsoft ne livre pas l'identité du compte ([`mail_auth::Identity`]).
+/// The address is TYPED IN: within the scope of scopes measured by the
+/// spike, Microsoft doesn't deliver the account's identity
+/// ([`mail_auth::Identity`]).
 #[tauri::command]
 pub async fn add_microsoft_account(
     app: AppHandle,
@@ -316,17 +317,17 @@ pub async fn add_microsoft_account(
     horizon: Option<String>,
 ) -> Result<AccountInfo, String> {
     let email = email.trim().to_string();
-    // Validation à la frontière : l'adresse déclarée devient la clé du
-    // compte ET l'identifiant XOAUTH2. Une saisie vide produirait un
-    // compte fantôme que rien ne pourrait plus joindre.
+    // Validation at the boundary: the declared address becomes the
+    // account's key AND the XOAUTH2 identifier. An empty entry would
+    // produce a ghost account nothing could ever reach again.
     if !is_plausible_address(&email) {
-        return Err("adresse invalide : saisissez l'adresse complète du compte".to_string());
+        return Err("invalid address: enter the account's full address".to_string());
     }
     add_oauth_account(app, state, &mail_auth::MICROSOFT, Some(email), horizon).await
 }
 
-/// Le tronc commun des ajouts OAuth2 : consentement navigateur, puis
-/// enregistrement du compte sous la clé de SON fournisseur.
+/// The common trunk of OAuth2 additions: browser consent, then
+/// registering the account under the key of ITS provider.
 async fn add_oauth_account(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -334,10 +335,10 @@ async fn add_oauth_account(
     declared_email: Option<String>,
     horizon: Option<String>,
 ) -> Result<AccountInfo, String> {
-    // Validation à la frontière, AVANT le parcours navigateur : refuser
-    // un horizon illisible après le consentement laisserait un compte
-    // créé sous un geste qui a échoué.
-    valider_horizon(horizon.as_deref())?;
+    // Validation at the boundary, BEFORE the browser flow: refusing an
+    // unreadable horizon after consent would leave an account created
+    // under a gesture that failed.
+    validate_horizon(horizon.as_deref())?;
     let account = tauri::async_runtime::spawn_blocking(move || {
         Authenticator::from_env(provider)
             .map_err(|err| err.to_string())?
@@ -351,7 +352,7 @@ async fn add_oauth_account(
     let id = store
         .adopt_or_create_account(&account.email, account.provider.account_kind)
         .map_err(|err| err.to_string())?;
-    ecrire_horizon_premier_ajout(&store, id, horizon.as_deref())?;
+    write_horizon_on_first_add(&store, id, horizon.as_deref())?;
     let info = AccountInfo {
         id,
         email: account.email.clone(),
@@ -360,39 +361,39 @@ async fn add_oauth_account(
     Ok(info)
 }
 
-/// Reconnecte un compte du registre dont le jeton est mort — constat
-/// terrain du 2026-08-20 : `invalid_grant` (jeton expiré ou révoqué)
-/// laissait l'utilisateur DÉMUNI, aucun geste ne relançait le
-/// consentement. Même parcours navigateur que l'ajout, sur la ligne
-/// EXISTANTE : rien n'est re-synchronisé, rien n'est perdu.
+/// Reconnects a registry account whose token is dead — field finding of
+/// 2026-08-20: `invalid_grant` (expired or revoked token) left the user
+/// STRANDED, no gesture relaunched the consent flow. Same browser flow
+/// as adding an account, on the EXISTING row: nothing is re-synchronized,
+/// nothing is lost.
 ///
-/// Garde d'identité : le consentement doit revenir avec l'adresse du
-/// compte visé. Google choisit l'identité au navigateur — un autre
-/// choix ne doit pas silencieusement connecter un AUTRE compte sous le
-/// geste « reconnecter X » ; Microsoft reçoit l'adresse déclarée, la
-/// garde y est structurelle. Un compte IMAP générique n'a pas de jeton :
-/// refus franc avec la marche à suivre.
+/// Identity guard: consent must come back with the address of the
+/// targeted account. Google picks the identity at the browser — a
+/// different choice must not silently connect ANOTHER account under the
+/// “reconnect X” gesture; Microsoft receives the declared address, the
+/// guard is structural there. A generic IMAP account has no token:
+/// a plain refusal with what to do instead.
 #[tauri::command]
 pub async fn reconnect_account(app: AppHandle, account_id: i64) -> Result<AccountInfo, String> {
-    let account = hors_pompe(app.clone(), move |app| {
+    let account = off_pump(app.clone(), move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
             .accounts()
             .map_err(|err| err.to_string())?
             .into_iter()
             .find(|account| account.id == account_id)
-            .ok_or_else(|| "compte inconnu".to_string())
+            .ok_or_else(|| "unknown account".to_string())
     })
     .await?;
     if account.provider == "imap" {
         return Err(
-            "compte IMAP générique : retirez puis rajoutez le compte pour ressaisir le mot de passe"
+            "generic IMAP account: remove then re-add the account to re-enter the password"
                 .to_string(),
         );
     }
     let provider = mail_auth::for_account_kind(&account.provider)
-        .ok_or_else(|| format!("fournisseur inconnu : {}", account.provider))?;
-    // Google livre l'identité ; Microsoft exige l'adresse déclarée.
+        .ok_or_else(|| format!("unknown provider: {}", account.provider))?;
+    // Google delivers the identity; Microsoft requires the declared address.
     let declared =
         (provider.account_kind != mail_auth::GOOGLE.account_kind).then(|| account.email.clone());
     let session = tauri::async_runtime::spawn_blocking(move || {
@@ -409,15 +410,15 @@ pub async fn reconnect_account(app: AppHandle, account_id: i64) -> Result<Accoun
         .eq_ignore_ascii_case(account.email.trim())
     {
         return Err(format!(
-            "le consentement a été donné pour {}, pas pour {} ; rejouez la reconnexion en choisissant le bon compte",
+            "consent was given for {}, not for {}; replay the reconnection and pick the right account",
             session.email, account.email
         ));
     }
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let state = app.state::<AppState>();
         lock_accounts(&state)?.insert(account.email.clone(), AccountSession::OAuth(session));
-        // Le compte retrouve son veilleur IDLE sans attendre un relancement.
-        crate::veilleur::reconcilier(&app);
+        // The account gets its IDLE watcher back without waiting for a restart.
+        crate::watcher::reconcile(&app);
         Ok(AccountInfo {
             id: account.id,
             email: account.email,
@@ -426,9 +427,9 @@ pub async fn reconnect_account(app: AppHandle, account_id: i64) -> Result<Accoun
     .await
 }
 
-/// Filtre minimal d'adresse : ce qui suit est vérifié par le fournisseur
-/// lui-même au consentement. On ne cherche pas à valider RFC 5322 ici,
-/// seulement à refuser ce qui ne peut manifestement pas être une adresse.
+/// Minimal address filter: what follows is checked by the provider
+/// itself at consent time. We aren't trying to validate RFC 5322 here,
+/// only to reject what manifestly cannot be an address.
 fn is_plausible_address(email: &str) -> bool {
     match email.split_once('@') {
         Some((local, domain)) => {
@@ -438,9 +439,9 @@ fn is_plausible_address(email: &str) -> bool {
     }
 }
 
-/// Les champs arrivent de l'UI en camelCase. Tauri ne convertit que les
-/// ARGUMENTS de commande, pas les champs d'une struct imbriquée : sans ce
-/// `rename_all`, `imapHost` ne trouverait pas `imap_host`.
+/// Fields arrive from the UI in camelCase. Tauri only converts command
+/// ARGUMENTS, not the fields of a nested struct: without this
+/// `rename_all`, `imapHost` wouldn't find `imap_host`.
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenericAccountInput {
@@ -453,33 +454,33 @@ pub struct GenericAccountInput {
     pub smtp_port: u16,
 }
 
-/// Le miroir côté commande de `Store::set_horizon_import` : refuser une
-/// valeur hors vocabulaire AVANT tout travail (connexion, consentement).
-fn valider_horizon(horizon: Option<&str>) -> Result<(), String> {
+/// The command-side mirror of `Store::set_horizon_import`: reject a
+/// value outside the vocabulary BEFORE any work (connection, consent).
+fn validate_horizon(horizon: Option<&str>) -> Result<(), String> {
     match horizon {
         Some(h) if !mail_core::HORIZONS_IMPORT.contains(&h) => {
-            Err(format!("horizon inconnu : {h:?}"))
+            Err(format!("unknown horizon: {h:?}"))
         }
         _ => Ok(()),
     }
 }
 
-/// L'horizon du guichet ne s'écrit qu'au PREMIER ajout (revue
-/// 2026-08-30) : re-jouer l'ajout d'un compte existant (le chemin
-/// d'adoption — un geste de réparation) ne doit pas écraser en silence
-/// un horizon déjà choisi (ou le « tout » réputé de D4) avec le défaut
-/// du sélecteur. Après coup, le réglage vit aux Réglages > Comptes (D3).
-fn ecrire_horizon_premier_ajout(
+/// The desk's horizon is only written on the FIRST add (2026-08-30
+/// review): replaying the addition of an existing account (the adoption
+/// path — a repair gesture) must not silently overwrite an already
+/// chosen horizon (or the D4 deemed “everything”) with the picker's
+/// default. Afterwards, the setting lives in Settings > Accounts (D3).
+fn write_horizon_on_first_add(
     store: &Store,
     account_id: i64,
     horizon: Option<&str>,
 ) -> Result<(), String> {
     let Some(h) = horizon else { return Ok(()) };
-    let deja = store
+    let already = store
         .text_pref(&format!("horizon_import.{account_id}"))
         .map_err(|err| err.to_string())?
         .is_some();
-    if !deja {
+    if !already {
         store
             .set_horizon_import(account_id, h)
             .map_err(|err| err.to_string())?;
@@ -487,15 +488,15 @@ fn ecrire_horizon_premier_ajout(
     Ok(())
 }
 
-/// Ajoute un compte IMAP/SMTP générique : teste la connexion, stocke le
-/// mot de passe dans le coffre, puis enregistre le compte en base.
+/// Adds a generic IMAP/SMTP account: tests the connection, stores the
+/// password in the vault, then registers the account in the database.
 #[tauri::command]
 pub async fn add_generic_account(
     app: AppHandle,
     input: GenericAccountInput,
     horizon: Option<String>,
 ) -> Result<AccountInfo, String> {
-    valider_horizon(horizon.as_deref())?;
+    validate_horizon(horizon.as_deref())?;
     let username = input.username.unwrap_or_else(|| input.email.clone());
     let email = input.email.clone();
     let imap_host = input.imap_host.clone();
@@ -504,8 +505,7 @@ pub async fn add_generic_account(
     let smtp_port = input.smtp_port;
     let password = input.password.clone();
 
-    // Test IMAP immédiat : on ne stocke rien tant que la connexion ne
-    // fonctionne pas.
+    // Immediate IMAP test: nothing is stored until the connection works.
     tauri::async_runtime::spawn_blocking({
         let email = email.clone();
         let username = username.clone();
@@ -515,7 +515,7 @@ pub async fn add_generic_account(
             let server = mail_imap::ImapServer::connect_password(
                 &imap_host, imap_port, &username, &password,
             )
-            .map_err(|err| format!("connexion IMAP impossible : {err}"))?;
+            .map_err(|err| format!("connexion IMAP impossible : {err}"))?; // lang:fr
             server.logout();
             mail_auth::store_generic_password(&email, &password).map_err(|err| err.to_string())
         }
@@ -523,14 +523,14 @@ pub async fn add_generic_account(
     .await
     .map_err(|err| err.to_string())??;
 
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let id = store
             .create_generic_account(
                 &email, &username, &imap_host, imap_port, &smtp_host, smtp_port,
             )
             .map_err(|err| err.to_string())?;
-        ecrire_horizon_premier_ajout(&store, id, horizon.as_deref())?;
+        write_horizon_on_first_add(&store, id, horizon.as_deref())?;
 
         let session = AccountSession::Generic(GenericCredentials {
             email: email.clone(),
@@ -543,36 +543,37 @@ pub async fn add_generic_account(
         });
         let state = app.state::<AppState>();
         lock_accounts(&state)?.insert(email.clone(), session);
-        // E4 : le compte neuf gagne son veilleur IDLE sans attendre.
-        crate::veilleur::reconcilier(&app);
+        // E4: the new account gets its IDLE watcher without delay.
+        crate::watcher::reconcile(&app);
         Ok(AccountInfo { id, email })
     })
     .await
 }
 
-/// Retire un compte : ses secrets quittent le coffre de l'OS, ses données
-/// locales la base, sa session la mémoire. Le serveur n'est JAMAIS
-/// touché — le courrier reste chez le fournisseur.
+/// Removes an account: its secrets leave the OS vault, its local data
+/// the database, its session the memory. The server is NEVER touched —
+/// the mail stays with the provider.
 ///
-/// L'ordre est un choix : le coffre D'ABORD, la base ensuite. Si la base
-/// échouait après le coffre, le prochain lancement le DIT (« aucun jeton
-/// pour… ») et le retrait se rejoue ; l'inverse — un jeton orphelin qui
-/// survit au compte — resterait invisible pour toujours.
+/// The order is a choice: the vault FIRST, the database next. If the
+/// database failed after the vault, the next launch WOULD SAY SO
+/// (“no token for…”) and the removal would be replayed; the reverse —
+/// an orphaned token that survives the account — would stay invisible
+/// forever.
 #[tauri::command]
 pub async fn remove_account(app: AppHandle, account_id: i64) -> Result<(), String> {
-    let account = hors_pompe(app.clone(), move |app| {
+    let account = off_pump(app.clone(), move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
             .accounts()
             .map_err(|err| err.to_string())?
             .into_iter()
             .find(|account| account.id == account_id)
-            .ok_or_else(|| format!("compte inconnu : {account_id}"))
+            .ok_or_else(|| format!("unknown account: {account_id}"))
     })
     .await?;
 
-    // Le coffre est une API bloquante de l'OS : hors du fil de la fenêtre,
-    // comme tous ses autres accès.
+    // The vault is a blocking OS API: off the window's thread, like all
+    // its other accesses.
     {
         let email = account.email.clone();
         let provider = account.provider.clone();
@@ -583,22 +584,22 @@ pub async fn remove_account(app: AppHandle, account_id: i64) -> Result<(), Strin
         .map_err(|err| err.to_string())??;
     }
 
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
             .delete_account(account_id)
             .map_err(|err| err.to_string())?;
         let state = app.state::<AppState>();
         lock_accounts(&state)?.remove(&account.email);
-        // E4 : son veilleur IDLE s'éteint au prochain tour.
-        crate::veilleur::reconcilier(&app);
+        // E4: its IDLE watcher shuts down at the next round.
+        crate::watcher::reconcile(&app);
         Ok(())
     })
     .await
 }
 
-/// Construit une session générique à partir du mot de passe et de la
-/// configuration stockée. Retourne `None` si la configuration est incomplète.
+/// Builds a generic session from the password and the stored
+/// configuration. Returns `None` if the configuration is incomplete.
 fn build_generic_session(
     email: &str,
     password: &str,
@@ -615,47 +616,47 @@ fn build_generic_session(
     }))
 }
 
-/// Nomme la boîte en cours de relève dans l'activité partagée — le
-/// mouvement que le terrain a réclamé (« 2/2 figé 7 minutes »). Chaîne
-/// vide entre deux boîtes.
-fn poser_boite(cycle: &crate::SyncShared, nom: &str) {
-    if let Ok(mut boite) = cycle.boite.lock() {
-        boite.clear();
-        boite.push_str(nom);
+/// Names the mailbox currently being polled in the shared activity — the
+/// movement the field called for (“2/2 frozen for 7 minutes”). Empty
+/// string between two mailboxes.
+fn set_mailbox(cycle: &crate::SyncShared, name: &str) {
+    if let Ok(mut mailbox) = cycle.boite.lock() {
+        mailbox.clear();
+        mailbox.push_str(name);
     }
     if let Ok(mut phase) = cycle.phase.lock() {
         phase.clear();
     }
 }
 
-/// Nomme l'étape SANS boîte (inventaire des dossiers, fils, brouillons) :
-/// `nom` est une clé, l'UI la traduit — le shell ne compose pas de texte
-/// d'interface (A15). Exclusif avec la boîte.
-fn poser_phase(cycle: &crate::SyncShared, nom: &str) {
+/// Names the step WITHOUT a mailbox (folder inventory, threads, drafts):
+/// `name` is a key, the UI translates it — the shell doesn't compose UI
+/// text (A15). Exclusive with the mailbox.
+fn set_phase(cycle: &crate::SyncShared, name: &str) {
     if let Ok(mut phase) = cycle.phase.lock() {
         phase.clear();
-        phase.push_str(nom);
+        phase.push_str(name);
     }
-    if let Ok(mut boite) = cycle.boite.lock() {
-        boite.clear();
+    if let Ok(mut mailbox) = cycle.boite.lock() {
+        mailbox.clear();
     }
 }
 
-/// La relève gardée (ADR 0017) : faut-il relever ce dossier ? Toute
-/// incertitude — relevé refusé par le serveur, repère illisible —
-/// relève : la sobriété n'a pas le droit de coûter un message.
-fn doit_relever(
+/// The guarded poll (ADR 0017): should this folder be polled? Any
+/// uncertainty — poll refused by the server, unreadable marker — polls:
+/// sobriety doesn't have the right to cost a message.
+fn must_poll(
     store: &Store,
     account_id: i64,
-    boite: &str,
-    statut: Option<&mail_core::FolderStatus>,
+    mailbox: &str,
+    status: Option<&mail_core::FolderStatus>,
     problems: &mut Vec<String>,
 ) -> bool {
-    let Some(statut) = statut else {
+    let Some(status) = status else {
         return true;
     };
-    let repere = (|| -> Result<Option<mail_core::LocalMarker>, mail_core::Error> {
-        let Some(state) = store.sync_state(account_id, boite)? else {
+    let marker = (|| -> Result<Option<mail_core::LocalMarker>, mail_core::Error> {
+        let Some(state) = store.sync_state(account_id, mailbox)? else {
             return Ok(None);
         };
         Ok(Some(mail_core::LocalMarker {
@@ -663,50 +664,50 @@ fn doit_relever(
             uidnext_seen: store.remote_uidnext(state.mailbox_id)?,
             local_messages: store.envelope_count(state.mailbox_id)?,
             pending_actions: store.has_pending_actions(state.mailbox_id)?,
-            // E2b : le modseq du dernier SELECT soldé — c'est lui qui
-            // réveille un dossier dont seuls les drapeaux ont glissé.
+            // E2b: the modseq of the last settled SELECT — it's what
+            // wakes up a folder where only the flags have shifted.
             modseq_seen: state.highest_modseq,
         }))
     })();
-    match repere {
-        Ok(repere) => mail_core::must_poll(statut, repere.as_ref()),
+    match marker {
+        Ok(marker) => mail_core::must_poll(status, marker.as_ref()),
         Err(err) => {
-            problems.push(format!("repère de « {boite} » : {err}"));
+            problems.push(format!("marker of \"{mailbox}\": {err}"));
             true
         }
     }
 }
 
-/// Solde le repère d'une relève ABOUTIE : le UIDNEXT du relevé qui l'a
-/// précédée. Jamais sur une relève échouée — un repère posé sur un
-/// dossier pas rattrapé le ferait sauter à tort au cycle suivant.
-fn solder_repere(
+/// Settles the marker of a SUCCESSFUL poll: the UIDNEXT of the status
+/// that preceded it. Never on a failed poll — a marker set on a folder
+/// that wasn't caught up would wrongly make it skip at the next cycle.
+fn settle_marker(
     store: &Store,
     account_id: i64,
-    boite: &str,
-    statut: Option<&mail_core::FolderStatus>,
+    mailbox: &str,
+    status: Option<&mail_core::FolderStatus>,
     problems: &mut Vec<String>,
 ) {
-    let Some(uidnext) = statut.and_then(|statut| statut.uid_next) else {
+    let Some(uidnext) = status.and_then(|status| status.uid_next) else {
         return;
     };
-    let pose = store.sync_state(account_id, boite).and_then(|state| {
+    let outcome = store.sync_state(account_id, mailbox).and_then(|state| {
         if let Some(state) = state {
             store.set_remote_uidnext(state.mailbox_id, uidnext)?;
         }
         Ok(())
     });
-    if let Err(err) = pose {
-        problems.push(format!("repère de « {boite} » : {err}"));
+    if let Err(err) = outcome {
+        problems.push(format!("marker of \"{mailbox}\": {err}"));
     }
 }
 
-/// La relève INBOX d'un compte — le cœur partagé du cycle complet et de
-/// la passe légère (E3) : relevé STATUS, relève gardée (E2a), repère
-/// soldé, courrier compté et bulles du compte (P1). Rend le rapport ET
-/// le relevé payé — le cycle complet le réutilise pour la garde
-/// d'espace, il n'est jamais payé deux fois.
-fn relever_inbox(
+/// The INBOX poll of an account — the shared core of the full cycle and
+/// the light pass (E3): STATUS status, guarded poll (E2a), marker
+/// settled, mail counted and account bubbles (P1). Returns the report
+/// AND the status paid for — the full cycle reuses it for the space
+/// guard, it's never paid for twice.
+fn poll_inbox(
     server: &mut ImapServer,
     store: &mut Store,
     account_id: i64,
@@ -714,27 +715,27 @@ fn relever_inbox(
     app: &AppHandle,
     problems: &mut Vec<String>,
 ) -> Result<(mail_core::SyncReport, Option<mail_core::FolderStatus>), String> {
-    poser_boite(cycle, MAILBOX);
-    // L'UID le plus haut AVANT la synchro : c'est lui qui separe
-    // « nouveau » de « deja connu ». Releve avant, sinon la synchro
-    // l'aurait deja deplace.
+    set_mailbox(cycle, MAILBOX);
+    // The highest UID BEFORE the sync: it's what separates “new” from
+    // “already known”. Fetched before, otherwise the sync would already
+    // have moved it.
     let last_uid_before = store
         .sync_state(account_id, MAILBOX)
         .map_err(|err| err.to_string())?
         .map(|state| state.last_uid)
         .unwrap_or(0);
-    // INBOX est gardée comme les autres (ADR 0017) : un relevé STATUS,
-    // la relève seulement si quelque chose a bougé.
-    let statut_inbox = server.folder_status(MAILBOX).ok();
-    let report = if doit_relever(store, account_id, MAILBOX, statut_inbox.as_ref(), problems) {
+    // INBOX is guarded like the others (ADR 0017): a STATUS status, the
+    // poll only if something has moved.
+    let inbox_status = server.folder_status(MAILBOX).ok();
+    let report = if must_poll(store, account_id, MAILBOX, inbox_status.as_ref(), problems) {
         let report = SyncEngine::default()
             .sync(server, store, account_id, MAILBOX)
             .map_err(|err| err.to_string())?;
-        solder_repere(store, account_id, MAILBOX, statut_inbox.as_ref(), problems);
+        settle_marker(store, account_id, MAILBOX, inbox_status.as_ref(), problems);
         report
     } else {
-        // Rien n'a bougé : rapport incrémental vide — pas d'arrivées,
-        // pas de bulles, pas de mensonge.
+        // Nothing moved: empty incremental report — no arrivals, no
+        // bubbles, no lie.
         mail_core::SyncReport {
             mode: mail_core::SyncMode::Incremental,
             fetched: 0,
@@ -745,59 +746,59 @@ fn relever_inbox(
         }
     };
 
-    // E4 (PLAN-REACTIVITE, R-D2) : les corps des ARRIVÉES se rapatrient
-    // sur la connexion déjà ouverte, AVANT le bump de génération — la
-    // ligne naît AVEC son aperçu, au cycle comme à la passe légère comme
-    // au veilleur (un seul affichage, jamais une ligne muette qui se
-    // remplit plus tard). Borné : un lot qui déborde (rattrapage après
-    // coupure) bumpe d'abord — les lignes vite — et les corps échoient à
-    // la pompe, que l'UI amorce à la génération. `bodies_to_backfill`
-    // sert du plus récent au plus ancien : le budget « nombre
-    // d'arrivées » couvre exactement le lot qui vient d'entrer.
+    // E4 (PLAN-REACTIVITE, R-D2): the bodies of ARRIVALS are backfilled
+    // on the connection already open, BEFORE the generation bump — the
+    // row is born WITH its preview, in the cycle as in the light pass as
+    // in the watcher (a single display, never a mute row that fills in
+    // later). Bounded: a batch that overflows (catch-up after an
+    // outage) bumps first — the rows show fast — and the bodies fall to
+    // the pump, which the UI primes on the generation. `bodies_to_backfill`
+    // serves from the most recent to the oldest: the “number of
+    // arrivals” budget covers exactly the batch that just came in.
     //
-    // La borne se mesure sur les ARRIVÉES (UID au-dessus du repère
-    // d'avant-relève), JAMAIS sur `report.fetched` — premier terrain E4
-    // (2026-08-14) : sur Gmail, chaque arrivée fait glisser HIGHESTMODSEQ
-    // et le delta CONDSTORE rend des dizaines d'enveloppes retouchées
-    // (l'observation consignée de PLAN-SYNCHRO) ; mesuré sur `fetched`,
-    // le lot « débordait » à CHAQUE arrivée et la ligne naissait muette,
-    // remplie 3-4 s plus tard par la pompe.
-    let arrivees = match store.arrivals_since(account_id, MAILBOX, last_uid_before) {
+    // The bound is measured on ARRIVALS (UID above the pre-poll marker),
+    // NEVER on `report.fetched` — first E4 field finding (2026-08-14): on
+    // Gmail, every arrival shifts HIGHESTMODSEQ and the CONDSTORE delta
+    // returns dozens of retouched envelopes (the recorded observation of
+    // PLAN-SYNCHRO); measured on `fetched`, the batch “overflowed” on
+    // EVERY arrival and the row was born mute, filled in 3-4s later by
+    // the pump.
+    let arrivals = match store.arrivals_since(account_id, MAILBOX, last_uid_before) {
         Ok(n) => n as usize,
         Err(err) => {
-            problems.push(format!("compte des arrivées : {err}"));
+            problems.push(format!("count of arrivals: {err}"));
             0
         }
     };
-    let corps = corps_a_l_arrivee(arrivees);
-    // L'horizon d'import s'applique ici aussi (uniforme avec la pompe).
-    // La borne compare la DATE du message, pas son arrivée : une
-    // arrivée à l'en-tête Date ancien (renvoi différé, message déplacé
-    // vers INBOX par un autre client) reste hors portée — voulu, c'est
-    // la sémantique D1 : son corps se charge au clic.
-    let horizon = horizon_corps(store, account_id);
-    if corps > 0
+    let body_count = body_on_arrival(arrivals);
+    // The import horizon applies here too (uniform with the pump). The
+    // bound compares the message's DATE, not its arrival: an arrival
+    // with an old Date header (delayed resend, message moved into
+    // INBOX by another client) stays out of scope — intended, that's
+    // the D1 semantics: its body loads on click.
+    let horizon = body_horizon(store, account_id);
+    if body_count > 0
         && let Err(err) =
-            mail_core::backfill_bodies(server, store, account_id, MAILBOX, horizon, corps)
+            mail_core::backfill_bodies(server, store, account_id, MAILBOX, horizon, body_count)
     {
-        problems.push(format!("corps des arrivées : {err}"));
+        problems.push(format!("bodies of arrivals: {err}"));
     }
 
-    // P1 (PLAN-SYNCHRO) : le courrier d'INBOX se voit TOUT DE SUITE —
-    // le compteur sondé recharge la liste côté UI, et les bulles du
-    // compte partent ICI, sans attendre l'inventaire, les dossiers ni
-    // les AUTRES comptes (l'agrégat de fin de cycle perdait toujours la
-    // course contre le téléphone). Les arrivées ne viennent que d'INBOX :
-    // rien n'est annoncé en retard. Best effort, comme les passes
-    // voisines : le courrier est là, une annonce qui échoue se consigne.
+    // P1 (PLAN-SYNCHRO): INBOX's mail is seen RIGHT AWAY — the polled
+    // counter reloads the list on the UI side, and the account's
+    // bubbles go out HERE, without waiting for the inventory, the
+    // folders, or the OTHER accounts (the end-of-cycle aggregate always
+    // lost the race against the phone). Arrivals only come from INBOX:
+    // nothing is announced late. Best effort, like the neighboring
+    // passes: the mail is there, an announcement that fails is logged.
     if report.fetched > 0 || report.deleted > 0 {
         cycle
             .courrier
             .fetch_add((report.fetched + report.deleted) as u64, Ordering::Relaxed);
-        // E4 : la génération MONOTONE — l'UI la sonde via `sync_progress`
-        // et recharge la liste quand elle bouge. C'est le chemin par
-        // lequel le courrier signalé par un veilleur IDLE se montre au
-        // repos, sans canal neuf (R0-S5).
+        // E4: the MONOTONIC generation — the UI polls it via
+        // `sync_progress` and reloads the list when it moves. It's the
+        // path through which mail signaled by an IDLE watcher shows up
+        // at rest, with no new channel (R0-S5).
         cycle.generation.fetch_add(1, Ordering::Relaxed);
     }
     match store.new_unread_after(account_id, MAILBOX, last_uid_before, NOTIFY_MAX_ARRIVALS) {
@@ -807,112 +808,112 @@ fn relever_inbox(
                 problems.push(problem);
             }
         }
-        Err(err) => problems.push(format!("arrivées à annoncer : {err}")),
+        Err(err) => problems.push(format!("arrivals to announce: {err}")),
     }
-    // Revue PLAN-AUDIT-V1 : le cycle qui met une action en quarantaine le
-    // DIT — sinon seul le compteur global de la fente le révèle, sans
-    // lien avec le cycle fautif. Point de sortie unique des quatre chemins.
-    // D-51 (décision CE D3, PLAN-AUDIT-V2) : un serveur sans CONDSTORE ne
-    // resynchronise jamais ses drapeaux — dette dite, nommée UNE fois par
-    // compte et par session dans `wind.log`, pour savoir si le cas existe.
-    if report.without_condstore && sans_condstore_premiere_fois(account_id) {
+    // PLAN-AUDIT-V1 review: the cycle that quarantines an action SAYS
+    // SO — otherwise only the slot's global counter reveals it, with no
+    // link to the faulty cycle. Single exit point for the four paths.
+    // D-51 (CE decision D3, PLAN-AUDIT-V2): a server without CONDSTORE
+    // never resynchronizes its flags — debt stated, named ONCE per
+    // account and per session in `wind.log`, to know whether the case
+    // exists.
+    if report.without_condstore && without_condstore_first_time(account_id) {
         crate::trace::trace(&format!(
-            "compte {account_id} : sans CONDSTORE, drapeaux non resynchronisés (D-51)"
+            "account {account_id}: without CONDSTORE, flags not resynchronized (D-51)"
         ));
     }
     if report.refused > 0 {
         crate::trace::trace(&format!(
-            "relève compte {account_id} : {} action(s) mise(s) en quarantaine",
+            "poll account {account_id}: {} action(s) quarantined",
             report.refused
         ));
     }
-    Ok((report, statut_inbox))
+    Ok((report, inbox_status))
 }
 
-/// Combien attendre après `echecs` échecs CONSÉCUTIFS d'un compte —
-/// décision pure (complément P0, anti-martèlement). 0 ou 1 échec :
-/// rien, la cadence de 5 min est déjà une politesse ; ensuite le délai
-/// DOUBLE (10, 20, 40 min), plafonné à 60 — un serveur qui bride a
-/// besoin d'air, pas d'un client qui insiste.
-fn attente_apres_echecs(echecs: u32) -> Duration {
-    if echecs <= 1 {
+/// How long to wait after `failures` CONSECUTIVE failures of an account —
+/// pure decision (P0 complement, anti-hammering). 0 or 1 failure:
+/// nothing, the 5-min cadence is already a courtesy; after that the
+/// delay DOUBLES (10, 20, 40 min), capped at 60 — a server that throttles
+/// needs air, not a client that insists.
+fn wait_after_failures(failures: u32) -> Duration {
+    if failures <= 1 {
         return Duration::ZERO;
     }
-    let facteur = 1u64 << (echecs - 1).min(4);
-    Duration::from_secs((300 * facteur).min(3600))
+    let factor = 1u64 << (failures - 1).min(4);
+    Duration::from_secs((300 * factor).min(3600))
 }
 
-/// Le temps restant du recul de ce compte, s'il court encore. Un
-/// verrou illisible vaut « pas de recul » : la protection cède le pas
-/// à la relève, jamais l'inverse.
-pub(crate) fn recul_en_cours(
-    reculs: &Mutex<HashMap<String, crate::Recul>>,
+/// The time remaining on this account's backoff, if it's still running.
+/// An unreadable lock counts as “no backoff”: the protection yields to
+/// the poll, never the reverse.
+pub(crate) fn current_backoff(
+    backoffs: &Mutex<HashMap<String, crate::Backoff>>,
     email: &str,
 ) -> Option<Duration> {
-    let reculs = reculs.lock().ok()?;
-    let recul = reculs.get(email)?;
-    attente_apres_echecs(recul.echecs)
-        .checked_sub(recul.depuis.elapsed())
-        .filter(|reste| !reste.is_zero())
+    let backoffs = backoffs.lock().ok()?;
+    let backoff = backoffs.get(email)?;
+    wait_after_failures(backoff.failures)
+        .checked_sub(backoff.since.elapsed())
+        .filter(|remaining| !remaining.is_zero())
 }
 
-/// Le verrou de relève de CE compte (E4) : cycle, bouton et veilleur
-/// IDLE peuvent vouloir relever le même INBOX au même moment — un
-/// compte à la fois. Un verrou de MAP empoisonné se répare en le
-/// reprenant : perdre la sérialisation vaut mieux que perdre la relève.
-pub(crate) fn verrou_compte(
-    verrous: &Mutex<HashMap<String, Arc<Mutex<()>>>>,
+/// This account's poll lock (E4): the cycle, the button, and the IDLE
+/// watcher may all want to poll the same INBOX at the same moment — one
+/// account at a time. A poisoned MAP lock is repaired by taking it back:
+/// losing the serialization is better than losing the poll.
+pub(crate) fn account_lock(
+    locks: &Mutex<HashMap<String, Arc<Mutex<()>>>>,
     email: &str,
 ) -> Arc<Mutex<()>> {
-    let mut verrous = match verrous.lock() {
-        Ok(verrous) => verrous,
-        Err(empoisonne) => empoisonne.into_inner(),
+    let mut locks = match locks.lock() {
+        Ok(locks) => locks,
+        Err(poisoned) => poisoned.into_inner(),
     };
-    verrous.entry(email.to_string()).or_default().clone()
+    locks.entry(email.to_string()).or_default().clone()
 }
 
-/// La passe légère d'UN compte (ADR 0018) : celle que le veilleur IDLE
-/// déclenche — sur `EXISTS`, et à chaque (re)connexion (un mail arrivé
-/// pendant une coupure n'émet jamais d'EXISTS, 2ᵉ terrain). Même
-/// travail que `sync_inbox_light` pour ce compte : relève gardée (E2a),
-/// courrier compté et génération bumpée (l'UI recharge à la sonde),
-/// bulles (P1). Best effort : les incidents partent en console —
-/// identifiant de compte et décomptes seuls (§6.8).
-pub(crate) fn passe_legere_compte(app: &AppHandle, email: &str) -> Result<(), String> {
+/// The light pass of ONE account (ADR 0018): the one the IDLE watcher
+/// triggers — on `EXISTS`, and on every (re)connection (a mail that
+/// arrived during an outage never emits EXISTS, 2nd field finding). Same
+/// work as `sync_inbox_light` for this account: guarded poll (E2a), mail
+/// counted and generation bumped (the UI reloads on the poll), bubbles
+/// (P1). Best effort: incidents go to the console — account id and
+/// counts only (§6.8).
+pub(crate) fn light_pass_account(app: &AppHandle, email: &str) -> Result<(), String> {
     let state = app.state::<AppState>();
     let path = db_path(app)?;
     let session = lock_accounts(&state)?
         .get(email)
         .cloned()
-        .ok_or_else(|| "compte non connecté".to_string())?;
-    // Un compte à la fois : la relève du cycle ou du bouton peut être
-    // en cours sur CE compte — on attend notre tour.
-    let verrou = verrou_compte(&state.verrous_releve, email);
-    let _releve = verrou
-        .lock()
-        .map_err(|_| "verrou de relève empoisonné".to_string())?;
-    // Le recul se respecte (lecture seule) : si le compte est en échec
-    // répété, le cycle reprendra — le veilleur n'insiste pas.
-    if recul_en_cours(&state.sync_reculs, email).is_some() {
+        .ok_or_else(|| "account not connected".to_string())?;
+    // One account at a time: the cycle's or the button's poll may be in
+    // progress on THIS account — we wait our turn.
+    let lock = account_lock(&state.poll_locks, email);
+    let _poll = lock.lock().map_err(|_| "poisoned poll lock".to_string())?;
+    // The backoff is respected (read-only): if the account is in
+    // repeated failure, the cycle will pick it up — the watcher doesn't
+    // insist.
+    if current_backoff(&state.sync_backoffs, email).is_some() {
         return Ok(());
     }
-    // UNE connexion pour la passe (PLAN-AUDIT-V2 E1) : elle traverse la
-    // connexion IMAP sans rien tenir — en WAL, une connexion ouverte hors
-    // transaction ne verrouille personne ; l'identifiant lu avant le
-    // réseau est stable, ce n'est pas un état qu'on rejouerait après.
+    // ONE connection for the pass (PLAN-AUDIT-V2 E1): it crosses the
+    // IMAP connection without holding anything — in WAL, a connection
+    // open outside a transaction locks no one; the id read before the
+    // network is stable, it isn't a state we'd replay afterwards.
     let mut store = Store::open(&path).map_err(|err| err.to_string())?;
     let account_id = store
         .accounts()
         .map_err(|err| err.to_string())?
         .into_iter()
-        .find(|compte| compte.email == email)
-        .map(|compte| compte.id)
-        .ok_or_else(|| "compte inconnu en base".to_string())?;
+        .find(|account| account.email == email)
+        .map(|account| account.id)
+        .ok_or_else(|| "unknown account in database".to_string())?;
 
     let (mut server, refreshed) = connect_imap(&session)?;
     let mut problems = Vec::new();
     let cycle = state.sync_cycle.clone();
-    let resultat = relever_inbox(
+    let outcome = poll_inbox(
         &mut server,
         &mut store,
         account_id,
@@ -921,84 +922,84 @@ pub(crate) fn passe_legere_compte(app: &AppHandle, email: &str) -> Result<(), St
         &mut problems,
     );
     server.logout();
-    match resultat {
+    match outcome {
         Ok(_) => {
-            noter_issue(&state.sync_reculs, email, true);
+            note_outcome(&state.sync_backoffs, email, true);
             if let Some(fresh) = refreshed {
                 lock_accounts(&state)?.insert(fresh.email().to_string(), fresh);
             }
-            // L'horodatage vaut pour cette relève comme pour les autres :
-            // l'INBOX vient d'être vérifiée.
+            // The timestamp counts for this poll as for the others:
+            // INBOX has just been checked.
             if let Ok(epoch) = SystemTime::now().duration_since(UNIX_EPOCH) {
-                let _ = store.set_text_pref(PREF_DERNIERE_SYNCHRO, &epoch.as_secs().to_string());
+                let _ = store.set_text_pref(PREF_LAST_SYNC, &epoch.as_secs().to_string());
             }
             for problem in problems {
-                crate::trace::trace(&format!("veilleur compte {account_id} : {problem}"));
+                crate::trace::trace(&format!("watcher account {account_id}: {problem}"));
             }
             Ok(())
         }
         Err(err) => {
-            noter_issue(&state.sync_reculs, email, false);
+            note_outcome(&state.sync_backoffs, email, false);
             Err(err)
         }
     }
 }
 
-/// Solde l'issue d'une tentative : le succès efface le recul, l'échec
-/// l'aggrave et repart de maintenant.
-fn noter_issue(reculs: &Mutex<HashMap<String, crate::Recul>>, email: &str, succes: bool) {
-    let Ok(mut reculs) = reculs.lock() else {
+/// Settles the outcome of an attempt: success clears the backoff,
+/// failure worsens it and restarts from now.
+fn note_outcome(backoffs: &Mutex<HashMap<String, crate::Backoff>>, email: &str, success: bool) {
+    let Ok(mut backoffs) = backoffs.lock() else {
         return;
     };
-    if succes {
-        reculs.remove(email);
+    if success {
+        backoffs.remove(email);
         return;
     }
-    let recul = reculs.entry(email.to_string()).or_insert(crate::Recul {
-        echecs: 0,
-        depuis: Instant::now(),
+    let backoff = backoffs.entry(email.to_string()).or_insert(crate::Backoff {
+        failures: 0,
+        since: Instant::now(),
     });
-    recul.echecs = recul.echecs.saturating_add(1);
-    recul.depuis = Instant::now();
+    backoff.failures = backoff.failures.saturating_add(1);
+    backoff.since = Instant::now();
 }
 
-/// À la sortie du cycle — normale ou par panique — l'activité s'éteint :
-/// une barre d'état qui annoncerait un cycle fantôme serait le mensonge
-/// exact que E1 corrige.
-struct FinDeCycle(Arc<crate::SyncShared>);
+/// On leaving the cycle — normally or via panic — the activity turns
+/// off: a status bar that would announce a phantom cycle would be the
+/// exact lie E1 corrects.
+struct CycleEnd(Arc<crate::SyncShared>);
 
-impl Drop for FinDeCycle {
+impl Drop for CycleEnd {
     fn drop(&mut self) {
-        self.0.en_cours.store(false, Ordering::Relaxed);
+        self.0.in_progress.store(false, Ordering::Relaxed);
     }
 }
 
-/// Synchronise TOUS les comptes connectés — l'échec d'un compte ne
-/// bloque pas les autres (il est consigné dans le bilan).
+/// Synchronizes ALL connected accounts — one account's failure doesn't
+/// block the others (it's logged in the report).
 #[tauri::command]
 pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<SyncSummary, String> {
     let path = db_path(&app)?;
-    let jobs = hors_pompe(app.clone(), |app| connected_jobs(&app)).await?;
+    let jobs = off_pump(app.clone(), |app| connected_jobs(&app)).await?;
     let timer = Instant::now();
     let cycle = state.sync_cycle.clone();
-    // Le manche traverse la boucle : les bulles partent PAR COMPTE, dès
-    // la relève INBOX soldée (P1) — plus d'agrégat de fin de cycle, qui
-    // faisait toujours perdre la course contre le téléphone.
-    let app_bulles = app.clone();
-    let reculs = state.sync_reculs.clone();
-    let verrous = state.verrous_releve.clone();
+    // The relay carries through the loop: bubbles go out PER ACCOUNT, as
+    // soon as the INBOX poll is settled (P1) — no more end-of-cycle
+    // aggregate, which always lost the race against the phone.
+    let app_bubbles = app.clone();
+    let backoffs = state.sync_backoffs.clone();
+    let locks = state.poll_locks.clone();
 
     let (accounts, accounts_failed, fetched, deleted, replayed, mut errors, refreshed) =
         tauri::async_runtime::spawn_blocking(move || {
-            // L'activité pour la barre d'état (PLAN-SYNCHRO E1) : posée
-            // AVANT le premier compte, éteinte par le garde quoi qu'il
-            // arrive. Un cycle à vide (aucun compte connecté) n'annonce
-            // rien.
-            let _fin = FinDeCycle(cycle.clone());
+            // The activity for the status bar (PLAN-SYNCHRO E1): set
+            // BEFORE the first account, turned off by the guard no
+            // matter what happens. An empty cycle (no account connected)
+            // announces nothing.
+            let _end = CycleEnd(cycle.clone());
             cycle.fait.store(0, Ordering::Relaxed);
             cycle.total.store(jobs.len() as u64, Ordering::Relaxed);
             cycle.courrier.store(0, Ordering::Relaxed);
-            cycle.en_cours.store(!jobs.is_empty(), Ordering::Relaxed);
+            cycle.in_progress.store(!jobs.is_empty(), Ordering::Relaxed);
             let mut accounts = 0;
             let mut accounts_failed = 0;
             let mut fetched = 0;
@@ -1008,31 +1009,32 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
             let mut refreshed = Vec::new();
             for (account_id, session) in jobs {
                 let email = session.email().to_string();
-                // Le recul (complément P0) : un compte en échecs répétés
-                // est SAUTÉ tant que son délai court — aucune connexion,
-                // aucun refresh OAuth. Sans être TU : il reste compté
-                // injoignable, sinon l'alerte de la barre s'éteindrait
-                // sur un compte toujours mort.
-                if let Some(reste) = recul_en_cours(&reculs, &email) {
+                // The backoff (P0 complement): an account in repeated
+                // failures is SKIPPED while its delay runs — no
+                // connection, no OAuth refresh. Without being SILENCED:
+                // it stays counted as unreachable, otherwise the bar's
+                // alert would turn off on an account still dead.
+                if let Some(remaining) = current_backoff(&backoffs, &email) {
                     accounts_failed += 1;
                     errors.push(format!(
-                        "{email} : en recul après échecs répétés ; nouvelle tentative dans {} min",
-                        reste.as_secs().div_ceil(60).max(1)
+                        "{email}: backing off after repeated failures; retrying in {} min",
+                        remaining.as_secs().div_ceil(60).max(1)
                     ));
                     cycle.fait.fetch_add(1, Ordering::Relaxed);
                     continue;
                 }
-                // E4 : un compte à la fois — un veilleur IDLE peut être
-                // en pleine passe légère sur CE compte au même moment.
-                let verrou = verrou_compte(&verrous, &email);
-                let _releve = verrou.lock();
-                if let Ok(mut compte) = cycle.compte.lock() {
-                    compte.clone_from(&email);
+                // E4: one account at a time — an IDLE watcher may be in
+                // the middle of a light pass on THIS account at the same
+                // moment.
+                let lock = account_lock(&locks, &email);
+                let _poll = lock.lock();
+                if let Ok(mut account) = cycle.compte.lock() {
+                    account.clone_from(&email);
                 }
-                poser_boite(&cycle, "");
-                match run_sync(&session, account_id, &path, &cycle, &app_bulles) {
+                set_mailbox(&cycle, "");
+                match run_sync(&session, account_id, &path, &cycle, &app_bubbles) {
                     Ok(outcome) => {
-                        noter_issue(&reculs, &email, true);
+                        note_outcome(&backoffs, &email, true);
                         accounts += 1;
                         fetched += outcome.report.fetched;
                         deleted += outcome.report.deleted;
@@ -1041,13 +1043,13 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
                             refreshed.push(fresh);
                         }
                         for problem in outcome.problems {
-                            errors.push(format!("{email} : {problem}"));
+                            errors.push(format!("{email}: {problem}"));
                         }
                     }
                     Err(err) => {
-                        noter_issue(&reculs, &email, false);
+                        note_outcome(&backoffs, &email, false);
                         accounts_failed += 1;
-                        errors.push(format!("{email} : {err}"));
+                        errors.push(format!("{email}: {err}"));
                     }
                 }
                 cycle.fait.fetch_add(1, Ordering::Relaxed);
@@ -1065,8 +1067,8 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
         .await
         .map_err(|err| err.to_string())?;
 
-    reposer_sessions(&state, refreshed)?;
-    solder_releve(&app, accounts, &mut errors).await?;
+    reset_sessions(&state, refreshed)?;
+    settle_poll(&app, accounts, &mut errors).await?;
 
     Ok(SyncSummary {
         accounts,
@@ -1079,12 +1081,12 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
     })
 }
 
-/// La passe légère (PLAN-SYNCHRO E3, S-D2) : STATUS INBOX de chaque
-/// compte, relève seulement si ça a bougé (E2a), courrier visible et
-/// bulles par compte (P1) — ni inventaire, ni balayage des dossiers, ni
-/// fils : la réponse se compte en secondes, tenue par la gate d'E2a.
-/// C'est elle que le bouton déclenche, elle que le réveil de veille
-/// déclenche, elle que le veilleur IDLE (E4) réveillera.
+/// The light pass (PLAN-SYNCHRO E3, S-D2): INBOX STATUS of each
+/// account, polls only if something moved (E2a), mail visible and
+/// bubbles per account (P1) — no inventory, no folder sweep, no
+/// threads: the response is counted in seconds, held by E2a's gate.
+/// It's what the button triggers, what waking from sleep triggers, what
+/// the IDLE watcher (E4) will trigger.
 #[tauri::command]
 pub async fn sync_inbox_light(
     app: AppHandle,
@@ -1092,23 +1094,23 @@ pub async fn sync_inbox_light(
     force: bool,
 ) -> Result<SyncSummary, String> {
     let path = db_path(&app)?;
-    let jobs = hors_pompe(app.clone(), |app| connected_jobs(&app)).await?;
+    let jobs = off_pump(app.clone(), |app| connected_jobs(&app)).await?;
     let timer = Instant::now();
     let cycle = state.sync_cycle.clone();
-    let app_bulles = app.clone();
-    let reculs = state.sync_reculs.clone();
-    let verrous = state.verrous_releve.clone();
+    let app_bubbles = app.clone();
+    let backoffs = state.sync_backoffs.clone();
+    let locks = state.poll_locks.clone();
 
     let (accounts, accounts_failed, fetched, deleted, replayed, mut errors, refreshed) =
         tauri::async_runtime::spawn_blocking(move || {
-            // La même activité que le cycle complet : la barre d'état
-            // raconte la passe pendant qu'elle tourne, le bouton tourne
-            // avec elle (réentrance gardée côté UI).
-            let _fin = FinDeCycle(cycle.clone());
+            // The same activity as the full cycle: the status bar tells
+            // the pass's story while it runs, the button runs with it
+            // (reentrancy guarded on the UI side).
+            let _end = CycleEnd(cycle.clone());
             cycle.fait.store(0, Ordering::Relaxed);
             cycle.total.store(jobs.len() as u64, Ordering::Relaxed);
             cycle.courrier.store(0, Ordering::Relaxed);
-            cycle.en_cours.store(!jobs.is_empty(), Ordering::Relaxed);
+            cycle.in_progress.store(!jobs.is_empty(), Ordering::Relaxed);
             let mut accounts = 0;
             let mut accounts_failed = 0;
             let mut fetched = 0;
@@ -1118,44 +1120,45 @@ pub async fn sync_inbox_light(
             let mut refreshed = Vec::new();
             for (account_id, session) in jobs {
                 let email = session.email().to_string();
-                // Le recul vaut aussi pour la passe légère (réveil de
-                // veille, futur IDLE) — SAUF sur le geste manuel : le
-                // clic est un ordre, il force toujours une tentative.
-                if !force && let Some(reste) = recul_en_cours(&reculs, &email) {
+                // The backoff also applies to the light pass (wake from
+                // sleep, future IDLE) — EXCEPT on the manual gesture: the
+                // click is an order, it always forces an attempt.
+                if !force && let Some(remaining) = current_backoff(&backoffs, &email) {
                     accounts_failed += 1;
                     errors.push(format!(
-                        "{email} : en recul après échecs répétés ; nouvelle tentative dans {} min",
-                        reste.as_secs().div_ceil(60).max(1)
+                        "{email}: backing off after repeated failures; retrying in {} min",
+                        remaining.as_secs().div_ceil(60).max(1)
                     ));
                     cycle.fait.fetch_add(1, Ordering::Relaxed);
                     continue;
                 }
-                // E4 : un compte à la fois — un veilleur IDLE peut être
-                // en pleine passe légère sur CE compte au même moment.
-                let verrou = verrou_compte(&verrous, &email);
-                let _releve = verrou.lock();
-                if let Ok(mut compte) = cycle.compte.lock() {
-                    compte.clone_from(&email);
+                // E4: one account at a time — an IDLE watcher may be in
+                // the middle of a light pass on THIS account at the same
+                // moment.
+                let lock = account_lock(&locks, &email);
+                let _poll = lock.lock();
+                if let Ok(mut account) = cycle.compte.lock() {
+                    account.clone_from(&email);
                 }
-                poser_boite(&cycle, "");
-                let releve = (|| -> Result<(mail_core::SyncReport, Vec<String>, Option<AccountSession>), String> {
+                set_mailbox(&cycle, "");
+                let poll = (|| -> Result<(mail_core::SyncReport, Vec<String>, Option<AccountSession>), String> {
                     let (mut server, fresh) = connect_imap(&session)?;
                     let mut store = Store::open(&path).map_err(|err| err.to_string())?;
                     let mut problems = Vec::new();
-                    let (report, _) = relever_inbox(
+                    let (report, _) = poll_inbox(
                         &mut server,
                         &mut store,
                         account_id,
                         &cycle,
-                        &app_bulles,
+                        &app_bubbles,
                         &mut problems,
                     )?;
                     server.logout();
                     Ok((report, problems, fresh))
                 })();
-                match releve {
+                match poll {
                     Ok((report, problems, fresh)) => {
-                        noter_issue(&reculs, &email, true);
+                        note_outcome(&backoffs, &email, true);
                         accounts += 1;
                         fetched += report.fetched;
                         deleted += report.deleted;
@@ -1164,13 +1167,13 @@ pub async fn sync_inbox_light(
                             refreshed.push(fresh);
                         }
                         for problem in problems {
-                            errors.push(format!("{email} : {problem}"));
+                            errors.push(format!("{email}: {problem}"));
                         }
                     }
                     Err(err) => {
-                        noter_issue(&reculs, &email, false);
+                        note_outcome(&backoffs, &email, false);
                         accounts_failed += 1;
-                        errors.push(format!("{email} : {err}"));
+                        errors.push(format!("{email}: {err}"));
                     }
                 }
                 cycle.fait.fetch_add(1, Ordering::Relaxed);
@@ -1182,12 +1185,13 @@ pub async fn sync_inbox_light(
         .await
         .map_err(|err| err.to_string())?;
 
-    reposer_sessions(&state, refreshed)?;
-    // L'horodatage vaut aussi pour la passe légère : chaque INBOX vient
-    // d'être vérifiée — c'est la relève du courrier au sens du prototype,
-    // et un bouton qui laisserait « il y a 12 minutes » après un clic
-    // réussi aurait l'air cassé. Les dossiers, eux, gardent leur cadence.
-    solder_releve(&app, accounts, &mut errors).await?;
+    reset_sessions(&state, refreshed)?;
+    // The timestamp counts for the light pass too: every INBOX has just
+    // been checked — it's mail polling in the prototype's sense, and a
+    // button that would leave “12 minutes ago” after a successful click
+    // would look broken. The folders, for their part, keep their own
+    // cadence.
+    settle_poll(&app, accounts, &mut errors).await?;
 
     Ok(SyncSummary {
         accounts,
@@ -1200,28 +1204,28 @@ pub async fn sync_inbox_light(
     })
 }
 
-/// « 1,2 Go » ou « 850 Mo » — l'utilisateur doit savoir COMBIEN libérer,
-/// pas convertir des octets de tête. Préfixes décimaux (ceux de
-/// l'Explorateur serait Gio, mais Go est ce que le grand public lit sur
-/// une boîte de disque), virgule française.
+/// “1.2 GB” or “850 MB” — the user needs to know HOW MUCH to free up,
+/// not convert bytes in their head. Decimal prefixes (the Explorer's
+/// would be GiB, but GB is what the general public reads on a disk
+/// box).
 fn format_bytes(bytes: u64) -> String {
     if bytes >= 1_000_000_000 {
-        format!("{:.1} Go", bytes as f64 / 1e9).replace('.', ",")
+        format!("{:.1} GB", bytes as f64 / 1e9)
     } else {
-        // Arrondi au Mo SUPÉRIEUR : annoncer « 0 Mo » à libérer serait
-        // absurde, et sous-annoncer ferait échouer la re-tentative.
-        format!("{} Mo", bytes.div_ceil(1_000_000).max(1))
+        // Rounded UP to the MB: announcing “0 MB” to free up would be
+        // absurd, and under-announcing would make the retry fail.
+        format!("{} MB", bytes.div_ceil(1_000_000).max(1))
     }
 }
 
-/// Ce qu'une synchronisation de compte rapporte, au-delà des décomptes.
+/// What an account synchronization reports, beyond the counts.
 struct SyncOutcome {
     report: mail_core::SyncReport,
-    /// Session dont le jeton vient d'être renouvelé, à remettre en cache.
+    /// Session whose token has just been renewed, to put back in cache.
     refreshed: Option<AccountSession>,
-    /// Incidents non bloquants : la synchronisation a réussi, mais un
-    /// travail de fond qui l'accompagne a échoué. Rapportés, jamais
-    /// avalés — un symptôme sans trace est indiagnosticable.
+    /// Non-blocking incidents: the synchronization succeeded, but some
+    /// background work that goes with it failed. Reported, never
+    /// swallowed — a symptom without a trace is undiagnosable.
     problems: Vec<String>,
 }
 
@@ -1234,13 +1238,13 @@ fn run_sync(
 ) -> Result<SyncOutcome, String> {
     let (mut server, refreshed) = connect_imap(session)?;
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
-    // Chrono par phase (terrain 2026-08-13 : « INBOX » muet 2 min 15 —
-    // l'observation doit devenir une mesure). Durées et décomptes
-    // SEULS : ni adresse, ni nom de dossier (règle des diagnostics,
-    // PASSATION §6.8) — l'identifiant de compte est un entier interne.
-    let chrono = Instant::now();
+    // Stopwatch per phase (field finding 2026-08-13: “INBOX” mute for
+    // 2 min 15 — the observation must become a measurement). Durations
+    // and counts ONLY: no address, no folder name (diagnostics rule,
+    // HANDOVER §6.8) — the account id is an internal integer.
+    let stopwatch = Instant::now();
     let mut problems: Vec<String> = Vec::new();
-    let (report, statut_inbox) = relever_inbox(
+    let (report, inbox_status) = poll_inbox(
         &mut server,
         &mut store,
         account_id,
@@ -1248,208 +1252,211 @@ fn run_sync(
         app,
         &mut problems,
     )?;
-    let duree_inbox = chrono.elapsed();
+    let inbox_duration = stopwatch.elapsed();
 
-    // L'inventaire : dossier des envois, portée, liste des dossiers,
-    // garde d'espace (STATUS sur chaque dossier) — quatre travaux qui
-    // vivaient sous l'étiquette « INBOX », à tort.
-    poser_phase(cycle, "inventaire");
-    let chrono = Instant::now();
+    // The inventory: sent folder, scope, folder list, space guard
+    // (STATUS on each folder) — four tasks that used to live under the
+    // “INBOX” label, wrongly.
+    set_phase(cycle, "inventaire");
+    let stopwatch = Instant::now();
 
-    // « Envoyés » : sans lui, un fil ne porte que la moitié reçue de
-    // l'échange. Mesuré sur la boîte réelle — 15 conversations de plus
-    // d'un message avant, 234 après.
+    // “Sent”: without it, a thread only carries the received half of
+    // the exchange. Measured on the real mailbox — 15 conversations of
+    // more than one message before, 234 after.
     //
-    // Ne devient sûr que parce que l'identité d'un message porte
-    // désormais sa BOÎTE (ADR 0009, étape 4b) : sans cela, un UID de ce
-    // dossier serait lu dans INBOX, et les UID repartant de 1 dans chaque
-    // boîte, la collision serait la norme.
+    // Only becomes safe because a message's identity now carries its
+    // MAILBOX (ADR 0009, step 4b): without that, a UID from this folder
+    // would be read in INBOX, and since UIDs restart at 1 in each
+    // mailbox, collision would be the norm.
     //
-    // Best effort, comme les passes voisines : le courrier ENTRANT est le
-    // résultat qui compte, et un serveur sans dossier d'envois doit
-    // continuer à fonctionner. L'échec est rapporté, jamais avalé — une
-    // boîte qui refuserait de se regrouper serait sinon indiagnosticable.
+    // Best effort, like the neighboring passes: INCOMING mail is the
+    // result that counts, and a server without a sent folder must keep
+    // working. The failure is reported, never swallowed — otherwise a
+    // mailbox that refused to group would be undiagnosable.
     let sent = match server.sent_folder_name() {
         Ok(found) => found,
         Err(reason) => {
-            problems.push(format!("dossier envoyés : {reason}"));
+            problems.push(format!("sent folder: {reason}"));
             None
         }
     };
 
-    // La PORTÉE du regroupement, déclarée avant de verser quoi que ce soit
-    // d'autre dans le compte (ADR 0010 §3). Sans elle, les messages des
-    // dossiers qu'on s'apprête à synchroniser rejoindraient les fils tout
-    // seuls : un spam ferait remonter une conversation en tête de liste.
+    // The grouping SCOPE, declared before pouring anything else into
+    // the account (ADR 0010 §3). Without it, messages from the folders
+    // about to be synchronized would join threads on their own: a spam
+    // message would bump a conversation to the top of the list.
     //
-    // Re-déclarée à CHAQUE synchronisation, et pas seulement à la création
-    // du compte : un serveur peut renommer son dossier d'envois.
+    // Re-declared on EVERY synchronization, not only on account
+    // creation: a server can rename its sent folder.
     //
-    // AVANT la boucle, et c'est tout l'objet : le store en garde mémoire
-    // sur le compte, donc les boîtes que la boucle va CRÉER naissent déjà
-    // du bon côté de la portée. La déclarer après les ferait naître sans
-    // fil, et leurs messages attendraient le prochain démarrage.
+    // BEFORE the loop, and that's the whole point: the store keeps it in
+    // memory on the account, so the mailboxes the loop is about to
+    // CREATE are born already on the right side of the scope. Declaring
+    // it afterwards would make them born without a thread, and their
+    // messages would wait for the next startup.
     if let Err(reason) = store.set_thread_scope(account_id, sent.as_deref()) {
-        problems.push(format!("portée des conversations : {reason}"));
+        problems.push(format!("conversation scope: {reason}"));
     }
 
-    // TOUS les autres dossiers — archive, corbeille, spam, dossiers de
-    // l'utilisateur (ADR 0010 §1). INBOX vient d'être faite ; `sync_order`
-    // la remet en tête et l'évite en double.
+    // ALL the other folders — archive, trash, spam, user folders (ADR
+    // 0010 §1). INBOX has just been done; `sync_order` puts it back
+    // first and avoids it twice.
     //
-    // LIST-STATUS (RFC 5819) quand le serveur l'annonce : la liste ET le
-    // relevé de CHAQUE dossier en UN aller-retour — terrain du
-    // 2026-08-13, l'inventaire était le dernier goulot (66 s de ~51
-    // STATUS séquentiels sur le compte Gmail). `statuts` en ressort
-    // pré-rempli ; la garde d'espace plus bas n'a plus rien à demander.
-    // Repli (capacité absente OU échec LIST-STATUS) : un LIST simple,
-    // les STATUS partiront un par un — chemin d'avant, intact.
-    let mut statuts: HashMap<String, mail_core::FolderStatus> = HashMap::new();
-    let avec_statut = match server.folders_with_status() {
+    // LIST-STATUS (RFC 5819) when the server announces it: the list AND
+    // the status of EACH folder in ONE round trip — field finding of
+    // 2026-08-13, the inventory was the last bottleneck (66s of ~51
+    // sequential STATUS on the Gmail account). `statuses` comes out of
+    // it pre-filled; the space guard below has nothing left to ask.
+    // Fallback (capability absent OR LIST-STATUS failure): a plain
+    // LIST, the STATUS calls will go out one by one — the old path,
+    // intact.
+    let mut statuses: HashMap<String, mail_core::FolderStatus> = HashMap::new();
+    let with_status = match server.folders_with_status() {
         Ok(v) => v,
         Err(reason) => {
-            problems.push(format!("inventaire LIST-STATUS : {reason}"));
+            problems.push(format!("LIST-STATUS inventory: {reason}"));
             None
         }
     };
-    let folders = if let Some(avec_statut) = avec_statut {
-        let mut folders = Vec::with_capacity(avec_statut.len());
-        for (folder, statut) in avec_statut {
-            // Le serveur PEUT omettre le relevé d'un dossier (RFC 5819
-            // §2) : ce dossier repart alors non gardé, la boucle plus bas
-            // le rattrapera par un STATUS ciblé.
-            if let Some(statut) = statut {
-                statuts.insert(folder.wire.clone(), statut);
+    let folders = if let Some(with_status) = with_status {
+        let mut folders = Vec::with_capacity(with_status.len());
+        for (folder, status) in with_status {
+            // The server MAY omit a folder's status (RFC 5819 §2): this
+            // folder then starts out unguarded, the loop below will
+            // catch it up with a targeted STATUS.
+            if let Some(status) = status {
+                statuses.insert(folder.wire.clone(), status);
             }
             folders.push(folder);
         }
         folders
     } else {
         server.folders().unwrap_or_else(|reason| {
-            problems.push(format!("liste des dossiers : {reason}"));
+            problems.push(format!("folder list: {reason}"));
             Vec::new()
         })
     };
-    // Rafraîchie UNE fois par cycle — hoistée de `SyncEngine::sync` qui la
-    // payait à CHAQUE dossier (~51 LIST par cycle, ADR 0017). Déplacer
-    // hors ligne garde sa liste.
+    // Refreshed ONCE per cycle — hoisted out of `SyncEngine::sync` which
+    // used to pay for it on EVERY folder (~51 LIST per cycle, ADR 0017).
+    // Moving it out keeps its list.
     if let Err(reason) = store.replace_folders(account_id, &folders) {
-        problems.push(format!("liste des dossiers : {reason}"));
+        problems.push(format!("folder list: {reason}"));
     }
     let order = mail_core::sync_order(&folders, sent.as_deref());
 
-    // La garde d'espace disque (ADR 0010 §4) : estimer AVANT de
-    // s'engager, refuser en le chiffrant s'il manque.
+    // The disk space guard (ADR 0010 §4): estimate BEFORE committing,
+    // refuse with a figure if it's short.
     //
-    // INBOX est comptée des deux côtés (annonce ET base locale) : la
-    // retirer d'un seul ferait sous-estimer le restant.
+    // INBOX is counted on both sides (announced AND local database):
+    // removing it from just one would underestimate the remainder.
     //
-    // Le relevé de chaque dossier est GARDÉ (ADR 0017) : la garde
-    // d'espace et la décision de relève se servent du même relevé — celui
-    // de LIST-STATUS s'il a répondu, un STATUS ciblé sinon.
+    // Each folder's status is GUARDED (ADR 0017): the space guard and
+    // the poll decision use the same status — the one from LIST-STATUS
+    // if it answered, a targeted STATUS otherwise.
     let mut announced: u64 = 0;
-    for boite in &order {
-        let statut = if boite == MAILBOX {
-            // INBOX a déjà son relevé, payé avant sa relève.
-            statut_inbox.ok_or_else(|| "relevé INBOX absent".to_string())
-        } else if let Some(statut) = statuts.get(boite).copied() {
-            // Déjà relevé par LIST-STATUS : aucun second aller-retour.
-            Ok(statut)
+    for mailbox in &order {
+        let status = if mailbox == MAILBOX {
+            // INBOX already has its status, paid for before its poll.
+            inbox_status.ok_or_else(|| "missing INBOX status".to_string())
+        } else if let Some(status) = statuses.get(mailbox).copied() {
+            // Already fetched by LIST-STATUS: no second round trip.
+            Ok(status)
         } else {
-            server.folder_status(boite).map_err(|err| err.to_string())
+            server.folder_status(mailbox).map_err(|err| err.to_string())
         };
-        match statut {
-            Ok(statut) => {
-                announced += u64::from(statut.messages);
-                statuts.insert(boite.clone(), statut);
+        match status {
+            Ok(status) => {
+                announced += u64::from(status.messages);
+                statuses.insert(mailbox.clone(), status);
             }
-            // Un dossier qui refuse le relevé rend l'estimation basse et
-            // sera relevé sans garde. On continue : la garde est une
-            // protection, pas un droit de veto — et l'échec est consigné.
-            Err(reason) => problems.push(format!("relevé « {boite} » : {reason}")),
+            // A folder that refuses the status makes the estimate low
+            // and will be polled without a guard. We continue: the
+            // guard is a protection, not a veto right — and the failure
+            // is logged.
+            Err(reason) => problems.push(format!("status of \"{mailbox}\": {reason}")),
         }
     }
     let local = store
         .account_message_count(account_id)
         .map_err(|err| err.to_string())?;
     let pending = announced.saturating_sub(local);
-    // L'espace se mesure sur le VOLUME de la base : c'est lui qui
-    // encaissera les écritures, pas le disque système.
+    // Space is measured on the database's VOLUME: that's what will
+    // absorb the writes, not the system disk.
     let shortfall = match fs4::available_space(db_path.parent().unwrap_or(db_path)) {
         Ok(available) => mail_core::disk_shortfall(pending, available),
         Err(reason) => {
-            // Mesure impossible ≠ espace insuffisant. Bloquer le courrier
-            // parce qu'un appel système a échoué serait pire que le
-            // risque couvert ; l'échec est dit, et SQLite signalera de
-            // toute façon un disque plein, écriture par écriture.
-            problems.push(format!("espace disque non mesurable : {reason}"));
+            // Immeasurable ≠ insufficient space. Blocking mail because a
+            // system call failed would be worse than the risk covered;
+            // the failure is stated, and SQLite will signal a full disk
+            // anyway, write by write.
+            problems.push(format!("disk space not measurable: {reason}"));
             None
         }
     };
-    let duree_inventaire = chrono.elapsed();
-    let n_dossiers = order.len().saturating_sub(1);
-    let mut n_sautes = 0usize;
-    let chrono = Instant::now();
+    let inventory_duration = stopwatch.elapsed();
+    let n_folders = order.len().saturating_sub(1);
+    let mut n_skipped = 0usize;
+    let stopwatch = Instant::now();
     if let Some(missing) = shortfall {
         problems.push(format!(
-            "espace disque insuffisant : ~{} nécessaires pour {} message(s) \
-             restants, il manque {} ; récupération des dossiers suspendue \
-             jusqu'à ce que de la place soit libérée",
+            "insufficient disk space: ~{} needed for {} remaining \
+             message(s), {} short; folder recovery suspended until \
+             space is freed up",
             format_bytes(pending.saturating_mul(mail_core::SYNC_BYTES_PER_MESSAGE)),
             pending,
             format_bytes(missing),
         ));
     } else {
-        for boite in order.into_iter().skip(1) {
-            // La relève gardée (ADR 0017) : rien n'a bougé → sauté. Le
-            // terrain a payé 26 min de SELECT + SEARCH ALL par cycle
-            // pour des dossiers immobiles.
-            let statut = statuts.get(&boite);
-            if !doit_relever(&store, account_id, &boite, statut, &mut problems) {
-                n_sautes += 1;
+        for mailbox in order.into_iter().skip(1) {
+            // The guarded poll (ADR 0017): nothing moved → skipped. The
+            // field paid 26 min of SELECT + SEARCH ALL per cycle for
+            // motionless folders.
+            let status = statuses.get(&mailbox);
+            if !must_poll(&store, account_id, &mailbox, status, &mut problems) {
+                n_skipped += 1;
                 continue;
             }
-            poser_boite(cycle, &boite);
-            match SyncEngine::default().sync(&mut server, &mut store, account_id, &boite) {
-                Ok(_) => solder_repere(&store, account_id, &boite, statut, &mut problems),
-                Err(reason) => problems.push(format!("dossier « {boite} » : {reason}")),
+            set_mailbox(cycle, &mailbox);
+            match SyncEngine::default().sync(&mut server, &mut store, account_id, &mailbox) {
+                Ok(_) => settle_marker(&store, account_id, &mailbox, status, &mut problems),
+                Err(reason) => problems.push(format!("folder \"{mailbox}\": {reason}")),
             }
         }
     }
-    let duree_dossiers = chrono.elapsed();
-    // La passe d'en-têtes n'est pas une boîte : l'étape est nommée.
-    poser_phase(cycle, "fils");
-    let chrono = Instant::now();
+    let folders_duration = stopwatch.elapsed();
+    // The header pass isn't a mailbox: the step is named.
+    set_phase(cycle, "fils");
+    let stopwatch = Instant::now();
 
-    // La passe d'en-têtes profite de la connexion déjà ouverte : c'est ce
-    // qui la rend gratuite en allers-retours. Son échec ne doit PAS faire
-    // échouer la synchronisation — le courrier est arrivé, c'est le seul
-    // résultat qui compte — mais il est rapporté, jamais avalé. Sans
-    // trace, une boîte qui refuse de se regrouper serait indiagnosticable.
+    // The header pass benefits from the connection already open: that's
+    // what makes it free in round trips. Its failure must NOT make the
+    // synchronization fail — the mail has arrived, that's the only
+    // result that counts — but it's reported, never swallowed. Without a
+    // trace, a mailbox that refuses to group would be undiagnosable.
     //
-    // Elle passe sur les DEUX boîtes. `References` porte la racine du fil
-    // là où `In-Reply-To` ne désigne que le parent immédiat : sans elle,
-    // une réponse dont le message d'origine a été archivé hors d'INBOX ne
-    // peut pas se raccrocher. L'ADR 0008 (mesure 2) est explicite —
-    // `References` est obligatoire, pas un raffinement.
+    // It runs on BOTH mailboxes. `References` carries the thread root
+    // where `In-Reply-To` only designates the immediate parent: without
+    // it, a reply whose original message was archived out of INBOX
+    // couldn't reattach. ADR 0008 (measurement 2) is explicit —
+    // `References` is mandatory, not a refinement.
     //
-    // Le budget est PARTAGÉ, pas doublé : la seconde boîte ne consomme que
-    // ce que la première a laissé. Le coût réseau d'une synchronisation
-    // reste donc exactement celui d'avant, et la passe étant reprenable,
-    // le reliquat part au tour suivant.
+    // The budget is SHARED, not doubled: the second mailbox only
+    // consumes what the first left. The network cost of a
+    // synchronization thus stays exactly what it was before, and since
+    // the pass is resumable, the remainder goes out the next round.
     //
-    // SANS horizon depuis l'ADR 0010 : le diagnostic terrain a montré la
-    // passe convergée à 1 656 messages lus sur 1 656 éligibles — et 5 883
-    // messages hors des 12 mois qui ne seraient JAMAIS lus. La borne
-    // venait du budget disque des corps ; un bloc d'en-têtes pèse ~3 ko et
-    // ne se range pas sur le disque comme un corps.
+    // WITHOUT a horizon since ADR 0010: the field diagnostic showed the
+    // pass converged at 1,656 messages read out of 1,656 eligible — and
+    // 5,883 messages outside the 12 months that would NEVER be read.
+    // The bound came from the bodies' disk budget; a header block
+    // weighs ~3 KB and isn't stored on disk like a body.
     //
-    // La passe reste sur INBOX + Envoyés, elle : `References` est le
-    // carburant du regroupement, et le regroupement s'arrête à cette
-    // portée (ADR 0010 §3). Lire les en-têtes du Spam paierait des
-    // allers-retours pour des messages qui ne se rattachent à rien.
+    // The pass stays on INBOX + Sent, though: `References` is the
+    // grouping's fuel, and the grouping stops at that scope (ADR 0010
+    // §3). Reading Spam's headers would pay round trips for messages
+    // that attach to nothing.
     let mut budget = THREAD_HEADER_BUDGET;
-    for boite in std::iter::once(MAILBOX).chain(sent.as_deref()) {
+    for mailbox in std::iter::once(MAILBOX).chain(sent.as_deref()) {
         if budget == 0 {
             break;
         }
@@ -1457,77 +1464,76 @@ fn run_sync(
             &mut server,
             &mut store,
             account_id,
-            boite,
+            mailbox,
             mail_core::NO_HORIZON,
             budget,
         ) {
             Ok(report) => budget = budget.saturating_sub(report.fetched),
-            Err(err) => problems.push(format!("conversations incomplètes : {err}")),
+            Err(err) => problems.push(format!("incomplete conversations: {err}")),
         }
     }
 
-    // R4/R1 (PLAN-RETOURS-MAIL) : rattrapage des DESTINATAIRES. La passe
-    // d'en-têtes a convergé — les messages déjà synchronisés n'ont aucun
-    // À/Cc en base. Deux besoins : dans un dossier d'envois, l'expéditeur
-    // est SOI et seul le destinataire dit à qui le message est parti
-    // (affichage R4) ; et « Répondre à tous » lit ces mêmes À/Cc pour être
-    // instantané, hors ligne (R1 — l'ancienne relève serveur au clic
-    // coûtait >10 s). On relit l'ENVELOPE (À/Cc gratuits, avec
-    // l'expéditeur) sur la connexion ouverte, borné, reprenable et à budget
-    // PARTAGÉ, sur la MÊME portée INBOX + Envoyés que la passe de fils.
-    // Best effort : un échec se consigne, il ne fait pas échouer la relève.
-    let mut budget_dest = RECIPIENTS_BUDGET;
-    for boite in std::iter::once(MAILBOX).chain(sent.as_deref()) {
-        if budget_dest == 0 {
+    // R4/R1 (PLAN-RETOURS-MAIL): backfill of RECIPIENTS. The header pass
+    // has converged — already-synchronized messages have no To/Cc in
+    // the database. Two needs: in a sent folder, the sender is SELF and
+    // only the recipient says who the message went to (R4 display); and
+    // “Reply all” reads these same To/Cc to be instant, offline (R1 —
+    // the old server poll on click cost >10s). We re-read the ENVELOPE
+    // (To/Cc free, along with the sender) on the open connection,
+    // bounded, resumable and at a SHARED budget, on the SAME INBOX +
+    // Sent scope as the thread pass. Best effort: a failure is logged,
+    // it doesn't make the poll fail.
+    let mut budget_recipients = RECIPIENTS_BUDGET;
+    for mailbox in std::iter::once(MAILBOX).chain(sent.as_deref()) {
+        if budget_recipients == 0 {
             break;
         }
         match mail_core::backfill_recipients(
             &mut server,
             &mut store,
             account_id,
-            boite,
-            budget_dest,
+            mailbox,
+            budget_recipients,
         ) {
-            Ok(report) => budget_dest = budget_dest.saturating_sub(report.fetched),
-            Err(err) => problems.push(format!("destinataires manquants : {err}")),
+            Ok(report) => budget_recipients = budget_recipients.saturating_sub(report.fetched),
+            Err(err) => problems.push(format!("missing recipients: {err}")),
         }
     }
 
-    let duree_fils = chrono.elapsed();
-    // Le tirage des brouillons profite lui aussi de la connexion ouverte.
-    // Il ne peut PAS vivre dans le cycle de poussée : celui-ci s'arrête
-    // tôt quand il n'y a rien à pousser — à raison, sinon chaque frappe
-    // ouvrirait une connexion. Un brouillon commencé ailleurs n'arriverait
-    // donc jamais.
-    poser_phase(cycle, "brouillons");
-    let chrono = Instant::now();
+    let threads_duration = stopwatch.elapsed();
+    // Drafts pulling also benefits from the open connection. It CANNOT
+    // live in the push cycle: that one stops early when there's nothing
+    // to push — rightly so, otherwise every keystroke would open a
+    // connection. A draft started elsewhere would then never arrive.
+    set_phase(cycle, "brouillons");
+    let stopwatch = Instant::now();
     if let Err(reason) = pull_drafts(&mut server, &store, account_id) {
-        problems.push(format!("brouillons distants : {reason}"));
+        problems.push(format!("remote drafts: {reason}"));
     }
-    let duree_brouillons = chrono.elapsed();
+    let drafts_duration = stopwatch.elapsed();
 
-    // E3 (PLAN-REACTIVITE) : le cycle vient peut-être de faire entrer
-    // la vraie ligne d'une destination d'écho — la réconciliation le
-    // constate, et la génération resert la liste (l'écho s'efface sous
-    // sa vraie ligne, invisible à l'œil).
+    // E3 (PLAN-REACTIVITE): the cycle may have just brought in the real
+    // row of an echo's destination — the reconciliation notices it, and
+    // the generation reserves the list (the echo fades under its real
+    // row, invisible to the eye).
     match store.reconcile_echos(account_id) {
         Ok(n) if n > 0 => {
             cycle.generation.fetch_add(1, Ordering::Relaxed);
         }
         Ok(_) => {}
-        Err(reason) => problems.push(format!("réconciliation des échos : {reason}")),
+        Err(reason) => problems.push(format!("echo reconciliation: {reason}")),
     }
 
-    // La trace qui transforme « c'est bloqué » en mesure — lisible dans
-    // la console d'un `cargo run`. AVANT logout : un logout qui cale ne
-    // doit pas emporter la trace avec lui.
+    // The trace that turns “it's stuck” into a measurement — readable
+    // in a `cargo run` console. BEFORE logout: a logout that hangs must
+    // not take the trace down with it.
     crate::trace::trace(&format!(
-        "relève compte {account_id} : INBOX {:.1}s · inventaire {:.1}s · {n_dossiers} dossiers ({n_sautes} sautés) {:.1}s · fils {:.1}s · brouillons {:.1}s",
-        duree_inbox.as_secs_f32(),
-        duree_inventaire.as_secs_f32(),
-        duree_dossiers.as_secs_f32(),
-        duree_fils.as_secs_f32(),
-        duree_brouillons.as_secs_f32(),
+        "poll account {account_id}: INBOX {:.1}s · inventory {:.1}s · {n_folders} folders ({n_skipped} skipped) {:.1}s · threads {:.1}s · drafts {:.1}s",
+        inbox_duration.as_secs_f32(),
+        inventory_duration.as_secs_f32(),
+        folders_duration.as_secs_f32(),
+        threads_duration.as_secs_f32(),
+        drafts_duration.as_secs_f32(),
     ));
 
     server.logout();
@@ -1539,19 +1545,19 @@ fn run_sync(
     })
 }
 
-/// Rapatrie les brouillons commencés ailleurs, et retire les miroirs
-/// devenus périmés.
+/// Pulls in drafts started elsewhere, and removes mirrors that have
+/// become stale.
 ///
-/// La décision appartient au noyau ([`mail_core::plan_draft_pull`], pur et
-/// testé) ; ici on ne fait que l'exécuter.
+/// The decision belongs to the core ([`mail_core::plan_draft_pull`], pure
+/// and tested); here we only execute it.
 fn pull_drafts(server: &mut ImapServer, store: &Store, account_id: i64) -> Result<(), String> {
-    // La garde des repères d'abord, comme dans le cycle de poussée : si
-    // l'UIDVALIDITY a changé, les `remote_uid` enregistrés ne désignent
-    // plus rien. Comparer la liste distante à des repères périmés ferait
-    // passer TOUS les miroirs pour caducs et réimporterait toute la
-    // boîte.
-    // Pas de dossier Brouillons annoncé : rien à tirer, et rien à
-    // signaler. Le serveur n'est pas en panne, il n'a pas la capacité.
+    // The marker guard first, like in the push cycle: if UIDVALIDITY has
+    // changed, the recorded `remote_uid`s no longer designate anything.
+    // Comparing the remote list to stale markers would make ALL mirrors
+    // look stale and would reimport the whole mailbox.
+    // No Drafts folder announced: nothing to pull, and nothing to
+    // report. The server isn't down, it just doesn't have the
+    // capability.
     if server
         .drafts_folder_name()
         .map_err(|err| err.to_string())?
@@ -1564,11 +1570,11 @@ fn pull_drafts(server: &mut ImapServer, store: &Store, account_id: i64) -> Resul
         .align_drafts_uidvalidity(account_id, validity)
         .map_err(|err| err.to_string())?;
     if reset {
-        // Repères abandonnés : rien ne distingue plus nos propres copies
-        // de celles d'ailleurs. On laisse le cycle de poussée les
-        // rétablir et on tirera au passage suivant. Un doublon reste
-        // possible — c'est la règle d'or déjà en vigueur, et elle
-        // préfère un doublon à une perte.
+        // Markers abandoned: nothing distinguishes our own copies from
+        // others' anymore. We let the push cycle re-establish them and
+        // will pull at the next pass. A duplicate stays possible —
+        // that's the golden rule already in force, and it prefers a
+        // duplicate to a loss.
         return Ok(());
     }
 
@@ -1584,16 +1590,16 @@ fn pull_drafts(server: &mut ImapServer, store: &Store, account_id: i64) -> Resul
     }
     for uid in plan.fetch {
         let Some(draft) = server.fetch_draft(uid).map_err(|err| err.to_string())? else {
-            // Disparu entre la liste et la lecture : sans conséquence.
+            // Gone between the listing and the read: no consequence.
             continue;
         };
-        // Le corps arrive sous les deux formes MIME possibles ; il passe
-        // par LA frontière (`frontiere_corps`) comme tout corps qui entre
-        // en base : HTML assaini conservé (un brouillon riche poussé puis
-        // re-rapatrié garde sa mise en forme), texte dérivé — le texte
-        // MIME ne sert que de repli quand il n'y a pas de HTML.
-        let texte = draft.text.unwrap_or_default();
-        let (body, body_html) = frontiere_corps(texte, draft.html.as_deref());
+        // The body arrives in one of two possible MIME forms; it goes
+        // through THE boundary (`body_boundary`) like any body entering
+        // the database: sanitized HTML kept (a rich draft pushed then
+        // pulled back keeps its formatting), text derived — the MIME
+        // text only serves as a fallback when there's no HTML.
+        let text = draft.text.unwrap_or_default();
+        let (body, body_html) = body_boundary(text, draft.html.as_deref());
         store
             .import_remote_draft(
                 account_id,
@@ -1608,22 +1614,22 @@ fn pull_drafts(server: &mut ImapServer, store: &Store, account_id: i64) -> Resul
     Ok(())
 }
 
-/// Affiche la bulle système d'un lot d'arrivées, s'il y a lieu.
+/// Shows the system bubble for a batch of arrivals, if warranted.
 ///
-/// Un échec — permission refusée, identité applicative non enregistrée —
-/// ne doit JAMAIS faire échouer une synchro : le courrier est arrivé,
-/// c'est le seul résultat qui compte. Mais il est **rapporté**.
+/// A failure — permission denied, application identity not registered —
+/// must NEVER make a sync fail: the mail has arrived, that's the only
+/// result that counts. But it is **reported**.
 ///
-/// La première version avalait l'erreur en silence. Sur un poste où
-/// Windows refusait le toast, le symptôme était « rien ne se passe » :
-/// indiagnosticable. Absorber un échec est une chose, en effacer la
-/// trace en est une autre.
-/// Clé de la préférence « bulles d'arrivée » (Réglages > Notifications).
+/// The first version swallowed the error silently. On a workstation
+/// where Windows refused the toast, the symptom was “nothing happens”:
+/// undiagnosable. Absorbing a failure is one thing, erasing its trace is
+/// another.
+/// Key of the “arrival bubbles” preference (Settings > Notifications).
 const PREF_ARRIVAL_BUBBLES: &str = "arrival_bubbles";
 const PREF_LANG: &str = "lang";
-/// Epoch (secondes) de la dernière relève réussie — écrit par
-/// `sync_inbox`, lu par `sync_progress` pour la barre d'état (E1).
-const PREF_DERNIERE_SYNCHRO: &str = "derniere_synchro";
+/// Epoch (seconds) of the last successful poll — written by
+/// `sync_inbox`, read by `sync_progress` for the status bar (E1).
+const PREF_LAST_SYNC: &str = "derniere_synchro";
 
 fn arrival_notification_problem(
     app: &AppHandle,
@@ -1632,16 +1638,17 @@ fn arrival_notification_problem(
 ) -> Option<String> {
     use tauri_plugin_notification::NotificationExt;
 
-    // R-D2 (PLAN-REGLAGES) : la préférence vit EN BASE et se lit ICI, à
-    // l'émission — le réglage coupe la bulle, jamais la synchro. Base
-    // illisible = activées : le défaut protège l'annonce, et la synchro
-    // qui vient d'écrire ces arrivées rend ce cas théorique. La même
-    // lecture porte la langue des textes (PLAN-LANGUES, E2) :
-    // `prefs.lang`, posée par l'UI — absente ou inconnue, français.
-    // Sur la connexion de l'appelant (PLAN-AUDIT-V2 E1) : la relève en
-    // tient déjà une, en rouvrir une seconde ne protégeait rien.
-    let actives = store.bool_pref(PREF_ARRIVAL_BUBBLES, true).unwrap_or(true);
-    if !actives {
+    // R-D2 (PLAN-REGLAGES): the preference lives IN THE DATABASE and is
+    // read HERE, at emission time — the setting cuts the bubble, never
+    // the sync. Unreadable database = enabled: the default protects the
+    // announcement, and the sync that just wrote these arrivals makes
+    // this case theoretical. The same read carries the texts' language
+    // (PLAN-LANGUES, E2): `prefs.lang`, set by the UI — absent or
+    // unknown, French. On the caller's connection (PLAN-AUDIT-V2 E1):
+    // the poll already holds one, reopening a second one would protect
+    // nothing.
+    let active = store.bool_pref(PREF_ARRIVAL_BUBBLES, true).unwrap_or(true);
+    if !active {
         return None;
     }
     let lang = mail_core::Lang::from_pref(store.text_pref(PREF_LANG).ok().flatten().as_deref());
@@ -1652,16 +1659,16 @@ fn arrival_notification_problem(
         .body(notification.body)
         .show()
         .err()
-        .map(|err| format!("notification non affichée : {err}"))
+        .map(|err| format!("notification not shown: {err}"))
 }
 
-// La page ne porte PLUS de total (terrain 2026-08-20,
-// PLAN-DEFILEMENT-PROFOND) : le comptage d'une intégrale Gmail (sonde
-// NOT EXISTS par ligne) coûte ~240 ms sur 200 k — plus que la page
-// elle-même — et retardait chaque premier rendu. Le total vit dans la
-// commande séparée [`category_total`], demandée par le front APRÈS
-// l'affichage des lignes ; une page plus courte que sa limite dit
-// d'elle-même la fin de la liste.
+// The page no LONGER carries a total (field finding 2026-08-20,
+// PLAN-DEFILEMENT-PROFOND): counting a Gmail integral folder (a NOT
+// EXISTS probe per row) costs ~240 ms on 200k — more than the page
+// itself — and delayed every first render. The total lives in the
+// separate command [`category_total`], requested by the front end
+// AFTER the rows are displayed; a page shorter than its limit says by
+// itself that the list has ended.
 #[derive(Serialize)]
 pub struct MessagePage {
     pub offset: usize,
@@ -1669,15 +1676,15 @@ pub struct MessagePage {
     pub elapsed_us: u64,
 }
 
-/// Les messages d'une conversation, du plus ancien au plus récent.
+/// The messages of a conversation, oldest to most recent.
 ///
-/// Purement locale : ouvrir un fil ne demande jamais le réseau, comme
-/// choisir un dossier de destination. C'est la leçon des dossiers, qui
-/// avaient été livrés en interrogeant le serveur — inutilisables dès la
-/// première coupure.
+/// Purely local: opening a thread never asks the network, same as
+/// choosing a destination folder. That is the lesson of the folders,
+/// which had been shipped by querying the server — unusable from the
+/// first outage on.
 #[tauri::command]
 pub async fn thread_messages(app: AppHandle, thread_id: i64) -> Result<Vec<MessageRow>, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         Ok(store
             .thread_messages(thread_id)
@@ -1689,7 +1696,7 @@ pub async fn thread_messages(app: AppHandle, thread_id: i64) -> Result<Vec<Messa
     .await
 }
 
-/// Mapping partagé entre la boîte unifiée et les résultats de recherche.
+/// Mapping shared between the unified mailbox and the search results.
 fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
     MessageRow {
         epoch: row.envelope.date.map(|date| date.timestamp()).unwrap_or(0),
@@ -1706,11 +1713,11 @@ fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
         subject: row
             .envelope
             .subject
-            .unwrap_or_else(|| "(sans sujet)".to_string()),
+            .unwrap_or_else(|| "(no subject)".to_string()),
         sender: row
             .envelope
             .sender
-            .unwrap_or_else(|| "(expéditeur inconnu)".to_string()),
+            .unwrap_or_else(|| "(unknown sender)".to_string()),
         date: row
             .envelope
             .date
@@ -1723,7 +1730,7 @@ fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
         thread_unseen: row.thread_unseen,
         pinned: false,
         cote: false,
-        invitation: row.invitation.map(|rang| InvitationLigne {
+        invitation: row.invitation.map(|rang| InvitationRowPayload {
             mailbox: rang.mailbox,
             uid: rang.uid,
             titre: rang.title,
@@ -1734,58 +1741,59 @@ fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
     }
 }
 
-/// Un compte de la nav v2 (écran 02), avec ses compteurs — dossiers
-/// canoniques résolus côté cœur (`nav.rs`), l'UI ne voit jamais un nom
-/// de boîte réseau.
+/// An account of nav v2 (screen 02), with its counters — canonical
+/// folders resolved on the core side (`nav.rs`), the UI never sees a
+/// network mailbox name.
 #[derive(Serialize)]
 pub struct NavAccount {
     pub account_id: i64,
     pub email: String,
-    // La nav ne dit QUE le non-lu (A29) : la sonde à 10 s ne paie que
-    // ces deux compteurs — l'inventaire complet (`nav_counts`, dont le
-    // total d'une intégrale à ~240 ms la sonde) ne se recalcule plus au
-    // battement (terrain 2026-08-20, PLAN-DEFILEMENT-PROFOND).
+    // The nav says ONLY the unread count (A29): the 10 s probe only
+    // pays for these two counters — the full inventory (`nav_counts`,
+    // whose total for an integral folder probes at ~240 ms) is no
+    // longer recomputed on the heartbeat (field finding 2026-08-20,
+    // PLAN-DEFILEMENT-PROFOND).
     pub reception_non_lues: u64,
     pub indesirables_non_lus: u64,
 }
 
-/// L'état complet de la nav en UN appel : comptes et compteurs par
-/// catégorie. « Toutes les boîtes » s'agrège côté UI.
-fn lire_nav(store: &Store) -> Result<Vec<NavAccount>, String> {
-    // E2 : en mode organisé, la pastille de la Réception suit
-    // l'exclusion partagée — le non-lu d'un retenu appartient à la
-    // pastille du Portier, jamais aux deux.
-    let organise = store.organized_mode().map_err(|err| err.to_string())?;
-    let mut sortie = Vec::new();
-    for compte in store.accounts().map_err(|err| err.to_string())? {
-        let dossiers = store
-            .canonical_folders(compte.id)
+/// The full nav state in ONE call: accounts and counters per category.
+/// "All mailboxes" is aggregated on the UI side.
+fn read_nav(store: &Store) -> Result<Vec<NavAccount>, String> {
+    // E2: in organized mode, the Inbox badge follows the shared
+    // exclusion — the unread count of a held-back sender belongs to
+    // the Screener badge, never to both.
+    let organized = store.organized_mode().map_err(|err| err.to_string())?;
+    let mut result = Vec::new();
+    for account in store.accounts().map_err(|err| err.to_string())? {
+        let folders = store
+            .canonical_folders(account.id)
             .map_err(|err| err.to_string())?;
         let (reception_non_lues, indesirables_non_lus) = store
-            .nav_unread_counts(compte.id, &dossiers, organise)
+            .nav_unread_counts(account.id, &folders, organized)
             .map_err(|err| err.to_string())?;
-        sortie.push(NavAccount {
-            account_id: compte.id,
-            email: compte.email,
+        result.push(NavAccount {
+            account_id: account.id,
+            email: account.email,
             reception_non_lues,
             indesirables_non_lus,
         });
     }
-    Ok(sortie)
+    Ok(result)
 }
 
 #[tauri::command]
 pub async fn nav_snapshot(app: AppHandle) -> Result<Vec<NavAccount>, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        lire_nav(&store)
+        read_nav(&store)
     })
     .await
 }
 
-/// Une page d'une catégorie de la nav, bornée ou non à un compte.
-/// `reception` = la boîte unifiée (conversations) ; les autres = les
-/// messages des boîtes canoniques résolues, fusionnés par date.
+/// A page of one nav category, bounded or not to an account.
+/// `reception` = the unified mailbox (conversations); the others = the
+/// messages of the resolved canonical mailboxes, merged by date.
 #[tauri::command]
 pub async fn list_category(
     app: AppHandle,
@@ -1795,18 +1803,18 @@ pub async fn list_category(
     offset: usize,
     limit: usize,
 ) -> Result<MessagePage, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let timer = Instant::now();
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let limit = limit.min(LIST_LIMIT_MAX);
         if category == "reception" {
-            // E2 : en Mode organisé, la Réception RETIENT les fils des
-            // expéditeurs en attente au Portier et ceux routés ailleurs
-            // (drapeau + index partiel — jamais une sonde par rangée).
-            // Le mode classique passe par la requête HISTORIQUE, au
-            // caractère près : zéro diff (garde e2e).
-            let organise = store.organized_mode().map_err(|err| err.to_string())?;
-            let mut lignes = if organise {
+            // E2: in Organized mode, the Inbox HOLDS BACK the threads
+            // of senders waiting at the Screener and those routed
+            // elsewhere (flag + partial index — never a probe per row).
+            // Classic mode goes through the HISTORICAL query, down to
+            // the character: zero diff (e2e guard).
+            let organized = store.organized_mode().map_err(|err| err.to_string())?;
+            let mut rows = if organized {
                 store
                     .organized_inbox_scoped(account_id, non_lus, offset, limit)
                     .map_err(|err| err.to_string())?
@@ -1815,57 +1823,57 @@ pub async fn list_category(
                     .unified_recent_scoped(account_id, non_lus, offset, limit)
                     .map_err(|err| err.to_string())?
             };
-            // Terrain R10-R12 : pièces sommées par fil, invitations au
-            // rang — une passe bornée à la PAGE, la requête chaude ne
-            // paie rien.
+            // Field finding R10-R12: attachments summed per thread,
+            // invitations on the row — a pass bounded to the PAGE, the
+            // hot query pays nothing.
             store
-                .enrich_rows(&mut lignes)
+                .enrich_rows(&mut rows)
                 .map_err(|err| err.to_string())?;
-            let rows = lignes.into_iter().map(to_message_row).collect();
+            let rows = rows.into_iter().map(to_message_row).collect();
             return Ok(MessagePage {
                 offset,
                 rows,
                 elapsed_us: timer.elapsed().as_micros() as u64,
             });
         }
-        // PLAN-MODE-ORGANISE E1 : le Kiosque et le Registre sont des
-        // vues du flot unifié filtrées par le routage d'expéditeur —
-        // jamais des boîtes canoniques.
+        // PLAN-MODE-ORGANISE E1: the Feed and the Paper trail are views
+        // of the unified flow filtered by sender routing — never
+        // canonical mailboxes.
         if category == "kiosque" || category == "registre" {
-            let mut lignes = store
+            let mut rows = store
                 .routing_unified_scoped(&category, account_id, non_lus, offset, limit)
                 .map_err(|err| err.to_string())?;
             store
-                .enrich_rows(&mut lignes)
+                .enrich_rows(&mut rows)
                 .map_err(|err| err.to_string())?;
-            let rows = lignes.into_iter().map(to_message_row).collect();
+            let rows = rows.into_iter().map(to_message_row).collect();
             return Ok(MessagePage {
                 offset,
                 rows,
                 elapsed_us: timer.elapsed().as_micros() as u64,
             });
         }
-        let portee = resoudre_categorie(&store, &category, account_id)?;
-        // E3 (PLAN-REACTIVITE) : les échos locaux des destinations de geste
-        // entrent dans la page et le total — la Corbeille montre la
-        // suppression, Envoyés l'envoi, à la seconde du geste.
-        let echos = mail_core::ECHO_DESTINATIONS
+        let scope = resolve_category(&store, &category, account_id)?;
+        // E3 (PLAN-REACTIVITE): the local echoes of gesture destinations
+        // enter the page and the total — the Trash shows the deletion,
+        // Sent shows the send, within the second of the gesture.
+        let echoes = mail_core::ECHO_DESTINATIONS
             .contains(&category.as_str())
-            .then_some((category.as_str(), portee.comptes.as_slice()));
-        let mut lignes = store
+            .then_some((category.as_str(), scope.accounts.as_slice()));
+        let mut rows = store
             .category_page(
-                &portee.boites,
+                &scope.mailboxes,
                 non_lus,
-                &portee.exclure,
-                echos,
+                &scope.excluded,
+                echoes,
                 offset,
                 limit,
             )
             .map_err(|err| err.to_string())?;
         store
-            .enrich_rows(&mut lignes)
+            .enrich_rows(&mut rows)
             .map_err(|err| err.to_string())?;
-        let rows = lignes.into_iter().map(to_message_row).collect();
+        let rows = rows.into_iter().map(to_message_row).collect();
         Ok(MessagePage {
             offset,
             rows,
@@ -1875,66 +1883,65 @@ pub async fn list_category(
     .await
 }
 
-/// Comptes en portée, boîtes résolues et exclusion d'intégrale d'une
-/// catégorie hors réception — la résolution PARTAGÉE de la page
-/// (`list_category`) et du comptage (`category_total`).
-struct PorteeCategorie {
-    comptes: Vec<i64>,
-    boites: Vec<i64>,
-    exclure: Vec<i64>,
+/// Accounts in scope, resolved mailboxes and integral-folder exclusion
+/// for a category other than the inbox — the resolution SHARED by the
+/// page (`list_category`) and the count (`category_total`).
+struct CategoryScope {
+    accounts: Vec<i64>,
+    mailboxes: Vec<i64>,
+    excluded: Vec<i64>,
 }
 
-fn resoudre_categorie(
+fn resolve_category(
     store: &Store,
     category: &str,
     account_id: Option<i64>,
-) -> Result<PorteeCategorie, String> {
-    let comptes: Vec<i64> = match account_id {
+) -> Result<CategoryScope, String> {
+    let accounts: Vec<i64> = match account_id {
         Some(id) => vec![id],
         None => store
             .accounts()
             .map_err(|err| err.to_string())?
             .into_iter()
-            .map(|compte| compte.id)
+            .map(|account| account.id)
             .collect(),
     };
-    let mut boites = Vec::new();
-    // Les Archives d'une INTÉGRALE Gmail (« Tous les messages ») privent
-    // la catégorie des messages vivant dans une autre canonique — sinon
-    // elle montre toute la boîte (défaut terrain, 2026-08-12).
-    let mut exclure = Vec::new();
-    for compte in &comptes {
-        let dossiers = store
-            .canonical_folders(*compte)
+    let mut mailboxes = Vec::new();
+    // The Archive of an INTEGRAL Gmail folder ("All Mail") strips the
+    // category of the messages living in another canonical folder —
+    // otherwise it shows the whole mailbox (field default, 2026-08-12).
+    let mut excluded = Vec::new();
+    for account in &accounts {
+        let folders = store
+            .canonical_folders(*account)
             .map_err(|err| err.to_string())?;
-        if let Some(nom) = dossiers.mailbox(category)
+        if let Some(name) = folders.mailbox(category)
             && let Some(state) = store
-                .sync_state(*compte, &nom)
+                .sync_state(*account, &name)
                 .map_err(|err| err.to_string())?
         {
-            boites.push(state.mailbox_id);
-            if category == "archives" && dossiers.archives_full {
-                exclure.extend(
+            mailboxes.push(state.mailbox_id);
+            if category == "archives" && folders.archives_full {
+                excluded.extend(
                     store
-                        .canonical_except_archive(*compte, &dossiers)
+                        .canonical_except_archive(*account, &folders)
                         .map_err(|err| err.to_string())?,
                 );
             }
         }
     }
-    Ok(PorteeCategorie {
-        comptes,
-        boites,
-        exclure,
+    Ok(CategoryScope {
+        accounts,
+        mailboxes,
+        excluded,
     })
 }
 
-/// Le total d'une catégorie — la commande SÉPARÉE du service des pages
-/// (terrain 2026-08-20, PLAN-DEFILEMENT-PROFOND) : le comptage d'une
-/// intégrale (sonde NOT EXISTS par ligne, ~240 ms sur 200 k) ne doit
-/// jamais retarder un premier rendu — le front l'appelle quand sa
-/// pompe de pages est au repos, et la barre de défilement s'ajuste à
-/// l'arrivée.
+/// The total of a category — the SEPARATE command from the page
+/// service (field finding 2026-08-20, PLAN-DEFILEMENT-PROFOND): counting
+/// an integral folder (a NOT EXISTS probe per row, ~240 ms on 200k)
+/// must never delay a first render — the front end calls it when its
+/// page pump is at rest, and the scrollbar adjusts on arrival.
 #[tauri::command]
 pub async fn category_total(
     app: AppHandle,
@@ -1942,13 +1949,14 @@ pub async fn category_total(
     account_id: Option<i64>,
     non_lus: bool,
 ) -> Result<u64, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         if category == "reception" {
-            // E2 : le total suit le flot — exclusion PARTAGÉE avec la
-            // page (leçon `pins`), et le classique reste intact.
-            let organise = store.organized_mode().map_err(|err| err.to_string())?;
-            return if organise {
+            // E2: the total follows the flow — exclusion SHARED with
+            // the page (lesson of `pins`), and classic mode stays
+            // intact.
+            let organized = store.organized_mode().map_err(|err| err.to_string())?;
+            return if organized {
                 store
                     .organized_inbox_count_scoped(account_id, non_lus)
                     .map_err(|err| err.to_string())
@@ -1963,56 +1971,56 @@ pub async fn category_total(
                 .routing_count_scoped(&category, account_id, non_lus)
                 .map_err(|err| err.to_string());
         }
-        let portee = resoudre_categorie(&store, &category, account_id)?;
-        let echos = mail_core::ECHO_DESTINATIONS
+        let scope = resolve_category(&store, &category, account_id)?;
+        let echoes = mail_core::ECHO_DESTINATIONS
             .contains(&category.as_str())
-            .then_some((category.as_str(), portee.comptes.as_slice()));
-        let (tous, jamais_lus) = store
-            .category_totals(&portee.boites, &portee.exclure, echos)
+            .then_some((category.as_str(), scope.accounts.as_slice()));
+        let (all, unread_only) = store
+            .category_totals(&scope.mailboxes, &scope.excluded, echoes)
             .map_err(|err| err.to_string())?;
-        Ok(if non_lus { jamais_lus } else { tous })
+        Ok(if non_lus { unread_only } else { all })
     })
     .await
 }
 
-/// Rattrape l'aperçu des corps écrits avant la colonne `preview`, par
-/// lots bornés — l'UI l'appelle au fil de son sondage jusqu'à zéro,
-/// jamais sur le chemin d'ouverture. Rend le nombre restant.
+/// Catches up the preview of bodies written before the `preview`
+/// column, in bounded batches — the UI calls it as it polls, down to
+/// zero, never on the opening path. Returns the number remaining.
 #[tauri::command]
 pub async fn preview_catchup(app: AppHandle, limit: usize) -> Result<u64, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store.preview_catchup(limit).map_err(|err| err.to_string())
     })
     .await
 }
 
-/// Les résultats d'une recherche : les lignes rendues (plafonnées à
-/// `SEARCH_LIMIT`) et le nombre TOTAL de correspondances — pour dire
-/// « 100 sur N » quand le rendu est plafonné.
+/// The results of a search: the rendered rows (capped at
+/// `SEARCH_LIMIT`) and the TOTAL number of matches — to say "100 of N"
+/// when the render is capped.
 #[derive(Serialize)]
 pub struct SearchResults {
     pub rows: Vec<MessageRow>,
     pub total: u64,
 }
 
-/// Recherche plein-texte sur tous les comptes, une tranche à la fois.
-/// `offset` sert « charger plus » : 0 à la frappe, puis le nombre de lignes
-/// déjà affichées. Le déclenchement à partir de 3 caractères et le debounce
-/// sont de la responsabilité de l'UI.
+/// Full-text search across all accounts, one slice at a time.
+/// `offset` serves "load more": 0 while typing, then the number of
+/// rows already shown. Triggering from 3 characters and the debounce
+/// are the UI's responsibility.
 #[tauri::command]
 pub async fn search_messages(
     app: AppHandle,
     query: String,
     offset: usize,
 ) -> Result<SearchResults, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        // `search_capped` rend la tranche `[offset, offset+SEARCH_LIMIT)` ET le
-        // total exact, et bascule sur le tri par date au-delà du seuil de
-        // requête large (le classement BM25 y dépasse le budget et ne veut plus
-        // rien dire — ADR 0004). Le tri ne dépendant que du total, les tranches
-        // s'enchaînent sans trou ni doublon.
+        // `search_capped` returns the slice `[offset, offset+SEARCH_LIMIT)` AND
+        // the exact total, and switches to date sort past the wide-query
+        // threshold (BM25 ranking there exceeds the budget and stops meaning
+        // anything — ADR 0004). Since the sort only depends on the total, the
+        // slices chain without a gap or a duplicate.
         let (hits, total) = store
             .search_capped(&query, SEARCH_LIMIT, offset)
             .map_err(|err| err.to_string())?;
@@ -2026,22 +2034,22 @@ pub async fn search_messages(
 pub struct BodyView {
     pub document: String,
     pub remote_images_blocked: usize,
-    /// Le compte de pièces D'APRÈS-SCAN : la première ouverture d'un
-    /// message vient d'écrire ses pièces en base (`load_body`), mais la
-    /// ligne de liste qui a mené ici portait le compte d'AVANT — s'y
-    /// fier faisait ouvrir les pièces jointes fraîchement reçues sur
-    /// une rangée vide (terrain CE, 2026-08-14).
+    /// The attachment count AFTER-SCAN: the first opening of a message
+    /// just wrote its attachments to the database (`load_body`), but
+    /// the list row that led here carried the count from BEFORE —
+    /// trusting it made freshly received attachments open on an empty
+    /// row (CE field finding, 2026-08-14).
     pub attachment_count: usize,
-    /// La carte d'invitation du message, ENTIÈRE (ligne `invitations`
-    /// fraîche du même scan) : elle voyage avec le corps — une seconde
-    /// commande pour la relire coûtait un aller-retour IPC et une
-    /// requête en double par ouverture (revue).
-    pub invitation: Option<InvitationVue>,
+    /// The message's invitation card, WHOLE (fresh `invitations` row
+    /// from the same scan): it travels with the body — a second
+    /// command to reread it cost an IPC round trip and a duplicate
+    /// query per opening (review).
+    pub invitation: Option<InvitationView>,
 }
 
-/// Corps d'un message : cache local d'abord (aucun réseau), serveur du
-/// compte sinon. Document auto-CSP chargé dans une iframe `sandbox` —
-/// les trois couches de défense de la Phase 0.
+/// Body of a message: local cache first (no network), the account's
+/// server otherwise. Auto-CSP document loaded in a `sandbox` iframe —
+/// the three defense layers of Phase 0.
 #[tauri::command]
 pub async fn message_body(
     app: AppHandle,
@@ -2050,39 +2058,39 @@ pub async fn message_body(
     uid: u32,
     show_images: bool,
 ) -> Result<BodyView, String> {
-    // Chemin courant — corps en cache : UNE prise du verrou, UNE ouverture
-    // (revue PLAN-AUDIT-V1 : `raw_body` puis un second `hors_pompe`
-    // prenaient le verrou deux fois pour rien).
-    let boite = mailbox.clone();
-    let en_cache = hors_pompe(app.clone(), move |app| {
+    // Current path — cached body: ONE lock take, ONE opening (PLAN-AUDIT-V1
+    // review: `raw_body` then a second `off_pump` used to take the
+    // lock twice for nothing).
+    let mailbox2 = mailbox.clone();
+    let cached = off_pump(app.clone(), move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         match store
-            .body(account_id, &boite, uid)
+            .body(account_id, &mailbox2, uid)
             .map_err(|err| err.to_string())?
         {
             Some(html) => {
-                vue_du_corps(&store, account_id, &boite, uid, show_images, &html).map(Some)
+                body_view(&store, account_id, &mailbox2, uid, show_images, &html).map(Some)
             }
             None => Ok(None),
         }
     })
     .await?;
-    if let Some(vue) = en_cache {
-        return Ok(vue);
+    if let Some(view) = cached {
+        return Ok(view);
     }
-    // Corps absent : rapatriement réseau (nu), puis la vue sous le verrou.
+    // Body absent: bare network fetch, then the view under the lock.
     let html = raw_body(&app, account_id, &mailbox, uid).await?;
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        vue_du_corps(&store, account_id, &mailbox, uid, show_images, &html)
+        body_view(&store, account_id, &mailbox, uid, show_images, &html)
     })
     .await
 }
 
-/// La vue d'un corps déjà en base : garde d'images, pièces, invitation,
-/// assainissement (du CPU : un corps de 28 Mo, D-1) — sous le verrou des
-/// commandes (E5), jamais sur un worker async nu.
-fn vue_du_corps(
+/// The view of a body already in the database: image guard, attachments,
+/// invitation, sanitization (CPU-heavy: a 28 MB body, D-1) — under the
+/// commands' lock (E5), never on a bare async worker.
+fn body_view(
     store: &Store,
     account_id: i64,
     mailbox: &str,
@@ -2091,12 +2099,12 @@ fn vue_du_corps(
     html: &str,
 ) -> Result<BodyView, String> {
     {
-        // R1 (PLAN-RETOURS-11, D1) : la mémoire de la garde d'images se
-        // consulte ICI — l'autorité est le cœur, l'UI ne décide rien
-        // (elle ne voit qu'un `remote_images_blocked` à zéro, donc pas
-        // de bandeau). Trois lectures indexées au pire (point-lookups
-        // sur PK), et aucune quand `show_images` tranche déjà.
-        let images_accordees = if show_images {
+        // R1 (PLAN-RETOURS-11, D1): the image guard's memory is consulted
+        // HERE — the authority is the core, the UI decides nothing (it
+        // only sees a `remote_images_blocked` of zero, hence no banner).
+        // Three indexed reads at worst (point lookups on PK), and none
+        // when `show_images` already settles it.
+        let images_granted = if show_images {
             true
         } else {
             store
@@ -2114,21 +2122,22 @@ fn vue_du_corps(
         let invitation = store
             .invitation(account_id, mailbox, uid)
             .map_err(|err| err.to_string())?
-            .map(vue_invitation);
+            .map(invitation_view);
 
-        let policy = if images_accordees {
+        let policy = if images_granted {
             mail_render::ImagePolicy::AllowRemote
         } else {
             mail_render::ImagePolicy::BlockRemote
         };
         let sanitized = mail_render::sanitize_with(html, policy);
-        // R3 (PLAN-RETOURS-4, D3, 2026-08-18) : le corps s'affiche TOUJOURS
-        // sur dalle claire (`Palette::default` = encre sombre / fond blanc),
-        // quel que soit le thème. La dalle sombre d'A42 rendait illisible le
-        // texte à couleurs d'expéditeur (fréquent : infolettres pensées pour
-        // fond blanc — terrain 2026-08-18) ; le courriel se lit tel qu'il a
-        // été composé, comme chez les clients mûrs. Le texte SANS couleur
-        // propre était déjà lisible ; celui qui en porte l'est désormais aussi.
+        // R3 (PLAN-RETOURS-4, D3, 2026-08-18): the body ALWAYS displays
+        // on a light slate (`Palette::default` = dark ink / white
+        // background), whatever the theme. A42's dark slate made
+        // sender-colored text unreadable (common: newsletters designed
+        // for a white background — field finding 2026-08-18); the email
+        // reads as it was composed, like in mature clients. Text
+        // WITHOUT its own color was already readable; text that carries
+        // one now is too.
         Ok(BodyView {
             document: mail_render::email_document(
                 &sanitized.html,
@@ -2154,23 +2163,23 @@ fn fetch_body(
     let body = mail_core::load_body(&mut server, &mut store, account_id, &mailbox, uid)
         .map_err(|err| err.to_string())?;
     server.logout();
-    body.ok_or_else(|| "message introuvable sur le serveur".to_string())
+    body.ok_or_else(|| "message not found on the server".to_string())
 }
 
-/// Corps HTML brut d'un message : cache local d'abord (aucun réseau),
-/// serveur du compte sinon — chemin partagé lecture/réponse/transfert.
+/// Raw HTML body of a message: local cache first (no network), the
+/// account's server otherwise — path shared by read/reply/forward.
 async fn raw_body(
     app: &AppHandle,
     account_id: i64,
     mailbox: &str,
     uid: u32,
 ) -> Result<String, String> {
-    // E5 : la lecture du cache et la session sous `hors_pompe` (base +
-    // verrou des commandes) ; seul le rapatriement réseau part nu.
-    let boite = mailbox.to_string();
-    let en_cache = hors_pompe(app.clone(), move |app| {
+    // E5: the cache read and the session under `off_pump` (database +
+    // commands' lock); only the network fetch runs bare.
+    let mailbox2 = mailbox.to_string();
+    let cached = off_pump(app.clone(), move |app| {
         let cached = Store::open(&db_path(&app)?)
-            .and_then(|store| store.body(account_id, &boite, uid))
+            .and_then(|store| store.body(account_id, &mailbox2, uid))
             .map_err(|err| err.to_string())?;
         match cached {
             Some(html) => Ok(Ok(html)),
@@ -2178,14 +2187,14 @@ async fn raw_body(
         }
     })
     .await?;
-    match en_cache {
+    match cached {
         Ok(html) => Ok(html),
         Err(session) => {
             let path = db_path(app)?;
-            // Copie possedee : la fermeture part sur un autre fil.
-            let boite = mailbox.to_string();
+            // Owned copy: the closure runs on another thread.
+            let mailbox = mailbox.to_string();
             tauri::async_runtime::spawn_blocking(move || {
-                fetch_body(&session, &path, account_id, boite, uid)
+                fetch_body(&session, &path, account_id, mailbox, uid)
             })
             .await
             .map_err(|err| err.to_string())?
@@ -2193,7 +2202,7 @@ async fn raw_body(
     }
 }
 
-/// Une pièce jointe telle que l'UI la présente.
+/// An attachment as the UI presents it.
 #[derive(Serialize)]
 pub struct AttachmentRow {
     pub index: usize,
@@ -2202,9 +2211,9 @@ pub struct AttachmentRow {
     pub size: String,
 }
 
-/// Les pièces jointes connues d'un message — lecture LOCALE, aucun
-/// réseau. Vide tant que le corps n'a pas été rapatrié : même condition
-/// que la recherche dans le texte, et le rattrapage la lève.
+/// The attachments known for a message — LOCAL read, no network. Empty
+/// until the body has been fetched: the same condition as full-text
+/// search, and the catch-up lifts it.
 #[tauri::command]
 pub async fn message_attachments(
     app: AppHandle,
@@ -2212,7 +2221,7 @@ pub async fn message_attachments(
     mailbox: String,
     uid: u32,
 ) -> Result<Vec<AttachmentRow>, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let found = store
             .attachments(account_id, &mailbox, uid)
@@ -2230,18 +2239,18 @@ pub async fn message_attachments(
     .await
 }
 
-/// La carte d'invitation d'un message, telle que l'UI la présente
-/// (PLAN-INVITATIONS). Les horaires sont des epochs UTC quand ils sont
-/// résolus ; sinon la forme TEXTE fait foi (`journee_entiere` ou
-/// `heure_flottante` — l'UI affiche cette dernière telle quelle, avec la
-/// mention « heure locale de l'organisateur », garde D1).
+/// A message's invitation card, as the UI presents it (PLAN-INVITATIONS).
+/// Times are UTC epochs when resolved; otherwise the TEXT form is
+/// authoritative (`journee_entiere` or `heure_flottante` — the UI
+/// displays the latter as-is, with the note "the organizer's local
+/// time", D1 guard).
 #[derive(Serialize)]
-pub struct InvitationVue {
+pub struct InvitationView {
     /// `request` | `cancel` | `reply`.
     pub methode: String,
     pub titre: String,
     pub lieu: Option<String>,
-    /// Le nom d'affichage de l'organisateur, sinon son adresse.
+    /// The organizer's display name, otherwise their address.
     pub organisateur: Option<String>,
     pub debut_epoch: Option<i64>,
     pub fin_epoch: Option<i64>,
@@ -2250,38 +2259,40 @@ pub struct InvitationVue {
     pub journee_entiere: bool,
     pub heure_flottante: bool,
     pub recurrent: bool,
-    /// Notre dernière réponse partie de Wind (`accepte` | `provisoire` |
-    /// `refuse`), sinon le PARTSTAT lu du message.
+    /// Our last reply sent from Wind (`accepte` | `provisoire` |
+    /// `refuse`), otherwise the PARTSTAT read from the message.
     pub statut: Option<String>,
-    /// Le répondant d'un REPLY reçu (nom, sinon adresse) et son statut.
+    /// The replier of a received REPLY (name, otherwise address) and
+    /// their status.
     pub repondant: Option<String>,
     pub repondant_statut: Option<String>,
-    /// La réunion est annulée : vrai sur le CANCEL lui-même ET sur le
-    /// REQUEST de la même réunion (lien croisé, terrain R6) — la carte
-    /// d'origine dit l'annulation, où que l'utilisateur regarde.
+    /// The meeting is cancelled: true on the CANCEL itself AND on the
+    /// REQUEST of the same meeting (cross-link, field finding R6) — the
+    /// original card says the cancellation, wherever the user looks.
     pub annulee: bool,
-    /// Les trois gestes sont possibles : REQUEST avec organisateur, non
-    /// annulé. Être dans la liste ATTENDEE n'est PAS exigé (terrain
-    /// R8, verdict CE : une invitation transférée EST une invitation —
-    /// qui la transfère en prend la responsabilité).
+    /// The three gestures are possible: REQUEST with an organizer, not
+    /// cancelled. Being in the ATTENDEE list is NOT required (field
+    /// finding R8, CE verdict: a forwarded invitation IS an invitation —
+    /// whoever forwards it takes responsibility for it).
     pub peut_repondre: bool,
 }
 
-fn vue_invitation(stockee: mail_core::StoredInvitation) -> InvitationVue {
-    let row = stockee.row;
+fn invitation_view(stored: mail_core::StoredInvitation) -> InvitationView {
+    let row = stored.row;
     let annulee = row.method == "cancel" || row.cancelled;
     let peut_repondre =
         row.method == "request" && row.organizer_address.is_some() && !row.cancelled;
-    InvitationVue {
+    InvitationView {
         annulee,
-        // La garde D1 par EXTRÉMITÉ : une fin au TZID irrésolu suffit à
-        // dire « heure locale de l'organisateur » (revue — un couple
-        // début-résolu/fin-flottante affichait une plage mensongère).
+        // The D1 guard by ENDPOINT: an end with an unresolved TZID is
+        // enough to say "the organizer's local time" (review — a
+        // resolved-start/floating-end pair used to display a misleading
+        // range).
         heure_flottante: (row.start_text.is_some() || row.end_text.is_some()) && !row.all_day,
         organisateur: row.organizer_name.or(row.organizer_address),
-        // D6 : l'état affiché suit la DERNIÈRE réponse partie de Wind ;
-        // le PARTSTAT du message n'est que l'état de départ.
-        statut: stockee.reply.or(row.partstat),
+        // D6: the displayed status follows the LAST reply sent from
+        // Wind; the message's PARTSTAT is only the starting state.
+        statut: stored.reply.or(row.partstat),
         repondant: row.attendee_name.or(row.attendee_address),
         repondant_statut: row.attendee_status,
         methode: row.method,
@@ -2297,13 +2308,13 @@ fn vue_invitation(stockee: mail_core::StoredInvitation) -> InvitationVue {
     }
 }
 
-/// Répond à une invitation (PLAN-INVITATIONS, D5-D6) : l'email iTIP
-/// `METHOD:REPLY` est JOURNALISÉ dans la boîte d'envoi (règles d'or ADR
-/// 0003 — hors ligne, il part au prochain lancement), la réponse est
-/// consignée sur la carte, et la vue à jour est rendue. Le sujet et le
-/// corps viennent de l'UI : c'est elle qui parle la langue du produit.
+/// Replies to an invitation (PLAN-INVITATIONS, D5-D6): the iTIP
+/// `METHOD:REPLY` email is LOGGED to the outbox (ADR 0003 golden rules —
+/// offline, it goes out on next launch), the reply is recorded on the
+/// card, and the up-to-date view is returned. The subject and body come
+/// from the UI: it is the one that speaks the product's language.
 #[tauri::command]
-pub async fn repondre_invitation(
+pub async fn reply_invitation(
     app: AppHandle,
     account_id: i64,
     mailbox: String,
@@ -2311,36 +2322,36 @@ pub async fn repondre_invitation(
     reponse: String,
     sujet: String,
     corps: String,
-) -> Result<Option<InvitationVue>, String> {
-    hors_pompe(app, move |app| {
+) -> Result<Option<InvitationView>, String> {
+    off_pump(app, move |app| {
         let participation = mail_core::participation_de_stable(&reponse)
             .filter(|p| !matches!(p, mail_ical::Participation::NeedsAction))
-            .ok_or_else(|| format!("réponse inconnue : {reponse}"))?;
+            .ok_or_else(|| format!("unknown reply: {reponse}"))?;
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        let stockee = store
+        let stored = store
             .invitation(account_id, &mailbox, uid)
             .map_err(|err| err.to_string())?
-            .ok_or_else(|| "aucune invitation sur ce message".to_string())?;
-        if stockee.row.method != "request" || stockee.row.cancelled {
-            // Même règle que `peut_repondre` — R8 : un `.ics` transféré
-            // EST une invitation (verdict CE) ; une réunion annulée ne
-            // se répond plus.
-            return Err("ce message n'est pas une invitation à répondre".to_string());
+            .ok_or_else(|| "no invitation on this message".to_string())?;
+        if stored.row.method != "request" || stored.row.cancelled {
+            // Same rule as `peut_repondre` — R8: a forwarded `.ics` IS
+            // an invitation (CE verdict); a cancelled meeting can no
+            // longer be replied to.
+            return Err("this message is not an invitation to reply to".to_string());
         }
-        let organisateur = stockee
+        let organizer = stored
             .row
             .organizer_address
             .clone()
-            .ok_or_else(|| "invitation sans organisateur : réponse impossible".to_string())?;
+            .ok_or_else(|| "invitation without an organizer: reply impossible".to_string())?;
         let from = account_email(&store, account_id)?;
-        // La réponse rejoint la conversation de l'invitation (fil).
+        // The reply joins the invitation's conversation (thread).
         let in_reply_to = store
             .envelope(account_id, &mailbox, uid)
             .map_err(|err| err.to_string())?
             .and_then(|envelope| envelope.message_id);
         let mut draft = mail_core::compose(
             &from,
-            &organisateur,
+            &organizer,
             "",
             "",
             &sujet,
@@ -2348,23 +2359,23 @@ pub async fn repondre_invitation(
             in_reply_to.as_deref(),
         )
         .map_err(|err| err.to_string())?;
-        // E7 : la chaîne References entière (RFC 5322 §3.6.4).
+        // E7: the whole References chain (RFC 5322 §3.6.4).
         draft.references = store
             .references_of(account_id, &mailbox, uid)
             .map_err(|err| err.to_string())?;
         draft.ics_reply = Some(mail_ical::itip_reply(&mail_ical::ReplyRequest {
-            uid: &stockee.row.event_uid,
-            sequence: stockee.row.sequence,
-            organizer_address: &organisateur,
+            uid: &stored.row.event_uid,
+            sequence: stored.row.sequence,
+            organizer_address: &organizer,
             our_address: &from,
             participation,
             dtstamp_epoch: chrono::Utc::now().timestamp(),
         }));
-        // Email ET réponse dans UNE transaction (revue) : si la ligne a
-        // disparu entre l'affichage et le clic, RIEN ne part — un email
-        // en file devant une carte « pas répondu » inviterait au double
-        // envoi.
-        let journalise = store
+        // Email AND reply in ONE transaction (review): if the row
+        // vanished between the display and the click, NOTHING goes out
+        // — a queued email in front of a "not replied" card would
+        // invite a double send.
+        let queued = store
             .enqueue_invitation_reply(
                 account_id,
                 &draft,
@@ -2374,41 +2385,40 @@ pub async fn repondre_invitation(
                 chrono::Utc::now().timestamp(),
             )
             .map_err(|err| err.to_string())?;
-        if journalise.is_none() {
-            return Err("l'invitation n'existe plus ; rien n'est parti".to_string());
+        if queued.is_none() {
+            return Err("the invitation no longer exists; nothing was sent".to_string());
         }
-        let maj = store
+        let updated = store
             .invitation(account_id, &mailbox, uid)
             .map_err(|err| err.to_string())?;
-        Ok(maj.map(vue_invitation))
+        Ok(updated.map(invitation_view))
     })
     .await
 }
 
 #[derive(Serialize)]
-pub struct CorrespondantRow {
+pub struct ContactRow {
     pub address: String,
     pub name: Option<String>,
 }
 
-/// Les suggestions d'adresses pour un préfixe tapé dans À/Cc/Cci
-/// (PLAN-RETOURS-5, D3/D4) : l'annuaire des correspondants — table
-/// petite, appris du courrier vu — classé récence + fréquence. Lecture
-/// locale, aucun réseau.
+/// Address suggestions for a prefix typed in To/Cc/Bcc (PLAN-RETOURS-5,
+/// D3/D4): the contacts directory — a small table, learned from mail
+/// seen — ranked by recency + frequency. Local read, no network.
 #[tauri::command]
-pub async fn completer_adresses(
+pub async fn complete_addresses(
     app: AppHandle,
     prefixe: String,
     limite: usize,
-) -> Result<Vec<CorrespondantRow>, String> {
-    hors_pompe(app, move |app| {
+) -> Result<Vec<ContactRow>, String> {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        let trouves = store
+        let found = store
             .complete_addresses(&prefixe, limite.min(16))
             .map_err(|err| err.to_string())?;
-        Ok(trouves
+        Ok(found
             .into_iter()
-            .map(|c| CorrespondantRow {
+            .map(|c| ContactRow {
                 address: c.address,
                 name: c.name,
             })
@@ -2417,19 +2427,20 @@ pub async fn completer_adresses(
     .await
 }
 
-/// Le chemin d'enregistrement PROPOSÉ pour une pièce (R1, PLAN-RETOURS-4,
-/// D2) : dossier Téléchargements + nom assaini rendu unique. Le nom vient
-/// de l'UI (déjà affiché dans la puce) — inutile de rouvrir la base pour
-/// le relire ; `safe_file_name` reste l'autorité de désinfection du nom
-/// venu du réseau (défense en profondeur, même si le dialogue laisse
-/// ensuite l'utilisateur trancher dossier ET nom finals).
+/// The SUGGESTED save path for an attachment (R1, PLAN-RETOURS-4, D2):
+/// the Downloads folder + a sanitized name made unique. The name comes
+/// from the UI (already shown in the chip) — no point reopening the
+/// database to reread it; `safe_file_name` remains the sanitization
+/// authority for a name coming from the network (defense in depth, even
+/// though the dialog then lets the user decide the final folder AND
+/// name).
 #[tauri::command]
-pub async fn chemin_enregistrement_suggere(app: AppHandle, name: String) -> Result<String, String> {
-    hors_pompe(app, move |app| {
+pub async fn suggested_save_path(app: AppHandle, name: String) -> Result<String, String> {
+    off_pump(app, move |app| {
         let directory = app
             .path()
             .download_dir()
-            .map_err(|err| format!("dossier Téléchargements introuvable : {err}"))?;
+            .map_err(|err| format!("Downloads folder not found: {err}"))?;
         Ok(unique_path(&directory, &safe_file_name(&name))
             .to_string_lossy()
             .into_owned())
@@ -2437,11 +2448,11 @@ pub async fn chemin_enregistrement_suggere(app: AppHandle, name: String) -> Resu
     .await
 }
 
-/// Enregistre une pièce jointe au chemin CHOISI par l'utilisateur (R1,
-/// PLAN-RETOURS-4, D2) et retourne ce chemin. Le dialogue « Enregistrer
-/// sous » est ouvert côté UI (`plugin:dialog|save`) ; ici on ne fait que
-/// rapatrier les octets — jamais en cache, retéléchargés à la demande —
-/// et les écrire à l'endroit voulu.
+/// Saves an attachment to the path CHOSEN by the user (R1,
+/// PLAN-RETOURS-4, D2) and returns that path. The "Save as" dialog is
+/// opened on the UI side (`plugin:dialog|save`); here we only fetch the
+/// bytes — never cached, redownloaded on demand — and write them to the
+/// wanted spot.
 #[tauri::command]
 pub async fn save_attachment(
     app: AppHandle,
@@ -2451,62 +2462,61 @@ pub async fn save_attachment(
     index: usize,
     dest: String,
 ) -> Result<String, String> {
-    let session = hors_pompe(app.clone(), move |app| auth_for(&app, account_id)).await?;
+    let session = off_pump(app.clone(), move |app| auth_for(&app, account_id)).await?;
     let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
         let (mut server, _refreshed) = connect_imap(&session)?;
         let bytes = server
             .fetch_attachment(&mailbox, uid, index)
             .map_err(|err| err.to_string())?;
         server.logout();
-        bytes.ok_or_else(|| "pièce jointe absente du message".to_string())
+        bytes.ok_or_else(|| "attachment missing from the message".to_string())
     })
     .await
     .map_err(|err| err.to_string())??;
 
-    // E5 : l'écriture sur disque (des octets choisis par l'expéditeur,
-    // jusqu'à 25 Mo) hors du worker async nu.
-    hors_pompe(app, move |_| {
-        let dest = chemin_de_sortie(&dest)?;
-        std::fs::write(&dest, &bytes).map_err(|err| format!("écriture impossible : {err}"))?;
+    // E5: the disk write (bytes chosen by the sender, up to 25 MB) off
+    // the bare async worker.
+    off_pump(app, move |_| {
+        let dest = output_path(&dest)?;
+        std::fs::write(&dest, &bytes).map_err(|err| format!("write failed: {err}"))?;
         Ok(dest.to_string_lossy().into_owned())
     })
     .await
 }
 
-/// Le chemin où une pièce reçue peut s'écrire (PLAN-AUDIT-V2 E8, défense
-/// en profondeur) : venu du dialogue de la webview, il s'écrit avec des
-/// octets choisis par l'expéditeur — absolu, sans remontée `..`, dans un
-/// dossier qui existe. Décision pure, testée.
-fn chemin_de_sortie(dest: &str) -> Result<std::path::PathBuf, String> {
-    let chemin = std::path::Path::new(dest);
-    if !chemin.is_absolute() {
-        return Err("chemin d'enregistrement relatif refusé".to_string());
+/// The path where a received attachment may be written (PLAN-AUDIT-V2
+/// E8, defense in depth): coming from the webview dialog, it will be
+/// written with bytes chosen by the sender — absolute, no `..`
+/// traversal, in a folder that exists. Pure, tested decision.
+fn output_path(dest: &str) -> Result<std::path::PathBuf, String> {
+    let path = std::path::Path::new(dest);
+    if !path.is_absolute() {
+        return Err("relative save path refused".to_string());
     }
-    if chemin
+    if path
         .components()
         .any(|c| matches!(c, std::path::Component::ParentDir))
     {
-        return Err("chemin d'enregistrement avec remontée refusé".to_string());
+        return Err("save path with traversal refused".to_string());
     }
-    if chemin.file_name().is_none() {
-        return Err("chemin d'enregistrement sans nom de fichier".to_string());
+    if path.file_name().is_none() {
+        return Err("save path without a file name".to_string());
     }
-    match chemin.parent() {
-        Some(dossier) if dossier.is_dir() => Ok(chemin.to_path_buf()),
-        _ => Err("dossier d'enregistrement introuvable".to_string()),
+    match path.parent() {
+        Some(folder) if folder.is_dir() => Ok(path.to_path_buf()),
+        _ => Err("save folder not found".to_string()),
     }
 }
 
-/// Réduit un nom venu du RÉSEAU à un nom de fichier inoffensif.
+/// Reduces a name coming from the NETWORK to an inoffensive file name.
 ///
-/// Un nom de pièce jointe est une chaîne choisie par l'expéditeur. Tel
-/// quel, `../../.ssh/authorized_keys` écrirait hors du dossier voulu :
-/// c'est une écriture arbitraire de fichier, déclenchée par un simple
-/// clic sur un message reçu. Rien de ce qui suit n'est de la prudence
-/// excessive.
+/// An attachment name is a string chosen by the sender. As-is,
+/// `../../.ssh/authorized_keys` would write outside the intended
+/// folder: that is an arbitrary file write, triggered by a simple click
+/// on a received message. Nothing that follows is excessive caution.
 fn safe_file_name(raw: &str) -> String {
-    // Ne garder que le dernier segment : tout séparateur, toute
-    // remontée `..` et tout préfixe de lecteur disparaissent avec lui.
+    // Keep only the last segment: every separator, every `..`
+    // traversal and every drive prefix disappears with it.
     let base = raw
         .rsplit(['/', '\\', ':'])
         .next()
@@ -2516,7 +2526,7 @@ fn safe_file_name(raw: &str) -> String {
     let cleaned: String = base
         .chars()
         .map(|c| match c {
-            // Interdits par Windows, plus les caractères de contrôle.
+            // Forbidden by Windows, plus control characters.
             '<' | '>' | '"' | '|' | '?' | '*' => '_',
             c if (c as u32) < 0x20 => '_',
             c => c,
@@ -2525,13 +2535,13 @@ fn safe_file_name(raw: &str) -> String {
         .collect();
     let cleaned = cleaned.trim().trim_matches('.').to_string();
     if cleaned.is_empty() || is_reserved_device_name(&cleaned) {
-        return "piece-jointe".to_string();
+        return "attachment".to_string();
     }
     cleaned
 }
 
-/// Noms réservés par Windows : un fichier nommé `CON` ou `LPT1` est
-/// refusé par l'OS, quelle que soit l'extension.
+/// Names reserved by Windows: a file named `CON` or `LPT1` is refused
+/// by the OS, whatever the extension.
 fn is_reserved_device_name(name: &str) -> bool {
     let stem = name.split('.').next().unwrap_or(name).to_ascii_uppercase();
     matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
@@ -2540,8 +2550,8 @@ fn is_reserved_device_name(name: &str) -> bool {
             && stem.ends_with(|c: char| c.is_ascii_digit() && c != '0'))
 }
 
-/// Chemin libre dans `directory` : `facture.pdf`, puis `facture (2).pdf`…
-/// Enregistrer deux fois ne doit jamais écraser le premier fichier.
+/// Free path in `directory`: `invoice.pdf`, then `invoice (2).pdf`…
+/// Saving twice must never overwrite the first file.
 fn unique_path(directory: &Path, name: &str) -> PathBuf {
     let candidate = directory.join(name);
     if !candidate.exists() {
@@ -2560,8 +2570,8 @@ fn unique_path(directory: &Path, name: &str) -> PathBuf {
     directory.join(format!("{stem} ({}){extension}", std::process::id()))
 }
 
-/// Archive : disparition locale immédiate + journalisation, le serveur
-/// du compte suivra au prochain sync.
+/// Archive: immediate local disappearance + logging, the account's
+/// server will follow on the next sync.
 #[tauri::command]
 pub async fn archive_message(
     app: AppHandle,
@@ -2569,41 +2579,41 @@ pub async fn archive_message(
     mailbox: String,
     uid: u32,
 ) -> Result<(), String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         queue_removal(&app, account_id, mailbox, uid, Action::Archive)
     })
     .await
 }
 
-/// L'état que l'UI sonde au repos, en UNE commande (PLAN-AUDIT-V2 E10) :
-/// nav, avancement de synchro, boîte d'envoi — trois sondes, trois
-/// `Store::open` et trois passages dans la file sérialisée par 10 s
-/// avant ; une seule désormais, sur une seule connexion.
+/// The state the UI polls at rest, in ONE command (PLAN-AUDIT-V2 E10):
+/// nav, sync progress, outbox — three probes, three `Store::open` calls
+/// and three passes through the serialized queue used to cost 10 s
+/// before; a single one now, on a single connection.
 #[derive(Serialize)]
-pub struct EtatUi {
+pub struct UiState {
     pub nav: Vec<NavAccount>,
     pub synchro: SyncProgress,
     pub envois: OutboxStatus,
 }
 
 #[tauri::command]
-pub async fn etat_ui(app: AppHandle, state: State<'_, AppState>) -> Result<EtatUi, String> {
+pub async fn ui_state(app: AppHandle, state: State<'_, AppState>) -> Result<UiState, String> {
     let generation = state.sync_cycle.generation.load(Ordering::Relaxed);
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        Ok(EtatUi {
-            nav: lire_nav(&store)?,
-            synchro: lire_synchro(&store, generation)?,
-            envois: lire_envois(&store)?,
+        Ok(UiState {
+            nav: read_nav(&store)?,
+            synchro: read_sync(&store, generation)?,
+            envois: read_sends(&store)?,
         })
     })
     .await
 }
 
-/// Une rangée cochée, telle que la barre de sélection la nomme.
+/// A checked row, as the selection bar names it.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CibleArg {
+pub struct TargetArg {
     pub account_id: i64,
     pub mailbox: String,
     pub uid: u32,
@@ -2611,44 +2621,44 @@ pub struct CibleArg {
 }
 
 #[derive(Serialize)]
-pub struct BilanGroupe {
+pub struct GroupOutcome {
     pub faits: usize,
     pub total: usize,
 }
 
-/// Les comptes déjà nommés « sans CONDSTORE » dans cette session — la
-/// ligne se dit une fois, pas à chaque relève.
-fn sans_condstore_premiere_fois(account_id: i64) -> bool {
-    static DITS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<i64>>> =
+/// The accounts already flagged "without CONDSTORE" in this session —
+/// the line is said once, not on every poll.
+fn without_condstore_first_time(account_id: i64) -> bool {
+    static TOLD: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<i64>>> =
         std::sync::OnceLock::new();
-    let dits = DITS.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()));
-    match dits.lock() {
-        Ok(mut dits) => dits.insert(account_id),
-        Err(empoisonne) => empoisonne.into_inner().insert(account_id),
+    let told = TOLD.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+    match told.lock() {
+        Ok(mut told) => told.insert(account_id),
+        Err(poisoned) => poisoned.into_inner().insert(account_id),
     }
 }
 
-/// Le geste de MASSE de la barre de sélection (PLAN-AUDIT-V2 E6) : UN
-/// appel, UNE transaction, tout ou rien (D6) — l'UI rejouait N × k
-/// commandes unitaires en série. `action` : les clés de la barre
-/// (archiver, supprimer, spam, nonspam, lu, nonlu).
+/// The BULK gesture of the selection bar (PLAN-AUDIT-V2 E6): ONE call,
+/// ONE transaction, all or nothing (D6) — the UI used to replay N × k
+/// unit commands in series. `action`: the bar's keys (archiver,
+/// supprimer, spam, nonspam, lu, nonlu).
 #[tauri::command]
-pub async fn agir_groupe(
+pub async fn act_on_group(
     app: AppHandle,
-    cibles: Vec<CibleArg>,
+    cibles: Vec<TargetArg>,
     action: String,
-) -> Result<BilanGroupe, String> {
-    let geste = match action.as_str() {
+) -> Result<GroupOutcome, String> {
+    let gesture = match action.as_str() {
         "archiver" => mail_core::GroupGesture::Archive,
         "supprimer" => mail_core::GroupGesture::Delete,
         "spam" => mail_core::GroupGesture::Spam,
         "nonspam" => mail_core::GroupGesture::NotSpam,
         "lu" => mail_core::GroupGesture::Seen(true),
         "nonlu" => mail_core::GroupGesture::Seen(false),
-        autre => return Err(format!("geste de masse inconnu : {autre}")),
+        other => return Err(format!("unknown bulk gesture: {other}")),
     };
     let total = cibles.len();
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let cibles: Vec<mail_core::GestureTarget> = cibles
             .into_iter()
@@ -2660,34 +2670,34 @@ pub async fn agir_groupe(
             })
             .collect();
         let faits = store
-            .act_on_group(&cibles, &geste)
+            .act_on_group(&cibles, &gesture)
             .map_err(|err| err.to_string())?;
-        Ok(BilanGroupe { faits, total })
+        Ok(GroupOutcome { faits, total })
     })
     .await
 }
 
-/// Un dossier proposé à l'utilisateur.
+/// A folder offered to the user.
 #[derive(Serialize)]
 pub struct FolderRow {
-    /// Nom RÉSEAU — c'est lui que l'UI renverra pour un déplacement.
+    /// NETWORK name — this is what the UI will send back for a move.
     pub wire: String,
-    /// Nom lisible, décodé de l'UTF-7 modifié.
+    /// Readable name, decoded from modified UTF-7.
     pub display: String,
 }
 
-/// Les dossiers d'un compte où un message peut être déplacé.
+/// The folders of an account where a message can be moved.
 ///
-/// Lecture **purement locale** : le cache est rempli par la synchro.
-/// Déplacer un message doit marcher hors ligne — l'action est journalisée
-/// et rejouée, comme archiver. Interroger le serveur ici rendrait le tri
-/// dépendant du réseau, ce que le produit refuse (PLAN.md §1).
+/// **Purely local** read: the cache is filled by the sync. Moving a
+/// message must work offline — the action is logged and replayed, like
+/// archiving. Querying the server here would make sorting depend on the
+/// network, which the product refuses (PLAN.md §1).
 ///
-/// La boîte courante est exclue : « déplacer vers INBOX » depuis INBOX
-/// n'a pas de sens, et certains serveurs le refusent.
+/// The current mailbox is excluded: "move to INBOX" from INBOX makes
+/// no sense, and some servers refuse it.
 #[tauri::command]
 pub async fn list_folders(app: AppHandle, account_id: i64) -> Result<Vec<FolderRow>, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         Ok(store
             .folders(account_id)
@@ -2703,8 +2713,8 @@ pub async fn list_folders(app: AppHandle, account_id: i64) -> Result<Vec<FolderR
     .await
 }
 
-/// Déplace un message : disparition locale immédiate + journalisation,
-/// le serveur suivra au prochain sync — même boucle qu'archiver.
+/// Moves a message: immediate local disappearance + logging, the server
+/// will follow on the next sync — same loop as archiving.
 #[tauri::command]
 pub async fn move_message(
     app: AppHandle,
@@ -2713,19 +2723,20 @@ pub async fn move_message(
     uid: u32,
     folder: String,
 ) -> Result<(), String> {
-    hors_pompe(app, move |app| {
-        // Le nom vient de l'UI, qui le tient de `list_folders` : il est déjà
-        // en forme réseau. Le décoder ici ferait échouer le rejeu.
+    off_pump(app, move |app| {
+        // The name comes from the UI, which got it from `list_folders`:
+        // it is already in network form. Decoding it here would make
+        // the replay fail.
         if folder.trim().is_empty() {
-            return Err("dossier de destination manquant".to_string());
+            return Err("destination folder missing".to_string());
         }
         queue_removal(&app, account_id, mailbox, uid, Action::MoveTo(folder))
     })
     .await
 }
 
-/// Suppression : disparition locale immédiate + journalisation, mise à
-/// la corbeille du serveur du compte au prochain sync.
+/// Deletion: immediate local disappearance + logging, moved to the
+/// account's server trash on the next sync.
 #[tauri::command]
 pub async fn delete_message(
     app: AppHandle,
@@ -2733,19 +2744,19 @@ pub async fn delete_message(
     mailbox: String,
     uid: u32,
 ) -> Result<(), String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         queue_removal(&app, account_id, mailbox, uid, Action::Delete)
     })
     .await
 }
 
-/// Signaler un message comme indésirable (R2, PLAN-RETOURS-3) : il part
-/// vers le dossier Junk du serveur — c'est LUI qui apprend (Gmail entraîne
-/// son filtre sur le déplacement). Même boucle qu'archiver : disparition
-/// locale immédiate, action `MoveTo` journalisée et rejouée, le serveur
-/// suit. Le dossier indésirable est résolu par compte
-/// (`canonical_folders`) ; sans dossier reconnu, le geste échoue
-/// franchement plutôt que d'inventer une destination.
+/// Reports a message as junk (R2, PLAN-RETOURS-3): it moves to the
+/// server's Junk folder — it is THAT server that learns (Gmail trains
+/// its filter on the move). Same loop as archiving: immediate local
+/// disappearance, `MoveTo` action logged and replayed, the server
+/// follows. The junk folder is resolved per account
+/// (`canonical_folders`); without a recognized folder, the gesture
+/// fails outright rather than inventing a destination.
 #[tauri::command]
 pub async fn report_spam(
     app: AppHandle,
@@ -2753,16 +2764,16 @@ pub async fn report_spam(
     mailbox: String,
     uid: u32,
 ) -> Result<(), String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        let dossiers = store
+        let folders = store
             .canonical_folders(account_id)
             .map_err(|err| err.to_string())?;
-        let Some(spam) = dossiers.junk else {
-            return Err("aucun dossier indesirable reconnu sur ce compte".to_string());
+        let Some(spam) = folders.junk else {
+            return Err("no junk folder recognized on this account".to_string());
         };
-        // Déjà dans les indésirables : rien à faire (la vue n'offre pas le
-        // geste, mais la garde évite un déplacement vers soi-même).
+        // Already in Junk: nothing to do (the view does not offer the
+        // gesture, but the guard avoids a move onto itself).
         if spam == mailbox {
             return Ok(());
         }
@@ -2771,10 +2782,10 @@ pub async fn report_spam(
     .await
 }
 
-/// L'inverse (R2) : un message classé à tort indésirable revient en
-/// Réception. Offert depuis la seule vue Indésirables. Même boucle —
-/// `MoveTo(INBOX)` journalisé, le serveur réconcilie, le fil se
-/// reconstitue à la relève de INBOX (ADR 0009).
+/// The reverse (R2): a message wrongly classified as junk goes back to
+/// the Inbox. Offered only from the Junk view. Same loop — `MoveTo(INBOX)`
+/// logged, the server reconciles, the thread is reconstituted on the
+/// next INBOX poll (ADR 0009).
 #[tauri::command]
 pub async fn mark_not_spam(
     app: AppHandle,
@@ -2782,7 +2793,7 @@ pub async fn mark_not_spam(
     mailbox: String,
     uid: u32,
 ) -> Result<(), String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         queue_removal(
             &app,
             account_id,
@@ -2808,12 +2819,12 @@ fn queue_removal(
     else {
         return Ok(());
     };
-    // E3 (PLAN-REACTIVITE, R-D1) : le geste est un DÉPLACEMENT — la
-    // matière du message passe à l'écho de destination dans la MÊME
-    // transaction que le journal d'action et la disparition de la
-    // source. La destination se montre < 1 s, hors ligne compris ; le
-    // serveur réconcilie derrière (`sync_apres_geste`). Un déplacement
-    // vers un dossier libre n'a pas de liste canonique : pas d'écho.
+    // E3 (PLAN-REACTIVITE, R-D1): the gesture is a MOVE — the message's
+    // matter passes to the destination echo in the SAME transaction as
+    // the action log and the source's disappearance. The destination
+    // shows in < 1 s, offline included; the server reconciles behind it
+    // (`sync_after_gesture`). A move to a free-form folder has no
+    // canonical list: no echo.
     let destination = match &action {
         Action::Delete => Some("corbeille"),
         Action::Archive => Some("archives"),
@@ -2824,25 +2835,25 @@ fn queue_removal(
         .map_err(|err| err.to_string())
 }
 
-/// Le corps d'un écho local (E3) pour la Lecture : même assainissement
-/// que `message_body` (S1 — le HTML d'origine est celui de l'expéditeur,
-/// le texte d'envoi est déjà échappé mais repasse par la même porte).
-/// Purement local — un écho n'a rien à demander au serveur.
+/// The body of a local echo (E3) for Reading: same sanitization as
+/// `message_body` (S1 — the original HTML is the sender's, the sent
+/// text is already escaped but goes through the same door). Purely
+/// local — an echo has nothing to ask the server.
 #[tauri::command]
 pub async fn echo_body(app: AppHandle, id: i64, show_images: bool) -> Result<BodyView, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let (html, attachment_count) = store
             .echo_view(id)
             .map_err(|err| err.to_string())?
-            .ok_or_else(|| "écho déjà réconcilié".to_string())?;
+            .ok_or_else(|| "echo already reconciled".to_string())?;
         let policy = if show_images {
             mail_render::ImagePolicy::AllowRemote
         } else {
             mail_render::ImagePolicy::BlockRemote
         };
         let sanitized = mail_render::sanitize_with(&html, policy);
-        // R3 : dalle claire toujours (voir `message_body`) — même porte S1.
+        // R3: light slate always (see `message_body`) — same door, S1.
         Ok(BodyView {
             document: mail_render::email_document(
                 &sanitized.html,
@@ -2851,38 +2862,38 @@ pub async fn echo_body(app: AppHandle, id: i64, show_images: bool) -> Result<Bod
             ),
             remote_images_blocked: sanitized.remote_images_blocked,
             attachment_count,
-            // Un écho est NOTRE envoi : jamais d'invitation reçue.
+            // An echo is OUR OWN send: never a received invitation.
             invitation: None,
         })
     })
     .await
 }
 
-/// Les pièces d'un écho d'envoi, en métadonnées seules (PLAN-RETOURS-5,
-/// D2) : nom, mime, taille depuis le journal d'envoi — les octets sont
-/// purgés à `sent`, les puces sont inertes pendant la fenêtre de
-/// réconciliation. Un écho de geste rend une liste vide.
+/// The attachments of a send echo, metadata only (PLAN-RETOURS-5, D2):
+/// name, mime, size from the send log — the bytes are purged at
+/// `sent`, the chips stay inert during the reconciliation window. A
+/// gesture echo returns an empty list.
 #[tauri::command]
 pub async fn echo_attachments(app: AppHandle, id: i64) -> Result<Vec<AttachmentRow>, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let found = store.echo_attachments(id).map_err(|err| err.to_string())?;
         Ok(found
             .into_iter()
             .enumerate()
-            .map(|(index, piece)| AttachmentRow {
+            .map(|(index, attachment)| AttachmentRow {
                 index,
-                size: mail_core::human_size(piece.size),
-                name: piece.name,
-                mime: piece.mime,
+                size: mail_core::human_size(attachment.size),
+                name: attachment.name,
+                mime: attachment.mime,
             })
             .collect())
     })
     .await
 }
 
-/// Marque lu/non-lu : application locale immédiate (optimisme UI) +
-/// journalisation — la prochaine synchro du compte rejoue vers le serveur.
+/// Marks seen/unseen: immediate local application (UI optimism) +
+/// logging — the account's next sync replays it to the server.
 #[tauri::command]
 pub async fn mark_seen(
     app: AppHandle,
@@ -2891,7 +2902,7 @@ pub async fn mark_seen(
     uid: u32,
     seen: bool,
 ) -> Result<(), String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let Some(state) = store
             .sync_state(account_id, &mailbox)
@@ -2917,7 +2928,7 @@ pub async fn mark_seen(
     .await
 }
 
-/// Étoile/désétoile : même contrat que lu/non-lu, même file rejouable.
+/// Flag/unflag: same contract as seen/unseen, same replayable queue.
 #[tauri::command]
 pub async fn mark_flagged(
     app: AppHandle,
@@ -2926,7 +2937,7 @@ pub async fn mark_flagged(
     uid: u32,
     flagged: bool,
 ) -> Result<(), String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let Some(state) = store
             .sync_state(account_id, &mailbox)
@@ -2952,9 +2963,9 @@ pub async fn mark_flagged(
     .await
 }
 
-/// R4 (PLAN-RETOURS-7) : épingle ou désépingle la conversation du
-/// message — donnée LOCALE (IMAP n'a pas ce concept ; `\Flagged` est
-/// l'étoile, une autre sémantique). Rend le nouvel état.
+/// R4 (PLAN-RETOURS-7): pins or unpins the message's conversation —
+/// LOCAL data (IMAP has no such concept; `\Flagged` is the flag, a
+/// different semantics). Returns the new state.
 #[tauri::command]
 pub async fn toggle_pin(
     app: AppHandle,
@@ -2962,7 +2973,7 @@ pub async fn toggle_pin(
     mailbox: String,
     uid: u32,
 ) -> Result<bool, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let Some(state) = store
             .sync_state(account_id, &mailbox)
@@ -2971,41 +2982,40 @@ pub async fn toggle_pin(
             return Ok(false);
         };
         store
-            .toggle_pin(state.mailbox_id, uid, epoch_maintenant())
+            .toggle_pin(state.mailbox_id, uid, epoch_now())
             .map_err(|err| err.to_string())
     })
     .await
 }
 
-fn epoch_maintenant() -> i64 {
+fn epoch_now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
 }
 
-/// La borne d'epoch des pompes de CORPS pour un compte (ADR 0029,
-/// PLAN-HORIZON-NETTOYAGE D1) : l'horizon d'import lu de la pref,
-/// dérivé à la LECTURE — la borne suit l'horloge. Les enveloppes et les
-/// en-têtes de fil restent intégraux, seuls les corps sont bornés.
-/// Best effort : une lecture qui échoue ne borne rien — jamais une
-/// perte silencieuse sur une erreur.
-fn horizon_corps(store: &Store, account_id: i64) -> i64 {
+/// The epoch bound of the BODY pumps for an account (ADR 0029,
+/// PLAN-HORIZON-NETTOYAGE D1): the import horizon read from the pref,
+/// derived at READ time — the bound follows the clock. Envelopes and
+/// thread headers stay whole, only the bodies are bounded. Best effort:
+/// a failed read bounds nothing — never a silent loss on an error.
+fn body_horizon(store: &Store, account_id: i64) -> i64 {
     match store.horizon_import(account_id) {
-        Ok(valeur) => mail_core::horizon_epoch(&valeur, epoch_maintenant()),
+        Ok(value) => mail_core::horizon_epoch(&value, epoch_now()),
         Err(err) => {
-            // §9 : l'échec se DIT (trace lisible via run-wind.ps1),
-            // même quand le repli est sûr.
+            // §9: the failure is SAID (readable trace via run-wind.ps1),
+            // even when the fallback is safe.
             crate::trace::trace(&format!(
-                "horizon_import illisible (compte {account_id}) : {err} ; import intégral par prudence"
+                "horizon_import unreadable (account {account_id}): {err}; importing in full out of caution"
             ));
             mail_core::NO_HORIZON
         }
     }
 }
 
-/// R1 (PLAN-RETOURS-11, D1-D2) : mémorise « Afficher les images » pour
-/// CE message — clé d'enveloppe, la garde ne redemandera plus.
+/// R1 (PLAN-RETOURS-11, D1-D2): remembers "Show images" for THIS
+/// message — envelope key, the guard will not ask again.
 #[tauri::command]
 pub async fn allow_images_message(
     app: AppHandle,
@@ -3013,28 +3023,28 @@ pub async fn allow_images_message(
     mailbox: String,
     uid: u32,
 ) -> Result<(), String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        // Boîte inconnue = échec DIT, jamais un succès de façade : l'UI
-        // afficherait « mémorisé » alors que rien n'est écrit (revue
+        // Unknown mailbox = a SAID failure, never a facade success: the
+        // UI would show "remembered" while nothing is written (review
         // 2026-08-28).
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
         else {
-            return Err(format!("boîte inconnue : {mailbox}"));
+            return Err(format!("unknown mailbox: {mailbox}"));
         };
         store
-            .allow_images_message(state.mailbox_id, uid, epoch_maintenant())
+            .allow_images_message(state.mailbox_id, uid, epoch_now())
             .map_err(|err| err.to_string())
     })
     .await
 }
 
-/// D3 : « Toujours afficher les images de cet expéditeur » — l'adresse
-/// est résolue de l'ENVELOPPE côté cœur (l'UI ne parse jamais une
-/// adresse), normalisée, globale au poste. Rend l'adresse posée (None :
-/// enveloppe sans adresse, rien n'est écrit).
+/// D3: "Always show images from this sender" — the address is resolved
+/// from the ENVELOPE on the core side (the UI never parses an address),
+/// normalized, workstation-wide. Returns the address set (None: an
+/// envelope without an address, nothing is written).
 #[tauri::command]
 pub async fn allow_images_sender(
     app: AppHandle,
@@ -3042,39 +3052,38 @@ pub async fn allow_images_sender(
     mailbox: String,
     uid: u32,
 ) -> Result<Option<String>, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        // Même contrat : l'échec se dit. Le `None` restant (enveloppe
-        // sans adresse — rien n'est écrit) est un vrai cas métier que
-        // l'UI doit distinguer.
+        // Same contract: the failure is said. The remaining `None`
+        // (envelope without an address — nothing is written) is a real
+        // business case the UI must distinguish.
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
         else {
-            return Err(format!("boîte inconnue : {mailbox}"));
+            return Err(format!("unknown mailbox: {mailbox}"));
         };
         store
-            .allow_images_sender_of(state.mailbox_id, uid, epoch_maintenant())
+            .allow_images_sender_of(state.mailbox_id, uid, epoch_now())
             .map_err(|err| err.to_string())
     })
     .await
 }
 
-/// D4 : les règles d'expéditeur, pour la liste des Réglages.
+/// D4: the sender rules, for the Settings list.
 #[tauri::command]
 pub async fn images_senders(app: AppHandle) -> Result<Vec<String>, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store.images_senders().map_err(|err| err.to_string())
     })
     .await
 }
 
-/// D4 : retire une règle d'expéditeur — la porte de sortie du
-/// « toujours ».
+/// D4: removes a sender rule — the exit door of "always".
 #[tauri::command]
 pub async fn revoke_images_sender(app: AppHandle, address: String) -> Result<(), String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
             .revoke_images_sender(&address)
@@ -3083,36 +3092,36 @@ pub async fn revoke_images_sender(app: AppHandle, address: String) -> Result<(),
     .await
 }
 
-/// PLAN-MODE-ORGANISE E1 — l'état du mode organisé (D2 amendée :
-/// `prefs` SQLite, le cœur lit l'état) et sa borne de rétention
-/// (l'époque de première activation, D3 « arrivées seules »).
+/// PLAN-MODE-ORGANISE E1 — the state of organized mode (D2 amended:
+/// SQLite `prefs`, the core reads the state) and its retention bound
+/// (the epoch of first activation, D3 "arrivals only").
 #[tauri::command]
-pub async fn mode_organise_get(app: AppHandle) -> Result<bool, String> {
-    hors_pompe(app, move |app| {
+pub async fn organized_mode_get(app: AppHandle) -> Result<bool, String> {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store.organized_mode().map_err(|err| err.to_string())
     })
     .await
 }
 
-/// Bascule le mode organisé. La borne de première activation s'écrit
-/// côté cœur, dans le même geste — l'UI ne porte jamais l'époque.
+/// Toggles organized mode. The first-activation bound is written on the
+/// core side, in the same gesture — the UI never carries the epoch.
 #[tauri::command]
-pub async fn mode_organise_set(app: AppHandle, actif: bool) -> Result<(), String> {
-    hors_pompe(app, move |app| {
+pub async fn organized_mode_set(app: AppHandle, actif: bool) -> Result<(), String> {
+    off_pump(app, move |app| {
         let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
-            .set_organized_mode(actif, epoch_maintenant())
+            .set_organized_mode(actif, epoch_now())
             .map_err(|err| err.to_string())
     })
     .await
 }
 
-/// L'horizon d'import d'un compte (ADR 0029, D3 : réglable après coup).
-/// Absent = « tout » — le défaut sûr, côté cœur.
+/// The import horizon of an account (ADR 0029, D3: adjustable after the
+/// fact). Absent = "everything" — the safe default, on the core side.
 #[tauri::command]
 pub async fn horizon_import_get(app: AppHandle, account_id: i64) -> Result<String, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
             .horizon_import(account_id)
@@ -3121,16 +3130,16 @@ pub async fn horizon_import_get(app: AppHandle, account_id: i64) -> Result<Strin
     .await
 }
 
-/// Pose l'horizon d'import (vocabulaire fermé, refusé côté cœur).
-/// Étendre rend des corps éligibles — la pompe les rattrape à sa
-/// prochaine passe ; réduire n'efface RIEN de ce qui est déjà en local.
+/// Sets the import horizon (closed vocabulary, rejected on the core
+/// side). Extending it makes bodies eligible — the pump catches them up
+/// on its next pass; narrowing it erases NOTHING already local.
 #[tauri::command]
 pub async fn horizon_import_set(
     app: AppHandle,
     account_id: i64,
     valeur: String,
 ) -> Result<(), String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
             .set_horizon_import(account_id, &valeur)
@@ -3139,29 +3148,29 @@ pub async fn horizon_import_set(
     .await
 }
 
-/// RETOURS-13 R5/R9 — les actions par défaut des boutons Oui/Non du
-/// Portier (livrées : Réception / Corbeille), réglables aux Réglages.
+/// RETOURS-13 R5/R9 — the default actions of the Screener's Yes/No
+/// buttons (shipped: Inbox / Trash), adjustable in Settings.
 #[derive(serde::Serialize)]
-pub struct PortierDefauts {
+pub struct ScreenerDefaults {
     pub oui: String,
     pub non: String,
 }
 
 #[tauri::command]
-pub async fn portier_defauts_get(app: AppHandle) -> Result<PortierDefauts, String> {
-    hors_pompe(app, move |app| {
+pub async fn screener_defaults_get(app: AppHandle) -> Result<ScreenerDefaults, String> {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let (oui, non) = store.screener_defaults().map_err(|err| err.to_string())?;
-        Ok(PortierDefauts { oui, non })
+        Ok(ScreenerDefaults { oui, non })
     })
     .await
 }
 
-/// Le vocabulaire est fermé et refusé côté cœur — l'UI ne peut pas
-/// écrire un défaut troué.
+/// The vocabulary is closed and rejected on the core side — the UI
+/// cannot write a broken default.
 #[tauri::command]
-pub async fn portier_defauts_set(app: AppHandle, oui: String, non: String) -> Result<(), String> {
-    hors_pompe(app, move |app| {
+pub async fn screener_defaults_set(app: AppHandle, oui: String, non: String) -> Result<(), String> {
+    off_pump(app, move |app| {
         let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
             .set_screener_defaults(&oui, &non)
@@ -3170,42 +3179,42 @@ pub async fn portier_defauts_set(app: AppHandle, oui: String, non: String) -> Re
     .await
 }
 
-/// Une ligne de l'historique du Portier, telle que l'UI la montre.
+/// A row of the Screener's history, as the UI shows it.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RoutagePayload {
+pub struct RoutingPayload {
     pub address: String,
     pub destination: String,
     pub regle: Option<String>,
     pub epoch: i64,
 }
 
-/// Le verdict du Portier sur un expéditeur (Oui nu/orienté, Non
-/// nu/avec règle, « Déplacer vers… ») — vocabulaire fermé, refusé côté
-/// cœur avant toute écriture.
+/// The Screener's verdict on a sender (bare/routed Yes, bare/ruled No,
+/// "Move to…") — closed vocabulary, rejected on the core side before
+/// any write.
 #[tauri::command]
-pub async fn router_expediteur(
+pub async fn route_sender(
     app: AppHandle,
     address: String,
     destination: String,
     regle: Option<String>,
 ) -> Result<(), String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
-            .route_sender(&address, &destination, regle.as_deref(), epoch_maintenant())
+            .route_sender(&address, &destination, regle.as_deref(), epoch_now())
             .map_err(|err| err.to_string())
     })
     .await
 }
 
-/// « Déplacer vers… » (E1) : le verdict est posé DEPUIS un message —
-/// l'adresse est résolue de l'enveloppe côté cœur, l'UI ne parse
-/// jamais une adresse (patron `allow_images_sender`). Rend l'adresse
-/// routée ; None = enveloppe sans adresse, rien n'est écrit — un vrai
-/// cas métier que l'UI doit dire.
+/// "Move to…" (E1): the verdict is set FROM a message — the address is
+/// resolved from the envelope on the core side, the UI never parses an
+/// address (`allow_images_sender` pattern). Returns the routed address;
+/// None = envelope without an address, nothing is written — a real
+/// business case the UI must say.
 #[tauri::command]
-pub async fn router_expediteur_de(
+pub async fn route_sender_from(
     app: AppHandle,
     account_id: i64,
     mailbox: String,
@@ -3213,13 +3222,13 @@ pub async fn router_expediteur_de(
     destination: String,
     regle: Option<String>,
 ) -> Result<Option<String>, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
         else {
-            return Err(format!("boîte inconnue : {mailbox}"));
+            return Err(format!("unknown mailbox: {mailbox}"));
         };
         store
             .route_sender_of(
@@ -3227,17 +3236,17 @@ pub async fn router_expediteur_de(
                 uid,
                 &destination,
                 regle.as_deref(),
-                epoch_maintenant(),
+                epoch_now(),
             )
             .map_err(|err| err.to_string())
     })
     .await
 }
 
-/// « Réintégrer » à l'historique du Portier : le verdict disparaît.
+/// "Reinstate" from the Screener's history: the verdict disappears.
 #[tauri::command]
-pub async fn retirer_routage(app: AppHandle, address: String) -> Result<(), String> {
-    hors_pompe(app, move |app| {
+pub async fn remove_routing(app: AppHandle, address: String) -> Result<(), String> {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
             .remove_routing(&address)
@@ -3246,17 +3255,16 @@ pub async fn retirer_routage(app: AppHandle, address: String) -> Result<(), Stri
     .await
 }
 
-/// L'historique du Portier — toutes les décisions, la plus récente en
-/// tête.
+/// The Screener's history — every decision, the most recent first.
 #[tauri::command]
-pub async fn routages(app: AppHandle) -> Result<Vec<RoutagePayload>, String> {
-    hors_pompe(app, move |app| {
+pub async fn routings(app: AppHandle) -> Result<Vec<RoutingPayload>, String> {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         Ok(store
             .routings()
             .map_err(|err| err.to_string())?
             .into_iter()
-            .map(|r| RoutagePayload {
+            .map(|r| RoutingPayload {
                 address: r.address,
                 destination: r.destination,
                 regle: r.rule,
@@ -3267,63 +3275,62 @@ pub async fn routages(app: AppHandle) -> Result<Vec<RoutagePayload>, String> {
     .await
 }
 
-/// Un rang du guichet du Portier (E2) : l'adresse en attente — LA clé
-/// que le verdict prendra — et son dernier message au format des
-/// rangées de la liste.
+/// A row of the Screener's desk (E2): the waiting address — THE key
+/// the verdict will take — and its latest message in list-row format.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PortierRow {
+pub struct ScreenerRow {
     pub address: String,
     pub row: MessageRow,
 }
 
-/// Le guichet du Portier : un rang par expéditeur en attente, le plus
-/// récent en tête. Vide tant que le mode n'a jamais été activé.
+/// The Screener's desk: one row per waiting sender, most recent first.
+/// Empty as long as the mode has never been activated.
 #[tauri::command]
-pub async fn portier_attente(app: AppHandle) -> Result<Vec<PortierRow>, String> {
-    hors_pompe(app, move |app| {
+pub async fn screener_waiting(app: AppHandle) -> Result<Vec<ScreenerRow>, String> {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         Ok(store
             .screener_waiting()
             .map_err(|err| err.to_string())?
             .into_iter()
-            .map(|rang| PortierRow {
-                address: rang.address,
-                row: to_message_row(rang.row),
+            .map(|entry| ScreenerRow {
+                address: entry.address,
+                row: to_message_row(entry.row),
             })
             .collect())
     })
     .await
 }
 
-/// La pastille du Portier : combien de MESSAGES attendent au guichet
-/// (le dessin du prototype — nav et rechargements légers).
+/// The Screener badge: how many MESSAGES are waiting at the desk (the
+/// prototype's design — nav and light reloads).
 #[tauri::command]
-pub async fn portier_total(app: AppHandle) -> Result<u64, String> {
-    hors_pompe(app, move |app| {
+pub async fn screener_total(app: AppHandle) -> Result<u64, String> {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store.screener_total().map_err(|err| err.to_string())
     })
     .await
 }
 
-/// RETOURS-14 R4 (revue) — les adresses en attente au guichet, nues :
-/// le badge du fil compare des identités, il ne peint pas de rangées.
+/// RETOURS-14 R4 (review) — the addresses waiting at the desk, bare:
+/// the thread badge compares identities, it does not paint rows.
 #[tauri::command]
-pub async fn portier_adresses(app: AppHandle) -> Result<Vec<String>, String> {
-    hors_pompe(app, move |app| {
+pub async fn screener_addresses(app: AppHandle) -> Result<Vec<String>, String> {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store.screener_addresses().map_err(|err| err.to_string())
     })
     .await
 }
 
-/// RETOURS-14 R7 (D8) — la pastille du Kiosque : combien de cartes
-/// n'ont JAMAIS été ouvertes (mémoire `kiosque_lus`, la sémantique de
-/// la page — jamais l'`unseen` IMAP). Globale, comme `screener_total`.
+/// RETOURS-14 R7 (D8) — the Feed badge: how many cards have NEVER been
+/// opened (the `kiosque_lus` memory, the page's own semantics — never
+/// IMAP `unseen`). Global, like `screener_total`.
 #[tauri::command]
-pub async fn kiosque_non_ouverts(app: AppHandle) -> Result<u64, String> {
-    hors_pompe(app, move |app| {
+pub async fn feed_unopened(app: AppHandle) -> Result<u64, String> {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store.feed_unopened(None).map_err(|err| err.to_string())
     })
@@ -3331,23 +3338,23 @@ pub async fn kiosque_non_ouverts(app: AppHandle) -> Result<u64, String> {
 }
 
 // ---------------------------------------------------------------------
-// Le Nettoyage de printemps (PLAN-HORIZON-NETTOYAGE volet B) — la
-// session, les groupes, le verdict de groupe. Vocabulaires fermés,
-// refusés côté cœur.
+// Spring cleaning (PLAN-HORIZON-NETTOYAGE part B) — the session, the
+// groups, the group verdict. Closed vocabularies, rejected on the
+// core side.
 // ---------------------------------------------------------------------
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SessionNettoyagePayload {
+pub struct CleanupSessionPayload {
     pub plage: String,
     pub perimetre: String,
     pub total: u64,
     pub traites: u64,
 }
 
-impl From<mail_core::CleanupSession> for SessionNettoyagePayload {
+impl From<mail_core::CleanupSession> for CleanupSessionPayload {
     fn from(s: mail_core::CleanupSession) -> Self {
-        SessionNettoyagePayload {
+        CleanupSessionPayload {
             plage: s.range,
             perimetre: s.scope,
             total: s.total,
@@ -3358,7 +3365,7 @@ impl From<mail_core::CleanupSession> for SessionNettoyagePayload {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GroupeNettoyagePayload {
+pub struct CleanupGroupPayload {
     pub address: String,
     pub qui: Option<String>,
     pub messages: u64,
@@ -3366,9 +3373,9 @@ pub struct GroupeNettoyagePayload {
     pub dernier_objet: Option<String>,
 }
 
-impl From<mail_core::CleanupGroup> for GroupeNettoyagePayload {
+impl From<mail_core::CleanupGroup> for CleanupGroupPayload {
     fn from(g: mail_core::CleanupGroup) -> Self {
-        GroupeNettoyagePayload {
+        CleanupGroupPayload {
             address: g.address,
             qui: g.who,
             messages: g.messages,
@@ -3378,11 +3385,11 @@ impl From<mail_core::CleanupGroup> for GroupeNettoyagePayload {
     }
 }
 
-/// RETOURS-14 R6 (D7) — un groupe du Registre : l'expéditeur, ses
-/// fils, la récence et l'objet du dernier message.
+/// RETOURS-14 R6 (D7) — a group of the Paper trail: the sender, its
+/// threads, the recency and the subject of the last message.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GroupeRegistrePayload {
+pub struct PaperTrailGroupPayload {
     pub address: String,
     pub qui: Option<String>,
     pub fils: u64,
@@ -3390,9 +3397,9 @@ pub struct GroupeRegistrePayload {
     pub dernier_objet: Option<String>,
 }
 
-impl From<mail_core::PaperTrailGroup> for GroupeRegistrePayload {
+impl From<mail_core::PaperTrailGroup> for PaperTrailGroupPayload {
     fn from(g: mail_core::PaperTrailGroup) -> Self {
-        GroupeRegistrePayload {
+        PaperTrailGroupPayload {
             address: g.address,
             qui: g.who,
             fils: g.threads,
@@ -3402,14 +3409,14 @@ impl From<mail_core::PaperTrailGroup> for GroupeRegistrePayload {
     }
 }
 
-/// Les groupes du Registre — un expéditeur × ses fils, récence en
-/// tête (D7, patron du Nettoyage).
+/// The groups of the Paper trail — a sender × their threads, recency
+/// at the top (D7, the pattern of Cleanup).
 #[tauri::command]
-pub async fn registre_groupes(
+pub async fn paper_trail_groups(
     app: AppHandle,
     account_id: Option<i64>,
-) -> Result<Vec<GroupeRegistrePayload>, String> {
-    hors_pompe(app, move |app| {
+) -> Result<Vec<PaperTrailGroupPayload>, String> {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         Ok(store
             .paper_trail_groups(account_id)
@@ -3421,34 +3428,34 @@ pub async fn registre_groupes(
     .await
 }
 
-/// La page d'un groupe du Registre — les fils de CE seul expéditeur,
-/// enrichis comme toute page de liste (invitations).
+/// The page of a Paper trail group — the threads of THIS one sender,
+/// enriched like any list page (invitations).
 #[tauri::command]
-pub async fn registre_groupe_page(
+pub async fn paper_trail_group_page(
     app: AppHandle,
     address: String,
     account_id: Option<i64>,
     offset: usize,
     limit: usize,
 ) -> Result<Vec<MessageRow>, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let limit = limit.min(LIST_LIMIT_MAX);
-        let mut lignes = store
+        let mut rows = store
             .paper_trail_group_scoped(&address, account_id, offset, limit)
             .map_err(|err| err.to_string())?;
         store
-            .enrich_rows(&mut lignes)
+            .enrich_rows(&mut rows)
             .map_err(|err| err.to_string())?;
-        Ok(lignes.into_iter().map(to_message_row).collect())
+        Ok(rows.into_iter().map(to_message_row).collect())
     })
     .await
 }
 
-/// La session en cours — `null` : rien d'entamé (l'écran d'intro).
+/// The current session — `null`: nothing started (the intro screen).
 #[tauri::command]
-pub async fn nettoyage_etat(app: AppHandle) -> Result<Option<SessionNettoyagePayload>, String> {
-    hors_pompe(app, move |app| {
+pub async fn cleanup_state(app: AppHandle) -> Result<Option<CleanupSessionPayload>, String> {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         Ok(store
             .cleanup_state()
@@ -3458,51 +3465,48 @@ pub async fn nettoyage_etat(app: AppHandle) -> Result<Option<SessionNettoyagePay
     .await
 }
 
-/// Démarre (ou remplace) la session : la borne se fige ici.
+/// Starts (or replaces) the session: the bound freezes here.
 #[tauri::command]
-pub async fn nettoyage_demarrer(
+pub async fn cleanup_start(
     app: AppHandle,
     plage: String,
     perimetre: String,
-) -> Result<SessionNettoyagePayload, String> {
-    hors_pompe(app, move |app| {
+) -> Result<CleanupSessionPayload, String> {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
-            .cleanup_start(&plage, &perimetre, epoch_maintenant())
+            .cleanup_start(&plage, &perimetre, epoch_now())
             .map(Into::into)
             .map_err(|err| err.to_string())
     })
     .await
 }
 
-/// Les groupes restants (expéditeur × courrier de la plage), le plus
-/// récent en tête.
+/// The remaining groups (sender × mail of the range), most recent
+/// first.
 #[tauri::command]
-pub async fn nettoyage_groupes(app: AppHandle) -> Result<Vec<GroupeNettoyagePayload>, String> {
-    hors_pompe(app, move |app| {
+pub async fn cleanup_groups(app: AppHandle) -> Result<Vec<CleanupGroupPayload>, String> {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        // La mesure due depuis HORIZON-NETTOYAGE (« coût sur une vraie
-        // base 200 k »), lisible après coup dans `wind.log` — décompte et
-        // durée, jamais une adresse (§6.8).
-        let depart = std::time::Instant::now();
-        let groupes = store.cleanup_groups().map_err(|err| err.to_string())?;
+        // The measurement due since HORIZON-NETTOYAGE ("cost on a real
+        // 200k base"), readable afterwards in `wind.log` — count and
+        // duration, never an address (§6.8).
+        let start = std::time::Instant::now();
+        let groups = store.cleanup_groups().map_err(|err| err.to_string())?;
         crate::trace::trace(&format!(
-            "nettoyage : {} groupes en {} ms",
-            groupes.len(),
-            depart.elapsed().as_millis()
+            "cleanup: {} groups in {} ms",
+            groups.len(),
+            start.elapsed().as_millis()
         ));
-        Ok(groupes.into_iter().map(Into::into).collect())
+        Ok(groups.into_iter().map(Into::into).collect())
     })
     .await
 }
 
-/// Le courrier d'un groupe — VOIR, jamais trier au message.
+/// The mail of a group — VIEW, never sort per message.
 #[tauri::command]
-pub async fn nettoyage_messages(
-    app: AppHandle,
-    address: String,
-) -> Result<Vec<MessageRow>, String> {
-    hors_pompe(app, move |app| {
+pub async fn cleanup_messages(app: AppHandle, address: String) -> Result<Vec<MessageRow>, String> {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         Ok(store
             .cleanup_messages(&address)
@@ -3514,20 +3518,20 @@ pub async fn nettoyage_messages(
     .await
 }
 
-/// Le verdict de GROUPE (D5 : le stock de la plage ET l'avenir) — rend
-/// l'état à jour, la barre de progression suit dans le même
-/// aller-retour.
+/// The GROUP verdict (D5: the stock of the range AND the future) —
+/// returns the up-to-date state, the progress bar follows in the same
+/// round trip.
 #[tauri::command]
-pub async fn nettoyage_verdict(
+pub async fn cleanup_verdict(
     app: AppHandle,
     address: String,
     destination: String,
     regle: Option<String>,
-) -> Result<Option<SessionNettoyagePayload>, String> {
-    hors_pompe(app, move |app| {
+) -> Result<Option<CleanupSessionPayload>, String> {
+    off_pump(app, move |app| {
         let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
-            .cleanup_verdict(&address, &destination, regle.as_deref(), epoch_maintenant())
+            .cleanup_verdict(&address, &destination, regle.as_deref(), epoch_now())
             .map_err(|err| err.to_string())?;
         Ok(store
             .cleanup_state()
@@ -3537,51 +3541,51 @@ pub async fn nettoyage_verdict(
     .await
 }
 
-/// Clôt la session — les verdicts restent posés (routage).
+/// Closes the session — the verdicts stay set (routing).
 #[tauri::command]
-pub async fn nettoyage_terminer(app: AppHandle) -> Result<(), String> {
-    hors_pompe(app, move |app| {
+pub async fn cleanup_finish(app: AppHandle) -> Result<(), String> {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store.cleanup_finish().map_err(|err| err.to_string())
     })
     .await
 }
 
-/// E5 — la bascule « Mettre de côté / Reprendre » : l'état vaut pour
-/// le FIL (patron de l'épingle), rendu APRÈS le geste.
+/// E5 — the "Set aside / Resume" toggle: the state applies to the
+/// THREAD (pattern of the pin), returned AFTER the gesture.
 #[tauri::command]
-pub async fn toggle_mis_de_cote(
+pub async fn toggle_set_aside(
     app: AppHandle,
     account_id: i64,
     mailbox: String,
     uid: u32,
 ) -> Result<bool, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
         else {
-            return Err(format!("boîte inconnue : {mailbox}"));
+            return Err(format!("unknown mailbox: {mailbox}"));
         };
         store
-            .toggle_set_aside(state.mailbox_id, uid, epoch_maintenant())
+            .toggle_set_aside(state.mailbox_id, uid, epoch_now())
             .map_err(|err| err.to_string())
     })
     .await
 }
 
-/// La pile (E5) : les têtes des fils mis de côté — l'éventail et le
-/// tableau s'en servent tels quels.
+/// The pile (E5): the heads of the set-aside threads — the fan-out and
+/// the table use them as they are.
 #[tauri::command]
-pub async fn pile_mis_de_cote(app: AppHandle) -> Result<Vec<MessageRow>, String> {
-    hors_pompe(app, move |app| {
+pub async fn set_aside_pile(app: AppHandle) -> Result<Vec<MessageRow>, String> {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        let mut lignes = store.set_aside_pile().map_err(|err| err.to_string())?;
+        let mut rows = store.set_aside_pile().map_err(|err| err.to_string())?;
         store
-            .enrich_rows(&mut lignes)
+            .enrich_rows(&mut rows)
             .map_err(|err| err.to_string())?;
-        Ok(lignes
+        Ok(rows
             .into_iter()
             .map(to_message_row)
             .map(|mut row| {
@@ -3593,84 +3597,83 @@ pub async fn pile_mis_de_cote(app: AppHandle) -> Result<Vec<MessageRow>, String>
     .await
 }
 
-/// Une carte du Kiosque (E5bis) : la rangée ET son corps assaini —
-/// « les lettres arrivent déjà ouvertes », le défilement lit sans
-/// cliquer. `document` est le MÊME document auto-CSP que l'écran de
-/// lecture (mail_render, iframe sandbox S1) ; None = corps pas encore
-/// en cache (la carte montre l'aperçu, le rattrapage normal suivra —
-/// D5 : le préchargement est borné à la page SERVIE, jamais un réseau
-/// par carte).
+/// A Feed card (E5bis): the row AND its sanitized body — "the letters
+/// arrive already open," scrolling reads without clicking. `document`
+/// is the SAME auto-CSP document as the reading screen (mail_render,
+/// iframe sandbox S1); None = body not cached yet (the card shows the
+/// preview, the normal backfill will follow — D5: preloading is
+/// bounded to the SERVED page, never one network call per card).
 #[derive(Serialize)]
-pub struct CarteKiosque {
+pub struct FeedCard {
     pub row: MessageRow,
     pub document: Option<String>,
     pub remote_images_blocked: usize,
-    /// RETOURS-13 R10 : la carte a déjà été lue jusqu'en bas — la
-    /// section « Lus précédemment » s'en sert au SERVICE de la page
-    /// (jamais en vol : une carte ne saute pas pendant la lecture).
+    /// RETOURS-13 R10: the card has already been read to the bottom —
+    /// the "Previously read" section uses it when the page is SERVED
+    /// (never in flight: a card doesn't jump while being read).
     pub lu: bool,
 }
 
-/// La page du Kiosque en CARTES (E5bis, D5/S3) : les rangées de la vue
-/// routée + leurs corps lus du CACHE seul (S3 : 12,2 ms froid la page
-/// de 20), assainis par LA porte de la lecture — garde d'images
-/// consultée par message (autorité au cœur, R1).
+/// The Feed page as CARDS (E5bis, D5/S3): the rows of the routed view
+/// + their bodies read from the CACHE only (S3: 12.2 ms cold for a
+/// page of 20), sanitized by THE reading gate — image guard consulted
+/// per message (authority at the core, R1).
 #[tauri::command]
-pub async fn kiosque_cartes(
+pub async fn feed_cards(
     app: AppHandle,
     account_id: Option<i64>,
     offset: usize,
     limit: usize,
-) -> Result<Vec<CarteKiosque>, String> {
-    hors_pompe(app, move |app| {
+) -> Result<Vec<FeedCard>, String> {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let limit = limit.min(LIST_LIMIT_MAX);
-        let mut lignes = store
+        let mut rows = store
             .routing_unified_scoped("kiosque", account_id, false, offset, limit)
             .map_err(|err| err.to_string())?;
         store
-            .enrich_rows(&mut lignes)
+            .enrich_rows(&mut rows)
             .map_err(|err| err.to_string())?;
-        let mut cartes = Vec::with_capacity(lignes.len());
-        // La résolution (compte, boîte) → id, UNE fois par boîte de la
-        // page — pas vingt sondes identiques par page de vingt cartes
-        // (revue E5bis).
-        let mut boites: std::collections::HashMap<(i64, String), Option<i64>> =
+        let mut cards = Vec::with_capacity(rows.len());
+        // The (account, mailbox) → id resolution, ONCE per mailbox of
+        // the page — not twenty identical probes per page of twenty
+        // cards (E5bis review).
+        let mut mailboxes: std::collections::HashMap<(i64, String), Option<i64>> =
             std::collections::HashMap::new();
-        for ligne in lignes {
-            let row = to_message_row(ligne);
-            // La résolution de boîte sert le corps ET la marque « lu »
-            // (R10) : hoistée hors du match du corps.
-            let cle = (row.account_id, row.mailbox.clone());
-            let mailbox_id = match boites.get(&cle) {
+        for row in rows {
+            let row = to_message_row(row);
+            // The mailbox resolution serves both the body AND the "read"
+            // mark (R10): hoisted out of the body match.
+            let key = (row.account_id, row.mailbox.clone());
+            let mailbox_id = match mailboxes.get(&key) {
                 Some(id) => *id,
                 None => {
                     let id = store
                         .sync_state(row.account_id, &row.mailbox)
                         .map_err(|err| err.to_string())?
                         .map(|s| s.mailbox_id);
-                    boites.insert(cle, id);
+                    mailboxes.insert(key, id);
                     id
                 }
             };
-            // R10 : le « lu » de la carte — sonde PK, une par carte.
+            // R10: the "read" flag of the card — a PK probe, one per card.
             let lu = mailbox_id
                 .map(|id| store.feed_read(id, row.uid))
                 .transpose()
                 .map_err(|err| err.to_string())?
                 .unwrap_or(false);
-            // Cache SEUL — un Kiosque hors ligne se lit tel quel.
-            let corps = store
+            // CACHE ONLY — an offline Feed reads as it is.
+            let body = store
                 .body(row.account_id, &row.mailbox, row.uid)
                 .map_err(|err| err.to_string())?;
-            let (document, remote_images_blocked) = match corps {
+            let (document, remote_images_blocked) = match body {
                 Some(html) => {
-                    let accordees = mailbox_id
+                    let granted = mailbox_id
                         .map(|id| store.images_allowed(id, row.uid))
                         .transpose()
                         .map_err(|err| err.to_string())?
                         .unwrap_or(false);
-                    let policy = if accordees {
+                    let policy = if granted {
                         mail_render::ImagePolicy::AllowRemote
                     } else {
                         mail_render::ImagePolicy::BlockRemote
@@ -3687,63 +3690,63 @@ pub async fn kiosque_cartes(
                 }
                 None => (None, 0),
             };
-            cartes.push(CarteKiosque {
+            cards.push(FeedCard {
                 row,
                 document,
                 remote_images_blocked,
                 lu,
             });
         }
-        Ok(cartes)
+        Ok(cards)
     })
     .await
 }
 
-/// RETOURS-13 R10 — une carte du Kiosque défilée jusqu'en bas se
-/// marque lue (idempotent ; patron d'adressage de `toggle_set_aside`).
+/// RETOURS-13 R10 — a Feed card scrolled to the bottom marks itself
+/// read (idempotent; addressing pattern of `toggle_set_aside`).
 #[tauri::command]
-pub async fn kiosque_marquer_lu(
+pub async fn feed_mark_read(
     app: AppHandle,
     account_id: i64,
     mailbox: String,
     uid: u32,
 ) -> Result<(), String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
         else {
-            return Err(format!("boîte inconnue : {mailbox}"));
+            return Err(format!("unknown mailbox: {mailbox}"));
         };
         store
-            .mark_feed_read(state.mailbox_id, uid, epoch_maintenant())
+            .mark_feed_read(state.mailbox_id, uid, epoch_now())
             .map_err(|err| err.to_string())
     })
     .await
 }
 
-/// Les conversations épinglées de la Réception (D4 : Réception seule),
-/// servies À PART — le front les prépose à la page 0, le flot paginé
-/// les exclut (D5).
+/// The pinned conversations of the Inbox (D4: Inbox only), served
+/// SEPARATELY — the front prepends them to page 0, the paginated flow
+/// excludes them (D5).
 #[tauri::command]
 pub async fn pinned_rows(
     app: AppHandle,
     account_id: Option<i64>,
     non_lus: bool,
 ) -> Result<Vec<MessageRow>, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        // E2 : la section préposée suit l'exclusion partagée de la
-        // Réception organisée — un épinglé routé vit dans sa vue.
-        let organise = store.organized_mode().map_err(|err| err.to_string())?;
-        let mut lignes = store
-            .pinned_unified_scoped(account_id, non_lus, organise)
+        // E2: the prepended section follows the shared exclusion of the
+        // organized Inbox — a routed pinned item lives in its own view.
+        let organized = store.organized_mode().map_err(|err| err.to_string())?;
+        let mut rows = store
+            .pinned_unified_scoped(account_id, non_lus, organized)
             .map_err(|err| err.to_string())?;
         store
-            .enrich_rows(&mut lignes)
+            .enrich_rows(&mut rows)
             .map_err(|err| err.to_string())?;
-        Ok(lignes
+        Ok(rows
             .into_iter()
             .map(to_message_row)
             .map(|mut row| {
@@ -3756,30 +3759,32 @@ pub async fn pinned_rows(
 }
 
 // ---------------------------------------------------------------------
-// Composer, répondre, envoyer — la boîte d'envoi (Phases 2-3).
+// Compose, reply, send — the outbox (Phases 2-3).
 // ---------------------------------------------------------------------
 
 #[derive(Serialize)]
 pub struct ComposeContext {
     pub account_id: i64,
-    /// La boîte du message auquel on répond. Elle repart avec l'envoi :
-    /// sans elle, l'UID ne suffit plus à retrouver le `Message-ID` à citer.
+    /// The mailbox of the message being replied to. It travels with the
+    /// send: without it, the UID alone no longer suffices to find the
+    /// `Message-ID` to cite.
     pub mailbox: String,
     pub uid: u32,
-    /// Vide pour un transfert : l'utilisateur choisit le destinataire.
+    /// Empty for a forward: the user picks the recipient.
     pub to: String,
-    /// Cc pré-rempli — « Répondre à tous » y remet les Cc d'origine (D3) ;
-    /// vide pour une réponse simple ou un transfert.
+    /// Pre-filled Cc — "Reply all" puts the original Cc back here (D3);
+    /// empty for a plain reply or a forward.
     pub cc: String,
     pub subject: String,
-    /// Citation pré-remplie, RICHE (PLAN-COMPOSITION-HTML) : attribution
-    /// puis blockquote du corps assaini `BlockRemote` (rien de ce qui
-    /// est reposé dans l'éditeur ne charge le réseau — §6.4) ; vide si
-    /// le corps est inaccessible (on répond sans citation).
-    /// L'utilisateur écrit au-dessus (top-posting) ; le repli text/plain
-    /// de l'envoi est dérivé du même HTML par `frontiere_corps`.
+    /// Pre-filled RICH citation (PLAN-COMPOSITION-HTML): attribution
+    /// then a blockquote of the body sanitized `BlockRemote` (nothing
+    /// placed back into the editor loads the network — §6.4); empty if
+    /// the body is unreachable (we reply without a citation).
+    /// The user writes above it (top-posting); the send's text/plain
+    /// fallback is derived from the same HTML by `body_boundary`.
     pub body_html: String,
-    /// `true` : l'envoi portera In-Reply-To (réponse dans le fil).
+    /// `true`: the send will carry In-Reply-To (a reply within the
+    /// thread).
     pub reply: bool,
 }
 
@@ -3789,9 +3794,9 @@ pub struct OutboxSummary {
     pub deferred: usize,
     pub rejected: usize,
     pub quarantined: usize,
-    /// Restant en file après la vidange (tous comptes).
+    /// Remaining in the queue after the flush (all accounts).
     pub queued: usize,
-    /// Connexion SMTP impossible (hors ligne, token…) — la file attend.
+    /// SMTP connection impossible (offline, token…) — the queue waits.
     pub error: Option<String>,
 }
 
@@ -3803,12 +3808,13 @@ pub struct OutboxEntry {
     pub state: String,
     pub attempts: u32,
     pub error: Option<String>,
-    /// Combien de pièces le journal porte pour cet envoi (PJ-D2) — la
-    /// quarantaine et le refus doivent pouvoir dire ce qui repartirait.
+    /// How many attachments the log carries for this send (PJ-D2) —
+    /// quarantine and refusal must be able to say what would go out
+    /// again.
     pub pieces: usize,
-    /// R2 : l'échéance d'un envoi programmé (secondes epoch) — `None`
-    /// pour un envoi ordinaire. L'UI en dérive « programmé pour {h} »
-    /// et le geste d'annulation.
+    /// R2: the due time of a scheduled send (epoch seconds) — `None`
+    /// for an ordinary send. The UI derives "scheduled for {h}" and the
+    /// cancel gesture from it.
     pub send_at_epoch: Option<i64>,
 }
 
@@ -3817,24 +3823,24 @@ pub struct OutboxStatus {
     pub queued: usize,
     pub interrupted: usize,
     pub rejected: usize,
-    /// R2 : les envois programmés PAS ENCORE échus — séparés de
-    /// `queued`, sans quoi la barre d'état dirait « en attente » d'un
-    /// envoi qui attend son heure, pas le réseau (mensonge).
+    /// R2: scheduled sends NOT YET due — kept apart from `queued`,
+    /// otherwise the status bar would say "waiting" about a send that
+    /// is waiting for its time, not the network (a lie).
     pub scheduled: usize,
-    /// La plus proche échéance parmi les programmés — la sonde du front
-    /// déclenche la vidange quand elle passe.
+    /// The nearest due time among the scheduled sends — the front's
+    /// probe triggers the flush once it passes.
     pub next_scheduled_epoch: Option<i64>,
-    /// Tout sauf les envois aboutis, dans l'ordre d'émission.
+    /// Everything but the successful sends, in emission order.
     pub entries: Vec<OutboxEntry>,
-    /// PLAN-AUDIT-V1 E3 (D2) : actions du journal en QUARANTAINE (refus
-    /// du serveur, ou cinq échecs) — tous comptes. La fente le dit ;
-    /// l'intention n'est plus perdue en silence.
+    /// PLAN-AUDIT-V1 E3 (D2): log actions in QUARANTINE (server
+    /// refusal, or five failures) — all accounts. The slot says so; the
+    /// intent is no longer lost in silence.
     pub refused_actions: u64,
 }
 
-/// Pré-remplissage d'une réponse : destinataire = adresse brute de
-/// l'expéditeur, sujet « Re: » une seule fois, corps cité. La citation
-/// est un confort : corps inaccessible = on répond sans elle.
+/// Pre-filling a reply: recipient = the sender's raw address, subject
+/// prefixed with "Re: " exactly once, body cited. The citation is a
+/// courtesy: an unreachable body means we reply without it.
 #[tauri::command]
 pub async fn reply_context(
     app: AppHandle,
@@ -3844,38 +3850,39 @@ pub async fn reply_context(
 ) -> Result<ComposeContext, String> {
     let (envelope, own) = enveloppe_et_compte(&app, account_id, &mailbox, uid).await?;
     let repondre_a = reply_to_of(&app, account_id, &mailbox, uid).await?;
-    // Notre propre message ? (l'expéditeur est le compte). Répondre à
-    // l'expéditeur nous écrirait à nous-mêmes.
+    // Our own message? (the sender is the account). Replying to the
+    // sender would write to ourselves.
     let is_own = envelope
         .sender_address
         .as_deref()
-        .map(|adresse| adresse.trim().eq_ignore_ascii_case(own.trim()))
+        .map(|address| address.trim().eq_ignore_ascii_case(own.trim()))
         .unwrap_or(false);
-    // R4 (constat terrain) : sur son propre message, répondre vise les
-    // destinataires d'origine (le À) ; sinon, l'expéditeur. Décision pure.
-    let mut destinataires = mail_core::reply_to(
+    // R4 (field finding): on one's own message, replying targets the
+    // original recipients (the To); otherwise, the sender. A pure
+    // decision.
+    let mut recipients = mail_core::reply_to(
         is_own,
         envelope.sender_address.as_deref(),
         &envelope.to_addrs,
         repondre_a.as_deref(),
     );
-    // Propre envoi sans destinataires en base (ancien, non rattrapé) :
-    // relève serveur UNE fois — même repli que « répondre à tous », jamais
-    // un « À » vide sur son propre message.
-    if destinataires.is_empty() && is_own {
-        let session = hors_pompe(app.clone(), move |app| auth_for(&app, account_id)).await?;
-        let boite = mailbox.clone();
-        let recipients = tauri::async_runtime::spawn_blocking(move || {
-            fetch_recipients_remote(&session, &boite, uid)
+    // A send to oneself with no recipients in the database (old, not
+    // backfilled): poll the server ONCE — same fallback as "reply
+    // all," never an empty "To" on one's own message.
+    if recipients.is_empty() && is_own {
+        let session = off_pump(app.clone(), move |app| auth_for(&app, account_id)).await?;
+        let mailbox_name = mailbox.clone();
+        let fetched = tauri::async_runtime::spawn_blocking(move || {
+            fetch_recipients_remote(&session, &mailbox_name, uid)
         })
         .await
         .map_err(|err| err.to_string())??;
-        destinataires = recipients.to;
+        recipients = fetched.to;
     }
-    if destinataires.is_empty() {
-        return Err("destinataire inconnu : resynchronisez la boîte".to_string());
+    if recipients.is_empty() {
+        return Err("unknown recipient: resync the mailbox".to_string());
     }
-    let to = destinataires.join(", ");
+    let to = recipients.join(", ");
     let body_html = citation_reply(&app, account_id, &mailbox, uid, &envelope).await;
     Ok(ComposeContext {
         account_id,
@@ -3889,21 +3896,21 @@ pub async fn reply_context(
     })
 }
 
-/// L'enveloppe d'un message et l'adresse de son compte, en UNE passe
-/// sous `hors_pompe` (E5) — la matière commune des trois contextes de
-/// composition.
-/// Le `Reply-To` du message, lu à la demande (PLAN-AUDIT-V2 E5).
+/// The envelope of a message and its account's address, in ONE pass
+/// under `off_pump` (E5) — the common matter of the three compose
+/// contexts.
+/// The message's `Reply-To`, read on demand (PLAN-AUDIT-V2 E5).
 async fn reply_to_of(
     app: &AppHandle,
     account_id: i64,
     mailbox: &str,
     uid: u32,
 ) -> Result<Option<String>, String> {
-    let boite = mailbox.to_string();
-    hors_pompe(app.clone(), move |app| {
+    let mailbox_name = mailbox.to_string();
+    off_pump(app.clone(), move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
-            .reply_to_of(account_id, &boite, uid)
+            .reply_to_of(account_id, &mailbox_name, uid)
             .map_err(|err| err.to_string())
     })
     .await
@@ -3915,24 +3922,24 @@ async fn enveloppe_et_compte(
     mailbox: &str,
     uid: u32,
 ) -> Result<(mail_core::Envelope, String), String> {
-    let boite = mailbox.to_string();
-    hors_pompe(app.clone(), move |app| {
+    let mailbox_name = mailbox.to_string();
+    off_pump(app.clone(), move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let envelope = store
-            .envelope(account_id, &boite, uid)
+            .envelope(account_id, &mailbox_name, uid)
             .map_err(|err| err.to_string())?
-            .ok_or_else(|| "message introuvable".to_string())?;
+            .ok_or_else(|| "message not found".to_string())?;
         let own = account_email(&store, account_id)?;
         Ok((envelope, own))
     })
     .await
 }
 
-/// La citation riche d'une réponse — un corps inaccessible rend une
-/// citation vide (on répond sans elle). Le corps cité est assaini
-/// `BlockRemote` : cette chaîne sera REPOSÉE dans l'éditeur
-/// (`innerHTML`, document principal) — une image distante y chargerait
-/// le pixel espion du message au simple clic « Répondre » (§6.4).
+/// The rich citation of a reply — an unreachable body yields an empty
+/// citation (we reply without it). The cited body is sanitized
+/// `BlockRemote`: this string will be PLACED BACK into the editor
+/// (`innerHTML`, main document) — a remote image there would load the
+/// message's tracking pixel at the mere click of "Reply" (§6.4).
 async fn citation_reply(
     app: &AppHandle,
     account_id: i64,
@@ -3943,13 +3950,13 @@ async fn citation_reply(
     let Ok(html) = raw_body(app, account_id, mailbox, uid).await else {
         return String::new();
     };
-    // L'assainissement est du CPU (un corps de 28 Mo, D-1) : sous le
-    // verrou des commandes, pas sur un worker async (E5).
-    let expediteur = envelope.sender.clone();
+    // Sanitizing is CPU-bound (a 28 MB body, D-1): under the commands
+    // lock, not on an async worker (E5).
+    let sender = envelope.sender.clone();
     let date = quote_date(envelope);
-    hors_pompe(app.clone(), move |_| {
+    off_pump(app.clone(), move |_| {
         Ok(mail_core::quote_reply_html(
-            expediteur.as_deref(),
+            sender.as_deref(),
             date.as_deref(),
             &mail_render::sanitize(&html).html,
         ))
@@ -3958,18 +3965,18 @@ async fn citation_reply(
     .unwrap_or_default()
 }
 
-/// Pré-remplissage d'un « Répondre à tous » : expéditeur + À + Cc du
-/// message d'origine, sans doublon ni sa propre adresse.
+/// Pre-filling a "Reply all": sender + To + Cc of the original
+/// message, without duplicates or one's own address.
 ///
-/// Les destinataires À/Cc sont désormais STOCKÉS dans l'enveloppe (R4,
-/// depuis la même ENVELOPE que l'expéditeur) : on les lit d'abord —
-/// instantané, hors ligne compris (R1, PLAN-RETOURS-MAIL). Le terrain a
-/// montré la cause du « À » vide pendant >10 s : l'ancien chemin ouvrait
-/// une connexion IMAP authentifiée À CHAQUE clic. On n'y retombe que
-/// lorsque le message n'a pas encore ses destinataires en base (envoi
-/// ancien non rattrapé) ; là, l'échec reste FRANC — un « à tous » amputé
-/// enverrait à moins de monde que promis. La citation reste un confort :
-/// corps inaccessible = on répond sans elle.
+/// The To/Cc recipients are now STORED in the envelope (R4, from the
+/// same ENVELOPE as the sender): they are read first — instant, offline
+/// included (R1, PLAN-RETOURS-MAIL). The field showed the cause of an
+/// empty "To" lasting >10 s: the old path opened an authenticated IMAP
+/// connection on EVERY click. We only fall back to it when the message
+/// doesn't have its recipients in the database yet (old send, not
+/// backfilled); there, the failure stays PLAIN — an amputated "reply
+/// all" would send to fewer people than promised. The citation stays a
+/// courtesy: an unreachable body means we reply without it.
 #[tauri::command]
 pub async fn reply_all_context(
     app: AppHandle,
@@ -3979,33 +3986,33 @@ pub async fn reply_all_context(
 ) -> Result<ComposeContext, String> {
     let (envelope, own) = enveloppe_et_compte(&app, account_id, &mailbox, uid).await?;
     let repondre_a = reply_to_of(&app, account_id, &mailbox, uid).await?;
-    // Destinataires connus en base : chemin instantané, aucun réseau. Non
-    // vide = « lu » (un reçu porte toujours au moins soi en À) ; vide =
-    // pas encore rattrapé, on relit le serveur une fois.
+    // Recipients known in the database: instant path, no network. Not
+    // empty = "backfilled" (a receipt always carries at least oneself in
+    // To); empty = not backfilled yet, poll the server once.
     let (to_list, cc_list) = if !envelope.to_addrs.is_empty() || !envelope.cc_addrs.is_empty() {
         (envelope.to_addrs.clone(), envelope.cc_addrs.clone())
     } else {
-        let session = hors_pompe(app.clone(), move |app| auth_for(&app, account_id)).await?;
-        let boite = mailbox.clone();
-        let recipients = tauri::async_runtime::spawn_blocking(move || {
-            fetch_recipients_remote(&session, &boite, uid)
+        let session = off_pump(app.clone(), move |app| auth_for(&app, account_id)).await?;
+        let mailbox_name = mailbox.clone();
+        let fetched = tauri::async_runtime::spawn_blocking(move || {
+            fetch_recipients_remote(&session, &mailbox_name, uid)
         })
         .await
         .map_err(|err| err.to_string())??;
-        (recipients.to, recipients.cc)
+        (fetched.to, fetched.cc)
     };
-    // D3 : À et Cc SÉPARÉS — les Cc d'origine restent des Cc (au lieu
-    // d'être aplatis dans le À).
+    // D3: To and Cc kept SEPARATE — the original Cc stay Cc (instead of
+    // being flattened into To).
     let (mut to, cc) =
         mail_core::reply_all_split(envelope.sender_address.as_deref(), &to_list, &cc_list, &own);
     if to.is_empty() {
-        // Message qu'on s'est envoyé à soi seul : l'expéditeur reste le
-        // seul destinataire sensé — mieux qu'un champ « À » vide.
-        // `Reply-To` prime sur l'expéditeur (PLAN-AUDIT-V2 E5).
+        // A message sent to oneself only: the sender remains the only
+        // sensible recipient — better than an empty "To" field.
+        // `Reply-To` takes priority over the sender (PLAN-AUDIT-V2 E5).
         to.extend(repondre_a.or_else(|| envelope.sender_address.clone()));
     }
     if to.is_empty() {
-        return Err("adresse de l'expéditeur inconnue : resynchronisez la boîte".to_string());
+        return Err("unknown sender address: resync the mailbox".to_string());
     }
     let body_html = citation_reply(&app, account_id, &mailbox, uid, &envelope).await;
     Ok(ComposeContext {
@@ -4030,12 +4037,12 @@ fn fetch_recipients_remote(
         .fetch_recipients(mailbox, uid)
         .map_err(|err| err.to_string());
     server.logout();
-    recipients?.ok_or_else(|| "message introuvable sur le serveur".to_string())
+    recipients?.ok_or_else(|| "message not found on the server".to_string())
 }
 
-/// Pré-remplissage d'un transfert : sans corps, un transfert ne
-/// transmettrait rien — ici l'échec est bloquant. Nouveau fil : pas
-/// d'In-Reply-To. Les pièces jointes ne suivent pas encore (Phase 3).
+/// Pre-filling a forward: without a body, a forward would transmit
+/// nothing — here the failure is blocking. New thread: no In-Reply-To.
+/// Attachments don't follow yet (Phase 3).
 #[tauri::command]
 pub async fn forward_context(
     app: AppHandle,
@@ -4045,23 +4052,24 @@ pub async fn forward_context(
 ) -> Result<ComposeContext, String> {
     let (envelope, _own) = enveloppe_et_compte(&app, account_id, &mailbox, uid).await?;
     let html = raw_body(&app, account_id, &mailbox, uid).await?;
-    // D8 (PLAN-AUDIT-V2 E10) : AUCUNE image distante au composeur — le
-    // pixel de suivi partait au clic « Transférer ». Le bloc porte sa
-    // SOURCE ; `queue_send` rend les vraies URL au moment d'envoyer.
+    // D8 (PLAN-AUDIT-V2 E10): NO remote image in the composer — the
+    // tracking pixel used to fire on the "Forward" click. The block
+    // carries its SOURCE; `queue_send` restores the real URLs at send
+    // time.
     let source = mail_core::ForwardSource {
         account_id,
         uid,
         mailbox: mailbox.clone(),
     }
     .key();
-    // Verdict terrain D5 (2026-08-20) : un transfert TRANSMET — les
-    // images distantes sont CONSERVÉES (`AllowRemote`), le destinataire
-    // reçoit le message entier. L'exception §6.4 est assumée et
-    // consignée : composer le transfert charge ces images dans
-    // l'éditeur, comme un « afficher les images » implicite — c'est le
-    // geste de transférer qui le dit. La RÉPONSE, elle, reste au pixel
-    // neutre (`citation_reply`). L'assainissement sous `hors_pompe` (E5).
-    hors_pompe(app, move |_| {
+    // Field verdict D5 (2026-08-20): a forward TRANSMITS — remote
+    // images are KEPT (`AllowRemote`), the recipient gets the whole
+    // message. The §6.4 exception is deliberate and logged: composing
+    // the forward loads those images in the editor, like an implicit
+    // "show images" — it's the act of forwarding that says so. The
+    // REPLY, on the other hand, stays at the neutral pixel
+    // (`citation_reply`). Sanitizing under `off_pump` (E5).
+    off_pump(app, move |_| {
         Ok(ComposeContext {
             account_id,
             mailbox,
@@ -4082,11 +4090,11 @@ pub async fn forward_context(
     .await
 }
 
-/// D8 (PLAN-AUDIT-V2 E10) : le bloc transféré d'un corps composé est
-/// remplacé par le rendu de sa source AVEC les images distantes — le
-/// composeur ne les a jamais chargées, le destinataire les reçoit. Sans
-/// marqueur, ou si la source n'est pas du compte émetteur, le corps part
-/// tel quel (limite dite).
+/// D8 (PLAN-AUDIT-V2 E10): the forwarded block of a composed body is
+/// replaced by the render of its source WITH remote images — the
+/// composer never loaded them, the recipient receives them. Without a
+/// marker, or if the source isn't from the sending account, the body
+/// goes out as is (a stated limit).
 async fn rendre_les_images_du_transfert(
     app: &AppHandle,
     account_id: i64,
@@ -4098,44 +4106,43 @@ async fn rendre_les_images_du_transfert(
     if source.account_id != account_id {
         return Ok(html);
     }
-    // La source a pu disparaître entre la composition et l'envoi
-    // (nettoyage, purge serveur) : le message PART quand même, avec son
-    // bloc au pixel neutre — jamais un envoi bloqué par une citation
-    // (revue ; la boîte d'envoi est résiliente hors ligne, ce chemin
-    // aussi).
-    let brut = match raw_body(app, account_id, &source.mailbox, source.uid).await {
-        Ok(brut) => brut,
+    // The source may have disappeared between composing and sending
+    // (cleanup, server purge): the message goes out anyway, with its
+    // block at the neutral pixel — never a send blocked by a citation
+    // (review; the outbox is resilient offline, this path too).
+    let raw = match raw_body(app, account_id, &source.mailbox, source.uid).await {
+        Ok(raw) => raw,
         Err(err) => {
             crate::trace::trace(&format!(
-                "transfert : source introuvable a l'envoi ({err}) - bloc envoye sans images distantes"
+                "forward: source not found at send time ({err}) - block sent without remote images"
             ));
             return Ok(html);
         }
     };
-    // Rendu ET substitution sous `hors_pompe` : une panique dans une
-    // décision pure y devient une erreur DITE (spawn_blocking la
-    // rapporte) — nue dans la tâche async, elle laissait l'invoke sans
-    // réponse et la composition figée sans un mot (andon de gate,
-    // 2026-09-02).
-    hors_pompe(app.clone(), move |_| {
-        let frais = mail_render::sanitize_with(&brut, mail_render::ImagePolicy::AllowRemote).html;
-        Ok(mail_core::substitute_forward(&html, &frais))
+    // Render AND substitution under `off_pump`: a panic in a pure
+    // decision becomes a TOLD error there (spawn_blocking reports it) —
+    // bare in the async task, it used to leave the invoke without a
+    // response and the compose window frozen without a word (gate
+    // andon, 2026-09-02).
+    off_pump(app.clone(), move |_| {
+        let fresh = mail_render::sanitize_with(&raw, mail_render::ImagePolicy::AllowRemote).html;
+        Ok(mail_core::substitute_forward(&html, &fresh))
     })
     .await
 }
 
-/// Date au format de la ligne d'attribution d'une citation.
+/// Date formatted for the attribution line of a citation.
 fn quote_date(envelope: &mail_core::Envelope) -> Option<String> {
     envelope
         .date
         .map(|date| date.format("%Y-%m-%d %H:%M").to_string())
 }
 
-/// Journalise l'envoi dans la boîte d'envoi du compte émetteur — AVANT
-/// toute tentative réseau (règle « jamais d'envoi perdu »).
+/// Logs the send into the sending account's outbox — BEFORE any
+/// network attempt (the "never a lost send" rule).
 #[tauri::command]
-// Les arguments d'une commande Tauri sont NOMMÉS à l'appel (objet JS) :
-// l'interversion silencieuse que vise le lint ne peut pas s'y produire.
+// The arguments of a Tauri command are NAMED at the call site (a JS
+// object): the silent swap the lint targets cannot happen here.
 #[allow(clippy::too_many_arguments)]
 pub async fn queue_send(
     app: AppHandle,
@@ -4150,29 +4157,29 @@ pub async fn queue_send(
     reply_to_uid: Option<u32>,
     draft_id: Option<i64>,
     important: bool,
-    // R2 : l'échéance (secondes epoch) d'un envoi différé — None =
-    // tout de suite, chemin historique.
+    // R2: the due time (epoch seconds) of a deferred send — None =
+    // right away, the historical path.
     send_at_epoch: Option<i64>,
 ) -> Result<(), String> {
     let body_html = match body_html {
         Some(html) => Some(rendre_les_images_du_transfert(&app, account_id, html).await?),
         None => None,
     };
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let from = account_email(&store, account_id)?;
-        // Corps riche : LA frontière (`frontiere_corps`) — assaini, texte
-        // dérivé. Le `body` reçu ne sert qu'au chemin texte.
-        let (corps_texte, corps_riche) = frontiere_corps(body, body_html.as_deref());
-        // Sans la boîte, on ne résout RIEN — on ne devine pas.
+        // Rich body: THE boundary (`body_boundary`) — sanitized, text
+        // derived. The `body` received serves only the text path.
+        let (text_body, rich_body) = body_boundary(body, body_html.as_deref());
+        // Without the mailbox, we resolve NOTHING — we don't guess.
         //
-        // Un UID seul ne désigne plus un message depuis que le compte en a
-        // deux (ADR 0009) : le n°1 d'INBOX et le n°1 d'« Envoyés » sont deux
-        // messages. Deviner produirait un `In-Reply-To` pointant sur un
-        // inconnu, donc une réponse greffée sur la conversation de quelqu'un
-        // d'autre. L'omettre coupe un fil — « un fil coupé en deux est
-        // réparable et honnête ; deux messages étrangers réunis ne le sont
-        // pas » (ADR 0008 §2).
+        // A UID alone no longer designates a message now that the
+        // account has two (ADR 0009): INBOX's #1 and "Sent"'s #1 are two
+        // messages. Guessing would produce an `In-Reply-To` pointing at
+        // a stranger, hence a reply grafted onto someone else's
+        // conversation. Omitting it splits a thread — "a thread split in
+        // two is repairable and honest; two unrelated messages merged
+        // are not" (ADR 0008 §2).
         let parent = reply_to_uid.zip(reply_to_mailbox);
         let in_reply_to = parent
             .as_ref()
@@ -4184,42 +4191,42 @@ pub async fn queue_send(
             &cc,
             &bcc,
             &subject,
-            &corps_texte,
+            &text_body,
             in_reply_to.as_deref(),
         )
         .map_err(|err| err.to_string())?;
-        // E7 : la chaîne References entière (RFC 5322 §3.6.4) — le cœur
-        // la sait, l'adaptateur la recopie.
+        // E7: the entire References chain (RFC 5322 §3.6.4) — the core
+        // knows it, the adapter copies it over.
         draft.references = parent.as_ref().and_then(|(uid, mailbox)| {
             store
                 .references_of(account_id, mailbox, *uid)
                 .ok()
                 .flatten()
         });
-        draft.body_html = corps_riche;
+        draft.body_html = rich_body;
         draft.important = important;
-        // Une échéance déjà passée vaut « tout de suite » : la garde vit
-        // ici, pas dans l'UI — un datetime resté ouvert pendant que
-        // l'heure tournait ne doit pas retenir l'envoi pour rien.
-        let echeance = send_at_epoch.filter(|epoch| *epoch > chrono::Utc::now().timestamp());
-        // Brouillon-ancre (pièces dans la MÊME transaction, PJ-D2) et
-        // échéance (R2) passent par LE chemin unique de la mise en file.
+        // A due time already past counts as "right away": the guard
+        // lives here, not in the UI — a datetime left open while the
+        // clock kept running must not hold the send back for nothing.
+        let due = send_at_epoch.filter(|epoch| *epoch > chrono::Utc::now().timestamp());
+        // Anchor draft (attachments in the SAME transaction, PJ-D2) and
+        // due time (R2) go through THE single queuing path.
         store
-            .enqueue_outbox_full(account_id, &draft, draft_id, echeance)
+            .enqueue_outbox_full(account_id, &draft, draft_id, due)
             .map_err(|err| err.to_string())?;
         Ok(())
     })
     .await
 }
 
-/// La fin d'un cycle (complet ou léger) : l'horodatage de la dernière
-/// relève réussie (E1) — posé seulement quand AU MOINS un compte a
-/// répondu ; un cycle à vide ne rajeunit pas « dernière synchronisation ».
-/// L'échec d'écriture est rapporté, jamais avalé ; il ne fait pas
-/// échouer la relève, le courrier est là. Sous `hors_pompe` (E5) : base +
-/// verrou des commandes. Le `unified_count()` qui vivait ici nourrissait
-/// `SyncSummary.total`, que l'UI n'a jamais lu (PLAN-AUDIT-V2 E1).
-async fn solder_releve(
+/// The end of a cycle (full or light): the timestamp of the last
+/// successful poll (E1) — set only when AT LEAST one account answered;
+/// an empty cycle does not refresh "last sync." A write failure is
+/// reported, never swallowed; it does not fail the poll, the mail is
+/// there. Under `off_pump` (E5): database + commands lock. The
+/// `unified_count()` that used to live here fed `SyncSummary.total`,
+/// which the UI never read (PLAN-AUDIT-V2 E1).
+async fn settle_poll(
     app: &AppHandle,
     accounts: usize,
     errors: &mut Vec<String>,
@@ -4227,32 +4234,31 @@ async fn solder_releve(
     if accounts == 0 {
         return Ok(());
     }
-    let horodatage = hors_pompe(app.clone(), move |app| {
+    let timestamp = off_pump(app.clone(), move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        let mut horodatage = None;
+        let mut timestamp = None;
         if let Ok(epoch) = SystemTime::now().duration_since(UNIX_EPOCH)
-            && let Err(err) =
-                store.set_text_pref(PREF_DERNIERE_SYNCHRO, &epoch.as_secs().to_string())
+            && let Err(err) = store.set_text_pref(PREF_LAST_SYNC, &epoch.as_secs().to_string())
         {
-            horodatage = Some(format!("horodatage de la relève : {err}"));
+            timestamp = Some(format!("poll timestamp: {err}"));
         }
-        Ok(horodatage)
+        Ok(timestamp)
     })
     .await?;
-    errors.extend(horodatage);
+    errors.extend(timestamp);
     Ok(())
 }
 
-/// Vide les boîtes d'envoi de TOUS les comptes connectés — chacun par
-/// SA connexion SMTP. Hors ligne = bilan, pas une erreur. Réentrance
-/// interdite (verrou).
+/// Flushes the outboxes of ALL connected accounts — each through ITS
+/// OWN SMTP connection. Offline = a summary, not an error. Reentrancy
+/// forbidden (lock).
 #[tauri::command]
 pub async fn flush_outbox(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<OutboxSummary, String> {
     let path = db_path(&app)?;
-    let jobs = hors_pompe(app.clone(), |app| connected_jobs(&app)).await?;
+    let jobs = off_pump(app.clone(), |app| connected_jobs(&app)).await?;
     let lock = state.outbox_flush.clone();
 
     let (summary, refreshed) =
@@ -4260,53 +4266,53 @@ pub async fn flush_outbox(
             .await
             .map_err(|err| err.to_string())??;
 
-    reposer_sessions(&state, refreshed)?;
+    reset_sessions(&state, refreshed)?;
     Ok(summary)
 }
 
-/// Quand retenter la relève ciblée d'Envoyés qui n'a rien rapporté —
-/// décision pure (PLAN-REACTIVITE E2). Gmail ajoute la copie de façon
-/// ASYNCHRONE après l'acceptation SMTP : la première relève peut passer
-/// AVANT elle et répondre « rien n'a bougé », honnêtement. Deux
-/// retentatives bornées (+5 s puis +15 s), puis silence — le cycle
-/// complet rattrapera ; on ne martèle pas un serveur qui n'a rien à
-/// donner (la leçon anti-martèlement du complément P0).
-fn retenter_apres(tentative: u32) -> Option<Duration> {
-    match tentative {
+/// When to retry the targeted Sent poll that reported nothing — a pure
+/// decision (PLAN-REACTIVITE E2). Gmail adds the copy ASYNCHRONOUSLY
+/// after the SMTP acceptance: the first poll may run BEFORE it lands
+/// and honestly report "nothing moved." Two bounded retries (+5 s then
+/// +15 s), then silence — the full cycle will catch up; we don't
+/// hammer a server that has nothing to give (the anti-hammering lesson
+/// from the P0 supplement).
+fn retry_after(attempt: u32) -> Option<Duration> {
+    match attempt {
         1 => Some(Duration::from_secs(5)),
         2 => Some(Duration::from_secs(15)),
         _ => None,
     }
 }
 
-/// Au-delà, la relève ne rapatrie plus les corps elle-même : les lignes
-/// d'abord, la pompe fera les corps. ~192 ms par message amorti par lot
-/// (`spikes/body-backfill`) : dix corps coûtent ~2 s au chemin de la
-/// bulle — la borne < 30 s de PLAN-SYNCHRO garde ses marges.
-const CORPS_A_L_ARRIVEE_MAX: usize = 10;
+/// Beyond this, the poll no longer fetches bodies itself: the rows
+/// first, the pump will do the bodies. ~192 ms per message amortized
+/// per batch (`spikes/body-backfill`): ten bodies cost ~2 s on the
+/// bubble path — the < 30 s bound of PLAN-SYNCHRO keeps its margin.
+const BODY_ON_ARRIVAL_MAX: usize = 10;
 
-/// Combien de corps rapatrier DANS la relève INBOX qui vient d'apporter
-/// `arrivees` messages NEUFS (UID au-dessus du repère — jamais le
-/// `fetched` du rapport, gonflé des drapeaux d'un delta CONDSTORE) —
-/// décision pure (PLAN-REACTIVITE E4, R-D2). Un lot courant : tous ses
-/// corps, la ligne naît avec son aperçu. Un lot qui déborde (rattrapage
-/// après coupure, intégrale) : zéro — le bump part d'abord, les lignes
-/// vite, et les corps échoient à la pompe.
-fn corps_a_l_arrivee(arrivees: usize) -> usize {
-    if arrivees > CORPS_A_L_ARRIVEE_MAX {
+/// How many bodies to fetch WITHIN the INBOX poll that just brought
+/// `arrivals` NEW messages (UID above the marker — never the report's
+/// `fetched`, inflated by a CONDSTORE delta's flags) — a pure decision
+/// (PLAN-REACTIVITE E4, R-D2). A normal batch: all its bodies, the row
+/// is born with its preview. A batch that overflows (catch-up after an
+/// outage, full sync): zero — the bump goes out first, the rows fast,
+/// and the bodies fall to the pump.
+fn body_on_arrival(arrivals: usize) -> usize {
+    if arrivals > BODY_ON_ARRIVAL_MAX {
         0
     } else {
-        arrivees
+        arrivals
     }
 }
 
-/// Le bilan de la passe d'après-geste — fini le silence : les incidents
-/// remontent à l'UI comme ceux du cycle (terrain 0.1.5 : l'instruction
-/// était aveugle, tout partait en `eprintln` et le `.catch(() => {})`
-/// avalait le reste). `reconcilies` : des échos remplacés par leur
-/// vraie ligne ; `balayes` : des échos que le serveur a démentis.
+/// The outcome of the after-gesture pass — no more silence: incidents
+/// surface to the UI like those of the cycle (field finding 0.1.5: the
+/// investigation was blind, everything went into `eprintln` and the
+/// `.catch(() => {})` swallowed the rest). `reconcilies`: echoes
+/// replaced by their real row; `balayes`: echoes the server denied.
 #[derive(Default, Serialize)]
-pub struct PasseReport {
+pub struct PassReport {
     pub fetched: usize,
     pub deleted: usize,
     pub reconcilies: usize,
@@ -4314,374 +4320,385 @@ pub struct PasseReport {
     pub errors: Vec<String>,
 }
 
-/// La passe d'après-geste (PLAN-REACTIVITE E3) — la réconciliation de
-/// l'écho local : après une suppression, un archivage, un déplacement
-/// ou un envoi, le serveur doit suivre SANS attendre le cycle.
+/// The after-gesture pass (PLAN-REACTIVITE E3) — reconciling the local
+/// echo: after a deletion, an archiving, a move, or a send, the server
+/// must follow WITHOUT waiting for the cycle.
 ///
-/// 1. **Les intentions d'abord** : les boîtes qui portent des actions
-///    journalisées se relèvent — le rejeu part MAINTENANT (INBOX par le
-///    chemin partagé `relever_inbox` : bulles et compteurs, rien ne se
-///    raconte deux fois).
-/// 2. **L'inventaire** : LIST-STATUS (un aller-retour, E2c) —
-///    `must_poll` désigne les dossiers qui ont bougé : la destination
-///    du geste, et elle seule en pratique. La destination n'est JAMAIS
-///    devinée (Corbeille RFC 6154, label Gmail : tout se voit au
-///    STATUS). INBOX reste au veilleur et au cycle — la relever ici
-///    volerait leurs bulles. Repli sans LIST-STATUS : des STATUS ciblés
-///    sur les seules destinations canoniques, jamais les ~50 dossiers.
-/// 3. **La réconciliation** : l'écho meurt quand la vraie ligne entre
-///    (même `message_id` dans la destination) — la ligne ne bouge pas à
-///    l'œil.
-/// 4. **La retentative** (E2) : des échos attendent encore → +5 s puis
-///    +15 s puis silence (copie Gmail asynchrone). Chaque tentative
-///    prend et REND le verrou du compte : les pauses ne bloquent rien.
-/// 5. **Le balayage** : intention soldée, destination relevée PROPREMENT
-///    et toujours pas de copie → l'écho se retire, l'incident se dit —
-///    on n'affiche pas ce que le serveur dément. Jamais après une
-///    tentative en échec : un serveur qui n'a pas répondu n'a rien
-///    démenti.
+/// 1. **The intentions first**: mailboxes carrying logged actions get
+///    polled — the replay starts NOW (INBOX through the shared
+///    `poll_inbox` path: bubbles and counters, nothing gets told
+///    twice).
+/// 2. **The inventory**: LIST-STATUS (one round trip, E2c) —
+///    `must_poll` designates the folders that moved: the gesture's
+///    destination, and it alone in practice. The destination is NEVER
+///    guessed (Trash RFC 6154, Gmail label: everything shows in
+///    STATUS). INBOX stays with the watcher and the cycle — polling it
+///    here would steal their bubbles. Fallback without LIST-STATUS:
+///    targeted STATUS calls on the canonical destinations only, never
+///    the ~50 folders.
+/// 3. **The reconciliation**: the echo dies when the real row arrives
+///    (same `message_id` in the destination) — the row doesn't jump
+///    visibly.
+/// 4. **The retry** (E2): echoes still waiting → +5 s then +15 s then
+///    silence (asynchronous Gmail copy). Each attempt takes and
+///    RELEASES the account lock: the pauses block nothing.
+/// 5. **The sweep**: intention settled, destination polled CLEANLY and
+///    still no copy → the echo is withdrawn, the incident is reported —
+///    we don't display what the server denies. Never after a failed
+///    attempt: a server that didn't answer denied nothing.
 ///
-/// `account_id = None` (retour en ligne, R-D3) : tous les comptes qui
-/// ont du travail — actions en attente ou échos. Un vol par compte,
-/// coalescé : archiver dix messages n'ouvre pas dix passes.
+/// `account_id = None` (back online, R-D3): all accounts with work to
+/// do — pending actions or echoes. One flight per account, coalesced:
+/// archiving ten messages doesn't open ten passes.
 #[tauri::command]
-pub async fn sync_apres_geste(
+pub async fn sync_after_gesture(
     app: AppHandle,
     state: State<'_, AppState>,
     account_id: Option<i64>,
-) -> Result<PasseReport, String> {
+) -> Result<PassReport, String> {
     let path = db_path(&app)?;
-    let cibles: Vec<i64> = match account_id {
+    let targets: Vec<i64> = match account_id {
         Some(id) => vec![id],
         None => {
-            hors_pompe(app.clone(), |app| {
+            off_pump(app.clone(), |app| {
                 let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
                 store.accounts_with_work().map_err(|err| err.to_string())
             })
             .await?
         }
     };
-    let mut rapport = PasseReport::default();
-    for compte in cibles {
-        let session = match hors_pompe(app.clone(), move |app| auth_for(&app, compte)).await {
+    let mut report = PassReport::default();
+    for account in targets {
+        let session = match off_pump(app.clone(), move |app| auth_for(&app, account)).await {
             Ok(session) => session,
             Err(reason) => {
-                rapport.errors.push(reason);
+                report.errors.push(reason);
                 continue;
             }
         };
         let email = session.email().to_string();
-        // Un vol par compte : une passe en cours ABSORBE la demande — le
-        // drapeau la fera rejouer une fois, pas dix. Le vol est une GARDE
-        // (E5) : un `?` au milieu de la passe le rendait jadis éternel,
-        // et toute passe suivante du compte était absorbée jusqu'au
-        // redémarrage.
-        let Some(vol) = VolGarde::prendre(&state.passes_geste, &email) else {
+        // One flight per account: a pass already in flight ABSORBS the
+        // request — the flag will make it replay once, not ten times.
+        // The flight is a GUARD (E5): a `?` in the middle of the pass
+        // used to leave it in flight forever, and every later pass for
+        // the account was absorbed until restart.
+        let Some(flight) = FlightGuard::take(&state.gesture_passes, &email) else {
             continue;
         };
         loop {
-            let issue = {
+            let outcome = {
                 let path = path.clone();
                 let session = session.clone();
                 let cycle = state.sync_cycle.clone();
-                let verrous = state.verrous_releve.clone();
-                let app_bulles = app.clone();
+                let locks = state.poll_locks.clone();
+                let app_bubbles = app.clone();
                 tauri::async_runtime::spawn_blocking(move || {
-                    passe_apres_geste_compte(&path, session, compte, &cycle, &verrous, &app_bulles)
+                    pass_after_gesture_account(
+                        &path,
+                        session,
+                        account,
+                        &cycle,
+                        &locks,
+                        &app_bubbles,
+                    )
                 })
                 .await
                 .map_err(|err| err.to_string())
-                .and_then(|issue| issue)
+                .and_then(|outcome| outcome)
             };
-            match issue {
-                Ok((bilan, refreshed)) => {
-                    rapport.fetched += bilan.fetched;
-                    rapport.deleted += bilan.deleted;
-                    rapport.reconcilies += bilan.reconcilies;
-                    rapport.balayes += bilan.balayes;
-                    rapport.errors.extend(bilan.errors);
-                    reposer_sessions(&state, refreshed)?;
+            match outcome {
+                Ok((outcome, refreshed)) => {
+                    report.fetched += outcome.fetched;
+                    report.deleted += outcome.deleted;
+                    report.reconcilies += outcome.reconcilies;
+                    report.balayes += outcome.balayes;
+                    report.errors.extend(outcome.errors);
+                    reset_sessions(&state, refreshed)?;
                 }
-                Err(reason) => rapport.errors.push(format!("{email} : {reason}")),
+                Err(reason) => report.errors.push(format!("{email}: {reason}")),
             }
-            // Rejouer UNE fois si un geste est arrivé pendant la passe.
-            if !vol.redemande_consommee() {
+            // Replay ONCE if a gesture arrived during the pass.
+            if !flight.rerequest_consumed() {
                 break;
             }
         }
-        drop(vol);
+        drop(flight);
     }
-    Ok(rapport)
+    Ok(report)
 }
 
-/// La garde du vol d'une passe d'après-geste (E5) : `en_vol` retombe
-/// quand elle est relâchée — par le `drop` explicite comme par un `?`.
-struct VolGarde<'a> {
-    passes: &'a Mutex<HashMap<String, VolPasse>>,
+/// The flight guard of an after-gesture pass (E5): `in_flight` falls back
+/// down when it's released — by the explicit `drop` as well as by a
+/// `?`.
+struct FlightGuard<'a> {
+    passes: &'a Mutex<HashMap<String, PassFlight>>,
     email: String,
 }
 
-impl<'a> VolGarde<'a> {
-    /// `None` : une passe est déjà en vol pour ce compte — la demande
-    /// est absorbée (le drapeau la fera rejouer une fois).
-    fn prendre(passes: &'a Mutex<HashMap<String, VolPasse>>, email: &str) -> Option<Self> {
+impl<'a> FlightGuard<'a> {
+    /// `None`: a pass is already in flight for this account — the
+    /// request is absorbed (the flag will make it replay once).
+    fn take(passes: &'a Mutex<HashMap<String, PassFlight>>, email: &str) -> Option<Self> {
         let mut table = match passes.lock() {
             Ok(table) => table,
-            Err(empoisonne) => empoisonne.into_inner(),
+            Err(poisoned) => poisoned.into_inner(),
         };
-        let vol = table.entry(email.to_string()).or_default();
-        if vol.en_vol {
-            vol.redemande = true;
+        let flight = table.entry(email.to_string()).or_default();
+        if flight.in_flight {
+            flight.rerequest = true;
             return None;
         }
-        vol.en_vol = true;
+        flight.in_flight = true;
         Some(Self {
             passes,
             email: email.to_string(),
         })
     }
 
-    /// Un geste est-il arrivé pendant la passe ? Consomme le drapeau.
-    fn redemande_consommee(&self) -> bool {
+    /// Did a gesture arrive during the pass? Consumes the flag.
+    fn rerequest_consumed(&self) -> bool {
         let mut table = match self.passes.lock() {
             Ok(table) => table,
-            Err(empoisonne) => empoisonne.into_inner(),
+            Err(poisoned) => poisoned.into_inner(),
         };
-        let vol = table.entry(self.email.clone()).or_default();
-        std::mem::take(&mut vol.redemande)
+        let flight = table.entry(self.email.clone()).or_default();
+        std::mem::take(&mut flight.rerequest)
     }
 }
 
-impl Drop for VolGarde<'_> {
+impl Drop for FlightGuard<'_> {
     fn drop(&mut self) {
         let mut table = match self.passes.lock() {
             Ok(table) => table,
-            Err(empoisonne) => empoisonne.into_inner(),
+            Err(poisoned) => poisoned.into_inner(),
         };
-        if let Some(vol) = table.get_mut(&self.email) {
-            vol.en_vol = false;
+        if let Some(flight) = table.get_mut(&self.email) {
+            flight.in_flight = false;
         }
     }
 }
 
-/// La passe d'UN compte — le corps bloquant de `sync_apres_geste`.
-fn passe_apres_geste_compte(
+/// The pass of ONE account — the blocking body of `sync_after_gesture`.
+fn pass_after_gesture_account(
     path: &Path,
     mut session: AccountSession,
     account_id: i64,
     cycle: &crate::SyncShared,
-    verrous: &Mutex<HashMap<String, Arc<Mutex<()>>>>,
+    locks: &Mutex<HashMap<String, Arc<Mutex<()>>>>,
     app: &AppHandle,
-) -> Result<(PasseReport, Vec<AccountSession>), String> {
-    let mut rapport = PasseReport::default();
+) -> Result<(PassReport, Vec<AccountSession>), String> {
+    let mut report = PassReport::default();
     let mut sessions = Vec::new();
-    let mut tentative = 0u32;
-    // Posé par CHAQUE tour de boucle avant toute sortie : pas de valeur
-    // de départ — le compilateur garantit qu'on ne lit jamais un vide.
-    let mut derniere_propre;
+    let mut attempt = 0u32;
+    // Set by EVERY loop turn before any exit: no starting value — the
+    // compiler guarantees we never read an unset one.
+    let mut last_clean;
     loop {
-        tentative += 1;
-        let erreurs_avant = rapport.errors.len();
-        // Le courrier de CETTE tentative (hors INBOX, qui publie déjà le
-        // sien par `relever_inbox`) — c'est lui qui bump la génération.
-        let mut courrier_tentative = 0usize;
-        let chrono_total = Instant::now();
+        attempt += 1;
+        let errors_before = report.errors.len();
+        // The mail of THIS attempt (excluding INBOX, which already
+        // publishes its own via `poll_inbox`) — it's this count that
+        // bumps the generation.
+        let mut mail_this_attempt = 0usize;
+        let total_timer = Instant::now();
         {
-            let verrou = verrou_compte(verrous, session.email());
-            let _releve = verrou.lock();
+            let lock = account_lock(locks, session.email());
+            let _poll = lock.lock();
             let (mut server, fresh) = connect_imap(&session)?;
             if let Some(fresh) = fresh {
                 session = fresh.clone();
                 sessions.push(fresh);
             }
             let mut store = Store::open(path).map_err(|err| err.to_string())?;
-            // 1. Les intentions : le rejeu part MAINTENANT.
-            let chrono = Instant::now();
+            // 1. The intentions: the replay starts NOW.
+            let timer = Instant::now();
             let sources = store
                 .mailboxes_with_actions(account_id)
                 .map_err(|err| err.to_string())?;
-            for boite in &sources {
-                if boite == MAILBOX {
-                    if let Err(reason) = relever_inbox(
+            for mailbox in &sources {
+                if mailbox == MAILBOX {
+                    if let Err(reason) = poll_inbox(
                         &mut server,
                         &mut store,
                         account_id,
                         cycle,
                         app,
-                        &mut rapport.errors,
+                        &mut report.errors,
                     ) {
-                        rapport.errors.push(format!("INBOX : {reason}"));
+                        report.errors.push(format!("INBOX: {reason}"));
                     }
                 } else {
-                    let statut = server.folder_status(boite).ok();
-                    if doit_relever(
+                    let status = server.folder_status(mailbox).ok();
+                    if must_poll(
                         &store,
                         account_id,
-                        boite,
-                        statut.as_ref(),
-                        &mut rapport.errors,
+                        mailbox,
+                        status.as_ref(),
+                        &mut report.errors,
                     ) {
-                        match SyncEngine::default().sync(&mut server, &mut store, account_id, boite)
-                        {
-                            Ok(report) => {
-                                rapport.fetched += report.fetched;
-                                rapport.deleted += report.deleted;
-                                courrier_tentative += report.fetched + report.deleted;
-                                solder_repere(
+                        match SyncEngine::default().sync(
+                            &mut server,
+                            &mut store,
+                            account_id,
+                            mailbox,
+                        ) {
+                            Ok(sync_report) => {
+                                report.fetched += sync_report.fetched;
+                                report.deleted += sync_report.deleted;
+                                mail_this_attempt += sync_report.fetched + sync_report.deleted;
+                                settle_marker(
                                     &store,
                                     account_id,
-                                    boite,
-                                    statut.as_ref(),
-                                    &mut rapport.errors,
+                                    mailbox,
+                                    status.as_ref(),
+                                    &mut report.errors,
                                 );
                             }
-                            Err(reason) => {
-                                rapport.errors.push(format!("dossier source : {reason}"))
-                            }
+                            Err(reason) => report.errors.push(format!("source folder: {reason}")),
                         }
                     }
                 }
             }
-            let duree_actions = chrono.elapsed();
+            let actions_duration = timer.elapsed();
             let n_sources = sources.len();
-            // 2. L'inventaire : seuls les dossiers qui ont BOUGÉ se
-            // relèvent — la destination du geste, sans jamais la deviner.
-            let chrono = Instant::now();
-            let mut releves = 0usize;
+            // 2. The inventory: only the folders that MOVED get polled —
+            // the gesture's destination, without ever guessing it.
+            let timer = Instant::now();
+            let mut polled = 0usize;
             match server.folders_with_status() {
-                Ok(Some(avec_statut)) => {
-                    for (folder, statut) in avec_statut {
+                Ok(Some(with_status)) => {
+                    for (folder, status) in with_status {
                         if !folder.selectable
                             || folder.wire == MAILBOX
                             || sources.contains(&folder.wire)
                         {
                             continue;
                         }
-                        if relever_dossier_passe(
+                        if poll_folder_pass(
                             &mut server,
                             &mut store,
                             account_id,
                             &folder.wire,
-                            statut.as_ref(),
-                            &mut rapport,
-                            &mut courrier_tentative,
+                            status.as_ref(),
+                            &mut report,
+                            &mut mail_this_attempt,
                         ) {
-                            releves += 1;
+                            polled += 1;
                         }
                     }
                 }
                 Ok(None) => {
-                    // Sans LIST-STATUS : des STATUS ciblés sur les seules
-                    // destinations canoniques — jamais les ~50 dossiers.
-                    let dossiers = store
+                    // Without LIST-STATUS: targeted STATUS calls on the
+                    // canonical destinations only — never the ~50 folders.
+                    let folders = store
                         .canonical_folders(account_id)
                         .map_err(|err| err.to_string())?;
-                    for nom in [dossiers.sent, dossiers.archives, dossiers.trash]
+                    for name in [folders.sent, folders.archives, folders.trash]
                         .into_iter()
                         .flatten()
                     {
-                        if nom == MAILBOX || sources.contains(&nom) {
+                        if name == MAILBOX || sources.contains(&name) {
                             continue;
                         }
-                        let statut = server.folder_status(&nom).ok();
-                        if relever_dossier_passe(
+                        let status = server.folder_status(&name).ok();
+                        if poll_folder_pass(
                             &mut server,
                             &mut store,
                             account_id,
-                            &nom,
-                            statut.as_ref(),
-                            &mut rapport,
-                            &mut courrier_tentative,
+                            &name,
+                            status.as_ref(),
+                            &mut report,
+                            &mut mail_this_attempt,
                         ) {
-                            releves += 1;
+                            polled += 1;
                         }
                     }
                 }
-                Err(reason) => rapport
+                Err(reason) => report
                     .errors
-                    .push(format!("inventaire LIST-STATUS : {reason}")),
+                    .push(format!("LIST-STATUS inventory: {reason}")),
             }
-            let duree_inventaire = chrono.elapsed();
-            // 3. La réconciliation : l'écho meurt quand la vraie ligne
-            // entre — la liste ne bouge pas à l'œil.
-            let reconcilies = store
+            let inventory_duration = timer.elapsed();
+            // 3. The reconciliation: the echo dies when the real row
+            // arrives — the list doesn't jump visibly.
+            let reconciled = store
                 .reconcile_echos(account_id)
                 .map_err(|err| err.to_string())?;
-            rapport.reconcilies += reconcilies;
-            courrier_tentative += reconcilies;
+            report.reconcilies += reconciled;
+            mail_this_attempt += reconciled;
             server.logout();
-            // La trace qui instruira D-7 (§6.8 : durées et décomptes
-            // seuls) — à lire contre l'horodatage du geste en console.
+            // The trace that will inform D-7 (§6.8: durations and counts
+            // only) — read against the gesture's timestamp in the console.
             crate::trace::trace(&format!(
-                "passe geste compte {account_id} : {n_sources} source(s) {:.1}s · inventaire + {releves} relevé(s) {:.1}s · {reconcilies} réconcilié(s) · total {:.1}s",
-                duree_actions.as_secs_f32(),
-                duree_inventaire.as_secs_f32(),
-                chrono_total.elapsed().as_secs_f32(),
+                "after-gesture pass account {account_id}: {n_sources} source(s) {:.1}s · inventory + {polled} polled {:.1}s · {reconciled} reconciled · total {:.1}s",
+                actions_duration.as_secs_f32(),
+                inventory_duration.as_secs_f32(),
+                total_timer.elapsed().as_secs_f32(),
             ));
-            if courrier_tentative > 0 {
+            if mail_this_attempt > 0 {
                 cycle
                     .courrier
-                    .fetch_add(courrier_tentative as u64, Ordering::Relaxed);
+                    .fetch_add(mail_this_attempt as u64, Ordering::Relaxed);
                 cycle.generation.fetch_add(1, Ordering::Relaxed);
             }
         }
-        derniere_propre = rapport.errors.len() == erreurs_avant;
-        let en_attente = Store::open(path)
+        last_clean = report.errors.len() == errors_before;
+        let pending = Store::open(path)
             .map_err(|err| err.to_string())?
             .pending_echos(account_id)
             .map_err(|err| err.to_string())?;
-        if en_attente == 0 {
+        if pending == 0 {
             break;
         }
-        match retenter_apres(tentative) {
-            Some(delai) => std::thread::sleep(delai),
+        match retry_after(attempt) {
+            Some(delay) => std::thread::sleep(delay),
             None => break,
         }
     }
-    // 4. Le balayage — après une tentative PROPRE seulement : une relève
-    // en échec n'a rien démenti, l'écho vit (hors ligne, recul…).
-    if derniere_propre {
+    // 4. The sweep — after a CLEAN attempt only: a failed poll denied
+    // nothing, the echo lives on (offline, backoff…).
+    if last_clean {
         let store = Store::open(path).map_err(|err| err.to_string())?;
         let incidents = store
             .sweep_echos(account_id)
             .map_err(|err| err.to_string())?;
         if !incidents.is_empty() {
-            rapport.balayes += incidents.len();
-            rapport.errors.extend(incidents);
-            // Des lignes viennent de disparaître : la liste se resert.
+            report.balayes += incidents.len();
+            report.errors.extend(incidents);
+            // Rows just disappeared: the list is served again.
             cycle.generation.fetch_add(1, Ordering::Relaxed);
         }
     }
-    Ok((rapport, sessions))
+    Ok((report, sessions))
 }
 
-/// Une relève de dossier de la passe (phase inventaire) : gardée par
-/// `must_poll`, soldée, comptée. Rend vrai si le dossier a été relevé.
+/// A folder poll of the pass (inventory phase): gated by `must_poll`,
+/// settled, counted. Returns true if the folder was polled.
 #[allow(clippy::too_many_arguments)]
-fn relever_dossier_passe(
+fn poll_folder_pass(
     server: &mut ImapServer,
     store: &mut Store,
     account_id: i64,
-    boite: &str,
-    statut: Option<&mail_core::FolderStatus>,
-    rapport: &mut PasseReport,
-    courrier: &mut usize,
+    mailbox: &str,
+    status: Option<&mail_core::FolderStatus>,
+    report: &mut PassReport,
+    mail: &mut usize,
 ) -> bool {
-    if !doit_relever(store, account_id, boite, statut, &mut rapport.errors) {
+    if !must_poll(store, account_id, mailbox, status, &mut report.errors) {
         return false;
     }
-    match SyncEngine::default().sync(server, store, account_id, boite) {
-        Ok(report) => {
-            rapport.fetched += report.fetched;
-            rapport.deleted += report.deleted;
-            *courrier += report.fetched + report.deleted;
-            solder_repere(store, account_id, boite, statut, &mut rapport.errors);
+    match SyncEngine::default().sync(server, store, account_id, mailbox) {
+        Ok(sync_report) => {
+            report.fetched += sync_report.fetched;
+            report.deleted += sync_report.deleted;
+            *mail += sync_report.fetched + sync_report.deleted;
+            settle_marker(store, account_id, mailbox, status, &mut report.errors);
             true
         }
         Err(reason) => {
-            rapport
+            report
                 .errors
-                .push(format!("dossier « {boite} » : {reason}"));
+                .push(format!("folder \"{mailbox}\": {reason}"));
             false
         }
     }
@@ -4692,14 +4709,14 @@ fn run_flush_all(
     db_path: &Path,
     lock: &Mutex<()>,
 ) -> Result<(OutboxSummary, Vec<AccountSession>), String> {
-    // E5 : verrou empoisonné = repris (le panic est consigné, ADR 0014).
+    // E5: a poisoned lock is reclaimed (the panic is logged, ADR 0014).
     let _guard = match lock.lock() {
-        Ok(garde) => garde,
-        Err(empoisonne) => empoisonne.into_inner(),
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
     };
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
 
-    // Un crash antérieur se constate même hors ligne : quarantaine d'abord.
+    // An earlier crash is noted even offline: quarantine first.
     let mut summary = OutboxSummary {
         sent: 0,
         deferred: 0,
@@ -4719,7 +4736,7 @@ fn run_flush_all(
             continue;
         }
         match connect_smtp(&session) {
-            // Hors ligne : la file de ce compte survit telle quelle.
+            // Offline: this account's queue survives as is.
             Err(reason) => summary.error = Some(reason),
             Ok((mut mailer, refreshed)) => {
                 let report = mail_core::flush_outbox(&mut mailer, &mut store, account_id)
@@ -4734,17 +4751,17 @@ fn run_flush_all(
             }
         }
     }
-    let restants = store
+    let remaining = store
         .outbox_in_state(OutboxState::Queued)
         .map_err(|err| err.to_string())?;
-    summary.queued = restants.len();
-    // La trace terrain de la vidange (§6.8 — lisible en `2> fichier`,
-    // l'app release est sous-système windows) : le bilan, puis la
-    // dernière erreur de chaque envoi resté en file — c'est elle que la
-    // barre d'état ne montre pas (« en attente » n'est pas fautif) et
-    // qu'un constat terrain doit pouvoir lire.
+    summary.queued = remaining.len();
+    // The field trace of the flush (§6.8 — readable via `2> file`, the
+    // release app is a Windows subsystem): the summary, then the last
+    // error of each send left in the queue — it's the one the status
+    // bar doesn't show ("waiting" isn't at fault) and a field finding
+    // must be able to read.
     crate::trace::trace(&format!(
-        "vidange : {} parti(s), {} differe(s), {} refuse(s), {} quarantaine, {} en file{}",
+        "flush: {} sent, {} deferred, {} rejected, {} quarantined, {} queued{}",
         summary.sent,
         summary.deferred,
         summary.rejected,
@@ -4753,15 +4770,15 @@ fn run_flush_all(
         summary
             .error
             .as_deref()
-            .map(|err| format!(" · connexion : {err}"))
+            .map(|err| format!(" · connection: {err}"))
             .unwrap_or_default(),
     ));
-    for message in &restants {
+    for message in &remaining {
         if let Some(err) = &message.last_error {
-            // §6.8 : l'identifiant, les tentatives, l'erreur — JAMAIS le
-            // sujet (E9 ; avant, le sujet partait dans la trace).
+            // §6.8: the id, the attempts, the error — NEVER the subject
+            // (E9; before, the subject used to go into the trace).
             crate::trace::trace(&format!(
-                "vidange : envoi {} attend ({} tentative(s)) : {err}",
+                "flush: send {} waiting ({} attempt(s)): {err}",
                 message.id, message.attempts
             ));
         }
@@ -4769,9 +4786,9 @@ fn run_flush_all(
     Ok((summary, refreshed_list))
 }
 
-/// L'état de la boîte d'envoi pour l'UI : tout ce qui n'est pas parti,
-/// tous comptes confondus.
-fn lire_envois(store: &Store) -> Result<OutboxStatus, String> {
+/// The outbox state for the UI: everything that hasn't gone out, all
+/// accounts combined.
+fn read_sends(store: &Store) -> Result<OutboxStatus, String> {
     let mut status = OutboxStatus {
         queued: 0,
         interrupted: 0,
@@ -4781,22 +4798,21 @@ fn lire_envois(store: &Store) -> Result<OutboxStatus, String> {
         entries: Vec::new(),
         refused_actions: store.refused_actions().map_err(|err| err.to_string())?,
     };
-    let maintenant = chrono::Utc::now().timestamp();
+    let now = chrono::Utc::now().timestamp();
     for message in store.outbox_metadata().map_err(|err| err.to_string())? {
-        // R2 : programmé pas encore échu — il n'attend pas le
-        // réseau, il attend son heure. Compté à part, et la plus
-        // proche échéance remonte (la sonde déclenchera la vidange).
-        let programme = message.state == OutboxState::Queued
-            && message
-                .send_at_epoch
-                .is_some_and(|epoch| epoch > maintenant);
+        // R2: scheduled but not yet due — it isn't waiting on the
+        // network, it's waiting on its time. Counted separately, and
+        // the nearest due time bubbles up (the probe will trigger the
+        // flush).
+        let scheduled = message.state == OutboxState::Queued
+            && message.send_at_epoch.is_some_and(|epoch| epoch > now);
         match message.state {
             OutboxState::Sent => continue,
-            OutboxState::Queued if programme => {
+            OutboxState::Queued if scheduled => {
                 status.scheduled += 1;
                 status.next_scheduled_epoch = match status.next_scheduled_epoch {
                     None => message.send_at_epoch,
-                    Some(connu) => Some(connu.min(message.send_at_epoch.unwrap_or(connu))),
+                    Some(known) => Some(known.min(message.send_at_epoch.unwrap_or(known))),
                 };
             }
             OutboxState::Queued | OutboxState::Sending => status.queued += 1,
@@ -4811,7 +4827,7 @@ fn lire_envois(store: &Store) -> Result<OutboxStatus, String> {
             attempts: message.attempts,
             error: message.last_error,
             pieces: message.attachments.len(),
-            send_at_epoch: message.send_at_epoch.filter(|epoch| *epoch > maintenant),
+            send_at_epoch: message.send_at_epoch.filter(|epoch| *epoch > now),
         });
     }
     Ok(status)
@@ -4819,43 +4835,44 @@ fn lire_envois(store: &Store) -> Result<OutboxStatus, String> {
 
 #[tauri::command]
 pub async fn outbox_status(app: AppHandle) -> Result<OutboxStatus, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        lire_envois(&store)
+        read_sends(&store)
     })
     .await
 }
 
-/// Renvoi d'un envoi en quarantaine ou refusé : LA décision explicite
-/// de l'utilisateur qu'exige la règle « jamais d'envoi fantôme ».
+/// Requeuing a quarantined or rejected send: THE explicit user decision
+/// required by the "never a ghost send" rule.
 #[tauri::command]
 pub async fn outbox_requeue(app: AppHandle, id: i64) -> Result<(), String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store.requeue_outbox(id).map_err(|err| err.to_string())
     })
     .await
 }
 
-/// Abandon d'un envoi (décision utilisateur) ; l'historique `sent`
-/// est préservé par le noyau.
+/// Abandoning a send (user decision); the `sent` history is preserved
+/// by the core.
 #[tauri::command]
 pub async fn outbox_delete(app: AppHandle, id: i64) -> Result<(), String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store.delete_outbox(id).map_err(|err| err.to_string())
     })
     .await
 }
 
-/// R2, décision CE D2 : annule un envoi programmé — l'entrée quitte le
-/// journal et un brouillon COMPLET renaît (destinataires, corps,
-/// marquage, pièces). Rend l'id du brouillon recréé, ou `None` si la
-/// vidange l'a pris entre-temps : trop tard, le message part — l'UI le
-/// dit honnêtement plutôt que de promettre un brouillon fantôme.
+/// R2, CE decision D2: cancels a scheduled send — the entry leaves the
+/// log and a COMPLETE draft is reborn (recipients, body, marking,
+/// attachments). Returns the id of the recreated draft, or `None` if
+/// the flush already took it in the meantime: too late, the message is
+/// going out — the UI says so honestly rather than promising a ghost
+/// draft.
 #[tauri::command]
 pub async fn outbox_cancel_scheduled(app: AppHandle, id: i64) -> Result<Option<i64>, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
             .cancel_scheduled_send(id)
@@ -4865,23 +4882,23 @@ pub async fn outbox_cancel_scheduled(app: AppHandle, id: i64) -> Result<Option<i
 }
 
 // ---------------------------------------------------------------------
-// Signature par compte (R1, PLAN-RETOURS-6, décisions CE D3/D4).
+// Signature per account (R1, PLAN-RETOURS-6, CE decisions D3/D4).
 // ---------------------------------------------------------------------
 
-/// La signature d'un compte et sa portée — ce que Réglages édite et ce
-/// que le composeur insère à l'ouverture.
+/// An account's signature and its scope — what Settings edits and what
+/// the composer inserts on open.
 #[derive(Serialize)]
 pub struct SignatureRow {
-    /// HTML assaini (allowlist ammonia) — `None` : pas de signature.
+    /// Sanitized HTML (ammonia allowlist) — `None`: no signature.
     pub html: Option<String>,
-    /// D4 : la signature s'insère AUSSI dans réponses et transferts.
-    /// Défaut : nouveaux messages seuls.
+    /// D4: the signature is ALSO inserted into replies and forwards.
+    /// Default: new messages only.
     pub replies: bool,
 }
 
 #[tauri::command]
 pub async fn signature_get(app: AppHandle, account_id: i64) -> Result<SignatureRow, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let html = store
             .text_pref(&format!("signature.{account_id}"))
@@ -4895,10 +4912,10 @@ pub async fn signature_get(app: AppHandle, account_id: i64) -> Result<SignatureR
     .await
 }
 
-/// Enregistre la signature d'un compte. Le HTML passe LA frontière
-/// (`frontiere_corps`, allowlist ammonia) — une signature entre en base
-/// comme tout corps : assainie, jamais crue. Un HTML au rendu texte
-/// vide vaut « signature effacée ».
+/// Saves an account's signature. The HTML goes through THE boundary
+/// (`body_boundary`, ammonia allowlist) — a signature enters the
+/// database like any body: sanitized, never taken raw. An HTML with an
+/// empty text render counts as "signature cleared."
 #[tauri::command]
 pub async fn signature_set(
     app: AppHandle,
@@ -4906,15 +4923,15 @@ pub async fn signature_set(
     html: Option<String>,
     replies: bool,
 ) -> Result<(), String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        let propre = html
+        let clean = html
             .as_deref()
-            .and_then(|h| frontiere_corps(String::new(), Some(h)).1);
+            .and_then(|h| body_boundary(String::new(), Some(h)).1);
         store
             .set_text_pref(
                 &format!("signature.{account_id}"),
-                propre.as_deref().unwrap_or(""),
+                clean.as_deref().unwrap_or(""),
             )
             .map_err(|err| err.to_string())?;
         store
@@ -4926,15 +4943,15 @@ pub async fn signature_set(
 }
 
 // ---------------------------------------------------------------------
-// Repère de compte (PLAN-RETOURS-8 R1) : icône + teinte par compte,
-// pour différencier les boîtes en boîte unifiée. Préférence locale
-// (table `prefs`, patron signature) — le serveur n'a pas ce concept.
+// Account marker (PLAN-RETOURS-8 R1): icon + hue per account, to tell
+// mailboxes apart in the unified mailbox. Local preference (table
+// `prefs`, signature pattern) — the server has no such concept.
 // ---------------------------------------------------------------------
 
-/// Le jeu d'icônes DÉDIÉ aux comptes (D2) : des glyphes neufs du
-/// sous-ensemble, réservés — jamais réemployés ailleurs (A3 « une
-/// icône, un sens »).
-const REPERE_ICONES: [&str; 12] = [
+/// The icon set DEDICATED to accounts (D2): new glyphs from the
+/// subset, reserved — never reused elsewhere (A3 "one icon, one
+/// meaning").
+const MARKER_ICONS: [&str; 12] = [
     "home",
     "work",
     "school",
@@ -4949,71 +4966,72 @@ const REPERE_ICONES: [&str; 12] = [
     "music_note",
 ];
 
-/// Le nuancier mesuré (D1) : 12 familles, dont les DEUX déclinaisons
-/// (clairs / -nuit) vivent dans `systeme.css` — ici on ne stocke que le
-/// nom de famille, jamais un hex.
-const REPERE_TEINTES: [&str; 12] = [
+/// The measured swatch table (D1): 12 families, whose TWO variants
+/// (light / night) live in `systeme.css` — here only the family name is
+/// stored, never a hex value.
+const MARKER_HUES: [&str; 12] = [
     "rouge", "orange", "ocre", "olive", "vert", "sapin", "bleu", "indigo", "violet", "magenta",
     "rose", "brun",
 ];
 
-/// La décision pure : un repère n'existe que dans l'allowlist croisée
-/// (jeu dédié × nuancier). Tout le reste — glyphe du produit, teinte
-/// inconnue, chaîne vide — est refusé, à l'entrée comme au retour.
-pub(crate) fn repere_valide(icone: &str, teinte: &str) -> bool {
-    REPERE_ICONES.contains(&icone) && REPERE_TEINTES.contains(&teinte)
+/// The pure decision: a marker only exists within the crossed allowlist
+/// (dedicated set × swatch table). Everything else — a product glyph,
+/// an unknown hue, an empty string — is refused, both on input and on
+/// readback.
+pub(crate) fn valid_marker(icone: &str, teinte: &str) -> bool {
+    MARKER_ICONS.contains(&icone) && MARKER_HUES.contains(&teinte)
 }
 
-/// Relit le repère d'un compte ; une valeur hors allowlist (base
-/// corrompue, ancienne version) ne sort jamais vers l'UI.
-pub(crate) fn repere_de(
+/// Rereads an account's marker; a value outside the allowlist
+/// (corrupted database, older version) never reaches the UI.
+pub(crate) fn marker_of(
     store: &Store,
     account_id: i64,
 ) -> Result<Option<(String, String)>, mail_core::Error> {
     let icone = store.text_pref(&format!("repere_icone.{account_id}"))?;
     let teinte = store.text_pref(&format!("repere_teinte.{account_id}"))?;
     Ok(match (icone, teinte) {
-        (Some(i), Some(t)) if repere_valide(&i, &t) => Some((i, t)),
+        (Some(i), Some(t)) if valid_marker(&i, &t) => Some((i, t)),
         _ => None,
     })
 }
 
-/// Pose ou retire (None) le repère — retirer vide les clés (patron
-/// signature : la pref vide vaut « jamais posée »). Les DEUX clés
-/// partent dans UNE transaction : une paire à moitié écrite serait un
-/// repère que personne n'a choisi (revue 2026-08-22).
-pub(crate) fn poser_repere(
+/// Sets or removes (None) the marker — removing clears the keys
+/// (signature pattern: an empty pref means "never set"). BOTH keys go
+/// out in ONE transaction: a half-written pair would be a marker no one
+/// chose (2026-08-22 review).
+pub(crate) fn set_marker(
     store: &mut Store,
     account_id: i64,
-    repere: Option<(&str, &str)>,
+    marker: Option<(&str, &str)>,
 ) -> Result<(), mail_core::Error> {
-    let (icone, teinte) = repere.unwrap_or(("", ""));
-    let cle_icone = format!("repere_icone.{account_id}");
-    let cle_teinte = format!("repere_teinte.{account_id}");
-    store.set_text_prefs(&[(cle_icone.as_str(), icone), (cle_teinte.as_str(), teinte)])
+    let (icone, teinte) = marker.unwrap_or(("", ""));
+    let icon_key = format!("repere_icone.{account_id}");
+    let hue_key = format!("repere_teinte.{account_id}");
+    store.set_text_prefs(&[(icon_key.as_str(), icone), (hue_key.as_str(), teinte)])
 }
 
 #[derive(Serialize)]
-pub struct RepereRow {
+pub struct MarkerRow {
     pub account_id: i64,
     pub icone: String,
     pub teinte: String,
 }
 
-/// Tous les repères posés — l'UI les charge UNE fois (nav + liste) et
-/// les recharge au changement. Un compte sans repère n'a pas de ligne :
-/// son rendu par défaut (`person`, jeton neutre) ne dépend de rien.
+/// All the set markers — the UI loads them ONCE (nav + list) and
+/// reloads them on change. An account without a marker has no row: its
+/// default render (`person`, neutral token) depends on nothing.
 #[tauri::command]
-pub async fn reperes_get(app: AppHandle) -> Result<Vec<RepereRow>, String> {
-    hors_pompe(app, move |app| {
+pub async fn markers_get(app: AppHandle) -> Result<Vec<MarkerRow>, String> {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let mut rows = Vec::new();
-        for compte in store.accounts().map_err(|err| err.to_string())? {
+        for account in store.accounts().map_err(|err| err.to_string())? {
             if let Some((icone, teinte)) =
-                repere_de(&store, compte.id).map_err(|err| err.to_string())?
+                marker_of(&store, account.id).map_err(|err| err.to_string())?
             {
-                rows.push(RepereRow {
-                    account_id: compte.id,
+                rows.push(MarkerRow {
+                    account_id: account.id,
                     icone,
                     teinte,
                 });
@@ -5024,80 +5042,80 @@ pub async fn reperes_get(app: AppHandle) -> Result<Vec<RepereRow>, String> {
     .await
 }
 
-/// Pose (icône + teinte) ou retire (les deux à None) le repère d'un
-/// compte. Une valeur hors allowlist est une erreur franche — l'UI ne
-/// propose que le jeu dédié, tout autre appel est un bug.
+/// Sets (icon + hue) or removes (both to None) an account's marker. A
+/// value outside the allowlist is a plain error — the UI only offers
+/// the dedicated set, any other call is a bug.
 #[tauri::command]
-pub async fn repere_set(
+pub async fn marker_set(
     app: AppHandle,
     account_id: i64,
     icone: Option<String>,
     teinte: Option<String>,
 ) -> Result<(), String> {
-    hors_pompe(app, move |app| {
-        let repere = match (icone.as_deref(), teinte.as_deref()) {
+    off_pump(app, move |app| {
+        let marker = match (icone.as_deref(), teinte.as_deref()) {
             (None, None) => None,
-            (Some(i), Some(t)) if repere_valide(i, t) => Some((i, t)),
-            (Some(_), Some(_)) => return Err("repère hors du jeu dédié".to_string()),
-            _ => return Err("icône et teinte vont ensemble".to_string()),
+            (Some(i), Some(t)) if valid_marker(i, t) => Some((i, t)),
+            (Some(_), Some(_)) => return Err("marker outside the dedicated set".to_string()),
+            _ => return Err("icon and hue go together".to_string()),
         };
         let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        poser_repere(&mut store, account_id, repere).map_err(|err| err.to_string())
+        set_marker(&mut store, account_id, marker).map_err(|err| err.to_string())
     })
     .await
 }
 
-/// PLAN-RETOURS-9 (D3) : la décision pure du nom personnalisé d'un
-/// compte. Espaces rognés ; vide = retiré (None) ; au-delà de 60
-/// caractères refusé — jamais tronqué en silence.
-pub(crate) fn nom_normalise(brut: &str) -> Result<Option<String>, String> {
-    let net = brut.trim();
-    if net.is_empty() {
+/// PLAN-RETOURS-9 (D3): the pure decision for an account's custom name.
+/// Whitespace trimmed; empty = removed (None); beyond 60 characters
+/// refused — never silently truncated.
+pub(crate) fn normalized_name(raw: &str) -> Result<Option<String>, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
         return Ok(None);
     }
-    if net.chars().count() > 60 {
-        return Err("nom trop long (60 caractères au plus)".to_string());
+    if trimmed.chars().count() > 60 {
+        return Err("name too long (60 characters at most)".to_string());
     }
-    Ok(Some(net.to_string()))
+    Ok(Some(trimmed.to_string()))
 }
 
-/// Relit le nom d'un compte ; une coquille blanche en base (posée hors
-/// UI, ancienne version) ne sort jamais vers l'affichage.
-pub(crate) fn nom_de(store: &Store, account_id: i64) -> Result<Option<String>, mail_core::Error> {
+/// Rereads an account's name; a blank shell in the database (set
+/// outside the UI, older version) never reaches the display.
+pub(crate) fn name_of(store: &Store, account_id: i64) -> Result<Option<String>, mail_core::Error> {
     Ok(store
         .text_pref(&format!("nom_compte.{account_id}"))?
-        .map(|nom| nom.trim().to_string())
-        .filter(|nom| !nom.is_empty()))
+        .map(|name| name.trim().to_string())
+        .filter(|name| !name.is_empty()))
 }
 
-/// Pose ou retire (None) le nom — retirer vide la clé (patron
-/// signature/repère : la pref vide vaut « jamais posée »).
-pub(crate) fn poser_nom(
+/// Sets or removes (None) the name — removing clears the key
+/// (signature/marker pattern: an empty pref means "never set").
+pub(crate) fn set_name(
     store: &mut Store,
     account_id: i64,
-    nom: Option<&str>,
+    name: Option<&str>,
 ) -> Result<(), mail_core::Error> {
-    let cle = format!("nom_compte.{account_id}");
-    store.set_text_prefs(&[(cle.as_str(), nom.unwrap_or(""))])
+    let key = format!("nom_compte.{account_id}");
+    store.set_text_prefs(&[(key.as_str(), name.unwrap_or(""))])
 }
 
 #[derive(Serialize)]
-pub struct NomRow {
+pub struct NameRow {
     pub account_id: i64,
     pub nom: String,
 }
 
-/// Tous les noms posés — l'UI les charge UNE fois (nav + réglages +
-/// composeur) et patche sa table au geste (patron des repères).
+/// All the set names — the UI loads them ONCE (nav + settings +
+/// composer) and patches its table on gesture (marker pattern).
 #[tauri::command]
-pub async fn noms_get(app: AppHandle) -> Result<Vec<NomRow>, String> {
-    hors_pompe(app, move |app| {
+pub async fn names_get(app: AppHandle) -> Result<Vec<NameRow>, String> {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let mut rows = Vec::new();
-        for compte in store.accounts().map_err(|err| err.to_string())? {
-            if let Some(nom) = nom_de(&store, compte.id).map_err(|err| err.to_string())? {
-                rows.push(NomRow {
-                    account_id: compte.id,
+        for account in store.accounts().map_err(|err| err.to_string())? {
+            if let Some(nom) = name_of(&store, account.id).map_err(|err| err.to_string())? {
+                rows.push(NameRow {
+                    account_id: account.id,
                     nom,
                 });
             }
@@ -5107,25 +5125,25 @@ pub async fn noms_get(app: AppHandle) -> Result<Vec<NomRow>, String> {
     .await
 }
 
-/// Pose ou retire (chaîne vide / None) le nom d'un compte. Retourne le
-/// nom NORMALISÉ effectivement écrit — c'est lui que l'UI affiche.
+/// Sets or removes (empty string / None) an account's name. Returns the
+/// NORMALIZED name actually written — that's what the UI displays.
 #[tauri::command]
-pub async fn nom_set(
+pub async fn name_set(
     app: AppHandle,
     account_id: i64,
     nom: Option<String>,
 ) -> Result<Option<String>, String> {
-    hors_pompe(app, move |app| {
-        let normalise = nom_normalise(nom.as_deref().unwrap_or(""))?;
+    off_pump(app, move |app| {
+        let normalized = normalized_name(nom.as_deref().unwrap_or(""))?;
         let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        poser_nom(&mut store, account_id, normalise.as_deref()).map_err(|err| err.to_string())?;
-        Ok(normalise)
+        set_name(&mut store, account_id, normalized.as_deref()).map_err(|err| err.to_string())?;
+        Ok(normalized)
     })
     .await
 }
 
 // ---------------------------------------------------------------------
-// Brouillons locaux + reflet Gmail par compte (Phases 2-3).
+// Local drafts + per-account Gmail reflection (Phases 2-3).
 // ---------------------------------------------------------------------
 
 #[derive(Serialize)]
@@ -5137,43 +5155,43 @@ pub struct DraftRow {
     pub bcc: String,
     pub subject: String,
     pub body: String,
-    /// Corps riche tel que stocké — `None` pour un brouillon texte : la
-    /// reprise le convertit à l'ouverture (échappement + retours),
-    /// l'inverse exact de la dérivation texte côté sauvegarde.
+    /// Rich body as stored — `None` for a text draft: resuming converts
+    /// it on open (escaping + line breaks), the exact inverse of the
+    /// text derivation on the save side.
     pub body_html: Option<String>,
     pub reply_to_uid: Option<u32>,
-    /// La boîte qui donne son sens à `reply_to_uid` (ADR 0009) — la
-    /// reprise doit la restituer au composeur, sans quoi la chaîne
-    /// réponse → brouillon → reprise perd le fil.
+    /// The mailbox that gives `reply_to_uid` its meaning (ADR 0009) —
+    /// resuming must hand it back to the composer, or the reply → draft
+    /// → resume chain loses the thread.
     pub reply_to_mailbox: Option<String>,
-    /// Le fil auquel ce brouillon répond, résolu par le cœur — `None`
-    /// pour une composition libre ou une cible disparue.
+    /// The thread this draft replies to, resolved by the core — `None`
+    /// for a free composition or a target that has vanished.
     pub thread_id: Option<i64>,
-    /// Marqué « important » (R3) — la reprise restitue l'état du bouton.
+    /// Marked “important” (R3) — resuming restores the button's state.
     pub important: bool,
-    /// L'éditeur le renvoie à la sauvegarde : c'est ce qui lui permet de
-    /// détecter qu'un autre a écrit entre-temps.
+    /// The editor sends it back on save: that's what lets it detect
+    /// that something else wrote in the meantime.
     pub updated_epoch: i64,
 }
 
-/// Ce qu'une sauvegarde a fait — l'éditeur en a besoin pour la suivante.
+/// What a save did — the editor needs it for the next one.
 #[derive(Serialize)]
 pub struct DraftSavedRow {
     pub id: i64,
     pub updated_epoch: i64,
-    /// Le brouillon avait changé ailleurs : le texte de l'éditeur a été
-    /// conservé à part. À dire à l'utilisateur, jamais à taire.
+    /// The draft had changed elsewhere: the editor's text was kept
+    /// aside. To be told to the user, never hidden.
     pub forked: bool,
 }
 
-/// Sauvegarde un brouillon — texte brut, jamais validé : c'est un filet.
-/// Le contenu tel que l'éditeur l'envoie — regroupé pour la même raison
-/// qu'au noyau : quatre chaînes voisines invitent à en intervertir deux.
+/// Saves a draft — plain text, never validated: it's a net. The content
+/// exactly as the editor sends it — grouped for the same reason as in
+/// the core: four neighboring strings invite swapping two of them.
 ///
-/// `camelCase` : Tauri ne convertit les noms qu'au premier niveau des
-/// arguments. Sans cette annotation, l'UI devrait envoyer `reply_to_uid`
-/// ici et `replyToUid` ailleurs — une incohérence qui ne se voit qu'à
-/// l'exécution.
+/// `camelCase`: Tauri only converts names at the first level of
+/// arguments. Without this annotation, the UI would have to send
+/// `reply_to_uid` here and `replyToUid` elsewhere — an inconsistency
+/// that only shows up at runtime.
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DraftContentArg {
@@ -5182,44 +5200,45 @@ pub struct DraftContentArg {
     bcc: String,
     subject: String,
     body: String,
-    /// Corps riche de l'éditeur (PLAN-COMPOSITION-HTML) — absent ou vide
-    /// = brouillon texte. Assaini côté Rust avant toute écriture.
+    /// Rich body from the editor (PLAN-COMPOSITION-HTML) — absent or
+    /// empty = text draft. Sanitized on the Rust side before any write.
     body_html: Option<String>,
     reply_to_uid: Option<u32>,
     reply_to_mailbox: Option<String>,
-    /// Marqué « important » (R3, PLAN-RETOURS-6). `default` : un
-    /// appelant d'avant le champ n'envoie rien — brouillon ordinaire.
+    /// Marked “important” (R3, PLAN-RETOURS-6). `default`: a caller
+    /// from before this field sends nothing — an ordinary draft.
     #[serde(default)]
     important: bool,
 }
 
-/// LA frontière du corps riche (PLAN-COMPOSITION-HTML) — le point unique
-/// par lequel tout corps entre en base (brouillon, journal d'envoi,
-/// tirage) : assaini par ammonia, texte du repli DÉRIVÉ du même HTML
-/// (une seule autorité, jamais deux vérités).
+/// THE boundary of the rich body (PLAN-COMPOSITION-HTML) — the single
+/// point through which every body enters the database (draft, send
+/// log, pull): sanitized by ammonia, the fallback text DERIVED from
+/// that same HTML (one single authority, never two truths).
 ///
-/// `AllowRemote` ICI : la frontière ne re-neutralise pas ce que l'amont
-/// a décidé. La politique des images distantes se joue AU CONTEXTE
-/// (verdict terrain D5, 2026-08-20) — une RÉPONSE cite en pixel neutre
-/// (`citation_reply`, §6.4 : reposée dans l'éditeur, elle ne doit rien
-/// charger) et l'assainissement étant idempotent, elle reste neutre en
-/// repassant ici ; un TRANSFERT conserve ses images (le destinataire
-/// reçoit le message entier), un collage volontaire aussi.
+/// `AllowRemote` HERE: the boundary does not re-neutralize what
+/// upstream already decided. Remote-image policy is decided BY CONTEXT
+/// (field verdict D5, 2026-08-20) — a REPLY quotes in pixel-neutral
+/// form (`citation_reply`, §6.4: once put back in the editor, it must
+/// load nothing) and, sanitization being idempotent, it stays neutral
+/// when passing through here again; a FORWARD keeps its images (the
+/// recipient gets the whole message), and so does a deliberate paste.
 ///
-/// Un HTML vide, blanc, ou dont le RENDU texte est vide (le `<br>`
-/// résiduel d'un contenteditable vidé) vaut « pas de HTML » : chemin
-/// texte — sans quoi la partie text/plain d'un envoi partirait vide.
-fn frontiere_corps(body: String, body_html: Option<&str>) -> (String, Option<String>) {
-    let riche = body_html
+/// An HTML body that is empty, blank, or whose rendered TEXT is empty
+/// (the leftover `<br>` of an emptied contenteditable) counts as “no
+/// HTML”: text path — otherwise the text/plain part of a send would go
+/// out empty.
+fn body_boundary(body: String, body_html: Option<&str>) -> (String, Option<String>) {
+    let rich = body_html
         .filter(|html| !html.trim().is_empty())
         .map(|html| mail_render::sanitize_with(html, mail_render::ImagePolicy::AllowRemote).html);
-    match riche {
+    match rich {
         Some(html) => {
-            let texte = mail_render::body_text(&html);
-            if texte.trim().is_empty() {
+            let text = mail_render::body_text(&html);
+            if text.trim().is_empty() {
                 (body, None)
             } else {
-                (texte, Some(html))
+                (text, Some(html))
             }
         }
         None => (body, None),
@@ -5234,12 +5253,12 @@ pub async fn save_draft(
     base_epoch: Option<i64>,
     content: DraftContentArg,
 ) -> Result<DraftSavedRow, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        // Même frontière que l'envoi (`frontiere_corps`) : HTML assaini,
-        // texte dérivé (aperçus et repli).
-        let (corps_texte, corps_riche) =
-            frontiere_corps(content.body.clone(), content.body_html.as_deref());
+        // Same boundary as sending (`body_boundary`): sanitized HTML,
+        // derived text (previews and fallback).
+        let (body_text, body_rich) =
+            body_boundary(content.body.clone(), content.body_html.as_deref());
         let saved = store
             .save_draft(
                 account_id,
@@ -5249,9 +5268,9 @@ pub async fn save_draft(
                     to_raw: &content.to,
                     cc_raw: &content.cc,
                     bcc_raw: &content.bcc,
-                    body_html: corps_riche.as_deref(),
+                    body_html: body_rich.as_deref(),
                     subject: &content.subject,
-                    body: &corps_texte,
+                    body: &body_text,
                     reply_to_uid: content.reply_to_uid,
                     reply_to_mailbox: content.reply_to_mailbox.as_deref(),
                     important: content.important,
@@ -5269,7 +5288,7 @@ pub async fn save_draft(
 
 #[tauri::command]
 pub async fn list_drafts(app: AppHandle) -> Result<Vec<DraftRow>, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         Ok(store
             .drafts()
@@ -5297,7 +5316,7 @@ pub async fn list_drafts(app: AppHandle) -> Result<Vec<DraftRow>, String> {
 
 #[tauri::command]
 pub async fn delete_draft(app: AppHandle, id: i64) -> Result<(), String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store.delete_draft(id).map_err(|err| err.to_string())
     })
@@ -5305,47 +5324,48 @@ pub async fn delete_draft(app: AppHandle, id: i64) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------
-// Pièces jointes du composeur (PLAN-PIECES-JOINTES E2).
+// Composer attachments (PLAN-PIECES-JOINTES E2).
 // ---------------------------------------------------------------------
 
-/// Une pièce d'un brouillon, pour les puces du composeur. Métadonnées
-/// seules — les octets ne quittent la base qu'à la construction MIME.
+/// One attachment of a draft, for the composer's chips. Metadata only —
+/// the bytes leave the database only when building the MIME message.
 #[derive(Serialize)]
-pub struct DraftPieceRow {
+pub struct DraftAttachmentRow {
     pub id: i64,
     pub name: String,
     pub mime: String,
-    /// Octets décodés, bruts — le poids total se somme côté UI.
+    /// Decoded, raw bytes — the total weight is summed on the UI side.
     pub size: u64,
-    /// Taille lisible, même forme que la Lecture (« 2.4 Mo »).
+    /// Readable size, same form as the Reading pane (“2.4 MB”).
     pub human: String,
 }
 
-/// Une pièce refusée au plafond (PJ-D3) — la surface dit le nom et la
-/// place restante, lisible.
+/// An attachment refused at the cap (PJ-D3) — the surface tells the
+/// name and the remaining room, in readable form.
 #[derive(Serialize)]
-pub struct RefusedPiece {
+pub struct RefusedAttachment {
     pub name: String,
     pub remaining: String,
 }
 
-/// Bilan du geste « Joindre ».
+/// Outcome of the “Attach” gesture.
 #[derive(Serialize)]
 pub struct AttachReport {
-    /// Le brouillon-ancre (créé au premier fichier si besoin, PJ-D1).
-    /// `None` : rien n'est entré ET aucun brouillon n'existait — l'ancre
-    /// créée pour rien a été reprise, pas de brouillon vide qui traîne.
+    /// The anchor draft (created on the first file if needed, PJ-D1).
+    /// `None`: nothing was entered AND no draft existed — the anchor
+    /// created for nothing was reclaimed, no empty draft left lying
+    /// around.
     pub draft_id: Option<i64>,
-    /// `None` si aucun fichier n'est entré (tout refusé) : le brouillon
-    /// n'a pas bougé, l'éditeur garde son repère.
+    /// `None` if no file was entered (all refused): the draft did not
+    /// move, the editor keeps its marker.
     pub updated_epoch: Option<i64>,
-    /// TOUTES les pièces du brouillon après le geste, dans l'ordre.
-    pub pieces: Vec<DraftPieceRow>,
-    pub refused: Vec<RefusedPiece>,
+    /// ALL of the draft's attachments after the gesture, in order.
+    pub pieces: Vec<DraftAttachmentRow>,
+    pub refused: Vec<RefusedAttachment>,
 }
 
-fn piece_row(meta: mail_core::DraftAttachmentMeta) -> DraftPieceRow {
-    DraftPieceRow {
+fn attachment_row(meta: mail_core::DraftAttachmentMeta) -> DraftAttachmentRow {
+    DraftAttachmentRow {
         id: meta.id,
         name: meta.name,
         mime: meta.mime,
@@ -5354,9 +5374,9 @@ fn piece_row(meta: mail_core::DraftAttachmentMeta) -> DraftPieceRow {
     }
 }
 
-/// Type MIME déduit de l'extension — pour l'en-tête de la pièce, jamais
-/// pour une décision : un inconnu part en `application/octet-stream`,
-/// honnête et universellement accepté.
+/// MIME type deduced from the extension — for the attachment header,
+/// never for a decision: an unknown one goes out as
+/// `application/octet-stream`, honest and universally accepted.
 fn mime_for_name(name: &str) -> &'static str {
     let extension = name.rsplit('.').next().unwrap_or_default().to_lowercase();
     match extension.as_str() {
@@ -5384,12 +5404,13 @@ fn mime_for_name(name: &str) -> &'static str {
     }
 }
 
-/// Joint des fichiers au brouillon : lit chaque chemin, copie les octets
-/// en base au geste (PJ-D1 — le sélecteur a rendu des chemins, ils ne
-/// survivent pas à ce appel), refuse au plafond sans punir l'acquis.
+/// Attaches files to the draft: reads each path, copies the bytes into
+/// the database on the gesture (PJ-D1 — the picker returned paths, they
+/// don't survive past this call), refuses at the cap without punishing
+/// what was already gained.
 ///
-/// `draft_id: None` : le brouillon-ancre est créé, vide de texte —
-/// l'autosave du composeur le remplira avec l'id et l'epoch rendus ici.
+/// `draft_id: None`: the anchor draft is created, empty of text — the
+/// composer's autosave will fill it with the id and epoch returned here.
 #[tauri::command]
 pub async fn attach_files(
     app: AppHandle,
@@ -5397,9 +5418,9 @@ pub async fn attach_files(
     draft_id: Option<i64>,
     paths: Vec<String>,
 ) -> Result<AttachReport, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        let cree = draft_id.is_none();
+        let created = draft_id.is_none();
         let draft_id = match draft_id {
             Some(id) => id,
             None => {
@@ -5427,20 +5448,19 @@ pub async fn attach_files(
         let mut updated_epoch = None;
         let mut refused = Vec::new();
         for path in &paths {
-            // E8 : un chemin venu de l'UI se lit s'il est absolu et
-            // désigne un fichier régulier — jamais un dossier, jamais un
-            // chemin relatif au processus.
-            let candidat = std::path::Path::new(path);
-            if !candidat.is_absolute() || !candidat.is_file() {
+            // E8: a path coming from the UI is read only if it is
+            // absolute and names a regular file — never a folder, never
+            // a path relative to the process.
+            let candidate = std::path::Path::new(path);
+            if !candidate.is_absolute() || !candidate.is_file() {
                 return Err(format!(
-                    "pièce refusée : {path:?} n'est pas un fichier absolu"
+                    "attachment refused: {path:?} is not an absolute file"
                 ));
             }
-            // Échec de lecture = échec franc du geste : les fichiers déjà
-            // entrés restent (l'UI relit les puces), celui-ci a un problème
-            // que l'utilisateur doit voir, pas un silence.
-            let bytes =
-                std::fs::read(path).map_err(|err| format!("lecture de {path:?} : {err}"))?;
+            // A read failure is an outright failure of the gesture:
+            // files already entered stay (the UI re-reads the chips),
+            // this one has a problem the user must see, not a silence.
+            let bytes = std::fs::read(path).map_err(|err| format!("reading {path:?}: {err}"))?;
             let name = std::path::Path::new(path)
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
@@ -5449,16 +5469,16 @@ pub async fn attach_files(
                 Ok(saved) => updated_epoch = Some(saved.updated_epoch),
                 Err(mail_core::Error::AttachmentOverBudget {
                     name, remaining, ..
-                }) => refused.push(RefusedPiece {
+                }) => refused.push(RefusedAttachment {
                     name,
                     remaining: mail_core::human_size(remaining),
                 }),
                 Err(err) => return Err(err.to_string()),
             }
         }
-        // L'ancre créée pour rien (tout refusé) est reprise sur-le-champ :
-        // pas de brouillon vide fantôme au dossier.
-        if cree && updated_epoch.is_none() {
+        // The anchor created for nothing (all refused) is reclaimed on
+        // the spot: no phantom empty draft left in the folder.
+        if created && updated_epoch.is_none() {
             store
                 .delete_draft(draft_id)
                 .map_err(|err| err.to_string())?;
@@ -5476,7 +5496,7 @@ pub async fn attach_files(
                 .draft_attachments_meta(draft_id)
                 .map_err(|err| err.to_string())?
                 .into_iter()
-                .map(piece_row)
+                .map(attachment_row)
                 .collect(),
             refused,
         })
@@ -5484,26 +5504,27 @@ pub async fn attach_files(
     .await
 }
 
-/// Bilan du rapatriement d'UNE pièce du message d'origine (transfert,
-/// PJ-D4). Deux issues nommées ici, la troisième — l'échec réseau — est
-/// l'erreur de la commande : la surface les distingue (refus définitif
-/// vs « Réessayer »).
+/// Outcome of repatriating ONE attachment from the source message
+/// (forward, PJ-D4). Two outcomes are named here, the third — a network
+/// failure — is the command's error: the surface distinguishes them
+/// (final refusal vs “Retry”).
 #[derive(Serialize)]
-pub struct FetchPieceReport {
-    /// `None` : la pièce a été refusée ET aucun brouillon n'existait —
-    /// l'ancre créée pour rien a été reprise.
+pub struct FetchAttachmentReport {
+    /// `None`: the attachment was refused AND no draft existed — the
+    /// anchor created for nothing was reclaimed.
     pub draft_id: Option<i64>,
     pub updated_epoch: Option<i64>,
-    /// La pièce versée au brouillon, si le rapatriement a abouti.
-    pub piece: Option<DraftPieceRow>,
-    /// Le refus au plafond (PJ-D3) — définitif, pas de « Réessayer ».
-    pub refused: Option<RefusedPiece>,
+    /// The attachment added to the draft, if the repatriation succeeded.
+    pub piece: Option<DraftAttachmentRow>,
+    /// The refusal at the cap (PJ-D3) — final, no “Retry”.
+    pub refused: Option<RefusedAttachment>,
 }
 
-/// Rapatrie une pièce du message d'origine et la verse au brouillon-ancre
-/// (PJ-D4) : les octets viennent du serveur (`fetch_attachment`, le
-/// chemin de la Lecture), jamais d'un fichier local. Une par appel — le
-/// composeur enchaîne, et chaque puce porte son propre état.
+/// Repatriates an attachment from the source message and adds it to the
+/// anchor draft (PJ-D4): the bytes come from the server
+/// (`fetch_attachment`, the Reading pane's path), never from a local
+/// file. One per call — the composer chains them, and each chip carries
+/// its own state.
 #[tauri::command]
 pub async fn fetch_source_attachment(
     app: AppHandle,
@@ -5512,20 +5533,21 @@ pub async fn fetch_source_attachment(
     uid: u32,
     index: usize,
     draft_id: Option<i64>,
-) -> Result<FetchPieceReport, String> {
-    // E5 : lecture (pièce + session) sous `hors_pompe`, réseau nu, puis
-    // écriture sous `hors_pompe` — plus jamais une connexion SQLite tenue
-    // à travers l'attente réseau, ni un brouillon écrit hors du verrou
-    // des commandes (le TOCTOU `save_draft`/`delete_draft` de l'ADR 0019).
-    let boite = mailbox.clone();
-    let (attachment, session) = hors_pompe(app.clone(), move |app| {
+) -> Result<FetchAttachmentReport, String> {
+    // E5: read (attachment + session) under `off_pump`, bare network,
+    // then write under `off_pump` — never again a SQLite connection
+    // held across the network wait, nor a draft written outside the
+    // commands' lock (the `save_draft`/`delete_draft` TOCTOU of ADR
+    // 0019).
+    let mailbox_name = mailbox.clone();
+    let (attachment, session) = off_pump(app.clone(), move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let attachment = store
-            .attachments(account_id, &boite, uid)
+            .attachments(account_id, &mailbox_name, uid)
             .map_err(|err| err.to_string())?
             .into_iter()
             .find(|candidate| candidate.index == index)
-            .ok_or_else(|| "pièce jointe inconnue".to_string())?;
+            .ok_or_else(|| "unknown attachment".to_string())?;
         Ok((attachment, auth_for(&app, account_id)?))
     })
     .await?;
@@ -5536,14 +5558,14 @@ pub async fn fetch_source_attachment(
             .fetch_attachment(&mailbox, uid, index)
             .map_err(|err| err.to_string())?;
         server.logout();
-        bytes.ok_or_else(|| "pièce jointe absente du message".to_string())
+        bytes.ok_or_else(|| "attachment absent from the message".to_string())
     })
     .await
     .map_err(|err| err.to_string())??;
 
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        let cree = draft_id.is_none();
+        let created = draft_id.is_none();
         let draft_id = match draft_id {
             Some(id) => id,
             None => {
@@ -5569,18 +5591,18 @@ pub async fn fetch_source_attachment(
             }
         };
         match store.add_draft_attachment(draft_id, &attachment.name, &attachment.mime, &bytes) {
-            Ok(saved) => Ok(FetchPieceReport {
+            Ok(saved) => Ok(FetchAttachmentReport {
                 draft_id: Some(draft_id),
                 updated_epoch: Some(saved.updated_epoch),
-                piece: Some(piece_row(saved.attachment)),
+                piece: Some(attachment_row(saved.attachment)),
                 refused: None,
             }),
             Err(mail_core::Error::AttachmentOverBudget {
                 name, remaining, ..
             }) => {
-                // L'ancre créée pour rien est reprise — même règle
-                // qu'`attach_files` : pas de brouillon vide fantôme.
-                let draft_id = if cree {
+                // The anchor created for nothing is reclaimed — same
+                // rule as `attach_files`: no phantom empty draft.
+                let draft_id = if created {
                     store
                         .delete_draft(draft_id)
                         .map_err(|err| err.to_string())?;
@@ -5588,11 +5610,11 @@ pub async fn fetch_source_attachment(
                 } else {
                     Some(draft_id)
                 };
-                Ok(FetchPieceReport {
+                Ok(FetchAttachmentReport {
                     draft_id,
                     updated_epoch: None,
                     piece: None,
-                    refused: Some(RefusedPiece {
+                    refused: Some(RefusedAttachment {
                         name,
                         remaining: mail_core::human_size(remaining),
                     }),
@@ -5604,11 +5626,12 @@ pub async fn fetch_source_attachment(
     .await
 }
 
-/// Retire une pièce. Rend le nouvel `updated_epoch` du brouillon, ou
-/// `None` si la pièce n'existait plus (double-clic) — rien n'a bougé.
+/// Removes an attachment. Returns the draft's new `updated_epoch`, or
+/// `None` if the attachment no longer existed (double click) — nothing
+/// moved.
 #[tauri::command]
 pub async fn detach_file(app: AppHandle, attachment_id: i64) -> Result<Option<i64>, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
             .remove_draft_attachment(attachment_id)
@@ -5617,19 +5640,19 @@ pub async fn detach_file(app: AppHandle, attachment_id: i64) -> Result<Option<i6
     .await
 }
 
-/// Les pièces d'un brouillon — la reprise redessine ses puces.
+/// A draft's attachments — resuming redraws its chips.
 #[tauri::command]
 pub async fn draft_attachments(
     app: AppHandle,
     draft_id: i64,
-) -> Result<Vec<DraftPieceRow>, String> {
-    hors_pompe(app, move |app| {
+) -> Result<Vec<DraftAttachmentRow>, String> {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         Ok(store
             .draft_attachments_meta(draft_id)
             .map_err(|err| err.to_string())?
             .into_iter()
-            .map(piece_row)
+            .map(attachment_row)
             .collect())
     })
     .await
@@ -5639,22 +5662,23 @@ pub async fn draft_attachments(
 pub struct DraftSyncSummary {
     pub pushed: usize,
     pub purged: usize,
-    /// Brouillons non poussables en l'état — ils restent locaux.
+    /// Drafts that cannot be pushed as they stand — they stay local.
     pub kept_local: usize,
-    /// Réseau indisponible — rien de changé, le cycle suivant retentera.
+    /// Network unavailable — nothing changed, the next cycle will
+    /// retry.
     pub error: Option<String>,
 }
 
-/// Reflète les brouillons de TOUS les comptes connectés dans leurs
-/// dossiers Brouillons respectifs (poussée seule, v1). Sans travail,
-/// aucun réseau. Réentrance interdite (verrou).
+/// Mirrors the drafts of ALL connected accounts into their respective
+/// Drafts folders (push only, v1). No work, no network. Reentrance
+/// forbidden (lock).
 #[tauri::command]
 pub async fn sync_drafts(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<DraftSyncSummary, String> {
     let path = db_path(&app)?;
-    let jobs = hors_pompe(app.clone(), |app| connected_jobs(&app)).await?;
+    let jobs = off_pump(app.clone(), |app| connected_jobs(&app)).await?;
     let lock = state.drafts_push.clone();
 
     let (summary, refreshed) =
@@ -5662,7 +5686,7 @@ pub async fn sync_drafts(
             .await
             .map_err(|err| err.to_string())??;
 
-    reposer_sessions(&state, refreshed)?;
+    reset_sessions(&state, refreshed)?;
     Ok(summary)
 }
 
@@ -5671,10 +5695,10 @@ fn run_draft_sync_all(
     db_path: &Path,
     lock: &Mutex<()>,
 ) -> Result<(DraftSyncSummary, Vec<AccountSession>), String> {
-    // E5 : verrou empoisonné = repris (le panic est consigné, ADR 0014).
+    // E5: a poisoned lock is recovered (the panic is logged, ADR 0014).
     let _guard = match lock.lock() {
-        Ok(garde) => garde,
-        Err(empoisonne) => empoisonne.into_inner(),
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
     };
     let store = Store::open(db_path).map_err(|err| err.to_string())?;
     let mut summary = DraftSyncSummary {
@@ -5709,7 +5733,7 @@ fn run_draft_sync_all(
             refreshed_list.push(fresh);
         }
 
-        // La garde des repères : UIDVALIDITY d'abord, toute purge ensuite.
+        // Guarding the markers: UIDVALIDITY first, any purge after.
         match server.drafts_uidvalidity() {
             Ok(validity) => {
                 store
@@ -5732,8 +5756,8 @@ fn run_draft_sync_all(
             .drafts_to_push(account_id)
             .map_err(|err| err.to_string())?
         {
-            // Les pièces suivent le texte (PJ-D6) : le reflet distant
-            // montre le brouillon entier.
+            // Attachments follow the text (PJ-D6): the remote mirror
+            // shows the whole draft.
             let pieces = store
                 .draft_attachments_full(draft.id)
                 .map_err(|err| err.to_string())?;
@@ -5748,7 +5772,8 @@ fn run_draft_sync_all(
                 &pieces,
             ) {
                 Ok(bytes) => bytes,
-                // Pas poussable en l'état : le local reste la référence.
+                // Not pushable as it stands: the local copy stays the
+                // reference.
                 Err(_) => {
                     summary.kept_local += 1;
                     continue;
@@ -5768,8 +5793,8 @@ fn run_draft_sync_all(
             }
         }
 
-        // Les remplacements de CE cycle viennent de créer leurs
-        // tombstones : purge immédiate — pas de copie double visible.
+        // The replacements of THIS cycle just created their
+        // tombstones: purge immediately — no visible double copy.
         if summary.error.is_none() {
             purge_draft_tombstones(&mut server, &store, account_id, &mut summary)?;
         }
@@ -5778,8 +5803,9 @@ fn run_draft_sync_all(
     Ok((summary, refreshed_list))
 }
 
-/// Purge les copies distantes en tombstone d'UN compte. Retourne `false`
-/// si le réseau a lâché — la dette reste enregistrée pour le cycle suivant.
+/// Purges the remote copies in tombstone for ONE account. Returns
+/// `false` if the network dropped — the debt stays recorded for the
+/// next cycle.
 fn purge_draft_tombstones(
     server: &mut ImapServer,
     store: &Store,
@@ -5807,16 +5833,16 @@ fn purge_draft_tombstones(
 }
 
 // ---------------------------------------------------------------------
-// Connexions et état partagé.
+// Connections and shared state.
 // ---------------------------------------------------------------------
 
-/// Ouvre une connexion SMTP adaptée au type de compte. Pour un compte
-/// OAuth2, un échec déclenche un refresh silencieux ; pour un compte
-/// générique, le mot de passe est fixe (pas de retry possible).
+/// Opens an SMTP connection matching the account type. For an OAuth2
+/// account, a failure triggers a silent refresh; for a generic account,
+/// the password is fixed (no retry possible).
 ///
-/// Les serveurs viennent du fournisseur de la session, jamais d'une
-/// constante d'application : c'est ce qui rend un deuxième fournisseur
-/// possible sans toucher à cette fonction.
+/// The servers come from the session's provider, never from an
+/// application constant: that's what makes a second provider possible
+/// without touching this function.
 fn connect_smtp(session: &AccountSession) -> Result<(SmtpMailer, Option<AccountSession>), String> {
     match session {
         AccountSession::OAuth(auth) => {
@@ -5824,9 +5850,10 @@ fn connect_smtp(session: &AccountSession) -> Result<(SmtpMailer, Option<AccountS
             match SmtpMailer::connect_xoauth2(smtp.host, smtp.port, &auth.email, &auth.access_token)
             {
                 Ok(mailer) => Ok((mailer, None)),
-                // E7 : une panne RÉSEAU n'est pas un refus d'authentification —
-                // refaire la session OAuth n'y changerait rien et martelait
-                // l'endpoint du fournisseur (le défaut P0 corrigé côté IMAP).
+                // E7: a NETWORK failure is not an authentication
+                // refusal — redoing the OAuth session would change
+                // nothing and would hammer the provider's endpoint (the
+                // P0 defect already fixed on the IMAP side).
                 Err(err) if mail_smtp::is_connection_error(&err) => Err(err.to_string()),
                 Err(_) => {
                     let fresh = Authenticator::from_env(auth.provider)
@@ -5857,9 +5884,9 @@ fn connect_smtp(session: &AccountSession) -> Result<(SmtpMailer, Option<AccountS
     }
 }
 
-/// Ouvre une connexion IMAP adaptée au type de compte. Pour un compte
-/// OAuth2, un échec déclenche un refresh silencieux ; pour un compte
-/// générique, le mot de passe est fixe.
+/// Opens an IMAP connection matching the account type. For an OAuth2
+/// account, a failure triggers a silent refresh; for a generic account,
+/// the password is fixed.
 pub(crate) fn connect_imap(
     session: &AccountSession,
 ) -> Result<(ImapServer, Option<AccountSession>), String> {
@@ -5869,11 +5896,11 @@ pub(crate) fn connect_imap(
             match ImapServer::connect_xoauth2(imap.host, imap.port, &auth.email, &auth.access_token)
             {
                 Ok(server) => Ok((server, None)),
-                // Une panne de CONNEXION n'est pas un jeton mort : pas de
-                // rafraîchissement — marteler l'endpoint OAuth à chaque
-                // cycle en panne réseau est le meilleur moyen de
-                // transformer un bridage IMAP en gel du compte
-                // (complément P0, anti-martèlement).
+                // A CONNECTION failure is not a dead token: no
+                // refreshing — hammering the OAuth endpoint on every
+                // cycle during a network outage is the best way to turn
+                // an IMAP throttle into an account freeze (P0
+                // complement, anti-hammering).
                 Err(err) if mail_imap::is_connection_error(&err) => Err(err.to_string()),
                 Err(_) => {
                     let fresh = Authenticator::from_env(auth.provider)
@@ -5904,10 +5931,10 @@ pub(crate) fn connect_imap(
     }
 }
 
-/// Les comptes du registre qui sont connectés (session en mémoire) —
-/// l'unité de travail des boucles synchro/vidange/brouillons.
-/// Les comptes connus ET connectés — ouvre la base : à appeler SOUS
-/// `hors_pompe` (E5), jamais dans la glu d'une commande async.
+/// The accounts from the registry that are connected (session in
+/// memory) — the unit of work for the sync/drain/drafts loops.
+/// Accounts both known AND connected — opens the database: call it
+/// UNDER `off_pump` (E5), never in the glue of an async command.
 fn connected_jobs(app: &AppHandle) -> Result<Vec<(i64, AccountSession)>, String> {
     let store = Store::open(&db_path(app)?).map_err(|err| err.to_string())?;
     let known = store.accounts().map_err(|err| err.to_string())?;
@@ -5924,7 +5951,8 @@ fn connected_jobs(app: &AppHandle) -> Result<Vec<(i64, AccountSession)>, String>
         .collect())
 }
 
-/// La session d'un compte — ouvre la base : SOUS `hors_pompe` (E5).
+/// The session of an account — opens the database: UNDER `off_pump`
+/// (E5).
 fn auth_for(app: &AppHandle, account_id: i64) -> Result<AccountSession, String> {
     let store = Store::open(&db_path(app)?).map_err(|err| err.to_string())?;
     let email = account_email(&store, account_id)?;
@@ -5932,38 +5960,38 @@ fn auth_for(app: &AppHandle, account_id: i64) -> Result<AccountSession, String> 
     lock_accounts(&state)?
         .get(&email)
         .cloned()
-        .ok_or_else(|| format!("compte non connecté : {email}"))
+        .ok_or_else(|| format!("account not connected: {email}"))
 }
 
-// Délègue à `Store::account_email` (revue PLAN-INVITATIONS) : UNE seule
-// réponse à « l'adresse du compte N » — la lecture des invitations et
-// l'envoi de leur réponse doivent voir la MÊME vérité (adresse vide =
-// compte à moitié provisionné = inconnu, comme `Store::accounts`).
+// Delegates to `Store::account_email` (PLAN-INVITATIONS review): ONE
+// single answer to "the address of account N" — reading invitations
+// and sending their response must see the SAME truth (an empty address
+// = a half-provisioned account = unknown, same as `Store::accounts`).
 fn account_email(store: &Store, account_id: i64) -> Result<String, String> {
     store
         .account_email(account_id)
         .map_err(|err| err.to_string())?
-        .ok_or_else(|| "compte inconnu".to_string())
+        .ok_or_else(|| "unknown account".to_string())
 }
 
 pub(crate) fn lock_accounts<'a>(
     state: &'a State<'_, AppState>,
 ) -> Result<MutexGuard<'a, HashMap<String, AccountSession>>, String> {
-    // E5 : un verrou empoisonné (panic d'une commande) se REPREND — le
-    // panic est déjà consigné par la télémétrie (ADR 0014) ; condamner
-    // toutes les commandes suivantes jusqu'au redémarrage, comme avant,
-    // contredisait l'ADR 0019.
+    // E5: a poisoned lock (a command's panic) is RECOVERED — the panic
+    // is already logged by telemetry (ADR 0014); condemning every
+    // subsequent command until restart, as before, contradicted ADR
+    // 0019.
     Ok(match state.accounts.lock() {
-        Ok(garde) => garde,
-        Err(empoisonne) => empoisonne.into_inner(),
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
     })
 }
 
-/// Repose les sessions rafraîchies par une boucle (jeton OAuth renouvelé)
-/// — SANS ressusciter un compte retiré pendant qu'elle tournait : sa
-/// ligne en base a disparu, une session orpheline en mémoire ferait
-/// échouer chaque cycle suivant jusqu'au redémarrage.
-fn reposer_sessions(
+/// Puts back the sessions refreshed by a loop (renewed OAuth token) —
+/// WITHOUT resurrecting an account removed while it was running: its
+/// row in the database has disappeared, an orphaned session in memory
+/// would make every subsequent cycle fail until restart.
+fn reset_sessions(
     state: &State<'_, AppState>,
     refreshed: Vec<AccountSession>,
 ) -> Result<(), String> {
@@ -5976,85 +6004,85 @@ fn reposer_sessions(
     Ok(())
 }
 
-/// Exécute un travail bloquant HORS de la pompe de messages et SOUS le
-/// verrou global des commandes (PLAN-GELS).
+/// Runs a blocking job OFF the message pump and UNDER the commands'
+/// global lock (PLAN-GELS).
 ///
-/// Les deux moitiés sont indissociables : `spawn_blocking` libère la
-/// pompe (une commande `async` sans lui bloquerait un worker tokio — le
-/// gel quitterait la fenêtre pour réapparaître dans la file IPC sur une
-/// machine à deux cœurs) ; le verrou restaure la sérialisation que le
-/// thread principal offrait gratuitement — sans lui, les paires
-/// lecture-décision-écriture des commandes se croiseraient (état local
-/// contre file d'actions de `mark_flagged`, TOCTOU des brouillons,
-/// `SQLITE_BUSY_SNAPSHOT` que le `busy_timeout` ne couvre pas). Un
-/// verrou empoisonné se récupère (même choix que `verrou_compte`) : le
-/// travail sous verrou n'a pas d'invariant en mémoire partagée.
-pub(crate) async fn hors_pompe<T, F>(app: AppHandle, travail: F) -> Result<T, String>
+/// The two halves are inseparable: `spawn_blocking` frees the pump (an
+/// `async` command without it would block a tokio worker — the freeze
+/// would leave the window only to reappear in the IPC queue on a
+/// two-core machine); the lock restores the serialization the main
+/// thread used to offer for free — without it, the commands'
+/// read-decide-write pairs would interleave (local state against
+/// `mark_flagged`'s action queue, drafts TOCTOU,
+/// `SQLITE_BUSY_SNAPSHOT` that `busy_timeout` doesn't cover). A
+/// poisoned lock is recovered (same choice as `account_lock`): the work
+/// under the lock has no invariant in shared memory.
+pub(crate) async fn off_pump<T, F>(app: AppHandle, work: F) -> Result<T, String>
 where
     F: FnOnce(AppHandle) -> Result<T, String> + Send + 'static,
     T: Send + 'static,
 {
-    let verrou = app.state::<AppState>().commandes.clone();
+    let lock = app.state::<AppState>().commands.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let _garde = match verrou.lock() {
-            Ok(garde) => garde,
+        let _guard = match lock.lock() {
+            Ok(guard) => guard,
             Err(poison) => poison.into_inner(),
         };
-        travail(app)
+        work(app)
     })
     .await
     .map_err(|err| err.to_string())?
 }
 
 pub(crate) fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
-    // PLAN-AUDIT-V1 E5 : calculé UNE fois (le dossier est créé à ce
-    // premier appel), puis une lecture pure — 107 appels par session
-    // faisaient chacun leur `create_dir_all`.
-    static CHEMIN: OnceLock<PathBuf> = OnceLock::new();
-    if let Some(chemin) = CHEMIN.get() {
-        return Ok(chemin.clone());
+    // PLAN-AUDIT-V1 E5: computed ONCE (the folder is created on this
+    // first call), then a pure read — 107 calls per session were each
+    // doing their own `create_dir_all`.
+    static PATH: OnceLock<PathBuf> = OnceLock::new();
+    if let Some(path) = PATH.get() {
+        return Ok(path.clone());
     }
-    // Crochet E2E : base isolée fournie par le pilote de test — la vraie
-    // base de l'utilisateur ne doit jamais être touchée par un test.
-    let chemin = if let Ok(path) = std::env::var("WIND_DB_PATH") {
+    // E2E hook: isolated database supplied by the test harness — the
+    // real user database must never be touched by a test.
+    let path = if let Ok(path) = std::env::var("WIND_DB_PATH") {
         PathBuf::from(path)
     } else {
         let dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
         std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
         dir.join("wind.db")
     };
-    Ok(CHEMIN.get_or_init(|| chemin).clone())
+    Ok(PATH.get_or_init(|| path).clone())
 }
 
 // ---------------------------------------------------------------------
-// Rattrapage des corps (ADR 0007, horizon levé par l'ADR 0010).
+// Body backfill (ADR 0007, horizon lifted by ADR 0010).
 // ---------------------------------------------------------------------
 
-/// Combien de messages attendent leur corps, et combien peuvent en
-/// porter — tous comptes et TOUTES boîtes confondus (ADR 0010 §1,
-/// dénominateur R1 PLAN-RETOURS-3 : `corpus - pending` = corps
-/// présents). Purement local : aucune connexion réseau.
-/// (en attente, corpus) en UNE passe : l'horizon du compte et sa liste
-/// de boîtes se lisent une fois pour les DEUX compteurs (revue
-/// 2026-08-30 : deux passes indépendantes payaient deux fois les prefs
-/// et les listes — et sur une erreur intermittente, numérateur et
-/// dénominateur pouvaient se calculer sous des horizons DIFFÉRENTS).
-/// L'horizon borne les deux COMME la pompe : sans lui, la barre d'un
-/// compte borné n'atteindrait jamais 100 %.
-fn totaux_corps(store: &Store) -> Result<(u64, u64), String> {
+/// How many messages are waiting for their body, and how many can carry
+/// one — all accounts and ALL mailboxes combined (ADR 0010 §1,
+/// denominator R1 PLAN-RETOURS-3: `corpus - pending` = bodies present).
+/// Purely local: no network connection.
+/// (pending, corpus) in ONE pass: the account's horizon and its mailbox
+/// list are read once for BOTH counters (2026-08-30 review: two
+/// independent passes paid twice for the prefs and the lists — and on
+/// an intermittent error, numerator and denominator could be computed
+/// under DIFFERENT horizons). The horizon bounds both, JUST LIKE the
+/// pump: without it, the bar of a bounded account would never reach
+/// 100%.
+fn body_totals(store: &Store) -> Result<(u64, u64), String> {
     let mut pending = 0;
     let mut corpus = 0;
     for account in store.accounts().map_err(|err| err.to_string())? {
-        let horizon = horizon_corps(store, account.id);
-        for boite in store
+        let horizon = body_horizon(store, account.id);
+        for mailbox in store
             .mailbox_names(account.id)
             .map_err(|err| err.to_string())?
         {
             pending += store
-                .bodies_pending_count(account.id, &boite, horizon)
+                .bodies_pending_count(account.id, &mailbox, horizon)
                 .map_err(|err| err.to_string())?;
             corpus += store
-                .bodies_total_count(account.id, &boite, horizon)
+                .bodies_total_count(account.id, &mailbox, horizon)
                 .map_err(|err| err.to_string())?;
         }
     }
@@ -6063,37 +6091,38 @@ fn totaux_corps(store: &Store) -> Result<(u64, u64), String> {
 
 #[derive(Serialize)]
 pub struct SyncProgress {
-    /// Messages en base, toutes boîtes déjà visitées confondues.
+    /// Messages in the database, all already-visited mailboxes
+    /// combined.
     pub local: u64,
-    /// Messages annoncés par les serveurs pour ces mêmes boîtes.
+    /// Messages announced by the servers for these same mailboxes.
     pub remote: u64,
-    /// `None` tant qu'aucune boîte n'a été sélectionnée : l'interface
-    /// n'affiche alors rien, plutôt qu'un « 0 % » qui ferait croire à une
-    /// synchronisation en panne.
+    /// `None` as long as no mailbox has been selected: the interface
+    /// then shows nothing, rather than a “0%” that would suggest a
+    /// broken sync.
     pub percent: Option<u8>,
-    /// Epoch (secondes) de la dernière relève réussie — `None` tant
-    /// qu'aucun cycle n'a abouti : l'interface n'invente pas
-    /// d'horodatage (PLAN-SYNCHRO E1).
+    /// Epoch (seconds) of the last successful poll — `None` as long as
+    /// no cycle has completed: the interface doesn't invent a
+    /// timestamp (PLAN-SYNCHRO E1).
     pub derniere: Option<i64>,
-    /// Génération de courrier, monotone (E4) : l'UI recharge la liste
-    /// quand elle bouge — c'est ainsi que le courrier relevé par un
-    /// veilleur IDLE se montre au repos, en sondage (R0-S5).
+    /// Mail generation, monotonic (E4): the UI reloads the list when it
+    /// moves — that's how mail polled by an IDLE watcher shows up at
+    /// rest, via polling (R0-S5).
     pub generation: u64,
 }
 
-/// Avancement de la synchronisation intégrale (ADR 0010 §5).
+/// Progress of the full synchronization (ADR 0010 §5).
 ///
-/// Purement local — aucune connexion réseau : l'interface peut l'appeler
-/// en boucle pendant qu'une synchronisation tourne, sans lui coûter un
-/// seul aller-retour.
-fn lire_synchro(store: &Store, generation: u64) -> Result<SyncProgress, String> {
+/// Purely local — no network connection: the interface can call it in
+/// a loop while a synchronization runs, at no round-trip cost.
+fn read_sync(store: &Store, generation: u64) -> Result<SyncProgress, String> {
     let (local, remote) = store.sync_progress().map_err(|err| err.to_string())?;
-    // Un horodatage illisible (pref corrompue) vaut « jamais » : la barre
-    // d'état retombe sur le texte sans date plutôt que d'afficher n'importe quoi.
+    // An unreadable timestamp (corrupted pref) counts as "never": the
+    // status bar falls back to the dateless text rather than showing
+    // garbage.
     let derniere = store
-        .text_pref(PREF_DERNIERE_SYNCHRO)
+        .text_pref(PREF_LAST_SYNC)
         .map_err(|err| err.to_string())?
-        .and_then(|valeur| valeur.parse::<i64>().ok());
+        .and_then(|value| value.parse::<i64>().ok());
     Ok(SyncProgress {
         local,
         remote,
@@ -6108,75 +6137,78 @@ pub async fn sync_progress(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<SyncProgress, String> {
-    // `State` ne traverse pas le `spawn_blocking` (durée de vie) : on
-    // emporte l'Arc du cycle, pas l'état.
+    // `State` doesn't cross `spawn_blocking` (lifetime): we carry the
+    // cycle's Arc, not the state.
     let generation = state.sync_cycle.generation.load(Ordering::Relaxed);
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        lire_synchro(&store, generation)
+        read_sync(&store, generation)
     })
     .await
 }
 
-/// P0-bis + E4 : l'UI remonte l'état réseau de l'OS (`navigator.onLine`).
-/// Hors ligne, les veilleurs IDLE dorment (reconnecter en boucle sans
-/// réseau ne sert à rien) ; au retour, les reculs s'effacent — le réseau
-/// est neuf, l'échec d'hier était la coupure, pas le serveur — et les
-/// veilleurs repartent d'eux-mêmes.
+/// P0-bis + E4: the UI reports the OS's network state
+/// (`navigator.onLine`). Offline, the IDLE watchers sleep (reconnecting
+/// in a loop with no network is pointless); on return, the backoffs are
+/// cleared — the network is fresh, yesterday's failure was the outage,
+/// not the server — and the watchers resume on their own.
 #[tauri::command]
-pub fn reseau_etat(state: State<'_, AppState>, en_ligne: bool) -> Result<(), String> {
+pub fn network_state(state: State<'_, AppState>, en_ligne: bool) -> Result<(), String> {
     state.en_ligne.store(en_ligne, Ordering::Relaxed);
-    if en_ligne && let Ok(mut reculs) = state.sync_reculs.lock() {
+    if en_ligne && let Ok(mut reculs) = state.sync_backoffs.lock() {
         reculs.clear();
     }
     Ok(())
 }
 
 #[derive(Serialize)]
-pub struct SyncActivite {
-    /// Comptes déjà soldés dans le cycle en cours.
+pub struct SyncActivity {
+    /// Accounts already settled in the current cycle.
     pub fait: u64,
     pub total: u64,
-    /// Adresse du compte en cours de relève.
+    /// Address of the account currently being polled.
     pub compte: String,
-    /// Boîte en cours DANS le compte — vide entre deux boîtes.
+    /// Mailbox currently being processed WITHIN the account — empty
+    /// between two mailboxes.
     pub boite: String,
-    /// Étape sans boîte (`inventaire`, `fils`, `brouillons`) — clé de
-    /// catalogue, traduite par l'UI. Vide quand une boîte est nommée.
+    /// Step without a mailbox (`inventaire`, `fils`, `brouillons`) —
+    /// catalog key, translated by the UI. Empty when a mailbox is
+    /// named.
     pub phase: String,
-    /// Courrier d'INBOX déjà en base dans CE cycle (arrivées + retraits,
-    /// cumulés compte après compte) — P1 : la sonde recharge la liste
-    /// dès que ce compteur bouge, sans attendre la fin du cycle.
+    /// INBOX mail already in the database in THIS cycle (arrivals +
+    /// removals, accumulated account after account) — P1: the probe
+    /// reloads the list as soon as this counter moves, without waiting
+    /// for the cycle to end.
     pub courrier: u64,
 }
 
-/// Le cycle en cours, pour la barre d'état (PLAN-SYNCHRO E1).
+/// The cycle in progress, for the status bar (PLAN-SYNCHRO E1).
 ///
-/// Purement mémoire — aucun réseau, aucune base : l'UI sonde à la
-/// seconde PENDANT le cycle sans rien coûter à la boucle (atomiques,
-/// patron de `migration_progress`). `None` au repos.
+/// Purely in memory — no network, no database: the UI probes it every
+/// second WHILE the cycle runs at no cost to the loop (atomics, same
+/// pattern as `migration_progress`). `None` at rest.
 #[tauri::command]
-pub fn sync_activity(state: State<'_, AppState>) -> Option<SyncActivite> {
+pub fn sync_activity(state: State<'_, AppState>) -> Option<SyncActivity> {
     let cycle = &state.sync_cycle;
-    if !cycle.en_cours.load(Ordering::Relaxed) {
+    if !cycle.in_progress.load(Ordering::Relaxed) {
         return None;
     }
     let compte = cycle
         .compte
         .lock()
-        .map(|nom| nom.clone())
+        .map(|name| name.clone())
         .unwrap_or_default();
     let boite = cycle
         .boite
         .lock()
-        .map(|nom| nom.clone())
+        .map(|name| name.clone())
         .unwrap_or_default();
     let phase = cycle
         .phase
         .lock()
-        .map(|nom| nom.clone())
+        .map(|name| name.clone())
         .unwrap_or_default();
-    Some(SyncActivite {
+    Some(SyncActivity {
         fait: cycle.fait.load(Ordering::Relaxed),
         total: cycle.total.load(Ordering::Relaxed),
         compte,
@@ -6189,38 +6221,39 @@ pub fn sync_activity(state: State<'_, AppState>) -> Option<SyncActivite> {
 #[derive(Serialize)]
 pub struct BackfillStatus {
     pub remaining: u64,
-    /// Le pourcentage de corps DÉJÀ présents sur le corpus en portée
-    /// (R1, PLAN-RETOURS-3) — `None` sans dénominateur (aucun message).
+    /// The percentage of bodies ALREADY present over the corpus in
+    /// scope (R1, PLAN-RETOURS-3) — `None` without a denominator (no
+    /// message).
     pub percent: Option<u8>,
 }
 
-/// État du rattrapage, sans rien télécharger — de quoi afficher
-/// « N restants · P % » avant même de commencer.
+/// Backfill status, without downloading anything — enough to show
+/// “N remaining · P%” before even starting.
 #[tauri::command]
 pub async fn backfill_status(app: AppHandle) -> Result<BackfillStatus, String> {
-    hors_pompe(app, move |app| {
-        // Jalons de mesure (feature `mesure` — jamais dans le binaire
-        // livré). Le span d'amont `wry::custom_protocol::handle` donne le
-        // TOTAL de la commande et rien de plus : mesuré à froid le
-        // 2026-08-26, il valait 2 740 ms après la correction du prédicat,
-        // sans dire lequel des trois temps le portait. On a vérifié que
-        // ce n'était NI la file d'attente (le verrou était libre) NI
-        // `corpus_total` (35 ms) — restait l'ouverture, qu'aucun span ne
-        // couvre. D'où ces trois-là.
+    off_pump(app, move |app| {
+        // Measurement milestones (feature `mesure` — never in the
+        // shipped binary). The upstream span `wry::custom_protocol::handle`
+        // gives the command's TOTAL and nothing more: measured cold on
+        // 2026-08-26, it was 2,740 ms after the predicate fix, without
+        // saying which of the three times carried it. We verified it
+        // was NEITHER the queue (the lock was free) NOR `corpus_total`
+        // (35 ms) — that left the opening, which no span covers. Hence
+        // these three.
         let store = {
             #[cfg(feature = "mesure")]
-            let _jalon = tracing::debug_span!("mesure::store_open").entered();
+            let _milestone = tracing::debug_span!("mesure::store_open").entered();
             Store::open(&db_path(&app)?).map_err(|err| err.to_string())?
         };
         let (remaining, total) = {
             #[cfg(feature = "mesure")]
-            let _jalon = tracing::debug_span!("mesure::totaux_corps").entered();
-            totaux_corps(&store)?
+            let _milestone = tracing::debug_span!("mesure::body_totals").entered();
+            body_totals(&store)?
         };
         Ok(BackfillStatus {
             remaining,
-            // `done = total - remaining` : les corps déjà là. La fonction
-            // pure plafonne à 99 tant qu'il reste des corps (R1).
+            // `done = total - remaining`: the bodies already there. The
+            // pure function caps at 99 as long as bodies remain (R1).
             percent: mail_core::backfill_percent(total.saturating_sub(remaining), total),
         })
     })
@@ -6228,27 +6261,27 @@ pub async fn backfill_status(app: AppHandle) -> Result<BackfillStatus, String> {
 }
 
 // ---------------------------------------------------------------------
-// Migration visible et interruptible (Phase 5, ADR 0012).
+// Visible and interruptible migration (Phase 5, ADR 0012).
 //
-// Chaque commande ouvre sa propre connexion : sans cet écran, c'est la
-// PREMIÈRE commande venue qui paierait l'adoption d'une base héritée —
-// en silence, dans un gel d'interface. L'UI appelle donc
-// `migration_check` AVANT toute commande qui touche la base ; s'il y a
-// du travail, elle affiche l'écran, lance `migration_run`, sonde
-// `migration_progress`, et `migration_cancel` rembobine tout (§8 de la
-// passation : jamais d'adoption partielle persistée).
+// Each command opens its own connection: without this screen, it would
+// be the FIRST command to come along that paid for adopting a legacy
+// database — silently, in a UI freeze. The UI therefore calls
+// `migration_check` BEFORE any command that touches the database; if
+// there is work, it shows the screen, launches `migration_run`, polls
+// `migration_progress`, and `migration_cancel` rewinds everything (§8
+// of the handover: never a partial adoption persisted).
 // ---------------------------------------------------------------------
 
 #[derive(Serialize)]
 pub struct MigrationCheck {
-    /// Messages à adopter — `null` si l'ouverture sera silencieuse.
+    /// Messages to adopt — `null` if the opening will be silent.
     pub pending: Option<u64>,
 }
 
-/// Sonde en lecture seule : rien n'est déclenché, rien n'est créé.
+/// Read-only probe: nothing is triggered, nothing is created.
 #[tauri::command]
 pub async fn migration_check(app: AppHandle) -> Result<MigrationCheck, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         Ok(MigrationCheck {
             pending: Store::pending_adoption(&db_path(&app)?).map_err(|err| err.to_string())?,
         })
@@ -6260,13 +6293,14 @@ pub async fn migration_check(app: AppHandle) -> Result<MigrationCheck, String> {
 pub struct MigrationProgress {
     pub done: u64,
     pub total: u64,
-    /// `None` tant que la passe n'a rien annoncé : l'écran n'affiche
-    /// alors rien plutôt qu'un « 0 % » qui ferait croire à une panne.
+    /// `None` as long as the pass has announced nothing: the screen
+    /// then shows nothing rather than a “0%” that would suggest a
+    /// failure.
     pub percent: Option<u8>,
 }
 
-/// Avancement de la passe en cours. Purement local et sans verrou :
-/// la passe écrit des atomiques, le sondage ne la fait jamais attendre.
+/// Progress of the current pass. Purely local and lock-free: the pass
+/// writes atomics, polling never makes it wait.
 #[tauri::command]
 pub fn migration_progress(state: State<'_, AppState>) -> MigrationProgress {
     let done = state.migration.done.load(Ordering::Relaxed);
@@ -6278,18 +6312,19 @@ pub fn migration_progress(state: State<'_, AppState>) -> MigrationProgress {
     }
 }
 
-/// Demande l'annulation : la passe la constate à son prochain palier et
-/// rembobine tout — `migration_run` rendra alors `false`.
+/// Requests cancellation: the pass notices it at its next checkpoint
+/// and rewinds everything — `migration_run` then returns `false`.
 #[tauri::command]
 pub fn migration_cancel(state: State<'_, AppState>) {
     state.migration.cancel.store(true, Ordering::Relaxed);
 }
 
-/// Joue la passe d'adoption, visible et interruptible.
+/// Runs the adoption pass, visible and interruptible.
 ///
-/// Rend `true` si la base est migrée (ou n'avait rien à faire), `false`
-/// si l'utilisateur a annulé — tout est alors défait, `user_version`
-/// inchangé, et la passe entière se rejouera au prochain lancement.
+/// Returns `true` if the database is migrated (or had nothing to do),
+/// `false` if the user cancelled — everything is then undone,
+/// `user_version` unchanged, and the whole pass replays on the next
+/// launch.
 #[tauri::command]
 pub async fn migration_run(app: AppHandle, state: State<'_, AppState>) -> Result<bool, String> {
     let path = db_path(&app)?;
@@ -6309,9 +6344,9 @@ pub async fn migration_run(app: AppHandle, state: State<'_, AppState>) -> Result
             }
         });
         match result {
-            // Le Store se referme aussitôt : les commandes suivantes
-            // ouvriront le leur, comme d'habitude — mais sans passe à
-            // payer, elle est faite.
+            // The Store closes right away: the next commands will open
+            // their own, as usual — but with no pass left to pay, it's
+            // done.
             Ok(_store) => Ok(true),
             Err(mail_core::Error::Interrupted) => Ok(false),
             Err(err) => Err(err.to_string()),
@@ -6325,25 +6360,25 @@ pub async fn migration_run(app: AppHandle, state: State<'_, AppState>) -> Result
 pub struct BackfillSummary {
     pub fetched: usize,
     pub remaining: u64,
-    /// Le pourcentage de corps présents après ce lot (R1) — met à jour la
-    /// barre d'état au fil des lots, sans re-sonder depuis l'UI.
+    /// The percentage of bodies present after this batch (R1) — updates
+    /// the status bar batch by batch, without re-polling from the UI.
     pub percent: Option<u8>,
     pub errors: Vec<String>,
 }
 
-/// UN lot de rattrapage, tous comptes connectés confondus.
+/// ONE backfill batch, all connected accounts combined.
 ///
-/// Volontairement borné : l'UI rappelle tant qu'il reste du travail, et
-/// s'arrête quand l'utilisateur le demande. L'interruption est ainsi
-/// gratuite — aucun jeton d'annulation à propager — et une coupure ne
-/// coûte jamais plus qu'un lot.
+/// Deliberately bounded: the UI calls again as long as there is work
+/// left, and stops when the user asks. Interruption is thus free — no
+/// cancellation token to propagate — and an outage never costs more
+/// than one batch.
 #[tauri::command]
 pub async fn backfill_bodies(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<BackfillSummary, String> {
     let path = db_path(&app)?;
-    let jobs = hors_pompe(app.clone(), |app| connected_jobs(&app)).await?;
+    let jobs = off_pump(app.clone(), |app| connected_jobs(&app)).await?;
     let lock = state.bodies_backfill.clone();
 
     let (summary, refreshed) =
@@ -6351,7 +6386,7 @@ pub async fn backfill_bodies(
             .await
             .map_err(|err| err.to_string())??;
 
-    reposer_sessions(&state, refreshed)?;
+    reset_sessions(&state, refreshed)?;
     Ok(summary)
 }
 
@@ -6360,10 +6395,10 @@ fn run_backfill_all(
     db_path: &Path,
     lock: &Mutex<()>,
 ) -> Result<(BackfillSummary, Vec<AccountSession>), String> {
-    // E5 : verrou empoisonné = repris (le panic est consigné, ADR 0014).
+    // E5: a poisoned lock is recovered (the panic is logged, ADR 0014).
     let _guard = match lock.lock() {
-        Ok(garde) => garde,
-        Err(empoisonne) => empoisonne.into_inner(),
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
     };
 
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
@@ -6374,8 +6409,8 @@ fn run_backfill_all(
         errors: Vec::new(),
     };
     let mut refreshed_list = Vec::new();
-    // Le budget est PARTAGÉ entre les comptes : un lot reste un lot, même
-    // avec trois comptes connectés.
+    // The budget is SHARED across accounts: a batch stays a batch, even
+    // with three accounts connected.
     let mut budget = BACKFILL_BUDGET;
 
     for (account_id, session) in jobs {
@@ -6383,34 +6418,36 @@ fn run_backfill_all(
             break;
         }
         let email = session.email().to_string();
-        // TOUTES les boîtes du compte (ADR 0010 §1), dans l'ordre du
-        // store : réception d'abord, envois ensuite, le reste après. Le
-        // budget est partagé entre elles comme entre les comptes — un
-        // dossier d'archive de 80 000 messages ne confisque pas le lot,
-        // il consomme ce que les boîtes prioritaires ont laissé.
-        let boites = store
+        // ALL of the account's mailboxes (ADR 0010 §1), in the store's
+        // order: Inbox first, Sent next, the rest after. The budget is
+        // shared between them just as between accounts — an archive
+        // folder of 80,000 messages doesn't confiscate the batch, it
+        // consumes what the priority mailboxes left behind.
+        let mailboxes = store
             .mailbox_names(account_id)
             .map_err(|err| err.to_string())?;
-        // La pompe travaille DANS l'horizon d'import du compte (ADR 0029) :
-        // au-delà, les corps restent au serveur et se chargent au clic.
-        let horizon = horizon_corps(&store, account_id);
-        // Ne pas ouvrir une connexion pour un compte qui n'a rien à faire.
+        // The pump works WITHIN the account's import horizon (ADR
+        // 0029): beyond it, bodies stay on the server and load on
+        // click.
+        let horizon = body_horizon(&store, account_id);
+        // Don't open a connection for an account that has nothing to
+        // do.
         let mut pending = 0;
-        for boite in &boites {
+        for mailbox in &mailboxes {
             pending += store
-                .bodies_pending_count(account_id, boite, horizon)
+                .bodies_pending_count(account_id, mailbox, horizon)
                 .map_err(|err| err.to_string())?;
         }
         if pending == 0 {
             continue;
         }
         match connect_imap(&session) {
-            Err(reason) => summary.errors.push(format!("{email} : {reason}")),
+            Err(reason) => summary.errors.push(format!("{email}: {reason}")),
             Ok((mut server, refreshed)) => {
                 if let Some(fresh) = refreshed {
                     refreshed_list.push(fresh);
                 }
-                for boite in &boites {
+                for mailbox in &mailboxes {
                     if budget == 0 {
                         break;
                     }
@@ -6418,7 +6455,7 @@ fn run_backfill_all(
                         &mut server,
                         &mut store,
                         account_id,
-                        boite,
+                        mailbox,
                         horizon,
                         budget,
                     ) {
@@ -6426,9 +6463,11 @@ fn run_backfill_all(
                             summary.fetched += report.fetched;
                             budget = budget.saturating_sub(report.fetched);
                         }
-                        // L'échec d'UNE boîte ne prive pas les suivantes :
-                        // même règle que la synchronisation des dossiers.
-                        Err(err) => summary.errors.push(format!("{email}, « {boite} » : {err}")),
+                        // A failure in ONE mailbox doesn't deprive the
+                        // others: same rule as folder synchronization.
+                        Err(err) => summary
+                            .errors
+                            .push(format!("{email}, \"{mailbox}\": {err}")),
                     }
                 }
                 server.logout();
@@ -6436,7 +6475,7 @@ fn run_backfill_all(
         }
     }
 
-    let (remaining, total) = totaux_corps(&store)?;
+    let (remaining, total) = body_totals(&store)?;
     summary.remaining = remaining;
     summary.percent = mail_core::backfill_percent(total.saturating_sub(summary.remaining), total);
     summary.errors.sort();
@@ -6444,13 +6483,13 @@ fn run_backfill_all(
 }
 
 // ---------------------------------------------------------------------
-// Mise a jour automatique signee (ADR 0013).
+// Signed automatic update (ADR 0013).
 //
-// Pilotee depuis Rust, comme les notifications : la webview n'appelle
-// jamais l'API updater, seulement ces deux commandes — les capabilities
-// restent `core:default`. La signature minisign est verifiee par le
-// plugin AVANT toute installation ; sans elle, `download_and_install`
-// echoue plutot que d'appliquer un paquet falsifie.
+// Driven from Rust, like notifications: the webview never calls the
+// updater API, only these two commands — the capabilities stay
+// `core:default`. The minisign signature is verified by the plugin
+// BEFORE any installation; without it, `download_and_install` fails
+// rather than applying a forged package.
 // ---------------------------------------------------------------------
 
 use tauri_plugin_updater::UpdaterExt;
@@ -6458,31 +6497,30 @@ use tauri_plugin_updater::UpdaterExt;
 #[derive(Serialize)]
 pub struct UpdateInfo {
     pub version: String,
-    /// Notes de version, si la Release en porte.
+    /// Release notes, if the Release carries any.
     pub notes: Option<String>,
-    /// Date de publication ISO 8601, telle qu'annoncee par le manifeste.
+    /// ISO 8601 publish date, as announced by the manifest.
     pub date: Option<String>,
 }
 
-/// Y a-t-il une mise a jour ? `None` = a jour, ou hors ligne.
+/// Is there an update? `None` = up to date, or offline.
 ///
-/// Appelee UNE fois au demarrage, en silence : un controle que
-/// l'utilisateur doit reclamer n'aurait pas lieu (lecon de l'ADR 0007).
-/// Hors ligne, l'endpoint est injoignable — ce n'est pas un defaut, donc
-/// l'erreur remonte a l'UI qui reste muette plutot que de harceler ;
-/// elle n'est jamais AVALEE (§9), seulement jugee sans gravite par
-/// l'appelant.
+/// Called ONCE at startup, silently: a check the user had to request
+/// wouldn't happen (lesson of ADR 0007). Offline, the endpoint is
+/// unreachable — that's not a defect, so the error goes back up to the
+/// UI which stays quiet rather than nagging; it is never SWALLOWED
+/// (§9), only judged non-critical by the caller.
 #[tauri::command]
 pub async fn update_check(app: AppHandle) -> Result<Option<UpdateInfo>, String> {
-    // Les E2E ne parlent a AUCUN serveur (passation §7.5). Sans cette
-    // garde, des qu'une Release existe, l'endpoint `latest.json`
-    // repondrait et le bandeau apparaitrait en plein test — un flake.
-    // `WIND_DB_PATH` n'est pose que par le harnais : c'est le meme
-    // signal d'isolation que la base jetable.
+    // E2E tests talk to NO server (handover §7.5). Without this guard,
+    // as soon as a Release exists, the `latest.json` endpoint would
+    // answer and the banner would appear mid-test — a flake.
+    // `WIND_DB_PATH` is only set by the harness: it's the same
+    // isolation signal as the throwaway database.
     if std::env::var("WIND_DB_PATH").is_ok() {
         return Ok(None);
     }
-    match updater_wind(&app)?
+    match wind_updater(&app)?
         .check()
         .await
         .map_err(|err| err.to_string())?
@@ -6496,41 +6534,42 @@ pub async fn update_check(app: AppHandle) -> Result<Option<UpdateInfo>, String> 
     }
 }
 
-/// La version installee, pour la section « A propos » des Reglages.
-/// Une lecture du manifeste — aucun reseau, aucune base.
+/// The installed version, for the "About" section of Settings.
+/// A manifest read — no network, no database.
 #[tauri::command]
 pub fn app_version(app: AppHandle) -> String {
     app.package_info().version.to_string()
 }
 
-/// Ouvre un lien du corps d'un message dans l'application SYSTEME
-/// (navigateur, client mail) — constat terrain 2026-08-15 : sans ce
-/// chemin, le clic naviguait l'iframe sandbox vers le site, refuse
-/// (X-Frame-Options / CSP), et WebView2 remplacait le corps par sa
-/// page « Ce contenu a ete bloque ».
+/// Opens a link from a message body in the SYSTEM application
+/// (browser, mail client) — field finding 2026-08-15: without this
+/// path, the click would navigate the sandboxed iframe to the site,
+/// refused (X-Frame-Options / CSP), and WebView2 would replace the
+/// body with its "This content has been blocked" page.
 ///
-/// La GARDE vit ici, pas dans l'UI : seuls http, https et mailto
-/// passent — tout autre schema (file, smb, chemins UNC…) est refuse
-/// nommement. `open::that_detached` emballe ShellExecuteW sans bloquer
-/// le thread de commande — SEULEMENT avec la feature
-/// `shellexecute-on-windows` de la crate (Cargo.toml) ; sans elle, c'est
-/// un `powershell.exe` lancé de façon synchrone (audit 2026-09-01).
+/// The GUARD lives here, not in the UI: only http, https and mailto go
+/// through — any other scheme (file, smb, UNC paths…) is refused by
+/// name. `open::that_detached` wraps ShellExecuteW without blocking the
+/// command thread — ONLY with the crate's `shellexecute-on-windows`
+/// feature (Cargo.toml); without it, it's a `powershell.exe` launched
+/// synchronously (2026-09-01 audit).
 #[tauri::command]
 pub fn open_link(url: String) -> Result<(), String> {
-    let propre = url.trim();
-    let bas = propre.to_ascii_lowercase();
-    let permis =
-        bas.starts_with("http://") || bas.starts_with("https://") || bas.starts_with("mailto:");
-    if !permis {
-        return Err(format!("schéma de lien refusé : {propre}"));
+    let trimmed = url.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let allowed = lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || lower.starts_with("mailto:");
+    if !allowed {
+        return Err(format!("link scheme refused: {trimmed}"));
     }
-    open::that_detached(propre).map_err(|err| err.to_string())
+    open::that_detached(trimmed).map_err(|err| err.to_string())
 }
 
-/// Bulles d'arrivee : la preference se LIT pour l'afficher…
+/// Arrival notifications: the preference is READ to display it…
 #[tauri::command]
 pub async fn notif_pref_get(app: AppHandle) -> Result<bool, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
             .bool_pref(PREF_ARRIVAL_BUBBLES, true)
@@ -6539,12 +6578,12 @@ pub async fn notif_pref_get(app: AppHandle) -> Result<bool, String> {
     .await
 }
 
-/// …et se POSE depuis le groupe Notifications des Reglages. Persistee en
-/// base (PLAN-REGLAGES, R-D2) : c'est le shell Rust qui emet les bulles,
-/// localStorage lui serait invisible.
+/// …and is SET from the Notifications group in Settings. Persisted in
+/// the database (PLAN-REGLAGES, R-D2): it's the Rust shell that emits
+/// the notifications, localStorage would be invisible to it.
 #[tauri::command]
 pub async fn notif_pref_set(app: AppHandle, enabled: bool) -> Result<(), String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
             .set_bool_pref(PREF_ARRIVAL_BUBBLES, enabled)
@@ -6553,30 +6592,30 @@ pub async fn notif_pref_set(app: AppHandle, enabled: bool) -> Result<(), String>
     .await
 }
 
-/// Langue de l'interface (PLAN-LANGUES, A15) : la preference se LIT au
-/// demarrage — `None` tant qu'elle n'a jamais ete posee, l'UI detecte
-/// alors la langue du systeme et la pose apres la modale de migration.
-/// Sonde en LECTURE SEULE, pas `Store::open` : cette commande part
-/// AVANT `migration_check` (la langue se restaure avant le premier
-/// rendu), et l'ouverture pleine payait l'adoption d'une base heritee
-/// en silence — sans modale, contre l'ADR 0012 (terrain 2026-08-15).
-/// Et `hors_pompe` quand meme (ADR 0019) : la sonde porte un
-/// busy_timeout de 30 s — une base rollback sous ecrivain ferait geler
-/// la pompe autrement.
+/// Interface language (PLAN-LANGUES, A15): the preference is READ at
+/// startup — `None` as long as it has never been set, the UI then
+/// detects the system language and sets it after the migration modal.
+/// READ-ONLY probe, not `Store::open`: this command runs BEFORE
+/// `migration_check` (the language is restored before the first
+/// render), and the full open would pay for adopting a legacy database
+/// silently — without the modal, against ADR 0012 (field finding
+/// 2026-08-15). And `off_pump` anyway (ADR 0019): the probe carries a
+/// 30 s busy_timeout — a database in rollback under a writer would
+/// otherwise freeze the pump.
 #[tauri::command]
 pub async fn lang_get(app: AppHandle) -> Result<Option<String>, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         Store::text_pref_readonly(&db_path(&app)?, PREF_LANG).map_err(|err| err.to_string())
     })
     .await
 }
 
-/// …et se POSE depuis Reglages > Affichage. En base (pas localStorage),
-/// meme raison que les bulles : le shell composera les notifications
-/// dans cette langue (E2).
+/// …and is SET from Settings > Display. In the database (not
+/// localStorage), same reason as the bubbles: the shell will compose
+/// notifications in this language (E2).
 #[tauri::command]
 pub async fn lang_set(app: AppHandle, lang: String) -> Result<(), String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
             .set_text_pref(PREF_LANG, &lang)
@@ -6585,16 +6624,16 @@ pub async fn lang_set(app: AppHandle, lang: String) -> Result<(), String> {
     .await
 }
 
-/// Les noms connus d'un lot d'adresses (entete du fil, PLAN-RETOURS-12
-/// R5) : pure lecture de l'annuaire des correspondants, bornee a la
-/// page de messages affichee. Une adresse inconnue est absente du
-/// bilan — l'UI replie sur l'adresse nue.
+/// The known names for a batch of addresses (thread header,
+/// PLAN-RETOURS-12 R5): a pure read of the contacts directory, bounded
+/// to the displayed page of messages. An unknown address is absent
+/// from the outcome — the UI falls back to the bare address.
 #[tauri::command]
-pub async fn noms_adresses(
+pub async fn address_names(
     app: AppHandle,
     addresses: Vec<String>,
 ) -> Result<std::collections::HashMap<String, String>, String> {
-    hors_pompe(app, move |app| {
+    off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
             .address_names(&addresses)
@@ -6603,352 +6642,354 @@ pub async fn noms_adresses(
     .await
 }
 
-/// Telecharge, verifie la signature, lance l'installateur, et NE QUITTE
-/// QUE SI ce lancement a reussi.
+/// Downloads, verifies the signature, launches the installer, and only
+/// QUITS IF that launch succeeded.
 ///
-/// Le telechargement reste au plugin : la verification minisign est sur
-/// ce chemin (updater.rs:712) et y demeure. Le LANCEMENT, lui, est a
-/// nous (PLAN-SIGNATURE E4, D4) : le `install()` du plugin appelle
-/// `ShellExecuteW` sans lire son retour puis sort par `exit(0)` — un
-/// refus de Windows (Smart App Control, constat terrain 2026-08-26)
-/// fermait l'application sans un mot et sans rien installer. Ici le
-/// refus remonte au bandeau (`erreur.maj`), qui se rearme.
+/// The download stays with the plugin: the minisign verification is on
+/// that path (updater.rs:712) and stays there. The LAUNCH, though, is
+/// ours (PLAN-SIGNATURE E4, D4): the plugin's `install()` calls
+/// `ShellExecuteW` without reading its return value then exits via
+/// `exit(0)` — a Windows refusal (Smart App Control, field finding
+/// 2026-08-26) closed the application without a word and without
+/// installing anything. Here the refusal goes back up to the banner
+/// (`erreur.maj`), which re-arms.
 ///
-/// La base ne bouge pas de `%APPDATA%` (NSIS, pas MSIX — ADR 0013) :
-/// une mise a jour ne peut pas orpheliner les messages.
+/// The database doesn't move from `%APPDATA%` (NSIS, not MSIX — ADR
+/// 0013): an update can never orphan the messages.
 #[tauri::command]
 pub async fn update_install(app: AppHandle, version: String) -> Result<(), String> {
-    // Meme garde d'isolation que `update_check` (passation §7.5) : un
-    // test ne telecharge ni ne lance JAMAIS rien.
+    // Same isolation guard as `update_check` (handover §7.5): a test
+    // NEVER downloads or launches anything.
     if std::env::var("WIND_DB_PATH").is_ok() {
-        return Err("mise à jour indisponible en test".to_string());
+        return Err("update unavailable in test".to_string());
     }
-    // Une installation a la fois, toutes surfaces confondues (bandeau
-    // ET Reglages) : la seconde ecrirait le meme temoin et doublerait
-    // le lancement.
-    if MAJ_EN_COURS.swap(true, std::sync::atomic::Ordering::SeqCst) {
-        return Err("une installation est déjà en cours".to_string());
+    // One installation at a time, across every surface (banner AND
+    // Settings): a second one would write the same marker and double
+    // the launch.
+    if UPDATE_IN_PROGRESS.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return Err("an installation is already in progress".to_string());
     }
-    let resultat = telecharger_et_lancer(app, version).await;
-    // Sur succes l'application quitte : on ne repasse ici qu'en echec.
-    MAJ_EN_COURS.store(false, std::sync::atomic::Ordering::SeqCst);
-    resultat
+    let result = download_and_launch(app, version).await;
+    // On success the application quits: we only come back here on
+    // failure.
+    UPDATE_IN_PROGRESS.store(false, std::sync::atomic::Ordering::SeqCst);
+    result
 }
 
-/// L'installation ne se double pas (bandeau + Réglages sont deux
-/// surfaces pour la même action) — le drapeau se libère sur échec,
-/// et n'a plus d'importance sur succès : l'application quitte.
-static MAJ_EN_COURS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// The installation never doubles up (banner + Settings are two
+/// surfaces for the same action) — the flag is released on failure,
+/// and no longer matters on success: the application quits.
+static UPDATE_IN_PROGRESS: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
-async fn telecharger_et_lancer(app: AppHandle, version: String) -> Result<(), String> {
-    // Instrumentation (PLAN-RETOURS-12 R2, decision D1) : la taille du
-    // paquet est mesuree PLATE sur 12 releases (±1 % depuis la 0.7.0) —
-    // si le bandeau « Téléchargement et installation… » dure, le temps
-    // part ici : reseau (CDN GitHub), ecriture, ou scan
-    // antivirus/verdict SAC au spawn. Chaque etape se trace sur stderr
-    // ET dans `maj.log` a cote de la base (`trace_maj`) : la mesure se
-    // lit apres coup, quel que soit le lancement.
-    let dossier_trace = app.path().app_data_dir().ok();
-    trace_maj(
-        dossier_trace.as_deref(),
+async fn download_and_launch(app: AppHandle, version: String) -> Result<(), String> {
+    // Instrumentation (PLAN-RETOURS-12 R2, decision D1): the package
+    // size is measured FLAT across 12 releases (±1% since 0.7.0) — if
+    // the "Downloading and installing…" banner drags on, the time goes
+    // here: network (GitHub CDN), writing, or an antivirus scan/SAC
+    // verdict at spawn. Each step is traced on stderr AND in `maj.log`
+    // next to the database (`trace_update`): the measurement can be
+    // read after the fact, whatever the launch mode.
+    let trace_folder = app.path().app_data_dir().ok();
+    trace_update(
+        trace_folder.as_deref(),
         &format!(
-            "maj : {} -> {version} : installation demandee",
+            "update: {} -> {version}: installation requested",
             app.package_info().version
         ),
     );
-    let chrono = std::time::Instant::now();
-    let update = updater_wind(&app)?
+    let stopwatch = std::time::Instant::now();
+    let update = wind_updater(&app)?
         .check()
         .await
         .map_err(|err| err.to_string())?
-        .ok_or_else(|| "aucune mise à jour à installer".to_string())?;
-    trace_maj(
-        dossier_trace.as_deref(),
+        .ok_or_else(|| "no update to install".to_string())?;
+    trace_update(
+        trace_folder.as_deref(),
         &format!(
-            "maj : manifeste verifie en {} ms",
-            chrono.elapsed().as_millis()
+            "update: manifest verified in {} ms",
+            stopwatch.elapsed().as_millis()
         ),
     );
-    // Le manifeste peut avoir bouge entre le bandeau et le clic : on
-    // n'installe que la version ANNONCEE — jamais une autre en silence.
-    // L'UI re-verifie sur cet echec et redit la version neuve.
+    // The manifest may have moved between the banner and the click: we
+    // only install the ANNOUNCED version — never another one silently.
+    // The UI re-checks on this failure and restates the new version.
     if update.version != version {
         return Err(format!(
-            "la version proposée a changé ({version} → {}) ; vérifie à nouveau",
+            "the proposed version has changed ({version} → {}); check again",
             update.version
         ));
     }
-    let depart_telechargement = std::time::Instant::now();
-    let octets = update
+    let download_start = std::time::Instant::now();
+    let bytes = update
         .download(|_, _| {}, || {})
         .await
         .map_err(|err| err.to_string())?;
-    trace_maj(
-        dossier_trace.as_deref(),
+    trace_update(
+        trace_folder.as_deref(),
         &format!(
-            "maj : {} octets telecharges en {} ms",
-            octets.len(),
-            depart_telechargement.elapsed().as_millis()
+            "update: {} bytes downloaded in {} ms",
+            bytes.len(),
+            download_start.elapsed().as_millis()
         ),
     );
-    // Filet de format : le plugin sniffait zip/exe/msi (extract,
-    // updater.rs:882) ; l'artefact de Wind est l'exe NSIS nu
-    // (createUpdaterArtifacts: true, cible nsis seule). Tout autre
-    // contenu signe partirait en erreur Windows cryptique au spawn.
-    if !octets.starts_with(b"MZ") {
-        return Err("le paquet téléchargé n'est pas un exécutable Windows".to_string());
+    // Format net: the plugin used to sniff zip/exe/msi (extract,
+    // updater.rs:882); Wind's artifact is the bare NSIS exe
+    // (createUpdaterArtifacts: true, nsis target only). Any other
+    // signed content would fail with a cryptic Windows error at spawn.
+    if !bytes.starts_with(b"MZ") {
+        return Err("the downloaded package is not a Windows executable".to_string());
     }
-    // Ecriture (~6 Mo) et CreateProcess (scan antivirus synchrone
-    // possible) sont bloquants : hors de la pompe (ADR 0019), comme
-    // toute commande qui touche un fichier.
-    hors_pompe(app, move |app| {
-        // Repertoire NEUF par tentative — le regime du tempdir aleatoire
-        // du plugin : pas de collision avec un installateur fantome
-        // d'une tentative precedente, pas de chemin devinable longtemps
-        // a l'avance entre l'ecriture et le lancement.
-        let horodatage = std::time::SystemTime::now()
+    // Writing (~6 MB) and CreateProcess (a synchronous antivirus scan
+    // is possible) are blocking: off the pump (ADR 0019), like every
+    // command that touches a file.
+    off_pump(app, move |app| {
+        // A FRESH folder per attempt — the plugin's random-tempdir
+        // regime: no collision with a phantom installer from a
+        // previous attempt, no path guessable long in advance between
+        // the write and the launch.
+        let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|err| err.to_string())?
             .as_nanos();
-        let dossier =
-            std::env::temp_dir().join(format!("wind-maj-{}-{horodatage}", std::process::id()));
-        std::fs::create_dir_all(&dossier)
-            .map_err(|err| format!("préparation du répertoire ({}) : {err}", dossier.display()))?;
-        let temoin = dossier.join(format!("Wind_{}_maj-setup.exe", update.version));
-        let depart_ecriture = std::time::Instant::now();
-        std::fs::write(&temoin, &octets)
-            .map_err(|err| format!("écriture de l'installateur ({}) : {err}", temoin.display()))?;
-        trace_maj(
-            dossier_trace.as_deref(),
+        let folder =
+            std::env::temp_dir().join(format!("wind-maj-{}-{timestamp}", std::process::id()));
+        std::fs::create_dir_all(&folder)
+            .map_err(|err| format!("preparing the directory ({}): {err}", folder.display()))?;
+        let installer_path = folder.join(format!("Wind_{}_maj-setup.exe", update.version));
+        let write_start = std::time::Instant::now();
+        std::fs::write(&installer_path, &bytes).map_err(|err| {
+            format!(
+                "writing the installer ({}): {err}",
+                installer_path.display()
+            )
+        })?;
+        trace_update(
+            trace_folder.as_deref(),
             &format!(
-                "maj : installateur ecrit en {} ms",
-                depart_ecriture.elapsed().as_millis()
+                "update: installer written in {} ms",
+                write_start.elapsed().as_millis()
             ),
         );
-        // Le spawn porte le scan antivirus synchrone et le verdict cloud
-        // Smart App Control (par binaire) : c'est le suspect n°1 du
-        // bandeau qui dure — la mesure le dira.
-        let depart_spawn = std::time::Instant::now();
-        commande_installateur(&temoin)
+        // The spawn carries the synchronous antivirus scan and the
+        // Smart App Control cloud verdict (per binary): it's suspect
+        // n°1 for the banner that drags on — the measurement will
+        // tell.
+        let spawn_start = std::time::Instant::now();
+        installer_command(&installer_path)
             .spawn()
-            .map_err(|err| format!("lancement de l'installateur refusé par Windows : {err}"))?;
-        trace_maj(
-            dossier_trace.as_deref(),
+            .map_err(|err| format!("installer launch refused by Windows: {err}"))?;
+        trace_update(
+            trace_folder.as_deref(),
             &format!(
-                "maj : installateur lance en {} ms",
-                depart_spawn.elapsed().as_millis()
+                "update: installer launched in {} ms",
+                spawn_start.elapsed().as_millis()
             ),
         );
-        // Lancement REUSSI seulement : l'installateur (mode /UPDATE)
-        // attend la fin du processus pour remplacer le binaire, puis
-        // /R relance Wind — la version neuve.
+        // ONLY on a SUCCESSFUL launch: the installer (/UPDATE mode)
+        // waits for the process to end to replace the binary, then /R
+        // relaunches Wind — the new version.
         app.exit(0);
         Ok(())
     })
     .await
 }
 
-/// L'updater de Wind — UNE construction pour les deux commandes.
-/// Le plugin ne pose AUCUN timeout (`timeout: None`) : un transfert qui
-/// cale rendrait `check` muet au démarrage et figerait le bandeau sur
-/// « Installation… » pour toujours — les deux visages de la panne du
-/// constat 2026-08-26. Dix minutes couvrent ~6 Mo sur un lien très
-/// lent ; au-delà, l'échec remonte et se retente.
-fn updater_wind(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, String> {
+/// Wind's updater — ONE build for both commands.
+/// The plugin sets NO timeout (`timeout: None`): a stalled transfer
+/// would leave `check` silent at startup and freeze the banner on
+/// "Installing…" forever — the two faces of the 2026-08-26 field
+/// finding. Ten minutes cover ~6 MB on a very slow link; beyond that,
+/// the failure goes back up and can be retried.
+fn wind_updater(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, String> {
     app.updater_builder()
         .timeout(std::time::Duration::from_secs(600))
         .build()
         .map_err(|err| err.to_string())
 }
 
-/// Trace une etape de mise a jour : sur stderr (visible via
-/// `run-wind.ps1`) ET en append date dans `maj.log`, a cote de la
-/// base. L'app fenetree n'a pas de stderr : trois MAJ acceptees
-/// (0.13.0 → 0.15.0) sont passees sans qu'aucune mesure ne survive —
-/// le fichier rend la trace lisible APRES COUP, quel que soit le
-/// lancement (constat terrain 2026-08-30). Quelques dizaines d'octets
-/// en append, cinq fois par MAJ : rien de commun avec l'ecriture de
-/// l'installateur (~6 Mo) que l'ADR 0019 envoie hors pompe. Toute
-/// erreur s'ignore — la trace ne fait jamais echouer une installation.
-fn trace_maj(dossier: Option<&Path>, ligne: &str) {
-    eprintln!("{ligne}");
-    let Some(dossier) = dossier else { return };
-    let _ = std::fs::create_dir_all(dossier);
-    let datee = format!(
-        "{} {ligne}\n",
+/// Traces one update step: on stderr (visible via `run-wind.ps1`) AND
+/// appended with a date to `maj.log`, next to the database. The
+/// windowed app has no stderr: three accepted updates (0.13.0 →
+/// 0.15.0) went by without any measurement surviving — the file makes
+/// the trace readable AFTER THE FACT, whatever the launch mode (field
+/// finding 2026-08-30). A few dozen bytes appended, five times per
+/// update: nothing in common with the installer write (~6 MB) that ADR
+/// 0019 sends off the pump. Any error is ignored — the trace must never
+/// make an installation fail.
+fn trace_update(folder: Option<&Path>, line: &str) {
+    eprintln!("{line}");
+    let Some(folder) = folder else { return };
+    let _ = std::fs::create_dir_all(folder);
+    let dated = format!(
+        "{} {line}\n",
         chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ")
     );
     let _ = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(dossier.join("maj.log"))
-        .and_then(|mut fichier| std::io::Write::write_all(&mut fichier, datee.as_bytes()));
+        .open(folder.join("maj.log"))
+        .and_then(|mut file| std::io::Write::write_all(&mut file, dated.as_bytes()));
 }
 
-/// L'invocation de l'installateur NSIS — la decision pure, figee par le
-/// test `l_installateur_est_invoque_en_passif_relance_et_mise_a_jour`.
-fn commande_installateur(temoin: &std::path::Path) -> std::process::Command {
-    let mut commande = std::process::Command::new(temoin);
-    commande.args(["/P", "/R", "/UPDATE"]);
-    commande
+/// The NSIS installer invocation — the pure decision, pinned down by
+/// the test `the_installer_is_invoked_passive_relaunching_and_updating`.
+fn installer_command(installer_path: &std::path::Path) -> std::process::Command {
+    let mut command = std::process::Command::new(installer_path);
+    command.args(["/P", "/R", "/UPDATE"]);
+    command
 }
 
 #[cfg(test)]
 mod tests {
-    /// PLAN-AUDIT-V2 E8 : le chemin d'enregistrement d'une pièce vient de
-    /// l'UI (le dialogue « Enregistrer sous ») ; on l'écrit avec des octets
-    /// choisis par l'expéditeur. Défense en profondeur : absolu, sans
-    /// remontée, dans un dossier qui existe.
+    /// PLAN-AUDIT-V2 E8: the save path of an attachment comes from the
+    /// UI (the "Save as" dialog); it is written with bytes chosen by
+    /// the sender. Defense in depth: absolute, no traversal, in a
+    /// folder that exists.
     #[test]
-    fn un_chemin_relatif_ou_a_remontee_est_refuse() {
-        assert!(super::chemin_de_sortie("piece.pdf").is_err());
-        assert!(super::chemin_de_sortie("C:\\Users\\x\\..\\..\\Windows\\piece.pdf").is_err());
-        assert!(
-            super::chemin_de_sortie("C:\\dossier-qui-n-existe-pas-du-tout\\piece.pdf").is_err()
-        );
-        let ici = std::env::temp_dir().join("piece.pdf");
-        assert!(super::chemin_de_sortie(&ici.to_string_lossy()).is_ok());
+    fn a_relative_or_traversal_path_is_refused() {
+        assert!(super::output_path("piece.pdf").is_err());
+        assert!(super::output_path("C:\\Users\\x\\..\\..\\Windows\\piece.pdf").is_err());
+        assert!(super::output_path("C:\\folder-that-does-not-exist-at-all\\piece.pdf").is_err());
+        let here = std::env::temp_dir().join("piece.pdf");
+        assert!(super::output_path(&here.to_string_lossy()).is_ok());
     }
 
     use super::*;
 
-    /// L'invocation de l'installateur (PLAN-SIGNATURE E4, D4) : le
-    /// témoin lui-même, en mode passif (`/P`), relance de l'application
-    /// après pose (`/R`), mode mise à jour (`/UPDATE`) — les arguments
-    /// mêmes que le plugin construit pour `installMode` passif. Et
-    /// JAMAIS de `/ARGS` : le plugin le fait suivre des arguments du
-    /// binaire courant, Wind se lance sans argument — un `/ARGS` vide
-    /// serait une hypothèse non mesurée sur le parseur NSIS.
-    /// La mesure du bandeau de MAJ ne depend plus du lancement (constat
-    /// terrain 2026-08-30 : trois MAJ acceptees sans capture — stderr
-    /// d'une app fenetree est nul) : chaque etape s'append DATEE dans
-    /// `maj.log`, lisible apres coup. Deux appels = deux lignes — le
-    /// fichier s'append d'une MAJ a l'autre, il ne s'ecrase pas.
+    /// The installer invocation (PLAN-SIGNATURE E4, D4): the installer
+    /// path itself, in passive mode (`/P`), relaunching the application
+    /// after applying (`/R`), update mode (`/UPDATE`) — the very same
+    /// arguments the plugin builds for passive `installMode`. And
+    /// NEVER `/ARGS`: the plugin makes it follow the current binary's
+    /// arguments, Wind launches with no argument — an empty `/ARGS`
+    /// would be an unmeasured assumption about the NSIS parser.
+    /// The update-banner measurement no longer depends on the launch
+    /// (field finding 2026-08-30: three updates accepted with no
+    /// capture — a windowed app's stderr is null): each step is
+    /// appended DATED to `maj.log`, readable after the fact. Two calls
+    /// = two lines — the file appends from one update to the next, it
+    /// never overwrites.
     #[test]
-    fn la_trace_de_maj_survit_dans_maj_log_et_s_append() {
-        let dossier = std::env::temp_dir().join(format!("wind-maj-log-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dossier);
+    fn the_update_trace_survives_in_maj_log_and_gets_appended() {
+        let folder = std::env::temp_dir().join(format!("wind-maj-log-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
 
-        trace_maj(Some(&dossier), "maj : manifeste verifie en 42 ms");
-        trace_maj(Some(&dossier), "maj : installateur lance en 7 ms");
+        trace_update(Some(&folder), "update: manifest verified in 42 ms");
+        trace_update(Some(&folder), "update: installer launched in 7 ms");
 
-        let contenu = std::fs::read_to_string(dossier.join("maj.log")).unwrap();
-        let lignes: Vec<_> = contenu.lines().collect();
-        assert_eq!(lignes.len(), 2, "chaque etape ajoute UNE ligne");
-        assert!(lignes[0].ends_with("maj : manifeste verifie en 42 ms"));
-        assert!(lignes[1].ends_with("maj : installateur lance en 7 ms"));
-        // Datee : le fichier se relit des semaines plus tard, et les
-        // MAJ successives s'y distinguent.
+        let content = std::fs::read_to_string(folder.join("maj.log")).unwrap();
+        let lines: Vec<_> = content.lines().collect();
+        assert_eq!(lines.len(), 2, "each step adds ONE line");
+        assert!(lines[0].ends_with("update: manifest verified in 42 ms"));
+        assert!(lines[1].ends_with("update: installer launched in 7 ms"));
+        // Dated: the file gets read again weeks later, and successive
+        // updates are distinguishable in it.
         assert!(
-            lignes
+            lines
                 .iter()
-                .all(|l| l.starts_with("20") && l.contains("Z maj : ")),
-            "chaque ligne porte son horodatage UTC : {contenu:?}"
+                .all(|l| l.starts_with("20") && l.contains("Z update: ")),
+            "each line carries its UTC timestamp: {content:?}"
         );
 
-        let _ = std::fs::remove_dir_all(&dossier);
+        let _ = std::fs::remove_dir_all(&folder);
     }
 
     #[test]
-    fn l_installateur_est_invoque_en_passif_relance_et_mise_a_jour() {
-        let temoin = std::path::Path::new("C:\\tmp\\Wind_0.10.2_x64-setup.exe");
-        let commande = commande_installateur(temoin);
-        assert_eq!(commande.get_program(), temoin.as_os_str());
-        let arguments: Vec<_> = commande.get_args().collect();
+    fn the_installer_is_invoked_passive_relaunching_and_updating() {
+        let installer_path = std::path::Path::new("C:\\tmp\\Wind_0.10.2_x64-setup.exe");
+        let command = installer_command(installer_path);
+        assert_eq!(command.get_program(), installer_path.as_os_str());
+        let arguments: Vec<_> = command.get_args().collect();
         assert_eq!(arguments, ["/P", "/R", "/UPDATE"]);
     }
 
-    /// La table de la retentative d'Envoyés (PLAN-REACTIVITE E2) : la
-    /// copie asynchrone de Gmail peut suivre l'acceptation SMTP de
-    /// quelques secondes — deux retentatives bornées, puis le silence
-    /// (le cycle rattrapera). Un compteur à zéro n'existe pas par
-    /// construction (la première tentative est la n°1) ; s'il arrivait,
-    /// on s'arrête — jamais une boucle.
+    /// The Sent-folder retry table (PLAN-REACTIVITE E2): Gmail's
+    /// asynchronous copy can lag the SMTP acceptance by a few seconds
+    /// — two bounded retries, then silence (the cycle will catch up). A
+    /// counter at zero doesn't exist by construction (the first
+    /// attempt is n°1); if it happened, we stop — never a loop.
     #[test]
-    fn la_retentative_est_bornee() {
-        assert_eq!(retenter_apres(1), Some(Duration::from_secs(5)));
-        assert_eq!(retenter_apres(2), Some(Duration::from_secs(15)));
-        assert_eq!(retenter_apres(3), None);
-        assert_eq!(retenter_apres(0), None);
-        assert_eq!(retenter_apres(u32::MAX), None);
+    fn the_retry_is_bounded() {
+        assert_eq!(retry_after(1), Some(Duration::from_secs(5)));
+        assert_eq!(retry_after(2), Some(Duration::from_secs(15)));
+        assert_eq!(retry_after(3), None);
+        assert_eq!(retry_after(0), None);
+        assert_eq!(retry_after(u32::MAX), None);
     }
 
-    /// La table des corps à l'arrivée (PLAN-REACTIVITE E4, R-D2) : un
-    /// lot courant emporte ses corps — la ligne naît avec son aperçu —,
-    /// un lot qui déborde n'en emporte AUCUN : les lignes d'abord, la
-    /// pompe fera les corps. Zéro arrivée = zéro corps, jamais un
-    /// aller-retour pour rien.
+    /// The bodies-on-arrival table (PLAN-REACTIVITE E4, R-D2): a
+    /// regular batch carries its bodies along — the row is born with
+    /// its preview —, a batch that overflows carries NONE: rows first,
+    /// the pump will do the bodies. Zero arrivals = zero bodies, never
+    /// a round trip for nothing.
     #[test]
-    fn les_corps_suivent_le_lot_sans_le_retarder() {
-        assert_eq!(corps_a_l_arrivee(0), 0);
-        assert_eq!(corps_a_l_arrivee(1), 1);
+    fn bodies_follow_the_batch_without_delaying_it() {
+        assert_eq!(body_on_arrival(0), 0);
+        assert_eq!(body_on_arrival(1), 1);
+        assert_eq!(body_on_arrival(BODY_ON_ARRIVAL_MAX), BODY_ON_ARRIVAL_MAX);
+        assert_eq!(body_on_arrival(BODY_ON_ARRIVAL_MAX + 1), 0);
+        assert_eq!(body_on_arrival(usize::MAX), 0);
+    }
+
+    /// The backoff table (P0 complement): nothing before two failures —
+    /// the 5 min cadence is already a courtesy —, then the delay
+    /// doubles, capped at one hour. An overflow of failures (a runaway
+    /// counter) must never panic the bit shift.
+    #[test]
+    fn the_backoff_doubles_then_caps() {
+        assert_eq!(wait_after_failures(0), Duration::ZERO);
+        assert_eq!(wait_after_failures(1), Duration::ZERO);
+        assert_eq!(wait_after_failures(2), Duration::from_secs(600));
+        assert_eq!(wait_after_failures(3), Duration::from_secs(1200));
+        assert_eq!(wait_after_failures(4), Duration::from_secs(2400));
+        assert_eq!(wait_after_failures(5), Duration::from_secs(3600));
+        assert_eq!(wait_after_failures(u32::MAX), Duration::from_secs(3600));
+    }
+
+    /// The full lifecycle: two failures set a backoff that runs, a
+    /// success clears it entirely — the account starts over confident.
+    #[test]
+    fn a_success_clears_the_backoff() {
+        let backoffs = Mutex::new(HashMap::new());
+        assert_eq!(current_backoff(&backoffs, "a@exemple.fr"), None);
+
+        note_outcome(&backoffs, "a@exemple.fr", false);
         assert_eq!(
-            corps_a_l_arrivee(CORPS_A_L_ARRIVEE_MAX),
-            CORPS_A_L_ARRIVEE_MAX
-        );
-        assert_eq!(corps_a_l_arrivee(CORPS_A_L_ARRIVEE_MAX + 1), 0);
-        assert_eq!(corps_a_l_arrivee(usize::MAX), 0);
-    }
-
-    /// La table du recul (complément P0) : rien avant deux échecs — la
-    /// cadence de 5 min est déjà une politesse —, puis le délai double,
-    /// plafonné à l'heure. Un débordement d'échecs (compteur fou) ne
-    /// doit jamais faire paniquer le décalage de bits.
-    #[test]
-    fn le_recul_double_puis_plafonne() {
-        assert_eq!(attente_apres_echecs(0), Duration::ZERO);
-        assert_eq!(attente_apres_echecs(1), Duration::ZERO);
-        assert_eq!(attente_apres_echecs(2), Duration::from_secs(600));
-        assert_eq!(attente_apres_echecs(3), Duration::from_secs(1200));
-        assert_eq!(attente_apres_echecs(4), Duration::from_secs(2400));
-        assert_eq!(attente_apres_echecs(5), Duration::from_secs(3600));
-        assert_eq!(attente_apres_echecs(u32::MAX), Duration::from_secs(3600));
-    }
-
-    /// Le cycle de vie complet : deux échecs posent un recul qui court,
-    /// un succès l'efface entièrement — le compte repart confiant.
-    #[test]
-    fn un_succes_efface_le_recul() {
-        let reculs = Mutex::new(HashMap::new());
-        assert_eq!(recul_en_cours(&reculs, "a@exemple.fr"), None);
-
-        noter_issue(&reculs, "a@exemple.fr", false);
-        assert_eq!(
-            recul_en_cours(&reculs, "a@exemple.fr"),
+            current_backoff(&backoffs, "a@exemple.fr"),
             None,
-            "un seul échec ne recule pas : la cadence normale suffit"
+            "a single failure doesn't back off: the normal cadence is enough"
         );
 
-        noter_issue(&reculs, "a@exemple.fr", false);
+        note_outcome(&backoffs, "a@exemple.fr", false);
         assert!(
-            recul_en_cours(&reculs, "a@exemple.fr").is_some(),
-            "deux échecs consécutifs posent le recul"
+            current_backoff(&backoffs, "a@exemple.fr").is_some(),
+            "two consecutive failures set the backoff"
         );
-        // L'autre compte n'est pas touché : le recul est PAR compte.
-        assert_eq!(recul_en_cours(&reculs, "b@exemple.fr"), None);
+        // The other account is not touched: the backoff is PER account.
+        assert_eq!(current_backoff(&backoffs, "b@exemple.fr"), None);
 
-        noter_issue(&reculs, "a@exemple.fr", true);
-        assert_eq!(recul_en_cours(&reculs, "a@exemple.fr"), None);
+        note_outcome(&backoffs, "a@exemple.fr", true);
+        assert_eq!(current_backoff(&backoffs, "a@exemple.fr"), None);
     }
 
-    /// Le type d'une pièce à joindre se déduit de l'extension, sans
-    /// sensibilité à la casse ; l'inconnu part en flux d'octets — un
-    /// en-tête honnête, jamais une décision.
+    /// The type of an attachment is deduced from its extension, case
+    /// insensitively; an unknown one goes out as a byte stream — an
+    /// honest header, never a decision.
     #[test]
     fn mime_for_name_follows_the_extension_and_falls_back_generic() {
         assert_eq!(mime_for_name("devis.pdf"), "application/pdf");
         assert_eq!(mime_for_name("PHOTO.JPG"), "image/jpeg");
         assert_eq!(mime_for_name("archive.tar.gz"), "application/octet-stream");
         assert_eq!(mime_for_name("notes.txt"), "text/plain");
-        assert_eq!(mime_for_name("sans-extension"), "application/octet-stream");
+        assert_eq!(mime_for_name("no-extension"), "application/octet-stream");
         assert_eq!(mime_for_name(""), "application/octet-stream");
     }
 
-    /// Un nom de pièce jointe est une chaîne choisie par l'EXPÉDITEUR.
-    /// Écrit tel quel, il permet une écriture arbitraire de fichier
-    /// déclenchée par un simple clic sur un message reçu. Ces cas ne
-    /// sont pas théoriques : ce sont ceux des archives d'exploitation
-    /// de clients mail.
+    /// An attachment's name is a string chosen by the SENDER. Written
+    /// as-is, it would allow an arbitrary file write triggered by a
+    /// simple click on a received message. These cases are not
+    /// theoretical: they come from mail-client exploitation archives.
     #[test]
     fn a_hostile_attachment_name_can_never_escape_its_folder() {
         assert_eq!(
@@ -6961,26 +7002,26 @@ mod tests {
         );
         assert_eq!(safe_file_name(r"C:\Windows\notepad.exe"), "notepad.exe");
         assert_eq!(safe_file_name("/etc/passwd"), "passwd");
-        assert_eq!(safe_file_name(".."), "piece-jointe");
-        assert_eq!(safe_file_name("/"), "piece-jointe");
-        assert_eq!(safe_file_name(""), "piece-jointe");
+        assert_eq!(safe_file_name(".."), "attachment");
+        assert_eq!(safe_file_name("/"), "attachment");
+        assert_eq!(safe_file_name(""), "attachment");
     }
 
-    /// Windows refuse ces noms quelle que soit l'extension : sans repli,
-    /// l'enregistrement échouerait avec une erreur incompréhensible.
+    /// Windows refuses these names regardless of extension: without a
+    /// fallback, saving would fail with an incomprehensible error.
     #[test]
     fn windows_device_names_fall_back() {
-        assert_eq!(safe_file_name("CON"), "piece-jointe");
-        assert_eq!(safe_file_name("nul.txt"), "piece-jointe");
-        assert_eq!(safe_file_name("COM1.pdf"), "piece-jointe");
-        assert_eq!(safe_file_name("LPT9"), "piece-jointe");
-        // Ni réservé, ni piégeux : doit passer tel quel.
+        assert_eq!(safe_file_name("CON"), "attachment");
+        assert_eq!(safe_file_name("nul.txt"), "attachment");
+        assert_eq!(safe_file_name("COM1.pdf"), "attachment");
+        assert_eq!(safe_file_name("LPT9"), "attachment");
+        // Neither reserved nor tricky: must pass through as-is.
         assert_eq!(safe_file_name("COM0.pdf"), "COM0.pdf");
         assert_eq!(safe_file_name("console.log"), "console.log");
     }
 
-    /// Un nom légitime, même accentué, doit traverser INTACT — un filtre
-    /// qui mutile les noms normaux serait payé tous les jours.
+    /// A legitimate name, even accented, must pass through INTACT — a
+    /// filter that mutilates normal names would be paid for every day.
     #[test]
     fn a_legitimate_name_passes_through_untouched() {
         assert_eq!(safe_file_name("facture.pdf"), "facture.pdf");
@@ -6997,8 +7038,8 @@ mod tests {
         assert_eq!(safe_file_name("fac\u{7}ture?.pdf"), "fac_ture_.pdf");
     }
 
-    /// Enregistrer deux fois la même pièce ne doit jamais écraser le
-    /// premier fichier — la perte serait silencieuse.
+    /// Saving the same attachment twice must never overwrite the first
+    /// file — the loss would be silent.
     #[test]
     fn a_second_save_never_overwrites_the_first() {
         let dir = std::env::temp_dir().join(format!("wind-pj-{}", std::process::id()));
@@ -7016,128 +7057,131 @@ mod tests {
         let _ = std::fs::remove_dir(&dir);
     }
 
-    /// L'adresse déclarée devient la clé du compte ET l'identifiant
-    /// XOAUTH2 : elle n'est vérifiable par personne d'autre avant le
-    /// consentement. Un filtre minimal évite le compte fantôme, sans
-    /// prétendre valider la RFC 5322 — le fournisseur tranchera.
+    /// The declared address becomes both the account's key AND the
+    /// XOAUTH2 identifier: it is not verifiable by anyone else before
+    /// consent. A minimal filter avoids the phantom account, without
+    /// pretending to validate RFC 5322 — the provider will decide.
     #[test]
     fn declared_address_must_be_plausible() {
         assert!(is_plausible_address("moi@exemple.fr"));
         assert!(is_plausible_address("prenom.nom@outlook.com"));
 
-        assert!(!is_plausible_address(""), "vide");
-        assert!(!is_plausible_address("moi"), "sans arobase");
-        assert!(!is_plausible_address("@exemple.fr"), "sans partie locale");
-        assert!(!is_plausible_address("moi@"), "sans domaine");
-        assert!(!is_plausible_address("moi@exemple"), "domaine sans point");
+        assert!(!is_plausible_address(""), "empty");
+        assert!(!is_plausible_address("moi"), "no at sign");
+        assert!(!is_plausible_address("@exemple.fr"), "no local part");
+        assert!(!is_plausible_address("moi@"), "no domain");
+        assert!(!is_plausible_address("moi@exemple"), "domain with no dot");
         assert!(
             !is_plausible_address("moi@.fr"),
-            "domaine commençant par un point"
+            "domain starting with a dot"
         );
     }
 
-    /// R1 (PLAN-RETOURS-8) : le repère d'un compte n'admet que le jeu
-    /// dédié (D2, A3 « une icône, un sens ») et le nuancier mesuré
-    /// (D1) — tout le reste est refusé, y compris une valeur corrompue
-    /// relue de la base.
+    /// R1 (PLAN-RETOURS-8): an account's marker only admits the
+    /// dedicated set (D2, A3 "one icon, one meaning") and the measured
+    /// palette (D1) — everything else is refused, including a
+    /// corrupted value read back from the database.
     #[test]
-    fn repere_valide_est_une_allowlist() {
-        assert!(repere_valide("home", "rouge"));
-        assert!(repere_valide("music_note", "brun"));
+    fn valid_marker_is_an_allowlist() {
+        assert!(valid_marker("home", "rouge"));
+        assert!(valid_marker("music_note", "brun"));
         assert!(
-            !repere_valide("download", "rouge"),
-            "glyphe du produit, hors jeu dédié (A3)"
+            !valid_marker("download", "rouge"),
+            "a product glyph, outside the dedicated set (A3)"
         );
-        assert!(!repere_valide("home", "turquoise"), "teinte inconnue");
-        assert!(!repere_valide("", ""));
+        assert!(!valid_marker("home", "turquoise"), "unknown hue");
+        assert!(!valid_marker("", ""));
     }
 
-    /// Jamais posé -> None ; posé -> relu ; retiré -> None (les clés se
-    /// vident, patron signature) ; corrompu en base -> None (l'allowlist
-    /// tient aussi au retour).
+    /// Never set -> None; set -> read back; removed -> None (the keys
+    /// get cleared, same pattern as the signature); corrupted in the
+    /// database -> None (the allowlist also holds on the way back).
     #[test]
-    fn repere_absent_pose_retire_corrompu() {
+    fn marker_absent_set_removed_corrupted() {
         let mut store = Store::open_in_memory().unwrap();
-        assert_eq!(repere_de(&store, 1).unwrap(), None);
+        assert_eq!(marker_of(&store, 1).unwrap(), None);
 
-        poser_repere(&mut store, 1, Some(("work", "bleu"))).unwrap();
+        set_marker(&mut store, 1, Some(("work", "bleu"))).unwrap();
         assert_eq!(
-            repere_de(&store, 1).unwrap(),
+            marker_of(&store, 1).unwrap(),
             Some(("work".to_string(), "bleu".to_string()))
         );
 
-        poser_repere(&mut store, 1, None).unwrap();
-        assert_eq!(repere_de(&store, 1).unwrap(), None);
+        set_marker(&mut store, 1, None).unwrap();
+        assert_eq!(marker_of(&store, 1).unwrap(), None);
 
         store.set_text_pref("repere_icone.1", "delete").unwrap();
         store.set_text_pref("repere_teinte.1", "rouge").unwrap();
-        assert_eq!(repere_de(&store, 1).unwrap(), None);
+        assert_eq!(marker_of(&store, 1).unwrap(), None);
     }
 
-    /// PLAN-RETOURS-9 (D3) : la décision pure du nom personnalisé.
-    /// Espaces rognés, vide (ou blanc) = retiré, au-delà de 60
-    /// caractères refusé — jamais tronqué en silence.
+    /// PLAN-RETOURS-9 (D3): the pure decision behind the custom name.
+    /// Spaces trimmed, empty (or blank) = removed, beyond 60 characters
+    /// refused — never silently truncated.
     #[test]
-    fn nom_normalise_rogne_vide_et_plafonne() {
-        assert_eq!(nom_normalise("  Boulot  "), Ok(Some("Boulot".to_string())));
-        assert_eq!(nom_normalise(""), Ok(None));
-        assert_eq!(nom_normalise("   "), Ok(None));
-        assert_eq!(nom_normalise(&"x".repeat(60)), Ok(Some("x".repeat(60))));
-        assert!(nom_normalise(&"x".repeat(61)).is_err());
+    fn normalized_name_trims_empties_and_caps() {
+        assert_eq!(
+            normalized_name("  Boulot  "),
+            Ok(Some("Boulot".to_string()))
+        );
+        assert_eq!(normalized_name(""), Ok(None));
+        assert_eq!(normalized_name("   "), Ok(None));
+        assert_eq!(normalized_name(&"x".repeat(60)), Ok(Some("x".repeat(60))));
+        assert!(normalized_name(&"x".repeat(61)).is_err());
     }
 
-    /// Jamais posé -> None ; posé -> relu ; vidé -> None (la clé se
-    /// vide, patron repère/signature) ; une coquille blanche en base ne
-    /// sort jamais vers l'UI.
+    /// Never set -> None; set -> read back; cleared -> None (the key
+    /// gets cleared, same pattern as marker/signature); a blank shell
+    /// in the database never leaks out to the UI.
     #[test]
-    fn nom_compte_absent_pose_retire() {
+    fn account_name_absent_set_removed() {
         let mut store = Store::open_in_memory().unwrap();
-        assert_eq!(nom_de(&store, 1).unwrap(), None);
+        assert_eq!(name_of(&store, 1).unwrap(), None);
 
-        poser_nom(&mut store, 1, Some("Boulot")).unwrap();
-        assert_eq!(nom_de(&store, 1).unwrap(), Some("Boulot".to_string()));
+        set_name(&mut store, 1, Some("Boulot")).unwrap();
+        assert_eq!(name_of(&store, 1).unwrap(), Some("Boulot".to_string()));
 
-        poser_nom(&mut store, 1, None).unwrap();
-        assert_eq!(nom_de(&store, 1).unwrap(), None);
+        set_name(&mut store, 1, None).unwrap();
+        assert_eq!(name_of(&store, 1).unwrap(), None);
 
         store.set_text_pref("nom_compte.1", "   ").unwrap();
-        assert_eq!(nom_de(&store, 1).unwrap(), None);
+        assert_eq!(name_of(&store, 1).unwrap(), None);
     }
 
-    /// PLAN-AUDIT-V1 E5 : le vol d'une passe d'apres-geste est une GARDE.
-    /// Avant, un `?` entre la prise et la liberation laissait `en_vol`
-    /// leve a vie : toute passe suivante du compte etait absorbee jusqu'au
-    /// redemarrage. RED sans enseignement (le comportement est celui du
-    /// `Drop`) — le test dit le contrat.
+    /// PLAN-AUDIT-V1 E5: the in-flight state of a post-gesture pass is
+    /// a GUARD. Before, a `?` between taking it and releasing it left
+    /// `in_flight` raised for life: every subsequent pass for the account
+    /// was absorbed until restart. RED with no lesson (the behavior is
+    /// that of `Drop`) — the test states the contract.
     #[test]
-    fn le_vol_retombe_quand_la_garde_est_relachee_meme_par_une_sortie_precoce() {
-        let passes = Mutex::new(HashMap::<String, VolPasse>::new());
-        let en_vol = |passes: &Mutex<HashMap<String, VolPasse>>| {
-            passes
+    fn the_flight_falls_when_the_guard_is_released_even_by_an_early_exit() {
+        let flights = Mutex::new(HashMap::<String, PassFlight>::new());
+        let in_flight = |flights: &Mutex<HashMap<String, PassFlight>>| {
+            flights
                 .lock()
                 .unwrap()
                 .get("a@x.fr")
-                .map(|v| v.en_vol)
+                .map(|v| v.in_flight)
                 .unwrap_or(false)
         };
 
-        let sortie_precoce = |passes: &Mutex<HashMap<String, VolPasse>>| -> Result<(), String> {
-            let _vol = VolGarde::prendre(passes, "a@x.fr").expect("premiere prise");
-            assert!(en_vol(passes));
-            // Une seconde demande pendant le vol est absorbee et notee.
-            assert!(VolGarde::prendre(passes, "a@x.fr").is_none());
-            assert!(passes.lock().unwrap()["a@x.fr"].redemande);
-            Err("panne au milieu de la passe".to_string())?;
+        let early_exit = |flights: &Mutex<HashMap<String, PassFlight>>| -> Result<(), String> {
+            let _flight = FlightGuard::take(flights, "a@x.fr").expect("first take");
+            assert!(in_flight(flights));
+            // A second request during the flight is absorbed and noted.
+            assert!(FlightGuard::take(flights, "a@x.fr").is_none());
+            assert!(flights.lock().unwrap()["a@x.fr"].rerequest);
+            Err("failure mid-pass".to_string())?;
             Ok(())
         };
-        assert!(sortie_precoce(&passes).is_err());
-        assert!(!en_vol(&passes), "la sortie precoce a relache le vol");
+        assert!(early_exit(&flights).is_err());
+        assert!(!in_flight(&flights), "the early exit released the flight");
 
-        // La redemande notee pendant le vol se consomme UNE fois.
-        let vol = VolGarde::prendre(&passes, "a@x.fr").expect("le vol est libre");
-        assert!(vol.redemande_consommee());
-        assert!(!vol.redemande_consommee());
-        drop(vol);
-        assert!(!en_vol(&passes));
+        // The rerequest noted during the flight is consumed ONCE.
+        let flight = FlightGuard::take(&flights, "a@x.fr").expect("the flight is free");
+        assert!(flight.rerequest_consumed());
+        assert!(!flight.rerequest_consumed());
+        drop(flight);
+        assert!(!in_flight(&flights));
     }
 }

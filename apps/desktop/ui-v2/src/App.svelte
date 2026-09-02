@@ -400,7 +400,7 @@
   let jetonNav = 0;
   // PLAN-AUDIT-V2 E10 : après un geste, la nav était demandée jusqu'à
   // trois fois en rafale — coalescée (50 ms) sur le chemin qui va
-  // chercher ; la sonde de repos (`etat_ui`) fournit l'instantané.
+  // chercher ; la sonde de repos (`ui_state`) fournit l'instantané.
   let navRecente = false;
   function chargerNav(instantaneFourni = null) {
     if (instantaneFourni !== null) return chargerNavMaintenant(instantaneFourni);
@@ -424,19 +424,19 @@
       // garde-fou `modeOrganise()` laisserait la pastille vide jusqu'à
       // la sonde suivante (10 s). La commande vaut 0,26 ms ; hors
       // mode, la valeur ne se peint nulle part.
-      appel('portier_total')
+      appel('screener_total')
         .then((n) => {
           if (jeton === jetonNav) portierTotal = n;
         })
         .catch(() => {});
-      // RETOURS-14 R7 (revue) : contrairement à `portier_total`
+      // RETOURS-14 R7 (revue) : contrairement à `screener_total`
       // (0,26 ms mesuré), ces deux COUNT sondent `threads` entier —
       // ils ne se paient pas au classique, où les pastilles ne se
       // peignent nulle part. Le trou du démarrage (mode pas encore
       // relu) est refermé au retour de `restaurerModeOrganise()`.
       // Coût réel sur une base de 200 k : à mesurer au terrain.
       if (modeOrganise()) {
-        appel('kiosque_non_ouverts')
+        appel('feed_unopened')
           .then((n) => {
             if (jeton === jetonNav) kiosqueTotal = n;
           })
@@ -472,12 +472,12 @@
   // jamais un rechargement complet par clic de teinte).
   async function chargerReperes() {
     try {
-      const lignes = await appel('reperes_get');
+      const lignes = await appel('markers_get');
       const map = {};
       for (const l of lignes) map[l.account_id] = { icone: l.icone, teinte: l.teinte };
       reperes = map;
     } catch (err) {
-      console.error('reperes_get :', err);
+      console.error('markers_get :', err);
     }
   }
   function patcherRepere(id, repere) {
@@ -491,12 +491,12 @@
   // les repères — chargés une fois, patchés au geste.
   async function chargerNoms() {
     try {
-      const lignes = await appel('noms_get');
+      const lignes = await appel('names_get');
       const map = {};
       for (const l of lignes) map[l.account_id] = l.nom;
       noms = map;
     } catch (err) {
-      console.error('noms_get :', err);
+      console.error('names_get :', err);
     }
   }
   function patcherNom(id, nom) {
@@ -1014,7 +1014,7 @@
     });
     chargerReperes();
     chargerNoms();
-    // PLAN-AUDIT-V2 E10 : UNE sonde de repos (`etat_ui` : nav, synchro,
+    // PLAN-AUDIT-V2 E10 : UNE sonde de repos (`ui_state` : nav, synchro,
     // envois) toutes les 5 s — trois commandes, trois ouvertures de base
     // par 10 s avant. Les brouillons gardent leur sonde (une liste).
     sonderEtat();
@@ -1061,13 +1061,13 @@
       enLigne = false;
       // E4 : les veilleurs IDLE dorment hors ligne — reconnecter en
       // boucle sans réseau ne servirait à rien.
-      appel('reseau_etat', { enLigne: false }).catch(() => {});
+      appel('network_state', { enLigne: false }).catch(() => {});
     });
     window.addEventListener('online', () => {
       enLigne = true;
       // Le retour du réseau efface les reculs (côté shell) et réveille
       // les veilleurs ; la relève immédiate couvre le courrier retenu.
-      appel('reseau_etat', { enLigne: true }).catch(() => {});
+      appel('network_state', { enLigne: true }).catch(() => {});
       relever(false);
       // R-D3 (E3) : les gestes joués hors ligne attendent — la passe
       // d'après-geste rejoue leurs actions et réconcilie leurs échos.
@@ -1076,7 +1076,7 @@
     });
     // L'état initial : si l'app démarre hors ligne, les veilleurs le
     // savent tout de suite.
-    appel('reseau_etat', { enLigne: navigator.onLine }).catch(() => {});
+    appel('network_state', { enLigne: navigator.onLine }).catch(() => {});
   });
 
   function choisir(quoi) {
@@ -1111,7 +1111,7 @@
   async function basculerCote(ligne, depuisFil = false) {
     if (gesteSurEcho(ligne)) return;
     try {
-      const cote = await appel('toggle_mis_de_cote', {
+      const cote = await appel('toggle_set_aside', {
         accountId: ligne.account_id,
         mailbox: ligne.mailbox,
         uid: ligne.uid,
@@ -1143,10 +1143,10 @@
   // Registre change sous le geste).
   // RETOURS-14 R6 (revue) : router par ADRESSE — le ⋯ d'un groupe du
   // Registre n'a pas de ligne sous la main, il a l'expéditeur. Même
-  // porte (router_expediteur), mêmes toasts, même resservie.
+  // porte (route_sender), mêmes toasts, même resservie.
   async function routerAdresse(address, qui, destination) {
     try {
-      await appel('router_expediteur', { address, destination, regle: null });
+      await appel('route_sender', { address, destination, regle: null });
       if (destination === 'ecarte') {
         flash(t('toast.portierNonNu', { qui }));
       } else {
@@ -1161,7 +1161,7 @@
   async function deplacerExpediteur(ligne, destination) {
     if (gesteSurEcho(ligne)) return;
     try {
-      const adresse = await appel('router_expediteur_de', {
+      const adresse = await appel('route_sender_from', {
         accountId: ligne.account_id,
         mailbox: ligne.mailbox,
         uid: ligne.uid,
@@ -1300,15 +1300,15 @@
   // resservie. `accountId: null` = tous les comptes qui ont du travail
   // (le déclencheur du retour en ligne, R-D3).
   function passeApresGeste(accountId) {
-    appel('sync_apres_geste', { accountId })
+    appel('sync_after_gesture', { accountId })
       .then((bilan) => {
-        for (const incident of bilan.errors) console.error('sync_apres_geste :', incident);
+        for (const incident of bilan.errors) console.error('sync_after_gesture :', incident);
         if (bilan.fetched > 0 || bilan.deleted > 0 || bilan.reconcilies > 0 || bilan.balayes > 0) {
           chargerNav();
           liste?.recharger();
         }
       })
-      .catch((err) => console.error('sync_apres_geste :', err));
+      .catch((err) => console.error('sync_after_gesture :', err));
   }
 
   function ouvrirConversation(ligne) {
@@ -1440,7 +1440,7 @@
 
   async function sonderEtat() {
     try {
-      const etat = await appel('etat_ui');
+      const etat = await appel('ui_state');
       chargerNav(etat.nav);
       sonderSynchro(etat.synchro);
       sonderEnvois(etat.envois);
@@ -1592,7 +1592,7 @@
   }
 
   // PLAN-RETOURS-10 R1 : les gestes de MASSE de la barre de sélection.
-  // PLAN-AUDIT-V2 E6 : UN appel au cœur (`agir_groupe`), UNE
+  // PLAN-AUDIT-V2 E6 : UN appel au cœur (`act_on_group`), UNE
   // transaction, tout ou rien (D6) — avant, les commandes unitaires
   // rejouaient en séquence (250 + 50 IPC pour 50 conversations, la
   // barre gelée). Puis UN toast, UNE resservie, UNE passe par compte.
@@ -1628,7 +1628,7 @@
     let reussies = [];
     let spamRefuse = false;
     try {
-      const bilan = await appel('agir_groupe', {
+      const bilan = await appel('act_on_group', {
         cibles: cibles.map((l) => ({ ...cibleDe(l), threadId: l.thread_id ?? null })),
         action,
       });
@@ -1638,7 +1638,7 @@
       // Tout ou rien (D6) : un refus laisse le lot intact — le seul
       // échec ATTENDU est l'absence de dossier indésirable.
       if (action === 'spam') spamRefuse = true;
-      console.error('agir_groupe :', err);
+      console.error('act_on_group :', err);
     }
     flash(
       faits === total

@@ -132,7 +132,7 @@
       return;
     }
     let perime = false;
-    appel('portier_adresses')
+    appel('screener_addresses')
       .then((adresses) => {
         if (!perime) attentePortier = new Set(adresses);
       })
@@ -205,7 +205,7 @@
       return;
     }
     let perime = false;
-    appel('noms_adresses', { addresses: adresses }).then(
+    appel('address_names', { addresses: adresses }).then(
       (noms) => {
         cacheNoms.cle = cle;
         cacheNoms.noms = noms;
@@ -213,7 +213,7 @@
       },
       // L'échec se DIT (revue) : le repli visible est l'adresse nue,
       // sans ce signal une régression de la commande serait muette.
-      (err) => console.error('noms_adresses :', err),
+      (err) => console.error('address_names :', err),
     );
     return () => { perime = true; };
   });
@@ -249,7 +249,7 @@
   // mesure les mêmes corps, une seule porte (A47/S1).
 
   // La réponse à une invitation (D5-D6) : sujet et corps dans la langue
-  // de l'UI, l'email iTIP journalisé côté cœur (repondre_invitation),
+  // de l'UI, l'email iTIP journalisé côté cœur (reply_invitation),
   // puis une vidange lancée — hors ligne, il part au prochain lancement
   // (la sémantique dite de PLAN-RETOURS-6).
   let reponsesEnVol = $state({});
@@ -263,7 +263,7 @@
     fil.invitations[k].statut = reponse;
     try {
       const sujet = t(`inv.sujet_${reponse}`, { titre: fil.invitations[k].titre });
-      const vue = await appel('repondre_invitation', {
+      const vue = await appel('reply_invitation', {
         accountId: m.account_id,
         mailbox: m.mailbox,
         uid: m.uid,
@@ -294,7 +294,7 @@
       // — l'utilisateur choisit dossier ET nom. Annuler = rien, ni
       // toast ni erreur ; le rapatriement des octets n'a lieu qu'après
       // le choix (jamais de fetch inutile si l'on renonce).
-      const defaut = await appel('chemin_enregistrement_suggere', { name: piece.name });
+      const defaut = await appel('suggested_save_path', { name: piece.name });
       const dest = await choisirDestination(defaut);
       if (!dest) return;
       const chemin = await appel('save_attachment', {

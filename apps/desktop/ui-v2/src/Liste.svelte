@@ -239,7 +239,7 @@
   const aPuces = (l) => rangsPuces(l) > 0;
 
   // R10 : répondre à une invitation SANS l'ouvrir — le même chemin que
-  // la carte (repondre_invitation : journal + réponse en une
+  // la carte (reply_invitation : journal + réponse en une
   // transaction), le sujet dans la langue du produit, la puce suit
   // localement. stopPropagation : le clic ne choisit pas la ligne.
   let reponsesInvitation = $state({});
@@ -260,7 +260,7 @@
     version += 1;
     try {
       const sujet = t(`inv.sujet_${reponse}`, { titre: ligne.invitation.titre });
-      await appel('repondre_invitation', {
+      await appel('reply_invitation', {
         accountId: ligne.account_id,
         mailbox: ligne.invitation.mailbox,
         uid: ligne.invitation.uid,
@@ -359,7 +359,7 @@
   // on lance la page la plus utile de la fenêtre COURANTE — jamais
   // celles d'une position dépassée. Avant : l'effet servait chaque page
   // traversée par chaque position d'un drag tenu (~161 appels pour 2 s
-  // de barre, mesurés au banc) ; la file sérialisée de `hors_pompe`
+  // de barre, mesurés au banc) ; la file sérialisée de `off_pump`
   // (ADR 0019) se drainait en minutes sur la vraie base et TOUTES les
   // commandes attendaient derrière.
   //

@@ -198,8 +198,8 @@ const compareListes = (quoi, a, aNom, b, bNom) => {
     if (!a.includes(v)) echec(`repères : ${quoi} « ${v} » dans ${bNom} mais pas dans ${aNom}`);
   }
 };
-const iconesRust = listeRust('REPERE_ICONES');
-const teintesRust = listeRust('REPERE_TEINTES');
+const iconesRust = listeRust('MARKER_ICONS');
+const teintesRust = listeRust('MARKER_HUES');
 compareListes('icône', iconesRust, 'commands.rs', listeJs('REPERE_ICONES'), 'lib/reperes.js');
 compareListes('teinte', teintesRust, 'commands.rs', listeJs('REPERE_TEINTES'), 'lib/reperes.js');
 const teintesCss = [

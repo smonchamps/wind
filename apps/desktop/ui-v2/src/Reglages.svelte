@@ -147,13 +147,13 @@
   let filtreRoutages = $state('');
   $effect(() => {
     if (visible && groupe === 'portier') {
-      appel('portier_defauts_get')
+      appel('screener_defaults_get')
         .then((d) => (portierDefauts = d))
-        .catch((err) => console.error('portier_defauts_get :', err));
+        .catch((err) => console.error('screener_defaults_get :', err));
       filtreRoutages = '';
-      appel('routages')
+      appel('routings')
         .then((r) => (routagesListe = r))
-        .catch((err) => console.error('routages :', err));
+        .catch((err) => console.error('routings :', err));
     }
   });
   const routagesVisibles = $derived.by(() => {
@@ -200,7 +200,7 @@
     const { address } = menuDecision;
     menuDecision = null;
     try {
-      await appel('router_expediteur', { address, destination, regle });
+      await appel('route_sender', { address, destination, regle });
       routagesListe = routagesListe.map((r) =>
         r.address === address ? { ...r, destination, regle } : r);
       if (destination === 'ecarte') {
@@ -219,7 +219,7 @@
     const { address } = menuDecision;
     menuDecision = null;
     try {
-      await appel('retirer_routage', { address });
+      await appel('remove_routing', { address });
       routagesListe = routagesListe.filter((r) => r.address !== address);
       onflash(t('toast.portierReintegre', { qui: address }));
       onroutage();
@@ -231,7 +231,7 @@
     if (!portierDefauts) return;
     const avant = { ...portierDefauts };
     portierDefauts = { ...portierDefauts, [champ]: valeur };
-    appel('portier_defauts_set', {
+    appel('screener_defaults_set', {
       oui: portierDefauts.oui,
       non: portierDefauts.non,
     }).catch(() => {
@@ -369,7 +369,7 @@
     if (!repereChoix.icone || !repereChoix.teinte) return;
     repereErreur = null;
     try {
-      await appel('repere_set', {
+      await appel('marker_set', {
         accountId: id,
         icone: repereChoix.icone,
         teinte: repereChoix.teinte,
@@ -385,7 +385,7 @@
   async function retirerRepere(id) {
     repereErreur = null;
     try {
-      await appel('repere_set', { accountId: id, icone: null, teinte: null });
+      await appel('marker_set', { accountId: id, icone: null, teinte: null });
       repereChoix = { icone: null, teinte: null };
       onrepere(id, null);
     } catch (err) {
@@ -415,7 +415,7 @@
     nomOccupe = true;
     nomErreur = null;
     try {
-      const nom = await appel('nom_set', { accountId: id, nom: nomBrouillon });
+      const nom = await appel('name_set', { accountId: id, nom: nomBrouillon });
       onnom(id, nom ?? null);
       // Ne fermer QUE sa propre carte : une réponse tardive ne doit
       // jamais claquer celle qu'un autre compte vient d'ouvrir.

@@ -187,13 +187,13 @@
     minuterieSuggere = setTimeout(async () => {
       const mien = ++jetonSuggere;
       try {
-        const trouvees = await appel('completer_adresses', { prefixe, limite: 8 });
+        const trouvees = await appel('complete_addresses', { prefixe, limite: 8 });
         if (mien !== jetonSuggere || !visible) return;
         suggestions = trouvees;
         champSuggere = trouvees.length > 0 ? champ : null;
         choixSuggere = 0;
       } catch (err) {
-        console.error('completer_adresses :', err);
+        console.error('complete_addresses :', err);
       }
     }, 150);
   }
@@ -887,17 +887,17 @@
           // passage à `sent`) — la copie se montre < 1 s, sans le
           // serveur. La passe d'après-geste réconcilie derrière.
           oncourrier();
-          appel('sync_apres_geste', { accountId: compteEnvoi })
+          appel('sync_after_gesture', { accountId: compteEnvoi })
             .then((releve) => {
               for (const incident of releve.errors) {
-                console.error('sync_apres_geste :', incident);
+                console.error('sync_after_gesture :', incident);
               }
               if (releve.fetched > 0 || releve.deleted > 0 || releve.reconcilies > 0
                   || releve.balayes > 0) {
                 oncourrier();
               }
             })
-            .catch((err) => console.error('sync_apres_geste :', err));
+            .catch((err) => console.error('sync_after_gesture :', err));
         }
         return appel('sync_drafts').catch(() => {});
       })

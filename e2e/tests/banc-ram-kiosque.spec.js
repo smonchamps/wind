@@ -43,7 +43,7 @@ test('RAM privée : repos, Kiosque page 1, 160 cartes, retour', async () => {
   await page.evaluate(async () => {
     const invoke = window.__TAURI__.core.invoke;
     for (let n = 0; n < 16; n += 1) {
-      await invoke('router_expediteur', { address: `expediteur${n}@exemple.fr`, destination: 'kiosque', regle: null });
+      await invoke('route_sender', { address: `expediteur${n}@exemple.fr`, destination: 'kiosque', regle: null });
     }
   });
   await page.locator('[data-testid="nav-dossier"][data-categorie="kiosque"]').click();

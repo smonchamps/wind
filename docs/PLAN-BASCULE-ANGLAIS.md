@@ -382,6 +382,34 @@ thread + search ; le reste).
 
 ### E4 — Shell + IPC, un seul commit (M)
 
+> **E4 delivered on 2026-09-03** — `apps/desktop/src` (8 552 lines): `commands.rs`
+> split in four chunks at struct boundaries, six Sonnet agents in parallel on
+> copies, a fixed rename table with a KEEP list. The 36 command names of §5.3
+> renamed in the shell, the `generate_handler!` list, the UI `appel()` calls,
+> the specs' `invoke()` calls and the two e2e tools that name commands
+> (`demarrage.spec.js`, `garde-thread-principal.mjs`) in the same commit;
+> `hors_pompe` → `off_pump` with the guard's literal. Files: `veilleur.rs` →
+> `watcher.rs`, `demenagement.rs` → `relocation.rs`. Shared state and helpers
+> in English (`Recul` → `Backoff`, `VolPasse`/`VolGarde` → `PassFlight`/
+> `FlightGuard`, `doit_relever` → `must_poll`, `AppState` fields
+> `sync_backoffs`/`poll_locks`/`watchers`/`gesture_passes`/`commands`).
+> **Deferred to E5, on purpose (the IPC contract with the UI):** the command
+> PARAMETER names (the JSON keys the UI sends: `adresse`, `regle`, `boite`…)
+> and the FIELDS of the serialized payloads (`titre`, `dernier_epoch`, `fils`,
+> `pieces`…) — they change together with the Svelte reads and the catalogue
+> keys, never from the shell side (E3c lesson); the struct NAMES did change
+> (`CarteKiosque` → `FeedCard`, `PortierRow` → `ScreenerRow`…). The two
+> native dialogs (second instance, failed relocation) stay French, `lang:fr`
+> (E5 decides the language of shell-composed text with `human_size`). The
+> unnamed attachment fallback of `safe_file_name` is `attachment` (D5, as
+> mail-imap at E3b). The shell keeps 33 French markers, all deliberate.
+> Oracles: build, clippy, 32 shell tests, IPC contract and main-thread guard
+> green, full gate green. Baseline 110 125 → 102 688. Two nets followed the
+> rename in the same commit: the System coherence net reads `MARKER_ICONS`/
+> `MARKER_HUES` from `commands.rs`, the main-thread guard matches `off_pump(`.
+> One shell error string a spec asserts (“connexion IMAP impossible”, the
+> onboarding contract test) stays French, `lang:fr`, until E5/E6.
+
 `commands.rs` (110 commandes, ~45 renommées), `veilleur.rs` →
 `watcher.rs`, `demenagement.rs` → `relocation.rs`, `instance.rs`,
 `trace.rs`, `telemetry.rs`, `main.rs` (`generate_handler!`) **et** les

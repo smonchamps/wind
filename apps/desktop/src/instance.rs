@@ -1,17 +1,17 @@
-//! Mono-instance par verrou fichier (PLAN-AUDIT-V1 E1, décision CE D1
-//! du 2026-09-01) : `wind.lock` à côté de `wind.db`, pris en exclusif
-//! par le premier processus, refusé au second. L'OS relâche le verrou
-//! à la mort du processus — un crash ne laisse jamais de verrou
-//! « collant », le fichier lui-même peut rester, il ne dit rien.
+//! Single instance via a file lock (PLAN-AUDIT-V1 E1, CE decision D1
+//! of 2026-09-01): `wind.lock` next to `wind.db`, taken exclusively
+//! by the first process, refused to the second. The OS releases the
+//! lock when the process dies — a crash never leaves a "sticky" lock,
+//! the file itself may remain, it says nothing.
 //!
-//! Pourquoi un fichier et pas un plugin (single-instance) : `fs4` est
-//! déjà là (garde d'espace disque), le verrou est une décision pure et
-//! testable sans Tauri, et la seconde instance n'a rien d'autre à faire
-//! que le dire et sortir (D1 : message puis sortie).
+//! Why a file and not a plugin (single-instance): `fs4` is already
+//! there (disk space guard), the lock is a pure, testable decision
+//! without Tauri, and the second instance has nothing else to do than
+//! say so and exit (D1: message then exit).
 //!
-//! `WIND_DB_PATH` (e2e, sonde de gel) place le verrou à côté de la base
-//! jetable : les instances de test ne se voient pas entre elles ni ne
-//! voient l'application réelle.
+//! `WIND_DB_PATH` (e2e, freeze probe) places the lock next to the
+//! disposable database: test instances do not see each other, nor do
+//! they see the real application.
 
 use std::fs::File;
 use std::io;
@@ -19,102 +19,100 @@ use std::path::{Path, PathBuf};
 
 use fs4::fs_std::FileExt;
 
-/// Le fichier de verrou, à côté de la base. Son contenu ne dit rien :
-/// seul le verrou exclusif de l'OS compte.
-pub(crate) const NOM_VERROU: &str = "wind.lock";
+/// The lock file, next to the database. Its content says nothing:
+/// only the OS's exclusive lock matters.
+pub(crate) const LOCK_NAME: &str = "wind.lock";
 
-/// La garde de l'instance : tant qu'elle vit, le verrou est tenu. La
-/// relâcher (ou mourir) le rend.
-pub(crate) struct GardeInstance {
-    _fichier: File,
+/// The instance guard: as long as it lives, the lock is held.
+/// Releasing it (or dying) frees it.
+pub(crate) struct InstanceGuard {
+    _file: File,
 }
 
-/// Tente le verrou exclusif sur `dossier/wind.lock`. `Ok(None)` : une
-/// autre instance le tient déjà. Le dossier est créé s'il manque
-/// (premier lancement : `db_path` le créerait de toute façon).
-pub(crate) fn verrouiller(dossier: &Path) -> io::Result<Option<GardeInstance>> {
-    std::fs::create_dir_all(dossier)?;
-    let fichier = File::options()
+/// Attempts the exclusive lock on `folder/wind.lock`. `Ok(None)`:
+/// another instance already holds it. The folder is created if
+/// missing (first launch: `db_path` would create it anyway).
+pub(crate) fn lock(folder: &Path) -> io::Result<Option<InstanceGuard>> {
+    std::fs::create_dir_all(folder)?;
+    let file = File::options()
         .create(true)
         .write(true)
         .truncate(false)
-        .open(dossier.join(NOM_VERROU))?;
-    if fichier.try_lock_exclusive()? {
-        Ok(Some(GardeInstance { _fichier: fichier }))
+        .open(folder.join(LOCK_NAME))?;
+    if file.try_lock_exclusive()? {
+        Ok(Some(InstanceGuard { _file: file }))
     } else {
         Ok(None)
     }
 }
 
-/// Le dossier de la base SANS `AppHandle` — le verrou se prend avant que
-/// Tauri ne construise quoi que ce soit (la fenêtre naît avant `setup`,
-/// tauri `app.rs` : une seconde instance qui vérifierait dans `setup`
-/// ferait clignoter une fenêtre). Même règle que `commands::db_path` :
-/// `WIND_DB_PATH` d'abord, sinon `%APPDATA%\<identifiant>` — ce que
-/// `app_data_dir()` rend sur Windows.
-pub(crate) fn dossier_de_la_base() -> Option<PathBuf> {
-    if let Ok(chemin) = std::env::var("WIND_DB_PATH") {
-        return PathBuf::from(chemin).parent().map(Path::to_path_buf);
+/// The database folder WITHOUT `AppHandle` — the lock is taken before
+/// Tauri builds anything (the window is born before `setup`, tauri
+/// `app.rs`: a second instance checking in `setup` would make a
+/// window flicker). Same rule as `commands::db_path`: `WIND_DB_PATH`
+/// first, otherwise `%APPDATA%\<app id>` — what `app_data_dir()`
+/// returns on Windows.
+pub(crate) fn database_folder() -> Option<PathBuf> {
+    if let Ok(path) = std::env::var("WIND_DB_PATH") {
+        return PathBuf::from(path).parent().map(Path::to_path_buf);
     }
     let appdata = std::env::var("APPDATA").ok()?;
-    Some(PathBuf::from(appdata).join(crate::demenagement::IDENTIFIANT))
+    Some(PathBuf::from(appdata).join(crate::relocation::APP_ID))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn dossier_temporaire(nom: &str) -> std::path::PathBuf {
-        let dossier =
-            std::env::temp_dir().join(format!("wind-instance-{nom}-{}", std::process::id()));
-        std::fs::create_dir_all(&dossier).unwrap();
-        dossier
+    fn temp_folder(name: &str) -> std::path::PathBuf {
+        let folder =
+            std::env::temp_dir().join(format!("wind-instance-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        folder
     }
 
-    /// Le cœur de la garde : deux prises sur le même dossier, la seconde
-    /// est refusée tant que la première vit. Sur Windows, LockFileEx en
-    /// exclusif se refuse PAR HANDLE — le test tient dans un processus.
+    /// The core of the guard: two attempts on the same folder, the
+    /// second is refused as long as the first lives. On Windows,
+    /// exclusive LockFileEx is refused PER HANDLE — the test fits in
+    /// one process.
     #[test]
-    fn deux_verrous_sur_le_meme_dossier_le_second_est_refuse() {
-        let dossier = dossier_temporaire("double");
-        let premiere = verrouiller(&dossier).unwrap();
+    fn two_locks_on_the_same_folder_the_second_is_refused() {
+        let folder = temp_folder("double");
+        let first = lock(&folder).unwrap();
+        assert!(first.is_some(), "the first instance must get the lock");
+        let second = lock(&folder).unwrap();
+        assert!(second.is_none(), "the second instance must be refused");
+        drop(first);
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// Releasing the guard (end of the first instance) makes the lock
+    /// available again: no sticky lock.
+    #[test]
+    fn a_released_lock_can_be_taken_again() {
+        let folder = temp_folder("release");
+        let first = lock(&folder).unwrap();
+        assert!(first.is_some());
+        drop(first);
+        let next = lock(&folder).unwrap();
         assert!(
-            premiere.is_some(),
-            "la première instance doit obtenir le verrou"
+            next.is_some(),
+            "after the first ends, the next one gets the lock"
         );
-        let seconde = verrouiller(&dossier).unwrap();
-        assert!(seconde.is_none(), "la seconde instance doit être refusée");
-        drop(premiere);
-        let _ = std::fs::remove_dir_all(&dossier);
+        drop(next);
+        let _ = std::fs::remove_dir_all(&folder);
     }
 
-    /// Relâcher la garde (fin de la première instance) rend le verrou
-    /// disponible : pas de verrou collant.
+    /// The database folder may not exist yet (first launch): the
+    /// guard creates it, as `db_path` does.
     #[test]
-    fn un_verrou_relache_se_reprend() {
-        let dossier = dossier_temporaire("relache");
-        let premiere = verrouiller(&dossier).unwrap();
-        assert!(premiere.is_some());
-        drop(premiere);
-        let suivante = verrouiller(&dossier).unwrap();
-        assert!(
-            suivante.is_some(),
-            "après la fin de la première, la suivante obtient le verrou"
-        );
-        drop(suivante);
-        let _ = std::fs::remove_dir_all(&dossier);
-    }
-
-    /// Le dossier de la base peut ne pas exister encore (premier
-    /// lancement) : la garde le crée, comme `db_path` le fait.
-    #[test]
-    fn le_dossier_absent_est_cree() {
-        let dossier = dossier_temporaire("absent").join("sous-dossier");
-        assert!(!dossier.exists());
-        let garde = verrouiller(&dossier).unwrap();
-        assert!(garde.is_some());
-        assert!(dossier.join(NOM_VERROU).is_file());
-        drop(garde);
-        let _ = std::fs::remove_dir_all(dossier.parent().unwrap());
+    fn the_missing_folder_is_created() {
+        let folder = temp_folder("missing").join("sub-folder");
+        assert!(!folder.exists());
+        let guard = lock(&folder).unwrap();
+        assert!(guard.is_some());
+        assert!(folder.join(LOCK_NAME).is_file());
+        drop(guard);
+        let _ = std::fs::remove_dir_all(folder.parent().unwrap());
     }
 }

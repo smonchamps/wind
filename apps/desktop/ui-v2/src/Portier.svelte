@@ -44,8 +44,8 @@
   export async function recharger() {
     try {
       const [attente, historique] = await Promise.all([
-        appel('portier_attente'),
-        appel('routages'),
+        appel('screener_waiting'),
+        appel('routings'),
       ]);
       rangs = attente;
       // L'historique du guichet ne montre que les ÉCARTÉS (prototype) :
@@ -63,9 +63,9 @@
       // échec de lecture garde les livrés SANS bloquer les rangs, et
       // les décisions suivantes ne repayent pas l'IPC.
       try {
-        defauts = await appel('portier_defauts_get');
+        defauts = await appel('screener_defaults_get');
       } catch (err) {
-        console.error('portier_defauts_get :', err);
+        console.error('screener_defaults_get :', err);
       }
       recharger();
     })();
@@ -87,7 +87,7 @@
   async function decider(address, qui, destination, regle = null) {
     menu = null;
     try {
-      await appel('router_expediteur', { address, destination, regle });
+      await appel('route_sender', { address, destination, regle });
       if (destination === 'ecarte') {
         onflash(t(regle ? TOAST_NON[regle] : 'toast.portierNonNu', { qui }));
       } else if (destination === 'reception') {
@@ -104,7 +104,7 @@
 
   async function reintegrer(routage) {
     try {
-      await appel('retirer_routage', { address: routage.address });
+      await appel('remove_routing', { address: routage.address });
       onflash(t('toast.portierReintegre', { qui: routage.address }));
       await recharger();
       onchange();

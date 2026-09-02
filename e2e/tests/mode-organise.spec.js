@@ -68,7 +68,7 @@ test('la bascule recompose la nav, le Kiosque sert les expéditeurs routés, et 
   await page.evaluate(async () => {
     const invoke = window.__TAURI__.core.invoke;
     for (let n = 0; n < 12; n += 1) {
-      await invoke('router_expediteur', {
+      await invoke('route_sender', {
         address: `expediteur${n}@exemple.fr`,
         destination: 'kiosque',
         regle: null,
@@ -204,8 +204,8 @@ test("un inconnu qui écrit attend au Portier — la Réception organisée ne le
   // le guichet se prouve sur un poste sans routage préalable.
   await page.evaluate(async () => {
     const invoke = window.__TAURI__.core.invoke;
-    const routages = await invoke('routages');
-    for (const r of routages) await invoke('retirer_routage', { address: r.address });
+    const routings = await invoke('routings');
+    for (const r of routings) await invoke('remove_routing', { address: r.address });
   });
   injecterArrivee({
     email: 'principal@exemple.fr', expediteur: 'inconnue@exemple.fr',
@@ -376,7 +376,7 @@ test('Réglages > Portier règle les défauts — le clic nu obéit, la persista
   await page.locator('[data-testid="portier-defaut-non"]').selectOption('corbeille');
   await page.locator('[data-testid="reglages-termine"]').click();
   await page.evaluate(async () => {
-    await window.__TAURI__.core.invoke('retirer_routage', { address: 'temoin@exemple.fr' });
+    await window.__TAURI__.core.invoke('remove_routing', { address: 'temoin@exemple.fr' });
   });
   await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
 });
@@ -419,7 +419,7 @@ test("le ⋯ d'une rangée déplace l'expéditeur — à gauche de l'heure, sans
   // les tests suivants héritent d'une Réception complète, jamais d'un
   // Kiosque peuplé par accident.
   await page.evaluate(async () => {
-    await window.__TAURI__.core.invoke('retirer_routage', { address: 'expediteur2@exemple.fr' });
+    await window.__TAURI__.core.invoke('remove_routing', { address: 'expediteur2@exemple.fr' });
   });
   // La liste ne suit pas une écriture externe (elle ne se recharge
   // qu'au battement d'une génération de relève) : on la ressert par le
@@ -487,7 +487,7 @@ test('quitter le mode depuis une vue organisée rend la Réception et la nav cla
   // Le nettoyage rend le poste au classique pour les autres specs.
   await page.evaluate(async () => {
     const invoke = window.__TAURI__.core.invoke;
-    const routages = await invoke('routages');
-    for (const r of routages) await invoke('retirer_routage', { address: r.address });
+    const routings = await invoke('routings');
+    for (const r of routings) await invoke('remove_routing', { address: r.address });
   });
 });

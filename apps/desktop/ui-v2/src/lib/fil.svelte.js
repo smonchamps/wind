@@ -52,7 +52,7 @@ export const fil = $state({
 
 let jeton = 0;
 
-// R5 (PLAN-RETOURS-12) : le dernier bilan de `noms_adresses`, clé =
+// R5 (PLAN-RETOURS-12) : le dernier bilan de `address_names`, clé =
 // adresses jointes. Il vit ICI et non dans le composant : Fil est
 // démonté/remonté à chaque bascule de cadre (volet ↔ écran 03), et sans
 // ce cache chaque bascule repartait en RPC pour les MÊMES adresses

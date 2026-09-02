@@ -5,7 +5,7 @@
   // display, le CORPS entier (document auto-CSP, iframe sandbox S1),
   // le ⋯ de gestes. R10 renverse le « rien n'est marqué lu » d'A100 :
   // une carte dont le BAS de l'élévation a été affiché est LUE (témoin
-  // IntersectionObserver → `kiosque_marquer_lu`, patron pins) — la
+  // IntersectionObserver → `feed_mark_read`, patron pins) — la
   // scène se coupe en « Non lus » (dépliées, chronologique) et « Lus
   // précédemment » (groupes par expéditeur à l'alphabet, repliés en
   // pile — D5). Le sectionnement se calcule AU SERVICE de la page :
@@ -45,7 +45,7 @@
     const nee = ++generation;
     enVol = true;
     try {
-      const page = await appel('kiosque_cartes', {
+      const page = await appel('feed_cards', {
         accountId: compte,
         offset: depuis,
         limit: PAGE,
@@ -83,7 +83,7 @@
           .catch(() => {});
       }
     } catch (err) {
-      console.error('kiosque_cartes :', err);
+      console.error('feed_cards :', err);
     } finally {
       if (nee === generation) enVol = false;
     }
@@ -269,7 +269,7 @@
     if (marquees.has(k)) return;
     marquees.add(k);
     try {
-      await appel('kiosque_marquer_lu', {
+      await appel('feed_mark_read', {
         accountId: carte.row.account_id,
         mailbox: carte.row.mailbox,
         uid: carte.row.uid,
@@ -280,7 +280,7 @@
       // nœud désobservé ne repasse jamais) et la marque se rejouera.
       marquees.delete(k);
       if (temoins.has(temoin)) observateur?.observe(temoin);
-      console.error('kiosque_marquer_lu :', err);
+      console.error('feed_mark_read :', err);
     }
   }
 

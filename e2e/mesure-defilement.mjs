@@ -7,7 +7,7 @@
 // Hypothèse à éprouver (jamais de supposition sans mesure) : chaque
 // position intermédiaire du drag déclenche ses pages `list_category`
 // (O(offset) hors réception), rien n'annule les pages devenues
-// invisibles, et le verrou global de `hors_pompe` sérialise le tout —
+// invisibles, et le verrou global de `off_pump` sérialise le tout —
 // la file se draine en minutes, TOUTES les commandes attendent derrière.
 //
 // Comptage : la couture `window.__e2eJournal` de transport.js (posée

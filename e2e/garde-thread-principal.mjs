@@ -5,7 +5,7 @@
 // pour toute sa durée (constat du 2026-08-15 : gels de 2 à 4,6 s au
 // démarrage, 25,2 s cumulés sur 40 s — la fenêtre « ne répond pas »).
 // Et `async` seul ne suffit pas : le corps bloquant passe par
-// `hors_pompe` (spawn_blocking + verrou des commandes), sinon il épingle
+// `off_pump` (spawn_blocking + verrou des commandes), sinon il épingle
 // un worker tokio — le gel quitte la fenêtre pour la file IPC.
 //
 //   node garde-thread-principal.mjs   -> commandes fautives + verdict
@@ -25,7 +25,7 @@
 // silencieux.
 //
 // Le remède est toujours le même : passer la commande en `async fn` et
-// son corps par `hors_pompe` — jamais allonger l'exemption sans la même
+// son corps par `off_pump` — jamais allonger l'exemption sans la même
 // preuve de pureté.
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
@@ -40,7 +40,7 @@ const sources = path.join(root, 'apps', 'desktop', 'src');
 //   (`sonde-gel.py`, 150 ms) attraperait toute dérive ;
 // - migration_progress : lecture d'atomiques partagés ;
 // - migration_cancel : écriture d'un atomique ;
-// - reseau_etat : un atomique, plus UN `sync_reculs.lock()` court
+// - network_state : un atomique, plus UN `sync_reculs.lock()` court
 //   (clear d'une petite map au retour du réseau) — même garde-fou que
 //   sync_activity : la sonde mesure, le budget tranche ;
 // - app_version : lecture du manifeste en mémoire ;
@@ -55,7 +55,7 @@ const PURES = new Set([
   'sync_activity',
   'migration_progress',
   'migration_cancel',
-  'reseau_etat',
+  'network_state',
   'app_version',
   'open_link',
   'telemetry_selftest_panic',
@@ -70,10 +70,10 @@ const MARQUEURS = ['Store::', 'db_path(', 'std::fs', 'File::', 'keyring', 'read_
 // PLAN-AUDIT-V1 E5 (audit 2026-09-01 S1-2) : la garde s'arrêtait au
 // mot-clé `async` — dix-sept commandes ouvraient la base, lisaient le
 // coffre ou écrivaient un fichier DANS le corps async, hors
-// `hors_pompe` : le blocage quittait la pompe pour un worker tokio
+// `off_pump` : le blocage quittait la pompe pour un worker tokio
 // (workers = cœurs) et échappait au verrou des commandes (ADR 0019).
 // Règle : le corps d'une commande async, une fois RETIRÉS les appels
-// `hors_pompe(...)` et `spawn_blocking(...)` (parenthèses équilibrées),
+// `off_pump(...)` et `spawn_blocking(...)` (parenthèses équilibrées),
 // n'est que de la glu — aucun de ces marqueurs n'y a sa place.
 // `db_path(` n'y est PAS : depuis E5 c'est une lecture pure (OnceLock,
 // le dossier est créé au premier appel) — il reste dans MARQUEURS pour
@@ -89,7 +89,7 @@ const MARQUEURS_GLU = [
   'connect_imap(',
   'trace_maj(',
 ];
-const HORS_POMPE = ['hors_pompe(', 'spawn_blocking('];
+const HORS_POMPE = ['off_pump(', 'spawn_blocking('];
 
 // Retire du texte chaque appel `nom(...)` avec ses parenthèses
 // équilibrées — ce qui reste est la glu que la commande exécute
@@ -156,21 +156,21 @@ for (const fichier of readdirSync(sources).filter((f) => f.endsWith('.rs'))) {
         );
         continue;
       }
-      // E5 : async ne suffit pas — le bloquant passe par hors_pompe.
+      // E5 : async ne suffit pas — le bloquant passe par off_pump.
       const ouvranteAsync = texte.indexOf('{', prise.index + prise[0].length);
       if (ouvranteAsync === -1) continue;
       const glu = sansLesAppels(corps(texte, ouvranteAsync), HORS_POMPE);
       const dansLaGlu = MARQUEURS_GLU.filter((m) => glu.includes(m));
       if (dansLaGlu.length > 0) {
         echec(
-          `${fichier} : la commande async \`${nom}\` touche ${dansLaGlu.join(', ')} HORS de hors_pompe/spawn_blocking — bloque un worker tokio sans le verrou des commandes (ADR 0019)`,
+          `${fichier} : la commande async \`${nom}\` touche ${dansLaGlu.join(', ')} HORS de off_pump/spawn_blocking — bloque un worker tokio sans le verrou des commandes (ADR 0019)`,
         );
       }
       continue;
     }
     if (!PURES.has(nom)) {
       echec(
-        `${fichier} : la commande synchrone \`${nom}\` s'exécute sur le thread principal — la passer en \`async fn\` + \`hors_pompe\` (ou prouver sa pureté et l'exempter)`,
+        `${fichier} : la commande synchrone \`${nom}\` s'exécute sur le thread principal — la passer en \`async fn\` + \`off_pump\` (ou prouver sa pureté et l'exempter)`,
       );
       continue;
     }
@@ -180,7 +180,7 @@ for (const fichier of readdirSync(sources).filter((f) => f.endsWith('.rs'))) {
     const trouves = MARQUEURS.filter((m) => interieur.includes(m));
     if (trouves.length > 0) {
       echec(
-        `${fichier} : \`${nom}\` est exemptée comme pure mais touche ${trouves.join(', ')} — la passer en \`async fn\` + \`hors_pompe\``,
+        `${fichier} : \`${nom}\` est exemptée comme pure mais touche ${trouves.join(', ')} — la passer en \`async fn\` + \`off_pump\``,
       );
     }
   }

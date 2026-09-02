@@ -4,7 +4,7 @@
 // Constat terrain du 2026-08-20, mesuré au banc mesure-defilement.mjs :
 // un drag de 2 s déclenchait ~161 `list_category` (une page par
 // position traversée, jamais annulée), la file sérialisée de
-// `hors_pompe` se drainait en minutes sur la vraie base, et pendant ce
+// `off_pump` se drainait en minutes sur la vraie base, et pendant ce
 // temps TOUS les dossiers disaient « Aucun message ici. » — le
 // changement de source remettait `total = 0` sans invalider la garde
 // d'affichage du vide.

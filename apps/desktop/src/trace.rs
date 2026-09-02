@@ -1,102 +1,103 @@
-//! La trace terrain (PLAN-AUDIT-V1 E9, STANDARD §6.8) : une ligne datée
-//! sur stderr ET en append dans `wind.log` à côté de la base, bornée à
-//! un méga (décision CE D4 : tronquée, le fichier repart de zéro).
+//! The field trace (PLAN-AUDIT-V1 E9, STANDARD §6.8): a dated line on
+//! stderr AND appended to `wind.log` next to the database, bounded to
+//! one meg (CE decision D4: truncated, the file starts over from
+//! zero).
 //!
-//! Pourquoi un fichier : l'app livrée est sous-système *windows*, elle
-//! n'a pas de stderr — trois mises à jour (0.13.0 → 0.15.0) sont passées
-//! sans qu'aucune mesure ne survive, jusqu'au poka-yoke `maj.log`
-//! (`trace_maj`). Le même patron, généralisé : relève, passe d'après-
-//! geste, vidange, veilleurs, horizon illisible.
+//! Why a file: the shipped app is a *windows* subsystem, it has no
+//! stderr — three updates (0.13.0 → 0.15.0) went by without any
+//! measurement surviving, until the `maj.log` poka-yoke (`trace_update`).
+//! The same pattern, generalized: poll, pass-after-gesture, drain,
+//! watchers, unreadable horizon.
 //!
-//! Ce qui n'y entre JAMAIS (§6.8) : ni sujet, ni expéditeur, ni corps —
-//! des identifiants, des durées, des décomptes, des erreurs.
+//! What NEVER goes in here (§6.8): no subject, no sender, no body —
+//! identifiers, durations, counts, errors.
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-/// Au-delà, le fichier est tronqué (D4).
-pub(crate) const BORNE_OCTETS: u64 = 1_000_000;
-const NOM: &str = "wind.log";
+/// Beyond this, the file is truncated (D4).
+pub(crate) const BYTE_LIMIT: u64 = 1_000_000;
+const NAME: &str = "wind.log";
 
-static DOSSIER: OnceLock<PathBuf> = OnceLock::new();
+static FOLDER: OnceLock<PathBuf> = OnceLock::new();
 
-/// Le dossier de la base, posé UNE fois au démarrage — avant, la trace
-/// ne sort que sur stderr.
-pub(crate) fn initialiser(dossier: PathBuf) {
-    let _ = DOSSIER.set(dossier);
+/// To call ONCE at startup — before that, the trace only goes out on
+/// stderr.
+pub(crate) fn init(folder: PathBuf) {
+    let _ = FOLDER.set(folder);
 }
 
-/// Une ligne de trace : stderr (console d'un `cargo run`) + `wind.log`.
-/// Toute erreur d'écriture s'ignore — une trace ne fait jamais échouer
-/// le geste qu'elle décrit.
-pub(crate) fn trace(ligne: &str) {
-    eprintln!("{ligne}");
-    if let Some(dossier) = DOSSIER.get() {
-        ecrire_dans(dossier, ligne);
+/// A trace line: stderr (console of a `cargo run`) + `wind.log`. Any
+/// write error is ignored — a trace must never make the gesture it
+/// describes fail.
+pub(crate) fn trace(line: &str) {
+    eprintln!("{line}");
+    if let Some(folder) = FOLDER.get() {
+        write_to(folder, line);
     }
 }
 
-pub(crate) fn ecrire_dans(dossier: &Path, ligne: &str) {
-    let _ = std::fs::create_dir_all(dossier);
-    let chemin = dossier.join(NOM);
-    let trop_gros = std::fs::metadata(&chemin)
-        .map(|m| m.len() >= BORNE_OCTETS)
+pub(crate) fn write_to(folder: &Path, line: &str) {
+    let _ = std::fs::create_dir_all(folder);
+    let path = folder.join(NAME);
+    let too_big = std::fs::metadata(&path)
+        .map(|m| m.len() >= BYTE_LIMIT)
         .unwrap_or(false);
-    let datee = format!(
-        "{} {ligne}\n",
+    let dated = format!(
+        "{} {line}\n",
         chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ")
     );
     let _ = std::fs::OpenOptions::new()
         .create(true)
-        .append(!trop_gros)
+        .append(!too_big)
         .write(true)
-        .truncate(trop_gros)
-        .open(&chemin)
-        .and_then(|mut fichier| fichier.write_all(datee.as_bytes()));
+        .truncate(too_big)
+        .open(&path)
+        .and_then(|mut file| file.write_all(dated.as_bytes()));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn dossier_temporaire(nom: &str) -> PathBuf {
-        let dossier = std::env::temp_dir().join(format!("wind-trace-{nom}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dossier);
-        std::fs::create_dir_all(&dossier).unwrap();
-        dossier
+    fn temp_folder(name: &str) -> PathBuf {
+        let folder = std::env::temp_dir().join(format!("wind-trace-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).unwrap();
+        folder
     }
 
-    /// D4 : passé un méga, le fichier repart de zéro — jamais un journal
-    /// qui grossit à vie à côté de la base.
+    /// D4: past one meg, the file starts over from zero — never a log
+    /// that grows forever next to the database.
     #[test]
-    fn la_trace_est_bornee_a_un_mega() {
-        let dossier = dossier_temporaire("borne");
-        let ligne = "x".repeat(10_000);
+    fn the_trace_is_bounded_to_one_meg() {
+        let folder = temp_folder("bound");
+        let line = "x".repeat(10_000);
         for _ in 0..110 {
-            ecrire_dans(&dossier, &ligne);
+            write_to(&folder, &line);
         }
-        let taille = std::fs::metadata(dossier.join(NOM)).unwrap().len();
+        let size = std::fs::metadata(folder.join(NAME)).unwrap().len();
         assert!(
-            taille < BORNE_OCTETS + 20_000,
-            "tronquée au passage du méga : {taille} octets"
+            size < BYTE_LIMIT + 20_000,
+            "truncated past one meg: {size} bytes"
         );
-        assert!(taille > 0);
-        let _ = std::fs::remove_dir_all(&dossier);
+        assert!(size > 0);
+        let _ = std::fs::remove_dir_all(&folder);
     }
 
-    /// Chaque ligne est datée en UTC ISO 8601 — lisible après coup,
-    /// alignable sur l'horodatage d'un geste.
+    /// Every line is dated in UTC ISO 8601 — readable afterwards,
+    /// alignable with a gesture's timestamp.
     #[test]
-    fn chaque_ligne_est_datee() {
-        let dossier = dossier_temporaire("datee");
-        ecrire_dans(&dossier, "releve compte 1 : INBOX 0.4s");
-        let contenu = std::fs::read_to_string(dossier.join(NOM)).unwrap();
+    fn every_line_is_dated() {
+        let folder = temp_folder("dated");
+        write_to(&folder, "poll account 1: INBOX 0.4s");
+        let content = std::fs::read_to_string(folder.join(NAME)).unwrap();
         assert!(
-            contenu.starts_with("20")
-                && contenu.contains("T")
-                && contenu.contains("Z releve compte 1"),
-            "{contenu}"
+            content.starts_with("20")
+                && content.contains("T")
+                && content.contains("Z poll account 1"),
+            "{content}"
         );
-        let _ = std::fs::remove_dir_all(&dossier);
+        let _ = std::fs::remove_dir_all(&folder);
     }
 }

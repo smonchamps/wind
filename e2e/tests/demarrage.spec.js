@@ -16,7 +16,7 @@
 //
 // CE QUE CE TEST PROUVE — et rien de plus : l'ordre d'ÉMISSION des
 // commandes au démarrage. Il ne prouve PAS l'ordre de SERVICE :
-// `hors_pompe` prend un `std::sync::Mutex` depuis un `spawn_blocking`, et
+// `off_pump` prend un `std::sync::Mutex` depuis un `spawn_blocking`, et
 // un mutex n'est pas équitable. La preuve opposable du gain reste le
 // palier mesuré au banc sur base à masse réelle.
 //
@@ -46,9 +46,9 @@ test.afterAll(async () => {
 // périodique » serait vraie par construction (les intervalles ne tirent
 // qu'à 5 s au plus tôt) et ne pourrait jamais échouer.
 const SONDES = [
-  'etat_ui',
-  'reperes_get',
-  'noms_get',
+  'ui_state',
+  'markers_get',
+  'names_get',
   'list_drafts',
   'telemetry_pending',
   'telemetry_consent_get',

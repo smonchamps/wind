@@ -2,8 +2,8 @@
   // RETOURS-14 R6 (D7) : le Registre GROUPÉ par expéditeur — un rang
   // par expéditeur routé, trié par récence du dernier message (le
   // patron du Nettoyage, jamais l'alphabet — D7), déplié sur ses fils.
-  // La donnée reste le flot routé (`registre_groupes` /
-  // `registre_groupe_page`, mêmes bornes que la vue plate) ; ouvrir un
+  // La donnée reste le flot routé (`paper_trail_groups` /
+  // `paper_trail_group_page`, mêmes bornes que la vue plate) ; ouvrir un
   // fil passe par le chemin de la liste (`onouvrir` → App), le volet
   // de lecture reste le lecteur.
   import Icone from './Icone.svelte';
@@ -51,7 +51,7 @@
   async function charger() {
     const j = (jeton += 1);
     try {
-      const g = await appel('registre_groupes', { accountId: compte });
+      const g = await appel('paper_trail_groups', { accountId: compte });
       if (j !== jeton) return;
       groupes = g;
       servi = true;
@@ -62,7 +62,7 @@
         messagesOuverts = [];
       }
     } catch (err) {
-      console.error('registre_groupes :', err);
+      console.error('paper_trail_groups :', err);
     }
   }
 
@@ -89,7 +89,7 @@
     messagesOuverts = [];
     plusPossible = false;
     try {
-      const rows = await appel('registre_groupe_page', {
+      const rows = await appel('paper_trail_group_page', {
         address, accountId: compte, offset: 0, limit: PAGE,
       });
       if (ouvert === address) {
@@ -97,7 +97,7 @@
         plusPossible = rows.length === PAGE;
       }
     } catch (err) {
-      console.error('registre_groupe_page :', err);
+      console.error('paper_trail_group_page :', err);
     }
   }
   async function chargerPlus() {
@@ -105,7 +105,7 @@
     chargementPlus = true;
     const address = ouvert;
     try {
-      const rows = await appel('registre_groupe_page', {
+      const rows = await appel('paper_trail_group_page', {
         address, accountId: compte, offset: messagesOuverts.length, limit: PAGE,
       });
       if (ouvert === address) {
@@ -113,7 +113,7 @@
         plusPossible = rows.length === PAGE;
       }
     } catch (err) {
-      console.error('registre_groupe_page :', err);
+      console.error('paper_trail_group_page :', err);
     } finally {
       chargementPlus = false;
     }

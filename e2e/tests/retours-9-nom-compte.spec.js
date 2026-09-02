@@ -91,7 +91,7 @@ test('vider le nom rend l’adresse à la nav', async () => {
   await page.locator('[data-testid="nom-champ"]').fill('');
   await page.locator('[data-testid="nom-enregistrer"]').click();
   // Attendre la clôture de la carte (l'écriture est passée) avant de
-  // fermer la surimpression — sinon un nom_set lent meurt en timeout
+  // fermer la surimpression — sinon un name_set lent meurt en timeout
   // opaque sur la nav.
   await expect(page.locator('[data-testid="reglages-nom"]')).toHaveCount(0);
   await page.locator('[data-testid="reglages-termine"]').click();

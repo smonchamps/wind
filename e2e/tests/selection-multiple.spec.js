@@ -209,7 +209,7 @@ test('archiver groupé : un seul toast, les fils partent ENTIERS (D6)', async ()
     delete window.__e2eJournal;
     return commandes;
   });
-  expect(gestes.filter((c) => c === 'agir_groupe')).toHaveLength(1);
+  expect(gestes.filter((c) => c === 'act_on_group')).toHaveLength(1);
   expect(gestes).not.toContain('archive_message');
   expect(gestes).not.toContain('thread_messages');
   await expect(barre()).toHaveCount(0);

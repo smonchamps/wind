@@ -1,33 +1,34 @@
-// La feature `mesure` (banc de demarrage) GARDE la console : un binaire
-// `windows_subsystem = "windows"` n'a pas de stderr, et les spans d'amont
-// n'auraient nulle part ou s'ecrire. Le binaire livre, lui, ne change pas —
-// la release ne passe jamais la feature.
+// The `mesure` feature (startup bench) KEEPS the console: a binary
+// built with `windows_subsystem = "windows"` has no stderr, and the
+// upstream spans would have nowhere to write. The shipped binary
+// itself does not change — the release build never carries the
+// feature.
 #![cfg_attr(
     all(not(debug_assertions), not(feature = "mesure")),
     windows_subsystem = "windows"
 )]
-//! Shell desktop : la fenêtre Tauri branchée sur le noyau.
+//! Desktop shell: the Tauri window wired to the core.
 //!
-//! L'UI est « bête » (PLAN.md §3) : elle affiche l'état et émet des
-//! intentions via les commandes de [`commands`] ; toute l'intelligence vit
-//! dans mail-core / mail-imap / mail-smtp / mail-auth.
+//! The UI is "dumb" (PLAN.md §3): it displays the state and emits
+//! intents through the commands of [`commands`]; all the intelligence
+//! lives in mail-core / mail-imap / mail-smtp / mail-auth.
 
 mod commands;
-mod demenagement;
 mod instance;
+mod relocation;
 mod telemetry;
 mod trace;
-mod veilleur;
+mod watcher;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-/// L'avancement de la migration d'une base héritée, partagé entre la
-/// passe (qui écrit) et l'UI (qui sonde en boucle et peut annuler).
-/// Des atomiques, pas un Mutex : la passe écrit tous les 1 000 messages,
-/// le sondage ne doit jamais la faire attendre.
+/// The progress of a legacy database's migration, shared between the
+/// pass (which writes) and the UI (which polls in a loop and can
+/// cancel). Atomics, not a Mutex: the pass writes every 1,000
+/// messages, polling must never make it wait.
 #[derive(Default)]
 pub(crate) struct MigrationShared {
     pub done: AtomicU64,
@@ -35,159 +36,164 @@ pub(crate) struct MigrationShared {
     pub cancel: AtomicBool,
 }
 
-/// L'activité du cycle de synchronisation (PLAN-SYNCHRO E1), partagée
-/// entre la boucle (qui écrit) et l'UI (qui sonde à la seconde pendant
-/// le cycle). Des atomiques, comme la migration : le sondage ne doit
-/// jamais faire attendre la boucle. Le compte courant — seul texte —
-/// vit sous un Mutex écrit une fois par compte, jamais dans une boucle
-/// chaude.
+/// The sync cycle's activity (PLAN-SYNCHRO E1), shared between the
+/// loop (which writes) and the UI (which polls every second during
+/// the cycle). Atomics, like the migration: polling must never make
+/// the loop wait. The current account — the only text — lives under a
+/// Mutex written once per account, never in a hot loop.
 #[derive(Default)]
 pub(crate) struct SyncShared {
-    pub en_cours: AtomicBool,
+    pub in_progress: AtomicBool,
     pub fait: AtomicU64,
     pub total: AtomicU64,
     pub compte: Mutex<String>,
-    /// La boîte en cours de relève DANS le compte — terrain du
-    /// 2026-08-13 : « 2/2 · compte » figé 7 minutes pendant le balayage
-    /// des dossiers, sans aucune information. Vide entre deux boîtes.
+    /// The mailbox currently being polled WITHIN the account — field
+    /// finding of 2026-08-13: "2/2 · account" frozen for 7 minutes
+    /// during the folder sweep, with no information at all. Empty
+    /// between two mailboxes.
     pub boite: Mutex<String>,
-    /// L'étape sans boîte (clé de catalogue côté UI : `inventaire`,
-    /// `fils`, `brouillons`) — second terrain du 2026-08-13 : « INBOX »
-    /// couvrait quatre phases distinctes, l'observation était aveugle.
-    /// Exclusif avec `boite` ; vide sinon.
+    /// The step with no mailbox (catalogue key on the UI side:
+    /// `inventaire`, `fils`, `brouillons`) — second field finding of
+    /// 2026-08-13: "INBOX" covered four distinct phases, observation
+    /// was blind. Exclusive with `boite`; empty otherwise.
     pub phase: Mutex<String>,
-    /// Courrier d'INBOX déjà visible en base DANS le cycle courant
-    /// (arrivées + retraits, cumulés compte après compte) — P1
-    /// (PLAN-SYNCHRO) : la sonde le lit et recharge la liste dès la
-    /// relève INBOX d'un compte soldée, sans attendre la fin du cycle.
-    /// Un compteur sondé, pas un canal : le port UI reste R0-S5.
+    /// INBOX mail already visible in the database WITHIN the current
+    /// cycle (arrivals + removals, cumulated account after account) —
+    /// P1 (PLAN-SYNCHRO): the probe reads it and reloads the list as
+    /// soon as an account's INBOX poll is settled, without waiting for
+    /// the cycle to end. A polled counter, not a channel: the UI port
+    /// stays R0-S5.
     pub courrier: AtomicU64,
-    /// Génération de courrier, MONOTONE et jamais remise à zéro (E4) :
-    /// bumpée à chaque relève INBOX qui a rapporté ou retiré du
-    /// courrier — cycle, bouton, veilleur IDLE confondus. L'UI la lit
-    /// à la sonde de `sync_progress` (5 s, déjà en place) et recharge
-    /// la liste quand elle bouge : c'est ainsi que le courrier signalé
-    /// par un veilleur se montre AU REPOS, sans canal neuf (R0-S5).
+    /// Mail generation, MONOTONIC and never reset (E4): bumped on
+    /// every INBOX poll that brought in or removed mail — cycle,
+    /// button, IDLE watcher alike. The UI reads it at the
+    /// `sync_progress` poll (5 s, already in place) and reloads the
+    /// list when it moves: that is how mail signaled by a watcher
+    /// shows up AT REST, with no new channel (R0-S5).
     pub generation: AtomicU64,
 }
 
-/// Le recul d'un compte en échec (complément P0, anti-martèlement) :
-/// combien d'échecs CONSÉCUTIFS, et depuis quand. En mémoire seulement —
-/// un redémarrage repart confiant, et c'est voulu : le recul protège le
-/// serveur d'une boucle, pas d'un utilisateur qui relance son
+/// The backoff of an account in failure (P0 complement, anti-hammering):
+/// how many CONSECUTIVE failures, and since when. In memory only — a
+/// restart starts over trusting, and that is intentional: the backoff
+/// protects the server from a loop, not from a user restarting their
 /// application.
-pub(crate) struct Recul {
-    pub echecs: u32,
-    pub depuis: Instant,
+pub(crate) struct Backoff {
+    pub failures: u32,
+    pub since: Instant,
 }
 
-/// L'état de la passe d'après-geste d'un compte (PLAN-REACTIVITE E3) :
-/// un vol à la fois, coalescé — une demande pendant le vol lève le
-/// drapeau, la passe rejoue UNE fois en sortant. Archiver dix messages
-/// n'ouvre pas dix passes.
+/// The state of an account's post-gesture pass (PLAN-REACTIVITE E3):
+/// one flight at a time, coalesced — a request during the flight
+/// raises the flag, the pass replays ONCE on the way out. Archiving
+/// ten messages does not open ten passes.
 #[derive(Default)]
-pub(crate) struct VolPasse {
-    pub en_vol: bool,
-    pub redemande: bool,
+pub(crate) struct PassFlight {
+    pub in_flight: bool,
+    pub rerequest: bool,
 }
 
 pub(crate) struct AppState {
-    /// Sessions des comptes connectés, par email (multi-comptes).
+    /// Connected accounts' sessions, by email (multi-account).
     pub accounts: Mutex<HashMap<String, mail_auth::AccountSession>>,
-    /// Sérialise les vidanges de la boîte d'envoi : deux pompes
-    /// concurrentes mettraient en quarantaine les envois l'une de l'autre.
+    /// Serializes outbox flushes: two concurrent pumps would quarantine
+    /// each other's sends.
     pub outbox_flush: Arc<Mutex<()>>,
-    /// Sérialise la poussée des brouillons vers Gmail : deux poussées
-    /// concurrentes créeraient des copies distantes en double.
+    /// Serializes pushing drafts to Gmail: two concurrent pushes would
+    /// create duplicate remote copies.
     pub drafts_push: Arc<Mutex<()>>,
-    /// Sérialise le rattrapage des corps : deux pompes concurrentes
-    /// se disputeraient la bande passante et les mêmes messages.
+    /// Serializes the backfill of bodies: two concurrent pumps would
+    /// fight over bandwidth and the same messages.
     pub bodies_backfill: Arc<Mutex<()>>,
-    /// Avancement et annulation de la migration visible (Phase 5).
+    /// Progress and cancellation of the visible migration (Phase 5).
     pub migration: Arc<MigrationShared>,
-    /// Activité du cycle de synchronisation, pour la barre d'état (E1).
+    /// Sync cycle activity, for the status bar (E1).
     pub sync_cycle: Arc<SyncShared>,
-    /// Reculs par compte (email → échecs consécutifs) : le cycle et la
-    /// passe légère SAUTENT un compte en recul — sans le taire, il reste
-    /// compté injoignable. Le geste manuel force toujours la tentative.
-    pub sync_reculs: Arc<Mutex<HashMap<String, Recul>>>,
-    /// Un verrou de relève PAR compte (email → verrou) : cycle, bouton
-    /// et veilleur IDLE peuvent vouloir relever le même INBOX en même
-    /// temps — deux relèves concurrentes du même compte seraient
-    /// idempotentes mais paieraient double. Un compte à la fois.
-    pub verrous_releve: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
-    /// Les veilleurs IDLE (ADR 0018) : email → drapeau de vie. Éteindre
-    /// le drapeau arrête le veilleur à son prochain tour (≤ relance).
-    pub veilleurs: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
-    /// L'état réseau remonté par l'UI (P0-bis) : hors ligne, les
-    /// veilleurs dorment au lieu de reconnecter en boucle.
+    /// Backoffs per account (email → consecutive failures): the cycle
+    /// and the light pass SKIP an account in backoff — without hiding
+    /// it, it stays counted as unreachable. A manual gesture always
+    /// forces the attempt.
+    pub sync_backoffs: Arc<Mutex<HashMap<String, Backoff>>>,
+    /// One poll lock PER account (email → lock): the cycle, the
+    /// button, and the IDLE watcher may all want to poll the same
+    /// INBOX at the same time — two concurrent polls of the same
+    /// account would be idempotent but pay twice. One account at a
+    /// time.
+    pub poll_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
+    /// The IDLE watchers (ADR 0018): email → life flag. Turning off the
+    /// flag stops the watcher on its next turn (≤ restart).
+    pub watchers: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
+    /// The network state reported by the UI (P0-bis): offline, the
+    /// watchers sleep instead of reconnecting in a loop.
     pub en_ligne: Arc<AtomicBool>,
-    /// Les passes d'après-geste en vol, par compte (E3) : un vol à la
-    /// fois, les demandes pendant le vol se coalescent.
-    pub passes_geste: Arc<Mutex<HashMap<String, VolPasse>>>,
-    /// Le verrou des commandes (PLAN-GELS) : les commandes bloquantes
-    /// s'exécutent hors de la pompe (`spawn_blocking`) MAIS une à la
-    /// fois, comme quand le thread principal les sérialisait — sans ce
-    /// verrou, deux paires lecture-décision-écriture se croiseraient
-    /// (état local vs file d'actions de `mark_flagged`, TOCTOU des
-    /// brouillons). La fenêtre reste libre ; la sérialisation reste.
-    pub commandes: Arc<Mutex<()>>,
+    /// Post-gesture passes in flight, per account (E3): one flight at
+    /// a time, requests during the flight coalesce.
+    pub gesture_passes: Arc<Mutex<HashMap<String, PassFlight>>>,
+    /// The commands lock (PLAN-GELS): blocking commands run off the
+    /// pump (`spawn_blocking`) BUT one at a time, as when the main
+    /// thread used to serialize them — without this lock, two
+    /// read-decide-write pairs would cross (local state vs the
+    /// action queue of `mark_flagged`, drafts TOCTOU). The window
+    /// stays free; the serialization stays.
+    pub commands: Arc<Mutex<()>>,
 }
 
-/// Banc de démarrage (feature `mesure`) : armer le collecteur AVANT tout,
-/// pour que les spans d'amont soient captés dès leur ouverture.
+/// Startup bench (`mesure` feature): arm the collector BEFORE anything
+/// else, so the upstream spans are captured from the moment they open.
 ///
-/// Rien à instrumenter nous-mêmes — les spans existent déjà :
-/// `wry::window::create` (la fenêtre tao seule), `wry::webview::create`
-/// (toute la fonction, fenêtre + webview), `wry::window::draw` (fenêtre
-/// créée → première trame). La TRANCHE cherchée est leur différence :
+/// Nothing to instrument ourselves — the spans already exist:
+/// `wry::window::create` (the tao window alone), `wry::webview::create`
+/// (the whole function, window + webview), `wry::window::draw` (window
+/// created → first frame). The SLICE sought is their difference:
 /// `webview::create` − `window::create`.
 ///
-/// Ce sont des `debug_span!` : au niveau par défaut rien n'est enregistré,
-/// d'où le `DEBUG` explicite. `FmtSpan::CLOSE` n'imprime qu'à la fermeture,
-/// avec la durée — on ne veut pas le détail des événements.
-/// Le filtre est INDISPENSABLE, pas un confort : sans lui, le span
-/// `app::setup` de tauri (pose par `#[instrument]`, donc invisible a un
-/// grep de `span!`) porte le Debug ENTIER de `App` — plusieurs milliers de
-/// caracteres recrachés sur stderr a CHAQUE fermeture de span, et cette
-/// ecriture tombe DANS `wry::webview::create`, c'est-a-dire dans la tranche
-/// qu'on pretend mesurer. Constate au premier run d'observation.
+/// These are `debug_span!`s: at the default level nothing is recorded,
+/// hence the explicit `DEBUG`. `FmtSpan::CLOSE` only prints on close,
+/// with the duration — we do not want event-level detail. The filter
+/// is ESSENTIAL, not a convenience: without it, tauri's `app::setup`
+/// span (laid down by `#[instrument]`, hence invisible to a `grep` for
+/// `span!`) carries the ENTIRE Debug of `App` — several thousand
+/// characters spat out on stderr on EVERY span close, and that write
+/// lands INSIDE `wry::webview::create`, i.e. inside the very slice
+/// being measured. Found on the first observation run.
 ///
-/// On ne garde donc que les deux cibles utiles : `tauri_runtime_wry` en
-/// DEBUG (les trois spans de creation) et `wry` en INFO (l'IPC et le
-/// service des assets, qui sont des `info_span!`).
+/// So we keep only the two useful targets: `tauri_runtime_wry` at
+/// DEBUG (the three creation spans) and `wry` at INFO (IPC and asset
+/// serving, which are `info_span!`s).
 #[cfg(feature = "mesure")]
-fn armer_les_spans() {
+fn arm_spans() {
     use tracing_subscriber::filter::LevelFilter;
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
 
-    let couche = tracing_subscriber::fmt::layer()
+    let layer = tracing_subscriber::fmt::layer()
         .with_span_events(tracing_subscriber::fmt::format::FmtSpan::CLOSE)
         .with_ansi(false)
         .with_writer(std::io::stderr);
-    let cibles = tracing_subscriber::filter::Targets::new()
+    let targets = tracing_subscriber::filter::Targets::new()
         .with_target("tauri_runtime_wry", LevelFilter::DEBUG)
         .with_target("wry", LevelFilter::INFO)
-        // `tauri::ipc` SEULEMENT, et non `tauri` : le prefixe evite le span
-        // `app::setup`, qui recracherait le Debug entier de `App`. Donne un
-        // span par COMMANDE traitee — de quoi distinguer un transport
-        // dedouble d'une commande reellement executee deux fois.
+        // `tauri::ipc` ONLY, not `tauri`: the prefix avoids the
+        // `app::setup` span, which would spit out the entire Debug of
+        // `App`. Gives one span per COMMAND handled — enough to tell
+        // a doubled transport from a command genuinely executed
+        // twice.
         .with_target("tauri::ipc", LevelFilter::TRACE)
-        // Nos propres jalons (`mesure::*`), posés dans les commandes dont
-        // le span d'amont donne le TOTAL sans dire ce qu'il recouvre.
+        // Our own markers (`mesure::*`), placed inside the commands
+        // whose upstream span gives the TOTAL without saying what it
+        // covers.
         .with_target("wind_desktop", LevelFilter::DEBUG);
     let _ = tracing_subscriber::registry()
-        .with(couche)
-        .with(cibles)
+        .with(layer)
+        .with(targets)
         .try_init();
 }
 
-/// Un message modal AVANT toute fenêtre Tauri, puis la sortie. `rfd`
-/// est ce que le plugin dialog emballe ; ici il n'y a pas encore
-/// d'`AppHandle` (la fenêtre naîtrait avant `setup`, tauri `app.rs`).
-/// La trace le dit aussi, pour les lancements en console.
-fn avertir_et_sortir(message: &str, code: i32) -> ! {
+/// A modal message BEFORE any Tauri window, then exit. `rfd` is what
+/// the dialog plugin wraps; there is no `AppHandle` yet at this point
+/// (the window would be born before `setup`, tauri `app.rs`). The
+/// trace says it too, for console launches.
+fn warn_and_exit(message: &str, code: i32) -> ! {
     eprintln!("{message}");
     rfd::MessageDialog::new()
         .set_title("Wind")
@@ -203,42 +209,45 @@ fn avertir_et_sortir(message: &str, code: i32) -> ! {
 
 fn main() {
     #[cfg(feature = "mesure")]
-    armer_les_spans();
-    // Le déménagement Discovery → Wind (PLAN-WIND E3) passe AVANT tout :
-    // ni la base ni le profil WebView2 ne doivent naître côté Wind
-    // pendant qu'un poste Discovery attend son rename. Échec = arrêt
-    // net — continuer offrirait une application vide à un utilisateur
-    // dont les données sont à un rename de là.
-    if let Err(err) = demenagement::demenager() {
-        // En release le binaire n'a pas de console : sans boîte de
-        // dialogue, « l'application ne démarre pas » sans un mot (audit
-        // 2026-09-01).
-        avertir_et_sortir(
+    arm_spans();
+    // The Discovery → Wind relocation (PLAN-WIND E3) comes BEFORE
+    // anything else: neither the database nor the WebView2 profile
+    // must be born on the Wind side while a Discovery workstation is
+    // waiting on its rename. Failure = a hard stop — continuing would
+    // offer an empty application to a user whose data is one rename
+    // away.
+    if let Err(err) = relocation::relocate() {
+        // In release the binary has no console: without a dialog box,
+        // "the application does not start" without a word (2026-09-01
+        // audit).
+        warn_and_exit(
             &format!(
                 "Échec du déménagement des données Discovery → Wind : {err}\n\
-                 Fermez toute autre instance de l'application, puis relancez."
+                 Fermez toute autre instance de l'application, puis relancez." // lang:fr
             ),
             1,
         );
     }
-    // Mono-instance (PLAN-AUDIT-V1 E1, D1) : AVANT toute base et toute
-    // fenêtre — deux pompes concurrentes mettraient en quarantaine les
-    // envois l'une de l'autre, doubleraient veilleurs et bulles. La
-    // garde vit jusqu'à la fin du processus ; l'OS relâche le verrou.
-    let dossier = instance::dossier_de_la_base();
-    // E9 : la trace terrain sait où écrire dès le premier geste.
-    if let Some(dossier) = &dossier {
-        trace::initialiser(dossier.clone());
+    // Single instance (PLAN-AUDIT-V1 E1, D1): BEFORE any database and
+    // any window — two concurrent pumps would quarantine each other's
+    // sends, and double the watchers and the arrival notifications.
+    // The guard lives until the end of the process; the OS releases
+    // the lock.
+    let folder = instance::database_folder();
+    // E9: field trace knows where to write from the very first
+    // gesture.
+    if let Some(folder) = &folder {
+        trace::init(folder.clone());
     }
-    let _garde_instance = match dossier.as_deref().map(instance::verrouiller) {
-        Some(Ok(Some(garde))) => Some(garde),
-        Some(Ok(None)) => avertir_et_sortir("Wind est déjà ouvert.", 0),
-        // Verrou impossible (dossier en lecture seule, disque plein…) :
-        // on ne prive pas l'utilisateur de son courrier pour un fichier
-        // de verrou — dit à la trace, sans garde.
+    let _instance_guard = match folder.as_deref().map(instance::lock) {
+        Some(Ok(Some(guard))) => Some(guard),
+        Some(Ok(None)) => warn_and_exit("Wind est déjà ouvert.", 0), // lang:fr
+        // Lock impossible (read-only folder, disk full…): we do not
+        // deprive the user of their mail for a lock file — said to
+        // the trace, without a guard.
         Some(Err(err)) => {
             trace::trace(&format!(
-                "verrou d'instance impossible : {err} — lancement sans garde"
+                "instance lock impossible: {err} — launching without a guard"
             ));
             None
         }
@@ -251,29 +260,30 @@ fn main() {
         bodies_backfill: Arc::new(Mutex::new(())),
         migration: Arc::new(MigrationShared::default()),
         sync_cycle: Arc::new(SyncShared::default()),
-        sync_reculs: Arc::new(Mutex::new(HashMap::new())),
-        verrous_releve: Arc::new(Mutex::new(HashMap::new())),
-        veilleurs: Arc::new(Mutex::new(HashMap::new())),
-        // En ligne par défaut : l'UI remonte le vrai état dès son
-        // premier rendu (P0-bis) — d'ici là, mieux vaut tenter que dormir.
+        sync_backoffs: Arc::new(Mutex::new(HashMap::new())),
+        poll_locks: Arc::new(Mutex::new(HashMap::new())),
+        watchers: Arc::new(Mutex::new(HashMap::new())),
+        // Online by default: the UI reports the real state on its
+        // first render (P0-bis) — until then, better to try than to
+        // sleep.
         en_ligne: Arc::new(AtomicBool::new(true)),
-        passes_geste: Arc::new(Mutex::new(HashMap::new())),
-        commandes: Arc::new(Mutex::new(())),
+        gesture_passes: Arc::new(Mutex::new(HashMap::new())),
+        commands: Arc::new(Mutex::new(())),
     };
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
-        // Installe le hook de panic et charge le consentement AVANT tout
-        // le reste : un plantage precoce doit pouvoir etre capture (si
-        // l'utilisateur a consenti). Ne touche jamais la base (ADR 0014).
+        // Install the panic hook and load consent BEFORE everything
+        // else: an early crash must be capturable (if the user has
+        // consented). Never touches the database (ADR 0014).
         .setup(|app| {
             telemetry::init(app);
-            // Revue PLAN-AUDIT-V1 : le SEUL appel de `db_path` qui fait de
-            // l'I/O (dossier créé, chemin mémorisé) se joue ici, sur le
-            // thread principal avant la fenêtre — jamais dans le corps
-            // async nu d'une commande.
+            // PLAN-AUDIT-V1 review: the ONLY call to `db_path` that
+            // does I/O (folder created, path memorized) happens here,
+            // on the main thread before the window — never in the
+            // bare async body of a command.
             let _ = commands::db_path(app.handle());
             Ok(())
         })
@@ -294,8 +304,8 @@ fn main() {
             commands::search_messages,
             commands::message_body,
             commands::message_attachments,
-            commands::repondre_invitation,
-            commands::chemin_enregistrement_suggere,
+            commands::reply_invitation,
+            commands::suggested_save_path,
             commands::save_attachment,
             commands::mark_seen,
             commands::mark_flagged,
@@ -304,36 +314,36 @@ fn main() {
             commands::allow_images_sender,
             commands::images_senders,
             commands::revoke_images_sender,
-            commands::mode_organise_get,
-            commands::mode_organise_set,
-            commands::router_expediteur,
-            commands::router_expediteur_de,
-            commands::retirer_routage,
-            commands::routages,
-            commands::portier_attente,
-            commands::portier_total,
-            commands::kiosque_non_ouverts,
-            commands::portier_adresses,
-            commands::registre_groupes,
-            commands::registre_groupe_page,
-            commands::portier_defauts_get,
-            commands::portier_defauts_set,
+            commands::organized_mode_get,
+            commands::organized_mode_set,
+            commands::route_sender,
+            commands::route_sender_from,
+            commands::remove_routing,
+            commands::routings,
+            commands::screener_waiting,
+            commands::screener_total,
+            commands::feed_unopened,
+            commands::screener_addresses,
+            commands::paper_trail_groups,
+            commands::paper_trail_group_page,
+            commands::screener_defaults_get,
+            commands::screener_defaults_set,
             commands::horizon_import_get,
             commands::horizon_import_set,
-            commands::nettoyage_etat,
-            commands::nettoyage_demarrer,
-            commands::nettoyage_groupes,
-            commands::nettoyage_messages,
-            commands::nettoyage_verdict,
-            commands::nettoyage_terminer,
-            commands::toggle_mis_de_cote,
-            commands::pile_mis_de_cote,
-            commands::kiosque_cartes,
-            commands::kiosque_marquer_lu,
+            commands::cleanup_state,
+            commands::cleanup_start,
+            commands::cleanup_groups,
+            commands::cleanup_messages,
+            commands::cleanup_verdict,
+            commands::cleanup_finish,
+            commands::toggle_set_aside,
+            commands::set_aside_pile,
+            commands::feed_cards,
+            commands::feed_mark_read,
             commands::pinned_rows,
             commands::archive_message,
-            commands::agir_groupe,
-            commands::etat_ui,
+            commands::act_on_group,
+            commands::ui_state,
             commands::list_folders,
             commands::move_message,
             commands::delete_message,
@@ -344,20 +354,20 @@ fn main() {
             commands::forward_context,
             commands::queue_send,
             commands::flush_outbox,
-            commands::sync_apres_geste,
+            commands::sync_after_gesture,
             commands::echo_body,
             commands::echo_attachments,
-            commands::completer_adresses,
+            commands::complete_addresses,
             commands::outbox_status,
             commands::outbox_requeue,
             commands::outbox_delete,
             commands::outbox_cancel_scheduled,
             commands::signature_get,
             commands::signature_set,
-            commands::reperes_get,
-            commands::repere_set,
-            commands::noms_get,
-            commands::nom_set,
+            commands::markers_get,
+            commands::marker_set,
+            commands::names_get,
+            commands::name_set,
             commands::save_draft,
             commands::list_drafts,
             commands::delete_draft,
@@ -368,7 +378,7 @@ fn main() {
             commands::sync_drafts,
             commands::sync_progress,
             commands::sync_activity,
-            commands::reseau_etat,
+            commands::network_state,
             commands::backfill_status,
             commands::backfill_bodies,
             commands::migration_check,
@@ -377,7 +387,7 @@ fn main() {
             commands::migration_cancel,
             commands::update_check,
             commands::update_install,
-            commands::noms_adresses,
+            commands::address_names,
             commands::app_version,
             commands::open_link,
             commands::notif_pref_get,
@@ -392,7 +402,7 @@ fn main() {
         ])
         .run(tauri::generate_context!());
     if let Err(err) = result {
-        eprintln!("échec du démarrage de la fenêtre : {err}");
+        eprintln!("window startup failed: {err}");
         std::process::exit(1);
     }
 }

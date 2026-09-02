@@ -79,12 +79,12 @@ test('les pastilles nav du Kiosque et du Registre disent le travail restant', as
   await page.evaluate(async () => {
     const invoke = window.__TAURI__.core.invoke;
     for (let n = 0; n < 4; n += 1) {
-      await invoke('router_expediteur', {
+      await invoke('route_sender', {
         address: `expediteur${n}@exemple.fr`, destination: 'kiosque', regle: null,
       });
     }
     for (let n = 4; n < 10; n += 1) {
-      await invoke('router_expediteur', {
+      await invoke('route_sender', {
         address: `expediteur${n}@exemple.fr`, destination: 'registre', regle: null,
       });
     }
@@ -105,7 +105,7 @@ test('les pastilles nav du Kiosque et du Registre disent le travail restant', as
 // écartés), à l'alphabet, filtrable, avec « Réintégrer ».
 test('Réglages > Portier : toutes les décisions, à l’alphabet, recherche et réintégration', async () => {
   await page.evaluate(async () => {
-    await window.__TAURI__.core.invoke('router_expediteur', {
+    await window.__TAURI__.core.invoke('route_sender', {
       address: 'zeta@exemple.fr', destination: 'ecarte', regle: 'spam',
     });
   });
@@ -222,8 +222,8 @@ test('le Registre groupé : un rang par expéditeur, le fil s’ouvre depuis le 
   // reste au Registre avec la même tête (règle d'or).
   await expect
     .poll(async () => page.evaluate(async (a) => {
-      const routages = await window.__TAURI__.core.invoke('routages');
-      return routages.find((r) => r.address === a)?.destination;
+      const routings = await window.__TAURI__.core.invoke('routings');
+      return routings.find((r) => r.address === a)?.destination;
     }, adresse))
     .toBe('reception');
 });
@@ -238,7 +238,7 @@ test('fil mêlé : l’inconnu qui répond dans un fil connu est signalé, et at
   // ont TOUS routés — on en réintègre un : expediteur0 redevient un
   // connu NON routé, son fil vit en Réception.
   await page.evaluate(async () => {
-    await window.__TAURI__.core.invoke('retirer_routage', { address: 'expediteur0@exemple.fr' });
+    await window.__TAURI__.core.invoke('remove_routing', { address: 'expediteur0@exemple.fr' });
   });
   // L'intrus répond au fil du connu expediteur0 (uid 16, fil d'un seul
   // message) — par LE chemin de production (upsert_envelopes).
