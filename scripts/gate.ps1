@@ -74,11 +74,25 @@ Etape 5 "garde du thread principal" { node e2e/garde-thread-principal.mjs }
 # PLAN-AUDIT-V2 E9 : aucun lint JS ne gardait les scripts d'outillage —
 # une faute de syntaxe dans une gate textuelle se decouvrait en la
 # jouant. `node --check` coute 0,2 s.
-Etape 6 "syntaxe des scripts (node --check)" {
+Etape 6 "syntaxe des scripts (node --check, parser PowerShell)" {
     $scripts = @(Get-ChildItem e2e -Filter *.mjs) + @(Get-ChildItem scripts -Filter *.mjs)
     foreach ($f in $scripts) {
         & node --check $f.FullName
         if ($LASTEXITCODE -ne 0) { Write-Host "syntaxe : $($f.Name)" -ForegroundColor Red; return }
+    }
+    # Terrain 2026-09-02 : verifier-release.ps1 ne parsait plus sous
+    # PowerShell 5.1 -- un tiret cadratin dans une chaine d'un fichier
+    # SANS BOM, lu en ANSI, devient un guillemet fermant. L'analyseur de
+    # CE PowerShell (celui du CE) lit chaque .ps1 tel qu'il le lira au
+    # terrain ; un .ps1 non ASCII porte un BOM UTF-8 ou ne passe pas.
+    $ps1 = @(Get-ChildItem scripts -Filter *.ps1) + @(Get-ChildItem e2e -Filter *.ps1)
+    foreach ($f in $ps1) {
+        $erreurs = $null
+        $null = [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$erreurs)
+        if ($erreurs.Count -gt 0) {
+            Write-Host "parse PowerShell : $($f.Name) : $($erreurs[0].Message)" -ForegroundColor Red
+            return
+        }
     }
 }
 

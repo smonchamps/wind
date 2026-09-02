@@ -1,5 +1,8 @@
-# verifier-release.ps1 -- la verification STANDARD 2.10 d'une release
+﻿# verifier-release.ps1 -- la verification STANDARD 2.10 d'une release
 # publiee, scriptee (PLAN-RETOURS-8 : avec 5 assets et 2 plateformes,
+# BOM UTF-8 en tete : terrain 2026-09-02, un tiret cadratin dans une
+# chaine, lu en ANSI par PowerShell 5.1, fermait la chaine -- le script
+# ne parsait plus ; la gate parse desormais chaque .ps1).
 # les controles manuels doublent -- la friction est encodee une fois).
 #
 #   powershell scripts\verifier-release.ps1 0.6.0
@@ -113,7 +116,7 @@ try {
             & minisign -Vm (Join-Path $tmp $p.exe) -x $sigFichier -p $pubFichier | Out-Null
             Dire ($LASTEXITCODE -eq 0) "$($p.cle) : signature minisign VALIDE sur $($p.exe)"
         } else {
-            Write-Host "NON PROUVE  $($p.cle) : crypto minisign (minisign absent du PATH — winget install minisign)"
+            Write-Host "NON PROUVE  $($p.cle) : crypto minisign (minisign absent du PATH -- winget install minisign)"
         }
 
         # URL au tag NU, nom de la bonne architecture.

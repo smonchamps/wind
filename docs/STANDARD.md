@@ -508,6 +508,15 @@ Bash). Syntaxes différentes.
 ` mêlé
   (PLAN-AUDIT-V2, six passes de réparation payées).
 
+- **Un `.ps1` sans BOM ne doit contenir que de l'ASCII dans ses
+  chaînes.** PowerShell 5.1 (celui de `powershell -File`, au terrain)
+  lit un fichier sans BOM en ANSI : un tiret cadratin « — » devient
+  `â€”`, et ce `”` est un guillemet fermant pour son analyseur — la
+  chaîne se ferme, le script ne parse plus (`verifier-release.ps1`,
+  2026-09-02, une release vérifiée à la main). Un `.ps1` qui porte du
+  non-ASCII porte un BOM UTF-8 (`faire-release.ps1`) ; la gate
+  (étape 6) parse chaque `.ps1` avec l'analyseur de ce PowerShell.
+
 ### 7.2 Les notifications exigent l'application INSTALLÉE
 
 `tauri-winrt-notification` exige une identité applicative
