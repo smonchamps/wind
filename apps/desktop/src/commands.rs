@@ -62,7 +62,6 @@ pub struct SyncSummary {
     pub fetched: usize,
     pub deleted: usize,
     pub replayed: usize,
-    pub total: u64,
     pub elapsed_ms: u64,
     /// Échecs par compte — les autres comptes ne sont pas bloqués.
     pub errors: Vec<String>,
@@ -803,7 +802,7 @@ fn relever_inbox(
     match store.new_unread_after(account_id, MAILBOX, last_uid_before, NOTIFY_MAX_ARRIVALS) {
         Ok(arrivals) => {
             let arrivals = mail_core::arrivals_to_notify(report.mode, arrivals);
-            if let Some(problem) = arrival_notification_problem(app, &arrivals) {
+            if let Some(problem) = arrival_notification_problem(app, store, &arrivals) {
                 problems.push(problem);
             }
         }
@@ -888,7 +887,11 @@ pub(crate) fn passe_legere_compte(app: &AppHandle, email: &str) -> Result<(), St
     if recul_en_cours(&state.sync_reculs, email).is_some() {
         return Ok(());
     }
-    let store = Store::open(&path).map_err(|err| err.to_string())?;
+    // UNE connexion pour la passe (PLAN-AUDIT-V2 E1) : elle traverse la
+    // connexion IMAP sans rien tenir — en WAL, une connexion ouverte hors
+    // transaction ne verrouille personne ; l'identifiant lu avant le
+    // réseau est stable, ce n'est pas un état qu'on rejouerait après.
+    let mut store = Store::open(&path).map_err(|err| err.to_string())?;
     let account_id = store
         .accounts()
         .map_err(|err| err.to_string())?
@@ -896,10 +899,8 @@ pub(crate) fn passe_legere_compte(app: &AppHandle, email: &str) -> Result<(), St
         .find(|compte| compte.email == email)
         .map(|compte| compte.id)
         .ok_or_else(|| "compte inconnu en base".to_string())?;
-    drop(store);
 
     let (mut server, refreshed) = connect_imap(&session)?;
-    let mut store = Store::open(&path).map_err(|err| err.to_string())?;
     let mut problems = Vec::new();
     let cycle = state.sync_cycle.clone();
     let resultat = relever_inbox(
@@ -1056,7 +1057,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
         .map_err(|err| err.to_string())?;
 
     reposer_sessions(&state, refreshed)?;
-    let total = solder_releve(&app, accounts, &mut errors).await?;
+    solder_releve(&app, accounts, &mut errors).await?;
 
     Ok(SyncSummary {
         accounts,
@@ -1064,7 +1065,6 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
         fetched,
         deleted,
         replayed,
-        total,
         elapsed_ms: timer.elapsed().as_millis() as u64,
         errors,
     })
@@ -1178,7 +1178,7 @@ pub async fn sync_inbox_light(
     // d'être vérifiée — c'est la relève du courrier au sens du prototype,
     // et un bouton qui laisserait « il y a 12 minutes » après un clic
     // réussi aurait l'air cassé. Les dossiers, eux, gardent leur cadence.
-    let total = solder_releve(&app, accounts, &mut errors).await?;
+    solder_releve(&app, accounts, &mut errors).await?;
 
     Ok(SyncSummary {
         accounts,
@@ -1186,7 +1186,6 @@ pub async fn sync_inbox_light(
         fetched,
         deleted,
         replayed,
-        total,
         elapsed_ms: timer.elapsed().as_millis() as u64,
         errors,
     })
@@ -1619,6 +1618,7 @@ const PREF_DERNIERE_SYNCHRO: &str = "derniere_synchro";
 
 fn arrival_notification_problem(
     app: &AppHandle,
+    store: &Store,
     arrivals: &[mail_core::Envelope],
 ) -> Option<String> {
     use tauri_plugin_notification::NotificationExt;
@@ -1629,21 +1629,13 @@ fn arrival_notification_problem(
     // qui vient d'écrire ces arrivées rend ce cas théorique. La même
     // lecture porte la langue des textes (PLAN-LANGUES, E2) :
     // `prefs.lang`, posée par l'UI — absente ou inconnue, français.
-    let store = db_path(app).ok().and_then(|path| Store::open(&path).ok());
-    let actives = store
-        .as_ref()
-        .and_then(|store| store.bool_pref(PREF_ARRIVAL_BUBBLES, true).ok())
-        .unwrap_or(true);
+    // Sur la connexion de l'appelant (PLAN-AUDIT-V2 E1) : la relève en
+    // tient déjà une, en rouvrir une seconde ne protégeait rien.
+    let actives = store.bool_pref(PREF_ARRIVAL_BUBBLES, true).unwrap_or(true);
     if !actives {
         return None;
     }
-    let lang = mail_core::Lang::from_pref(
-        store
-            .as_ref()
-            .and_then(|store| store.text_pref(PREF_LANG).ok())
-            .flatten()
-            .as_deref(),
-    );
+    let lang = mail_core::Lang::from_pref(store.text_pref(PREF_LANG).ok().flatten().as_deref());
     let notification = mail_core::notification_for(arrivals, lang)?;
     app.notification()
         .builder()
@@ -4011,33 +4003,35 @@ pub async fn queue_send(
     .await
 }
 
-/// La fin d'un cycle (complet ou léger) : le total pour la barre et
-/// l'horodatage de la dernière relève réussie (E1) — posé seulement
-/// quand AU MOINS un compte a répondu ; un cycle à vide ne rajeunit pas
-/// « dernière synchronisation ». L'échec d'écriture est rapporté, jamais
-/// avalé ; il ne fait pas échouer la relève, le courrier est là. Sous
-/// `hors_pompe` (E5) : base + verrou des commandes.
+/// La fin d'un cycle (complet ou léger) : l'horodatage de la dernière
+/// relève réussie (E1) — posé seulement quand AU MOINS un compte a
+/// répondu ; un cycle à vide ne rajeunit pas « dernière synchronisation ».
+/// L'échec d'écriture est rapporté, jamais avalé ; il ne fait pas
+/// échouer la relève, le courrier est là. Sous `hors_pompe` (E5) : base +
+/// verrou des commandes. Le `unified_count()` qui vivait ici nourrissait
+/// `SyncSummary.total`, que l'UI n'a jamais lu (PLAN-AUDIT-V2 E1).
 async fn solder_releve(
     app: &AppHandle,
     accounts: usize,
     errors: &mut Vec<String>,
-) -> Result<u64, String> {
-    let (total, horodatage) = hors_pompe(app.clone(), move |app| {
+) -> Result<(), String> {
+    if accounts == 0 {
+        return Ok(());
+    }
+    let horodatage = hors_pompe(app.clone(), move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        let total = store.unified_count().map_err(|err| err.to_string())?;
         let mut horodatage = None;
-        if accounts > 0
-            && let Ok(epoch) = SystemTime::now().duration_since(UNIX_EPOCH)
+        if let Ok(epoch) = SystemTime::now().duration_since(UNIX_EPOCH)
             && let Err(err) =
                 store.set_text_pref(PREF_DERNIERE_SYNCHRO, &epoch.as_secs().to_string())
         {
             horodatage = Some(format!("horodatage de la relève : {err}"));
         }
-        Ok((total, horodatage))
+        Ok(horodatage)
     })
     .await?;
     errors.extend(horodatage);
-    Ok(total)
+    Ok(())
 }
 
 /// Vide les boîtes d'envoi de TOUS les comptes connectés — chacun par

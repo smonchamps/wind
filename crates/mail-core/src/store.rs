@@ -910,6 +910,17 @@ impl Store {
         Self::init_with(conn, &mut |_| ControlFlow::Continue(()))
     }
 
+    /// Oublie toute initialisation connue de ce processus — pour les tests
+    /// qui REMBOBINENT une base à la main entre deux ouvertures (le décor
+    /// d'une base d'avant), ce que la mono-instance interdit en
+    /// production. Tout le registre, pas un chemin : un autre test du même
+    /// processus paiera au pire une initialisation de plus, jamais une de
+    /// moins.
+    #[cfg(test)]
+    pub(crate) fn oublier_les_initialisations() {
+        registre_initialisees().verrou().clear();
+    }
+
     fn init_with(
         conn: Connection,
         on_progress: &mut dyn FnMut(AdoptionProgress) -> ControlFlow<()>,
@@ -940,6 +951,23 @@ impl Store {
         conn.query_row("PRAGMA journal_mode = wal", [], |row| {
             row.get::<_, String>(0)
         })?;
+        // PLAN-AUDIT-V2 E1 — la porte rapide : chaque commande du shell
+        // ouvre SA connexion (103 sites) ; rejouer ici le schéma, une
+        // vingtaine de `table_xinfo` et les migrations coûtait 36 ms sur
+        // 200 k enveloppes À CHAQUE commande. Une fois l'initialisation
+        // complète RÉUSSIE sur un chemin dans ce processus, les ouvertures
+        // suivantes ne font que les deux réglages ci-dessus. Sûr parce que
+        // la mono-instance (PLAN-AUDIT-V1 E1) garantit qu'aucun autre
+        // processus ne migre la base entre-temps, et que l'inscription
+        // n'a lieu qu'après COMMIT de l'adoption (une annulation, un
+        // échec : rien d'inscrit, la passe entière se rejoue). Une base
+        // mémoire n'a pas de chemin : jamais inscrite.
+        let cle = cle_fichier(&conn);
+        if let Some(cle) = &cle
+            && registre_initialisees().contains(cle)
+        {
+            return Ok(Self(conn));
+        }
         conn.execute_batch(SCHEMA)?;
         // Les migrations légères d'abord : colonnes, index. La
         // reconstruction de l'index de recherche vit ICI mais n'est PAS
@@ -992,6 +1020,9 @@ impl Store {
         // l'existant (PLAN-RETOURS-5) : set-based, marque en `prefs` —
         // sur une base à jour, un SELECT et rien d'autre.
         store.rattraper_correspondants()?;
+        if let Some(cle) = cle {
+            registre_initialisees().insert(cle);
+        }
         Ok(store)
     }
 
@@ -1636,16 +1667,42 @@ impl Store {
                 tx.prepare("SELECT html FROM bodies WHERE mailbox_id = ?1 AND uid = ?2")?;
             let mut refs_stmt =
                 tx.prepare("SELECT refs FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2")?;
-            let mut deja_stmt =
-                tx.prepare("SELECT 1 FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2")?;
+            let mut deja_stmt = tx.prepare(
+                "SELECT subject, sender, sender_address, to_addrs, cc_addrs
+                 FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
+            )?;
             for envelope in envelopes {
                 // L'annuaire n'apprend que des messages NEUFS : une
                 // re-synchronisation (drapeaux CONDSTORE, re-relève) ne
-                // gonfle pas la fréquence d'un correspondant.
-                let nouveau = deja_stmt
-                    .query_row(params![mailbox_id, envelope.uid], |_| Ok(()))
-                    .optional()?
-                    .is_none();
+                // gonfle pas la fréquence d'un correspondant. La même
+                // lecture dit si les champs INDEXÉS ont changé : sinon,
+                // l'index ne bouge pas (PLAN-AUDIT-V2 E2 — avant, chaque
+                // enveloppe relue faisait relire et re-tokeniser son corps
+                // sous le verrou d'écriture).
+                let to_field = join_addrs(&envelope.to_addrs);
+                let cc_field = join_addrs(&envelope.cc_addrs);
+                let deja: Option<ChampsIndexes> = deja_stmt
+                    .query_row(params![mailbox_id, envelope.uid], |row| {
+                        Ok((
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                            row.get(3)?,
+                            row.get(4)?,
+                        ))
+                    })
+                    .optional()?;
+                let nouveau = deja.is_none();
+                let a_reindexer = deja.as_ref().is_none_or(|deja| {
+                    *deja
+                        != (
+                            envelope.subject.clone(),
+                            envelope.sender.clone(),
+                            envelope.sender_address.clone(),
+                            to_field.clone(),
+                            cc_field.clone(),
+                        )
+                });
                 stmt.execute(params![
                     mailbox_id,
                     envelope.uid,
@@ -1806,24 +1863,24 @@ impl Store {
                     touched.insert(thread);
                 }
 
-                let html: Option<String> = body_stmt
-                    .query_row(params![mailbox_id, envelope.uid], |row| row.get(0))
-                    .optional()?;
-                let to_field = join_addrs(&envelope.to_addrs);
-                let cc_field = join_addrs(&envelope.cc_addrs);
-                search::index_message(
-                    &tx,
-                    mailbox_id,
-                    envelope.uid,
-                    search::Indexed {
-                        subject: envelope.subject.as_deref(),
-                        sender: envelope.sender.as_deref(),
-                        sender_address: envelope.sender_address.as_deref(),
-                        to_addrs: to_field.as_deref(),
-                        cc_addrs: cc_field.as_deref(),
-                        body_html: html.as_deref(),
-                    },
-                )?;
+                if a_reindexer {
+                    let html: Option<String> = body_stmt
+                        .query_row(params![mailbox_id, envelope.uid], |row| row.get(0))
+                        .optional()?;
+                    search::index_message(
+                        &tx,
+                        mailbox_id,
+                        envelope.uid,
+                        search::Indexed {
+                            subject: envelope.subject.as_deref(),
+                            sender: envelope.sender.as_deref(),
+                            sender_address: envelope.sender_address.as_deref(),
+                            to_addrs: to_field.as_deref(),
+                            cc_addrs: cc_field.as_deref(),
+                            body_html: html.as_deref(),
+                        },
+                    )?;
+                }
             }
             // Les fils des lots PRÉCÉDENTS d'une attente défaite : leur
             // drapeau de rétention date d'un état démenti — ils entrent
@@ -2358,6 +2415,29 @@ impl Store {
     /// de la chasse aux orphelins), jamais au défilement. Rend le nombre
     /// de retardataires restants — zéro quand la passe est soldée.
     pub fn preview_catchup(&self, limit: usize) -> Result<u64, Error> {
+        // Par sous-lots de 100 corps (PLAN-AUDIT-V2 E2) : le shell demande
+        // 500 d'un coup, et 500 corps HTML entiers en RAM pesaient ~28 Mo
+        // au 56 ko moyen — cinq fois moins par sous-lot, même contrat.
+        const SOUS_LOT: usize = 100;
+        let mut restes = limit;
+        while restes > 0 {
+            let pris = self.rattraper_apercus_lot(restes.min(SOUS_LOT))?;
+            if pris == 0 {
+                break;
+            }
+            restes -= pris;
+        }
+        let restants: i64 = self.0.query_row(
+            "SELECT COUNT(*) FROM bodies WHERE preview IS NULL",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(restants as u64)
+    }
+
+    /// Un sous-lot de [`Store::preview_catchup`] ; rend le nombre de corps
+    /// traités (zéro = plus de retardataire).
+    fn rattraper_apercus_lot(&self, limit: usize) -> Result<usize, Error> {
         let lot: Vec<(i64, Uid, String)> = self
             .0
             .prepare("SELECT mailbox_id, uid, html FROM bodies WHERE preview IS NULL LIMIT ?1")?
@@ -2389,12 +2469,7 @@ impl Store {
             }
             tx.commit()?;
         }
-        let restants: i64 = self.0.query_row(
-            "SELECT COUNT(*) FROM bodies WHERE preview IS NULL",
-            [],
-            |row| row.get(0),
-        )?;
-        Ok(restants as u64)
+        Ok(lot.len())
     }
 
     /// Les pièces jointes connues d'un message, dans l'ordre du MIME.
@@ -4539,6 +4614,52 @@ fn migrate_multi_account(conn: &Connection) -> Result<(), Error> {
     Ok(())
 }
 
+/// Les champs d'une enveloppe qui vivent dans l'index de recherche —
+/// tels que relus en base, pour savoir si une re-synchronisation les a
+/// changés (sujet, expéditeur, adresse, destinataires, copies).
+type ChampsIndexes = (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+/// Le chemin d'une connexion sur FICHIER — `None` pour une base mémoire
+/// (SQLite répond un nom vide), qui ne s'inscrit jamais au registre.
+fn cle_fichier(conn: &Connection) -> Option<std::path::PathBuf> {
+    conn.path()
+        .filter(|chemin| !chemin.is_empty())
+        .map(std::path::PathBuf::from)
+}
+
+/// Le registre des chemins dont l'initialisation complète a RÉUSSI dans
+/// ce processus (PLAN-AUDIT-V2 E1). Un verrou empoisonné est repris :
+/// perdre le registre ferait rejouer les migrations, jamais les sauter.
+struct RegistreInitialisees(std::sync::Mutex<HashSet<std::path::PathBuf>>);
+
+impl RegistreInitialisees {
+    fn contains(&self, cle: &std::path::Path) -> bool {
+        self.verrou().contains(cle)
+    }
+
+    fn insert(&self, cle: std::path::PathBuf) {
+        self.verrou().insert(cle);
+    }
+
+    fn verrou(&self) -> std::sync::MutexGuard<'_, HashSet<std::path::PathBuf>> {
+        match self.0.lock() {
+            Ok(garde) => garde,
+            Err(empoisonne) => empoisonne.into_inner(),
+        }
+    }
+}
+
+fn registre_initialisees() -> &'static RegistreInitialisees {
+    static REGISTRE: std::sync::OnceLock<RegistreInitialisees> = std::sync::OnceLock::new();
+    REGISTRE.get_or_init(|| RegistreInitialisees(std::sync::Mutex::new(HashSet::new())))
+}
+
 fn table_columns(conn: &Connection, table: &str) -> Result<HashSet<String>, Error> {
     // `table_xinfo`, pas `table_info` : le second MASQUE les colonnes
     // générées (`sender_norm`) — la sonde d'existence les recréait à
@@ -6218,6 +6339,7 @@ mod tests {
                 .unwrap();
         }
 
+        Store::oublier_les_initialisations();
         let store = Store::open(&path).unwrap();
         let account = store
             .adopt_or_create_account("moi@exemple.fr", "gmail")
@@ -6375,6 +6497,40 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// PLAN-AUDIT-V2 E1 : chaque commande du shell ouvre SA connexion —
+    /// 103 sites — et chacune rejouait le schéma, une vingtaine de
+    /// `table_xinfo` et les migrations (36 ms sur 200 k enveloppes, à
+    /// CHAQUE commande). Une fois l'initialisation complète RÉUSSIE sur un
+    /// chemin, les ouvertures suivantes du même processus ne la rejouent
+    /// pas. Preuve sans espion dans le code de production : on retire un
+    /// index derrière le dos du Store ; si le schéma était rejoué, le
+    /// `CREATE INDEX IF NOT EXISTS` le recréerait.
+    #[test]
+    fn une_seconde_ouverture_du_meme_chemin_ne_rejoue_pas_le_schema() {
+        let path =
+            std::env::temp_dir().join(format!("wind-test-porte-rapide-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        drop(Store::open(&path).unwrap());
+
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch("DROP INDEX idx_pending_actions_message")
+                .unwrap();
+        }
+        drop(Store::open(&path).unwrap());
+
+        let conn = Connection::open(&path).unwrap();
+        let recree: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_pending_actions_message'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(recree, 0, "la seconde ouverture a rejoué le schéma");
+        let _ = std::fs::remove_file(&path);
+    }
+
     /// La reconstruction de l'index de recherche doit faire afficher l'écran
     /// de migration (ADR 0012) même sur une base DÉJÀ à jour côté fils : sans
     /// cette détection dans `pending_adoption`, elle gèlerait le démarrage en
@@ -6422,6 +6578,7 @@ mod tests {
         );
 
         // Une ouverture pleine reconstruit ; ensuite, plus rien à annoncer.
+        Store::oublier_les_initialisations();
         {
             Store::open(&path).unwrap();
         }
@@ -7354,6 +7511,9 @@ mod tests {
     /// Partagé par le test d'ouverture ci-dessous et par ceux du
     /// rembobinage (chantier Phase 5).
     fn rembobine_au_schema_v1(path: &Path) {
+        // Une base rembobinée à la main est une base d'AVANT : le registre
+        // de la porte rapide (E1) ne doit plus la connaître.
+        Store::oublier_les_initialisations();
         let conn = Connection::open(path).unwrap();
         conn.execute_batch(
             "DROP TABLE thread_links;
@@ -8106,6 +8266,7 @@ mod tests {
             );
         }
 
+        Store::oublier_les_initialisations();
         let store = Store::open(&path).unwrap();
         let sql = lire_sql(&store);
         assert!(
@@ -9345,6 +9506,7 @@ Etape : {etape}\nPlan :\n{}",
                 )
                 .unwrap();
         }
+        Store::oublier_les_initialisations();
         let store = Store::open(&path).unwrap();
         let attente = store.portier_attente().unwrap();
         assert_eq!(

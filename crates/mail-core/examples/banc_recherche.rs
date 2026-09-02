@@ -115,6 +115,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
+    // Le COUNT seul (PLAN-AUDIT-V2 E2) : la part du comptage dans la
+    // frappe — mesurée à 1,5 ms sur 57 pour « fac » sur 200 k ; un COUNT
+    // borné au seuil (LIMIT 10 001) en gagnait 1 : le comptage n'est pas
+    // le coût, la page triée par date l'est. Retiré, la section reste.
+    println!("\n--- comptage seul (la part du COUNT dans la frappe) ---");
+    for (etiquette, requete) in REQUETES {
+        let _ = store.search_total(requete)?;
+        let depart = Instant::now();
+        let exact = store.search_total(requete)?;
+        let cout = depart.elapsed().as_secs_f64() * 1000.0;
+        println!("{etiquette:<22} « {requete:<12} » {cout:>7.2} ms ({exact} corr.)");
+    }
+
     // Le point dur du chantier « charger plus » : l'OFFSET tient-il le budget
     // en profondeur ? La borne douce est ~1000 lignes = 10 lots, on mesure
     // donc les pages 1, 5, 10. Si l'OFFSET se dégrade, le plan B est un

@@ -286,6 +286,11 @@ impl Store {
     /// total, calculé de toute façon, informe la bascule ET dit combien de
     /// lots restent. Le tri ne dépend que du total : il est le même d'une
     /// page à l'autre, donc les tranches s'enchaînent sans trou ni doublon.
+    ///
+    /// Le COUNT par frappe n'est PAS le coût (mesuré à PLAN-AUDIT-V2 E2 sur
+    /// 200 k : 1,5 ms d'un total de 57 ms pour un préfixe de trois lettres,
+    /// le reste est la page triée par date) — `banc_recherche` le
+    /// re-mesure, section « comptage seul ».
     pub fn search_capped(
         &self,
         input: &str,
@@ -411,9 +416,9 @@ impl Store {
 
     /// Le nombre EXACT de correspondances d'une recherche — sans classement
     /// ni hydratation, un simple COUNT sur l'index (mêmes termes et filtres
-    /// que [`Store::search`]). Sert à afficher « 100 sur N » quand le rendu
-    /// est plafonné ; l'appelant ne le demande QUE dans ce cas, une
-    /// recherche qui rend moins que sa limite connaissant déjà son total.
+    /// que [`Store::search`]). Sert à afficher « 100 sur N » et à décider la
+    /// soupape tri-date de [`Store::search_capped`], qui le demande à chaque
+    /// frappe — pour 1,5 ms sur 200 k (voir là-bas).
     pub fn search_total(&self, input: &str) -> Result<u64, Error> {
         let (match_expr, _has_terms, filters) = build_match(input);
         if match_expr.is_none() && filters.since.is_none() && filters.until.is_none() {
@@ -425,16 +430,16 @@ impl Store {
             values.push(expr.clone().into());
         }
         values.extend(date_values);
-        let sql = if match_expr.is_some() {
+        let interieur = if match_expr.is_some() {
             if clauses.is_empty() {
                 // Sans borne de date, le COUNT n'a besoin d'aucune jointure :
                 // l'index seul porte la réponse (le chemin le plus cher, le
                 // plus fréquent — c'est là que le plafond mord).
-                "SELECT COUNT(*) FROM search_fts WHERE search_fts MATCH ?".to_string()
+                "SELECT rowid FROM search_fts WHERE search_fts MATCH ?".to_string()
             } else {
                 // Une borne de date vit dans `envelopes` : il faut la jointure.
                 format!(
-                    "SELECT COUNT(*)
+                    "SELECT search_fts.rowid
                      FROM search_fts
                      JOIN search_docs d ON d.docid = search_fts.rowid
                      JOIN envelopes e ON e.mailbox_id = d.mailbox_id AND e.uid = d.uid
@@ -442,8 +447,9 @@ impl Store {
                 )
             }
         } else {
-            format!("SELECT COUNT(*) FROM envelopes e WHERE 1 = 1{clauses}")
+            format!("SELECT e.rowid FROM envelopes e WHERE 1 = 1{clauses}")
         };
+        let sql = format!("SELECT COUNT(*) FROM ({interieur})");
         let total: i64 = self
             .conn()
             .query_row(&sql, params_from_iter(values), |row| row.get(0))?;
@@ -608,52 +614,95 @@ fn parse_date_range(value: &str) -> Option<(i64, i64)> {
 /// minimal : l'index a besoin de mots, pas de mise en forme —
 /// `mail-render` garde l'extraction fidèle pour la citation.
 fn indexable_text(html: &str) -> String {
-    // Ombre en minuscules ASCII : mêmes longueurs d'octets, recherches
-    // de balises insensibles à la casse sans réallouer à chaque balise.
-    let shadow = html.to_ascii_lowercase();
-    let mut out = String::with_capacity(html.len() / 2);
+    // UNE passe, UNE allocation (PLAN-AUDIT-V2 E2) : la forme d'avant
+    // faisait cinq copies pleine taille d'un corps (ombre en minuscules,
+    // texte débalisé, entités décodées, mots, jointure) — ~140 Mo alloués
+    // pour 28 Mo. Ici les balises se reconnaissent sans ombre (comparaison
+    // ASCII insensible à la casse à la volée), les entités se décodent en
+    // écrivant, les blancs se replient en écrivant.
+    let mut out = Sortie::new(html.len() / 2);
+    let octets = html.as_bytes();
     let mut i = 0;
-    while let Some(open) = shadow[i..].find('<').map(|p| i + p) {
-        out.push_str(&html[i..open]);
-        out.push(' ');
-        let Some(close) = shadow[open..].find('>').map(|p| open + p) else {
+    while let Some(open) = trouver(octets, i, b'<') {
+        texte_vers(&mut out, &html[i..open]);
+        out.blanc();
+        let Some(close) = trouver(octets, open, b'>') else {
             // Balise jamais fermée : la fin est du bruit de balisage.
             i = html.len();
             break;
         };
         i = close + 1;
-        let inner = shadow[open + 1..close].trim_start_matches('/');
+        let inner = &octets[open + 1..close];
+        let is_closing = inner.first() == Some(&b'/');
+        let inner = if is_closing { &inner[1..] } else { inner };
         let name_end = inner
-            .find(|c: char| !c.is_ascii_alphanumeric())
+            .iter()
+            .position(|c| !c.is_ascii_alphanumeric())
             .unwrap_or(inner.len());
         let name = &inner[..name_end];
-        let is_closing = shadow[open + 1..close].starts_with('/');
-        if !is_closing && (name == "script" || name == "style") {
-            i = skip_past_closing_tag(&shadow, i, name);
+        if !is_closing
+            && (name.eq_ignore_ascii_case(b"script") || name.eq_ignore_ascii_case(b"style"))
+        {
+            i = skip_past_closing_tag(octets, i, name);
         }
     }
-    out.push_str(&html[i..]);
-    let decoded = decode_entities(&out);
-    decoded.split_whitespace().collect::<Vec<_>>().join(" ")
+    texte_vers(&mut out, &html[i..]);
+    out.finir()
 }
 
-/// Position juste après `</name...>`, ou la fin si la fermeture manque.
-fn skip_past_closing_tag(shadow: &str, from: usize, name: &str) -> usize {
-    let closer = format!("</{name}");
-    let Some(at) = shadow[from..].find(&closer).map(|p| from + p) else {
-        return shadow.len();
-    };
-    match shadow[at..].find('>') {
-        Some(p) => at + p + 1,
-        None => shadow.len(),
+/// La sortie d'`indexable_text` : les blancs s'y replient à l'écriture —
+/// jamais deux de suite, jamais en tête, jamais en queue.
+struct Sortie {
+    texte: String,
+    blanc_en_attente: bool,
+}
+
+impl Sortie {
+    fn new(capacite: usize) -> Self {
+        Self {
+            texte: String::with_capacity(capacite),
+            blanc_en_attente: false,
+        }
+    }
+
+    fn blanc(&mut self) {
+        self.blanc_en_attente = true;
+    }
+
+    fn caractere(&mut self, c: char) {
+        if c.is_whitespace() {
+            self.blanc_en_attente = true;
+            return;
+        }
+        if self.blanc_en_attente && !self.texte.is_empty() {
+            self.texte.push(' ');
+        }
+        self.blanc_en_attente = false;
+        self.texte.push(c);
+    }
+
+    fn finir(self) -> String {
+        self.texte
     }
 }
 
-fn decode_entities(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
+/// Le premier octet `cible` à partir de `depuis` — un `<` ou un `>` ne
+/// peut apparaître qu'en tête d'un caractère UTF-8, l'indice est donc
+/// toujours une frontière de caractère.
+fn trouver(octets: &[u8], depuis: usize, cible: u8) -> Option<usize> {
+    octets[depuis..]
+        .iter()
+        .position(|c| *c == cible)
+        .map(|p| depuis + p)
+}
+
+/// Écrit `texte` en décodant les entités et en repliant les blancs.
+fn texte_vers(out: &mut Sortie, texte: &str) {
+    let mut rest = texte;
     while let Some(pos) = rest.find('&') {
-        out.push_str(&rest[..pos]);
+        for c in rest[..pos].chars() {
+            out.caractere(c);
+        }
         rest = &rest[pos..];
         // Une entité plausible tient en peu de caractères ; au-delà,
         // c'est une esperluette littérale. On limite en CARACTÈRES,
@@ -666,17 +715,36 @@ fn decode_entities(text: &str) -> String {
             .map(|(i, _)| i);
         match semi.and_then(|s| decode_entity(&rest[1..s]).map(|c| (c, s))) {
             Some((decoded, s)) => {
-                out.push(decoded);
+                out.caractere(decoded);
                 rest = &rest[s + 1..];
             }
             None => {
-                out.push('&');
+                out.caractere('&');
                 rest = &rest[1..];
             }
         }
     }
-    out.push_str(rest);
-    out
+    for c in rest.chars() {
+        out.caractere(c);
+    }
+}
+
+/// Position juste après `</name...>`, ou la fin si la fermeture manque.
+fn skip_past_closing_tag(octets: &[u8], from: usize, name: &[u8]) -> usize {
+    let mut i = from;
+    while i + 2 + name.len() <= octets.len() {
+        if octets[i] == b'<'
+            && octets[i + 1] == b'/'
+            && octets[i + 2..i + 2 + name.len()].eq_ignore_ascii_case(name)
+        {
+            return match trouver(octets, i, b'>') {
+                Some(p) => p + 1,
+                None => octets.len(),
+            };
+        }
+        i += 1;
+    }
+    octets.len()
 }
 
 fn decode_entity(entity: &str) -> Option<char> {
@@ -978,6 +1046,52 @@ mod tests {
             1,
             "le corps déjà en cache reste indexé après réécriture de l'enveloppe"
         );
+    }
+
+    /// PLAN-AUDIT-V2 E2 : une re-synchronisation (drapeau lu, delta
+    /// CONDSTORE) repassait CHAQUE enveloppe par `index_message` — le corps
+    /// relu et re-tokenisé sous le verrou d'écriture, pour rien. L'entrée
+    /// d'index est stable (même docid) tant que sujet, expéditeur et
+    /// destinataires n'ont pas changé.
+    #[test]
+    fn une_enveloppe_resynchronisee_sans_changement_garde_son_docid() {
+        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let docid = |store: &Store| -> i64 {
+            store
+                .conn()
+                .query_row(
+                    "SELECT docid FROM search_docs WHERE mailbox_id = ?1 AND uid = 1",
+                    [inbox],
+                    |row| row.get(0),
+                )
+                .unwrap()
+        };
+        // Deux messages : SQLite réutilise le dernier rowid supprimé, un
+        // message seul ré-indexé garderait son numéro par accident. Avec un
+        // second docid derrière, toute ré-indexation en prend un neuf.
+        store
+            .upsert_envelopes(
+                inbox,
+                &[
+                    envelope(1, "Sujet", "Alice", "a@ex.fr", 100),
+                    envelope(2, "Second", "Bob", "b@ex.fr", 200),
+                ],
+            )
+            .unwrap();
+        let avant = docid(&store);
+
+        // Même enveloppe, drapeau changé : la synchro repasse dessus.
+        let mut relue = envelope(1, "Sujet", "Alice", "a@ex.fr", 100);
+        relue.seen = true;
+        store.upsert_envelopes(inbox, &[relue]).unwrap();
+        assert_eq!(docid(&store), avant, "ré-indexée sans raison");
+
+        // Le sujet change : là, l'index doit suivre.
+        store
+            .upsert_envelopes(inbox, &[envelope(1, "Autre", "Alice", "a@ex.fr", 100)])
+            .unwrap();
+        assert_ne!(docid(&store), avant, "un sujet changé se ré-indexe");
+        assert_eq!(store.search("autre", 50).unwrap().len(), 1);
     }
 
     #[test]

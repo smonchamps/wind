@@ -378,11 +378,42 @@ fn text_header(raw: &[u8]) -> Option<String> {
 /// seulement si le message est inanalysable. Les images embarquées (`cid:`)
 /// sont inlinées en `data:` URIs : elles font partie du message, leur
 /// affichage ne déclenche aucun chargement réseau.
+#[cfg(test)]
 pub(crate) fn extract_html(raw: &[u8]) -> Option<String> {
     let message = mail_parser::MessageParser::new().parse(raw)?;
+    html_de(&message, raw)
+}
+
+fn html_de(message: &mail_parser::Message<'_>, raw: &[u8]) -> Option<String> {
     let html = message.body_html(0)?.into_owned();
-    let html = redecode_sans_charset(html, &message, raw);
-    Some(inline_cid_images(html, &message))
+    let html = redecode_sans_charset(html, message, raw);
+    Some(inline_cid_images(html, message))
+}
+
+/// Tout ce qu'un message brut donne à l'application — corps affichable,
+/// pièces jointes, invitation — en UNE analyse MIME (PLAN-AUDIT-V2 E3 :
+/// `extract_html`, `extract_attachments` et `extract_ics` parsaient
+/// chacun les mêmes octets ; sur un rattrapage de 200 k messages, chaque
+/// parse de plus coûtait ~60 s de CPU).
+pub(crate) fn analyser(raw: &[u8]) -> Option<mail_core::FetchedBody> {
+    let message = mail_parser::MessageParser::new().parse(raw)?;
+    let ics = contient_marqueur_calendrier(raw)
+        .then(|| ics_de(&message))
+        .flatten();
+    // Un message dont la RACINE est text/calendar n'a pas de corps
+    // HTML : il reste affichable — carte d'invitation sur corps vide.
+    // Avant PLAN-INVITATIONS il tombait en « message introuvable » et
+    // restait éternellement candidat au rattrapage.
+    let html = match html_de(&message, raw) {
+        Some(html) => html,
+        None if ics.is_some() => String::new(),
+        None => return None,
+    };
+    Some(mail_core::FetchedBody {
+        html,
+        attachments: attachments_de(&message),
+        ics,
+    })
 }
 
 /// Répare le corps quand `mail-parser` a remplacé des octets par U+FFFD.
@@ -534,8 +565,16 @@ fn inline_cid_images(html: String, message: &mail_parser::Message<'_>) -> String
 /// Les images déjà incorporées au corps en sont exclues ([`is_inlined_image`]).
 /// Le rang renvoyé suit les pièces RETENUES : c'est lui qui servira à
 /// retrouver les octets plus tard, en rejouant cette même extraction.
+#[cfg(test)]
 pub(crate) fn extract_attachments(raw: &[u8]) -> Vec<mail_core::Attachment> {
-    attachment_parts(raw)
+    let Some(message) = mail_parser::MessageParser::new().parse(raw) else {
+        return Vec::new();
+    };
+    attachments_de(&message)
+}
+
+fn attachments_de(message: &mail_parser::Message<'_>) -> Vec<mail_core::Attachment> {
+    attachment_parts(message)
         .into_iter()
         .enumerate()
         .map(|(index, (name, mime, size))| mail_core::Attachment {
@@ -561,12 +600,9 @@ pub(crate) fn attachment_bytes(raw: &[u8], index: usize) -> Option<Vec<u8>> {
 }
 
 /// Nom, type et taille décodée de chaque pièce jointe retenue.
-fn attachment_parts(raw: &[u8]) -> Vec<(String, String, u64)> {
+fn attachment_parts(message: &mail_parser::Message<'_>) -> Vec<(String, String, u64)> {
     use mail_parser::MimeHeaders;
 
-    let Some(message) = mail_parser::MessageParser::new().parse(raw) else {
-        return Vec::new();
-    };
     message
         .attachments()
         .filter(|part| !is_inlined_image(part) && !est_calendrier_inline(part))
@@ -588,6 +624,7 @@ fn attachment_parts(raw: &[u8]) -> Vec<(String, String, u64)> {
 /// Gmail/Outlook vit dans le `multipart/alternative` (où mail-parser la
 /// classe en pièce jointe), une invitation transférée arrive en fichier
 /// `.ics` joint, et certains producteurs en font la racine du message.
+#[cfg(test)]
 pub(crate) fn extract_ics(raw: &[u8]) -> Option<String> {
     // Garde d'OCTETS avant tout parse : 99,9 % des messages n'ont pas
     // de calendrier — leur faire payer un parse MIME complet de plus
@@ -598,6 +635,10 @@ pub(crate) fn extract_ics(raw: &[u8]) -> Option<String> {
         return None;
     }
     let message = mail_parser::MessageParser::new().parse(raw)?;
+    ics_de(&message)
+}
+
+fn ics_de(message: &mail_parser::Message<'_>) -> Option<String> {
     for part in &message.parts {
         if !est_partie_calendrier(part) {
             continue;

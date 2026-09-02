@@ -12,7 +12,11 @@
 //! différentiel d'UIDs, chemin complet et testé.
 
 mod convert;
+#[cfg(test)]
+mod faux_serveur;
 mod mutf7;
+#[cfg(test)]
+mod tests_e3;
 
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
@@ -237,26 +241,58 @@ impl imap::Authenticator for XOAuth2 {
 pub struct ImapServer {
     session: imap::Session<Box<dyn imap::ImapConnection>>,
     selected: Option<(String, MailboxSnapshot)>,
-    trash: Option<String>,
-    drafts: Option<String>,
-    archive: Option<convert::ArchiveStrategy>,
-    /// Le dossier des envois, mémorisé pour la session. Deux niveaux
-    /// d'option, et ils disent deux choses différentes : `None` = pas
-    /// encore cherché, `Some(None)` = cherché, ce serveur n'en a pas.
-    /// Les confondre ferait relister à chaque synchronisation.
-    sent: Option<Option<String>>,
-    /// Le serveur annonce-t-il MOVE (RFC 6851) ? Mémorisé : la capacité
-    /// ne change pas en cours de session.
-    supports_move: Option<bool>,
-    /// Le serveur annonce-t-il CONDSTORE (RFC 7162) ? Même discipline.
-    supports_condstore: Option<bool>,
-    /// Le serveur annonce-t-il LIST-STATUS (RFC 5819) ? Même discipline —
-    /// c'est lui qui fond ~51 STATUS en un aller-retour (terrain
-    /// 2026-08-13 : l'inventaire, dernier goulot du cycle sobre).
-    supports_list_status: Option<bool>,
+    /// Les dossiers spéciaux (RFC 6154), découverts par UNE `LIST` et
+    /// mémorisés pour la session (PLAN-AUDIT-V2 E3 — avant, chacun des
+    /// quatre relistait pour lui seul). `None` = pas encore cherché ;
+    /// dedans, un dossier absent est une capacité absente, pas une panne.
+    speciaux: Option<Speciaux>,
+    /// Les capacités annoncées, lues par UNE `CAPABILITY` et mémorisées :
+    /// elles ne changent pas en cours de session. MOVE (RFC 6851),
+    /// CONDSTORE (RFC 7162), LIST-STATUS (RFC 5819 — celle qui fond ~51
+    /// STATUS en un aller-retour), UIDPLUS (RFC 4315) s'y lisent.
+    capacites: Option<imap::types::Capabilities>,
 }
 
+/// Ce que `LIST "" "*"` apprend d'un coup sur les dossiers spéciaux.
+#[derive(Clone)]
+struct Speciaux {
+    trash: Option<String>,
+    drafts: Option<String>,
+    /// Le dossier des envois : `None` = ce serveur n'en annonce pas —
+    /// les conversations ne regroupent alors que les messages reçus,
+    /// exactement comme avant l'[ADR 0009] ; la synchronisation continue.
+    sent: Option<String>,
+    archive: convert::ArchiveStrategy,
+}
+
+/// Les octets qu'un lot de corps peut peser au plus (PLAN-AUDIT-V2 E3) :
+/// au-delà, le lot se coupe — un message plus lourd que la borne voyage
+/// seul. Avant, 50 messages entiers partaient en une réponse sans regarder
+/// leur taille (pire cas au-delà du giga).
+const LOT_CORPS_OCTETS: u64 = 32 * 1024 * 1024;
+
+/// Combien d'enveloppes un `changes_since` redemande par aller-retour :
+/// après un long hors-ligne, la boîte entière changée ne tient plus dans
+/// UNE réponse.
+const LOT_CHANGEMENTS: usize = 500;
+
 impl ImapServer {
+    fn nouveau(session: imap::Session<Box<dyn imap::ImapConnection>>) -> Self {
+        Self {
+            session,
+            selected: None,
+            speciaux: None,
+            capacites: None,
+        }
+    }
+
+    /// Une session déjà ouverte, quel qu'en soit le flux — pour le faux
+    /// serveur des tests.
+    #[cfg(test)]
+    pub(crate) fn pour_test(session: imap::Session<Box<dyn imap::ImapConnection>>) -> Self {
+        Self::nouveau(session)
+    }
+
     /// Connexion TLS + authentification XOAUTH2 avec un access token OAuth2.
     /// Délais posés à la socket (P0) : un réseau qui cale est une erreur,
     /// jamais un gel.
@@ -274,17 +310,7 @@ impl ImapServer {
         let session = client
             .authenticate("XOAUTH2", &auth)
             .map_err(|(err, _)| server_err(err))?;
-        Ok(Self {
-            session,
-            selected: None,
-            trash: None,
-            drafts: None,
-            archive: None,
-            sent: None,
-            supports_move: None,
-            supports_condstore: None,
-            supports_list_status: None,
-        })
+        Ok(Self::nouveau(session))
     }
 
     /// Connexion TLS + authentification par mot de passe (IMAP générique).
@@ -299,17 +325,7 @@ impl ImapServer {
         let session = client
             .login(user, password)
             .map_err(|(err, _)| server_err(err))?;
-        Ok(Self {
-            session,
-            selected: None,
-            trash: None,
-            drafts: None,
-            archive: None,
-            sent: None,
-            supports_move: None,
-            supports_condstore: None,
-            supports_list_status: None,
-        })
+        Ok(Self::nouveau(session))
     }
 
     pub fn logout(mut self) {
@@ -339,29 +355,65 @@ impl ImapServer {
         Ok(snapshot)
     }
 
-    /// Découvre le dossier corbeille via ses attributs RFC 6154 — jamais de
-    /// nom en dur : « [Gmail]/Corbeille » sur un compte français, « Trash »
-    /// ailleurs. Résultat mémorisé pour la session.
-    fn trash_folder(&mut self) -> Result<String, Error> {
-        if let Some(name) = &self.trash {
-            return Ok(name.clone());
-        }
-        let names = self.session.list(None, Some("*")).map_err(server_err)?;
-        let trash = names
-            .iter()
-            .find(|name| {
-                name.attributes()
+    /// Les dossiers spéciaux du serveur (RFC 6154) — jamais de nom en dur :
+    /// « [Gmail]/Corbeille » sur un compte français, « Trash » ailleurs.
+    /// UNE `LIST "" "*"` par session, mémorisée.
+    fn speciaux(&mut self) -> Result<&Speciaux, Error> {
+        if self.speciaux.is_none() {
+            let names = self.session.list(None, Some("*")).map_err(server_err)?;
+            let porte =
+                |name: &imap::types::Name, voulu: NameAttribute| name.attributes().contains(&voulu);
+            let premier = |voulu: NameAttribute| {
+                names
                     .iter()
-                    .any(|attribute| matches!(attribute, NameAttribute::Trash))
-            })
-            .map(|name| name.name().to_string())
-            .ok_or_else(|| Error::Server("dossier corbeille introuvable (RFC 6154)".to_string()))?;
-        self.trash = Some(trash.clone());
-        Ok(trash)
+                    .find(|name| porte(name, voulu.clone()))
+                    .map(|name| name.name().to_string())
+            };
+            let roles = |role_de: &dyn Fn(&imap::types::Name) -> convert::SpecialUse| {
+                names
+                    .iter()
+                    .map(|name| (name.name(), role_de(name)))
+                    .collect::<Vec<_>>()
+            };
+            let archive = convert::archive_strategy(roles(&|name| {
+                if porte(name, NameAttribute::Archive) {
+                    convert::SpecialUse::Archive
+                } else if porte(name, NameAttribute::All) {
+                    convert::SpecialUse::All
+                } else {
+                    convert::SpecialUse::Other
+                }
+            }));
+            let sent = convert::sent_folder(roles(&|name| {
+                if porte(name, NameAttribute::Sent) {
+                    convert::SpecialUse::Sent
+                } else {
+                    convert::SpecialUse::Other
+                }
+            }));
+            self.speciaux = Some(Speciaux {
+                trash: premier(NameAttribute::Trash),
+                drafts: premier(NameAttribute::Drafts),
+                sent,
+                archive,
+            });
+        }
+        Ok(self
+            .speciaux
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("posé juste au-dessus")))
     }
 
-    /// Découvre le dossier Brouillons via RFC 6154 — jamais de nom en dur,
-    /// comme la corbeille. Mémorisé pour la session.
+    /// Le dossier corbeille, ou une erreur : les gestes qui y déplacent
+    /// ne peuvent pas se passer de lui.
+    fn trash_folder(&mut self) -> Result<String, Error> {
+        self.speciaux()?
+            .trash
+            .clone()
+            .ok_or_else(|| Error::Server("dossier corbeille introuvable (RFC 6154)".to_string()))
+    }
+
+    /// Le dossier Brouillons, s'il est annoncé.
     ///
     /// `None` quand le serveur n'annonce pas l'attribut : un IMAP
     /// générique peut n'en exposer aucun. **Ce n'est pas une panne, c'est
@@ -369,20 +421,7 @@ impl ImapServer {
     /// répéter le même message à chaque synchronisation, jusqu'à ce que
     /// le bilan ne veuille plus rien dire.
     pub fn drafts_folder_name(&mut self) -> Result<Option<String>, Error> {
-        if let Some(name) = &self.drafts {
-            return Ok(Some(name.clone()));
-        }
-        let names = self.session.list(None, Some("*")).map_err(server_err)?;
-        let drafts = names
-            .iter()
-            .find(|name| {
-                name.attributes()
-                    .iter()
-                    .any(|attribute| matches!(attribute, NameAttribute::Drafts))
-            })
-            .map(|name| name.name().to_string());
-        self.drafts = drafts.clone();
-        Ok(drafts)
+        Ok(self.speciaux()?.drafts.clone())
     }
 
     /// Le dossier Brouillons, ou une erreur — pour les chemins que
@@ -394,67 +433,17 @@ impl ImapServer {
     }
 
     /// Ce qu'« archiver » veut dire sur CE serveur, déduit de ses dossiers
-    /// spéciaux (RFC 6154) et mémorisé pour la session.
+    /// spéciaux (RFC 6154).
     fn archive_strategy(&mut self) -> Result<convert::ArchiveStrategy, Error> {
-        if let Some(strategy) = &self.archive {
-            return Ok(strategy.clone());
-        }
-        let names = self.session.list(None, Some("*")).map_err(server_err)?;
-        let folders: Vec<(&str, convert::SpecialUse)> = names
-            .iter()
-            .map(|name| {
-                let role = if name
-                    .attributes()
-                    .iter()
-                    .any(|attribute| matches!(attribute, NameAttribute::Archive))
-                {
-                    convert::SpecialUse::Archive
-                } else if name
-                    .attributes()
-                    .iter()
-                    .any(|attribute| matches!(attribute, NameAttribute::All))
-                {
-                    convert::SpecialUse::All
-                } else {
-                    convert::SpecialUse::Other
-                };
-                (name.name(), role)
-            })
-            .collect();
-        let strategy = convert::archive_strategy(folders);
-        self.archive = Some(strategy.clone());
-        Ok(strategy)
+        Ok(self.speciaux()?.archive.clone())
     }
 
     /// Le dossier où CE serveur range nos messages partis, s'il en a un.
     ///
     /// `None` n'est pas une panne, c'est une capacité absente — même
-    /// discipline que [`Self::drafts_folder_name`]. Sans lui, les
-    /// conversations ne regroupent que les messages reçus, exactement
-    /// comme avant l'[ADR 0009] ; la synchronisation continue.
+    /// discipline que [`Self::drafts_folder_name`].
     pub fn sent_folder_name(&mut self) -> Result<Option<String>, Error> {
-        if let Some(known) = &self.sent {
-            return Ok(known.clone());
-        }
-        let names = self.session.list(None, Some("*")).map_err(server_err)?;
-        let folders: Vec<(&str, convert::SpecialUse)> = names
-            .iter()
-            .map(|name| {
-                let role = if name
-                    .attributes()
-                    .iter()
-                    .any(|attribute| matches!(attribute, NameAttribute::Sent))
-                {
-                    convert::SpecialUse::Sent
-                } else {
-                    convert::SpecialUse::Other
-                };
-                (name.name(), role)
-            })
-            .collect();
-        let found = convert::sent_folder(folders);
-        self.sent = Some(found.clone());
-        Ok(found)
+        Ok(self.speciaux()?.sent.clone())
     }
 
     /// UIDVALIDITY du dossier Brouillons — la garde des repères distants :
@@ -558,52 +547,57 @@ impl ImapServer {
         }
     }
 
-    /// Marque `\Deleted` puis expunge le seul UID visé (UIDPLUS).
+    /// Le serveur annonce-t-il `nom` ? UNE `CAPABILITY` par session, lue
+    /// une fois : demander une extension à un serveur qui ne l'annonce
+    /// pas serait un BAD — d'où les gardes ci-dessous.
+    fn annonce(&mut self, nom: &str) -> Result<bool, Error> {
+        if self.capacites.is_none() {
+            self.capacites = Some(self.session.capabilities().map_err(server_err)?);
+        }
+        Ok(self
+            .capacites
+            .as_ref()
+            .is_some_and(|capacites| capacites.has_str(nom)))
+    }
+
     /// Le serveur sait-il faire MOVE (RFC 6851) ?
     fn supports_move(&mut self) -> Result<bool, Error> {
-        if let Some(known) = self.supports_move {
-            return Ok(known);
-        }
-        let capabilities = self.session.capabilities().map_err(server_err)?;
-        let supported = capabilities.has_str("MOVE");
-        self.supports_move = Some(supported);
-        Ok(supported)
+        self.annonce("MOVE")
     }
 
     /// Le serveur sait-il faire CONDSTORE (RFC 7162) ? Décide du STATUS
-    /// enrichi (HIGHESTMODSEQ) et du delta `changes_since` — demander
-    /// l'un ou l'autre à un serveur qui ne l'annonce pas serait un BAD.
+    /// enrichi (HIGHESTMODSEQ) et du delta `changes_since`.
     fn supports_condstore(&mut self) -> Result<bool, Error> {
-        if let Some(known) = self.supports_condstore {
-            return Ok(known);
-        }
-        let capabilities = self.session.capabilities().map_err(server_err)?;
-        let supported = capabilities.has_str("CONDSTORE");
-        self.supports_condstore = Some(supported);
-        Ok(supported)
+        self.annonce("CONDSTORE")
     }
 
     /// Le serveur sait-il faire LIST-STATUS (RFC 5819) ? Décide de
-    /// l'inventaire en un aller-retour au lieu de ~51 STATUS. Émettre
-    /// `LIST … RETURN (STATUS …)` à un serveur qui ne l'annonce pas
-    /// serait un BAD — d'où la garde.
+    /// l'inventaire en un aller-retour au lieu de ~51 STATUS.
     fn supports_list_status(&mut self) -> Result<bool, Error> {
-        if let Some(known) = self.supports_list_status {
-            return Ok(known);
-        }
-        let capabilities = self.session.capabilities().map_err(server_err)?;
-        let supported = capabilities.has_str("LIST-STATUS");
-        self.supports_list_status = Some(supported);
-        Ok(supported)
+        self.annonce("LIST-STATUS")
     }
 
+    /// Le serveur sait-il faire UIDPLUS (RFC 4315, `UID EXPUNGE`) ? Sans
+    /// lui, un `UID EXPUNGE` est un BAD : la copie réussissait puis
+    /// l'original restait — un doublon à chaque cycle.
+    fn supports_uidplus(&mut self) -> Result<bool, Error> {
+        self.annonce("UIDPLUS")
+    }
+
+    /// Marque `\Deleted` puis expunge : le seul UID visé avec UIDPLUS ;
+    /// sans lui, l'`EXPUNGE` de RFC 3501 (tout ce que la boîte porte de
+    /// `\Deleted` — et ce sont des messages voulus supprimés).
     fn expunge_uid(&mut self, uid: Uid) -> Result<(), Error> {
         self.session
             .uid_store(uid.to_string(), "+FLAGS.SILENT (\\Deleted)")
             .map_err(server_err)?;
-        self.session
-            .uid_expunge(uid.to_string())
-            .map_err(server_err)?;
+        if self.supports_uidplus()? {
+            self.session
+                .uid_expunge(uid.to_string())
+                .map_err(server_err)?;
+        } else {
+            self.session.expunge().map_err(server_err)?;
+        }
         Ok(())
     }
 }
@@ -637,11 +631,11 @@ impl MailServer for ImapServer {
             .collect())
     }
 
-    /// `BODY.PEEK[HEADER]` — le bloc d'en-têtes ENTIER, faute de mieux :
-    /// la crate `imap` n'expose `header()` que pour cette section-là, et
-    /// pas pour `HEADER.FIELDS (REFERENCES)`, qui serait vingt fois plus
-    /// petite. L'écart est assumé parce que la passe est bornée et ne
-    /// repasse jamais sur un message déjà lu.
+    /// `BODY.PEEK[HEADER.FIELDS (…)]` — les trois en-têtes du fil, et rien
+    /// d'autre : vingt fois moins d'octets que le bloc entier (PLAN-AUDIT-V2
+    /// E3 ; l'ancien commentaire disait la crate incapable de rendre cette
+    /// section — `imap-proto` la range dans `MessageSection::Header`, donc
+    /// `fetch.header()` la sert).
     ///
     /// `PEEK` : lire des en-têtes ne doit pas davantage poser `\Seen` que
     /// lire un corps.
@@ -656,7 +650,10 @@ impl MailServer for ImapServer {
         self.ensure_selected(mailbox)?;
         let fetches = self
             .session
-            .uid_fetch(convert::uid_set(uids), "(UID BODY.PEEK[HEADER])")
+            .uid_fetch(
+                convert::uid_set(uids),
+                "(UID BODY.PEEK[HEADER.FIELDS (MESSAGE-ID IN-REPLY-TO REFERENCES)])",
+            )
             .map_err(server_err)?;
         Ok(fetches
             .iter()
@@ -679,19 +676,25 @@ impl MailServer for ImapServer {
         // drapeaux (le reflet qui manquait : un mail lu au téléphone
         // restait non-lu ici). CHANGEDSINCE est lui-même une commande
         // « CONDSTORE enabling » (RFC 7162 §3.1) : rien à négocier avant.
-        let fetches = self
+        //
+        // En DEUX temps (PLAN-AUDIT-V2 E3) : d'abord les UID seuls — une
+        // ligne courte par message changé, même après un mois hors ligne
+        // — puis les enveloppes par lots bornés. Avant, la boîte entière
+        // changée arrivait en UNE réponse.
+        let changes = self
             .session
-            .uid_fetch(
-                "1:*",
-                format!("(UID ENVELOPE INTERNALDATE FLAGS) (CHANGEDSINCE {modseq})"),
-            )
+            .uid_fetch("1:*", format!("(UID FLAGS) (CHANGEDSINCE {modseq})"))
             .map_err(server_err)?;
-        Ok(Some(
-            fetches
-                .iter()
-                .filter_map(convert::fetch_to_envelope)
-                .collect(),
-        ))
+        let uids: Vec<Uid> = changes.iter().filter_map(|fetch| fetch.uid).collect();
+        let mut envelopes = Vec::with_capacity(uids.len());
+        for lot in uids.chunks(LOT_CHANGEMENTS) {
+            let fetches = self
+                .session
+                .uid_fetch(convert::uid_set(lot), "(UID ENVELOPE INTERNALDATE FLAGS)")
+                .map_err(server_err)?;
+            envelopes.extend(fetches.iter().filter_map(convert::fetch_to_envelope));
+        }
+        Ok(Some(envelopes))
     }
 
     fn fetch_body_html(&mut self, mailbox: &str, uid: Uid) -> Result<Option<FetchedBody>, Error> {
@@ -705,9 +708,12 @@ impl MailServer for ImapServer {
             .find_map(|fetch| body_from_raw(fetch.body()?)))
     }
 
-    /// Une SEULE commande `UID FETCH` pour tout le lot — c'est ce qui rend
-    /// le rattrapage des corps tenable (un aller-retour par message coûte
-    /// ~192 ms sur un serveur réel, cf. `spikes/body-backfill`).
+    /// Une commande `UID FETCH` par lot — c'est ce qui rend le rattrapage
+    /// des corps tenable (un aller-retour par message coûte ~192 ms sur un
+    /// serveur réel, cf. `spikes/body-backfill`). Les tailles d'abord
+    /// (`RFC822.SIZE`, une ligne par message), puis les corps par lots
+    /// bornés à [`LOT_CORPS_OCTETS`] : un lot ne pèse jamais plus que la
+    /// borne, un message plus lourd voyage seul (PLAN-AUDIT-V2 E3).
     ///
     /// `BODY.PEEK[]` : lire un corps ne doit jamais poser `\Seen`. Les UIDs
     /// que le serveur ne sert plus sont simplement absents du résultat.
@@ -720,17 +726,26 @@ impl MailServer for ImapServer {
             return Ok(Vec::new());
         }
         self.ensure_selected(mailbox)?;
-        let fetches = self
+        let tailles = self
             .session
-            .uid_fetch(convert::uid_set(uids), "(UID BODY.PEEK[])")
+            .uid_fetch(convert::uid_set(uids), "(UID RFC822.SIZE)")
             .map_err(server_err)?;
-        Ok(fetches
+        let pesees: Vec<(Uid, u64)> = tailles
             .iter()
-            .filter_map(|fetch| {
+            .filter_map(|fetch| Some((fetch.uid?, u64::from(fetch.size.unwrap_or(0)))))
+            .collect();
+        let mut corps = Vec::with_capacity(pesees.len());
+        for lot in lots_bornes(&pesees, LOT_CORPS_OCTETS) {
+            let fetches = self
+                .session
+                .uid_fetch(convert::uid_set(&lot), "(UID BODY.PEEK[])")
+                .map_err(server_err)?;
+            corps.extend(fetches.iter().filter_map(|fetch| {
                 let uid = fetch.uid?;
                 Some((uid, body_from_raw(fetch.body()?)?))
-            })
-            .collect())
+            }));
+        }
+        Ok(corps)
     }
 
     /// Retélécharge le message pour en extraire UNE pièce, plutôt que de
@@ -972,25 +987,32 @@ pub fn is_connection_error(err: &Error) -> bool {
     matches!(err, Error::Server(msg) if msg.starts_with("connexion "))
 }
 
+/// Découpe des messages pesés en lots dont la somme ne dépasse pas
+/// `borne` — pure, dans l'ordre reçu ; un message seul plus lourd que la
+/// borne fait un lot à lui seul (il faut bien le lire).
+fn lots_bornes(pesees: &[(Uid, u64)], borne: u64) -> Vec<Vec<Uid>> {
+    let mut lots: Vec<Vec<Uid>> = Vec::new();
+    let mut courant: Vec<Uid> = Vec::new();
+    let mut poids = 0u64;
+    for (uid, taille) in pesees {
+        if !courant.is_empty() && poids + taille > borne {
+            lots.push(std::mem::take(&mut courant));
+            poids = 0;
+        }
+        courant.push(*uid);
+        poids += taille;
+    }
+    if !courant.is_empty() {
+        lots.push(courant);
+    }
+    lots
+}
+
 /// Un message brut devient un corps affichable ET la description de ses
-/// pièces jointes — les deux se lisent dans les mêmes octets, il serait
-/// absurde de les redemander séparément.
+/// pièces jointes — les deux se lisent dans les mêmes octets, en UNE
+/// analyse MIME (PLAN-AUDIT-V2 E3 : avant, trois parses du même message).
 fn body_from_raw(raw: &[u8]) -> Option<FetchedBody> {
-    let ics = convert::extract_ics(raw);
-    // Un message dont la RACINE est text/calendar n'a pas de corps
-    // HTML : il reste affichable — carte d'invitation sur corps vide.
-    // Avant PLAN-INVITATIONS il tombait en « message introuvable » et
-    // restait éternellement candidat au rattrapage.
-    let html = match convert::extract_html(raw) {
-        Some(html) => html,
-        None if ics.is_some() => String::new(),
-        None => return None,
-    };
-    Some(FetchedBody {
-        html,
-        attachments: convert::extract_attachments(raw),
-        ics,
-    })
+    convert::analyser(raw)
 }
 
 #[cfg(test)]
