@@ -105,7 +105,7 @@
   // leur iframe ; une carte qui sort de la fenetre laisse un bloc de sa
   // hauteur mesuree (le defilement ne saute pas), et la retrouve en
   // revenant.
-  const FENETRE = 12;
+  const FENETRE = 5;
   let indexVisible = $state(0);
   let hauteurs = $state({});
   const horsFenetre = (i) => Math.abs(i - indexVisible) > FENETRE;

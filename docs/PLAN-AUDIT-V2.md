@@ -630,7 +630,8 @@ E8+E9, revue.
   échoue une fois) — test `un_corps_que_le_cœur_ne_sert_pas_se_dit_et_
   se_rejoue` (retours-7). (2) **Kiosque** : fusion par clé à la
   resservie (`lu` figé au premier service, pages 2..n conservées) et
-  fenêtrage à ±12 rangs de la première carte visible (rang DOM calculé
+  fenêtrage à ±12 rangs de la première carte visible (±5 depuis D9,
+  terrain du 2026-09-02 ; rang DOM calculé
   sections et groupes confondus ; une carte qui sort laisse un bloc de
   la hauteur mesurée de son corps — pas de saut). (3) `Liste.svelte` :
   drapeau `vivant` baissé par le nettoyage d'un `$effect`, le `.finally`
@@ -786,7 +787,8 @@ jamais un gel muet. mail-core 448 → 449. Enseignement au STANDARD §9.
   ROUGE (andon, ci-dessus) ; finale après andon VERTE en 2,9 min,
   193 e2e, flaky 0 ; après la passe 1 de terrain : ROUGE au format
   (deux tests non formatés, `cargo fmt`), puis VERTE en 2,7 min,
-  194 e2e + 1 banc ignoré, flaky 0.
+  194 e2e + 1 banc ignoré, flaky 0 ; après D9 (fenêtre 5) : VERTE en
+  2,7 min, 193 e2e, flaky 1 (`selection-multiple:174`, connu D4).
 
 ## STOP 2 — checklist de terrain (CE)
 
@@ -956,6 +958,10 @@ rétention après retour ouvre un chantier propre (ce n'est pas un réglage
 de fenêtre), et le budget « RAM < 200 Mo » se relit : au repos, ou après
 dix pages de lettres ? Le STANDARD dit « working set privé » sans
 préciser le geste.
+
+**D9 tranchée le 2026-09-02 (CE) : « 5 (Recommandé) »** — `FENETRE = 5`
+(11 iframes vivantes au plus), livré dans la passe 2 de terrain ; la
+racine reste D-53, le budget à préciser au `/solde`.
 
 ## § Décisions CE — tranchées au STOP 1, le 2026-09-02
 
