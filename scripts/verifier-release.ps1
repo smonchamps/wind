@@ -99,6 +99,22 @@ try {
             Dire $false "$($p.cle) : fichier $($p.exe).sig absent de la release"
         }
         $signatures += $entree.signature
+        # PLAN-AUDIT-V2 E9 : la crypto minisign, si l'outil est au PATH —
+        # l'installeur telecharge (une fois par plateforme) et verifie
+        # contre la cle publique du manifeste Tauri. Sans outil : DIT
+        # « non prouve », jamais PASS.
+        $minisign = Get-Command minisign -ErrorAction SilentlyContinue
+        if ($minisign) {
+            $conf = Get-Content (Join-Path $PSScriptRoot "..\apps\desktop\tauri.conf.json") -Raw | ConvertFrom-Json
+            $pub = $conf.plugins.updater.pubkey
+            $pubFichier = Join-Path $tmp "minisign.pub"
+            [IO.File]::WriteAllText($pubFichier, [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($pub)))
+            gh release download $Version --repo $repo --pattern $p.exe --dir $tmp --clobber | Out-Null
+            & minisign -Vm (Join-Path $tmp $p.exe) -x $sigFichier -p $pubFichier | Out-Null
+            Dire ($LASTEXITCODE -eq 0) "$($p.cle) : signature minisign VALIDE sur $($p.exe)"
+        } else {
+            Write-Host "NON PROUVE  $($p.cle) : crypto minisign (minisign absent du PATH — winget install minisign)"
+        }
 
         # URL au tag NU, nom de la bonne architecture.
         $urlAttendue = "https://github.com/$repo/releases/download/$Version/$($p.exe)"

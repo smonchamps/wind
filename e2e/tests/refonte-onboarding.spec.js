@@ -6,7 +6,7 @@
 // IPC) se jouent dedans tels quels. Lancement séparé : l'état zéro
 // compte ne peut pas se jouer sur le décor Clarity.
 import { test, expect } from '@playwright/test';
-import { launchAppV2, closeApp } from '../launch.mjs';
+import { launchAppV2, closeApp, purgerLocales } from '../launch.mjs';
 
 let app;
 let browser;
@@ -19,20 +19,12 @@ test.beforeAll(async () => {
   // Le profil WebView2 est partagé : une suite précédente a pu poser
   // les marques d'accueil — les retirer pour jouer le VRAI premier
   // lancement.
-  await page.evaluate(() => {
-    localStorage.removeItem('wind-accueil-fait');
-    localStorage.removeItem('wind-accueil-commence');
-  });
+  await purgerLocales(page, ['wind-accueil-fait', 'wind-accueil-commence']);
   await page.reload();
 });
 
 test.afterAll(async () => {
-  await page
-    .evaluate(() => {
-      localStorage.removeItem('wind-accueil-fait');
-      localStorage.removeItem('wind-accueil-commence');
-    })
-    .catch(() => { /* fenêtre déjà morte */ });
+  await purgerLocales(page, ['wind-accueil-fait', 'wind-accueil-commence']);
   await closeApp({ app, browser });
 });
 

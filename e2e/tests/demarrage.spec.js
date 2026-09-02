@@ -89,6 +89,14 @@ test('la première page de la liste est demandée avant les sondes du démarrage
   // soit flaky, soit verte par bruit. L'ordre du tableau est le seul
   // contrat que `journal.push` garantit.
   const iListe = journal.indexOf('list_category');
+  // PLAN-AUDIT-V2 E9 : le filet ne peut pas être VIDE — huit sondes
+  // renommées côté app rendaient ce test vert sans une assertion. Trois
+  // court-circuitent sous e2e, les cinq autres doivent être là.
+  const presentes = SONDES.filter((sonde) => journal.includes(sonde));
+  expect(
+    presentes.length,
+    `sondes vues au démarrage : ${presentes.join(', ')} — un renommage a vidé le filet ?`,
+  ).toBeGreaterThanOrEqual(5);
   for (const sonde of SONDES) {
     const iSonde = journal.indexOf(sonde);
     // Trois commandes court-circuitent sous e2e : absente = rien à dire.

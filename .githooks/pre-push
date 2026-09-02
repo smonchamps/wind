@@ -48,61 +48,14 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   [ "$docs_only" = 1 ] || break
 done
 
-echo "[1/8] format"
-cargo fmt --all -- --check
-
-echo "[2/8] build ui-v2 (Svelte + Vite)"
-# Rapide (~3 s) : echoue tot si la refonte ne compile plus. `npm ci`
-# n'est PAS rejoue ici — installer une fois, le build suffit ensuite.
-# « Zero avertissement exige » : un avertissement [vite-plugin-svelte]
-# (a11y, props) est un rouge, comme un warning clippy — il en a traverse
-# deux gates vertes le 2026-09-01 (A105) quand seul le code de sortie
-# comptait. La sortie est REMONTREE (jamais avalee, cf. etapes 3-5).
-sortie_build=$(cd apps/desktop/ui-v2 && npm run build 2>&1) || { printf '%s\n' "$sortie_build"; exit 1; }
-printf '%s\n' "$sortie_build"
-case "$sortie_build" in
-  *"[vite-plugin-svelte]"*) echo "avertissement vite-plugin-svelte = rouge (zero avertissement exige)"; exit 1 ;;
-esac
-
-echo "[3/8] contrastes WCAG (A8)"
-# Millisecondes : chaque paire (encre, fond) des 7 themes doit tenir
-# 4,5:1 texte / 3:1 composants. Un jeton retouche sous le seuil = stop.
-node e2e/contraste.mjs
-
-echo "[4/8] coherence du Systeme (DC-D6)"
-# Le Systeme (docs/design/systeme.dc.html) ne doit jamais deriver du
-# livre (systeme.css) : la CI le verifie deja, le dernier rempart local
-# aussi desormais — un commit UI sans son amendement DC-D2 s'arrete ici.
-node e2e/coherence-systeme.mjs
-
-echo "[5/8] garde du thread principal (PLAN-GELS)"
-# Millisecondes : une commande Tauri synchrone qui ouvre la base gele la
-# fenetre pour toute sa duree (pompe de messages bloquee). Toute commande
-# bloquante doit etre `async fn`.
-node e2e/garde-thread-principal.mjs
-
+# PLAN-AUDIT-V2 E9 (D-32 soldee) : UNE gate, `scripts/gate.ps1` — le hook
+# ne recopie plus ses neuf commandes (deux divergences non voulues y
+# vivaient). Le raccourci documentaire passe par `-DocsSeulement`.
 if [ "$docs_only" = 1 ]; then
-  echo "Diff documentaire seul (docs/** + *.md, hors docs/design/**) :"
-  echo "etapes 6-8 sautees. Gate pre-push documentaire complete."
-  exit 0
+  echo "Diff documentaire seul (docs/** + *.md, hors docs/design/**)."
+  powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gate.ps1 -DocsSeulement
+else
+  powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gate.ps1
 fi
-
-echo "[6/8] clippy (warnings = erreurs)"
-cargo clippy --workspace --all-targets -- -D warnings
-
-echo "[7/8] tests Rust"
-# `--all-targets` n'est PAS décoratif : sans lui, cargo ignore les tests
-# des EXEMPLES. Or les diagnostics du terrain vivent là (crates/mail-core/
-# examples/), et ils portent leurs propres tests — dont celui qui empêche
-# un diagnostic de divulguer des identifiants en clair. Constaté : deux
-# tests écrits, verts, et jamais exécutés par ce gate.
-#
-# `--all-targets` exclut en revanche les doc-tests, d'où la seconde ligne.
-cargo test --workspace --all-targets
-cargo test --workspace --doc
-
-echo "[8/8] E2E — la vraie fenetre pilotee via CDP"
-cd e2e
-npm test
 
 echo "Gate pré-push complet : la CI devrait être verte."

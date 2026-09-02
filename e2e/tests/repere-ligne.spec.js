@@ -7,7 +7,7 @@
 // aucun repère posé, c'est le cas D8 (le tracé est tenu par
 // refonte-retours-8).
 import { test, expect } from '@playwright/test';
-import { launchAppV2, closeApp } from '../launch.mjs';
+import { launchAppV2, closeApp, purgerLocales } from '../launch.mjs';
 
 let app;
 let browser;
@@ -17,21 +17,16 @@ test.describe.configure({ mode: 'serial' });
 
 // Le profil WebView2 est PARTAGÉ entre suites : la largeur de liste
 // touchée par le test de troncature se purge avant ET après.
-const purger = () => {
-  localStorage.removeItem('wind-largeurs');
-};
 
 test.beforeAll(async () => {
   ({ app, browser, page } = await launchAppV2());
-  await page.evaluate(purger);
+  await purgerLocales(page, ['wind-largeurs']);
   await page.reload();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
 });
 
 test.afterAll(async () => {
-  await page
-    .evaluate(purger)
-    .catch(() => { /* fenêtre déjà morte : le profil sera purgé par la prochaine suite */ });
+  await purgerLocales(page, ['wind-largeurs']);
   await closeApp({ app, browser });
 });
 
@@ -184,7 +179,7 @@ test('la troncature protège l’heure et le nom à la borne basse (D4, 300 px)'
   await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   // Retour au défaut pour les suites suivantes.
-  await page.evaluate(() => localStorage.removeItem('wind-largeurs'));
+  await purgerLocales(page, ['wind-largeurs']);
   await page.reload();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
 });

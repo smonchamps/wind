@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
   gate.ps1 -- la gate complete de Wind en UN appel (PLAN-KAIZEN-CLAUDE
-  vague 2, E2). Neuf etapes, l'ordre du hook pre-push (echouer tot),
+  vague 2, E2). Dix etapes, l'ordre du hook pre-push (echouer tot),
   fail-fast, et AUCUNE redirection vers le neant : le verdict chiffre de
   chaque etape (tests, paires, avertissements) doit sortir.
 
@@ -10,6 +10,12 @@
 
   Usage :  powershell -ExecutionPolicy Bypass -File scripts\gate.ps1
 #>
+param(
+    # Le raccourci documentaire du hook pre-push (PLAN-KAIZEN vague 2,
+    # E4) : un diff docs/** + *.md (hors docs/design/**) ne joue que les
+    # etapes en secondes — clippy, tests et e2e ne peuvent rien attraper.
+    [switch]$DocsSeulement
+)
 $ErrorActionPreference = "Stop"
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -20,7 +26,7 @@ $rapport = @()
 
 function Etape($no, $titre, [scriptblock]$corps) {
     Write-Host ""
-    Write-Host "[$no/9] $titre" -ForegroundColor Cyan
+    Write-Host "[$no/10] $titre" -ForegroundColor Cyan
     $t = [System.Diagnostics.Stopwatch]::StartNew()
     # try/catch : une exception terminante (commande absente du PATH,
     # Push-Location rate) doit produire le MEME verdict rouge nomme
@@ -29,16 +35,16 @@ function Etape($no, $titre, [scriptblock]$corps) {
     catch {
         Write-Host $_.Exception.Message -ForegroundColor Red
         Write-Host ""
-        Write-Host "GATE ROUGE a l'etape [$no/9] $titre (exception)" -ForegroundColor Red
+        Write-Host "GATE ROUGE a l'etape [$no/10] $titre (exception)" -ForegroundColor Red
         exit 1
     }
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
-        Write-Host "GATE ROUGE a l'etape [$no/9] $titre (code $LASTEXITCODE)" -ForegroundColor Red
+        Write-Host "GATE ROUGE a l'etape [$no/10] $titre (code $LASTEXITCODE)" -ForegroundColor Red
         exit 1
     }
     $t.Stop()
-    $script:rapport += ("  [{0}/9] {1,-28} {2,7:n1} s" -f $no, $titre, $t.Elapsed.TotalSeconds)
+    $script:rapport += ("  [{0}/10] {1,-28} {2,7:n1} s" -f $no, $titre, $t.Elapsed.TotalSeconds)
 }
 
 Etape 1 "format" { cargo fmt --all -- --check }
@@ -65,20 +71,42 @@ Etape 4 "coherence du Systeme (DC-D6)" { node e2e/coherence-systeme.mjs }
 
 Etape 5 "garde du thread principal" { node e2e/garde-thread-principal.mjs }
 
-Etape 6 "clippy (warnings = erreurs)" { cargo clippy --workspace --all-targets -- -D warnings }
+# PLAN-AUDIT-V2 E9 : aucun lint JS ne gardait les scripts d'outillage —
+# une faute de syntaxe dans une gate textuelle se decouvrait en la
+# jouant. `node --check` coute 0,2 s.
+Etape 6 "syntaxe des scripts (node --check)" {
+    $scripts = @(Get-ChildItem e2e -Filter *.mjs) + @(Get-ChildItem scripts -Filter *.mjs)
+    foreach ($f in $scripts) {
+        & node --check $f.FullName
+        if ($LASTEXITCODE -ne 0) { Write-Host "syntaxe : $($f.Name)" -ForegroundColor Red; return }
+    }
+}
+
+if ($DocsSeulement) {
+    $chrono.Stop()
+    Write-Host ""
+    Write-Host "Diff documentaire seul : etapes 7-10 sautees. Gate documentaire VERTE en $([math]::Round($chrono.Elapsed.TotalSeconds)) s." -ForegroundColor Green
+    $rapport | ForEach-Object { Write-Host $_ }
+    exit 0
+}
+
+Etape 7 "clippy (warnings = erreurs)" { cargo clippy --workspace --all-targets -- -D warnings }
 
 # --all-targets n'est PAS decoratif : sans lui, cargo ignore les tests
 # des EXEMPLES (diagnostics du terrain, crates/mail-core/examples/).
-Etape 7 "tests Rust (--all-targets)" { cargo test --workspace --all-targets }
+Etape 8 "tests Rust (--all-targets)" { cargo test --workspace --all-targets }
 
-Etape 8 "tests Rust (--doc)" { cargo test --workspace --doc }
+Etape 9 "tests Rust (--doc)" { cargo test --workspace --doc }
 
-Etape 9 "e2e (fenetre pilotee CDP)" {
+Etape 10 "e2e (fenetre pilotee CDP)" {
     Push-Location (Join-Path $root "e2e")
     try { npm test } finally { Pop-Location }
 }
 
+# Le compte des flaky du run (D4) : consigne au verdict, jamais un rouge.
+$flaky = & node e2e/flaky.mjs
 $chrono.Stop()
 Write-Host ""
 Write-Host "Gate complete VERTE en $([math]::Round($chrono.Elapsed.TotalMinutes, 1)) min ($([math]::Round($chrono.Elapsed.TotalSeconds)) s) :" -ForegroundColor Green
 $rapport | ForEach-Object { Write-Host $_ }
+$flaky | ForEach-Object { Write-Host "  $_" }

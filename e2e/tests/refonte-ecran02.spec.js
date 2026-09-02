@@ -2,7 +2,7 @@
 // nav réelle, onglets filtrés côté coeur, volet de lecture, action
 // réelle. Le fichier est nommé pour passer APRÈS les parcours v1
 // (ordre alphabétique) : une seule reconstruction d'assets par gate.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { test, expect } from '@playwright/test';
@@ -1035,6 +1035,11 @@ test("le suivi OS lit l'API Tauri : une vraie bascule Windows suffixe et revient
   const basculer = (v) => execSync(
     `powershell -NoProfile -ExecutionPolicy Bypass -File "${script}" -v ${v}`,
   );
+  // Temoin pour le globalTeardown (PLAN-AUDIT-V2 E9, D7) : si le runner
+  // meurt entre la bascule et le finally, la machine retrouve son theme.
+  const temoin = path.resolve(import.meta.dirname, '..', 'test-results', 'theme-initial.txt');
+  mkdirSync(path.dirname(temoin), { recursive: true });
+  writeFileSync(temoin, String(initial));
   try {
     await page.locator('[data-testid="reglages"]').click();
     await page.locator('[data-testid="reglages-groupe"][data-groupe="themes"]').click();
@@ -1057,6 +1062,7 @@ test("le suivi OS lit l'API Tauri : une vraie bascule Windows suffixe et revient
   } finally {
     // La machine retrouve son réglage, quoi qu'il arrive au test.
     basculer(initial);
+    rmSync(temoin, { force: true });
   }
 });
 

@@ -10,7 +10,7 @@
 // `__e2eAccueil` (un décor semé est sinon réputé « déjà accueilli » —
 // c'est le comportement de production voulu pour les mises à jour).
 import { test, expect } from '@playwright/test';
-import { launchAppV2, closeApp } from '../launch.mjs';
+import { launchAppV2, closeApp, purgerLocales } from '../launch.mjs';
 
 let app;
 let browser;
@@ -18,14 +18,6 @@ let page;
 
 test.describe.configure({ mode: 'serial' });
 
-const purger = () => {
-  localStorage.removeItem('wind-accueil-fait');
-  localStorage.removeItem('wind-accueil-commence');
-  localStorage.removeItem('wind-volets');
-  localStorage.removeItem('wind-largeurs');
-  localStorage.removeItem('wind-theme');
-  localStorage.removeItem('wind-theme-auto');
-};
 
 test.beforeAll(async () => {
   ({ app, browser, page } = await launchAppV2({
@@ -34,15 +26,13 @@ test.beforeAll(async () => {
       { email: 'deux@exemple.fr', messages: 4 },
     ],
   }));
-  await page.evaluate(purger);
+  await purgerLocales(page);
   await page.reload();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
 });
 
 test.afterAll(async () => {
-  await page
-    .evaluate(purger)
-    .catch(() => { /* fenêtre déjà morte : le profil sera purgé par la prochaine suite */ });
+  await purgerLocales(page);
   await closeApp({ app, browser });
 });
 

@@ -1,0 +1,9 @@
+# PLAN-AUDIT-V2 E9 : les actions de la CI sont epinglees par SHA (un tag
+# mobile peut etre reecrit — la chaine d'outillage est une surface). Ce
+# fichier les fait suivre : une PR par mise a jour, hebdomadaire.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

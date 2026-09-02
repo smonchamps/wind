@@ -128,7 +128,7 @@ test("la case vit au survol, coche sans choisir, et le contenu s'écarte (D4, te
   expect(await padGauche(1)).toBe('16px');
   await lignes().nth(1).hover();
   await expect.poll(async () => opacite(caseDe(1))).toBe('1');
-  expect(await padGauche(1)).toBe('34px');
+  await expect.poll(() => padGauche(1)).toBe('34px');
   await caseDe(1).click();
   await expect(barre()).toContainText('1 sélectionné');
   // La case ne choisit pas : le liseré n'a pas bougé sur cette rangée.
@@ -136,8 +136,8 @@ test("la case vit au survol, coche sans choisir, et le contenu s'écarte (D4, te
   // Dès qu'une sélection existe, TOUTES les cases se montrent et
   // toutes les rangées s'écartent d'un bloc (D4) — mesuré sur une
   // rangée non survolée ni cochée.
-  expect(await opacite(caseDe(3))).toBe('1');
-  expect(await padGauche(3)).toBe('34px');
+  await expect.poll(() => opacite(caseDe(3))).toBe('1');
+  await expect.poll(() => padGauche(3)).toBe('34px');
   await page.locator('[data-testid="barre-annuler"]').click();
 });
 

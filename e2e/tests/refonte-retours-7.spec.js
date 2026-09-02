@@ -49,7 +49,7 @@ test('le survol d’une pièce jointe dit « Enregistrer » (R1, D1)', async () 
     .first();
   const voile = piece.locator('.voile');
   // Au repos : la puce dit le fichier, le voile n'existe pas à l'œil.
-  expect(await voile.evaluate((el) => getComputedStyle(el).display)).toBe('none');
+  await expect.poll(() => voile.evaluate((el) => getComputedStyle(el).display)).toBe('none');
   // Au survol : le voile COUVRE la puce — glyphe download + le mot du
   // produit (D1 : « Enregistrer », le clic ouvre « Enregistrer sous ») —
   // sans changer sa géométrie (la rangée ne reflue pas).
@@ -57,13 +57,14 @@ test('le survol d’une pièce jointe dit « Enregistrer » (R1, D1)', async () 
   await piece.hover();
   // (`inline-flex` posé se calcule `flex` : l'absolu blockifie — on
   // asserte la présence, pas la valeur.)
-  expect(await voile.evaluate((el) => getComputedStyle(el).display)).not.toBe('none');
+  // PLAN-AUDIT-V2 E9 : réessayé — le voile suit le survol, pas l'instant.
+  await expect.poll(() => voile.evaluate((el) => getComputedStyle(el).display)).not.toBe('none');
   await expect(voile).toContainText('Enregistrer');
   await expect(voile.locator('.ic')).toHaveAttribute('data-nom', 'download');
-  expect(await piece.evaluate((el) => el.offsetWidth)).toBe(largeurAvant);
+  await expect.poll(() => piece.evaluate((el) => el.offsetWidth)).toBe(largeurAvant);
   // On quitte : le voile se retire.
   await page.locator('[data-testid="fil-sujet"]').hover();
-  expect(await voile.evaluate((el) => getComputedStyle(el).display)).toBe('none');
+  await expect.poll(() => voile.evaluate((el) => getComputedStyle(el).display)).toBe('none');
 });
 
 test('l’écran 03 est À PLAT : chaque message dans son élévation, la conversation sans (R3, D2)', async () => {

@@ -19,7 +19,7 @@
 //    pour qu'une barre fantôme puisse seulement se voir.
 // Chaque test ci-dessous a été vérifié capable d'ÉCHOUER.
 import { test, expect } from '@playwright/test';
-import { launchAppV2, closeApp } from '../launch.mjs';
+import { launchAppV2, closeApp, purgerLocales } from '../launch.mjs';
 
 let app;
 let browser;
@@ -27,9 +27,6 @@ let page;
 
 test.describe.configure({ mode: 'serial' });
 
-const purger = () => {
-  localStorage.removeItem('wind-espacement');
-};
 
 // Les valeurs de la décision CE D1. Le delta est arithmétique : +6 px
 // de padding = +12 px de rangée, sur les DEUX gabarits.
@@ -48,15 +45,13 @@ test.beforeAll(async () => {
   ({ app, browser, page } = await launchAppV2({
     comptes: [{ email: 'un@exemple.fr', messages: 400 }],
   }));
-  await page.evaluate(purger);
+  await purgerLocales(page, ['wind-espacement']);
   await page.reload();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
 });
 
 test.afterAll(async () => {
-  await page
-    .evaluate(purger)
-    .catch(() => { /* fenêtre déjà morte : la prochaine suite purgera */ });
+  await purgerLocales(page, ['wind-espacement']);
   await closeApp({ app, browser });
 });
 

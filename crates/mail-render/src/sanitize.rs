@@ -190,6 +190,39 @@ mod tests {
         assert!(out.html.contains("cliquer"));
     }
 
+    /// PLAN-AUDIT-V2 E8 : les filets NOMMÉS de la seconde frontière — le
+    /// HTML d'un mail reçu peut être reposé dans le document principal
+    /// (composeur, signature) ; chaque vecteur classique a son test.
+    #[test]
+    fn un_svg_a_gestionnaire_inline_ne_survit_pas() {
+        let out = sanitize(r#"<p>ok</p><svg onload="alert(1)"><circle r="1"/></svg>"#);
+        assert!(!out.html.contains("onload"));
+        assert!(!out.html.contains("<svg"));
+        assert!(out.html.contains("ok"));
+    }
+
+    #[test]
+    fn un_srcset_distant_ne_survit_pas_sous_block_remote() {
+        let out = sanitize(r#"<img src="cid:x" srcset="https://pisteur.example/p.gif 1x">"#);
+        assert!(!out.html.contains("srcset"));
+        assert!(!out.html.contains("pisteur.example"));
+    }
+
+    #[test]
+    fn un_meta_refresh_ne_survit_pas() {
+        let out =
+            sanitize(r#"<meta http-equiv="refresh" content="0;url=https://x.example"><p>ok</p>"#);
+        assert!(!out.html.contains("http-equiv"));
+        assert!(!out.html.contains("x.example"));
+    }
+
+    #[test]
+    fn une_base_href_ne_survit_pas() {
+        let out = sanitize(r#"<base href="https://x.example/"><a href="/page">lien</a>"#);
+        assert!(!out.html.contains("<base"));
+        assert!(!out.html.contains("x.example"));
+    }
+
     #[test]
     fn blocks_remote_images_with_neutral_pixel() {
         let out = sanitize(r#"<img src="https://tracker.example.com/pixel.gif" width="1">"#);

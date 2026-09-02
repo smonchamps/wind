@@ -101,6 +101,28 @@ function seeder(db, etapes) {
 // compte » qui doit montrer l'écran 01 (onboarding).
 // `comptes: [{email, messages}]` : le décor seed_inbox — les parcours
 // portés de v1 (R2) rejouent les graines EXACTES des specs d'origine.
+// Les clés locales que les suites touchent — le profil WebView2 est
+// PARTAGÉ entre suites, un run interrompu laisse son état : on purge
+// avant ET après (PLAN-AUDIT-V2 E9 : cinq specs recopiaient chacune sa
+// liste). Une fenêtre déjà morte n'est pas une erreur.
+export const CLES_LOCALES = [
+  'wind-accueil-fait',
+  'wind-accueil-commence',
+  'wind-volets',
+  'wind-largeurs',
+  'wind-theme',
+  'wind-theme-auto',
+  'wind-espacement',
+];
+
+export async function purgerLocales(page, cles = CLES_LOCALES) {
+  await page
+    .evaluate((liste) => {
+      for (const cle of liste) localStorage.removeItem(cle);
+    }, cles)
+    .catch(() => { /* fenêtre déjà morte */ });
+}
+
 export async function launchAppV2({ vierge = false, comptes = null } = {}) {
   construireV2(root, { release: false });
 

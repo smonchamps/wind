@@ -9,7 +9,7 @@
 // que ni un run interrompu ni cette suite ne poussent les autres
 // écrans hors du défaut.
 import { test, expect } from '@playwright/test';
-import { launchAppV2, closeApp } from '../launch.mjs';
+import { launchAppV2, closeApp, purgerLocales } from '../launch.mjs';
 
 let app;
 let browser;
@@ -21,21 +21,13 @@ test.beforeAll(async () => {
   ({ app, browser, page } = await launchAppV2());
   // Un run précédent interrompu a pu laisser un mode : repartir du
   // défaut AVANT toute assertion.
-  await page.evaluate(() => {
-    localStorage.removeItem('wind-volets');
-    localStorage.removeItem('wind-largeurs');
-  });
+  await purgerLocales(page, ['wind-volets', 'wind-largeurs']);
   await page.reload();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
 });
 
 test.afterAll(async () => {
-  await page
-    .evaluate(() => {
-      localStorage.removeItem('wind-volets');
-      localStorage.removeItem('wind-largeurs');
-    })
-    .catch(() => { /* la fenêtre est peut-être déjà morte : le beforeAll des autres suites ne lit pas ce profil-là */ });
+  await purgerLocales(page, ['wind-volets', 'wind-largeurs']);
   await closeApp({ app, browser });
 });
 
@@ -215,33 +207,33 @@ test('les volets se redimensionnent à la souris — bornes, persistance, double
     await page.mouse.up();
   };
 
-  expect(await largeur('liste')).toBe(400);
+  await expect.poll(() => largeur('liste')).toBe(400);
   // La nav d'abord, bornée en bas à 180 — elle libère le plafond de la
   // liste (fenêtre 1000 : 1000 - 180 - 120 de réserve du fil = 700).
   await saisir('poignee-nav', -500);
-  expect(await largeur('nav')).toBe(180);
+  await expect.poll(() => largeur('nav')).toBe(180);
   await saisir('poignee-liste', 120);
-  expect(await largeur('liste')).toBe(520);
+  await expect.poll(() => largeur('liste')).toBe(520);
   // La borne haute retient la poignée : 640, jamais au-delà.
   await saisir('poignee-liste', 500);
-  expect(await largeur('liste')).toBe(640);
+  await expect.poll(() => largeur('liste')).toBe(640);
   // Le PLAFOND de la fenêtre retient l'autre frontière (revue
   // 2026-08-16) : nav max 400 écraserait le fil sous sa réserve —
   // 1000 - 640 - 120 = 240, jamais au-delà, la poignée liste reste
   // saisissable à l'écran.
   await saisir('poignee-nav', 500);
-  expect(await largeur('nav')).toBe(240);
+  await expect.poll(() => largeur('nav')).toBe(240);
 
   // Persistance : la page rechargée restaure les largeurs AVANT le
   // premier rendu — écrites au RELÂCHEMENT, jamais par pointermove.
   await page.reload();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  expect(await largeur('liste')).toBe(640);
-  expect(await largeur('nav')).toBe(240);
+  await expect.poll(() => largeur('liste')).toBe(640);
+  await expect.poll(() => largeur('nav')).toBe(240);
 
   // Double-clic : chaque frontière rend son défaut.
   await page.locator('[data-testid="poignee-liste"]').dblclick();
-  expect(await largeur('liste')).toBe(400);
+  await expect.poll(() => largeur('liste')).toBe(400);
   await page.locator('[data-testid="poignee-nav"]').dblclick();
-  expect(await largeur('nav')).toBe(248);
+  await expect.poll(() => largeur('nav')).toBe(248);
 });

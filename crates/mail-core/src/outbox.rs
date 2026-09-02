@@ -339,6 +339,32 @@ impl Store {
         self.load_outbox_attachments(rows)
     }
 
+    /// Y a-t-il quelque chose à vidanger pour ce compte ? Un COUNT — la
+    /// vidange le demandait en relisant toute la file, octets des pièces
+    /// compris (PLAN-AUDIT-V2 E7).
+    pub fn outbox_pending_count(&self, account_id: i64) -> Result<u64, Error> {
+        let count: i64 = self.conn().query_row(
+            "SELECT COUNT(*) FROM outbox WHERE account_id = ?1 AND state = 'queued'
+               AND (send_at_epoch IS NULL OR send_at_epoch <= ?2)",
+            params![account_id, Utc::now().timestamp()],
+            |row| row.get(0),
+        )?;
+        Ok(count as u64)
+    }
+
+    /// Toute la boîte d'envoi SANS les octets des pièces — pour le statut
+    /// (toutes les 10 s) et toute liste : le `.len()` d'une pièce ne vaut
+    /// pas 25 Mo relus (PLAN-AUDIT-V2 E7).
+    pub fn outbox_metadonnees(&self) -> Result<Vec<OutboxMessage>, Error> {
+        let mut stmt = self
+            .conn()
+            .prepare(&format!("{OUTBOX_SELECT} ORDER BY id"))?;
+        let rows = stmt
+            .query_map([], row_to_outbox)?
+            .collect::<Result<Vec<_>, _>>()?;
+        self.charger_pieces(rows, false)
+    }
+
     /// Toute la boîte d'envoi, dans l'ordre d'émission.
     pub fn outbox(&self) -> Result<Vec<OutboxMessage>, Error> {
         let mut stmt = self
@@ -361,17 +387,29 @@ impl Store {
         self.load_outbox_attachments(rows)
     }
 
-    /// Attache leurs pièces aux messages relus. La boîte d'envoi se
-    /// compte en unités — une requête par message est sans enjeu, et le
-    /// chemin de lecture reste unique pour les trois entrées.
+    /// Attache leurs pièces aux messages relus — octets compris pour la
+    /// vidange, métadonnées seules pour le statut. Le chemin de lecture
+    /// reste unique pour les quatre entrées.
     fn load_outbox_attachments(
         &self,
-        mut messages: Vec<OutboxMessage>,
+        messages: Vec<OutboxMessage>,
     ) -> Result<Vec<OutboxMessage>, Error> {
-        let mut stmt = self.conn().prepare(
+        self.charger_pieces(messages, true)
+    }
+
+    fn charger_pieces(
+        &self,
+        mut messages: Vec<OutboxMessage>,
+        avec_octets: bool,
+    ) -> Result<Vec<OutboxMessage>, Error> {
+        let sql = if avec_octets {
             "SELECT name, mime, size, bytes FROM outbox_attachments
-             WHERE outbox_id = ?1 ORDER BY id",
-        )?;
+             WHERE outbox_id = ?1 ORDER BY id"
+        } else {
+            "SELECT name, mime, size, NULL FROM outbox_attachments
+             WHERE outbox_id = ?1 ORDER BY id"
+        };
+        let mut stmt = self.conn().prepare(sql)?;
         for message in &mut messages {
             message.attachments = stmt
                 .query_map([message.id], |row| {
@@ -522,6 +560,12 @@ pub struct OutboxReport {
 /// du serveur — la fenêtre d'ambiguïté est réduite à la remise elle-même.
 /// Au premier échec transitoire la pompe s'arrête : le réseau est tombé,
 /// inutile d'insister, la file survit telle quelle.
+/// Combien d'échecs TRANSITOIRES consécutifs avant qu'un envoi soit
+/// refusé (PLAN-AUDIT-V2 E7, décision CE D5 : 5, comme la quarantaine
+/// des actions). Avant, `attempts` se comptait sans jamais se lire : un
+/// message empoisonné retenait la file du compte à vie.
+pub const SEUIL_ENVOI: u32 = 5;
+
 pub fn flush_outbox(
     transport: &mut dyn MailTransport,
     store: &mut Store,
@@ -547,6 +591,16 @@ pub fn flush_outbox(
                 report.sent += 1;
             }
             Err(SendError::Transient(reason)) => {
+                if message.attempts + 1 >= SEUIL_ENVOI {
+                    // Le poison sort de la file (D5) : refusé, motif dit,
+                    // l'utilisateur tranchera — et le suivant a son tour.
+                    store.record_rejection(
+                        message.id,
+                        &format!("{SEUIL_ENVOI} tentatives : {reason}"),
+                    )?;
+                    report.rejected += 1;
+                    continue;
+                }
                 store.record_transient_failure(message.id, &reason)?;
                 report.deferred += 1;
                 break;
@@ -876,6 +930,72 @@ mod tests {
 
         assert_eq!(down.calls, 1, "un seul essai suffit à constater la coupure");
         assert_eq!(store.outbox_in_state(OutboxState::Queued).unwrap().len(), 2);
+    }
+
+    /// PLAN-AUDIT-V2 E7 (D5) : un message empoisonné — transitoire à
+    /// chaque cycle — retenait la file du compte à vie (`attempts`
+    /// compté, jamais lu). Au cinquième échec il est REFUSÉ, l'utilisateur
+    /// tranchera, et le suivant a son tour.
+    #[test]
+    fn cinq_echecs_transitoires_refusent_le_message_et_liberent_la_file() {
+        let (mut store, account) = store();
+        store.enqueue_outbox(account, &draft("a")).unwrap();
+        store.enqueue_outbox(account, &draft("b")).unwrap();
+        let mut down = FakeTransport {
+            network_down: true,
+            ..FakeTransport::default()
+        };
+        for _ in 0..SEUIL_ENVOI {
+            flush_outbox(&mut down, &mut store, account).unwrap();
+        }
+        let refuses = store.outbox_in_state(OutboxState::Rejected).unwrap();
+        assert_eq!(refuses.len(), 1, "« a » est refusé au cinquième échec");
+        assert!(
+            refuses[0]
+                .last_error
+                .as_deref()
+                .unwrap_or("")
+                .contains("5 tentatives"),
+            "{:?}",
+            refuses[0].last_error
+        );
+        let en_file = store.outbox_in_state(OutboxState::Queued).unwrap();
+        assert_eq!(en_file.len(), 1);
+        assert_eq!(
+            en_file[0].attempts, 1,
+            "« b » a eu son tour au cinquième cycle"
+        );
+    }
+
+    /// PLAN-AUDIT-V2 E7 : le statut (toutes les 10 s) et la garde de
+    /// vacuité de la vidange chargeaient les OCTETS de chaque pièce —
+    /// 25 Mo × N relus pour un `.len()`. Le statut lit les métadonnées.
+    #[test]
+    fn le_statut_ne_charge_aucun_octet_de_piece() {
+        let (store, account) = store();
+        store.enqueue_outbox(account, &draft("a")).unwrap();
+        let id = store.outbox().unwrap()[0].id;
+        store
+            .conn()
+            .execute(
+                "INSERT INTO outbox_attachments (outbox_id, name, mime, size, bytes)
+                 VALUES (?1, 'a.pdf', 'application/pdf', 3, X'010203')",
+                [id],
+            )
+            .unwrap();
+        let pleine = store.outbox().unwrap();
+        assert!(
+            pleine[0].attachments[0].bytes.is_some(),
+            "la vidange lit les octets"
+        );
+        let legere = store.outbox_metadonnees().unwrap();
+        assert_eq!(legere[0].attachments.len(), 1);
+        assert_eq!(legere[0].attachments[0].size, 3);
+        assert!(
+            legere[0].attachments[0].bytes.is_none(),
+            "le statut ne les lit pas"
+        );
+        assert_eq!(store.outbox_pending_count(account).unwrap(), 1);
     }
 
     #[test]

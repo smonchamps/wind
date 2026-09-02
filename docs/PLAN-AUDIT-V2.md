@@ -569,6 +569,57 @@ E8+E9, revue.
   **1 `agir_groupe`, 0 `archive_message`, 0 `thread_messages`** — joué
   RED avant le changement d'UI, GREEN après (9/9, 25 s). Mesure : 50
   conversations × 4 messages, IPC 300 → 1 par construction.
+  **Gate complète VERTE** (3,8 min, 187/187, 0 flaky), commit `595ac6e`
+  (E4-E6).
+
+- **E7 — livrée le 2026-09-02.** `SEUIL_ENVOI = 5` (D5) : au cinquième
+  échec transitoire consécutif, `flush_outbox` REFUSE le message (motif
+  « 5 tentatives : … », l'utilisateur tranchera — l'état `rejected` et
+  sa ligne dans la fente existaient) et CONTINUE avec le suivant ; avant,
+  `attempts` se comptait sans jamais se lire. `outbox_pending_count`
+  (un COUNT) remplace la relecture de toute la file, octets des pièces
+  compris, que `flush_outbox` faisait par compte à chaque cycle pour un
+  `.is_empty()` ; `outbox_metadonnees()` (pièces sans octets, `NULL` en
+  colonne) sert `outbox_status` toutes les 10 s — le chemin de lecture
+  reste unique (`charger_pieces(avec_octets)`). RED de compilation puis
+  GREEN : `cinq_echecs_transitoires_refusent_le_message_et_liberent_la_
+  file` (« a » refusé au 5e cycle, « b » a eu son tour : `attempts` 1),
+  `le_statut_ne_charge_aucun_octet_de_piece`. mail-core 444 → 446.
+
+- **E8 — livrée le 2026-09-02.** CSP + `object-src 'none'; base-uri
+  'self'; form-action 'none'` (`withGlobalTauri: false` refusé, C8 :
+  `__TAURI_INTERNALS__` reste injecté quoi qu'il arrive — la CSP est la
+  frontière). `chemin_de_sortie(dest)` pure : absolu, sans `..`, nom de
+  fichier, dossier existant — `save_attachment` l'exige ; `attach_files`
+  n'accepte qu'un chemin absolu vers un fichier régulier. RED de
+  compilation puis GREEN : `un_chemin_relatif_ou_a_remontee_est_refuse`
+  (desktop 31 → 32). `mail-render` : quatre filets NOMMÉS — `<svg
+  onload>`, `srcset` distant sous `BlockRemote`, `<meta http-equiv=
+  refresh>`, `<base href>` — **verts d'emblée** (l'allowlist ammonia
+  tenait déjà) : ce n'est pas un RED, ce sont les noms de la seconde
+  frontière (mail-render 22 → 26) ; l'échappement CSS qui passe le
+  filtre naïf reste documenté tel quel, CSP en garde-fou.
+
+- **E9 — livrée le 2026-09-02.** CI : les quatre actions épinglées par
+  SHA (`gh api repos/…/commits/<tag>`), `dependabot.yml` hebdomadaire
+  `github-actions`. Playwright : rapporteur JSON + `e2e/flaky.mjs`, et
+  `gate.ps1` imprime « flaky : N » (avec les noms) au verdict — le
+  chiffre que D4 attendait existe désormais ; `globalSetup` compile les
+  exemples hors du timeout de spec ; `globalTeardown` restaure
+  `AppsUseLightTheme` depuis un témoin que l'épreuve « suivi OS » écrit
+  AVANT de basculer (D7 — le `finally` existait, un kill du runner le
+  sautait). `expect.poll` sur les 14 assertions nues après hover/drag
+  (retours-7 ×3, volets ×9, sélection ×3 — dont le flaky de la gate
+  E1-E3). `demarrage.spec` : plancher de présence (≥ 5 sondes sur 8,
+  sinon rouge — le `continue` rendait le filet vide sur renommage).
+  `launch.mjs` : `CLES_LOCALES` + `purgerLocales(page, clés)` — cinq
+  specs perdent leur copie. `gate.ps1` : dix étapes, `node --check`
+  sur `e2e/*.mjs` et `scripts/*.mjs` (2,3 s), paramètre
+  `-DocsSeulement` ; **le hook `pre-push` délègue à `gate.ps1`** (D-32
+  soldée : neuf commandes recopiées, deux divergences). `verifier-
+  release.ps1` : `minisign -Vm` contre la clé publique du manifeste si
+  l'outil est au PATH, sinon « NON PROUVÉ » dit (jamais PASS). Gate
+  documentaire jouée : 8 s, six étapes.
 
 ## Gate & terrain
 

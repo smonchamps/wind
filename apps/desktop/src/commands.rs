@@ -2454,10 +2454,35 @@ pub async fn save_attachment(
     // E5 : l'écriture sur disque (des octets choisis par l'expéditeur,
     // jusqu'à 25 Mo) hors du worker async nu.
     hors_pompe(app, move |_| {
+        let dest = chemin_de_sortie(&dest)?;
         std::fs::write(&dest, &bytes).map_err(|err| format!("écriture impossible : {err}"))?;
-        Ok(dest)
+        Ok(dest.to_string_lossy().into_owned())
     })
     .await
+}
+
+/// Le chemin où une pièce reçue peut s'écrire (PLAN-AUDIT-V2 E8, défense
+/// en profondeur) : venu du dialogue de la webview, il s'écrit avec des
+/// octets choisis par l'expéditeur — absolu, sans remontée `..`, dans un
+/// dossier qui existe. Décision pure, testée.
+fn chemin_de_sortie(dest: &str) -> Result<std::path::PathBuf, String> {
+    let chemin = std::path::Path::new(dest);
+    if !chemin.is_absolute() {
+        return Err("chemin d'enregistrement relatif refusé".to_string());
+    }
+    if chemin
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err("chemin d'enregistrement avec remontée refusé".to_string());
+    }
+    if chemin.file_name().is_none() {
+        return Err("chemin d'enregistrement sans nom de fichier".to_string());
+    }
+    match chemin.parent() {
+        Some(dossier) if dossier.is_dir() => Ok(chemin.to_path_buf()),
+        _ => Err("dossier d'enregistrement introuvable".to_string()),
+    }
 }
 
 /// Réduit un nom venu du RÉSEAU à un nom de fichier inoffensif.
@@ -4584,9 +4609,9 @@ fn run_flush_all(
 
     for (account_id, session) in jobs {
         if store
-            .outbox_to_send(account_id)
+            .outbox_pending_count(account_id)
             .map_err(|err| err.to_string())?
-            .is_empty()
+            == 0
         {
             continue;
         }
@@ -4657,7 +4682,7 @@ pub async fn outbox_status(app: AppHandle) -> Result<OutboxStatus, String> {
             actions_refusees: store.actions_refusees().map_err(|err| err.to_string())?,
         };
         let maintenant = chrono::Utc::now().timestamp();
-        for message in store.outbox().map_err(|err| err.to_string())? {
+        for message in store.outbox_metadonnees().map_err(|err| err.to_string())? {
             // R2 : programmé pas encore échu — il n'attend pas le
             // réseau, il attend son heure. Compté à part, et la plus
             // proche échéance remonte (la sonde déclenchera la vidange).
@@ -5295,6 +5320,15 @@ pub async fn attach_files(
         let mut updated_epoch = None;
         let mut refused = Vec::new();
         for path in &paths {
+            // E8 : un chemin venu de l'UI se lit s'il est absolu et
+            // désigne un fichier régulier — jamais un dossier, jamais un
+            // chemin relatif au processus.
+            let candidat = std::path::Path::new(path);
+            if !candidat.is_absolute() || !candidat.is_file() {
+                return Err(format!(
+                    "pièce refusée : {path:?} n'est pas un fichier absolu"
+                ));
+            }
             // Échec de lecture = échec franc du geste : les fichiers déjà
             // entrés restent (l'UI relit les puces), celui-ci a un problème
             // que l'utilisateur doit voir, pas un silence.
@@ -6650,6 +6684,21 @@ fn commande_installateur(temoin: &std::path::Path) -> std::process::Command {
 
 #[cfg(test)]
 mod tests {
+    /// PLAN-AUDIT-V2 E8 : le chemin d'enregistrement d'une pièce vient de
+    /// l'UI (le dialogue « Enregistrer sous ») ; on l'écrit avec des octets
+    /// choisis par l'expéditeur. Défense en profondeur : absolu, sans
+    /// remontée, dans un dossier qui existe.
+    #[test]
+    fn un_chemin_relatif_ou_a_remontee_est_refuse() {
+        assert!(super::chemin_de_sortie("piece.pdf").is_err());
+        assert!(super::chemin_de_sortie("C:\\Users\\x\\..\\..\\Windows\\piece.pdf").is_err());
+        assert!(
+            super::chemin_de_sortie("C:\\dossier-qui-n-existe-pas-du-tout\\piece.pdf").is_err()
+        );
+        let ici = std::env::temp_dir().join("piece.pdf");
+        assert!(super::chemin_de_sortie(&ici.to_string_lossy()).is_ok());
+    }
+
     use super::*;
 
     /// L'invocation de l'installateur (PLAN-SIGNATURE E4, D4) : le
