@@ -1,9 +1,9 @@
-//! Les actions utilisateur en attente — le deuxième cœur du produit.
+//! The pending user actions — the product's second core.
 //!
-//! Chaque intention est appliquée localement tout de suite (optimisme UI),
-//! journalisée dans SQLite, puis rejouée vers le serveur **en tête de la
-//! synchronisation suivante** : une coupure réseau ou un crash n'en perd
-//! aucune, c'est le gate de la Phase 2 (PLAN.md §4).
+//! Each intention is applied locally right away (UI optimism), journaled
+//! in SQLite, then replayed to the server **at the head of the next
+//! synchronization**: a network cut or a crash loses none of them, that
+//! is the gate of Phase 2 (PLAN.md §4).
 
 use crate::envelope::Uid;
 
@@ -11,26 +11,26 @@ use crate::envelope::Uid;
 pub enum Action {
     MarkSeen,
     MarkUnseen,
-    /// Poser l'étoile (`\Flagged`).
+    /// Set the star (`\Flagged`).
     MarkFlagged,
-    /// Retirer l'étoile.
+    /// Remove the star.
     MarkUnflagged,
-    /// Sortir de la boîte sans supprimer (chez Gmail : reste dans
-    /// « Tous les messages »).
+    /// Take out of the mailbox without deleting (with Gmail: stays in
+    /// "All Mail").
     Archive,
-    /// Mettre à la corbeille du serveur.
+    /// Put in the server's trash.
     Delete,
-    /// Déplacer vers un dossier choisi par l'utilisateur.
+    /// Move to a folder chosen by the user.
     ///
-    /// Porte le nom **RÉSEAU** du dossier (UTF-7 modifié), jamais sa
-    /// forme lisible : c'est ce nom-là qu'on renverra au serveur, et une
-    /// action journalisée peut être rejouée des jours plus tard.
+    /// Carries the folder's **NETWORK** name (modified UTF-7), never its
+    /// readable form: this is the name that will be sent back to the
+    /// server, and a journaled action can be replayed days later.
     MoveTo(String),
 }
 
-/// Préfixe des actions portant une destination. Le nom suit le premier
-/// `:` — tout ce qui reste en fait partie, y compris d'autres `:`, que
-/// les noms de dossiers autorisent.
+/// Prefix of actions carrying a destination. The name follows the first
+/// `:` — everything that remains is part of it, including other `:`,
+/// which folder names allow.
 const MOVE_PREFIX: &str = "move_to:";
 
 impl Action {
@@ -56,24 +56,23 @@ impl Action {
             "delete" => Some(Action::Delete),
             other => other
                 .strip_prefix(MOVE_PREFIX)
-                // Une destination vide n'est pas rejouable : mieux vaut
-                // ignorer l'action que déplacer vers nulle part.
+                // An empty destination is not replayable: better to
+                // ignore the action than move to nowhere.
                 .filter(|folder| !folder.is_empty())
                 .map(|folder| Action::MoveTo(folder.to_string())),
         }
     }
 
-    /// L'action fait-elle DISPARAÎTRE le message de la boîte courante ?
+    /// Does the action make the message DISAPPEAR from the current mailbox?
     ///
-    /// Ce qui disparaît localement doit disparaître côté serveur, et
-    /// réciproquement — les trois cas partagent le même traitement en
-    /// liste comme en rejeu.
+    /// What disappears locally must disappear server-side, and vice versa
+    /// — the three cases share the same handling in the list as in replay.
     pub fn removes_from_mailbox(&self) -> bool {
         matches!(self, Action::Archive | Action::Delete | Action::MoveTo(_))
     }
 }
 
-/// Une action journalisée, dans l'ordre d'émission (id croissant).
+/// A journaled action, in emission order (increasing id).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingAction {
     pub id: i64,
@@ -97,10 +96,10 @@ mod tests {
         ]
     }
 
-    /// Une action journalisée peut être relue des jours plus tard, par une
-    /// version différente du binaire. L'aller-retour est donc l'invariant
-    /// central de ce module : le perdre, c'est perdre des intentions
-    /// utilisateur déjà confirmées à l'écran.
+    /// The invariant that matters most. A journaled action can be replayed
+    /// days later, by a different build of the binary. The round trip is
+    /// therefore this module's central invariant: losing it means losing
+    /// user intentions already confirmed on screen.
     #[test]
     fn every_action_survives_a_round_trip_through_storage() {
         for action in every_action() {
@@ -108,14 +107,14 @@ mod tests {
             assert_eq!(
                 Action::parse(&kind).as_ref(),
                 Some(&action),
-                "aller-retour rompu pour {action:?} (encodé « {kind} »)"
+                "round trip broken for {action:?} (encoded \"{kind}\")"
             );
         }
     }
 
-    /// Les noms de dossiers acceptent le `:` — et le séparateur
-    /// hiérarchique d'IMAP est souvent `/` ou `.`, mais rien ne l'impose.
-    /// Découper sur le DERNIER `:` casserait ces noms.
+    /// Folder names accept `:` — and IMAP's hierarchy separator is often
+    /// `/` or `.`, but nothing mandates it. Splitting on the LAST `:`
+    /// would break these names.
     #[test]
     fn a_destination_containing_a_colon_is_preserved() {
         let action = Action::MoveTo("Projets:2026/Clients".to_string());
@@ -123,8 +122,8 @@ mod tests {
         assert_eq!(Action::parse(&kind), Some(action));
     }
 
-    /// Le nom RÉSEAU voyage tel quel : ré-encoder ou décoder ici ferait
-    /// échouer le rejeu sur un dossier accentué.
+    /// The NETWORK name travels as is: re-encoding or decoding it here
+    /// would make replay fail on an accented folder.
     #[test]
     fn an_encoded_folder_name_is_journaled_verbatim() {
         let wire = "Archiv&AOk-s";
@@ -140,12 +139,12 @@ mod tests {
         assert_eq!(
             Action::parse("move_to:"),
             None,
-            "déplacer vers nulle part n'est pas rejouable"
+            "moving to nowhere is not replayable"
         );
     }
 
-    /// Ces trois-là seuls retirent le message de la boîte : c'est ce qui
-    /// décide de la disparition optimiste en liste.
+    /// Only these three take the message out of the mailbox: this is what
+    /// decides optimistic disappearance in the list.
     #[test]
     fn only_removing_actions_take_the_message_out_of_the_mailbox() {
         assert!(Action::Archive.removes_from_mailbox());

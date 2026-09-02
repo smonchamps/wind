@@ -1,9 +1,9 @@
-//! Noyau métier du client email.
+//! Business core of the email client.
 //!
-//! Ce crate contient le modèle du domaine et le moteur de synchronisation,
-//! indépendants de toute UI et de tout protocole réseau : il ne connaît ni
-//! Tauri, ni le web, ni IMAP. Sa seule frontière abstraite est le trait
-//! [`MailServer`] ; l'adaptateur IMAP réel vit hors du noyau.
+//! This crate holds the domain model and the sync engine, independent
+//! of any UI and any network protocol: it knows neither Tauri, nor the
+//! web, nor IMAP. Its only abstract boundary is the [`MailServer`]
+//! trait; the real IMAP adapter lives outside the core.
 
 mod action;
 mod address;
@@ -11,7 +11,7 @@ mod attachment;
 mod backfill;
 mod body;
 mod compose;
-mod correspondants;
+mod contacts;
 mod crash;
 mod drafts;
 mod echo;
@@ -40,24 +40,24 @@ pub use backfill::{
 };
 pub use body::load_body;
 pub use compose::{
-    Draft, MARQUEUR_TRANSFERT, SourceTransfert, compose, forward_subject, quote_forward,
+    Draft, FORWARD_MARKER, ForwardSource, compose, forward_source, forward_subject, quote_forward,
     quote_forward_html, quote_reply, quote_reply_html, reply_all_split, reply_subject, reply_to,
-    source_du_transfert, substituer_transfert,
+    substitute_forward,
 };
-pub use correspondants::Correspondant;
+pub use contacts::Contact;
 pub use crash::{CrashReport, RawPanic, redact};
 pub use drafts::{
     DraftAttachmentFull, DraftAttachmentMeta, DraftAttachmentSaved, DraftContent, DraftPull,
     DraftSaved, MAX_ATTACHMENTS_BYTES, SavedDraft, plan_draft_pull,
 };
-pub use echo::{CibleGeste, DESTINATIONS_ECHO, GesteGroupe};
+pub use echo::{ECHO_DESTINATIONS, GestureTarget, GroupGesture};
 pub use envelope::{Envelope, Uid};
 pub use error::Error;
 pub use imap_quoted::{unescape_imap_quoted, unescape_imap_quoted_str};
 pub use invitation::{
-    InvitationRow, InvitationStockee, extraire_invitation, participation_de_stable,
+    InvitationRow, StoredInvitation, extract_invitation, participation_de_stable,
 };
-pub use nav::{CanonicalFolders, GroupeRegistre, NavCounts};
+pub use nav::{CanonicalFolders, NavCounts, PaperTrailGroup};
 pub use notify::{Lang, Notification, arrivals_to_notify, notification_for};
 pub use outbox::{OutboxAttachment, OutboxMessage, OutboxReport, OutboxState, flush_outbox};
 pub use remote::{

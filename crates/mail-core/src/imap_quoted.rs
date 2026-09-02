@@ -1,26 +1,27 @@
-//! Dé-échappement des `quoted-string` IMAP (RFC 3501 §4.3).
+//! Un-escaping of IMAP `quoted-string`s (RFC 3501 §4.3).
 //!
-//! `imap-proto` retire les guillemets externes d'une chaîne entre
-//! guillemets mais **laisse le contenu brut**, escapes compris (prouvé par
-//! ses propres tests `core.rs` : `quoted("Hello \" ")` rend `Hello \" `).
-//! Sans ce passage, tout objet, nom d'expéditeur ou adresse contenant un
-//! `"` ou un `\` s'affiche parasité (R2, PLAN-RETOURS-MAIL).
+//! `imap-proto` strips the outer quotes of a quoted string but **leaves
+//! the raw content**, escapes included (proven by its own `core.rs`
+//! tests: `quoted("Hello \" ")` renders `Hello \" `). Without this pass,
+//! any subject, sender name or address containing a `"` or a `\` shows
+//! up corrupted (R2, PLAN-RETOURS-MAIL).
 //!
-//! Vit dans `mail-core` — et non dans l'adaptateur IMAP — parce que DEUX
-//! chemins en ont besoin : le décodage à la synchro (`mail-imap`), et la
-//! réparation des enveloppes déjà stockées avec leurs escapes (migration
-//! `store.rs`, pour les messages synchronisés avant le correctif).
+//! Lives in `mail-core` — not the IMAP adapter — because TWO paths need
+//! it: decoding at sync time (`mail-imap`), and repairing envelopes
+//! already stored with their escapes (`store.rs` migration, for messages
+//! synchronized before the fix).
 
 use std::borrow::Cow;
 
-/// Retire les backslash-escapes d'une `quoted-string` IMAP : `\"` → `"`,
-/// `\\` → `\`, les deux SEULES séquences valides (RFC 3501).
+/// Removes the backslash escapes of an IMAP `quoted-string`: `\"` → `"`,
+/// `\\` → `\`, the two ONLY valid sequences (RFC 3501).
 ///
-/// Compromis assumé : IMAP transmet aussi les chaînes en *littéral*
-/// (`{n}`), où les octets sont bruts — et `imap-proto` ne nous dit pas
-/// laquelle il a lue. Dé-échapper corromprait un littéral contenant
-/// réellement `\"` (cas rarissime) ; on tranche pour le cas courant, comme
-/// tout client mûr. Une entrée sans `\` ressort empruntée, sans allocation.
+/// Accepted trade-off: IMAP also transmits strings as a *literal*
+/// (`{n}`), where the bytes are raw — and `imap-proto` does not tell us
+/// which one it read. Un-escaping would corrupt a literal that genuinely
+/// contains `\"` (a very rare case); we settle for the common case, like
+/// any mature client. An input without `\` comes back borrowed, with no
+/// allocation.
 pub fn unescape_imap_quoted(raw: &[u8]) -> Cow<'_, [u8]> {
     if !raw.contains(&b'\\') {
         return Cow::Borrowed(raw);
@@ -28,8 +29,8 @@ pub fn unescape_imap_quoted(raw: &[u8]) -> Cow<'_, [u8]> {
     let mut out = Vec::with_capacity(raw.len());
     let mut i = 0;
     while i < raw.len() {
-        // Un `\` ne se consomme QUE devant `"` ou `\` ; devant autre chose
-        // (entrée malformée) il est gardé tel quel, rien n'est perdu.
+        // A `\` is only consumed before `"` or `\`; before anything else
+        // (malformed input) it is kept as is, nothing is lost.
         if raw[i] == b'\\' && matches!(raw.get(i + 1), Some(b'"' | b'\\')) {
             out.push(raw[i + 1]);
             i += 2;
@@ -41,15 +42,14 @@ pub fn unescape_imap_quoted(raw: &[u8]) -> Cow<'_, [u8]> {
     Cow::Owned(out)
 }
 
-/// Variante chaîne, pour réparer une valeur déjà stockée (UTF-8 en base) :
-/// dé-échappe et rend une `String`. Empruntée sans copie quand rien ne
-/// change.
+/// String variant, to repair a value already stored (UTF-8 in the
+/// database): un-escapes and renders a `String`. Borrowed without a copy
+/// when nothing changes.
 pub fn unescape_imap_quoted_str(value: &str) -> Cow<'_, str> {
     match unescape_imap_quoted(value.as_bytes()) {
         Cow::Borrowed(_) => Cow::Borrowed(value),
-        // Le dé-échappement ne retire que des octets ASCII (`\`), jamais
-        // au milieu d'une séquence multi-octets : le résultat reste de
-        // l'UTF-8 valide.
+        // Un-escaping only removes ASCII bytes (`\`), never in the middle
+        // of a multi-byte sequence: the result stays valid UTF-8.
         Cow::Owned(bytes) => Cow::Owned(String::from_utf8_lossy(&bytes).into_owned()),
     }
 }
@@ -59,32 +59,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn retire_les_guillemets_echappes() {
+    fn removes_escaped_quotes() {
         assert_eq!(
-            unescape_imap_quoted_str(r#"Test \"Envoyes\""#),
-            r#"Test "Envoyes""#
+            unescape_imap_quoted_str(r#"Test \"Sent\""#),
+            r#"Test "Sent""#
         );
     }
 
     #[test]
-    fn retire_le_backslash_double() {
-        assert_eq!(
-            unescape_imap_quoted_str(r"chemin C:\\temp"),
-            r"chemin C:\temp"
-        );
+    fn removes_the_double_backslash() {
+        assert_eq!(unescape_imap_quoted_str(r"path C:\\temp"), r"path C:\temp");
     }
 
     #[test]
-    fn une_chaine_sans_backslash_est_empruntee() {
+    fn a_string_without_backslash_is_borrowed() {
         assert!(matches!(
-            unescape_imap_quoted_str("Reunion de demain"),
+            unescape_imap_quoted_str("Meeting tomorrow"),
             Cow::Borrowed(_)
         ));
     }
 
-    /// Un `\` malformé (devant autre chose que `"` ou `\`) est gardé.
+    /// A malformed `\` (before anything but `"` or `\`) survives.
     #[test]
-    fn un_backslash_isole_survit() {
+    fn a_lone_backslash_survives() {
         assert_eq!(unescape_imap_quoted_str(r"a\b"), r"a\b");
     }
 }

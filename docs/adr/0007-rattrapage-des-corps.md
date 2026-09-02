@@ -9,7 +9,7 @@ défaut de conception bien plus large que celui qu'elle cherchait.
 
 L'utilisateur a cherché un mot présent dans le **corps** d'un message
 jamais ouvert. Aucun résultat. Le diagnostic
-([`diagnostic_index`](../../crates/mail-core/examples/diagnostic_index.rs))
+([`diagnostic_index`](../../crates/mail-core/examples/diag_index.rs))
 a disculpé l'index — complet à 100 % sur les trois comptes — et désigné la
 vraie cause :
 

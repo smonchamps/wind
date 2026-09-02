@@ -324,7 +324,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         fin_atelier.format("%Y%m%dT%H%M%SZ"),
     );
     let invitation_atelier =
-        mail_core::extraire_invitation(&ics_atelier, "paul.merand@atelier-nord.fr")
+        mail_core::extract_invitation(&ics_atelier, "paul.merand@atelier-nord.fr")
             .ok_or("l'invitation du décor doit se parser")?;
     store.save_body_full(
         inbox,

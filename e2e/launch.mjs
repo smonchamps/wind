@@ -186,7 +186,7 @@ export async function launchAppV2({ vierge = false, comptes = null } = {}) {
 export function injecterArrivee({ email, expediteur, n = 1, nom = null, sujet = null, reponseA = null, corps = null, db = null }) {
   db ??= path.join(root, 'target', 'e2e', 'parcours-v2-inbox.db');
   statSync(db); // la base doit EXISTER — jamais une arrivée dans le vide
-  const exe = path.join(root, 'target', 'debug', 'examples', 'seed_arrivee.exe');
+  const exe = path.join(root, 'target', 'debug', 'examples', 'seed_arrival.exe');
   const args = [`"${db}"`, email, expediteur, String(n)];
   // Les arguments sont POSITIONNELS : `reponseA` (RETOURS-14 R4, le
   // décor du fil mêlé) exige nom et sujet devant lui.

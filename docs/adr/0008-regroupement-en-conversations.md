@@ -64,7 +64,7 @@ d'entrées, `Message-ID: <>` malformé.
 
 L'utilisateur a signalé une conversation réunissant 17 messages sans
 aucun rapport. Le diagnostic
-([`diagnostic_fils`](../../crates/mail-core/examples/diagnostic_fils.rs))
+([`diagnostic_fils`](../../crates/mail-core/examples/diag_threads.rs))
 a écarté les trois causes attendues — pas de `Message-ID` réutilisé, pas
 d'ancre de campagne — et désigné la vraie :
 

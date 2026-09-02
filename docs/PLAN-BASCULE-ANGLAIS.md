@@ -337,6 +337,30 @@ sans objet et s'efface. Mémoire : les pointeurs vers les scripts
 > entity names, a prose `References` header, the accented "to:" filter alias) stay,
 > marked `lang:fr`. Oracles: build, clippy, 451 mail-core tests, full gate
 > green. Baseline 124 290 → 119 883.
+>
+> **E3c-3 delivered on 2026-09-02** — the rest of `mail-core` (20 source
+> files, 13 examples, ~11 600 lines, 191 tests), nine agents in parallel on
+> copies. `correspondants.rs` → `contacts.rs`; examples renamed per §5.1
+> (`bench_*`, `diag_*`, `seed_arrival`) with the two ADR links and the e2e
+> launcher path following. Public API: `Correspondant` → `Contact`,
+> `GesteGroupe`/`CibleGeste` → `GroupGesture`/`GestureTarget`,
+> `GroupeRegistre` → `PaperTrailGroup`, `InvitationStockee` →
+> `StoredInvitation`, `extraire_invitation` → `extract_invitation`,
+> `SourceTransfert` → `ForwardSource`, `Error::Refus` → `Refusal`, the
+> `InvitationRow`/`CanonicalFolders`/`NavCounts` fields per the glossary; the
+> shell reads updated in the same commit, its own serialized payload fields
+> and its Tauri command names untouched (E4). `#[error]` messages in English
+> (D5). Kept French by decision, marked `lang:fr`: the notification texts,
+> the quoting and forward labels composed into message bodies, the size
+> units `o`/`Ko`/`Mo` (the e2e specs assert them — to follow the UI language
+> at E5, an open point for the CE), the French fixtures that are the test.
+> The three seed examples (`seed_clarity`, `seed_inbox`, `seed_arrival`) keep
+> their French fixture DATA: they are the e2e decor and the specs assert those
+> subjects (`Vantis` 47 times) — a first full translation of them turned
+> the e2e wave red (86 passed, 100 did not run) and was reverted; only
+> their API calls changed. Their prose goes English at E6 with the specs.
+> `mail-core` now carries 124 French markers, all deliberate. Oracles: build,
+> clippy, 451 mail-core tests, full gate green. Baseline 119 883 → ~110 100.
 
 Ordre par dépendances : `mail-ical` (345 l.) → `mail-render` →
 `mail-smtp` (978 l.) → `mail-auth` → `mail-imap` (2 800 l., dont

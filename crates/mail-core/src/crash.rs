@@ -1,36 +1,36 @@
-//! Rédaction d'un rapport de plantage — la partie PURE et prouvée.
+//! Crash report drafting — the PURE, proven part.
 //!
-//! Un panic hook capture un panic, mais son MESSAGE peut porter une
-//! donnée personnelle : `format!("{err:?}")` sur une [`crate::Error`],
-//! dont `InvalidEmailAddress` contient une adresse. Ce module transforme
-//! les données brutes d'un panic en un rapport dont on PROUVE qu'il ne
-//! contient rien de personnel — le message est écarté, on ne garde que
-//! des artefacts de CODE (localisation, symboles) et d'environnement.
+//! A panic hook captures a panic, but its MESSAGE may carry personal
+//! data: `format!("{err:?}")` on a [`crate::Error`], whose
+//! `InvalidEmailAddress` contains an address. This module turns the raw
+//! data of a panic into a report that is PROVEN to contain nothing
+//! personal — the message is discarded, only CODE artifacts (location,
+//! symbols) and environment ones are kept.
 //!
-//! Pur : aucune I/O, aucune dépendance. L'écriture du fichier et le
-//! consentement vivent dans l'app — un panic hook ne doit pas toucher la
-//! base (elle est peut-être la cause du panic, ou tient un verrou
-//! empoisonné), ni rien qui puisse paniquer à son tour.
+//! Pure: no I/O, no dependency. Writing the file and getting consent
+//! live in the app — a panic hook must not touch the database (it may be
+//! the cause of the panic, or hold a poisoned lock), nor anything that
+//! could panic in turn.
 
-/// Ce qu'un panic hook a sous la main, avant rédaction.
+/// What a panic hook has at hand, before drafting.
 #[derive(Debug, Clone)]
 pub struct RawPanic {
-    /// Le message du panic. **Vecteur de fuite** : peut contenir une
-    /// adresse, un sujet, un fragment de corps… Il est ÉCARTÉ par
-    /// [`redact`], jamais conservé.
+    /// The panic's message. **Leak vector**: may contain an address, a
+    /// subject, a body fragment… It is DISCARDED by [`redact`], never
+    /// kept.
     pub message: String,
-    /// `fichier:ligne` du panic — une position dans le CODE, fixée à la
-    /// compilation, sans donnée d'utilisateur.
+    /// `file:line` of the panic — a position in the CODE, fixed at
+    /// compile time, with no user data.
     pub location: Option<String>,
-    /// La pile d'appels : des symboles de code (noms de fonctions), pas
-    /// des valeurs capturées. Sans donnée personnelle par construction.
+    /// The call stack: code symbols (function names), not captured
+    /// values. Free of personal data by construction.
     pub backtrace: Vec<String>,
     pub app_version: String,
     pub os: String,
     pub timestamp: String,
 }
 
-/// Un rapport de plantage prêt à écrire — **sans le message du panic**.
+/// A crash report ready to write — **without the panic's message**.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CrashReport {
     pub app_version: String,
@@ -40,18 +40,17 @@ pub struct CrashReport {
     pub timestamp: String,
 }
 
-/// Écarte tout ce qui peut porter une donnée personnelle.
+/// Discards everything that could carry personal data.
 ///
-/// La rédaction se réduit à **supprimer le message** : c'est le seul
-/// champ qui puisse contenir du texte libre issu d'une erreur, donc
-/// potentiellement une adresse ou un sujet. Localisation et pile sont des
-/// artefacts de compilation, conservés tels quels — ils identifient le
-/// bug sans rien divulguer.
+/// Redaction reduces to **dropping the message**: it is the only field
+/// that can hold free text coming from an error, hence potentially an
+/// address or a subject. Location and stack are compile-time artifacts,
+/// kept as is — they identify the bug without disclosing anything.
 ///
-/// L'implémentation est triviale (un champ écarté) ; sa valeur est
-/// l'INVARIANT, tenu par test : aucune donnée du message ne survit. Si
-/// quelqu'un « remet le message pour aider au débogage » un jour, le test
-/// `le_rapport_n_emporte_aucune_donnee_du_message` vire au rouge.
+/// The implementation is trivial (one field dropped); its value lies in
+/// the INVARIANT, held by a test: no data from the message survives. If
+/// someone "puts the message back to help debugging" one day, the test
+/// `the_report_carries_no_data_from_the_message` turns red.
 pub fn redact(raw: RawPanic) -> CrashReport {
     CrashReport {
         app_version: raw.app_version,
@@ -66,15 +65,15 @@ pub fn redact(raw: RawPanic) -> CrashReport {
 mod tests {
     use super::*;
 
-    /// L'invariant central du chantier : un rapport de plantage ne doit
-    /// JAMAIS contenir de donnée personnelle. Le message d'un panic peut
-    /// en porter — ce test en met une adresse ET un sujet, et exige
-    /// qu'ils aient disparu du rapport.
+    /// The job's central invariant: a crash report must NEVER contain
+    /// personal data. A panic's message can carry some — this test puts
+    /// both an address AND a subject in it, and requires them to be gone
+    /// from the report.
     #[test]
-    fn le_rapport_n_emporte_aucune_donnee_du_message() {
+    fn the_report_carries_no_data_from_the_message() {
         let raw = RawPanic {
-            message: "envelope invalide: alice.martin@example.com \
-                      — sujet « Facture confidentielle Q3 »"
+            message: "invalid envelope: alice.martin@example.com \
+                      — subject \"Confidential Q3 invoice\""
                 .to_string(),
             location: Some("crates/mail-core/src/thread.rs:42".to_string()),
             backtrace: vec![
@@ -88,34 +87,34 @@ mod tests {
 
         let report = redact(raw);
 
-        // La représentation Debug, et non une liste de champs choisie à la
-        // main : elle inclut AUTOMATIQUEMENT tout champ ajouté un jour.
-        // Si quelqu'un remet un champ `message` dans le rapport, il
-        // apparaîtra ici et le test virera au rouge — c'est ce qui donne
-        // sa dent à l'invariant.
-        let foin = format!("{report:?}");
+        // The Debug representation, not a hand-picked list of fields: it
+        // AUTOMATICALLY includes any field added one day. If someone puts
+        // a `message` field back into the report, it will show up here
+        // and the test will turn red — that is what gives the invariant
+        // its teeth.
+        let haystack = format!("{report:?}");
 
         assert!(
-            !foin.contains("alice.martin@example.com"),
-            "l'adresse a fuité dans le rapport"
+            !haystack.contains("alice.martin@example.com"),
+            "the address leaked into the report"
         );
-        assert!(!foin.contains('@'), "aucune arobase ne doit subsister");
+        assert!(!haystack.contains('@'), "no at-sign should survive");
         assert!(
-            !foin.contains("Facture"),
-            "le sujet a fuité dans le rapport"
+            !haystack.contains("Confidential"),
+            "the subject leaked into the report"
         );
         assert!(
-            !foin.to_lowercase().contains("confidentielle"),
-            "le sujet a fuité dans le rapport"
+            !haystack.to_lowercase().contains("confidential"),
+            "the subject leaked into the report"
         );
     }
 
-    /// Mais il GARDE ce qui sert à trouver le bug — sinon le rapport est
-    /// inutile. Localisation, pile, versions : des artefacts de code, sûrs.
+    /// But it KEEPS what helps find the bug — otherwise the report is
+    /// useless. Location, stack, versions: code artifacts, safe.
     #[test]
-    fn le_rapport_garde_de_quoi_situer_le_bug() {
+    fn the_report_keeps_enough_to_locate_the_bug() {
         let raw = RawPanic {
-            message: "peu importe".to_string(),
+            message: "does not matter".to_string(),
             location: Some("crates/mail-core/src/thread.rs:42".to_string()),
             backtrace: vec!["mail_core::thread::attach".to_string()],
             app_version: "0.1.2".to_string(),
@@ -128,12 +127,12 @@ mod tests {
         assert_eq!(
             report.location.as_deref(),
             Some("crates/mail-core/src/thread.rs:42"),
-            "la localisation situe le bug"
+            "the location situates the bug"
         );
         assert_eq!(
             report.backtrace,
             vec!["mail_core::thread::attach".to_string()],
-            "la pile est conservée"
+            "the stack is kept"
         );
         assert_eq!(report.app_version, "0.1.2");
         assert_eq!(report.os, "Windows 11");

@@ -1,18 +1,18 @@
-//! L'écho local (PLAN-REACTIVITE E3, verdict R-D1 « < 1 s ») : la
-//! destination d'un geste se montre depuis la base locale, sans attendre
-//! le serveur — hors ligne compris.
+//! The local echo (PLAN-REACTIVITE E3, verdict R-D1 "< 1 s"): the
+//! destination of a gesture shows from the local database, without
+//! waiting for the server — offline included.
 //!
-//! Trois garde-fous, non négociables :
-//! - **jamais de clé forgée** : l'écho vit dans SA table, servi en liste
-//!   par une UNION (`nav.rs`) — jamais un UID inventé dans `envelopes` ;
-//! - **jamais sans intention** : un écho reflète une action journalisée
-//!   (suppression, archivage) ou un envoi passé à `sent` — un écho
-//!   d'envoi ne naît JAMAIS avant l'acceptation SMTP (« jamais d'envoi
-//!   fantôme ») ;
-//! - **jamais contre le serveur** : l'écho meurt à la réconciliation
-//!   (la vraie ligne entre — même `message_id` dans la destination) ou
-//!   au balayage (intention soldée, destination relevée sans copie : on
-//!   n'affiche pas ce que le serveur dément).
+//! Three non-negotiable safeguards:
+//! - **never a forged key**: the echo lives in ITS OWN table, served in
+//!   the list by a UNION (`nav.rs`) — never a UID invented in
+//!   `envelopes`;
+//! - **never without intent**: an echo reflects a logged action
+//!   (deletion, archiving) or a send that reached `sent` — a send echo
+//!   is NEVER born before SMTP acceptance ("never a phantom send");
+//! - **never against the server**: the echo dies at reconciliation (the
+//!   real row arrives — same `message_id` in the destination) or at the
+//!   sweep (intent settled, destination polled with no copy: we do not
+//!   show what the server denies).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -23,40 +23,40 @@ use crate::envelope::Uid;
 use crate::error::Error;
 use crate::store::Store;
 
-/// Les catégories qui portent des échos — les destinations des trois
-/// gestes couverts. Un déplacement vers un dossier libre n'a pas de
-/// liste où se montrer (la nav ne sert que les canoniques) : pas d'écho.
-pub const DESTINATIONS_ECHO: &[&str] = &["envoyes", "archives", "corbeille"];
+/// The categories that carry echoes — the destinations of the three
+/// covered gestures. A move to a free folder has no list to show up in
+/// (the nav only serves the canonical ones): no echo.
+pub const ECHO_DESTINATIONS: &[&str] = &["envoyes", "archives", "corbeille"];
 
-/// Le texte d'un envoi rendu en HTML minimal : échappé, retours à la
-/// ligne préservés. C'est NOTRE texte (le journal d'envoi) — l'échappement
-/// est la seule exigence ; l'assainissement de lecture repasse derrière
-/// comme pour tout corps (S1).
-pub fn texte_en_html(texte: &str) -> String {
-    let echappe = texte
+/// The text of a send rendered as minimal HTML: escaped, line breaks
+/// preserved. This is OUR text (the send log) — escaping is the only
+/// requirement; reading sanitization runs behind it as for any body
+/// (S1).
+pub fn text_as_html(text: &str) -> String {
+    let escaped = text
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;");
-    format!("<div>{}</div>", echappe.replace('\n', "<br>"))
+    format!("<div>{}</div>", escaped.replace('\n', "<br>"))
 }
 
 impl Store {
-    /// Le message porte-t-il déjà une enveloppe dans la destination ?
-    /// (Gmail : archiver laisse la copie de « Tous les messages » — la
-    /// clause d'exclusion la démasque au retrait d'INBOX, l'écho serait
-    /// un doublon.) Une destination irrésolue ou jamais synchronisée
-    /// répond « non » : l'écho est alors la seule vérité disponible.
-    fn present_en_destination(
+    /// Does the message already carry an envelope in the destination?
+    /// (Gmail: archiving leaves the copy in "All Mail" — the exclusion
+    /// clause unmasks it when removed from INBOX, the echo would be a
+    /// duplicate.) An unresolved or never-synced destination answers
+    /// "no": the echo is then the only truth available.
+    fn present_at_destination(
         &self,
         account_id: i64,
         destination: &str,
         message_id: &str,
     ) -> Result<bool, Error> {
-        let dossiers = self.canonical_folders(account_id)?;
-        let Some(nom) = dossiers.boite(destination) else {
+        let folders = self.canonical_folders(account_id)?;
+        let Some(name) = folders.mailbox(destination) else {
             return Ok(false);
         };
-        let Some(state) = self.sync_state(account_id, &nom)? else {
+        let Some(state) = self.sync_state(account_id, &name)? else {
             return Ok(false);
         };
         let present: bool = self.conn().query_row(
@@ -68,17 +68,17 @@ impl Store {
         Ok(present)
     }
 
-    /// Le geste qui déplace (suppression, archivage, déplacement) — en
-    /// UNE transaction : l'action est journalisée, la matière du message
-    /// (enveloppe, corps, aperçu, compte de pièces) est VERSÉE à l'écho
-    /// de destination, puis la source se vide. Un crash entre deux ne
-    /// perd rien et ne fabrique rien : tout ou rien.
+    /// The gesture that moves (deletion, archiving, move) — in ONE
+    /// transaction: the action is logged, the material of the message
+    /// (envelope, body, preview, attachment count) is POURED into the
+    /// destination echo, then the source empties. A crash in between
+    /// loses nothing and fabricates nothing: all or nothing.
     ///
-    /// `destination = None` (déplacement vers un dossier libre) ou
-    /// message sans `message_id` (l'écho serait irréconciliable) :
-    /// l'action et la disparition locale se font, sans écho — le
-    /// comportement d'avant E3, intact.
-    pub fn geste_avec_echo(
+    /// `destination = None` (move to a free folder) or a message with no
+    /// `message_id` (the echo would be unreconcilable): the action and
+    /// the local disappearance happen, without an echo — the pre-E3
+    /// behavior, intact.
+    pub fn gesture_with_echo(
         &self,
         mailbox_id: i64,
         uid: Uid,
@@ -86,14 +86,14 @@ impl Store {
         destination: Option<&str>,
     ) -> Result<(), Error> {
         let tx = self.conn().unchecked_transaction()?;
-        self.geste_sous(&tx, mailbox_id, uid, action, destination)?;
+        self.gesture_under(&tx, mailbox_id, uid, action, destination)?;
         tx.commit()?;
         Ok(())
     }
 
-    /// Le geste DANS une transaction ouverte par l'appelant — le lot
-    /// d'E6 (PLAN-AUDIT-V2) y enchaîne N messages, tout ou rien.
-    fn geste_sous(
+    /// The gesture INSIDE a transaction opened by the caller — the batch
+    /// of E6 (PLAN-AUDIT-V2) chains N messages there, all or nothing.
+    fn gesture_under(
         &self,
         tx: &rusqlite::Connection,
         mailbox_id: i64,
@@ -106,7 +106,7 @@ impl Store {
             [mailbox_id],
             |row| row.get(0),
         )?;
-        // Un geste neuf remplace les refusées du message (revue E3).
+        // A fresh gesture replaces the refused ones for the message (E3 review).
         tx.execute(
             "DELETE FROM pending_actions WHERE mailbox_id = ?1 AND uid = ?2 AND refusee = 1",
             params![mailbox_id, uid],
@@ -117,8 +117,8 @@ impl Store {
         )?;
         let action_id = tx.last_insert_rowid();
         if let Some(destination) = destination {
-            // La matière de l'écho se lit AVANT que la source se vide.
-            type Matiere = (
+            // The echo's material is read BEFORE the source empties.
+            type Material = (
                 Option<String>,
                 Option<String>,
                 Option<String>,
@@ -126,7 +126,7 @@ impl Store {
                 Option<i64>,
                 Option<String>,
             );
-            let enveloppe: Option<Matiere> = tx
+            let envelope: Option<Material> = tx
                 .query_row(
                     "SELECT subject, sender, sender_address, message_id, date_epoch, to_addrs
                      FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
@@ -144,10 +144,10 @@ impl Store {
                 )
                 .optional()?;
             if let Some((subject, sender, sender_address, Some(message_id), date_epoch, to_addrs)) =
-                enveloppe
-                && !self.present_en_destination(account_id, destination, &message_id)?
+                envelope
+                && !self.present_at_destination(account_id, destination, &message_id)?
             {
-                let corps: Option<(Option<String>, Option<String>)> = tx
+                let body: Option<(Option<String>, Option<String>)> = tx
                     .query_row(
                         "SELECT html, preview FROM bodies
                          WHERE mailbox_id = ?1 AND uid = ?2",
@@ -155,8 +155,8 @@ impl Store {
                         |row| Ok((row.get(0)?, row.get(1)?)),
                     )
                     .optional()?;
-                let (html, preview) = corps.unwrap_or((None, None));
-                let pieces: i64 = tx.query_row(
+                let (html, preview) = body.unwrap_or((None, None));
+                let attachment_count: i64 = tx.query_row(
                     "SELECT COUNT(*) FROM attachments WHERE mailbox_id = ?1 AND uid = ?2",
                     params![mailbox_id, uid],
                     |row| row.get(0),
@@ -176,24 +176,24 @@ impl Store {
                         date_epoch,
                         preview,
                         html,
-                        pieces,
+                        attachment_count,
                         to_addrs,
                         action_id
                     ],
                 )?;
             }
         }
-        // La disparition de la source — le même travail que
-        // `remove_local`, DANS la transaction (même connexion).
+        // The source disappearing — the same work as `remove_local`,
+        // INSIDE the transaction (same connection).
         self.remove_local(mailbox_id, uid)?;
         Ok(())
     }
 
-    /// L'écho d'un envoi — appelé au passage à `sent` de la vidange, et
-    /// SEULEMENT là : la requête refuse tout autre état, par
-    /// construction ET par garde. Rend `true` si un écho est né.
-    pub fn echo_envoi(&self, outbox_id: i64) -> Result<bool, Error> {
-        type EnvoiRow = (
+    /// The echo of a send — called when the outbox flush transitions to
+    /// `sent`, and ONLY there: the query refuses any other state, by
+    /// construction AND by guard. Returns `true` if an echo was born.
+    pub fn send_echo(&self, outbox_id: i64) -> Result<bool, Error> {
+        type SendRow = (
             i64,
             String,
             String,
@@ -203,7 +203,7 @@ impl Store {
             i64,
             String,
         );
-        let row: Option<EnvoiRow> = self
+        let row: Option<SendRow> = self
             .conn()
             .query_row(
                 "SELECT account_id, message_id, sender, subject, body_text, body_html,
@@ -237,22 +237,22 @@ impl Store {
         else {
             return Ok(false);
         };
-        if self.present_en_destination(account_id, "envoyes", &message_id)? {
+        if self.present_at_destination(account_id, "envoyes", &message_id)? {
             return Ok(false);
         }
-        let pieces: i64 = self.conn().query_row(
+        let attachment_count: i64 = self.conn().query_row(
             "SELECT COUNT(*) FROM outbox_attachments WHERE outbox_id = ?1",
             [outbox_id],
             |row| row.get(0),
         )?;
-        // Un envoi riche montre SON HTML (PLAN-COMPOSITION-HTML) — le
-        // ré-échapper afficherait les balises ; un envoi texte garde le
-        // rendu échappé historique. La lecture ré-assainit dans les deux
-        // cas (S1).
-        let html = body_html.unwrap_or_else(|| texte_en_html(&body_text));
-        let preview = crate::body::extraire_apercu(&html);
-        // `outbox.recipients` est déjà joint par '\n' (TO_SEPARATOR) —
-        // le format exact de `envelopes.to_addrs` : copie telle quelle.
+        // A rich send shows ITS OWN HTML (PLAN-COMPOSITION-HTML) —
+        // re-escaping it would show the tags; a plain-text send keeps
+        // the historical escaped rendering. Reading re-sanitizes either
+        // way (S1).
+        let html = body_html.unwrap_or_else(|| text_as_html(&body_text));
+        let preview = crate::body::extract_preview(&html);
+        // `outbox.recipients` is already joined by '\n' (TO_SEPARATOR) —
+        // the exact format of `envelopes.to_addrs`: copied as is.
         self.conn().execute(
             "INSERT INTO echos (account_id, destination, message_id, sender,
                 sender_address, subject, date_epoch, preview, html,
@@ -267,7 +267,7 @@ impl Store {
                 queued_epoch,
                 preview,
                 html,
-                pieces,
+                attachment_count,
                 recipients,
                 outbox_id
             ],
@@ -275,11 +275,11 @@ impl Store {
         Ok(true)
     }
 
-    /// Les pièces d'un écho d'envoi, en MÉTADONNÉES seules (nom, mime,
-    /// taille — les octets sont purgés à `sent`, PJ-D7) : de quoi
-    /// afficher des puces honnêtes pendant la fenêtre de réconciliation,
-    /// jamais un titre « Fichiers joints » sans rien dessous. Un écho de
-    /// geste (`origin_outbox_id` NULL) n'en a pas : liste vide.
+    /// The attachments of a send echo, as METADATA only (name, mime,
+    /// size — the bytes are purged at `sent`, PJ-D7): enough to show
+    /// honest chips during the reconciliation window, never an
+    /// "Attachments" title with nothing under it. A gesture echo
+    /// (`origin_outbox_id` NULL) has none: empty list.
     pub fn echo_attachments(&self, echo_id: i64) -> Result<Vec<crate::OutboxAttachment>, Error> {
         let rows = self
             .conn()
@@ -302,9 +302,9 @@ impl Store {
         Ok(rows)
     }
 
-    /// Combien d'échos une catégorie porte — le complément des compteurs
-    /// de nav et des totaux de pagination (« jamais deux vérités »).
-    pub fn compte_echos(&self, destination: &str, account_id: Option<i64>) -> Result<u64, Error> {
+    /// How many echoes a category carries — the counterpart of the nav
+    /// counters and the pagination totals ("never two truths").
+    pub fn count_echos(&self, destination: &str, account_id: Option<i64>) -> Result<u64, Error> {
         let count: i64 = match account_id {
             Some(id) => self.conn().query_row(
                 "SELECT COUNT(*) FROM echos WHERE destination = ?1 AND account_id = ?2",
@@ -320,10 +320,11 @@ impl Store {
         Ok(count as u64)
     }
 
-    /// Le corps d'un écho pour la Lecture : HTML (celui du message
-    /// d'origine, ou le texte d'envoi rendu) et compte de pièces. `None`
-    /// si l'écho a déjà été réconcilié — la vraie ligne a pris sa place.
-    pub fn echo_vue(&self, echo_id: i64) -> Result<Option<(String, usize)>, Error> {
+    /// The body of an echo for Reading: HTML (that of the source
+    /// message, or the rendered send text) and attachment count. `None`
+    /// if the echo has already been reconciled — the real row took its
+    /// place.
+    pub fn echo_view(&self, echo_id: i64) -> Result<Option<(String, usize)>, Error> {
         let row: Option<(Option<String>, i64)> = self
             .conn()
             .query_row(
@@ -332,14 +333,15 @@ impl Store {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()?;
-        Ok(row.map(|(html, pieces)| (html.unwrap_or_default(), pieces as usize)))
+        Ok(row
+            .map(|(html, attachment_count)| (html.unwrap_or_default(), attachment_count as usize)))
     }
 
-    /// La réconciliation : l'écho meurt quand la vraie ligne entre —
-    /// même `message_id` dans une boîte de sa destination. Appelée après
-    /// toute relève qui a pu servir une destination (cycle, passe
-    /// d'après-geste). Rend le nombre d'échos retirés.
-    pub fn reconcilier_echos(&self, account_id: i64) -> Result<usize, Error> {
+    /// Reconciliation: the echo dies when the real row arrives — same
+    /// `message_id` in a mailbox of its destination. Called after any
+    /// poll that may have served a destination (cycle, after-gesture
+    /// pass). Returns the number of echoes removed.
+    pub fn reconcile_echos(&self, account_id: i64) -> Result<usize, Error> {
         let echos: Vec<(i64, String, String)> = self
             .conn()
             .prepare("SELECT id, destination, message_id FROM echos WHERE account_id = ?1")?
@@ -347,34 +349,34 @@ impl Store {
                 Ok((row.get(0)?, row.get(1)?, row.get(2)?))
             })?
             .collect::<Result<_, _>>()?;
-        let mut retires = 0usize;
+        let mut removed = 0usize;
         for (id, destination, message_id) in echos {
-            if self.present_en_destination(account_id, &destination, &message_id)? {
+            if self.present_at_destination(account_id, &destination, &message_id)? {
                 self.conn()
                     .execute("DELETE FROM echos WHERE id = ?1", [id])?;
-                retires += 1;
+                removed += 1;
             }
         }
-        Ok(retires)
+        Ok(removed)
     }
 
-    /// Le balayage de sûreté : un écho dont l'INTENTION est soldée
-    /// (action rejouée et retirée de la file, envoi parti) mais que la
-    /// destination, relevée, ne montre toujours pas — on n'affiche pas
-    /// ce que le serveur dément. À n'appeler qu'après une passe PROPRE
-    /// (relèves sans erreur) et ses retentatives : un écho dont l'action
-    /// attend encore (hors ligne, recul) VIT — il reflète l'intention.
-    /// Rend un incident par écho retiré.
+    /// The safety sweep: an echo whose INTENT is settled (action replayed
+    /// and removed from the queue, send gone out) but whose destination,
+    /// polled, still shows nothing — we do not show what the server
+    /// denies. Only call this after a CLEAN pass (polls without error)
+    /// and its retries: an echo whose action is still pending (offline,
+    /// backoff) LIVES — it reflects the intent. Returns one incident per
+    /// echo removed.
     ///
-    /// L'écho d'un ENVOI n'a pas d'action d'origine : son intention est
-    /// soldée par construction. Il n'est balayé que si les Envoyés ont été
-    /// RELEVÉS APRÈS lui (`mailboxes.relevee_epoch`) — sinon la copie
-    /// n'a simplement pas encore été vue (PLAN-AUDIT-V2 E5 : il partait
-    /// dès la première passe, le message envoyé disparaissait de l'écran
-    /// jusqu'à la relève suivante). Un compte sans dossier d'envois annoncé
-    /// garde l'écho : c'est la seule trace du message parti.
-    pub fn balayer_echos(&self, account_id: i64) -> Result<Vec<String>, Error> {
-        let perimes: Vec<(i64, String)> = self
+    /// A SEND echo has no origin action: its intent is settled by
+    /// construction. It is only swept if Sent has been POLLED AFTER it
+    /// (`mailboxes.relevee_epoch`) — otherwise the copy has simply not
+    /// been seen yet (PLAN-AUDIT-V2 E5: it used to leave on the very
+    /// first pass, the sent message vanished from the screen until the
+    /// next poll). An account with no announced sent folder keeps the
+    /// echo: it is the only trace of the message gone out.
+    pub fn sweep_echos(&self, account_id: i64) -> Result<Vec<String>, Error> {
+        let expired: Vec<(i64, String)> = self
             .conn()
             .prepare(
                 "SELECT id, destination FROM echos
@@ -393,19 +395,19 @@ impl Store {
             .query_map([account_id], |row| Ok((row.get(0)?, row.get(1)?)))?
             .collect::<Result<_, _>>()?;
         let mut incidents = Vec::new();
-        for (id, destination) in perimes {
+        for (id, destination) in expired {
             self.conn()
                 .execute("DELETE FROM echos WHERE id = ?1", [id])?;
             incidents.push(format!(
-                "copie attendue en « {destination} » jamais vue du serveur — écho retiré"
+                "copy expected in \u{201c}{destination}\u{201d} never seen from the server — echo removed"
             ));
         }
         Ok(incidents)
     }
 
-    /// Des échos attendent-ils encore leur réconciliation ? C'est le
-    /// signal de retentative de la passe d'après-geste.
-    pub fn echos_en_attente(&self, account_id: i64) -> Result<u64, Error> {
+    /// Are any echoes still waiting for their reconciliation? This is
+    /// the retry signal of the after-gesture pass.
+    pub fn pending_echos(&self, account_id: i64) -> Result<u64, Error> {
         let count: i64 = self.conn().query_row(
             "SELECT COUNT(*) FROM echos WHERE account_id = ?1",
             [account_id],
@@ -414,10 +416,10 @@ impl Store {
         Ok(count as u64)
     }
 
-    /// Les boîtes d'un compte qui portent des actions en attente — la
-    /// phase « intentions » de la passe d'après-geste : leur relève
-    /// rejoue le journal MAINTENANT, au lieu d'attendre le cycle.
-    pub fn mailboxes_avec_actions(&self, account_id: i64) -> Result<Vec<String>, Error> {
+    /// The mailboxes of an account that carry pending actions — the
+    /// "intentions" phase of the after-gesture pass: polling them
+    /// replays the log NOW, instead of waiting for the cycle.
+    pub fn mailboxes_with_actions(&self, account_id: i64) -> Result<Vec<String>, Error> {
         let rows = self
             .conn()
             .prepare(
@@ -430,10 +432,10 @@ impl Store {
         Ok(rows)
     }
 
-    /// Les comptes qui ont du travail d'après-geste — actions en attente
-    /// ou échos à réconcilier. Le déclencheur du retour en ligne (R-D3)
-    /// s'en sert : rien à faire = aucune connexion ouverte.
-    pub fn comptes_avec_travail(&self) -> Result<Vec<i64>, Error> {
+    /// The accounts that have after-gesture work — pending actions or
+    /// echoes to reconcile. The back-online trigger (R-D3) uses this:
+    /// nothing to do = no connection opened.
+    pub fn accounts_with_work(&self) -> Result<Vec<i64>, Error> {
         let rows = self
             .conn()
             .prepare(
@@ -449,19 +451,19 @@ impl Store {
     }
 }
 
-/// Une conversation visée par un geste de masse — telle que l'UI la
-/// nomme (compte, boîte, UID de la rangée, et son fil s'il en a un).
+/// A conversation targeted by a bulk gesture — as the UI names it
+/// (account, mailbox, UID of the row, and its thread if it has one).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CibleGeste {
+pub struct GestureTarget {
     pub account_id: i64,
     pub mailbox: String,
     pub uid: Uid,
     pub thread_id: Option<i64>,
 }
 
-/// Les gestes que la barre de sélection sait faire en masse.
+/// The gestures the selection bar knows how to do in bulk.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum GesteGroupe {
+pub enum GroupGesture {
     Archive,
     Delete,
     Spam,
@@ -470,87 +472,99 @@ pub enum GesteGroupe {
 }
 
 impl Store {
-    /// Le geste de MASSE (PLAN-AUDIT-V2 E6, D6 : tout ou rien) : chaque
-    /// rangée cochée est une CONVERSATION — le fil entier part (D6 de
-    /// PLAN-RETOURS-10) — et le lot entier vit dans UNE transaction : une
-    /// panne au milieu ne laisse rien à moitié fait, l'UI le dit. Avant,
-    /// l'UI rejouait N × k commandes unitaires en série (250 + 50 IPC pour
-    /// 50 conversations), chacune sa transaction, la barre gelée.
+    /// The BULK gesture (PLAN-AUDIT-V2 E6, D6: all or nothing): each
+    /// checked row is a CONVERSATION — the whole thread goes (D6 of
+    /// PLAN-RETOURS-10) — and the whole batch lives in ONE transaction: a
+    /// failure halfway leaves nothing half done, the UI says so. Before,
+    /// the UI replayed N × k unit commands in series (250 + 50 IPC for 50
+    /// conversations), each with its own transaction, the bar frozen.
     ///
-    /// Rend le nombre de conversations traitées. `Spam` sans dossier
-    /// indésirable sur un compte visé est un refus franc, AVANT toute
-    /// écriture ; une boîte inconnue en base refuse le lot (rien de fait).
-    pub fn agir_groupe(&self, cibles: &[CibleGeste], geste: &GesteGroupe) -> Result<usize, Error> {
+    /// Returns the number of conversations processed. `Spam` with no
+    /// junk folder on a targeted account is an outright refusal, BEFORE
+    /// any write; an unknown mailbox in the database refuses the whole
+    /// batch (nothing done).
+    pub fn act_on_group(
+        &self,
+        targets: &[GestureTarget],
+        gesture: &GroupGesture,
+    ) -> Result<usize, Error> {
         let mut messages: Vec<(i64, String, Uid)> = Vec::new();
-        let mut vus: BTreeSet<(i64, String, Uid)> = BTreeSet::new();
-        for cible in cibles {
-            let seule = vec![(cible.account_id, cible.mailbox.clone(), cible.uid)];
-            let du_fil = match cible.thread_id {
-                Some(thread) => {
-                    let fil = self.messages_of_thread(thread)?;
-                    if fil.is_empty() { seule } else { fil }
+        let mut already: BTreeSet<(i64, String, Uid)> = BTreeSet::new();
+        for target in targets {
+            let alone = vec![(target.account_id, target.mailbox.clone(), target.uid)];
+            let of_thread = match target.thread_id {
+                Some(thread_id) => {
+                    let in_thread = self.messages_of_thread(thread_id)?;
+                    if in_thread.is_empty() {
+                        alone
+                    } else {
+                        in_thread
+                    }
                 }
-                None => seule,
+                None => alone,
             };
-            for message in du_fil {
-                if vus.insert(message.clone()) {
+            for message in of_thread {
+                if already.insert(message.clone()) {
                     messages.push(message);
                 }
             }
         }
-        // Le dossier indésirable de CHAQUE compte, résolu AVANT la
-        // transaction (même règle que l'arrivée E3 et le Nettoyage).
-        let mut indesirables: BTreeMap<i64, String> = BTreeMap::new();
-        if *geste == GesteGroupe::Spam {
-            let comptes: BTreeSet<i64> = cibles.iter().map(|cible| cible.account_id).collect();
-            for account in comptes {
-                let dossier = self
-                    .canonical_folders(account)?
-                    .indesirables
-                    .ok_or_else(|| {
-                        Error::Refus("aucun dossier indesirable reconnu sur ce compte".to_string())
-                    })?;
-                indesirables.insert(account, dossier);
+        // The junk folder of EACH account, resolved BEFORE the
+        // transaction (same rule as the E3 arrival and Cleanup).
+        let mut junk_folders: BTreeMap<i64, String> = BTreeMap::new();
+        if *gesture == GroupGesture::Spam {
+            let accounts: BTreeSet<i64> = targets.iter().map(|target| target.account_id).collect();
+            for account in accounts {
+                let folder = self.canonical_folders(account)?.junk.ok_or_else(|| {
+                    Error::Refusal("no junk folder recognized on this account".to_string())
+                })?;
+                junk_folders.insert(account, folder);
             }
         }
-        // La boîte de chaque (compte, nom) résolue UNE fois — un lot de 250
-        // messages vit dans une ou deux boîtes (revue).
-        let mut boites: BTreeMap<(i64, String), Option<i64>> = BTreeMap::new();
+        // The mailbox of each (account, name) resolved ONCE — a batch of
+        // 250 messages lives in one or two mailboxes (review).
+        let mut mailboxes: BTreeMap<(i64, String), Option<i64>> = BTreeMap::new();
         let tx = self.conn().unchecked_transaction()?;
         for (account_id, mailbox, uid) in &messages {
-            let cle = (*account_id, mailbox.clone());
-            let resolue = match boites.get(&cle) {
+            let key = (*account_id, mailbox.clone());
+            let resolved = match mailboxes.get(&key) {
                 Some(id) => *id,
                 None => {
                     let id = self.sync_state(*account_id, mailbox)?.map(|s| s.mailbox_id);
-                    boites.insert(cle, id);
+                    mailboxes.insert(key, id);
                     id
                 }
             };
-            // Tout ou rien (D6) : une boîte que la base ne connaît pas
-            // (renommée, disparue en cours de geste) refuse le LOT — avant,
-            // le message était sauté en silence et le bilan disait
-            // « N faits » (revue).
-            let Some(mailbox_id) = resolue else {
-                return Err(Error::Refus(format!(
-                    "boîte inconnue en base pour le compte {account_id} : le lot est refusé"
+            // All or nothing (D6): a mailbox the database does not know
+            // (renamed, gone mid-gesture) refuses the WHOLE batch —
+            // before, the message was silently skipped and the summary
+            // said "N done" (review).
+            let Some(mailbox_id) = resolved else {
+                return Err(Error::Refusal(format!(
+                    "mailbox unknown in database for account {account_id}: the batch is refused"
                 )));
             };
-            match geste {
-                GesteGroupe::Archive => {
-                    self.geste_sous(&tx, mailbox_id, *uid, Action::Archive, Some("archives"))?;
+            match gesture {
+                GroupGesture::Archive => {
+                    self.gesture_under(&tx, mailbox_id, *uid, Action::Archive, Some("archives"))?;
                 }
-                GesteGroupe::Delete => {
-                    self.geste_sous(&tx, mailbox_id, *uid, Action::Delete, Some("corbeille"))?;
+                GroupGesture::Delete => {
+                    self.gesture_under(&tx, mailbox_id, *uid, Action::Delete, Some("corbeille"))?;
                 }
-                GesteGroupe::Spam => {
-                    let spam = &indesirables[account_id];
+                GroupGesture::Spam => {
+                    let spam = &junk_folders[account_id];
                     if spam != mailbox {
-                        self.geste_sous(&tx, mailbox_id, *uid, Action::MoveTo(spam.clone()), None)?;
+                        self.gesture_under(
+                            &tx,
+                            mailbox_id,
+                            *uid,
+                            Action::MoveTo(spam.clone()),
+                            None,
+                        )?;
                     }
                 }
-                GesteGroupe::NotSpam => {
-                    self.geste_sous(
+                GroupGesture::NotSpam => {
+                    self.gesture_under(
                         &tx,
                         mailbox_id,
                         *uid,
@@ -558,7 +572,7 @@ impl Store {
                         None,
                     )?;
                 }
-                GesteGroupe::Seen(seen) => {
+                GroupGesture::Seen(seen) => {
                     if self.set_seen_local(mailbox_id, *uid, *seen)? {
                         let action = if *seen {
                             Action::MarkSeen
@@ -571,7 +585,7 @@ impl Store {
             }
         }
         tx.commit()?;
-        Ok(cibles.len())
+        Ok(targets.len())
     }
 }
 
@@ -599,13 +613,13 @@ mod tests {
         }
     }
 
-    fn store_avec_corbeille() -> (Store, i64, i64, i64) {
+    fn store_with_trash() -> (Store, i64, i64, i64) {
         let store = Store::open_in_memory().unwrap();
         let account = store
             .adopt_or_create_account("t@exemple.fr", "gmail")
             .unwrap();
         let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
-        let corbeille = store.create_mailbox(account, "Trash", 1).unwrap();
+        let trash = store.create_mailbox(account, "Trash", 1).unwrap();
         store
             .replace_folders(
                 account,
@@ -625,136 +639,137 @@ mod tests {
                 ],
             )
             .unwrap();
-        (store, account, inbox, corbeille)
+        (store, account, inbox, trash)
     }
 
-    /// Le geste vide la source, journalise l'action ET pose l'écho —
-    /// avec la matière du message (aperçu, corps, pièces) : la
-    /// destination se montre sans le serveur.
+    /// The gesture empties the source, logs the action AND sets the
+    /// echo — with the message's material (preview, body, attachments):
+    /// the destination shows without the server.
     #[test]
-    fn le_geste_verse_la_matiere_a_l_echo() {
-        let (mut store, account, inbox, _) = store_avec_corbeille();
+    fn the_gesture_pours_material_into_the_echo() {
+        let (mut store, account, inbox, _) = store_with_trash();
         store
-            .upsert_envelopes(inbox, &[envelope(1, "à jeter", 100)])
+            .upsert_envelopes(inbox, &[envelope(1, "to discard", 100)])
             .unwrap();
-        store.save_body(inbox, 1, "<p>corps</p>", &[]).unwrap();
+        store.save_body(inbox, 1, "<p>body</p>", &[]).unwrap();
 
         store
-            .geste_avec_echo(inbox, 1, Action::Delete, Some("corbeille"))
+            .gesture_with_echo(inbox, 1, Action::Delete, Some("corbeille"))
             .unwrap();
 
-        // La source est vide, l'action journalisée.
+        // The source is empty, the action logged.
         assert!(store.recent(account, "INBOX", 0, 10).unwrap().is_empty());
         assert_eq!(store.pending_actions(inbox).unwrap().len(), 1);
-        // L'écho porte tout.
-        assert_eq!(store.compte_echos("corbeille", Some(account)).unwrap(), 1);
+        // The echo carries everything.
+        assert_eq!(store.count_echos("corbeille", Some(account)).unwrap(), 1);
         let (id, preview): (i64, Option<String>) = store
             .conn()
             .query_row("SELECT id, preview FROM echos", [], |row| {
                 Ok((row.get(0)?, row.get(1)?))
             })
             .unwrap();
-        assert_eq!(preview.as_deref(), Some("corps"));
-        let (html, pieces) = store.echo_vue(id).unwrap().unwrap();
-        assert_eq!(html, "<p>corps</p>");
-        assert_eq!(pieces, 0);
+        assert_eq!(preview.as_deref(), Some("body"));
+        let (html, attachment_count) = store.echo_view(id).unwrap().unwrap();
+        assert_eq!(html, "<p>body</p>");
+        assert_eq!(attachment_count, 0);
     }
 
-    /// Sans `message_id`, l'écho serait irréconciliable : le geste passe
-    /// sans écho — le comportement d'avant E3, intact.
+    /// Without a `message_id`, the echo would be unreconcilable: the
+    /// gesture goes through without an echo — the pre-E3 behavior,
+    /// intact.
     #[test]
-    fn sans_message_id_pas_d_echo() {
-        let (mut store, account, inbox, _) = store_avec_corbeille();
-        let mut sans_id = envelope(1, "anonyme", 100);
-        sans_id.message_id = None;
-        store.upsert_envelopes(inbox, &[sans_id]).unwrap();
+    fn without_message_id_no_echo() {
+        let (mut store, account, inbox, _) = store_with_trash();
+        let mut without_id = envelope(1, "anonymous", 100);
+        without_id.message_id = None;
+        store.upsert_envelopes(inbox, &[without_id]).unwrap();
 
         store
-            .geste_avec_echo(inbox, 1, Action::Delete, Some("corbeille"))
+            .gesture_with_echo(inbox, 1, Action::Delete, Some("corbeille"))
             .unwrap();
 
-        assert_eq!(store.compte_echos("corbeille", Some(account)).unwrap(), 0);
+        assert_eq!(store.count_echos("corbeille", Some(account)).unwrap(), 0);
         assert!(store.recent(account, "INBOX", 0, 10).unwrap().is_empty());
         assert_eq!(store.pending_actions(inbox).unwrap().len(), 1);
     }
 
-    /// Déjà présent dans la destination (Gmail : « Tous les messages »
-    /// porte déjà la copie qu'un archivage démasque) : pas de doublon.
+    /// Already present at the destination (Gmail: "All Mail" already
+    /// carries the copy an archiving unmasks): no duplicate.
     #[test]
-    fn present_en_destination_pas_de_doublon() {
-        let (mut store, account, inbox, corbeille) = store_avec_corbeille();
+    fn already_present_at_destination_no_duplicate() {
+        let (mut store, account, inbox, trash) = store_with_trash();
         store
-            .upsert_envelopes(inbox, &[envelope(1, "déjà là", 100)])
+            .upsert_envelopes(inbox, &[envelope(1, "already there", 100)])
             .unwrap();
         store
-            .upsert_envelopes(corbeille, &[envelope(1, "déjà là", 100)])
-            .unwrap();
-
-        store
-            .geste_avec_echo(inbox, 1, Action::Delete, Some("corbeille"))
+            .upsert_envelopes(trash, &[envelope(1, "already there", 100)])
             .unwrap();
 
-        assert_eq!(store.compte_echos("corbeille", Some(account)).unwrap(), 0);
+        store
+            .gesture_with_echo(inbox, 1, Action::Delete, Some("corbeille"))
+            .unwrap();
+
+        assert_eq!(store.count_echos("corbeille", Some(account)).unwrap(), 0);
     }
 
-    /// La réconciliation : la vraie ligne entre (même `message_id` dans
-    /// la destination) → l'écho meurt, la liste ne bouge pas à l'œil.
+    /// Reconciliation: the real row arrives (same `message_id` in the
+    /// destination) → the echo dies, the list does not move visibly.
     #[test]
-    fn la_vraie_ligne_tue_l_echo() {
-        let (mut store, account, inbox, corbeille) = store_avec_corbeille();
+    fn the_real_row_kills_the_echo() {
+        let (mut store, account, inbox, trash) = store_with_trash();
         store
-            .upsert_envelopes(inbox, &[envelope(1, "à jeter", 100)])
+            .upsert_envelopes(inbox, &[envelope(1, "to discard", 100)])
             .unwrap();
         store
-            .geste_avec_echo(inbox, 1, Action::Delete, Some("corbeille"))
+            .gesture_with_echo(inbox, 1, Action::Delete, Some("corbeille"))
             .unwrap();
         assert_eq!(
-            store.reconcilier_echos(account).unwrap(),
+            store.reconcile_echos(account).unwrap(),
             0,
-            "rien d'arrivé : rien à faire"
+            "nothing arrived: nothing to do"
         );
 
-        // La copie arrive dans la Corbeille (relève) — UID neuf, même
-        // message_id.
+        // The copy arrives in Trash (poll) — fresh UID, same message_id.
         store
-            .upsert_envelopes(corbeille, &[envelope(1, "à jeter", 100)])
+            .upsert_envelopes(trash, &[envelope(1, "to discard", 100)])
             .unwrap();
 
-        assert_eq!(store.reconcilier_echos(account).unwrap(), 1);
-        assert_eq!(store.compte_echos("corbeille", Some(account)).unwrap(), 0);
+        assert_eq!(store.reconcile_echos(account).unwrap(), 1);
+        assert_eq!(store.count_echos("corbeille", Some(account)).unwrap(), 0);
     }
 
-    /// Le balayage : l'action rejouée (retirée de la file) et toujours
-    /// pas de copie → l'écho se retire, l'incident se consigne. Une
-    /// action encore en file protège son écho — hors ligne, l'écho VIT.
+    /// The sweep: the action replayed (removed from the queue) and still
+    /// no copy → the echo is removed, the incident is recorded. An
+    /// action still queued protects its echo — offline, the echo LIVES.
     #[test]
-    fn le_balayage_respecte_l_intention_en_attente() {
-        let (mut store, account, inbox, _) = store_avec_corbeille();
+    fn the_sweep_respects_a_pending_intention() {
+        let (mut store, account, inbox, _) = store_with_trash();
         store
-            .upsert_envelopes(inbox, &[envelope(1, "à jeter", 100)])
+            .upsert_envelopes(inbox, &[envelope(1, "to discard", 100)])
             .unwrap();
         store
-            .geste_avec_echo(inbox, 1, Action::Delete, Some("corbeille"))
+            .gesture_with_echo(inbox, 1, Action::Delete, Some("corbeille"))
             .unwrap();
 
-        // L'action attend encore : le balayage ne touche à rien.
-        assert!(store.balayer_echos(account).unwrap().is_empty());
-        assert_eq!(store.echos_en_attente(account).unwrap(), 1);
+        // The action is still pending: the sweep touches nothing.
+        assert!(store.sweep_echos(account).unwrap().is_empty());
+        assert_eq!(store.pending_echos(account).unwrap(), 1);
 
-        // L'action est rejouée (la file se vide) — la destination
-        // relevée ne montre rien : l'écho part, l'incident est dit.
+        // The action is replayed (the queue empties) — the polled
+        // destination shows nothing: the echo leaves, the incident is
+        // recorded.
         let action = store.pending_actions(inbox).unwrap().remove(0);
         store.remove_action(action.id).unwrap();
-        let incidents = store.balayer_echos(account).unwrap();
+        let incidents = store.sweep_echos(account).unwrap();
         assert_eq!(incidents.len(), 1);
         assert!(incidents[0].contains("corbeille"), "{incidents:?}");
-        assert_eq!(store.echos_en_attente(account).unwrap(), 0);
+        assert_eq!(store.pending_echos(account).unwrap(), 0);
     }
 
-    /// L'écho d'envoi ne naît qu'à `sent` — jamais pour une entrée en
-    /// file, en échec ou en quarantaine (« jamais d'envoi fantôme »).
+    /// The send echo is only born at `sent` — never for an entry still
+    /// queued, failed, or quarantined ("never a phantom send").
     #[test]
-    fn l_echo_d_envoi_ne_nait_qu_a_sent() {
+    fn the_send_echo_is_born_only_at_sent() {
         let store = Store::open_in_memory().unwrap();
         let account = store
             .adopt_or_create_account("t@exemple.fr", "gmail")
@@ -764,44 +779,45 @@ mod tests {
             "a@b.fr",
             "",
             "",
-            "objet",
-            "corps\nligne 2",
+            "subject",
+            "body\nline 2",
             None,
         )
         .unwrap();
         store.enqueue_outbox(account, &draft).unwrap();
         let id = store.outbox_to_send(account).unwrap()[0].id;
 
-        assert!(!store.echo_envoi(id).unwrap(), "en file : pas d'écho");
-        assert_eq!(store.compte_echos("envoyes", Some(account)).unwrap(), 0);
+        assert!(!store.send_echo(id).unwrap(), "still queued: no echo");
+        assert_eq!(store.count_echos("envoyes", Some(account)).unwrap(), 0);
 
         store
             .set_outbox_state(id, crate::OutboxState::Sent)
             .unwrap();
-        assert!(store.echo_envoi(id).unwrap());
-        assert_eq!(store.compte_echos("envoyes", Some(account)).unwrap(), 1);
-        // Le corps est le texte du journal, échappé et lisible.
+        assert!(store.send_echo(id).unwrap());
+        assert_eq!(store.count_echos("envoyes", Some(account)).unwrap(), 1);
+        // The body is the log text, escaped and readable.
         let echo_id: i64 = store
             .conn()
             .query_row("SELECT id FROM echos", [], |row| row.get(0))
             .unwrap();
-        let (html, _) = store.echo_vue(echo_id).unwrap().unwrap();
-        assert!(html.contains("corps<br>ligne 2"), "{html}");
+        let (html, _) = store.echo_view(echo_id).unwrap().unwrap();
+        assert!(html.contains("body<br>line 2"), "{html}");
     }
 
-    /// PLAN-AUDIT-V2 E6 (D6, tout ou rien) : cinquante conversations
-    /// archivées en UN geste et UNE transaction — une panne au trentième
-    /// retrait ne laisse rien à moitié fait ; sans panne, les cinquante
-    /// partent. Avant : N × k commandes unitaires, chacune sa transaction.
+    /// PLAN-AUDIT-V2 E6 (D6, all or nothing): fifty conversations
+    /// archived in ONE gesture and ONE transaction — a failure at the
+    /// thirtieth removal leaves nothing half done; without a failure,
+    /// all fifty go. Before: N × k unit commands, each its own
+    /// transaction.
     #[test]
-    fn cinquante_conversations_archivees_en_une_transaction() {
-        use crate::{CibleGeste, GesteGroupe};
+    fn fifty_conversations_archived_in_one_transaction() {
+        use crate::{GestureTarget, GroupGesture};
         let mut store = Store::open_in_memory().unwrap();
         let account = store
             .adopt_or_create_account("t@exemple.fr", "gmail")
             .unwrap();
         let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
-        let decor: Vec<crate::Envelope> = (1..=50)
+        let fixture: Vec<crate::Envelope> = (1..=50)
             .map(|uid| crate::Envelope {
                 uid,
                 subject: Some(format!("message {uid}")),
@@ -817,16 +833,16 @@ mod tests {
                 flagged: false,
             })
             .collect();
-        store.upsert_envelopes(inbox, &decor).unwrap();
-        let cibles: Vec<CibleGeste> = (1..=50)
-            .map(|uid| CibleGeste {
+        store.upsert_envelopes(inbox, &fixture).unwrap();
+        let targets: Vec<GestureTarget> = (1..=50)
+            .map(|uid| GestureTarget {
                 account_id: account,
                 mailbox: "INBOX".to_string(),
                 uid,
                 thread_id: None,
             })
             .collect();
-        let compte = |table: &str| -> i64 {
+        let count = |table: &str| -> i64 {
             store
                 .conn()
                 .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
@@ -835,25 +851,29 @@ mod tests {
                 .unwrap()
         };
 
-        // Panne au trentième retrait : rien ne doit rester à moitié fait.
+        // Failure at the thirtieth removal: nothing must be left half done.
         store
             .conn()
             .execute_batch(
                 "CREATE TRIGGER panne BEFORE DELETE ON envelopes WHEN OLD.uid = 30
-                 BEGIN SELECT RAISE(ABORT, 'panne simulée'); END;",
+                 BEGIN SELECT RAISE(ABORT, 'simulated failure'); END;",
             )
             .unwrap();
-        assert!(store.agir_groupe(&cibles, &GesteGroupe::Archive).is_err());
-        assert_eq!(compte("envelopes"), 50, "tout ou rien : rien n'est parti");
-        assert_eq!(compte("pending_actions"), 0);
-        assert_eq!(compte("echos"), 0);
+        assert!(
+            store
+                .act_on_group(&targets, &GroupGesture::Archive)
+                .is_err()
+        );
+        assert_eq!(count("envelopes"), 50, "all or nothing: nothing left");
+        assert_eq!(count("pending_actions"), 0);
+        assert_eq!(count("echos"), 0);
 
         store.conn().execute_batch("DROP TRIGGER panne").unwrap();
 
-        // Une cible sur une boîte inconnue : le lot est refusé, rien ne
-        // part — le bilan ne dit jamais « 50 faits » pour 49 (revue).
-        let mut avec_inconnue = cibles.clone();
-        avec_inconnue.push(CibleGeste {
+        // A target on an unknown mailbox: the batch is refused, nothing
+        // leaves — the summary never says "50 done" for 49 (review).
+        let mut with_unknown = targets.clone();
+        with_unknown.push(GestureTarget {
             account_id: account,
             mailbox: "Disparue".to_string(),
             uid: 1,
@@ -861,47 +881,49 @@ mod tests {
         });
         assert!(
             store
-                .agir_groupe(&avec_inconnue, &GesteGroupe::Archive)
+                .act_on_group(&with_unknown, &GroupGesture::Archive)
                 .is_err()
         );
-        assert_eq!(compte("envelopes"), 50);
-        assert_eq!(compte("pending_actions"), 0);
+        assert_eq!(count("envelopes"), 50);
+        assert_eq!(count("pending_actions"), 0);
 
         assert_eq!(
-            store.agir_groupe(&cibles, &GesteGroupe::Archive).unwrap(),
+            store
+                .act_on_group(&targets, &GroupGesture::Archive)
+                .unwrap(),
             50
         );
-        assert_eq!(compte("envelopes"), 0);
-        assert_eq!(compte("pending_actions"), 50);
-        assert_eq!(compte("echos"), 50, "un écho d'archives par message");
+        assert_eq!(count("envelopes"), 0);
+        assert_eq!(count("pending_actions"), 50);
+        assert_eq!(count("echos"), 50, "one archive echo per message");
     }
 
-    /// PLAN-AUDIT-V2 E5 (audit 2.1 « écho d'ENVOI balayé dès la première
-    /// passe ») : l'écho d'un envoi n'a pas d'action d'origine ; le
-    /// balayage `origin_action_id IS NULL` le prenait pour une intention
-    /// soldée et le retirait AVANT toute relève des Envoyés — le message
-    /// parti disparaissait de l'écran jusqu'à la relève suivante.
+    /// PLAN-AUDIT-V2 E5 (audit 2.1 "SEND echo swept on the very first
+    /// pass"): a send echo has no origin action; the
+    /// `origin_action_id IS NULL` sweep took it for a settled intent and
+    /// removed it BEFORE any poll of Sent — the message that had gone
+    /// out vanished from the screen until the next poll.
     #[test]
-    fn l_echo_d_envoi_survit_au_balayage_sans_releve_des_envoyes() {
+    fn the_send_echo_survives_the_sweep_without_a_sent_poll() {
         let store = Store::open_in_memory().unwrap();
         let account = store
             .adopt_or_create_account("t@exemple.fr", "gmail")
             .unwrap();
         let draft =
-            crate::compose("t@exemple.fr", "a@b.fr", "", "", "objet", "corps", None).unwrap();
+            crate::compose("t@exemple.fr", "a@b.fr", "", "", "subject", "body", None).unwrap();
         store.enqueue_outbox(account, &draft).unwrap();
         let id = store.outbox_to_send(account).unwrap()[0].id;
         store
             .set_outbox_state(id, crate::OutboxState::Sent)
             .unwrap();
-        assert!(store.echo_envoi(id).unwrap());
+        assert!(store.send_echo(id).unwrap());
 
-        let incidents = store.balayer_echos(account).unwrap();
-        assert!(incidents.is_empty(), "balayé à tort : {incidents:?}");
-        assert_eq!(store.compte_echos("envoyes", Some(account)).unwrap(), 1);
+        let incidents = store.sweep_echos(account).unwrap();
+        assert!(incidents.is_empty(), "wrongly swept: {incidents:?}");
+        assert_eq!(store.count_echos("envoyes", Some(account)).unwrap(), 1);
 
-        // Les Envoyés relevés APRÈS l'envoi, sans la copie : là, l'écho
-        // est démenti par le serveur et part.
+        // Sent polled AFTER the send, without the copy: there, the echo
+        // is denied by the server and leaves.
         let envoyes = store.create_mailbox(account, "Envoyes", 1).unwrap();
         store
             .conn()
@@ -911,48 +933,48 @@ mod tests {
                   WHERE id = {envoyes};"
             ))
             .unwrap();
-        assert_eq!(store.balayer_echos(account).unwrap().len(), 1);
-        assert_eq!(store.compte_echos("envoyes", Some(account)).unwrap(), 0);
+        assert_eq!(store.sweep_echos(account).unwrap().len(), 1);
+        assert_eq!(store.count_echos("envoyes", Some(account)).unwrap(), 0);
     }
 
-    /// PLAN-COMPOSITION-HTML : l'écho d'un envoi RICHE porte le HTML
-    /// composé tel quel — jamais le texte ré-échappé (la mise en forme
-    /// se verrait en balises dans Envoyés). L'assainissement de lecture
-    /// repasse derrière comme pour tout corps (S1).
+    /// PLAN-COMPOSITION-HTML: the echo of a RICH send carries the
+    /// composed HTML as is — never the re-escaped text (the formatting
+    /// would show as tags in Sent). Reading sanitization runs behind it
+    /// as for any body (S1).
     #[test]
-    fn l_echo_d_un_envoi_riche_porte_le_html_compose() {
+    fn a_rich_send_echo_carries_the_composed_html() {
         let store = Store::open_in_memory().unwrap();
         let account = store
             .adopt_or_create_account("t@exemple.fr", "gmail")
             .unwrap();
         let mut draft =
-            crate::compose("t@exemple.fr", "a@b.fr", "", "", "objet", "corps", None).unwrap();
-        draft.body_html = Some("<div><b>corps</b></div>".to_string());
+            crate::compose("t@exemple.fr", "a@b.fr", "", "", "subject", "body", None).unwrap();
+        draft.body_html = Some("<div><b>body</b></div>".to_string());
         store.enqueue_outbox(account, &draft).unwrap();
         let id = store.outbox_to_send(account).unwrap()[0].id;
         store
             .set_outbox_state(id, crate::OutboxState::Sent)
             .unwrap();
-        assert!(store.echo_envoi(id).unwrap());
+        assert!(store.send_echo(id).unwrap());
 
         let echo_id: i64 = store
             .conn()
             .query_row("SELECT id FROM echos", [], |row| row.get(0))
             .unwrap();
-        let (html, _) = store.echo_vue(echo_id).unwrap().unwrap();
-        assert!(html.contains("<b>corps</b>"), "{html}");
+        let (html, _) = store.echo_view(echo_id).unwrap().unwrap();
+        assert!(html.contains("<b>body</b>"), "{html}");
         assert!(
             !html.contains("&lt;b&gt;"),
-            "le HTML ne doit pas être ré-échappé : {html}"
+            "the HTML must not be re-escaped: {html}"
         );
     }
 
-    /// PLAN-RETOURS-5 (terrain 2026-08-21 : « À : envoyes » pendant la
-    /// fenêtre de réconciliation) : l'écho d'envoi porte les VRAIS
-    /// destinataires, copiés du journal d'envoi au format des
-    /// enveloppes (`\n`).
+    /// PLAN-RETOURS-5 (field 2026-08-21: "To: envoyes" during the
+    /// reconciliation window): the send echo carries the REAL
+    /// recipients, copied from the send log in the envelopes' format
+    /// (`\n`).
     #[test]
-    fn l_echo_d_envoi_porte_les_destinataires() {
+    fn the_send_echo_carries_the_recipients() {
         let store = Store::open_in_memory().unwrap();
         let account = store
             .adopt_or_create_account("t@exemple.fr", "gmail")
@@ -962,8 +984,8 @@ mod tests {
             "a@b.fr, c@d.fr",
             "",
             "",
-            "objet",
-            "corps",
+            "subject",
+            "body",
             None,
         )
         .unwrap();
@@ -972,7 +994,7 @@ mod tests {
         store
             .set_outbox_state(id, crate::OutboxState::Sent)
             .unwrap();
-        assert!(store.echo_envoi(id).unwrap());
+        assert!(store.send_echo(id).unwrap());
 
         let to: Option<String> = store
             .conn()
@@ -981,17 +1003,17 @@ mod tests {
         assert_eq!(to.as_deref(), Some("a@b.fr\nc@d.fr"));
     }
 
-    /// Le geste verse aussi les destinataires du message déplacé — la
-    /// colonne des enveloppes est déjà au bon format, copie telle quelle.
+    /// The gesture also pours the recipients of the moved message — the
+    /// envelopes column is already in the right format, copied as is.
     #[test]
-    fn le_geste_verse_les_destinataires_a_l_echo() {
-        let (mut store, _account, inbox, _) = store_avec_corbeille();
-        let mut env = envelope(1, "à jeter", 100);
+    fn the_gesture_pours_recipients_into_the_echo() {
+        let (mut store, _account, inbox, _) = store_with_trash();
+        let mut env = envelope(1, "to discard", 100);
         env.to_addrs = vec!["x@y.fr".to_string(), "z@w.fr".to_string()];
         store.upsert_envelopes(inbox, &[env]).unwrap();
 
         store
-            .geste_avec_echo(inbox, 1, Action::Delete, Some("corbeille"))
+            .gesture_with_echo(inbox, 1, Action::Delete, Some("corbeille"))
             .unwrap();
 
         let to: Option<String> = store
@@ -1001,18 +1023,18 @@ mod tests {
         assert_eq!(to.as_deref(), Some("x@y.fr\nz@w.fr"));
     }
 
-    /// Les pièces d'un écho d'envoi se lisent en MÉTADONNÉES (nom, mime,
-    /// taille) depuis le journal d'envoi — les octets sont purgés à
-    /// `sent` (PJ-D7), jamais un titre « Fichiers joints » sans rien
-    /// dessous. Un écho de geste n'en a pas : liste vide.
+    /// The attachments of a send echo read as METADATA (name, mime,
+    /// size) from the send log — the bytes are purged at `sent`
+    /// (PJ-D7), never an "Attachments" title with nothing under it. A
+    /// gesture echo has none: empty list.
     #[test]
-    fn les_pieces_de_l_echo_d_envoi_se_lisent_en_metadonnees() {
+    fn send_echo_attachments_read_as_metadata_only() {
         let store = Store::open_in_memory().unwrap();
         let account = store
             .adopt_or_create_account("t@exemple.fr", "gmail")
             .unwrap();
         let draft =
-            crate::compose("t@exemple.fr", "a@b.fr", "", "", "objet", "corps", None).unwrap();
+            crate::compose("t@exemple.fr", "a@b.fr", "", "", "subject", "body", None).unwrap();
         let draft_id = store
             .save_draft(
                 account,
@@ -1023,8 +1045,8 @@ mod tests {
                     cc_raw: "",
                     bcc_raw: "",
                     body_html: None,
-                    subject: "objet",
-                    body: "corps",
+                    subject: "subject",
+                    body: "body",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
                     important: false,
@@ -1042,45 +1064,45 @@ mod tests {
             .set_outbox_state(id, crate::OutboxState::Sent)
             .unwrap();
         store.purge_sent_attachment_bytes(id).unwrap();
-        assert!(store.echo_envoi(id).unwrap());
+        assert!(store.send_echo(id).unwrap());
         let echo_id: i64 = store
             .conn()
             .query_row("SELECT id FROM echos", [], |row| row.get(0))
             .unwrap();
 
-        let pieces = store.echo_attachments(echo_id).unwrap();
-        assert_eq!(pieces.len(), 1);
-        assert_eq!(pieces[0].name, "rapport.pdf");
-        assert_eq!(pieces[0].mime, "application/pdf");
-        assert_eq!(pieces[0].size, 3);
-        assert!(pieces[0].bytes.is_none(), "métadonnées seules");
+        let attachments = store.echo_attachments(echo_id).unwrap();
+        assert_eq!(attachments.len(), 1);
+        assert_eq!(attachments[0].name, "rapport.pdf");
+        assert_eq!(attachments[0].mime, "application/pdf");
+        assert_eq!(attachments[0].size, 3);
+        assert!(attachments[0].bytes.is_none(), "metadata only");
     }
 
-    /// Les comptes avec du travail : actions en attente OU échos — le
-    /// déclencheur du retour en ligne ne réveille qu'eux.
+    /// Accounts with work: pending actions OR echoes — the back-online
+    /// trigger only wakes them.
     #[test]
-    fn comptes_avec_travail_reunit_actions_et_echos() {
-        let (mut store, account, inbox, _) = store_avec_corbeille();
-        assert!(store.comptes_avec_travail().unwrap().is_empty());
+    fn accounts_with_work_combines_actions_and_echoes() {
+        let (mut store, account, inbox, _) = store_with_trash();
+        assert!(store.accounts_with_work().unwrap().is_empty());
         store
             .upsert_envelopes(inbox, &[envelope(1, "x", 100)])
             .unwrap();
         store
-            .geste_avec_echo(inbox, 1, Action::Delete, Some("corbeille"))
+            .gesture_with_echo(inbox, 1, Action::Delete, Some("corbeille"))
             .unwrap();
-        assert_eq!(store.comptes_avec_travail().unwrap(), vec![account]);
+        assert_eq!(store.accounts_with_work().unwrap(), vec![account]);
         assert_eq!(
-            store.mailboxes_avec_actions(account).unwrap(),
+            store.mailboxes_with_actions(account).unwrap(),
             vec!["INBOX".to_string()]
         );
     }
 
-    /// Le texte d'envoi rendu : échappé (jamais de HTML interprété
-    /// depuis un texte), retours à la ligne préservés.
+    /// The rendered send text: escaped (never HTML interpreted from a
+    /// plain text), line breaks preserved.
     #[test]
-    fn le_texte_d_envoi_est_echappe() {
+    fn the_send_text_is_escaped() {
         assert_eq!(
-            texte_en_html("a <b> & c\nd"),
+            text_as_html("a <b> & c\nd"),
             "<div>a &lt;b&gt; &amp; c<br>d</div>"
         );
     }

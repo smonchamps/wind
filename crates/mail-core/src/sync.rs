@@ -266,7 +266,7 @@ impl SyncEngine {
 /// A TRANSIENT failure (network, `Error::Server`) stops the replay and the
 /// rest of the queue survives for the next sync — on the fifth consecutive
 /// failure of the SAME action, it enters quarantine and frees the queue. A
-/// definitive REFUSAL (`Error::Refus`, NO/BAD) puts the action into
+/// definitive REFUSAL (`Error::Refusal`, NO/BAD) puts the action into
 /// quarantine on the spot and the replay CONTINUES: before E3, a folder
 /// that had vanished server-side blocked the whole mailbox forever, in
 /// silence (audit 2026-09-01 S1-7).
@@ -293,7 +293,7 @@ fn replay_actions(
                 store.remove_action(pending.id)?;
                 replayed += 1;
             }
-            Err(Error::Refus(reason)) => {
+            Err(Error::Refusal(reason)) => {
                 store.refuse_action(pending.id, &reason)?;
                 refused += 1;
             }
@@ -325,7 +325,7 @@ fn replay_actions(
 /// Non-selectable folders are excluded: they are containers with no mail
 /// (`\Noselect`), and SELECT would fail on each of them one by one.
 ///
-/// [ADR 0009]: ../../../docs/adr/0009-portee-des-fils-au-compte.md
+/// [ADR 0009]: ../../../docs/adr/0009-portee-des-threads-au-compte.md
 /// [ADR 0010]: ../../../docs/adr/0010-synchronisation-integrale.md
 pub fn sync_order(folders: &[crate::remote::Folder], sent: Option<&str>) -> Vec<String> {
     let mut order: Vec<String> = Vec::with_capacity(folders.len() + 1);
@@ -796,7 +796,7 @@ mod tests {
         let engine = SyncEngine::new(2);
         let account = test_account(&store);
 
-        server.panne_au_lot_envelopes = Some(2);
+        server.envelope_batch_failure = Some(2);
         assert!(
             engine
                 .sync(&mut server, &mut store, account, "INBOX")
@@ -809,7 +809,7 @@ mod tests {
             "only one batch succeeded"
         );
 
-        server.panne_au_lot_envelopes = None;
+        server.envelope_batch_failure = None;
         server.fetch_batches.clear();
         let resumed = synced(&mut server, &mut store, &engine);
         assert_eq!(
@@ -930,7 +930,7 @@ mod tests {
             .enqueue_action(id, 1, Action::MoveTo("Disparu".to_string()))
             .unwrap();
         store.enqueue_action(id, 2, Action::MarkSeen).unwrap();
-        server.deplacements_refuses = true;
+        server.refused_moves = true;
 
         let report = synced(&mut server, &mut store, &engine);
 

@@ -1,15 +1,14 @@
-//! La boîte d'envoi persistante — le sommet de la Phase 2.
+//! The persistent send outbox — the summit of Phase 2.
 //!
-//! Deux règles d'or (PLAN.md §1 et §4), prouvées par tests :
-//! - **jamais d'envoi perdu** : l'intention d'envoi est journalisée dans
-//!   SQLite AVANT toute tentative réseau ; coupure ou crash, elle survit
-//!   et repart à la vidange suivante ;
-//! - **jamais d'envoi fantôme** : un envoi interrompu en plein vol (crash
-//!   entre la remise au serveur et l'accusé local) n'est JAMAIS renvoyé
-//!   automatiquement — il est mis en quarantaine jusqu'à la décision
-//!   explicite de l'utilisateur. Le doublon silencieux est pire que le
-//!   retard : un retard se rattrape, un doublon est déjà chez le
-//!   destinataire.
+//! Two golden rules (PLAN.md §1 and §4), proven by tests:
+//! - **never a lost send**: the send intent is journaled in SQLite
+//!   BEFORE any network attempt; on a cut connection or a crash, it
+//!   survives and departs at the next flush;
+//! - **never a phantom send**: a send interrupted in flight (a crash
+//!   between delivery to the server and the local acknowledgment) is
+//!   NEVER resent automatically — it is quarantined until the user's
+//!   explicit decision. A silent duplicate is worse than a delay: a
+//!   delay catches up, a duplicate is already at the recipient's door.
 
 use chrono::Utc;
 use rusqlite::params;
@@ -19,13 +18,13 @@ use crate::error::Error;
 use crate::store::Store;
 use crate::transport::{MailTransport, SendError};
 
-/// Séparateur des destinataires en base : sûr par construction, car
-/// [`crate::EmailAddress`] refuse tout caractère blanc.
+/// Recipient separator in storage: safe by construction, since
+/// [`crate::EmailAddress`] refuses any whitespace character.
 const TO_SEPARATOR: char = '\n';
 
-/// Reconstitue une liste d'adresses stockée (Cc, Cci) : la chaîne VIDE
-/// vaut liste vide — sans quoi `"".split('\n')` rendrait un `[""]` fantôme
-/// (le champ « À », lui, n'est jamais vide et n'en a pas besoin).
+/// Rebuilds a stored address list (Cc, Bcc): the EMPTY string means an
+/// empty list — otherwise `"".split('\n')` would yield a phantom `[""]`
+/// (the "To" field, for its part, is never empty and needs no such guard).
 fn split_recipients(stored: &str) -> Vec<String> {
     if stored.is_empty() {
         Vec::new()
@@ -34,29 +33,29 @@ fn split_recipients(stored: &str) -> Vec<String> {
     }
 }
 
-/// Cycle de vie d'un envoi. Machine à états stricte :
+/// Life cycle of a send. Strict state machine:
 ///
 /// ```text
 /// queued ──→ sending ──→ sent
 ///    ↑          │
-///    │          ├─ échec transitoire ──→ queued (réessai automatique)
-///    │          ├─ refus permanent ───→ rejected (décision utilisateur)
-///    │          └─ crash en vol ──────→ interrupted (quarantaine)
-///    └────────── requeue : décision explicite de l'utilisateur
+///    │          ├─ transient failure ──→ queued (automatic retry)
+///    │          ├─ permanent refusal ──→ rejected (user decision)
+///    │          └─ crash in flight ────→ interrupted (quarantine)
+///    └────────── requeue: the user's explicit decision
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutboxState {
-    /// En attente — sera pris par la prochaine vidange.
+    /// Waiting — will be picked up by the next flush.
     Queued,
-    /// Remise au serveur en cours. Retrouvé dans cet état au début d'une
-    /// vidange, le message vient d'un crash : direction la quarantaine.
+    /// Delivery to the server in progress. Found in this state at the
+    /// start of a flush, the message comes from a crash: off to quarantine.
     Sending,
-    /// Accepté par le serveur d'envoi.
+    /// Accepted by the sending server.
     Sent,
-    /// Interrompu en plein vol : peut-être parti, peut-être pas.
-    /// JAMAIS renvoyé sans confirmation de l'utilisateur.
+    /// Interrupted in flight: may have gone out, may not have.
+    /// NEVER resent without the user's confirmation.
     Interrupted,
-    /// Refusé définitivement par le serveur.
+    /// Definitively refused by the server.
     Rejected,
 }
 
@@ -83,55 +82,56 @@ impl OutboxState {
     }
 }
 
-/// Une pièce du journal d'envoi.
+/// An attachment in the send journal.
 ///
-/// `bytes` est `None` une fois le message parti (purge PJ-D7) :
-/// l'historique garde le nom et le poids, jamais les octets. Tant que le
-/// message peut repartir — file, quarantaine, refus — les octets sont là.
+/// `bytes` is `None` once the message has gone out (PJ-D7 purge): the
+/// history keeps the name and the weight, never the bytes. As long as
+/// the message can still go out — queued, quarantined, rejected — the
+/// bytes are there.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutboxAttachment {
     pub name: String,
     pub mime: String,
-    /// Octets DÉCODÉS — la taille que l'utilisateur reconnaît.
+    /// DECODED bytes — the size the user recognizes.
     pub size: u64,
     pub bytes: Option<Vec<u8>>,
 }
 
-/// Un message journalisé dans la boîte d'envoi.
+/// A message journaled in the outbox.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutboxMessage {
     pub id: i64,
-    /// Le compte émetteur — chaque vidange passe par SA connexion SMTP.
+    /// The sending account — each flush goes through ITS OWN SMTP connection.
     pub account_id: i64,
-    /// Message-ID RFC 5322 généré à la composition — l'identité stable
-    /// qui relie ce journal au message réellement parti.
+    /// RFC 5322 Message-ID generated at composition — the stable identity
+    /// that ties this journal entry to the message that actually went out.
     pub message_id: String,
     pub from: String,
     pub to: Vec<String>,
-    /// Copie carbone — paraît dans l'en-tête `Cc:` du message envoyé.
+    /// Carbon copy — appears in the `Cc:` header of the sent message.
     pub cc: Vec<String>,
-    /// Copie carbone invisible — JAMAIS dans les en-têtes du message
-    /// servi ; l'envoi la porte dans l'enveloppe SMTP seule (mail-smtp).
+    /// Blind carbon copy — NEVER in the headers of the delivered message;
+    /// the send carries it only in the SMTP envelope (mail-smtp).
     pub bcc: Vec<String>,
     pub subject: String,
     pub body_text: String,
-    /// Corps riche (PLAN-COMPOSITION-HTML) — la partie text/html du
-    /// multipart/alternative ; `None` = envoi texte seul (historique).
+    /// Rich body (PLAN-COMPOSITION-HTML) — the text/html part of the
+    /// multipart/alternative; `None` = text-only send (historical path).
     pub body_html: Option<String>,
     pub in_reply_to: Option<String>,
-    /// E7 : la chaîne `References` complète (parent + ses References),
-    /// telle que composée ; `None` = le parent seul.
+    /// E7: the complete `References` chain (parent + its own References),
+    /// as composed; `None` = the parent alone.
     pub references: Option<String>,
-    /// Marqué « important » à la composition (R3) : la remise posera
-    /// les en-têtes de priorité.
+    /// Flagged "important" at composition (R3): delivery will set the
+    /// priority headers.
     pub important: bool,
-    /// Envoi différé (R2) : l'époque (secondes) avant laquelle la
-    /// vidange ne prend pas ce message. `None` = tout de suite.
+    /// Deferred send (R2): the epoch (seconds) before which the flush
+    /// will not pick up this message. `None` = right away.
     pub send_at_epoch: Option<i64>,
-    /// La réponse iTIP (PLAN-INVITATIONS) — la remise la porte en
-    /// partie `text/calendar; method=REPLY`. `None` = envoi ordinaire.
+    /// The iTIP reply (PLAN-INVITATIONS) — delivery carries it in a
+    /// `text/calendar; method=REPLY` part. `None` = an ordinary send.
     pub ics_reply: Option<String>,
-    /// Les pièces, dans l'ordre du geste (PJ-D2).
+    /// The attachments, in gesture order (PJ-D2).
     pub attachments: Vec<OutboxAttachment>,
     pub state: OutboxState,
     pub attempts: u32,
@@ -145,8 +145,8 @@ const OUTBOX_SELECT: &str = "SELECT id, account_id, message_id, sender, recipien
  FROM outbox";
 
 impl Store {
-    /// Journalise l'intention d'envoi — AVANT toute tentative réseau.
-    /// C'est cette écriture qui fonde « jamais d'envoi perdu ».
+    /// Journals the send intent — BEFORE any network attempt. This
+    /// write is what founds "never a lost send".
     pub fn enqueue_outbox(&self, account_id: i64, draft: &Draft) -> Result<i64, Error> {
         let sep = TO_SEPARATOR.to_string();
         self.conn().execute(
@@ -173,20 +173,20 @@ impl Store {
             ],
         )?;
         let outbox_id = self.conn().last_insert_rowid();
-        // PLAN-RETOURS-5 (D4) : une adresse qu'on écrit est une adresse
-        // connue — l'annuaire l'apprend dès la mise en file, sans
-        // attendre qu'elle revienne par la synchro d'Envoyés.
-        let maintenant = Utc::now().timestamp();
-        for adresse in draft.to.iter().chain(&draft.cc).chain(&draft.bcc) {
-            crate::correspondants::noter(self.conn(), adresse, None, maintenant)?;
+        // PLAN-RETOURS-5 (D4): an address we write is an address we
+        // know — the directory learns it the moment it is queued,
+        // without waiting for it to come back through the Sent sync.
+        let now = Utc::now().timestamp();
+        for address in draft.to.iter().chain(&draft.cc).chain(&draft.bcc) {
+            crate::contacts::note(self.conn(), address, None, now)?;
         }
         Ok(outbox_id)
     }
 
-    /// Journalise l'intention d'envoi ET copie les pièces du brouillon
-    /// dans la MÊME transaction (PJ-D2) : « jamais d'envoi perdu » couvre
-    /// les octets — le brouillon peut ensuite disparaître (il a rempli
-    /// son office), le journal se suffit.
+    /// Journals the send intent AND copies the draft's attachments in
+    /// the SAME transaction (PJ-D2): "never a lost send" covers the
+    /// bytes too — the draft can then disappear (it has served its
+    /// purpose), the journal is self-sufficient.
     pub fn enqueue_outbox_from_draft(
         &self,
         account_id: i64,
@@ -196,11 +196,11 @@ impl Store {
         self.enqueue_outbox_full(account_id, draft, Some(draft_id), None)
     }
 
-    /// Le chemin COMPLET de la mise en file (R2, PLAN-RETOURS-6) :
-    /// brouillon-ancre facultatif, échéance facultative — le tout dans
-    /// UNE transaction. « Jamais d'envoi perdu » couvre aussi l'heure
-    /// choisie : un crash ne laisse jamais un envoi programmé amputé de
-    /// son échéance (il partirait tout de suite, contre l'intention).
+    /// The COMPLETE path of queuing a send (R2, PLAN-RETOURS-6): an
+    /// optional anchor draft, an optional deadline — all in ONE
+    /// transaction. "Never a lost send" also covers the chosen time: a
+    /// crash never leaves a scheduled send amputated of its deadline
+    /// (it would go out right away, against the intent).
     pub fn enqueue_outbox_full(
         &self,
         account_id: i64,
@@ -228,31 +228,31 @@ impl Store {
         Ok(outbox_id)
     }
 
-    /// Journalise l'email iTIP d'une réponse ET consigne la réponse sur
-    /// la carte — dans UNE transaction (PLAN-INVITATIONS, D6). Si la
-    /// ligne d'invitation n'existe plus (message expurgé, boîte
-    /// réinitialisée entre l'affichage et le clic), RIEN ne part :
-    /// `None` vaut mieux qu'un email en file devant une carte qui dit
-    /// encore « pas répondu » — l'utilisateur recliquerait, et
-    /// l'organisateur recevrait deux REPLY.
-    pub fn enqueue_reponse_invitation(
+    /// Journals the iTIP reply email AND records the reply on the card
+    /// — in ONE transaction (PLAN-INVITATIONS, D6). If the invitation
+    /// row no longer exists (message purged, mailbox reset between the
+    /// display and the click), NOTHING goes out: `None` is better than
+    /// a queued email in front of a card that still says "no reply
+    /// yet" — the user would click again, and the organizer would
+    /// receive two REPLYs.
+    pub fn enqueue_invitation_reply(
         &self,
         account_id: i64,
         draft: &Draft,
         mailbox: &str,
         uid: crate::envelope::Uid,
-        reponse: &str,
+        reply: &str,
         epoch: i64,
     ) -> Result<Option<i64>, Error> {
         let tx = self.conn().unchecked_transaction()?;
-        let touchees = tx.execute(
+        let touched = tx.execute(
             "UPDATE invitations SET reponse = ?4, reponse_epoch = ?5
              WHERE uid = ?3 AND mailbox_id IN
                    (SELECT id FROM mailboxes WHERE account_id = ?1 AND name = ?2)",
-            params![account_id, mailbox, uid, reponse, epoch],
+            params![account_id, mailbox, uid, reply, epoch],
         )?;
-        if touchees == 0 {
-            // La transaction se rembobine à la chute : rien de journalisé.
+        if touched == 0 {
+            // The transaction rewinds on drop: nothing gets journaled.
             return Ok(None);
         }
         let outbox_id = self.enqueue_outbox(account_id, draft)?;
@@ -260,20 +260,20 @@ impl Store {
         Ok(Some(outbox_id))
     }
 
-    /// Annule un envoi programmé (R2, décision CE D2) : l'entrée quitte
-    /// le journal et un brouillon COMPLET renaît — destinataires,
-    /// corps, marquage, pièces avec leurs octets. Rien ne se perd, le
-    /// geste est réversible. `None` si l'entrée n'est plus en file (la
-    /// vidange l'a prise entre-temps : trop tard, le message part) —
-    /// l'appelant le dit honnêtement plutôt que de promettre un
-    /// brouillon qui n'existe pas.
+    /// Cancels a scheduled send (R2, CE decision D2): the entry leaves
+    /// the journal and a COMPLETE draft is reborn — recipients, body,
+    /// flag, attachments with their bytes. Nothing is lost, the gesture
+    /// is reversible. `None` if the entry is no longer queued (the
+    /// flush picked it up in the meantime: too late, the message is
+    /// going out) — the caller says so honestly rather than promising a
+    /// draft that does not exist.
     ///
-    /// Ne vise que les entrées PROGRAMMÉES et pas encore échues : une
-    /// entrée échue peut être en cours de remise par une vidange
-    /// concurrente (hors de la file sérialisée) — l'annuler ici
-    /// recréerait un brouillon d'un message peut-être parti (doublon).
-    /// L'abandon d'un envoi ordinaire reste `delete_outbox`.
-    pub fn annuler_envoi_programme(&self, id: i64) -> Result<Option<i64>, Error> {
+    /// Only targets entries that are SCHEDULED and not yet due: a due
+    /// entry may be in the middle of delivery by a concurrent flush
+    /// (outside the serialized queue) — cancelling it here would
+    /// recreate a draft for a message that may have already gone out
+    /// (a duplicate). Abandoning an ordinary send stays `delete_outbox`.
+    pub fn cancel_scheduled_send(&self, id: i64) -> Result<Option<i64>, Error> {
         let tx = self.conn().unchecked_transaction()?;
         let mut stmt = self.conn().prepare(&format!(
             "{OUTBOX_SELECT} WHERE id = ?1 AND state = 'queued'
@@ -289,10 +289,10 @@ impl Store {
             return Ok(None);
         };
         drop(stmt);
-        // Le brouillon renaît dans le format du composeur : adresses
-        // jointes par « , » (le champ tel qu'on le tape), corps et
-        // marquage tels que le journal les porte.
-        let maintenant = Utc::now().timestamp_millis();
+        // The draft is reborn in the composer's format: addresses
+        // joined by ", " (the field as it is typed), body and flag as
+        // the journal carries them.
+        let now = Utc::now().timestamp_millis();
         self.conn().execute(
             "INSERT INTO drafts (account_id, to_raw, cc_raw, bcc_raw, subject, body, body_html, important, updated_epoch)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -305,12 +305,12 @@ impl Store {
                 message.body_text,
                 message.body_html,
                 message.important,
-                maintenant,
+                now,
             ],
         )?;
         let draft_id = self.conn().last_insert_rowid();
-        // Les octets vivent au journal tant que l'envoi n'est pas parti
-        // (PJ-D7) : la copie repart entière vers le brouillon.
+        // The bytes live in the journal as long as the send has not
+        // gone out (PJ-D7): the copy goes back to the draft whole.
         self.conn().execute(
             "INSERT INTO draft_attachments (draft_id, name, mime, size, bytes)
              SELECT ?1, name, mime, size, bytes FROM outbox_attachments
@@ -323,11 +323,11 @@ impl Store {
         Ok(Some(draft_id))
     }
 
-    /// La file d'envoi d'UN compte, dans l'ordre d'émission — chaque
-    /// vidange passe par la connexion SMTP de son compte. Un envoi
-    /// programmé (R2) n'y paraît qu'une fois son échéance passée : le
-    /// filtre vit ICI, la porte unique de la vidange — aucun appelant
-    /// ne peut faire partir un programmé en avance.
+    /// The send queue of ONE account, in emission order — each flush
+    /// goes through its account's SMTP connection. A scheduled send
+    /// (R2) only appears once its deadline has passed: the filter lives
+    /// HERE, the single gate of the flush — no caller can make a
+    /// scheduled send go out early.
     pub fn outbox_to_send(&self, account_id: i64) -> Result<Vec<OutboxMessage>, Error> {
         let mut stmt = self.conn().prepare(&format!(
             "{OUTBOX_SELECT} WHERE account_id = ?1 AND state = 'queued'
@@ -339,9 +339,9 @@ impl Store {
         self.load_outbox_attachments(rows)
     }
 
-    /// Y a-t-il quelque chose à vidanger pour ce compte ? Un COUNT — la
-    /// vidange le demandait en relisant toute la file, octets des pièces
-    /// compris (PLAN-AUDIT-V2 E7).
+    /// Is there anything to flush for this account? A COUNT — the flush
+    /// used to ask by rereading the whole queue, attachment bytes
+    /// included (PLAN-AUDIT-V2 E7).
     pub fn outbox_pending_count(&self, account_id: i64) -> Result<u64, Error> {
         let count: i64 = self.conn().query_row(
             "SELECT COUNT(*) FROM outbox WHERE account_id = ?1 AND state = 'queued'
@@ -352,29 +352,29 @@ impl Store {
         Ok(count as u64)
     }
 
-    /// Toute la boîte d'envoi SANS les octets des pièces — pour le statut
-    /// (toutes les 10 s) et toute liste : le `.len()` d'une pièce ne vaut
-    /// pas 25 Mo relus (PLAN-AUDIT-V2 E7).
-    pub fn outbox_metadonnees(&self) -> Result<Vec<OutboxMessage>, Error> {
-        self.outbox_avec(false)
+    /// The whole outbox WITHOUT the attachment bytes — for the status
+    /// (every 10 s) and any listing: an attachment's `.len()` is not
+    /// worth 25 MB reread (PLAN-AUDIT-V2 E7).
+    pub fn outbox_metadata(&self) -> Result<Vec<OutboxMessage>, Error> {
+        self.outbox_with(false)
     }
 
-    /// Toute la boîte d'envoi, dans l'ordre d'émission, pièces comprises.
+    /// The whole outbox, in emission order, attachments included.
     pub fn outbox(&self) -> Result<Vec<OutboxMessage>, Error> {
-        self.outbox_avec(true)
+        self.outbox_with(true)
     }
 
-    fn outbox_avec(&self, octets: bool) -> Result<Vec<OutboxMessage>, Error> {
+    fn outbox_with(&self, with_bytes: bool) -> Result<Vec<OutboxMessage>, Error> {
         let mut stmt = self
             .conn()
             .prepare(&format!("{OUTBOX_SELECT} ORDER BY id"))?;
         let rows = stmt
             .query_map([], row_to_outbox)?
             .collect::<Result<Vec<_>, _>>()?;
-        self.charger_pieces(rows, octets)
+        self.load_attachments(rows, with_bytes)
     }
 
-    /// Les messages dans un état donné, dans l'ordre d'émission.
+    /// The messages in a given state, in emission order.
     pub fn outbox_in_state(&self, state: OutboxState) -> Result<Vec<OutboxMessage>, Error> {
         let mut stmt = self
             .conn()
@@ -385,22 +385,22 @@ impl Store {
         self.load_outbox_attachments(rows)
     }
 
-    /// Attache leurs pièces aux messages relus — octets compris pour la
-    /// vidange, métadonnées seules pour le statut. Le chemin de lecture
-    /// reste unique pour les quatre entrées.
+    /// Attaches their attachments to reread messages — bytes included
+    /// for the flush, metadata only for the status. The read path stays
+    /// unique for all four callers.
     fn load_outbox_attachments(
         &self,
         messages: Vec<OutboxMessage>,
     ) -> Result<Vec<OutboxMessage>, Error> {
-        self.charger_pieces(messages, true)
+        self.load_attachments(messages, true)
     }
 
-    fn charger_pieces(
+    fn load_attachments(
         &self,
         mut messages: Vec<OutboxMessage>,
-        avec_octets: bool,
+        with_bytes: bool,
     ) -> Result<Vec<OutboxMessage>, Error> {
-        let sql = if avec_octets {
+        let sql = if with_bytes {
             "SELECT name, mime, size, bytes FROM outbox_attachments
              WHERE outbox_id = ?1 ORDER BY id"
         } else {
@@ -423,9 +423,10 @@ impl Store {
         Ok(messages)
     }
 
-    /// PJ-D7 : le message est parti, ses octets quittent le journal — les
-    /// métadonnées restent (l'historique se lit encore). Seul `sent` purge :
-    /// quarantaine et refus gardent tout, le renvoi doit rester entier.
+    /// PJ-D7: the message has gone out, its bytes leave the journal —
+    /// the metadata stays (the history can still be read). Only `sent`
+    /// purges: quarantine and refusal keep everything, a resend must
+    /// stay whole.
     pub(crate) fn purge_sent_attachment_bytes(&self, id: i64) -> Result<(), Error> {
         self.conn().execute(
             "UPDATE outbox_attachments SET bytes = NULL WHERE outbox_id = ?1",
@@ -442,7 +443,7 @@ impl Store {
         Ok(())
     }
 
-    /// Échec transitoire : retour en file, raison et compteur retenus.
+    /// Transient failure: back to the queue, reason and counter kept.
     pub(crate) fn record_transient_failure(&self, id: i64, reason: &str) -> Result<(), Error> {
         self.conn().execute(
             "UPDATE outbox
@@ -453,7 +454,7 @@ impl Store {
         Ok(())
     }
 
-    /// Refus permanent : l'envoi sort de la file, l'utilisateur tranchera.
+    /// Permanent refusal: the send leaves the queue, the user will decide.
     pub(crate) fn record_rejection(&self, id: i64, reason: &str) -> Result<(), Error> {
         self.conn().execute(
             "UPDATE outbox
@@ -464,13 +465,13 @@ impl Store {
         Ok(())
     }
 
-    /// Met en quarantaine les envois retrouvés « en vol » : seul un crash
-    /// pendant la remise laisse cet état derrière lui. Peut-être partis,
-    /// peut-être pas — on ne renvoie rien sans l'utilisateur.
+    /// Quarantines the sends found "in flight": only a crash during
+    /// delivery leaves this state behind. Maybe gone out, maybe not —
+    /// nothing is resent without the user.
     ///
-    /// [`flush_outbox`] l'appelle en tête de vidange ; public pour que
-    /// l'hôte puisse constater un crash antérieur même hors ligne,
-    /// sans ouvrir de connexion.
+    /// [`flush_outbox`] calls it at the head of the flush; public so
+    /// the host can notice an earlier crash even offline, without
+    /// opening a connection.
     pub fn quarantine_inflight(&self) -> Result<usize, Error> {
         let quarantined = self.conn().execute(
             "UPDATE outbox SET state = 'interrupted' WHERE state = 'sending'",
@@ -479,8 +480,8 @@ impl Store {
         Ok(quarantined)
     }
 
-    /// Remet en file un envoi en quarantaine ou refusé — LA décision
-    /// explicite de l'utilisateur qu'exige « jamais d'envoi fantôme ».
+    /// Requeues a quarantined or refused send — THE explicit user
+    /// decision that "never a phantom send" requires.
     pub fn requeue_outbox(&self, id: i64) -> Result<(), Error> {
         self.conn().execute(
             "UPDATE outbox SET state = 'queued'
@@ -490,8 +491,8 @@ impl Store {
         Ok(())
     }
 
-    /// Abandonne un envoi (décision utilisateur). Les envois `sent` sont
-    /// préservés : ils sont l'historique prouvable de la boîte d'envoi.
+    /// Abandons a send (user decision). `sent` sends are preserved:
+    /// they are the outbox's provable history.
     pub fn delete_outbox(&self, id: i64) -> Result<(), Error> {
         self.conn()
             .execute("DELETE FROM outbox WHERE id = ?1 AND state != 'sent'", [id])?;
@@ -505,7 +506,7 @@ fn row_to_outbox(row: &rusqlite::Row<'_>) -> rusqlite::Result<OutboxMessage> {
         rusqlite::Error::FromSqlConversionFailure(
             8,
             rusqlite::types::Type::Text,
-            format!("état de boîte d'envoi inconnu : {state_raw}").into(),
+            format!("unknown outbox state: {state_raw}").into(),
         )
     })?;
     let recipients: String = row.get(4)?;
@@ -527,8 +528,8 @@ fn row_to_outbox(row: &rusqlite::Row<'_>) -> rusqlite::Result<OutboxMessage> {
         important: row.get(15)?,
         send_at_epoch: row.get(16)?,
         ics_reply: row.get(17)?,
-        // Chargées par `load_outbox_attachments`, jamais ici : une ligne
-        // ne connaît pas ses pièces.
+        // Loaded by `load_outbox_attachments`, never here: a row does
+        // not know its attachments.
         attachments: Vec::new(),
         state,
         attempts: row.get(9)?,
@@ -537,32 +538,33 @@ fn row_to_outbox(row: &rusqlite::Row<'_>) -> rusqlite::Result<OutboxMessage> {
     })
 }
 
-/// Bilan d'une vidange de la boîte d'envoi.
+/// The outcome of one outbox flush.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct OutboxReport {
-    /// Acceptés par le serveur d'envoi.
+    /// Accepted by the sending server.
     pub sent: usize,
-    /// Reportés sur échec transitoire — toujours en file, retentés plus tard.
+    /// Deferred on a transient failure — still queued, retried later.
     pub deferred: usize,
-    /// Refusés définitivement — sortis de la file, décision utilisateur.
+    /// Definitively refused — out of the queue, a user decision.
     pub rejected: usize,
-    /// Envois « en vol » d'un crash antérieur, mis en quarantaine.
+    /// Sends found "in flight" from an earlier crash, quarantined.
     pub quarantined: usize,
 }
 
-/// Vide la boîte d'envoi vers le serveur, dans l'ordre d'émission.
+/// Flushes the outbox to the server, in emission order.
 ///
-/// La quarantaine passe D'ABORD : un envoi interrompu par un crash ne
-/// repart jamais tout seul. Ensuite, chaque message en file est marqué
-/// « en vol » (persisté) avant la remise, puis « envoyé » après l'accusé
-/// du serveur — la fenêtre d'ambiguïté est réduite à la remise elle-même.
-/// Au premier échec transitoire la pompe s'arrête : le réseau est tombé,
-/// inutile d'insister, la file survit telle quelle.
-/// Combien d'échecs TRANSITOIRES consécutifs avant qu'un envoi soit
-/// refusé (PLAN-AUDIT-V2 E7, décision CE D5) : LE seuil de la quarantaine
-/// des actions, une seule valeur — la revue en avait trouvé deux. Avant, `attempts` se comptait sans jamais se lire : un
-/// message empoisonné retenait la file du compte à vie.
-pub const SEUIL_ENVOI: u32 = Store::QUARANTINE_THRESHOLD as u32;
+/// Quarantine passes FIRST: a send interrupted by a crash never goes
+/// out again on its own. Then each queued message is marked "in
+/// flight" (persisted) before delivery, then "sent" after the server's
+/// acknowledgment — the window of ambiguity is narrowed to the
+/// delivery itself. On the first transient failure the pump stops: the
+/// network is down, no point insisting, the queue survives as is.
+/// How many CONSECUTIVE transient failures before a send is refused
+/// (PLAN-AUDIT-V2 E7, CE decision D5): THE quarantine threshold for
+/// actions, a single value — the review had found two of them. Before,
+/// `attempts` was counted but never read: a poisoned message held the
+/// account's queue hostage forever.
+pub const SEND_THRESHOLD: u32 = Store::QUARANTINE_THRESHOLD as u32;
 
 pub fn flush_outbox(
     transport: &mut dyn MailTransport,
@@ -580,21 +582,22 @@ pub fn flush_outbox(
             Ok(()) => {
                 store.set_outbox_state(message.id, OutboxState::Sent)?;
                 store.purge_sent_attachment_bytes(message.id)?;
-                // E3 (PLAN-REACTIVITE) : la copie Envoyés se montre TOUT
-                // DE SUITE — l'écho local naît au passage à `sent`, jamais
-                // avant (« jamais d'envoi fantôme »). Best effort : le
-                // message EST parti, un échec d'écho ne doit pas le faire
-                // passer pour perdu.
-                let _ = store.echo_envoi(message.id);
+                // E3 (PLAN-REACTIVITE): the Sent copy shows up RIGHT
+                // AWAY — the local echo is born at the transition to
+                // `sent`, never before ("never a phantom send"). Best
+                // effort: the message HAS gone out, an echo failure
+                // must not make it look lost.
+                let _ = store.send_echo(message.id);
                 report.sent += 1;
             }
             Err(SendError::Transient(reason)) => {
-                if message.attempts + 1 >= SEUIL_ENVOI {
-                    // Le poison sort de la file (D5) : refusé, motif dit,
-                    // l'utilisateur tranchera — et le suivant a son tour.
+                if message.attempts + 1 >= SEND_THRESHOLD {
+                    // The poison leaves the queue (D5): refused, reason
+                    // stated, the user will decide — and the next one
+                    // gets its turn.
                     store.record_rejection(
                         message.id,
-                        &format!("{SEUIL_ENVOI} tentatives : {reason}"),
+                        &format!("{SEND_THRESHOLD} attempts: {reason}"),
                     )?;
                     report.rejected += 1;
                     continue;
@@ -604,7 +607,7 @@ pub fn flush_outbox(
                 break;
             }
             Err(SendError::Permanent(reason)) => {
-                // Le refus d'UN message ne doit pas bloquer les autres.
+                // The refusal of ONE message must not block the others.
                 store.record_rejection(message.id, &reason)?;
                 report.rejected += 1;
             }
@@ -618,7 +621,7 @@ mod tests {
     use super::*;
     use crate::compose::compose;
 
-    /// Transport simulé : accepte, coupe le réseau, ou refuse par sujet.
+    /// Simulated transport: accepts, cuts the network, or refuses by subject.
     #[derive(Default)]
     struct FakeTransport {
         accepted: Vec<String>,
@@ -631,10 +634,10 @@ mod tests {
         fn send(&mut self, message: &OutboxMessage) -> Result<(), SendError> {
             self.calls += 1;
             if self.network_down {
-                return Err(SendError::Transient("coupure réseau simulée".to_string()));
+                return Err(SendError::Transient("simulated network cut".to_string()));
             }
             if self.reject_subjects.contains(&message.subject) {
-                return Err(SendError::Permanent("550 refus simulé".to_string()));
+                return Err(SendError::Permanent("550 simulated refusal".to_string()));
             }
             self.accepted.push(message.message_id.clone());
             Ok(())
@@ -648,7 +651,7 @@ mod tests {
             "",
             "",
             subject,
-            "corps",
+            "body",
             None,
         )
         .unwrap()
@@ -662,20 +665,20 @@ mod tests {
         (store, account)
     }
 
-    /// E7 : la chaîne `References` d'une réponse = les `References` du
-    /// parent + son `Message-ID` (RFC 5322 §3.6.4), lue en base — c'est le
-    /// cœur qui la sait, l'adaptateur ne fait que la recopier.
+    /// E7: the `References` chain of a reply = the parent's `References`
+    /// plus its `Message-ID` (RFC 5322 §3.6.4), read from storage — the
+    /// core is what knows it, the adapter only copies it out.
     #[test]
-    fn references_de_porte_la_chaine_entiere() {
+    fn references_carries_the_whole_chain() {
         let (mut store, account) = store();
         let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
-        let mut parent = crate::test_support::FakeServer::envelope_simple(1, "sujet");
+        let mut parent = crate::test_support::FakeServer::simple_envelope(1, "subject");
         parent.message_id = Some("<c@x>".to_string());
         store.upsert_envelopes(inbox, &[parent]).unwrap();
         assert_eq!(
             store.references_of(account, "INBOX", 1).unwrap().as_deref(),
             Some("<c@x>"),
-            "sans References connues, le Message-ID du parent seul"
+            "with no known References, the parent's Message-ID alone"
         );
         store
             .conn()
@@ -699,8 +702,8 @@ mod tests {
             "a@exemple.fr, b@exemple.fr",
             "",
             "",
-            "Sujet",
-            "Corps\nsur deux lignes",
+            "Subject",
+            "Body\non two lines",
             Some("<origine@exemple.fr>"),
         )
         .unwrap();
@@ -713,57 +716,58 @@ mod tests {
         assert_eq!(message.message_id, composed.message_id);
         assert_eq!(message.from, "moi@exemple.fr");
         assert_eq!(message.to, vec!["a@exemple.fr", "b@exemple.fr"]);
-        assert_eq!(message.subject, "Sujet");
-        assert_eq!(message.body_text, "Corps\nsur deux lignes");
+        assert_eq!(message.subject, "Subject");
+        assert_eq!(message.body_text, "Body\non two lines");
         assert_eq!(message.in_reply_to.as_deref(), Some("<origine@exemple.fr>"));
         assert_eq!(message.attempts, 0);
         assert_eq!(message.last_error, None);
     }
 
-    /// PLAN-COMPOSITION-HTML : le corps riche survit à l'enqueue et à la
-    /// relecture — c'est lui que la vidange remettra à mail-smtp pour la
-    /// partie text/html. Un envoi texte relit `None`, chemin historique.
+    /// PLAN-COMPOSITION-HTML: the rich body survives the enqueue and
+    /// the reread — it is what the flush will hand to mail-smtp for the
+    /// text/html part. A text-only send reads back `None`, the
+    /// historical path.
     #[test]
     fn enqueue_roundtrips_body_html() {
         let (store, account) = store();
-        let mut riche = draft("Sujet");
-        riche.body_html = Some("<b>corps</b>".to_string());
-        store.enqueue_outbox(account, &riche).unwrap();
-        let nu = draft("Sujet 2");
-        store.enqueue_outbox(account, &nu).unwrap();
+        let mut rich = draft("Subject");
+        rich.body_html = Some("<b>body</b>".to_string());
+        store.enqueue_outbox(account, &rich).unwrap();
+        let plain = draft("Subject 2");
+        store.enqueue_outbox(account, &plain).unwrap();
 
         let queued = store.outbox_to_send(account).unwrap();
-        assert_eq!(queued[0].body_html.as_deref(), Some("<b>corps</b>"));
-        assert_eq!(queued[0].body_text, "corps", "le texte reste le repli");
+        assert_eq!(queued[0].body_html.as_deref(), Some("<b>body</b>"));
+        assert_eq!(queued[0].body_text, "body", "the text stays the fallback");
         assert_eq!(queued[1].body_html, None);
     }
 
-    /// R3 (PLAN-RETOURS-6) : le marquage « important » survit à
-    /// l'enqueue et à la relecture — c'est le journal que la vidange
-    /// remet à mail-smtp, les en-têtes de priorité en dépendent.
+    /// R3 (PLAN-RETOURS-6): the "important" flag survives the enqueue
+    /// and the reread — it is the journal entry that the flush hands to
+    /// mail-smtp, the priority headers depend on it.
     #[test]
     fn enqueue_roundtrips_important() {
         let (store, account) = store();
         let mut urgent = draft("urgent");
         urgent.important = true;
         store.enqueue_outbox(account, &urgent).unwrap();
-        store.enqueue_outbox(account, &draft("ordinaire")).unwrap();
+        store.enqueue_outbox(account, &draft("ordinary")).unwrap();
 
         let queued = store.outbox_to_send(account).unwrap();
-        assert!(queued[0].important, "le journal porte le marquage");
-        assert!(!queued[1].important, "l'envoi ordinaire reste ordinaire");
+        assert!(queued[0].important, "the journal carries the flag");
+        assert!(!queued[1].important, "the ordinary send stays ordinary");
     }
 
-    /// PLAN-INVITATIONS : la réponse iTIP du journal survit à l'enqueue
-    /// et à la relecture — c'est elle que mail-smtp porte en partie
-    /// `text/calendar; method=REPLY` ; l'envoi ordinaire reste NULL.
+    /// PLAN-INVITATIONS: the journal's iTIP reply survives the enqueue
+    /// and the reread — it is what mail-smtp carries in a
+    /// `text/calendar; method=REPLY` part; an ordinary send stays NULL.
     #[test]
     fn enqueue_roundtrips_ics_reply() {
         let (store, account) = store();
-        let mut reponse = draft("reponse");
-        reponse.ics_reply = Some("BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nEND:VCALENDAR\r\n".into());
-        store.enqueue_outbox(account, &reponse).unwrap();
-        store.enqueue_outbox(account, &draft("ordinaire")).unwrap();
+        let mut reply = draft("reply");
+        reply.ics_reply = Some("BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nEND:VCALENDAR\r\n".into());
+        store.enqueue_outbox(account, &reply).unwrap();
+        store.enqueue_outbox(account, &draft("ordinary")).unwrap();
 
         let queued = store.outbox_to_send(account).unwrap();
         assert!(
@@ -775,49 +779,51 @@ mod tests {
         assert_eq!(queued[1].ics_reply, None);
     }
 
-    /// A54 : Cc/Cci du journal survivent à l'enqueue et à la relecture ;
-    /// un envoi sans copie les relit VIDES, jamais un `[""]` fantôme (le
-    /// garde de `split_recipients`).
+    /// A54: the journal's Cc/Bcc survive the enqueue and the reread; a
+    /// send without a copy reads them back EMPTY, never a phantom
+    /// `[""]` (the guard in `split_recipients`).
     #[test]
     fn enqueue_roundtrips_cc_and_bcc() {
-        let (avec_store, compte) = store();
-        let avec = compose(
+        let (with_store, account) = store();
+        let with_copies = compose(
             "moi@exemple.fr",
             "a@exemple.fr",
             "b@exemple.fr, c@exemple.fr",
             "secret@exemple.fr",
-            "Sujet",
-            "corps",
+            "Subject",
+            "body",
             None,
         )
         .unwrap();
-        avec_store.enqueue_outbox(compte, &avec).unwrap();
-        let releve = avec_store.outbox_to_send(compte).unwrap();
-        assert_eq!(releve[0].cc, vec!["b@exemple.fr", "c@exemple.fr"]);
-        assert_eq!(releve[0].bcc, vec!["secret@exemple.fr"]);
+        with_store.enqueue_outbox(account, &with_copies).unwrap();
+        let queued = with_store.outbox_to_send(account).unwrap();
+        assert_eq!(queued[0].cc, vec!["b@exemple.fr", "c@exemple.fr"]);
+        assert_eq!(queued[0].bcc, vec!["secret@exemple.fr"]);
 
-        let (nu_store, compte) = store();
-        nu_store.enqueue_outbox(compte, &draft("nu")).unwrap();
-        let nu = nu_store.outbox_to_send(compte).unwrap();
-        assert!(nu[0].cc.is_empty(), "pas de destinataire Cc fantôme");
-        assert!(nu[0].bcc.is_empty(), "pas de destinataire Cci fantôme");
+        let (plain_store, account) = store();
+        plain_store
+            .enqueue_outbox(account, &draft("plain"))
+            .unwrap();
+        let plain = plain_store.outbox_to_send(account).unwrap();
+        assert!(plain[0].cc.is_empty(), "no phantom Cc recipient");
+        assert!(plain[0].bcc.is_empty(), "no phantom Bcc recipient");
     }
 
-    /// R2 (PLAN-RETOURS-6) : un envoi programmé attend son heure — la
-    /// vidange l'ignore tant que l'échéance n'est pas passée, puis le
-    /// prend comme n'importe quel envoi en file. L'échéance se relit
-    /// (elle survit, règle d'or n°1 étendue à l'heure choisie).
+    /// R2 (PLAN-RETOURS-6): a scheduled send waits for its hour — the
+    /// flush ignores it until the deadline has passed, then picks it up
+    /// like any other queued send. The deadline reads back (it
+    /// survives, golden rule n°1 extended to the chosen time).
     #[test]
     fn scheduled_send_waits_for_its_hour() {
         let (mut store, account) = store();
-        let futur = Utc::now().timestamp() + 3600;
-        let programme = store
-            .enqueue_outbox_full(account, &draft("plus tard"), None, Some(futur))
+        let future = Utc::now().timestamp() + 3600;
+        let scheduled = store
+            .enqueue_outbox_full(account, &draft("later"), None, Some(future))
             .unwrap();
         store
             .enqueue_outbox_full(
                 account,
-                &draft("échu"),
+                &draft("due"),
                 None,
                 Some(Utc::now().timestamp() - 60),
             )
@@ -826,16 +832,20 @@ mod tests {
 
         let report = flush_outbox(&mut transport, &mut store, account).unwrap();
 
-        assert_eq!(report.sent, 1, "seul l'échu part");
+        assert_eq!(report.sent, 1, "only the due one goes out");
         let sent = store.outbox_in_state(OutboxState::Sent).unwrap();
-        assert_eq!(sent[0].subject, "échu");
+        assert_eq!(sent[0].subject, "due");
         let queued = store.outbox_in_state(OutboxState::Queued).unwrap();
-        assert_eq!(queued.len(), 1, "le programmé attend toujours");
-        assert_eq!(queued[0].id, programme);
-        assert_eq!(queued[0].send_at_epoch, Some(futur), "l'échéance se relit");
+        assert_eq!(queued.len(), 1, "the scheduled one still waits");
+        assert_eq!(queued[0].id, scheduled);
+        assert_eq!(
+            queued[0].send_at_epoch,
+            Some(future),
+            "the deadline reads back"
+        );
     }
 
-    /// Règle d'or n°1 : l'intention d'envoi survit à l'arrêt du processus.
+    /// Golden rule n°1: the send intent survives the process stopping.
     #[test]
     fn queued_send_survives_process_restart() {
         let path = std::env::temp_dir().join(format!("wind-test-outbox-{}.db", std::process::id()));
@@ -845,13 +855,13 @@ mod tests {
             let account = store
                 .adopt_or_create_account("test@exemple.fr", "gmail")
                 .unwrap();
-            store.enqueue_outbox(account, &draft("survivant")).unwrap();
-        } // « crash » : le processus s'arrête avant tout envoi.
+            store.enqueue_outbox(account, &draft("survivor")).unwrap();
+        } // "crash": the process stops before any send.
 
         let reopened = Store::open(&path).unwrap();
         let queued = reopened.outbox_in_state(OutboxState::Queued).unwrap();
         assert_eq!(queued.len(), 1);
-        assert_eq!(queued[0].subject, "survivant");
+        assert_eq!(queued[0].subject, "survivor");
 
         drop(reopened);
         let _ = std::fs::remove_file(&path);
@@ -860,7 +870,7 @@ mod tests {
     #[test]
     fn flush_sends_in_emission_order_and_marks_sent() {
         let (mut store, account) = store();
-        let first = draft("premier");
+        let first = draft("first");
         let second = draft("second");
         store.enqueue_outbox(account, &first).unwrap();
         store.enqueue_outbox(account, &second).unwrap();
@@ -872,7 +882,7 @@ mod tests {
         assert_eq!(
             transport.accepted,
             vec![first.message_id, second.message_id],
-            "l'ordre d'émission doit être préservé"
+            "the emission order must be preserved"
         );
         assert!(
             store
@@ -881,17 +891,17 @@ mod tests {
                 .is_empty()
         );
         assert_eq!(store.outbox_in_state(OutboxState::Sent).unwrap().len(), 2);
-        // E3 : chaque envoi parti a son écho Envoyés — la copie se
-        // montre sans attendre la relève du serveur.
-        assert_eq!(store.compte_echos("envoyes", Some(account)).unwrap(), 2);
+        // E3: every send that went out has its Sent echo — the copy
+        // shows up without waiting for the server's poll.
+        assert_eq!(store.count_echos("envoyes", Some(account)).unwrap(), 2);
     }
 
-    /// Règle d'or n°1 : une coupure réseau ne perd rien — la file survit
-    /// et repart à la vidange suivante.
+    /// Golden rule n°1: a network cut loses nothing — the queue
+    /// survives and goes out at the next flush.
     #[test]
     fn network_cut_keeps_message_queued_then_next_flush_sends_it() {
         let (mut store, account) = store();
-        store.enqueue_outbox(account, &draft("à retenter")).unwrap();
+        store.enqueue_outbox(account, &draft("to retry")).unwrap();
 
         let mut down = FakeTransport {
             network_down: true,
@@ -904,7 +914,7 @@ mod tests {
         assert_eq!(queued[0].attempts, 1);
         assert_eq!(
             queued[0].last_error.as_deref(),
-            Some("coupure réseau simulée")
+            Some("simulated network cut")
         );
 
         let mut up = FakeTransport::default();
@@ -913,7 +923,7 @@ mod tests {
         assert_eq!(store.outbox_in_state(OutboxState::Sent).unwrap().len(), 1);
     }
 
-    /// Réseau tombé : inutile de marteler le serveur pour chaque message.
+    /// Network down: no point hammering the server for each message.
     #[test]
     fn transient_failure_stops_the_pump_after_one_attempt() {
         let (mut store, account) = store();
@@ -926,16 +936,19 @@ mod tests {
 
         flush_outbox(&mut down, &mut store, account).unwrap();
 
-        assert_eq!(down.calls, 1, "un seul essai suffit à constater la coupure");
+        assert_eq!(
+            down.calls, 1,
+            "a single attempt is enough to notice the cut"
+        );
         assert_eq!(store.outbox_in_state(OutboxState::Queued).unwrap().len(), 2);
     }
 
-    /// PLAN-AUDIT-V2 E7 (D5) : un message empoisonné — transitoire à
-    /// chaque cycle — retenait la file du compte à vie (`attempts`
-    /// compté, jamais lu). Au cinquième échec il est REFUSÉ, l'utilisateur
-    /// tranchera, et le suivant a son tour.
+    /// PLAN-AUDIT-V2 E7 (D5): a poisoned message — transient on every
+    /// cycle — held the account's queue hostage forever (`attempts`
+    /// counted, never read). On the fifth failure it is REFUSED, the
+    /// user will decide, and the next one gets its turn.
     #[test]
-    fn cinq_echecs_transitoires_refusent_le_message_et_liberent_la_file() {
+    fn five_transient_failures_reject_the_message_and_free_the_queue() {
         let (mut store, account) = store();
         store.enqueue_outbox(account, &draft("a")).unwrap();
         store.enqueue_outbox(account, &draft("b")).unwrap();
@@ -943,33 +956,33 @@ mod tests {
             network_down: true,
             ..FakeTransport::default()
         };
-        for _ in 0..SEUIL_ENVOI {
+        for _ in 0..SEND_THRESHOLD {
             flush_outbox(&mut down, &mut store, account).unwrap();
         }
-        let refuses = store.outbox_in_state(OutboxState::Rejected).unwrap();
-        assert_eq!(refuses.len(), 1, "« a » est refusé au cinquième échec");
+        let rejected = store.outbox_in_state(OutboxState::Rejected).unwrap();
+        assert_eq!(rejected.len(), 1, "\"a\" is refused on the fifth failure");
         assert!(
-            refuses[0]
+            rejected[0]
                 .last_error
                 .as_deref()
                 .unwrap_or("")
-                .contains("5 tentatives"),
+                .contains("5 attempts"),
             "{:?}",
-            refuses[0].last_error
+            rejected[0].last_error
         );
-        let en_file = store.outbox_in_state(OutboxState::Queued).unwrap();
-        assert_eq!(en_file.len(), 1);
+        let queued = store.outbox_in_state(OutboxState::Queued).unwrap();
+        assert_eq!(queued.len(), 1);
         assert_eq!(
-            en_file[0].attempts, 1,
-            "« b » a eu son tour au cinquième cycle"
+            queued[0].attempts, 1,
+            "\"b\" got its turn on the fifth cycle"
         );
     }
 
-    /// PLAN-AUDIT-V2 E7 : le statut (toutes les 10 s) et la garde de
-    /// vacuité de la vidange chargeaient les OCTETS de chaque pièce —
-    /// 25 Mo × N relus pour un `.len()`. Le statut lit les métadonnées.
+    /// PLAN-AUDIT-V2 E7: the status (every 10 s) and the flush's
+    /// emptiness guard used to load the BYTES of every attachment —
+    /// 25 MB × N reread for a `.len()`. The status reads the metadata.
     #[test]
-    fn le_statut_ne_charge_aucun_octet_de_piece() {
+    fn the_status_loads_no_attachment_bytes() {
         let (store, account) = store();
         store.enqueue_outbox(account, &draft("a")).unwrap();
         let id = store.outbox().unwrap()[0].id;
@@ -981,17 +994,17 @@ mod tests {
                 [id],
             )
             .unwrap();
-        let pleine = store.outbox().unwrap();
+        let full = store.outbox().unwrap();
         assert!(
-            pleine[0].attachments[0].bytes.is_some(),
-            "la vidange lit les octets"
+            full[0].attachments[0].bytes.is_some(),
+            "the flush reads the bytes"
         );
-        let legere = store.outbox_metadonnees().unwrap();
-        assert_eq!(legere[0].attachments.len(), 1);
-        assert_eq!(legere[0].attachments[0].size, 3);
+        let light = store.outbox_metadata().unwrap();
+        assert_eq!(light[0].attachments.len(), 1);
+        assert_eq!(light[0].attachments[0].size, 3);
         assert!(
-            legere[0].attachments[0].bytes.is_none(),
-            "le statut ne les lit pas"
+            light[0].attachments[0].bytes.is_none(),
+            "the status does not read them"
         );
         assert_eq!(store.outbox_pending_count(account).unwrap(), 1);
     }
@@ -999,10 +1012,10 @@ mod tests {
     #[test]
     fn permanent_rejection_steps_aside_and_the_rest_still_goes() {
         let (mut store, account) = store();
-        store.enqueue_outbox(account, &draft("mauvais")).unwrap();
-        store.enqueue_outbox(account, &draft("bon")).unwrap();
+        store.enqueue_outbox(account, &draft("bad")).unwrap();
+        store.enqueue_outbox(account, &draft("good")).unwrap();
         let mut transport = FakeTransport {
-            reject_subjects: vec!["mauvais".to_string()],
+            reject_subjects: vec!["bad".to_string()],
             ..FakeTransport::default()
         };
 
@@ -1011,41 +1024,44 @@ mod tests {
         assert_eq!((report.sent, report.rejected), (1, 1));
         let rejected = store.outbox_in_state(OutboxState::Rejected).unwrap();
         assert_eq!(rejected.len(), 1);
-        assert_eq!(rejected[0].last_error.as_deref(), Some("550 refus simulé"));
+        assert_eq!(
+            rejected[0].last_error.as_deref(),
+            Some("550 simulated refusal")
+        );
 
-        // Le refus est définitif : la vidange suivante ne le retente pas.
+        // The refusal is final: the next flush does not retry it.
         let mut second = FakeTransport::default();
         let idle = flush_outbox(&mut second, &mut store, account).unwrap();
         assert_eq!(second.calls, 0);
         assert_eq!(idle, OutboxReport::default());
     }
 
-    /// Règle d'or n°2 : un envoi interrompu en plein vol (crash pendant la
-    /// remise) n'est JAMAIS renvoyé automatiquement — quarantaine.
+    /// Golden rule n°2: a send interrupted in flight (a crash during
+    /// delivery) is NEVER resent automatically — quarantine.
     #[test]
     fn inflight_message_is_quarantined_never_resent() {
         let (mut store, account) = store();
-        let id = store.enqueue_outbox(account, &draft("ambigu")).unwrap();
-        // Crash simulé : l'état « sending » persiste, l'accusé n'est
-        // jamais revenu. Peut-être parti, peut-être pas.
+        let id = store.enqueue_outbox(account, &draft("ambiguous")).unwrap();
+        // Simulated crash: the "sending" state persists, the
+        // acknowledgment never came back. Maybe gone out, maybe not.
         store.set_outbox_state(id, OutboxState::Sending).unwrap();
 
         let mut transport = FakeTransport::default();
         let report = flush_outbox(&mut transport, &mut store, account).unwrap();
 
         assert_eq!(report.quarantined, 1);
-        assert_eq!(transport.calls, 0, "rien ne doit repartir tout seul");
+        assert_eq!(transport.calls, 0, "nothing must go out on its own");
         let interrupted = store.outbox_in_state(OutboxState::Interrupted).unwrap();
         assert_eq!(interrupted.len(), 1);
         assert_eq!(interrupted[0].id, id);
     }
 
-    /// La sortie de quarantaine est une décision de l'utilisateur — et
-    /// alors seulement, l'envoi repart.
+    /// Coming out of quarantine is a user decision — and only then does
+    /// the send go out.
     #[test]
     fn user_requeue_is_the_only_way_out_of_quarantine() {
         let (mut store, account) = store();
-        let id = store.enqueue_outbox(account, &draft("confirmé")).unwrap();
+        let id = store.enqueue_outbox(account, &draft("confirmed")).unwrap();
         store.set_outbox_state(id, OutboxState::Sending).unwrap();
         let mut transport = FakeTransport::default();
         flush_outbox(&mut transport, &mut store, account).unwrap();
@@ -1061,7 +1077,9 @@ mod tests {
     #[test]
     fn requeue_ignores_states_that_are_not_user_decisions() {
         let (mut store, account) = store();
-        let id = store.enqueue_outbox(account, &draft("déjà parti")).unwrap();
+        let id = store
+            .enqueue_outbox(account, &draft("already gone"))
+            .unwrap();
         let mut transport = FakeTransport::default();
         flush_outbox(&mut transport, &mut store, account).unwrap();
 
@@ -1070,17 +1088,17 @@ mod tests {
         assert_eq!(
             store.outbox_in_state(OutboxState::Sent).unwrap().len(),
             1,
-            "un envoi accepté ne redevient jamais candidat à l'envoi"
+            "an accepted send never becomes a send candidate again"
         );
     }
 
     #[test]
     fn delete_abandons_pending_but_preserves_sent_history() {
         let (mut store, account) = store();
-        let kept = store.enqueue_outbox(account, &draft("parti")).unwrap();
+        let kept = store.enqueue_outbox(account, &draft("gone out")).unwrap();
         let mut transport = FakeTransport::default();
         flush_outbox(&mut transport, &mut store, account).unwrap();
-        let abandoned = store.enqueue_outbox(account, &draft("abandonné")).unwrap();
+        let abandoned = store.enqueue_outbox(account, &draft("abandoned")).unwrap();
 
         store.delete_outbox(abandoned).unwrap();
         store.delete_outbox(kept).unwrap();
@@ -1090,8 +1108,8 @@ mod tests {
         assert_eq!(all[0].state, OutboxState::Sent);
     }
 
-    /// Chaque compte vide SA file par SA connexion SMTP : la vidange
-    /// d'un compte ne touche jamais la file d'un autre.
+    /// Each account flushes ITS OWN queue through ITS OWN SMTP
+    /// connection: one account's flush never touches another's queue.
     #[test]
     fn flush_only_sends_the_given_accounts_queue() {
         let (mut store, account) = store();
@@ -1099,9 +1117,11 @@ mod tests {
             .adopt_or_create_account("autre@exemple.fr", "gmail")
             .unwrap();
         store
-            .enqueue_outbox(account, &draft("du compte A"))
+            .enqueue_outbox(account, &draft("from account A"))
             .unwrap();
-        store.enqueue_outbox(other, &draft("du compte B")).unwrap();
+        store
+            .enqueue_outbox(other, &draft("from account B"))
+            .unwrap();
         let mut transport = FakeTransport::default();
 
         let report = flush_outbox(&mut transport, &mut store, account).unwrap();
@@ -1110,7 +1130,7 @@ mod tests {
         assert_eq!(
             store.outbox_to_send(other).unwrap().len(),
             1,
-            "la file de B attend SA connexion"
+            "B's queue is waiting for ITS OWN connection"
         );
     }
 
@@ -1125,7 +1145,7 @@ mod tests {
         ] {
             assert_eq!(OutboxState::parse(state.as_str()), Some(state));
         }
-        assert_eq!(OutboxState::parse("inconnu"), None);
+        assert_eq!(OutboxState::parse("unknown"), None);
     }
 }
 
@@ -1135,8 +1155,9 @@ mod tests_pieces {
     use crate::compose::compose;
     use crate::drafts::DraftContent;
 
-    /// Transport simulé, réduit à ce que ce module vérifie : les pièces
-    /// vues à la remise — ce que le transport reçoit est ce qui part.
+    /// Simulated transport, reduced to what this module checks: the
+    /// attachments seen at delivery — what the transport receives is
+    /// what goes out.
     #[derive(Default)]
     struct FakeTransport {
         attachments_seen: Vec<(String, bool)>,
@@ -1144,9 +1165,9 @@ mod tests_pieces {
 
     impl MailTransport for FakeTransport {
         fn send(&mut self, message: &OutboxMessage) -> Result<(), SendError> {
-            for piece in &message.attachments {
+            for attachment in &message.attachments {
                 self.attachments_seen
-                    .push((piece.name.clone(), piece.bytes.is_some()));
+                    .push((attachment.name.clone(), attachment.bytes.is_some()));
             }
             Ok(())
         }
@@ -1160,7 +1181,7 @@ mod tests_pieces {
         (store, account)
     }
 
-    fn draft_with_pieces(store: &Store, account: i64) -> i64 {
+    fn draft_with_attachments(store: &Store, account: i64) -> i64 {
         let id = store
             .save_draft(
                 account,
@@ -1172,7 +1193,7 @@ mod tests_pieces {
                     bcc_raw: "",
                     body_html: None,
                     subject: "Photos",
-                    body: "corps",
+                    body: "body",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
                     important: false,
@@ -1196,19 +1217,19 @@ mod tests_pieces {
             "",
             "",
             "Photos",
-            "corps",
+            "body",
             None,
         )
         .unwrap()
     }
 
-    /// PJ-D2 : le geste copie les pièces au journal — le brouillon peut
-    /// ensuite disparaître (envoi = il a rempli son office), le journal
-    /// se suffit à lui-même.
+    /// PJ-D2: the gesture copies the attachments to the journal — the
+    /// draft can then disappear (send = it has served its purpose), the
+    /// journal is self-sufficient.
     #[test]
     fn enqueue_copies_pieces_and_survives_draft_deletion() {
         let (store, account) = store();
-        let draft_id = draft_with_pieces(&store, account);
+        let draft_id = draft_with_attachments(&store, account);
         store
             .enqueue_outbox_from_draft(account, &composed(), draft_id)
             .unwrap();
@@ -1217,18 +1238,19 @@ mod tests_pieces {
 
         let queued = store.outbox_in_state(OutboxState::Queued).unwrap();
         assert_eq!(queued.len(), 1);
-        let pieces = &queued[0].attachments;
-        assert_eq!(pieces.len(), 2);
-        assert_eq!(pieces[0].name, "facade.jpg");
-        assert_eq!(pieces[0].mime, "image/jpeg");
-        assert_eq!(pieces[0].size, 3);
-        assert_eq!(pieces[0].bytes.as_deref(), Some(&[1u8, 2, 3][..]));
-        assert_eq!(pieces[1].name, "devis.pdf");
-        assert_eq!(pieces[1].bytes.as_deref(), Some(&[4u8, 5][..]));
+        let attachments = &queued[0].attachments;
+        assert_eq!(attachments.len(), 2);
+        assert_eq!(attachments[0].name, "facade.jpg");
+        assert_eq!(attachments[0].mime, "image/jpeg");
+        assert_eq!(attachments[0].size, 3);
+        assert_eq!(attachments[0].bytes.as_deref(), Some(&[1u8, 2, 3][..]));
+        assert_eq!(attachments[1].name, "devis.pdf");
+        assert_eq!(attachments[1].bytes.as_deref(), Some(&[4u8, 5][..]));
     }
 
-    /// Règle d'or n°1, étendue : un crash entre le geste et la vidange ne
-    /// perd aucun octet — les pièces survivent à l'arrêt du processus.
+    /// Golden rule n°1, extended: a crash between the gesture and the
+    /// flush loses no bytes — the attachments survive the process
+    /// stopping.
     #[test]
     fn queued_pieces_survive_process_restart() {
         let path =
@@ -1239,11 +1261,11 @@ mod tests_pieces {
             let account = store
                 .adopt_or_create_account("test@exemple.fr", "gmail")
                 .unwrap();
-            let draft_id = draft_with_pieces(&store, account);
+            let draft_id = draft_with_attachments(&store, account);
             store
                 .enqueue_outbox_from_draft(account, &composed(), draft_id)
                 .unwrap();
-        } // « crash » : le processus s'arrête avant toute vidange.
+        } // "crash": the process stops before any flush.
 
         let reopened = Store::open(&path).unwrap();
         let queued = reopened.outbox_in_state(OutboxState::Queued).unwrap();
@@ -1254,12 +1276,13 @@ mod tests_pieces {
         let _ = std::fs::remove_file(&path);
     }
 
-    /// La remise reçoit les octets ; PJ-D7 : sitôt parti, le journal les
-    /// purge — les métadonnées restent, l'historique se lit encore.
+    /// Delivery receives the bytes; PJ-D7: the moment it goes out, the
+    /// journal purges them — the metadata stays, the history can still
+    /// be read.
     #[test]
     fn sent_pieces_are_purged_to_metadata_only() {
         let (mut store, account) = store();
-        let draft_id = draft_with_pieces(&store, account);
+        let draft_id = draft_with_attachments(&store, account);
         store
             .enqueue_outbox_from_draft(account, &composed(), draft_id)
             .unwrap();
@@ -1274,29 +1297,29 @@ mod tests_pieces {
                 ("facade.jpg".to_string(), true),
                 ("devis.pdf".to_string(), true)
             ],
-            "la remise part avec les octets"
+            "delivery goes out with the bytes"
         );
         let sent = store.outbox_in_state(OutboxState::Sent).unwrap();
-        let pieces = &sent[0].attachments;
-        assert_eq!(pieces.len(), 2, "les métadonnées restent");
-        assert_eq!(pieces[0].name, "facade.jpg");
-        assert_eq!(pieces[0].size, 3);
+        let attachments = &sent[0].attachments;
+        assert_eq!(attachments.len(), 2, "the metadata stays");
+        assert_eq!(attachments[0].name, "facade.jpg");
+        assert_eq!(attachments[0].size, 3);
         assert!(
-            pieces.iter().all(|p| p.bytes.is_none()),
-            "les octets ont quitté le journal"
+            attachments.iter().all(|p| p.bytes.is_none()),
+            "the bytes have left the journal"
         );
     }
 
-    /// PJ-D7, l'autre moitié : la quarantaine GARDE ses octets — le
-    /// renvoi sur décision de l'utilisateur doit rester entier.
+    /// PJ-D7, the other half: quarantine KEEPS its bytes — a resend on
+    /// the user's decision must stay whole.
     #[test]
     fn quarantined_pieces_keep_their_bytes_and_requeue_sends_them() {
         let (mut store, account) = store();
-        let draft_id = draft_with_pieces(&store, account);
+        let draft_id = draft_with_attachments(&store, account);
         let id = store
             .enqueue_outbox_from_draft(account, &composed(), draft_id)
             .unwrap();
-        // Crash simulé pendant la remise : l'état « sending » persiste.
+        // Simulated crash during delivery: the "sending" state persists.
         store.set_outbox_state(id, OutboxState::Sending).unwrap();
 
         let mut transport = FakeTransport::default();
@@ -1304,7 +1327,7 @@ mod tests_pieces {
         let interrupted = store.outbox_in_state(OutboxState::Interrupted).unwrap();
         assert!(
             interrupted[0].attachments.iter().all(|p| p.bytes.is_some()),
-            "la quarantaine garde tout"
+            "quarantine keeps everything"
         );
 
         store.requeue_outbox(id).unwrap();
@@ -1312,16 +1335,16 @@ mod tests_pieces {
         assert_eq!(report.sent, 1);
         assert!(
             transport.attachments_seen.iter().all(|(_, bytes)| *bytes),
-            "le renvoi part entier"
+            "the resend goes out whole"
         );
     }
 
-    /// L'abandon d'un envoi en file emporte ses blobs (cascade) — pas
-    /// d'octets orphelins dans le journal.
+    /// Abandoning a queued send carries away its blobs (cascade) — no
+    /// orphaned bytes left in the journal.
     #[test]
     fn deleting_a_pending_send_cascades_to_its_pieces() {
         let (store, account) = store();
-        let draft_id = draft_with_pieces(&store, account);
+        let draft_id = draft_with_attachments(&store, account);
         let id = store
             .enqueue_outbox_from_draft(account, &composed(), draft_id)
             .unwrap();
@@ -1337,14 +1360,14 @@ mod tests_pieces {
         assert_eq!(orphans, 0);
     }
 
-    /// R2, décision CE D2 : annuler un envoi programmé recrée le
-    /// brouillon ENTIER — destinataires, corps, marquage « important »,
-    /// pièces avec leurs octets — et l'entrée quitte le journal. Rien
-    /// ne se perd, le geste est réversible.
+    /// R2, CE decision D2: cancelling a scheduled send recreates the
+    /// draft WHOLE — recipients, body, "important" flag, attachments
+    /// with their bytes — and the entry leaves the journal. Nothing is
+    /// lost, the gesture is reversible.
     #[test]
-    fn annuler_un_programme_recree_le_brouillon() {
+    fn cancelling_a_scheduled_send_recreates_the_draft() {
         let (store, account) = store();
-        let draft_id = draft_with_pieces(&store, account);
+        let draft_id = draft_with_attachments(&store, account);
         let mut urgent = composed();
         urgent.important = true;
         let id = store
@@ -1355,66 +1378,66 @@ mod tests_pieces {
                 Some(chrono::Utc::now().timestamp() + 3600),
             )
             .unwrap();
-        // Le flux réel supprime le brouillon sitôt l'envoi journalisé.
+        // The real flow deletes the draft the moment the send is journaled.
         store.delete_draft(draft_id).unwrap();
 
-        let recree = store
-            .annuler_envoi_programme(id)
+        let recreated = store
+            .cancel_scheduled_send(id)
             .unwrap()
-            .expect("un brouillon recréé");
+            .expect("a recreated draft");
 
         assert!(
             store.outbox().unwrap().is_empty(),
-            "l'entrée quitte le journal"
+            "the entry leaves the journal"
         );
         let drafts = store.drafts().unwrap();
         assert_eq!(drafts.len(), 1);
-        let brouillon = &drafts[0];
-        assert_eq!(brouillon.id, recree);
-        assert_eq!(brouillon.to_raw, "vous@exemple.fr");
-        assert_eq!(brouillon.subject, "Photos");
-        assert_eq!(brouillon.body, "corps");
-        assert!(brouillon.important, "le marquage revient");
-        let pieces = store.draft_attachments_full(recree).unwrap();
-        assert_eq!(pieces.len(), 2);
-        assert_eq!(pieces[0].name, "facade.jpg");
+        let draft = &drafts[0];
+        assert_eq!(draft.id, recreated);
+        assert_eq!(draft.to_raw, "vous@exemple.fr");
+        assert_eq!(draft.subject, "Photos");
+        assert_eq!(draft.body, "body");
+        assert!(draft.important, "the flag comes back");
+        let attachments = store.draft_attachments_full(recreated).unwrap();
+        assert_eq!(attachments.len(), 2);
+        assert_eq!(attachments[0].name, "facade.jpg");
         assert_eq!(
-            pieces[0].bytes,
+            attachments[0].bytes,
             vec![1, 2, 3],
-            "les octets reviennent entiers"
+            "the bytes come back whole"
         );
     }
 
-    /// D2, l'autre moitié : une entrée déjà PARTIE (la vidange l'a prise
-    /// avant le geste) ne s'annule pas — `None`, et l'historique reste.
-    /// Et une entrée ordinaire (sans échéance) non plus : elle peut être
-    /// en cours de remise par une vidange concurrente — l'abandon d'un
-    /// envoi ordinaire reste `delete_outbox`.
+    /// D2, the other half: an entry that has already GONE OUT (the
+    /// flush picked it up before the gesture) does not cancel — `None`,
+    /// and the history stays. Nor does an ordinary entry (no deadline):
+    /// it may be in the middle of delivery by a concurrent flush —
+    /// abandoning an ordinary send stays `delete_outbox`.
     #[test]
-    fn annuler_un_envoi_parti_ne_fait_rien() {
+    fn cancelling_a_send_that_is_gone_does_nothing() {
         let (mut store, account) = store();
-        let draft_id = draft_with_pieces(&store, account);
+        let draft_id = draft_with_attachments(&store, account);
         let id = store
             .enqueue_outbox_from_draft(account, &composed(), draft_id)
             .unwrap();
         assert_eq!(
-            store.annuler_envoi_programme(id).unwrap(),
+            store.cancel_scheduled_send(id).unwrap(),
             None,
-            "une entrée SANS échéance ne passe pas par cette voie"
+            "an entry WITHOUT a deadline does not go through this path"
         );
         let mut transport = FakeTransport::default();
         flush_outbox(&mut transport, &mut store, account).unwrap();
 
-        assert_eq!(store.annuler_envoi_programme(id).unwrap(), None);
+        assert_eq!(store.cancel_scheduled_send(id).unwrap(), None);
         assert_eq!(
             store.outbox_in_state(OutboxState::Sent).unwrap().len(),
             1,
-            "l'historique d'envoi ne bouge pas"
+            "the send history does not move"
         );
     }
 
-    /// Un envoi sans brouillon (composition jamais sauvée) reste
-    /// possible : le chemin historique n'exige aucune pièce.
+    /// A send without a draft (a composition never saved) stays
+    /// possible: the historical path requires no attachment.
     #[test]
     fn plain_enqueue_still_carries_no_pieces() {
         let (store, account) = store();

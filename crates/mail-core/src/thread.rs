@@ -536,7 +536,7 @@ pub(crate) fn rebuild_account(conn: &Connection, account_id: i64) -> Result<(), 
 /// no code fix repairs them on its own. They must be redone.
 ///
 /// **2** — a thread's scope is the ACCOUNT, not the mailbox
-/// ([ADR 0009](../../../docs/adr/0009-portee-des-fils-au-compte.md)).
+/// ([ADR 0009](../../../docs/adr/0009-portee-des-threads-au-compte.md)).
 ///
 /// Both tables change key, and SQLite cannot modify a primary key in
 /// place: they are **dropped then recreated**, where version 1 was
@@ -619,7 +619,7 @@ fn orphans(conn: &Connection, account: Option<i64>) -> Result<Vec<Orphan>, Error
     // `idx_envelopes_thread (thread_id=NULL)` and enumerated the
     // everlasting NULLs of the WHOLE database to discard them after the
     // join — 247,835 rows, 398 ms, on EVERY `Store::open`, hence on every
-    // command (measured at gate P1 of the redesign, `diagnostic_ouverture`).
+    // command (measured at gate P1 of the redesign, `diag_opening`).
     // Driven by scope: 3,229 rows, 23 ms — the cost follows what
     // adoption may have to do, plus the size of the database.
     const BASE: &str = "SELECT m.account_id, e.mailbox_id, e.uid,
@@ -723,7 +723,7 @@ pub(crate) fn migrate_threads(conn: &Connection) -> Result<(), Error> {
 }
 
 /// Report step: ~1,000 messages take ~18 ms at the rate measured by
-/// `banc_migration_fils` — the callback's cost is invisible, and the
+/// `bench_thread_migration` — the callback's cost is invisible, and the
 /// cancellation latency stays below perception.
 const REPORT_STEP: u64 = 1_000;
 

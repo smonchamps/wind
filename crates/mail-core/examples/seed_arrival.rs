@@ -7,7 +7,7 @@
 //! synchronisation le ferait.
 //!
 //! ```powershell
-//! cargo run -p mail-core --example seed_arrivee -- <chemin.db> <email-compte> <adresse-expediteur> <n> [nom] [sujet] [reponse-a] [corps]
+//! cargo run -p mail-core --example seed_arrival -- <chemin.db> <email-compte> <adresse-expediteur> <n> [nom] [sujet] [reponse-a] [corps]
 //! ```
 //!
 //! `reponse-a` (RETOURS-14 R4) : un Message-ID existant — l'arrivée
@@ -28,7 +28,7 @@ fn main() -> Result<(), mail_core::Error> {
     let [Some(path), Some(email), Some(expediteur)] = [args.get(1), args.get(2), args.get(3)]
     else {
         eprintln!(
-            "usage : seed_arrivee <chemin.db> <email-compte> <adresse-expediteur> [n] [nom] [sujet]"
+            "usage : seed_arrival <chemin.db> <email-compte> <adresse-expediteur> [n] [nom] [sujet]"
         );
         std::process::exit(2);
     };
@@ -48,7 +48,7 @@ fn main() -> Result<(), mail_core::Error> {
     let mut store = Store::open(std::path::Path::new(path))?;
     let account = store.adopt_or_create_account(email, "gmail")?;
     let Some(state) = store.sync_state(account, "INBOX")? else {
-        eprintln!("seed_arrivee : l'INBOX du compte {email} n'existe pas (seed_inbox d'abord)");
+        eprintln!("seed_arrival : l'INBOX du compte {email} n'existe pas (seed_inbox d'abord)");
         std::process::exit(2);
     };
     let depart = store.max_uid(state.mailbox_id)? + 1;

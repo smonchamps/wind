@@ -1,46 +1,46 @@
 use chrono::{DateTime, Utc};
 
-/// Identifiant IMAP d'un message au sein d'une boîte (RFC 3501).
+/// IMAP identifier of a message within a mailbox (RFC 3501).
 pub type Uid = u32;
 
-/// Enveloppe d'un message : les métadonnées suffisantes pour afficher une
-/// liste sans jamais télécharger le corps (principe « enveloppes d'abord »).
+/// A message's envelope: the metadata sufficient to display a list
+/// without ever downloading the body (the "envelopes first" principle).
 ///
-/// `sender` est une chaîne d'affichage brute et non une [`crate::EmailAddress`]
-/// validée : un client mail doit afficher ce qui existe, y compris les
-/// expéditeurs malformés du monde réel. La validation stricte est réservée
-/// aux adresses que NOUS produisons (composition, Phase 2).
+/// `sender` is a raw display string and not a validated
+/// [`crate::EmailAddress`]: a mail client must display what exists,
+/// including malformed real-world senders. Strict validation is
+/// reserved for addresses WE produce (composition, Phase 2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Envelope {
     pub uid: Uid,
     pub subject: Option<String>,
     pub sender: Option<String>,
-    /// Adresse brute de l'expéditeur (`mailbox@host`) — pour répondre,
-    /// là où `sender` est la chaîne d'affichage (nom décodé).
+    /// Sender's raw address (`mailbox@host`) — to reply, where `sender`
+    /// is the display string (decoded name).
     pub sender_address: Option<String>,
-    /// Destinataires bruts À / Cc (`mailbox@host` chacun), tirés de la
-    /// MÊME ENVELOPE que l'expéditeur — gratuits, jamais un octet de plus
-    /// sur le réseau (R4, PLAN-RETOURS-MAIL). Ils servent à afficher « à X »
-    /// dans un dossier d'envois (l'expéditeur y est SOI) et à « Répondre à
-    /// tous » hors ligne. Vides quand l'ENVELOPE n'en porte pas.
+    /// Raw To / Cc recipients (`mailbox@host` each), taken from the SAME
+    /// ENVELOPE as the sender — free, never an extra byte over the
+    /// network (R4, PLAN-RETOURS-MAIL). They serve to display "to X" in
+    /// a Sent folder (the sender there is SELF) and "Reply all" offline.
+    /// Empty when the ENVELOPE does not carry any.
     pub to_addrs: Vec<String>,
     pub cc_addrs: Vec<String>,
-    /// `Reply-To` (première adresse), tiré de la même ENVELOPE : là où
-    /// « Répondre » doit écrire quand l'expéditeur le dit — listes,
-    /// notifications (PLAN-AUDIT-V2 E5 ; jeté avant). `None` = répondre
-    /// à l'expéditeur.
+    /// `Reply-To` (first address), taken from the same ENVELOPE: where
+    /// "Reply" must write when the sender says so — lists, notifications
+    /// (PLAN-AUDIT-V2 E5; dropped before). `None` = reply to the sender.
     pub reply_to: Option<String>,
-    /// `Message-ID` RFC 5322 — pour répondre dans le fil (`In-Reply-To`).
+    /// RFC 5322 `Message-ID` — to reply within the thread
+    /// (`In-Reply-To`).
     pub message_id: Option<String>,
-    /// `In-Reply-To` : l'ancêtre direct, tel que l'annonce l'expéditeur.
+    /// `In-Reply-To`: the direct ancestor, as announced by the sender.
     ///
-    /// Il arrive **gratuitement** avec l'ENVELOPE IMAP, dans les mêmes
-    /// octets que le sujet et l'expéditeur. C'est ce qui rend le premier
-    /// niveau de regroupement sans coût réseau ; `References`, lui, exige
-    /// une passe séparée sur les en-têtes complets.
+    /// It arrives **for free** with the IMAP ENVELOPE, in the same bytes
+    /// as the subject and the sender. This is what makes the first level
+    /// of grouping free of network cost; `References`, on the other
+    /// hand, requires a separate pass over the full headers.
     pub in_reply_to: Option<String>,
     pub date: Option<DateTime<Utc>>,
     pub seen: bool,
-    /// `\Flagged` — l'étoile chez Gmail.
+    /// `\Flagged` — the star at Gmail.
     pub flagged: bool,
 }

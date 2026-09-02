@@ -938,13 +938,13 @@ impl MailServer for ImapServer {
 }
 
 /// NO/BAD = the server understood and REFUSES (vanished folder, `[CANNOT]`,
-/// `[TRYCREATE]`): `Error::Refus`, definitive — the action journal
+/// `[TRYCREATE]`): `Error::Refusal`, definitive — the action journal
 /// quarantines instead of retrying forever (E3). Everything else (I/O, TLS,
 /// lost connection, unexpected reply) stays `Error::Server`, deemed
 /// transient.
 fn server_err(err: imap::Error) -> Error {
     match err {
-        imap::Error::No(_) | imap::Error::Bad(_) => Error::Refus(err.to_string()),
+        imap::Error::No(_) | imap::Error::Bad(_) => Error::Refusal(err.to_string()),
         other => Error::Server(other.to_string()),
     }
 }

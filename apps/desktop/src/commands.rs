@@ -1510,7 +1510,7 @@ fn run_sync(
     // la vraie ligne d'une destination d'écho — la réconciliation le
     // constate, et la génération resert la liste (l'écho s'efface sous
     // sa vraie ligne, invisible à l'œil).
-    match store.reconcilier_echos(account_id) {
+    match store.reconcile_echos(account_id) {
         Ok(n) if n > 0 => {
             cycle.generation.fetch_add(1, Ordering::Relaxed);
         }
@@ -1808,7 +1808,7 @@ pub async fn list_category(
             let organise = store.organized_mode().map_err(|err| err.to_string())?;
             let mut lignes = if organise {
                 store
-                    .reception_organisee_scoped(account_id, non_lus, offset, limit)
+                    .organized_inbox_scoped(account_id, non_lus, offset, limit)
                     .map_err(|err| err.to_string())?
             } else {
                 store
@@ -1819,7 +1819,7 @@ pub async fn list_category(
             // rang — une passe bornée à la PAGE, la requête chaude ne
             // paie rien.
             store
-                .enrichir_lignes(&mut lignes)
+                .enrich_rows(&mut lignes)
                 .map_err(|err| err.to_string())?;
             let rows = lignes.into_iter().map(to_message_row).collect();
             return Ok(MessagePage {
@@ -1833,10 +1833,10 @@ pub async fn list_category(
         // jamais des boîtes canoniques.
         if category == "kiosque" || category == "registre" {
             let mut lignes = store
-                .routage_unified_scoped(&category, account_id, non_lus, offset, limit)
+                .routing_unified_scoped(&category, account_id, non_lus, offset, limit)
                 .map_err(|err| err.to_string())?;
             store
-                .enrichir_lignes(&mut lignes)
+                .enrich_rows(&mut lignes)
                 .map_err(|err| err.to_string())?;
             let rows = lignes.into_iter().map(to_message_row).collect();
             return Ok(MessagePage {
@@ -1849,7 +1849,7 @@ pub async fn list_category(
         // E3 (PLAN-REACTIVITE) : les échos locaux des destinations de geste
         // entrent dans la page et le total — la Corbeille montre la
         // suppression, Envoyés l'envoi, à la seconde du geste.
-        let echos = mail_core::DESTINATIONS_ECHO
+        let echos = mail_core::ECHO_DESTINATIONS
             .contains(&category.as_str())
             .then_some((category.as_str(), portee.comptes.as_slice()));
         let mut lignes = store
@@ -1863,7 +1863,7 @@ pub async fn list_category(
             )
             .map_err(|err| err.to_string())?;
         store
-            .enrichir_lignes(&mut lignes)
+            .enrich_rows(&mut lignes)
             .map_err(|err| err.to_string())?;
         let rows = lignes.into_iter().map(to_message_row).collect();
         Ok(MessagePage {
@@ -1907,16 +1907,16 @@ fn resoudre_categorie(
         let dossiers = store
             .canonical_folders(*compte)
             .map_err(|err| err.to_string())?;
-        if let Some(nom) = dossiers.boite(category)
+        if let Some(nom) = dossiers.mailbox(category)
             && let Some(state) = store
                 .sync_state(*compte, &nom)
                 .map_err(|err| err.to_string())?
         {
             boites.push(state.mailbox_id);
-            if category == "archives" && dossiers.archives_integrale {
+            if category == "archives" && dossiers.archives_full {
                 exclure.extend(
                     store
-                        .canoniques_hors_archives(*compte, &dossiers)
+                        .canonical_except_archive(*compte, &dossiers)
                         .map_err(|err| err.to_string())?,
                 );
             }
@@ -1950,7 +1950,7 @@ pub async fn category_total(
             let organise = store.organized_mode().map_err(|err| err.to_string())?;
             return if organise {
                 store
-                    .reception_organisee_count_scoped(account_id, non_lus)
+                    .organized_inbox_count_scoped(account_id, non_lus)
                     .map_err(|err| err.to_string())
             } else {
                 store
@@ -1960,11 +1960,11 @@ pub async fn category_total(
         }
         if category == "kiosque" || category == "registre" {
             return store
-                .routage_count_scoped(&category, account_id, non_lus)
+                .routing_count_scoped(&category, account_id, non_lus)
                 .map_err(|err| err.to_string());
         }
         let portee = resoudre_categorie(&store, &category, account_id)?;
-        let echos = mail_core::DESTINATIONS_ECHO
+        let echos = mail_core::ECHO_DESTINATIONS
             .contains(&category.as_str())
             .then_some((category.as_str(), portee.comptes.as_slice()));
         let (tous, jamais_lus) = store
@@ -2267,32 +2267,31 @@ pub struct InvitationVue {
     pub peut_repondre: bool,
 }
 
-fn vue_invitation(stockee: mail_core::InvitationStockee) -> InvitationVue {
+fn vue_invitation(stockee: mail_core::StoredInvitation) -> InvitationVue {
     let row = stockee.row;
-    let annulee = row.methode == "cancel" || row.annule;
+    let annulee = row.method == "cancel" || row.cancelled;
     let peut_repondre =
-        row.methode == "request" && row.organisateur_adresse.is_some() && !row.annule;
+        row.method == "request" && row.organizer_address.is_some() && !row.cancelled;
     InvitationVue {
         annulee,
         // La garde D1 par EXTRÉMITÉ : une fin au TZID irrésolu suffit à
         // dire « heure locale de l'organisateur » (revue — un couple
         // début-résolu/fin-flottante affichait une plage mensongère).
-        heure_flottante: (row.debut_texte.is_some() || row.fin_texte.is_some())
-            && !row.journee_entiere,
-        organisateur: row.organisateur_nom.or(row.organisateur_adresse),
+        heure_flottante: (row.start_text.is_some() || row.end_text.is_some()) && !row.all_day,
+        organisateur: row.organizer_name.or(row.organizer_address),
         // D6 : l'état affiché suit la DERNIÈRE réponse partie de Wind ;
         // le PARTSTAT du message n'est que l'état de départ.
-        statut: stockee.reponse.or(row.partstat),
-        repondant: row.repondant_nom.or(row.repondant_adresse),
-        repondant_statut: row.repondant_statut,
-        methode: row.methode,
-        titre: row.titre,
-        lieu: row.lieu,
-        debut_epoch: row.debut_epoch,
-        fin_epoch: row.fin_epoch,
-        debut_texte: row.debut_texte,
-        fin_texte: row.fin_texte,
-        journee_entiere: row.journee_entiere,
+        statut: stockee.reply.or(row.partstat),
+        repondant: row.attendee_name.or(row.attendee_address),
+        repondant_statut: row.attendee_status,
+        methode: row.method,
+        titre: row.title,
+        lieu: row.location,
+        debut_epoch: row.start_epoch,
+        fin_epoch: row.end_epoch,
+        debut_texte: row.start_text,
+        fin_texte: row.end_text,
+        journee_entiere: row.all_day,
         recurrent: row.recurrent,
         peut_repondre,
     }
@@ -2322,7 +2321,7 @@ pub async fn repondre_invitation(
             .invitation(account_id, &mailbox, uid)
             .map_err(|err| err.to_string())?
             .ok_or_else(|| "aucune invitation sur ce message".to_string())?;
-        if stockee.row.methode != "request" || stockee.row.annule {
+        if stockee.row.method != "request" || stockee.row.cancelled {
             // Même règle que `peut_repondre` — R8 : un `.ics` transféré
             // EST une invitation (verdict CE) ; une réunion annulée ne
             // se répond plus.
@@ -2330,7 +2329,7 @@ pub async fn repondre_invitation(
         }
         let organisateur = stockee
             .row
-            .organisateur_adresse
+            .organizer_address
             .clone()
             .ok_or_else(|| "invitation sans organisateur : réponse impossible".to_string())?;
         let from = account_email(&store, account_id)?;
@@ -2366,7 +2365,7 @@ pub async fn repondre_invitation(
         // en file devant une carte « pas répondu » inviterait au double
         // envoi.
         let journalise = store
-            .enqueue_reponse_invitation(
+            .enqueue_invitation_reply(
                 account_id,
                 &draft,
                 &mailbox,
@@ -2405,7 +2404,7 @@ pub async fn completer_adresses(
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let trouves = store
-            .completer_adresses(&prefixe, limite.min(16))
+            .complete_addresses(&prefixe, limite.min(16))
             .map_err(|err| err.to_string())?;
         Ok(trouves
             .into_iter()
@@ -2640,20 +2639,20 @@ pub async fn agir_groupe(
     action: String,
 ) -> Result<BilanGroupe, String> {
     let geste = match action.as_str() {
-        "archiver" => mail_core::GesteGroupe::Archive,
-        "supprimer" => mail_core::GesteGroupe::Delete,
-        "spam" => mail_core::GesteGroupe::Spam,
-        "nonspam" => mail_core::GesteGroupe::NotSpam,
-        "lu" => mail_core::GesteGroupe::Seen(true),
-        "nonlu" => mail_core::GesteGroupe::Seen(false),
+        "archiver" => mail_core::GroupGesture::Archive,
+        "supprimer" => mail_core::GroupGesture::Delete,
+        "spam" => mail_core::GroupGesture::Spam,
+        "nonspam" => mail_core::GroupGesture::NotSpam,
+        "lu" => mail_core::GroupGesture::Seen(true),
+        "nonlu" => mail_core::GroupGesture::Seen(false),
         autre => return Err(format!("geste de masse inconnu : {autre}")),
     };
     let total = cibles.len();
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        let cibles: Vec<mail_core::CibleGeste> = cibles
+        let cibles: Vec<mail_core::GestureTarget> = cibles
             .into_iter()
-            .map(|cible| mail_core::CibleGeste {
+            .map(|cible| mail_core::GestureTarget {
                 account_id: cible.account_id,
                 mailbox: cible.mailbox,
                 uid: cible.uid,
@@ -2661,7 +2660,7 @@ pub async fn agir_groupe(
             })
             .collect();
         let faits = store
-            .agir_groupe(&cibles, &geste)
+            .act_on_group(&cibles, &geste)
             .map_err(|err| err.to_string())?;
         Ok(BilanGroupe { faits, total })
     })
@@ -2759,7 +2758,7 @@ pub async fn report_spam(
         let dossiers = store
             .canonical_folders(account_id)
             .map_err(|err| err.to_string())?;
-        let Some(spam) = dossiers.indesirables else {
+        let Some(spam) = dossiers.junk else {
             return Err("aucun dossier indesirable reconnu sur ce compte".to_string());
         };
         // Déjà dans les indésirables : rien à faire (la vue n'offre pas le
@@ -2821,7 +2820,7 @@ fn queue_removal(
         _ => None,
     };
     store
-        .geste_avec_echo(state.mailbox_id, uid, action, destination)
+        .gesture_with_echo(state.mailbox_id, uid, action, destination)
         .map_err(|err| err.to_string())
 }
 
@@ -2834,7 +2833,7 @@ pub async fn echo_body(app: AppHandle, id: i64, show_images: bool) -> Result<Bod
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let (html, attachment_count) = store
-            .echo_vue(id)
+            .echo_view(id)
             .map_err(|err| err.to_string())?
             .ok_or_else(|| "écho déjà réconcilié".to_string())?;
         let policy = if show_images {
@@ -3326,9 +3325,7 @@ pub async fn portier_adresses(app: AppHandle) -> Result<Vec<String>, String> {
 pub async fn kiosque_non_ouverts(app: AppHandle) -> Result<u64, String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store
-            .kiosque_non_ouverts(None)
-            .map_err(|err| err.to_string())
+        store.feed_unopened(None).map_err(|err| err.to_string())
     })
     .await
 }
@@ -3393,12 +3390,12 @@ pub struct GroupeRegistrePayload {
     pub dernier_objet: Option<String>,
 }
 
-impl From<mail_core::GroupeRegistre> for GroupeRegistrePayload {
-    fn from(g: mail_core::GroupeRegistre) -> Self {
+impl From<mail_core::PaperTrailGroup> for GroupeRegistrePayload {
+    fn from(g: mail_core::PaperTrailGroup) -> Self {
         GroupeRegistrePayload {
             address: g.address,
-            qui: g.qui,
-            fils: g.fils,
+            qui: g.who,
+            fils: g.threads,
             dernier_epoch: g.last_epoch,
             dernier_objet: g.last_subject,
         }
@@ -3415,7 +3412,7 @@ pub async fn registre_groupes(
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         Ok(store
-            .registre_groupes(account_id)
+            .paper_trail_groups(account_id)
             .map_err(|err| err.to_string())?
             .into_iter()
             .map(Into::into)
@@ -3438,10 +3435,10 @@ pub async fn registre_groupe_page(
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let limit = limit.min(LIST_LIMIT_MAX);
         let mut lignes = store
-            .registre_groupe_scoped(&address, account_id, offset, limit)
+            .paper_trail_group_scoped(&address, account_id, offset, limit)
             .map_err(|err| err.to_string())?;
         store
-            .enrichir_lignes(&mut lignes)
+            .enrich_rows(&mut lignes)
             .map_err(|err| err.to_string())?;
         Ok(lignes.into_iter().map(to_message_row).collect())
     })
@@ -3582,7 +3579,7 @@ pub async fn pile_mis_de_cote(app: AppHandle) -> Result<Vec<MessageRow>, String>
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let mut lignes = store.set_aside_pile().map_err(|err| err.to_string())?;
         store
-            .enrichir_lignes(&mut lignes)
+            .enrich_rows(&mut lignes)
             .map_err(|err| err.to_string())?;
         Ok(lignes
             .into_iter()
@@ -3629,10 +3626,10 @@ pub async fn kiosque_cartes(
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let limit = limit.min(LIST_LIMIT_MAX);
         let mut lignes = store
-            .routage_unified_scoped("kiosque", account_id, false, offset, limit)
+            .routing_unified_scoped("kiosque", account_id, false, offset, limit)
             .map_err(|err| err.to_string())?;
         store
-            .enrichir_lignes(&mut lignes)
+            .enrich_rows(&mut lignes)
             .map_err(|err| err.to_string())?;
         let mut cartes = Vec::with_capacity(lignes.len());
         // La résolution (compte, boîte) → id, UNE fois par boîte de la
@@ -3744,7 +3741,7 @@ pub async fn pinned_rows(
             .pinned_unified_scoped(account_id, non_lus, organise)
             .map_err(|err| err.to_string())?;
         store
-            .enrichir_lignes(&mut lignes)
+            .enrich_rows(&mut lignes)
             .map_err(|err| err.to_string())?;
         Ok(lignes
             .into_iter()
@@ -4051,12 +4048,12 @@ pub async fn forward_context(
     // D8 (PLAN-AUDIT-V2 E10) : AUCUNE image distante au composeur — le
     // pixel de suivi partait au clic « Transférer ». Le bloc porte sa
     // SOURCE ; `queue_send` rend les vraies URL au moment d'envoyer.
-    let source = mail_core::SourceTransfert {
+    let source = mail_core::ForwardSource {
         account_id,
         uid,
         mailbox: mailbox.clone(),
     }
-    .cle();
+    .key();
     // Verdict terrain D5 (2026-08-20) : un transfert TRANSMET — les
     // images distantes sont CONSERVÉES (`AllowRemote`), le destinataire
     // reçoit le message entier. L'exception §6.4 est assumée et
@@ -4095,7 +4092,7 @@ async fn rendre_les_images_du_transfert(
     account_id: i64,
     html: String,
 ) -> Result<String, String> {
-    let Some(source) = mail_core::source_du_transfert(&html) else {
+    let Some(source) = mail_core::forward_source(&html) else {
         return Ok(html);
     };
     if source.account_id != account_id {
@@ -4122,7 +4119,7 @@ async fn rendre_les_images_du_transfert(
     // 2026-09-02).
     hors_pompe(app.clone(), move |_| {
         let frais = mail_render::sanitize_with(&brut, mail_render::ImagePolicy::AllowRemote).html;
-        Ok(mail_core::substituer_transfert(&html, &frais))
+        Ok(mail_core::substitute_forward(&html, &frais))
     })
     .await
 }
@@ -4359,7 +4356,7 @@ pub async fn sync_apres_geste(
         None => {
             hors_pompe(app.clone(), |app| {
                 let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-                store.comptes_avec_travail().map_err(|err| err.to_string())
+                store.accounts_with_work().map_err(|err| err.to_string())
             })
             .await?
         }
@@ -4501,7 +4498,7 @@ fn passe_apres_geste_compte(
             // 1. Les intentions : le rejeu part MAINTENANT.
             let chrono = Instant::now();
             let sources = store
-                .mailboxes_avec_actions(account_id)
+                .mailboxes_with_actions(account_id)
                 .map_err(|err| err.to_string())?;
             for boite in &sources {
                 if boite == MAILBOX {
@@ -4579,7 +4576,7 @@ fn passe_apres_geste_compte(
                     let dossiers = store
                         .canonical_folders(account_id)
                         .map_err(|err| err.to_string())?;
-                    for nom in [dossiers.envoyes, dossiers.archives, dossiers.corbeille]
+                    for nom in [dossiers.sent, dossiers.archives, dossiers.trash]
                         .into_iter()
                         .flatten()
                     {
@@ -4608,7 +4605,7 @@ fn passe_apres_geste_compte(
             // 3. La réconciliation : l'écho meurt quand la vraie ligne
             // entre — la liste ne bouge pas à l'œil.
             let reconcilies = store
-                .reconcilier_echos(account_id)
+                .reconcile_echos(account_id)
                 .map_err(|err| err.to_string())?;
             rapport.reconcilies += reconcilies;
             courrier_tentative += reconcilies;
@@ -4631,7 +4628,7 @@ fn passe_apres_geste_compte(
         derniere_propre = rapport.errors.len() == erreurs_avant;
         let en_attente = Store::open(path)
             .map_err(|err| err.to_string())?
-            .echos_en_attente(account_id)
+            .pending_echos(account_id)
             .map_err(|err| err.to_string())?;
         if en_attente == 0 {
             break;
@@ -4646,7 +4643,7 @@ fn passe_apres_geste_compte(
     if derniere_propre {
         let store = Store::open(path).map_err(|err| err.to_string())?;
         let incidents = store
-            .balayer_echos(account_id)
+            .sweep_echos(account_id)
             .map_err(|err| err.to_string())?;
         if !incidents.is_empty() {
             rapport.balayes += incidents.len();
@@ -4785,7 +4782,7 @@ fn lire_envois(store: &Store) -> Result<OutboxStatus, String> {
         refused_actions: store.refused_actions().map_err(|err| err.to_string())?,
     };
     let maintenant = chrono::Utc::now().timestamp();
-    for message in store.outbox_metadonnees().map_err(|err| err.to_string())? {
+    for message in store.outbox_metadata().map_err(|err| err.to_string())? {
         // R2 : programmé pas encore échu — il n'attend pas le
         // réseau, il attend son heure. Compté à part, et la plus
         // proche échéance remonte (la sonde déclenchera la vidange).
@@ -4861,7 +4858,7 @@ pub async fn outbox_cancel_scheduled(app: AppHandle, id: i64) -> Result<Option<i
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
-            .annuler_envoi_programme(id)
+            .cancel_scheduled_send(id)
             .map_err(|err| err.to_string())
     })
     .await
@@ -6600,7 +6597,7 @@ pub async fn noms_adresses(
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
-            .noms_adresses(&addresses)
+            .address_names(&addresses)
             .map_err(|err| err.to_string())
     })
     .await

@@ -1,24 +1,24 @@
-//! Brouillons locaux : plus jamais de texte perdu.
+//! Local drafts: never lose text again.
 //!
-//! Un brouillon est du texte BRUT, pas encore validé — c'est tout son
-//! intérêt : une adresse à moitié tapée se conserve telle quelle. La
-//! validation stricte ([`crate::compose`]) n'intervient qu'à l'envoi.
-//! Même philosophie que la boîte d'envoi : journaliser d'abord,
-//! l'utilisateur décide ensuite (reprendre, envoyer ou jeter).
+//! A draft is RAW text, not yet validated — that is its whole point: a
+//! half-typed address is kept exactly as it is. Strict validation
+//! ([`crate::compose`]) only happens at send time. Same philosophy as the
+//! outbox: log first, the user decides afterwards (resume, send, or
+//! discard).
 //!
-//! Synchronisation vers Gmail (poussée seule, v1) : chaque brouillon
-//! local est reflété dans le dossier Brouillons du serveur. Invariants :
-//! - on ne supprime à distance que des UIDs que NOUS avons enregistrés ;
-//!   UIDVALIDITY changée → on abandonne les repères (un doublon de
-//!   brouillon est acceptable, supprimer le mauvais message jamais) ;
-//! - le repère « propre » est une photo d'horodatage : une édition
-//!   survenue PENDANT la poussée laisse le brouillon à pousser.
+//! Synchronization to Gmail (push only, v1): every local draft is
+//! mirrored into the server's Drafts folder. Invariants:
+//! - we only delete remotely UIDs that WE registered; UIDVALIDITY
+//!   changed → we abandon the markers (a duplicate draft is acceptable,
+//!   deleting the wrong message never is);
+//! - the "clean" marker is a timestamp snapshot: an edit that happened
+//!   DURING the push leaves the draft still to push.
 //!
-//! **Tirage** (Phase 3) : un brouillon créé ailleurs — webmail, téléphone
-//! — est rapatrié pour être édité ici. Le sens inverse rouvre une question
-//! que la poussée seule évitait : que faire quand les deux côtés ont
-//! bougé ? La réponse suit la règle d'or déjà en vigueur — **un doublon
-//! est acceptable, du texte perdu jamais** — et se lit dans
+//! **Pull** (Phase 3): a draft created elsewhere — webmail, phone — is
+//! brought back to be edited here. The reverse direction reopens a
+//! question that push-only avoided: what to do when both sides have
+//! moved? The answer follows the golden rule already in force — **a
+//! duplicate is acceptable, lost text never is** — and is spelled out in
 //! [`plan_draft_pull`].
 
 use chrono::Utc;
@@ -28,112 +28,116 @@ use crate::envelope::Uid;
 use crate::error::Error;
 use crate::store::Store;
 
-/// Le contenu d'un brouillon, tel que l'éditeur le tient.
+/// The content of a draft, as the editor holds it.
 ///
-/// Regroupé plutôt qu'étalé en paramètres : ces quatre champs voyagent
-/// toujours ensemble, et une signature qui les sépare invite à en
-/// intervertir deux — ils sont tous des chaînes.
+/// Grouped rather than spread across parameters: these four fields always
+/// travel together, and a signature that separates them invites swapping
+/// two of them — they are all strings.
 ///
-/// Rien n'est validé ici : une adresse à moitié tapée doit se conserver
-/// telle quelle. La validation stricte n'intervient qu'à l'envoi.
+/// Nothing is validated here: a half-typed address must be kept exactly
+/// as it is. Strict validation only happens at send time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DraftContent<'a> {
     pub to_raw: &'a str,
-    /// Cc et Cci bruts, non validés — comme `to_raw`, la validation
-    /// stricte n'intervient qu'à l'envoi. Vides = pas de Cc/Cci.
+    /// Raw, unvalidated Cc and Bcc — like `to_raw`, strict validation
+    /// only happens at send time. Empty = no Cc/Bcc.
     pub cc_raw: &'a str,
     pub bcc_raw: &'a str,
     pub subject: &'a str,
     pub body: &'a str,
-    /// Corps riche (PLAN-COMPOSITION-HTML) — `None` = brouillon texte.
-    /// `body` reste TOUJOURS peuplé (texte dérivé côté app) : c'est lui
-    /// que lisent les aperçus et le repli text/plain.
+    /// Rich body (PLAN-COMPOSITION-HTML) — `None` = plain-text draft.
+    /// `body` stays ALWAYS populated (text derived on the app side): it
+    /// is the one previews and the text/plain fallback read.
     pub body_html: Option<&'a str>,
     pub reply_to_uid: Option<Uid>,
-    /// La boîte qui donne son sens à `reply_to_uid` : les UID repartent
-    /// de 1 à chaque boîte (ADR 0009), un UID seul ne désigne rien.
-    /// C'est elle qui permet de relier le brouillon à sa conversation
+    /// The mailbox that gives `reply_to_uid` its meaning: UIDs restart
+    /// from 1 in each mailbox (ADR 0009), a bare UID names nothing. It
+    /// is what lets the draft be linked back to its conversation
     /// (PLAN-BROUILLONS, B-D2).
     pub reply_to_mailbox: Option<&'a str>,
-    /// Marqué « important » (R3, PLAN-RETOURS-6) : l'état suit le
-    /// brouillon — une reprise le retrouve, l'envoi le portera.
+    /// Marked "important" (R3, PLAN-RETOURS-6): the state follows the
+    /// draft — resuming it finds it again, sending carries it along.
     pub important: bool,
 }
 
-/// Ce qu'une sauvegarde a réellement fait.
+/// What a save actually did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DraftSaved {
     pub id: i64,
-    /// À repasser en `base_epoch` à la sauvegarde suivante.
+    /// To pass back as `base_epoch` on the next save.
     pub updated_epoch: i64,
-    /// La version en base avait changé sous les doigts de l'éditeur : son
-    /// texte a été conservé **à part** au lieu d'écraser l'autre.
+    /// The version in the database had changed under the editor's
+    /// fingers: its text was kept **apart** instead of overwriting the
+    /// other one.
     pub forked: bool,
 }
 
-/// Un brouillon tel que laissé par l'utilisateur.
+/// A draft as the user left it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SavedDraft {
     pub id: i64,
-    /// Le compte qui l'enverra (et dont le dossier Brouillons le reflète).
+    /// The account that will send it (and whose Drafts folder mirrors it).
     pub account_id: i64,
-    /// Champ « À » brut, non validé (peut être vide ou incomplet).
+    /// Raw, unvalidated "To" field (can be empty or incomplete).
     pub to_raw: String,
-    /// Cc et Cci bruts, non validés (vides si le brouillon n'en a pas,
-    /// ou s'il date d'avant ces colonnes).
+    /// Raw, unvalidated Cc and Bcc (empty if the draft has none, or if
+    /// it predates these columns).
     pub cc_raw: String,
     pub bcc_raw: String,
     pub subject: String,
     pub body: String,
-    /// Corps riche — `None` pour un brouillon texte (d'avant la colonne,
-    /// ou rapatrié du serveur) ; l'éditeur convertit à l'ouverture.
+    /// Rich body — `None` for a plain-text draft (from before the
+    /// column existed, or pulled from the server); the editor converts
+    /// it on open.
     pub body_html: Option<String>,
-    /// UID du message auquel ce brouillon répond, s'il y en a un.
+    /// UID of the message this draft replies to, if any.
     pub reply_to_uid: Option<Uid>,
-    /// La boîte du message visé — `None` pour une composition libre ou
-    /// un brouillon d'avant la colonne (ils gardent leur filet : le
-    /// dossier Brouillons, sans mention en liste).
+    /// The mailbox of the targeted message — `None` for a free
+    /// composition or a draft from before the column (they keep their
+    /// safety net: the Drafts folder, with no mention in the list).
     pub reply_to_mailbox: Option<String>,
-    /// Le fil de la conversation à laquelle ce brouillon répond —
-    /// résolu à la LECTURE (boîte + UID → enveloppe), jamais stocké :
-    /// un fil re-calculé ne peut pas laisser un repère périmé ici.
-    /// Marqué « important » (R3) — `false` sur un brouillon d'avant la
-    /// colonne.
+    /// The thread of the conversation this draft replies to — resolved
+    /// at READ time (mailbox + UID → envelope), never stored: a
+    /// recomputed thread cannot leave a stale marker here.
+    /// Marked "important" (R3) — `false` on a draft from before the
+    /// column.
     pub important: bool,
-    /// `None` : composition libre, boîte disparue, message expurgé, ou
-    /// brouillon d'avant la colonne.
+    /// `None`: free composition, mailbox gone, message purged, or draft
+    /// from before the column.
     pub thread_id: Option<i64>,
-    /// Millisecondes — l'ordre « plus récent d'abord » doit rester vrai
-    /// entre deux sauvegardes rapprochées.
+    /// Milliseconds — the "most recent first" ordering must stay true
+    /// between two saves close together in time.
     pub updated_epoch: i64,
-    /// UID de la dernière copie poussée dans le dossier Brouillons Gmail.
+    /// UID of the last copy pushed to the Gmail Drafts folder.
     pub remote_uid: Option<Uid>,
-    /// Photo d'`updated_epoch` au moment de la dernière poussée réussie.
+    /// Snapshot of `updated_epoch` at the moment of the last successful
+    /// push.
     pub pushed_epoch: Option<i64>,
 }
 
-/// Plafond des pièces d'UN message : 25 Mo de tailles décodées — la
-/// limite Gmail, la plus répandue (PJ-D3). Refusé au geste, jamais à
-/// l'envoi : la pièce de trop n'entre pas en base. L'encodage base64
-/// (+33 %) peut encore heurter un serveur plus strict : ce refus-là est
-/// un 5xx classé `Permanent`, porté par la fente d'avis existante.
+/// Cap on the attachments of ONE message: 25 MB of decoded sizes — the
+/// Gmail limit, the most common one (PJ-D3). Refused at the gesture,
+/// never at send time: the attachment that goes over never enters the
+/// database. Base64 encoding (+33%) can still trip up a stricter
+/// server: that refusal is a 5xx classed `Permanent`, carried by the
+/// existing notice slot.
 pub const MAX_ATTACHMENTS_BYTES: u64 = 25 * 1024 * 1024;
 
-/// Une pièce d'un brouillon, SANS ses octets : la liste des puces se
-/// dessine sans jamais charger les blobs — ils ne se lisent qu'à la
-/// construction MIME.
+/// An attachment of a draft, WITHOUT its bytes: the chip list draws
+/// itself without ever loading the blobs — they are only read when
+/// building the MIME.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DraftAttachmentMeta {
     pub id: i64,
     pub draft_id: i64,
     pub name: String,
     pub mime: String,
-    /// Octets DÉCODÉS — la taille que l'utilisateur reconnaît.
+    /// DECODED bytes — the size the user recognizes.
     pub size: u64,
 }
 
-/// Une pièce avec ses octets — la forme que consomme le constructeur
-/// MIME du reflet IMAP (PJ-D6). Jamais pour une liste.
+/// An attachment with its bytes — the shape the MIME builder of the
+/// IMAP mirror consumes (PJ-D6). Never for a list.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DraftAttachmentFull {
     pub name: String,
@@ -141,12 +145,12 @@ pub struct DraftAttachmentFull {
     pub bytes: Vec<u8>,
 }
 
-/// Bilan d'un geste sur les pièces (ajout ou retrait).
+/// Outcome of a gesture on the attachments (add or remove).
 ///
-/// `updated_epoch` est à reprendre comme `base_epoch` par l'éditeur :
-/// le geste a modifié le brouillon (il se re-poussera au prochain
-/// cycle), et une sauvegarde qui garderait l'ancien repère se verrait
-/// accuser d'un conflit qui n'existe pas.
+/// `updated_epoch` is to be taken as `base_epoch` by the editor: the
+/// gesture modified the draft (it will re-push on the next cycle), and
+/// a save that kept the old marker would be accused of a conflict that
+/// does not exist.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DraftAttachmentSaved {
     pub attachment: DraftAttachmentMeta,
@@ -154,32 +158,33 @@ pub struct DraftAttachmentSaved {
 }
 
 impl Store {
-    /// Enregistre (`id: None`) ou met à jour un brouillon.
+    /// Saves (`id: None`) or updates a draft.
     ///
-    /// Un id périmé (brouillon supprimé entre-temps par une autre vue)
-    /// ré-insère au lieu de perdre silencieusement le texte — c'est un
-    /// filet, il ne doit jamais avoir de maille manquante.
+    /// A stale id (draft deleted in the meantime by another view)
+    /// re-inserts instead of silently losing the text — this is a
+    /// safety net, it must never have a missing mesh.
     ///
-    /// `base_epoch` est l'`updated_epoch` que l'éditeur croit modifier.
-    /// C'est une **affirmation** : « je modifie la ligne que j'ai lue ».
-    /// Elle se dément de deux façons, et les deux comptent :
+    /// `base_epoch` is the `updated_epoch` the editor believes it is
+    /// modifying. It is an **assertion**: "I am modifying the row I
+    /// read." It is contradicted in two ways, and both count:
     ///
-    /// 1. l'horodatage en base a changé — quelqu'un a réécrit la ligne ;
-    /// 2. **la ligne a disparu** — le tirage l'a *remplacée*, car il ne
-    ///    met pas à jour : il retire le miroir périmé et importe la
-    ///    version fraîche sous un nouvel identifiant
-    ///    ([`plan_draft_pull`]). C'est le seul des deux cas que le terrain
-    ///    produise vraiment, et c'était celui qui passait inaperçu : ne
-    ///    comparant que des horodatages, la détection se taisait dès qu'il
-    ///    n'y en avait plus qu'un.
+    /// 1. the timestamp in the database has changed — someone rewrote
+    ///    the row;
+    /// 2. **the row has disappeared** — the pull *replaced* it, because
+    ///    it does not update: it removes the stale mirror and imports
+    ///    the fresh version under a new identifier
+    ///    ([`plan_draft_pull`]). This is the only one of the two cases
+    ///    the field actually produces, and it was the one that went
+    ///    unnoticed: comparing only timestamps, the detection fell
+    ///    silent as soon as there was only one left.
     ///
-    /// Dans les deux cas, écraser — ou ré-insérer en silence — laisse
-    /// l'utilisateur avec deux textes dont il ignore l'existence. On garde
-    /// donc les DEUX **et on le dit** : la règle d'or du module appliquée
-    /// à l'édition concurrente.
+    /// In both cases, overwriting — or re-inserting silently — leaves
+    /// the user with two texts whose existence they do not know about.
+    /// So we keep BOTH **and say so**: the module's golden rule applied
+    /// to concurrent editing.
     ///
-    /// `None` désactive la détection — pour les appelants qui ne
-    /// détiennent pas de copie en mémoire, et n'ont donc rien à écraser.
+    /// `None` disables the detection — for callers that do not hold an
+    /// in-memory copy, and so have nothing to overwrite.
     pub fn save_draft(
         &self,
         account_id: i64,
@@ -209,18 +214,18 @@ impl Store {
                         |row| row.get(0),
                     )
                     .optional()?;
-                let conflit = match (stored, base_epoch) {
-                    // La ligne a été réécrite sous le composeur.
+                let conflict = match (stored, base_epoch) {
+                    // The row was rewritten out from under the composer.
                     (Some(stored), Some(base)) => stored != base,
-                    // Elle a disparu sous lui : remplacée par le tirage,
-                    // ou jetée depuis une autre vue. Le filet la ré-insère
-                    // de toute façon — mais en silence, les deux textes
-                    // devenaient indiscernables.
+                    // It disappeared out from under it: replaced by the
+                    // pull, or discarded from another view. The safety
+                    // net re-inserts it regardless — but silently, the
+                    // two texts became indistinguishable.
                     (None, Some(_)) => true,
-                    // Aucune copie en mémoire : rien à écraser.
+                    // No in-memory copy: nothing to overwrite.
                     (_, None) => false,
                 };
-                if conflit {
+                if conflict {
                     let forked = self.insert_draft(
                         account_id,
                         to_raw,
@@ -240,13 +245,13 @@ impl Store {
                         forked: true,
                     });
                 }
-                // MAX(…, +1) : l'horodatage avance STRICTEMENT à chaque
-                // vraie modification — une édition dans la même milliseconde
-                // que la photo d'une poussée resterait sinon invisible
-                // (maille du filet, attrapée par test). Et le WHERE : une
-                // sauvegarde au contenu IDENTIQUE ne touche à rien, sinon
-                // chaque fermeture re-pousserait une copie identique vers
-                // Gmail (churn observé en validation terrain).
+                // MAX(…, +1): the timestamp advances STRICTLY on every
+                // real modification — an edit in the same millisecond as
+                // a push's snapshot would otherwise stay invisible (a
+                // net mesh, caught by a test). And the WHERE: a save
+                // with IDENTICAL content touches nothing, otherwise
+                // every close would re-push an identical copy to Gmail
+                // (churn observed in field validation).
                 self.conn().execute(
                     "INSERT INTO drafts (id, account_id, to_raw, cc_raw, bcc_raw, subject, body, body_html, reply_to_uid, reply_to_mailbox, important, updated_epoch)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
@@ -272,10 +277,10 @@ impl Store {
                         OR drafts.important IS NOT excluded.important",
                     params![id, account_id, to_raw, cc_raw, bcc_raw, subject, body, body_html, reply_to_uid, reply_to_mailbox, important, now],
                 )?;
-                // Relu, et non supposé : le `WHERE` ci-dessus peut avoir
-                // laissé l'horodatage intact (sauvegarde identique), et
-                // rendre `now` ferait échouer la détection au tour
-                // suivant sur un conflit qui n'existe pas.
+                // Re-read, not assumed: the `WHERE` above may have left
+                // the timestamp untouched (identical save), and
+                // returning `now` would make detection fail on the next
+                // round over a conflict that does not exist.
                 let updated_epoch = self.conn().query_row(
                     "SELECT updated_epoch FROM drafts WHERE id = ?1",
                     [id],
@@ -330,7 +335,7 @@ impl Store {
         Ok(self.conn().last_insert_rowid())
     }
 
-    /// Les brouillons, les plus récents d'abord.
+    /// The drafts, most recent first.
     pub fn drafts(&self) -> Result<Vec<SavedDraft>, Error> {
         let mut stmt = self.conn().prepare(&format!(
             "{DRAFT_SELECT} ORDER BY d.updated_epoch DESC, d.id DESC"
@@ -341,8 +346,8 @@ impl Store {
         Ok(rows)
     }
 
-    /// Tous les brouillons d'UN compte — ce que le tirage compare à la
-    /// liste distante.
+    /// All the drafts of ONE account — what the pull compares to the
+    /// remote list.
     pub fn drafts_of(&self, account_id: i64) -> Result<Vec<SavedDraft>, Error> {
         let mut stmt = self.conn().prepare(&format!(
             "{DRAFT_SELECT} WHERE d.account_id = ?1 ORDER BY d.id"
@@ -353,8 +358,8 @@ impl Store {
         Ok(rows)
     }
 
-    /// Les brouillons d'UN compte dont son dossier Brouillons n'a pas
-    /// (ou plus) la dernière version, dans l'ordre de création.
+    /// The drafts of ONE account whose Drafts folder does not (or no
+    /// longer) have the latest version, in creation order.
     pub fn drafts_to_push(&self, account_id: i64) -> Result<Vec<SavedDraft>, Error> {
         let mut stmt = self.conn().prepare(&format!(
             "{DRAFT_SELECT}
@@ -368,10 +373,10 @@ impl Store {
         Ok(rows)
     }
 
-    /// Consigne une poussée réussie : l'ancienne copie distante (si
-    /// différente) part en tombstone, la photo d'horodatage devient le
-    /// repère « propre ». Une édition survenue pendant la poussée garde
-    /// le brouillon à pousser — le filet ne saute jamais.
+    /// Records a successful push: the old remote copy (if different)
+    /// becomes a tombstone, the timestamp snapshot becomes the "clean"
+    /// marker. An edit that happened during the push keeps the draft
+    /// still to push — the net never skips a mesh.
     pub fn record_draft_pushed(
         &self,
         id: i64,
@@ -393,9 +398,9 @@ impl Store {
         Ok(())
     }
 
-    /// Jette un brouillon — décision explicite de l'utilisateur (ou
-    /// brouillon devenu envoi : il a rempli son office). Sa copie
-    /// distante éventuelle part en tombstone, purgée au prochain cycle.
+    /// Discards a draft — explicit user decision (or a draft that
+    /// became a send: it did its job). Its possible remote copy
+    /// becomes a tombstone, purged on the next cycle.
     pub fn delete_draft(&self, id: i64) -> Result<(), Error> {
         let tx = self.conn().unchecked_transaction()?;
         tx.execute(
@@ -409,13 +414,15 @@ impl Store {
         Ok(())
     }
 
-    /// Joint une pièce au brouillon : les octets sont copiés en base AU
-    /// GESTE (PJ-D1) — jamais de chemin nu, un fichier déplacé ensuite ne
-    /// casse rien. Refuse au-delà du plafond (PJ-D3) sans rien joindre :
-    /// les pièces déjà acquises restent.
+    /// Attaches an attachment to the draft: the bytes are copied into
+    /// the database AT THE GESTURE (PJ-D1) — never a bare path, a file
+    /// moved afterwards breaks nothing. Refuses past the cap (PJ-D3)
+    /// without attaching anything: the attachments already acquired
+    /// stay.
     ///
-    /// Le brouillon est marqué modifié dans la même transaction : c'est
-    /// le geste qui porte la modification, pas l'autosave (PJ-D6).
+    /// The draft is marked modified in the same transaction: it is the
+    /// gesture that carries the modification, not the autosave
+    /// (PJ-D6).
     pub fn add_draft_attachment(
         &self,
         draft_id: i64,
@@ -458,9 +465,10 @@ impl Store {
         })
     }
 
-    /// Retire une pièce d'un brouillon. Rend le nouvel `updated_epoch` du
-    /// brouillon (le retrait est une modification), ou `None` si la pièce
-    /// n'existait plus — un double-clic sur le retrait ne modifie rien.
+    /// Removes an attachment from a draft. Returns the draft's new
+    /// `updated_epoch` (the removal is a modification), or `None` if
+    /// the attachment no longer existed — a double-click on the removal
+    /// modifies nothing.
     pub fn remove_draft_attachment(&self, attachment_id: i64) -> Result<Option<i64>, Error> {
         let tx = self.conn().unchecked_transaction()?;
         let draft_id: Option<i64> = tx
@@ -482,9 +490,9 @@ impl Store {
         Ok(Some(updated_epoch))
     }
 
-    /// Les pièces d'un brouillon AVEC leurs octets — réservé à la
-    /// construction d'un message (reflet IMAP, PJ-D6). Les listes
-    /// passent par [`Store::draft_attachments_meta`].
+    /// The attachments of a draft WITH their bytes — reserved for
+    /// building a message (IMAP mirror, PJ-D6). Lists go through
+    /// [`Store::draft_attachments_meta`].
     pub fn draft_attachments_full(&self, draft_id: i64) -> Result<Vec<DraftAttachmentFull>, Error> {
         let mut stmt = self.conn().prepare(
             "SELECT name, mime, bytes FROM draft_attachments
@@ -502,8 +510,8 @@ impl Store {
         Ok(rows)
     }
 
-    /// Les pièces d'un brouillon, métadonnées seules, dans l'ordre du
-    /// geste — les blobs ne quittent la base qu'à la construction MIME.
+    /// The attachments of a draft, metadata only, in gesture order —
+    /// the blobs only leave the database when building the MIME.
     pub fn draft_attachments_meta(&self, draft_id: i64) -> Result<Vec<DraftAttachmentMeta>, Error> {
         let mut stmt = self.conn().prepare(
             "SELECT id, draft_id, name, mime, size FROM draft_attachments
@@ -523,16 +531,16 @@ impl Store {
         Ok(rows)
     }
 
-    /// Enregistre un brouillon rapatrié du serveur.
+    /// Records a draft pulled back from the server.
     ///
-    /// Il naît **propre** : `pushed_epoch` égale `updated_epoch`, donc le
-    /// cycle suivant ne le repoussera pas. Le repousser tel quel créerait
-    /// une seconde copie distante d'un message qu'on vient de lire — un
-    /// aller-retour qui se doublerait à chaque passage.
-    /// `body_html` (PLAN-COMPOSITION-HTML) : sans lui, un brouillon
-    /// RICHE poussé puis re-rapatrié (UIDVALIDITY changée, édition
-    /// webmail) revenait en texte nu — la mise en forme détruite en
-    /// silence par le chantier même qui l'avait créée.
+    /// It is born **clean**: `pushed_epoch` equals `updated_epoch`, so
+    /// the next cycle will not re-push it. Pushing it back as is would
+    /// create a second remote copy of a message we just read — a
+    /// round trip that would double on every pass.
+    /// `body_html` (PLAN-COMPOSITION-HTML): without it, a RICH draft
+    /// pushed then pulled back (UIDVALIDITY changed, webmail edit)
+    /// came back as plain text — the formatting silently destroyed by
+    /// the very job that had created it.
     #[allow(clippy::too_many_arguments)]
     pub fn import_remote_draft(
         &self,
@@ -556,19 +564,20 @@ impl Store {
         Ok(self.conn().last_insert_rowid())
     }
 
-    /// Retire un miroir devenu périmé — sa copie distante n'existe plus.
+    /// Removes a mirror that has become stale — its remote copy no
+    /// longer exists.
     ///
-    /// **Sans tombstone**, contrairement à [`Store::delete_draft`] : il n'y
-    /// a plus rien à supprimer côté serveur, et poser une pierre tombale
-    /// sur un UID libéré ferait purger le message qui le reprendra.
+    /// **Without a tombstone**, unlike [`Store::delete_draft`]: there is
+    /// nothing left to delete server-side, and planting a tombstone on
+    /// a freed UID would purge the message that reclaims it.
     pub fn drop_stale_draft(&self, id: i64) -> Result<(), Error> {
         self.conn()
             .execute("DELETE FROM drafts WHERE id = ?1", [id])?;
         Ok(())
     }
 
-    /// Copies distantes d'UN compte à purger (supprimées ou remplacées) —
-    /// chaque tombstone se purge via la connexion de SON compte.
+    /// Remote copies of ONE account to purge (deleted or replaced) —
+    /// each tombstone is purged via the connection of ITS OWN account.
     pub fn draft_tombstones(&self, account_id: i64) -> Result<Vec<Uid>, Error> {
         let mut stmt = self.conn().prepare(
             "SELECT remote_uid FROM draft_tombstones
@@ -588,11 +597,11 @@ impl Store {
         Ok(())
     }
 
-    /// Aligne l'état distant d'UN compte sur l'UIDVALIDITY observée de son
-    /// dossier Brouillons. Si elle a changé, les repères de CE compte sont
-    /// abandonnés : on re-poussera (doublon possible — acceptable ;
-    /// supprimer le mauvais UID, jamais). Retourne `true` si
-    /// réinitialisation. Les autres comptes ne sont pas touchés.
+    /// Aligns the remote state of ONE account on the observed
+    /// UIDVALIDITY of its Drafts folder. If it has changed, THIS
+    /// account's markers are abandoned: we will re-push (possible
+    /// duplicate — acceptable; deleting the wrong UID, never). Returns
+    /// `true` if a reset happened. Other accounts are not touched.
     pub fn align_drafts_uidvalidity(
         &self,
         account_id: i64,
@@ -632,44 +641,43 @@ impl Store {
     }
 }
 
-/// Ce qu'il faut faire du dossier Brouillons distant, une fois ses UIDs
-/// connus.
+/// What to do with the remote Drafts folder, once its UIDs are known.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DraftPull {
-    /// UIDs distants qu'on ne connaît pas : à rapatrier.
+    /// Remote UIDs we don't know about: to pull.
     pub fetch: Vec<Uid>,
-    /// Brouillons locaux qui ne sont QUE le miroir d'une copie distante
-    /// disparue : à retirer.
+    /// Local drafts that are ONLY the mirror of a remote copy that has
+    /// disappeared: to remove.
     ///
-    /// Jamais un brouillon édité ici — celui-là porte du texte que le
-    /// serveur n'a pas.
+    /// Never a draft edited here — that one carries text the server
+    /// does not have.
     pub stale: Vec<i64>,
 }
 
-/// Décide du tirage : quoi rapatrier, quels miroirs périmés retirer.
+/// Decides the pull: what to bring back, which stale mirrors to remove.
 ///
-/// Pur et sans I/O, comme le regroupement en fils : la décision se teste
-/// contre les scénarios du terrain, l'exécution reste à l'appelant.
+/// Pure and I/O-free, like thread grouping: the decision is tested
+/// against field scenarios, execution stays with the caller.
 ///
-/// Trois règles, dans l'ordre de leur importance :
+/// Three rules, in order of importance:
 ///
-/// 1. **On ne rapatrie pas ce qu'on a déjà.** Nos propres copies poussées
-///    (`remote_uid`) et celles en attente de purge (tombstones) sont
-///    ignorées, sinon chaque cycle dupliquerait la boîte.
-/// 2. **On ne retire qu'un miroir.** Un brouillon dont la copie distante
-///    a disparu est retiré *seulement* s'il n'a pas été édité ici depuis
-///    sa dernière poussée. Sinon il porte du texte que le serveur n'a
-///    jamais vu : il reste, et la poussée le remettra en place.
-/// 3. **Une liste distante vide ne retire rien.** C'est exactement la
-///    forme d'un échec partiel — dossier mal sélectionné, réponse
-///    tronquée — et le coût d'une erreur ici, c'est du texte effacé. Si
-///    l'utilisateur a vraiment tout supprimé ailleurs, ses copies
-///    survivent localement : un doublon, pas une perte.
+/// 1. **We do not pull back what we already have.** Our own pushed
+///    copies (`remote_uid`) and those awaiting purge (tombstones) are
+///    ignored, otherwise every cycle would duplicate the mailbox.
+/// 2. **We only remove a mirror.** A draft whose remote copy has
+///    disappeared is removed *only* if it has not been edited here
+///    since its last push. Otherwise it carries text the server has
+///    never seen: it stays, and the push will put it back in place.
+/// 3. **An empty remote list removes nothing.** That is exactly the
+///    shape of a partial failure — wrong folder selected, truncated
+///    response — and the cost of an error here is erased text. If the
+///    user really deleted everything elsewhere, their copies survive
+///    locally: a duplicate, not a loss.
 ///
-/// La règle 2 est ce qui fait qu'éditer un brouillon sur son téléphone
-/// **remplace** la copie locale au lieu de la doubler : le serveur
-/// remplace le message (ancien UID expurgé, nouveau créé), donc le même
-/// passage retire le miroir périmé et rapatrie la version fraîche.
+/// Rule 2 is what makes editing a draft on your phone **replace** the
+/// local copy instead of doubling it: the server replaces the message
+/// (old UID expunged, new one created), so the same pass removes the
+/// stale mirror and pulls the fresh version.
 pub fn plan_draft_pull(local: &[SavedDraft], remote: &[Uid], tombstones: &[Uid]) -> DraftPull {
     let mirrored: Vec<Uid> = local.iter().filter_map(|draft| draft.remote_uid).collect();
     let fetch = remote
@@ -693,11 +701,11 @@ pub fn plan_draft_pull(local: &[SavedDraft], remote: &[Uid], tombstones: &[Uid])
 }
 
 impl SavedDraft {
-    /// Le brouillon n'est-il que le reflet d'une copie distante ?
+    /// Is the draft only the reflection of a remote copy?
     ///
-    /// Vrai quand une copie a été poussée (ou rapatriée) et que rien n'a
-    /// été tapé ici depuis. C'est la seule condition sous laquelle le
-    /// retirer ne peut effacer aucun texte.
+    /// True when a copy has been pushed (or pulled) and nothing has
+    /// been typed here since. It is the only condition under which
+    /// removing it cannot erase any text.
     fn is_clean_mirror(&self) -> bool {
         match (self.remote_uid, self.pushed_epoch) {
             (Some(_), Some(pushed)) => pushed >= self.updated_epoch,
@@ -706,10 +714,11 @@ impl SavedDraft {
     }
 }
 
-/// Marque un brouillon modifié par un geste sur ses pièces, et rend le
-/// nouvel horodatage. MAX(…, +1) : la même mécanique que `save_draft` —
-/// l'horodatage avance STRICTEMENT, sinon un geste dans la milliseconde
-/// de la photo d'une poussée resterait invisible au cycle suivant.
+/// Marks a draft modified by a gesture on its attachments, and returns
+/// the new timestamp. MAX(…, +1): the same mechanics as `save_draft` —
+/// the timestamp advances STRICTLY, otherwise a gesture within the
+/// millisecond of a push's snapshot would stay invisible on the next
+/// cycle.
 fn touch_draft(conn: &rusqlite::Connection, draft_id: i64) -> Result<i64, Error> {
     let now = Utc::now().timestamp_millis();
     conn.execute(
@@ -723,11 +732,11 @@ fn touch_draft(conn: &rusqlite::Connection, draft_id: i64) -> Result<i64, Error>
     )?)
 }
 
-// Le fil se résout à la lecture — LEFT JOIN : un brouillon dont la
-// cible a disparu (boîte renommée, message expurgé) reste un brouillon,
-// simplement sans fil. `(mailbox_id, uid)` est la clé primaire des
-// enveloppes : la jointure ne peut pas multiplier les lignes, et les
-// brouillons se comptent en dizaines — le coût est nul.
+// The thread is resolved at read time — LEFT JOIN: a draft whose
+// target has disappeared (mailbox renamed, message purged) stays a
+// draft, simply without a thread. `(mailbox_id, uid)` is the primary
+// key of envelopes: the join cannot multiply rows, and drafts number
+// in the dozens — the cost is nil.
 const DRAFT_SELECT: &str = "SELECT d.id, d.account_id, d.to_raw, d.subject, d.body,
         d.reply_to_uid, d.reply_to_mailbox, re.thread_id,
         d.updated_epoch, d.remote_uid, d.pushed_epoch, d.cc_raw, d.bcc_raw,
@@ -763,35 +772,35 @@ mod tests {
     fn store() -> (Store, i64) {
         let store = Store::open_in_memory().unwrap();
         let account = store
-            .adopt_or_create_account("test@exemple.fr", "gmail")
+            .adopt_or_create_account("test@example.com", "gmail")
             .unwrap();
         (store, account)
     }
 
-    /// R3 (PLAN-RETOURS-6) : le marquage « important » suit le
-    /// brouillon — une reprise le retrouve — et le basculer SEUL est
-    /// une vraie modification (l'horodatage avance, le reflet suivra ;
-    /// sans quoi l'anti-churn avalerait le geste).
+    /// R3 (PLAN-RETOURS-6): the "important" mark follows the draft — a
+    /// resume finds it again — and toggling it ALONE is a real
+    /// modification (the timestamp advances, the mirror will follow;
+    /// otherwise the anti-churn guard would swallow the gesture).
     #[test]
     fn save_draft_roundtrips_important_and_toggling_counts() {
         let (store, account) = store();
-        let contenu = |important: bool| DraftContent {
+        let content = |important: bool| DraftContent {
             to_raw: "a@b.fr",
             cc_raw: "",
             bcc_raw: "",
-            subject: "Sujet",
-            body: "corps",
+            subject: "Subject",
+            body: "body",
             body_html: None,
             reply_to_uid: None,
             reply_to_mailbox: None,
             important,
         };
         let saved = store
-            .save_draft(account, None, None, contenu(true))
+            .save_draft(account, None, None, content(true))
             .unwrap();
         assert!(
             store.drafts().unwrap()[0].important,
-            "la reprise retrouve le marquage"
+            "the resume finds the mark again"
         );
 
         let again = store
@@ -799,12 +808,12 @@ mod tests {
                 account,
                 Some(saved.id),
                 Some(saved.updated_epoch),
-                contenu(false),
+                content(false),
             )
             .unwrap();
         assert!(
             again.updated_epoch > saved.updated_epoch,
-            "basculer le marquage seul avance l'horodatage"
+            "toggling the mark alone advances the timestamp"
         );
         assert!(!store.drafts().unwrap()[0].important);
     }
@@ -818,12 +827,12 @@ mod tests {
                 None,
                 None,
                 DraftContent {
-                    to_raw: "adresse-incomp",
+                    to_raw: "incomplete-addr",
                     cc_raw: "",
                     bcc_raw: "",
                     body_html: None,
-                    subject: "Sujet",
-                    body: "corps\nsur deux lignes",
+                    subject: "Subject",
+                    body: "body\non two lines",
                     reply_to_uid: Some(42),
                     reply_to_mailbox: None,
                     important: false,
@@ -836,52 +845,55 @@ mod tests {
         assert_eq!(drafts.len(), 1);
         let draft = &drafts[0];
         assert_eq!(draft.id, id);
-        assert_eq!(draft.to_raw, "adresse-incomp", "le brut se garde tel quel");
-        assert_eq!(draft.subject, "Sujet");
-        assert_eq!(draft.body, "corps\nsur deux lignes");
+        assert_eq!(
+            draft.to_raw, "incomplete-addr",
+            "the raw value is kept as is"
+        );
+        assert_eq!(draft.subject, "Subject");
+        assert_eq!(draft.body, "body\non two lines");
         assert_eq!(draft.reply_to_uid, Some(42));
     }
 
-    /// PLAN-COMPOSITION-HTML : le corps riche survit à la sauvegarde et à
-    /// la relecture ; un brouillon sans HTML relit `None` — jamais un
-    /// pseudo-contenu (c'est `None` qui dit « chemin texte »).
+    /// PLAN-COMPOSITION-HTML: the rich body survives the save and the
+    /// re-read; a draft without HTML reads back `None` — never a
+    /// pseudo-content (it is `None` that says "text path").
     #[test]
     fn save_draft_roundtrips_body_html() {
-        let (riche_store, compte_riche) = store();
-        riche_store
+        let (rich_store, rich_account) = store();
+        rich_store
             .save_draft(
-                compte_riche,
+                rich_account,
                 None,
                 None,
                 DraftContent {
                     to_raw: "a@b.fr",
                     cc_raw: "",
                     bcc_raw: "",
-                    subject: "Sujet",
-                    body: "gras",
-                    body_html: Some("<b>gras</b>"),
+                    subject: "Subject",
+                    body: "bold",
+                    body_html: Some("<b>bold</b>"),
                     reply_to_uid: None,
                     reply_to_mailbox: None,
                     important: false,
                 },
             )
             .unwrap();
-        let riche = &riche_store.drafts().unwrap()[0];
-        assert_eq!(riche.body_html.as_deref(), Some("<b>gras</b>"));
-        assert_eq!(riche.body, "gras", "le texte dérivé reste peuplé");
+        let rich = &rich_store.drafts().unwrap()[0];
+        assert_eq!(rich.body_html.as_deref(), Some("<b>bold</b>"));
+        assert_eq!(rich.body, "bold", "the derived text stays populated");
 
-        let (nu_store, compte) = store();
-        nu_store
+        let (plain_store, account) = store();
+        plain_store
             .save_draft(
-                compte,
+                account,
                 None,
                 None,
                 DraftContent {
                     to_raw: "a@b.fr",
                     cc_raw: "",
                     bcc_raw: "",
-                    subject: "Sujet",
-                    body: "texte",
+                    subject: "Subject",
+                    body: "text",
                     body_html: None,
                     reply_to_uid: None,
                     reply_to_mailbox: None,
@@ -889,70 +901,71 @@ mod tests {
                 },
             )
             .unwrap();
-        assert_eq!(nu_store.drafts().unwrap()[0].body_html, None);
+        assert_eq!(plain_store.drafts().unwrap()[0].body_html, None);
     }
 
-    /// Le tirage conserve la mise en forme : un brouillon riche poussé
-    /// puis re-rapatrié revient AVEC son HTML — et naît propre (pas à
-    /// re-pousser), comme tout import.
+    /// The pull preserves formatting: a rich draft pushed then pulled
+    /// back comes back WITH its HTML — and is born clean (not to
+    /// re-push), like any import.
     #[test]
     fn import_remote_draft_keeps_the_rich_body() {
         let (store, account) = store();
         store
-            .import_remote_draft(account, 42, "a@b.fr", "s", "gras", Some("<b>gras</b>"))
+            .import_remote_draft(account, 42, "a@b.fr", "s", "bold", Some("<b>bold</b>"))
             .unwrap();
         let draft = &store.drafts().unwrap()[0];
-        assert_eq!(draft.body_html.as_deref(), Some("<b>gras</b>"));
-        assert_eq!(draft.body, "gras");
+        assert_eq!(draft.body_html.as_deref(), Some("<b>bold</b>"));
+        assert_eq!(draft.body, "bold");
         assert!(
             store.drafts_to_push(account).unwrap().is_empty(),
-            "un import naît propre"
+            "an import is born clean"
         );
     }
 
-    /// Le corps riche compte dans la détection « contenu identique » :
-    /// une mise en forme SEULE (même texte dérivé) doit re-pousser le
-    /// brouillon — sinon le reflet Gmail garderait la version d'avant.
+    /// The rich body counts in the "identical content" detection: a
+    /// formatting change ALONE (same derived text) must re-push the
+    /// draft — otherwise the Gmail mirror would keep the previous
+    /// version.
     #[test]
     fn body_html_change_marks_the_draft_dirty() {
         let (store, account) = store();
-        let contenu = |html: Option<&'static str>| DraftContent {
+        let content = |html: Option<&'static str>| DraftContent {
             to_raw: "a@b.fr",
             cc_raw: "",
             bcc_raw: "",
             subject: "s",
-            body: "texte",
+            body: "text",
             body_html: html,
             reply_to_uid: None,
             reply_to_mailbox: None,
             important: false,
         };
         let id = store
-            .save_draft(account, None, None, contenu(Some("texte")))
+            .save_draft(account, None, None, content(Some("text")))
             .unwrap()
             .id;
         let epoch = store.drafts_to_push(account).unwrap()[0].updated_epoch;
         store.record_draft_pushed(id, Some(101), epoch).unwrap();
 
         store
-            .save_draft(account, Some(id), None, contenu(Some("<b>texte</b>")))
+            .save_draft(account, Some(id), None, content(Some("<b>text</b>")))
             .unwrap();
         assert_eq!(
             store.drafts_to_push(account).unwrap().len(),
             1,
-            "la mise en forme seule doit re-pousser"
+            "formatting alone must re-push"
         );
     }
 
-    /// A54 : Cc/Cci survivent à la sauvegarde et à la relecture — la couche
-    /// qui empêche leur perte à la reprise d'un brouillon. Un brouillon
-    /// sans copie relit des chaînes VIDES, jamais un pseudo-contenu.
+    /// A54: Cc/Bcc survive the save and the re-read — the layer that
+    /// prevents their loss when a draft is resumed. A draft with no
+    /// copy reads back EMPTY strings, never a pseudo-content.
     #[test]
     fn save_draft_roundtrips_cc_and_bcc() {
-        let (avec_store, compte) = store();
-        avec_store
+        let (with_store, account) = store();
+        with_store
             .save_draft(
-                compte,
+                account,
                 None,
                 None,
                 DraftContent {
@@ -960,22 +973,22 @@ mod tests {
                     cc_raw: "c@b.fr, d@b.fr",
                     bcc_raw: "secret@b.fr",
                     body_html: None,
-                    subject: "Sujet",
-                    body: "corps",
+                    subject: "Subject",
+                    body: "body",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
                     important: false,
                 },
             )
             .unwrap();
-        let avec = &avec_store.drafts().unwrap()[0];
-        assert_eq!(avec.cc_raw, "c@b.fr, d@b.fr");
-        assert_eq!(avec.bcc_raw, "secret@b.fr");
+        let with = &with_store.drafts().unwrap()[0];
+        assert_eq!(with.cc_raw, "c@b.fr, d@b.fr");
+        assert_eq!(with.bcc_raw, "secret@b.fr");
 
-        let (nu_store, compte) = store();
-        nu_store
+        let (without_store, account) = store();
+        without_store
             .save_draft(
-                compte,
+                account,
                 None,
                 None,
                 DraftContent {
@@ -983,17 +996,17 @@ mod tests {
                     cc_raw: "",
                     bcc_raw: "",
                     body_html: None,
-                    subject: "Sujet",
-                    body: "corps",
+                    subject: "Subject",
+                    body: "body",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
                     important: false,
                 },
             )
             .unwrap();
-        let sans = &nu_store.drafts().unwrap()[0];
-        assert_eq!(sans.cc_raw, "");
-        assert_eq!(sans.bcc_raw, "");
+        let without = &without_store.drafts().unwrap()[0];
+        assert_eq!(without.cc_raw, "");
+        assert_eq!(without.bcc_raw, "");
     }
 
     #[test]
@@ -1010,7 +1023,7 @@ mod tests {
                     bcc_raw: "",
                     body_html: None,
                     subject: "v1",
-                    body: "texte",
+                    body: "text",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
                     important: false,
@@ -1029,7 +1042,7 @@ mod tests {
                     bcc_raw: "",
                     body_html: None,
                     subject: "v2",
-                    body: "texte enrichi",
+                    body: "enriched text",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
                     important: false,
@@ -1040,13 +1053,13 @@ mod tests {
 
         assert_eq!(same, id);
         let drafts = store.drafts().unwrap();
-        assert_eq!(drafts.len(), 1, "mise à jour, pas duplication");
+        assert_eq!(drafts.len(), 1, "update, not duplication");
         assert_eq!(drafts[0].subject, "v2");
         assert_eq!(drafts[0].to_raw, "a@b.fr");
     }
 
-    /// Le filet ne doit jamais avoir de maille manquante : un id périmé
-    /// (brouillon supprimé entre-temps) ré-insère au lieu de perdre.
+    /// The safety net must never have a missing mesh: a stale id (draft
+    /// deleted in the meantime) re-inserts instead of losing the text.
     #[test]
     fn save_with_stale_id_still_persists_the_text() {
         let (store, account) = store();
@@ -1061,7 +1074,7 @@ mod tests {
                     bcc_raw: "",
                     body_html: None,
                     subject: "s",
-                    body: "précieux",
+                    body: "precious",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
                     important: false,
@@ -1082,7 +1095,7 @@ mod tests {
                     bcc_raw: "",
                     body_html: None,
                     subject: "s",
-                    body: "précieux",
+                    body: "precious",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
                     important: false,
@@ -1092,7 +1105,7 @@ mod tests {
 
         let drafts = store.drafts().unwrap();
         assert_eq!(drafts.len(), 1);
-        assert_eq!(drafts[0].body, "précieux");
+        assert_eq!(drafts[0].body, "precious");
     }
 
     #[test]
@@ -1108,7 +1121,7 @@ mod tests {
                     cc_raw: "",
                     bcc_raw: "",
                     body_html: None,
-                    subject: "premier",
+                    subject: "first",
                     body: "a",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
@@ -1137,7 +1150,7 @@ mod tests {
 
         let drafts = store.drafts().unwrap();
         let subjects: Vec<&str> = drafts.iter().map(|draft| draft.subject.as_str()).collect();
-        assert_eq!(subjects, vec!["second", "premier"]);
+        assert_eq!(subjects, vec!["second", "first"]);
     }
 
     #[test]
@@ -1191,7 +1204,7 @@ mod tests {
         assert_eq!(
             store.drafts_to_push(account).unwrap().len(),
             1,
-            "neuf = à pousser"
+            "fresh = to push"
         );
 
         let draft = &store.drafts_to_push(account).unwrap()[0];
@@ -1200,7 +1213,7 @@ mod tests {
             .unwrap();
         assert!(
             store.drafts_to_push(account).unwrap().is_empty(),
-            "poussé = propre"
+            "pushed = clean"
         );
 
         store
@@ -1224,13 +1237,13 @@ mod tests {
         assert_eq!(
             store.drafts_to_push(account).unwrap().len(),
             1,
-            "édité = de nouveau à pousser"
+            "edited = to push again"
         );
     }
 
-    /// Une sauvegarde au contenu identique ne marque rien à pousser :
-    /// sinon chaque fermeture de composition re-pousserait une copie
-    /// octet pour octet identique vers Gmail (churn observé au terrain).
+    /// A save with identical content marks nothing to push: otherwise
+    /// every close of a composition would re-push a byte-for-byte
+    /// identical copy to Gmail (churn observed in the field).
     #[test]
     fn identical_resave_does_not_mark_dirty_again() {
         let (store, account) = store();
@@ -1245,7 +1258,7 @@ mod tests {
                     bcc_raw: "",
                     body_html: None,
                     subject: "s",
-                    body: "texte",
+                    body: "text",
                     reply_to_uid: Some(1),
                     reply_to_mailbox: None,
                     important: false,
@@ -1267,7 +1280,7 @@ mod tests {
                     bcc_raw: "",
                     body_html: None,
                     subject: "s",
-                    body: "texte",
+                    body: "text",
                     reply_to_uid: Some(1),
                     reply_to_mailbox: None,
                     important: false,
@@ -1277,12 +1290,12 @@ mod tests {
 
         assert!(
             store.drafts_to_push(account).unwrap().is_empty(),
-            "contenu identique : rien à re-pousser"
+            "identical content: nothing to re-push"
         );
     }
 
-    /// L'invariant anti-perte : une édition PENDANT la poussée laisse le
-    /// brouillon à pousser — le repère est une photo, pas un drapeau.
+    /// The anti-loss invariant: an edit DURING the push leaves the
+    /// draft still to push — the marker is a snapshot, not a flag.
     #[test]
     fn edit_during_push_stays_dirty() {
         let (store, account) = store();
@@ -1307,9 +1320,9 @@ mod tests {
             .id;
         let snapshot = store.drafts_to_push(account).unwrap()[0].updated_epoch;
 
-        // L'utilisateur édite pendant que la poussée est en vol — même
-        // dans la même milliseconde, l'horodatage strictement croissant
-        // rend l'édition détectable…
+        // The user edits while the push is in flight — even within the
+        // same millisecond, the strictly increasing timestamp makes the
+        // edit detectable…
         store
             .save_draft(
                 account,
@@ -1321,19 +1334,19 @@ mod tests {
                     bcc_raw: "",
                     body_html: None,
                     subject: "s",
-                    body: "v2 éditée en vol",
+                    body: "v2 edited in flight",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
                     important: false,
                 },
             )
             .unwrap();
-        // …puis la poussée (de v1) aboutit et se consigne avec SA photo.
+        // …then the push (of v1) succeeds and records with ITS snapshot.
         store.record_draft_pushed(id, Some(101), snapshot).unwrap();
 
         let to_push = store.drafts_to_push(account).unwrap();
-        assert_eq!(to_push.len(), 1, "v2 doit repartir au prochain cycle");
-        assert_eq!(to_push[0].body, "v2 éditée en vol");
+        assert_eq!(to_push.len(), 1, "v2 must go out again on the next cycle");
+        assert_eq!(to_push[0].body, "v2 edited in flight");
     }
 
     #[test]
@@ -1380,7 +1393,7 @@ mod tests {
                     cc_raw: "",
                     bcc_raw: "",
                     body_html: None,
-                    subject: "poussé",
+                    subject: "pushed",
                     body: "b",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
@@ -1416,17 +1429,17 @@ mod tests {
         assert_eq!(
             store.draft_tombstones(account).unwrap(),
             vec![303],
-            "jamais de tombstone sans copie distante enregistrée"
+            "never a tombstone without a registered remote copy"
         );
     }
 
-    /// La garde UIDVALIDITY est PAR COMPTE : réinitialiser les repères
-    /// de A ne touche ni les repères ni les tombstones de B.
+    /// The UIDVALIDITY guard is PER ACCOUNT: resetting A's markers
+    /// touches neither B's markers nor B's tombstones.
     #[test]
     fn align_resets_only_the_given_account() {
         let (store, account) = store();
         let other = store
-            .adopt_or_create_account("autre@exemple.fr", "gmail")
+            .adopt_or_create_account("other@example.com", "gmail")
             .unwrap();
         let draft_a = store
             .save_draft(
@@ -1479,31 +1492,31 @@ mod tests {
 
         assert!(
             store.align_drafts_uidvalidity(account, 6).unwrap(),
-            "reset de A"
+            "A reset"
         );
 
         assert_eq!(
             store.drafts_to_push(account).unwrap().len(),
             1,
-            "A doit tout re-pousser"
+            "A must re-push everything"
         );
         assert!(
             store.drafts_to_push(other).unwrap().is_empty(),
-            "B n'est pas concerné"
+            "B is not affected"
         );
         let drafts = store.drafts().unwrap();
         let of_b = drafts.iter().find(|draft| draft.id == draft_b).unwrap();
-        assert_eq!(of_b.remote_uid, Some(22), "les repères de B survivent");
+        assert_eq!(of_b.remote_uid, Some(22), "B's markers survive");
     }
 
-    /// UIDVALIDITY changée : on abandonne tous les repères — un doublon
-    /// est acceptable, supprimer le mauvais UID jamais.
+    /// UIDVALIDITY changed: we abandon all markers — a duplicate is
+    /// acceptable, deleting the wrong UID never is.
     #[test]
     fn uidvalidity_change_resets_remote_state() {
         let (store, account) = store();
         assert!(
             !store.align_drafts_uidvalidity(account, 7).unwrap(),
-            "première vue"
+            "first view"
         );
         let id = store
             .save_draft(
@@ -1525,15 +1538,15 @@ mod tests {
             .unwrap()
             .id;
         store.record_draft_pushed(id, Some(404), 1).unwrap();
-        store.record_draft_pushed(id, Some(505), 2).unwrap(); // 404 en tombstone
+        store.record_draft_pushed(id, Some(505), 2).unwrap(); // 404 becomes a tombstone
 
         assert!(
             !store.align_drafts_uidvalidity(account, 7).unwrap(),
-            "inchangée"
+            "unchanged"
         );
         assert!(
             store.align_drafts_uidvalidity(account, 8).unwrap(),
-            "changée : reset"
+            "changed: reset"
         );
 
         assert!(store.draft_tombstones(account).unwrap().is_empty());
@@ -1542,35 +1555,35 @@ mod tests {
         assert_eq!(
             store.drafts_to_push(account).unwrap().len(),
             1,
-            "tout est à re-pousser"
+            "everything is to re-push"
         );
     }
 }
 
-/// L'édition concurrente : deux écrivains sur le même brouillon.
+/// Concurrent editing: two writers on the same draft.
 #[cfg(test)]
-mod tests_concurrence {
+mod tests_concurrency {
     use super::*;
 
     fn store() -> (Store, i64) {
         let store = Store::open_in_memory().unwrap();
         let account = store
-            .adopt_or_create_account("test@exemple.fr", "gmail")
+            .adopt_or_create_account("test@example.com", "gmail")
             .unwrap();
         (store, account)
     }
 
-    /// LE défaut du terrain : le composeur tient une copie en mémoire, le
-    /// tirage remplace le brouillon sous lui, et la sauvegarde suivante
-    /// écrasait la version venue d'ailleurs.
+    /// THE field defect: the composer holds an in-memory copy, the pull
+    /// replaces the draft out from under it, and the next save used to
+    /// overwrite the version that came from elsewhere.
     ///
-    /// Les deux textes doivent survivre. C'est la règle d'or du module —
-    /// un doublon est acceptable, du texte perdu jamais — appliquée à
-    /// l'édition concurrente.
+    /// Both texts must survive. This is the module's golden rule — a
+    /// duplicate is acceptable, lost text never is — applied to
+    /// concurrent editing.
     #[test]
-    fn une_edition_concurrente_conserve_les_deux_textes() {
+    fn a_concurrent_edit_keeps_both_texts() {
         let (store, account) = store();
-        let ouvert = store
+        let open = store
             .save_draft(
                 account,
                 None,
@@ -1580,8 +1593,8 @@ mod tests_concurrence {
                     cc_raw: "",
                     bcc_raw: "",
                     body_html: None,
-                    subject: "Devis",
-                    body: "version composeur",
+                    subject: "Quote",
+                    body: "composer version",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
                     important: false,
@@ -1589,19 +1602,19 @@ mod tests_concurrence {
             )
             .unwrap();
 
-        // Quelqu'un d'autre écrit : le tirage, en pratique.
+        // Someone else writes: the pull, in practice.
         store
             .save_draft(
                 account,
-                Some(ouvert.id),
+                Some(open.id),
                 None,
                 DraftContent {
                     to_raw: "a@b.fr",
                     cc_raw: "",
                     bcc_raw: "",
                     body_html: None,
-                    subject: "Devis",
-                    body: "version venue d'ailleurs",
+                    subject: "Quote",
+                    body: "version from elsewhere",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
                     important: false,
@@ -1609,19 +1622,19 @@ mod tests_concurrence {
             )
             .unwrap();
 
-        // Le composeur sauvegarde, en croyant modifier ce qu'il a lu.
-        let bilan = store
+        // The composer saves, believing it is modifying what it read.
+        let outcome = store
             .save_draft(
                 account,
-                Some(ouvert.id),
-                Some(ouvert.updated_epoch),
+                Some(open.id),
+                Some(open.updated_epoch),
                 DraftContent {
                     to_raw: "a@b.fr",
                     cc_raw: "",
                     bcc_raw: "",
                     body_html: None,
-                    subject: "Devis",
-                    body: "version composeur",
+                    subject: "Quote",
+                    body: "composer version",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
                     important: false,
@@ -1629,27 +1642,30 @@ mod tests_concurrence {
             )
             .unwrap();
 
-        assert!(bilan.forked, "le texte de l'autre côté n'est pas écrasé");
-        assert_ne!(bilan.id, ouvert.id, "il est conservé à part");
-        let textes: Vec<String> = store
+        assert!(
+            outcome.forked,
+            "the text from the other side is not overwritten"
+        );
+        assert_ne!(outcome.id, open.id, "it is kept apart");
+        let texts: Vec<String> = store
             .drafts()
             .unwrap()
             .into_iter()
             .map(|draft| draft.body)
             .collect();
-        assert_eq!(textes.len(), 2);
-        assert!(textes.contains(&"version composeur".to_string()));
-        assert!(textes.contains(&"version venue d'ailleurs".to_string()));
+        assert_eq!(texts.len(), 2);
+        assert!(texts.contains(&"composer version".to_string()));
+        assert!(texts.contains(&"version from elsewhere".to_string()));
     }
 
-    /// L'aller-retour : l'horodatage rendu doit permettre d'enchaîner les
-    /// sauvegardes sans déclencher de faux conflit. Le piège est réel —
-    /// une sauvegarde au contenu identique ne touche PAS à l'horodatage,
-    /// donc rendre « maintenant » ferait diverger l'éditeur de la base.
+    /// The round trip: the returned timestamp must allow chaining saves
+    /// without triggering a false conflict. The trap is real — a save
+    /// with identical content does NOT touch the timestamp, so
+    /// returning "now" would make the editor diverge from the database.
     #[test]
-    fn l_horodatage_rendu_permet_d_enchainer_les_sauvegardes() {
+    fn the_returned_timestamp_allows_chaining_saves() {
         let (store, account) = store();
-        let mut bilan = store
+        let mut outcome = store
             .save_draft(
                 account,
                 None,
@@ -1659,8 +1675,8 @@ mod tests_concurrence {
                     cc_raw: "",
                     bcc_raw: "",
                     body_html: None,
-                    subject: "Devis",
-                    body: "un",
+                    subject: "Quote",
+                    body: "one",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
                     important: false,
@@ -1668,36 +1684,36 @@ mod tests_concurrence {
             )
             .unwrap();
 
-        for texte in ["deux", "deux", "trois"] {
-            bilan = store
+        for text in ["two", "two", "three"] {
+            outcome = store
                 .save_draft(
                     account,
-                    Some(bilan.id),
-                    Some(bilan.updated_epoch),
+                    Some(outcome.id),
+                    Some(outcome.updated_epoch),
                     DraftContent {
                         to_raw: "a@b.fr",
                         cc_raw: "",
                         bcc_raw: "",
                         body_html: None,
-                        subject: "Devis",
-                        body: texte,
+                        subject: "Quote",
+                        body: text,
                         reply_to_uid: None,
                         reply_to_mailbox: None,
                         important: false,
                     },
                 )
                 .unwrap();
-            assert!(!bilan.forked, "aucun conflit : c'est le même éditeur");
+            assert!(!outcome.forked, "no conflict: it is the same editor");
         }
         assert_eq!(store.drafts().unwrap().len(), 1);
     }
 
-    /// Sans `base_epoch`, rien ne change : les appelants qui ne tiennent
-    /// aucune copie en mémoire n'ont rien à écraser.
+    /// Without `base_epoch`, nothing changes: callers that hold no
+    /// in-memory copy have nothing to overwrite.
     #[test]
-    fn sans_horodatage_de_reference_la_sauvegarde_met_a_jour_en_place() {
+    fn without_a_reference_timestamp_the_save_updates_in_place() {
         let (store, account) = store();
-        let premier = store
+        let first = store
             .save_draft(
                 account,
                 None,
@@ -1707,8 +1723,8 @@ mod tests_concurrence {
                     cc_raw: "",
                     bcc_raw: "",
                     body_html: None,
-                    subject: "Devis",
-                    body: "un",
+                    subject: "Quote",
+                    body: "one",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
                     important: false,
@@ -1718,15 +1734,15 @@ mod tests_concurrence {
         let second = store
             .save_draft(
                 account,
-                Some(premier.id),
+                Some(first.id),
                 None,
                 DraftContent {
                     to_raw: "a@b.fr",
                     cc_raw: "",
                     bcc_raw: "",
                     body_html: None,
-                    subject: "Devis",
-                    body: "deux",
+                    subject: "Quote",
+                    body: "two",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
                     important: false,
@@ -1735,23 +1751,24 @@ mod tests_concurrence {
             .unwrap();
 
         assert!(!second.forked);
-        assert_eq!(second.id, premier.id);
+        assert_eq!(second.id, first.id);
         assert_eq!(store.drafts().unwrap().len(), 1);
     }
 
-    /// Le tirage ne met PAS le brouillon à jour : il le **remplace**
-    /// ([`plan_draft_pull`]) — le miroir périmé est retiré, la version
-    /// fraîche arrive sous un nouvel identifiant. Le composeur, lui, tient
-    /// toujours l'ancien : la ligne qu'il croit modifier n'existe plus.
+    /// The pull does NOT update the draft: it **replaces** it
+    /// ([`plan_draft_pull`]) — the stale mirror is removed, the fresh
+    /// version arrives under a new identifier. The composer, meanwhile,
+    /// still holds the old one: the row it believes it is modifying no
+    /// longer exists.
     ///
-    /// C'est un conflit au même titre qu'une réécriture en place, et le
-    /// seul que le terrain produise vraiment. La détection ne le voyait
-    /// pas : elle compare deux horodatages, et il n'y en a plus qu'un.
-    /// Symptôme rapporté : « le message rouge ne s'affiche pas ».
+    /// This is a conflict just as much as an in-place rewrite, and the
+    /// only one the field actually produces. Detection did not see it:
+    /// it compares two timestamps, and there is now only one left.
+    /// Reported symptom: "the red message doesn't show up."
     #[test]
-    fn un_brouillon_remplace_par_le_tirage_est_aussi_un_conflit() {
+    fn a_draft_replaced_by_the_pull_is_also_a_conflict() {
         let (store, account) = store();
-        let ouvert = store
+        let open = store
             .save_draft(
                 account,
                 None,
@@ -1761,22 +1778,22 @@ mod tests_concurrence {
                     cc_raw: "",
                     bcc_raw: "",
                     body_html: None,
-                    subject: "Devis",
-                    body: "version composeur",
+                    subject: "Quote",
+                    body: "composer version",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
                     important: false,
                 },
             )
             .unwrap();
-        // Un brouillon PLUS RÉCENT existe, et c'est ce qui rend le défaut
-        // visible. SQLite attribue `max(rowid) + 1` : si le brouillon
-        // édité était le dernier, l'import reprendrait l'identifiant qu'il
-        // vient de libérer, la ligne réapparaîtrait sous le composeur et
-        // la détection retomberait sur ses pieds **par accident**. Un seul
-        // brouillon plus jeune suffit à supprimer cette coïncidence — d'où
-        // un défaut qui ne se manifeste qu'une fois sur deux, exactement
-        // ce que le terrain a rapporté.
+        // A MORE RECENT draft exists, and that is what makes the defect
+        // visible. SQLite assigns `max(rowid) + 1`: if the edited draft
+        // were the last one, the import would reclaim the identifier it
+        // just freed, the row would reappear under the composer, and
+        // detection would land on its feet **by accident**. A single
+        // younger draft is enough to remove that coincidence — hence a
+        // defect that only shows up half the time, exactly what the
+        // field reported.
         store
             .save_draft(
                 account,
@@ -1787,7 +1804,7 @@ mod tests_concurrence {
                     cc_raw: "",
                     bcc_raw: "",
                     body_html: None,
-                    subject: "Autre",
+                    subject: "Other",
                     body: "z",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
@@ -1796,13 +1813,13 @@ mod tests_concurrence {
             )
             .unwrap();
         store
-            .record_draft_pushed(ouvert.id, Some(7), ouvert.updated_epoch)
+            .record_draft_pushed(open.id, Some(7), open.updated_epoch)
             .unwrap();
 
-        // Retouché dans le webmail : le serveur expurge 7 et crée 8.
+        // Edited again in the webmail: the server expunges 7 and creates 8.
         let local = store.drafts_of(account).unwrap();
         let plan = plan_draft_pull(&local, &[8], &[]);
-        assert_eq!(plan.stale, vec![ouvert.id], "le miroir périmé part");
+        assert_eq!(plan.stale, vec![open.id], "the stale mirror leaves");
         for id in plan.stale {
             store.drop_stale_draft(id).unwrap();
         }
@@ -1812,26 +1829,26 @@ mod tests_concurrence {
                     account,
                     uid,
                     "a@b.fr",
-                    "Devis",
-                    "version venue d'ailleurs",
+                    "Quote",
+                    "version from elsewhere",
                     None,
                 )
                 .unwrap();
         }
 
-        // Le composeur se ferme et sauvegarde ce qu'il tenait.
-        let bilan = store
+        // The composer closes and saves what it was holding.
+        let outcome = store
             .save_draft(
                 account,
-                Some(ouvert.id),
-                Some(ouvert.updated_epoch),
+                Some(open.id),
+                Some(open.updated_epoch),
                 DraftContent {
                     to_raw: "a@b.fr",
                     cc_raw: "",
                     bcc_raw: "",
                     body_html: None,
-                    subject: "Devis",
-                    body: "version composeur",
+                    subject: "Quote",
+                    body: "composer version",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
                     important: false,
@@ -1840,37 +1857,37 @@ mod tests_concurrence {
             .unwrap();
 
         assert!(
-            bilan.forked,
-            "la ligne visée avait disparu sous le composeur : le taire \
-             laisse l'utilisateur avec deux textes sans le savoir"
+            outcome.forked,
+            "the targeted row had disappeared under the composer: staying \
+             silent leaves the user with two texts without knowing it"
         );
-        let textes: Vec<String> = store
+        let texts: Vec<String> = store
             .drafts()
             .unwrap()
             .into_iter()
             .map(|draft| draft.body)
             .collect();
-        assert!(textes.contains(&"version composeur".to_string()));
-        assert!(textes.contains(&"version venue d'ailleurs".to_string()));
+        assert!(texts.contains(&"composer version".to_string()));
+        assert!(texts.contains(&"version from elsewhere".to_string()));
     }
 }
 
-/// Le tirage a ses propres scenarios : ils ne partagent ni decor ni
-/// invariants avec ceux de la poussee, plus haut.
+/// The pull has its own scenarios: they share neither fixtures nor
+/// invariants with those of the push, above.
 #[cfg(test)]
-mod tests_tirage {
+mod tests_pull {
     use super::*;
 
     fn draft(id: i64, remote_uid: Option<Uid>, updated: i64, pushed: Option<i64>) -> SavedDraft {
         SavedDraft {
             id,
             account_id: 1,
-            to_raw: "alice@exemple.fr".to_string(),
+            to_raw: "alice@example.com".to_string(),
             cc_raw: String::new(),
             bcc_raw: String::new(),
             body_html: None,
-            subject: "Devis".to_string(),
-            body: "Bonjour".to_string(),
+            subject: "Quote".to_string(),
+            body: "Hello".to_string(),
             reply_to_uid: None,
             reply_to_mailbox: None,
             important: false,
@@ -1881,96 +1898,96 @@ mod tests_tirage {
         }
     }
 
-    /// Le brouillon écrit dans le webmail : personne ne le connaît ici.
+    /// The draft written in the webmail: nobody knows it here.
     #[test]
-    fn un_brouillon_distant_inconnu_est_rapatrie() {
+    fn an_unknown_remote_draft_is_pulled_back() {
         let plan = plan_draft_pull(&[], &[7], &[]);
         assert_eq!(plan.fetch, vec![7]);
         assert!(plan.stale.is_empty());
     }
 
-    /// Notre propre copie poussée ne doit pas revenir : sans cette garde,
-    /// chaque cycle dupliquerait la boîte de brouillons.
+    /// Our own pushed copy must not come back: without this guard,
+    /// every cycle would duplicate the drafts mailbox.
     #[test]
-    fn notre_propre_copie_poussee_n_est_pas_rapatriee() {
+    fn our_own_pushed_copy_is_not_pulled_back() {
         let plan = plan_draft_pull(&[draft(1, Some(7), 100, Some(100))], &[7], &[]);
         assert!(plan.fetch.is_empty());
-        assert!(plan.stale.is_empty(), "le miroir est à jour");
+        assert!(plan.stale.is_empty(), "the mirror is up to date");
     }
 
-    /// Une copie qu'on a demandé à supprimer mais pas encore purgée est
-    /// encore là : la rapatrier ressusciterait un brouillon jeté.
+    /// A copy we asked to delete but haven't purged yet is still there:
+    /// pulling it back would resurrect a discarded draft.
     #[test]
-    fn une_copie_en_attente_de_purge_n_est_pas_rapatriee() {
+    fn a_copy_awaiting_purge_is_not_pulled_back() {
         let plan = plan_draft_pull(&[], &[7], &[7]);
         assert!(plan.fetch.is_empty());
     }
 
-    /// Éditer un brouillon ailleurs : le serveur expurge l'ancien message
-    /// et en crée un neuf. Le même passage doit donc retirer le miroir
-    /// périmé ET rapatrier la version fraîche — remplacer, pas doubler.
+    /// Editing a draft elsewhere: the server expunges the old message
+    /// and creates a new one. The same pass must therefore remove the
+    /// stale mirror AND pull the fresh version — replace, not double.
     #[test]
-    fn editer_ailleurs_remplace_le_miroir_au_lieu_de_le_doubler() {
+    fn editing_elsewhere_replaces_the_mirror_instead_of_doubling_it() {
         let plan = plan_draft_pull(&[draft(1, Some(7), 100, Some(100))], &[8], &[]);
         assert_eq!(plan.fetch, vec![8]);
         assert_eq!(plan.stale, vec![1]);
     }
 
-    /// LA règle du module : un brouillon édité ici porte du texte que le
-    /// serveur n'a jamais vu. Il ne peut pas être « périmé ».
+    /// THE module's rule: a draft edited here carries text the server
+    /// has never seen. It cannot be "stale."
     #[test]
-    fn un_brouillon_edite_ici_n_est_jamais_retire() {
-        // Poussé à 100, retouché à 150 : la copie distante est en retard.
+    fn a_draft_edited_here_is_never_removed() {
+        // Pushed at 100, edited again at 150: the remote copy is behind.
         let plan = plan_draft_pull(&[draft(1, Some(7), 150, Some(100))], &[8], &[]);
         assert!(
             plan.stale.is_empty(),
-            "le retirer effacerait la retouche locale"
+            "removing it would erase the local edit"
         );
     }
 
-    /// Un brouillon jamais poussé n'a pas de miroir : rien à comparer.
+    /// A draft never pushed has no mirror: nothing to compare.
     #[test]
-    fn un_brouillon_jamais_pousse_n_est_jamais_retire() {
+    fn a_draft_never_pushed_is_never_removed() {
         let plan = plan_draft_pull(&[draft(1, None, 100, None)], &[8], &[]);
         assert!(plan.stale.is_empty());
     }
 
-    /// Le garde-fou. Une liste vide a exactement la forme d'un échec
-    /// partiel, et se tromper ici coûte du texte. Si l'utilisateur a
-    /// vraiment tout supprimé ailleurs, ses copies survivent localement :
-    /// un doublon, pas une perte.
+    /// The safeguard. An empty list has exactly the shape of a partial
+    /// failure, and getting it wrong here costs text. If the user
+    /// really deleted everything elsewhere, their copies survive
+    /// locally: a duplicate, not a loss.
     #[test]
-    fn une_liste_distante_vide_ne_retire_rien() {
-        let locaux = [
+    fn an_empty_remote_list_removes_nothing() {
+        let local = [
             draft(1, Some(7), 100, Some(100)),
             draft(2, Some(8), 100, Some(100)),
         ];
-        let plan = plan_draft_pull(&locaux, &[], &[]);
-        assert!(plan.stale.is_empty(), "un dossier vide ne prouve rien");
+        let plan = plan_draft_pull(&local, &[], &[]);
+        assert!(plan.stale.is_empty(), "an empty folder proves nothing");
         assert!(plan.fetch.is_empty());
     }
 
-    /// Plusieurs comptes, plusieurs brouillons : le plan reste stable et
-    /// ne mélange rien. L'appelant filtre déjà par compte.
+    /// Several accounts, several drafts: the plan stays stable and
+    /// mixes nothing up. The caller already filters by account.
     #[test]
-    fn le_plan_traite_plusieurs_brouillons_sans_les_confondre() {
-        let locaux = [
-            draft(1, Some(7), 100, Some(100)), // à jour
-            draft(2, Some(8), 100, Some(100)), // disparu du serveur
-            draft(3, Some(9), 200, Some(100)), // édité ici
-            draft(4, None, 100, None),         // jamais poussé
+    fn the_plan_handles_several_drafts_without_mixing_them_up() {
+        let local = [
+            draft(1, Some(7), 100, Some(100)), // up to date
+            draft(2, Some(8), 100, Some(100)), // gone from the server
+            draft(3, Some(9), 200, Some(100)), // edited here
+            draft(4, None, 100, None),         // never pushed
         ];
-        let plan = plan_draft_pull(&locaux, &[7, 42], &[]);
+        let plan = plan_draft_pull(&local, &[7, 42], &[]);
         assert_eq!(plan.fetch, vec![42]);
         assert_eq!(plan.stale, vec![2]);
     }
 }
 
-/// Le lien brouillon -> conversation (PLAN-BROUILLONS, B-D2) : résolu à
-/// la lecture, jamais stocké — et jamais deviné (ADR 0009 : un UID sans
-/// sa boîte ne désigne rien).
+/// The draft -> conversation link (PLAN-BROUILLONS, B-D2): resolved at
+/// read time, never stored — and never guessed (ADR 0009: a UID
+/// without its mailbox names nothing).
 #[cfg(test)]
-mod tests_fil {
+mod tests_thread {
     use chrono::TimeZone;
 
     use super::*;
@@ -1979,7 +1996,7 @@ mod tests_fil {
     fn store() -> (Store, i64) {
         let store = Store::open_in_memory().unwrap();
         let account = store
-            .adopt_or_create_account("test@exemple.fr", "gmail")
+            .adopt_or_create_account("test@example.com", "gmail")
             .unwrap();
         (store, account)
     }
@@ -1990,8 +2007,8 @@ mod tests_fil {
             uid,
             subject: Some(subject.to_string()),
             sender: Some("Marie Dubois".to_string()),
-            sender_address: Some("marie@exemple.fr".to_string()),
-            message_id: Some(format!("<m{uid}@exemple.fr>")),
+            sender_address: Some("marie@example.com".to_string()),
+            message_id: Some(format!("<m{uid}@example.com>")),
             in_reply_to: None,
             date: Some(chrono::Utc.timestamp_opt(1_700_000_000, 0).unwrap()),
             seen: true,
@@ -2001,97 +2018,100 @@ mod tests_fil {
         }
     }
 
-    fn reponse<'a>(uid: Option<Uid>, boite: Option<&'a str>) -> DraftContent<'a> {
+    fn reply<'a>(uid: Option<Uid>, mailbox: Option<&'a str>) -> DraftContent<'a> {
         DraftContent {
-            to_raw: "marie@exemple.fr",
+            to_raw: "marie@example.com",
             cc_raw: "",
             bcc_raw: "",
             body_html: None,
-            subject: "Re : Devis",
-            body: "Bonjour Marie,",
+            subject: "Re: Quote",
+            body: "Hello Marie,",
             reply_to_uid: uid,
-            reply_to_mailbox: boite,
+            reply_to_mailbox: mailbox,
             important: false,
         }
     }
 
     #[test]
-    fn un_brouillon_reponse_se_relie_a_son_fil() {
+    fn a_reply_draft_links_to_its_thread() {
         let (mut store, account) = store();
         let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
         store
-            .upsert_envelopes(inbox, &[message(42, "Devis")])
+            .upsert_envelopes(inbox, &[message(42, "Quote")])
             .unwrap();
         store
-            .save_draft(account, None, None, reponse(Some(42), Some("INBOX")))
+            .save_draft(account, None, None, reply(Some(42), Some("INBOX")))
             .unwrap();
 
-        let fil = store.unified_recent(0, 10).unwrap()[0].thread_id;
-        assert!(fil.is_some(), "le décor doit porter un fil");
+        let thread = store.unified_recent(0, 10).unwrap()[0].thread_id;
+        assert!(thread.is_some(), "the fixture must carry a thread");
         let drafts = store.drafts().unwrap();
-        assert_eq!(drafts[0].thread_id, fil, "même fil que le message visé");
+        assert_eq!(
+            drafts[0].thread_id, thread,
+            "same thread as the targeted message"
+        );
         assert_eq!(drafts[0].reply_to_mailbox.as_deref(), Some("INBOX"));
     }
 
     #[test]
-    fn une_composition_libre_reste_sans_fil() {
+    fn a_free_composition_stays_threadless() {
         let (store, account) = store();
         store
-            .save_draft(account, None, None, reponse(None, None))
+            .save_draft(account, None, None, reply(None, None))
             .unwrap();
         assert_eq!(store.drafts().unwrap()[0].thread_id, None);
     }
 
-    /// La cible peut manquer de deux façons — boîte jamais vue (renommée,
-    /// compte réagencé) ou message expurgé — et aucune ne doit faire
-    /// disparaître le brouillon : il reste, simplement sans fil.
+    /// The target can be missing in two ways — mailbox never seen
+    /// (renamed, account reorganized) or message purged — and neither
+    /// must make the draft disappear: it stays, simply without a thread.
     #[test]
-    fn une_boite_inconnue_ou_un_message_expurge_laissent_sans_fil() {
+    fn an_unknown_mailbox_or_a_purged_message_leave_it_threadless() {
         let (mut store, account) = store();
         let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
         store
-            .upsert_envelopes(inbox, &[message(42, "Devis")])
+            .upsert_envelopes(inbox, &[message(42, "Quote")])
             .unwrap();
         store
-            .save_draft(account, None, None, reponse(Some(42), Some("Ailleurs")))
+            .save_draft(account, None, None, reply(Some(42), Some("Elsewhere")))
             .unwrap();
         store
-            .save_draft(account, None, None, reponse(Some(99), Some("INBOX")))
+            .save_draft(account, None, None, reply(Some(99), Some("INBOX")))
             .unwrap();
 
         let drafts = store.drafts().unwrap();
-        assert_eq!(drafts.len(), 2, "les brouillons survivent à la cible");
+        assert_eq!(drafts.len(), 2, "the drafts survive the target");
         assert!(drafts.iter().all(|draft| draft.thread_id.is_none()));
     }
 
-    /// Les brouillons d'avant la colonne : `reply_to_uid` sans boîte.
-    /// Ils ne se relient JAMAIS — un UID seul pourrait pointer le
-    /// mauvais message (ADR 0009) ; leur filet reste le dossier.
+    /// Drafts from before the column: `reply_to_uid` without a mailbox.
+    /// They NEVER link up — a bare UID could point at the wrong message
+    /// (ADR 0009); their safety net stays the folder.
     #[test]
-    fn un_brouillon_d_avant_la_colonne_reste_sans_fil() {
+    fn a_draft_from_before_the_column_stays_threadless() {
         let (mut store, account) = store();
         let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
         store
-            .upsert_envelopes(inbox, &[message(42, "Devis")])
+            .upsert_envelopes(inbox, &[message(42, "Quote")])
             .unwrap();
         store
             .conn()
             .execute(
                 "INSERT INTO drafts (account_id, to_raw, subject, body, reply_to_uid, updated_epoch)
-                 VALUES (?1, '', 'Re : Devis', 'b', 42, 1)",
+                 VALUES (?1, '', 'Re: Quote', 'b', 42, 1)",
                 [account],
             )
             .unwrap();
         assert_eq!(store.drafts().unwrap()[0].thread_id, None);
     }
 
-    /// Le WHERE anti-churn couvre la colonne neuve : corriger SEULEMENT
-    /// la boîte visée doit remarquer le brouillon à pousser.
+    /// The anti-churn WHERE covers the new column: fixing ONLY the
+    /// targeted mailbox must mark the draft to push again.
     #[test]
-    fn changer_la_boite_visee_remarque_le_brouillon_a_pousser() {
+    fn changing_the_targeted_mailbox_marks_the_draft_to_push() {
         let (store, account) = store();
         let saved = store
-            .save_draft(account, None, None, reponse(Some(42), Some("INBOX")))
+            .save_draft(account, None, None, reply(Some(42), Some("INBOX")))
             .unwrap();
         store
             .record_draft_pushed(saved.id, Some(7), saved.updated_epoch)
@@ -2103,7 +2123,7 @@ mod tests_fil {
                 account,
                 Some(saved.id),
                 None,
-                reponse(Some(42), Some("Archives")),
+                reply(Some(42), Some("Archives")),
             )
             .unwrap();
         assert_eq!(store.drafts_to_push(account).unwrap().len(), 1);
@@ -2111,15 +2131,15 @@ mod tests_fil {
 }
 
 #[cfg(test)]
-mod tests_pieces {
+mod tests_attachments {
     use super::*;
 
-    const MO: u64 = 1024 * 1024;
+    const MB: u64 = 1024 * 1024;
 
     fn store_with_draft() -> (Store, i64) {
         let store = Store::open_in_memory().unwrap();
         let account = store
-            .adopt_or_create_account("test@exemple.fr", "gmail")
+            .adopt_or_create_account("test@example.com", "gmail")
             .unwrap();
         let id = store
             .save_draft(
@@ -2127,12 +2147,12 @@ mod tests_pieces {
                 None,
                 None,
                 DraftContent {
-                    to_raw: "vous@exemple.fr",
+                    to_raw: "vous@example.com",
                     cc_raw: "",
                     bcc_raw: "",
                     body_html: None,
                     subject: "Photos",
-                    body: "corps",
+                    body: "body",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
                     important: false,
@@ -2173,8 +2193,9 @@ mod tests_pieces {
         assert_eq!(meta[1].size, 2);
     }
 
-    /// PJ-D3 : le refus se joue au geste — la pièce de trop n'entre pas,
-    /// les pièces déjà acquises restent, et l'erreur dit la place restante.
+    /// PJ-D3: the refusal happens at the gesture — the attachment that
+    /// goes over never enters, the attachments already acquired stay,
+    /// and the error states the remaining room.
     #[test]
     fn over_budget_attachment_is_refused_and_earlier_pieces_stay() {
         let (store, draft) = store_with_draft();
@@ -2183,7 +2204,7 @@ mod tests_pieces {
                 draft,
                 "a.zip",
                 "application/zip",
-                &vec![0u8; (13 * MO) as usize],
+                &vec![0u8; (13 * MB) as usize],
             )
             .unwrap();
 
@@ -2191,7 +2212,7 @@ mod tests_pieces {
             draft,
             "b.zip",
             "application/zip",
-            &vec![0u8; (13 * MO) as usize],
+            &vec![0u8; (13 * MB) as usize],
         );
 
         match refused {
@@ -2201,36 +2222,36 @@ mod tests_pieces {
                 remaining,
             }) => {
                 assert_eq!(name, "b.zip");
-                assert_eq!(size, 13 * MO);
-                assert_eq!(remaining, MAX_ATTACHMENTS_BYTES - 13 * MO);
+                assert_eq!(size, 13 * MB);
+                assert_eq!(remaining, MAX_ATTACHMENTS_BYTES - 13 * MB);
             }
-            other => panic!("attendu un refus au plafond, obtenu {other:?}"),
+            other => panic!("expected a refusal at the cap, got {other:?}"),
         }
         let meta = store.draft_attachments_meta(draft).unwrap();
-        assert_eq!(meta.len(), 1, "l'acquis n'est pas puni");
+        assert_eq!(meta.len(), 1, "the acquired one is not punished");
         assert_eq!(meta[0].name, "a.zip");
     }
 
-    /// La borne est INCLUSIVE : exactement 25 Mo passe, un octet de plus non.
+    /// The bound is INCLUSIVE: exactly 25 MB passes, one byte more does not.
     #[test]
     fn budget_boundary_is_inclusive() {
         let (store, draft) = store_with_draft();
         store
             .add_draft_attachment(
                 draft,
-                "pile.bin",
+                "stack.bin",
                 "application/octet-stream",
                 &vec![0u8; MAX_ATTACHMENTS_BYTES as usize],
             )
             .unwrap();
-        let refused = store.add_draft_attachment(draft, "goutte.txt", "text/plain", &[0u8]);
+        let refused = store.add_draft_attachment(draft, "drop.txt", "text/plain", &[0u8]);
         assert!(matches!(
             refused,
             Err(Error::AttachmentOverBudget { remaining: 0, .. })
         ));
     }
 
-    /// PJ-D1 : jeter le brouillon emporte ses octets (cascade).
+    /// PJ-D1: discarding the draft carries its bytes away (cascade).
     #[test]
     fn deleting_the_draft_cascades_to_its_attachments() {
         let (store, draft) = store_with_draft();
@@ -2241,12 +2262,12 @@ mod tests_pieces {
 
         store.delete_draft(draft).unwrap();
 
-        assert_eq!(table_rows(&store, draft), 0, "aucun blob orphelin");
+        assert_eq!(table_rows(&store, draft), 0, "no orphaned blob");
     }
 
-    /// Le geste marque le brouillon modifié (PJ-D6) et rend le nouvel
-    /// horodatage — l'éditeur le reprend comme `base_epoch`, sinon sa
-    /// prochaine sauvegarde se verrait accuser d'un conflit fantôme.
+    /// The gesture marks the draft modified (PJ-D6) and returns the new
+    /// timestamp — the editor takes it as `base_epoch`, otherwise its
+    /// next save would be accused of a phantom conflict.
     #[test]
     fn attach_and_detach_advance_the_draft_epoch_strictly() {
         let (store, draft) = store_with_draft();
@@ -2255,22 +2276,22 @@ mod tests_pieces {
         let saved = store
             .add_draft_attachment(draft, "f.pdf", "application/pdf", &[1])
             .unwrap();
-        assert!(saved.updated_epoch > before, "l'ajout est une modification");
+        assert!(saved.updated_epoch > before, "adding is a modification");
         let stored = store.drafts().unwrap()[0].updated_epoch;
         assert_eq!(
             saved.updated_epoch, stored,
-            "le bilan dit ce qui est en base"
+            "the outcome states what is in the database"
         );
 
         let after_removal = store
             .remove_draft_attachment(saved.attachment.id)
             .unwrap()
-            .expect("la pièce existait");
+            .expect("the attachment existed");
         assert!(after_removal > saved.updated_epoch);
         assert!(store.draft_attachments_meta(draft).unwrap().is_empty());
     }
 
-    /// Un double-clic sur le retrait ne modifie rien la seconde fois.
+    /// A double-click on the removal changes nothing the second time.
     #[test]
     fn removing_a_gone_attachment_is_a_silent_noop() {
         let (store, draft) = store_with_draft();
@@ -2289,7 +2310,7 @@ mod tests_pieces {
         assert_eq!(
             store.drafts().unwrap()[0].updated_epoch,
             epoch,
-            "pas de modification fantôme"
+            "no phantom modification"
         );
     }
 }

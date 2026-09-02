@@ -15,7 +15,7 @@ use crate::action::{Action, PendingAction};
 use crate::attachment::Attachment;
 use crate::envelope::{Envelope, Uid};
 use crate::error::Error;
-use crate::invitation::{InvitationRow, InvitationStockee};
+use crate::invitation::{InvitationRow, StoredInvitation};
 use crate::remote::Folder;
 use crate::remote::SpecialUse;
 use crate::search;
@@ -461,7 +461,7 @@ CREATE TABLE IF NOT EXISTS invitations (
 ";
 
 /// Writes (or replaces) a message's invitation row, PRESERVING our
-/// local reply: `reponse`/`reponse_epoch` are never touched here (D6)
+/// local reply: `reply`/`reply_epoch` are never touched here (D6)
 /// — the PARTSTAT reread from the message and the reply Wind sent are
 /// two distinct truths.
 fn write_invitation(
@@ -475,8 +475,8 @@ fn write_invitation(
     // cancelled; a CANCEL written AFTER extinguishes existing REQUESTs.
     // The meeting is identified by (event_uid, account) — never
     // event_uid alone: two accounts can receive the same meeting.
-    let annule = row.annule
-        || (row.methode == "request"
+    let cancelled = row.cancelled
+        || (row.method == "request"
             && conn
                 .prepare(
                     "SELECT 1 FROM invitations i
@@ -510,27 +510,27 @@ fn write_invitation(
         params![
             mailbox_id,
             uid,
-            row.methode,
+            row.method,
             row.event_uid,
             row.sequence,
-            row.titre,
-            row.lieu,
-            row.organisateur_adresse,
-            row.organisateur_nom,
-            row.debut_epoch,
-            row.fin_epoch,
-            row.debut_texte,
-            row.fin_texte,
-            row.journee_entiere,
+            row.title,
+            row.location,
+            row.organizer_address,
+            row.organizer_name,
+            row.start_epoch,
+            row.end_epoch,
+            row.start_text,
+            row.end_text,
+            row.all_day,
             row.recurrent,
             row.partstat,
-            row.repondant_adresse,
-            row.repondant_nom,
-            row.repondant_statut,
-            annule
+            row.attendee_address,
+            row.attendee_name,
+            row.attendee_status,
+            cancelled
         ],
     )?;
-    if row.methode == "cancel" {
+    if row.method == "cancel" {
         conn.execute(
             "UPDATE invitations SET annule = 1
              WHERE event_uid = ?1 AND methode = 'request' AND annule = 0
@@ -1047,7 +1047,7 @@ impl Store {
         // The contacts directory backfills ONCE from existing data
         // (PLAN-RETOURS-5): set-based, marked in `prefs` — on an
         // up-to-date database, one SELECT and nothing else.
-        store.rattraper_correspondants()?;
+        store.backfill_contacts()?;
         if let Some(key) = key {
             initialized_registry().insert(key);
         }
@@ -1619,7 +1619,7 @@ impl Store {
         // What the contacts directory learns from THIS mailbox —
         // resolved once per batch, like the thread (PLAN-RETOURS-5,
         // D4).
-        let (note_senders, note_recipients) = self.role_annuaire(mailbox_id)?;
+        let (note_senders, note_recipients) = self.directory_role(mailbox_id)?;
         // The Screener's epoch (E2) — read BEFORE the transaction (a
         // pref, never rewritten mid-batch). None = the mode has never
         // been activated, the arrival decision costs nothing.
@@ -1645,7 +1645,7 @@ impl Store {
         // message then degrades to a "bare No": hidden from organized
         // mode (flag), never moved — a stated limit of the PLAN.
         let junk_folder = if active_rules {
-            self.canonical_folders(account_id)?.indesirables
+            self.canonical_folders(account_id)?.junk
         } else {
             None
         };
@@ -1772,7 +1772,7 @@ impl Store {
                 // from organized mode by the flag, it is the server it
                 // does not reach). The action is logged HERE, within the
                 // batch's transaction (review E3 — never a crash window
-                // between the commit and the intent); `corbeille` →
+                // between the commit and the intent); `trash` →
                 // Delete, the server's trash, NEVER a permanent deletion
                 // (D4). The anti-duplicate guard covers re-delivery (the
                 // local removal makes `max_uid` go backward, a failed
@@ -1861,16 +1861,11 @@ impl Store {
                 if is_new {
                     let date = envelope.date.map(|d| d.timestamp()).unwrap_or(0);
                     if note_senders && let Some(address) = envelope.sender_address.as_deref() {
-                        crate::correspondants::noter(
-                            &tx,
-                            address,
-                            envelope.sender.as_deref(),
-                            date,
-                        )?;
+                        crate::contacts::note(&tx, address, envelope.sender.as_deref(), date)?;
                     }
                     if note_recipients {
                         for address in envelope.to_addrs.iter().chain(envelope.cc_addrs.iter()) {
-                            crate::correspondants::noter(&tx, address, None, date)?;
+                            crate::contacts::note(&tx, address, None, date)?;
                         }
                     }
                 }
@@ -2282,7 +2277,7 @@ impl Store {
         // Same rule as the preview backfill: HTML parsing is paid for
         // BEFORE opening the transaction — never any CPU inside the
         // write-lock window.
-        let preview = crate::body::extraire_apercu(html);
+        let preview = crate::body::extract_preview(html);
         let tx = self.0.unchecked_transaction()?;
         tx.execute(
             "INSERT OR REPLACE INTO bodies (mailbox_id, uid, html, scanned, preview)
@@ -2363,7 +2358,7 @@ impl Store {
         account_id: i64,
         mailbox: &str,
         uid: Uid,
-    ) -> Result<Option<InvitationStockee>, Error> {
+    ) -> Result<Option<StoredInvitation>, Error> {
         let stored = self
             .0
             .query_row(
@@ -2376,29 +2371,29 @@ impl Store {
                  WHERE m.account_id = ?1 AND m.name = ?2 AND i.uid = ?3",
                 params![account_id, mailbox, uid],
                 |row| {
-                    Ok(InvitationStockee {
+                    Ok(StoredInvitation {
                         row: InvitationRow {
-                            methode: row.get("methode")?,
+                            method: row.get("methode")?,
                             event_uid: row.get("event_uid")?,
                             sequence: row.get("sequence")?,
-                            titre: row.get("titre")?,
-                            lieu: row.get("lieu")?,
-                            organisateur_adresse: row.get("organisateur_adresse")?,
-                            organisateur_nom: row.get("organisateur_nom")?,
-                            debut_epoch: row.get("debut_epoch")?,
-                            fin_epoch: row.get("fin_epoch")?,
-                            debut_texte: row.get("debut_texte")?,
-                            fin_texte: row.get("fin_texte")?,
-                            journee_entiere: row.get("journee_entiere")?,
+                            title: row.get("titre")?,
+                            location: row.get("lieu")?,
+                            organizer_address: row.get("organisateur_adresse")?,
+                            organizer_name: row.get("organisateur_nom")?,
+                            start_epoch: row.get("debut_epoch")?,
+                            end_epoch: row.get("fin_epoch")?,
+                            start_text: row.get("debut_texte")?,
+                            end_text: row.get("fin_texte")?,
+                            all_day: row.get("journee_entiere")?,
                             recurrent: row.get("recurrent")?,
                             partstat: row.get("partstat")?,
-                            repondant_adresse: row.get("repondant_adresse")?,
-                            repondant_nom: row.get("repondant_nom")?,
-                            repondant_statut: row.get("repondant_statut")?,
-                            annule: row.get("annule")?,
+                            attendee_address: row.get("repondant_adresse")?,
+                            attendee_name: row.get("repondant_nom")?,
+                            attendee_status: row.get("repondant_statut")?,
+                            cancelled: row.get("annule")?,
                         },
-                        reponse: row.get("reponse")?,
-                        reponse_epoch: row.get("reponse_epoch")?,
+                        reply: row.get("reponse")?,
+                        reply_epoch: row.get("reponse_epoch")?,
                     })
                 },
             )
@@ -2518,7 +2513,7 @@ impl Store {
             let previews: Vec<(i64, Uid, String)> = batch
                 .iter()
                 .map(|(mailbox_id, uid, html)| {
-                    (*mailbox_id, *uid, crate::body::extraire_apercu(html))
+                    (*mailbox_id, *uid, crate::body::extract_preview(html))
                 })
                 .collect();
             let tx = self.0.unchecked_transaction()?;
@@ -2722,7 +2717,7 @@ impl Store {
         // they would never enter the address book (the opening backfill
         // already ran before them). The extra cost (two reads) is
         // invisible behind the server round trip that precedes it.
-        let (_, record_recipients) = self.role_annuaire(mailbox_id)?;
+        let (_, record_recipients) = self.directory_role(mailbox_id)?;
         if record_recipients && (!to.is_empty() || !cc.is_empty()) {
             let date: Option<i64> = self
                 .0
@@ -2734,7 +2729,7 @@ impl Store {
                 .optional()?
                 .flatten();
             for address in to.iter().chain(cc.iter()) {
-                crate::correspondants::noter(self.conn(), address, None, date.unwrap_or(0))?;
+                crate::contacts::note(self.conn(), address, None, date.unwrap_or(0))?;
             }
         }
         tx.commit()?;
@@ -3162,7 +3157,7 @@ impl Store {
     }
 
     /// RETOURS-13 R5/R9 — the default actions of the Screener's
-    /// Yes/No buttons. Shipped: Yes → `reception`, No → `corbeille`. A
+    /// Yes/No buttons. Shipped: Yes → `inbox`, No → `trash`. A
     /// value outside the vocabulary in the database (written outside
     /// the gate) falls back to the default: the bare click NEVER sets
     /// a broken verdict.
@@ -3468,14 +3463,14 @@ impl Store {
                 .collect::<Result<Vec<_>, _>>()?;
             for (id, name) in mailboxes {
                 let is = |canonical: &Option<String>| canonical.as_deref() == Some(name.as_str());
-                let included = if name == canon.reception {
+                let included = if name == canon.inbox {
                     true
                 } else if is(&canon.archives) {
-                    archives_included && !canon.archives_integrale
-                } else if is(&canon.envoyes)
-                    || is(&canon.brouillons)
-                    || is(&canon.indesirables)
-                    || is(&canon.corbeille)
+                    archives_included && !canon.archives_full
+                } else if is(&canon.sent)
+                    || is(&canon.drafts)
+                    || is(&canon.junk)
+                    || is(&canon.trash)
                 {
                     false
                 } else {
@@ -3671,7 +3666,7 @@ impl Store {
     /// flags), plus applying the rule to the stock WITHIN THE RANGE:
     /// one action per message in `pending_actions`, WITHIN the
     /// verdict's transaction (E3 pattern — never a crash window
-    /// between the mail and the intent), duplicate guard, `corbeille`
+    /// between the mail and the intent), duplicate guard, `trash`
     /// → the server's trash, NEVER a permanent deletion (D4); `spam`
     /// without a resolved folder does NOTHING (never an invented
     /// destination). Returns the number of stock messages handled.
@@ -3695,7 +3690,7 @@ impl Store {
         let mut junk: BTreeMap<i64, Option<String>> = BTreeMap::new();
         if destination == "ecarte" && rule == Some("spam") {
             for account in self.accounts()? {
-                junk.insert(account.id, self.canonical_folders(account.id)?.indesirables);
+                junk.insert(account.id, self.canonical_folders(account.id)?.junk);
             }
         }
         let mut removals: Vec<(i64, Uid)> = Vec::new();
@@ -4453,7 +4448,7 @@ fn migrate(
                 ))
             })?
             .filter_map(Result::ok)
-            .filter(|(_, _, p)| crate::body::contient_entite_residuelle(p))
+            .filter(|(_, _, p)| crate::body::contains_residual_entity(p))
             .map(|(m, u, _)| (m, u))
             .collect();
         drop(stmt);
@@ -5547,7 +5542,7 @@ mod tests {
     /// enough to freeze progress at 99% and the status bar's hitofude
     /// stroke with it (field 2026-08-15, PLAN-GELS: 5 archives + 1 pending
     /// deletion = 99% for the whole duration of the replay). The real
-    /// gesture path is called (`geste_avec_echo`), never a simulation.
+    /// gesture path is called (`gesture_with_echo`), never a simulation.
     #[test]
     fn a_departure_pending_replay_no_longer_counts_in_the_denominator() {
         let (mut store, id) = store_with_mailbox();
@@ -5565,7 +5560,7 @@ mod tests {
         assert_eq!(store.sync_progress().unwrap(), (3, 3));
         // The triage: the echo removes the row, the action awaits its replay.
         store
-            .geste_avec_echo(id, 2, Action::Archive, Some("archives"))
+            .gesture_with_echo(id, 2, Action::Archive, Some("archives"))
             .unwrap();
         assert_eq!(
             store.sync_progress().unwrap(),
@@ -5579,7 +5574,7 @@ mod tests {
         // A move also removes; and the denominator never drops below zero
         // even when `remote_total` is behind.
         store
-            .geste_avec_echo(id, 3, Action::MoveTo("Invoices".into()), None)
+            .gesture_with_echo(id, 3, Action::MoveTo("Invoices".into()), None)
             .unwrap();
         store.record_remote_total(id, 1).unwrap();
         assert_eq!(store.sync_progress().unwrap(), (1, 0));
@@ -6363,15 +6358,15 @@ mod tests {
 
     fn project_invitation() -> crate::InvitationRow {
         crate::InvitationRow {
-            methode: "request".into(),
+            method: "request".into(),
             event_uid: "reunion-1@exemple.fr".into(),
             sequence: 2,
-            titre: "Project sync".into(),
-            lieu: Some("Room A".into()),
-            organisateur_adresse: Some("claire@exemple.fr".into()),
-            organisateur_nom: Some("Claire Martin".into()),
-            debut_epoch: Some(1_788_400_200),
-            fin_epoch: Some(1_788_402_000),
+            title: "Project sync".into(),
+            location: Some("Room A".into()),
+            organizer_address: Some("claire@exemple.fr".into()),
+            organizer_name: Some("Claire Martin".into()),
+            start_epoch: Some(1_788_400_200),
+            end_epoch: Some(1_788_402_000),
             partstat: Some("sans_reponse".into()),
             ..Default::default()
         }
@@ -6387,7 +6382,7 @@ mod tests {
 
         let stored = store.invitation(account, "INBOX", 1).unwrap().expect("row");
         assert_eq!(stored.row, project_invitation());
-        assert_eq!(stored.reponse, None, "not answered yet");
+        assert_eq!(stored.reply, None, "not answered yet");
     }
 
     /// Same rule as attachments: a re-downloaded message WITHOUT a
@@ -6431,7 +6426,7 @@ mod tests {
             .unwrap();
 
         let outbox_id = store
-            .enqueue_reponse_invitation(
+            .enqueue_invitation_reply(
                 account,
                 &reply_draft(),
                 "INBOX",
@@ -6446,8 +6441,8 @@ mod tests {
             .unwrap();
 
         let stored = store.invitation(account, "INBOX", 1).unwrap().expect("row");
-        assert_eq!(stored.reponse.as_deref(), Some("accepte"));
-        assert_eq!(stored.reponse_epoch, Some(1_755_900_000));
+        assert_eq!(stored.reply.as_deref(), Some("accepte"));
+        assert_eq!(stored.reply_epoch, Some(1_755_900_000));
         assert_eq!(store.outbox_to_send(account).unwrap().len(), 1);
     }
 
@@ -6460,7 +6455,7 @@ mod tests {
         let account = test_account(&store);
         assert_eq!(
             store
-                .enqueue_reponse_invitation(account, &reply_draft(), "INBOX", 9, "accepte", 1)
+                .enqueue_invitation_reply(account, &reply_draft(), "INBOX", 9, "accepte", 1)
                 .unwrap(),
             None
         );
@@ -6580,8 +6575,8 @@ mod tests {
     #[test]
     fn a_cancel_extinguishes_the_request_of_the_same_meeting_in_both_arrival_orders() {
         let mut cancel = project_invitation();
-        cancel.methode = "cancel".to_string();
-        cancel.annule = true;
+        cancel.method = "cancel".to_string();
+        cancel.cancelled = true;
 
         // Order 1: the REQUEST first, the CANCEL next.
         let (store, id) = store_with_mailbox();
@@ -6598,7 +6593,7 @@ mod tests {
                 .unwrap()
                 .expect("row")
                 .row
-                .annule,
+                .cancelled,
             "the REQUEST is extinguished by the CANCEL"
         );
 
@@ -6614,7 +6609,7 @@ mod tests {
                 .unwrap()
                 .expect("row")
                 .row
-                .annule
+                .cancelled
         );
 
         // Order 2: the CANCEL scanned BEFORE (out-of-order backfill) —
@@ -6633,7 +6628,7 @@ mod tests {
                 .unwrap()
                 .expect("row")
                 .row
-                .annule
+                .cancelled
         );
     }
 
@@ -9037,23 +9032,23 @@ Step: {step}\nPlan:\n{}",
             .unwrap();
 
         let feed = store
-            .routage_unified_scoped("kiosque", None, false, 0, 10)
+            .routing_unified_scoped("kiosque", None, false, 0, 10)
             .unwrap();
         assert_eq!(feed.len(), 1);
         assert_eq!(feed[0].envelope.uid, 1);
         assert_eq!(
-            store.routage_count_scoped("kiosque", None, false).unwrap(),
+            store.routing_count_scoped("kiosque", None, false).unwrap(),
             1
         );
         // The Paper trail is empty: the destination really filters.
         assert!(
             store
-                .routage_unified_scoped("registre", None, false, 0, 10)
+                .routing_unified_scoped("registre", None, false, 0, 10)
                 .unwrap()
                 .is_empty()
         );
         assert_eq!(
-            store.routage_count_scoped("registre", None, false).unwrap(),
+            store.routing_count_scoped("registre", None, false).unwrap(),
             0
         );
         // The Inbox, meanwhile, ALWAYS shows everything (E1: taking
@@ -9126,24 +9121,24 @@ Step: {step}\nPlan:\n{}",
         assert_eq!(address.as_deref(), Some("lettre@infolettre.fr"));
         // (2) The thread is in the Feed despite its "Sent" head.
         let feed = store
-            .routage_unified_scoped("kiosque", None, false, 0, 10)
+            .routing_unified_scoped("kiosque", None, false, 0, 10)
             .unwrap();
         assert_eq!(feed.len(), 1);
         assert_eq!(
-            store.routage_count_scoped("kiosque", None, false).unwrap(),
+            store.routing_count_scoped("kiosque", None, false).unwrap(),
             1
         );
         // (3) Pinned, it stays visible in the Feed — page AND total.
         assert!(store.toggle_pin(inbox, 1, 700).unwrap());
         assert_eq!(
             store
-                .routage_unified_scoped("kiosque", None, false, 0, 10)
+                .routing_unified_scoped("kiosque", None, false, 0, 10)
                 .unwrap()
                 .len(),
             1
         );
         assert_eq!(
-            store.routage_count_scoped("kiosque", None, false).unwrap(),
+            store.routing_count_scoped("kiosque", None, false).unwrap(),
             1
         );
     }
@@ -9301,27 +9296,27 @@ Step: {step}\nPlan:\n{}",
             .route_sender("avis@banque.fr", "registre", None, 500)
             .unwrap();
 
-        let groups = store.registre_groupes(None).unwrap();
+        let groups = store.paper_trail_groups(None).unwrap();
         assert_eq!(groups.len(), 2, "one group per routed sender");
         // Recency first (D7): banque (300) before boutique (200).
         assert_eq!(groups[0].address, "avis@banque.fr");
-        assert_eq!(groups[0].fils, 1);
+        assert_eq!(groups[0].threads, 1);
         assert_eq!(groups[1].address, "recu@boutique.fr");
-        assert_eq!(groups[1].fils, 2);
+        assert_eq!(groups[1].threads, 2);
         assert_eq!(groups[1].last_epoch, 200);
         assert_eq!(groups[1].last_subject.as_deref(), Some("Receipt C"));
 
         // A group's page: the threads of THIS one sender, most recent
         // first.
         let page = store
-            .registre_groupe_scoped("recu@boutique.fr", None, 0, 10)
+            .paper_trail_group_scoped("recu@boutique.fr", None, 0, 10)
             .unwrap();
         assert_eq!(page.len(), 2);
         assert_eq!(page[0].envelope.uid, 3);
         assert_eq!(page[1].envelope.uid, 1);
         // The account filter bounds it like everywhere else.
         let other = store
-            .registre_groupe_scoped("recu@boutique.fr", Some(999), 0, 10)
+            .paper_trail_group_scoped("recu@boutique.fr", Some(999), 0, 10)
             .unwrap();
         assert!(other.is_empty());
     }
@@ -9348,18 +9343,18 @@ Step: {step}\nPlan:\n{}",
 
         // Two cards in the Feed, none opened — the IMAP seen flag
         // (true) does not count; neither does the unrouted message.
-        assert_eq!(store.kiosque_non_ouverts(None).unwrap(), 2);
+        assert_eq!(store.feed_unopened(None).unwrap(), 2);
         // The account filter is proven WHILE some unread remains
         // (review: at zero everywhere, an ignored filter would pass
         // green): the right account sees 2, a foreign account 0.
         let account = test_account(&store);
-        assert_eq!(store.kiosque_non_ouverts(Some(account)).unwrap(), 2);
-        assert_eq!(store.kiosque_non_ouverts(Some(account + 1)).unwrap(), 0);
+        assert_eq!(store.feed_unopened(Some(account)).unwrap(), 2);
+        assert_eq!(store.feed_unopened(Some(account + 1)).unwrap(), 0);
         // Opening a card removes it from the count.
         store.mark_feed_read(inbox, 2, 500).unwrap();
-        assert_eq!(store.kiosque_non_ouverts(None).unwrap(), 1);
+        assert_eq!(store.feed_unopened(None).unwrap(), 1);
         store.mark_feed_read(inbox, 1, 600).unwrap();
-        assert_eq!(store.kiosque_non_ouverts(None).unwrap(), 0);
+        assert_eq!(store.feed_unopened(None).unwrap(), 0);
     }
 
     /// RETOURS-13 R5/R9 — the Screener buttons' DEFAULT actions:
@@ -9421,16 +9416,14 @@ Step: {step}\nPlan:\n{}",
             .upsert_envelopes(inbox, &[before, after, unknown])
             .unwrap();
 
-        let page = store
-            .reception_organisee_scoped(None, false, 0, 10)
-            .unwrap();
+        let page = store.organized_inbox_scoped(None, false, 0, 10).unwrap();
         assert_eq!(
             page.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
             vec![2, 1],
             "the organized Inbox only serves the known sender"
         );
         assert_eq!(
-            store.reception_organisee_count_scoped(None, false).unwrap(),
+            store.organized_inbox_count_scoped(None, false).unwrap(),
             2,
             "the total follows the flow (shared exclusion)"
         );
@@ -9463,10 +9456,7 @@ Step: {step}\nPlan:\n{}",
         b.sender_address = Some("b@exemple.fr".to_string());
         store.upsert_envelopes(inbox, &[a, b]).unwrap();
         assert_eq!(store.screener_waiting().unwrap().len(), 2);
-        assert_eq!(
-            store.reception_organisee_count_scoped(None, false).unwrap(),
-            0
-        );
+        assert_eq!(store.organized_inbox_count_scoped(None, false).unwrap(), 0);
 
         // Plain Yes → Inbox: the thread comes back, page AND total.
         store
@@ -9481,15 +9471,10 @@ Step: {step}\nPlan:\n{}",
                 .collect::<Vec<_>>(),
             vec!["b@exemple.fr"]
         );
-        let page = store
-            .reception_organisee_scoped(None, false, 0, 10)
-            .unwrap();
+        let page = store.organized_inbox_scoped(None, false, 0, 10).unwrap();
         assert_eq!(page.len(), 1);
         assert_eq!(page[0].envelope.uid, 1);
-        assert_eq!(
-            store.reception_organisee_count_scoped(None, false).unwrap(),
-            1
-        );
+        assert_eq!(store.organized_inbox_count_scoped(None, false).unwrap(), 1);
 
         // No with a rule → screened out: out of the Inbox, out of
         // every served view, and the history carries the rule.
@@ -9499,13 +9484,13 @@ Step: {step}\nPlan:\n{}",
         assert!(store.screener_waiting().unwrap().is_empty());
         assert_eq!(store.screener_total().unwrap(), 0);
         assert_eq!(
-            store.reception_organisee_count_scoped(None, false).unwrap(),
+            store.organized_inbox_count_scoped(None, false).unwrap(),
             1,
             "the screened-out sender does not return to the Inbox"
         );
         assert!(
             store
-                .routage_unified_scoped("kiosque", None, false, 0, 10)
+                .routing_unified_scoped("kiosque", None, false, 0, 10)
                 .unwrap()
                 .is_empty(),
             "screened out is not a served view"
@@ -9538,10 +9523,7 @@ Step: {step}\nPlan:\n{}",
             .route_sender("ancien@exemple.fr", "kiosque", None, 2_000)
             .unwrap();
         assert!(store.screener_waiting().unwrap().is_empty());
-        assert_eq!(
-            store.reception_organisee_count_scoped(None, false).unwrap(),
-            0
-        );
+        assert_eq!(store.organized_inbox_count_scoped(None, false).unwrap(), 0);
 
         store.remove_routing("nouv@exemple.fr").unwrap();
         let waiting = store.screener_waiting().unwrap();
@@ -9559,7 +9541,7 @@ Step: {step}\nPlan:\n{}",
             "the known sender NEVER goes through the Screener: their pre-epoch mail is proof enough"
         );
         assert_eq!(
-            store.reception_organisee_count_scoped(None, false).unwrap(),
+            store.organized_inbox_count_scoped(None, false).unwrap(),
             1,
             "the known sender is returned to the Inbox"
         );
@@ -9584,7 +9566,7 @@ Step: {step}\nPlan:\n{}",
         store.upsert_envelopes(inbox, &[intruder]).unwrap();
 
         assert_eq!(
-            store.reception_organisee_count_scoped(None, false).unwrap(),
+            store.organized_inbox_count_scoped(None, false).unwrap(),
             2,
             "the mixed thread and yesterday's thread stay in the Inbox"
         );
@@ -9612,7 +9594,7 @@ Step: {step}\nPlan:\n{}",
         store.upsert_envelopes(inbox, &[self_mail, silent]).unwrap();
         assert!(store.screener_waiting().unwrap().is_empty());
         assert_eq!(
-            store.reception_organisee_count_scoped(None, false).unwrap(),
+            store.organized_inbox_count_scoped(None, false).unwrap(),
             2,
             "nothing is held back: neither ourselves nor a message without an address"
         );
@@ -9639,7 +9621,7 @@ Step: {step}\nPlan:\n{}",
             "pre-epoch mail proves the sender is known"
         );
         assert_eq!(
-            store.reception_organisee_count_scoped(None, false).unwrap(),
+            store.organized_inbox_count_scoped(None, false).unwrap(),
             2,
             "their threads are released, page and totals"
         );
@@ -9699,21 +9681,16 @@ Step: {step}\nPlan:\n{}",
         store
             .route_sender("promo@exemple.fr", "ecarte", None, 2_000)
             .unwrap();
-        let page = store
-            .reception_organisee_scoped(None, false, 0, 10)
-            .unwrap();
+        let page = store.organized_inbox_scoped(None, false, 0, 10).unwrap();
         assert_eq!(
             page.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
             vec![3, 1],
             "the known sender's mixed thread STAYS (intruder head included), the promo-only thread gets hidden"
         );
-        assert_eq!(
-            store.reception_organisee_count_scoped(None, false).unwrap(),
-            2
-        );
+        assert_eq!(store.organized_inbox_count_scoped(None, false).unwrap(), 2);
         assert!(
             store
-                .routage_unified_scoped("kiosque", None, false, 0, 10)
+                .routing_unified_scoped("kiosque", None, false, 0, 10)
                 .unwrap()
                 .is_empty(),
             "screened out is not a served view"
@@ -9935,7 +9912,7 @@ Step: {step}\nPlan:\n{}",
             "the pre-update unknown sender waits at the gate again"
         );
         assert_eq!(
-            store.reception_organisee_count_scoped(None, false).unwrap(),
+            store.organized_inbox_count_scoped(None, false).unwrap(),
             1,
             "their thread is held back, the known sender's stays"
         );
@@ -10101,7 +10078,7 @@ Step: {step}\nPlan:\n{}",
     /// Via the gesture path: a logged action (`pending_actions`,
     /// replayed at the head of every sync) + local disappearance — no
     /// echo (this is not a user gesture). `archive` → Archive,
-    /// `corbeille` → Delete (the server's trash, NEVER a permanent
+    /// `trash` → Delete (the server's trash, NEVER a permanent
     /// delete — D4).
     #[test]
     fn the_no_rule_runs_on_arrival() {
@@ -10309,9 +10286,7 @@ Step: {step}\nPlan:\n{}",
                 ],
             )
             .unwrap();
-        let organized = store
-            .reception_organisee_scoped(None, false, 0, 10)
-            .unwrap();
+        let organized = store.organized_inbox_scoped(None, false, 0, 10).unwrap();
         assert_eq!(
             organized.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
             vec![2, 4, 3, 1],
@@ -10319,7 +10294,7 @@ Step: {step}\nPlan:\n{}",
         );
         let account = test_account(&store);
         let bounded = store
-            .reception_organisee_scoped(Some(account), false, 0, 10)
+            .organized_inbox_scoped(Some(account), false, 0, 10)
             .unwrap();
         assert_eq!(
             bounded.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
@@ -10327,7 +10302,7 @@ Step: {step}\nPlan:\n{}",
             "same order bounded to an account"
         );
         assert_eq!(
-            store.reception_organisee_count_scoped(None, true).unwrap(),
+            store.organized_inbox_count_scoped(None, true).unwrap(),
             2,
             "the seam: the unread COUNT says where the second section starts"
         );
@@ -10361,13 +10336,13 @@ Step: {step}\nPlan:\n{}",
         assert!(store.set_aside_state(inbox, 2).unwrap());
         assert!(
             store
-                .reception_organisee_scoped(None, false, 0, 10)
+                .organized_inbox_scoped(None, false, 0, 10)
                 .unwrap()
                 .is_empty(),
             "the set-aside thread leaves the organized Inbox"
         );
         assert_eq!(
-            store.reception_organisee_count_scoped(None, false).unwrap(),
+            store.organized_inbox_count_scoped(None, false).unwrap(),
             0,
             "the total follows (shared exclusion)"
         );
@@ -10386,7 +10361,7 @@ Step: {step}\nPlan:\n{}",
         );
         assert!(
             store
-                .routage_unified_scoped("kiosque", None, false, 0, 10)
+                .routing_unified_scoped("kiosque", None, false, 0, 10)
                 .unwrap()
                 .is_empty(),
             "set aside, the letter ALSO leaves its routing view"
@@ -10395,14 +10370,14 @@ Step: {step}\nPlan:\n{}",
         // "Done": the thread returns TO WHERE IT CAME FROM.
         assert!(!store.toggle_set_aside(inbox, 2, 1_200).unwrap());
         assert_eq!(
-            store.reception_organisee_count_scoped(None, false).unwrap(),
+            store.organized_inbox_count_scoped(None, false).unwrap(),
             1,
             "the ordinary one returns to the Inbox"
         );
         assert!(!store.toggle_set_aside(inbox, 1, 1_300).unwrap());
         assert_eq!(
             store
-                .routage_unified_scoped("kiosque", None, false, 0, 10)
+                .routing_unified_scoped("kiosque", None, false, 0, 10)
                 .unwrap()
                 .len(),
             1,

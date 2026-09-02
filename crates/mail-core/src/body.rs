@@ -1,14 +1,14 @@
-//! Chargement à la demande du corps d'un message : cache SQLite d'abord,
-//! serveur ensuite, puis mise en cache — le principe « enveloppes d'abord »
-//! appliqué jusqu'au bout (le corps n'arrive qu'au clic, puis reste offline).
+//! On-demand loading of a message body: SQLite cache first, server next,
+//! then caching — the "envelopes first" principle applied to the end (the
+//! body only arrives on click, then stays offline).
 
 use crate::envelope::Uid;
 use crate::error::Error;
 use crate::remote::MailServer;
 use crate::store::Store;
 
-/// Corps HTML brut (pré-assainissement) d'un message. `None` si la boîte n'a
-/// jamais été synchronisée ou si le message a disparu du serveur.
+/// Raw HTML body (pre-sanitization) of a message. `None` if the mailbox was
+/// never synchronized, or if the message has vanished from the server.
 pub fn load_body(
     server: &mut dyn MailServer,
     store: &mut Store,
@@ -24,7 +24,7 @@ pub fn load_body(
     };
     match server.fetch_body_html(mailbox, uid)? {
         Some(fetched) => {
-            let invitation = invitation_de(store, account_id, fetched.ics.as_deref())?;
+            let invitation = invitation_from(store, account_id, fetched.ics.as_deref())?;
             store.save_body_full(
                 state.mailbox_id,
                 uid,
@@ -38,174 +38,174 @@ pub fn load_body(
     }
 }
 
-/// La ligne d'invitation d'une partie calendrier rapportée avec le corps
-/// — notre PARTSTAT se cherche à l'adresse du compte (PLAN-INVITATIONS).
-pub(crate) fn invitation_de(
+/// The invitation row of a calendar part carried with the body — our
+/// PARTSTAT is looked up at the account's address (PLAN-INVITATIONS).
+pub(crate) fn invitation_from(
     store: &Store,
     account_id: i64,
     ics: Option<&str>,
 ) -> Result<Option<crate::invitation::InvitationRow>, Error> {
     let Some(ics) = ics else { return Ok(None) };
-    let Some(adresse) = store.account_email(account_id)? else {
+    let Some(address) = store.account_email(account_id)? else {
         return Ok(None);
     };
-    Ok(crate::invitation::extraire_invitation(ics, &adresse))
+    Ok(crate::invitation::extract_invitation(ics, &address))
 }
 
-/// Aperçu texte d'un corps — la ligne grise sous l'objet (écran 02 de la
-/// refonte). Calculé UNE fois, à l'écriture du corps (`save_body`) ou au
-/// rattrapage borné (`preview_catchup`) — jamais au défilement : la page
-/// de liste reste au coût du gate P1.
+/// Text preview of a body — the gray line under the subject (screen 02 of
+/// the redesign). Computed ONCE, when the body is written (`save_body`) or
+/// during the bounded backfill (`preview_catchup`) — never on scroll: the
+/// list page stays within the P1 gate's cost.
 ///
-/// Tolérant au HTML BRUT (le corps est stocké pré-assainissement) : le
-/// contenu de `<style>`, `<script>`, `<title>` et des commentaires est
-/// ignoré, les entités usuelles décodées, les blancs repliés, le tout
-/// tronqué à 160 caractères sans couper un caractère.
-pub(crate) fn extraire_apercu(html: &str) -> String {
-    const LIMITE: usize = 160;
+/// Tolerant of RAW HTML (the body is stored pre-sanitization): the content
+/// of `<style>`, `<script>`, `<title>` and comments is ignored, common
+/// entities are decoded, whitespace is collapsed, and the whole thing is
+/// truncated to 160 characters without splitting a character.
+pub(crate) fn extract_preview(html: &str) -> String {
+    const LIMIT: usize = 160;
 
-    // Comparaisons ASCII-insensibles À LA POSITION, jamais une copie
-    // minuscule du document : certains caractères changent de longueur
-    // en minuscules, et des index pris sur la copie paniqueraient sur
-    // l'original. Les balises et entités sont ASCII — c'est suffisant.
-    fn commence_par(reste: &str, motif: &str) -> bool {
-        reste.len() >= motif.len()
-            && reste
+    // ASCII-insensitive comparisons AT THE BYTE POSITION, never a lowercase
+    // copy of the document: some characters change length when lowercased,
+    // and an index taken from the copy would panic on the original. Tags
+    // and entities are ASCII — that is sufficient.
+    fn starts_with(rest: &str, pattern: &str) -> bool {
+        rest.len() >= pattern.len()
+            && rest
                 .as_bytes()
                 .iter()
-                .zip(motif.as_bytes())
+                .zip(pattern.as_bytes())
                 .all(|(a, b)| a.eq_ignore_ascii_case(b))
     }
-    fn trouver(reste: &str, motif: &str) -> Option<usize> {
-        (0..=reste.len().saturating_sub(motif.len()))
-            .find(|&depart| reste.is_char_boundary(depart) && commence_par(&reste[depart..], motif))
+    fn find(rest: &str, pattern: &str) -> Option<usize> {
+        (0..=rest.len().saturating_sub(pattern.len()))
+            .find(|&start| rest.is_char_boundary(start) && starts_with(&rest[start..], pattern))
     }
 
-    let mut apercu = String::new();
-    let mut compte = 0usize;
+    let mut preview = String::new();
+    let mut count = 0usize;
     let mut i = 0;
-    let octets = html.as_bytes();
-    let mut dernier_blanc = true;
-    while i < octets.len() && compte < LIMITE {
-        if octets[i] == b'<' {
-            if commence_par(&html[i..], "<!--") {
-                i = trouver(&html[i..], "-->").map_or(html.len(), |fin| i + fin + 3);
+    let bytes = html.as_bytes();
+    let mut last_blank = true;
+    while i < bytes.len() && count < LIMIT {
+        if bytes[i] == b'<' {
+            if starts_with(&html[i..], "<!--") {
+                i = find(&html[i..], "-->").map_or(html.len(), |end| i + end + 3);
                 continue;
             }
-            // Les conteneurs dont le TEXTE ne doit jamais fuiter dans
-            // l'aperçu : feuilles de style, scripts, titre de document.
-            let mut englobant = false;
-            for balise in ["style", "script", "title"] {
-                if commence_par(&html[i + 1..], balise) {
-                    let fermeture = format!("</{balise}");
-                    let apres = trouver(&html[i..], &fermeture)
-                        .map_or(html.len(), |fin| i + fin + fermeture.len());
-                    // Jusqu'au chevron INCLUS : « </style> » entier.
-                    i = html[apres..]
+            // The containers whose TEXT must never leak into the preview:
+            // stylesheets, scripts, document title.
+            let mut enclosing = false;
+            for tag in ["style", "script", "title"] {
+                if starts_with(&html[i + 1..], tag) {
+                    let closing = format!("</{tag}");
+                    let after = find(&html[i..], &closing)
+                        .map_or(html.len(), |end| i + end + closing.len());
+                    // Up to and INCLUDING the angle bracket: the whole
+                    // `</style>`.
+                    i = html[after..]
                         .find('>')
-                        .map_or(html.len(), |fin| apres + fin + 1);
-                    englobant = true;
+                        .map_or(html.len(), |end| after + end + 1);
+                    enclosing = true;
                     break;
                 }
             }
-            if englobant {
+            if enclosing {
                 continue;
             }
-            i = html[i..].find('>').map_or(html.len(), |fin| i + fin + 1);
-            // Une balise vaut un blanc : « </p><p> » ne colle pas deux mots.
-            if !dernier_blanc {
-                apercu.push(' ');
-                dernier_blanc = true;
+            i = html[i..].find('>').map_or(html.len(), |end| i + end + 1);
+            // A tag counts as a blank: `</p><p>` does not glue two words
+            // together.
+            if !last_blank {
+                preview.push(' ');
+                last_blank = true;
             }
             continue;
         }
-        if octets[i] == b'&'
-            && let Some((longueur, decode)) = decoder_entite(&html[i..])
+        if bytes[i] == b'&'
+            && let Some((length, decoded)) = decode_entity(&html[i..])
         {
-            i += longueur;
-            match decode {
-                Some(c) if !c.is_whitespace() && !est_invisible(c) => {
-                    apercu.push(c);
-                    compte += 1;
-                    dernier_blanc = false;
+            i += length;
+            match decoded {
+                Some(c) if !c.is_whitespace() && !is_invisible(c) => {
+                    preview.push(c);
+                    count += 1;
+                    last_blank = false;
                 }
-                // Blanc, caractère invisible (chevilles de pré-en-tête :
-                // &zwnj;, &shy;, espaces fines…) ou entité inconnue :
-                // vaut UN blanc, jamais un résidu « &#8199; » à l'écran.
+                // Blank, invisible character (pre-header pegs: &zwnj;,
+                // &shy;, thin spaces…) or unknown entity: counts as ONE
+                // blank, never a raw "&#8199;" leftover on screen.
                 _ => {
-                    if !dernier_blanc {
-                        apercu.push(' ');
-                        dernier_blanc = true;
+                    if !last_blank {
+                        preview.push(' ');
+                        last_blank = true;
                     }
                 }
             }
             continue;
         }
-        // Avancer d'un CARACTÈRE entier, pas d'un octet.
-        let caractere = html[i..].chars().next().unwrap_or(' ');
-        i += caractere.len_utf8();
-        if caractere.is_whitespace() || est_invisible(caractere) {
-            if !dernier_blanc {
-                apercu.push(' ');
-                dernier_blanc = true;
+        // Advance by a whole CHARACTER, not a byte.
+        let ch = html[i..].chars().next().unwrap_or(' ');
+        i += ch.len_utf8();
+        if ch.is_whitespace() || is_invisible(ch) {
+            if !last_blank {
+                preview.push(' ');
+                last_blank = true;
             }
         } else {
-            apercu.push(caractere);
-            compte += 1;
-            dernier_blanc = false;
+            preview.push(ch);
+            count += 1;
+            last_blank = false;
         }
     }
-    apercu.trim().to_string()
+    preview.trim().to_string()
 }
 
-/// Décode UNE entité HTML au début de `reste` (qui commence par `&`).
-/// Rend la longueur consommée et le caractère — `None` pour une entité
-/// inconnue (consommée quand même : mieux vaut un blanc qu'un résidu).
-/// Rend `None` tout court si ce `&` n'ouvre pas une entité : il se lit
-/// alors comme un caractère ordinaire (« R&D »).
-fn decoder_entite(reste: &str) -> Option<(usize, Option<char>)> {
-    let octets = reste.as_bytes();
-    // Numérique : &#233; ou &#xE9; — terminée par « ; » sinon ce n'est
-    // pas une entité.
-    if octets.len() > 2 && octets[1] == b'#' {
-        let (base, depart) = if octets[2] == b'x' || octets[2] == b'X' {
+/// Decodes ONE HTML entity at the start of `rest` (which starts with `&`).
+/// Returns the consumed length and the character — `None` for an unknown
+/// entity (still consumed: better a blank than a leftover). Returns a plain
+/// `None` if this `&` does not open an entity: it then reads as an
+/// ordinary character ("R&D").
+fn decode_entity(rest: &str) -> Option<(usize, Option<char>)> {
+    let bytes = rest.as_bytes();
+    // Numeric: &#233; or &#xE9; — terminated by ";", otherwise it is not
+    // an entity.
+    if bytes.len() > 2 && bytes[1] == b'#' {
+        let (base, start) = if bytes[2] == b'x' || bytes[2] == b'X' {
             (16u32, 3usize)
         } else {
             (10u32, 2usize)
         };
-        let fin = octets[depart..]
+        let end = bytes[start..]
             .iter()
             .position(|o| !o.is_ascii_hexdigit())
-            .map(|n| depart + n)?;
-        if fin == depart || fin - depart > 7 || octets.get(fin) != Some(&b';') {
+            .map(|n| start + n)?;
+        if end == start || end - start > 7 || bytes.get(end) != Some(&b';') {
             return None;
         }
-        let valeur = u32::from_str_radix(&reste[depart..fin], base).ok()?;
-        // Un point de code invalide ou de contrôle vaut un blanc.
-        let c = char::from_u32(valeur).filter(|c| !c.is_control());
-        return Some((fin + 1, c));
+        let value = u32::from_str_radix(&rest[start..end], base).ok()?;
+        // An invalid or control code point counts as a blank.
+        let c = char::from_u32(value).filter(|c| !c.is_control());
+        return Some((end + 1, c));
     }
-    // Nommée : &nom; — nom ASCII de 2 à 32 caractères.
-    let fin = octets[1..]
+    // Named: &name; — ASCII name of 2 to 32 characters.
+    let end = bytes[1..]
         .iter()
         .position(|o| !o.is_ascii_alphanumeric())
         .map(|n| 1 + n)?;
-    if !(3..=33).contains(&fin)
-        || octets.get(fin) != Some(&b';')
-        || !octets[1].is_ascii_alphabetic()
+    if !(3..=33).contains(&end) || bytes.get(end) != Some(&b';') || !bytes[1].is_ascii_alphabetic()
     {
         return None;
     }
-    let nom = &reste[1..fin];
-    Some((fin + 1, entite_nommee(nom)))
+    let name = &rest[1..end];
+    Some((end + 1, named_entity(name)))
 }
 
-/// Les entités nommées décodées — celles du courrier réel : structure
-/// HTML, lettres accentuées (Latin-1), typographie. Une entité absente
-/// d'ici est consommée et vaut un blanc — l'aperçu ne montre JAMAIS de
-/// « &eacute; » brut.
-fn entite_nommee(nom: &str) -> Option<char> {
-    Some(match nom {
+/// The decoded named entities — the ones from real mail: HTML structure,
+/// accented letters (Latin-1), typography. An entity missing here is
+/// consumed and counts as a blank — the preview NEVER shows a raw
+/// "&eacute;".
+fn named_entity(name: &str) -> Option<char> {
+    Some(match name {
         "amp" => '&',
         "lt" => '<',
         "gt" => '>',
@@ -273,8 +273,8 @@ fn entite_nommee(nom: &str) -> Option<char> {
         "sect" => '§',
         "para" => '¶',
         "minus" => '−',
-        // Blancs et chevilles invisibles : décodés vers leur caractère,
-        // `est_invisible`/`is_whitespace` les replient en un blanc.
+        // Blanks and invisible pegs: decoded to their character,
+        // `is_invisible`/`is_whitespace` collapse them into a blank.
         "nbsp" => '\u{00A0}',
         "ensp" => '\u{2002}',
         "emsp" => '\u{2003}',
@@ -288,31 +288,30 @@ fn entite_nommee(nom: &str) -> Option<char> {
     })
 }
 
-/// Vrai si le texte contient encore une entité HTML bien formée, OU se
-/// termine par une entité TRONQUÉE (« …&#12852 » : le premier décodeur
-/// coupait à 160 au milieu d'une entité) — le critère de la réparation
-/// des aperçus (migrate). Sur-large d'un cheveu en fin de texte
-/// (« …R&D » re-matche) : la réparation est UNE passe marquée, le seul
-/// coût est un recalcul.
-pub(crate) fn contient_entite_residuelle(texte: &str) -> bool {
-    let entiere = texte
+/// True if the text still contains a well-formed HTML entity, OR ends with
+/// a TRUNCATED entity ("…&#12852": the earlier decoder cut at 160 in the
+/// middle of an entity) — the criterion for repairing previews (migrate).
+/// Over-broad by a hair at the end of a text ("…R&D" re-matches): the
+/// repair is ONE flagged pass, the only cost is a recompute.
+pub(crate) fn contains_residual_entity(text: &str) -> bool {
+    let whole = text
         .char_indices()
         .filter(|(_, c)| *c == '&')
-        .any(|(i, _)| decoder_entite(&texte[i..]).is_some());
-    let queue_tronquee = texte.rfind('&').is_some_and(|i| {
-        let apres = &texte[i + 1..];
-        !apres.is_empty()
-            && apres
+        .any(|(i, _)| decode_entity(&text[i..]).is_some());
+    let truncated_tail = text.rfind('&').is_some_and(|i| {
+        let after = &text[i + 1..];
+        !after.is_empty()
+            && after
                 .bytes()
                 .all(|o| o.is_ascii_alphanumeric() || o == b'#')
     });
-    entiere || queue_tronquee
+    whole || truncated_tail
 }
 
-/// Les caractères de mise en forme sans dessin : chevilles de
-/// pré-en-tête des newsletters (&zwnj;, &shy;, U+034F…). Dans un aperçu
-/// d'une ligne, ils valent un blanc.
-fn est_invisible(c: char) -> bool {
+/// The formatting characters with no glyph: pre-header pegs from
+/// newsletters (&zwnj;, &shy;, U+034F…). In a one-line preview, they
+/// count as a blank.
+fn is_invisible(c: char) -> bool {
     matches!(
         c,
         '\u{00AD}'
@@ -330,81 +329,89 @@ mod tests {
     use crate::test_support::FakeServer;
 
     #[test]
-    fn l_apercu_ignore_styles_scripts_et_commentaires() {
-        let html = "<html><head><title>Titre cache</title>\n<style>p { color: red; }</style></head>\
-                    <body><!-- note --><p>Bonjour&nbsp;Paul,</p><p>l&#39;essentiel &amp; le reste.</p>\
+    fn preview_ignores_styles_scripts_and_comments() {
+        let html = "<html><head><title>Hidden title</title>\n<style>p { color: red; }</style></head>\
+                    <body><!-- note --><p>Hello&nbsp;Paul,</p><p>it&#39;s the essential &amp; the rest.</p>\
                     <script>var x = 1;</script></body></html>";
         assert_eq!(
-            extraire_apercu(html),
-            "Bonjour Paul, l'essentiel & le reste."
+            extract_preview(html),
+            "Hello Paul, it's the essential & the rest."
         );
     }
 
     #[test]
-    fn l_apercu_replie_les_blancs_et_passe_le_texte_brut() {
+    fn preview_collapses_whitespace_and_passes_raw_text() {
+        // "Bonjour, deux créneaux se chevauchent." (French, accented word) —
+        // exercises whitespace collapsing over raw multi-byte UTF-8 text.
         assert_eq!(
-            extraire_apercu("Bonjour,\n\n   deux  créneaux\tse chevauchent."),
-            "Bonjour, deux créneaux se chevauchent."
+            extract_preview("Bonjour,\n\n   deux  créneaux\tse chevauchent."), // lang:fr
+            "Bonjour, deux créneaux se chevauchent."                           // lang:fr
         );
     }
 
     #[test]
-    fn l_apercu_decode_les_entites_numeriques_et_nommees() {
-        // Le motif RÉEL du terrain : accents en entités décimales, hex
-        // et nommées — plus l'apostrophe typographique.
+    fn preview_decodes_numeric_and_named_entities() {
+        // The REAL pattern from the field: accents as decimal, hex and
+        // named entities — plus the typographic apostrophe. (French text,
+        // accents are the point of the test.)
         assert_eq!(
-            extraire_apercu(
-                "Vos r&#233;f&#233;rences ont &#xE9;t&#xE9; re&ccedil;ues, merci d&rsquo;avoir voyag&eacute;."
+            extract_preview(
+                "Vos r&#233;f&#233;rences ont &#xE9;t&#xE9; re&ccedil;ues, merci d&rsquo;avoir voyag&eacute;." // lang:fr
             ),
-            "Vos références ont été reçues, merci d’avoir voyagé."
+            "Vos références ont été reçues, merci d’avoir voyagé." // lang:fr
         );
     }
 
     #[test]
-    fn l_apercu_replie_les_chevilles_invisibles_en_un_blanc() {
-        // Chevilles de pré-en-tête des newsletters : zwnj, shy, espaces
-        // fines en entités — jamais un résidu « &#8199; » à l'écran.
+    fn preview_collapses_invisible_pegs_into_a_blank() {
+        // Newsletter pre-header pegs: zwnj, shy, thin spaces as entities —
+        // never a raw "&#8199;" leftover on screen. (French text, accents
+        // are the point of the test.)
         assert_eq!(
-            extraire_apercu(
-                "R&#233;compense&#847;&zwnj;&#8199;&shy;&zwnj; &#8202; d&eacute;bloqu&eacute;e"
+            extract_preview(
+                "R&#233;compense&#847;&zwnj;&#8199;&shy;&zwnj; &#8202; d&eacute;bloqu&eacute;e" // lang:fr
             ),
-            "Récompense débloquée"
+            "Récompense débloquée" // lang:fr
         );
-        // Une entité INCONNUE vaut un blanc, pas un résidu.
+        // An UNKNOWN entity counts as a blank, not a leftover.
         assert_eq!(
-            extraire_apercu("avant&inconnue;apr&egrave;s"),
-            "avant après"
+            extract_preview("avant&inconnue;apr&egrave;s"), // lang:fr
+            "avant après"                                   // lang:fr
         );
-        // Un « & » ordinaire reste un caractère : R&D.
-        assert_eq!(extraire_apercu("R&D et &#litige"), "R&D et &#litige");
+        // An ordinary "&" stays a character: R&D.
+        assert_eq!(extract_preview("R&D et &#litige"), "R&D et &#litige"); // lang:fr
     }
 
     #[test]
-    fn le_critere_de_reparation_attrape_entites_et_queues_tronquees() {
-        // Entité bien formée au milieu — le cas massif du terrain.
-        assert!(contient_entite_residuelle("Vos r&#233;f&#233;rences"));
-        assert!(contient_entite_residuelle("voyag&eacute; loin"));
-        // Entité TRONQUÉE par la coupe à 160 de l'ancien décodeur.
-        assert!(contient_entite_residuelle("des journ es &#12852"));
-        assert!(contient_entite_residuelle("fin coup&eacu"));
-        // Texte sain : rien à réparer.
-        assert!(!contient_entite_residuelle(
-            "références décodées, R&D comprise."
+    fn repair_criterion_catches_entities_and_truncated_tails() {
+        // Well-formed entity in the middle — the bulk case from the field.
+        // (French text, accents are the point of the test.)
+        assert!(contains_residual_entity("Vos r&#233;f&#233;rences")); // lang:fr
+        assert!(contains_residual_entity("voyag&eacute; loin")); // lang:fr
+        // Entity TRUNCATED by the old decoder's cut at 160.
+        assert!(contains_residual_entity("des journ es &#12852")); // lang:fr
+        assert!(contains_residual_entity("fin coup&eacu")); // lang:fr
+        // Clean text: nothing to repair.
+        assert!(!contains_residual_entity(
+            "références décodées, R&D comprise." // lang:fr
         ));
-        assert!(!contient_entite_residuelle("aucune esperluette"));
+        assert!(!contains_residual_entity("aucune esperluette")); // lang:fr
     }
 
     #[test]
-    fn l_apercu_tronque_a_160_sans_couper_un_caractere() {
-        let long = "é".repeat(400);
-        let apercu = extraire_apercu(&long);
-        assert_eq!(apercu.chars().count(), 160);
-        assert!(apercu.chars().all(|c| c == 'é'));
+    fn preview_truncates_at_160_without_splitting_a_character() {
+        // Accented character repeated 400 times: exercises truncation
+        // exactly at a character boundary. (French letter, the accent is
+        // the point of the test.)
+        let long = "é".repeat(400); // lang:fr
+        let preview = extract_preview(&long);
+        assert_eq!(preview.chars().count(), 160);
+        assert!(preview.chars().all(|c| c == 'é')); // lang:fr
     }
 
     fn synced_setup() -> (FakeServer, Store, i64) {
         let mut server = FakeServer::new(false);
-        server.add_with_body(1, "sujet", "<p>corps du message</p>");
+        server.add_with_body(1, "subject", "<p>message body</p>");
         let mut store = Store::open_in_memory().unwrap();
         let account = store
             .adopt_or_create_account("test@exemple.fr", "gmail")
@@ -420,24 +427,24 @@ mod tests {
         let (mut server, mut store, account) = synced_setup();
 
         let first = load_body(&mut server, &mut store, account, "INBOX", 1).unwrap();
-        assert_eq!(first.as_deref(), Some("<p>corps du message</p>"));
+        assert_eq!(first.as_deref(), Some("<p>message body</p>"));
         assert_eq!(server.body_fetches, 1);
 
         let second = load_body(&mut server, &mut store, account, "INBOX", 1).unwrap();
-        assert_eq!(second.as_deref(), Some("<p>corps du message</p>"));
-        assert_eq!(server.body_fetches, 1, "le cache doit éviter le serveur");
+        assert_eq!(second.as_deref(), Some("<p>message body</p>"));
+        assert_eq!(server.body_fetches, 1, "the cache must avoid the server");
     }
 
-    /// PLAN-INVITATIONS : la partie calendrier voyage avec le corps et
-    /// finit en ligne `invitations` — notre PARTSTAT cherché à l'adresse
-    /// du compte.
+    /// PLAN-INVITATIONS: the calendar part travels with the body and ends
+    /// up as an `invitations` row — our PARTSTAT looked up at the
+    /// account's address.
     #[test]
-    fn le_corps_rapporte_son_invitation_et_la_stocke() {
+    fn body_reports_its_invitation_and_stores_it() {
         let (mut server, mut store, account) = synced_setup();
         server.ics.insert(
             1,
             "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REQUEST\r\n\
-             BEGIN:VEVENT\r\nUID:r1@exemple.fr\r\nSUMMARY:Point projet\r\n\
+             BEGIN:VEVENT\r\nUID:r1@exemple.fr\r\nSUMMARY:Project sync\r\n\
              DTSTART:20260903T123000Z\r\n\
              ORGANIZER;CN=Claire Martin:mailto:claire@exemple.fr\r\n\
              ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:test@exemple.fr\r\n\
@@ -447,13 +454,13 @@ mod tests {
 
         load_body(&mut server, &mut store, account, "INBOX", 1).unwrap();
 
-        let stockee = store
+        let stored = store
             .invitation(account, "INBOX", 1)
             .unwrap()
-            .expect("la ligne d'invitation");
-        assert_eq!(stockee.row.methode, "request");
-        assert_eq!(stockee.row.titre, "Point projet");
-        assert_eq!(stockee.row.partstat.as_deref(), Some("sans_reponse"));
+            .expect("the invitation row");
+        assert_eq!(stored.row.method, "request");
+        assert_eq!(stored.row.title, "Project sync");
+        assert_eq!(stored.row.partstat.as_deref(), Some("sans_reponse"));
     }
 
     #[test]
@@ -468,7 +475,7 @@ mod tests {
     #[test]
     fn returns_none_before_first_sync_without_touching_server() {
         let mut server = FakeServer::new(false);
-        server.add_with_body(1, "sujet", "<p>x</p>");
+        server.add_with_body(1, "subject", "<p>x</p>");
         let mut store = Store::open_in_memory().unwrap();
         let account = store
             .adopt_or_create_account("test@exemple.fr", "gmail")

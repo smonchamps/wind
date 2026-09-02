@@ -1,34 +1,34 @@
-//! Le « port » réseau du moteur : la seule frontière abstraite de `mail-core`.
+//! The engine's "port" to the network: `mail-core`'s only abstract
+//! boundary.
 //!
-//! Le moteur de synchro ne connaît ni IMAP, ni OAuth, ni TLS — uniquement ce
-//! trait. L'adaptateur IMAP réel l'implémentera (module protocoles) ; les
-//! tests utilisent un serveur simulé qui rejoue les bizarreries du terrain.
+//! The sync engine knows neither IMAP, nor OAuth, nor TLS — only this
+//! trait. The real IMAP adapter will implement it (protocol module);
+//! tests use a fake server that replays the field's oddities.
 
 use crate::attachment::Attachment;
 use crate::envelope::{Envelope, Uid};
 use crate::error::Error;
 
-/// Ce qu'un corps rapatrié rapporte : le HTML à afficher, et la
-/// description des fichiers qu'il transporte.
+/// What a fetched body reports: the HTML to display, and the
+/// description of the files it carries.
 ///
-/// Les deux voyagent ENSEMBLE parce qu'ils se lisent dans les mêmes
-/// octets. Redemander les pièces jointes séparément coûterait un second
-/// téléchargement complet du message pour une information déjà passée
-/// sous les yeux de l'adaptateur.
+/// The two travel TOGETHER because they are read from the same bytes.
+/// Requesting the attachments separately would cost a second full
+/// download of the message for information already seen by the adapter.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FetchedBody {
     pub html: String,
     pub attachments: Vec<Attachment>,
-    /// La partie `text/calendar` du message, brute — `None` pour un
-    /// message ordinaire. Même logique que les pièces : elle se lit dans
-    /// les mêmes octets, la redemander coûterait un téléchargement
-    /// complet (PLAN-INVITATIONS).
+    /// The message's `text/calendar` part, raw — `None` for an ordinary
+    /// message. Same logic as the attachments: it is read in the same
+    /// bytes, requesting it again would cost a full download
+    /// (PLAN-INVITATIONS).
     pub ics: Option<String>,
 }
 
 impl FetchedBody {
-    /// Corps sans pièce jointe — le cas courant, et tout ce dont les
-    /// tests du moteur ont besoin.
+    /// Body without attachment — the common case, and all the engine's
+    /// tests need.
     pub fn html(html: impl Into<String>) -> Self {
         Self {
             html: html.into(),
@@ -38,87 +38,88 @@ impl FetchedBody {
     }
 }
 
-/// Les destinataires (À / Cc) d'un message, adresses brutes.
+/// A message's recipients (To / Cc), raw addresses.
 ///
-/// L'enveloppe stockée ne porte que l'expéditeur : « Répondre à tous »
-/// relit donc ces listes dans l'ENVELOPE du serveur au moment du clic —
-/// un aller-retour à la demande, pas un octet de plus en base.
+/// The stored envelope only carries the sender: "Reply all" therefore
+/// re-reads these lists in the server's ENVELOPE at click time — an
+/// on-demand round trip, not one extra byte in the database.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MessageRecipients {
     pub to: Vec<String>,
     pub cc: Vec<String>,
 }
 
-/// Les en-têtes qui rattachent un message à sa conversation.
+/// The headers that attach a message to its conversation.
 ///
-/// `None` et `Some("")` ne disent PAS la même chose : le premier signifie
-/// « pas encore lu », le second « lu, et le message n'en a pas ». Confondre
-/// les deux ferait redemander éternellement les mêmes messages.
+/// `None` and `Some("")` do NOT say the same thing: the former means
+/// "not yet read", the latter "read, and the message has none".
+/// Confusing the two would make the same messages get requested
+/// forever.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ThreadHeaders {
     pub in_reply_to: Option<String>,
     pub references: Option<String>,
 }
 
-/// Un brouillon lu dans le dossier Brouillons du serveur.
+/// A draft read from the server's Drafts folder.
 ///
-/// Le corps arrive sous les deux formes que MIME peut porter, sans qu'on
-/// choisisse ici : convertir du HTML en texte est un travail de rendu, et
-/// ce type est une frontière réseau. La couche qui sait rendre tranche.
+/// The body arrives in the two forms MIME can carry, without choosing
+/// here: converting HTML to text is a rendering job, and this type is a
+/// network boundary. The layer that knows how to render decides.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RemoteDraft {
-    /// Champ « À » tel quel : un brouillon a le droit d'être incomplet,
-    /// c'est même sa raison d'être.
+    /// "To" field as is: a draft is allowed to be incomplete, that is
+    /// even its point.
     pub to_raw: String,
     pub subject: String,
-    /// Partie `text/plain`, quand il y en a une.
+    /// `text/plain` part, when there is one.
     pub text: Option<String>,
-    /// Partie `text/html` — souvent la seule d'un brouillon composé dans
-    /// un webmail.
+    /// `text/html` part — often the only one for a draft composed in a
+    /// webmail.
     pub html: Option<String>,
 }
 
-/// État d'une boîte au moment de sa sélection.
+/// State of a mailbox at the moment it is selected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MailboxSnapshot {
-    /// Change quand le serveur invalide tous les UIDs connus → resynchro complète.
+    /// Changes when the server invalidates all known UIDs → full resync.
     pub uid_validity: u32,
-    /// `Some` si le serveur supporte CONDSTORE (décision gelée : PHASE0.md §2.2).
+    /// `Some` if the server supports CONDSTORE (frozen decision: PHASE0.md §2.2).
     pub highest_modseq: Option<u64>,
-    /// Combien de messages le serveur annonce dans cette boîte (EXISTS).
+    /// How many messages the server announces in this mailbox (EXISTS).
     ///
-    /// Gratuit : la réponse SELECT le porte toujours, on le jetait. C'est
-    /// le **dénominateur** de l'avancement de la synchronisation intégrale
+    /// Free: the SELECT reply always carries it, we used to throw it
+    /// away. It is the **denominator** of full synchronization progress
     /// ([ADR 0010](../../../docs/adr/0010-synchronisation-integrale.md) §5)
-    /// — sans lui, « 12 000 messages récupérés » ne dit pas si on en est au
-    /// dixième ou à la fin.
+    /// — without it, "12,000 messages fetched" does not say whether we
+    /// are a tenth of the way in or at the end.
     pub exists: u32,
 }
 
-/// Un dossier du serveur, sous ses DEUX noms.
+/// A server folder, under its TWO names.
 ///
-/// `wire` est celui du protocole (UTF-7 modifié) : c'est lui qu'on
-/// renvoie au serveur, et lui qu'on journalise. `display` est sa forme
-/// lisible. Les confondre casse soit l'affichage, soit le SELECT — ils
-/// coexistent donc explicitement plutôt que par convention.
+/// `wire` is the protocol one (modified UTF-7): it is the one sent back
+/// to the server, and the one logged. `display` is its readable form.
+/// Confusing them breaks either the display or the SELECT — they
+/// therefore coexist explicitly rather than by convention.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Folder {
     pub wire: String,
     pub display: String,
-    /// Le dossier peut-il recevoir un message déplacé ?
+    /// Can the folder receive a moved message?
     ///
-    /// Faux pour les conteneurs qui ne portent pas de courrier
-    /// (attribut `\Noselect`) : les proposer produirait un échec au clic.
+    /// False for containers that carry no mail (`\Noselect` attribute):
+    /// offering them would produce a failure on click.
     pub selectable: bool,
-    /// Le rôle RFC 6154 annoncé par le serveur (`\Trash`, `\All`…) —
-    /// `None` quand il n'en annonce pas. Il prime sur le nom pour les
-    /// dossiers canoniques (PLAN-AUDIT-V2 E5 : `[Gmail]` était en dur, un
-    /// compte « [Google Mail]/… » perdait Archives, Spam et Corbeille).
+    /// The RFC 6154 role announced by the server (`\Trash`, `\All`…) —
+    /// `None` when it announces none. It takes precedence over the name
+    /// for canonical folders (PLAN-AUDIT-V2 E5: `[Gmail]` was hardcoded,
+    /// a "[Google Mail]/…" account lost Archive, Spam and Trash).
     pub special_use: Option<SpecialUse>,
 }
 
-/// Les rôles RFC 6154 qu'un dossier peut porter — ce que le serveur SAIT,
-/// contre ce que le nom laisse deviner.
+/// The RFC 6154 roles a folder can carry — what the server KNOWS,
+/// against what the name lets you guess.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpecialUse {
     All,
@@ -130,7 +131,7 @@ pub enum SpecialUse {
 }
 
 impl SpecialUse {
-    /// Le code stocké en base (`folders.special_use`).
+    /// The code stored in the database (`folders.special_use`).
     pub fn code(self) -> &'static str {
         match self {
             Self::All => "all",
@@ -155,89 +156,89 @@ impl SpecialUse {
     }
 }
 
-/// Le relevé STATUS d'un dossier, sans sélection (ADR 0017).
+/// A folder's STATUS reading, without selecting it (ADR 0017).
 ///
-/// `uid_next` et `uid_validity` sont optionnels parce que RFC 3501 ne
-/// force pas un serveur à les servir : leur absence rend `faut_relever`
-/// conservatrice — on relève — jamais fausse.
+/// `uid_next` and `uid_validity` are optional because RFC 3501 does not
+/// force a server to serve them: their absence makes `must_poll`
+/// conservative — it polls — never wrong.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FolderStatus {
-    /// Messages annoncés (EXISTS).
+    /// Messages announced (EXISTS).
     pub messages: u32,
     pub uid_next: Option<u32>,
     pub uid_validity: Option<u32>,
-    /// HIGHESTMODSEQ (RFC 7162), tu par les serveurs sans CONDSTORE.
-    /// C'est lui qui trahit un changement de drapeaux SEUL — ni UIDNEXT
-    /// ni MESSAGES ne bougent alors (E2b, PLAN-SYNCHRO).
+    /// HIGHESTMODSEQ (RFC 7162), silent from servers without CONDSTORE.
+    /// It is what betrays a flag-ONLY change (E2b, PLAN-SYNCHRO) —
+    /// neither UIDNEXT nor MESSAGES move then.
     pub highest_modseq: Option<u64>,
 }
 
-/// Un dossier ET son relevé, tel que LIST-STATUS (RFC 5819) les rend
-/// APPARIÉS en un aller-retour. Le relevé est optionnel : le serveur
-/// peut l'omettre pour un dossier sur lequel il bute (RFC 5819 §2).
+/// A folder AND its reading, as LIST-STATUS (RFC 5819) returns them
+/// PAIRED in one round trip. The reading is optional: the server may
+/// omit it for a folder it stumbles on (RFC 5819 §2).
 pub type FolderWithStatus = (Folder, Option<FolderStatus>);
 
 pub trait MailServer {
-    /// Sélectionne une boîte et retourne son état courant.
+    /// Selects a mailbox and returns its current state.
     fn select(&mut self, mailbox: &str) -> Result<MailboxSnapshot, Error>;
 
-    /// Tous les UIDs présents dans la boîte (ordre quelconque).
+    /// All UIDs present in the mailbox (any order).
     fn list_uids(&mut self, mailbox: &str) -> Result<Vec<Uid>, Error>;
 
-    /// Enveloppes des messages demandés ; les UIDs inconnus sont ignorés.
+    /// Envelopes of the requested messages; unknown UIDs are ignored.
     fn fetch_envelopes(&mut self, mailbox: &str, uids: &[Uid]) -> Result<Vec<Envelope>, Error>;
 
-    /// Messages nouveaux ou modifiés (flags) depuis `modseq` — CONDSTORE.
-    /// Retourne `None` si le serveur ne supporte pas l'extension ; le moteur
-    /// bascule alors sur la détection par différentiel d'UIDs.
+    /// New or modified (flags) messages since `modseq` — CONDSTORE.
+    /// Returns `None` if the server does not support the extension; the
+    /// engine then falls back to UID differential detection.
     fn changes_since(&mut self, mailbox: &str, modseq: u64)
     -> Result<Option<Vec<Envelope>>, Error>;
 
-    /// Corps d'un message, prêt à assainir (l'extraction MIME est la
-    /// responsabilité de l'adaptateur). `None` si le message n'existe plus.
+    /// A message's body, ready to sanitize (MIME extraction is the
+    /// adapter's responsibility). `None` if the message no longer
+    /// exists.
     fn fetch_body_html(&mut self, mailbox: &str, uid: Uid) -> Result<Option<FetchedBody>, Error>;
 
-    /// Corps de PLUSIEURS messages en une seule commande. Les UIDs que le
-    /// serveur ne sert plus sont simplement absents du résultat.
+    /// Bodies of SEVERAL messages in a single command. UIDs the server
+    /// no longer serves are simply absent from the result.
     ///
-    /// Volontairement sans implémentation par défaut : un repli qui
-    /// boucherait sur [`Self::fetch_body_html`] serait silencieusement
-    /// ruineux. Un aller-retour par message coûte ~192 ms sur un serveur
-    /// réel (`spikes/body-backfill`) — rattraper une boîte entière n'est
-    /// tenable qu'en groupant, et chaque adaptateur doit le dire
-    /// explicitement.
+    /// Deliberately without a default implementation: a fallback that
+    /// looped over [`Self::fetch_body_html`] would be silently ruinous.
+    /// A per-message round trip costs ~192 ms on a real server
+    /// (`spikes/body-backfill`) — catching up a whole mailbox is only
+    /// tenable by batching, and each adapter must say so explicitly.
     fn fetch_bodies_html(
         &mut self,
         mailbox: &str,
         uids: &[Uid],
     ) -> Result<Vec<(Uid, FetchedBody)>, Error>;
 
-    /// Les en-têtes de fil de PLUSIEURS messages, en une commande.
+    /// The thread headers of SEVERAL messages, in one command.
     ///
-    /// Séparé de l'ENVELOPE **par une mesure** : celle-ci porte
-    /// `In-Reply-To` mais pas `References` (RFC 3501 §7.4.2), et obtenir
-    /// `References` impose de lire le bloc d'en-têtes complet — dix fois
-    /// plus gros qu'une enveloppe. L'ajouter à la synchronisation
-    /// décuplerait le coût de « enveloppes d'abord » ; ces en-têtes sont
-    /// donc rapatriés APRÈS, en tâche de fond.
+    /// Separate from the ENVELOPE **by a measurement**: the latter
+    /// carries `In-Reply-To` but not `References` (RFC 3501 §7.4.2), and
+    /// obtaining `References` requires reading the full header block —
+    /// ten times bigger than an envelope. Adding it to synchronization
+    /// would multiply tenfold the cost of "envelopes first"; these
+    /// headers are therefore fetched AFTERWARD, in the background.
     ///
-    /// Or `References` n'est pas un raffinement : dans une boîte de
-    /// réception, le message intermédiaire d'un échange est celui qu'on a
-    /// soi-même envoyé, et il n'y figure pas. Sans lui, la moitié des
-    /// conversations reste coupée en deux.
+    /// Now `References` is not a refinement: in an inbox, an exchange's
+    /// intermediate message is the one we sent ourselves, and it is not
+    /// there. Without it, half the conversations stay split in two.
     fn fetch_thread_headers(
         &mut self,
         mailbox: &str,
         uids: &[Uid],
     ) -> Result<Vec<(Uid, ThreadHeaders)>, Error>;
 
-    /// Les OCTETS d'une pièce jointe, désignée par son rang dans le
-    /// message. `None` si le message ou la pièce n'existe plus.
+    /// The BYTES of an attachment, designated by its rank in the
+    /// message. `None` if the message or the attachment no longer
+    /// exists.
     ///
-    /// Séparé du corps à dessein : les métadonnées sont gratuites et
-    /// stockées, les octets se paient à la demande et ne sont jamais
-    /// gardés. C'est ce qui laisse intact le budget disque de l'ADR 0007
-    /// — y ajouter les fichiers le ferait exploser.
+    /// Deliberately separate from the body: metadata is free and
+    /// stored, bytes are paid for on demand and never kept. This is
+    /// what leaves ADR 0007's disk budget intact — adding files to it
+    /// would blow it up.
     fn fetch_attachment(
         &mut self,
         mailbox: &str,
@@ -245,63 +246,65 @@ pub trait MailServer {
         index: usize,
     ) -> Result<Option<Vec<u8>>, Error>;
 
-    /// Les destinataires (À / Cc) d'un message — « Répondre à tous ».
-    /// `None` si le message n'existe plus sur le serveur.
+    /// A message's recipients (To / Cc) — "Reply all". `None` if the
+    /// message no longer exists on the server.
     fn fetch_recipients(
         &mut self,
         mailbox: &str,
         uid: Uid,
     ) -> Result<Option<MessageRecipients>, Error>;
 
-    /// Applique (ou retire) le flag `\Seen` côté serveur.
+    /// Applies (or removes) the `\Seen` flag server-side.
     fn set_seen(&mut self, mailbox: &str, uid: Uid, seen: bool) -> Result<(), Error>;
 
-    /// Applique (ou retire) le flag `\Flagged` — l'étoile.
+    /// Applies (or removes) the `\Flagged` flag — the star.
     fn set_flagged(&mut self, mailbox: &str, uid: Uid, flagged: bool) -> Result<(), Error>;
 
-    /// Sort le message de la boîte sans le supprimer (archivage).
+    /// Takes the message out of the mailbox without deleting it
+    /// (archiving).
     fn archive(&mut self, mailbox: &str, uid: Uid) -> Result<(), Error>;
 
-    /// Met le message à la corbeille du serveur.
+    /// Puts the message in the server's trash.
     fn delete(&mut self, mailbox: &str, uid: Uid) -> Result<(), Error>;
 
-    /// Les dossiers du compte, tels que l'utilisateur peut les choisir.
+    /// The account's folders, as the user can choose them.
     fn folders(&mut self) -> Result<Vec<Folder>, Error>;
 
-    /// Les dossiers ET leur relevé, en UN aller-retour (LIST-STATUS,
-    /// RFC 5819) — ce que `folders()` + un `folder_status()` par dossier
-    /// font en ~51 allers-retours séquentiels.
+    /// The folders AND their reading, in ONE round trip (LIST-STATUS,
+    /// RFC 5819) — what `folders()` + a `folder_status()` per folder do
+    /// in ~51 sequential round trips.
     ///
-    /// Terrain du 2026-08-13 : le cycle sobre tenait tout SAUF l'inventaire,
-    /// resté à 66 s sur le compte Gmail — ~51 STATUS un par un. LIST-STATUS
-    /// les fond en une commande.
+    /// Field, 2026-08-13: the sober cycle held EVERYTHING EXCEPT the
+    /// inventory, stuck at 66 s on the Gmail account — ~51 STATUS one by
+    /// one. LIST-STATUS melts them into one command.
     ///
-    /// `None` = capacité absente (le serveur n'annonce pas LIST-STATUS) :
-    /// l'appelant retombe sur `folders()` + `folder_status()`, chemin
-    /// complet et testé. Le relevé de chaque dossier est optionnel jusque
-    /// dans la réponse — RFC 5819 §2 autorise le serveur à l'omettre s'il
-    /// bute dessus ; l'appelant traite alors ce dossier comme non gardé.
+    /// `None` = capability absent (the server does not announce
+    /// LIST-STATUS): the caller falls back to `folders()` +
+    /// `folder_status()`, a complete and tested path. Each folder's
+    /// reading is optional even within the reply — RFC 5819 §2 allows
+    /// the server to omit it if it stumbles on it; the caller then
+    /// treats that folder as unpolled.
     fn folders_with_status(&mut self) -> Result<Option<Vec<FolderWithStatus>>, Error> {
         Ok(None)
     }
 
-    /// Le relevé d'un dossier — SANS le sélectionner.
+    /// A folder's reading — WITHOUT selecting it.
     ///
-    /// Un seul aller-retour (STATUS en IMAP, prévu exactement pour
-    /// interroger une boîte non sélectionnée) qui sert DEUX décisions :
-    /// la garde d'espace disque ([ADR 0010](../../../docs/adr/0010-synchronisation-integrale.md)
-    /// §4) qui somme `messages` AVANT de s'engager, et la relève gardée
-    /// ([ADR 0017](../../../docs/adr/0017-releve-gardee-par-status.md)) —
-    /// `faut_relever` saute les dossiers où rien n'a bougé. `uid_next`
-    /// et `uid_validity` sont optionnels : un serveur qui les tait rend
-    /// la décision conservatrice (on relève), jamais fausse.
+    /// A single round trip (STATUS in IMAP, designed exactly to query an
+    /// unselected mailbox) that serves TWO decisions: the disk-space
+    /// guard ([ADR 0010](../../../docs/adr/0010-synchronisation-integrale.md)
+    /// §4) which sums `messages` BEFORE committing, and guarded polling
+    /// ([ADR 0017](../../../docs/adr/0017-releve-gardee-par-status.md))
+    /// — `must_poll` skips folders where nothing moved. `uid_next` and
+    /// `uid_validity` are optional: a server that keeps silent on them
+    /// makes the decision conservative (we poll), never wrong.
     fn folder_status(&mut self, mailbox: &str) -> Result<FolderStatus, Error>;
 
-    /// Déplace le message vers `target`, désigné par son nom RÉSEAU.
+    /// Moves the message to `target`, designated by its NETWORK name.
     ///
-    /// L'opération doit être **atomique du point de vue du message** :
-    /// il ne doit jamais pouvoir disparaître de la source sans être
-    /// arrivé à destination. Même règle d'or que la boîte d'envoi,
-    /// appliquée au tri.
+    /// The operation must be **atomic from the message's point of
+    /// view**: it must never be able to disappear from the source
+    /// without having arrived at the destination. Same golden rule as
+    /// the outbox, applied to sorting.
     fn move_to(&mut self, mailbox: &str, uid: Uid, target: &str) -> Result<(), Error>;
 }
