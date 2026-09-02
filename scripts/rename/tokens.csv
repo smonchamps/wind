@@ -1,0 +1,1589 @@
+fr,en
+reception,inbox
+kiosque,feed
+registre,paper_trail
+portier,screener
+nettoyage,cleanup
+nettoyer,clean
+mis de cote,set_aside
+mis_de_cote,set_aside
+misdecote,set_aside
+de cote,aside
+cote,aside
+pile,pile
+repere,marker
+reperes,markers
+fil,thread
+fils,threads
+fente,slot
+avis,notice
+guichet,desk
+accueil,onboarding
+retour,back
+retours,feedback
+marque,brand
+drapeau,flag
+ue,eu
+icone,icon
+icones,icons
+lecture,reading
+liste,list
+composition,compose
+compo,compose
+reglages,settings
+reglage,setting
+volets,panes
+volet,pane
+espacement,spacing
+largeur,width
+largeurs,widths
+organise,organized
+organisee,organized
+boite,mailbox
+boites,mailboxes
+clavier,keyboard
+corps,body
+liens,links
+lien,link
+quand,when
+texte,text
+textes,texts
+vocabulaires,vocabularies
+vocabulaire,vocabulary
+initiales,initials
+tri,sort
+trier,sort
+tris,sorts
+theme,theme
+themes,themes
+entete,header
+entetes,headers
+statut,status
+erreur,error
+erreurs,errors
+raccourci,shortcut
+raccourcis,shortcuts
+puce,chip
+puces,chips
+onglet,tab
+onglets,tabs
+depuis,since
+groupe,group
+groupes,groups
+horizon,horizon
+migration,migration
+nav,nav
+langue,language
+langues,languages
+brouillon,draft
+brouillons,drafts
+corbeille,trash
+indesirables,junk
+indesirable,junk
+archives,archive
+archive,archive
+archiver,archive
+archivee,archived
+archivees,archived
+envoyes,sent
+envoye,sent
+envoi,send
+envois,sends
+envoyer,send
+dossier,folder
+dossiers,folders
+compte,account
+comptes,accounts
+message,message
+messages,messages
+conversation,conversation
+conv,conv
+invitation,invitation
+invitations,invitations
+inv,inv
+releve,poll
+relever,poll
+relevee,polled
+releves,polls
+veilleur,watcher
+veille,watch
+veiller,watch
+demenagement,relocation
+demenager,relocate
+geste,gesture
+gestes,gestures
+agir,act
+echo,echo
+echos,echos
+correspondant,contact
+correspondants,contacts
+rattrapage,backfill
+rattraper,backfill
+rattrapes,backfilled
+apercu,preview
+apercus,previews
+piece,attachment
+pieces,attachments
+perimetre,scope
+perimetres,scopes
+plage,range
+plages,ranges
+routage,routing
+routages,routings
+router,route
+regle,rule
+regles,rules
+expediteur,sender
+expediteurs,senders
+destinataire,recipient
+destinataires,recipients
+adresse,address
+adresses,addresses
+nom,name
+noms,names
+sujet,subject
+objet,subject
+ligne,line
+lignes,lines
+rangee,row
+rangees,rows
+rang,rank
+rangs,ranks
+etat,state
+etats,states
+decor,fixture
+banc,bench
+diagnostic,diag
+arrivee,arrival
+arrivees,arrivals
+borne,bound
+bornes,bounds
+borner,bound
+garde,guard
+vol,flight
+vols,flights
+en vol,in_flight
+pompe,pump
+hors pompe,off_pump
+hors,off
+passe,pass
+passes,passes
+legere,light
+cycle,cycle
+sonde,probe
+sondes,probes
+sonder,probe
+filet,net
+jeton,token
+jetons,tokens
+retenue,hold
+couture,seam
+cadre,frame
+cadres,frames
+carte,card
+cartes,cards
+barre,bar
+barres,bars
+menu,menu
+toast,toast
+pastille,badge
+pastilles,badges
+teinte,hue
+teintes,hues
+encre,ink
+fond,bg
+fonds,bgs
+sombre,dark
+clair,light
+nuit,night
+maj,update
+majs,updates
+verifier,check
+installer,install
+installation,installing
+chantier,job
+terrain,field
+solde,close
+solder,settle
+andon,andon
+appel,call
+appels,calls
+commande,command
+commandes,commands
+lancer,start
+lanceur,launcher
+ajout,add
+ajouter,add
+ajoute,added
+factice,fake
+faux,fake
+serveur,server
+premier,first
+premiere,first
+dernier,last
+derniere,last
+nouveau,new
+nouvelle,new
+neuve,fresh
+neuf,fresh
+ancien,old
+ancienne,old
+ouvrir,open
+ouvert,open
+ouverte,open
+ouverts,open
+ouverture,opening
+fermer,close
+ferme,closed
+fermee,closed
+fermeture,closing
+charger,load
+chargement,loading
+recharger,reload
+relire,reread
+relu,reread
+lire,read
+lu,read
+lus,read
+lue,read
+lues,read
+non lus,unread
+non_lus,unread
+nonlus,unread
+non lues,unread
+nonlues,unread
+ecrire,write
+ecrit,written
+ecriture,writing
+lecteur,reader
+attente,pending
+attendre,wait
+attendu,expected
+pause,pause
+reprise,resume
+reprendre,resume
+repris,resumed
+arret,stop
+arreter,stop
+coupe,cut
+coupure,cut
+depart,departure
+retard,delay
+delai,delay
+duree,duration
+temps,time
+chrono,stopwatch
+cout,cost
+couts,costs
+budget,budget
+seuil,threshold
+plafond,cap
+plancher,floor
+limite,limit
+limites,limits
+total,total
+totaux,totals
+partie,part
+moitie,half
+nombre,count
+compter,count
+date,date
+dates,dates
+heure,time
+heures,hours
+jour,day
+jours,days
+mois,month
+annee,year
+annees,years
+semaine,week
+hier,yesterday
+demain,tomorrow
+matin,morning
+soir,evening
+midi,noon
+minuit,midnight
+aujourdhui,today
+aujourd,today
+debut,start
+fin,end
+epoch,epoch
+debut_epoch,start_epoch
+fin_epoch,end_epoch
+methode,method
+lieu,location
+organisateur,organizer
+organisateurs,organizers
+repondant,attendee
+journee,day
+entiere,whole
+journee entiere,all_day
+journee_entiere,all_day
+initialisee,initialized
+initialisees,initialized
+initiale,initial
+traites,handled
+traite,handled
+annule,cancelled
+annulee,cancelled
+annuler,cancel
+refusee,refused
+refuse,refused
+refuser,refuse
+refus,refusal
+verdict,verdict
+session,session
+sessions,sessions
+notification,notification
+notifications,notifications
+bulle,bubble
+bulles,bubbles
+bandeau,banner
+avertissement,warning
+alerte,alert
+alertes,alerts
+panne,failure
+pannes,failures
+gel,freeze
+gels,freezes
+verrou,lock
+verrous,locks
+cle,key
+cles,keys
+identifiant,identifier
+identifiants,identifiers
+mot de passe,password
+mot_de_passe,password
+mdp,password
+mot,word
+mots,words
+phrase,sentence
+lettre,letter
+lettres,letters
+caractere,char
+caracteres,chars
+glyphe,glyph
+glyphes,glyphs
+vignette,thumbnail
+silhouette,silhouette
+trait,stroke
+traits,strokes
+ombre,shadow
+ombres,shadows
+surface,surface
+bordure,border
+marge,margin
+marges,margins
+paragraphe,paragraph
+resume,summary
+long,long
+longue,long
+court,short
+courte,short
+large,wide
+etroit,narrow
+gros,big
+grosse,big
+petit,small
+petite,small
+grand,large
+grande,large
+moyen,medium
+moyenne,medium
+section,section
+sections,sections
+categorie,category
+categories,categories
+etiquette,label
+etiquettes,labels
+libelle,label
+libelles,labels
+epingle,pin
+epingles,pins
+epingler,pin
+epinglee,pinned
+desepingler,unpin
+tampon,buffer
+prochain,next
+prochaine,next
+suivant,next
+suivante,next
+precedent,previous
+precedente,previous
+tour,turn
+tours,turns
+boucle,loop
+frappe,keystroke
+frappes,keystrokes
+touche,key
+touches,keys
+souris,mouse
+survol,hover
+survoler,hover
+selection,selection
+selectionner,select
+selectionne,selected
+coche,checked
+cocher,check
+cochee,checked
+decocher,uncheck
+lot,batch
+lots,batches
+masse,bulk
+serie,series
+compteur,counter
+compteurs,counters
+denominateur,denominator
+progression,progress
+avancement,progress
+etape,step
+etapes,steps
+phase,phase
+phases,phases
+revue,review
+gate,gate
+rouge,red
+vert,green
+verte,green
+version,version
+versions,versions
+mise a jour,update
+telechargement,download
+telecharger,download
+poste,workstation
+postes,workstations
+machine,machine
+reseau,network
+coffre,vault
+secret,secret
+jeu,set
+essai,trial
+enveloppe,envelope
+enveloppes,envelopes
+courrier,mail
+journal,log
+journaux,logs
+trace,trace
+traces,traces
+mesure,measure
+mesures,measures
+mesurer,measure
+reparation,repair
+reparations,repairs
+heritage,legacy
+heritee,legacy
+fantome,phantom
+colonne,column
+colonnes,columns
+adoption,adoption
+adopter,adopt
+synchro,sync
+synchroniser,sync
+synchronisation,syncing
+probleme,problem
+problemes,problems
+utilisateur,user
+proprete,cleanliness
+entree,entry
+entrees,entries
+sortie,output
+sorties,outputs
+bloc,block
+blocs,blocks
+transfere,forwarded
+transferer,forward
+transfert,forward
+fenetre,window
+fenetres,windows
+vide,empty
+vider,clear
+plein,full
+vrai,true
+vraie,true
+seul,alone
+seule,alone
+tous,all
+toutes,all
+tout,all
+toute,all
+aucun,none
+aucune,none
+deja,already
+encore,still
+apres,after
+avant,before
+vers,to
+sans,without
+avec,with
+pour,for
+sur,on
+sous,under
+par,by
+dans,in
+est,is
+ete,been
+fait,done
+faire,do
+mettre,put
+mis,put
+mise,put
+prendre,take
+pris,taken
+voir,see
+dire,say
+dit,said
+aller,go
+venir,come
+tenir,hold
+tenu,held
+donner,give
+trouver,find
+trouve,found
+montrer,show
+reste,remaining
+meme,same
+autre,other
+autres,others
+chaque,each
+plusieurs,several
+sinon,else
+selon,per
+aussi,also
+ainsi,thus
+alors,then
+donc,so
+puis,then
+comme,like
+lors,at
+pendant,during
+tant,while
+trop,too
+peu,few
+beaucoup,many
+tres,very
+bien,well
+mal,badly
+mieux,better
+pire,worse
+moins,less
+plus,more
+assez,enough
+peut,can
+doit,must
+veut,wants
+sait,knows
+vaut,worth
+faut,must
+tete,head
+queue,tail
+haut,top
+bas,bottom
+gauche,left
+droite,right
+milieu,middle
+centre,center
+bord,edge
+coin,corner
+pas,not
+non,no
+oui,yes
+choix,choice
+question,question
+image,image
+images,images
+autoriser,allow
+autorise,allowed
+interdit,forbidden
+bloque,blocked
+bloquees,blocked
+permis,allowed
+expedie,sent
+repondre,reply
+repond,reply
+reponse,reply
+reponses,replies
+supprimer,delete
+supprime,deleted
+supprimee,deleted
+supprimees,deleted
+suppr,delete
+deplacer,move
+deplace,moved
+marquer,mark
+marque,brand
+marques,brands
+signaler,report
+signale,reported
+vu,seen
+vue,view
+vues,views
+ecran,screen
+ecrans,screens
+page,page
+pages,pages
+panneau,panel
+panneaux,panels
+zone,area
+zones,areas
+champ,field
+champs,fields
+case,checkbox
+cases,checkboxes
+bouton,button
+boutons,buttons
+titre,title
+titres,titles
+note,note
+notes,notes
+courriel,email
+chemin,path
+chemins,paths
+enregistrer,save
+enregistre,saved
+enregistree,saved
+enregistrement,save
+sauver,save
+sauvegarde,save
+inconnu,unknown
+inconnue,unknown
+impossible,failed
+introuvable,not_found
+absent,absent
+absente,absent
+present,present
+presente,present
+disponible,available
+indisponible,unavailable
+actif,active
+active,active
+inactif,inactive
+visible,visible
+invisible,invisible
+cache,hidden
+cachee,hidden
+masque,mask
+masquer,hide
+montre,shown
+chaine,string
+chaines,strings
+forme,shape
+formes,shapes
+style,style
+couleur,color
+couleurs,colors
+police,font
+taille,size
+tailles,sizes
+propre,clean
+commun,common
+unique,single
+simple,simple
+double,double
+tiers,third
+quart,quarter
+recu,received
+recus,received
+recherche,search
+chercher,search
+affich,display
+affichage,display
+afficher,show
+demarrer,start
+demarrage,startup
+terminer,finish
+termine,done
+demande,request
+demander,request
+demandes,requests
+cible,target
+cibles,targets
+bilan,report
+bilans,reports
+mesuree,measured
+flux,stream
+purge,purge
+purger,purge
+quarantaine,quarantine
+suggere,suggested
+suggerer,suggest
+suggestions,suggestions
+completer,complete
+complete,complete
+substituer,substitute
+garnir,populate
+reposer,reset
+poser,set
+posee,set
+ecarte,screened_out
+ecarter,screen_out
+ecartee,screened_out
+reintegrer,reinstate
+reintegre,reinstated
+historique,history
+defaut,default
+defauts,defaults
+video,video
+present_en,present_in
+consulte,seen
+consultes,seen
+ajour,up_to_date
+a jour,up_to_date
+a_jour,up_to_date
+inventaire,inventory
+programme,scheduled
+programmer,schedule
+programmes,scheduled
+differe,deferred
+differee,deferred
+plus tard,later
+plus_tard,later
+tard,later
+merci,thanks
+bienvenue,welcome
+bonjour,hello
+poids,weight
+rapatriement,retrieving
+rapatrier,retrieve
+joindre,attach
+joints,attached
+gras,bold
+italique,italic
+souligne,underline
+aligner,align
+numerotee,numbered
+retrait,indent
+format,format
+emetteur,sending
+generique,generic
+autorisation,authorization
+verification,checking
+preparation,preparing
+echec,failure
+echecs,failures
+manquantes,missing
+invalide,invalid
+interrompu,interrupted
+partiel,partial
+partielle,partial
+instant,now
+minutes,minutes
+perf,perf
+crash,crash
+telemetrie,telemetry
+connexion,connection
+reconnexion,reconnection
+reconnecter,reconnect
+deconnecte,disconnected
+nommer,rename
+retire,removed
+retirer,remove
+renvoyer,resend
+renvoi,resend
+abandonner,discard
+abandon,discard
+ignorer,dismiss
+activer,enable
+reessayer,retry
+continuer,continue
+replier,collapse
+deplier,expand
+effacer,clear
+accepter,accept
+provisoire,tentative
+decision,decision
+decisions,decisions
+modifier,edit
+seront,will_be
+se,self
+repete,repeats
+locale,local
+kicker,kicker
+origine,origin
+apropos,about
+valeur,value
+voile,veil
+tiroir,drawer
+poignee,handle
+aligner,align
+chips,chips
+tableau,board
+voir,see
+eleve,high
+faible,low
+nu,bare
+nue,bare
+tete_message,message_head
+adr,addr
+exp,sender
+auteur,author
+disque,disk
+scene,scene
+anneau,ring
+exemple,example
+contenu,content
+choisie,chosen
+boucle,loop
+espace,space
+mot,word
+coche,check
+atelier,workshop
+glu,glue
+mur,wall
+bloque,blocked
+ctx,ctx
+contexte,context
+lentes,slow
+sous_agents,subagents
+temoin,witness
+nettoyage_session,cleanup_session
+seed,seed
+uid,uid
+faut_relever,must_poll
+doit_relever,must_poll
+bloc_boite,mailbox_block
+brancher,wire
+comparateur,comparator
+pad,pad
+gabarit,template
+gabarits,templates
+sauvegarde,save
+scene,scene
+resoudre,resolve
+patcher,patch
+minuterie,timer
+fiche,card
+accorder,grant
+agrandir,enlarge
+reduire,shrink
+melange,mixed
+occupe,taken
+precis,exact
+plafond,cap
+dedoublonnage,dedup
+classement,ranking
+appariement,matching
+extraire,extract
+rendre,render
+rend,renders
+tient,fits
+juste,just
+tenir,hold
+tenue,held
+cible,target
+en cours,in_progress
+en_cours,in_progress
+en attente,pending
+en_attente,pending
+en ligne,online
+en_ligne,online
+hors ligne,offline
+hors_ligne,offline
+hors fenetre,off_window
+faite,done
+faites,done
+blanc,blank
+modifie,modified
+modifiee,modified
+catalogue,catalog
+catalogues,catalogs
+rien,nothing
+nous,us
+drapeaux,flags
+modale,modal
+listes,lists
+en synchro,syncing
+en reponse,replying
+en selection,selecting
+en,in
+sous,under
+socket sous,inner_socket
+repere local,local_marker
+gabarit corps,body_template
+messages ouverts,open_messages
+cle carte,card_key
+cle msg,msg_key
+cle ligne,row_key
+cle vol,flight_key
+champ corps,body_field
+champ recherche,search_field
+champ a,to_field
+champ cc,cc_field
+champ cci,bcc_field
+lignes brouillons,draft_rows
+menu gestes,gesture_menu
+menu decision,decision_menu
+menu deplacer,move_menu
+menu tri,sort_menu
+jeton cycle,cycle_token
+jeton nav,nav_token
+jeton recherche,search_token
+jeton signature,signature_token
+jeton suggere,suggest_token
+vol sauvegarde,save_flight
+zone corps,body_area
+nom ouvert,name_open
+ouvert,is_open
+ouverte,is_open
+ouverts,is_open
+seule,single
+premiere,first
+legere,light
+clair,light
+doit relever,must_poll
+faut relever,must_poll
+rattrapage corps,body_backfill
+rattraper corps,backfill_bodies
+rattrapage apercus,preview_backfill
+rattraper apercus,backfill_previews
+sonder brouillons,probe_drafts
+sonde brouillons,drafts_probe
+touche,key
+delai,delay
+retard,lag
+lancer,launch
+demarrer,start
+debut,start
+boite nav,nav_mailbox
+injecter arrivee,inject_arrival
+case de,checkbox_of
+ligne atelier,workshop_row
+rang portier,screener_rank
+rang reception,inbox_rank
+themes css,css_themes
+themes doc,doc_themes
+themes rust,rust_themes
+teintes rust,rust_hues
+teintes css,css_hues
+icones rust,rust_icons
+icones js,js_icons
+jetons doc,doc_tokens
+noms doc,doc_names
+noms catalogue,catalog_names
+liste rust,rust_list
+liste js,js_list
+lire fichier,read_file
+lire session,read_session
+lire themes,read_themes
+lire reperes,read_markers
+dans la glu,in_the_glue
+mur bloque,blocked_wall
+ctx moyen,avg_ctx
+sous agents,subagents
+compte echos,count_echos
+echo envoi,send_echo
+registre initialisees,initialized_registry
+etat ui,ui_state
+reseau etat,network_state
+nettoyage etat,cleanup_state
+noms adresses,address_names
+router expediteur de,route_sender_from
+router expediteur,route_sender
+retirer routage,remove_routing
+chemin enregistrement suggere,suggested_save_path
+pile mis de cote,set_aside_pile
+kiosque marquer lu,feed_mark_read
+kiosque non ouverts,feed_unopened
+marquer kiosque lu,mark_feed_read
+kiosque lu,feed_read
+nettoyage demarrer,cleanup_start
+nettoyage terminer,cleanup_finish
+mode organise,organized_mode
+hors pile,off_pile
+du fil,of_thread
+messages du fil,messages_of_thread
+fil route,thread_route
+flux borne,bounded_stream
+borne octets,byte_limit
+garde instance,instance_guard
+vol passe,pass_flight
+vol garde,flight_guard
+fin de cycle,cycle_end
+cycle complet,full_cycle
+passe legere,light_pass
+transport decor,fixture_transport
+cible geste,gesture_target
+geste groupe,group_gesture
+groupe nettoyage,cleanup_group
+groupe registre,paper_trail_group
+session nettoyage,cleanup_session
+erreur ical,ical_error
+invitation stockee,stored_invitation
+demande reponse,reply_request
+sans evenement,no_event
+sans uid,no_uid
+sans reponse,no_reply
+methode inconnue,unknown_method
+champs indexes,indexed_fields
+faux imap,fake_imap
+faux serveur,fake_server
+solder repere,settle_marker
+reposer sessions,reset_sessions
+substituer transfert,substitute_forward
+garnir message,populate_message
+teinte sure,safe_hue
+texte vers,text_into
+commence par,starts_with
+echange coupe,cut_exchange
+geste sous,gesture_under
+par role,by_role
+seul b,only_b
+plus haut fait,highest_done
+retraits du non,no_removals
+attente defaite,pending_undone
+dernier blanc,last_blank
+blanc en attente,pending_blank
+deja faite,already_done
+ecrire dans,write_into
+apres initiale,after_initial
+avec inconnue,with_unknown
+uidnext vu,uidnext_seen
+modseq vu,modseq_seen
+jamais vu,never_seen
+present en destination,present_at_destination
+nettoyage critere,cleanup_criterion
+boites du perimetre,mailboxes_in_scope
+regles actives,active_rules
+regles routage,routing_rules
+destinations routage,routing_destinations
+destinations echo,echo_destinations
+perimetres nettoyage,cleanup_scopes
+plages nettoyage,cleanup_ranges
+prefs par compte,prefs_per_account
+page unifiee,unified_page
+page un compte,single_account_page
+sous lot,sub_batch
+lot changements,changes_batch
+lot corps octets,body_batch_bytes
+seuil envoi,send_threshold
+seuil quarantaine,quarantine_threshold
+marqueur transfert,forward_marker
+corps absent,body_absent
+ancien identifiant,old_identifier
+identifiant,app_id
+nom verrou,lock_name
+index expediteurs,senders_index
+epoque portier,screener_epoch
+portier attente,screener_waiting
+portier defauts,screener_defaults
+defaut portier oui valide,valid_screener_default_yes
+defaut portier non valide,valid_screener_default_no
+exclusion organisee,organized_exclusion
+reception organisee,organized_inbox
+organise hors sql,organized_off_sql
+adresse images,images_address
+compte unifie,unified_account
+compte boite,mailbox_account
+comptes avec travail,accounts_with_work
+filtre compte,account_filter
+filtre non lues,unread_filter
+id du compte,account_id_of
+verrou compte,account_lock
+verrous releve,poll_locks
+relever inbox,poll_inbox
+veille session,watch_session
+demenager dossier,relocate_folder
+dossier temporaire,temp_folder
+dossier de la base,db_folder
+cle fichier,file_key
+lire ligne,read_line
+lire routage,read_routing
+valider routage,validate_routing
+valider horizon,validate_horizon
+ecrire horizon premier ajout,write_horizon_first_add
+extraire apercu,extract_preview
+rattraper correspondants,backfill_contacts
+balayer echos,sweep_echos
+echos en attente,pending_echos
+actions en attente,pending_actions
+deja en file,already_queued
+deja stmt,already_stmt
+queue tronquee,truncated_queue
+reconstruire index si ancien,rebuild_index_if_old
+retrograde ancien schema,downgrade_old_schema
+colonnes threads,thread_columns
+noms colonnes,column_names
+trop gros,too_big
+hors portee,out_of_scope
+pour test,for_test
+tests pieces,attachment_tests
+brouillon reponse,reply_draft
+envelope simple,simple_envelope
+corps alternatif,alternative_body
+corps synthetique,synthetic_body
+texte en html,text_as_html
+entete transfert,forward_header
+source du transfert,forward_source
+sans source,no_source
+sans adresse,no_address
+sans id,no_id
+sans date,no_date
+sans validity,no_validity
+sans message id,no_message_id
+premier identifiant,first_identifier
+dernier objet,last_subject
+participation du repondant,attendee_participation
+repondant est organisateur,attendee_is_organizer
+est organisateur,is_organizer
+est partie calendrier,is_calendar_part
+est invisible,is_invisible
+peut repondre,can_reply
+reponse a,reply_to
+reponse itip,itip_reply
+invitation projet,draft_invitation
+invitation de,invitation_from
+routage de,routing_of
+nettoyage compter groupes,cleanup_count_groups
+registre groupe page,paper_trail_group_page
+repondre invitation,reply_invitation
+sync apres geste,sync_after_gesture
+toggle mis de cote,toggle_set_aside
+agir groupe,act_on_group
+pin state du fil,thread_pin_state
+mis de cote du fil,thread_set_aside
+etat mis de cote,set_aside_state
+vers groupe,to_group
+par cle,by_key
+poser boite,set_mailbox
+poser phase,set_phase
+tri date,sort_by_date
+liste ids,id_list
+lignes du message,message_lines
+messages locaux,local_messages
+mailboxes avec actions,mailboxes_with_actions
+dossiers inclus,included_folders
+canoniques hors archives,canonical_except_archive
+indesirables non lus,junk_unread
+indesirables total,junk_total
+reception non lues,inbox_unread
+reception total,inbox_total
+arrivees depuis,arrivals_since
+depuis jours,since_days
+duree inbox,inbox_duration
+duree inventaire,inventory_duration
+debut atelier,workshop_start
+fin atelier,workshop_end
+fin du bloc,block_end
+un bloc,a_block
+banc analyse de 50 corps,bench_parse_50_bodies
+banc completer 50k,bench_complete_50k
+banc rattrapage 200k,bench_backfill_200k
+app bulles,app_bubbles
+avis maj,update_notice
+avis crash,crash_notice
+avis envoi,send_notice
+avis telemetrie,telemetry_notice
+avis connexion,connection_notice
+avis programme,scheduled_notice
+avis refus,refusal_notice
+verifier maj,check_update
+installer maj,install_update
+proposer maj,offer_update
+maj actifs,active_updates
+maj echecs,failed_updates
+accueil a jouer,onboarding_to_play
+accueil fait,onboarding_done
+accueil commence,onboarding_started
+marquer accueil fait,mark_onboarding_done
+marquer accueil commence,mark_onboarding_started
+cle auto,auto_key
+cle commence,started_key
+cle fait,done_key
+appliquer langue,apply_language
+langue actuelle,current_language
+restaurer langue,restore_language
+poser langue detectee,set_detected_language
+changer langue,change_language
+appliquer theme,apply_theme
+theme actif,active_theme
+theme actuel,current_theme
+theme affiche,displayed_theme
+restaurer theme,restore_theme
+choisir theme,choose_theme
+appliquer volets,apply_panes
+restaurer volets,restore_panes
+changer volets,change_panes
+volets actuels,current_panes
+volets avant,panes_before
+survol volets,panes_hover
+appliquer espacement,apply_spacing
+restaurer espacement,restore_spacing
+changer espacement,change_spacing
+espacement actuel,current_spacing
+appliquer largeur,apply_width
+regler largeur,set_width
+largeur actuelle,current_width
+persister largeurs,persist_widths
+restaurer largeurs,restore_widths
+defaut largeur,default_width
+plafond poignee,handle_cap
+restaurer mode organise,restore_organized_mode
+basculer mode organise,toggle_organized_mode
+basculer organise,toggle_organized
+basculer bulles,toggle_bubbles
+basculer cote,toggle_aside
+basculer groupe,toggle_group
+basculer message,toggle_message
+charger nav,load_nav
+charger nav maintenant,load_nav_now
+charger plus,load_more
+charger message,load_message
+charger groupes,load_groups
+charger horizons,load_horizons
+charger noms,load_names
+charger reperes,load_markers
+charger signatures,load_signatures
+chargement plus,loading_more
+charge corps,body_loaded
+recharger vues,reload_views
+fermer fil,close_thread
+ouvrir fil,open_thread
+agrandir fil,enlarge_thread
+reduire fil,shrink_thread
+epingler fil,pin_thread
+brouillon du fil,thread_draft
+brouillons par fil,drafts_per_thread
+reserve fil,thread_reserve
+fermer cartes,close_cards
+fermer suggestions,close_suggestions
+ouvrir menu,open_menu
+ouvrir gestes,open_gestures
+ouvrir mini,open_mini
+ouvrir conversation,open_conversation
+ouvrir brouillon,open_draft
+ouvrir differe,open_deferred
+ouvrir horizon,open_horizon
+ouvrir modifier,open_edit
+ouvrir nom,open_name
+ouvrir repere,open_marker
+ajout ouvert,add_open
+ajout factice,fake_add
+generique ouvert,generic_open
+groupes ouverts,open_groups
+horizon ouvert,horizon_open
+repere ouvert,marker_open
+tiroir ouvert,drawer_open
+est ouverte,is_open
+est repliee,is_collapsed
+est echo,is_echo
+est cochee,is_checked
+est choisie,is_chosen
+est deconnecte,is_disconnected
+est google,is_google
+est microsoft,is_microsoft
+attente portier,screener_pending
+envoi en cours,send_in_progress
+geste en cours,gesture_in_progress
+corps en cours,body_in_progress
+retrait en cours,removal_in_progress
+reponses en vol,replies_in_flight
+total en vol,total_in_flight
+couture en vol,seam_in_flight
+lancer couture,start_seam
+lancer epingles,start_pins
+lancer total,start_total
+gestes organise,organized_gestures
+gestes invitation,invitation_gestures
+gestes barre,bar_gestures
+gestes groupe,group_gestures
+geste sur echo,gesture_on_echo
+passe apres geste,pass_after_gesture
+apres envoi,after_send
+apres courrier envoye,after_mail_sent
+courrier vu,mail_seen
+temoin lu,read_witness
+marquer lue,mark_read
+marquer vue,mark_seen
+marquer legitime,mark_legitimate
+marquer demarrage,mark_startup
+demande suppr,delete_request
+demander retrait,request_removal
+peut supprimer,can_delete
+peut continuer,can_continue
+plus possible,more_possible
+total liste,list_total
+total precis,exact_total
+total resultats,results_total
+total pieces,attachments_total
+total servi a,total_served_at
+poids total,total_weight
+nb pieces,attachment_count
+nb pieces de,attachment_count_of
+nb messages,message_count
+nb jetons,token_count
+nb themes,theme_count
+n lignes,line_count
+n total,total_count
+n traces,trace_count
+n dossiers,folder_count
+premiere page ms,first_page_ms
+derniere ouverture ms,last_open_ms
+dernier mouvement,last_move
+dernier tic,last_tick
+minuterie suggere,suggest_timer
+minuterie recherche,search_timer
+toast minuterie,toast_timer
+choix suggere,suggested_choice
+champ suggere,suggested_field
+suggestion adresse,address_suggestion
+sur selection,on_selection
+sur defilement,on_scroll
+sur frappe adresse,on_address_keystroke
+sur frappe corps,on_body_keystroke
+sur load,on_load
+sur ajout,on_add
+sur onglet,on_tab
+sur touche,on_key
+clic rangee,row_click
+scene sans lecture,scene_without_reading
+section collee,stuck_section
+hors fenetre,off_window
+mesurer fenetre,measure_window
+mesure demandee,measure_requested
+haut epingles,pins_top
+haut epingles mesure,pins_top_measured
+epingles repondues,answered_pins
+rangs puces,chip_ranks
+autres puces,other_chips
+chips par page,chips_per_page
+chips avant,chips_before
+entetes avant,headers_before
+avant index,index_before
+avant sujet,subject_before
+gabarit seul,template_alone
+corps auto,auto_body
+corps modifie,body_modified
+corps version,body_version
+corps vide,body_empty
+corps html initial,initial_body_html
+corps texte initial,initial_body_text
+texte initial,initial_text
+poser corps,set_body
+selection corps,body_selection
+programmer sauvegarde,schedule_save
+programmer envoi,schedule_send
+sauver maintenant,save_now
+sauver seul,save_alone
+enregistrer brouillon,save_draft
+enregistrer signature,save_signature
+enregistrer nom,save_name
+supprimer brouillon,delete_draft
+reprendre brouillon,resume_draft
+nom brouillon,draft_name
+avait brouillon,had_draft
+brouillon epoch,draft_epoch
+brouillon de,draft_of
+brouillon id,draft_id
+resoudre reprise,resolve_resume
+montrer cc,show_cc
+montrer cci,show_bcc
+montrer couleurs,show_colors
+montrer differe,show_deferred
+date differe,deferred_date
+dans une heure,in_one_hour
+prochain programme,next_scheduled
+envois en attente,pending_sends
+envoyer avec,send_with
+vers envoi,to_send
+compte envoi,send_account
+compte emetteur,sending_account
+compte de,account_of
+compte ajoute,account_added
+compte retire,account_removed
+melange comptes,mixed_accounts
+vue melange,mixed_view
+changer expediteur,change_sender
+deplacer expediteur,move_sender
+expediteurs images,image_senders
+retirer expediteur images,remove_image_sender
+accorder images,grant_images
+images bloquees,blocked_images
+toujours afficher images,always_show_images
+afficher images,show_images
+sujet re,subject_re
+sujet tr,subject_fwd
+quand inv,when_inv
+quand invitation,when_invitation
+quand long,when_long
+repondant inv,attendee_inv
+lieu org,org_location
+lieu organisateur,organizer_location
+ligne repondant,attendee_line
+statut invitation,invitation_status
+kicker invitation,invitation_kicker
+tuile invitation,invitation_tile
+puce invitation,invitation_chip
+icones reponse,reply_icons
+reponses invitation,invitation_replies
+repondre tous,reply_all
+signaler spam,report_spam
+retour boite,back_to_mailbox
+boite de,mailbox_of
+bloc boite,mailbox_block
+cle libelle boite,mailbox_label_key
+libelle routage,routing_label
+modifier routage,edit_routing
+routages liste,routings_list
+routages visibles,visible_routings
+filtre routages,routings_filter
+router adresse,route_address
+choix a renommer,choice_to_rename
+nom occupe,name_taken
+nom erreur,name_error
+nom adr,name_addr
+nom adr porte,name_addr_carried
+patcher nom,patch_name
+patcher repere,patch_marker
+choisir repere,choose_marker
+retirer repere,remove_marker
+repere choix,marker_choice
+repere erreur,marker_error
+repere icones,marker_icons
+repere teintes,marker_hues
+repere familles,marker_families
+fonds repere,marker_bgs
+au repere,at_marker
+horizon erreur,horizon_error
+changer horizon,change_horizon
+reconnexion erreur,reconnection_error
+retrait erreur,removal_error
+synchro echec,sync_failure
+synchro partiel,sync_partial
+sonder synchro,probe_sync
+sonder etat,probe_state
+sonde gel,freeze_probe
+rattrapage pct,backfill_pct
+rapatrier tout,retrieve_all
+generation vue,view_generation
+index visible,visible_index
+index pour,index_for
+page utile,useful_page
+servir page,serve_page
+aller et servir,go_and_serve
+avancer apres,advance_after
+armer depart,arm_departure
+vider selection,clear_selection
+annuler selection,cancel_selection
+selection en cours,selection_in_progress
+groupes tries,sorted_groups
+tri historique,sort_history
+tri lus,sort_read
+tri non lus,sort_unread
+tri ancien,sort_oldest
+tri recent,sort_newest
+comparateur tri,sort_comparator
+lignes ordonnees,ordered_rows
+meme jour,same_day
+date absolue,absolute_date
+date longue,long_date
+ecart jours,day_gap
+clavier adresse,address_keyboard
+commande signature,signature_command
+commande select,select_command
+champs signature,signature_fields
+sombre signale,dark_flagged
+os sombre,os_dark
+fiche active,active_card
+h cadre,frame_height
+pad rangee,row_pad
+pad gauche,left_pad
+l liste,list_width
+i liste,list_index
+i sonde,probe_index
+brancher liens,wire_links
+retirer message,remove_message
+kiosque total,feed_total
+portier total,screener_total
+registre total,paper_trail_total
+registre groupe,paper_trail_group
+changer portier,change_screener
+renvoyer au portier,send_back_to_screener
+libelle ecarte,screened_out_label
+adresse retours,feedback_address
+panne factice,fake_failure
+purger oauth,purge_oauth
+purger cache http,purge_http_cache
+purger locales,purge_locals
+cles locales,local_keys
+compare listes,compare_lists
+sujet au sommet,subject_at_top
+premiere lue,first_read
+page0 arrivee,page0_arrival
+deja construits,already_built
+compte depart,start_account
+ouvrir atelier,open_workshop
+encre claire,light_ink
+encre sombre,dark_ink
+fond de,bg_of
+fond pastille,badge_bg
+tenir barre,hold_bar
+barre sticky,sticky_bar
+reponse sticky,sticky_reply
+reponse ombre,shadow_reply
+port tenu,held_port
+bloc envoi,send_block
+heure envoi,send_time
+piece conv,conv_attachment
+a cocher,to_check
+teinte sel,sel_hue
+teintes trace,trace_hues
+reserves catalogue,catalog_reserves
+roles pastilles,badge_roles
+nombre attendu,expected_count
+temoin theme,theme_witness
+seuil ms,threshold_ms
+sans les appels,without_calls
+vide bas,empty_bottom
+depuis defaut,since_default
+par date,by_date
+largeur avant,width_before
+sous titre,subtitle
+la,the
+le,the
+les,the
+confirmer,confirm
+de,from
+a,to
+ecrire,compose
+format puces,format-bullets
+bouton cc,cc-button
+bouton cci,bcc-button
+suppr annuler,delete-cancel
+suppr carte,delete-card
+suppr confirmer,delete-confirm
+mini non,mini-no
+mini oui,mini-yes
+tout lu,all-read
+section nonlus,section-unread
+section lus,section-read
+corps dormant,dormant-body
+pli,fold
+eventail,fan
+voir tableau,see-board
+pas spam,not-spam
+vers,to
+regle ecarte,rule-screened-out
+ligne case,row-checkbox
+ligne a,row-to
+ligne cc,row-cc
+nav separateur,nav-separator
+tiroir scrim,drawer-scrim
+vider recherche,clear-search
+voir conversation,see-conversation
+volet lecture,reading-pane
+garde images,images-guard
+garde texte,guard-text
+cadre entete,header-frame
+espace entete,header-space
+tete message,message-head
+objet fil,thread-subject
+adr exp,sender-addr
+repere nu,bare-marker
+temoin lu,read-witness
+point alerte,alert-dot
+nonlu,unread
+sous titre1,subtitle1
+sous titre2,subtitle2
+sous titre3,subtitle3
+titre1,title1
+titre2,title2
+titre3,title3

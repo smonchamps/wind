@@ -183,6 +183,18 @@ empruntent le chemin rapide documentaire du hook, étapes 1-6).
 
 ### E0 — Glossaire et dictionnaire (M)
 
+> **Livré le 2026-09-02, STOP 1 bis attendu** : [GLOSSARY.md](GLOSSARY.md)
+> (en anglais — le premier document du dépôt à l'être, à dessein) et
+> `scripts/rename/` : `tokens.csv` (1 588 segments et locutions),
+> `dictionary.csv` (1 210 identifiants dérivés), `keys.csv` (480 clés de
+> catalogue sur 496), `dom.csv` (542 test ids, classes CSS et coutures
+> e2e sur 652), `test-names.txt` (227 phrases de test, à la main à E3),
+> `collisions.txt` (360 homonymes, presque tous hors de toute portée
+> commune). Inventaire réel : 1 580 définitions françaises (Rust 777,
+> UI 595, e2e/scripts 208) — l'estimation de §1.4 (~1 200) était basse
+> de 30 %. Rulings de collision au §4 du glossaire (fil/thread,
+> geste/action, ligne row/line, compte account/count…).
+
 - `docs/GLOSSARY.md` : le vocabulaire **produit** (repris de
   `catalogue.en.js`, déjà tranché CE à PLAN-LANGUES et
   PLAN-MODE-ORGANISE : Feed, Screener, Paper trail, Set aside, Marker,
