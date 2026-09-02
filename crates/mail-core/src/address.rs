@@ -2,16 +2,16 @@ use std::fmt;
 
 use crate::Error;
 
-/// Adresse email validée : impossible d'en construire une invalide.
+/// Validated email address: impossible to build an invalid one.
 ///
-/// La validation est volontairement pragmatique (RFC 5321 simplifiée) :
-/// une partie locale non vide, un seul `@`, un domaine contenant au moins
-/// un point et ne commençant ni ne finissant par un point.
+/// Validation is deliberately pragmatic (simplified RFC 5321): a
+/// non-empty local part, a single `@`, a domain containing at least one
+/// dot and neither starting nor ending with a dot.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct EmailAddress(String);
 
 impl EmailAddress {
-    /// Longueur maximale d'une adresse (RFC 5321).
+    /// Maximum length of an address (RFC 5321).
     const MAX_LEN: usize = 254;
 
     pub fn parse(input: &str) -> Result<Self, Error> {
@@ -21,10 +21,10 @@ impl EmailAddress {
         if trimmed.is_empty() || trimmed.len() > Self::MAX_LEN {
             return Err(invalid());
         }
-        // Blancs, contrôles, séparateurs de listes et chevrons : soit de
-        // l'injection d'en-têtes, soit une liste mal découpée. Les refuser
-        // ici permet aussi de stocker des listes de destinataires avec un
-        // séparateur sûr (boîte d'envoi, Phase 2).
+        // Whitespace, controls, list separators and angle brackets:
+        // either header injection, or a badly split list. Refusing them
+        // here also allows storing recipient lists with a safe separator
+        // (outbox, Phase 2).
         if trimmed
             .chars()
             .any(|c| c.is_whitespace() || c.is_control() || matches!(c, ',' | ';' | '<' | '>'))
@@ -117,7 +117,7 @@ mod tests {
         ] {
             assert!(
                 EmailAddress::parse(bad).is_err(),
-                "{bad:?} devrait être refusée"
+                "{bad:?} should be rejected"
             );
         }
     }
