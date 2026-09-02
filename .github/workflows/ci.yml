@@ -14,7 +14,7 @@ jobs:
     runs-on: windows-latest
     steps:
       # v5 runs on Node 24; v4 (Node 20) is deprecated by GitHub.
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # PINNED version (mirror of rust-toolchain.toml, which this action
       # does not read). The CI no longer follows "the latest stable": a
       # new clippy lint of a future Rust version can no longer break the
@@ -57,7 +57,7 @@ jobs:
     name: build ui-v2 (Svelte + Vite, PLAN-UI-V2)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 24
@@ -92,7 +92,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # v5 runs on Node 24; v4 (Node 20) is deprecated by GitHub.
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # `cargo audit` directly, not the rustsec/audit-check action: that
       # one only exists for Node 20 (no Node 24 version published), so
       # GitHub would force it onto Node 24 with a deprecation warning.
