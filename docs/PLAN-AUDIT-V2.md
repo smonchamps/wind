@@ -619,7 +619,44 @@ E8+E9, revue.
   soldée : neuf commandes recopiées, deux divergences). `verifier-
   release.ps1` : `minisign -Vm` contre la clé publique du manifeste si
   l'outil est au PATH, sinon « NON PROUVÉ » dit (jamais PASS). Gate
-  documentaire jouée : 8 s, six étapes.
+  documentaire jouée : 8 s, six étapes. **Gate complète VERTE** (3,6
+  min, dix étapes, `flaky : 0`), commit `2b9c03e` (E7-E9).
+
+- **E10 — livrée le 2026-09-02** (journal **A107**). (1) **Corps
+  réessayable** : un échec du cœur retire la marque `''` et pose
+  `fil.erreurs[k]` ; le cadre porte la ligne d'incident (grammaire de la
+  garde d'images) « Le message n’a pas pu être chargé. » + Réessayer ;
+  couture e2e `window.__e2ePanne` (le prochain appel d'une commande
+  échoue une fois) — test `un_corps_que_le_cœur_ne_sert_pas_se_dit_et_
+  se_rejoue` (retours-7). (2) **Kiosque** : fusion par clé à la
+  resservie (`lu` figé au premier service, pages 2..n conservées) et
+  fenêtrage à ±12 rangs de la première carte visible (rang DOM calculé
+  sections et groupes confondus ; une carte qui sort laisse un bloc de
+  la hauteur mesurée de son corps — pas de saut). (3) `Liste.svelte` :
+  drapeau `vivant` baissé par le nettoyage d'un `$effect`, le `.finally`
+  ne pompe plus après démontage. (4) `rattraperApercus` gardée en
+  réentrance. (5) **Sonde unique `etat_ui`** (nav + synchro + envois,
+  une connexion) toutes les 5 s, les trois lectures extraites en
+  `lire_nav`/`lire_synchro`/`lire_envois` partagées avec les commandes
+  d'origine — IPC au repos **5 → 2 par 10 s** (`etat_ui` ×2 ; les
+  brouillons gardent leur sonde de 10 s : `list_drafts` reste une liste
+  entière, vague 3). (6) Rafales coalescées à 50 ms : `rechargerVues`
+  et le chemin de `chargerNav` qui va chercher (la sonde fournit
+  l'instantané, immédiat). (7) **D8** : `forward_context` sert le bloc
+  en `BlockRemote` avec un marqueur `data-wind-transfert="compte/uid/
+  boîte"` (allowlisté à la frontière : un brouillon de transfert repris
+  le garde) ; `queue_send` relit la source, la rend `AllowRemote` et
+  `substituer_transfert` remplace tout ce qui suit le marqueur — le
+  mot tapé avant reste, une retouche DANS le bloc est perdue (limite
+  dite) ; source d'un autre compte : corps tel quel. RED de compilation
+  puis GREEN : `un_transfert_n_embarque_aucune_image_distante_a_la_
+  composition_mais_les_rend_a_l_envoi`, `le_marqueur_de_transfert_
+  survit_a_la_frontiere` (RED franc). Limites dites : pas de test node
+  pour `fil.svelte.js` (runes, hors node) — le filet est e2e ; la mesure
+  « RAM après 5 pages Kiosque » n'est pas jouable sur le décor e2e (le
+  Kiosque y a quelques cartes) — à voir au terrain ; l'e2e du retry a
+  été écrit avec l'UI, sans RED joué à part. Specs jouées : retours-7,
+  démarrage, mode-organisé, réception-14 : 46/46.
 
 ## Gate & terrain
 

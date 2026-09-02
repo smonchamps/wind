@@ -1742,30 +1742,34 @@ pub struct NavAccount {
 
 /// L'état complet de la nav en UN appel : comptes et compteurs par
 /// catégorie. « Toutes les boîtes » s'agrège côté UI.
+fn lire_nav(store: &Store) -> Result<Vec<NavAccount>, String> {
+    // E2 : en mode organisé, la pastille de la Réception suit
+    // l'exclusion partagée — le non-lu d'un retenu appartient à la
+    // pastille du Portier, jamais aux deux.
+    let organise = store.mode_organise().map_err(|err| err.to_string())?;
+    let mut sortie = Vec::new();
+    for compte in store.accounts().map_err(|err| err.to_string())? {
+        let dossiers = store
+            .canonical_folders(compte.id)
+            .map_err(|err| err.to_string())?;
+        let (reception_non_lues, indesirables_non_lus) = store
+            .nav_unread_counts(compte.id, &dossiers, organise)
+            .map_err(|err| err.to_string())?;
+        sortie.push(NavAccount {
+            account_id: compte.id,
+            email: compte.email,
+            reception_non_lues,
+            indesirables_non_lus,
+        });
+    }
+    Ok(sortie)
+}
+
 #[tauri::command]
 pub async fn nav_snapshot(app: AppHandle) -> Result<Vec<NavAccount>, String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        // E2 : en mode organisé, la pastille de la Réception suit
-        // l'exclusion partagée — le non-lu d'un retenu appartient à la
-        // pastille du Portier, jamais aux deux.
-        let organise = store.mode_organise().map_err(|err| err.to_string())?;
-        let mut sortie = Vec::new();
-        for compte in store.accounts().map_err(|err| err.to_string())? {
-            let dossiers = store
-                .canonical_folders(compte.id)
-                .map_err(|err| err.to_string())?;
-            let (reception_non_lues, indesirables_non_lus) = store
-                .nav_unread_counts(compte.id, &dossiers, organise)
-                .map_err(|err| err.to_string())?;
-            sortie.push(NavAccount {
-                account_id: compte.id,
-                email: compte.email,
-                reception_non_lues,
-                indesirables_non_lus,
-            });
-        }
-        Ok(sortie)
+        lire_nav(&store)
     })
     .await
 }
@@ -2559,6 +2563,31 @@ pub async fn archive_message(
 ) -> Result<(), String> {
     hors_pompe(app, move |app| {
         queue_removal(&app, account_id, mailbox, uid, Action::Archive)
+    })
+    .await
+}
+
+/// L'état que l'UI sonde au repos, en UNE commande (PLAN-AUDIT-V2 E10) :
+/// nav, avancement de synchro, boîte d'envoi — trois sondes, trois
+/// `Store::open` et trois passages dans la file sérialisée par 10 s
+/// avant ; une seule désormais, sur une seule connexion.
+#[derive(Serialize)]
+pub struct EtatUi {
+    pub nav: Vec<NavAccount>,
+    pub synchro: SyncProgress,
+    pub envois: OutboxStatus,
+}
+
+#[tauri::command]
+pub async fn etat_ui(app: AppHandle, state: State<'_, AppState>) -> Result<EtatUi, String> {
+    let generation = state.sync_cycle.generation.load(Ordering::Relaxed);
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        Ok(EtatUi {
+            nav: lire_nav(&store)?,
+            synchro: lire_synchro(&store, generation)?,
+            envois: lire_envois(&store)?,
+        })
     })
     .await
 }
@@ -3998,6 +4027,10 @@ pub async fn forward_context(
 ) -> Result<ComposeContext, String> {
     let (envelope, _own) = enveloppe_et_compte(&app, account_id, &mailbox, uid).await?;
     let html = raw_body(&app, account_id, &mailbox, uid).await?;
+    // D8 (PLAN-AUDIT-V2 E10) : AUCUNE image distante au composeur — le
+    // pixel de suivi partait au clic « Transférer ». Le bloc porte sa
+    // SOURCE ; `queue_send` rend les vraies URL au moment d'envoyer.
+    let source = format!("{account_id}/{uid}/{mailbox}");
     // Verdict terrain D5 (2026-08-20) : un transfert TRANSMET — les
     // images distantes sont CONSERVÉES (`AllowRemote`), le destinataire
     // reçoit le message entier. L'exception §6.4 est assumée et
@@ -4017,12 +4050,46 @@ pub async fn forward_context(
                 envelope.sender.as_deref(),
                 quote_date(&envelope).as_deref(),
                 envelope.subject.as_deref(),
-                &mail_render::sanitize_with(&html, mail_render::ImagePolicy::AllowRemote).html,
+                &mail_render::sanitize_with(&html, mail_render::ImagePolicy::BlockRemote).html,
+                Some(&source),
             ),
             reply: false,
         })
     })
     .await
+}
+
+/// D8 (PLAN-AUDIT-V2 E10) : le bloc transféré d'un corps composé est
+/// remplacé par le rendu de sa source AVEC les images distantes — le
+/// composeur ne les a jamais chargées, le destinataire les reçoit. Sans
+/// marqueur, ou si la source n'est pas du compte émetteur, le corps part
+/// tel quel (limite dite).
+async fn rendre_les_images_du_transfert(
+    app: &AppHandle,
+    account_id: i64,
+    html: String,
+) -> Result<String, String> {
+    let Some(source) = mail_core::source_du_transfert(&html) else {
+        return Ok(html);
+    };
+    let Some((compte, reste)) = source.split_once('/') else {
+        return Ok(html);
+    };
+    let Some((uid, mailbox)) = reste.split_once('/') else {
+        return Ok(html);
+    };
+    let (Ok(compte), Ok(uid)) = (compte.parse::<i64>(), uid.parse::<u32>()) else {
+        return Ok(html);
+    };
+    if compte != account_id {
+        return Ok(html);
+    }
+    let brut = raw_body(app, account_id, mailbox, uid).await?;
+    let frais = hors_pompe(app.clone(), move |_| {
+        Ok(mail_render::sanitize_with(&brut, mail_render::ImagePolicy::AllowRemote).html)
+    })
+    .await?;
+    Ok(mail_core::substituer_transfert(&html, &frais))
 }
 
 /// Date au format de la ligne d'attribution d'une citation.
@@ -4055,6 +4122,10 @@ pub async fn queue_send(
     // tout de suite, chemin historique.
     send_at_epoch: Option<i64>,
 ) -> Result<(), String> {
+    let body_html = match body_html {
+        Some(html) => Some(rendre_les_images_du_transfert(&app, account_id, html).await?),
+        None => None,
+    };
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let from = account_email(&store, account_id)?;
@@ -4668,53 +4739,57 @@ fn run_flush_all(
 
 /// L'état de la boîte d'envoi pour l'UI : tout ce qui n'est pas parti,
 /// tous comptes confondus.
+fn lire_envois(store: &Store) -> Result<OutboxStatus, String> {
+    let mut status = OutboxStatus {
+        queued: 0,
+        interrupted: 0,
+        rejected: 0,
+        scheduled: 0,
+        next_scheduled_epoch: None,
+        entries: Vec::new(),
+        actions_refusees: store.actions_refusees().map_err(|err| err.to_string())?,
+    };
+    let maintenant = chrono::Utc::now().timestamp();
+    for message in store.outbox_metadonnees().map_err(|err| err.to_string())? {
+        // R2 : programmé pas encore échu — il n'attend pas le
+        // réseau, il attend son heure. Compté à part, et la plus
+        // proche échéance remonte (la sonde déclenchera la vidange).
+        let programme = message.state == OutboxState::Queued
+            && message
+                .send_at_epoch
+                .is_some_and(|epoch| epoch > maintenant);
+        match message.state {
+            OutboxState::Sent => continue,
+            OutboxState::Queued if programme => {
+                status.scheduled += 1;
+                status.next_scheduled_epoch = match status.next_scheduled_epoch {
+                    None => message.send_at_epoch,
+                    Some(connu) => Some(connu.min(message.send_at_epoch.unwrap_or(connu))),
+                };
+            }
+            OutboxState::Queued | OutboxState::Sending => status.queued += 1,
+            OutboxState::Interrupted => status.interrupted += 1,
+            OutboxState::Rejected => status.rejected += 1,
+        }
+        status.entries.push(OutboxEntry {
+            id: message.id,
+            subject: message.subject,
+            to: message.to.join(", "),
+            state: message.state.as_str().to_string(),
+            attempts: message.attempts,
+            error: message.last_error,
+            pieces: message.attachments.len(),
+            send_at_epoch: message.send_at_epoch.filter(|epoch| *epoch > maintenant),
+        });
+    }
+    Ok(status)
+}
+
 #[tauri::command]
 pub async fn outbox_status(app: AppHandle) -> Result<OutboxStatus, String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        let mut status = OutboxStatus {
-            queued: 0,
-            interrupted: 0,
-            rejected: 0,
-            scheduled: 0,
-            next_scheduled_epoch: None,
-            entries: Vec::new(),
-            actions_refusees: store.actions_refusees().map_err(|err| err.to_string())?,
-        };
-        let maintenant = chrono::Utc::now().timestamp();
-        for message in store.outbox_metadonnees().map_err(|err| err.to_string())? {
-            // R2 : programmé pas encore échu — il n'attend pas le
-            // réseau, il attend son heure. Compté à part, et la plus
-            // proche échéance remonte (la sonde déclenchera la vidange).
-            let programme = message.state == OutboxState::Queued
-                && message
-                    .send_at_epoch
-                    .is_some_and(|epoch| epoch > maintenant);
-            match message.state {
-                OutboxState::Sent => continue,
-                OutboxState::Queued if programme => {
-                    status.scheduled += 1;
-                    status.next_scheduled_epoch = match status.next_scheduled_epoch {
-                        None => message.send_at_epoch,
-                        Some(connu) => Some(connu.min(message.send_at_epoch.unwrap_or(connu))),
-                    };
-                }
-                OutboxState::Queued | OutboxState::Sending => status.queued += 1,
-                OutboxState::Interrupted => status.interrupted += 1,
-                OutboxState::Rejected => status.rejected += 1,
-            }
-            status.entries.push(OutboxEntry {
-                id: message.id,
-                subject: message.subject,
-                to: message.to.join(", "),
-                state: message.state.as_str().to_string(),
-                attempts: message.attempts,
-                error: message.last_error,
-                pieces: message.attachments.len(),
-                send_at_epoch: message.send_at_epoch.filter(|epoch| *epoch > maintenant),
-            });
-        }
-        Ok(status)
+        lire_envois(&store)
     })
     .await
 }
@@ -5979,6 +6054,23 @@ pub struct SyncProgress {
 /// Purement local — aucune connexion réseau : l'interface peut l'appeler
 /// en boucle pendant qu'une synchronisation tourne, sans lui coûter un
 /// seul aller-retour.
+fn lire_synchro(store: &Store, generation: u64) -> Result<SyncProgress, String> {
+    let (local, remote) = store.sync_progress().map_err(|err| err.to_string())?;
+    // Un horodatage illisible (pref corrompue) vaut « jamais » : la barre
+    // d'état retombe sur le texte sans date plutôt que d'afficher n'importe quoi.
+    let derniere = store
+        .text_pref(PREF_DERNIERE_SYNCHRO)
+        .map_err(|err| err.to_string())?
+        .and_then(|valeur| valeur.parse::<i64>().ok());
+    Ok(SyncProgress {
+        local,
+        remote,
+        percent: mail_core::sync_percent(local, remote),
+        derniere,
+        generation,
+    })
+}
+
 #[tauri::command]
 pub async fn sync_progress(
     app: AppHandle,
@@ -5986,23 +6078,10 @@ pub async fn sync_progress(
 ) -> Result<SyncProgress, String> {
     // `State` ne traverse pas le `spawn_blocking` (durée de vie) : on
     // emporte l'Arc du cycle, pas l'état.
-    let cycle = state.sync_cycle.clone();
+    let generation = state.sync_cycle.generation.load(Ordering::Relaxed);
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        let (local, remote) = store.sync_progress().map_err(|err| err.to_string())?;
-        // Un horodatage illisible (pref corrompue) vaut « jamais » : la barre
-        // d'état retombe sur le texte sans date plutôt que d'afficher n'importe quoi.
-        let derniere = store
-            .text_pref(PREF_DERNIERE_SYNCHRO)
-            .map_err(|err| err.to_string())?
-            .and_then(|valeur| valeur.parse::<i64>().ok());
-        Ok(SyncProgress {
-            local,
-            remote,
-            percent: mail_core::sync_percent(local, remote),
-            derniere,
-            generation: cycle.generation.load(Ordering::Relaxed),
-        })
+        lire_synchro(&store, generation)
     })
     .await
 }

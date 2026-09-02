@@ -319,6 +319,7 @@ export const EN = {
   'lecture.aria': 'Message',
   'lecture.vide': 'Select a message to read it.',
   'lecture.ouvrir': 'Open',
+  'lecture.corpsEchec': 'This message could not be loaded.',
   'lecture.imagesBloquees': '{n} remote image blocked to protect your privacy.|{n} remote images blocked to protect your privacy.',
   'lecture.afficherImages': 'Show images',
   'lecture.toujoursAfficherImages': 'Always show images from this sender',

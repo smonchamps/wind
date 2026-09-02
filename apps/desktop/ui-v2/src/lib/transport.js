@@ -50,8 +50,21 @@ const ajoutFactice = (commande, args) => {
   return null;
 };
 
+// Couture e2e (PLAN-AUDIT-V2 E10) : un tableau de noms de commandes pose
+// dans `window.__e2ePanne` fait ECHOUER le prochain appel de chacune (une
+// fois) — le seul moyen de jouer « le coeur n'a pas repondu » sur un
+// decor. Hors e2e la variable n'existe pas : chemin identique.
+const panneFactice = (commande) => {
+  const panne = globalThis.window?.__e2ePanne;
+  if (!Array.isArray(panne)) return null;
+  const i = panne.indexOf(commande);
+  if (i === -1) return null;
+  panne.splice(i, 1);
+  return () => Promise.reject(new Error(`panne e2e : ${commande}`));
+};
+
 export const appel = (commande, args) => {
-  const lancer = ajoutFactice(commande, args) ?? (() => brut(commande, args));
+  const lancer = panneFactice(commande) ?? ajoutFactice(commande, args) ?? (() => brut(commande, args));
   const retenue = globalThis.window?.__e2eRetenue;
   const vol = retenue ? retenue.then(lancer) : lancer();
   const journal = globalThis.window?.__e2eJournal;

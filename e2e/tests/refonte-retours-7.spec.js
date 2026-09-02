@@ -43,6 +43,24 @@ test('les fichiers joints vivent AVANT le corps du message (R2)', async () => {
 // (Les puces d'un ÉCHO restent inertes et sans voile — le voile n'est
 // pas rendu sur un écho, et leur inertie est déjà gardée par « l'écho
 // d'envoi dit ses destinataires et sa pièce », refonte-ecran02.)
+test('un corps que le cœur ne sert pas se dit et se rejoue (PLAN-AUDIT-V2 E10)', async () => {
+  // Le prochain `message_body` échoue (couture __e2ePanne) : le cadre
+  // dit l'échec et offre « Réessayer » — avant, un cadre vide à vie.
+  await page.evaluate(() => {
+    window.__e2ePanne = ['message_body'];
+  });
+  await page.locator('[data-testid="ligne"]').nth(1).click();
+  const echec = page.locator('[data-testid="volet-lecture"] [data-testid="corps-echec"]');
+  await expect(echec).toBeVisible();
+  await page.locator('[data-testid="corps-reessayer"]').click();
+  await expect(echec).toHaveCount(0);
+  await expect(
+    page.frameLocator('[data-testid="volet-lecture"] [data-testid="message-deplie"] iframe').first().locator('body'),
+  ).not.toBeEmpty();
+  await page.locator('[data-testid="ligne"]').first().click();
+  await expect(page.locator('[data-testid="volet-lecture"] [data-testid="lecture-fichiers"]')).toBeVisible();
+});
+
 test('le survol d’une pièce jointe dit « Enregistrer » (R1, D1)', async () => {
   const piece = page
     .locator('[data-testid="lecture-fichiers"] [data-testid="piece-jointe"]')

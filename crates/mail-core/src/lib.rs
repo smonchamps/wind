@@ -40,8 +40,9 @@ pub use backfill::{
 };
 pub use body::load_body;
 pub use compose::{
-    Draft, compose, forward_subject, quote_forward, quote_forward_html, quote_reply,
-    quote_reply_html, reply_all_split, reply_subject, reply_to,
+    Draft, MARQUEUR_TRANSFERT, compose, forward_subject, quote_forward, quote_forward_html,
+    quote_reply, quote_reply_html, reply_all_split, reply_subject, reply_to, source_du_transfert,
+    substituer_transfert,
 };
 pub use correspondants::Correspondant;
 pub use crash::{CrashReport, RawPanic, redact};

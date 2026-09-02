@@ -279,16 +279,67 @@ pub fn quote_reply_html(sender: Option<&str>, date: Option<&str>, body_html: &st
 
 /// Bloc riche d'un transfert : l'en-tête d'origine (De/Date/Objet)
 /// échappé, puis le corps HTML tel quel — un transfert transmet.
+/// L'attribut qui marque le bloc transféré dans un corps composé
+/// (PLAN-AUDIT-V2 E10, D8). Sa valeur nomme la source
+/// (`compte/uid/boîte`) : à l'envoi, [`substituer_transfert`] remplace
+/// tout ce qui suit par le rendu AVEC les images distantes — le composeur,
+/// lui, n'en a chargé aucune.
+pub const MARQUEUR_TRANSFERT: &str = "data-wind-transfert";
+
 pub fn quote_forward_html(
     sender: Option<&str>,
     date: Option<&str>,
     subject: Option<&str>,
     body_html: &str,
+    source: Option<&str>,
 ) -> String {
+    let ouverture = match source {
+        Some(source) => format!(
+            "<div {MARQUEUR_TRANSFERT}=\"{}\">",
+            echapper_attribut(source)
+        ),
+        None => "<div>".to_string(),
+    };
     format!(
-        "<br><br>{}<br>{body_html}",
+        "<br><br>{}<br>{ouverture}{body_html}</div>",
         crate::echo::texte_en_html(&entete_transfert(sender, date, subject)),
     )
+}
+
+fn echapper_attribut(valeur: &str) -> String {
+    valeur
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+/// La source du bloc transféré d'un corps composé, telle que le
+/// marqueur la porte — `None` sans marqueur (réponse, message neuf).
+pub fn source_du_transfert(body_html: &str) -> Option<String> {
+    let cle = format!("{MARQUEUR_TRANSFERT}=\"");
+    let debut = body_html.find(&cle)? + cle.len();
+    let fin = body_html[debut..].find('"')? + debut;
+    Some(
+        body_html[debut..fin]
+            .replace("&quot;", "\"")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&amp;", "&"),
+    )
+}
+
+/// Remplace le bloc transféré — du marqueur à la FIN du corps, le bloc
+/// est toujours dernier — par `corps_frais` (le rendu avec ses images
+/// distantes). Ce que l'utilisateur a tapé AVANT le bloc reste ; une
+/// retouche DANS le bloc transféré est perdue (limite dite : on
+/// transmet, on ne commente pas ligne à ligne).
+pub fn substituer_transfert(body_html: &str, corps_frais: &str) -> String {
+    let cle = format!("<div {MARQUEUR_TRANSFERT}=");
+    match body_html.find(&cle) {
+        Some(debut) => format!("{}<div>{corps_frais}</div>", &body_html[..debut]),
+        None => body_html.to_string(),
+    }
 }
 
 /// Bloc d'un transfert : l'en-tête d'origine (De/Date/Objet) puis le texte
@@ -607,6 +658,52 @@ mod tests {
         );
     }
 
+    /// PLAN-AUDIT-V2 E10, décision CE D8 : « Transférer » ne charge
+    /// AUCUNE image distante dans le composeur (le pixel de suivi partait
+    /// au clic, « Annuler » ne le rattrapait pas) ; à l'envoi, le bloc
+    /// transféré est remplacé par le rendu AVEC les vraies URL — le
+    /// destinataire reçoit le même message.
+    #[test]
+    fn un_transfert_n_embarque_aucune_image_distante_a_la_composition_mais_les_rend_a_l_envoi() {
+        let bloque = r#"<p>lettre</p><img src="data:image/gif;base64,R0lGOD" alt="">"#;
+        let compose = quote_forward_html(
+            Some("Alice"),
+            Some("2026-09-02"),
+            Some("Lettre"),
+            bloque,
+            Some("3/42/INBOX"),
+        );
+        assert!(!compose.contains("https://"), "{compose}");
+        assert!(
+            compose.contains(r#"data-wind-transfert="3/42/INBOX""#),
+            "{compose}"
+        );
+        assert_eq!(source_du_transfert(&compose).as_deref(), Some("3/42/INBOX"));
+
+        let edite = format!("<div>mon mot</div>{compose}");
+        let frais = r#"<p>lettre</p><img src="https://x.example/p.gif" alt="">"#;
+        let envoye = substituer_transfert(&edite, frais);
+        assert!(
+            envoye.starts_with("<div>mon mot</div><br><br>"),
+            "le mot tapé reste : {envoye}"
+        );
+        assert!(envoye.contains("https://x.example/p.gif"), "{envoye}");
+        assert!(!envoye.contains("data:image"), "{envoye}");
+        assert!(
+            !envoye.contains("data-wind-transfert"),
+            "le marqueur ne part pas : {envoye}"
+        );
+        // Sans marqueur (une réponse, un message neuf) : rien ne bouge.
+        assert_eq!(substituer_transfert("<p>a</p>", frais), "<p>a</p>");
+        assert_eq!(source_du_transfert("<p>a</p>"), None);
+        // Un nom de boîte avec des guillemets survit à l'aller-retour.
+        let bizarre = quote_forward_html(None, None, None, "", Some(r#"1/2/Dossier "cité""#));
+        assert_eq!(
+            source_du_transfert(&bizarre).as_deref(),
+            Some(r#"1/2/Dossier "cité""#)
+        );
+    }
+
     #[test]
     fn reply_to_recu_vise_l_expediteur() {
         assert_eq!(
@@ -695,6 +792,7 @@ mod tests {
             Some("2026-08-19 10:23"),
             Some("Devis <urgent>"),
             "<p>le corps</p>",
+            None,
         );
         assert!(
             block.contains("---------- Message transféré ----------"),
@@ -711,7 +809,7 @@ mod tests {
 
     #[test]
     fn quote_forward_html_uses_placeholders_for_missing_metadata() {
-        let block = quote_forward_html(None, None, None, "<p>corps</p>");
+        let block = quote_forward_html(None, None, None, "<p>corps</p>", None);
         assert!(block.contains("De : (expéditeur inconnu)"), "{block}");
         assert!(!block.contains("Date :"), "{block}");
         assert!(block.contains("Objet : (sans objet)"), "{block}");

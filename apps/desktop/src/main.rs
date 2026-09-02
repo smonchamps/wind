@@ -333,6 +333,7 @@ fn main() {
             commands::pinned_rows,
             commands::archive_message,
             commands::agir_groupe,
+            commands::etat_ui,
             commands::list_folders,
             commands::move_message,
             commands::delete_message,

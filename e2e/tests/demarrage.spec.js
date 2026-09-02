@@ -46,11 +46,9 @@ test.afterAll(async () => {
 // périodique » serait vraie par construction (les intervalles ne tirent
 // qu'à 5 s au plus tôt) et ne pourrait jamais échouer.
 const SONDES = [
-  'nav_snapshot',
+  'etat_ui',
   'reperes_get',
   'noms_get',
-  'sync_progress',
-  'outbox_status',
   'list_drafts',
   'telemetry_pending',
   'telemetry_consent_get',
@@ -96,7 +94,7 @@ test('la première page de la liste est demandée avant les sondes du démarrage
   expect(
     presentes.length,
     `sondes vues au démarrage : ${presentes.join(', ')} — un renommage a vidé le filet ?`,
-  ).toBeGreaterThanOrEqual(5);
+  ).toBeGreaterThanOrEqual(3);
   for (const sonde of SONDES) {
     const iSonde = journal.indexOf(sonde);
     // Trois commandes court-circuitent sous e2e : absente = rien à dire.

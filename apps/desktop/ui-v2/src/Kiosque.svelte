@@ -51,7 +51,18 @@
       });
       if (nee !== generation) return;
       if (depuis === 0) {
-        cartes = page;
+        // Fusion par cle (PLAN-AUDIT-V2 E10) : une resservie REMPLACAIT
+        // tout — la carte lue sautait de section pendant la lecture et
+        // les pages 2..n disparaissaient. `lu` reste FIGE au premier
+        // service (les sections se calculent de l'etat servi, R10) ; les
+        // cartes deja servies au-dela de la page restent derriere.
+        const anciennes = new Map(cartes.map((c) => [cleCarte(c.row), c]));
+        const fraiches = page.map((c) => {
+          const ancienne = anciennes.get(cleCarte(c.row));
+          return ancienne ? { ...c, lu: ancienne.lu } : c;
+        });
+        const vues = new Set(fraiches.map((c) => cleCarte(c.row)));
+        cartes = [...fraiches, ...cartes.slice(PAGE).filter((c) => !vues.has(cleCarte(c.row)))];
       } else {
         // Dédoublonnage à l'append (revue E5bis) : une arrivée entre
         // deux pages décale les offsets — la même carte re-servie
@@ -87,10 +98,47 @@
     charger(0);
   });
 
+  // Fenetrage (PLAN-AUDIT-V2 E10) : une iframe vivante + un
+  // ResizeObserver PAR carte — dix pages = deux cents documents. Seules
+  // les cartes a moins de FENETRE rangs de la premiere visible portent
+  // leur iframe ; une carte qui sort de la fenetre laisse un bloc de sa
+  // hauteur mesuree (le defilement ne saute pas), et la retrouve en
+  // revenant.
+  const FENETRE = 12;
+  let indexVisible = $state(0);
+  let hauteurs = $state({});
+  const horsFenetre = (i) => Math.abs(i - indexVisible) > FENETRE;
+  let mesureDemandee = false;
+  function mesurerFenetre(scene) {
+    if (mesureDemandee) return;
+    mesureDemandee = true;
+    requestAnimationFrame(() => {
+      mesureDemandee = false;
+      const haut = scene.getBoundingClientRect().top;
+      const articles = scene.querySelectorAll('article.carte');
+      let premiere = 0;
+      for (let i = 0; i < articles.length; i += 1) {
+        if (articles[i].getBoundingClientRect().bottom > haut) { premiere = i; break; }
+      }
+      // La hauteur des corps qui vont sortir de la fenetre, relevee AVANT
+      // qu'ils ne se demontent.
+      const neuves = { ...hauteurs };
+      articles.forEach((article, i) => {
+        if (Math.abs(i - premiere) > FENETRE) {
+          const corps = article.querySelector('iframe.corps');
+          if (corps) neuves[article.dataset.cle] = corps.offsetHeight;
+        }
+      });
+      hauteurs = neuves;
+      indexVisible = premiere;
+    });
+  }
+
   // La page suivante quand le bas approche — un seul vol à la fois.
   function surDefilement(e) {
-    if (epuise || enVol) return;
     const el = e.currentTarget;
+    mesurerFenetre(el);
+    if (epuise || enVol) return;
     if (el.scrollTop + el.clientHeight >= el.scrollHeight - 600) {
       charger(cartes.length);
     }
@@ -151,6 +199,11 @@
         (g) => g.qui,
       ));
   });
+  // Le rang DOM de chaque carte, sections et groupes confondus : c'est
+  // lui que la fenetre compare a la premiere carte visible (E10).
+  const rangs = $derived(
+    new Map([...nonLues, ...groupes.flatMap((g) => g.cartes)].map((c, i) => [cleCarte(c.row), i])),
+  );
   let groupesOuverts = $state({});
 
   // R10 — le témoin de lecture : un nœud au PIED de chaque carte non
@@ -235,7 +288,7 @@
   }} />
 
 {#snippet blocCarte(carte)}
-  <article class="carte" data-testid="kiosque-carte">
+  <article class="carte" data-testid="kiosque-carte" data-cle={cleCarte(carte.row)}>
     <div class="de">
       <span class="nom">{carte.row.sender}</span>
       <button type="button" class="gestes" data-testid="kiosque-gestes"
@@ -258,6 +311,10 @@
     </div>
     {#if estRepliee(carte)}
       <p class="apercu">{carte.row.preview ?? ''}</p>
+    {:else if horsFenetre(rangs.get(cleCarte(carte.row)) ?? 0) && carte.document !== null}
+      <!-- Hors fenetre : le bloc garde la hauteur du corps demonte. -->
+      <div class="corps-dormant" style={`height:${hauteurs[cleCarte(carte.row)] ?? 0}px`}
+           data-testid="kiosque-corps-dormant"></div>
     {:else if carte.document !== null}
       {#if carte.remote_images_blocked > 0}
         <!-- R1 : la garde d'images, comme au volet de lecture —

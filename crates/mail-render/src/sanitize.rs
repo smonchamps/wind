@@ -50,6 +50,9 @@ pub fn sanitize_with(html: &str, policy: ImagePolicy) -> Sanitized {
         .add_tags(["font"])
         .add_tag_attributes("font", ["color", "face", "size"])
         .add_generic_attributes([
+            // Le marqueur du bloc transféré (PLAN-AUDIT-V2 E10, D8) —
+            // inerte à la lecture, il dit à l'envoi d'où vient le bloc.
+            "data-wind-transfert",
             "style",
             "width",
             "height",
@@ -221,6 +224,19 @@ mod tests {
         let out = sanitize(r#"<base href="https://x.example/"><a href="/page">lien</a>"#);
         assert!(!out.html.contains("<base"));
         assert!(!out.html.contains("x.example"));
+    }
+
+    /// Le marqueur du bloc transféré (PLAN-AUDIT-V2 E10, D8) survit à la
+    /// frontière : un brouillon de transfert repris plus tard doit
+    /// encore savoir d'où il vient pour rendre ses images à l'envoi.
+    #[test]
+    fn le_marqueur_de_transfert_survit_a_la_frontiere() {
+        let out = sanitize(r#"<div data-wind-transfert="3/42/INBOX"><p>x</p></div>"#);
+        assert!(
+            out.html.contains(r#"data-wind-transfert="3/42/INBOX""#),
+            "{}",
+            out.html
+        );
     }
 
     #[test]

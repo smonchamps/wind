@@ -484,6 +484,13 @@
       });
   }
 
+  // Le drapeau de vie du composant, baissé par le nettoyage de l'effet
+  // (E10) : un `.finally` qui arrive après le démontage ne pompe plus.
+  let vivant = true;
+  $effect(() => () => {
+    vivant = false;
+  });
+
   function lancer(p) {
     const neeSource = source;
     const nee = generation;
@@ -544,8 +551,11 @@
       })
       .finally(() => {
         pending.delete(cle);
-        // Un vol s'est libéré : la fenêtre COURANTE choisit la suite.
-        if (!echoue) pomper();
+        // Un vol s'est libéré : la fenêtre COURANTE choisit la suite —
+        // si le composant vit encore (PLAN-AUDIT-V2 E10 : une liste
+        // démontée continuait de pomper, jusqu'à quatre IPC en file
+        // pour un composant mort).
+        if (!echoue && vivant) pomper();
       });
     pending.set(cle, promesse);
     return promesse;

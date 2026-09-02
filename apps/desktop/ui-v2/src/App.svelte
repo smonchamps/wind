@@ -398,10 +398,25 @@
   // vivent hors de la pompe (PLAN-GELS) — sans elle, le plus VIEUX
   // écraserait le frais et la pastille de non-lus remonterait seule.
   let jetonNav = 0;
-  async function chargerNav() {
+  // PLAN-AUDIT-V2 E10 : après un geste, la nav était demandée jusqu'à
+  // trois fois en rafale — coalescée (50 ms) sur le chemin qui va
+  // chercher ; la sonde de repos (`etat_ui`) fournit l'instantané.
+  let navEnAttente = false;
+  function chargerNav(instantaneFourni = null) {
+    if (instantaneFourni !== null) return chargerNavMaintenant(instantaneFourni);
+    if (navEnAttente) return Promise.resolve();
+    navEnAttente = true;
+    return new Promise((resoudre) => {
+      setTimeout(() => {
+        navEnAttente = false;
+        chargerNavMaintenant(null).then(resoudre, resoudre);
+      }, 50);
+    });
+  }
+  async function chargerNavMaintenant(instantaneFourni) {
     const jeton = ++jetonNav;
     try {
-      const instantane = await appel('nav_snapshot');
+      const instantane = instantaneFourni ?? (await appel('nav_snapshot'));
       if (jeton !== jetonNav) return;
       comptes = instantane;
       navPrete = true;
@@ -500,7 +515,12 @@
   // (PLAN-GELS D2) : à 2 000 corps (~130 Mo lus, mesure du 2026-08-15)
   // la transaction d'écriture s'allongeait — le verrou court protège les
   // gestes UI concurrents du BUSY (leçon delete_draft).
+  let apercusEnCours = false;
   async function rattraperApercus() {
+    // Gardée en réentrance comme `rattraperCorps` (PLAN-AUDIT-V2 E10) :
+    // deux pompes d'aperçus se doublaient sur la même file.
+    if (apercusEnCours) return;
+    apercusEnCours = true;
     try {
       let restants = await appel('preview_catchup', { limit: 500 });
       rattrapageApercus = restants > 0;
@@ -512,6 +532,7 @@
     } catch (err) {
       console.error('preview_catchup :', err);
     } finally {
+      apercusEnCours = false;
       rattrapageApercus = false;
     }
   }
@@ -520,9 +541,9 @@
   // bouge au repos, c'est un veilleur qui a relevé : la liste se
   // recharge au battement de cette sonde (5 s), sans canal neuf (R0-S5).
   let generationVue = null;
-  async function sonderSynchro() {
+  async function sonderSynchro(synchroFournie = null) {
     try {
-      synchro = await appel('sync_progress');
+      synchro = synchroFournie ?? (await appel('sync_progress'));
       const generation = synchro?.generation ?? null;
       if (generation !== null) {
         if (generationVue !== null && generation !== generationVue) {
@@ -609,9 +630,9 @@
     }, delai);
   }
 
-  async function sonderEnvois() {
+  async function sonderEnvois(etatFourni = null) {
     try {
-      const etat = await appel('outbox_status');
+      const etat = etatFourni ?? (await appel('outbox_status'));
       const refusees = etat.actions_refusees ?? 0;
       avisRefus = refusees > 0
         ? { alerte: true, icone: 'error', texte: t('avis.actionsRefusees', { n: refusees }), actions: [] }
@@ -995,14 +1016,14 @@
     });
     chargerReperes();
     chargerNoms();
-    setInterval(chargerNav, 10000);
-    sonderSynchro();
-    setInterval(sonderSynchro, 5000);
+    // PLAN-AUDIT-V2 E10 : UNE sonde de repos (`etat_ui` : nav, synchro,
+    // envois) toutes les 5 s — trois commandes, trois ouvertures de base
+    // par 10 s avant. Les brouillons gardent leur sonde (une liste).
+    sonderEtat();
+    setInterval(sonderEtat, 5000);
     // « il y a N minutes » vieillit tout seul : 30 s suffisent pour une
     // granularité à la minute.
     setInterval(() => (maintenant = Date.now()), 30000);
-    sonderEnvois();
-    setInterval(sonderEnvois, 10000);
     setTimeout(rattraperApercus, 1500);
     setTimeout(rattraperCorps, 3000);
     verifierMaj();
@@ -1401,10 +1422,27 @@
   // le Registre groupé ouvre ses fils dans le volet, la liste peut
   // être DÉMONTÉE au moment du geste (TypeError avalé par le catch —
   // nav et passe d'après-geste sautaient avec).
+  // PLAN-AUDIT-V2 E10 : un geste faisait trois resservies en rafale
+  // (geste, relecture, passe d'après-geste) — coalescées à 50 ms.
+  let resservieEnAttente = false;
   function rechargerVues() {
-    liste?.recharger();
-    kiosque?.recharger();
-    registre?.recharger();
+    if (resservieEnAttente) return;
+    resservieEnAttente = true;
+    setTimeout(() => {
+      resservieEnAttente = false;
+      liste?.recharger();
+      kiosque?.recharger();
+      registre?.recharger();
+    }, 50);
+  }
+
+  async function sonderEtat() {
+    try {
+      const etat = await appel('etat_ui');
+      chargerNav(etat.nav);
+      sonderSynchro(etat.synchro);
+      sonderEnvois(etat.envois);
+    } catch { /* hors ligne ou coeur occupé : la prochaine sonde suffira */ }
   }
 
   function marquerVue(ligne) {

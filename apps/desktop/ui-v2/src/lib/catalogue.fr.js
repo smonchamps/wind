@@ -339,6 +339,7 @@ export const FR = {
   'lecture.aria': 'Message',
   'lecture.vide': 'Sélectionnez un message pour le lire.',
   'lecture.ouvrir': 'Ouvrir',
+  'lecture.corpsEchec': 'Le message n’a pas pu être chargé.',
   'lecture.imagesBloquees': '{n} image distante bloquée pour protéger votre vie privée.|{n} images distantes bloquées pour protéger votre vie privée.',
   'lecture.afficherImages': 'Afficher les images',
   'lecture.toujoursAfficherImages': 'Toujours afficher les images de cet expéditeur',

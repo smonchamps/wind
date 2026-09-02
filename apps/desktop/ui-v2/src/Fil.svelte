@@ -15,8 +15,16 @@
   // liens interceptés (lib/liens.js).
   import Icone from './Icone.svelte';
   import {
-    fil, cleMsg, basculerMessage, toutDeplier, toutReplier, afficherImages,
-    toujoursAfficherImages, estEcho, cacheNoms,
+    fil,
+    cleMsg,
+    basculerMessage,
+    toutDeplier,
+    toutReplier,
+    afficherImages,
+    toujoursAfficherImages,
+    estEcho,
+    cacheNoms,
+    reessayer,
   } from './lib/fil.svelte.js';
   import { appel, choisirDestination } from './lib/transport.js';
   import { brancherLiens } from './lib/liens.js';
@@ -579,6 +587,18 @@
                             onclick={() => toujoursAfficherImages(m)}>
                       {t('lecture.toujoursAfficherImages')}</button>
                   {/if}
+                </div>
+              {/if}
+              {#if fil.erreurs[k]}
+                <!-- PLAN-AUDIT-V2 E10 : le coeur n'a pas servi ce corps —
+                     la grammaire de la garde d'images, avec le geste qui
+                     rejoue (avant : un cadre vide, definitif). -->
+                <div class="garde-images" data-testid="corps-echec">
+                  <Icone nom="error" />
+                  <span class="garde-texte">{t('lecture.corpsEchec')}</span>
+                  <button type="button" data-testid="corps-reessayer"
+                          onclick={() => reessayer(m)}>
+                    {t('action.reessayer')}</button>
                 </div>
               {/if}
               <iframe class="corps" sandbox="allow-same-origin" srcdoc={fil.corps[k] ?? ''}

@@ -15,6 +15,10 @@ const VIDE = () => ({
   messages: [],
   deplies: {},
   corps: {},
+  // PLAN-AUDIT-V2 E10 : un corps que le coeur n'a pas servi — la garde
+  // `corps[k] === undefined` refusait tout rechargement : corps vide a
+  // vie jusqu'a la fermeture du fil.
+  erreurs: {},
   pieces: {},
   // Le compte de pièces d'APRÈS-SCAN par message (vue.attachment_count
   // de message_body) : la ligne de liste porte celui d'AVANT
@@ -162,6 +166,7 @@ async function chargerMessage(m, avecImages = false) {
       // tardive (images accordées puis sélection changée) n'écrase
       // jamais l'état d'un fil plus récent.
       if (mien !== jeton) return;
+      delete fil.erreurs[k];
       fil.corps[k] = vue.document;
       fil.imagesBloquees[k] = avecImages ? 0 : vue.remote_images_blocked;
       fil.nbPieces[k] = vue.attachment_count;
@@ -170,6 +175,12 @@ async function chargerMessage(m, avecImages = false) {
       fil.invitations[k] = vue.invitation ?? null;
     } catch (err) {
       console.error('message_body :', err);
+      // Rechargeable : la marque `''` posee avant l'appel tombe, l'erreur
+      // se dit dans le cadre (« Reessayer »).
+      if (mien === jeton && fil.corps[k] === '') {
+        delete fil.corps[k];
+        fil.erreurs[k] = true;
+      }
     }
   }
   // Les métadonnées de pièces : HORS du chemin mesuré (elles arrivent
@@ -193,6 +204,11 @@ async function chargerMessage(m, avecImages = false) {
       })
       .catch((err) => console.error('message_attachments :', err));
   }
+}
+
+export function reessayer(m) {
+  delete fil.erreurs[cleMsg(m)];
+  return chargerMessage(m);
 }
 
 export function basculerMessage(m, valeur = null) {
