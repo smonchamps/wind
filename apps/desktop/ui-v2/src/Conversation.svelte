@@ -64,9 +64,10 @@
       <!-- Terrain 2026-09-02 (CE) : à l'écran 03, les gestes de tri du
            fil vivent DANS la barre d'entête — un seul composant avec
            le volet (BarreFil), dessin « entete ». -->
-      <BarreFil dessin="entete" {estIndesirable} {epinglable} {organise}
-                {onarchiver} {onspam} {onnonspam} {onepingler} {ondeplacer} {oncote} />
-      <span class="espace"></span>
+      <div class="tri">
+        <BarreFil dessin="entete" {estIndesirable} {epinglable} {organise}
+                  {onarchiver} {onspam} {onnonspam} {onepingler} {ondeplacer} {oncote} />
+      </div>
       <button type="button" class="principal" onclick={onecrire}>
         <Icone nom="edit_square" />{t('entete.ecrire')}</button>
     </header>
@@ -95,12 +96,19 @@
     position:absolute; inset:0; display:flex; flex-direction:column;
     background:var(--bg); z-index:1;
   }
+  /* Terrain 2026-09-02 (passe 4, CE) : les gestes de tri s'alignent
+     sur le bord GAUCHE de la colonne des messages. L'entête est une
+     grille à trois pistes dont la centrale reproduit la colonne de la
+     scène (960 px, centrée dans les mêmes gouttières de 28 px) ; le
+     retour à gauche, « Écrire » à droite, chacun dans sa piste. */
   .entete {
     height:52px; flex:none; background:var(--surface);
-    border-bottom:1px solid var(--border); display:flex;
-    align-items:center; gap:12px; padding:0 14px;
+    border-bottom:1px solid var(--border); display:grid;
+    grid-template-columns:minmax(auto, 1fr) minmax(0, 960px) minmax(auto, 1fr);
+    align-items:center; gap:12px; padding:0 28px;
   }
-  .espace { flex:1; }
+  .tri { justify-self:start; min-width:0; }
+  .entete > .principal { justify-self:end; }
   button {
     height:32px; padding:0 16px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink); background:var(--surface);
@@ -116,6 +124,12 @@
 
   /* La scène est LE flot (R3) : elle seule défile — le fil est à plat
      dedans, aucune surface, bordure ni ombre englobantes. */
-  .scene { flex:1; padding:18px 28px 28px; overflow-y:auto; min-height:0; }
+  /* `scrollbar-gutter` des DEUX côtés : la colonne reste centrée dans
+     la même largeur que la piste centrale de l'entête, barre de
+     défilement ou non — l'alignement tient au pixel. */
+  .scene {
+    flex:1; padding:18px 28px 28px; overflow-y:auto; min-height:0;
+    scrollbar-gutter:stable both-edges;
+  }
   .colonne { max-width:960px; margin:0 auto; min-height:100%; display:flex; flex-direction:column; }
 </style>

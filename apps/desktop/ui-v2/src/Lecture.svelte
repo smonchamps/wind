@@ -64,7 +64,12 @@
      un panneau qui défile en un seul flot — l'élévation appartient aux
      cartes de message, jamais au volet entier. */
   main {
-    background:var(--bg); padding:18px 22px; min-width:0;
+    /* Terrain 2026-09-02 (passe 4) : PAS de padding haut sur le cadre
+       qui défile — un `position:sticky` se borne au bord du CONTENU du
+       cadre, sous son padding : la barre collée du fil s'arrêtait 18 px
+       sous le haut visible et le message passait dans la bande. L'air
+       du haut est rendu par le fil (--fil-haut). */
+    background:var(--bg); padding:0 22px 18px; --fil-haut:18px; min-width:0;
     display:flex; flex-direction:column; min-height:0; overflow-y:auto;
     /* RETOURS-14 R1 (revue) : la barre du fil est collante avec un
        z-index — sans contexte d'empilement ici, elle passerait

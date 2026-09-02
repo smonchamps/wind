@@ -796,7 +796,8 @@ jamais un gel muet. mail-core 448 → 449. Enseignement au STANDARD §9.
   fil) : ROUGE sur `retours-14:68` (le filet R1 « la barre colle au
   défilement de la scène », remplacé par le verdict — réécrit sur le
   fait nouveau : les gestes dans l'entête, au-dessus de la scène), puis
-  VERTE en 2,7 min, 197 e2e, flaky 0.
+  VERTE en 2,7 min, 197 e2e, flaky 0 ; après la passe 4 : VERTE en
+  2,7 min, 197 e2e, flaky 0.
 
 ## STOP 2 — checklist de terrain (CE)
 
@@ -1029,6 +1030,21 @@ sur trois rangs au volet étroit du décor est assumé). Filet
 `barres-fil.spec.js` : collée (≤ 6 px sous les puces, sticky), flottante
 (sticky, ombre), écran 03 (Archiver dans `header`, plus de barre au
 flot, la barre de réponse visible sans défiler, ≥ 12 px du pied).
+
+## STOP 2 — passe 4 du 2026-09-02 : la réponse flottante OK, deux retouches
+
+Passe 4 : (3) barre de réponse flottante OK ; (1) au volet, la barre
+collée s'arrêtait 18 px sous le haut visible, le message passant dans
+la bande — un `position:sticky` se borne au bord du CONTENU du cadre,
+sous son padding (`main { padding:18px 22px }`) : le cadre ne porte
+plus de padding haut, l'air est rendu par le fil (`--fil-haut`) ; (2)
+à l'écran 03, « aligner les boutons avec la gauche de la colonne des
+emails » : l'entête devient une grille à trois pistes dont la centrale
+reproduit la colonne (960 px, gouttières de 28 px), `scrollbar-gutter:
+stable both-edges` sur la scène pour que la colonne reste centrée dans
+la même largeur, barre de défilement ou non. Filets ajoutés à
+`barres-fil.spec.js` : la barre collée au haut visible (≤ 1 px) une
+fois défilé ; Archiver aligné sur `.colonne` (≤ 1 px).
 
 ## § Décisions CE — tranchées au STOP 1, le 2026-09-02
 

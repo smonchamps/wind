@@ -43,6 +43,22 @@ test("volet : la barre de tri est collée sous l'entête, la barre de réponse f
   // Flottante : collante en bas, élevée (ombre), jamais un filet à plat.
   expect(geo.reponseSticky).toBe('sticky');
   expect(geo.reponseOmbre).not.toBe('none');
+  // Passe 4 (2026-09-02) : défilé jusqu'en bas, la barre collée tient le
+  // HAUT VISIBLE du cadre — pas 18 px dessous, avec le message qui
+  // passe dans la bande (le sticky se borne au contenu, sous le padding).
+  await page.setViewportSize({ width: 1180, height: 420 });
+  const volet = page.locator('[data-testid="volet-lecture"]');
+  await volet.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  await expect
+    .poll(async () => {
+      await volet.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+      const cadre = await volet.boundingBox();
+      const barre = await page.locator('[data-testid="barre-fil"]').boundingBox();
+      return barre ? Math.abs(barre.y - cadre.y) : 999;
+    })
+    .toBeLessThanOrEqual(1);
+  await page.setViewportSize({ width: 1500, height: 1050 });
+  await volet.evaluate((el) => { el.scrollTop = 0; });
 });
 
 test("écran 03 : les gestes de tri vivent dans la barre d'entête, la barre de réponse reste visible au défilement", async () => {
@@ -61,4 +77,12 @@ test("écran 03 : les gestes de tri vivent dans la barre d'entête, la barre de 
     return scene.getBoundingClientRect().bottom - reponse.getBoundingClientRect().bottom;
   });
   expect(marge).toBeGreaterThanOrEqual(12);
+  // Passe 4 (2026-09-02, CE) : les gestes de tri s'alignent sur le bord
+  // GAUCHE de la colonne des messages.
+  const alignement = await page.evaluate(() => {
+    const archiver = document.querySelector('[data-testid="conversation"] header [data-testid="archiver"]');
+    const colonne = document.querySelector('[data-testid="conversation"] .colonne');
+    return archiver.getBoundingClientRect().left - colonne.getBoundingClientRect().left;
+  });
+  expect(Math.abs(alignement)).toBeLessThanOrEqual(1);
 });

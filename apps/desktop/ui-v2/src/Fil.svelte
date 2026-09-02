@@ -631,7 +631,7 @@
      défile en un seul flot dans son cadre (le volet ou la scène de
      l'écran 03), les filets et l'élévation appartiennent aux seules
      cartes ; seule la largeur disponible change entre cadres. */
-  .objet-fil { display:flex; flex-direction:column; flex:none; min-height:100%; }
+  .objet-fil { display:flex; flex-direction:column; flex:none; min-height:100%; padding-top:var(--fil-haut, 0); }
   .tete { display:flex; flex-direction:column; flex:none; }
   /* V6 : le titre passe au registre d'affichage (graisse 340,
      -.03em — classe globale .display) ; la taille reste 24 px. */
