@@ -12,7 +12,7 @@
 
 ## Où on en est, et quoi faire en premier
 
-📝 **Plan rédigé le 2026-09-02, STOP 1 attendu : [PLAN-BASCULE-ANGLAIS](PLAN-BASCULE-ANGLAIS.md)** — basculer tout le code et toute la documentation du français vers l'anglais (commande CE). Mesuré : ~375 000 mots de prose, ~1 200 définitions et ~115 fichiers à renommer ; par couche, un commit par couche, trois filets neufs (cliquet de langue, contrat IPC, liens markdown) ; refus : historique git, schéma SQLite, comportement. **Quatorze décisions CE au §6** (D1 archives, D3 SQL, D4 langue par défaut, D10 séquencement après la 0.16.0 et le solde de PLAN-AUDIT-V2). Aucun code avant le GO.
+📝 **Plan rédigé le 2026-09-02, STOP 1 attendu : [PLAN-BASCULE-ANGLAIS](PLAN-BASCULE-ANGLAIS.md)** — basculer tout le code et toute la documentation du français vers l'anglais (commande CE). Mesuré : ~375 000 mots de prose, ~1 200 définitions et ~115 fichiers à renommer ; par couche, un commit par couche, trois filets neufs (cliquet de langue, contrat IPC, liens markdown) ; refus : historique git, schéma SQLite, comportement. **STOP 1 joué le 2026-09-02, partiel** : D1 « geler les archives avec bandeau », D3 « garder le SQL français, dette D-54 », D4 « en par défaut » (prochaine release MINEURE), **D10 « après 0.16.0 et le solde d'AUDIT-V2 » — rien ne commence avant**, les dix autres décisions se tranchent à l'ouverture. Aucun code avant.
 
 🔎 **Audit de code complet le 2026-09-01** —
 **[AUDIT-2026-09-01.md](AUDIT-2026-09-01.md)** : six auditeurs par
