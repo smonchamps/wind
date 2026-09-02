@@ -96,8 +96,7 @@ une chaîne d'un `.ps1` sans BOM, §7.1) — la gate parse désormais chaque
 **0.17.0 PUBLIÉE le 2026-09-02, le même jour** (vague 2 ;
 `verifier-release.ps1` : tout passe, crypto minisign non prouvée faute
 d'outil au PATH ; **auto-update prouvé aux deux postes**). **Encore
-dû** : le ticket support GitHub (`051bb01`) ; la mesure `maj.log`
-(poka-yoke `13c7681`, lisible depuis cette MAJ).
+dû** : le ticket support GitHub (`051bb01`).
 
 Dernier soldé avant lui :
 **[PLAN-AUDIT-V1](PLAN-AUDIT-V1.md)** (2026-09-02, terrain CE « ok »,
@@ -220,15 +219,7 @@ corrigé en « §5 »). Deux postures OBLIGATOIRES dans le lot des cinq,
 sans quoi la vague n'éprouve aucun des deux risques du §2 : au moins
 un poste **Smart App Control `On`**, au moins un **compte Gmail**.
 Mesures en cours : **S4** (flux d'inconnus au Portier, une semaine,
-engagée le 2026-08-30) ; encore dues : le bandeau de MAJ — non captée à la
-MAJ 0.14.0 → 0.15.0 (3e occasion manquée, postes lancés
-normalement) ; **poka-yoke posé le 2026-08-30** (`13c7681`,
-/terrain) : les durées `maj :` s'écrivent désormais AUSSI en append
-daté dans `maj.log` à côté de la base — à la prochaine MAJ acceptée,
-la mesure se lira après coup, quel que soit le lancement
-(`%APPDATA%\dev.elements.wind\maj.log`) ; et
-**le coût de `nettoyage_groupes` sur une vraie base (200 k)** — non
-mesuré, à chronométrer au premier vrai nettoyage.
+engagée le 2026-08-30). **Deux mesures dues soldées le 2026-09-02** : le bandeau de MAJ, lu dans `maj.log` (poka-yoke `13c7681`) à la MAJ 0.16.0 → 0.17.0 — manifeste vérifié en 79 ms, 5,9 Mo téléchargés en 1,8 s, installateur écrit en 5 ms et lancé en 8,0 s (le temps du contrôle d'installation Windows avant l'UAC, à surveiller sur le poste x64 sous Smart App Control) ; et **le coût de `nettoyage_groupes` sur la vraie base** (249 k enveloppes) : 159 groupes en 86 ms à froid, 17 ms à chaud (`wind.log`, STOP 2 de PLAN-AUDIT-V2), budget 200 ms tenu.
 
 Dernier soldé :
 **[PLAN-HORIZON-NETTOYAGE](PLAN-HORIZON-NETTOYAGE.md)** (2026-08-30,
@@ -586,8 +577,8 @@ banc écrivait `$n` dans sa boucle bornée par `$N` — **en PowerShell
 c'est la même variable** ; un `-N 3` partait pour ~550 tours. C'est
 aussi ce qui explique les « 19 lancements » de la campagne du 26/08.
 
-**Reste :** le ticket support GitHub, la lecture de `maj.log` ;
-PLAN-BASCULE-ANGLAIS en cours dans une autre session.
+**Reste :** le ticket support GitHub ; PLAN-BASCULE-ANGLAIS en cours
+dans une autre session.
 
 **Dernier chantier soldé : [PLAN-ESPACEMENT](PLAN-ESPACEMENT.md)**
 (2026-08-25, terrain CE **7/7 zéro constat**, gate verte 2 min, e2e
