@@ -784,7 +784,9 @@ jamais un gel muet. mail-core 448 → 449. Enseignement au STANDARD §9.
 - Gates complètes jouées : E1-E3, E4-E6, E7-E9, E10, E11 — cinq
   vertes (3,6 à 5,4 min ; flaky 0 à 2, nommés) ; finale après revue
   ROUGE (andon, ci-dessus) ; finale après andon VERTE en 2,9 min,
-  193 e2e, flaky 0.
+  193 e2e, flaky 0 ; après la passe 1 de terrain : ROUGE au format
+  (deux tests non formatés, `cargo fmt`), puis VERTE en 2,7 min,
+  194 e2e + 1 banc ignoré, flaky 0.
 
 ## STOP 2 — checklist de terrain (CE)
 
@@ -863,6 +865,97 @@ python e2e\sonde-gel.py C:\mesure\clarity.db 60
 Budgets à re-mesurer (STANDARD §3) : gel de la pompe 0 > 150 ms
 (point 11) ; démarrage inchangé (`terrain.ps1` lit `demarrage`) ; RAM
 privée < 200 Mo après le point 5.
+
+## STOP 2 — verdict terrain du 2026-09-02 (passe 1) : 9 OK, 3 KO, 3 observations
+
+Verdict du CE, point par point : 1 OK (second `Store::open` 0,76 ms,
+premier 5,2 ms sur 249 k enveloppes) ; 2 OK (« nettoyage : 159 groupes
+en 86 ms », puis 17 ms) ; 3, 4, 7, 8, 9, 11, 12 OK (sonde : « OK : aucun
+gel > 150 ms sur 60 s ») ; **5 KO**, **6 KO**, **10 KO**.
+
+**(A) `table envelopes has no column named reply_to`** — dans
+`wind.log`, à CHAQUE passe du veilleur (« passe de connexion en échec »,
+« passe légère en échec »), et « Répondre à tous impossible » au point
+10. Cause : la colonne `reply_to` (E5) vivait dans le `CREATE TABLE`
+seul, jamais dans la liste `add_missing_columns` d'`envelopes` ;
+`special_use` et `relevee_epoch`, elles, y étaient. Les décors e2e,
+semés à neuf, ne pouvaient pas le voir — c'est la leçon §9 « une
+fonctionnalité neuve doit ADOPTER les données anciennes », récidivée.
+TDD : `une_base_d_avant_la_vague_2_recoit_la_colonne_reply_to` (base
+fichier, colonne retirée, réouverture) — RED sur l'erreur du terrain mot
+pour mot, GREEN par la migration.
+
+**(B) « Toujours afficher les images » sans effet au Kiosque** (point 5,
+après dix pages défilées). Cause : `accorderImages` appelait le cœur
+puis `charger(0)`, qui ne re-sert que la page 0 — la fusion par clé
+(E10) gardait telle quelle une carte au-delà. Le décor organisé ne
+pouvait pas le montrer : router un expéditeur au Kiosque pose déjà la
+règle d'images (RETOURS-14), aucune carte n'y avait de garde. Décor
+neuf : `seed_arrivee` accepte `corps=images` (un corps à image distante
+par arrivée), `injecterArrivee({ corps: 'images' })`. Spec
+`kiosque-images.spec.js` : 25 lettres routées, règle révoquée, la garde
+d'une carte de page 2 — RED (garde toujours là), GREEN : la carte se
+re-sert elle-même par `message_body` (le même document que le volet),
+la règle d'expéditeur re-sert toutes les cartes encore gardées.
+
+**(C) mot tapé APRÈS le bloc transféré perdu à l'envoi** (point 6 ;
+avant OK, envoi OK). Cause : dans un contenteditable, le curseur posé en
+fin de corps tombe DANS le dernier bloc — le bloc marqué, que
+`substituer_transfert` remplace. Le bloc se termine désormais par une
+ligne vide éditable (`<div><br></div>`) : RED unitaire
+(`un_transfert_laisse_une_ligne_editable_apres_le_bloc`), GREEN ; filet
+e2e dans `refonte-ecran02` (Ctrl+Fin, un mot tapé, hors du bloc marqué).
+
+Observations : (i) capture du point 1 — le libellé « DÉJÀ CONSULTÉ »
+chevauche une rangée (Doctolib) et un vide d'une rangée la suit ; la
+Liste n'a pas changé sur ce point dans la vague (diff : Menu et drapeau
+de vie seulement) — **à reproduire avec le CE** (mode, épingles, geste
+qui précède) avant toute correction ; (ii) « passe geste compte 2 :
+inventaire 505,9 s, total 544,7 s » — une passe de neuf minutes, sous
+les échecs (A) ; hypothèse : verrous et reprises en cascade, **à
+re-mesurer après (A)** ; (iii) **RAM privée 249 Mo sur 6 processus
+WebView2 après dix pages de Kiosque** — budget STANDARD §3 < 200 Mo
+(repos : 95,5 Mo sur 7) : **budget dépassé, ligne arrêtée sur ce
+point** ; la fenêtre E10 tient 2×12+1 = 25 iframes vivantes ; mesure à
+deux largeurs sur un décor à corps de 100 Ko, ci-dessous, décision CE
+D9.
+
+### Mesure RAM du Kiosque (2026-09-02) — décision CE D9
+
+Outil : `e2e/tests/banc-ram-kiosque.spec.js` (sous `WIND_BANC_RAM=1`),
+`mesure-ram.ps1 -AppPid -Profil` — corrigé le jour même : il filtrait
+`dev.elements.wind` AVANT le profil et ne comptait, sur le profil e2e,
+que deux processus (6 Mo, un mensonge — STANDARD §3, « un outil de
+mesure se vérifie »). Décor : 200 lettres à corps synthétique de 100 Ko
+(`launchAppV2({ comptes: [{ …, ko: 100 }] })`), 16 expéditeurs routés,
+build DEBUG, 7 processus, working set privé sommé, pauses de 8 s.
+
+| Fenêtre (`FENETRE`) | iframes vivantes | repos | page 1 | 160 cartes | retour Réception | + 25 s |
+|---|---|---|---|---|---|---|
+| 12 (livré) | 13 | 119 | 254 (+136) | 335 (+217) | 286 (+167) | — |
+| 5 | 6 | 113 | 222 (+108) | 282 (+168) | 236 (+123) | — |
+| 1 | 2 | 113 | 182 (+70) | 209 (+96) | 207 (+94) | 206 (+94) |
+
+Lecture : (a) la largeur de fenêtre pèse — −54 Mo à 160 cartes entre 12
+et 5, −126 entre 12 et 1 ; (b) une seule page coûte déjà +70 à +136 Mo :
+une iframe `srcdoc` de 100 Ko vaut des dizaines de Mo au rendu ; (c) au
+retour en Réception, 94 à 167 Mo RESTENT, stables à +25 s — ce n'est pas
+le ramasse-miettes qui tarde : quelque chose retient les documents
+démontés (piste : les documents des iframes retirées, ou une référence
+depuis `corpsAuto`/`brancherLiens`) — **à instruire**, c'est la vraie
+racine, la fenêtre n'est qu'une borne.
+
+Sur le poste du CE (release, vraies lettres) : 249 Mo sur 6 processus
+après dix pages, budget STANDARD §3 < 200 Mo (repos 95,5 Mo).
+
+**D9 (CE)** : (1) réduire la fenêtre à 5 dès cette passe (−54 Mo sur
+le décor, 11 iframes vivantes couvrent plus d'un écran) — recommandé ;
+(2) la laisser à 12 ; (3) 1 (trois iframes — la carte lue et ses deux
+voisines ; à vérifier au défilement rapide). Dans tous les cas, la
+rétention après retour ouvre un chantier propre (ce n'est pas un réglage
+de fenêtre), et le budget « RAM < 200 Mo » se relit : au repos, ou après
+dix pages de lettres ? Le STANDARD dit « working set privé » sans
+préciser le geste.
 
 ## § Décisions CE — tranchées au STOP 1, le 2026-09-02
 

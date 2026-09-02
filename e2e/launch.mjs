@@ -146,7 +146,11 @@ export async function launchAppV2({ vierge = false, comptes = null } = {}) {
   if (comptes) {
     const etapes = [];
     for (const compte of comptes) {
-      etapes.push({ exemple: 'seed_inbox', args: `${compte.messages} ${compte.email}` });
+      // `ko: N` : chaque message porte un corps synthétique de N Ko —
+      // le décor des mesures de RAM du Kiosque (terrain STOP 2
+      // PLAN-AUDIT-V2 : 249 Mo après dix pages de vraies lettres).
+      const lourd = compte.ko ? ` ${compte.messages} ${compte.ko}` : '';
+      etapes.push({ exemple: 'seed_inbox', args: `${compte.messages} ${compte.email}${lourd}` });
       // `archives: N` : une boîte Archives de N messages, sans corps —
       // le décor du défilement profond (PLAN-DEFILEMENT-PROFOND). Le
       // seeder inscrit la boîte au cache `folders` (la canonique
@@ -179,7 +183,7 @@ export async function launchAppV2({ vierge = false, comptes = null } = {}) {
 // une spec lancée sous un AUTRE décor (Clarity, vierge) doit passer sa
 // base, sinon l'arrivée part dans un fichier que l'app ne lit pas (le
 // seeder sortirait vert, l'assertion rougirait sans indice).
-export function injecterArrivee({ email, expediteur, n = 1, nom = null, sujet = null, reponseA = null, db = null }) {
+export function injecterArrivee({ email, expediteur, n = 1, nom = null, sujet = null, reponseA = null, corps = null, db = null }) {
   db ??= path.join(root, 'target', 'e2e', 'parcours-v2-inbox.db');
   statSync(db); // la base doit EXISTER — jamais une arrivée dans le vide
   const exe = path.join(root, 'target', 'debug', 'examples', 'seed_arrivee.exe');
@@ -188,7 +192,10 @@ export function injecterArrivee({ email, expediteur, n = 1, nom = null, sujet = 
   // décor du fil mêlé) exige nom et sujet devant lui.
   if (nom || sujet || reponseA) args.push(`"${nom ?? expediteur}"`);
   if (sujet || reponseA) args.push(`"${sujet ?? 'Premier contact'}"`);
-  if (reponseA) args.push(`"${reponseA}"`);
+  if (reponseA || corps) args.push(`"${reponseA ?? '-'}"`);
+  // `corps: 'images'` (terrain STOP 2 PLAN-AUDIT-V2) : un corps à image
+  // distante par arrivée — le décor de la garde d'images du Kiosque.
+  if (corps) args.push(corps);
   execSync(`"${exe}" ${args.join(' ')}`, { cwd: root, stdio: 'inherit' });
 }
 

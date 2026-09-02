@@ -7,12 +7,16 @@
 //! synchronisation le ferait.
 //!
 //! ```powershell
-//! cargo run -p mail-core --example seed_arrivee -- <chemin.db> <email-compte> <adresse-expediteur> <n> [nom] [sujet] [reponse-a]
+//! cargo run -p mail-core --example seed_arrivee -- <chemin.db> <email-compte> <adresse-expediteur> <n> [nom] [sujet] [reponse-a] [corps]
 //! ```
 //!
 //! `reponse-a` (RETOURS-14 R4) : un Message-ID existant — l'arrivée
 //! REJOINT ce fil (In-Reply-To), le décor du « fil mêlé » : un inconnu
 //! répond dans le fil d'un connu.
+//!
+//! `corps` (terrain STOP 2 PLAN-AUDIT-V2) : `images` — chaque arrivée
+//! reçoit un corps en cache portant UNE image distante, le décor de la
+//! garde d'images du Kiosque (« - » = pas de corps, le défaut).
 
 use chrono::Utc;
 use mail_core::{Envelope, Store};
@@ -38,6 +42,8 @@ fn main() -> Result<(), mail_core::Error> {
         .cloned()
         .unwrap_or_else(|| "Premier contact".to_string());
     let reponse_a = args.get(7).cloned();
+    let reponse_a = reponse_a.filter(|valeur| valeur != "-");
+    let corps_images = args.get(8).is_some_and(|valeur| valeur == "images");
 
     let mut store = Store::open(std::path::Path::new(path))?;
     let account = store.adopt_or_create_account(email, "gmail")?;
@@ -67,6 +73,14 @@ fn main() -> Result<(), mail_core::Error> {
         })
         .collect();
     store.upsert_envelopes(state.mailbox_id, &lot)?;
+    if corps_images {
+        for uid in depart..depart + n {
+            let html = format!(
+                "<p>Lettre n°{uid} : un visuel distant.</p>                 <img src=\"https://images.exemple/lettre-{uid}.png\" alt=\"Visuel\">"
+            );
+            store.save_body(state.mailbox_id, uid, &html, &[])?;
+        }
+    }
     println!("arrivee : {n} message(s) de {expediteur} (uid {depart}..)");
     Ok(())
 }

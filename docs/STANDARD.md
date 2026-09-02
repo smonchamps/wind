@@ -673,6 +673,14 @@ fichier.** (Les migrations de l'ADR 0010 — trois colonnes — ont suivi
 cette règle et sont passées sans bruit sur la base réelle ET sur les
 bases du gate 3.)
 
+**Récidive (2026-09-02, PLAN-AUDIT-V2 STOP 2)** : la colonne
+`reply_to` posée dans le `CREATE TABLE` sans sa ligne dans
+`add_missing_columns` — six gates vertes, les décors e2e semés à neuf,
+et sur la vraie base chaque passe du veilleur en échec. Règle : **une
+colonne neuve = trois lignes** — le `CREATE TABLE`, la liste des
+colonnes migrées, et un test de RÉOUVERTURE d'une base fichier à
+laquelle on a retiré la colonne (`une_base_d_avant_la_vague_2_…`).
+
 ### Mesurer avant de corriger — y compris ses propres hypothèses
 
 Sur le faux regroupement, trois hypothèses étaient fausses ; le

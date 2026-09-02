@@ -18,13 +18,18 @@ if ($AppPid -gt 0) {
     $ids += (Get-CimInstance Win32_Process -Filter "Name='wind-desktop.exe'").ProcessId
 }
 
-$webview = Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" |
-    Where-Object { $_.CommandLine -match 'dev\.elements\.wind' }
+$webview = Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'"
 if ($Profil -ne '') {
     # Le dossier de donnees utilisateur identifie l'instance de facon
-    # sure : WebView2 le passe a chacun de ses processus enfants.
+    # sure : WebView2 le passe a chacun de ses processus enfants. Le
+    # profil SUFFIT : un profil e2e (target\e2e\webview2) ne porte pas
+    # dev.elements.wind dans sa ligne de commande -- filtre avant le
+    # profil, la mesure ne comptait que l'exe et un processus (terrain
+    # STOP 2 PLAN-AUDIT-V2 : 6 Mo sur 2 processus, un mensonge).
     $motif = [regex]::Escape($Profil)
     $webview = $webview | Where-Object { $_.CommandLine -match $motif }
+} else {
+    $webview = $webview | Where-Object { $_.CommandLine -match 'dev\.elements\.wind' }
 }
 $ids += $webview.ProcessId
 

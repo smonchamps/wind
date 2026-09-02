@@ -4285,6 +4285,12 @@ fn migrate(
             // desormais sur tout message neuf.
             ("to_addrs", "TEXT"),
             ("cc_addrs", "TEXT"),
+            // PLAN-AUDIT-V2 E5 : le Reply-To de l'enveloppe. Terrain STOP 2
+            // (2026-09-02) : la colonne vivait dans le CREATE TABLE seul —
+            // « no column named reply_to » à chaque passe du veilleur sur
+            // une base d'avant la vague 2. NULL sur l'existant : la relève
+            // l'écrit sur tout message neuf ou resynchronisé.
+            ("reply_to", "TEXT"),
         ],
     )?;
     add_missing_columns(
@@ -6663,6 +6669,38 @@ mod tests {
                 .unwrap();
             assert_eq!(mode.to_lowercase(), "wal", "la base héritée est convertie");
         }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Terrain STOP 2 PLAN-AUDIT-V2 (2026-09-02) : sur la vraie base,
+    /// « table envelopes has no column named reply_to » à chaque passe du
+    /// veilleur — la colonne vivait dans le CREATE TABLE, jamais dans la
+    /// liste des colonnes migrées ; les décors e2e, semés à neuf, ne
+    /// pouvaient pas le voir. Une base d'avant la vague 2 reçoit la
+    /// colonne à la réouverture, et une relève y écrit.
+    #[test]
+    fn une_base_d_avant_la_vague_2_recoit_la_colonne_reply_to() {
+        let path =
+            std::env::temp_dir().join(format!("wind-test-reply-to-migr-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        drop(Store::open(&path).unwrap());
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch("ALTER TABLE envelopes DROP COLUMN reply_to")
+                .unwrap();
+        }
+        Store::oublier_initialisation(&path);
+
+        let mut store = Store::open(&path).unwrap();
+        let account = test_account(&store);
+        let mailbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+        let mut liste = envelope(1, "Liste", 100, false);
+        liste.reply_to = Some("liste@exemple.fr".to_string());
+        store.upsert_envelopes(mailbox, &[liste]).unwrap();
+        assert_eq!(
+            store.reply_to_de(account, "INBOX", 1).unwrap(),
+            Some("liste@exemple.fr".to_string())
+        );
         let _ = std::fs::remove_file(&path);
     }
 

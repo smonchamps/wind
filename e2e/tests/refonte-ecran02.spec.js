@@ -1236,6 +1236,16 @@ test('le transfert rapatrie pour de vrai — hors ligne : échec dit, « Réessa
   // l'annexe tarifaire (`.last()`).
   await page.locator('[data-testid="transferer"]').last().click();
   await expect(page.locator('[data-testid="composition-kicker"]')).toHaveText('Transférer');
+  // Terrain STOP 2 PLAN-AUDIT-V2 (2026-09-02) : « un mot tapé APRÈS le
+  // bloc a disparu à l'envoi » — le curseur posé en fin de corps tombait
+  // DANS le bloc marqué, que l'envoi remplace. Le mot tapé à la fin vit
+  // HORS du bloc (la ligne vide éditable qui le suit).
+  const corps = page.locator('[data-testid="composition-corps"]');
+  await corps.click();
+  await page.keyboard.press('Control+End');
+  await page.keyboard.type('APRES-LE-BLOC');
+  await expect(corps).toContainText('APRES-LE-BLOC');
+  await expect(corps.locator('[data-wind-transfert]')).not.toContainText('APRES-LE-BLOC');
   // Les comptes du décor n'ont pas de serveur : chaque rapatriement finit
   // en échec — nom en alerte, « Réessayer » — jamais une puce pleine, et
   // jamais une pièce silencieusement absente.

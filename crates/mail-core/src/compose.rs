@@ -300,8 +300,13 @@ pub fn quote_forward_html(
         ),
         None => "<div>".to_string(),
     };
+    // La ligne vide éditable APRÈS le bloc (terrain STOP 2, 2026-09-02) :
+    // dans un contenteditable, le curseur posé après le dernier bloc
+    // tombe DEDANS — un mot tapé « après » vivait dans le `<div>` marqué
+    // et la substitution à l'envoi l'emportait. Ici, le curseur a un
+    // dehors.
     format!(
-        "<br><br>{}<br>{ouverture}{body_html}</div>",
+        "<br><br>{}<br>{ouverture}{body_html}</div><div><br></div>",
         crate::echo::texte_en_html(&entete_transfert(sender, date, subject)),
     )
 }
@@ -789,7 +794,12 @@ mod tests {
             Some("1/1/INBOX"),
         );
         let envoye = substituer_transfert(&format!("{imbrique}<p>fin</p>"), "X");
-        assert!(envoye.ends_with("<div>X</div><p>fin</p>"), "{envoye}");
+        // Entre le bloc et « fin » : la ligne vide éditable du transfert
+        // (terrain STOP 2) — elle vit HORS du bloc, elle survit.
+        assert!(
+            envoye.ends_with("<div>X</div><div><br></div><p>fin</p>"),
+            "{envoye}"
+        );
         // L'éditeur a posé un attribut AVANT le marqueur : trouvé quand même.
         let reserialise = imbrique.replace(
             "<div data-wind-transfert",
@@ -917,6 +927,22 @@ mod tests {
         assert!(
             block.contains("<p>le corps</p>"),
             "le HTML d'origine suit tel quel : {block}"
+        );
+    }
+
+    /// Terrain STOP 2 PLAN-AUDIT-V2 (2026-09-02) : « un mot tapé APRÈS le
+    /// bloc a disparu à l'envoi ». Dans un contenteditable, le curseur
+    /// posé après le dernier bloc tombe DEDANS ; le mot vivait donc dans
+    /// le `<div>` marqué, et la substitution l'emportait. Le bloc se
+    /// termine par une ligne vide éditable — le curseur a un dehors.
+    #[test]
+    fn un_transfert_laisse_une_ligne_editable_apres_le_bloc() {
+        let block = quote_forward_html(None, None, None, "<p>corps</p>", Some("1/2/INBOX"));
+        assert!(block.ends_with("</div><div><br></div>"), "{block}");
+        let sans_source = quote_forward_html(None, None, None, "<p>corps</p>", None);
+        assert!(
+            sans_source.ends_with("</div><div><br></div>"),
+            "{sans_source}"
         );
     }
 

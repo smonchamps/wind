@@ -61,11 +61,17 @@ vague 2 de l'audit (dix lots S2 mesurables + le front, D1 : « tout en
 un chantier »), ouverte le 2026-09-02, GO CE au STOP 1 (D1-D8), **onze
 étapes LIVRÉES le jour même**, STOP visuel CE joué (menu unique, ligne
 « Réessayer »), revue à regard neuf 8 angles / ~30 candidats / 14
-corrigés / 1 réfuté par la preuve, six gates complètes vertes —
-**en attente du STOP 2 (terrain CE)** : checklist de douze points au
-PLAN (`diagnostic_ouverture` sur la base réelle, `wind.log` du
-Nettoyage, geste de masse, transfert sans image, huit menus au
-clavier, sonde de gel). Chiffres : second `Store::open` 36 → 0,9 ms
+corrigés / 1 réfuté par la preuve, gate finale ROUGE puis VERTE (andon :
+panique UTF-8 dans `fin_du_bloc`), `0f14970` poussé, CI verte
+33622785346 — **STOP 2 joué le 2026-09-02 : 9 OK, 3 KO corrigés le
+jour même** (migration `reply_to` absente sur la vraie base — le
+veilleur échouait à chaque passe ; « Toujours afficher les images »
+sans effet au Kiosque au-delà de la page 0 ; mot tapé après le bloc
+transféré perdu à l'envoi — A109), **passe 2 de terrain attendue** avec
+la décision **D9** (fenêtre du Kiosque : RAM 249 Mo après dix pages,
+budget 200 — banc à trois largeurs au PLAN, D-53) et deux observations à
+instruire (« Déjà consulté » chevauchant une rangée ; passe d'inventaire
+à 505 s sous les échecs). Chiffres : second `Store::open` 36 → 0,9 ms
 (E1) ; corps de 28 Mo indexé 401 → 338 ms et 210 → 133 Mo (E2) ;
 `HEADER.FIELDS`, lots bornés, une `LIST` et une `CAPABILITY`, analyse
 MIME unique 18,2 → 11,1 ms (E3) ; `nettoyage_groupes` 380 → 67 ms,
@@ -568,8 +574,8 @@ banc écrivait `$n` dans sa boucle bornée par `$N` — **en PowerShell
 c'est la même variable** ; un `-N 3` partait pour ~550 tours. C'est
 aussi ce qui explique les « 19 lancements » de la campagne du 26/08.
 
-**Reste :** le terrain (STOP 2), puis commit, push et CI, puis
-`/solde`.
+**Reste :** la passe 2 de terrain (STOP 2, trois corrections + D9),
+puis `/solde`, puis 0.16.0 AVANT 0.17.0 (D2).
 
 **Dernier chantier soldé : [PLAN-ESPACEMENT](PLAN-ESPACEMENT.md)**
 (2026-08-25, terrain CE **7/7 zéro constat**, gate verte 2 min, e2e

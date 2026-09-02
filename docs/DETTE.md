@@ -340,6 +340,31 @@ motivée.)
 - **Rouvre si** : un testeur retouche un transfert et perd sa retouche ;
   le compteur « flaky : N » nomme deux fois le même test.
 
+### D-53 · RAM du Kiosque : une page de lettres coûte 70 à 136 Mo, et 94 à 167 Mo restent après retour
+
+- **Constat** (terrain STOP 2 PLAN-AUDIT-V2, 2026-09-02) : 249 Mo de
+  working set privé sur 6 processus WebView2 après dix pages de Kiosque
+  sur le poste du CE — budget STANDARD §3 « < 200 Mo » (repos 95,5 Mo).
+  Banc `e2e/tests/banc-ram-kiosque.spec.js` (200 lettres de 100 Ko,
+  build debug) : fenêtre 12 → +136 Mo à la première page, +217 à
+  160 cartes, +167 RETENUS au retour en Réception ; fenêtre 1 → +70,
+  +96, +94, stables à +25 s. La largeur de fenêtre (E10) borne, elle ne
+  guérit pas : une iframe `srcdoc` de lettre vaut des dizaines de Mo, et
+  les documents démontés ne rendent pas leur mémoire (`corpsAuto` et
+  `brancherLiens` nettoient — la rétention est ailleurs : documents des
+  iframes retirées, heap du rendu qui ne rétrécit pas ?).
+- **Raison du report** : décision CE D9 sur la fenêtre (réglage
+  immédiat) ; la racine — une iframe par carte — est une question de
+  conception (une seule iframe pour la carte lue ? cartes repliées par
+  défaut ? rendu sans iframe ?) : un chantier set-based, pas un
+  réglage. Le budget lui-même est à préciser : « working set privé »
+  au repos, ou après le geste le plus lourd du produit ?
+- **Piste** : profil mémoire du renderer WebView2 (DevTools, snapshot
+  avant/après démontage) pour nommer ce qui retient ; puis options
+  mesurées au banc.
+- **Rouvre si** : le budget précisé est dépassé sur le poste du CE après
+  D9, ou un gel apparaît au défilement du Kiosque.
+
 ## Soldée
 
 ### ~~D-36 · La colonne fantôme de `echos` naît sur toute base neuve~~ — soldée le 2026-09-01

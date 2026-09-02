@@ -146,8 +146,14 @@
   }
 
   // R1 : accorder les images — LES commandes du produit (message ou
-  // expéditeur), puis la page se ressert : la carte revient avec ses
-  // images, la garde disparaît.
+  // expéditeur), puis LA carte se ressert : elle revient avec ses
+  // images, la garde disparaît. Terrain STOP 2 PLAN-AUDIT-V2
+  // (2026-09-02) : `charger(0)` ne re-servait que la page 0 — la fusion
+  // par clé (E10) gardait telle quelle une carte au-delà, et sa garde
+  // restait après dix pages défilées. La carte se re-sert où qu'elle
+  // soit, par `message_body` (le même document que le volet) ; pour la
+  // règle d'expéditeur, toutes les cartes servies encore gardées — le
+  // cœur départage, une carte d'un tiers re-rend à l'identique.
   async function accorderImages(carte, toujours) {
     try {
       await appel(toujours ? 'allow_images_sender' : 'allow_images_message', {
@@ -155,10 +161,25 @@
         mailbox: carte.row.mailbox,
         uid: carte.row.uid,
       });
-      charger(0);
+      const cibles = toujours ? cartes.filter((c) => c.remote_images_blocked > 0) : [carte];
+      await Promise.all(cibles.map(resservir));
     } catch (err) {
       console.error('images kiosque :', err);
     }
+  }
+  async function resservir(carte) {
+    const vue = await appel('message_body', {
+      accountId: carte.row.account_id,
+      mailbox: carte.row.mailbox,
+      uid: carte.row.uid,
+      showImages: false,
+    });
+    const cle = cleCarte(carte.row);
+    cartes = cartes.map((c) =>
+      cleCarte(c.row) === cle
+        ? { ...c, document: vue.document, remote_images_blocked: vue.remote_images_blocked }
+        : c,
+    );
   }
 
   // Le pli d'une carte (constat CE au STOP visuel E5bis) : chaque
