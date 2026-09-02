@@ -65,7 +65,11 @@ test('volet de lecture : la barre reste visible au fond du fil (collante)', asyn
   await volet.evaluate((el) => { el.scrollTop = 0; });
 });
 
-test('écran 03 : la barre est en tête et colle au défilement de la scène', async () => {
+// Terrain 2026-09-02 (passe 3 du STOP 2 de la vague 2, verdict CE) : à
+// l'écran 03 la barre ne vit plus dans le flot de la scène — ses boutons
+// sont DANS la barre d'entête, au-dessus de la scène, quel que soit le
+// défilement (BarreFil.svelte, dessin « entete »).
+test("écran 03 : les gestes de tri vivent dans la barre d'entête, au-dessus de la scène, quel que soit le défilement", async () => {
   // Plus bas encore : l'écran 03 d'un fil d'un message est court — il
   // faut assez de défilement pour que la barre ATTEIGNE le haut.
   await page.setViewportSize({ width: 1180, height: 320 });
@@ -84,12 +88,13 @@ test('écran 03 : la barre est en tête et colle au défilement de la scène', a
     .poll(async () => {
       await scene.evaluate((el) => { el.scrollTop = el.scrollHeight; });
       const cadre = await scene.boundingBox();
-      const barre = await conv.locator('[data-testid="archiver"]').boundingBox();
+      const barre = await conv.locator('header [data-testid="archiver"]').boundingBox();
       if (!barre) return false;
-      const offset = barre.y - cadre.y;
-      return offset >= 0 && offset < 48;
+      // Au-dessus de la scène (dans l'entête), et encore visible.
+      return barre.y + barre.height <= cadre.y + 1 && barre.y >= 0;
     })
     .toBe(true);
+  await expect(scene.locator('[data-testid="archiver"]')).toHaveCount(0);
 
   // Retour à l'écran 02 pour les tests suivants.
   await page.locator('[data-testid="retour-boite"]').click();

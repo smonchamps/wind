@@ -8,6 +8,7 @@
   // sélection directe en 1-2 volets recharge (`ouvrirFil`).
   import Icone from './Icone.svelte';
   import Fil from './Fil.svelte';
+  import BarreFil from './BarreFil.svelte';
   import { fil, ouvrirFil, agrandirFil } from './lib/fil.svelte.js';
   import { t } from './lib/texte.svelte.js';
   import { cleLibelleBoite } from './lib/organise.svelte.js';
@@ -60,6 +61,11 @@
     <header class="entete">
       <button type="button" class="retour" data-testid="retour-boite" onclick={onretour}>
         <Icone nom="arrow_back" />{t(cleLibelleBoite('reception'))}</button>
+      <!-- Terrain 2026-09-02 (CE) : à l'écran 03, les gestes de tri du
+           fil vivent DANS la barre d'entête — un seul composant avec
+           le volet (BarreFil), dessin « entete ». -->
+      <BarreFil dessin="entete" {estIndesirable} {epinglable} {organise}
+                {onarchiver} {onspam} {onnonspam} {onepingler} {ondeplacer} {oncote} />
       <span class="espace"></span>
       <button type="button" class="principal" onclick={onecrire}>
         <Icone nom="edit_square" />{t('entete.ecrire')}</button>

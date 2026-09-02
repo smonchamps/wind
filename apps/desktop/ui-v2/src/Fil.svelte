@@ -14,7 +14,7 @@
   // allow-scripts par message déplié, corps servi par le cœur,
   // liens interceptés (lib/liens.js).
   import Icone from './Icone.svelte';
-  import Menu from './Menu.svelte';
+  import BarreFil from './BarreFil.svelte';
   import {
     fil,
     cleMsg,
@@ -84,11 +84,6 @@
   // clic, ou un CHANGEMENT de fil (revue E1 : le composant survit au
   // changement de ligne — sans ce reflet, le menu du fil A resterait
   // ouvert au-dessus du fil B et un clic distrait routerait B).
-  let menuDeplacer = $state(false);
-  $effect(() => {
-    void fil.ligne;
-    menuDeplacer = false;
-  });
 
   // Depuis R4 (PLAN-RETOURS-3, D4) Répondre / Répondre à tous /
   // Transférer visent CHAQUE message (barre par message) — plus de
@@ -367,57 +362,13 @@
          TRI seuls (D5) : Répondre/Répondre à tous/Transférer restent
          par message (D4). Signaler comme spam s'y range (D2), ou « Ce
          n'est pas un spam » en vue Indésirables. -->
-    <div class="actions">
-      <button type="button" data-testid="archiver" onclick={() => onarchiver(fil.ligne)}>
-        <Icone nom="archive" />{t('action.archiver')}</button>
-      {#if estIndesirable}
-        <button type="button" data-testid="pas-spam" onclick={() => onnonspam(fil.ligne)}>
-          <Icone nom="inbox" />{t('action.pasSpam')}</button>
-      {:else}
-        <button type="button" data-testid="signaler-spam" onclick={() => onspam(fil.ligne)}>
-          <Icone nom="report" />{t('action.signalerSpam')}</button>
-      {/if}
-      <!-- R4 (PLAN-RETOURS-7) : épingler LA conversation — bascule
-           dite par son libellé ET aria-pressed ; l'état vient du cœur
-           (pin_state) et suit le geste. Jamais sur un écho. -->
-      {#if epinglable && !estEcho(fil.ligne)}
-        <button type="button" data-testid="epingler" aria-pressed={fil.epingle}
-                onclick={() => onepingler(fil.ligne)}>
-          <Icone nom={fil.epingle ? 'keep_off' : 'keep'} />
-          {fil.epingle ? t('action.desepingler') : t('action.epingler')}</button>
-      {/if}
-      <!-- PLAN-MODE-ORGANISE E1 : le routage manuel — un expéditeur,
-           une destination. Jamais sur un écho (pas d'enveloppe). Sans
-           glyphe : aucun dessin existant ne porte ce sens (A3), le
-           texte suffit dans la barre. -->
-      {#if organise && !estEcho(fil.ligne)}
-        <!-- E5 : la bascule de la pile — l'état est SEMÉ de la ligne
-             servie (patron de l'épingle, revue 2026-08-21 : jamais un
-             aller-retour par ouverture) et suit le geste (App, jeton
-             du store) ; le geste remonte à l'App, qui possède la
-             commande. -->
-        <button type="button" data-testid="mettre-de-cote"
-                aria-pressed={fil.cote}
-                onclick={() => oncote(fil.ligne)}>
-          <Icone nom={fil.cote ? 'keep_off' : 'pile'} />
-          {fil.cote ? t('pile.reprendre') : t('pile.mettre')}</button>
-        <span class="deplacer">
-          <button type="button" data-testid="deplacer-vers"
-                  aria-haspopup="menu" aria-expanded={menuDeplacer}
-                  onclick={() => (menuDeplacer = !menuDeplacer)}>
-            {t('action.deplacerVers')}</button>
-          <Menu ouvert={menuDeplacer} testid="deplacer-menu" largeur={170} absolu
-                onfermer={() => (menuDeplacer = false)}>
-              {#each ['reception', 'kiosque', 'registre'] as dest (dest)}
-                <button type="button" role="menuitem"
-                        data-testid={`deplacer-${dest}`}
-                        onclick={() => { menuDeplacer = false; ondeplacer(fil.ligne, dest); }}>
-                  {t(`boite.${dest}`)}</button>
-              {/each}
-            </Menu>
-        </span>
-      {/if}
-    </div>
+    <!-- LA barre du fil (BarreFil.svelte) — au volet seulement : à
+         l'écran 03 ses boutons vivent dans la barre d'entête de la
+         scène (Conversation, terrain 2026-09-02). -->
+    {#if fil.cadre !== 'plein'}
+      <BarreFil {estIndesirable} {epinglable} {organise}
+                {onarchiver} {onspam} {onnonspam} {onepingler} {ondeplacer} {oncote} />
+    {/if}
 
     <div class="fil">
       {#each fil.messages as m (cleMsg(m))}
@@ -689,7 +640,7 @@
     color:var(--ink);
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
-  .puces { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 10px; }
+  .puces { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 4px; }
   .puce {
     height:32px; padding:0 12px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink2); background:var(--surface);
@@ -859,26 +810,6 @@
      le nom à l'encre pleine, le poids atténué, l'espacement au gap. */
   .fichiers .puce .nom { color:var(--ink); }
   .fichiers .puce .taille { font-size:12px; color:var(--muted); }
-  /* RETOURS-14 R1 (D1) : la barre colle au scrollport du CADRE (le
-     volet ou la scène de l'écran 03), z-index au-dessus des cartes
-     élevées. Terrain 2026-09-02 (CE, passe 2 du STOP 2 de la vague
-     2) : elle FLOTTE au-dessus du message — le dessin de l'objet
-     flottant du produit (A108, Menu) : surface, bordure, rayon des
-     contrôles, ombre --shadow, décollée de 8 px du haut du scrollport
-     pour que les cartes passent visiblement dessous. */
-  .actions {
-    flex:none; margin:0 0 12px; padding:8px 10px;
-    display:flex; gap:12px; flex-wrap:wrap;
-    position:sticky; top:8px; z-index:4;
-    background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); box-shadow:var(--shadow);
-  }
-  .actions button {
-    height:32px; padding:0 16px; display:inline-flex; align-items:center;
-    gap:8px; font-size:13px; color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:var(--r-controle); cursor:pointer;
-  }
-  .actions button:hover { background:var(--sel); }
   /* RETOURS-14 R4 (D5) : le badge « En attente au Portier » — une
      étiquette nue à l'encre atténuée, filet de bordure, jamais une
      alerte : le courrier est légitime, son verdict est juste dû. */
@@ -890,14 +821,20 @@
   /* E1 : le menu de « Déplacer vers… » — une carte SOUS le bouton
      depuis que la barre vit en tête (RETOURS-14 R1 ; l'idiome du
      nuancier, A62), boutons au gabarit de la barre, texte à gauche. */
-  .deplacer { position:relative; display:inline-flex; }
-
-  /* R4/D4 : la barre de réponse d'UN message — en bas de la carte, un
-     filet la sépare du corps ; même gabarit de boutons que la barre du
-     fil, un peu plus compacte (26 px, jetons nus au repos). */
+  /* R4/D4 : la barre de réponse d'UN message — en bas de la carte.
+     Terrain 2026-09-02 (CE, passe 3 du STOP 2 de la vague 2) : elle
+     FLOTTE en bas du message — l'objet flottant du produit (A108 :
+     surface, bordure, rayon des contrôles, ombre --shadow), collante
+     au bas du scrollport tant que le message défile (12 px de marge
+     avec le pied), et en place dans la carte quand sa fin arrive, à
+     12/20/16 px des bords de l'élévation. `align-self:flex-start` :
+     elle se resserre sur ses boutons, elle ne barre pas la carte. */
   .actions-message {
-    padding:12px 20px; border-top:1px solid var(--border);
+    position:sticky; bottom:12px; align-self:flex-start;
+    margin:12px 20px 16px; padding:8px 10px;
     display:flex; gap:10px; flex-wrap:wrap;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--r-controle); box-shadow:var(--shadow);
   }
   /* UN gabarit pour les boutons de message ET ceux de la carte
      d'invitation (A76 dit « au gabarit des actions de message ») : le

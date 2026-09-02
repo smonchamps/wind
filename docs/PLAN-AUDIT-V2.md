@@ -792,7 +792,11 @@ jamais un gel muet. mail-core 448 → 449. Enseignement au STANDARD §9.
   après la passe 2 : ROUGE à la cohérence du Système (icône « mail »
   hors catalogue dans la sonde — « work », un repère), puis VERTE en
   3 min, 194 e2e, flaky 1 (`selection-multiple:174` — deux gates de
-  suite : à instruire si une troisième).
+  suite : à instruire si une troisième) ; après la passe 3 (barres du
+  fil) : ROUGE sur `retours-14:68` (le filet R1 « la barre colle au
+  défilement de la scène », remplacé par le verdict — réécrit sur le
+  fait nouveau : les gestes dans l'entête, au-dessus de la scène), puis
+  VERTE en 2,7 min, 197 e2e, flaky 0.
 
 ## STOP 2 — checklist de terrain (CE)
 
@@ -1006,6 +1010,25 @@ ombre. Proposition (STOP visuel) : l'objet flottant du produit (A108,
 (2026-09-02, sur captures) : « OK tel quel »** — livré dans `0a42bd9`,
 CI verte 33633517415 ; à confirmer au terrain (passe 3, avec la bande
 « Déjà consulté »).
+
+## STOP 2 — passe 3 du 2026-09-02 : bande OK, journal sain, les barres du fil redessinées
+
+Passe 3 : la bande « Déjà consulté » dans son vide (OK) ; journal sain
+— plus une ligne `reply_to`, inventaires à 6 à 24 s (le 505 s était
+bien un effet de (A)). Sur la barre flottante acceptée en passe 2, le
+CE renverse au terrain : **trois dessins** — au volet, la barre de tri
+collée sous l'entête ; à l'écran 03, ses boutons dans la barre
+d'entête ; la barre de réponse (Répondre…) flottante en bas de message,
+marge avec le pied et avec les bords de l'élévation. Construit au
+minimum : `BarreFil.svelte` (un composant, deux dessins, rendu par
+`Fil` au volet et par `Conversation` dans son entête), la barre de
+réponse en objet flottant collant (`position:sticky; bottom:12px`,
+`align-self:flex-start`, marges 12/20/16). Captures des trois
+situations envoyées ; **verdict CE : « OK tel quel »** (l'empilement
+sur trois rangs au volet étroit du décor est assumé). Filet
+`barres-fil.spec.js` : collée (≤ 6 px sous les puces, sticky), flottante
+(sticky, ombre), écran 03 (Archiver dans `header`, plus de barre au
+flot, la barre de réponse visible sans défiler, ≥ 12 px du pied).
 
 ## § Décisions CE — tranchées au STOP 1, le 2026-09-02
 
