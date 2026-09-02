@@ -7,6 +7,7 @@
   // fil passe par le chemin de la liste (`onouvrir` → App), le volet
   // de lecture reste le lecteur.
   import Icone from './Icone.svelte';
+  import Menu from './Menu.svelte';
   import TriSection from './TriSection.svelte';
   import { appel } from './lib/transport.js';
   import { comparateurTri } from './lib/tri.js';
@@ -131,16 +132,6 @@
     menu = null;
     onrouter(address, qui, destination);
   }
-  $effect(() => {
-    if (!menu) return;
-    const fermer = () => (menu = null);
-    window.addEventListener('click', fermer);
-    window.addEventListener('keydown', fermer);
-    return () => {
-      window.removeEventListener('click', fermer);
-      window.removeEventListener('keydown', fermer);
-    };
-  });
 </script>
 
 <div class="scene" data-testid="registre">
@@ -205,12 +196,8 @@
   </div>
 </div>
 
-{#if menu}
-  <!-- Le ⋯ d'un groupe — le dessin des menus du produit (patron
-       Kiosque/Liste ; famille D-47, consignée). « Écarter » pose le
-       Non nu — le choix se rejoue à l'historique du Portier. -->
-  <div class="menu-groupe" role="menu" data-testid="registre-menu"
-       style="left:{menu.x}px; top:{menu.y}px">
+<Menu ouvert={menu !== null} x={menu?.x ?? 0} y={menu?.y ?? 0}
+      testid="registre-menu" largeur=220 onfermer={() => (menu = null)}>
     {#each ['reception', 'kiosque'] as dest (dest)}
       <button type="button" role="menuitem" data-testid={`registre-vers-${dest}`}
               onclick={() => geste(dest)}>
@@ -220,8 +207,7 @@
     <button type="button" role="menuitem" data-testid="registre-ecarter"
             onclick={() => geste('ecarte')}>
       <Icone nom="visibility_off" />{t('liste.ecarter')}</button>
-  </div>
-{/if}
+  </Menu>
 
 <style>
   /* La scène du Registre — la géométrie du Kiosque (colonne centrée,
@@ -285,18 +271,6 @@
   .gestes:hover, .gestes[aria-expanded="true"] {
     background:var(--hover); border-color:var(--border); color:var(--ink);
   }
-  .menu-groupe {
-    position:fixed; z-index:6; min-width:220px; display:flex;
-    flex-direction:column; background:var(--surface);
-    border:1px solid var(--border); box-shadow:var(--shadow); padding:4px;
-  }
-  .menu-groupe button {
-    height:32px; padding:0 12px; display:inline-flex; align-items:center;
-    gap:10px; font-size:13px; color:var(--ink); background:none;
-    border:none; cursor:pointer; text-align:left;
-  }
-  .menu-groupe button:hover { background:var(--sel); }
-  .menu-groupe .filet { height:1px; background:var(--border); margin:4px 0; }
   .voir-plus {
     margin:6px 0 10px 42px; height:30px; padding:0 14px;
     display:inline-flex; align-items:center; font-size:13px;

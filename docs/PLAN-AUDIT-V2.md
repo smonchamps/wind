@@ -656,7 +656,45 @@ E8+E9, revue.
   « RAM après 5 pages Kiosque » n'est pas jouable sur le décor e2e (le
   Kiosque y a quelques cartes) — à voir au terrain ; l'e2e du retry a
   été écrit avec l'UI, sans RED joué à part. Specs jouées : retours-7,
-  démarrage, mode-organisé, réception-14 : 46/46.
+  démarrage, mode-organisé, réception-14 : 46/46. **Gate complète
+  VERTE** (3,7 min ; e2e 187/187 + 1 flaky : `refonte-retours-6.spec.js:
+  42`, la signature aux Réglages — hors des fichiers touchés ; le message
+  du commit dit « flaky : 0 » à tort), commit `ed42fce` (E10, A107).
+
+- **E11 — livrée le 2026-09-02** (journal **A108**, D-47 amendée : les
+  menus soldés, les jumeaux du cœur restent ; D-4 amendée). **STOP
+  visuel** joué sur la Liste (captures du décor e2e : menu au clavier,
+  ligne « Réessayer ») — **GO CE « OK, porter les sept autres »**.
+  `Menu.svelte` : carte flottante (surface, bordure, rayon des
+  contrôles, `--shadow`, z-index 30), items 32 px au survol/focus en
+  `--hover`, filets et titres en une copie ; ancrage aux coordonnées
+  (borné) ou sous le déclencheur (`absolu`, le fil) ; **clavier** :
+  focus sur le premier item, ↑/↓ bouclent, Début/Fin, Entrée joue, Échap
+  et Tab ferment, clic dehors ferme, le focus REVIENT au déclencheur.
+  Les huit surfaces portées (Liste, Kiosque, Portier, Nettoyage,
+  Registre, TriSection, Réglages, Fil) ; trois `<svelte:window>` et
+  trois `$effect` de fermeture disparaissent, 24 règles CSS de copies
+  retirées (trois ombres dont `var(--ombre)` inexistant, trois
+  z-index). Réglages : focus posé à l'ouverture (`panneau.querySelector`,
+  patron `Retour.svelte`). `brancherLiens` rejoue chaque `keydown` de
+  l'iframe sur la fenêtre parente (même touche, mêmes modificateurs) —
+  les raccourcis ne sont plus inertes après un clic dans un corps. e2e
+  `menu-clavier.spec.js` (4 tests, mode organisé) : **joué RED sur le
+  menu d'avant** (le focus restait sur le déclencheur), GREEN après ;
+  trois pièges d'écriture payés : le « clic dehors » visait un bandeau
+  qui n'existe pas en mode organisé (pendu 3 min) ; le clic d'OUVERTURE
+  atteignait le nouvel écouteur « dehors » pendant sa propre propagation
+  (le menu se fermait à l'instant — Kiosque/Fil sans `stopPropagation`),
+  réglé par un filtre sur le déclencheur (un `setTimeout(0)` faisait
+  rater la frappe suivante) ; et le cadre du corps est SANS script (S1),
+  Playwright n'y évalue rien — le test « e depuis le corps » focalise
+  l'iframe depuis le parent et frappe la vraie touche, dans
+  `refonte-retours-7` (classique, lancement neuf : la bascule
+  organisé → classique dans la même session le faisait échouer, non
+  élucidé — sondé : le rejeu atteint la fenêtre une seule fois et le
+  geste part sur un lancement neuf). Build ui-v2 sans avertissement,
+  cohérence du Système 68 jetons ; specs des huit surfaces : 91/94 au
+  premier passage (les trois ci-dessus), puis vertes.
 
 ## Gate & terrain
 

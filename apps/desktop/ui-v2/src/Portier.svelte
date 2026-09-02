@@ -16,6 +16,7 @@
   // s'ouvre pas. L'expéditeur n'est jamais prévenu ; l'historique dit
   // la règle choisie et « Réintégrer » la défait.
   import Icone from './Icone.svelte';
+  import Menu from './Menu.svelte';
   import { appel } from './lib/transport.js';
   import { quand } from './lib/quand.js';
   import { t } from './lib/texte.svelte.js';
@@ -127,11 +128,6 @@
   }
 </script>
 
-<svelte:window
-  onclick={() => (menu = null)}
-  onkeydown={(e) => {
-    if (e.key === 'Escape') menu = null;
-  }} />
 
 <div class="scene" data-testid="portier">
   <div class="colonne">
@@ -210,9 +206,8 @@
   </div>
 </div>
 
-{#if menu}
-  <div class="menu" role="menu" data-testid="portier-menu"
-       style="left:{menu.x}px; top:{menu.y}px">
+<Menu ouvert={menu !== null} x={menu?.x ?? 0} y={menu?.y ?? 0}
+      testid="portier-menu" onfermer={() => (menu = null)}>
     {#if menu.type === 'oui'}
       <p class="titre-menu">{t('portier.ouiVers')}</p>
       <button type="button" role="menuitem" data-testid="portier-vers-reception"
@@ -236,8 +231,7 @@
               onclick={() => decider(menu.address, menu.qui, 'ecarte', 'corbeille')}>
         <Icone nom="delete" />{t('portier.regleCorbeille')}</button>
     {/if}
-  </div>
-{/if}
+  </Menu>
 
 <style>
   .scene { flex:1; overflow:auto; padding:28px 36px 60px; min-width:0; }
@@ -301,19 +295,8 @@
   .rang-historique button { height:28px; padding:0 12px; font-size:12px; }
   .historique-vide { margin:8px 0 0; font-size:13px; line-height:1.5; color:var(--ink2); max-width:66ch; }
   /* Le menu du mini ⋯ — le dessin des menus du produit. */
-  .menu {
-    position:fixed; z-index:30; min-width:230px; padding:6px;
-    background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); box-shadow:var(--ombre, 0 8px 24px rgba(0,0,0,.14));
-    display:flex; flex-direction:column; gap:2px;
-  }
   .titre-menu {
     margin:4px 8px 6px; font-size:11px; letter-spacing:.06em;
     text-transform:uppercase; color:var(--muted); font-weight:600;
   }
-  .menu button {
-    display:flex; align-items:center; gap:8px; text-align:left;
-    border:1px solid transparent; background:none; height:32px; padding:0 8px;
-  }
-  .menu button:hover { background:var(--hover); }
 </style>

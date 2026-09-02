@@ -9,6 +9,7 @@
   // Règle : un groupe ne s'expédie qu'avec du contenu RÉEL — aucun
   // réglage inventé pour meubler, aucun groupe vide.
   import Icone from './Icone.svelte';
+  import Menu from './Menu.svelte';
   import Marque from './Marque.svelte';
   import DrapeauUE from './DrapeauUE.svelte';
   import { tick } from 'svelte';
@@ -81,6 +82,7 @@
   const RACCOURCIS = ['c', 'r', 'f', 'e', 'suppr', 'slash', 'echap'];
 
   let visible = $state(false);
+  let panneau = $state(null);
   let groupe = $state('comptes');
   // La coche suit la fiche AFFICHÉE, pas le choix persisté (revue
   // A42) : sous suivi OS + OS sombre, l'écran est en -nuit — la coche
@@ -184,16 +186,6 @@
       y: Math.min(rect.bottom + 4, window.innerHeight - 320),
     };
   }
-  $effect(() => {
-    if (!menuDecision) return;
-    const fermer = () => (menuDecision = null);
-    window.addEventListener('click', fermer);
-    window.addEventListener('keydown', fermer);
-    return () => {
-      window.removeEventListener('click', fermer);
-      window.removeEventListener('keydown', fermer);
-    };
-  });
   const TOAST_NON = {
     spam: 'toast.portierNonSpam',
     archive: 'toast.portierNonArchive',
@@ -328,6 +320,9 @@
     appel('images_senders')
       .then((liste) => (expediteursImages = liste))
       .catch((err) => console.error('images_senders :', err));
+    // PLAN-AUDIT-V2 E11 (entrée de D-4) : le focus entre AVEC le
+    // panneau — le premier contrôle du rail, comme `Retour.svelte`.
+    queueMicrotask(() => panneau?.querySelector('button, input, select, [tabindex]')?.focus());
   }
 
   async function retirerExpediteurImages(adresse) {
@@ -628,7 +623,7 @@
 </script>
 
 {#if visible}
-  <div class="scrim" data-testid="reglages-modal">
+  <div class="scrim" data-testid="reglages-modal" bind:this={panneau}>
     <div class="carte" role="dialog" aria-modal="true" aria-label={t('entete.reglages')}>
       <div class="tete">
         <span class="titre">{t('entete.reglages')}</span>
@@ -1184,12 +1179,8 @@
   </div>
 {/if}
 
-{#if menuDecision}
-  <!-- R10 : le menu « Modifier » d'une décision — toutes les règles
-       du Portier (Oui puis Non), plus « Renvoyer au portier »
-       (l'ancien Réintégrer). Le dessin des menus du produit. -->
-  <div class="menu-decision" role="menu" data-testid="decision-menu"
-       style="left:{menuDecision.x}px; top:{menuDecision.y}px">
+<Menu ouvert={menuDecision !== null} x={menuDecision?.x ?? 0} y={menuDecision?.y ?? 0}
+      testid="decision-menu" onfermer={() => (menuDecision = null)}>
     <p class="titre-menu">{t('portier.ouiVers')}</p>
     <button type="button" role="menuitem" data-testid="decision-vers-reception"
             onclick={() => modifierRoutage('reception')}>
@@ -1218,8 +1209,7 @@
     <button type="button" role="menuitem" data-testid="decision-renvoyer"
             onclick={renvoyerAuPortier}>
       <Icone nom="portier" />{t('reglages.renvoyerPortier')}</button>
-  </div>
-{/if}
+  </Menu>
 
 <style>
   /* Carte signature du prototype, élargie à 800 px (A13). La hauteur est
@@ -1525,23 +1515,6 @@
   /* R10 : le menu « Modifier » — le dessin des menus du produit
      (famille D-47, consignée). Au-dessus de la surimpression des
      Réglages (z-index 2). */
-  .menu-decision {
-    position:fixed; z-index:6; min-width:240px; display:flex;
-    flex-direction:column; background:var(--surface);
-    border:1px solid var(--border); box-shadow:var(--shadow); padding:4px;
-  }
-  .menu-decision .titre-menu {
-    margin:4px 0 2px; padding:0 12px; font-size:11px;
-    letter-spacing:.06em; text-transform:uppercase; color:var(--muted);
-    font-weight:600;
-  }
-  .menu-decision button {
-    height:32px; padding:0 12px; display:inline-flex; align-items:center;
-    gap:10px; font-size:13px; color:var(--ink); background:none;
-    border:none; cursor:pointer; text-align:left;
-  }
-  .menu-decision button:hover { background:var(--sel); }
-  .menu-decision .filet-menu { height:1px; background:var(--border); margin:4px 0; }
 
   /* Raccourcis : référence en lecture seule, aux jetons. */
   .raccourci {

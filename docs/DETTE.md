@@ -30,6 +30,12 @@ motivée.)
 
 ### D-4 · Piège de focus des surimpressions
 
+- **Amendée (PLAN-AUDIT-V2 E11, 2026-09-02)** : les Réglages ouvrent
+  désormais sur leur premier contrôle (le focus entre avec le panneau,
+  patron `Retour.svelte`) et les menus posent puis rendent le focus
+  (`Menu.svelte`). Le piège de Tab qui SORT de la surimpression, lui,
+  demeure.
+
 - **Fait (A8)** : Tab peut sortir d'une surimpression (composition,
   réglages) vers le fond ; Échap et le focus visible couvrent
   l'essentiel.
@@ -293,6 +299,37 @@ motivée.)
   redirection — cas rare (aucun navigateur), inchangé.
 - **Rouvre si** : une déconnexion silencieuse Microsoft après 90 j, ou
   un testeur sans navigateur par défaut.
+
+### D-51 · Un compte sans CONDSTORE ne resynchronise jamais ses drapeaux
+
+- **Fait (audit 2026-09-01 §2.1, décision CE D3 de PLAN-AUDIT-V2 le
+  2026-09-02)** : sans l'annonce CONDSTORE, `changes_since` rend `None`
+  et le moteur ne relit que le différentiel d'UID — un message lu au
+  téléphone reste non-lu ici, à vie (`sync.rs` promettait une
+  « resynchro complète » qui n'existe pas). Gmail, Microsoft 365 et
+  Dovecot l'annoncent tous ; le cas est théorique en bêta.
+- **Raison du report** : une fenêtre `FETCH FLAGS` par cycle coûterait à
+  tous pour un serveur qu'on n'a jamais vu. Une ligne de `wind.log`
+  nomme le compte sans CONDSTORE à la relève : le terrain dira si le cas
+  existe.
+- **Rouvre si** : la ligne apparaît chez un testeur.
+
+### D-52 · Limites dites de la vague 2 de l'audit
+
+- **Fait (PLAN-AUDIT-V2, 2026-09-02)** : (1) une retouche DANS le bloc
+  transféré est perdue à l'envoi (le bloc est remplacé par le rendu de
+  sa source avec ses images, D8) ; un transfert dont la source est un
+  AUTRE compte part tel quel, au pixel neutre ; (2) la mesure « RAM
+  après cinq pages de Kiosque » n'est pas jouable sur le décor e2e — le
+  fenêtrage est en place, son gain se lira au terrain ; (3) `list_drafts`
+  reste une liste ENTIÈRE (corps compris) sondée toutes les 10 s, hors
+  de la sonde unique `etat_ui` (vague 3, avec la pagination des
+  commandes) ; (4) `decode_header` parse encore un message synthétique
+  par sujet — non mesuré comme coût ; (5) le test « archiver au
+  raccourci depuis l'écran 03 » a flaké une fois après le coalescement
+  des resservies (E10) — à surveiller au compteur de flaky.
+- **Rouvre si** : un testeur retouche un transfert et perd sa retouche ;
+  le compteur « flaky : N » nomme deux fois le même test.
 
 ## Soldée
 
@@ -824,6 +861,16 @@ motivée.)
   ces rangs en sections).
 
 ### D-47 · Trois menus contextuels et deux bascules de fil sont des copies main
+
+- **Amendée (PLAN-AUDIT-V2 E11, 2026-09-02, A108) — les MENUS sont
+  soldés** : `Menu.svelte` est LE menu du produit (huit surfaces —
+  Liste, Kiosque, Portier, Nettoyage, Registre, tri des sections,
+  Réglages > Portier, « Déplacer vers… » du fil), dessin ET mécanique
+  en une copie (clavier compris, A8 tenu), 24 règles CSS de copies
+  retirées, le jeton `--ombre` inexistant avec elles. **Reste ouvert**
+  la moitié « cœur » de cette dette : `toggle_mis_de_cote`/
+  `etat_mis_de_cote` jumeaux de `toggle_pin`/`pin_state`, et la pile /
+  le rang du Registre recopiés du Kiosque — vague 3 de l'audit.
 
 - **Amendée (RETOURS-14, 2026-08-31)** : deux copies de plus — le
   `.menu-groupe` du Registre groupé (`Registre.svelte`), et la FAMILLE

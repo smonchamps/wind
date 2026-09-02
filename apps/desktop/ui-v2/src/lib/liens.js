@@ -33,6 +33,17 @@ function ouvrir(url) {
 export function brancherLiens(iframe) {
   const doc = iframe?.contentDocument;
   if (!doc) return;
+  // PLAN-AUDIT-V2 E11 : les raccourcis du produit (e, Suppr, /, Échap,
+  // j/k…) vivent sur la fenêtre PARENTE ; un clic dans un corps y posait
+  // le focus et les rendait inertes. Chaque touche frappée dans le
+  // document de l'iframe est REJOUÉE sur la fenêtre parente — même
+  // touche, mêmes modificateurs, sans gêner le natif (copier, défiler).
+  doc.addEventListener('keydown', (ev) => {
+    window.dispatchEvent(new KeyboardEvent('keydown', {
+      key: ev.key, code: ev.code, ctrlKey: ev.ctrlKey, shiftKey: ev.shiftKey,
+      altKey: ev.altKey, metaKey: ev.metaKey, bubbles: true, cancelable: true,
+    }));
+  });
   doc.addEventListener(
     'click',
     (ev) => {

@@ -13,6 +13,7 @@
   // Changement de source = nouvelle génération : les pages en vol de la
   // source précédente sont jetées à l'arrivée, jamais mélangées.
   import Icone from './Icone.svelte';
+  import Menu from './Menu.svelte';
   import { tick, untrack } from 'svelte';
   import { SvelteMap } from 'svelte/reactivity';
   import { appel } from './lib/transport.js';
@@ -1057,11 +1058,6 @@
   }
 </script>
 
-<svelte:window
-  onclick={() => (menuGestes = null)}
-  onkeydown={(e) => {
-    if (e.key === 'Escape') menuGestes = null;
-  }} />
 
 <section class="colonne" class:centre aria-label={t('liste.aria')} data-testid="liste">
   <!-- UI v3, E1 (verdict CE 2026-08-16) : le bandeau de la maquette
@@ -1432,13 +1428,10 @@
   {/if}
 </section>
 
-{#if menuGestes}
-  <!-- E4 : le menu de gestes d'une rangée organisée — le dessin des
-       menus du produit (patron Portier). « Déplacer vers… » sert les
-       destinations AUTRES que la vue courante ; « Écarter » pose le
-       Non nu (le choix se rejoue à l'historique du Portier). -->
-  <div class="menu-gestes" role="menu" data-testid="menu-gestes"
-       style="left:{menuGestes.x}px; top:{menuGestes.y}px">
+<!-- PLAN-AUDIT-V2 E11 : LE menu du produit (Menu.svelte) — clavier,
+     focus, fermeture ; la Liste ne fournit que ses items. -->
+<Menu ouvert={menuGestes !== null} x={menuGestes?.x ?? 0} y={menuGestes?.y ?? 0}
+      testid="menu-gestes" onfermer={() => (menuGestes = null)}>
     {#each ['reception', 'kiosque', 'registre'].filter((d) => d !== categorie) as dest (dest)}
       <button type="button" role="menuitem" data-testid={`gestes-${dest}`}
               onclick={() => geste(dest)}>
@@ -1456,8 +1449,7 @@
     <button type="button" role="menuitem" data-testid="gestes-ecarter"
             onclick={() => geste('ecarte')}>
       <Icone nom="visibility_off" />{t('liste.ecarter')}</button>
-  </div>
-{/if}
+</Menu>
 
 <style>
   /* Géométrie et états du dessin des pistes (A29/A30) : lignes
@@ -1763,16 +1755,4 @@
     font-weight:600; color:var(--ink); background:var(--sel);
     border-color:var(--accent);
   }
-  .menu-gestes {
-    position:fixed; z-index:30; min-width:240px; padding:6px;
-    background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); box-shadow:0 8px 24px rgba(0,0,0,.14);
-    display:flex; flex-direction:column; gap:2px;
-  }
-  .menu-gestes button {
-    display:flex; align-items:center; gap:8px; text-align:left;
-    border:1px solid transparent; background:none; height:32px; padding:0 8px;
-  }
-  .menu-gestes button:hover { background:var(--hover); }
-  .filet-menu { border-top:1px solid var(--border); margin:4px 0; }
 </style>

@@ -12,6 +12,55 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.17.0] - à venir
+
+Wind va plus vite là où il comptait ses pas, et dit ce qu'il ne peut
+pas faire.
+
+### Ajouté
+
+- **Un menu unique, au clavier.** Les huit menus du produit (gestes
+  d'une rangée, cartes du Kiosque, Portier, Nettoyage, Registre, tri,
+  Réglages, « Déplacer vers… ») partagent le même dessin et se
+  parcourent aux flèches : Entrée joue, Échap ferme et rend le focus.
+  Les Réglages ouvrent sur leur premier contrôle.
+- **Un message qui n'a pas pu se charger le dit** et se rejoue d'un
+  clic (« Réessayer ») — avant, un cadre vide jusqu'à la fermeture.
+- **« Répondre » suit `Reply-To`** : les listes et notifications qui
+  demandent une autre adresse de réponse sont enfin entendues.
+- Un envoi qui échoue cinq fois de suite sur une panne transitoire est
+  refusé avec son motif et libère la file ; les suivants partent.
+
+### Modifié
+
+- **Les gestes de masse partent en un seul appel**, tout ou rien : une
+  panne au milieu ne laisse rien à moitié fait.
+- **« Transférer » ne charge plus d'image distante** dans le composeur ;
+  le destinataire reçoit le message entier, images comprises.
+- Le Nettoyage de printemps et le Portier répondent en une fraction de
+  seconde sur une grande boîte (index couvrant : la liste des groupes
+  380 → 67 ms sur 200 000 messages et 5 000 expéditeurs).
+- Chaque commande n'ouvre plus la base « à neuf » : le coût d'ouverture
+  tombe de 36 ms à moins d'une milliseconde ; l'indexation d'un corps
+  lourd pèse un tiers de mémoire en moins.
+- Le Kiosque garde ses cartes entre deux relèves (la carte lue ne saute
+  plus de section) et ne tient vivantes que celles proches de l'écran.
+- La synchro initiale reprend là où elle s'est arrêtée ; les dossiers
+  spéciaux se reconnaissent au rôle annoncé par le serveur (« [Google
+  Mail] » compris) ; une adresse entre chevrons n'est plus prise pour
+  un identifiant de fil ; l'écho d'un envoi ne disparaît plus avant la
+  relève des Envoyés.
+- Moins d'aller-retours réseau et de sondes au repos : trois champs
+  d'en-tête au lieu du bloc entier, lots de corps bornés à 32 Mo, une
+  seule `LIST` et une seule `CAPABILITY` par session, une sonde d'état
+  au lieu de trois.
+
+### Corrigé
+
+- Une boîte illisible ne passe plus pour « sans dossier Envoyés ».
+- Un serveur sans UIDPLUS n'accumule plus de doublons au déplacement.
+- Une erreur de lecture d'un corps n'est plus définitive.
+
 ## [0.16.0] - à venir
 
 Wind se protège mieux de lui-même : une seule instance, des gestes

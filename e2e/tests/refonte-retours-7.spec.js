@@ -175,3 +175,23 @@ test('hors Réception, la barre du fil n’offre pas l’épingle (R4, D4)', asy
   ).toBeVisible();
   await expect(page.locator('[data-testid="epingler"]')).toHaveCount(0);
 });
+
+test('« e » frappé dans le corps d’un message archive la conversation', async () => {
+  // PLAN-AUDIT-V2 E11 : les raccourcis vivent sur la fenêtre PARENTE ;
+  // un clic dans un corps les rendait inertes — chaque touche frappée
+  // dans le cadre est rejouée sur la fenêtre.
+  const rangee = page.locator('[data-testid="ligne"]').first();
+  const sujet = (await rangee.locator('.objet').textContent()).trim();
+  await rangee.click();
+  // Le focus entre dans le cadre du corps (sans script, S1 : Playwright
+  // ne peut rien y évaluer — on le focalise depuis le parent), puis la
+  // VRAIE touche : c'est le rejeu vers la fenêtre parente qui est éprouvé.
+  const cadre = page.locator('[data-testid="volet-lecture"] [data-testid="message-deplie"] iframe').first();
+  await expect(cadre).toBeVisible();
+  await cadre.focus();
+  await page.keyboard.press('e');
+  await expect
+    .poll(async () =>
+      (await page.locator('[data-testid="ligne"] .objet').allTextContents()).map((s) => s.trim()).includes(sujet))
+    .toBe(false);
+});

@@ -13,6 +13,7 @@
   // du CACHE par page servie (D5/S3) ; pas de fenêtrage : les cartes
   // s'ajoutent page à page au défilement (limite dite au PLAN).
   import Icone from './Icone.svelte';
+  import Menu from './Menu.svelte';
   import TriSection from './TriSection.svelte';
   import { comparateurTri } from './lib/tri.js';
   import { appel } from './lib/transport.js';
@@ -281,11 +282,6 @@
   }
 </script>
 
-<svelte:window
-  onclick={() => (menu = null)}
-  onkeydown={(e) => {
-    if (e.key === 'Escape') menu = null;
-  }} />
 
 {#snippet blocCarte(carte)}
   <article class="carte" data-testid="kiosque-carte" data-cle={cleCarte(carte.row)}>
@@ -397,9 +393,8 @@
   </div>
 </div>
 
-{#if menu}
-  <div class="menu-carte" role="menu" data-testid="kiosque-menu"
-       style="left:{menu.x}px; top:{menu.y}px">
+<Menu ouvert={menu !== null} x={menu?.x ?? 0} y={menu?.y ?? 0}
+      testid="kiosque-menu" onfermer={() => (menu = null)}>
     {#each ['reception', 'registre'] as dest (dest)}
       <button type="button" role="menuitem" data-testid={`kiosque-vers-${dest}`}
               onclick={() => geste(ondeplacer, dest)}>
@@ -413,8 +408,7 @@
     <button type="button" role="menuitem" data-testid="kiosque-ecarter"
             onclick={() => geste(ondeplacer, 'ecarte')}>
       <Icone nom="visibility_off" />{t('liste.ecarter')}</button>
-  </div>
-{/if}
+  </Menu>
 
 <style>
   .scene { flex:1; overflow:auto; padding:28px 36px 60px; min-width:0; }
@@ -503,16 +497,5 @@
   }
   .garde-images button { height:26px; padding:0 10px; font-size:12px; }
   .vide { margin:8px 0 0; font-size:13px; line-height:1.5; color:var(--ink2); max-width:66ch; }
-  .menu-carte {
-    position:fixed; z-index:30; min-width:240px; padding:6px;
-    background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); box-shadow:0 8px 24px rgba(0,0,0,.14);
-    display:flex; flex-direction:column; gap:2px;
-  }
-  .menu-carte button {
-    display:flex; align-items:center; gap:8px; text-align:left;
-    border:1px solid transparent; background:none; height:32px; padding:0 8px;
-  }
-  .menu-carte button:hover { background:var(--hover); }
   .filet { border-top:1px solid var(--border); margin:4px 0; }
 </style>

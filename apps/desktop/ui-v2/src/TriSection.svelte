@@ -8,6 +8,7 @@
   // quatre surfaces, UN composant (leçon D-47). Le menu est le dessin
   // des menus du produit.
   import Icone from './Icone.svelte';
+  import Menu from './Menu.svelte';
   import { t } from './lib/texte.svelte.js';
 
   let { valeur = 'date-desc', onchanger = () => {} } = $props();
@@ -38,16 +39,6 @@
     ouvert = false;
     onchanger(id);
   }
-  $effect(() => {
-    if (!ouvert) return;
-    const fermer = () => (ouvert = false);
-    window.addEventListener('click', fermer);
-    window.addEventListener('keydown', fermer);
-    return () => {
-      window.removeEventListener('click', fermer);
-      window.removeEventListener('keydown', fermer);
-    };
-  });
 </script>
 
 <button type="button" class="nu" data-testid="tri-section"
@@ -56,17 +47,15 @@
         onclick={basculer}>
   <Icone nom={courant.icone} />{t(courant.libelle)}</button>
 
-{#if ouvert}
-  <div class="menu-tri" role="menu" data-testid="tri-menu"
-       style="left:{x}px; top:{y}px">
+<Menu ouvert={ouvert} x={x} y={y} testid="tri-menu" largeur={220}
+      onfermer={() => (ouvert = false)}>
     {#each TRIS as choix (choix.id)}
       <button type="button" role="menuitemradio" data-testid={`tri-${choix.id}`}
               aria-checked={choix.id === valeur}
               onclick={() => choisir(choix.id)}>
         <Icone nom={choix.icone} />{t(choix.libelle)}</button>
     {/each}
-  </div>
-{/if}
+  </Menu>
 
 <style>
   /* Le dessin exact du bouton nu du fil (« Tout déplier ») — copié
@@ -79,17 +68,4 @@
     white-space:nowrap; flex:none;
   }
   .nu:hover, .nu[aria-expanded="true"] { background:var(--sel); }
-  /* Le menu — le dessin des menus du produit (famille D-47). */
-  .menu-tri {
-    position:fixed; z-index:6; min-width:220px; display:flex;
-    flex-direction:column; background:var(--surface);
-    border:1px solid var(--border); box-shadow:var(--shadow); padding:4px;
-  }
-  .menu-tri button {
-    height:32px; padding:0 12px; display:inline-flex; align-items:center;
-    gap:10px; font-size:13px; color:var(--ink); background:none;
-    border:none; cursor:pointer; text-align:left;
-  }
-  .menu-tri button:hover { background:var(--sel); }
-  .menu-tri button[aria-checked="true"] { font-weight:600; }
 </style>

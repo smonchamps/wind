@@ -481,6 +481,33 @@ Bash). Syntaxes différentes.
   pour les pures d'état). Mesure du symptôme :
   `python e2e/sonde-gel.py <base.db>` (base HORS dépôt).
 
+- **Le SQLite embarqué (3.50) n'a pas le planificateur de l'outil qui
+  a servi à mesurer.** Une requête à 0,2 ms sous python coûtait 116 ms
+  dans Wind : l'index de date choisi à la place de celui de
+  l'expéditeur. `INDEXED BY` sur les requêtes du Nettoyage, et un test
+  de PLAN d'exécution qui le garde (PLAN-AUDIT-V2 E4).
+- **Pendant qu'une gate tourne en arrière-plan, on ne touche PAS aux
+  sources.** L'e2e recompile `ui-v2` et les exemples quand ils changent
+  — une édition en plein vol donne un verdict sur un état qui n'existe
+  plus. Lire, écrire des docs : oui ; Rust, Svelte, scripts : après le
+  verdict (PLAN-AUDIT-V2).
+- **Un cadre `sandbox="allow-same-origin"` SANS `allow-scripts` (S1)
+  n'est pas évaluable par Playwright** — `click`, `dispatchEvent`,
+  `evaluate` y pendent jusqu'au timeout (3 min payées). Pour frapper
+  une touche « dans le corps » : focaliser l'iframe depuis le parent
+  (`locator('iframe').focus()`) puis `keyboard.press` — la vraie
+  touche, livrée au document du cadre.
+- **Remplacer par sous-chaîne, c'est attraper tout ce qui la contient.**
+  `reply_to: None,` vit DANS `in_reply_to: None,` ; `Nom {` attrape le
+  `-> Nom {` d'une signature. Un script d'édition se guide sur des
+  repères de POSITION (début/fin de bloc, accolades appariées) et se
+  vérifie au compilateur (E0063 rend la liste exacte des littéraux
+  incomplets). Et `python -` sous PowerShell décode l'entrée en cp1252 :
+  `python -X utf8`, ou le script dans un fichier — un `assert old in s`
+  qui ment sans raison, c'est souvent l'encodage ou un `
+` mêlé
+  (PLAN-AUDIT-V2, six passes de réparation payées).
+
 ### 7.2 Les notifications exigent l'application INSTALLÉE
 
 `tauri-winrt-notification` exige une identité applicative
@@ -504,8 +531,11 @@ cargo clippy --all-targets -- -D warnings
 cd e2e
 npm test                                       # PowerShell : deux lignes
 
-# Jeu d'essai — <db> <nombre> <email> [corps] [ko/corps] [boîte]
+# Jeu d'essai — <db> <nombre> <email> [corps] [ko/corps] [boîte] [expéditeurs]
 cargo run -p mail-core --example seed_inbox --release -- <db> 33000 un@exemple.fr 0 0 INBOX
+# Bancs (PLAN-AUDIT-V2) : diagnostic_ouverture, banc_recherche, banc_indexation,
+# banc_nettoyage (MUTE la base : décor seulement), sur C:/mesure/banc200k.db et
+# banc5000.db (200 k enveloppes ; 8 ou 5 000 expéditeurs)
 
 # Installateur (nécessaire pour les notifications)
 cd apps/desktop
@@ -528,14 +558,20 @@ minutes ; ne pas le faire « pour être sûr »).
 
 ### 7.4 Le gate pré-push
 
-`.githooks/pre-push` rejoue : `fmt` → build ui-v2 → contrastes →
-cohérence du Système → garde du thread principal → `clippy -D warnings`
-→ `cargo test --workspace --all-targets` → `--doc` → `npm test` (e2e).
-**Chemin rapide documentaire** (PLAN-KAIZEN-CLAUDE, E4) : si tout ce
-qui part est ⊆ `docs/**` + `*.md` — en excluant `docs/design/**`, le
-Système est du normatif outillé — les étapes lentes (clippy, tests
-Rust, e2e) sont sautées, les étapes en secondes restent ; ref neuve ou
-suppression de ref ⇒ gate entière. La CI reste le filet complet.
+`.githooks/pre-push` DÉLÈGUE à `scripts/gate.ps1` (PLAN-AUDIT-V2 E9,
+D-32 soldée : une seule gate, plus de commandes recopiées). Dix
+étapes : `fmt` → build ui-v2 → contrastes → cohérence du Système →
+garde du thread principal → `node --check` des scripts → `clippy -D
+warnings` → `cargo test --workspace --all-targets` → `--doc` → `npm
+test` (e2e) ; au verdict, « flaky : N » avec les noms (rapport JSON
+Playwright, `e2e/flaky.mjs` — D4 : un flaky se compte, il ne rougit
+pas). **Chemin rapide documentaire** (PLAN-KAIZEN-CLAUDE, E4 ;
+`gate.ps1 -DocsSeulement`) : si tout ce qui part est ⊆ `docs/**` +
+`*.md` — en excluant `docs/design/**`, le Système est du normatif
+outillé — les étapes lentes (clippy, tests Rust, e2e) sont sautées,
+les six étapes en secondes restent ; ref neuve ou suppression de ref ⇒
+gate entière. La CI reste le filet complet — ses actions sont
+épinglées par SHA (Dependabot les fait suivre).
 
 **`--all-targets` n'est pas décoratif** : sans lui, cargo ignore les tests
 des EXEMPLES — les diagnostics du terrain vivent là et portent leurs tests.
@@ -862,6 +898,30 @@ Payés le même jour (PLAN-COMPOSITION-HTML, e2e du 2026-08-20) :
    ré-émettre les valeurs stockées, jamais le DOM.
 
 ---
+
+### Un remède de l'audit entre sur une mesure, pas sur son évidence
+
+Deux remèdes de l'audit du 2026-09-01 semblaient évidents et ont été
+REFUSÉS une fois mesurés : le « COUNT par frappe » de la recherche
+valait 1,5 ms sur 57 (le coût est la page triée par date — la borne
+proposée gagnait 1 ms), et `withGlobalTauri: false` ne protégeait rien
+(`__TAURI_INTERNALS__.invoke` reste injecté dans toute fenêtre — la CSP
+est la frontière). À l'inverse, la variance d'un verdict du Nettoyage
+(35 à 580 ms pour les mêmes 40 messages) n'était pas un scan à indexer
+mais la fusion de segments FTS5 à la suppression. **Chaque lot porte sa
+mesure avant/après ; une mesure qui ne bouge pas retire le remède**
+(PLAN-AUDIT-V2 E2, E4, E8).
+
+### Un clic d'ouverture atteint l'écouteur que son propre effet vient de poser
+
+Un menu qui pose un écouteur `click` sur la fenêtre dans un `$effect`
+le pose PENDANT la propagation du clic qui l'a ouvert (l'effet court à
+la micro-tâche, avant que le clic n'atteigne `window`) : le menu se
+ferme à l'instant. Le `stopPropagation` de la Liste le masquait, le
+Kiosque et le fil ne l'avaient pas. Différer l'armement d'une
+macro-tâche fait rater la frappe suivante (race avec Playwright) ;
+la règle qui tient : **un clic sur le déclencheur n'est jamais
+« dehors »** (PLAN-AUDIT-V2 E11, `Menu.svelte`).
 
 ## 10. Carte des fichiers
 

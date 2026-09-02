@@ -12,6 +12,7 @@
   //   (D8) : rouvrir la section reprend le tri où il en était. Le clic
   //   nu suit les défauts du Portier (D9), le mini ⋯ déroge.
   import Icone from './Icone.svelte';
+  import Menu from './Menu.svelte';
   import TriSection from './TriSection.svelte';
   import { comparateurTri } from './lib/tri.js';
   import { appel } from './lib/transport.js';
@@ -168,11 +169,6 @@
   );
 </script>
 
-<svelte:window
-  onclick={() => (menu = null)}
-  onkeydown={(e) => {
-    if (e.key === 'Escape') menu = null;
-  }} />
 
 <div class="scene" data-testid="nettoyage">
   <div class="colonne">
@@ -292,9 +288,8 @@
   </div>
 </div>
 
-{#if menu}
-  <div class="menu" role="menu" data-testid="nettoyage-menu"
-       style="left:{menu.x}px; top:{menu.y}px">
+<Menu ouvert={menu !== null} x={menu?.x ?? 0} y={menu?.y ?? 0}
+      testid="nettoyage-menu" onfermer={() => (menu = null)}>
     {#if menu.type === 'oui'}
       <p class="titre-menu">{t('portier.ouiVers')}</p>
       <button type="button" role="menuitem" data-testid="nettoyage-vers-reception"
@@ -318,8 +313,7 @@
               onclick={() => decider(menu.address, menu.qui, 'ecarte', 'corbeille')}>
         <Icone nom="delete" />{t('portier.regleCorbeille')}</button>
     {/if}
-  </div>
-{/if}
+  </Menu>
 
 <style>
   /* R9 : la ligne de section porte le tri à droite. */
@@ -409,19 +403,8 @@
   }
   .terminer:hover { background:var(--sel); }
   /* Le menu du mini ⋯ — le dessin des menus du produit (Portier). */
-  .menu {
-    position:fixed; z-index:30; min-width:230px; padding:6px;
-    background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); box-shadow:var(--ombre, 0 8px 24px rgba(0,0,0,.14));
-    display:flex; flex-direction:column; gap:2px;
-  }
   .titre-menu {
     margin:4px 8px 6px; font-size:11px; letter-spacing:.06em;
     text-transform:uppercase; color:var(--muted); font-weight:600;
   }
-  .menu button {
-    display:flex; align-items:center; gap:8px; text-align:left;
-    border:1px solid transparent; background:none; height:32px; padding:0 8px;
-  }
-  .menu button:hover { background:var(--hover); }
 </style>
