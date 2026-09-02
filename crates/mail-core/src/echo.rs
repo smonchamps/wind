@@ -487,7 +487,7 @@ impl Store {
             let seule = vec![(cible.account_id, cible.mailbox.clone(), cible.uid)];
             let du_fil = match cible.thread_id {
                 Some(thread) => {
-                    let fil = self.messages_du_fil(thread)?;
+                    let fil = self.messages_of_thread(thread)?;
                     if fil.is_empty() { seule } else { fil }
                 }
                 None => seule,

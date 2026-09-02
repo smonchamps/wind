@@ -1,8 +1,8 @@
-//! Stockage local SQLite : enveloppes et état de synchro, multi-boîtes.
+//! Local SQLite storage: envelopes and sync state, multi-mailbox.
 //!
-//! Structure concrète (pas de trait) : SQLite est une décision produit gelée
-//! (PHASE0.md §2.1) et les tests utilisent une base en mémoire — l'abstraction
-//! du réseau ([`crate::MailServer`]) est la seule frontière nécessaire.
+//! Concrete structure (no trait): SQLite is a frozen product decision
+//! (PHASE0.md §2.1) and the tests use an in-memory database — the network
+//! abstraction ([`crate::MailServer`]) is the only boundary that is needed.
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::ops::ControlFlow;
@@ -27,15 +27,15 @@ CREATE TABLE IF NOT EXISTS accounts (
     id       INTEGER PRIMARY KEY,
     email    TEXT NOT NULL UNIQUE,
     provider TEXT NOT NULL DEFAULT 'gmail',
-    -- Le dossier des envois, sous son nom RESEAU, quand le serveur en
-    -- expose un. Il complete la portee du regroupement (ADR 0009), et son
-    -- nom varie d'un serveur a l'autre — il ne peut donc pas etre en dur.
+    -- The sent-mail folder, under its NETWORK name, when the server
+    -- exposes one. It completes the threading scope (ADR 0009), and its
+    -- name varies from one server to another — so it cannot be hardcoded.
     --
-    -- Porte par le COMPTE et non deduit a la volee : la boite « Envoyes »
-    -- est CREEE par la boucle de synchronisation, donc elle n'existe pas
-    -- encore quand on declare la portee. Sans cette memoire, elle naitrait
-    -- hors portee et ses messages resteraient sans fil jusqu'au prochain
-    -- demarrage — le piege de l'adoption differee.
+    -- Carried by the ACCOUNT and not deduced on the fly: the 'Sent'
+    -- mailbox is CREATED by the sync loop, so it does not exist yet when
+    -- the scope is declared. Without this memory it would be born out of
+    -- scope and its messages would stay threadless until the next
+    -- startup — the deferred-adoption trap.
     sent_mailbox TEXT
 );
 CREATE TABLE IF NOT EXISTS mailboxes (
@@ -45,35 +45,37 @@ CREATE TABLE IF NOT EXISTS mailboxes (
     uid_validity   INTEGER NOT NULL,
     last_uid       INTEGER NOT NULL DEFAULT 0,
     highest_modseq INTEGER,
-    -- La boite a-t-elle DEJA ete synchronisee une fois (PLAN-AUDIT-V1
-    -- E2) ? C'est CE drapeau qui decide initiale / incrementale — jamais
-    -- `last_uid == 0` : une boite VIDEE (tout archive) a un max(uid) nul
-    -- et redevenait « initiale », donc muette (aucune bulle) et chere.
+    -- Has the mailbox ALREADY been synchronized once (PLAN-AUDIT-V1
+    -- E2)? It is THIS flag that decides initial / incremental — never
+    -- `last_uid == 0`: an EMPTIED mailbox (everything archived) has a
+    -- null max(uid) and would go back to 'initial', so silent (no
+    -- notification) and expensive.
     initialisee    INTEGER NOT NULL DEFAULT 0,
-    -- Derniere releve REUSSIE de la boite (epoch), posee par update_state :
-    -- le balayage des echos d envoi exige que les Envoyes aient ete releves
-    -- APRES l envoi (PLAN-AUDIT-V2 E5).
+    -- Last SUCCESSFUL poll of the mailbox (epoch), set by update_state:
+    -- the sweep of send echoes requires Sent to have been polled AFTER
+    -- the send (PLAN-AUDIT-V2 E5).
     relevee_epoch  INTEGER,
-    -- Cette boite participe-t-elle au REGROUPEMENT en fils ?
+    -- Does this mailbox take part in thread GROUPING?
     --
-    -- Depuis l'ADR 0010 on synchronise TOUTES les boites, mais la portee
-    -- d'un fil reste INBOX + Envoyes (ADR 0009). Sans ce drapeau, un spam
-    -- ou un message archive rejoindrait le fil tout seul — `thread::attach`
-    -- travaille par COMPTE — et ferait remonter la conversation en tete de
-    -- liste. Defaut de correction, pas d'ergonomie.
+    -- Since ADR 0010 we synchronize ALL mailboxes, but a thread's scope
+    -- stays INBOX + Sent (ADR 0009). Without this flag, a spam or an
+    -- archived message would join the thread on its own —
+    -- `thread::attach` works PER ACCOUNT — and would bump the
+    -- conversation to the top of the list. A correctness defect, not an
+    -- ergonomics one.
     --
-    -- DEFAUT A 1 : c'est la reponse de la MIGRATION, pas celle du produit.
-    -- Une base d'avant l'ADR 0010 ne contient qu'INBOX et « Envoyes »,
-    -- toutes deux dans la portee ; les mettre a 0 viderait la liste au
-    -- premier lancement. `create_mailbox` ecrit toujours la valeur
-    -- explicitement, donc ce defaut ne decide jamais pour une boite neuve.
+    -- DEFAULT OF 1: this is the answer for MIGRATION, not for the
+    -- product. A database from before ADR 0010 contains only INBOX and
+    -- 'Sent', both in scope; setting them to 0 would empty the list on
+    -- first launch. `create_mailbox` always writes the value explicitly,
+    -- so this default never decides for a new mailbox.
     threaded       INTEGER NOT NULL DEFAULT 1,
-    -- Combien de messages le SERVEUR annonce dans cette boite (EXISTS),
-    -- au dernier passage. Denominateur de l'avancement (ADR 0010 §5).
+    -- How many messages the SERVER announces in this mailbox (EXISTS),
+    -- at the last pass. Denominator of the progress bar (ADR 0010 §5).
     --
-    -- 0 = jamais selectionnee. Ce n'est PAS « boite vide » : les deux se
-    -- distinguent parce que l'avancement doit se taire quand il ne sait
-    -- pas, au lieu d'afficher « 0 % » ou « 100 % ».
+    -- 0 = never selected. This is NOT 'empty mailbox': the two are kept
+    -- distinct because the progress bar must stay silent when it does
+    -- not know, instead of showing '0%' or '100%'.
     remote_total   INTEGER NOT NULL DEFAULT 0,
     UNIQUE (account_id, name)
 );
@@ -83,18 +85,18 @@ CREATE TABLE IF NOT EXISTS envelopes (
     subject        TEXT,
     sender         TEXT,
     sender_address TEXT,
-    -- Destinataires A / Cc, un par saut de ligne, NULL quand l'ENVELOPE
-    -- n'en porte pas (R4, PLAN-RETOURS-MAIL). Ils viennent de la MEME
-    -- ENVELOPE que l'expediteur : dans un dossier d'envois l'expediteur
-    -- est SOI, seul le destinataire dit a qui le message est parti.
+    -- To / Cc recipients, one per newline, NULL when the ENVELOPE
+    -- carries none (R4, PLAN-RETOURS-MAIL). They come from the SAME
+    -- ENVELOPE as the sender: in a sent folder the sender is US, only
+    -- the recipient says who the message went to.
     to_addrs       TEXT,
     cc_addrs       TEXT,
-    -- Reply-To, premiere adresse, de la meme ENVELOPE (PLAN-AUDIT-V2 E5).
+    -- Reply-To, first address, from the same ENVELOPE (PLAN-AUDIT-V2 E5).
     reply_to       TEXT,
     message_id     TEXT,
-    -- Les deux en-tetes du regroupement en fils. `in_reply_to` vient de
-    -- l'ENVELOPE (gratuit) ; `refs` vient d'une passe separee sur les
-    -- en-tetes complets, et reste NULL en attendant.
+    -- The two headers used for thread grouping. `in_reply_to` comes from
+    -- the ENVELOPE (free); `refs` comes from a separate pass over the
+    -- full headers, and stays NULL until then.
     in_reply_to    TEXT,
     refs           TEXT,
     thread_id      INTEGER,
@@ -103,34 +105,33 @@ CREATE TABLE IF NOT EXISTS envelopes (
     flagged        INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (mailbox_id, uid)
 );
--- `uid` en TROISIEME colonne, et ce n'est pas de l'ornement : sans lui
--- l'index ne COUVRE pas les requetes du rattrapage, qui filtrent par date
--- puis sondent `bodies` par (mailbox_id, uid). SQLite devait alors aller
--- chercher la LIGNE d'enveloppe pour y lire l'uid, une fois par message.
--- Mesure du 2026-08-26 sur la base du terrain : `pending_total` 521,9 ms
--- avec l'index a deux colonnes, 107,9 ms avec celui-ci (pire dossier,
--- 87 117 enveloppes : 400,5 -> 46,3 ms). L'ordre DESC de la date reste
--- celui de la pagination ; uid ne le derange pas, il le complete.
+-- `uid` as the THIRD column, and that is not decoration: without it the
+-- index does not COVER the backfill's queries, which filter by date
+-- then probe `bodies` by (mailbox_id, uid). SQLite then had to fetch
+-- the envelope ROW just to read its uid, once per message. Measured on
+-- 2026-08-26 on the field database: `pending_total` 521.9 ms with the
+-- two-column index, 107.9 ms with this one (worst folder, 87,117
+-- envelopes: 400.5 -> 46.3 ms). The DESC order on the date stays the
+-- pagination order; uid does not disturb it, it completes it.
 CREATE INDEX IF NOT EXISTS idx_envelopes_date ON envelopes(mailbox_id, date_epoch DESC, uid);
 CREATE TABLE IF NOT EXISTS bodies (
     mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
     uid        INTEGER NOT NULL,
     html       TEXT NOT NULL,
-    -- VESTIGIALE depuis le 2026-08-26 (PLAN-DEMARRAGE, decision D8) :
-    -- ecrite a 1 par save_body_full, plus JAMAIS LUE. Elle marquait les
-    -- corps rapatries AVANT que les pieces jointes existent, dont le MIME
-    -- n'avait jamais ete inspecte ; le rattrapage les reprenait. La lire
-    -- coutait 251 k rappels de ligne grasse dans 11,4 Go — 20 839 ms a
-    -- froid contre 396 ms sans (mesure du 2026-08-26) — pour proteger
-    -- ZERO ligne : la passe d'heritage est soldee sur toute la flotte, et
-    -- rien en production n'ecrit plus 0. La retirer demanderait une
-    -- reecriture de 11,4 Go : elle partira avec le chantier qui touchera
-    -- `bodies` de toute facon.
+    -- VESTIGIAL since 2026-08-26 (PLAN-DEMARRAGE, decision D8): written
+    -- to 1 by save_body_full, never READ again. It marked bodies fetched
+    -- BEFORE attachments existed, whose MIME had never been inspected;
+    -- the backfill picked them up again. Reading it cost 251k fat-row
+    -- lookups over 11.4 GB — 20,839 ms cold versus 396 ms without
+    -- (measured 2026-08-26) — to protect ZERO rows: the legacy pass is
+    -- closed out fleet-wide, and nothing in production writes 0 anymore.
+    -- Removing it would need an 11.4 GB rewrite: it will leave with
+    -- whichever job next touches `bodies` anyway.
     scanned    INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (mailbox_id, uid)
 );
--- Métadonnées seules : jamais les octets. Ils se retéléchargent à la
--- demande (ADR 0007 — le budget disque ne survivrait pas aux fichiers).
+-- Metadata only, never the bytes. They get redownloaded on demand
+-- (ADR 0007 — the disk budget would not survive keeping the files).
 CREATE TABLE IF NOT EXISTS attachments (
     mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
     uid        INTEGER NOT NULL,
@@ -140,16 +141,16 @@ CREATE TABLE IF NOT EXISTS attachments (
     size       INTEGER NOT NULL,
     PRIMARY KEY (mailbox_id, uid, idx)
 );
--- Liste des dossiers, mise en cache comme les enveloppes : choisir une
--- destination doit marcher HORS LIGNE, sinon le tri s'arrête avec le
--- réseau. Rafraîchie à chaque synchro.
+-- Folder list, cached like the envelopes: picking a destination must
+-- work OFFLINE, otherwise sorting stops with the network. Refreshed on
+-- every sync.
 CREATE TABLE IF NOT EXISTS folders (
     account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     wire       TEXT NOT NULL,
     display    TEXT NOT NULL,
     selectable INTEGER NOT NULL DEFAULT 1,
-    -- Le role RFC 6154 (all, archive, drafts, junk, sent, trash), NULL
-    -- quand le serveur n en annonce pas (PLAN-AUDIT-V2 E5).
+    -- The RFC 6154 role (all, archive, drafts, junk, sent, trash), NULL
+    -- when the server does not announce one (PLAN-AUDIT-V2 E5).
     special_use TEXT,
     PRIMARY KEY (account_id, wire)
 );
@@ -158,10 +159,10 @@ CREATE TABLE IF NOT EXISTS pending_actions (
     mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
     uid        INTEGER NOT NULL,
     kind       TEXT NOT NULL,
-    -- PLAN-AUDIT-V1 E3 : une action que le serveur refuse (NO/BAD) ou qui
-    -- echoue SEUIL_QUARANTAINE fois entre en QUARANTAINE (refusee = 1) :
-    -- elle sort de la file active — plus rien ne bloque les suivantes —
-    -- mais reste visible (fente d'avis, D2) avec son motif.
+    -- PLAN-AUDIT-V1 E3: an action the server refuses (NO/BAD) or that
+    -- fails QUARANTINE_THRESHOLD times enters QUARANTINE (refusee = 1):
+    -- it leaves the active queue — nothing blocks the next ones anymore
+    -- — but stays visible (notice slot, D2) with its reason.
     attempts   INTEGER NOT NULL DEFAULT 0,
     refusee    INTEGER NOT NULL DEFAULT 0,
     last_error TEXT
@@ -171,34 +172,35 @@ CREATE TABLE IF NOT EXISTS drafts (
     id            INTEGER PRIMARY KEY,
     account_id    INTEGER NOT NULL DEFAULT 1,
     to_raw        TEXT NOT NULL,
-    -- Cc et Cci bruts, non validés (comme to_raw) — la validation stricte
-    -- n'intervient qu'à l'envoi (compose). Vides par défaut : un brouillon
-    -- d'avant ces colonnes n'a ni l'un ni l'autre.
+    -- Raw Cc and Bcc, unvalidated (like to_raw) — strict validation only
+    -- happens at send time (compose). Empty by default: a draft from
+    -- before these columns has neither.
     cc_raw        TEXT NOT NULL DEFAULT '',
     bcc_raw       TEXT NOT NULL DEFAULT '',
     subject       TEXT NOT NULL,
     body          TEXT NOT NULL,
-    -- Corps riche du brouillon (PLAN-COMPOSITION-HTML). NULL = brouillon
-    -- texte (d'avant la colonne, ou rapatrié du serveur) ; `body` reste
-    -- TOUJOURS peuplé — le texte dérivé sert d'aperçu et de repli.
+    -- Rich body of the draft (PLAN-COMPOSITION-HTML). NULL = plain text
+    -- draft (from before the column, or fetched from the server);
+    -- `body` is ALWAYS populated — the derived text serves as preview
+    -- and fallback.
     body_html     TEXT,
     reply_to_uid  INTEGER,
-    -- La boîte qui donne son sens à reply_to_uid (ADR 0009) — le lien
-    -- brouillon -> conversation (PLAN-BROUILLONS, B-D2). NULL avant la
-    -- colonne : ces brouillons restent sans fil, jamais mal reliés.
+    -- The mailbox that gives reply_to_uid its meaning (ADR 0009) — the
+    -- draft -> conversation link (PLAN-BROUILLONS, B-D2). NULL before
+    -- the column: those drafts stay threadless, never wrongly linked.
     reply_to_mailbox TEXT,
-    -- Marqué « important » (R3, PLAN-RETOURS-6) : l'état suit le
-    -- brouillon jusqu'à l'envoi.
+    -- Marked 'important' (R3, PLAN-RETOURS-6): the state follows the
+    -- draft until it is sent.
     important     INTEGER NOT NULL DEFAULT 0,
     updated_epoch INTEGER NOT NULL,
     remote_uid    INTEGER,
     pushed_epoch  INTEGER
 );
--- Les octets des pièces d'un brouillon, copiés AU GESTE (PLAN-PIECES-JOINTES,
--- PJ-D1) : jamais de chemin nu en base — un fichier déplacé ou supprimé
--- après le geste ne peut plus rien casser. À l'inverse de `attachments`
--- (réception, métadonnées seules), ici les octets sont à NOUS : c'est le
--- message qu'on promet d'envoyer.
+-- The bytes of a draft's attachments, copied ON GESTURE
+-- (PLAN-PIECES-JOINTES, PJ-D1): never a bare path in the database — a
+-- file moved or deleted after the gesture cannot break anything. The
+-- opposite of `attachments` (receiving, metadata only): here the bytes
+-- are OURS — this is the message we promise to send.
 CREATE TABLE IF NOT EXISTS draft_attachments (
     id       INTEGER PRIMARY KEY,
     draft_id INTEGER NOT NULL REFERENCES drafts(id) ON DELETE CASCADE,
@@ -217,9 +219,9 @@ CREATE TABLE IF NOT EXISTS drafts_remote (
     account_id   INTEGER PRIMARY KEY,
     uid_validity INTEGER NOT NULL
 );
--- Préférences de l'application persistées EN BASE (pas localStorage) :
--- elles doivent être lisibles par le shell Rust — la garde des bulles
--- d'arrivée se joue à l'émission, côté Rust (PLAN-REGLAGES, R-D2).
+-- App preferences persisted IN THE DATABASE (not localStorage): they
+-- must be readable by the Rust shell — the arrival-notification guard
+-- is enforced at emission, on the Rust side (PLAN-REGLAGES, R-D2).
 CREATE TABLE IF NOT EXISTS prefs (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -234,36 +236,36 @@ CREATE TABLE IF NOT EXISTS outbox (
     bcc_addrs    TEXT NOT NULL DEFAULT '',
     subject      TEXT NOT NULL,
     body_text    TEXT NOT NULL,
-    -- Corps riche de l'envoi (PLAN-COMPOSITION-HTML) : ce que porte la
-    -- partie text/html du multipart/alternative. NULL = envoi texte seul
-    -- (chemin historique, octet pour octet inchangé).
+    -- Rich body of the send (PLAN-COMPOSITION-HTML): what the text/html
+    -- part of the multipart/alternative carries. NULL = plain-text send
+    -- (historical path, byte for byte unchanged).
     body_html    TEXT,
     in_reply_to  TEXT,
-    -- E7 : la chaine References complete (RFC 5322 §3.6.4), NULL = le
-    -- parent seul (chemin d'avant). `refs` comme dans envelopes :
-    -- REFERENCES est un mot reserve de SQLite.
+    -- E7: the full References chain (RFC 5322 §3.6.4), NULL = the
+    -- parent alone (the older path). `refs` as in envelopes: REFERENCES
+    -- is an SQLite reserved word.
     refs         TEXT,
-    -- Marqué « important » (R3) : la remise posera les en-têtes de
-    -- priorité (X-Priority + Importance).
+    -- Marked 'important' (R3): delivery will set the priority headers
+    -- (X-Priority + Importance).
     important    INTEGER NOT NULL DEFAULT 0,
-    -- Envoi différé (R2, PLAN-RETOURS-6) : l'époque (secondes) avant
-    -- laquelle la vidange ne doit PAS prendre ce message. NULL = tout
-    -- de suite (chemin historique).
+    -- Delayed send (R2, PLAN-RETOURS-6): the epoch (seconds) before
+    -- which the flush must NOT pick up this message. NULL = right away
+    -- (historical path).
     send_at_epoch INTEGER,
-    -- Réponse iTIP d'une invitation (PLAN-INVITATIONS) : la remise la
-    -- porte en partie text/calendar; method=REPLY. NULL = envoi
-    -- ordinaire (chemin historique, octet pour octet inchangé).
+    -- iTIP reply to an invitation (PLAN-INVITATIONS): delivery carries
+    -- it in a text/calendar part; method=REPLY. NULL = ordinary send
+    -- (historical path, byte for byte unchanged).
     ics_reply    TEXT,
     state        TEXT NOT NULL DEFAULT 'queued',
     attempts     INTEGER NOT NULL DEFAULT 0,
     last_error   TEXT,
     queued_epoch INTEGER NOT NULL
 );
--- Les pièces du journal d'envoi, copiées de `draft_attachments` dans la
--- transaction du geste d'envoi (PJ-D2 : « jamais d'envoi perdu » couvre
--- les octets). `bytes` passe à NULL au passage à `sent` (PJ-D7) : les
--- métadonnées restent lisibles, la quarantaine et le refus gardent leurs
--- octets — le renvoi sur décision de l'utilisateur doit rester entier.
+-- The attachments of the outgoing journal, copied from
+-- `draft_attachments` in the send gesture's transaction (PJ-D2: 'never
+-- a lost send' covers the bytes). `bytes` goes to NULL on the move to
+-- `sent` (PJ-D7): the metadata stays readable, quarantine and refusal
+-- keep their bytes — a resend on the user's decision must stay whole.
 CREATE TABLE IF NOT EXISTS outbox_attachments (
     id        INTEGER PRIMARY KEY,
     outbox_id INTEGER NOT NULL REFERENCES outbox(id) ON DELETE CASCADE,
@@ -273,16 +275,16 @@ CREATE TABLE IF NOT EXISTS outbox_attachments (
     bytes     BLOB
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_attachments_outbox ON outbox_attachments(outbox_id);
--- L'echo local d'un geste (PLAN-REACTIVITE E3, R-D1 « < 1 s ») : la
--- copie de DESTINATION d'une suppression, d'un archivage ou d'un envoi,
--- visible en liste AVANT que le serveur ait suivi. JAMAIS dans
--- `envelopes` : un UID invente forgerait la cle (mailbox, uid) sur
--- laquelle tout repose. L'echo meurt a la reconciliation (la vraie
--- ligne entre, meme message_id) ou au balayage (le serveur dement).
--- `destination` est une categorie canonique : 'envoyes' | 'archives' |
--- 'corbeille'. `origin_action_id` (geste journalise) et
--- `origin_outbox_id` (envoi) disent l'INTENTION dont l'echo est le
--- reflet — un echo sans intention n'existe pas.
+-- The local echo of a gesture (PLAN-REACTIVITE E3, R-D1 '< 1 s'): the
+-- DESTINATION copy of a deletion, an archiving, or a send, visible in
+-- the list BEFORE the server has caught up. NEVER in `envelopes`: a
+-- made-up UID would forge the (mailbox, uid) key everything rests on.
+-- The echo dies at reconciliation (the real row arrives, same
+-- message_id) or at the sweep (the server denies it). `destination` is
+-- a canonical category: 'envoyes' | 'archives' | 'corbeille'.
+-- `origin_action_id` (logged gesture) and `origin_outbox_id` (send)
+-- say the INTENT the echo reflects — an echo without intent does not
+-- exist.
 CREATE TABLE IF NOT EXISTS echos (
     id               INTEGER PRIMARY KEY,
     account_id       INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -295,74 +297,74 @@ CREATE TABLE IF NOT EXISTS echos (
     preview          TEXT,
     html             TEXT,
     attachment_count INTEGER NOT NULL DEFAULT 0,
-    -- PLAN-RETOURS-5 : les destinataires de l'echo, au format des
-    -- enveloppes (adresses jointes par un saut de ligne) — la liste
-    -- d'Envoyes dit « A : X », jamais le slug de destination. NULL sur
-    -- l'existant (echos morts a la reconciliation de toute facon).
-    -- D-36 : JAMAIS de sequence d'echappement Rust (antislash-n) dans ce
-    -- commentaire SQL — elle y devenait un vrai saut de ligne et SQLite
-    -- avalait la suite comme une colonne fantome (base neuve, 2026-08-26).
+    -- PLAN-RETOURS-5: the recipients of the echo, in the same format as
+    -- envelopes (addresses joined by a newline) — the Sent list shows
+    -- 'To: X', never the destination slug. NULL on existing rows
+    -- (echoes die at reconciliation anyway).
+    -- D-36: NEVER a Rust escape sequence (backslash-n) in this SQL
+    -- comment — it turned into a real newline and SQLite swallowed
+    -- what followed as a phantom column (fresh database, 2026-08-26).
     to_addrs         TEXT,
     origin_action_id INTEGER,
     origin_outbox_id INTEGER,
     created_epoch    INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_echos_destination ON echos(destination, account_id);
--- L'annuaire des correspondants (PLAN-RETOURS-5, D4) : appris du
--- courrier vu (expediteurs hors indesirables/corbeille, destinataires
--- de NOS envois), jamais un carnet edite. Adresse en minuscules
--- (dedoublonnage), le nom d'affichage le plus recent gagne. Table
--- PETITE interrogee a la frappe — jamais un parcours d'envelopes par
--- frappe dans la file serialisee (lecon PLAN-DEFILEMENT-PROFOND).
+-- The contacts directory (PLAN-RETOURS-5, D4): learned from mail seen
+-- (senders outside junk/trash, recipients of OUR sends), never a
+-- hand-edited address book. Address lowercased (de-duplication), the
+-- most recent display name wins. A SMALL table queried on keystrokes —
+-- never a scan of envelopes per keystroke in the serialized queue
+-- (lesson from PLAN-DEFILEMENT-PROFOND).
 CREATE TABLE IF NOT EXISTS correspondants (
     address    TEXT PRIMARY KEY,
     name       TEXT,
     last_epoch INTEGER NOT NULL DEFAULT 0,
     hits       INTEGER NOT NULL DEFAULT 0
 );
--- L'epingle LOCALE d'une conversation (PLAN-RETOURS-7, R4) : cle
--- d'ENVELOPPE, pas de fil — les tables de fils se DROPent a l'adoption
--- (thread::drop_if_outdated), une epingle portee par `threads` mourrait
--- a la migration suivante. Le fil se retrouve par jointure. JAMAIS la
--- colonne `flagged` : elle est ecrasee par la verite serveur a chaque
--- synchro (upsert_envelopes), et l'etoile IMAP est une autre semantique.
--- Locale par decision (D-refus) : IMAP n'a pas ce concept.
+-- The LOCAL pin of a conversation (PLAN-RETOURS-7, R4): keyed by
+-- ENVELOPE, not thread — thread tables get DROPped on adoption
+-- (thread::drop_if_outdated), a pin carried by `threads` would die at
+-- the next migration. The thread is found back through a join. NEVER
+-- the `flagged` column: it is overwritten by server truth on every
+-- sync (upsert_envelopes), and the IMAP star is a different semantics.
+-- Local by decision (D-refus): IMAP has no such concept.
 CREATE TABLE IF NOT EXISTS pins (
     mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
     uid        INTEGER NOT NULL,
     epoch      INTEGER NOT NULL,
     PRIMARY KEY (mailbox_id, uid)
 );
--- Mis de côté (PLAN-MODE-ORGANISE E5) : la pile du mode organisé —
--- copie du patron `pins` (clé d'ENVELOPPE : survit à la reconstruction
--- des fils, meurt avec sa boîte — purges `reset_mailbox`/`remove_local`
--- comprises, leçon RETOURS-11). Un fil mis de côté quitte TOUTES les
--- vues organisées ; « Terminé » (DELETE) le rend d'où il vient. Le
--- classique n'en sait rien.
+-- Set aside (PLAN-MODE-ORGANISE E5): the organized mode's pile — a
+-- copy of the `pins` pattern (ENVELOPE key: survives thread rebuilding,
+-- dies with its mailbox — `reset_mailbox`/`remove_local` purges
+-- included, lesson from RETOURS-11). A thread that is set aside leaves
+-- ALL organized views; 'Done' (DELETE) sends it back where it came
+-- from. The classic view knows nothing of it.
 CREATE TABLE IF NOT EXISTS mis_de_cote (
     mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
     uid        INTEGER NOT NULL,
     epoch      INTEGER NOT NULL,
     PRIMARY KEY (mailbox_id, uid)
 );
--- La mémoire « lu » du Kiosque (RETOURS-13 R10) : une carte défilée
--- jusqu'en bas est lue — copie du patron `pins`/`mis_de_cote` (clé
--- d'enveloppe, locale au poste, meurt avec sa boîte et son message).
--- Le lu IMAP (`seen`) est une autre sémantique : il est écrasé par la
--- vérité serveur à chaque synchro, et le Kiosque ne « traite » pas.
+-- The Feed's 'read' memory (RETOURS-13 R10): a card scrolled all the
+-- way down is read — a copy of the `pins`/`mis_de_cote` pattern
+-- (envelope key, local to the workstation, dies with its mailbox and
+-- its message). IMAP 'read' (`seen`) is a different semantics: it is
+-- overwritten by server truth on every sync, and the Feed does not
+-- 'process' anything.
 CREATE TABLE IF NOT EXISTS kiosque_lus (
     mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
     uid        INTEGER NOT NULL,
     epoch      INTEGER NOT NULL,
     PRIMARY KEY (mailbox_id, uid)
 );
--- La mémoire de la garde d'images (PLAN-RETOURS-11, R1 — D1 renverse
--- l'invariant A43) : deux exceptions EXPLICITES au blocage par défaut,
--- jamais un réglage global. Par MESSAGE : clé d'enveloppe, patron de
--- `pins` (survit à la reconstruction des fils, meurt avec sa boîte).
--- Par EXPÉDITEUR : adresse exacte en minuscules (normalisée par le
--- Rust, comme `correspondants`), GLOBALE au poste (D3 — survit au
--- retrait d'un compte).
+-- The images-guard memory (PLAN-RETOURS-11, R1 — D1 reverses invariant
+-- A43): two EXPLICIT exceptions to blocking by default, never a global
+-- setting. Per MESSAGE: envelope key, the `pins` pattern (survives
+-- thread rebuilding, dies with its mailbox). Per SENDER: exact address
+-- lowercased (normalized by the Rust side, like `correspondants`),
+-- GLOBAL to the workstation (D3 — survives an account being removed).
 CREATE TABLE IF NOT EXISTS images_messages (
     mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
     uid        INTEGER NOT NULL,
@@ -373,43 +375,41 @@ CREATE TABLE IF NOT EXISTS images_expediteurs (
     address TEXT PRIMARY KEY,
     epoch   INTEGER NOT NULL
 );
--- Le routage du Mode organise (PLAN-MODE-ORGANISE E1, decision D1 :
--- routage LOCAL seul — la destination est une PRESENTATION, jamais un
--- deplacement IMAP ; les autres clients voient le courrier inchange).
--- Cle : adresse exacte en minuscules (la MEME autorite de
--- normalisation que la garde d'images), GLOBALE au poste comme
--- images_expediteurs — le verdict sur un expediteur survit au retrait
--- d'un compte. `regle` : l'automatisme du Non (spam/archive/corbeille
--- — D4 : JAMAIS une suppression definitive), NULL = ecarte sans
--- regle ; une regle n'existe que sur un expediteur `ecarte`.
--- « Reintegrer » a l'historique du Portier = DELETE de la ligne. Le
--- vocabulaire est verifie en Rust AVANT l'ecriture ; les CHECK ne
--- sont que la ceinture.
+-- Organized mode routing (PLAN-MODE-ORGANISE E1, decision D1: LOCAL
+-- routing only — the destination is a PRESENTATION, never an IMAP
+-- move; other clients see the mail unchanged). Key: exact address
+-- lowercased (the SAME normalization authority as the images guard),
+-- GLOBAL to the workstation like images_expediteurs — the verdict on a
+-- sender survives an account being removed. `regle`: the No automatism
+-- (spam/archive/trash — D4: NEVER a permanent deletion), NULL =
+-- screened out with no rule; a rule only exists on a `ecarte` sender.
+-- 'Reinstate' from the Screener's history = DELETE of the row. The
+-- vocabulary is checked in Rust BEFORE the write; the CHECKs are only
+-- the belt.
 CREATE TABLE IF NOT EXISTS routage_expediteurs (
     address     TEXT PRIMARY KEY,
     destination TEXT NOT NULL CHECK (destination IN ('reception','kiosque','registre','ecarte')),
     regle       TEXT CHECK (regle IN ('spam','archive','corbeille')),
     epoch       INTEGER NOT NULL
 );
--- L'attente du Portier (PLAN-MODE-ORGANISE E2, D3 « arrivées
--- seules ») : les expéditeurs SANS ligne de routage dont le courrier
--- n'existe QU'APRÈS l'époque d'activation. MATÉRIALISÉE et entretenue
--- à l'arrivée (spike S2-bis : la calculer dans la requête chaude coûte
--- 299 ms à l'offset profond, la sonde PK est gratuite ; l'entretien
--- vaut 7 µs/message). DÉRIVÉE du courrier — jamais une décision : elle
--- se défait quand le courrier ancien arrive (backfill) ou disparaît
--- (réinitialisation), et meurt au verdict (la ligne de routage prend
--- le relais). Une seule colonne : l'appartenance EST la donnée — tout
--- le reste (dernier message, comptes) se lit du courrier.
+-- The Screener's waiting list (PLAN-MODE-ORGANISE E2, D3 'arrivals
+-- only'): senders WITHOUT a routing row whose mail only exists AFTER
+-- the activation epoch. MATERIALIZED and maintained ON ARRIVAL (spike
+-- S2-bis: computing it in the hot query costs 299 ms at deep offset,
+-- the PK probe is free; upkeep costs 7 µs/message). DERIVED from the
+-- mail — never a decision: it undoes itself when older mail arrives
+-- (backfill) or disappears (reset), and dies at the verdict (the
+-- routing row takes over). A single column: membership IS the data —
+-- everything else (last message, counts) is read from the mail.
 CREATE TABLE IF NOT EXISTS portier_attente (
     address TEXT PRIMARY KEY
 );
--- La session du Nettoyage de printemps (PLAN-HORIZON-NETTOYAGE volet
--- B, D8 : persistee — un nettoyage entame reprend apres redemarrage).
--- UNE ligne au plus (id = 1). La borne est FIGEE au demarrage
--- (borne_epoch, derivee de la plage choisie) ; les verdicts vivent
--- dans routage_expediteurs — la session ne porte que la plage, le
--- perimetre et la progression (total de groupes au depart, traites).
+-- The Spring cleaning session (PLAN-HORIZON-NETTOYAGE part B, D8:
+-- persisted — a cleanup started resumes after a restart). AT MOST one
+-- row (id = 1). The bound is FIXED at start (borne_epoch, derived from
+-- the chosen range); verdicts live in routage_expediteurs — the
+-- session only carries the range, the scope and the progress (total
+-- groups at the start, handled).
 CREATE TABLE IF NOT EXISTS nettoyage_session (
     id          INTEGER PRIMARY KEY CHECK (id = 1),
     plage       TEXT NOT NULL,
@@ -418,16 +418,16 @@ CREATE TABLE IF NOT EXISTS nettoyage_session (
     total       INTEGER NOT NULL,
     traites     INTEGER NOT NULL DEFAULT 0
 );
--- L'invitation de reunion d'un message (PLAN-INVITATIONS) : le CACHE de
--- la partie text/calendar, extrait au scan du corps (save_body_full) ou
--- a l'ouverture pour un message d'avant la fonctionnalite (write-back,
--- invariant d'adoption 6.7 — jamais de migration de masse). Cle
--- d'enveloppe, comme `attachments` ; le MIME brut n'est jamais stocke.
--- `partstat` = notre statut LU du REQUEST ; `reponse` = notre derniere
--- reponse PARTIE par la boite d'envoi (D6) — deux verites distinctes.
--- Les epochs sont UTC ; quand un horaire n'est pas resolu (journee
--- entiere, TZID inconnu), la forme TEXTE fait foi et l'epoch reste NULL
--- (garde D1 : jamais une conversion mensongere).
+-- A message's meeting invitation (PLAN-INVITATIONS): the CACHE of the
+-- text/calendar part, extracted when the body is scanned
+-- (save_body_full) or on open for a message from before the feature
+-- (write-back, adoption invariant 6.7 — never a mass migration).
+-- Envelope key, like `attachments`; the raw MIME is never stored.
+-- `partstat` = our READ status from the REQUEST; `reponse` = our last
+-- reply SENT via the outbox (D6) — two distinct truths. Epochs are
+-- UTC; when a time cannot be resolved (all-day event, unknown TZID),
+-- the TEXT form is authoritative and the epoch stays NULL (guard D1:
+-- never a misleading conversion).
 CREATE TABLE IF NOT EXISTS invitations (
     mailbox_id           INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
     uid                  INTEGER NOT NULL,
@@ -448,11 +448,11 @@ CREATE TABLE IF NOT EXISTS invitations (
     repondant_adresse    TEXT,
     repondant_nom        TEXT,
     repondant_statut     TEXT,
-    -- Le lien d'annulation CROISE (terrain R6, 2026-08-22) : un CANCEL
-    -- etaint le REQUEST de la meme reunion (meme event_uid, meme
-    -- compte), quel que soit l'ordre d'arrivee des scans — sans lui,
-    -- l'annulation arrivait dans une conversation neuve et l'invitation
-    -- d'origine continuait d'offrir Accepter.
+    -- The CROSSED cancellation link (field finding R6, 2026-08-22): a
+    -- CANCEL extinguishes the REQUEST of the same meeting (same
+    -- event_uid, same account), regardless of scan arrival order —
+    -- without it, the cancellation would land in a new conversation and
+    -- the original invitation would keep offering Accept.
     annule               INTEGER NOT NULL DEFAULT 0,
     reponse              TEXT,
     reponse_epoch        INTEGER,
@@ -460,21 +460,21 @@ CREATE TABLE IF NOT EXISTS invitations (
 );
 ";
 
-/// Écrit (ou remplace) la ligne d'invitation d'un message, en PRÉSERVANT
-/// notre réponse locale : `reponse`/`reponse_epoch` ne sont jamais
-/// touchées ici (D6) — le PARTSTAT relu du message et la réponse partie
-/// de Wind sont deux vérités distinctes.
-fn ecrire_invitation(
+/// Writes (or replaces) a message's invitation row, PRESERVING our
+/// local reply: `reponse`/`reponse_epoch` are never touched here (D6)
+/// — the PARTSTAT reread from the message and the reply Wind sent are
+/// two distinct truths.
+fn write_invitation(
     conn: &Connection,
     mailbox_id: i64,
     uid: Uid,
     row: &InvitationRow,
 ) -> Result<(), Error> {
-    // Le lien d'annulation croisé (terrain R6), dans les DEUX ordres
-    // d'arrivée : un REQUEST écrit APRÈS le CANCEL de sa réunion naît
-    // annulé ; un CANCEL écrit APRÈS éteint les REQUEST existants.
-    // La réunion est identifiée par (event_uid, compte) — jamais
-    // l'event_uid seul : deux comptes peuvent recevoir la même réunion.
+    // The crossed cancellation link (field finding R6), in BOTH arrival
+    // orders: a REQUEST written AFTER the CANCEL of its meeting is born
+    // cancelled; a CANCEL written AFTER extinguishes existing REQUESTs.
+    // The meeting is identified by (event_uid, account) — never
+    // event_uid alone: two accounts can receive the same meeting.
     let annule = row.annule
         || (row.methode == "request"
             && conn
@@ -543,33 +543,34 @@ fn ecrire_invitation(
     Ok(())
 }
 
-/// Avancement de l'adoption d'une base héritée, pour l'affichage.
+/// Progress of a legacy database's adoption, for display.
 ///
-/// `total` est un MAJORANT déclaré d'emblée (il ne bouge jamais en cours
-/// de passe : une barre qui recule est pire qu'une barre imprécise), et
-/// `fait == total` n'est annoncé qu'une fois la passe COMMISE — jamais
-/// avant, c'est l'exigence « un signal doit être observable » (§9 de la
-/// passation). L'affichage passe par [`crate::sync_percent`], qui porte
-/// déjà les cas dégénérés.
+/// `total` is an UPPER BOUND declared upfront (it never moves during a
+/// pass: a progress bar that goes backward is worse than an imprecise
+/// one), and `fait == total` is only announced once the pass is
+/// COMMITTED — never before, that is the "a signal must be observable"
+/// requirement (§9 of the handover). Display goes through
+/// [`crate::sync_percent`], which already handles the degenerate
+/// cases.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AdoptionProgress {
     pub done: u64,
     pub total: u64,
 }
 
-/// État de synchro persisté d'une boîte.
+/// Persisted sync state of a mailbox.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncState {
     pub mailbox_id: i64,
     pub uid_validity: u32,
     pub last_uid: Uid,
     pub highest_modseq: Option<u64>,
-    /// La boîte a déjà été synchronisée une fois : c'est ce qui décide
-    /// initiale / incrémentale (E2), jamais `last_uid`.
-    pub initialisee: bool,
+    /// The mailbox has already been synced once: this is what decides
+    /// initial / incremental (E2), never `last_uid`.
+    pub initialized: bool,
 }
 
-/// Un compte connecté au client.
+/// An account connected to the client.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Account {
     pub id: i64,
@@ -577,135 +578,136 @@ pub struct Account {
     pub provider: String,
 }
 
-/// Une ligne de la boîte unifiée : l'enveloppe ET son compte — un UID
-/// seul n'identifie plus un message en multi-comptes.
+/// A row of the unified inbox: the envelope AND its account — a UID
+/// alone no longer identifies a message once several accounts are in
+/// play.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnifiedRow {
     pub account_id: i64,
     pub account_email: String,
-    /// La boîte qui CONTIENT ce message, sous son nom réseau.
+    /// The mailbox that CONTAINS this message, under its network name.
     ///
-    /// Sans elle, `(account_id, uid)` n'identifie plus rien depuis que les
-    /// fils réunissent plusieurs boîtes ([ADR 0009]) : les UID sont
-    /// attribués par boîte et repartent de 1, donc le message n°1 d'INBOX
-    /// et le n°1 d'« Envoyés » sont deux messages différents du même
-    /// compte. Toute lecture et toute action doivent la porter.
+    /// Without it, `(account_id, uid)` no longer identifies anything
+    /// now that threads span several mailboxes ([ADR 0009]): UIDs are
+    /// assigned per mailbox and restart at 1, so message #1 of INBOX
+    /// and #1 of "Sent" are two different messages of the same
+    /// account. Every read and every action must carry it.
     pub mailbox: String,
     pub envelope: Envelope,
-    /// Le message porte-t-il au moins une piece jointe ?
+    /// Does the message carry at least one attachment?
     ///
-    /// Faux tant que son corps n'a pas ete lu — meme condition que la
-    /// recherche dans le texte. Le trombone apparait donc au fil du
-    /// rattrapage, jamais a tort.
+    /// False until its body has been read — the same condition as text
+    /// search. The paperclip therefore appears as backfill proceeds,
+    /// never wrongly.
     pub has_attachment: bool,
-    /// COMBIEN de pièces jointes — la puce du prototype dit « 2
-    /// fichiers », pas « des fichiers ». 0 tant que le corps n'a pas été
-    /// lu, comme `has_attachment`.
+    /// HOW MANY attachments — the prototype's chip says "2 files", not
+    /// "some files". 0 until the body has been read, same as
+    /// `has_attachment`.
     pub attachment_count: u32,
-    /// L'aperçu texte sous l'objet (écran 02) — calculé à l'écriture du
-    /// corps, `None` tant que le corps n'est pas rapatrié.
+    /// The text preview under the subject (screen 02) — computed when
+    /// the body is written, `None` until the body is fetched.
     pub preview: Option<String>,
-    /// Le fil auquel ce message appartient. `None` seulement pendant la
-    /// fenêtre où une base héritée n'a pas encore été adoptée.
+    /// The thread this message belongs to. `None` only during the
+    /// window where a legacy database has not yet been adopted.
     pub thread_id: Option<i64>,
-    /// Nombre de messages du fil, **reçus et envoyés confondus**.
-    /// 1 = message isolé.
+    /// Number of messages in the thread, **received and sent
+    /// combined**. 1 = a lone message.
     ///
-    /// Depuis l'ADR 0009, un fil appartient au COMPTE et non à une boîte :
-    /// nos propres réponses en font partie. Le compteur doit donc les
-    /// inclure, sans quoi il contredirait à l'écran le bandeau de
-    /// conversation, qui montre l'échange entier.
+    /// Since ADR 0009, a thread belongs to the ACCOUNT and not to a
+    /// mailbox: our own replies are part of it. The counter must
+    /// therefore include them, or it would contradict the conversation
+    /// banner on screen, which shows the whole exchange.
     pub thread_size: u32,
-    /// Non-lus du fil. Un fil se montre non lu tant qu'il en reste un,
-    /// même si son dernier message est lu.
+    /// Unread count of the thread. A thread shows as unread as long as
+    /// one remains, even if its last message is read.
     pub thread_unseen: u32,
-    /// L'invitation du fil (terrain R10/R11) — posée par
-    /// [`Store::enrichir_lignes`] sur la PAGE servie, jamais par la
-    /// requête chaude. `None` dans tous les autres chemins.
-    pub invitation: Option<InvitationRang>,
+    /// The thread's invitation (field findings R10/R11) — set by
+    /// [`Store::enrichir_lignes`] on the served PAGE, never by the hot
+    /// query. `None` on every other path.
+    pub invitation: Option<InvitationRank>,
 }
 
-/// L'invitation d'une ligne de liste (terrain R10/R11) : ce que le rang
-/// de puces affiche (réponse donnée, annulation) et la clé pour
-/// répondre DEPUIS la liste — la boîte et l'UID du message
-/// d'invitation, qui n'est pas forcément la tête affichée du fil.
+/// The invitation of a list row (field findings R10/R11): what the
+/// chip row shows (reply given, cancellation) and the key to reply
+/// FROM the list — the mailbox and UID of the invitation message,
+/// which is not necessarily the displayed head of the thread.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InvitationRang {
+pub struct InvitationRank {
     pub mailbox: String,
     pub uid: Uid,
-    /// Le titre de la réunion — le sujet de la réponse se construit de
-    /// lui, jamais du sujet de la tête du fil (« Re : … »).
-    pub titre: String,
-    /// Notre dernière réponse partie (`accepte`|`provisoire`|`refuse`).
-    pub reponse: Option<String>,
-    pub annulee: bool,
-    pub peut_repondre: bool,
+    /// The meeting's title — the reply's subject is built from it,
+    /// never from the thread head's subject ("Re: …").
+    pub title: String,
+    /// Our last sent reply (`accepte`|`provisoire`|`refuse`).
+    pub reply: Option<String>,
+    pub cancelled: bool,
+    pub can_reply: bool,
 }
 
-/// Colonnes du SELECT unifié, partagées par [`Store::unified_recent`] et
-/// [`Store::search`] — l'ordre est celui de [`row_to_unified`].
-/// La derniere colonne est un EXISTS sur `attachments` : la liste doit
-/// pouvoir afficher le trombone sans une requete par ligne. La cle
-/// primaire (mailbox_id, uid, idx) rend ce test indexe.
-// Exige les alias `e` (envelopes), `m` (mailboxes), `a` (accounts) ET la
-// jointure `LEFT JOIN bodies b` — l'aperçu de liste vient de là, NULL
-// tant que le corps n'est pas rapatrié. Le COUNT de pièces jointes
-// remplace l'ancien EXISTS : la puce du prototype dit « 2 fichiers »,
-// pas « des fichiers ». Les deux ne s'exécutent que sur les lignes
-// RETENUES par la pagination (gate P1).
+/// Columns of the unified SELECT, shared by [`Store::unified_recent`]
+/// and [`Store::search`] — the order is that of [`row_to_unified`].
+/// The last column is an EXISTS on `attachments`: the list must be
+/// able to show the paperclip without one query per row. The primary
+/// key (mailbox_id, uid, idx) makes this test indexed.
+// Requires the aliases `e` (envelopes), `m` (mailboxes), `a`
+// (accounts) AND the join `LEFT JOIN bodies b` — the list preview
+// comes from there, NULL until the body is fetched. The attachment
+// COUNT replaces the old EXISTS: the prototype's chip says "2 files",
+// not "some files". Both only run on the rows KEPT by pagination
+// (gate P1).
 pub(crate) const SELECT_UNIFIED: &str = "SELECT a.id, a.email, e.uid, e.subject, e.sender, e.sender_address, e.message_id, e.date_epoch, e.seen, e.flagged, (SELECT COUNT(*) FROM attachments att WHERE att.mailbox_id = e.mailbox_id AND att.uid = e.uid), e.thread_id, e.in_reply_to, m.name, b.preview, e.to_addrs, e.cc_addrs";
 
-/// Le SELECT de la liste groupée : les colonnes ci-dessus, plus l'agrégat
-/// du fil. Il exige la jointure sur `threads` (alias `t`), que la
-/// recherche n'a pas — un résultat de recherche est UN message, pas une
-/// conversation. Vient APRÈS `to_addrs`/`cc_addrs` de [`SELECT_UNIFIED`] :
-/// `t.size`/`t.unseen` sont donc aux index 17/18.
+/// The SELECT for the grouped list: the columns above, plus the thread
+/// aggregate. It requires the join on `threads` (alias `t`), which
+/// search does not have — a search result is ONE message, not a
+/// conversation. Comes AFTER `to_addrs`/`cc_addrs` of
+/// [`SELECT_UNIFIED`]: `t.size`/`t.unseen` are therefore at indices
+/// 17/18.
 pub(crate) const THREAD_AGGREGATE: &str = ", t.size, t.unseen";
 
-/// Les fils ÉPINGLÉS (R4, PLAN-RETOURS-7) — la sous-requête partagée
-/// par la page (exclusion, D5), le comptage et le service à part.
-/// Matérialisée UNE fois par requête (LIST SUBQUERY), petite par
-/// construction (quelques épingles au plus) — mais SEULEMENT si `pins`
-/// est la table extérieure : sans `ANALYZE` (jamais exécuté ici),
-/// SQLite choisit `envelopes` en extérieure et paie un scan COMPLET de
-/// la table la plus large sur le chemin le plus chaud (revue
-/// 2026-08-21, mesuré au banc : ~24 ms la page à 200 k). Le
-/// `CROSS JOIN` est la directive d'ordre de SQLite : `pins` se
-/// parcourt, `envelopes` se sonde par sa clé primaire. La garde de
-/// plan `la_boite_unifiee_ne_materialise_pas_son_tri` le prouve.
+/// PINNED threads (R4, PLAN-RETOURS-7) — the subquery shared by the
+/// page (exclusion, D5), the count, and the standalone service.
+/// Materialized ONCE per query (LIST SUBQUERY), small by construction
+/// (a handful of pins at most) — but ONLY IF `pins` is the outer
+/// table: without `ANALYZE` (never run here), SQLite picks `envelopes`
+/// as the outer table and pays a FULL scan of the widest table on the
+/// hottest path (review 2026-08-21, measured on the bench: ~24 ms per
+/// page at 200k). The `CROSS JOIN` is SQLite's join-order directive:
+/// `pins` is scanned, `envelopes` is probed by its primary key. The
+/// plan guard `la_boite_unifiee_ne_materialise_pas_son_tri` proves it.
 pub(crate) const PINNED_THREADS: &str = "SELECT pe.thread_id FROM pins p CROSS JOIN envelopes pe ON pe.mailbox_id = p.mailbox_id AND pe.uid = p.uid WHERE pe.thread_id IS NOT NULL";
 
-/// Les fils MIS DE CÔTÉ (E5) — le jumeau de [`PINNED_THREADS`], mêmes
-/// raisons : liste matérialisée une fois, petite par construction, et
-/// `CROSS JOIN` directif (sans ANALYZE, SQLite choisirait `envelopes`
-/// en extérieure — le scan complet sur le chemin le plus chaud).
-pub(crate) const MIS_DE_COTE_THREADS: &str = "SELECT ce.thread_id FROM mis_de_cote c CROSS JOIN envelopes ce ON ce.mailbox_id = c.mailbox_id AND ce.uid = c.uid WHERE ce.thread_id IS NOT NULL";
+/// SET-ASIDE threads (E5) — the twin of [`PINNED_THREADS`], same
+/// reasons: list materialized once, small by construction, and a
+/// directive `CROSS JOIN` (without ANALYZE, SQLite would pick
+/// `envelopes` as the outer table — a full scan on the hottest path).
+pub(crate) const SET_ASIDE_THREADS: &str = "SELECT ce.thread_id FROM mis_de_cote c CROSS JOIN envelopes ce ON ce.mailbox_id = c.mailbox_id AND ce.uid = c.uid WHERE ce.thread_id IS NOT NULL";
 
-/// L'exclusion de la Réception ORGANISÉE — LA seule écriture (revue
-/// E4/E5 : le fragment vivait en quatre copies, la prochaine exclusion
-/// — E6 les groupes — en aurait oublié une, exactement la panne
-/// « pastille à 2 devant une liste vide » que la capture E5 a payée) :
-/// les fils retenus/routés (drapeau) et les fils MIS DE CÔTÉ (pile).
-pub(crate) fn exclusion_organisee() -> String {
-    format!(" AND organise_hors = 0 AND id NOT IN ({MIS_DE_COTE_THREADS})")
+/// The exclusion for the ORGANIZED Inbox — THE single place it is
+/// written (review E4/E5: the fragment lived in four copies, the next
+/// exclusion — E6, groups — would have missed one, exactly the "badge
+/// shows 2 in front of an empty list" bug the E5 screenshot caught):
+/// retained/routed threads (flag) and SET-ASIDE threads (the pile).
+pub(crate) fn organized_exclusion() -> String {
+    format!(" AND organise_hors = 0 AND id NOT IN ({SET_ASIDE_THREADS})")
 }
 
-/// La queue de la liste unifiée — jointures et tri final — partagée
-/// par la page ([`unified_page_sql`]) et la section épinglée
-/// ([`Store::pinned_unified_scoped`]) : UNE écriture, les deux
-/// requêtes ne peuvent plus dériver (revue 2026-08-21 — la copie du
-/// squelette aurait décalé les colonnes au premier ajout).
+/// The tail of the unified list — joins and final sort — shared by the
+/// page ([`unified_page_sql`]) and the pinned section
+/// ([`Store::pinned_unified_scoped`]): ONE place to write it, the two
+/// queries can no longer drift apart (review 2026-08-21 — copying the
+/// skeleton would have shifted the columns on the first addition).
 pub(crate) const UNIFIED_JOINS: &str = "
          JOIN envelopes e ON e.mailbox_id = t.last_mailbox_id AND e.uid = t.last_uid
          JOIN mailboxes m ON m.id = e.mailbox_id
          JOIN accounts a ON a.id = t.account_id
          LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid";
 
-/// Le tri du flot unifié — la date seule (classique) ou les SECTIONS de
-/// la Réception organisée (E4, verdict S1/A2) : les non-lus d'abord —
-/// « Nouveau pour vous » — puis le reste — « Déjà consulté » —, la date
-/// à l'intérieur de chaque section. UN flot, UN offset : l'ordre porte
-/// les sections, la couture est le COUNT des non-lus (0,37 ms mesurés).
+/// The sort of the unified stream — plain date (classic) or the
+/// SECTIONS of the organized Inbox (E4, verdict S1/A2): unread first —
+/// "New for you" — then the rest — "Already seen" —, date within each
+/// section. ONE stream, ONE offset: the order carries the sections,
+/// the seam is the unread COUNT (0.37 ms measured).
 pub(crate) fn unified_join_tail(sections: bool) -> String {
     let ordre = if sections {
         "ORDER BY (t.unseen > 0) DESC, t.last_epoch DESC, t.last_uid DESC, a.id"
@@ -715,15 +717,15 @@ pub(crate) fn unified_join_tail(sections: bool) -> String {
     format!("{UNIFIED_JOINS}\n         {ordre}")
 }
 
-/// Les préfixes des prefs suffixées par compte (`{prefixe}.{account_id}`).
-/// LA liste que `delete_account` purge : `accounts.id` est un INTEGER
-/// PRIMARY KEY sans AUTOINCREMENT — SQLite réutilise le plus grand rowid
-/// libéré, et un compte ajouté après un retrait hériterait sinon de
-/// l'identité de l'ancien (revue PLAN-RETOURS-8). Toute pref par compte
-/// neuve s'ajoute ICI, pas dans un site d'appel (revue 2026-08-23 : la
-/// liste vivait en dur dans la requête, à un crate de distance des
-/// helpers qui frappent les clés).
-pub const PREFS_PAR_COMPTE: &[&str] = &[
+/// Prefixes of the prefs suffixed per account (`{prefix}.{account_id}`).
+/// THE list `delete_account` purges: `accounts.id` is an INTEGER
+/// PRIMARY KEY without AUTOINCREMENT — SQLite reuses the largest freed
+/// rowid, and an account added after a removal would otherwise inherit
+/// the old one's identity (review PLAN-RETOURS-8). Any new per-account
+/// pref is added HERE, not at a call site (review 2026-08-23: the list
+/// lived hardcoded in the query, a crate away from the helpers that hit
+/// the keys).
+pub const PREFS_PER_ACCOUNT: &[&str] = &[
     "signature",
     "signature_replies",
     "repere_icone",
@@ -732,37 +734,36 @@ pub const PREFS_PAR_COMPTE: &[&str] = &[
     "horizon_import",
 ];
 
-/// Les vocabulaires FERMÉS du Nettoyage de printemps (volet B, D6) —
-/// vérifiés côté cœur avant toute écriture, comme le routage.
-pub const PLAGES_NETTOYAGE: &[&str] = &["3m", "6m", "1a", "2a", "5a", "tout"];
-pub const PERIMETRES_NETTOYAGE: &[&str] =
-    &["reception", "dossiers", "dossiersArchives", "archives"];
+/// The CLOSED vocabularies of Spring cleaning (part B, D6) — checked on
+/// the core side before any write, like routing.
+pub const CLEANUP_RANGES: &[&str] = &["3m", "6m", "1a", "2a", "5a", "tout"];
+pub const CLEANUP_SCOPES: &[&str] = &["reception", "dossiers", "dossiersArchives", "archives"];
 
-/// La session de nettoyage en cours (une seule, persistée — D8).
+/// The cleanup session in progress (at most one, persisted — D8).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SessionNettoyage {
-    pub plage: String,
-    pub perimetre: String,
-    pub borne_epoch: i64,
+pub struct CleanupSession {
+    pub range: String,
+    pub scope: String,
+    pub bound_epoch: i64,
     pub total: u64,
-    pub traites: u64,
+    pub handled: u64,
 }
 
-/// Un groupe du Nettoyage : un expéditeur × son courrier de la plage.
+/// A Cleanup group: one sender × its mail within the range.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GroupeNettoyage {
+pub struct CleanupGroup {
     pub address: String,
-    pub qui: Option<String>,
+    pub who: Option<String>,
     pub messages: u64,
-    pub dernier_epoch: i64,
-    pub dernier_objet: Option<String>,
+    pub last_epoch: i64,
+    pub last_subject: Option<String>,
 }
 
 pub struct Store(Connection);
 
 impl Store {
-    /// Accès réservé aux modules du crate qui étendent le stockage
-    /// (boîte d'envoi, dans `outbox.rs`) sans grossir ce fichier.
+    /// Access reserved to crate modules that extend storage (the
+    /// outbox, in `outbox.rs`) without growing this file.
     pub(crate) fn conn(&self) -> &Connection {
         &self.0
     }
@@ -771,19 +772,20 @@ impl Store {
         Self::init(Connection::open(path)?)
     }
 
-    /// Ouvre en rendant l'adoption d'une base héritée VISIBLE et
-    /// INTERRUPTIBLE (Phase 5, chantier arbitré — passation §8).
+    /// Opens while making a legacy database's adoption VISIBLE and
+    /// INTERRUPTIBLE (Phase 5, arbitrated job — handover §8).
     ///
-    /// `on_progress` est appelé pendant la passe d'adoption avec
-    /// l'avancement `(fait, total)`. Répondre [`ControlFlow::Break`]
-    /// annule : **tout est défait** (`ROLLBACK`), `PRAGMA user_version`
-    /// reste inchangé, et l'ouverture rend [`Error::Interrupted`] — la
-    /// passe entière se rejouera au prochain lancement. Jamais d'adoption
-    /// partielle persistée : la liste part de `threads`, une base à
-    /// moitié adoptée serait une boîte à moitié vide.
+    /// `on_progress` is called during the adoption pass with progress
+    /// `(done, total)`. Answering [`ControlFlow::Break`] cancels:
+    /// **everything is undone** (`ROLLBACK`), `PRAGMA user_version`
+    /// stays unchanged, and opening returns [`Error::Interrupted`] —
+    /// the whole pass will replay on the next launch. Never a partial
+    /// adoption persisted: the list starts from `threads`, a
+    /// half-adopted database would be a half-empty mailbox.
     ///
-    /// Sur une base à jour, `on_progress` n'est JAMAIS appelé : rien à
-    /// adopter, rien à raconter — pas de faux bandeau à chaque lancement.
+    /// On an up-to-date database, `on_progress` is NEVER called:
+    /// nothing to adopt, nothing to report — no fake banner on every
+    /// launch.
     pub fn open_with_progress(
         path: &Path,
         mut on_progress: impl FnMut(AdoptionProgress) -> ControlFlow<()>,
@@ -795,28 +797,30 @@ impl Store {
         Self::init(Connection::open_in_memory()?)
     }
 
-    /// Une adoption de base héritée attend-elle ici ? Sonde en **lecture
-    /// seule** : rien n'est déclenché, rien n'est créé — c'est ce qui
-    /// permet au desktop d'afficher l'écran de migration AVANT la
-    /// première vraie ouverture, celle qui paiera la passe.
+    /// Is a legacy database adoption waiting here? Probed in
+    /// **read-only** mode: nothing is triggered, nothing is created —
+    /// this is what lets the desktop show the migration screen BEFORE
+    /// the first real opening, the one that will pay for the pass.
     ///
-    /// Rend le nombre de messages concernés (`None` = rien à faire).
-    /// C'est un ordre de grandeur pour l'écran d'attente, pas le
-    /// dénominateur de l'avancement : celui-ci arrive par
-    /// [`Store::open_with_progress`], seule à connaître la portée exacte.
+    /// Returns the number of messages concerned (`None` = nothing to
+    /// do). It is an order of magnitude for the waiting screen, not the
+    /// denominator of progress: that one comes from
+    /// [`Store::open_with_progress`], the only one that knows the exact
+    /// scope.
     pub fn pending_adoption(path: &Path) -> Result<Option<u64>, Error> {
         if !path.exists() {
-            // Première installation : rien d'hérité, et ouvrir créerait
-            // le fichier — une sonde ne laisse pas de trace.
+            // First install: nothing legacy, and opening would create
+            // the file — a probe leaves no trace.
             return Ok(None);
         }
         let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-        // Deux passes distinctes peuvent réclamer l'écran, indépendamment :
-        // l'adoption des fils (base d'avant ADR 0008) ET la reconstruction
-        // de l'index de recherche (schéma FTS d'avant la colonne
-        // `recipients`). La seconde touche des bases DÉJÀ à jour côté fils —
-        // sans cette détection, elle gèlerait le démarrage en silence, hors
-        // de tout écran (constat terrain 2026-08-17).
+        // Two distinct passes may claim the screen, independently:
+        // thread adoption (a database from before ADR 0008) AND
+        // rebuilding the search index (FTS schema from before the
+        // `recipients` column). The second touches databases that are
+        // ALREADY up to date on the thread side — without this
+        // detection, it would freeze startup silently, outside any
+        // screen (field finding 2026-08-17).
         let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
         let threads_pending = version < thread::THREADING_VERSION;
         let search_pending = {
@@ -834,8 +838,9 @@ impl Store {
         if !threads_pending && !search_pending {
             return Ok(None);
         }
-        // Une base d'avant les fils peut ne pas avoir la table : le COUNT
-        // direct échouerait, et la sonde doit répondre, pas expliquer.
+        // A database from before threads may not have the table: the
+        // direct COUNT would fail, and the probe must answer, not
+        // explain.
         let has_envelopes: i64 = conn.query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'envelopes'",
             [],
@@ -844,12 +849,12 @@ impl Store {
         if has_envelopes == 0 {
             return Ok(None);
         }
-        // La reconstruction de l'index parcourt TOUTES les enveloppes ;
-        // l'adoption des fils, seulement la portée du regroupement (ADR 0010 :
-        // INBOX + Envoyés, très en dessous du total — « 256 312 » pour une
-        // passe qui en rattache 7 500 ne désignerait pas ce qu'il dit). On
-        // annonce la passe la plus large en attente ; ce n'est qu'un ordre de
-        // grandeur, le vrai dénominateur vient d'`open_with_progress`.
+        // Rebuilding the index scans ALL envelopes; thread adoption,
+        // only the grouping scope (ADR 0010: INBOX + Sent, well below
+        // the total — "256,312" for a pass that reattaches 7,500 would
+        // not name what it says). The widest pending pass is announced;
+        // it is only an order of magnitude, the real denominator comes
+        // from `open_with_progress`.
         let messages: i64 = if search_pending {
             conn.query_row("SELECT COUNT(*) FROM envelopes", [], |row| row.get(0))?
         } else if table_columns(&conn, "mailboxes")?.contains("threaded") {
@@ -870,34 +875,34 @@ impl Store {
         }
     }
 
-    /// Lit une préférence SANS ouvrir la base — sonde en **lecture
-    /// seule**, sœur de [`Store::pending_adoption`] : rien n'est
-    /// déclenché, rien n'est créé. C'est ce qui permet au desktop de
-    /// restaurer la langue AVANT l'écran de migration (ADR 0012) —
-    /// avec l'ouverture pleine, l'adoption d'une base héritée se payait
-    /// en silence au chargement de la langue, sans modale (constat
-    /// terrain 2026-08-15).
+    /// Reads a preference WITHOUT opening the database — a probe in
+    /// **read-only** mode, sibling of [`Store::pending_adoption`]:
+    /// nothing is triggered, nothing is created. This is what lets the
+    /// desktop restore the language BEFORE the migration screen (ADR
+    /// 0012) — with a full open, adopting a legacy database was paid
+    /// for silently while loading the language, with no modal (field
+    /// finding 2026-08-15).
     ///
-    /// Limite assumée (revue du même jour) : après un arrêt brutal, un
-    /// `-wal` chaud peut rendre l'ouverture en lecture seule impossible
-    /// — la sonde échoue alors au lieu de récupérer le journal comme le
-    /// ferait l'ouverture pleine. L'UI traite cet échec comme un repli
-    /// de SESSION (langue du système), jamais comme une absence de
-    /// préférence : rien ne se persiste sur la foi d'une sonde muette.
+    /// Accepted limit (same-day review): after an abrupt stop, a hot
+    /// `-wal` file can make read-only opening impossible — the probe
+    /// then fails instead of recovering the journal the way a full
+    /// open would. The UI treats this failure as a SESSION fallback
+    /// (system language), never as an absence of preference: nothing
+    /// gets persisted on the strength of a silent probe.
     pub fn text_pref_readonly(path: &Path, key: &str) -> Result<Option<String>, Error> {
         if !path.exists() {
-            // Première installation : rien à lire, et ouvrir créerait
-            // le fichier — une sonde ne laisse pas de trace.
+            // First install: nothing to read, and opening would create
+            // the file — a probe leaves no trace.
             return Ok(None);
         }
         let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-        // Le même budget d'attente que l'ouverture pleine : une base
-        // héritée d'AVANT le WAL est en mode rollback, où un écrivain
-        // bloque les lecteurs — sans ce budget, la sonde mourrait en
-        // SQLITE_BUSY au premier essai (tard vaut mieux que mort).
+        // The same wait budget as a full open: a database from BEFORE
+        // WAL is in rollback mode, where a writer blocks readers —
+        // without this budget, the probe would die with SQLITE_BUSY on
+        // the first try (late beats dead).
         conn.busy_timeout(std::time::Duration::from_secs(30))?;
-        // Une base d'avant les préférences peut ne pas avoir la table :
-        // la sonde doit répondre (« pas de préférence »), pas expliquer.
+        // A database from before preferences may not have the table:
+        // the probe must answer ("no preference"), not explain.
         let has_prefs: i64 = conn.query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'prefs'",
             [],
@@ -920,20 +925,18 @@ impl Store {
         Self::init_with(conn, &mut |_| ControlFlow::Continue(()))
     }
 
-    /// Oublie l'initialisation d'UN chemin — pour les tests qui
-    /// REMBOBINENT une base à la main entre deux ouvertures (le décor
-    /// d'une base d'avant), ce que la mono-instance interdit en
-    /// production. Un chemin, jamais tout le registre : les tests tournent
-    /// en parallèle, et vider le registre sous les pieds d'un autre lui
-    /// fait rejouer un schéma qu'il prouve justement ne pas rejouer.
+    /// Forgets initialization for ONE path — for tests that REWIND a
+    /// database by hand between two openings (the fixture of a
+    /// pre-existing database), which the single-instance rule forbids
+    /// in production. One path, never the whole registry: tests run in
+    /// parallel, and clearing the registry out from under another test
+    /// would make it replay a schema it is precisely proving it does
+    /// not replay.
     #[cfg(test)]
-    pub(crate) fn oublier_initialisation(path: &Path) {
-        // La MÊME clé que le registre : celle que SQLite donne au fichier.
-        if let Some(cle) = Connection::open(path)
-            .ok()
-            .and_then(|conn| cle_fichier(&conn))
-        {
-            registre_initialisees().verrou().remove(&cle);
+    pub(crate) fn forget_initialization(path: &Path) {
+        // The SAME key as the registry: the one SQLite gives the file.
+        if let Some(key) = Connection::open(path).ok().and_then(|conn| file_key(&conn)) {
+            initialized_registry().lock().remove(&key);
         }
     }
 
@@ -941,82 +944,82 @@ impl Store {
         conn: Connection,
         on_progress: &mut dyn FnMut(AdoptionProgress) -> ControlFlow<()>,
     ) -> Result<Self, Error> {
-        // Plusieurs commandes ouvrent chacune leur connexion : patienter
-        // plutôt que d'échouer en SQLITE_BUSY sur une écriture concurrente.
-        // 30 s et non 5 (terrain 2026-08-15) : sous forte charge machine,
-        // un lot d'écriture de la synchronisation peut tenir le verrou
-        // au-delà de 5 s — un geste UI (`delete_draft` d'un brouillon
-        // vidé) mourait alors en BUSY et son échec, tu par l'UI d'époque,
-        // laissait un fantôme au dossier. En WAL les lectures ne
-        // patientent jamais ; seule une écriture derrière une écriture
-        // attend — tard vaut mieux que mort.
+        // Several commands each open their own connection: wait rather
+        // than fail with SQLITE_BUSY on a concurrent write. 30 s and
+        // not 5 (field finding 2026-08-15): under heavy machine load, a
+        // sync write batch can hold the lock beyond 5 s — a UI gesture
+        // (`delete_draft` on an emptied draft) would then die with BUSY
+        // and its failure, silenced by the UI of that era, left a ghost
+        // in the folder. In WAL, reads never wait; only a write behind
+        // a write waits — late beats dead.
         conn.busy_timeout(std::time::Duration::from_secs(30))?;
-        // WAL (ADR 0011) : une lecture ne bloque plus jamais une écriture,
-        // ni l'inverse. Le mode rollback tenait tant que les écritures
-        // duraient quelques secondes ; la synchronisation intégrale
-        // (ADR 0010) les étire en minutes, et le PREMIER essai terrain a
-        // produit « database is locked » — le sondage d'avancement et la
-        // liste, en lisant, faisaient expirer le busy_timeout de la passe
-        // d'en-têtes.
+        // WAL (ADR 0011): a read no longer ever blocks a write, nor the
+        // reverse. Rollback mode held up while writes lasted a few
+        // seconds; full sync (ADR 0010) stretches them into minutes,
+        // and the FIRST field trial produced "database is locked" —
+        // the progress probe and the list, by reading, made the header
+        // pass's busy_timeout expire.
         //
-        // `query_row` et non `pragma_update` : ce PRAGMA répond une ligne
-        // (le mode effectif). Une base en mémoire répond « memory » — ce
-        // n'est pas un échec, les tests y vivent très bien sans WAL. Le
-        // mode est PERSISTANT : écrit une fois dans l'en-tête du fichier,
-        // relu à chaque ouverture, bases héritées comprises.
+        // `query_row` and not `pragma_update`: this PRAGMA answers with
+        // one row (the effective mode). An in-memory database answers
+        // "memory" — that is not a failure, tests live in it just fine
+        // without WAL. The mode is PERSISTENT: written once in the file
+        // header, reread on every open, legacy databases included.
         conn.query_row("PRAGMA journal_mode = wal", [], |row| {
             row.get::<_, String>(0)
         })?;
-        // PLAN-AUDIT-V2 E1 — la porte rapide : chaque commande du shell
-        // ouvre SA connexion (103 sites) ; rejouer ici le schéma, une
-        // vingtaine de `table_xinfo` et les migrations coûtait 36 ms sur
-        // 200 k enveloppes À CHAQUE commande. Une fois l'initialisation
-        // complète RÉUSSIE sur un chemin dans ce processus, les ouvertures
-        // suivantes ne font que les deux réglages ci-dessus. Sûr parce que
-        // la mono-instance (PLAN-AUDIT-V1 E1) garantit qu'aucun autre
-        // processus ne migre la base entre-temps, et que l'inscription
-        // n'a lieu qu'après COMMIT de l'adoption (une annulation, un
-        // échec : rien d'inscrit, la passe entière se rejoue). Une base
-        // mémoire n'a pas de chemin : jamais inscrite.
-        // Les clés étrangères sont un réglage PAR CONNEXION : `SCHEMA` les
-        // active en tête, et la porte rapide ne rejoue pas `SCHEMA`. La
-        // revue de la vague 2 y a vu des cascades perdues ; le test qui
-        // devait le prouver est resté VERT sans cette ligne — rusqlite
-        // `bundled` compile SQLite avec `SQLITE_DEFAULT_FOREIGN_KEYS=1`.
-        // La ligne reste, avant la porte : une ceinture qui ne dépend
-        // pas d'un drapeau de compilation (le test la garde).
+        // PLAN-AUDIT-V2 E1 — the fast door: each shell command opens
+        // ITS OWN connection (103 call sites); replaying the schema
+        // here, some twenty `table_xinfo` calls and the migrations,
+        // cost 36 ms on 200k envelopes ON EVERY COMMAND. Once
+        // initialization has SUCCEEDED once on a path in this process,
+        // subsequent opens only do the two settings above. Safe because
+        // single-instance (PLAN-AUDIT-V1 E1) guarantees no other
+        // process migrates the database in the meantime, and
+        // registration only happens after the adoption's COMMIT (a
+        // cancellation, a failure: nothing registered, the whole pass
+        // replays). An in-memory database has no path: never
+        // registered.
+        // Foreign keys are a PER-CONNECTION setting: `SCHEMA` turns
+        // them on up front, and the fast door does not replay `SCHEMA`.
+        // The wave-2 review found lost cascades there; the test meant
+        // to prove it stayed GREEN without this line — rusqlite's
+        // `bundled` compiles SQLite with `SQLITE_DEFAULT_FOREIGN_KEYS=1`.
+        // The line stays, ahead of the fast door: a belt that does not
+        // depend on a compile flag (the test keeps it honest).
         conn.execute_batch("PRAGMA foreign_keys = ON")?;
         conn.execute_batch("PRAGMA foreign_keys = ON")?;
-        let cle = cle_fichier(&conn);
-        if let Some(cle) = &cle
-            && registre_initialisees().contains(cle)
+        let key = file_key(&conn);
+        if let Some(key) = &key
+            && initialized_registry().contains(key)
         {
             return Ok(Self(conn));
         }
         conn.execute_batch(SCHEMA)?;
-        // Les migrations légères d'abord : colonnes, index. La
-        // reconstruction de l'index de recherche vit ICI mais n'est PAS
-        // légère sur une base fournie (relecture des corps) : elle est
-        // donc visible et interruptible via `on_progress`, et
-        // `pending_adoption` la fait précéder d'un écran (sinon, gel muet
-        // du démarrage — constat terrain 2026-08-17). L'adoption des fils,
-        // juste dessous, a besoin des colonnes qu'ajoutent ces migrations
+        // Light migrations first: columns, indexes. Rebuilding the
+        // search index lives HERE but is NOT light on a database that
+        // already has data (rereading the bodies): it is therefore
+        // visible and interruptible via `on_progress`, and
+        // `pending_adoption` has it preceded by a screen (otherwise, a
+        // silent startup freeze — field finding 2026-08-17). Thread
+        // adoption, just below, needs the columns these migrations add
         // (`thread_id`, `in_reply_to`, `refs`).
         migrate(&conn, on_progress)?;
-        // ——— L'unité des fils, d'un seul tenant (passation §8). ———
-        // Du DROP conditionnel jusqu'à `user_version`, tout vit dans UNE
-        // transaction : annuler pendant l'adoption rembobine TOUT — une
-        // adoption partielle persistée serait une boîte à moitié vide,
-        // la liste partant de `threads`. Le BEGIN est DEFERRED : sur une
-        // base à jour rien n'écrit, la transaction reste lectrice et ne
-        // rencontre jamais l'écrivain d'une synchro longue (ADR 0011).
+        // ——— The unity of threads, as one piece (handover §8). ———
+        // From the conditional DROP to `user_version`, everything lives
+        // in ONE transaction: cancelling during adoption rewinds
+        // EVERYTHING — a partial adoption persisted would be a
+        // half-empty mailbox, the list starting from `threads`. The
+        // BEGIN is DEFERRED: on an up-to-date database nothing writes,
+        // the transaction stays a reader and never meets the writer of
+        // a long sync (ADR 0011).
         conn.execute_batch("BEGIN")?;
         let unit = (|| {
-            // AVANT le schéma des fils, jamais après : si la règle de
-            // regroupement a changé, les deux tables doivent DISPARAÎTRE
-            // pour que le `CREATE TABLE IF NOT EXISTS` juste dessous les
-            // recrée dans leur forme neuve. Sans cela l'ouverture échoue —
-            // voir `thread::drop_if_outdated`.
+            // BEFORE the thread schema, never after: if the grouping
+            // rule has changed, both tables must DISAPPEAR so that the
+            // `CREATE TABLE IF NOT EXISTS` just below recreates them in
+            // their new shape. Without this, opening fails — see
+            // `thread::drop_if_outdated`.
             thread::drop_if_outdated(&conn)?;
             conn.execute_batch(thread::SCHEMA)?;
             thread::migrate_threads_with(&conn, on_progress)
@@ -1027,33 +1030,33 @@ impl Store {
                 announced
             }
             Err(err) => {
-                // L'échec du retour arrière n'apprendrait rien de plus que
-                // l'erreur d'origine, qui est celle qu'il faut remonter —
-                // l'annulation volontaire comprise.
+                // A rollback failure would teach nothing more than the
+                // original error, which is the one that must be
+                // surfaced — including a deliberate cancellation.
                 let _ = conn.execute_batch("ROLLBACK");
                 return Err(err);
             }
         };
         if let Some(total) = announced {
-            // « Fini » ne se dit qu'une fois la passe COMMISE — jamais
-            // avant (un signal doit être observable, passation §9). Trop
-            // tard pour annuler : la réponse est ignorée.
+            // "Done" is only said once the pass is COMMITTED — never
+            // before (a signal must be observable, handover §9). Too
+            // late to cancel: the answer is ignored.
             let _ = on_progress(AdoptionProgress { done: total, total });
         }
         let store = Self(conn);
-        // L'annuaire des correspondants se rattrape UNE fois sur
-        // l'existant (PLAN-RETOURS-5) : set-based, marque en `prefs` —
-        // sur une base à jour, un SELECT et rien d'autre.
+        // The contacts directory backfills ONCE from existing data
+        // (PLAN-RETOURS-5): set-based, marked in `prefs` — on an
+        // up-to-date database, one SELECT and nothing else.
         store.rattraper_correspondants()?;
-        if let Some(cle) = cle {
-            registre_initialisees().insert(cle);
+        if let Some(key) = key {
+            initialized_registry().insert(key);
         }
         Ok(store)
     }
 
-    /// Préférence booléenne persistée en base. Absente = `default` : une
-    /// préférence jamais touchée n'écrit rien — la base ne porte que les
-    /// choix explicites.
+    /// Boolean preference persisted in the database. Absent = `default`:
+    /// a preference never touched writes nothing — the database only
+    /// carries explicit choices.
     pub fn bool_pref(&self, key: &str, default: bool) -> Result<bool, Error> {
         let value: Option<String> = self
             .0
@@ -1075,10 +1078,10 @@ impl Store {
         Ok(())
     }
 
-    /// Préférence texte persistée en base — le pendant de `bool_pref`
-    /// pour les valeurs nommées (la langue de l'interface, PLAN-LANGUES).
-    /// Absente = `None` : une préférence jamais touchée n'écrit rien,
-    /// c'est l'appelant qui connaît son défaut.
+    /// Text preference persisted in the database — the counterpart of
+    /// `bool_pref` for named values (the UI language, PLAN-LANGUES).
+    /// Absent = `None`: a preference never touched writes nothing, it
+    /// is the caller that knows its default.
     pub fn text_pref(&self, key: &str) -> Result<Option<String>, Error> {
         let value = self
             .0
@@ -1100,11 +1103,12 @@ impl Store {
         Ok(())
     }
 
-    /// L'horizon d'import d'un compte (PLAN-HORIZON-NETTOYAGE D1/D3) —
-    /// pref `horizon_import.{id}`, vocabulaire
-    /// [`crate::backfill::HORIZONS_IMPORT`]. Sans pref, ou sur une valeur
-    /// hors vocabulaire : « tout » (D4 — un compte d'avant le réglage, ou
-    /// une pref corrompue, importe tout ; jamais une perte silencieuse).
+    /// An account's import history (PLAN-HORIZON-NETTOYAGE D1/D3) —
+    /// pref `horizon_import.{id}`, vocabulary
+    /// [`crate::backfill::HORIZONS_IMPORT`]. With no pref, or on a
+    /// value outside the vocabulary: "tout" (D4 — an account from
+    /// before the setting, or a corrupted pref, imports everything;
+    /// never a silent loss).
     pub fn horizon_import(&self, account_id: i64) -> Result<String, Error> {
         Ok(self
             .text_pref(&format!("horizon_import.{account_id}"))?
@@ -1112,21 +1116,21 @@ impl Store {
             .unwrap_or_else(|| "tout".to_string()))
     }
 
-    /// Pose l'horizon d'import — la porte valide le vocabulaire AVANT
-    /// d'écrire (même règle que `valider_routage` : un vocabulaire troué
-    /// ne se cache pas derrière un autre refus).
-    pub fn set_horizon_import(&self, account_id: i64, valeur: &str) -> Result<(), Error> {
-        if !crate::backfill::HORIZONS_IMPORT.contains(&valeur) {
-            return Err(Error::Corrupt(format!("horizon inconnu : {valeur:?}")));
+    /// Sets the import history — the door validates the vocabulary
+    /// BEFORE writing (same rule as `validate_routing`: a vocabulary
+    /// with a hole does not hide behind another refusal).
+    pub fn set_horizon_import(&self, account_id: i64, value: &str) -> Result<(), Error> {
+        if !crate::backfill::HORIZONS_IMPORT.contains(&value) {
+            return Err(Error::Corrupt(format!("unknown history: {value:?}")));
         }
-        self.set_text_pref(&format!("horizon_import.{account_id}"), valeur)
+        self.set_text_pref(&format!("horizon_import.{account_id}"), value)
     }
 
-    /// Plusieurs préférences texte d'un COUP, transactionnelles : des
-    /// clés qui n'ont de sens qu'ensemble (l'icône ET la teinte d'un
-    /// repère de compte) ne doivent jamais se retrouver à moitié
-    /// écrites — un échec entre les deux laisserait une paire que
-    /// personne n'a choisie (revue PLAN-RETOURS-8, 2026-08-22).
+    /// Several text preferences at ONCE, transactionally: keys that
+    /// only make sense together (the icon AND the hue of an account
+    /// marker) must never end up half-written — a failure between the
+    /// two would leave a pair nobody chose (review PLAN-RETOURS-8,
+    /// 2026-08-22).
     pub fn set_text_prefs(&mut self, prefs: &[(&str, &str)]) -> Result<(), Error> {
         let tx = self.0.transaction()?;
         for (key, value) in prefs {
@@ -1153,7 +1157,7 @@ impl Store {
                         uid_validity: row.get(1)?,
                         last_uid: row.get(2)?,
                         highest_modseq: row.get::<_, Option<i64>>(3)?.map(|m| m as u64),
-                        initialisee: row.get::<_, i64>(4)? != 0,
+                        initialized: row.get::<_, i64>(4)? != 0,
                     })
                 },
             )
@@ -1161,25 +1165,24 @@ impl Store {
         Ok(state)
     }
 
-    /// Enregistre une boite. Elle n'entre dans la portee du regroupement
-    /// que si c'est la boite de reception : le dossier « Envoyes » y entre
-    /// aussi, mais son NOM varie d'un serveur a l'autre (ADR 0009 §7), donc
-    /// seul l'appelant qui l'a decouvert peut le declarer —
-    /// [`Store::set_thread_scope`].
+    /// Registers a mailbox. It only enters the grouping scope if it is
+    /// the inbox: the "Sent" folder also enters it, but its NAME varies
+    /// from one server to another (ADR 0009 §7), so only the caller
+    /// that discovered it can declare it — [`Store::set_thread_scope`].
     ///
-    /// Toutes les autres — Archive, Corbeille, Spam, dossiers utilisateur —
-    /// sont stockees et indexees, jamais regroupees (ADR 0010 §3).
+    /// Every other one — Archive, Trash, Spam, user folders — is
+    /// stored and indexed, never grouped (ADR 0010 §3).
     pub fn create_mailbox(
         &self,
         account_id: i64,
         mailbox: &str,
         uid_validity: u32,
     ) -> Result<i64, Error> {
-        // `COALESCE` : sans lui, un compte sans dossier d'envois connu
-        // rendrait `?2 = NULL` — donc NULL — et `faux OR NULL` vaut NULL en
-        // SQL. La colonne étant NOT NULL, l'insertion échouerait pour tout
-        // dossier ordinaire d'un compte qui n'a pas encore découvert ses
-        // envois. C'est-à-dire au tout premier passage.
+        // `COALESCE`: without it, an account with no known sent folder
+        // would make `?2 = NULL` — hence NULL — and `false OR NULL` is
+        // NULL in SQL. The column being NOT NULL, the insert would fail
+        // for every ordinary folder of an account that has not yet
+        // discovered its sent folder. That is, on the very first pass.
         self.0.execute(
             "INSERT INTO mailboxes (account_id, name, uid_validity, threaded)
              VALUES (?1, ?2, ?3,
@@ -1190,15 +1193,15 @@ impl Store {
         Ok(self.0.last_insert_rowid())
     }
 
-    /// Les boites d'un compte, dans l'ordre ou le rattrapage doit les
-    /// servir : la reception d'abord (c'est elle que la liste montre et
-    /// que la recherche du quotidien interroge), les envois ensuite (ils
-    /// completent les fils), le reste par nom — deterministe, donc
-    /// reprenable d'une session a l'autre.
+    /// An account's mailboxes, in the order backfill should serve them:
+    /// the inbox first (it is what the list shows and what day-to-day
+    /// search queries), sent next (it completes threads), the rest by
+    /// name — deterministic, hence resumable from one session to the
+    /// next.
     ///
-    /// Miroir HORS LIGNE de `sync_order` : meme priorite, mais la source
-    /// est la base et non le serveur — le rattrapage ne doit pas payer un
-    /// LIST pour savoir quoi pomper.
+    /// OFFLINE mirror of `sync_order`: same priority, but the source is
+    /// the database and not the server — backfill must not pay for a
+    /// LIST just to know what to pump.
     pub fn mailbox_names(&self, account_id: i64) -> Result<Vec<String>, Error> {
         let mut stmt = self.0.prepare(
             "SELECT name FROM mailboxes WHERE account_id = ?1
@@ -1214,11 +1217,11 @@ impl Store {
         Ok(names)
     }
 
-    /// Combien de messages ce COMPTE possede en base, toutes boites
-    /// confondues. C'est le « deja fait » que la garde d'espace disque
-    /// soustrait de l'annonce des serveurs (ADR 0010 §4) : sans lui, une
-    /// boite deja rapatriee aux trois quarts serait refusee comme si tout
-    /// restait a telecharger.
+    /// How many messages this ACCOUNT holds in the database, across all
+    /// mailboxes. This is the "already done" the disk-space guard
+    /// subtracts from what the servers announce (ADR 0010 §4): without
+    /// it, a mailbox already three-quarters fetched would be refused as
+    /// if everything remained to download.
     pub fn account_message_count(&self, account_id: i64) -> Result<u64, Error> {
         let count: i64 = self.0.query_row(
             "SELECT COUNT(*) FROM envelopes e
@@ -1230,8 +1233,9 @@ impl Store {
         Ok(count as u64)
     }
 
-    /// Le UIDNEXT vu au relevé qui a précédé la dernière relève soldée
-    /// (ADR 0017) — `None` tant qu'aucune relève gardée n'a eu lieu.
+    /// The UIDNEXT seen at the poll that preceded the last poll
+    /// committed (ADR 0017) — `None` as long as no committed poll has
+    /// happened.
     pub fn remote_uidnext(&self, mailbox_id: i64) -> Result<Option<u32>, Error> {
         Ok(self.0.query_row(
             "SELECT remote_uidnext FROM mailboxes WHERE id = ?1",
@@ -1240,9 +1244,9 @@ impl Store {
         )?)
     }
 
-    /// Pose le UIDNEXT vu — APRÈS que la relève a été soldée, jamais
-    /// avant : un repère posé sur une relève interrompue ferait sauter
-    /// un dossier pas encore rattrapé.
+    /// Sets the UIDNEXT seen — AFTER the poll has been committed, never
+    /// before: a marker set on an interrupted poll would make a folder
+    /// that has not yet caught up get skipped.
     pub fn set_remote_uidnext(&self, mailbox_id: i64, uidnext: u32) -> Result<(), Error> {
         self.0.execute(
             "UPDATE mailboxes SET remote_uidnext = ?2 WHERE id = ?1",
@@ -1251,8 +1255,8 @@ impl Store {
         Ok(())
     }
 
-    /// Messages en base pour CE dossier — le pendant local du MESSAGES
-    /// du STATUS, comparés par `faut_relever` (ADR 0017).
+    /// Messages in the database for THIS folder — the local counterpart
+    /// of STATUS's MESSAGES, compared by `must_poll` (ADR 0017).
     pub fn envelope_count(&self, mailbox_id: i64) -> Result<u64, Error> {
         let count: i64 = self.0.query_row(
             "SELECT COUNT(*) FROM envelopes WHERE mailbox_id = ?1",
@@ -1262,8 +1266,9 @@ impl Store {
         Ok(count as u64)
     }
 
-    /// Des actions locales attendent-elles leur rejeu dans ce dossier ?
-    /// EXISTS et non la liste : la question est fermée, la réponse aussi.
+    /// Are any local actions waiting to be replayed in this folder?
+    /// EXISTS and not the list: the question is closed, so is the
+    /// answer.
     pub fn has_pending_actions(&self, mailbox_id: i64) -> Result<bool, Error> {
         Ok(self.0.query_row(
             "SELECT EXISTS(SELECT 1 FROM pending_actions WHERE mailbox_id = ?1 AND refusee = 0)",
@@ -1272,7 +1277,7 @@ impl Store {
         )?)
     }
 
-    /// Releve ce que le serveur annonce dans cette boite (EXISTS).
+    /// Records what the server announces in this mailbox (EXISTS).
     pub fn record_remote_total(&self, mailbox_id: i64, exists: u32) -> Result<(), Error> {
         self.0.execute(
             "UPDATE mailboxes SET remote_total = ?2 WHERE id = ?1",
@@ -1281,26 +1286,26 @@ impl Store {
         Ok(())
     }
 
-    /// Avancement de la synchronisation, toutes boites et tous comptes
-    /// confondus : (messages en base, messages annonces par les serveurs).
+    /// Sync progress, across all mailboxes and all accounts: (messages
+    /// in the database, messages announced by the servers).
     ///
-    /// Ne compte QUE les boites deja selectionnees au moins une fois
-    /// (`remote_total > 0`). Sinon un compte dont la moitie des dossiers
-    /// n'a pas encore ete visitee afficherait un avancement qui RECULE a
-    /// mesure qu'on les decouvre — le denominateur grandissant plus vite
-    /// que le numerateur. Un avancement qui recule est pire que pas
-    /// d'avancement du tout.
+    /// Only counts mailboxes ALREADY selected at least once
+    /// (`remote_total > 0`). Otherwise an account where half the
+    /// folders have not yet been visited would show progress that GOES
+    /// BACKWARD as they are discovered — the denominator growing faster
+    /// than the numerator. Progress going backward is worse than no
+    /// progress at all.
     ///
-    /// Le denominateur s'ajuste des DEPARTS EN ATTENTE de rejeu
-    /// (archive, suppression, deplacement — `pending_actions`) : le
-    /// geste retire la ligne locale immediatement (echo, E3) mais
-    /// `remote_total` date du dernier SELECT — sans l'ajustement, un
-    /// seul triage figeait l'avancement a 99 % (jamais 100 tant que
-    /// local < remote) et le trait de la barre d'etat avec lui, pour
-    /// toute la duree du rejeu (terrain 2026-08-15, PLAN-GELS). Les
-    /// marquages (lu, etoile) ne retirent rien : ils ne touchent pas le
-    /// denominateur. Borne a zero par boite : un `remote_total` en
-    /// retard ne fait pas reculer les autres.
+    /// The denominator adjusts for PENDING departures awaiting replay
+    /// (archive, delete, move — `pending_actions`): the gesture removes
+    /// the local row immediately (echo, E3) but `remote_total` dates
+    /// from the last SELECT — without the adjustment, a single sort
+    /// action would freeze progress at 99% (never 100 as long as local
+    /// < remote) and the status bar's line with it, for the whole
+    /// duration of the replay (field finding 2026-08-15, PLAN-GELS).
+    /// Marking (read, star) removes nothing: it does not touch the
+    /// denominator. Floored at zero per mailbox: a `remote_total`
+    /// running behind does not make the others go backward.
     pub fn sync_progress(&self) -> Result<(u64, u64), Error> {
         let (local, remote): (i64, i64) = self.0.query_row(
             "SELECT COALESCE(SUM(
@@ -1317,14 +1322,14 @@ impl Store {
         Ok((local as u64, remote as u64))
     }
 
-    /// Declare la portee du regroupement d'un compte : la boite de
-    /// reception, plus le dossier des envois quand le serveur en expose un.
+    /// Declares an account's grouping scope: the inbox, plus the sent
+    /// folder when the server exposes one.
     ///
-    /// Le dossier des envois du compte, sous son nom RÉSEAU — `None`
-    /// tant que la découverte des dossiers ne l'a pas mémorisé. C'est la
-    /// cible de la relève ciblée d'après-envoi : la copie qu'ajoute le
-    /// serveur d'envoi doit se voir sans attendre le cycle complet
-    /// (terrain 0.1.4, 2026-08-14 : 4 minutes sans copie visible).
+    /// The account's sent folder, under its NETWORK name — `None`
+    /// until folder discovery has memorized it. This is the target of
+    /// the targeted post-send poll: the copy the sending server adds
+    /// must show up without waiting for a full cycle (field finding
+    /// 0.1.4, 2026-08-14: 4 minutes with no visible copy).
     pub fn sent_mailbox(&self, account_id: i64) -> Result<Option<String>, Error> {
         Ok(self
             .0
@@ -1337,16 +1342,17 @@ impl Store {
             .flatten())
     }
 
-    /// Appele APRES la decouverte des dossiers, a chaque synchronisation :
-    /// un serveur peut renommer son dossier d'envois, et un compte peut
-    /// n'en avoir aucun — auquel cas les fils ne regroupent que les recus,
-    /// exactement comme avant l'ADR 0009. Idempotent.
+    /// Called AFTER folder discovery, on every sync: a server can
+    /// rename its sent folder, and an account may have none — in which
+    /// case threads only group received mail, exactly as before ADR
+    /// 0009. Idempotent.
     pub fn set_thread_scope(&self, account_id: i64, sent: Option<&str>) -> Result<(), Error> {
-        // E4 : compte et boîtes d'accord ou rien — une seule transaction.
+        // E4: account and mailboxes agree or nothing — a single
+        // transaction.
         let tx = self.0.unchecked_transaction()?;
-        // Mémorisé sur le compte d'ABORD : c'est cette mémoire que
-        // `create_mailbox` consultera pour les boîtes que la boucle de
-        // synchronisation n'a pas encore créées.
+        // Memorized on the account FIRST: this is the memory
+        // `create_mailbox` will consult for the mailboxes the sync loop
+        // has not created yet.
         self.0.execute(
             "UPDATE accounts SET sent_mailbox = ?2 WHERE id = ?1",
             params![account_id, sent],
@@ -1360,10 +1366,10 @@ impl Store {
         Ok(())
     }
 
-    /// Enregistre un compte, ou revendique le compte « en attente
-    /// d'adoption » créé par la migration Phase 2 → 3 (email vide) : la
-    /// première connexion après la mise à jour est, en pratique, le même
-    /// compte Gmail qu'avant — ses données l'attendent.
+    /// Registers an account, or claims the account "waiting for
+    /// adoption" created by the Phase 2 → 3 migration (empty email):
+    /// the first login after the update is, in practice, the same
+    /// Gmail account as before — its data is waiting for it.
     pub fn adopt_or_create_account(&self, email: &str, provider: &str) -> Result<i64, Error> {
         if let Some(id) = self.account_id(email)? {
             return Ok(id);
@@ -1381,7 +1387,7 @@ impl Store {
             return Ok(self.0.last_insert_rowid());
         }
         self.account_id(email)?
-            .ok_or_else(|| Error::Corrupt("compte revendiqué introuvable".to_string()))
+            .ok_or_else(|| Error::Corrupt("claimed account not found".to_string()))
     }
 
     fn account_id(&self, email: &str) -> Result<Option<i64>, Error> {
@@ -1394,7 +1400,7 @@ impl Store {
         Ok(id)
     }
 
-    /// Les comptes connus — sans l'éventuel compte en attente d'adoption.
+    /// Known accounts — excluding any account waiting for adoption.
     pub fn accounts(&self) -> Result<Vec<Account>, Error> {
         let mut stmt = self
             .0
@@ -1411,7 +1417,7 @@ impl Store {
         Ok(rows)
     }
 
-    /// Configuration serveur d'un compte (Gmail ou IMAP générique).
+    /// An account's server configuration (Gmail or generic IMAP).
     pub fn account_config(&self, account_id: i64) -> Result<AccountConfig, Error> {
         let config = self
             .0
@@ -1440,7 +1446,7 @@ impl Store {
         Ok(config)
     }
 
-    /// Crée ou met à jour un compte IMAP/SMTP générique.
+    /// Creates or updates a generic IMAP/SMTP account.
     pub fn create_generic_account(
         &self,
         email: &str,
@@ -1469,27 +1475,28 @@ impl Store {
                 smtp_port
             ],
         )?;
-        // JAMAIS `last_insert_rowid()` : sur le chemin UPDATE (ré-ajout),
-        // aucune ligne n'est insérée et il renverrait 0 (ou un id d'une
-        // autre écriture de la connexion). L'id fait toujours foi en base.
-        self.account_id(email)?.ok_or_else(|| {
-            Error::Corrupt("compte générique introuvable après écriture".to_string())
-        })
+        // NEVER `last_insert_rowid()`: on the UPDATE path (re-add), no
+        // row is inserted and it would return 0 (or an id from another
+        // write on the connection). The database id is always
+        // authoritative.
+        self.account_id(email)?
+            .ok_or_else(|| Error::Corrupt("generic account not found after write".to_string()))
     }
 
-    /// Supprime un compte et TOUT ce qui s'y rattache, en une transaction.
+    /// Deletes an account and EVERYTHING attached to it, in one
+    /// transaction.
     ///
-    /// Les préfixes des prefs suffixées par compte vivent dans
-    /// [`PREFS_PAR_COMPTE`] — l'auteur d'une pref neuve l'ajoute LÀ.
+    /// Prefixes of prefs suffixed per account live in
+    /// [`PREFS_PER_ACCOUNT`] — the author of a new pref adds it THERE.
     ///
-    /// Les cascades du schéma emportent boîtes, enveloppes, corps, pièces
-    /// jointes, actions en attente, dossiers et fils. Trois familles n'ont
-    /// PAS de clé étrangère et se vident à la main : l'index de recherche
-    /// (boîte par boîte, AVANT que la cascade ne fasse disparaître les
-    /// boîtes), les brouillons (avec pierres tombales et repère distant)
-    /// et la boîte d'envoi. Rien ne doit survivre au compte — un reste
-    /// orphelin ne serait jamais relu, mais continuerait de sortir en
-    /// recherche ou de partir à la prochaine vidange.
+    /// The schema's cascades take mailboxes, envelopes, bodies,
+    /// attachments, pending actions, folders and threads with them.
+    /// Three families have NO foreign key and are cleared by hand: the
+    /// search index (mailbox by mailbox, BEFORE the cascade makes the
+    /// mailboxes disappear), the drafts (with tombstones and remote
+    /// marker) and the outbox. Nothing must outlive the account — an
+    /// orphan leftover would never be read again, but would keep
+    /// showing up in search or leaving on the next flush.
     pub fn delete_account(&mut self, account_id: i64) -> Result<(), Error> {
         let tx = self.0.transaction()?;
         let mailboxes: Vec<i64> = {
@@ -1510,73 +1517,73 @@ impl Store {
             [account_id],
         )?;
         tx.execute("DELETE FROM outbox WHERE account_id = ?1", [account_id])?;
-        // Les préférences suffixées par l'id (signature, repère de
-        // compte) meurent avec lui : `accounts.id` est un INTEGER
-        // PRIMARY KEY sans AUTOINCREMENT — SQLite réutilise le plus
-        // grand rowid libéré, et un compte ajouté après le retrait
-        // hériterait sinon de l'identité de l'ancien (revue
-        // PLAN-RETOURS-8, 2026-08-22).
-        for prefixe in PREFS_PAR_COMPTE {
+        // The prefs suffixed by the id (signature, account marker) die
+        // with it: `accounts.id` is an INTEGER PRIMARY KEY without
+        // AUTOINCREMENT — SQLite reuses the largest freed rowid, and an
+        // account added after the removal would otherwise inherit the
+        // old one's identity (review PLAN-RETOURS-8, 2026-08-22).
+        for prefixe in PREFS_PER_ACCOUNT {
             tx.execute(
                 "DELETE FROM prefs WHERE key = ?1",
                 [format!("{prefixe}.{account_id}")],
             )?;
         }
         tx.execute("DELETE FROM accounts WHERE id = ?1", [account_id])?;
-        // L'attente du Portier suit le courrier (E2) : les rangs que
-        // les cascades viennent de vider meurent avec le compte. Le
-        // routage, lui, est GLOBAL au poste et survit (patron
-        // `images_expediteurs`).
-        purger_attente_orpheline(&tx)?;
+        // The Screener's waiting list follows the mail (E2): the rows
+        // the cascades just cleared die with the account. Routing,
+        // itself, is GLOBAL to the workstation and survives (the
+        // `images_expediteurs` pattern).
+        purge_orphan_pending(&tx)?;
         tx.commit()?;
         Ok(())
     }
 
-    /// Repart de zéro pour une boîte dont l'UIDVALIDITY a changé : les UIDs
-    /// ne veulent plus rien dire — corps et actions en attente compris (une
-    /// intention sur un UID invalidé est irréalisable par construction).
+    /// Starts from zero for a mailbox whose UIDVALIDITY has changed:
+    /// the UIDs no longer mean anything — bodies and pending actions
+    /// included (an intent on an invalidated UID cannot be carried out
+    /// by construction).
     pub fn reset_mailbox(&self, mailbox_id: i64, uid_validity: u32) -> Result<(), Error> {
-        // PLAN-AUDIT-V1 E4 : UNE transaction — neuf écritures en
-        // autocommit laissaient, sur un crash entre deux, des fils sans
-        // enveloppes (la « pastille devant une liste vide »). Prouvé par
-        // un déclencheur qui refuse la suppression des enveloppes.
+        // PLAN-AUDIT-V1 E4: ONE transaction — nine autocommit writes
+        // left, on a crash between two of them, threads with no
+        // envelopes (the "badge in front of an empty list" bug). Proven
+        // by a trigger that refuses envelope deletion.
         let tx = self.0.unchecked_transaction()?;
         search::deindex_mailbox(&self.0, mailbox_id)?;
-        // Les actions en attente : une intention sur un UID invalidé est
-        // irréalisable par construction.
+        // Pending actions: an intent on an invalidated UID cannot be
+        // carried out by construction.
         self.0.execute(
             "DELETE FROM pending_actions WHERE mailbox_id = ?1",
             [mailbox_id],
         )?;
-        // Les tables par message suivent TOUTES (revue PLAN-INVITATIONS,
-        // R1 RETOURS-11, E5, R10 RETOURS-13) : après un changement
-        // d'UIDVALIDITY les UIDs ne veulent plus rien dire — une
-        // invitation, un accord d'images, une mise de côté ou un « lu » qui
-        // survivraient colleraient au message qui recycle l'UID. LA liste
-        // est `TABLES_PAR_MESSAGE` (revue PLAN-AUDIT-V1 : plus de copie).
-        for table in TABLES_PAR_MESSAGE {
+        // ALL per-message tables follow (review PLAN-INVITATIONS, R1
+        // RETOURS-11, E5, R10 RETOURS-13): after a UIDVALIDITY change
+        // the UIDs no longer mean anything — an invitation, an images
+        // agreement, a set-aside mark or a "read" flag that survived
+        // would stick to the message that recycles the UID. THE list is
+        // `TABLES_PER_MESSAGE` (review PLAN-AUDIT-V1: no more copies).
+        for table in TABLES_PER_MESSAGE {
             self.0.execute(
                 &format!("DELETE FROM {table} WHERE mailbox_id = ?1"),
                 [mailbox_id],
             )?;
         }
-        // L'attente du Portier est DÉRIVÉE du courrier (E2) : un rang
-        // qui ne s'appuie plus sur rien meurt avec la boîte — un UID
-        // recyclé n'hérite d'aucune attente (A43/A89).
-        purger_attente_orpheline(&self.0)?;
+        // The Screener's waiting list is DERIVED from the mail (E2): a
+        // row that no longer rests on anything dies with the mailbox —
+        // a recycled UID inherits no waiting status (A43/A89).
+        purge_orphan_pending(&self.0)?;
         self.0.execute(
             "UPDATE mailboxes
              SET uid_validity = ?2, last_uid = 0, highest_modseq = NULL
              WHERE id = ?1",
             params![mailbox_id, uid_validity],
         )?;
-        // APRÈS la suppression des enveloppes, jamais avant : un fil se
-        // recalcule à partir de ce qui reste. Le refaire d'abord le
-        // ferait pointer sur des messages qu'on s'apprête à effacer.
+        // AFTER envelope deletion, never before: a thread is recomputed
+        // from what remains. Doing it first would make it point at
+        // messages about to be erased.
         //
-        // Et sur le COMPTE, pas la boîte : depuis l'ADR 0009 un fil peut
-        // réunir INBOX et « Envoyés », donc réinitialiser l'une oblige à
-        // reconsidérer les deux.
+        // And on the ACCOUNT, not the mailbox: since ADR 0009 a thread
+        // can span INBOX and "Sent", so resetting one forces
+        // reconsidering both.
         let account_id: i64 = self.0.query_row(
             "SELECT account_id FROM mailboxes WHERE id = ?1",
             [mailbox_id],
@@ -1593,8 +1600,8 @@ impl Store {
         last_uid: Uid,
         highest_modseq: Option<u64>,
     ) -> Result<(), Error> {
-        // `initialisee = 1` : une passe qui s'est soldée — la prochaine
-        // est incrémentale quoi qu'il reste en base (E2).
+        // `initialisee = 1`: a pass that has committed — the next one
+        // is incremental no matter what remains in the database (E2).
         self.0.execute(
             "UPDATE mailboxes SET last_uid = ?2, highest_modseq = ?3, initialisee = 1,
                                   relevee_epoch = unixepoch()
@@ -1609,69 +1616,69 @@ impl Store {
         mailbox_id: i64,
         envelopes: &[Envelope],
     ) -> Result<(), Error> {
-        // Ce que l'annuaire des correspondants apprend de CETTE boîte —
-        // résolu une fois par lot, comme le fil (PLAN-RETOURS-5, D4).
-        let (noter_expediteurs, noter_destinataires) = self.role_annuaire(mailbox_id)?;
-        // L'époque du Portier (E2) — lue AVANT la transaction (une
-        // pref, jamais réécrite pendant un lot). None = le mode n'a
-        // jamais été activé, la décision d'arrivée ne coûte rien.
-        let epoque_portier = self.mode_organise_epoch()?;
-        // Les règles du Non (E3, D2) : elles ne jouent que le mode
-        // ACTIF — désactivé, elles DORMENT (le verdict reste posé).
-        let regles_actives = self.mode_organise()?;
-        // Résolu UNE fois : la boîte ne change pas dans un lot, et le fil
-        // se raisonne désormais au compte (ADR 0009). Le faire par message
-        // ajouterait une requête par enveloppe sur le chemin le plus chaud
-        // de la synchronisation.
-        // Même raison pour la portée : elle est propre à la boîte, pas au
-        // message. Hors portée, on stocke et on indexe sans regrouper —
-        // `thread_id` reste NULL (ADR 0010 §3).
-        let (account_id, threaded, nom_boite): (i64, bool, String) = self.0.query_row(
+        // What the contacts directory learns from THIS mailbox —
+        // resolved once per batch, like the thread (PLAN-RETOURS-5,
+        // D4).
+        let (note_senders, note_recipients) = self.role_annuaire(mailbox_id)?;
+        // The Screener's epoch (E2) — read BEFORE the transaction (a
+        // pref, never rewritten mid-batch). None = the mode has never
+        // been activated, the arrival decision costs nothing.
+        let screener_epoch = self.organized_mode_epoch()?;
+        // The No rules (E3, D2): they only play in ACTIVE mode —
+        // disabled, they SLEEP (the verdict stays recorded).
+        let active_rules = self.organized_mode()?;
+        // Resolved ONCE: the mailbox does not change within a batch,
+        // and threading is now reasoned about per account (ADR 0009).
+        // Doing it per message would add one query per envelope on the
+        // hottest path of sync.
+        // Same reason for the scope: it belongs to the mailbox, not the
+        // message. Out of scope, we store and index without grouping —
+        // `thread_id` stays NULL (ADR 0010 §3).
+        let (account_id, threaded, mailbox_name): (i64, bool, String) = self.0.query_row(
             "SELECT account_id, threaded, name FROM mailboxes WHERE id = ?1",
             [mailbox_id],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )?;
-        // Le dossier indésirable du compte, résolu AVANT la transaction
-        // (la règle `spam` en a besoin) ; None = pas de dossier reconnu,
-        // la règle spam ne fait RIEN — jamais une destination inventée.
-        // Le message dégrade alors en « Non nu » : caché du mode
-        // organisé (drapeau), jamais déplacé — limite dite au PLAN.
-        let indesirables = if regles_actives {
+        // The account's junk folder, resolved BEFORE the transaction
+        // (the `spam` rule needs it); None = no recognized folder, the
+        // spam rule does NOTHING — never a made-up destination. The
+        // message then degrades to a "bare No": hidden from organized
+        // mode (flag), never moved — a stated limit of the PLAN.
+        let junk_folder = if active_rules {
             self.canonical_folders(account_id)?.indesirables
         } else {
             None
         };
-        // Les retraits locaux décidés pendant le lot — appliqués APRÈS
-        // le commit (`remove_local` recalcule fil et index dans sa
-        // propre transaction). L'ACTION, elle, est journalisée DANS la
-        // transaction du lot (revue E3) : un crash entre les deux ne
-        // perd rien — l'intention est en base, le rejeu l'applique au
-        // serveur et la copie locale part à la réconciliation suivante.
-        let mut retraits_du_non: Vec<Uid> = Vec::new();
+        // Local removals decided during the batch — applied AFTER the
+        // commit (`remove_local` recomputes thread and index in its own
+        // transaction). The ACTION, itself, is logged WITHIN the
+        // batch's transaction (review E3): a crash between the two
+        // loses nothing — the intent is in the database, the replay
+        // applies it to the server and the local copy leaves at the
+        // next reconciliation.
+        let mut no_removals: Vec<Uid> = Vec::new();
         let tx = self.0.transaction()?;
-        // Le Portier ne juge que les ARRIVÉES (E2, D3) : la boîte du
-        // courrier entrant, comme `inbox_size`. Un expéditeur vu
-        // d'abord aux Indésirables ou en Archives n'attend pas au
-        // guichet — mais son courrier, où qu'il soit, compte comme
-        // « connu avant l'époque ».
-        let arrivee = nom_boite == thread::RECEIVED_MAILBOX;
-        // Les adresses dont l'attente s'est DÉFAITE dans ce lot (leur
-        // courrier ancien arrive après coup) : leurs fils des lots
-        // précédents recalculent leur drapeau après la boucle.
-        let mut attente_defaite: BTreeSet<String> = BTreeSet::new();
-        // Un ENSEMBLE, pas une liste : même défaut quadratique que celui
-        // mesuré dans l'adoption (`Vec::contains` est linéaire). Borné ici
-        // par la taille du lot, donc moins spectaculaire — mais c'est le
-        // même chemin chaud, et la même correction.
+        // The Screener only judges ARRIVALS (E2, D3): the incoming-mail
+        // mailbox, like `inbox_size`. A sender first seen in Junk or
+        // Archive does not wait at the door — but their mail, wherever
+        // it is, counts as "known before the epoch".
+        let arrival = mailbox_name == thread::RECEIVED_MAILBOX;
+        // Addresses whose waiting status was UNDONE in this batch
+        // (their old mail arrives after the fact): their threads from
+        // earlier batches recompute their flag after the loop.
+        let mut undone_waiting: BTreeSet<String> = BTreeSet::new();
+        // A SET, not a list: the same quadratic flaw measured in
+        // adoption (`Vec::contains` is linear). Bounded here by the
+        // batch size, hence less dramatic — but it is the same hot
+        // path, and the same fix.
         let mut touched: BTreeSet<i64> = BTreeSet::new();
         {
-            // `INSERT OR REPLACE` remettrait à NULL toute colonne absente
-            // de la liste — et `refs` comme `thread_id` sont écrits par
-            // d'AUTRES chemins que la synchro. Une re-synchronisation
-            // effacerait donc silencieusement le travail de rattrapage des
-            // en-têtes, exactement comme elle aurait effacé les pièces
-            // jointes. On énumère donc les colonnes que la synchro possède,
-            // et elles seules.
+            // `INSERT OR REPLACE` would reset to NULL any column absent
+            // from the list — and `refs` as well as `thread_id` are
+            // written by OTHER paths than sync. A re-sync would then
+            // silently erase the header-backfill's work, exactly as it
+            // would have erased attachments. So we enumerate the
+            // columns sync owns, and only those.
             let mut stmt = tx.prepare(
                 "INSERT INTO envelopes
                  (mailbox_id, uid, subject, sender, sender_address, message_id,
@@ -1694,21 +1701,21 @@ impl Store {
                 tx.prepare("SELECT html FROM bodies WHERE mailbox_id = ?1 AND uid = ?2")?;
             let mut refs_stmt =
                 tx.prepare("SELECT refs FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2")?;
-            let mut deja_stmt = tx.prepare(
+            let mut existing_stmt = tx.prepare(
                 "SELECT subject, sender, sender_address, to_addrs, cc_addrs
                  FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
             )?;
             for envelope in envelopes {
-                // L'annuaire n'apprend que des messages NEUFS : une
-                // re-synchronisation (drapeaux CONDSTORE, re-relève) ne
-                // gonfle pas la fréquence d'un correspondant. La même
-                // lecture dit si les champs INDEXÉS ont changé : sinon,
-                // l'index ne bouge pas (PLAN-AUDIT-V2 E2 — avant, chaque
-                // enveloppe relue faisait relire et re-tokeniser son corps
-                // sous le verrou d'écriture).
+                // The directory only learns from NEW messages: a
+                // re-sync (CONDSTORE flags, re-poll) does not inflate a
+                // contact's frequency. The same read tells whether the
+                // INDEXED fields changed: if not, the index does not
+                // move (PLAN-AUDIT-V2 E2 — before, every re-read
+                // envelope made its body get reread and re-tokenized
+                // under the write lock).
                 let to_field = join_addrs(&envelope.to_addrs);
                 let cc_field = join_addrs(&envelope.cc_addrs);
-                let deja: Option<ChampsIndexes> = deja_stmt
+                let existing: Option<IndexedFields> = existing_stmt
                     .query_row(params![mailbox_id, envelope.uid], |row| {
                         Ok((
                             row.get(0)?,
@@ -1719,16 +1726,16 @@ impl Store {
                         ))
                     })
                     .optional()?;
-                let nouveau = deja.is_none();
-                // Comparaison par référence (revue) : cinq clones par
-                // enveloppe relue, c'était 25 000 allocations pour rien
-                // sur 5 000 deltas CONDSTORE.
-                let a_reindexer = deja.as_ref().is_none_or(|deja| {
-                    deja.0.as_deref() != envelope.subject.as_deref()
-                        || deja.1.as_deref() != envelope.sender.as_deref()
-                        || deja.2.as_deref() != envelope.sender_address.as_deref()
-                        || deja.3.as_deref() != to_field.as_deref()
-                        || deja.4.as_deref() != cc_field.as_deref()
+                let is_new = existing.is_none();
+                // Comparison by reference (review): five clones per
+                // re-read envelope was 25,000 allocations for nothing on
+                // 5,000 CONDSTORE deltas.
+                let needs_reindex = existing.as_ref().is_none_or(|existing| {
+                    existing.0.as_deref() != envelope.subject.as_deref()
+                        || existing.1.as_deref() != envelope.sender.as_deref()
+                        || existing.2.as_deref() != envelope.sender_address.as_deref()
+                        || existing.3.as_deref() != to_field.as_deref()
+                        || existing.4.as_deref() != cc_field.as_deref()
                 });
                 stmt.execute(params![
                     mailbox_id,
@@ -1746,43 +1753,42 @@ impl Store {
                     envelope.reply_to,
                 ])?;
 
-                // La décision d'arrivée du Portier (E2) — sondes par
-                // clés, toutes cachées, 7 µs/message mesurées
-                // (S2-bis) : un inconnu (aucune ligne de routage, aucun
-                // courrier avant l'époque, jamais soi) entre en attente
-                // à son premier message d'arrivée postérieur à
-                // l'époque ; le courrier ANCIEN qui arrive après coup
-                // (désordre de synchro) prouve le connu et DÉFAIT
-                // l'attente posée à tort. Un message SANS date ne
-                // prouve JAMAIS le connu (revue E2) : le spam sans
-                // en-tête Date contournerait sinon le guichet même —
-                // il est traité comme une arrivée d'aujourd'hui.
-                // La règle du Non (E3) : un message qui ARRIVE d'un
-                // expéditeur écarté avec règle, POSTÉRIEUR au verdict
-                // (« ses prochains messages » — un backfill d'historique
-                // n'archive ni ne jette jamais ; sans date = arrivée
-                // d'aujourd'hui ; limite DITE : un en-tête Date falsifié
-                // antérieur au verdict esquive la règle — le message
-                // reste caché du mode organisé par le drapeau, c'est le
-                // serveur qu'il n'atteint pas). L'action est journalisée
-                // ICI, dans la transaction du lot (revue E3 — jamais une
-                // fenêtre de crash entre le commit et l'intention) ;
-                // `corbeille` → Delete, la corbeille du serveur, JAMAIS
-                // une suppression définitive (D4). La garde anti-doublon
-                // couvre la re-livraison (le retrait local fait reculer
-                // `max_uid`, un rejeu en échec re-présentait le message —
-                // une seconde action identique coincerait la file).
-                if nouveau
-                    && arrivee
-                    && regles_actives
-                    && let Some(adresse) = adresse_images(envelope.sender_address.clone())
-                    && let Some((regle, verdict)) = tx
+                // The Screener's arrival decision (E2) — cached probes
+                // by key, all cached, 7 µs/message measured (S2-bis): an
+                // unknown sender (no routing row, no mail before the
+                // epoch, never ourselves) enters the waiting list on
+                // their first arrival after the epoch; OLD mail arriving
+                // after the fact (sync reordering) proves them known and
+                // UNDOES a wrongly set waiting status. A message WITHOUT
+                // a date NEVER proves known (review E2): spam with no
+                // Date header would otherwise bypass the very gate — it
+                // is treated as arriving today.
+                // The No rule (E3): a message that ARRIVES from a sender
+                // screened out with a rule, AFTER the verdict ("their
+                // next messages" — a backfill of history never archives
+                // nor discards; no date = treated as arriving today; a
+                // stated limit: a falsified Date header earlier than the
+                // verdict dodges the rule — the message stays hidden
+                // from organized mode by the flag, it is the server it
+                // does not reach). The action is logged HERE, within the
+                // batch's transaction (review E3 — never a crash window
+                // between the commit and the intent); `corbeille` →
+                // Delete, the server's trash, NEVER a permanent deletion
+                // (D4). The anti-duplicate guard covers re-delivery (the
+                // local removal makes `max_uid` go backward, a failed
+                // replay re-presented the message — a second identical
+                // action would jam the queue).
+                if is_new
+                    && arrival
+                    && active_rules
+                    && let Some(address) = images_address(envelope.sender_address.clone())
+                    && let Some((rule, verdict)) = tx
                         .prepare_cached(
                             "SELECT regle, epoch FROM routage_expediteurs
                               WHERE address = ?1 AND destination = 'ecarte'
                                 AND regle IS NOT NULL",
                         )?
-                        .query_row(params![adresse], |row| {
+                        .query_row(params![address], |row| {
                             Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
                         })
                         .optional()?
@@ -1791,20 +1797,20 @@ impl Store {
                         .map(|d| d.timestamp())
                         .is_none_or(|date| date > verdict)
                 {
-                    let action = match regle.as_str() {
+                    let action = match rule.as_str() {
                         "archive" => Some(Action::Archive),
                         "corbeille" => Some(Action::Delete),
-                        "spam" => indesirables.clone().map(Action::MoveTo),
+                        "spam" => junk_folder.clone().map(Action::MoveTo),
                         _ => None,
                     };
                     if let Some(action) = action {
-                        let deja_en_file = tx
+                        let already_queued = tx
                             .prepare_cached(
                                 "SELECT 1 FROM pending_actions
                                   WHERE mailbox_id = ?1 AND uid = ?2 AND refusee = 0",
                             )?
                             .exists(params![mailbox_id, envelope.uid])?;
-                        if !deja_en_file {
+                        if !already_queued {
                             tx.prepare_cached(
                                 "INSERT INTO pending_actions (mailbox_id, uid, kind)
                                  VALUES (?1, ?2, ?3)",
@@ -1815,63 +1821,63 @@ impl Store {
                                 action.to_kind()
                             ])?;
                         }
-                        retraits_du_non.push(envelope.uid);
+                        no_removals.push(envelope.uid);
                     }
                 }
 
-                if nouveau
-                    && let Some(epoque) = epoque_portier
-                    && let Some(adresse) = adresse_images(envelope.sender_address.clone())
+                if is_new
+                    && let Some(epoch) = screener_epoch
+                    && let Some(address) = images_address(envelope.sender_address.clone())
                 {
                     let date = envelope.date.map(|d| d.timestamp());
                     if let Some(date) = date
-                        && date <= epoque
+                        && date <= epoch
                     {
                         if tx
                             .prepare_cached("DELETE FROM portier_attente WHERE address = ?1")?
-                            .execute(params![adresse])?
+                            .execute(params![address])?
                             > 0
                         {
-                            attente_defaite.insert(adresse);
+                            undone_waiting.insert(address);
                         }
-                    } else if arrivee {
-                        let deja = tx
+                    } else if arrival {
+                        let known = tx
                             .prepare_cached("SELECT 1 FROM portier_attente WHERE address = ?1")?
-                            .exists(params![adresse])?
+                            .exists(params![address])?
                             || tx
                                 .prepare_cached(
                                     "SELECT 1 FROM routage_expediteurs WHERE address = ?1",
                                 )?
-                                .exists(params![adresse])?
-                            || adresse_d_un_compte(&tx, &adresse)?
-                            || connu_avant_epoque(&tx, &adresse, epoque)?;
-                        if !deja {
+                                .exists(params![address])?
+                            || account_address(&tx, &address)?
+                            || known_before_epoch(&tx, &address, epoch)?;
+                        if !known {
                             tx.prepare_cached("INSERT INTO portier_attente (address) VALUES (?1)")?
-                                .execute(params![adresse])?;
+                                .execute(params![address])?;
                         }
                     }
                 }
 
-                if nouveau {
+                if is_new {
                     let date = envelope.date.map(|d| d.timestamp()).unwrap_or(0);
-                    if noter_expediteurs && let Some(adresse) = envelope.sender_address.as_deref() {
+                    if note_senders && let Some(address) = envelope.sender_address.as_deref() {
                         crate::correspondants::noter(
                             &tx,
-                            adresse,
+                            address,
                             envelope.sender.as_deref(),
                             date,
                         )?;
                     }
-                    if noter_destinataires {
-                        for adresse in envelope.to_addrs.iter().chain(envelope.cc_addrs.iter()) {
-                            crate::correspondants::noter(&tx, adresse, None, date)?;
+                    if note_recipients {
+                        for address in envelope.to_addrs.iter().chain(envelope.cc_addrs.iter()) {
+                            crate::correspondants::noter(&tx, address, None, date)?;
                         }
                     }
                 }
 
-                // Les `References` déjà acquises comptent dans le
-                // rattachement : une re-synchronisation ne doit pas
-                // dégrouper un fil que la passe d'en-têtes avait recollé.
+                // Already-acquired `References` count towards
+                // reattaching: a re-sync must not un-group a thread the
+                // header pass had reattached.
                 let references: Option<String> = refs_stmt
                     .query_row(params![mailbox_id, envelope.uid], |row| row.get(0))
                     .optional()?
@@ -1883,7 +1889,7 @@ impl Store {
                         envelope.message_id.as_deref(),
                         envelope.in_reply_to.as_deref(),
                         references.as_deref(),
-                        &adresses_de(envelope),
+                        &addresses_from(envelope),
                     )?;
                     tx.execute(
                         "UPDATE envelopes SET thread_id = ?3 WHERE mailbox_id = ?1 AND uid = ?2",
@@ -1892,7 +1898,7 @@ impl Store {
                     touched.insert(thread);
                 }
 
-                if a_reindexer {
+                if needs_reindex {
                     let html: Option<String> = body_stmt
                         .query_row(params![mailbox_id, envelope.uid], |row| row.get(0))
                         .optional()?;
@@ -1911,37 +1917,38 @@ impl Store {
                     )?;
                 }
             }
-            // Les fils des lots PRÉCÉDENTS d'une attente défaite : leur
-            // drapeau de rétention date d'un état démenti — ils entrent
-            // dans la même passe de recalcul.
-            for adresse in &attente_defaite {
-                touched.extend(fils_de(&tx, adresse)?);
+            // Threads from PREVIOUS batches with an undone waiting
+            // status: their retention flag dates from a state that has
+            // since been contradicted — they enter the same recompute
+            // pass.
+            for address in &undone_waiting {
+                touched.extend(threads_of(&tx, address)?);
             }
-            // Après la boucle, et une seule fois par fil : recalculer à
-            // chaque message ferait N fois le travail sur une conversation
-            // de N messages arrivant dans le même lot.
+            // After the loop, and only once per thread: recomputing on
+            // every message would do the work N times on a conversation
+            // of N messages arriving in the same batch.
             for thread in &touched {
                 thread::refresh(&tx, *thread)?;
             }
         }
         tx.commit()?;
-        // Le retrait local des messages traités (E3) — SANS écho (pas
-        // un geste utilisateur ; l'historique du Portier dit déjà la
-        // règle). L'action, elle, est DÉJÀ commise avec le lot : un
-        // échec ici laisse la copie locale, que la réconciliation
-        // serveur emportera après le rejeu — jamais un message qui
-        // échappe à sa règle.
-        if !retraits_du_non.is_empty() {
-            // E4 : en UNE transaction (le patron de `nettoyage_verdict`) —
-            // un retrait par autocommit payait huit fsync par message.
+        // Local removal of handled messages (E3) — WITHOUT an echo (not
+        // a user gesture; the Screener's history already states the
+        // rule). The action, itself, is ALREADY committed with the
+        // batch: a failure here leaves the local copy, which server
+        // reconciliation will carry away after the replay — never a
+        // message that escapes its rule.
+        if !no_removals.is_empty() {
+            // E4: in ONE transaction (the `cleanup_verdict` pattern) —
+            // an autocommit removal cost eight fsyncs per message.
             let tx = self.0.unchecked_transaction()?;
-            let mut fils: BTreeSet<i64> = BTreeSet::new();
-            for uid in retraits_du_non {
-                if let Some(thread) = purger_message(&tx, mailbox_id, uid)? {
-                    fils.insert(thread);
+            let mut threads: BTreeSet<i64> = BTreeSet::new();
+            for uid in no_removals {
+                if let Some(thread) = purge_message(&tx, mailbox_id, uid)? {
+                    threads.insert(thread);
                 }
             }
-            for thread in &fils {
+            for thread in &threads {
                 thread::refresh(&tx, *thread)?;
             }
             tx.commit()?;
@@ -1949,15 +1956,15 @@ impl Store {
         Ok(())
     }
 
-    /// Enregistre les en-têtes de fil lus dans le bloc d'en-têtes complet,
-    /// et recolle le fil s'il y a lieu.
+    /// Records the thread headers read into the full-headers block,
+    /// and reattaches the thread if warranted.
     ///
-    /// `references` vaut `""` quand le message n'en porte pas : c'est la
-    /// marque « déjà lu, rien à y trouver ». Écrire NULL le ferait
-    /// redemander à chaque passage, indéfiniment.
+    /// `references` is `""` when the message carries none: that is the
+    /// mark of "already read, nothing to find there". Writing NULL
+    /// would make it get asked again on every pass, indefinitely.
     ///
-    /// Retourne `true` si le rattachement a changé — l'appelant sait alors
-    /// que la liste affichée n'est plus à jour.
+    /// Returns `true` if reattachment changed — the caller then knows
+    /// the displayed list is stale.
     pub fn set_thread_headers(
         &mut self,
         mailbox_id: i64,
@@ -1980,41 +1987,41 @@ impl Store {
                  FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
                 params![mailbox_id, uid],
                 |row| {
-                    let mut adresses: Vec<String> = Vec::new();
-                    adresses.extend(row.get::<_, Option<String>>(2)?);
-                    adresses.extend(split_addrs(row.get(3)?));
-                    adresses.extend(split_addrs(row.get(4)?));
-                    Ok((row.get(0)?, row.get(1)?, adresses))
+                    let mut addresses: Vec<String> = Vec::new();
+                    addresses.extend(row.get::<_, Option<String>>(2)?);
+                    addresses.extend(split_addrs(row.get(3)?));
+                    addresses.extend(split_addrs(row.get(4)?));
+                    Ok((row.get(0)?, row.get(1)?, addresses))
                 },
             )
             .optional()?;
-        let Some((message_id, known_parent, adresses)) = context else {
-            // Le message a disparu entre la lecture des en-têtes et leur
-            // écriture (archivé, supprimé) : il n'y a plus rien à rattacher.
+        let Some((message_id, known_parent, addresses)) = context else {
+            // The message vanished between reading the headers and writing
+            // them (archived, deleted): there is nothing left to attach.
             return Ok(false);
         };
 
-        // `COALESCE` : le bloc d'en-têtes fait autorité quand il dit
-        // quelque chose, mais un `In-Reply-To` déjà donné par l'ENVELOPE ne
-        // doit pas être effacé par une lecture qui n'en trouve pas.
+        // `COALESCE`: the header block is authoritative when it says
+        // something, but an `In-Reply-To` already given by the ENVELOPE
+        // must not be erased by a read that finds none.
         tx.execute(
             "UPDATE envelopes SET refs = ?3, in_reply_to = COALESCE(?4, in_reply_to)
              WHERE mailbox_id = ?1 AND uid = ?2",
             params![mailbox_id, uid, references, in_reply_to],
         )?;
         let parent = in_reply_to.map(str::to_string).or(known_parent);
-        // Le COMPTE, pas la boîte (ADR 0009). Les deux sont des `i64` :
-        // le compilateur ne peut pas distinguer l'un de l'autre, et se
-        // tromper ici ne casserait rien — cela rattacherait simplement les
-        // messages au mauvais espace de fils, en silence.
+        // The ACCOUNT, not the mailbox (ADR 0009). Both are `i64`: the
+        // compiler cannot tell one from the other, and getting this wrong
+        // here would not break anything — it would simply attach the
+        // messages to the wrong thread space, silently.
         let (account_id, threaded): (i64, bool) = tx.query_row(
             "SELECT account_id, threaded FROM mailboxes WHERE id = ?1",
             [mailbox_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
-        // Hors portée, les en-têtes sont conservés — ils servent la
-        // recherche, et ils resserviront si la boîte entre un jour dans la
-        // portée — mais ils ne rattachent rien (ADR 0010 §3).
+        // Out of scope, the headers are still kept — they serve search, and
+        // they will be useful again if the mailbox ever enters scope — but
+        // they attach nothing (ADR 0010 §3).
         if !threaded {
             tx.commit()?;
             return Ok(false);
@@ -2025,7 +2032,7 @@ impl Store {
             message_id.as_deref(),
             parent.as_deref(),
             Some(references),
-            &adresses,
+            &addresses,
         )?;
         tx.execute(
             "UPDATE envelopes SET thread_id = ?3 WHERE mailbox_id = ?1 AND uid = ?2",
@@ -2039,10 +2046,10 @@ impl Store {
         Ok(before != Some(thread))
     }
 
-    /// Supprime les enveloppes absentes du serveur ; retourne leur nombre.
-    /// Les UID qu'une boîte porte déjà en base — ce qu'une synchro
-    /// initiale reprise ne redemande pas (PLAN-AUDIT-V2 E5).
-    pub fn uids_connus(&self, mailbox_id: i64) -> Result<HashSet<Uid>, Error> {
+    /// Removes envelopes absent from the server; returns their count.
+    /// The UIDs a mailbox already carries in the database — what a resumed
+    /// initial sync does not ask for again (PLAN-AUDIT-V2 E5).
+    pub fn known_uids(&self, mailbox_id: i64) -> Result<HashSet<Uid>, Error> {
         Ok(self
             .0
             .prepare_cached("SELECT uid FROM envelopes WHERE mailbox_id = ?1")?
@@ -2056,28 +2063,29 @@ impl Store {
         present: &HashSet<Uid>,
     ) -> Result<usize, Error> {
         let stale: Vec<Uid> = self
-            .uids_connus(mailbox_id)?
+            .known_uids(mailbox_id)?
             .into_iter()
             .filter(|uid| !present.contains(uid))
             .collect();
         let tx = self.0.transaction()?;
         {
-            // E4 : LA liste des tables par message (`purger_message`) —
-            // avant, trois tables sur sept : pièces, invitation, mémoire
-            // d'images, mise de côté et « lu » du Kiosque restaient
-            // orphelins (aucune clé étrangère sur `envelopes`). Un message
-            // parti du serveur emporte aussi ses actions en attente : une
-            // intention sur un UID disparu est irréalisable.
+            // E4: THE list of per-message tables (`purge_message`) —
+            // before, three tables out of seven — attachments, invitation,
+            // image memory, set-aside and the Feed's "read" — were left
+            // orphaned (no foreign key on `envelopes`). A message that
+            // leaves the server also takes its pending actions with it: an
+            // intention on a UID that no longer exists cannot be carried
+            // out.
             let mut actions =
                 tx.prepare("DELETE FROM pending_actions WHERE mailbox_id = ?1 AND uid = ?2")?;
             let mut touched: BTreeSet<i64> = BTreeSet::new();
             for uid in &stale {
-                if let Some(thread) = purger_message(&tx, mailbox_id, *uid)? {
+                if let Some(thread) = purge_message(&tx, mailbox_id, *uid)? {
                     touched.insert(thread);
                 }
                 actions.execute(params![mailbox_id, uid])?;
             }
-            // UNE fois par fil touché, jamais par message.
+            // ONCE per touched thread, never per message.
             for thread in &touched {
                 thread::refresh(&tx, *thread)?;
             }
@@ -2086,31 +2094,31 @@ impl Store {
         Ok(stale.len())
     }
 
-    /// Retire localement une enveloppe et son corps (archivage/suppression
-    /// optimiste) ; le serveur suivra via la file d'actions — les actions
-    /// en attente ne sont PAS touchées, c'est elles qui portent le geste.
+    /// Locally removes an envelope and its body (optimistic
+    /// archiving/deletion); the server will follow via the action queue —
+    /// pending actions are NOT touched, they are what carries the gesture.
     ///
-    /// Atomique (E4) : dans la transaction de l'appelant s'il en a une
-    /// (`geste_avec_echo`, `nettoyage_verdict`, `upsert_envelopes`),
-    /// sinon dans la sienne — jamais huit écritures en autocommit.
+    /// Atomic (E4): inside the caller's transaction if it has one
+    /// (`gesture_with_echo`, `cleanup_verdict`, `upsert_envelopes`),
+    /// otherwise inside its own — never eight writes in autocommit.
     pub fn remove_local(&self, mailbox_id: i64, uid: Uid) -> Result<(), Error> {
         if self.0.is_autocommit() {
             let tx = self.0.unchecked_transaction()?;
-            if let Some(thread) = purger_message(&tx, mailbox_id, uid)? {
+            if let Some(thread) = purge_message(&tx, mailbox_id, uid)? {
                 thread::refresh(&tx, thread)?;
             }
             tx.commit()?;
             Ok(())
         } else {
-            if let Some(thread) = purger_message(&self.0, mailbox_id, uid)? {
+            if let Some(thread) = purge_message(&self.0, mailbox_id, uid)? {
                 thread::refresh(&self.0, thread)?;
             }
             Ok(())
         }
     }
 
-    /// Applique localement un changement lu/non-lu (optimisme UI).
-    /// Retourne `false` si l'enveloppe était déjà dans cet état.
+    /// Locally applies a read/unread change (UI optimism).
+    /// Returns `false` if the envelope was already in this state.
     pub fn set_seen_local(&self, mailbox_id: i64, uid: Uid, seen: bool) -> Result<bool, Error> {
         let changed = self.0.execute(
             "UPDATE envelopes SET seen = ?3
@@ -2118,9 +2126,9 @@ impl Store {
             params![mailbox_id, uid, seen],
         )?;
         if changed > 0 {
-            // Le compteur de non-lus du fil vient de bouger. L'oublier
-            // laisserait une conversation en gras alors qu'on vient de
-            // lire son dernier message non lu.
+            // The thread's unread counter just moved. Forgetting it would
+            // leave a conversation in bold even though its last unread
+            // message was just read.
             if let Some(thread) = thread::thread_of(&self.0, mailbox_id, uid)? {
                 thread::refresh(&self.0, thread)?;
             }
@@ -2128,8 +2136,8 @@ impl Store {
         Ok(changed > 0)
     }
 
-    /// Applique localement l'étoile (optimisme UI).
-    /// Retourne `false` si l'enveloppe était déjà dans cet état.
+    /// Locally applies the star (UI optimism).
+    /// Returns `false` if the envelope was already in this state.
     pub fn set_flagged_local(
         &self,
         mailbox_id: i64,
@@ -2144,12 +2152,12 @@ impl Store {
         Ok(changed > 0)
     }
 
-    /// Journalise une intention à rejouer vers le serveur. Un geste neuf
-    /// sur un message REMPLACE ses refusées (revue PLAN-AUDIT-V1) : sans
-    /// cela, une action en quarantaine y restait pour toujours et la
-    /// ligne de la fente ne pouvait que croître.
+    /// Logs an intention to be replayed to the server. A new gesture on a
+    /// message REPLACES its refused ones (PLAN-AUDIT-V1 review): without
+    /// this, a quarantined action would stay there forever and the notice
+    /// slot's line could only grow.
     pub fn enqueue_action(&self, mailbox_id: i64, uid: Uid, action: Action) -> Result<(), Error> {
-        oublier_les_refusees(&self.0, mailbox_id, uid)?;
+        forget_refused(&self.0, mailbox_id, uid)?;
         self.0.execute(
             "INSERT INTO pending_actions (mailbox_id, uid, kind) VALUES (?1, ?2, ?3)",
             params![mailbox_id, uid, action.to_kind()],
@@ -2157,10 +2165,10 @@ impl Store {
         Ok(())
     }
 
-    /// La file ACTIVE d'actions, dans l'ordre d'émission — les refusées
-    /// (quarantaine, E3) n'y sont plus. Une ligne au `kind` illisible
-    /// (version future, corruption) est mise en quarantaine avec son
-    /// motif, jamais fatale : avant E3 elle faisait échouer TOUTE la file.
+    /// The ACTIVE action queue, in emission order — the refused ones
+    /// (quarantine, E3) are no longer in it. A line whose `kind` is
+    /// unreadable (future version, corruption) is quarantined with its
+    /// reason, never fatal: before E3 it made the WHOLE queue fail.
     pub fn pending_actions(&self, mailbox_id: i64) -> Result<Vec<PendingAction>, Error> {
         let mut stmt = self.0.prepare(
             "SELECT id, uid, kind FROM pending_actions
@@ -2171,48 +2179,48 @@ impl Store {
                 Ok((row.get::<_, i64>(0)?, row.get(1)?, row.get::<_, String>(2)?))
             })?
             .collect::<Result<Vec<(i64, Uid, String)>, _>>()?;
-        let mut file = Vec::with_capacity(rows.len());
+        let mut queue = Vec::with_capacity(rows.len());
         for (id, uid, kind) in rows {
             match Action::parse(&kind) {
-                Some(action) => file.push(PendingAction { id, uid, action }),
-                None => self.refuser_action(id, &format!("action illisible : {kind}"))?,
+                Some(action) => queue.push(PendingAction { id, uid, action }),
+                None => self.refuse_action(id, &format!("unreadable action: {kind}"))?,
             }
         }
-        Ok(file)
+        Ok(queue)
     }
 
-    /// Échecs transitoires consécutifs au-delà desquels une action entre
-    /// en quarantaine (D2 : cinq cycles).
-    pub const SEUIL_QUARANTAINE: i64 = 5;
+    /// Consecutive transient failures beyond which an action enters
+    /// quarantine (D2: five cycles).
+    pub const QUARANTINE_THRESHOLD: i64 = 5;
 
-    /// Un échec TRANSITOIRE de plus sur cette action. Rend `true` quand
-    /// le seuil est atteint : l'action vient d'entrer en quarantaine.
-    pub fn noter_echec_action(&self, action_id: i64, erreur: &str) -> Result<bool, Error> {
-        let refusee: i64 = self.0.query_row(
+    /// One more TRANSIENT failure on this action. Returns `true` when the
+    /// threshold is reached: the action just entered quarantine.
+    pub fn note_action_failure(&self, action_id: i64, error: &str) -> Result<bool, Error> {
+        let refused: i64 = self.0.query_row(
             "UPDATE pending_actions
                 SET attempts = attempts + 1,
                     last_error = ?2,
                     refusee = CASE WHEN attempts + 1 >= ?3 THEN 1 ELSE refusee END
               WHERE id = ?1
               RETURNING refusee",
-            params![action_id, erreur, Self::SEUIL_QUARANTAINE],
+            params![action_id, error, Self::QUARANTINE_THRESHOLD],
             |row| row.get(0),
         )?;
-        Ok(refusee != 0)
+        Ok(refused != 0)
     }
 
-    /// Refus DÉFINITIF : quarantaine immédiate, avec le motif.
-    pub fn refuser_action(&self, action_id: i64, erreur: &str) -> Result<(), Error> {
+    /// DEFINITIVE refusal: immediate quarantine, with the reason.
+    pub fn refuse_action(&self, action_id: i64, error: &str) -> Result<(), Error> {
         self.0.execute(
             "UPDATE pending_actions SET refusee = 1, last_error = ?2 WHERE id = ?1",
-            params![action_id, erreur],
+            params![action_id, error],
         )?;
         Ok(())
     }
 
-    /// Combien d'actions sont en quarantaine, tous comptes confondus —
-    /// la ligne de la fente d'avis (D2).
-    pub fn actions_refusees(&self) -> Result<u64, Error> {
+    /// How many actions are in quarantine, across all accounts —
+    /// the notice slot's line (D2).
+    pub fn refused_actions(&self) -> Result<u64, Error> {
         let n: i64 = self.0.query_row(
             "SELECT COUNT(*) FROM pending_actions WHERE refusee = 1",
             [],
@@ -2227,7 +2235,7 @@ impl Store {
         Ok(())
     }
 
-    /// Corps HTML brut (pré-assainissement) d'un message, s'il est en cache.
+    /// Raw HTML body (pre-sanitization) of a message, if it is cached.
     pub fn body(&self, account_id: i64, mailbox: &str, uid: Uid) -> Result<Option<String>, Error> {
         let body = self
             .0
@@ -2241,14 +2249,14 @@ impl Store {
         Ok(body)
     }
 
-    /// Enregistre un corps, son index de recherche et la description de
-    /// ses pièces jointes — **dans une seule transaction**.
+    /// Records a body, its search index and the description of its
+    /// attachments — **in a single transaction**.
     ///
-    /// Les trois se lisent dans les mêmes octets et n'ont de sens
-    /// qu'ensemble : un corps sans son index sortirait des recherches, un
-    /// corps sans ses pièces jointes les rendrait invisibles jusqu'au
-    /// prochain re-téléchargement. Un crash entre deux écritures ne doit
-    /// jamais pouvoir produire cet état.
+    /// The three are read from the same bytes and only make sense
+    /// together: a body without its index would fall out of search, a
+    /// body without its attachments would leave them invisible until the
+    /// next re-download. A crash between two writes must never be able to
+    /// produce that state.
     pub fn save_body(
         &self,
         mailbox_id: i64,
@@ -2259,10 +2267,10 @@ impl Store {
         self.save_body_full(mailbox_id, uid, html, attachments, None)
     }
 
-    /// [`Store::save_body`], plus la ligne d'invitation quand la partie
-    /// `text/calendar` accompagnait le corps (PLAN-INVITATIONS). Même
-    /// transaction que le corps, remplacement intégral comme les pièces :
-    /// un re-scan sans partie calendrier efface la ligne.
+    /// [`Store::save_body`], plus the invitation row when a `text/calendar`
+    /// part accompanied the body (PLAN-INVITATIONS). Same transaction as
+    /// the body, full replacement like the attachments: a re-scan without
+    /// a calendar part erases the row.
     pub fn save_body_full(
         &self,
         mailbox_id: i64,
@@ -2271,18 +2279,18 @@ impl Store {
         attachments: &[Attachment],
         invitation: Option<&InvitationRow>,
     ) -> Result<(), Error> {
-        // Même règle que le rattrapage des aperçus : le parsing HTML se
-        // paie AVANT d'ouvrir la transaction — jamais de CPU dans la
-        // fenêtre du verrou d'écriture.
-        let apercu = crate::body::extraire_apercu(html);
+        // Same rule as the preview backfill: HTML parsing is paid for
+        // BEFORE opening the transaction — never any CPU inside the
+        // write-lock window.
+        let preview = crate::body::extraire_apercu(html);
         let tx = self.0.unchecked_transaction()?;
         tx.execute(
             "INSERT OR REPLACE INTO bodies (mailbox_id, uid, html, scanned, preview)
              VALUES (?1, ?2, ?3, 1, ?4)",
-            params![mailbox_id, uid, html, apercu],
+            params![mailbox_id, uid, html, preview],
         )?;
-        // Remplacement intégral : un message re-téléchargé dont une pièce
-        // aurait disparu ne doit pas garder l'ancienne ligne fantôme.
+        // Full replacement: a re-downloaded message whose attachment
+        // disappeared must not keep the old phantom row.
         tx.execute(
             "DELETE FROM attachments WHERE mailbox_id = ?1 AND uid = ?2",
             params![mailbox_id, uid],
@@ -2302,9 +2310,9 @@ impl Store {
             )?;
         }
         match invitation {
-            Some(row) => ecrire_invitation(&tx, mailbox_id, uid, row)?,
-            // Même règle que les pièces : un re-scan SANS partie
-            // calendrier ne garde pas une carte fantôme.
+            Some(row) => write_invitation(&tx, mailbox_id, uid, row)?,
+            // Same rule as the attachments: a re-scan WITHOUT a calendar
+            // part does not keep a phantom card.
             None => {
                 tx.execute(
                     "DELETE FROM invitations WHERE mailbox_id = ?1 AND uid = ?2",
@@ -2347,22 +2355,23 @@ impl Store {
         Ok(())
     }
 
-    /// L'invitation d'un message, avec notre réponse locale — lecture
-    /// LOCALE, jamais de réseau. `None` : ce message n'en porte pas (ou
-    /// son MIME n'a pas encore été inspecté).
+    /// A message's invitation, with our local reply — LOCAL read, never
+    /// the network. `None`: this message does not carry one (or its MIME
+    /// has not been inspected yet).
     pub fn invitation(
         &self,
         account_id: i64,
         mailbox: &str,
         uid: Uid,
     ) -> Result<Option<InvitationStockee>, Error> {
-        let stockee = self
+        let stored = self
             .0
             .query_row(
-                // Colonnes lues PAR NOM : une colonne ajoutée au milieu du
-                // SELECT ne décale jamais les champs — dix-neuf Options du
-                // même type, un décalage positionnel serait silencieux et
-                // enverrait la réponse iTIP à la mauvaise adresse (revue).
+                // Columns read BY NAME: a column added in the middle of
+                // the SELECT never shifts the fields — nineteen Options
+                // of the same type, a positional shift would be silent
+                // and would send the iTIP reply to the wrong address
+                // (review).
                 "SELECT i.* FROM invitations i JOIN mailboxes m ON m.id = i.mailbox_id
                  WHERE m.account_id = ?1 AND m.name = ?2 AND i.uid = ?3",
                 params![account_id, mailbox, uid],
@@ -2394,13 +2403,13 @@ impl Store {
                 },
             )
             .optional()?;
-        Ok(stockee)
+        Ok(stored)
     }
 
-    /// L'adresse d'un compte par son id — la clé de lecture des
-    /// invitations (notre PARTSTAT se cherche par adresse). Adresse
-    /// VIDE = compte à moitié provisionné : dit `None`, comme
-    /// [`Store::accounts`] qui filtre ces lignes.
+    /// An account's address by its id — the read key for invitations (our
+    /// PARTSTAT is looked up by address). EMPTY address = a half
+    /// provisioned account: reads as `None`, like [`Store::accounts`]
+    /// which filters these rows out.
     pub fn account_email(&self, account_id: i64) -> Result<Option<String>, Error> {
         let email: Option<String> = self
             .0
@@ -2413,11 +2422,11 @@ impl Store {
         Ok(email)
     }
 
-    /// Remplace la liste des dossiers connus d'un compte.
+    /// Replaces an account's list of known folders.
     ///
-    /// Remplacement intégral et transactionnel : un dossier supprimé côté
-    /// serveur ne doit pas rester proposé comme destination — le
-    /// déplacement échouerait au rejeu, longtemps après le clic.
+    /// Full, transactional replacement: a folder deleted server-side must
+    /// not stay offered as a destination — the move would fail on replay,
+    /// long after the click.
     pub fn replace_folders(&self, account_id: i64, folders: &[Folder]) -> Result<(), Error> {
         let tx = self.0.unchecked_transaction()?;
         tx.execute(
@@ -2441,7 +2450,7 @@ impl Store {
         Ok(())
     }
 
-    /// Les dossiers connus d'un compte — lecture LOCALE, jamais de réseau.
+    /// An account's known folders — LOCAL read, never the network.
     pub fn folders(&self, account_id: i64) -> Result<Vec<Folder>, Error> {
         let mut statement = self.0.prepare(
             "SELECT wire, display, selectable, special_use FROM folders
@@ -2461,74 +2470,74 @@ impl Store {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
-    /// Rattrape l'aperçu des corps écrits AVANT la colonne `preview` —
-    /// par lots bornés. Appelé par le shell au fil de son sondage :
-    /// jamais sur le chemin d'ouverture (budget démarrage < 1 s, leçon
-    /// de la chasse aux orphelins), jamais au défilement. Rend le nombre
-    /// de retardataires restants — zéro quand la passe est soldée.
+    /// Backfills the preview of bodies written BEFORE the `preview`
+    /// column — in bounded batches. Called by the shell as it polls: never
+    /// on the opening path (startup budget < 1 s, the lesson of the
+    /// orphan hunt), never on scroll. Returns the number of stragglers
+    /// remaining — zero when the pass is complete.
     pub fn preview_catchup(&self, limit: usize) -> Result<u64, Error> {
-        // Par sous-lots de 100 corps (PLAN-AUDIT-V2 E2) : le shell demande
-        // 500 d'un coup, et 500 corps HTML entiers en RAM pesaient ~28 Mo
-        // au 56 ko moyen — cinq fois moins par sous-lot, même contrat.
-        const SOUS_LOT: usize = 100;
-        let mut restes = limit;
-        while restes > 0 {
-            let pris = self.rattraper_apercus_lot(restes.min(SOUS_LOT))?;
-            if pris == 0 {
+        // In sub-batches of 100 bodies (PLAN-AUDIT-V2 E2): the shell asks
+        // for 500 at once, and 500 whole HTML bodies in RAM weighed
+        // ~28 MB at the 56 KB average — five times less per sub-batch,
+        // same contract.
+        const SUB_BATCH: usize = 100;
+        let mut remaining = limit;
+        while remaining > 0 {
+            let taken = self.backfill_previews_batch(remaining.min(SUB_BATCH))?;
+            if taken == 0 {
                 break;
             }
-            restes -= pris;
+            remaining -= taken;
         }
-        let restants: i64 = self.0.query_row(
+        let remaining_count: i64 = self.0.query_row(
             "SELECT COUNT(*) FROM bodies WHERE preview IS NULL",
             [],
             |row| row.get(0),
         )?;
-        Ok(restants as u64)
+        Ok(remaining_count as u64)
     }
 
-    /// Un sous-lot de [`Store::preview_catchup`] ; rend le nombre de corps
-    /// traités (zéro = plus de retardataire).
-    fn rattraper_apercus_lot(&self, limit: usize) -> Result<usize, Error> {
-        let lot: Vec<(i64, Uid, String)> = self
+    /// One sub-batch of [`Store::preview_catchup`]; returns the number of
+    /// bodies processed (zero = no more stragglers).
+    fn backfill_previews_batch(&self, limit: usize) -> Result<usize, Error> {
+        let batch: Vec<(i64, Uid, String)> = self
             .0
             .prepare("SELECT mailbox_id, uid, html FROM bodies WHERE preview IS NULL LIMIT ?1")?
             .query_map(params![limit as i64], |row| {
                 Ok((row.get(0)?, row.get(1)?, row.get(2)?))
             })?
             .collect::<Result<_, _>>()?;
-        if !lot.is_empty() {
-            // Le CPU HORS de la fenêtre du verrou (terrain 2026-08-15) :
-            // extraire les aperçus DANS la transaction tenait le verrou
-            // d'écriture pendant tout le parsing du lot (2 000 corps HTML
-            // au sondage du shell) — une écriture UI concurrente
-            // (`delete_draft` d'un brouillon vidé) expirait son
-            // busy_timeout et échouait en BUSY. On parse d'abord, la
-            // transaction ne fait plus qu'écrire — courte par
-            // construction.
-            let apercus: Vec<(i64, Uid, String)> = lot
+        if !batch.is_empty() {
+            // CPU OUTSIDE the lock window (field finding 2026-08-15):
+            // extracting the previews INSIDE the transaction held the
+            // write lock for the whole parsing of the batch (2 000 HTML
+            // bodies at the shell's poll) — a concurrent UI write
+            // (`delete_draft` of an emptied draft) would time out its
+            // busy_timeout and fail with BUSY. We parse first, the
+            // transaction now only writes — short by construction.
+            let previews: Vec<(i64, Uid, String)> = batch
                 .iter()
                 .map(|(mailbox_id, uid, html)| {
                     (*mailbox_id, *uid, crate::body::extraire_apercu(html))
                 })
                 .collect();
             let tx = self.0.unchecked_transaction()?;
-            for (mailbox_id, uid, apercu) in &apercus {
+            for (mailbox_id, uid, preview) in &previews {
                 tx.execute(
                     "UPDATE bodies SET preview = ?3 WHERE mailbox_id = ?1 AND uid = ?2",
-                    params![mailbox_id, uid, apercu],
+                    params![mailbox_id, uid, preview],
                 )?;
             }
             tx.commit()?;
         }
-        Ok(lot.len())
+        Ok(batch.len())
     }
 
-    /// Les pièces jointes connues d'un message, dans l'ordre du MIME.
+    /// A message's known attachments, in MIME order.
     ///
-    /// Vide tant que le corps n'a pas été rapatrié : c'est la même
-    /// condition que la recherche dans le texte, et le rattrapage la
-    /// lève pour tout l'horizon de récence.
+    /// Empty as long as the body has not been fetched: it is the same
+    /// condition as text search, and the backfill lifts it for the whole
+    /// recency horizon.
     pub fn attachments(
         &self,
         account_id: i64,
@@ -2553,14 +2562,14 @@ impl Store {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
-    /// Les messages NON LUS arrivés après `uid_gt`, du plus ancien au
-    /// plus récent — la matière des notifications.
+    /// UNREAD messages that arrived after `uid_gt`, oldest to newest — the
+    /// material for notifications.
     ///
-    /// Le critère est l'UID, pas la date : c'est l'ordre d'arrivée que
-    /// le serveur garantit, et c'est lui qui distingue « nouveau » de
-    /// « ancien mais récemment daté ». Les messages déjà lus ailleurs
-    /// sont exclus : notifier un message que l'utilisateur vient de lire
-    /// sur son téléphone est du bruit pur.
+    /// The criterion is the UID, not the date: it is the arrival order the
+    /// server guarantees, and it is what distinguishes "new" from "old but
+    /// recently dated". Messages already read elsewhere are excluded:
+    /// notifying a message the user just read on their phone is pure
+    /// noise.
     pub fn new_unread_after(
         &self,
         account_id: i64,
@@ -2585,21 +2594,21 @@ impl Store {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
-    /// Les messages RÉCENTS dont le corps manque encore, du plus récent au
-    /// plus ancien — le travail du rattrapage ([ADR 0007](../../../docs/adr/0007-rattrapage-des-corps.md)).
+    /// RECENT messages whose body is still missing, newest to oldest — the
+    /// backfill's work ([ADR 0007](../../../docs/adr/0007-rattrapage-des-corps.md)).
     ///
-    /// `since_epoch` borne le coût : c'est l'horizon de récence. L'ordre
-    /// décroissant rend la reprise après coupure naturelle — on redemande
-    /// simplement la liste, les corps déjà écrits n'y sont plus.
+    /// `since_epoch` bounds the cost: it is the recency horizon.
+    /// Descending order makes recovery after an interruption natural — we
+    /// simply ask for the list again, the bodies already written are no
+    /// longer in it.
     ///
-    /// Un message sans date est TOUJOURS éligible — révisé par
-    /// l'ADR 0010. L'ancienne règle l'excluait comme « non situable dans
-    /// l'horizon » ; depuis que la production ne borne plus rien
-    /// ([`crate::NO_HORIZON`]), l'exclure serait un trou silencieux : un
-    /// message dont la date ne se lit pas n'aurait jamais de corps, donc
-    /// jamais de recherche, sans que rien ne le signale. Il passe en
-    /// dernier (les NULL ferment un tri DESC) : le doute ne coûte que son
-    /// rang.
+    /// A message without a date is ALWAYS eligible — revised by ADR 0010.
+    /// The old rule excluded it as "not placeable in the horizon"; since
+    /// production no longer bounds anything ([`crate::NO_HORIZON`]),
+    /// excluding it would be a silent hole: a message whose date cannot be
+    /// read would never get a body, hence never be searchable, with
+    /// nothing to signal it. It goes last (NULLs close a DESC sort): the
+    /// doubt only costs it its rank.
     pub fn bodies_to_backfill(
         &self,
         account_id: i64,
@@ -2617,11 +2626,11 @@ impl Store {
         Ok(uids)
     }
 
-    /// Les messages dont les en-têtes de fil n'ont pas encore été lus, du
-    /// plus récent au plus ancien.
+    /// Messages whose thread headers have not yet been read, newest to
+    /// oldest.
     ///
-    /// `refs IS NULL` = jamais lu. Un message sans `References` reçoit
-    /// `""` et sort définitivement de cette liste.
+    /// `refs IS NULL` = never read. A message without a `References`
+    /// receives `""` and leaves this list for good.
     pub fn thread_headers_to_backfill(
         &self,
         account_id: i64,
@@ -2648,15 +2657,14 @@ impl Store {
         Ok(uids)
     }
 
-    /// Les messages d'une boîte dont les destinataires n'ont pas encore
-    /// été lus, du plus récent au plus ancien (R4, rattrapage des envois
-    /// D2).
+    /// Messages of a mailbox whose recipients have not yet been read,
+    /// newest to oldest (R4, sent-mail backfill D2).
     ///
-    /// `to_addrs IS NULL` = jamais lu. Un message sans À reçoit `""`
-    /// (chaîne vide, PAS NULL) et sort définitivement de cette liste —
-    /// même sentinelle que `refs` pour les en-têtes de fil, sans quoi la
-    /// pompe le redemanderait indéfiniment (enseignement de convergence,
-    /// PASSATION §9).
+    /// `to_addrs IS NULL` = never read. A message without a To receives
+    /// `""` (empty string, NOT NULL) and leaves this list for good — the
+    /// same sentinel as `refs` for thread headers, without which the pump
+    /// would keep asking for it forever (convergence lesson, HANDOVER
+    /// §9).
     pub fn recipients_to_backfill(
         &self,
         account_id: i64,
@@ -2678,7 +2686,7 @@ impl Store {
         Ok(uids)
     }
 
-    /// Combien d'envois attendent encore leurs destinataires.
+    /// How many sent messages are still waiting for their recipients.
     pub fn recipients_pending_count(&self, account_id: i64, mailbox: &str) -> Result<u64, Error> {
         let count: i64 = self.0.query_row(
             "SELECT COUNT(*)
@@ -2691,10 +2699,10 @@ impl Store {
         Ok(count as u64)
     }
 
-    /// Écrit les destinataires À/Cc d'un message déjà stocké (rattrapage
-    /// des envois). Écrit `""` — jamais NULL — quand la liste est vide :
-    /// c'est la marque « lu, aucun » qui fait converger la pompe. Ne
-    /// touche à AUCUNE autre colonne (ni fil, ni refs).
+    /// Writes the To/Cc recipients of an already-stored message (sent-mail
+    /// backfill). Writes `""` — never NULL — when the list is empty: it is
+    /// the "read, none" mark that makes the pump converge. Touches NO
+    /// other column (neither thread nor refs).
     pub fn set_recipients(
         &self,
         mailbox_id: i64,
@@ -2702,20 +2710,20 @@ impl Store {
         to: &[String],
         cc: &[String],
     ) -> Result<(), Error> {
-        // E4 : destinataires et annuaire d'accord ou rien.
+        // E4: recipients and the address book agree, or nothing does.
         let tx = self.0.unchecked_transaction()?;
         self.0.execute(
             "UPDATE envelopes SET to_addrs = ?3, cc_addrs = ?4
              WHERE mailbox_id = ?1 AND uid = ?2",
             params![mailbox_id, uid, to.join("\n"), cc.join("\n")],
         )?;
-        // PLAN-RETOURS-5 (D4, revue) : ces destinataires rattrapés sont
-        // ceux de NOS envois d'avant le stockage des À/Cc — sans ceci,
-        // ils n'entreraient jamais dans l'annuaire (le rattrapage
-        // d'ouverture est passé avant eux). Le surcoût (deux lectures)
-        // est invisible derrière l'aller-retour serveur qui précède.
-        let (_, noter_destinataires) = self.role_annuaire(mailbox_id)?;
-        if noter_destinataires && (!to.is_empty() || !cc.is_empty()) {
+        // PLAN-RETOURS-5 (D4, review): these backfilled recipients are
+        // those of OUR sends from before To/Cc were stored — without this,
+        // they would never enter the address book (the opening backfill
+        // already ran before them). The extra cost (two reads) is
+        // invisible behind the server round trip that precedes it.
+        let (_, record_recipients) = self.role_annuaire(mailbox_id)?;
+        if record_recipients && (!to.is_empty() || !cc.is_empty()) {
             let date: Option<i64> = self
                 .0
                 .query_row(
@@ -2725,15 +2733,15 @@ impl Store {
                 )
                 .optional()?
                 .flatten();
-            for adresse in to.iter().chain(cc.iter()) {
-                crate::correspondants::noter(self.conn(), adresse, None, date.unwrap_or(0))?;
+            for address in to.iter().chain(cc.iter()) {
+                crate::correspondants::noter(self.conn(), address, None, date.unwrap_or(0))?;
             }
         }
         tx.commit()?;
         Ok(())
     }
 
-    /// Combien de messages attendent encore leurs en-têtes de fil.
+    /// How many messages are still waiting for their thread headers.
     pub fn thread_headers_pending_count(
         &self,
         account_id: i64,
@@ -2753,8 +2761,8 @@ impl Store {
         Ok(count as u64)
     }
 
-    /// Combien de messages attendent encore leur corps dans l'horizon —
-    /// de quoi afficher un avancement honnête.
+    /// How many messages are still waiting for their body within the
+    /// horizon — enough to show an honest progress figure.
     pub fn bodies_pending_count(
         &self,
         account_id: i64,
@@ -2769,12 +2777,12 @@ impl Store {
         Ok(count as u64)
     }
 
-    /// Le corpus EN PORTÉE : tous les messages qui PEUVENT porter un corps
-    /// (même filtre que [`Self::bodies_pending_count`], sans la clause du
-    /// corps manquant). C'est le dénominateur du pourcentage de rattrapage
-    /// (R1, PLAN-RETOURS-3) — `total - pending` donne les corps présents.
-    /// Plus léger que le compte des manquants : pas de sous-requête
-    /// `NOT EXISTS`.
+    /// The corpus IN SCOPE: every message that CAN carry a body (same
+    /// filter as [`Self::bodies_pending_count`], without the missing-body
+    /// clause). It is the denominator of the backfill percentage (R1,
+    /// PLAN-RETOURS-3) — `total - pending` gives the bodies present.
+    /// Lighter than counting the missing ones: no `NOT EXISTS`
+    /// subquery.
     pub fn bodies_total_count(
         &self,
         account_id: i64,
@@ -2793,7 +2801,7 @@ impl Store {
         Ok(count as u64)
     }
 
-    /// Une page d'enveloppes d'UN compte, les plus récentes d'abord.
+    /// A page of envelopes of ONE account, most recent first.
     pub fn recent(
         &self,
         account_id: i64,
@@ -2818,22 +2826,22 @@ impl Store {
         Ok(rows)
     }
 
-    /// La boîte unifiée : la même boîte (INBOX) de TOUS les comptes,
-    /// fusionnée par date — le cœur produit du multi-comptes. Chaque
-    /// ligne porte son compte : un UID seul n'identifie plus un message.
+    /// The unified mailbox: the same mailbox (INBOX) of ALL accounts,
+    /// merged by date — the flagship product of multi-account. Each row
+    /// carries its account: a UID alone no longer identifies a message.
     pub fn unified_recent(&self, offset: usize, limit: usize) -> Result<Vec<UnifiedRow>, Error> {
-        // Une ligne par CONVERSATION, représentée par son dernier message.
+        // One row per CONVERSATION, represented by its last message.
         //
-        // Le départ se fait depuis `threads`, pas depuis `envelopes` : un
-        // `GROUP BY thread_id` avec un `MAX(date)` obligerait SQLite à
-        // parcourir puis trier les 200 000 enveloppes à chaque page de
-        // défilement. Ici l'index `idx_threads_date_globale` porte à la
-        // fois le tri et la pagination — le coût d'une page ne dépend
-        // plus de la taille de la boîte. C'est l'agrégat matérialisé qui
-        // paie ça, et il se maintient dans la transaction d'écriture.
+        // The query starts from `threads`, not from `envelopes`: a
+        // `GROUP BY thread_id` with a `MAX(date)` would force SQLite to
+        // scan and then sort the 200,000 envelopes on every scroll page.
+        // Here the `idx_threads_date_globale` index carries both the sort
+        // and the pagination — the cost of a page no longer depends on
+        // the mailbox's size. It is the materialized aggregate that pays
+        // for that, and it is maintained inside the write transaction.
         //
-        // La pagination vit dans une SOUS-REQUÊTE sur `threads` seul :
-        // voir `unified_page_sql`.
+        // Pagination lives in a SUBQUERY on `threads` alone: see
+        // `unified_page_sql`.
         let mut stmt = self.0.prepare(&unified_page_sql(false, false, false))?;
         let rows = stmt
             .query_map(params![limit as i64, offset as i64], row_to_threaded)?
@@ -2841,13 +2849,14 @@ impl Store {
         Ok(rows)
     }
 
-    /// Total de la boîte unifiée — en CONVERSATIONS, puisque c'est ce que
-    /// la liste affiche. Compter les messages ferait défiler dans le vide.
-    /// Les fils ÉPINGLÉS n'y comptent pas (R4, D5) — la page les exclut,
-    /// le total DOIT décrire le même ensemble qu'elle (revue 2026-08-21 :
-    /// la paire page/total désaccordée fabriquerait des lignes fantômes).
+    /// Total of the unified mailbox — in CONVERSATIONS, since that is
+    /// what the list displays. Counting messages would make it scroll
+    /// into the void. PINNED threads do not count in it (R4, D5) — the
+    /// page excludes them, the total MUST describe the same set as it
+    /// does (review 2026-08-21: a mismatched page/total pair would
+    /// manufacture phantom rows).
     //
-    // (`unified_page_sql`, plus bas, porte la requête de la page.)
+    // (`unified_page_sql`, below, carries the page's query.)
     pub fn unified_count(&self) -> Result<u64, Error> {
         let count: i64 = self.0.query_row(
             &format!(
@@ -2860,22 +2869,22 @@ impl Store {
         Ok(count as u64)
     }
 
-    /// R4 (PLAN-RETOURS-7) : épingle ou désépingle la CONVERSATION du
-    /// message donné — rend le nouvel état. Poser l'épingle enregistre
-    /// la clé d'enveloppe du geste ; la retirer libère le fil ENTIER
-    /// (toutes les clés qui y mènent), sans quoi une épingle posée hier
-    /// depuis une autre tête du fil resterait accrochée. Le fil se
-    /// résout UNE fois — l'état et l'écriture regardent le même
-    /// (revue 2026-08-21 : deux résolutions pouvaient diverger si une
-    /// synchro re-filait entre elles).
+    /// R4 (PLAN-RETOURS-7): pins or unpins the CONVERSATION of the given
+    /// message — returns the new state. Setting the pin records the
+    /// envelope key of the gesture; removing it frees the WHOLE thread
+    /// (every key that leads to it), without which a pin set yesterday
+    /// from another head of the thread would stay stuck. The thread is
+    /// resolved ONCE — the state and the write look at the same one
+    /// (review 2026-08-21: two resolutions could diverge if a sync slid
+    /// in between them).
     pub fn toggle_pin(&self, mailbox_id: i64, uid: Uid, epoch: i64) -> Result<bool, Error> {
-        let fil = thread::thread_of(&self.0, mailbox_id, uid)?;
-        if self.pin_state_du_fil(fil, mailbox_id, uid)? {
-            match fil {
-                Some(fil) => self.0.execute(
+        let thread = thread::thread_of(&self.0, mailbox_id, uid)?;
+        if self.thread_pin_state(thread, mailbox_id, uid)? {
+            match thread {
+                Some(thread) => self.0.execute(
                     "DELETE FROM pins WHERE (mailbox_id, uid) IN
                        (SELECT mailbox_id, uid FROM envelopes WHERE thread_id = ?1)",
-                    params![fil],
+                    params![thread],
                 )?,
                 None => self.0.execute(
                     "DELETE FROM pins WHERE mailbox_id = ?1 AND uid = ?2",
@@ -2892,45 +2901,50 @@ impl Store {
         }
     }
 
-    /// La conversation du message est-elle épinglée ? L'état se lit par
-    /// le FIL : une épingle posée sur n'importe quel message du fil vaut
-    /// pour sa tête courante — la barre du fil dit vrai même quand une
-    /// réponse a déplacé la tête depuis le geste.
+    /// Is the message's conversation pinned? The state is read by the
+    /// THREAD: a pin set on any message of the thread holds for its
+    /// current head — the thread bar tells the truth even when a reply
+    /// has moved the head since the gesture.
     pub fn pin_state(&self, mailbox_id: i64, uid: Uid) -> Result<bool, Error> {
-        let fil = thread::thread_of(&self.0, mailbox_id, uid)?;
-        self.pin_state_du_fil(fil, mailbox_id, uid)
+        let thread = thread::thread_of(&self.0, mailbox_id, uid)?;
+        self.thread_pin_state(thread, mailbox_id, uid)
     }
 
-    fn pin_state_du_fil(&self, fil: Option<i64>, mailbox_id: i64, uid: Uid) -> Result<bool, Error> {
-        let epingle = match fil {
-            Some(fil) => self
+    fn thread_pin_state(
+        &self,
+        thread: Option<i64>,
+        mailbox_id: i64,
+        uid: Uid,
+    ) -> Result<bool, Error> {
+        let pinned = match thread {
+            Some(thread) => self
                 .0
                 .prepare(
                     "SELECT 1 FROM pins p JOIN envelopes e
                        ON e.mailbox_id = p.mailbox_id AND e.uid = p.uid
                      WHERE e.thread_id = ?1",
                 )?
-                .exists(params![fil])?,
+                .exists(params![thread])?,
             None => self
                 .0
                 .prepare("SELECT 1 FROM pins WHERE mailbox_id = ?1 AND uid = ?2")?
                 .exists(params![mailbox_id, uid])?,
         };
-        Ok(epingle)
+        Ok(pinned)
     }
 
-    /// E5 — Mis de côté : le MÊME contrat que l'épingle (patron
-    /// `toggle_pin`, résolution du fil UNE fois) — posé sur un message,
-    /// l'état vaut pour le fil entier ; « Terminé » depuis n'importe
-    /// quelle tête libère tout. Rend l'état APRÈS le geste.
-    pub fn toggle_mis_de_cote(&self, mailbox_id: i64, uid: Uid, epoch: i64) -> Result<bool, Error> {
-        let fil = thread::thread_of(&self.0, mailbox_id, uid)?;
-        if self.mis_de_cote_du_fil(fil, mailbox_id, uid)? {
-            match fil {
-                Some(fil) => self.0.execute(
+    /// E5 — Set aside: the SAME contract as pin (the `toggle_pin`
+    /// pattern, thread resolved ONCE) — set on a message, the state
+    /// applies to the whole thread; “Done” from any head releases
+    /// everything. Returns the state AFTER the gesture.
+    pub fn toggle_set_aside(&self, mailbox_id: i64, uid: Uid, epoch: i64) -> Result<bool, Error> {
+        let thread = thread::thread_of(&self.0, mailbox_id, uid)?;
+        if self.thread_set_aside(thread, mailbox_id, uid)? {
+            match thread {
+                Some(thread) => self.0.execute(
                     "DELETE FROM mis_de_cote WHERE (mailbox_id, uid) IN
                        (SELECT mailbox_id, uid FROM envelopes WHERE thread_id = ?1)",
-                    params![fil],
+                    params![thread],
                 )?,
                 None => self.0.execute(
                     "DELETE FROM mis_de_cote WHERE mailbox_id = ?1 AND uid = ?2",
@@ -2947,46 +2961,46 @@ impl Store {
         }
     }
 
-    /// Le fil de ce message est-il mis de côté ? — l'état par le FIL,
-    /// tête nouvelle comprise (même règle que `pin_state`).
-    pub fn etat_mis_de_cote(&self, mailbox_id: i64, uid: Uid) -> Result<bool, Error> {
-        let fil = thread::thread_of(&self.0, mailbox_id, uid)?;
-        self.mis_de_cote_du_fil(fil, mailbox_id, uid)
+    /// Is this message's thread set aside? — the state is by THREAD,
+    /// new head included (same rule as `pin_state`).
+    pub fn set_aside_state(&self, mailbox_id: i64, uid: Uid) -> Result<bool, Error> {
+        let thread = thread::thread_of(&self.0, mailbox_id, uid)?;
+        self.thread_set_aside(thread, mailbox_id, uid)
     }
 
-    fn mis_de_cote_du_fil(
+    fn thread_set_aside(
         &self,
-        fil: Option<i64>,
+        thread: Option<i64>,
         mailbox_id: i64,
         uid: Uid,
     ) -> Result<bool, Error> {
-        let cote = match fil {
-            Some(fil) => self
+        let aside = match thread {
+            Some(thread) => self
                 .0
                 .prepare(
                     "SELECT 1 FROM mis_de_cote c JOIN envelopes e
                        ON e.mailbox_id = c.mailbox_id AND e.uid = c.uid
                      WHERE e.thread_id = ?1",
                 )?
-                .exists(params![fil])?,
+                .exists(params![thread])?,
             None => self
                 .0
                 .prepare("SELECT 1 FROM mis_de_cote WHERE mailbox_id = ?1 AND uid = ?2")?
                 .exists(params![mailbox_id, uid])?,
         };
-        Ok(cote)
+        Ok(aside)
     }
 
-    /// La pile (E5) : les têtes des fils mis de côté, au squelette
-    /// unifié — l'ordre des listes (la date), l'éventail et le tableau
-    /// s'en servent tels quels. Petite par construction.
-    pub fn pile_mis_de_cote(&self) -> Result<Vec<UnifiedRow>, Error> {
+    /// The pile (E5): the heads of set-aside threads, in the unified
+    /// shape — the list ordering (date), the fan and the table use it
+    /// as-is. Small by construction.
+    pub fn set_aside_pile(&self) -> Result<Vec<UnifiedRow>, Error> {
         let queue = unified_join_tail(false);
         let sql = format!(
             "{SELECT_UNIFIED}{THREAD_AGGREGATE}
              FROM (SELECT account_id, last_mailbox_id, last_uid, last_epoch, size, unseen
                      FROM threads
-                    WHERE inbox_size > 0 AND id IN ({MIS_DE_COTE_THREADS})) t{queue}"
+                    WHERE inbox_size > 0 AND id IN ({SET_ASIDE_THREADS})) t{queue}"
         );
         let mut stmt = self.0.prepare(&sql)?;
         let rows = stmt
@@ -2995,9 +3009,9 @@ impl Store {
         Ok(rows)
     }
 
-    /// R1 (PLAN-RETOURS-11, D1-D2) : le choix « Afficher les images »
-    /// du message — clé d'enveloppe, patron de `pins`. Rejouer le
-    /// geste ne change rien (REPLACE).
+    /// R1 (PLAN-RETOURS-11, D1-D2): the “Show images” choice for the
+    /// message — envelope key, the `pins` pattern. Replaying the
+    /// gesture changes nothing (REPLACE).
     pub fn allow_images_message(&self, mailbox_id: i64, uid: Uid, epoch: i64) -> Result<(), Error> {
         self.0.execute(
             "INSERT OR REPLACE INTO images_messages (mailbox_id, uid, epoch)
@@ -3007,19 +3021,19 @@ impl Store {
         Ok(())
     }
 
-    /// D3 : pose la règle « toujours afficher les images de cet
-    /// expéditeur » DEPUIS un message — l'adresse est lue de
-    /// l'enveloppe (jamais de l'UI), normalisée en minuscules. Rend
-    /// l'adresse posée ; None si l'enveloppe n'a pas d'adresse (jamais
-    /// une règle vide). N'écrit PAS de choix par message : la règle
-    /// d'expéditeur doit suffire seule, et sa révocation tout défaire.
+    /// D3: sets the rule “always show images from this sender” FROM
+    /// a message — the address is read from the envelope (never from
+    /// the UI), normalized to lowercase. Returns the address set; None
+    /// if the envelope has no address (never an empty rule). Does NOT
+    /// write a per-message choice: the sender rule must stand alone,
+    /// and its revocation undo everything.
     pub fn allow_images_sender_of(
         &self,
         mailbox_id: i64,
         uid: Uid,
         epoch: i64,
     ) -> Result<Option<String>, Error> {
-        let adresse: Option<String> = self
+        let address: Option<String> = self
             .0
             .query_row(
                 "SELECT sender_address FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
@@ -3028,48 +3042,47 @@ impl Store {
             )
             .optional()?
             .flatten();
-        let Some(adresse) = adresse_images(adresse) else {
+        let Some(address) = images_address(address) else {
             return Ok(None);
         };
         self.0.execute(
             "INSERT OR REPLACE INTO images_expediteurs (address, epoch) VALUES (?1, ?2)",
-            params![adresse, epoch],
+            params![address, epoch],
         )?;
-        Ok(Some(adresse))
+        Ok(Some(address))
     }
 
-    /// D4 : retire une règle d'expéditeur (la porte de sortie du
-    /// « toujours »). La normalisation passe par LA même autorité que
-    /// la pose — sinon une règle posée deviendrait irrévocable le jour
-    /// où `adresse_images` évolue.
+    /// D4: removes a sender rule (the exit door of “always”). The
+    /// normalization goes through the SAME authority as the write —
+    /// otherwise a rule once set would become irrevocable the day
+    /// `images_address` changes.
     pub fn revoke_images_sender(&self, address: &str) -> Result<(), Error> {
-        let Some(adresse) = adresse_images(Some(address.to_string())) else {
+        let Some(address) = images_address(Some(address.to_string())) else {
             return Ok(());
         };
         self.0.execute(
             "DELETE FROM images_expediteurs WHERE address = ?1",
-            params![adresse],
+            params![address],
         )?;
         Ok(())
     }
 
-    /// Les règles d'expéditeur, pour la liste des Réglages (D4) —
-    /// ordre alphabétique : l'œil y cherche une adresse.
+    /// The sender rules, for the Settings list (D4) — alphabetical
+    /// order: the eye looks for an address there.
     pub fn images_senders(&self) -> Result<Vec<String>, Error> {
         let mut stmt = self
             .0
             .prepare("SELECT address FROM images_expediteurs ORDER BY address")?;
-        let adresses = stmt
+        let addresses = stmt
             .query_map([], |row| row.get(0))?
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(adresses)
+        Ok(addresses)
     }
 
-    /// La porte du RENDU (message_body) : ce message a-t-il droit aux
-    /// images distantes ? Choix par message OU règle d'expéditeur —
-    /// l'adresse de l'enveloppe est normalisée par le MÊME chemin que
-    /// l'écriture (une seule autorité, jamais le lower() ASCII de
-    /// SQLite).
+    /// The RENDER gate (message_body): is this message entitled to
+    /// remote images? A per-message choice OR a sender rule — the
+    /// envelope's address is normalized through the SAME path as the
+    /// write (a single authority, never SQLite's ASCII lower()).
     pub fn images_allowed(&self, mailbox_id: i64, uid: Uid) -> Result<bool, Error> {
         if self
             .0
@@ -3078,7 +3091,7 @@ impl Store {
         {
             return Ok(true);
         }
-        let adresse: Option<String> = self
+        let address: Option<String> = self
             .0
             .query_row(
                 "SELECT sender_address FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
@@ -3087,52 +3100,52 @@ impl Store {
             )
             .optional()?
             .flatten();
-        match adresse_images(adresse) {
-            Some(adresse) => Ok(self
+        match images_address(address) {
+            Some(address) => Ok(self
                 .0
                 .prepare("SELECT 1 FROM images_expediteurs WHERE address = ?1")?
-                .exists(params![adresse])?),
+                .exists(params![address])?),
             None => Ok(false),
         }
     }
 
-    /// L'état du Mode organisé (PLAN-MODE-ORGANISE E1, D2 amendée :
-    /// `prefs` SQLite — le cœur doit savoir, les règles du Non
-    /// s'éteignent avec le mode). Éteint tant que rien n'est posé.
-    pub fn mode_organise(&self) -> Result<bool, Error> {
-        Ok(self.text_pref(PREF_MODE_ORGANISE)?.as_deref() == Some("1"))
+    /// The state of Organized mode (PLAN-MODE-ORGANISE E1, D2 amended:
+    /// `prefs` SQLite — the core needs to know, the No rules die with
+    /// the mode). Off as long as nothing has been set.
+    pub fn organized_mode(&self) -> Result<bool, Error> {
+        Ok(self.text_pref(PREF_ORGANIZED_MODE)?.as_deref() == Some("1"))
     }
 
-    /// L'époque de PREMIÈRE activation du mode — la borne de la
-    /// rétention du Portier (D3 « arrivées seules »). None tant que le
-    /// mode n'a jamais été activé.
-    pub fn mode_organise_epoch(&self) -> Result<Option<i64>, Error> {
+    /// The epoch of the FIRST activation of the mode — the bound of
+    /// the Screener's retention (D3 “arrivals only”). None as long as
+    /// the mode has never been activated.
+    pub fn organized_mode_epoch(&self) -> Result<Option<i64>, Error> {
         Ok(self
-            .text_pref(PREF_MODE_ORGANISE_EPOCH)?
+            .text_pref(PREF_ORGANIZED_MODE_EPOCH)?
             .and_then(|v| v.parse().ok()))
     }
 
-    /// Bascule le mode. À la PREMIÈRE activation, l'état et l'époque
-    /// s'écrivent ENSEMBLE (transaction — jamais un mode actif sans sa
-    /// borne) ; l'époque ne se réécrit JAMAIS ensuite : la réécrire à
-    /// une réactivation déverserait au Portier (ou en Réception) du
-    /// courrier arrivé entre-temps, en silence.
-    pub fn set_mode_organise(&mut self, actif: bool, epoch: i64) -> Result<(), Error> {
-        if actif && self.text_pref(PREF_MODE_ORGANISE_EPOCH)?.is_none() {
+    /// Toggles the mode. On the FIRST activation, the state and the
+    /// epoch are written TOGETHER (transaction — never an active mode
+    /// without its bound); the epoch is NEVER rewritten afterwards:
+    /// rewriting it on a reactivation would silently dump mail that
+    /// arrived in the meantime into the Screener (or the Inbox).
+    pub fn set_organized_mode(&mut self, active: bool, epoch: i64) -> Result<(), Error> {
+        if active && self.text_pref(PREF_ORGANIZED_MODE_EPOCH)?.is_none() {
             self.set_text_prefs(&[
-                (PREF_MODE_ORGANISE, "1"),
-                (PREF_MODE_ORGANISE_EPOCH, &epoch.to_string()),
+                (PREF_ORGANIZED_MODE, "1"),
+                (PREF_ORGANIZED_MODE_EPOCH, &epoch.to_string()),
             ])
         } else {
-            self.set_text_pref(PREF_MODE_ORGANISE, if actif { "1" } else { "0" })
+            self.set_text_pref(PREF_ORGANIZED_MODE, if active { "1" } else { "0" })
         }
     }
 
-    /// RETOURS-13 R10 — marque une carte du Kiosque comme lue (le bas
-    /// de son élévation a été affiché). Idempotente ; clé d'enveloppe,
-    /// patron `pins` — jamais le `seen` IMAP (autre sémantique,
-    /// écrasée par la synchro).
-    pub fn marquer_kiosque_lu(&self, mailbox_id: i64, uid: Uid, epoch: i64) -> Result<(), Error> {
+    /// RETOURS-13 R10 — marks a Feed card as read (the bottom of its
+    /// elevation has been shown). Idempotent; envelope key, the `pins`
+    /// pattern — never the IMAP `seen` (different semantics, overwritten
+    /// by sync).
+    pub fn mark_feed_read(&self, mailbox_id: i64, uid: Uid, epoch: i64) -> Result<(), Error> {
         self.0.execute(
             "INSERT OR IGNORE INTO kiosque_lus (mailbox_id, uid, epoch) VALUES (?1, ?2, ?3)",
             params![mailbox_id, uid, epoch],
@@ -3140,100 +3153,99 @@ impl Store {
         Ok(())
     }
 
-    /// Une carte du Kiosque a-t-elle déjà été lue ? (sonde PK)
-    pub fn kiosque_lu(&self, mailbox_id: i64, uid: Uid) -> Result<bool, Error> {
+    /// Has a Feed card already been read? (PK probe)
+    pub fn feed_read(&self, mailbox_id: i64, uid: Uid) -> Result<bool, Error> {
         Ok(self
             .0
             .prepare("SELECT 1 FROM kiosque_lus WHERE mailbox_id = ?1 AND uid = ?2")?
             .exists(params![mailbox_id, uid])?)
     }
 
-    /// RETOURS-13 R5/R9 — les actions par défaut des boutons Oui/Non du
-    /// Portier. Livrées : Oui → `reception`, Non → `corbeille`. Une
-    /// valeur hors vocabulaire en base (écrite hors porte) retombe au
-    /// défaut : le clic nu ne pose JAMAIS un verdict troué.
-    pub fn portier_defauts(&self) -> Result<(String, String), Error> {
-        let oui = self
-            .text_pref(PREF_PORTIER_DEFAUT_OUI)?
-            .filter(|v| defaut_portier_oui_valide(v))
+    /// RETOURS-13 R5/R9 — the default actions of the Screener's
+    /// Yes/No buttons. Shipped: Yes → `reception`, No → `corbeille`. A
+    /// value outside the vocabulary in the database (written outside
+    /// the gate) falls back to the default: the bare click NEVER sets
+    /// a broken verdict.
+    pub fn screener_defaults(&self) -> Result<(String, String), Error> {
+        let yes = self
+            .text_pref(PREF_SCREENER_DEFAULT_YES)?
+            .filter(|v| valid_screener_default_yes(v))
             .unwrap_or_else(|| "reception".to_string());
-        let non = self
-            .text_pref(PREF_PORTIER_DEFAUT_NON)?
-            .filter(|v| defaut_portier_non_valide(v))
+        let no = self
+            .text_pref(PREF_SCREENER_DEFAULT_NO)?
+            .filter(|v| valid_screener_default_no(v))
             .unwrap_or_else(|| "corbeille".to_string());
-        Ok((oui, non))
+        Ok((yes, no))
     }
 
-    /// Règle les défauts du Portier — vocabulaire FERMÉ, vérifié avant
-    /// toute écriture (décision pure) : le Oui prend une destination
-    /// (jamais `ecarte`), le Non une règle ou « écarter sans déplacer ».
-    pub fn set_portier_defauts(&mut self, oui: &str, non: &str) -> Result<(), Error> {
-        if !defaut_portier_oui_valide(oui) {
+    /// Sets the Screener's defaults — a CLOSED vocabulary, checked
+    /// before any write (pure decision): Yes takes a destination
+    /// (never `ecarte`), No a rule or “screen out without moving”.
+    pub fn set_screener_defaults(&mut self, yes: &str, no: &str) -> Result<(), Error> {
+        if !valid_screener_default_yes(yes) {
             return Err(Error::InvalidRouting(format!(
-                "défaut du Oui inconnu : {oui:?}"
+                "unknown Yes default: {yes:?}"
             )));
         }
-        if !defaut_portier_non_valide(non) {
-            return Err(Error::InvalidRouting(format!(
-                "défaut du Non inconnu : {non:?}"
-            )));
+        if !valid_screener_default_no(no) {
+            return Err(Error::InvalidRouting(format!("unknown No default: {no:?}")));
         }
         self.set_text_prefs(&[
-            (PREF_PORTIER_DEFAUT_OUI, oui),
-            (PREF_PORTIER_DEFAUT_NON, non),
+            (PREF_SCREENER_DEFAULT_YES, yes),
+            (PREF_SCREENER_DEFAULT_NO, no),
         ])
     }
 
-    /// Pose le verdict du Mode organisé sur un expéditeur
-    /// (PLAN-MODE-ORGANISE E1, D1 : routage LOCAL seul). Un seul
-    /// verdict par adresse — la pose écrase la décision précédente
-    /// (changer d'avis est un droit, patron du Portier). Le vocabulaire
-    /// est fermé et vérifié AVANT l'écriture (décision pure) ; une
-    /// règle du Non n'a de sens que sur un expéditeur écarté.
-    pub fn router_expediteur(
+    /// Sets the Organized mode verdict on a sender
+    /// (PLAN-MODE-ORGANISE E1, D1: LOCAL routing only). One verdict per
+    /// address — setting it overwrites the previous decision (changing
+    /// one's mind is a right, the Screener's pattern). The vocabulary
+    /// is closed and checked BEFORE the write (pure decision); a No
+    /// rule only makes sense on a screened-out sender.
+    pub fn route_sender(
         &self,
         address: &str,
         destination: &str,
-        regle: Option<&str>,
+        rule: Option<&str>,
         epoch: i64,
     ) -> Result<(), Error> {
-        valider_routage(destination, regle)?;
-        let Some(adresse) = adresse_images(Some(address.to_string())) else {
+        validate_routing(destination, rule)?;
+        let Some(address) = images_address(Some(address.to_string())) else {
             return Err(Error::InvalidEmailAddress(address.to_string()));
         };
-        // Verdict, sortie de l'attente et drapeaux des fils dans UNE
-        // transaction (E2) : un verdict à moitié appliqué laisserait un
-        // expéditeur au Portier ET dans sa vue.
+        // Verdict, exit from waiting, and thread flags in ONE
+        // transaction (E2): a half-applied verdict would leave a sender in
+        // the Screener AND in its view.
         let tx = self.0.unchecked_transaction()?;
-        poser_verdict(&tx, &adresse, destination, regle, epoch)?;
+        set_verdict(&tx, &address, destination, rule, epoch)?;
         tx.commit()?;
         Ok(())
     }
 
-    /// « Déplacer vers… » (E1) : pose le verdict DEPUIS un message —
-    /// l'adresse est lue en base (jamais de l'UI), normalisée et
-    /// validée par [`Store::router_expediteur`], LA porte unique.
+    /// “Move to…” (E1): sets the verdict FROM a message — the address
+    /// is read from the database (never from the UI), normalized and
+    /// validated by [`Store::route_sender`], THE single gate.
     ///
-    /// Revue E1 : la ligne servie est la TÊTE du fil — le dernier
-    /// message toutes boîtes confondues, Envoyés compris. S'ancrer
-    /// dessus routerait la PROPRE adresse de l'utilisateur dès qu'il a
-    /// répondu en dernier. L'adresse routée est donc celle du dernier
-    /// message du fil qui ne vient PAS du compte (les alias d'envoi
-    /// restent hors de cette garde — limite dite) ; un message hors
-    /// fil retombe sur sa propre enveloppe. Rend l'adresse routée ;
-    /// None si rien ne porte d'adresse (jamais un verdict fantôme).
-    pub fn router_expediteur_of(
+    /// E1 review: the row served is the HEAD of the thread — the last
+    /// message across all mailboxes, Sent included. Anchoring on it
+    /// would route the user's OWN address as soon as they replied last.
+    /// The routed address is therefore that of the last message of the
+    /// thread that does NOT come from the account (send aliases stay
+    /// outside this guard — a stated limit); a message outside a thread
+    /// falls back to its own envelope. Returns the routed address;
+    /// None if nothing carries an address (never a phantom verdict).
+    pub fn route_sender_of(
         &self,
         mailbox_id: i64,
         uid: Uid,
         destination: &str,
-        regle: Option<&str>,
+        rule: Option<&str>,
         epoch: i64,
     ) -> Result<Option<String>, Error> {
-        // La porte de validation d'abord — un vocabulaire troué ne se
-        // cache jamais derrière « message sans adresse » (revue E1).
-        valider_routage(destination, regle)?;
-        let du_fil: Option<String> = self
+        // The validation gate first — a broken vocabulary never hides
+        // behind “message without an address” (E1 review).
+        validate_routing(destination, rule)?;
+        let of_thread: Option<String> = self
             .0
             .query_row(
                 "SELECT te.sender_address
@@ -3251,20 +3263,20 @@ impl Store {
                 |row| row.get(0),
             )
             .optional()?;
-        let adresse = match du_fil {
+        let address = match of_thread {
             Some(a) => Some(a),
             None => self.sender_address_of(mailbox_id, uid)?,
         };
-        let Some(adresse) = adresse_images(adresse) else {
+        let Some(address) = images_address(address) else {
             return Ok(None);
         };
-        self.router_expediteur(&adresse, destination, regle, epoch)?;
-        Ok(Some(adresse))
+        self.route_sender(&address, destination, rule, epoch)?;
+        Ok(Some(address))
     }
 
-    /// L'adresse d'expéditeur d'UNE enveloppe — la lecture partagée
-    /// des portes qui résolvent côté cœur (garde d'images, routage) :
-    /// une seule copie, jamais une divergence (leçon A80).
+    /// The sender address of ONE envelope — the shared read of the
+    /// gates that resolve on the core side (image guard, routing): a
+    /// single copy, never a divergence (lesson A80).
     fn sender_address_of(&self, mailbox_id: i64, uid: Uid) -> Result<Option<String>, Error> {
         Ok(self
             .0
@@ -3277,31 +3289,32 @@ impl Store {
             .flatten())
     }
 
-    /// « Réintégrer » à l'historique du Portier : le verdict disparaît,
-    /// l'expéditeur redevient inconnu. La normalisation passe par LA
-    /// même autorité que la pose — sinon un verdict deviendrait
-    /// irrévocable le jour où elle évolue (leçon `revoke_images_sender`).
-    pub fn retirer_routage(&self, address: &str) -> Result<(), Error> {
-        let Some(adresse) = adresse_images(Some(address.to_string())) else {
+    /// “Reinstate” from the Screener's history: the verdict
+    /// disappears, the sender becomes unknown again. The normalization
+    /// goes through the SAME authority as the write — otherwise a
+    /// verdict would become irrevocable the day it changes (lesson
+    /// `revoke_images_sender`).
+    pub fn remove_routing(&self, address: &str) -> Result<(), Error> {
+        let Some(address) = images_address(Some(address.to_string())) else {
             return Ok(());
         };
-        let epoque = self.mode_organise_epoch()?;
+        let epoch = self.organized_mode_epoch()?;
         let tx = self.0.unchecked_transaction()?;
         tx.execute(
             "DELETE FROM routage_expediteurs WHERE address = ?1",
-            params![adresse],
+            params![address],
         )?;
-        // « Réintégrer » (E2) : un INCONNU — aucun courrier avant
-        // l'époque — redevient un expéditeur en attente, ses messages
-        // réapparaissent au Portier ; un ancien est simplement rendu à
-        // la Réception, jamais au guichet (D3 : son historique fait
-        // foi). Jamais soi (leçon E1). La porte de sortie suit la MÊME
-        // règle que l'arrivée (revue E2) : seul du courrier ARRIVÉ
-        // après l'époque réintègre — un expéditeur vu seulement en
-        // Archives ou aux Indésirables n'a jamais passé le guichet.
-        if let Some(epoque) = epoque
-            && !adresse_d_un_compte(&tx, &adresse)?
-            && !connu_avant_epoque(&tx, &adresse, epoque)?
+        // “Reinstate” (E2): an UNKNOWN sender — no mail before the
+        // epoch — becomes a waiting sender again, their messages
+        // reappear in the Screener; a known one is simply returned to
+        // the Inbox, never to the desk (D3: their history is
+        // authoritative). Never oneself (lesson E1). The exit gate
+        // follows the SAME rule as arrival (E2 review): only mail that
+        // ARRIVED after the epoch reinstates — a sender seen only in
+        // Archive or Junk never passed the desk.
+        if let Some(epoch) = epoch
+            && !account_address(&tx, &address)?
+            && !known_before_epoch(&tx, &address, epoch)?
             && tx
                 .prepare(
                     "SELECT 1 FROM envelopes e
@@ -3310,63 +3323,64 @@ impl Store {
                         AND (e.date_epoch > ?2 OR e.date_epoch IS NULL)
                         AND m.name = ?3 LIMIT 1",
                 )?
-                .exists(params![adresse, epoque, thread::RECEIVED_MAILBOX])?
+                .exists(params![address, epoch, thread::RECEIVED_MAILBOX])?
         {
             tx.execute(
                 "INSERT OR IGNORE INTO portier_attente (address) VALUES (?1)",
-                params![adresse],
+                params![address],
             )?;
         }
-        rafraichir_fils_de(&tx, &adresse)?;
+        refresh_threads_of(&tx, &address)?;
         tx.commit()?;
         Ok(())
     }
 
-    /// Le verdict posé sur un expéditeur, s'il existe.
-    pub fn routage_de(&self, address: &str) -> Result<Option<Routage>, Error> {
-        let Some(adresse) = adresse_images(Some(address.to_string())) else {
+    /// The verdict set on a sender, if it exists.
+    pub fn routing_of(&self, address: &str) -> Result<Option<Routing>, Error> {
+        let Some(address) = images_address(Some(address.to_string())) else {
             return Ok(None);
         };
-        let routage = self
+        let routing = self
             .0
             .query_row(
                 "SELECT address, destination, regle, epoch
                  FROM routage_expediteurs WHERE address = ?1",
-                params![adresse],
-                lire_routage,
+                params![address],
+                read_routing,
             )
             .optional()?;
-        Ok(routage)
+        Ok(routing)
     }
 
-    /// L'historique du Portier : toutes les décisions, la plus récente
-    /// en tête — l'œil y cherche le dernier verdict.
-    pub fn routages(&self) -> Result<Vec<Routage>, Error> {
+    /// The Screener's history: all decisions, the most recent first —
+    /// the eye looks for the last verdict there.
+    pub fn routings(&self) -> Result<Vec<Routing>, Error> {
         let mut stmt = self.0.prepare(
             "SELECT address, destination, regle, epoch
              FROM routage_expediteurs ORDER BY epoch DESC, address",
         )?;
-        let routages = stmt
-            .query_map([], lire_routage)?
+        let routings = stmt
+            .query_map([], read_routing)?
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(routages)
+        Ok(routings)
     }
 
-    /// Le guichet du Portier (E2) : un rang par expéditeur en attente —
-    /// l'adresse normalisée (la clé que le verdict prendra) et sa
-    /// DERNIÈRE arrivée postérieure à l'époque, au format des rangées
-    /// de la liste. Le plus récent en tête. Vide tant que le mode n'a
-    /// jamais été activé. Le guichet ne dit que les ARRIVÉES (revue
-    /// E2) : un message du même expéditeur déjà jeté ou archivé n'est
-    /// ni le rang ni le compte — la boîte du rang, c'est l'INBOX. Les
-    /// sondes suivent `idx_envelopes_sender` (0,32 ms à 200 k,
-    /// S2-bis) ; un rang dont le courrier a disparu ne se sert pas.
-    pub fn portier_attente(&self) -> Result<Vec<RangPortier>, Error> {
-        let Some(epoque) = self.mode_organise_epoch()? else {
+    /// The Screener's desk (E2): one rank per waiting sender — the
+    /// normalized address (the key the verdict will take) and its
+    /// LAST arrival after the epoch, in the format of list rows. The
+    /// most recent first. Empty as long as the mode has never been
+    /// activated. The desk only counts ARRIVALS (E2 review): a message
+    /// from the same sender already discarded or archived is neither
+    /// the rank nor the count — the rank's mailbox is the INBOX. The
+    /// probes follow `idx_envelopes_sender` (0.32 ms at 200 k,
+    /// S2-bis); a rank whose mail has disappeared is not served.
+    pub fn screener_waiting(&self) -> Result<Vec<ScreenerRank>, Error> {
+        let Some(epoch) = self.organized_mode_epoch()? else {
             return Ok(Vec::new());
         };
-        // `COALESCE` sur l'agrégat : le rang montre UN message — si son
-        // fil n'existe pas (boîte hors portée), il compte pour lui-même.
+        // `COALESCE` on the aggregate: the rank shows ONE message — if
+        // its thread doesn't exist (mailbox out of scope), it counts for
+        // itself.
         let sql = format!(
             "{SELECT_UNIFIED}, COALESCE(t.size, 1), COALESCE(t.unseen, 1 - e.seen), pa.address
              FROM portier_attente pa
@@ -3383,23 +3397,23 @@ impl Store {
              ORDER BY e.date_epoch DESC, e.uid DESC"
         );
         let mut stmt = self.0.prepare(&sql)?;
-        let rangs = stmt
-            .query_map(params![epoque, thread::RECEIVED_MAILBOX], |row| {
-                Ok(RangPortier {
-                    ligne: row_to_threaded(row)?,
+        let ranks = stmt
+            .query_map(params![epoch, thread::RECEIVED_MAILBOX], |row| {
+                Ok(ScreenerRank {
+                    row: row_to_threaded(row)?,
                     address: row.get(19)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(rangs)
+        Ok(ranks)
     }
 
-    /// La pastille du Portier : combien de MESSAGES attendent — les
-    /// arrivées postérieures à l'époque des expéditeurs en attente, la
-    /// même portée que le guichet (jamais un compte que la page ne
-    /// saurait montrer). Somme d'intervalles d'index, 0,26 ms à 200 k.
-    pub fn portier_total(&self) -> Result<u64, Error> {
-        let Some(epoque) = self.mode_organise_epoch()? else {
+    /// The Screener's badge: how many MESSAGES are waiting — the
+    /// arrivals after the epoch of the waiting senders, the same scope
+    /// as the desk (never a count the page couldn't show). Sum of
+    /// index intervals, 0.26 ms at 200 k.
+    pub fn screener_total(&self) -> Result<u64, Error> {
+        let Some(epoch) = self.organized_mode_epoch()? else {
             return Ok(0);
         };
         let total: i64 = self.0.query_row(
@@ -3408,66 +3422,66 @@ impl Store {
                      WHERE e.sender_norm = pa.address
                        AND (e.date_epoch > ?1 OR e.date_epoch IS NULL))), 0)
              FROM portier_attente pa",
-            params![epoque, thread::RECEIVED_MAILBOX],
+            params![epoch, thread::RECEIVED_MAILBOX],
             |row| row.get(0),
         )?;
         Ok(total as u64)
     }
 
-    /// RETOURS-14 R4 (revue) — les ADRESSES seules du guichet, pour le
-    /// badge « En attente au Portier » du fil : `portier_attente()`
-    /// construit une rangée complète par expéditeur, ce que le badge
-    /// n'a que faire — et le guichet n'est pas borné.
-    pub fn portier_adresses(&self) -> Result<Vec<String>, Error> {
+    /// RETOURS-14 R4 (review) — the ADDRESSES alone from the desk,
+    /// for the thread's “Waiting in the Screener” badge:
+    /// `screener_waiting()` builds a full row per sender, which the
+    /// badge has no use for — and the desk is unbounded.
+    pub fn screener_addresses(&self) -> Result<Vec<String>, Error> {
         let mut stmt = self
             .0
             .prepare("SELECT address FROM portier_attente ORDER BY address")?;
-        let adresses = stmt
+        let addresses = stmt
             .query_map([], |row| row.get(0))?
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(adresses)
+        Ok(addresses)
     }
 
     // -----------------------------------------------------------------
-    // Le Nettoyage de printemps (PLAN-HORIZON-NETTOYAGE volet B).
+    // Spring cleaning (PLAN-HORIZON-NETTOYAGE part B).
     // -----------------------------------------------------------------
 
-    /// Les boîtes qu'un périmètre couvre (D6, vocabulaire CE) — résolu
-    /// par compte depuis les canoniques. Envoyés, Brouillons,
-    /// Indésirables et Corbeille sont TOUJOURS hors périmètre (on ne
-    /// trie pas ce qui est déjà traité ou écrit par soi). L'archive
-    /// INTÉGRALE (« Tous les messages ») rejouerait toute la boîte :
-    /// hors périmètre — limite dite au PLAN.
-    fn boites_du_perimetre(&self, perimetre: &str) -> Result<Vec<i64>, Error> {
-        let dossiers_inclus = matches!(perimetre, "dossiers" | "dossiersArchives");
-        let archives_incluses = matches!(perimetre, "archives" | "dossiersArchives");
+    /// The mailboxes a scope covers (D6, CE vocabulary) — resolved
+    /// per account from the canonicals. Sent, Drafts, Junk and Trash
+    /// are ALWAYS out of scope (we don't sort what is already handled
+    /// or written by oneself). The FULL archive (“All messages”)
+    /// would replay the entire mailbox: out of scope — a stated limit
+    /// in the PLAN.
+    fn mailboxes_in_scope(&self, scope: &str) -> Result<Vec<i64>, Error> {
+        let folders_included = matches!(scope, "dossiers" | "dossiersArchives");
+        let archives_included = matches!(scope, "archives" | "dossiersArchives");
         let mut ids = Vec::new();
         let mut stmt = self
             .0
             .prepare_cached("SELECT id, name FROM mailboxes WHERE account_id = ?1")?;
         for account in self.accounts()? {
             let canon = self.canonical_folders(account.id)?;
-            let boites = stmt
+            let mailboxes = stmt
                 .query_map([account.id], |row| {
                     Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
-            for (id, name) in boites {
-                let est = |canonique: &Option<String>| canonique.as_deref() == Some(name.as_str());
-                let inclue = if name == canon.reception {
+            for (id, name) in mailboxes {
+                let is = |canonical: &Option<String>| canonical.as_deref() == Some(name.as_str());
+                let included = if name == canon.reception {
                     true
-                } else if est(&canon.archives) {
-                    archives_incluses && !canon.archives_integrale
-                } else if est(&canon.envoyes)
-                    || est(&canon.brouillons)
-                    || est(&canon.indesirables)
-                    || est(&canon.corbeille)
+                } else if is(&canon.archives) {
+                    archives_included && !canon.archives_integrale
+                } else if is(&canon.envoyes)
+                    || is(&canon.brouillons)
+                    || is(&canon.indesirables)
+                    || is(&canon.corbeille)
                 {
                     false
                 } else {
-                    dossiers_inclus
+                    folders_included
                 };
-                if inclue {
+                if included {
                     ids.push(id);
                 }
             }
@@ -3475,10 +3489,10 @@ impl Store {
         Ok(ids)
     }
 
-    /// La liste SQL des ids de boîtes du périmètre — UNE écriture
-    /// (revue 2026-08-30 : trois copies divergeaient en germe). Les ids
-    /// viennent de NOTRE base — jamais d'une saisie.
-    fn liste_ids(ids: &[i64]) -> String {
+    /// The SQL list of mailbox ids in scope — ONE definition (review
+    /// 2026-08-30: three copies were starting to diverge). The ids
+    /// come from OUR own database — never from user input.
+    fn id_list(ids: &[i64]) -> String {
         if ids.is_empty() {
             "NULL".to_string()
         } else {
@@ -3489,17 +3503,18 @@ impl Store {
         }
     }
 
-    /// Le critère partagé des groupes : le courrier de la plage dans le
-    /// périmètre, hors expéditeurs déjà routés (D7), hors soi, hors
-    /// enveloppes sans adresse. LA seule définition de « la plage dans
-    /// le périmètre » — groupes, stock du verdict et vue d'un groupe la
-    /// partagent. Un message SANS date compte dans toute plage
-    /// (précédent A98 : « sans date = aujourd'hui » — limite dite au
-    /// PLAN : il suit aussi les règles du stock).
-    fn nettoyage_critere(ids: &[i64]) -> String {
-        let liste = Self::liste_ids(ids);
+    /// The shared criterion for groups: mail in the range within the
+    /// scope, excluding senders already routed (D7), excluding
+    /// oneself, excluding envelopes without an address. THE only
+    /// definition of “the range within the scope” — groups, the
+    /// verdict's stock, and a group's view all share it. A message
+    /// WITHOUT a date counts in every range (precedent A98: “no date
+    /// = today” — a stated limit in the PLAN: it also follows the
+    /// stock's rules).
+    fn cleanup_criterion(ids: &[i64]) -> String {
+        let list = Self::id_list(ids);
         format!(
-            "e.mailbox_id IN ({liste})
+            "e.mailbox_id IN ({list})
                AND (e.date_epoch > ?1 OR e.date_epoch IS NULL)
                AND e.sender_norm IS NOT NULL
                AND e.sender_norm NOT IN (SELECT address FROM routage_expediteurs WHERE address IS NOT NULL)
@@ -3507,76 +3522,76 @@ impl Store {
         )
     }
 
-    /// Le SQL des groupes — UNE passe : avec un max() SEUL, SQLite
-    /// garantit que les colonnes nues (sender, subject) viennent de la
-    /// ligne du max — le rang montre l'objet du dernier message DE LA
-    /// PORTÉE (revue 2026-08-30 : deux sous-requêtes corrélées non
-    /// bornées pouvaient afficher l'objet d'un message hors session, et
-    /// repayaient le tri de l'expéditeur quatre fois par groupe).
+    /// The SQL for groups — ONE pass: with a SINGLE max(), SQLite
+    /// guarantees the bare columns (sender, subject) come from the max
+    /// row — the rank shows the subject of the last message IN SCOPE
+    /// (review 2026-08-30: two unbounded correlated subqueries could
+    /// show the subject of a message outside the session, and repaid
+    /// the sender sort four times per group).
     ///
-    /// En DEUX phases sur l'index des expéditeurs (PLAN-AUDIT-V2 E4) :
-    /// l'agrégat est COUVERT par `idx_envelopes_sender` (expéditeur,
-    /// date, boîte — jamais une ligne de table lue), puis l'objet et le
-    /// nom du dernier message se cherchent par le même index. Mesuré sur
-    /// 200 k enveloppes et 5 000 expéditeurs : 380 ms → moins de 100
-    /// (l'ancienne passe parcourait l'index de DATE puis un B-tree
-    /// temporaire). `INDEXED BY` : le planificateur préférait l'index de
-    /// date — le test de plan `les_groupes_du_nettoyage_se_lisent_par_
-    /// l_index_des_expediteurs` tient la promesse. Le `GROUP BY` externe
-    /// absorbe une égalité de date (deux messages d'un expéditeur à la
-    /// même seconde) : un rang par groupe, jamais deux.
-    fn nettoyage_groupes_sql(ids: &[i64]) -> String {
-        let critere = Self::nettoyage_critere(ids);
-        let liste = Self::liste_ids(ids);
+    /// In TWO phases over the sender index (PLAN-AUDIT-V2 E4): the
+    /// aggregate is COVERED by `idx_envelopes_sender` (sender, date,
+    /// mailbox — never a table row read), then the subject and name
+    /// of the last message are looked up through the same index.
+    /// Measured on 200 k envelopes and 5 000 senders: 380 ms → under
+    /// 100 (the old pass walked the DATE index then a temporary
+    /// B-tree). `INDEXED BY`: the planner preferred the date index —
+    /// the plan test `cleanup_groups_are_read_via_the_senders_index`
+    /// keeps the promise. The outer `GROUP BY` absorbs a date tie
+    /// (two messages from a sender in the same second): one rank per
+    /// group, never two.
+    fn cleanup_groups_sql(ids: &[i64]) -> String {
+        let criterion = Self::cleanup_criterion(ids);
+        let list = Self::id_list(ids);
         format!(
             "SELECT g.sender_norm, g.n, g.dernier, e.sender, e.subject
                FROM (SELECT e.sender_norm AS sender_norm, COUNT(*) AS n,
                             MAX(e.date_epoch) AS dernier
-                       FROM envelopes e INDEXED BY {INDEX_EXPEDITEURS}
-                      WHERE {critere}
+                       FROM envelopes e INDEXED BY {SENDERS_INDEX}
+                      WHERE {criterion}
                       GROUP BY e.sender_norm) g
-               CROSS JOIN envelopes e INDEXED BY {INDEX_EXPEDITEURS}
+               CROSS JOIN envelopes e INDEXED BY {SENDERS_INDEX}
                  ON e.sender_norm = g.sender_norm
                 AND e.date_epoch IS g.dernier
-                AND e.mailbox_id IN ({liste})
+                AND e.mailbox_id IN ({list})
               GROUP BY g.sender_norm
               ORDER BY g.dernier DESC, g.sender_norm"
         )
     }
 
-    /// Le courrier d'un groupe — LE critère partagé : la vue montre
-    /// exactement ce que le verdict traitera. `INDEXED BY` (PLAN-AUDIT-V2
-    /// E4) : sans lui, le SQLite embarqué préférait l'index de date et
-    /// balayait la boîte entière pour 40 lignes — 116 ms sur 200 k.
-    fn nettoyage_messages_sql(ids: &[i64]) -> String {
-        let critere = Self::nettoyage_critere(ids);
+    /// A group's mail — THE shared criterion: the view shows exactly
+    /// what the verdict will process. `INDEXED BY` (PLAN-AUDIT-V2
+    /// E4): without it, the embedded SQLite preferred the date index
+    /// and scanned the entire mailbox for 40 rows — 116 ms on 200k.
+    fn cleanup_messages_sql(ids: &[i64]) -> String {
+        let criterion = Self::cleanup_criterion(ids);
         format!(
             "{SELECT_UNIFIED}, COALESCE(t.size, 1), COALESCE(t.unseen, 1 - e.seen)
-             FROM envelopes e INDEXED BY {INDEX_EXPEDITEURS}
+             FROM envelopes e INDEXED BY {SENDERS_INDEX}
              JOIN mailboxes m ON m.id = e.mailbox_id
              JOIN accounts a ON a.id = m.account_id
              LEFT JOIN threads t ON t.id = e.thread_id
              LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
-             WHERE e.sender_norm = ?2 AND {critere}
+             WHERE e.sender_norm = ?2 AND {criterion}
              ORDER BY e.date_epoch DESC, e.uid DESC"
         )
     }
 
-    fn nettoyage_compter_groupes(&self, ids: &[i64], borne: i64) -> Result<u64, Error> {
-        let critere = Self::nettoyage_critere(ids);
+    fn cleanup_count_groups(&self, ids: &[i64], bound: i64) -> Result<u64, Error> {
+        let criterion = Self::cleanup_criterion(ids);
         let total: i64 = self.0.query_row(
             &format!(
-                "SELECT COUNT(*) FROM (SELECT 1 FROM envelopes e INDEXED BY {INDEX_EXPEDITEURS}
-                  WHERE {critere} GROUP BY e.sender_norm)"
+                "SELECT COUNT(*) FROM (SELECT 1 FROM envelopes e INDEXED BY {SENDERS_INDEX}
+                  WHERE {criterion} GROUP BY e.sender_norm)"
             ),
-            params![borne],
+            params![bound],
             |row| row.get(0),
         )?;
         Ok(total as u64)
     }
 
-    /// La session en cours — `None` : aucun nettoyage entamé.
-    pub fn nettoyage_etat(&self) -> Result<Option<SessionNettoyage>, Error> {
+    /// The current session — `None`: no cleanup started.
+    pub fn cleanup_state(&self) -> Result<Option<CleanupSession>, Error> {
         Ok(self
             .0
             .query_row(
@@ -3584,184 +3599,181 @@ impl Store {
                    FROM nettoyage_session WHERE id = 1",
                 [],
                 |row| {
-                    Ok(SessionNettoyage {
-                        plage: row.get(0)?,
-                        perimetre: row.get(1)?,
-                        borne_epoch: row.get(2)?,
+                    Ok(CleanupSession {
+                        range: row.get(0)?,
+                        scope: row.get(1)?,
+                        bound_epoch: row.get(2)?,
                         total: row.get::<_, i64>(3)? as u64,
-                        traites: row.get::<_, i64>(4)? as u64,
+                        handled: row.get::<_, i64>(4)? as u64,
                     })
                 },
             )
             .optional()?)
     }
 
-    /// Démarre un nettoyage (remplace la session en cours) : la borne
-    /// est FIGÉE ici — une session ne glisse pas avec l'horloge — et le
-    /// total de groupes devient le dénominateur de la progression.
-    pub fn nettoyage_demarrer(
+    /// Starts a cleanup (replaces the current session): the bound is
+    /// FIXED here — a session doesn't drift with the clock — and the
+    /// group total becomes the denominator of progress.
+    pub fn cleanup_start(
         &self,
-        plage: &str,
-        perimetre: &str,
+        range: &str,
+        scope: &str,
         now: i64,
-    ) -> Result<SessionNettoyage, Error> {
-        if !PLAGES_NETTOYAGE.contains(&plage) {
-            return Err(Error::Corrupt(format!("plage inconnue : {plage:?}")));
+    ) -> Result<CleanupSession, Error> {
+        if !CLEANUP_RANGES.contains(&range) {
+            return Err(Error::Corrupt(format!("unknown range: {range:?}")));
         }
-        if !PERIMETRES_NETTOYAGE.contains(&perimetre) {
-            return Err(Error::Corrupt(format!("périmètre inconnu : {perimetre:?}")));
+        if !CLEANUP_SCOPES.contains(&scope) {
+            return Err(Error::Corrupt(format!("unknown scope: {scope:?}")));
         }
-        let borne = crate::backfill::horizon_epoch(plage, now);
-        let ids = self.boites_du_perimetre(perimetre)?;
-        let total = self.nettoyage_compter_groupes(&ids, borne)?;
+        let bound = crate::backfill::horizon_epoch(range, now);
+        let ids = self.mailboxes_in_scope(scope)?;
+        let total = self.cleanup_count_groups(&ids, bound)?;
         self.0.execute(
             "INSERT OR REPLACE INTO nettoyage_session
                (id, plage, perimetre, borne_epoch, total, traites)
              VALUES (1, ?1, ?2, ?3, ?4, 0)",
-            params![plage, perimetre, borne, total as i64],
+            params![range, scope, bound, total as i64],
         )?;
-        Ok(SessionNettoyage {
-            plage: plage.to_string(),
-            perimetre: perimetre.to_string(),
-            borne_epoch: borne,
+        Ok(CleanupSession {
+            range: range.to_string(),
+            scope: scope.to_string(),
+            bound_epoch: bound,
             total,
-            traites: 0,
+            handled: 0,
         })
     }
 
-    /// Les groupes restants de la session : un expéditeur × son
-    /// courrier de la plage, le plus récent en tête. Vide sans session.
-    pub fn nettoyage_groupes(&self) -> Result<Vec<GroupeNettoyage>, Error> {
-        let Some(session) = self.nettoyage_etat()? else {
+    /// The session's remaining groups: a sender × their mail in the
+    /// range, the most recent first. Empty without a session.
+    pub fn cleanup_groups(&self) -> Result<Vec<CleanupGroup>, Error> {
+        let Some(session) = self.cleanup_state()? else {
             return Ok(Vec::new());
         };
-        let ids = self.boites_du_perimetre(&session.perimetre)?;
-        let mut stmt = self.0.prepare(&Self::nettoyage_groupes_sql(&ids))?;
-        let groupes = stmt
-            .query_map(params![session.borne_epoch], |row| {
-                Ok(GroupeNettoyage {
+        let ids = self.mailboxes_in_scope(&session.scope)?;
+        let mut stmt = self.0.prepare(&Self::cleanup_groups_sql(&ids))?;
+        let groups = stmt
+            .query_map(params![session.bound_epoch], |row| {
+                Ok(CleanupGroup {
                     address: row.get(0)?,
                     messages: row.get::<_, i64>(1)? as u64,
-                    dernier_epoch: row.get::<_, Option<i64>>(2)?.unwrap_or(0),
-                    qui: row.get(3)?,
-                    dernier_objet: row.get(4)?,
+                    last_epoch: row.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                    who: row.get(3)?,
+                    last_subject: row.get(4)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(groupes)
+        Ok(groups)
     }
 
-    /// Le verdict de GROUPE (D5 : le stock ET l'avenir) — la porte du
-    /// Portier pour l'avenir (routage, sortie d'attente, drapeaux),
-    /// plus l'application de la règle au stock DE LA PLAGE : une action
-    /// par message en `pending_actions`, DANS la transaction du verdict
-    /// (patron E3 — jamais une fenêtre de crash entre le courrier et
-    /// l'intention), garde anti-doublon, `corbeille` → la corbeille du
-    /// serveur, JAMAIS une suppression définitive (D4) ; `spam` sans
-    /// dossier résolu ne fait RIEN (jamais une destination inventée).
-    /// Rend le nombre de messages du stock traités.
-    pub fn nettoyage_verdict(
+    /// The GROUP verdict (D5: the stock AND the future) — the
+    /// Screener's gate for the future (routing, exit from waiting,
+    /// flags), plus applying the rule to the stock WITHIN THE RANGE:
+    /// one action per message in `pending_actions`, WITHIN the
+    /// verdict's transaction (E3 pattern — never a crash window
+    /// between the mail and the intent), duplicate guard, `corbeille`
+    /// → the server's trash, NEVER a permanent deletion (D4); `spam`
+    /// without a resolved folder does NOTHING (never an invented
+    /// destination). Returns the number of stock messages handled.
+    pub fn cleanup_verdict(
         &mut self,
         address: &str,
         destination: &str,
-        regle: Option<&str>,
+        rule: Option<&str>,
         epoch: i64,
     ) -> Result<usize, Error> {
-        let Some(session) = self.nettoyage_etat()? else {
-            return Err(Error::Corrupt("aucun nettoyage en cours".to_string()));
+        let Some(session) = self.cleanup_state()? else {
+            return Err(Error::Corrupt("no cleanup in progress".to_string()));
         };
-        valider_routage(destination, regle)?;
-        let Some(adresse) = adresse_images(Some(address.to_string())) else {
+        validate_routing(destination, rule)?;
+        let Some(address) = images_address(Some(address.to_string())) else {
             return Err(Error::InvalidEmailAddress(address.to_string()));
         };
-        let ids = self.boites_du_perimetre(&session.perimetre)?;
-        // Le dossier indésirable de CHAQUE compte, résolu AVANT la
-        // transaction (même règle que l'arrivée E3).
-        let mut indesirables: BTreeMap<i64, Option<String>> = BTreeMap::new();
-        if destination == "ecarte" && regle == Some("spam") {
+        let ids = self.mailboxes_in_scope(&session.scope)?;
+        // Each account's junk folder, resolved BEFORE the transaction
+        // (same rule as arrival E3).
+        let mut junk: BTreeMap<i64, Option<String>> = BTreeMap::new();
+        if destination == "ecarte" && rule == Some("spam") {
             for account in self.accounts()? {
-                indesirables.insert(account.id, self.canonical_folders(account.id)?.indesirables);
+                junk.insert(account.id, self.canonical_folders(account.id)?.indesirables);
             }
         }
-        let mut retraits: Vec<(i64, Uid)> = Vec::new();
+        let mut removals: Vec<(i64, Uid)> = Vec::new();
         let tx = self.0.unchecked_transaction()?;
         if destination == "ecarte"
-            && let Some(regle) = regle
+            && let Some(rule) = rule
         {
-            // Le stock : LE critère partagé (même définition que les
-            // groupes et la vue), restreint à l'adresse — lu AVANT
-            // `poser_verdict`, qui ferait sortir l'expéditeur du
-            // critère (D7 exclut les routés).
-            let critere = Self::nettoyage_critere(&ids);
+            // The stock: THE shared criterion (same definition as the
+            // groups and the view), restricted to the address — read
+            // BEFORE `set_verdict`, which would take the sender out of
+            // the criterion (D7 excludes routed senders).
+            let criterion = Self::cleanup_criterion(&ids);
             let stock: Vec<(i64, Uid, i64)> = {
                 let mut stmt = tx.prepare(&format!(
                     "SELECT e.mailbox_id, e.uid, m.account_id
                        FROM envelopes e JOIN mailboxes m ON m.id = e.mailbox_id
-                      WHERE e.sender_norm = ?2 AND {critere}"
+                      WHERE e.sender_norm = ?2 AND {criterion}"
                 ))?;
-                stmt.query_map(params![session.borne_epoch, adresse], |row| {
+                stmt.query_map(params![session.bound_epoch, address], |row| {
                     Ok((row.get(0)?, row.get(1)?, row.get(2)?))
                 })?
                 .collect::<Result<Vec<_>, _>>()?
             };
             for (mailbox_id, uid, account_id) in stock {
-                let action = match regle {
+                let action = match rule {
                     "archive" => Some(Action::Archive),
                     "corbeille" => Some(Action::Delete),
-                    "spam" => indesirables
-                        .get(&account_id)
-                        .cloned()
-                        .flatten()
-                        .map(Action::MoveTo),
+                    "spam" => junk.get(&account_id).cloned().flatten().map(Action::MoveTo),
                     _ => None,
                 };
                 let Some(action) = action else { continue };
-                // Une action DÉJÀ en file (un geste utilisateur d'il y a
-                // quelques secondes — mark_seen, archivage) : on ne
-                // journalise PAS la nôtre ET on ne retire PAS la copie
-                // locale (revue 2026-08-30 : le patron d'arrivée E3
-                // suppose un message NEUF sans action possible ; sur du
-                // stock, retirer sans avoir posé l'intention ferait
-                // croire au nettoyage un message que le serveur garde —
-                // il reviendrait à la relève suivante). Le message reste
-                // visible, cohérent avec le serveur — limite dite.
-                let deja = tx
+                // An action ALREADY queued (a user gesture from a few
+                // seconds ago — mark_seen, archiving): we do NOT log
+                // ours AND we do NOT remove the local copy (review
+                // 2026-08-30: the E3 arrival pattern assumes a NEW
+                // message with no possible action; on stock, removing
+                // without having set the intent would make cleanup
+                // believe a message the server keeps has gone — it
+                // would come back on the next poll). The message stays
+                // visible, consistent with the server — a stated limit.
+                let already = tx
                     .prepare_cached(
                         "SELECT 1 FROM pending_actions WHERE mailbox_id = ?1 AND uid = ?2",
                     )?
                     .exists(params![mailbox_id, uid])?;
-                if deja {
+                if already {
                     continue;
                 }
                 tx.prepare_cached(
                     "INSERT INTO pending_actions (mailbox_id, uid, kind) VALUES (?1, ?2, ?3)",
                 )?
                 .execute(params![mailbox_id, uid, action.to_kind()])?;
-                retraits.push((mailbox_id, uid));
+                removals.push((mailbox_id, uid));
             }
         }
-        poser_verdict(&tx, &adresse, destination, regle, epoch)?;
+        set_verdict(&tx, &address, destination, rule, epoch)?;
         tx.execute(
             "UPDATE nettoyage_session SET traites = traites + 1 WHERE id = 1",
             [],
         )?;
         tx.commit()?;
-        // Le retrait local APRÈS le commit (patron E3) : l'intention est
-        // en base, un crash ici ne perd rien — la copie locale partira à
-        // la réconciliation suivante. En UNE transaction (revue
-        // 2026-08-30 : un retrait par autocommit payait un fsync par
-        // message — des secondes sur un gros groupe, sous le verrou des
-        // commandes).
-        let traites = retraits.len();
-        if !retraits.is_empty() {
+        // The local removal AFTER the commit (E3 pattern): the intent
+        // is in the database, a crash here loses nothing — the local
+        // copy will go at the next reconciliation. In ONE transaction
+        // (review 2026-08-30: a removal per autocommit paid an fsync
+        // per message — seconds on a large group, under the commands
+        // lock).
+        let handled = removals.len();
+        if !removals.is_empty() {
             let tx = self.0.unchecked_transaction()?;
-            // UNE fois par fil touché, jamais par message (PLAN-AUDIT-V2
-            // E4, le patron de `remove_absent`) : un groupe de N messages
-            // d'un même expéditeur vit souvent dans quelques fils —
-            // `remove_local` par message rafraîchissait chacun N fois.
+            // ONCE per thread touched, never per message
+            // (PLAN-AUDIT-V2 E4, the `remove_absent` pattern): a group
+            // of N messages from the same sender often lives in a few
+            // threads — `remove_local` per message refreshed each one
+            // N times.
             let mut touched: BTreeSet<i64> = BTreeSet::new();
-            for (mailbox_id, uid) in retraits {
-                if let Some(thread) = purger_message(&tx, mailbox_id, uid)? {
+            for (mailbox_id, uid) in removals {
+                if let Some(thread) = purge_message(&tx, mailbox_id, uid)? {
                     touched.insert(thread);
                 }
             }
@@ -3770,47 +3782,47 @@ impl Store {
             }
             tx.commit()?;
         }
-        Ok(traites)
+        Ok(handled)
     }
 
-    /// Le courrier d'un groupe, dans la plage et le périmètre de la
-    /// session — la lecture que l'écran de tri offre quand on entre
-    /// dans un groupe (voir, jamais trier au message : le verdict
-    /// reste au groupe, refus de périmètre du PLAN). Le plus récent en
-    /// tête. Vide sans session.
-    pub fn nettoyage_messages(&self, address: &str) -> Result<Vec<UnifiedRow>, Error> {
-        let Some(session) = self.nettoyage_etat()? else {
+    /// A group's mail, within the session's range and scope — the
+    /// read the sort screen offers when entering a group (view only,
+    /// never sort at the message level: the verdict stays at the
+    /// group, a scope refusal from the PLAN). The most recent first.
+    /// Empty without a session.
+    pub fn cleanup_messages(&self, address: &str) -> Result<Vec<UnifiedRow>, Error> {
+        let Some(session) = self.cleanup_state()? else {
             return Ok(Vec::new());
         };
-        let Some(adresse) = adresse_images(Some(address.to_string())) else {
+        let Some(address) = images_address(Some(address.to_string())) else {
             return Ok(Vec::new());
         };
-        let ids = self.boites_du_perimetre(&session.perimetre)?;
-        // LE critère partagé : la vue d'un groupe montre exactement ce
-        // que le verdict traitera.
-        let sql = Self::nettoyage_messages_sql(&ids);
+        let ids = self.mailboxes_in_scope(&session.scope)?;
+        // THE shared criterion: a group's view shows exactly what the
+        // verdict will process.
+        let sql = Self::cleanup_messages_sql(&ids);
         let mut stmt = self.0.prepare(&sql)?;
-        let rangs = stmt
-            .query_map(params![session.borne_epoch, adresse], row_to_threaded)?
+        let rows = stmt
+            .query_map(params![session.bound_epoch, address], row_to_threaded)?
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(rangs)
+        Ok(rows)
     }
 
-    /// Clôt la session (la progression s'efface ; les verdicts, eux,
-    /// restent posés — ils vivent dans le routage).
-    pub fn nettoyage_terminer(&self) -> Result<(), Error> {
+    /// Closes the session (the progress is cleared; the verdicts,
+    /// though, stay set — they live in the routing).
+    pub fn cleanup_finish(&self) -> Result<(), Error> {
         self.0
             .execute("DELETE FROM nettoyage_session WHERE id = 1", [])?;
         Ok(())
     }
 
-    /// Les messages d'une conversation, du plus ancien au plus récent —
-    /// l'ordre de lecture d'un échange.
-    /// Les messages d'un fil, en TROIS colonnes (compte, boîte, UID) —
-    /// ce qu'un geste de masse a besoin de savoir, sans hydrater les
-    /// rangées entières (revue de la vague 2 : `thread_messages` joignait
-    /// corps et fils pour trois scalaires).
-    pub fn messages_du_fil(&self, thread_id: i64) -> Result<Vec<(i64, String, Uid)>, Error> {
+    /// The messages of a conversation, from oldest to most recent —
+    /// the reading order of an exchange.
+    /// The messages of a thread, in THREE columns (account, mailbox,
+    /// UID) — what a bulk gesture needs to know, without hydrating
+    /// full rows (wave 2 review: `thread_messages` joined body and
+    /// threads for three scalars).
+    pub fn messages_of_thread(&self, thread_id: i64) -> Result<Vec<(i64, String, Uid)>, Error> {
         let mut stmt = self.0.prepare_cached(
             "SELECT m.account_id, m.name, e.uid FROM envelopes e
              JOIN mailboxes m ON m.id = e.mailbox_id
@@ -3825,11 +3837,11 @@ impl Store {
     }
 
     pub fn thread_messages(&self, thread_id: i64) -> Result<Vec<UnifiedRow>, Error> {
-        // Jointure sur `threads`, et non le mapping « message seul » :
-        // chaque message doit repartir en connaissant la taille de SON
-        // fil. Sans elle il vaudrait 1, et l'écran conclurait qu'il n'y a
-        // pas de conversation à montrer — au moment précis où on la
-        // parcourt.
+        // Join on `threads`, not the “message alone” mapping: each
+        // message must come back knowing the size of ITS thread.
+        // Without it, it would be 1, and the screen would conclude
+        // there is no conversation to show — at the exact moment it's
+        // being browsed.
         let mut stmt = self.0.prepare(&format!(
             "{SELECT_UNIFIED}{THREAD_AGGREGATE}
              FROM envelopes e
@@ -3846,11 +3858,11 @@ impl Store {
         Ok(rows)
     }
 
-    /// Une enveloppe précise — le contexte nécessaire pour répondre
-    /// (adresse brute de l'expéditeur, Message-ID du fil).
-    /// Le `Reply-To` d'un message, s'il en porte un — lu à la demande
-    /// (« Répondre »), jamais dans les lignes de liste.
-    pub fn reply_to_de(
+    /// A specific envelope — the context needed to reply (the
+    /// sender's raw address, the thread's Message-ID).
+    /// A message's `Reply-To`, if it carries one — read on demand
+    /// (“Reply”), never in list rows.
+    pub fn reply_to_of(
         &self,
         account_id: i64,
         mailbox: &str,
@@ -3867,8 +3879,8 @@ impl Store {
             )
             .optional()?
             .flatten()
-            .map(|adresse| adresse.trim().to_string())
-            .filter(|adresse| !adresse.is_empty()))
+            .map(|address| address.trim().to_string())
+            .filter(|address| !address.is_empty()))
     }
 
     pub fn envelope(
@@ -3891,17 +3903,18 @@ impl Store {
         Ok(envelope)
     }
 
-    /// La chaîne `References` qu'une réponse à ce message doit porter
-    /// (RFC 5322 §3.6.4) : les `References` du parent + son `Message-ID`.
-    /// `None` : message inconnu ou sans Message-ID. E7 : avant, l'envoi ne
-    /// portait que le parent et cassait le fil chez le destinataire.
-    pub fn references_de(
+    /// The `References` chain a reply to this message must carry
+    /// (RFC 5322 §3.6.4): the parent's `References` + its
+    /// `Message-ID`. `None`: unknown message or no Message-ID. E7:
+    /// before, the send only carried the parent and broke the thread
+    /// for the recipient.
+    pub fn references_of(
         &self,
         account_id: i64,
         mailbox: &str,
         uid: Uid,
     ) -> Result<Option<String>, Error> {
-        let ligne: Option<(Option<String>, Option<String>)> = self
+        let line: Option<(Option<String>, Option<String>)> = self
             .0
             .query_row(
                 "SELECT e.refs, e.message_id
@@ -3911,7 +3924,7 @@ impl Store {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()?;
-        Ok(ligne.and_then(|(refs, message_id)| {
+        Ok(line.and_then(|(refs, message_id)| {
             let message_id = message_id?;
             let refs = refs.unwrap_or_default();
             let refs = refs.trim();
@@ -3941,13 +3954,14 @@ impl Store {
         Ok(max)
     }
 
-    /// Combien d'enveloppes d'une boîte portent un UID STRICTEMENT
-    /// au-dessus du repère — les ARRIVÉES d'une relève qui vient de se
-    /// solder (PLAN-REACTIVITE E4, terrain du 2026-08-14). Le `fetched`
-    /// du rapport ne sait pas les compter : un delta CONDSTORE y mêle
-    /// tous les drapeaux glissés — et Gmail fait glisser le modseq à
-    /// chaque étiquette. Seul l'UID sépare le neuf du retouché.
-    pub fn arrivees_depuis(&self, account_id: i64, mailbox: &str, uid: Uid) -> Result<u64, Error> {
+    /// How many envelopes of a mailbox carry a UID STRICTLY above the
+    /// marker — the ARRIVALS of a poll that has just closed out
+    /// (PLAN-REACTIVITE E4, field session of 2026-08-14). The
+    /// report's `fetched` can't count them: a CONDSTORE delta mixes
+    /// in every flag that slipped — and Gmail slips the modseq on
+    /// every label. Only the UID separates the new from the merely
+    /// touched.
+    pub fn arrivals_since(&self, account_id: i64, mailbox: &str, uid: Uid) -> Result<u64, Error> {
         let Some(state) = self.sync_state(account_id, mailbox)? else {
             return Ok(0);
         };
@@ -3960,10 +3974,10 @@ impl Store {
     }
 }
 
-/// Fait évoluer en place une base d'une version précédente : les colonnes
-/// s'ajoutent sans perdre ce qui est déjà là, et la bascule multi-comptes
-/// (Phase 3) reconstruit les tables dont les contraintes changent.
-/// Configuration serveur d'un compte IMAP/SMTP générique.
+/// Evolves a database from a previous version in place: columns are
+/// added without losing what's already there, and the multi-account
+/// switch (Phase 3) rebuilds the tables whose constraints change.
+/// Generic IMAP/SMTP account server configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccountConfig {
     pub imap_host: Option<String>,
@@ -3973,43 +3987,45 @@ pub struct AccountConfig {
     pub username: Option<String>,
 }
 
-/// Le prédicat « ce message attend encore son corps », partagé par le
-/// COMPTE ([`Store::bodies_pending_count`]) et la LISTE de travail
+/// The predicate "this message still awaits its body", shared by the
+/// ACCOUNT ([`Store::bodies_pending_count`]) and the working LIST
 /// ([`Store::bodies_to_backfill`]).
 ///
-/// UNE écriture : les deux ne peuvent plus diverger — et c'est cette
-/// écriture-là, jamais une copie, que la garde de plan interroge (même
-/// raison qu'[`unified_page_sql`], et même leçon payée).
+/// ONE piece of writing: the two can no longer diverge — and it is
+/// this piece of writing, never a copy, that the plan guard queries
+/// (same reason as [`unified_page_sql`], and the same lesson paid
+/// for).
 ///
-/// **Il ne lit AUCUNE colonne de `bodies`, et c'est tout le chantier.**
-/// L'existence de la ligne se tranche dans l'auto-index de la clé
-/// primaire `(mailbox_id, uid)` — donc sans jamais rappeler la ligne,
-/// qui pèse 56 ko en moyenne au terrain. Y lire ne serait-ce qu'un bit
-/// coûtait 251 k lectures aléatoires dans 11,4 Go : **20 839 ms à froid
-/// contre 396 ms sans** (mesuré le 2026-08-26 sur la base du terrain).
+/// **It reads NO column of `bodies`, and that is the whole point.**
+/// The row's existence is decided from the auto-index of the primary
+/// key `(mailbox_id, uid)` — so without ever recalling the row,
+/// which weighs 56 KB on average in the field. Reading even a single
+/// bit cost 251k random reads across 11.4 GB: **20,839 ms cold
+/// versus 396 ms without** (measured 2026-08-26 on the field database).
 ///
-/// Ce prédicat portait `AND b.scanned = 1` — la trace des corps
-/// rapatriés AVANT que les pièces jointes n'existent, dont le MIME
-/// n'avait jamais été inspecté. **Retiré le 2026-08-26 (PLAN-DEMARRAGE,
-/// décision D8)** sur trois faits mesurés : la production n'écrit
-/// JAMAIS `scanned = 0` ([`Store::save_body_full`] pose un `1` en dur),
-/// les deux postes de la flotte portent **zéro** ligne à `scanned = 0`,
-/// et le critère coûtait le gel de 8 870 ms du démarrage pour protéger
-/// zéro ligne. La colonne survit, vestigiale : la retirer demanderait
-/// une réécriture de 11,4 Go — elle partira avec le chantier qui
-/// touchera `bodies` de toute façon (l'aperçu, dette).
+/// This predicate used to carry `AND b.scanned = 1` — the trace of
+/// bodies fetched BEFORE attachments existed, whose MIME had never
+/// been inspected. **Removed 2026-08-26 (PLAN-DEMARRAGE, decision
+/// D8)** on three measured facts: production NEVER writes
+/// `scanned = 0` ([`Store::save_body_full`] hardcodes a `1`), both
+/// fleet workstations carry **zero** rows at `scanned = 0`, and the
+/// criterion cost an 8,870 ms startup freeze to protect zero rows. The
+/// column survives, vestigial: removing it would require rewriting
+/// 11.4 GB — it will leave with whatever job touches `bodies` anyway
+/// (the preview, a debt).
 ///
-/// **Exige l'alias `e`** pour `envelopes` chez qui l'emploie — comme
-/// [`SELECT_UNIFIED`] exige les siens. Le fragment est une chaine : un
-/// autre alias compile et echoue au `prepare`, sur un chemin dont l'UI
-/// n'affiche rien (le `catch` du rattrapage est un `console.error`).
-pub(crate) const CORPS_ABSENT: &str = "NOT EXISTS (
+/// **Requires the alias `e`** for `envelopes` wherever it is used —
+/// as [`SELECT_UNIFIED`] requires its own. The fragment is a string:
+/// a different alias compiles and fails at `prepare`, on a path where
+/// the UI shows nothing (the backfill's `catch` is a
+/// `console.error`).
+pub(crate) const BODY_ABSENT: &str = "NOT EXISTS (
                    SELECT 1 FROM bodies b
                     WHERE b.mailbox_id = e.mailbox_id AND b.uid = e.uid
                )";
 
-/// Le COMPTE des corps manquants d'une boîte : `?1` le compte, `?2` la
-/// boîte, `?3` l'horizon.
+/// The COUNT of missing bodies for a mailbox: `?1` the account, `?2`
+/// the mailbox, `?3` the horizon.
 pub(crate) fn bodies_pending_count_sql() -> String {
     format!(
         "SELECT COUNT(*)
@@ -4017,12 +4033,12 @@ pub(crate) fn bodies_pending_count_sql() -> String {
              JOIN mailboxes m ON m.id = e.mailbox_id
              WHERE m.account_id = ?1 AND m.name = ?2
                AND (e.date_epoch IS NULL OR e.date_epoch >= ?3)
-               AND {CORPS_ABSENT}"
+               AND {BODY_ABSENT}"
     )
 }
 
-/// La LISTE de travail du rattrapage — mêmes paramètres, plus `?4`, la
-/// borne du lot.
+/// The working LIST of the backfill — same parameters, plus `?4`, the
+/// batch bound.
 pub(crate) fn bodies_to_backfill_sql() -> String {
     format!(
         "SELECT e.uid
@@ -4030,100 +4046,103 @@ pub(crate) fn bodies_to_backfill_sql() -> String {
              JOIN mailboxes m ON m.id = e.mailbox_id
              WHERE m.account_id = ?1 AND m.name = ?2
                AND (e.date_epoch IS NULL OR e.date_epoch >= ?3)
-               AND {CORPS_ABSENT}
+               AND {BODY_ABSENT}
              ORDER BY e.date_epoch DESC, e.uid DESC
              LIMIT ?4"
     )
 }
 
-/// La requête d'une page de la boîte unifiée.
+/// The query for a page of the unified mailbox.
 ///
-/// Isolée pour qu'un test puisse interroger **son** plan d'exécution, et
-/// non une copie qui divergerait le jour où l'une des deux change. Le
-/// coût de cette requête est le chemin le plus chaud du produit.
-/// `organise` (E2) : la Réception ORGANISÉE — le MÊME squelette plus le
-/// drapeau de rétention, sous la forme EXACTE de l'index partiel
-/// `idx_threads_date_organise` qui porte alors tri, filtre et
-/// pagination (S2-bis : l'offset saute des entrées d'index, jamais des
-/// lignes sondées). UNE écriture pour les deux modes — la revue E1
-/// avait isolé cette requête précisément pour qu'aucune copie ne
-/// diverge.
-pub(crate) fn unified_page_sql(par_compte: bool, non_lues: bool, organise: bool) -> String {
-    // La pagination (`LIMIT`/`OFFSET`) s'applique dans une sous-requête
-    // sur `threads` SEUL, pas sur la jointure : `OFFSET` produit puis
-    // jette chaque ligne sautée, donc tout ce qui se calcule par ligne —
-    // la triple jointure et l'`EXISTS` corrélé sur `attachments` de
-    // SELECT_UNIFIED — se payait pour les 200 000 lignes d'un saut
-    // profond. Mesuré (gate P1 de la refonte, 205 050 conversations) :
-    // 252,6 ms à l'offset 200 000, croissance linéaire. Avec le squelette
-    // en sous-requête, le saut ne parcourt que l'index partiel
-    // `idx_threads_date_globale` — qui porte la clé de tri COMPLÈTE
-    // (last_epoch DESC, last_uid DESC, account_id) et le filtre
-    // `inbox_size > 0` — et les jointures ne s'exécutent que sur les
-    // `limit` lignes retenues.
+/// Isolated so a test can query **its own** execution plan, and not a
+/// copy that would diverge the day one of the two changes. The cost
+/// of this query is the hottest path of the product.
+/// `organized` (E2): the ORGANIZED Inbox — the SAME skeleton plus the
+/// retention flag, in the EXACT shape of the partial index
+/// `idx_threads_date_organise` which then carries sort, filter and
+/// pagination (S2-bis: the offset skips index entries, never probed
+/// rows). ONE piece of writing for both modes — the E1 review had
+/// isolated this query precisely so that no copy would diverge.
+pub(crate) fn unified_page_sql(by_account: bool, unread_only: bool, organized: bool) -> String {
+    // Pagination (`LIMIT`/`OFFSET`) applies in a subquery on
+    // `threads` ALONE, not on the join: `OFFSET` produces then
+    // discards each skipped row, so everything computed per row — the
+    // triple join and the correlated `EXISTS` on `attachments` from
+    // SELECT_UNIFIED — was being paid for the 200,000 rows of a deep
+    // jump. Measured (rewrite gate P1, 205,050 conversations):
+    // 252.6 ms at offset 200,000, linear growth. With the skeleton in
+    // a subquery, the jump only walks the partial index
+    // `idx_threads_date_globale` — which carries the COMPLETE sort
+    // key (last_epoch DESC, last_uid DESC, account_id) and the filter
+    // `inbox_size > 0` — and the joins only run on the `limit`
+    // retained rows.
     //
-    // Le ORDER BY externe re-trie les lignes retenues avec la même clé :
-    // il garantit l'ordre final quelle que soit la stratégie de jointure,
-    // pour le prix d'un tri de `limit` lignes.
-    // `par_compte` ajoute le filtre `account_id = ?3` de la nav v2
-    // (« Boîtes » de l'écran 02) : même squelette, l'index préfixé
-    // `idx_threads_date (account_id, …)` porte alors tri et pagination.
-    // `non_lues` est l'onglet « Non lus » du prototype — filtré ICI, pas
-    // côté client : 331 conversations sur 2 929 au terrain, une page ne
-    // doit transporter que ce qu'elle affiche.
-    let filtre = if par_compte {
+    // The outer ORDER BY re-sorts the retained rows with the same
+    // key: it guarantees the final order whatever the join strategy,
+    // for the price of sorting `limit` rows.
+    // `by_account` adds the `account_id = ?3` filter of nav v2
+    // ("Mailboxes" of screen 02): same skeleton, the prefixed index
+    // `idx_threads_date (account_id, …)` then carries sort and
+    // pagination.
+    // `unread_only` is the "Unread" tab of the prototype — filtered
+    // HERE, not on the client side: 331 conversations out of 2,929 in
+    // the field, a page must only carry what it displays.
+    let filter = if by_account {
         " AND account_id = ?3"
     } else {
         ""
     };
-    let non_lues_seulement = if non_lues { " AND unseen > 0" } else { "" };
-    // E5 : en mode organisé, les fils MIS DE CÔTÉ quittent le flot —
-    // ils vivent dans la pile (exclusion partagée, patron pins). Le
-    // classique n'exclut rien.
-    let retenue = if organise {
-        exclusion_organisee()
+    let unread_only_clause = if unread_only { " AND unseen > 0" } else { "" };
+    // E5: in organized mode, SET-ASIDE threads leave the flow — they
+    // live in the pile (shared exclusion, pins pattern). The classic
+    // mode excludes nothing.
+    let exclusion = if organized {
+        organized_exclusion()
     } else {
         String::new()
     };
-    // E4 : l'ordre INTERNE (celui que l'index partiel porte) suit les
-    // sections en mode organisé — même clé que la queue de jointures.
-    let tri = if organise {
+    // E4: the INTERNAL order (the one the partial index carries)
+    // follows the sections in organized mode — same key as the join
+    // tail.
+    let sort_clause = if organized {
         "ORDER BY (unseen > 0) DESC, last_epoch DESC, last_uid DESC, account_id"
     } else {
         "ORDER BY last_epoch DESC, last_uid DESC, account_id"
     };
-    let queue = unified_join_tail(organise);
-    // R4 (PLAN-RETOURS-7, D5) : les conversations ÉPINGLÉES quittent le
-    // flot paginé — elles se servent À PART, en tête de page 0
-    // (`pinned_unified_scoped`) ; la liste ne montre jamais deux fois le
-    // même message. `NOT IN` sur la sous-requête des épingles : liste
-    // matérialisée une fois, minuscule par construction.
+    let tail = unified_join_tail(organized);
+    // R4 (PLAN-RETOURS-7, D5): PINNED conversations leave the
+    // paginated flow — they are served SEPARATELY, at the top of page
+    // 0 (`pinned_unified_scoped`); the list never shows the same
+    // message twice. `NOT IN` on the pins subquery: a list
+    // materialized once, tiny by construction.
     format!(
         "{SELECT_UNIFIED}{THREAD_AGGREGATE}
          FROM (SELECT account_id, last_mailbox_id, last_uid, last_epoch, size, unseen
                  FROM threads
-                WHERE inbox_size > 0{retenue} AND id NOT IN ({PINNED_THREADS}){filtre}{non_lues_seulement}
-                {tri}
-                LIMIT ?1 OFFSET ?2) t{queue}"
+                WHERE inbox_size > 0{exclusion} AND id NOT IN ({PINNED_THREADS}){filter}{unread_only_clause}
+                {sort_clause}
+                LIMIT ?1 OFFSET ?2) t{tail}"
     )
 }
 
-/// Le calcul du drapeau `organise_hors` d'UN fil (E2) — LE fragment
-/// partagé par `thread::refresh` (entretien) et le rattrapage de
-/// migration : une seule écriture de la règle, jamais deux copies qui
-/// divergent. `param_fil` désigne le fil (paramètre ou colonne).
+/// The computation of the `organise_hors` flag of A thread (E2) — THE
+/// fragment shared by `thread::refresh` (upkeep) and the migration
+/// backfill: one single piece of writing for the rule, never two
+/// copies that diverge. `thread_param` designates the thread
+/// (parameter or column).
 ///
-/// Règle d'or (revue E2) — jamais perdre de courrier :
-/// - un expéditeur routé vers une VUE (kiosque/registre) éjecte le fil
-///   dès UN message — le fil vit dans sa vue (miroir de
-///   [`fil_route_sql`]), rien n'est perdu ;
-/// - un écarté ou un expéditeur en attente n'a PAS de vue : le fil ne
-///   se cache que s'il est ENTIÈREMENT à eux — un fil mêlé (un intrus
-///   écarté répond dans le fil d'un connu) RESTE en Réception.
+/// Golden rule (E2 review) — never lose mail:
+/// - a sender routed to a VIEW (feed/paper trail) ejects the thread
+///   from ONE message on — the thread lives in its view (mirror of
+///   [`fil_route_sql`]), nothing is lost;
+/// - a screened-out or waiting sender has NO view: the thread only
+///   hides if it is ENTIRELY theirs — a mixed thread (a screened-out
+///   intruder replying in a known contact's thread) STAYS in the
+///   Inbox.
 ///
-/// Premier WHEN : les deux tables vides (mode jamais employé) — deux
-/// sondes O(1), l'adoption d'une base héritée ne paie rien.
-pub(crate) fn organise_hors_sql(param_fil: &str) -> String {
+/// First WHEN: both tables empty (mode never used) — two O(1)
+/// probes, adopting a legacy database costs nothing.
+pub(crate) fn organized_off_sql(thread_param: &str) -> String {
     format!(
         "CASE
            WHEN NOT EXISTS (SELECT 1 FROM routage_expediteurs LIMIT 1)
@@ -4133,10 +4152,10 @@ pub(crate) fn organise_hors_sql(param_fil: &str) -> String {
                JOIN routage_expediteurs r
                  ON r.address = te.sender_norm
                 AND r.destination IN ('kiosque', 'registre')
-              WHERE te.thread_id = {param_fil}) THEN 1
+              WHERE te.thread_id = {thread_param}) THEN 1
            WHEN NOT EXISTS (
              SELECT 1 FROM envelopes o
-              WHERE o.thread_id = {param_fil}
+              WHERE o.thread_id = {thread_param}
                 AND NOT EXISTS (SELECT 1 FROM portier_attente pa
                                  WHERE pa.address = o.sender_norm)
                 AND NOT EXISTS (SELECT 1 FROM routage_expediteurs re
@@ -4146,57 +4165,57 @@ pub(crate) fn organise_hors_sql(param_fil: &str) -> String {
     )
 }
 
-/// Le filtre du Kiosque et du Registre (PLAN-MODE-ORGANISE E1, revue) :
-/// un fil appartient à la destination si N'IMPORTE LEQUEL de ses
-/// messages vient d'un expéditeur routé là — jamais la seule TÊTE, qui
-/// est le dernier message toutes boîtes confondues : y répondre la
-/// déplace en Envoyés et le fil s'éjectait de sa destination (prouvé
-/// RED). Sonde par `idx_envelopes_thread` puis PK routage (spike S2),
-/// posée DANS le squelette paginé — jamais après le LIMIT (pages
-/// courtes, réserve S2). `sender_norm` (colonne générée, E2) EST le
-/// `lower(trim(sender_address))` d'origine — une seule expression,
-/// définie une fois ; sa divergence avec `adresse_images` (Rust) sur
-/// le non-ASCII reste la limite assumée E1 : une adresse réelle est
-/// ASCII.
-pub(crate) fn fil_route_sql(param_destination: &str) -> String {
+/// The Feed and Paper trail filter (PLAN-MODE-ORGANISE E1, review): a
+/// thread belongs to the destination if ANY of its messages comes
+/// from a sender routed there — never just the HEAD, which is the
+/// last message across all mailboxes: replying to it moves it to
+/// Sent and the thread would be ejected from its destination (proven
+/// RED). Probed via `idx_envelopes_thread` then the routing PK (spike
+/// S2), placed INSIDE the paginated skeleton — never after the LIMIT
+/// (short pages, S2 reserve). `sender_norm` (generated column, E2)
+/// IS the original `lower(trim(sender_address))` — a single
+/// expression, defined once; its divergence from `images_address`
+/// (Rust) on non-ASCII remains the assumed E1 limit: a real address
+/// is ASCII.
+pub(crate) fn thread_route_sql(destination_param: &str) -> String {
     format!(
         "EXISTS (
                    SELECT 1 FROM envelopes te
                      JOIN routage_expediteurs r
                        ON r.address = te.sender_norm
-                      AND r.destination = {param_destination}
+                      AND r.destination = {destination_param}
                     WHERE te.thread_id = threads.id
                )"
     )
 }
 
-/// La page du Kiosque/Registre — le squelette EXACT de
-/// [`unified_page_sql`] plus [`fil_route_sql`] : même tri, mêmes
-/// jointures. Les ÉPINGLÉES ne sont PAS exclues (revue E1) : leur
-/// section préposée n'existe qu'en Réception — les exclure ici ferait
-/// disparaître un fil épinglé routé de TOUTES les vues organisées.
-/// `?1` limit, `?2` offset, `?3` destination, `?4` compte (si
-/// `par_compte`).
-pub(crate) fn routage_page_sql(par_compte: bool, non_lues: bool) -> String {
-    let filtre = if par_compte {
+/// The Feed/Paper trail page — the EXACT skeleton of
+/// [`unified_page_sql`] plus [`fil_route_sql`]: same sort, same
+/// joins. PINNED threads are NOT excluded (E1 review): their
+/// dedicated section only exists in the Inbox — excluding them here
+/// would make a pinned thread routed elsewhere disappear from ALL
+/// organized views. `?1` limit, `?2` offset, `?3` destination, `?4`
+/// account (if `by_account`).
+pub(crate) fn routing_page_sql(by_account: bool, unread_only: bool) -> String {
+    let filter = if by_account {
         " AND account_id = ?4"
     } else {
         ""
     };
-    let non_lues_seulement = if non_lues { " AND unseen > 0" } else { "" };
-    let fil_route = fil_route_sql("?3");
-    let queue = unified_join_tail(false);
-    // E5 : le Kiosque et le Registre sont des vues ORGANISÉES — un fil
-    // mis de côté les quitte aussi (il vit dans la pile).
-    let hors_pile = format!(" AND id NOT IN ({MIS_DE_COTE_THREADS})");
+    let unread_only_clause = if unread_only { " AND unseen > 0" } else { "" };
+    let thread_route = thread_route_sql("?3");
+    let tail = unified_join_tail(false);
+    // E5: the Feed and Paper trail are ORGANIZED views — a thread set
+    // aside leaves them too (it lives in the pile).
+    let out_of_pile = format!(" AND id NOT IN ({SET_ASIDE_THREADS})");
     format!(
         "{SELECT_UNIFIED}{THREAD_AGGREGATE}
          FROM (SELECT account_id, last_mailbox_id, last_uid, last_epoch, size, unseen
                  FROM threads
                 WHERE inbox_size > 0
-                  AND {fil_route}{hors_pile}{filtre}{non_lues_seulement}
+                  AND {thread_route}{out_of_pile}{filter}{unread_only_clause}
                 ORDER BY last_epoch DESC, last_uid DESC, account_id
-                LIMIT ?1 OFFSET ?2) t{queue}"
+                LIMIT ?1 OFFSET ?2) t{tail}"
     )
 }
 
@@ -4213,10 +4232,11 @@ fn migrate(
             ("reply_to_mailbox", "TEXT"),
         ],
     )?;
-    // ADR 0010 : la portee du regroupement devient explicite. Les boites
-    // deja en base sont INBOX et « Envoyes » — toutes deux dedans, d'ou
-    // le defaut a 1. Une base heritee garde donc exactement les fils
-    // qu'elle avait : la migration ne change rien a ce qui est affiche.
+    // ADR 0010: the scope of grouping becomes explicit. The mailboxes
+    // already in the database are INBOX and "Sent" — both included,
+    // hence the default of 1. A legacy database therefore keeps
+    // exactly the threads it had: the migration changes nothing about
+    // what is displayed.
     add_missing_columns(
         conn,
         "mailboxes",
@@ -4230,11 +4250,12 @@ fn migrate(
         "mailboxes",
         &[("remote_total", "INTEGER NOT NULL DEFAULT 0")],
     )?;
-    // ADR 0017 : le UIDNEXT vu au dernier relevé — NULL tant qu'aucune
-    // relève gardée n'a eu lieu, donc une base héritée relève tout à son
-    // premier cycle (conservateur), puis devient sobre.
+    // ADR 0017: the UIDNEXT seen at the last poll — NULL as long as
+    // no completed poll has taken place, so a legacy database polls
+    // everything on its first cycle (conservative), then becomes
+    // frugal.
     add_missing_columns(conn, "mailboxes", &[("remote_uidnext", "INTEGER")])?;
-    // PLAN-AUDIT-V1 E3 : la quarantaine des actions refusées.
+    // PLAN-AUDIT-V1 E3: the quarantine of refused actions.
     add_missing_columns(
         conn,
         "pending_actions",
@@ -4244,10 +4265,10 @@ fn migrate(
             ("last_error", "TEXT"),
         ],
     )?;
-    // PLAN-AUDIT-V1 E2 : le drapeau d'initialisation. Sur une base
-    // héritée, UNE fois, à la pose de la colonne : toute boîte qui a déjà
-    // un repère est réputée initialisée — les lignes à 0 gardent le
-    // comportement d'avant (première passe = initiale).
+    // PLAN-AUDIT-V1 E2: the initialization flag. On a legacy
+    // database, ONCE, when the column is added: any mailbox that
+    // already has a marker is deemed initialized — rows at 0 keep the
+    // previous behavior (first pass = initial).
     if !table_columns(conn, "mailboxes")?.contains("initialisee") {
         add_missing_columns(
             conn,
@@ -4277,19 +4298,20 @@ fn migrate(
             ("flagged", "INTEGER NOT NULL DEFAULT 0"),
             ("in_reply_to", "TEXT"),
             ("refs", "TEXT"),
-            // NULL = « pas encore rattaché ». C'est ce que
-            // `thread::migrate_threads` cherche, plus bas.
+            // NULL = "not yet attached". This is what
+            // `thread::migrate_threads` looks for, further down.
             ("thread_id", "INTEGER"),
-            // R4 : les destinataires arrivent NULL sur l'existant — le
-            // rattrapage des envois (D2) les peuple, la synchro les ecrit
-            // desormais sur tout message neuf.
+            // R4: recipients arrive NULL on existing rows — the send
+            // backfill (D2) populates them, sync now writes them on
+            // every new message.
             ("to_addrs", "TEXT"),
             ("cc_addrs", "TEXT"),
-            // PLAN-AUDIT-V2 E5 : le Reply-To de l'enveloppe. Terrain STOP 2
-            // (2026-09-02) : la colonne vivait dans le CREATE TABLE seul —
-            // « no column named reply_to » à chaque passe du veilleur sur
-            // une base d'avant la vague 2. NULL sur l'existant : la relève
-            // l'écrit sur tout message neuf ou resynchronisé.
+            // PLAN-AUDIT-V2 E5: the envelope's Reply-To. Field STOP 2
+            // (2026-09-02): the column lived only in the CREATE
+            // TABLE — "no column named reply_to" on every watcher
+            // pass over a database from before wave 2. NULL on
+            // existing rows: the poll writes it on every new or
+            // resynced message.
             ("reply_to", "TEXT"),
         ],
     )?;
@@ -4299,32 +4321,35 @@ fn migrate(
         &[
             ("remote_uid", "INTEGER"),
             ("pushed_epoch", "INTEGER"),
-            // Cc/Cci d'un brouillon — vides sur l'existant (PLAN-RETOURS-2).
+            // Cc/Bcc of a draft — empty on existing rows
+            // (PLAN-RETOURS-2).
             ("cc_raw", "TEXT NOT NULL DEFAULT ''"),
             ("bcc_raw", "TEXT NOT NULL DEFAULT ''"),
-            // Corps riche — NULL sur l'existant, chemin texte intact
-            // (PLAN-COMPOSITION-HTML).
+            // Rich body — NULL on existing rows, plain-text path
+            // intact (PLAN-COMPOSITION-HTML).
             ("body_html", "TEXT"),
         ],
     )?;
-    // Cc/Cci du journal d'envoi — vides sur l'existant (PLAN-RETOURS-2).
+    // Cc/Bcc of the send log — empty on existing rows
+    // (PLAN-RETOURS-2).
     add_missing_columns(
         conn,
         "outbox",
         &[
             ("cc_addrs", "TEXT NOT NULL DEFAULT ''"),
             ("bcc_addrs", "TEXT NOT NULL DEFAULT ''"),
-            // Corps riche — NULL sur l'existant (PLAN-COMPOSITION-HTML).
+            // Rich body — NULL on existing rows
+            // (PLAN-COMPOSITION-HTML).
             ("body_html", "TEXT"),
         ],
     )?;
-    // Les corps deja en base valent 0 : ils datent d'avant les pieces
-    // jointes, et le rattrapage devra les relire une fois.
+    // Bodies already in the database are worth 0: they predate
+    // attachments, and the backfill will need to reread them once.
     add_missing_columns(conn, "bodies", &[("scanned", "INTEGER NOT NULL DEFAULT 0")])?;
-    // Destinataires de l'echo — NULL sur l'existant (PLAN-RETOURS-5).
+    // Echo recipients — NULL on existing rows (PLAN-RETOURS-5).
     add_missing_columns(conn, "echos", &[("to_addrs", "TEXT")])?;
-    // « Important » et envoi différé (PLAN-RETOURS-6) : l'existant
-    // n'est ni marqué ni programmé.
+    // "Important" and delayed sending (PLAN-RETOURS-6): existing rows
+    // are neither flagged nor scheduled.
     add_missing_columns(
         conn,
         "drafts",
@@ -4338,86 +4363,88 @@ fn migrate(
             ("send_at_epoch", "INTEGER"),
         ],
     )?;
-    // Réponse iTIP (PLAN-INVITATIONS) — NULL sur l'existant, chemin
-    // d'envoi historique inchangé.
+    // iTIP reply (PLAN-INVITATIONS) — NULL on existing rows,
+    // historical send path unchanged.
     add_missing_columns(conn, "outbox", &[("ics_reply", "TEXT")])?;
-    // Le lien d'annulation croisé (terrain R6) — les bases nées pendant
-    // le chantier ont la table sans la colonne.
+    // The cross-cancellation link (field R6) — databases born during
+    // the job have the table without the column.
     add_missing_columns(
         conn,
         "invitations",
         &[("annule", "INTEGER NOT NULL DEFAULT 0")],
     )?;
-    // L'aperçu de liste (écran 02 de la refonte) se calcule à l'ÉCRITURE
-    // du corps ; les corps antérieurs le rattrapent PAR LOTS
-    // (`preview_catchup`, appelé par le shell au fil du sondage) — jamais
-    // sur le chemin d'ouverture ni au défilement. L'index partiel rend la
-    // sonde « des retardataires ? » gratuite une fois la passe soldée.
+    // The list preview (rewrite screen 02) is computed at the WRITE
+    // of the body; earlier bodies backfill it IN BATCHES
+    // (`preview_catchup`, called by the shell as polling proceeds) —
+    // never on the opening path nor while scrolling. The partial
+    // index makes the "any stragglers?" probe free once the pass is
+    // closed out.
     add_missing_columns(conn, "bodies", &[("preview", "TEXT")])?;
     conn.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_bodies_apercu_manquant
              ON bodies(mailbox_id, uid) WHERE preview IS NULL;",
     )?;
-    // L'index de date des enveloppes gagne `uid` (voir le commentaire du
-    // SCHEMA). `CREATE INDEX IF NOT EXISTS` ne suffit PAS : sur une base
-    // existante l'index porte deja ce nom, la creation est un no-op muet
-    // et le defaut survivrait. On lit donc sa DEFINITION et on le
-    // reconstruit s'il lui manque la colonne — meme patron que la sonde
-    // `recipients` de l'index de recherche.
+    // The envelopes date index gains `uid` (see the SCHEMA comment).
+    // `CREATE INDEX IF NOT EXISTS` is NOT enough: on an existing
+    // database the index already carries this name, the creation is
+    // a silent no-op and the defect would survive. So its DEFINITION
+    // is read and it is rebuilt if it lacks the column — same pattern
+    // as the `recipients` probe of the search index.
     //
-    // Sans ecran : la reconstruction ne lit que `envelopes` (47 Mo au
-    // terrain), jamais les corps — 0,332 s mesurees sur la base du CE,
-    // contre les 18 s qu'aurait coutees un index sur `bodies`. C'est
-    // toute la difference entre une migration muette acceptable et le gel
-    // du 2026-08-17.
+    // No freeze: the rebuild only reads `envelopes` (47 MB in the
+    // field), never the bodies — 0.332 s measured on the CE's
+    // database, versus the 18 s an index on `bodies` would have cost.
+    // That is the whole difference between an acceptable silent
+    // migration and the 2026-08-17 freeze.
     //
-    // La relecture et la reconstruction vivent dans UNE transaction, et
-    // ce n'est pas de la prudence de principe (revue a regard neuf du
-    // 2026-08-26) : `connect_accounts` appelle `Store::open` DIRECTEMENT,
-    // hors du verrou global des commandes (commands.rs), donc deux
-    // `migrate()` tournent pour de vrai en parallele au demarrage. Sans
-    // transaction, les deux lisent l'index a deux colonnes avant que l'un
-    // n'ecrive, et le reconstruisent chacun leur tour : ~3,5 s de gel au
-    // lieu de 1,77 s. `BEGIN IMMEDIATE` prend le verrou d'ecriture des la
-    // lecture — le second arrivant relit APRES le premier, trouve `uid`,
-    // et ne fait rien.
-    // DOUBLE VERIFICATION, et le premier temps compte autant que le
-    // second : `migrate()` tourne a CHAQUE `Store::open`, donc des
-    // dizaines de fois par demarrage. Une lecture nue de `sqlite_master`
-    // ne prend aucun verrou ; ouvrir une transaction d'ecriture juste
-    // pour verifier couterait le verrou d'ecriture a chaque commande.
-    reconstruire_index_si_ancien(
+    // The reread and the rebuild live in ONE transaction, and this is
+    // not caution for its own sake (fresh-eyes review of 2026-08-26):
+    // `connect_accounts` calls `Store::open` DIRECTLY, outside the
+    // commands' global lock (commands.rs), so two `migrate()` calls
+    // really do run in parallel at startup. Without a transaction,
+    // both would read the two-column index before either writes, and
+    // rebuild it each in turn: ~3.5 s of freeze instead of 1.77 s.
+    // `BEGIN IMMEDIATE` takes the write lock as soon as it reads —
+    // the second one to arrive rereads AFTER the first, finds `uid`,
+    // and does nothing.
+    // DOUBLE CHECK, and the first check matters as much as the
+    // second: `migrate()` runs on EVERY `Store::open`, so dozens of
+    // times per startup. A bare read of `sqlite_master` takes no
+    // lock; opening a write transaction just to check would cost the
+    // write lock on every command.
+    rebuild_index_if_old(
         conn,
         "idx_envelopes_date",
         "uid",
         "CREATE INDEX idx_envelopes_date ON envelopes(mailbox_id, date_epoch DESC, uid);",
     )?;
-    // La sonde d'exclusion des intégrales (nav, catégorie Archives sur
-    // Gmail) cherche par message_id : sans cet index, chaque ligne de
-    // « Tous les messages » paierait un parcours de table.
+    // The full-messages exclusion probe (nav, Archive category on
+    // Gmail) looks up by message_id: without this index, every row
+    // of "All messages" would pay for a table scan.
     conn.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_envelopes_message
              ON envelopes(message_id) WHERE message_id IS NOT NULL;",
     )?;
-    // Réparation des aperçus extraits par le premier décodeur, qui
-    // laissait passer les entités numériques (&#233;) et nommées
-    // (&eacute;, &zwnj;…) — défaut vu au terrain. Remettre à NULL suffit :
-    // le rattrapage par lots les recalcule avec le décodeur complet, hors
-    // du chemin d'ouverture. Le critère est LE scanner du décodeur
-    // lui-même (pas un motif SQL approximatif). UNE seule passe, tenue
-    // par un marqueur : un corps double-encodé (« &amp;gt; ») produit
-    // légitimement « &gt; » dans l'aperçu neuf — sans le marqueur, la
-    // réparation le remettrait à NULL à chaque ouverture, pour rien.
+    // Repair of previews extracted by the first decoder, which let
+    // numeric entities (&#233;) and named ones (&eacute;, &zwnj;…)
+    // slip through — a defect seen in the field. Setting back to NULL
+    // is enough: the batch backfill recomputes them with the full
+    // decoder, off the opening path. The criterion is THE decoder's
+    // own scanner (not an approximate SQL pattern). ONE single pass,
+    // held by a marker: a double-encoded body ("&amp;gt;")
+    // legitimately produces "&gt;" in the new preview — without the
+    // marker, the repair would reset it to NULL on every open, for
+    // nothing.
     conn.execute_batch("CREATE TABLE IF NOT EXISTS reparations (nom TEXT PRIMARY KEY);")?;
-    let deja_faite: bool = conn
+    let already_done: bool = conn
         .prepare("SELECT 1 FROM reparations WHERE nom = 'apercus-entites'")?
         .exists([])?;
-    if !deja_faite {
+    if !already_done {
         let mut stmt = conn.prepare(
             "SELECT mailbox_id, uid, preview FROM bodies
                  WHERE preview IS NOT NULL AND preview LIKE '%&%'",
         )?;
-        let pollues: Vec<(i64, u32)> = stmt
+        let polluted: Vec<(i64, u32)> = stmt
             .query_map([], |row| {
                 Ok((
                     row.get::<_, i64>(0)?,
@@ -4430,7 +4457,7 @@ fn migrate(
             .map(|(m, u, _)| (m, u))
             .collect();
         drop(stmt);
-        for (mailbox_id, uid) in pollues {
+        for (mailbox_id, uid) in polluted {
             conn.execute(
                 "UPDATE bodies SET preview = NULL WHERE mailbox_id = ?1 AND uid = ?2",
                 params![mailbox_id, uid],
@@ -4438,41 +4465,43 @@ fn migrate(
         }
         conn.execute_batch("INSERT INTO reparations (nom) VALUES ('apercus-entites');")?;
     }
-    // Réparation des corps mutilés au décodage — défaut vu au terrain
-    // (25 corps sur la base de mesure). Deux causes, corrigées côté
-    // mail-imap : les charsets multi-octets (gb2312…) exigeaient la
-    // feature `full_encoding` de mail-parser, et un charset absent
-    // tombait en UTF-8 avec remplacement au lieu du windows-1252 de fait.
-    // Supprimer la ligne suffit : le rattrapage (`bodies_to_backfill`)
-    // retélécharge tout message sans corps, et `save_body` refait au
-    // passage l'aperçu, l'index de recherche et les pièces. Les U+FFFD
-    // authentiques (envoyés tels quels) reviendront identiques — c'est un
-    // retéléchargement pour rien, mais UNE seule fois, tenu par le
-    // marqueur.
-    let deja_faite: bool = conn
+    // Repair of bodies mangled during decoding — a defect seen in the
+    // field (25 bodies in the measurement database). Two causes,
+    // fixed on the mail-imap side: multi-byte charsets (gb2312…)
+    // required the `full_encoding` feature of mail-parser, and a
+    // missing charset fell back to UTF-8 with replacement instead of
+    // the actual windows-1252. Deleting the row is enough: the
+    // backfill (`bodies_to_backfill`) redownloads any message without
+    // a body, and `save_body` redoes the preview, the search index
+    // and the attachments along the way. Genuine U+FFFD characters
+    // (sent as such) will come back identical — that's a pointless
+    // redownload, but only ONCE, held by the marker.
+    let already_done: bool = conn
         .prepare("SELECT 1 FROM reparations WHERE nom = 'corps-fffd'")?
         .exists([])?;
-    if !deja_faite {
+    if !already_done {
         conn.execute_batch(
             "DELETE FROM bodies WHERE html LIKE '%' || char(65533) || '%';
              INSERT INTO reparations (nom) VALUES ('corps-fffd');",
         )?;
     }
-    // Réparation des messages à partie calendrier scannés AVANT
-    // PLAN-INVITATIONS. Deux raisons, un seul remède : (1) le filtre
-    // `est_calendrier_inline` (mail-imap) a changé la numérotation des
-    // pièces — les `idx` stockés comptaient la partie calendrier, la
-    // relecture des octets ne la compte plus : cliquer une pièce
-    // servirait le MAUVAIS fichier en silence ; (2) ces messages n'ont
-    // pas de ligne `invitations` — leur carte doit naître (adoption,
-    // invariant §6.7). Supprimer corps ET lignes de pièces suffit : le
-    // rattrapage (`bodies_to_backfill`) relit le message, et
-    // `save_body_full` refait pièces (indices neufs), aperçu, index de
-    // recherche et invitation d'un coup. UNE fois, tenu par le marqueur.
-    let deja_faite: bool = conn
+    // Repair of messages with a calendar part scanned BEFORE
+    // PLAN-INVITATIONS. Two reasons, one remedy: (1) the
+    // `est_calendrier_inline` filter (mail-imap) changed the
+    // numbering of parts — the stored `idx` values counted the
+    // calendar part, rereading the bytes no longer counts it:
+    // clicking an attachment would silently serve the WRONG file;
+    // (2) these messages have no `invitations` row — their card must
+    // be born (adoption, invariant §6.7). Deleting both the body AND
+    // the attachment rows is enough: the backfill
+    // (`bodies_to_backfill`) rereads the message, and
+    // `save_body_full` redoes attachments (fresh indices), preview,
+    // search index and invitation all at once. ONCE, held by the
+    // marker.
+    let already_done: bool = conn
         .prepare("SELECT 1 FROM reparations WHERE nom = 'pieces-calendrier'")?
         .exists([])?;
-    if !deja_faite {
+    if !already_done {
         conn.execute_batch(
             "CREATE TEMP TABLE reparation_calendrier AS
                  SELECT DISTINCT mailbox_id, uid FROM attachments
@@ -4486,20 +4515,21 @@ fn migrate(
              INSERT INTO reparations (nom) VALUES ('pieces-calendrier');",
         )?;
     }
-    // R2 (PLAN-RETOURS-MAIL) : les enveloppes synchronisées AVANT le
-    // correctif portent les backslash-escapes des `quoted-string` IMAP que
-    // `imap-proto` laisse dans le contenu (objet « Test \"Envoyés\" », nom
-    // d'expéditeur, adresse). Le décodage neuf les retire à la synchro,
-    // mais l'existant reste parasité : on le répare UNE fois. Le contenu
-    // stocké est déjà RFC 2047-décodé ; il ne reste que la couche d'escape
-    // IMAP, donc dé-échapper la valeur stockée équivaut au nouveau décodage
-    // (un encoded-word ne porte ni `"` ni `\`). L'index FTS n'a pas à
-    // bouger : son tokeniseur écarte déjà le backslash, la recherche
-    // donnait les mêmes résultats. char(92) = `\`.
-    let deja_faite: bool = conn
+    // R2 (PLAN-RETOURS-MAIL): envelopes synced BEFORE the fix carry
+    // the backslash-escapes of IMAP `quoted-string`s that
+    // `imap-proto` leaves in the content (subject `Test \"Envoyés\"`,
+    // sender name, address). The new decoding strips them at sync
+    // time, but existing rows stay tainted: repaired ONCE. The
+    // stored content is already RFC 2047-decoded; only the IMAP
+    // escape layer remains, so un-escaping the stored value is
+    // equivalent to the new decoding (an encoded-word carries neither
+    // `"` nor `\`). The FTS index does not need to move: its
+    // tokenizer already discards the backslash, search gave the same
+    // results. char(92) = `\`.
+    let already_done: bool = conn
         .prepare("SELECT 1 FROM reparations WHERE nom = 'objets-escapes'")?
         .exists([])?;
-    if !deja_faite {
+    if !already_done {
         let mut stmt = conn.prepare(
             "SELECT mailbox_id, uid, subject, sender, sender_address FROM envelopes
                  WHERE instr(subject, char(92)) > 0
@@ -4507,7 +4537,7 @@ fn migrate(
                     OR instr(sender_address, char(92)) > 0",
         )?;
         #[allow(clippy::type_complexity)]
-        let parasites: Vec<(i64, u32, Option<String>, Option<String>, Option<String>)> = stmt
+        let tainted: Vec<(i64, u32, Option<String>, Option<String>, Option<String>)> = stmt
             .query_map([], |row| {
                 Ok((
                     row.get(0)?,
@@ -4520,8 +4550,8 @@ fn migrate(
             .filter_map(Result::ok)
             .collect();
         drop(stmt);
-        for (mailbox_id, uid, subject, sender, sender_address) in parasites {
-            let propre =
+        for (mailbox_id, uid, subject, sender, sender_address) in tainted {
+            let clean =
                 |v: Option<String>| v.map(|s| crate::unescape_imap_quoted_str(&s).into_owned());
             conn.execute(
                 "UPDATE envelopes SET subject = ?3, sender = ?4, sender_address = ?5
@@ -4529,9 +4559,9 @@ fn migrate(
                 params![
                     mailbox_id,
                     uid,
-                    propre(subject),
-                    propre(sender),
-                    propre(sender_address),
+                    clean(subject),
+                    clean(sender),
+                    clean(sender_address),
                 ],
             )?;
         }
@@ -4549,23 +4579,23 @@ fn migrate(
         ],
     )?;
     search::migrate_search(conn, on_progress)?;
-    // L'index vient APRÈS `add_missing_columns`, pas dans `SCHEMA` : sur
-    // une base héritée, `CREATE TABLE IF NOT EXISTS envelopes` ne fait
-    // rien et la colonne `thread_id` n'existe pas encore au moment où le
-    // schéma s'exécute. Deux tests de migration l'ont prouvé.
+    // The index comes AFTER `add_missing_columns`, not in `SCHEMA`:
+    // on a legacy database, `CREATE TABLE IF NOT EXISTS envelopes`
+    // does nothing and the `thread_id` column does not yet exist at
+    // the moment the schema runs. Two migration tests proved it.
     conn.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_envelopes_thread
              ON envelopes(thread_id, date_epoch DESC);",
     )?;
-    // L'adresse d'expéditeur NORMALISÉE, en colonne générée (Mode
-    // organisé E2, spike S2-bis) : SQLite n'emploie un index
-    // d'EXPRESSION que contre un littéral — dans une jointure
-    // (`= r.address`), il scanne (2,3 s mesurées à 200 k). La colonne
-    // VIRTUAL ne stocke rien (ALTER 14 ms) ; l'index réel (188 ms à
-    // 200 k, une fois) rend SEARCH toutes les sondes par expéditeur du
-    // routage et du Portier. Même expression que `fil_route_sql` —
-    // divergence connue avec `adresse_images` (Rust) sur le non-ASCII,
-    // limite assumée E1 : une adresse réelle est ASCII.
+    // The NORMALIZED sender address, as a generated column (Organized
+    // mode E2, spike S2-bis): SQLite only uses an EXPRESSION index
+    // against a literal — in a join (`= r.address`), it scans (2.3 s
+    // measured at 200k). The VIRTUAL column stores nothing (ALTER
+    // 14 ms); the real index (188 ms at 200k, once) makes SEARCH out
+    // of every sender probe of routing and the Screener. Same
+    // expression as `fil_route_sql` — known divergence with
+    // `images_address` (Rust) on non-ASCII, assumed E1 limit: a real
+    // address is ASCII.
     add_missing_columns(
         conn,
         "envelopes",
@@ -4574,30 +4604,30 @@ fn migrate(
             "TEXT GENERATED ALWAYS AS (lower(trim(sender_address))) VIRTUAL",
         )],
     )?;
-    // Trois colonnes (PLAN-AUDIT-V2 E4) : l'agrégat du Nettoyage est
-    // COUVERT — expéditeur, date, boîte — sans lire une ligne de table ;
-    // les sondes par expéditeur (Portier, stock d'un verdict) le servent
-    // toujours par son préfixe. Une base du parc portait l'index à deux
-    // colonnes : reconstruit, même patron que l'index de date.
-    let creation = format!(
-        "CREATE INDEX {INDEX_EXPEDITEURS} ON envelopes(sender_norm, date_epoch, mailbox_id);"
-    );
+    // Three columns (PLAN-AUDIT-V2 E4): the Cleanup aggregate is
+    // COVERED — sender, date, mailbox — without reading a single
+    // table row; sender probes (Screener, storing a verdict) are
+    // still served by its prefix. One fleet database carried the
+    // two-column index: rebuilt, same pattern as the date index.
+    let creation =
+        format!("CREATE INDEX {SENDERS_INDEX} ON envelopes(sender_norm, date_epoch, mailbox_id);");
     conn.execute_batch(&creation.replace("CREATE INDEX", "CREATE INDEX IF NOT EXISTS"))?;
-    reconstruire_index_si_ancien(conn, INDEX_EXPEDITEURS, "mailbox_id", &creation)?;
-    // Le drapeau de rétention des fils (E2, verdict S2-bis : V4 —
-    // entretenu par `thread::refresh` comme `size`/`unseen`, servi par
-    // l'index partiel miroir). Sur une base héritée, `threads` existe
-    // déjà sans la colonne — et son index partiel, créé par
-    // `thread::SCHEMA` APRÈS ce point, échouerait sans elle : c'est le
-    // piège documenté de `drop_if_outdated`. Une base neuve n'a pas
-    // encore la table : le schéma des fils la crée complète.
-    // E4 : l'index de la Réception organisée gagne les SECTIONS dans sa
-    // clé — un index d'E2 (sans l'expression `unseen`) ne porterait
-    // plus le tri et chaque page paierait un tri matérialisé (S1 :
-    // 548 ms). Même patron que la reconstruction d'idx_envelopes_date :
-    // le nom ne suffit pas, on lit la DÉFINITION. Le schéma des fils
-    // (appliqué après) recrée la forme neuve.
-    let organise_sql: Option<String> = conn
+    rebuild_index_if_old(conn, SENDERS_INDEX, "mailbox_id", &creation)?;
+    // The thread retention flag (E2, S2-bis verdict: V4 — maintained
+    // by `thread::refresh` like `size`/`unseen`, served by the mirror
+    // partial index). On a legacy database, `threads` already exists
+    // without the column — and its partial index, created by
+    // `thread::SCHEMA` AFTER this point, would fail without it: this
+    // is the documented `drop_if_outdated` trap. A fresh database
+    // does not have the table yet: the thread schema creates it
+    // complete.
+    // E4: the Organized Inbox index gains the SECTIONS in its key —
+    // an E2 index (without the `unseen` expression) would no longer
+    // carry the sort and every page would pay for a materialized sort
+    // (S1: 548 ms). Same pattern as the idx_envelopes_date rebuild:
+    // the name is not enough, the DEFINITION is read. The thread
+    // schema (applied afterward) recreates the new shape.
+    let organized_sql: Option<String> = conn
         .query_row(
             "SELECT sql FROM sqlite_master
               WHERE type = 'index' AND name = 'idx_threads_date_organise'",
@@ -4605,24 +4635,25 @@ fn migrate(
             |row| row.get(0),
         )
         .optional()?;
-    if organise_sql.is_some_and(|sql| !sql.contains("unseen")) {
+    if organized_sql.is_some_and(|sql| !sql.contains("unseen")) {
         conn.execute_batch("DROP INDEX idx_threads_date_organise;")?;
     }
-    let colonnes_threads = table_columns(conn, "threads")?;
-    if colonnes_threads.contains("id") && !colonnes_threads.contains("organise_hors") {
+    let thread_columns = table_columns(conn, "threads")?;
+    if thread_columns.contains("id") && !thread_columns.contains("organise_hors") {
         add_missing_columns(
             conn,
             "threads",
             &[("organise_hors", "INTEGER NOT NULL DEFAULT 0")],
         )?;
-        // Rattrapage UNIQUE d'une base d'AVANT E2 où le mode a déjà
-        // servi (terrain E1 : l'époque a pu être gravée et des inconnus
-        // arriver AVANT cette mise à jour — sans rattrapage ils
-        // passeraient le guichet pour toujours, en silence). D'abord
-        // l'attente (la définition de l'arrivée, rejouée sur le stock :
-        // 21 ms mesurées à 200 k), puis les drapeaux des fils touchés,
-        // par LE fragment partagé — jamais une copie de la règle.
-        let epoque: Option<i64> = conn
+        // ONE-TIME backfill for a database from BEFORE E2 where the
+        // mode has already been used (E1 field finding: the epoch
+        // may have been recorded and unknowns may have arrived
+        // BEFORE this update — without a backfill they would pass
+        // the desk forever, silently). First the pending state (the
+        // definition of arrival, replayed on the stock: 21 ms
+        // measured at 200k), then the flags of affected threads,
+        // through THE shared fragment — never a copy of the rule.
+        let epoch: Option<i64> = conn
             .query_row(
                 "SELECT value FROM prefs WHERE key = 'mode_organise_epoch'",
                 [],
@@ -4630,7 +4661,7 @@ fn migrate(
             )
             .optional()?
             .and_then(|v| v.parse().ok());
-        if let Some(epoque) = epoque {
+        if let Some(epoch) = epoch {
             conn.execute(
                 "INSERT OR IGNORE INTO portier_attente (address)
                  SELECT e.sender_norm FROM envelopes e
@@ -4645,7 +4676,7 @@ fn migrate(
                                        AND v.date_epoch <= ?1)
                     AND NOT EXISTS (SELECT 1 FROM accounts a
                                      WHERE lower(trim(a.email)) = e.sender_norm)",
-                params![epoque, thread::RECEIVED_MAILBOX],
+                params![epoch, thread::RECEIVED_MAILBOX],
             )?;
         }
         conn.execute(
@@ -4658,23 +4689,23 @@ fn migrate(
                                      WHERE r.address = te.sender_norm)
                             OR EXISTS (SELECT 1 FROM portier_attente pa
                                         WHERE pa.address = te.sender_norm)))",
-                organise_hors_sql("threads.id")
+                organized_off_sql("threads.id")
             ),
             [],
         )?;
     }
-    // L'adoption des fils ne vit PAS ici : elle appartient à l'unité
-    // transactionnelle de `init_with`, pour être rembobinable (§8). Elle
-    // vient après ce module — la colonne et l'index doivent exister avant
-    // d'adopter les messages hérités.
+    // Thread adoption does NOT live here: it belongs to the
+    // transactional unit of `init_with`, to be rewindable (§8). It
+    // comes after this module — the column and the index must exist
+    // before adopting legacy messages.
     Ok(())
 }
 
-/// Bascule Phase 2 → 3 : les contraintes de trois tables changent
-/// (UNIQUE et clés par compte) — SQLite exige une reconstruction. Les
-/// données existantes sont adoptées par un compte « en attente » (email
-/// vide) que la première connexion revendiquera : en pratique, le même
-/// compte Gmail qu'avant la mise à jour. Zéro perte, prouvé par test.
+/// Phase 2 → 3 switchover: the constraints of three tables change
+/// (UNIQUE and per-account keys) — SQLite requires a rebuild.
+/// Existing data is adopted by a "pending" account (empty email) that
+/// the first connection will claim: in practice, the same Gmail
+/// account as before the update. Zero loss, proven by test.
 fn migrate_multi_account(conn: &Connection) -> Result<(), Error> {
     if table_columns(conn, "mailboxes")?.contains("account_id") {
         return Ok(());
@@ -4723,15 +4754,15 @@ fn migrate_multi_account(conn: &Connection) -> Result<(), Error> {
     Ok(())
 }
 
-/// L'index des expéditeurs (expéditeur, date, boîte) — nommé UNE fois :
-/// les requêtes du Nettoyage l'exigent par `INDEXED BY` (revue : quatre
-/// copies du nom, un renommage en aurait oublié une en silence).
-pub(crate) const INDEX_EXPEDITEURS: &str = "idx_envelopes_sender";
+/// The senders index (sender, date, mailbox) — named ONCE: Cleanup
+/// queries require it via `INDEXED BY` (review: four copies of the
+/// name, a rename would have silently missed one).
+pub(crate) const SENDERS_INDEX: &str = "idx_envelopes_sender";
 
-/// Les champs d'une enveloppe qui vivent dans l'index de recherche —
-/// tels que relus en base, pour savoir si une re-synchronisation les a
-/// changés (sujet, expéditeur, adresse, destinataires, copies).
-type ChampsIndexes = (
+/// The fields of an envelope that live in the search index — as
+/// reread from the database, to know whether a resync has changed
+/// them (subject, sender, address, recipients, cc).
+type IndexedFields = (
     Option<String>,
     Option<String>,
     Option<String>,
@@ -4739,79 +4770,81 @@ type ChampsIndexes = (
     Option<String>,
 );
 
-/// Le chemin d'une connexion sur FICHIER — `None` pour une base mémoire
-/// (SQLite répond un nom vide), qui ne s'inscrit jamais au registre.
-fn cle_fichier(conn: &Connection) -> Option<std::path::PathBuf> {
+/// The path of a connection to a FILE — `None` for an in-memory
+/// database (SQLite answers an empty name), which never registers
+/// itself.
+fn file_key(conn: &Connection) -> Option<std::path::PathBuf> {
     conn.path()
-        .filter(|chemin| !chemin.is_empty())
+        .filter(|path| !path.is_empty())
         .map(std::path::PathBuf::from)
 }
 
-/// Le registre des chemins dont l'initialisation complète a RÉUSSI dans
-/// ce processus (PLAN-AUDIT-V2 E1). Un verrou empoisonné est repris :
-/// perdre le registre ferait rejouer les migrations, jamais les sauter.
-struct RegistreInitialisees(std::sync::Mutex<HashSet<std::path::PathBuf>>);
+/// The registry of paths whose full initialization has SUCCEEDED in
+/// this process (PLAN-AUDIT-V2 E1). A poisoned lock is recovered:
+/// losing the registry would replay the migrations, never skip them.
+struct InitializedRegistry(std::sync::Mutex<HashSet<std::path::PathBuf>>);
 
-impl RegistreInitialisees {
-    fn contains(&self, cle: &std::path::Path) -> bool {
-        self.verrou().contains(cle)
+impl InitializedRegistry {
+    fn contains(&self, key: &std::path::Path) -> bool {
+        self.lock().contains(key)
     }
 
-    fn insert(&self, cle: std::path::PathBuf) {
-        self.verrou().insert(cle);
+    fn insert(&self, key: std::path::PathBuf) {
+        self.lock().insert(key);
     }
 
-    fn verrou(&self) -> std::sync::MutexGuard<'_, HashSet<std::path::PathBuf>> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashSet<std::path::PathBuf>> {
         match self.0.lock() {
-            Ok(garde) => garde,
-            Err(empoisonne) => empoisonne.into_inner(),
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
         }
     }
 }
 
-fn registre_initialisees() -> &'static RegistreInitialisees {
-    static REGISTRE: std::sync::OnceLock<RegistreInitialisees> = std::sync::OnceLock::new();
-    REGISTRE.get_or_init(|| RegistreInitialisees(std::sync::Mutex::new(HashSet::new())))
+fn initialized_registry() -> &'static InitializedRegistry {
+    static REGISTRY: std::sync::OnceLock<InitializedRegistry> = std::sync::OnceLock::new();
+    REGISTRY.get_or_init(|| InitializedRegistry(std::sync::Mutex::new(HashSet::new())))
 }
 
-/// Reconstruit un index dont la définition en base ne porte pas encore
-/// `marqueur` (une colonne gagnée après coup). DOUBLE VÉRIFICATION, et le
-/// premier temps compte autant que le second : une lecture nue de
-/// `sqlite_master` ne prend aucun verrou ; puis, sous `BEGIN IMMEDIATE`,
-/// relecture — deux `migrate()` peuvent tourner en parallèle au démarrage
-/// (`connect_accounts` ouvre hors du verrou des commandes) : le second
-/// arrivant relit APRÈS le premier, trouve le marqueur, et ne fait rien.
-fn reconstruire_index_si_ancien(
+/// Rebuilds an index whose definition in the database does not yet
+/// carry `marker` (a column added after the fact). DOUBLE CHECK, and
+/// the first check matters as much as the second: a bare read of
+/// `sqlite_master` takes no lock; then, under `BEGIN IMMEDIATE`, a
+/// reread — two `migrate()` calls can run in parallel at startup
+/// (`connect_accounts` opens outside the commands' lock): the second
+/// one to arrive rereads AFTER the first, finds the marker, and does
+/// nothing.
+fn rebuild_index_if_old(
     conn: &Connection,
-    nom: &str,
-    marqueur: &str,
+    name: &str,
+    marker: &str,
     creation: &str,
 ) -> Result<(), Error> {
     let definition = |conn: &Connection| -> Result<Option<String>, Error> {
         Ok(conn
             .query_row(
                 "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?1",
-                [nom],
+                [name],
                 |row| row.get(0),
             )
             .optional()?)
     };
-    let ancien = |sql: Option<String>| sql.is_some_and(|sql| !sql.contains(marqueur));
-    if !ancien(definition(conn)?) {
+    let outdated = |sql: Option<String>| sql.is_some_and(|sql| !sql.contains(marker));
+    if !outdated(definition(conn)?) {
         return Ok(());
     }
     conn.execute_batch("BEGIN IMMEDIATE")?;
-    let travail = (|| -> Result<(), Error> {
-        if ancien(definition(conn)?) {
-            conn.execute_batch(&format!("DROP INDEX {nom}; {creation}"))?;
+    let work = (|| -> Result<(), Error> {
+        if outdated(definition(conn)?) {
+            conn.execute_batch(&format!("DROP INDEX {name}; {creation}"))?;
         }
         Ok(())
     })();
-    match travail {
+    match work {
         Ok(()) => conn.execute_batch("COMMIT")?,
         Err(err) => {
-            // L'échec du retour arrière n'apprendrait rien de plus que
-            // l'erreur d'origine — même choix qu'à l'unité des fils.
+            // A rollback failure would teach nothing more than the
+            // original error — same choice as in the thread unit.
             let _ = conn.execute_batch("ROLLBACK");
             return Err(err);
         }
@@ -4820,9 +4853,10 @@ fn reconstruire_index_si_ancien(
 }
 
 fn table_columns(conn: &Connection, table: &str) -> Result<HashSet<String>, Error> {
-    // `table_xinfo`, pas `table_info` : le second MASQUE les colonnes
-    // générées (`sender_norm`) — la sonde d'existence les recréait à
-    // chaque réouverture, « duplicate column name » (prouvé rouge E2).
+    // `table_xinfo`, not `table_info`: the latter HIDES generated
+    // columns (`sender_norm`) — the existence probe would recreate
+    // them on every reopen, "duplicate column name" (proven red at
+    // E2).
     let mut stmt = conn.prepare(&format!("PRAGMA table_xinfo({table})"))?;
     let columns = stmt
         .query_map([], |row| row.get(1))?
@@ -4847,17 +4881,17 @@ fn add_missing_columns(
     Ok(())
 }
 
-/// Destinataires stockés sur une ligne — un par `\n`, NULL quand vide
-/// (R4). `join`/`split` sont réciproques ; une adresse ne contient jamais
-/// de retour ligne (c'est `mailbox@host`).
-/// Les adresses qu'une enveloppe porte (expéditeur, À, Cc) — jamais des
-/// identifiants de fil, même entre chevrons (PLAN-AUDIT-V2 E5).
-fn adresses_de(envelope: &Envelope) -> Vec<String> {
-    let mut adresses: Vec<String> = Vec::new();
-    adresses.extend(envelope.sender_address.clone());
-    adresses.extend(envelope.to_addrs.iter().cloned());
-    adresses.extend(envelope.cc_addrs.iter().cloned());
-    adresses
+/// Recipients stored on one row — one per `\n`, NULL when empty (R4).
+/// `join`/`split` are reciprocal; an address never contains a line
+/// break (it is `mailbox@host`).
+/// The addresses an envelope carries (sender, To, Cc) — never thread
+/// identifiers, even in angle brackets (PLAN-AUDIT-V2 E5).
+fn addresses_from(envelope: &Envelope) -> Vec<String> {
+    let mut addresses: Vec<String> = Vec::new();
+    addresses.extend(envelope.sender_address.clone());
+    addresses.extend(envelope.to_addrs.iter().cloned());
+    addresses.extend(envelope.cc_addrs.iter().cloned());
+    addresses
 }
 
 fn join_addrs(addrs: &[String]) -> Option<String> {
@@ -4878,191 +4912,193 @@ fn split_addrs(raw: Option<String>) -> Vec<String> {
     .unwrap_or_default()
 }
 
-/// Mapping partagé par toutes les lectures d'enveloppes — l'ordre des
-/// colonnes est celui des SELECT ci-dessus (`to_addrs`/`cc_addrs` en
-/// queue, index 9/10).
-/// L'autorité UNIQUE de normalisation d'une adresse pour la mémoire
-/// d'images (R1, PLAN-RETOURS-11) : minuscules Unicode côté Rust —
-/// écriture (`allow_images_sender_of`, `revoke_images_sender`) et
-/// lecture (`images_allowed`) passent toutes par ici.
-fn adresse_images(adresse: Option<String>) -> Option<String> {
+/// Mapping shared by every envelope read — the column order is that
+/// of the SELECTs above (`to_addrs`/`cc_addrs` at the tail, index
+/// 9/10).
+/// THE SINGLE authority for normalizing an address for the image
+/// memory (R1, PLAN-RETOURS-11): Unicode lowercase on the Rust side —
+/// writing (`allow_images_sender_of`, `revoke_images_sender`) and
+/// reading (`images_allowed`) all go through here.
+fn images_address(adresse: Option<String>) -> Option<String> {
     adresse
         .map(|a| a.trim().to_lowercase())
         .filter(|a| !a.is_empty())
 }
 
-/// Les vocabulaires FERMÉS du routage (PLAN-MODE-ORGANISE E1) — la
-/// même table sert la validation Rust et, en ceinture, les CHECK du
-/// schéma. `ecarte` est la seule destination qui accepte une règle.
-const DESTINATIONS_ROUTAGE: [&str; 4] = ["reception", "kiosque", "registre", "ecarte"];
-const REGLES_ROUTAGE: [&str; 3] = ["spam", "archive", "corbeille"];
+/// The CLOSED vocabularies of routing (PLAN-MODE-ORGANISE E1) — the
+/// same table serves Rust validation and, as a belt, the schema's
+/// CHECK constraints. `ecarte` is the only destination that accepts a
+/// rule.
+const ROUTING_DESTINATIONS: [&str; 4] = ["reception", "kiosque", "registre", "ecarte"];
+const ROUTING_RULES: [&str; 3] = ["spam", "archive", "corbeille"];
 
-/// Les clés `prefs` du Mode organisé — l'état, et la borne de
-/// rétention du Portier (première activation, jamais réécrite).
-const PREF_MODE_ORGANISE: &str = "mode_organise";
-const PREF_MODE_ORGANISE_EPOCH: &str = "mode_organise_epoch";
+/// The `prefs` keys of Organized mode — the state, and the retention
+/// bound of the Screener (first activation, never rewritten).
+const PREF_ORGANIZED_MODE: &str = "mode_organise";
+const PREF_ORGANIZED_MODE_EPOCH: &str = "mode_organise_epoch";
 
-/// RETOURS-13 R5/R9 — les défauts des boutons du Portier : le Oui
-/// prend une destination (jamais `ecarte`), le Non une règle du
-/// vocabulaire d'écarté ou `ecarte` nu (« écarter sans déplacer »).
-/// DÉRIVÉS des tables de routage — jamais une seconde copie du
-/// vocabulaire (revue : une destination ajoutée à DESTINATIONS_ROUTAGE
-/// aurait laissé le sélecteur des Réglages la refuser en silence).
-const PREF_PORTIER_DEFAUT_OUI: &str = "portier_defaut_oui";
-const PREF_PORTIER_DEFAUT_NON: &str = "portier_defaut_non";
-fn defaut_portier_oui_valide(v: &str) -> bool {
-    v != "ecarte" && DESTINATIONS_ROUTAGE.contains(&v)
+/// RETOURS-13 R5/R9 — the Screener buttons' defaults: Yes takes a
+/// destination (never `ecarte`), No a rule from the screened-out
+/// vocabulary or bare `ecarte` ("screen out without moving").
+/// DERIVED from the routing tables — never a second copy of the
+/// vocabulary (review: a destination added to ROUTING_DESTINATIONS
+/// would have left the Settings selector silently refusing it).
+const PREF_SCREENER_DEFAULT_YES: &str = "portier_defaut_oui";
+const PREF_SCREENER_DEFAULT_NO: &str = "portier_defaut_non";
+fn valid_screener_default_yes(v: &str) -> bool {
+    v != "ecarte" && ROUTING_DESTINATIONS.contains(&v)
 }
-fn defaut_portier_non_valide(v: &str) -> bool {
-    v == "ecarte" || REGLES_ROUTAGE.contains(&v)
+fn valid_screener_default_no(v: &str) -> bool {
+    v == "ecarte" || ROUTING_RULES.contains(&v)
 }
 
-/// La porte UNIQUE de validation du vocabulaire de routage — appelée
-/// avant toute écriture ET avant toute résolution d'adresse (un
-/// vocabulaire troué ne se cache jamais derrière un autre refus).
-fn valider_routage(destination: &str, regle: Option<&str>) -> Result<(), Error> {
-    if !DESTINATIONS_ROUTAGE.contains(&destination) {
+/// THE single validation gate for the routing vocabulary — called
+/// before every write AND before every address resolution (a holed
+/// vocabulary never hides behind another refusal).
+fn validate_routing(destination: &str, rule: Option<&str>) -> Result<(), Error> {
+    if !ROUTING_DESTINATIONS.contains(&destination) {
         return Err(Error::InvalidRouting(format!(
-            "destination inconnue : {destination:?}"
+            "unknown destination: {destination:?}"
         )));
     }
-    if let Some(r) = regle {
+    if let Some(r) = rule {
         if destination != "ecarte" {
             return Err(Error::InvalidRouting(format!(
-                "une règle du Non exige un expéditeur écarté, pas {destination:?}"
+                "a No rule requires a screened-out sender, not {destination:?}"
             )));
         }
-        if !REGLES_ROUTAGE.contains(&r) {
-            return Err(Error::InvalidRouting(format!("règle inconnue : {r:?}")));
+        if !ROUTING_RULES.contains(&r) {
+            return Err(Error::InvalidRouting(format!("unknown rule: {r:?}")));
         }
     }
     Ok(())
 }
 
-/// Le verdict du Portier sur un expéditeur — une ligne de
-/// `routage_expediteurs`, telle que l'historique la montre.
+/// The Screener's verdict on a sender — a row of
+/// `routage_expediteurs`, as history shows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Routage {
+pub struct Routing {
     pub address: String,
     pub destination: String,
-    pub regle: Option<String>,
+    pub rule: Option<String>,
     pub epoch: i64,
 }
 
-fn lire_routage(row: &rusqlite::Row<'_>) -> rusqlite::Result<Routage> {
-    Ok(Routage {
+fn read_routing(row: &rusqlite::Row<'_>) -> rusqlite::Result<Routing> {
+    Ok(Routing {
         address: row.get(0)?,
         destination: row.get(1)?,
-        regle: row.get(2)?,
+        rule: row.get(2)?,
         epoch: row.get(3)?,
     })
 }
 
-/// Un rang du guichet du Portier (E2) : l'adresse EN ATTENTE —
-/// normalisée, la clé que le verdict prendra — et son dernier message.
+/// A rank of the Screener's desk (E2): the WAITING address —
+/// normalized, the key the verdict will take — and its last message.
 #[derive(Debug)]
-pub struct RangPortier {
+pub struct ScreenerRank {
     pub address: String,
-    pub ligne: UnifiedRow,
+    pub row: UnifiedRow,
 }
 
-/// Les fils d'UN expéditeur — LA définition unique, partagée par le
-/// recalcul des verdicts et la défaite d'attente du chemin de synchro.
-fn fils_de(conn: &Connection, adresse: &str) -> Result<Vec<i64>, Error> {
-    let fils = conn
+/// The threads of ONE sender — THE single definition, shared by the
+/// verdict recompute and the pending-state clearing of the sync path.
+fn threads_of(conn: &Connection, address: &str) -> Result<Vec<i64>, Error> {
+    let threads = conn
         .prepare_cached(
             "SELECT DISTINCT thread_id FROM envelopes
               WHERE sender_norm = ?1 AND thread_id IS NOT NULL",
         )?
-        .query_map(params![adresse], |row| row.get(0))?
+        .query_map(params![address], |row| row.get(0))?
         .collect::<Result<_, _>>()?;
-    Ok(fils)
+    Ok(threads)
 }
 
-/// Le CŒUR transactionnel du verdict — LA porte unique, partagée par
-/// [`Store::router_expediteur`] (Portier, « Déplacer vers… ») et
-/// [`Store::nettoyage_verdict`] (revue 2026-08-30 : le Nettoyage en
-/// recopiait le corps ; un futur ajout à « poser un verdict » aurait
-/// divergé selon l'écran d'origine). L'appelant valide le vocabulaire
-/// et normalise l'adresse AVANT.
-fn poser_verdict(
+/// The transactional CORE of the verdict — THE single gate, shared by
+/// [`Store::router_expediteur`] (Screener, "Move to…") and
+/// [`Store::nettoyage_verdict`] (2026-08-30 review: Cleanup was
+/// recopying the body; a future addition to "set a verdict" would
+/// have diverged depending on the originating screen). The caller
+/// validates the vocabulary and normalizes the address BEFOREHAND.
+fn set_verdict(
     tx: &Connection,
-    adresse: &str,
+    address: &str,
     destination: &str,
-    regle: Option<&str>,
+    rule: Option<&str>,
     epoch: i64,
 ) -> Result<(), Error> {
     tx.execute(
         "INSERT OR REPLACE INTO routage_expediteurs (address, destination, regle, epoch)
          VALUES (?1, ?2, ?3, ?4)",
-        params![adresse, destination, regle, epoch],
+        params![address, destination, rule, epoch],
     )?;
-    // RETOURS-14 R8 (terrain 2026-08-31) : un OUI vaut confiance — le
-    // verdict pose AUSSI la règle « toujours afficher les images de
-    // cet expéditeur » (même table, même normalisation que la garde
-    // R1 ; révocable aux Réglages > Affichage). Un Non ne touche pas
-    // à la garde — elle a sa propre porte de sortie.
+    // RETOURS-14 R8 (field finding 2026-08-31): a YES means trust —
+    // the verdict ALSO sets the rule "always show images from this
+    // sender" (same table, same normalization as the R1 guard;
+    // revocable in Settings > Display). A No does not touch the
+    // guard — it has its own way out.
     if destination != "ecarte" {
         tx.execute(
             "INSERT OR REPLACE INTO images_expediteurs (address, epoch) VALUES (?1, ?2)",
-            params![adresse, epoch],
+            params![address, epoch],
         )?;
     }
-    // Le verdict prend le relais de l'attente — Oui comme Non.
+    // The verdict takes over from the pending state — Yes as much as
+    // No.
     tx.execute(
         "DELETE FROM portier_attente WHERE address = ?1",
-        params![adresse],
+        params![address],
     )?;
-    rafraichir_fils_de(tx, adresse)
+    refresh_threads_of(tx, address)
 }
 
-/// Recalcule les drapeaux des fils d'UN expéditeur par LA porte unique
-/// (`thread::refresh`) — après un verdict ou une réintégration. Borné
-/// aux fils de l'adresse (63 ms mesurées sur un expéditeur de 10 000
-/// fils, geste unique).
-fn rafraichir_fils_de(conn: &Connection, adresse: &str) -> Result<(), Error> {
-    for fil in fils_de(conn, adresse)? {
-        thread::refresh(conn, fil)?;
+/// Recomputes the flags of ONE sender's threads through THE single
+/// gate (`thread::refresh`) — after a verdict or a reinstatement.
+/// Bounded to the address's threads (63 ms measured on a sender with
+/// 10,000 threads, single gesture).
+fn refresh_threads_of(conn: &Connection, address: &str) -> Result<(), Error> {
+    for thread in threads_of(conn, address)? {
+        thread::refresh(conn, thread)?;
     }
     Ok(())
 }
 
-/// L'adresse est-elle celle d'UN de nos comptes ? Jamais soi au
-/// Portier (leçon E1 : la propre adresse de l'utilisateur n'est jamais
-/// un expéditeur à trier). `prepare_cached` : la sonde vit sur le
-/// chemin chaud de la synchro (revue E2).
-fn adresse_d_un_compte(conn: &Connection, adresse: &str) -> Result<bool, Error> {
+/// Is the address one of OUR accounts? Never oneself at the Screener
+/// (E1 lesson: the user's own address is never a sender to sort).
+/// `prepare_cached`: the probe lives on the hot path of sync (E2
+/// review).
+fn account_address(conn: &Connection, address: &str) -> Result<bool, Error> {
     Ok(conn
         .prepare_cached("SELECT 1 FROM accounts WHERE lower(trim(email)) = ?1")?
-        .exists(params![adresse])?)
+        .exists(params![address])?)
 }
 
-/// L'expéditeur a-t-il du courrier ANTÉRIEUR à l'époque d'activation ?
-/// C'est LA définition du « connu » de D3 (arrivées seules) — une seule
-/// écriture, partagée par la décision d'arrivée et la réintégration :
-/// deux copies divergeraient sur le sens même du guichet. Toutes
-/// boîtes confondues : un historique en Archives ou aux Indésirables
-/// est un historique.
-fn connu_avant_epoque(conn: &Connection, adresse: &str, epoque: i64) -> Result<bool, Error> {
+/// Does the sender have mail PRIOR to the activation epoch? This is
+/// THE definition of "known" from D3 (arrivals only) — one single
+/// piece of writing, shared by the arrival decision and the
+/// reinstatement: two copies would diverge on the very meaning of the
+/// desk. Across all mailboxes: history in Archive or Junk is still
+/// history.
+fn known_before_epoch(conn: &Connection, address: &str, epoch: i64) -> Result<bool, Error> {
     Ok(conn
         .prepare_cached(
             "SELECT 1 FROM envelopes
               WHERE sender_norm = ?1 AND date_epoch <= ?2 LIMIT 1",
         )?
-        .exists(params![adresse, epoque])?)
+        .exists(params![address, epoch])?)
 }
 
-/// Purge les rangs du Portier qui ne s'appuient plus sur AUCUN
-/// courrier (E2) : l'attente est DÉRIVÉE — un UID recyclé n'hérite
-/// d'aucune décision (A43/A89). Partagée par le retrait de compte et
-/// la réinitialisation de boîte.
-/// LA liste des tables « par message », pour les trois purges
-/// (`remove_local`, `remove_absent`, `reset_mailbox`) — PLAN-AUDIT-V1 E4.
-/// Avant : trois copies divergentes, `remove_absent` en oubliait cinq.
-/// Les actions en attente ne sont PAS dans la liste : selon la purge,
-/// elles portent le geste (`remove_local`) ou sont irréalisables
-/// (`remove_absent`, `reset_mailbox` — qui les retire à part).
-pub(crate) const TABLES_PAR_MESSAGE: [&str; 7] = [
+/// Purges the Screener's ranks that no longer rest on ANY mail (E2):
+/// the pending state is DERIVED — a recycled UID inherits no decision
+/// (A43/A89). Shared by account removal and mailbox reset.
+/// THE list of "per message" tables, for the three purges
+/// (`remove_local`, `remove_absent`, `reset_mailbox`) —
+/// PLAN-AUDIT-V1 E4. Before: three diverging copies, `remove_absent`
+/// was missing five. Pending actions are NOT in the list: depending
+/// on the purge, they carry the gesture (`remove_local`) or are
+/// unrealizable (`remove_absent`, `reset_mailbox` — which removes
+/// them separately).
+pub(crate) const TABLES_PER_MESSAGE: [&str; 7] = [
     "bodies",
     "invitations",
     "attachments",
@@ -5072,19 +5108,19 @@ pub(crate) const TABLES_PAR_MESSAGE: [&str; 7] = [
     "envelopes",
 ];
 
-/// Purge UN message de toutes ses tables et rend son fil, RELEVÉ AVANT
-/// la suppression (après, le lien est perdu) — sans le rafraîchir :
-/// c'est l'appelant qui rafraîchit, UNE fois par fil touché (revue
-/// PLAN-AUDIT-V1 : un rafraîchissement par message coûtait ~500× sur un
-/// fil de 500 disparus).
-pub(crate) fn purger_message(
+/// Purges ONE message from all its tables and returns its thread,
+/// READ BEFORE the deletion (after, the link is lost) — without
+/// refreshing it: it is the caller who refreshes, ONCE per affected
+/// thread (review PLAN-AUDIT-V1: a refresh per message cost ~500× on
+/// a thread of 500 vanished messages).
+pub(crate) fn purge_message(
     conn: &Connection,
     mailbox_id: i64,
     uid: Uid,
 ) -> Result<Option<thread::ThreadId>, Error> {
     let thread = thread::thread_of(conn, mailbox_id, uid)?;
     search::deindex_message(conn, mailbox_id, uid)?;
-    for table in TABLES_PAR_MESSAGE {
+    for table in TABLES_PER_MESSAGE {
         conn.execute(
             &format!("DELETE FROM {table} WHERE mailbox_id = ?1 AND uid = ?2"),
             params![mailbox_id, uid],
@@ -5093,9 +5129,9 @@ pub(crate) fn purger_message(
     Ok(thread)
 }
 
-/// Les refusées d'un message (quarantaine E3) : un geste neuf de
-/// l'utilisateur les remplace.
-fn oublier_les_refusees(conn: &Connection, mailbox_id: i64, uid: Uid) -> Result<(), Error> {
+/// The refused actions of a message (quarantine E3): a fresh gesture
+/// from the user replaces them.
+fn forget_refused(conn: &Connection, mailbox_id: i64, uid: Uid) -> Result<(), Error> {
     conn.execute(
         "DELETE FROM pending_actions WHERE mailbox_id = ?1 AND uid = ?2 AND refusee = 1",
         params![mailbox_id, uid],
@@ -5103,7 +5139,7 @@ fn oublier_les_refusees(conn: &Connection, mailbox_id: i64, uid: Uid) -> Result<
     Ok(())
 }
 
-fn purger_attente_orpheline(conn: &Connection) -> Result<(), Error> {
+fn purge_orphan_pending(conn: &Connection) -> Result<(), Error> {
     conn.execute(
         "DELETE FROM portier_attente WHERE NOT EXISTS (
              SELECT 1 FROM envelopes e WHERE e.sender_norm = portier_attente.address)",
@@ -5131,8 +5167,8 @@ fn row_to_envelope(row: &rusqlite::Row<'_>) -> rusqlite::Result<Envelope> {
     })
 }
 
-/// Mapping partagé par les lectures de la boîte unifiée — l'ordre des
-/// colonnes est celui de [`SELECT_UNIFIED`].
+/// Mapping shared by reads of the unified mailbox — the column order
+/// is that of [`SELECT_UNIFIED`].
 pub(crate) fn row_to_unified(row: &rusqlite::Row<'_>) -> rusqlite::Result<UnifiedRow> {
     let attachment_count = row.get::<_, i64>(10)?.max(0) as u32;
     Ok(UnifiedRow {
@@ -5159,21 +5195,22 @@ pub(crate) fn row_to_unified(row: &rusqlite::Row<'_>) -> rusqlite::Result<Unifie
         attachment_count,
         preview: row.get(14)?,
         thread_id: row.get(11)?,
-        // Valeurs d'un message vu SEUL — c'est le cas de la recherche, qui
-        // ne joint pas `threads`. La liste groupée les écrase avec
-        // l'agrégat réel via [`row_to_threaded`].
+        // Values for a message seen ALONE — this is the case for
+        // search, which does not join `threads`. The grouped list
+        // overwrites them with the real aggregate via
+        // [`row_to_threaded`].
         thread_size: 1,
         thread_unseen: u32::from(!row.get::<_, bool>(8)?),
-        // Posée par la passe de PAGE (`enrichir_lignes`), jamais ici.
+        // Set by the PAGE pass (`enrichir_lignes`), never here.
         invitation: None,
     })
 }
 
-/// Mapping de la liste groupée : les colonnes unifiées, puis l'agrégat du
-/// fil ajouté par [`THREAD_AGGREGATE`].
+/// Mapping for the grouped list: the unified columns, then the thread
+/// aggregate added by [`THREAD_AGGREGATE`].
 pub(crate) fn row_to_threaded(row: &rusqlite::Row<'_>) -> rusqlite::Result<UnifiedRow> {
     Ok(UnifiedRow {
-        // `to_addrs`/`cc_addrs` ont repoussé l'agrégat aux index 17/18.
+        // `to_addrs`/`cc_addrs` pushed the aggregate to indexes 17/18.
         thread_size: row.get(17)?,
         thread_unseen: row.get(18)?,
         ..row_to_unified(row)?
@@ -5216,13 +5253,13 @@ mod tests {
         (store, id)
     }
 
-    /// Toutes les tables « par message » garnies pour un UID : ce que
-    /// chaque purge doit emporter (PLAN-AUDIT-V1 E4).
-    fn garnir_message(store: &mut Store, inbox: i64, uid: Uid) {
+    /// Every "per message" table filled for a UID: what every purge must
+    /// carry away (PLAN-AUDIT-V1 E4).
+    fn fill_message(store: &mut Store, inbox: i64, uid: Uid) {
         store
-            .upsert_envelopes(inbox, &[envelope(uid, "sujet", 100, false)])
+            .upsert_envelopes(inbox, &[envelope(uid, "subject", 100, false)])
             .unwrap();
-        store.save_body(inbox, uid, "<p>corps</p>", &[]).unwrap();
+        store.save_body(inbox, uid, "<p>body</p>", &[]).unwrap();
         let conn = store.conn();
         conn.execute(
             "INSERT INTO attachments (mailbox_id, uid, idx, name, mime, size) VALUES (?1, ?2, 0, 'a.pdf', 'application/pdf', 1)",
@@ -5243,9 +5280,9 @@ mod tests {
         }
     }
 
-    /// Combien de lignes, toutes tables par message confondues, portent
-    /// encore cet UID.
-    fn lignes_du_message(store: &Store, inbox: i64, uid: Uid) -> Vec<(&'static str, i64)> {
+    /// How many rows, across every per-message table, still carry this
+    /// UID.
+    fn message_rows(store: &Store, inbox: i64, uid: Uid) -> Vec<(&'static str, i64)> {
         [
             "envelopes",
             "bodies",
@@ -5271,34 +5308,33 @@ mod tests {
         .collect()
     }
 
-    /// Audit 2026-09-01 S2 (E4) : `remove_absent` ne purgeait que 3 tables
-    /// sur 7 — un message disparu du serveur laissait pièces, invitation,
-    /// mémoire d'images, mise de côté et « lu » du Kiosque orphelins (aucune
-    /// clé étrangère sur `envelopes`). UNE liste, la même pour les trois
-    /// purges.
+    /// Audit 2026-09-01 S2 (E4): `remove_absent` only purged 3 tables out
+    /// of 7 — a message gone from the server left attachments, invitation,
+    /// image memory, set-aside and Feed "read" orphaned (no foreign key on
+    /// `envelopes`). ONE list, the same for all three purges.
     #[test]
-    fn un_message_disparu_du_serveur_ne_laisse_aucun_orphelin() {
+    fn a_message_gone_from_the_server_leaves_no_orphan() {
         let (mut store, inbox) = store_with_mailbox();
-        garnir_message(&mut store, inbox, 1);
-        assert_eq!(lignes_du_message(&store, inbox, 1).len(), 7, "décor garni");
+        fill_message(&mut store, inbox, 1);
+        assert_eq!(message_rows(&store, inbox, 1).len(), 7, "fixture filled");
 
-        let retires = store.remove_absent(inbox, &HashSet::new()).unwrap();
+        let removed = store.remove_absent(inbox, &HashSet::new()).unwrap();
 
-        assert_eq!(retires, 1);
+        assert_eq!(removed, 1);
         assert_eq!(
-            lignes_du_message(&store, inbox, 1),
+            message_rows(&store, inbox, 1),
             Vec::<(&str, i64)>::new(),
-            "aucune ligne ne doit survivre au message"
+            "no row must survive the message"
         );
     }
 
-    /// Un déclencheur SQLite qui refuse la suppression des enveloppes
-    /// simule une panne au milieu de la purge : tout ce qui précédait
-    /// (corps, actions…) doit être REMBOBINÉ. Avant E4, `reset_mailbox`
-    /// enchaînait neuf écritures en autocommit — un crash entre deux
-    /// laissait des fils sans enveloppes (la « pastille devant une liste
-    /// vide » déjà payée à E5 du mode organisé).
-    fn bloquer_les_suppressions_d_enveloppes(store: &Store) {
+    /// A SQLite trigger that refuses envelope deletion simulates a failure
+    /// in the middle of the purge: everything that came before it (body,
+    /// actions…) must be ROLLED BACK. Before E4, `reset_mailbox` chained
+    /// nine autocommit writes — a crash between two of them left threads
+    /// without envelopes (the "badge in front of an empty list" already
+    /// paid for at organized mode's E5).
+    fn block_envelope_deletions(store: &Store) {
         store
             .conn()
             .execute_batch(
@@ -5309,21 +5345,21 @@ mod tests {
     }
 
     #[test]
-    fn reset_mailbox_est_atomique() {
+    fn reset_mailbox_is_atomic() {
         let (mut store, inbox) = store_with_mailbox();
-        garnir_message(&mut store, inbox, 1);
+        fill_message(&mut store, inbox, 1);
         store.enqueue_action(inbox, 1, Action::MarkSeen).unwrap();
-        bloquer_les_suppressions_d_enveloppes(&store);
+        block_envelope_deletions(&store);
 
         assert!(
             store.reset_mailbox(inbox, 2).is_err(),
-            "la panne doit remonter"
+            "the failure must propagate"
         );
 
         assert_eq!(
-            lignes_du_message(&store, inbox, 1).len(),
+            message_rows(&store, inbox, 1).len(),
             7,
-            "rien n'a été effacé avant la panne : une seule transaction"
+            "nothing was erased before the failure: a single transaction"
         );
         assert_eq!(store.pending_actions(inbox).unwrap().len(), 1);
         assert_eq!(
@@ -5333,53 +5369,52 @@ mod tests {
                 .unwrap()
                 .uid_validity,
             1,
-            "l'UIDVALIDITY n'a pas bougé non plus"
+            "the UIDVALIDITY did not move either"
         );
     }
 
     #[test]
-    fn remove_local_est_atomique() {
+    fn remove_local_is_atomic() {
         let (mut store, inbox) = store_with_mailbox();
-        garnir_message(&mut store, inbox, 1);
-        bloquer_les_suppressions_d_enveloppes(&store);
+        fill_message(&mut store, inbox, 1);
+        block_envelope_deletions(&store);
 
         assert!(store.remove_local(inbox, 1).is_err());
 
         assert_eq!(
-            lignes_du_message(&store, inbox, 1).len(),
+            message_rows(&store, inbox, 1).len(),
             7,
-            "corps, pièces, invitation… tous encore là : rembobinés avec l'enveloppe"
+            "body, attachments, invitation… all still there: rolled back with the envelope"
         );
     }
 
-    /// Revue PLAN-AUDIT-V1 : une refusée n'est pas éternelle — un geste
-    /// neuf de l'utilisateur sur le même message la remplace, et la ligne
-    /// de la fente retombe.
+    /// PLAN-AUDIT-V1 review: a refused action is not eternal — a fresh
+    /// gesture from the user on the same message replaces it, and the
+    /// screener-waiting row falls back down.
     #[test]
-    fn un_nouveau_geste_remplace_l_ancienne_refusee() {
+    fn a_new_gesture_replaces_the_old_refused_action() {
         let (store, id) = store_with_mailbox();
         store
-            .enqueue_action(id, 1, Action::MoveTo("Disparu".to_string()))
+            .enqueue_action(id, 1, Action::MoveTo("Gone".to_string()))
             .unwrap();
-        let refusee = store.pending_actions(id).unwrap().remove(0).id;
-        store.refuser_action(refusee, "[TRYCREATE]").unwrap();
-        assert_eq!(store.actions_refusees().unwrap(), 1);
+        let refused = store.pending_actions(id).unwrap().remove(0).id;
+        store.refuse_action(refused, "[TRYCREATE]").unwrap();
+        assert_eq!(store.refused_actions().unwrap(), 1);
 
         store.enqueue_action(id, 1, Action::MarkSeen).unwrap();
 
-        assert_eq!(store.actions_refusees().unwrap(), 0, "remplacée");
-        let file = store.pending_actions(id).unwrap();
-        assert_eq!(file.len(), 1);
-        assert_eq!(file[0].action, Action::MarkSeen);
+        assert_eq!(store.refused_actions().unwrap(), 0, "replaced");
+        let queue = store.pending_actions(id).unwrap();
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue[0].action, Action::MarkSeen);
     }
 
-    /// Audit 2026-09-01 (PLAN-AUDIT-V1 E3) : une ligne `pending_actions`
-    /// au `kind` illisible (version future, corruption) faisait échouer
-    /// TOUT `pending_actions(mailbox_id)` — la file entière coincée par
-    /// une ligne. Elle est mise en quarantaine avec son motif, la file
-    /// continue.
+    /// Audit 2026-09-01 (PLAN-AUDIT-V1 E3): a `pending_actions` row with an
+    /// unreadable `kind` (future version, corruption) made the WHOLE
+    /// `pending_actions(mailbox_id)` fail — the entire queue jammed by one
+    /// row. It is quarantined with its reason, the queue goes on.
     #[test]
-    fn une_ligne_illisible_ne_fait_pas_echouer_la_file() {
+    fn an_unreadable_row_does_not_fail_the_whole_queue() {
         let (store, id) = store_with_mailbox();
         store.enqueue_action(id, 1, Action::MarkSeen).unwrap();
         store
@@ -5391,27 +5426,26 @@ mod tests {
             .unwrap();
         store.enqueue_action(id, 3, Action::Archive).unwrap();
 
-        let file = store.pending_actions(id).unwrap();
+        let queue = store.pending_actions(id).unwrap();
         assert_eq!(
-            file.iter().map(|p| p.uid).collect::<Vec<_>>(),
+            queue.iter().map(|p| p.uid).collect::<Vec<_>>(),
             vec![1, 3],
-            "les lisibles passent, l'illisible est écartée"
+            "the readable ones pass, the unreadable one is set aside"
         );
-        assert_eq!(store.actions_refusees().unwrap(), 1);
-        // Idempotent : une seconde lecture ne la recompte pas.
+        assert_eq!(store.refused_actions().unwrap(), 1);
+        // Idempotent: a second read does not recount it.
         store.pending_actions(id).unwrap();
-        assert_eq!(store.actions_refusees().unwrap(), 1);
+        assert_eq!(store.refused_actions().unwrap(), 1);
     }
 
-    /// D-36 (soldée à l'audit du 2026-09-01) : un `\n` dans un
-    /// commentaire `--` du littéral `SCHEMA` devenait un vrai saut de
-    /// ligne, SQLite avalait la suite du commentaire comme une COLONNE,
-    /// et toute base NEUVE naissait avec une colonne fantôme dans
-    /// `echos`. Le filet manquant : chaque colonne de chaque table d'une
-    /// base neuve porte un nom sain — un identifiant, jamais un bout de
-    /// phrase.
+    /// D-36 (closed at the 2026-09-01 audit): a `\n` inside a `--` comment
+    /// of the `SCHEMA` literal became a real newline, SQLite swallowed the
+    /// rest of the comment as a COLUMN, and every FRESH database was born
+    /// with a phantom column in `echos`. The missing net: every column of
+    /// every table of a fresh database carries a sane name — an
+    /// identifier, never a scrap of sentence.
     #[test]
-    fn une_base_neuve_n_a_aucune_colonne_fantome() {
+    fn a_fresh_database_has_no_phantom_column() {
         let store = Store::open_in_memory().unwrap();
         let conn = store.conn();
         let mut tables = conn
@@ -5420,27 +5454,30 @@ mod tests {
                  WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
             )
             .unwrap();
-        let noms: Vec<String> = tables
+        let names: Vec<String> = tables
             .query_map([], |row| row.get(0))
             .unwrap()
             .collect::<Result<_, _>>()
             .unwrap();
-        assert!(noms.iter().any(|t| t == "echos"), "la table echos manque");
-        for table in noms {
-            let mut colonnes = conn
+        assert!(
+            names.iter().any(|t| t == "echos"),
+            "the echos table is missing"
+        );
+        for table in names {
+            let mut columns = conn
                 .prepare(&format!("PRAGMA table_info(\"{table}\")"))
                 .unwrap();
-            let noms_colonnes: Vec<String> = colonnes
+            let column_names: Vec<String> = columns
                 .query_map([], |row| row.get(1))
                 .unwrap()
                 .collect::<Result<_, _>>()
                 .unwrap();
-            for colonne in &noms_colonnes {
+            for column in &column_names {
                 assert!(
-                    colonne
+                    column
                         .chars()
                         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'),
-                    "colonne fantôme « {colonne} » dans {table} : {noms_colonnes:?}"
+                    "phantom column \"{column}\" in {table}: {column_names:?}"
                 );
             }
         }
@@ -5452,14 +5489,14 @@ mod tests {
             .unwrap()
     }
 
-    /// R4 : les destinataires À/Cc écrits à la synchro se relisent tels
-    /// quels — c'est ce que le dossier d'envois affiche (l'expéditeur y
-    /// est SOI) et ce que « Répondre à tous » relit hors ligne. Le cas
-    /// « Test PJ 3 » : un envoi à une adresse tierce.
+    /// R4: the To/Cc recipients written at sync read back exactly as
+    /// written — it is what the Sent folder displays (the sender there is
+    /// SELF) and what "Reply all" reads back offline. The "Test Attachment
+    /// 3" case: a send to a third-party address.
     #[test]
-    fn upsert_persiste_les_destinataires() {
+    fn upsert_persists_the_recipients() {
         let (mut store, id) = store_with_mailbox();
-        let mut env = envelope(1, "Test PJ 3", 1_700_000_000, true);
+        let mut env = envelope(1, "Test Attachment 3", 1_700_000_000, true);
         env.to_addrs = vec!["sebastien.monchamps@gmail.com".to_string()];
         env.cc_addrs = vec![
             "copie1@exemple.fr".to_string(),
@@ -5471,8 +5508,8 @@ mod tests {
         assert_eq!(recent(&store, 0, 10), vec![env]);
     }
 
-    /// Une préférence jamais posée répond le défaut demandé ; posée, elle
-    /// se relit telle quelle et s'écrase sans doublon.
+    /// A preference never set answers the requested default; set, it
+    /// reads back exactly as written and overwrites without duplicating.
     #[test]
     fn bool_pref_default_then_roundtrip() {
         let store = Store::open_in_memory().unwrap();
@@ -5484,17 +5521,18 @@ mod tests {
         assert!(store.bool_pref("arrival_bubbles", false).unwrap());
     }
 
-    /// Le repère de la relève gardée (ADR 0017) : jamais posé -> `None`
-    /// (une base héritée relève tout à son premier cycle), posé -> relu.
+    /// The marker of the guarded poll (ADR 0017): never set -> `None` (a
+    /// legacy database polls everything on its first cycle), set -> read
+    /// back.
     #[test]
-    fn remote_uidnext_absent_puis_pose() {
+    fn remote_uidnext_absent_then_set() {
         let store = Store::open_in_memory().unwrap();
         let account = store
             .adopt_or_create_account("a@exemple.fr", "gmail")
             .unwrap();
         let mailbox = store.create_mailbox(account, "INBOX", 1).unwrap();
-        // NULL tant qu'aucune relève gardée n'a eu lieu : une base
-        // héritée relève tout à son premier cycle (ADR 0017).
+        // NULL as long as no guarded poll has happened: a legacy database
+        // polls everything on its first cycle (ADR 0017).
         assert_eq!(store.remote_uidnext(mailbox).unwrap(), None);
         store.set_remote_uidnext(mailbox, 101).unwrap();
         assert_eq!(store.remote_uidnext(mailbox).unwrap(), Some(101));
@@ -5502,54 +5540,54 @@ mod tests {
         assert!(!store.has_pending_actions(mailbox).unwrap());
     }
 
-    /// Un départ en attente de rejeu (archive, suppression, déplacement)
-    /// ne compte plus dans le dénominateur de l'avancement : le geste
-    /// retire la ligne locale immédiatement (écho, PLAN-REACTIVITE E3)
-    /// mais `remote_total` date du dernier SELECT — sans l'ajustement,
-    /// UN SEUL triage suffisait à figer l'avancement à 99 % et le trait
-    /// hitofude de la barre d'état avec lui (terrain 2026-08-15,
-    /// PLAN-GELS : 5 archives + 1 suppression en attente = 99 % pour
-    /// toute la durée du rejeu). Le vrai chemin du geste est appelé
-    /// (`geste_avec_echo`), jamais une simulation.
+    /// A departure pending replay (archive, deletion, move) no longer
+    /// counts in the progress denominator: the gesture removes the local
+    /// row immediately (echo, PLAN-REACTIVITE E3) but `remote_total` dates
+    /// from the last SELECT — without the adjustment, a SINGLE triage was
+    /// enough to freeze progress at 99% and the status bar's hitofude
+    /// stroke with it (field 2026-08-15, PLAN-GELS: 5 archives + 1 pending
+    /// deletion = 99% for the whole duration of the replay). The real
+    /// gesture path is called (`geste_avec_echo`), never a simulation.
     #[test]
-    fn un_depart_en_attente_ne_compte_plus_dans_le_denominateur() {
+    fn a_departure_pending_replay_no_longer_counts_in_the_denominator() {
         let (mut store, id) = store_with_mailbox();
         store
             .upsert_envelopes(
                 id,
                 &[
-                    envelope(1, "reste", 100, true),
-                    envelope(2, "part en archive", 200, true),
-                    envelope(3, "reste aussi", 300, false),
+                    envelope(1, "stays", 100, true),
+                    envelope(2, "leaves for archive", 200, true),
+                    envelope(3, "stays too", 300, false),
                 ],
             )
             .unwrap();
         store.record_remote_total(id, 3).unwrap();
         assert_eq!(store.sync_progress().unwrap(), (3, 3));
-        // Le triage : l'écho retire la ligne, l'action attend son rejeu.
+        // The triage: the echo removes the row, the action awaits its replay.
         store
             .geste_avec_echo(id, 2, Action::Archive, Some("archives"))
             .unwrap();
         assert_eq!(
             store.sync_progress().unwrap(),
             (2, 2),
-            "le message archivé localement ne doit plus être attendu"
+            "the locally archived message must no longer be awaited"
         );
-        // Un marquage en attente ne retire rien de la boîte : il ne
-        // touche pas le dénominateur.
+        // Marking as pending removes nothing from the mailbox: it does not
+        // touch the denominator.
         store.enqueue_action(id, 1, Action::MarkSeen).unwrap();
         assert_eq!(store.sync_progress().unwrap(), (2, 2));
-        // Un déplacement retire aussi ; et le dénominateur ne descend
-        // jamais sous zéro même si `remote_total` est en retard.
+        // A move also removes; and the denominator never drops below zero
+        // even when `remote_total` is behind.
         store
-            .geste_avec_echo(id, 3, Action::MoveTo("Factures".into()), None)
+            .geste_avec_echo(id, 3, Action::MoveTo("Invoices".into()), None)
             .unwrap();
         store.record_remote_total(id, 1).unwrap();
         assert_eq!(store.sync_progress().unwrap(), (1, 0));
     }
 
-    /// Le pendant texte : jamais posée -> `None` (le défaut appartient à
-    /// l'appelant), posée -> relue telle quelle, écrasée sans doublon.
+    /// The text counterpart: never set -> `None` (the default belongs to
+    /// the caller), set -> read back exactly as written, overwritten
+    /// without duplicating.
     #[test]
     fn text_pref_none_then_roundtrip() {
         let store = Store::open_in_memory().unwrap();
@@ -5560,10 +5598,10 @@ mod tests {
         assert_eq!(store.text_pref("lang").unwrap(), Some("fr".to_string()));
     }
 
-    /// Le lot transactionnel : tout écrit, tout relu — le pendant
-    /// multi-clés de `text_pref_none_then_roundtrip`.
+    /// The transactional batch: everything written, everything read
+    /// back — the multi-key counterpart of `text_pref_none_then_roundtrip`.
     #[test]
-    fn set_text_prefs_ecrit_le_lot_entier() {
+    fn set_text_prefs_writes_the_whole_batch() {
         let mut store = Store::open_in_memory().unwrap();
         store
             .set_text_prefs(&[("repere_icone.1", "home"), ("repere_teinte.1", "bleu")])
@@ -5581,7 +5619,7 @@ mod tests {
     #[test]
     fn roundtrips_all_envelope_fields() {
         let (mut store, id) = store_with_mailbox();
-        let original = envelope(7, "Sujet accentué : été", 1_700_000_000, true);
+        let original = envelope(7, "Sujet accentué : été", 1_700_000_000, true); // lang:fr
         store
             .upsert_envelopes(id, std::slice::from_ref(&original))
             .unwrap();
@@ -5611,40 +5649,39 @@ mod tests {
         assert_eq!(recent(&store, 0, 10), vec![bare]);
     }
 
-    /// L'ordre du rattrapage est un choix de PRODUIT, pas un accident de
-    /// tri SQL : INBOX d'abord, les envois ensuite, le reste par nom. Un
-    /// serveur qui liste « Archive » avant INBOX ne doit pas faire
-    /// rattraper 80 000 corps d'archive avant le courrier que la liste
-    /// affiche.
+    /// The backfill order is a PRODUCT choice, not an accident of SQL
+    /// sort: INBOX first, Sent next, the rest by name. A server that
+    /// lists "Archive" before INBOX must not backfill 80,000 archive
+    /// bodies before the mail the list displays.
     #[test]
-    fn les_boites_se_rattrapent_reception_d_abord() {
+    fn mailboxes_backfill_inbox_first() {
         let store = Store::open_in_memory().unwrap();
         let account = store
             .adopt_or_create_account("moi@exemple.fr", "gmail")
             .unwrap();
         store.create_mailbox(account, "Archive", 1).unwrap();
-        store.create_mailbox(account, "Corbeille", 1).unwrap();
+        store.create_mailbox(account, "Corbeille", 1).unwrap(); // lang:fr
         store.create_mailbox(account, "INBOX", 1).unwrap();
         store
-            .create_mailbox(account, "Messages envoyés", 1)
+            .create_mailbox(account, "Messages envoyés", 1) // lang:fr
             .unwrap();
         store
-            .set_thread_scope(account, Some("Messages envoyés"))
+            .set_thread_scope(account, Some("Messages envoyés")) // lang:fr
             .unwrap();
 
         assert_eq!(
             store.mailbox_names(account).unwrap(),
-            vec!["INBOX", "Messages envoyés", "Archive", "Corbeille"]
+            vec!["INBOX", "Messages envoyés", "Archive", "Corbeille"] // lang:fr
         );
     }
 
-    /// L'horizon d'import (PLAN-HORIZON-NETTOYAGE, D1-D4) : pref par
-    /// compte au vocabulaire FERMÉ ; sans pref, « tout » — un compte
-    /// d'avant le réglage garde l'import intégral (D4) ; la valeur meurt
-    /// avec le compte, et le rowid réutilisé n'en hérite pas
-    /// (PREFS_PAR_COMPTE).
+    /// The import horizon (PLAN-HORIZON-NETTOYAGE, D1-D4): a per-account
+    /// pref with a CLOSED vocabulary; no pref -> "tout" (all) — an
+    /// account from before the setting keeps the full import (D4); the
+    /// value dies with the account, and a reused rowid does not inherit
+    /// it (PREFS_PAR_COMPTE).
     #[test]
-    fn horizon_import_defaut_tout_vocabulaire_ferme_purge_au_retrait() {
+    fn horizon_import_defaults_to_all_closed_vocabulary_purged_on_removal() {
         let mut store = Store::open_in_memory().unwrap();
         let id = store
             .adopt_or_create_account("h@exemple.fr", "gmail")
@@ -5657,32 +5694,35 @@ mod tests {
         assert_eq!(store.horizon_import(id).unwrap(), "1a");
 
         store.delete_account(id).unwrap();
-        let heritier = store
+        let heir = store
             .adopt_or_create_account("h2@exemple.fr", "gmail")
             .unwrap();
-        assert_eq!(heritier, id, "décor : le rowid doit se réutiliser");
-        assert_eq!(store.horizon_import(heritier).unwrap(), "tout");
+        assert_eq!(heir, id, "fixture: the rowid must be reused");
+        assert_eq!(store.horizon_import(heir).unwrap(), "tout");
     }
 
-    /// Le retrait d'un compte ne laisse RIEN derrière lui : ni les lignes
-    /// en cascade (boîtes, enveloppes, corps), ni celles sans clé
-    /// étrangère (brouillons, boîte d'envoi, index de recherche) — et le
-    /// compte voisin garde tout, recherche comprise.
+    /// Removing an account leaves NOTHING behind: neither the cascading
+    /// rows (mailboxes, envelopes, bodies), nor those without a foreign
+    /// key (drafts, outbox, search index) — and the neighboring account
+    /// keeps everything, search included.
     #[test]
-    fn delete_account_efface_tout_et_ne_touche_pas_le_voisin() {
+    fn delete_account_erases_everything_and_does_not_touch_the_neighbor() {
         let mut store = Store::open_in_memory().unwrap();
-        let parti = store
+        let departed = store
             .adopt_or_create_account("part@exemple.fr", "gmail")
             .unwrap();
-        let voisin = store
+        let neighbor = store
             .adopt_or_create_account("reste@exemple.fr", "gmail")
             .unwrap();
-        for (account, sujet) in [(parti, "Facture du départ"), (voisin, "Devis qui reste")] {
+        for (account, subject) in [
+            (departed, "Invoice for the departure"),
+            (neighbor, "Quote that stays"),
+        ] {
             let mailbox = store.create_mailbox(account, "INBOX", 1).unwrap();
             store
-                .upsert_envelopes(mailbox, &[envelope(1, sujet, 100, false)])
+                .upsert_envelopes(mailbox, &[envelope(1, subject, 100, false)])
                 .unwrap();
-            store.save_body(mailbox, 1, "<p>corps</p>", &[]).unwrap();
+            store.save_body(mailbox, 1, "<p>body</p>", &[]).unwrap();
             store
                 .save_draft(
                     account,
@@ -5693,8 +5733,8 @@ mod tests {
                         cc_raw: "",
                         bcc_raw: "",
                         body_html: None,
-                        subject: sujet,
-                        body: "brouillon",
+                        subject,
+                        body: "draft",
                         reply_to_uid: None,
                         reply_to_mailbox: None,
                         important: false,
@@ -5705,13 +5745,13 @@ mod tests {
                 .enqueue_outbox(
                     account,
                     &crate::compose::Draft {
-                        message_id: format!("<sortant-{account}@exemple.fr>"),
+                        message_id: format!("<outbound-{account}@exemple.fr>"),
                         from: "moi@exemple.fr".to_string(),
                         to: vec!["a@b.fr".to_string()],
                         cc: Vec::new(),
                         bcc: Vec::new(),
-                        subject: sujet.to_string(),
-                        body_text: "corps".to_string(),
+                        subject: subject.to_string(),
+                        body_text: "body".to_string(),
                         body_html: None,
                         in_reply_to: None,
                         references: None,
@@ -5722,11 +5762,11 @@ mod tests {
                 .unwrap();
         }
 
-        // Les préférences suffixées par l'id (signature, repère, nom) :
-        // un id SQLite réutilisé après retrait ferait sinon hériter au
-        // compte suivant l'identité de l'ancien (revue PLAN-RETOURS-8 ;
-        // nom personnalisé : PLAN-RETOURS-9).
-        for (account, teinte) in [(parti, "rouge"), (voisin, "bleu")] {
+        // The preferences suffixed by the id (signature, marker, name): an
+        // SQLite id reused after removal would otherwise make the next
+        // account inherit the old one's identity (PLAN-RETOURS-8 review;
+        // custom name: PLAN-RETOURS-9).
+        for (account, hue) in [(departed, "rouge"), (neighbor, "bleu")] {
             store
                 .set_text_pref(&format!("signature.{account}"), "<p>sig</p>")
                 .unwrap();
@@ -5734,30 +5774,30 @@ mod tests {
                 .set_text_pref(&format!("repere_icone.{account}"), "home")
                 .unwrap();
             store
-                .set_text_pref(&format!("repere_teinte.{account}"), teinte)
+                .set_text_pref(&format!("repere_teinte.{account}"), hue)
                 .unwrap();
             store
                 .set_text_pref(&format!("nom_compte.{account}"), "Perso")
                 .unwrap();
         }
 
-        store.delete_account(parti).unwrap();
+        store.delete_account(departed).unwrap();
 
-        let comptes = store.accounts().unwrap();
-        assert_eq!(comptes.len(), 1);
-        assert_eq!(comptes[0].email, "reste@exemple.fr");
-        for cle in ["signature", "repere_icone", "repere_teinte", "nom_compte"] {
+        let accounts = store.accounts().unwrap();
+        assert_eq!(accounts.len(), 1);
+        assert_eq!(accounts[0].email, "reste@exemple.fr");
+        for key in ["signature", "repere_icone", "repere_teinte", "nom_compte"] {
             assert_eq!(
-                store.text_pref(&format!("{cle}.{parti}")).unwrap(),
+                store.text_pref(&format!("{key}.{departed}")).unwrap(),
                 None,
-                "{cle} du compte parti : la pref doit mourir avec lui"
+                "{key} of the departed account: the pref must die with it"
             );
             assert!(
                 store
-                    .text_pref(&format!("{cle}.{voisin}"))
+                    .text_pref(&format!("{key}.{neighbor}"))
                     .unwrap()
                     .is_some(),
-                "{cle} du voisin : intacte"
+                "{key} of the neighbor: intact"
             );
         }
         for table in [
@@ -5774,28 +5814,28 @@ mod tests {
                     row.get(0)
                 })
                 .unwrap();
-            assert_eq!(total, 1, "{table} : seule la ligne du voisin doit rester");
+            assert_eq!(total, 1, "{table}: only the neighbor's row must remain");
         }
         assert!(
-            store.search("départ", 10).unwrap().is_empty(),
-            "le courrier du compte parti ne doit plus sortir en recherche"
+            store.search("departure", 10).unwrap().is_empty(),
+            "the departed account's mail must no longer come up in search"
         );
         assert_eq!(
-            store.search("reste", 10).unwrap().len(),
+            store.search("stays", 10).unwrap().len(),
             1,
-            "la recherche du voisin doit survivre au retrait"
+            "the neighbor's search must survive the removal"
         );
     }
 
-    /// ADR 0010 : un message SANS date reste éligible au rattrapage, même
-    /// sous un horizon borné. L'ancienne règle l'excluait (« non situable
-    /// dans l'horizon ») — un trou silencieux : jamais de corps, donc
-    /// jamais de recherche, et rien à l'écran pour le signaler. Le doute
-    /// ne coûte plus que son rang : les NULL ferment le tri.
+    /// ADR 0010: a message WITHOUT a date stays eligible for backfill,
+    /// even under a bounded horizon. The old rule excluded it ("not
+    /// placeable within the horizon") — a silent hole: never a body, so
+    /// never search, and nothing on screen to flag it. The doubt now
+    /// only costs its rank: the NULLs close the sort.
     #[test]
-    fn un_message_sans_date_reste_a_rattraper() {
+    fn a_message_without_a_date_stays_to_be_backfilled() {
         let (mut store, id) = store_with_mailbox();
-        let sans_date = Envelope {
+        let without_date = Envelope {
             reply_to: None,
             uid: 9,
             subject: None,
@@ -5810,20 +5850,24 @@ mod tests {
             cc_addrs: Vec::new(),
         };
         store
-            .upsert_envelopes(id, std::slice::from_ref(&sans_date))
+            .upsert_envelopes(id, std::slice::from_ref(&without_date))
             .unwrap();
 
         let account = test_account(&store);
         let uids = store
             .bodies_to_backfill(account, "INBOX", 1_000_000, 10)
             .unwrap();
-        assert_eq!(uids, vec![9], "l'horizon borné n'exclut plus les sans-date");
+        assert_eq!(
+            uids,
+            vec![9],
+            "the bounded horizon no longer excludes the dateless"
+        );
         assert_eq!(
             store
                 .bodies_pending_count(account, "INBOX", 1_000_000)
                 .unwrap(),
             1,
-            "le compteur d'avancement le voit aussi — sinon la barre mentirait"
+            "the progress counter sees it too — otherwise the bar would lie"
         );
     }
 
@@ -5831,14 +5875,14 @@ mod tests {
     fn upsert_replaces_existing_envelope() {
         let (mut store, id) = store_with_mailbox();
         store
-            .upsert_envelopes(id, &[envelope(1, "avant", 100, false)])
+            .upsert_envelopes(id, &[envelope(1, "before", 100, false)])
             .unwrap();
         store
-            .upsert_envelopes(id, &[envelope(1, "après", 100, true)])
+            .upsert_envelopes(id, &[envelope(1, "after", 100, true)])
             .unwrap();
         let rows = recent(&store, 0, 10);
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].subject.as_deref(), Some("après"));
+        assert_eq!(rows[0].subject.as_deref(), Some("after"));
         assert!(rows[0].seen);
     }
 
@@ -5849,9 +5893,9 @@ mod tests {
             .upsert_envelopes(
                 id,
                 &[
-                    envelope(1, "ancien", 100, false),
-                    envelope(3, "récent", 300, false),
-                    envelope(2, "milieu", 200, false),
+                    envelope(1, "old", 100, false),
+                    envelope(3, "recent", 300, false),
+                    envelope(2, "middle", 200, false),
                 ],
             )
             .unwrap();
@@ -5887,7 +5931,7 @@ mod tests {
                 uid_validity: 1,
                 last_uid: 0,
                 highest_modseq: None,
-                initialisee: false,
+                initialized: false,
             })
         );
         store.update_state(id, 42, Some(9000)).unwrap();
@@ -5939,12 +5983,12 @@ mod tests {
             .upsert_envelopes(
                 id,
                 &(1..=5)
-                    .map(|uid| envelope(uid, "sujet", 100 * i64::from(uid), false))
+                    .map(|uid| envelope(uid, "subject", 100 * i64::from(uid), false))
                     .collect::<Vec<_>>(),
             )
             .unwrap();
         let page: Vec<Uid> = recent(&store, 2, 2).iter().map(|e| e.uid).collect();
-        assert_eq!(page, vec![3, 2], "offset 2 saute les deux plus récents");
+        assert_eq!(page, vec![3, 2], "offset 2 skips the two most recent");
         assert!(recent(&store, 10, 5).is_empty());
     }
 
@@ -5980,7 +6024,7 @@ mod tests {
         assert!(recent(&store, 0, 1)[0].seen);
         assert!(
             !store.set_seen_local(id, 1, true).unwrap(),
-            "déjà lu : aucun changement à journaliser"
+            "already seen: nothing to log"
         );
     }
 
@@ -5995,45 +6039,45 @@ mod tests {
         assert!(recent(&store, 0, 1)[0].flagged);
         assert!(
             !store.set_flagged_local(id, 1, true).unwrap(),
-            "déjà étoilé : aucun changement à journaliser"
+            "already flagged: nothing to log"
         );
     }
 
-    /// E4 (PLAN-REACTIVITE, 1ᵉʳ terrain) : les ARRIVÉES se comptent à
-    /// l'UID, jamais au `fetched` du rapport — un delta CONDSTORE y mêle
-    /// tous les drapeaux glissés (Gmail à chaque étiquette), et la borne
-    /// des corps « débordait » à chaque arrivée.
+    /// E4 (PLAN-REACTIVITE, 1st field): ARRIVALS are counted by UID,
+    /// never by the report's `fetched` — a CONDSTORE delta mixes in
+    /// every shuffled flag (Gmail on every label), and the body limit
+    /// "overflowed" on every arrival.
     #[test]
-    fn les_arrivees_se_comptent_a_l_uid() {
+    fn arrivals_are_counted_by_uid() {
         let (mut store, id) = store_with_mailbox();
         let account = test_account(&store);
         store
             .upsert_envelopes(
                 id,
                 &[
-                    envelope(1, "ancien", 100, true),
-                    envelope(2, "ancien aussi", 200, true),
+                    envelope(1, "old", 100, true),
+                    envelope(2, "old too", 200, true),
                 ],
             )
             .unwrap();
-        assert_eq!(store.arrivees_depuis(account, "INBOX", 2).unwrap(), 0);
+        assert_eq!(store.arrivals_since(account, "INBOX", 2).unwrap(), 0);
 
-        // Deux arrivées + un vieux drapeau retouché (upsert du même
-        // uid 1) : le compte ne bouge que pour les UID neufs.
+        // Two arrivals + one old flag retouched (upsert of the same
+        // uid 1): the count only moves for the new UIDs.
         store
             .upsert_envelopes(
                 id,
                 &[
-                    envelope(1, "ancien", 100, false),
-                    envelope(3, "neuf", 300, false),
-                    envelope(4, "neuf aussi", 400, false),
+                    envelope(1, "old", 100, false),
+                    envelope(3, "new", 300, false),
+                    envelope(4, "new too", 400, false),
                 ],
             )
             .unwrap();
-        assert_eq!(store.arrivees_depuis(account, "INBOX", 2).unwrap(), 2);
-        // Boîte inconnue : zéro, jamais une erreur — la relève d'un
-        // compte jamais synchronisé ne doit pas casser sur ce compte.
-        assert_eq!(store.arrivees_depuis(account, "Ailleurs", 0).unwrap(), 0);
+        assert_eq!(store.arrivals_since(account, "INBOX", 2).unwrap(), 2);
+        // Unknown mailbox: zero, never an error — the poll of an account
+        // never synced must not break on this account.
+        assert_eq!(store.arrivals_since(account, "Elsewhere", 0).unwrap(), 0);
     }
 
     #[test]
@@ -6062,13 +6106,13 @@ mod tests {
     fn body_roundtrips_and_is_none_when_absent() {
         let (store, id) = store_with_mailbox();
         assert_eq!(store.body(test_account(&store), "INBOX", 1).unwrap(), None);
-        store.save_body(id, 1, "<p>bonjour</p>", &[]).unwrap();
+        store.save_body(id, 1, "<p>hello</p>", &[]).unwrap();
         assert_eq!(
             store
                 .body(test_account(&store), "INBOX", 1)
                 .unwrap()
                 .as_deref(),
-            Some("<p>bonjour</p>")
+            Some("<p>hello</p>")
         );
     }
 
@@ -6081,45 +6125,45 @@ mod tests {
         }
     }
 
-    /// Ce que le rattrapage cherche, depuis le 2026-08-26 : **les corps
-    /// ABSENTS**, et rien d'autre.
+    /// What the backfill has searched for since 2026-08-26: **ABSENT
+    /// bodies**, and nothing else.
     ///
-    /// Il a longtemps cherché aussi les corps rapatriés AVANT que les
-    /// pièces jointes n'existent — `bodies.scanned = 0`, un MIME jamais
-    /// inspecté, non récupérable depuis le HTML stocké. Ce critère est
-    /// **retiré** (PLAN-DEMARRAGE, décision D8 du CE) : il obligeait
-    /// SQLite à rappeler la ligne du corps pour lire un bit, ce qui
-    /// tenait le verrou global **8 870 ms à chaque démarrage** sur la
-    /// base du terrain.
+    /// It long also searched for bodies fetched BEFORE attachments
+    /// existed — `bodies.scanned = 0`, a MIME never inspected, not
+    /// recoverable from the stored HTML. This criterion is **removed**
+    /// (PLAN-DEMARRAGE, CE decision D8): it forced SQLite to recall the
+    /// body row to read one bit, which held the global lock **8,870 ms
+    /// on every startup** on the field database.
     ///
-    /// Les trois faits qui l'ont permis, tous mesurés le 2026-08-26 :
-    /// la production n'écrit **jamais** `scanned = 0` ([`Store::save_body_full`]
-    /// pose un `1` en dur) ; les **deux** postes de la flotte portent
-    /// **zéro** ligne à `scanned = 0` ; et la passe d'héritage qui les
-    /// produisait est soldée partout. Le critère protégeait zéro ligne.
+    /// The three facts that allowed it, all measured on 2026-08-26:
+    /// production **never** writes `scanned = 0` ([`Store::save_body_full`]
+    /// hardcodes a `1`); **both** workstations of the fleet carry **zero**
+    /// rows at `scanned = 0`; and the legacy pass that produced them is
+    /// closed everywhere. The criterion protected zero rows.
     ///
-    /// Ce que ce test garde donc : un corps présent sort le message du
-    /// rattrapage, et **rien ne l'y ramène**. Plus l'invariant d'écriture
-    /// qui a rendu le retrait sûr — si un jour quelque chose écrivait
-    /// `scanned = 0`, il faudrait rouvrir la décision, et ce test le dira.
+    /// What this test therefore keeps: a present body takes the message
+    /// out of the backfill, and **nothing brings it back**. Plus the
+    /// write invariant that made the removal safe — if something were to
+    /// write `scanned = 0` one day, the decision would need reopening,
+    /// and this test would say so.
     #[test]
-    fn un_corps_present_sort_le_message_du_rattrapage_et_rien_ne_l_y_ramene() {
+    fn a_present_body_takes_the_message_out_of_the_backfill_and_nothing_brings_it_back() {
         let (mut store, id) = store_with_mailbox();
         let account = test_account(&store);
         store
-            .upsert_envelopes(id, &[envelope(1, "sujet", 100, false)])
+            .upsert_envelopes(id, &[envelope(1, "subject", 100, false)])
             .unwrap();
 
-        // Sans corps : le message attend.
+        // Without a body: the message waits.
         assert_eq!(
             store.bodies_to_backfill(account, "INBOX", 0, 10).unwrap(),
             vec![1]
         );
         assert_eq!(store.bodies_pending_count(account, "INBOX", 0).unwrap(), 1);
 
-        store.save_body(id, 1, "<p>corps</p>", &[]).unwrap();
+        store.save_body(id, 1, "<p>body</p>", &[]).unwrap();
 
-        // Corps present : plus rien a faire, definitivement.
+        // Body present: nothing left to do, definitively.
         assert!(
             store
                 .bodies_to_backfill(account, "INBOX", 0, 10)
@@ -6128,56 +6172,56 @@ mod tests {
         );
         assert_eq!(store.bodies_pending_count(account, "INBOX", 0).unwrap(), 0);
 
-        // L'INVARIANT qui a rendu le retrait du critere sur : la
-        // production pose `scanned = 1`, toujours. La colonne n'est plus
-        // lue par le rattrapage — si elle devait le redevenir, elle dit
-        // encore la verite.
-        let scanne: i64 = store
+        // The INVARIANT that made removing the criterion safe: production
+        // always writes `scanned = 1`. The column is no longer read by
+        // the backfill — if it had to become so again, it would still
+        // tell the truth.
+        let scanned: i64 = store
             .conn()
             .query_row("SELECT scanned FROM bodies", [], |row| row.get(0))
             .unwrap();
         assert_eq!(
-            scanne, 1,
-            "la production doit toujours ecrire scanned = 1 — sinon la decision D8 de PLAN-DEMARRAGE est a rouvrir"
+            scanned, 1,
+            "production must always write scanned = 1 — otherwise PLAN-DEMARRAGE's decision D8 needs reopening"
         );
     }
 
-    /// R1 (PLAN-RETOURS-3) : le dénominateur du pourcentage. Le total ne
-    /// bouge PAS quand un corps arrive — seul le nombre de manquants
-    /// diminue ; `total - pending` donne les corps présents, base du
-    /// pourcentage affiché.
+    /// R1 (PLAN-RETOURS-3): the percentage's denominator. The total does
+    /// NOT move when a body arrives — only the missing count decreases;
+    /// `total - pending` gives the present bodies, the basis of the
+    /// displayed percentage.
     #[test]
-    fn le_total_du_corpus_ne_compte_pas_les_corps_mais_les_messages() {
+    fn the_corpus_total_counts_messages_not_bodies() {
         let (mut store, id) = store_with_mailbox();
         let account = test_account(&store);
         store
             .upsert_envelopes(
                 id,
                 &[
-                    envelope(1, "un", 100, false),
-                    envelope(2, "deux", 200, false),
-                    envelope(3, "trois", 300, false),
+                    envelope(1, "one", 100, false),
+                    envelope(2, "two", 200, false),
+                    envelope(3, "three", 300, false),
                 ],
             )
             .unwrap();
 
-        // Trois messages en portée, aucun corps encore lu.
+        // Three messages in scope, no body read yet.
         assert_eq!(store.bodies_total_count(account, "INBOX", 0).unwrap(), 3);
         assert_eq!(store.bodies_pending_count(account, "INBOX", 0).unwrap(), 3);
 
-        // Un corps arrive : le total tient, le reste baisse d'un.
-        store.save_body(id, 2, "<p>corps</p>", &[]).unwrap();
+        // A body arrives: the total holds, the rest drops by one.
+        store.save_body(id, 2, "<p>body</p>", &[]).unwrap();
         assert_eq!(
             store.bodies_total_count(account, "INBOX", 0).unwrap(),
             3,
-            "le total est le corpus, pas les corps rapatriés"
+            "the total is the corpus, not the fetched bodies"
         );
         assert_eq!(store.bodies_pending_count(account, "INBOX", 0).unwrap(), 2);
     }
 
-    /// Un message deja lu ailleurs — telephone, webmail — ne doit pas
-    /// declencher de bulle : c'est du bruit pur, et c'est ce qui fait
-    /// couper les notifications.
+    /// A message already read elsewhere — phone, webmail — must not
+    /// trigger a notification bubble: it is pure noise, and it is what
+    /// gets notifications turned off.
     #[test]
     fn only_genuinely_new_and_unread_messages_are_notifiable() {
         let (mut store, id) = store_with_mailbox();
@@ -6186,9 +6230,9 @@ mod tests {
             .upsert_envelopes(
                 id,
                 &[
-                    envelope(10, "ancien", 100, false),
-                    envelope(11, "deja lu", 200, true),
-                    envelope(12, "vraiment nouveau", 300, false),
+                    envelope(10, "old", 100, false),
+                    envelope(11, "already read", 200, true),
+                    envelope(12, "truly new", 300, false),
                 ],
             )
             .unwrap();
@@ -6198,7 +6242,7 @@ mod tests {
             .iter()
             .map(|e| e.subject.clone().unwrap_or_default())
             .collect();
-        assert_eq!(subjects, vec!["vraiment nouveau".to_string()]);
+        assert_eq!(subjects, vec!["truly new".to_string()]);
     }
 
     fn folder(wire: &str, display: &str) -> Folder {
@@ -6210,10 +6254,10 @@ mod tests {
         }
     }
 
-    /// Choisir une destination doit fonctionner HORS LIGNE : la liste est
-    /// donc lue localement, comme les enveloppes. Le nom réseau et le nom
-    /// lisible sont conservés tous les deux — perdre le premier rendrait
-    /// le déplacement irréalisable au rejeu.
+    /// Choosing a destination must work OFFLINE: the list is therefore
+    /// read locally, like the envelopes. Both the wire name and the
+    /// readable name are kept — losing the first would make the move
+    /// unplayable at replay time.
     #[test]
     fn folders_are_cached_locally_with_both_names() {
         let (store, _) = store_with_mailbox();
@@ -6221,36 +6265,33 @@ mod tests {
         assert!(store.folders(account).unwrap().is_empty());
 
         store
-            .replace_folders(account, &[folder("Archiv&AOk-s", "Archivés")])
+            .replace_folders(account, &[folder("Archiv&AOk-s", "Archivés")]) // lang:fr
             .unwrap();
 
         let cached = store.folders(account).unwrap();
         assert_eq!(cached.len(), 1);
         assert_eq!(cached[0].wire, "Archiv&AOk-s");
-        assert_eq!(cached[0].display, "Archivés");
+        assert_eq!(cached[0].display, "Archivés"); // lang:fr
     }
 
-    /// Un dossier supprimé côté serveur ne doit plus être proposé : le
-    /// déplacement échouerait au rejeu, longtemps après le clic — et
-    /// l'utilisateur ne ferait plus le lien.
+    /// A folder deleted server-side must no longer be offered: the move
+    /// would fail at replay time, long after the click — and the user
+    /// would no longer see the connection.
     #[test]
     fn refreshing_folders_drops_the_ones_that_disappeared() {
         let (store, _) = store_with_mailbox();
         let account = test_account(&store);
         store
-            .replace_folders(
-                account,
-                &[folder("Ancien", "Ancien"), folder("Reste", "Reste")],
-            )
+            .replace_folders(account, &[folder("Old", "Old"), folder("Stays", "Stays")])
             .unwrap();
 
         store
-            .replace_folders(account, &[folder("Reste", "Reste")])
+            .replace_folders(account, &[folder("Stays", "Stays")])
             .unwrap();
 
         let cached = store.folders(account).unwrap();
         assert_eq!(cached.len(), 1);
-        assert_eq!(cached[0].wire, "Reste");
+        assert_eq!(cached[0].wire, "Stays");
     }
 
     #[test]
@@ -6259,53 +6300,57 @@ mod tests {
         let account = test_account(&store);
         assert!(
             store.attachments(account, "INBOX", 1).unwrap().is_empty(),
-            "rien tant que le corps n'est pas rapatrié"
+            "nothing as long as the body has not been fetched"
         );
 
         store
             .save_body(
                 id,
                 1,
-                "<p>ci-joint</p>",
-                &[pdf(0, "un.pdf"), pdf(1, "deux.pdf")],
+                "<p>attached</p>",
+                &[pdf(0, "one.pdf"), pdf(1, "two.pdf")],
             )
             .unwrap();
 
         let found = store.attachments(account, "INBOX", 1).unwrap();
         assert_eq!(found.len(), 2);
-        assert_eq!(found[0].name, "un.pdf");
-        assert_eq!(found[1].name, "deux.pdf");
+        assert_eq!(found[0].name, "one.pdf");
+        assert_eq!(found[1].name, "two.pdf");
         assert_eq!(found[1].size, 2048);
     }
 
-    /// Un message re-téléchargé dont une pièce a disparu ne doit pas
-    /// garder l'ancienne ligne : l'utilisateur cliquerait sur un fichier
-    /// que le serveur ne sert plus, et l'échec n'arriverait qu'au
-    /// téléchargement — loin de la cause.
+    /// A re-downloaded message whose attachment has disappeared must not
+    /// keep the old row: the user would click a file the server no
+    /// longer serves, and the failure would only surface at download
+    /// time — far from the cause.
     #[test]
     fn re_saving_replaces_the_attachment_list_instead_of_accumulating() {
         let (store, id) = store_with_mailbox();
         let account = test_account(&store);
         store
-            .save_body(id, 1, "<p>x</p>", &[pdf(0, "un.pdf"), pdf(1, "deux.pdf")])
+            .save_body(id, 1, "<p>x</p>", &[pdf(0, "one.pdf"), pdf(1, "two.pdf")])
             .unwrap();
 
         store
-            .save_body(id, 1, "<p>x</p>", &[pdf(0, "un.pdf")])
+            .save_body(id, 1, "<p>x</p>", &[pdf(0, "one.pdf")])
             .unwrap();
 
         let found = store.attachments(account, "INBOX", 1).unwrap();
-        assert_eq!(found.len(), 1, "la pièce disparue doit l'être aussi ici");
-        assert_eq!(found[0].name, "un.pdf");
+        assert_eq!(
+            found.len(),
+            1,
+            "the vanished attachment must be gone here too"
+        );
+        assert_eq!(found[0].name, "one.pdf");
     }
 
-    /// Les pièces jointes appartiennent à un message d'un COMPTE : la
-    /// même paire (boîte, uid) chez un autre compte ne doit rien voir.
+    /// Attachments belong to a message of an ACCOUNT: the same (mailbox,
+    /// uid) pair on another account must see nothing.
     #[test]
     fn attachments_never_leak_across_accounts() {
         let (store, id) = store_with_mailbox();
         store
-            .save_body(id, 1, "<p>x</p>", &[pdf(0, "prive.pdf")])
+            .save_body(id, 1, "<p>x</p>", &[pdf(0, "private.pdf")])
             .unwrap();
 
         let other = store
@@ -6316,13 +6361,13 @@ mod tests {
         assert!(store.attachments(other, "INBOX", 1).unwrap().is_empty());
     }
 
-    fn invitation_projet() -> crate::InvitationRow {
+    fn project_invitation() -> crate::InvitationRow {
         crate::InvitationRow {
             methode: "request".into(),
             event_uid: "reunion-1@exemple.fr".into(),
             sequence: 2,
-            titre: "Point projet".into(),
-            lieu: Some("Salle A".into()),
+            titre: "Project sync".into(),
+            lieu: Some("Room A".into()),
             organisateur_adresse: Some("claire@exemple.fr".into()),
             organisateur_nom: Some("Claire Martin".into()),
             debut_epoch: Some(1_788_400_200),
@@ -6333,42 +6378,39 @@ mod tests {
     }
 
     #[test]
-    fn une_invitation_s_ecrit_avec_le_corps_et_se_relit() {
+    fn an_invitation_is_written_with_the_body_and_reads_back() {
         let (store, id) = store_with_mailbox();
         let account = test_account(&store);
         store
-            .save_body_full(id, 1, "<p>x</p>", &[], Some(&invitation_projet()))
+            .save_body_full(id, 1, "<p>x</p>", &[], Some(&project_invitation()))
             .unwrap();
 
-        let stockee = store
-            .invitation(account, "INBOX", 1)
-            .unwrap()
-            .expect("ligne");
-        assert_eq!(stockee.row, invitation_projet());
-        assert_eq!(stockee.reponse, None, "pas encore répondu");
+        let stored = store.invitation(account, "INBOX", 1).unwrap().expect("row");
+        assert_eq!(stored.row, project_invitation());
+        assert_eq!(stored.reponse, None, "not answered yet");
     }
 
-    /// Même règle que les pièces : un message re-téléchargé SANS partie
-    /// calendrier ne garde pas une carte fantôme.
+    /// Same rule as attachments: a re-downloaded message WITHOUT a
+    /// calendar part does not keep a phantom card.
     #[test]
-    fn un_rescan_sans_calendrier_efface_la_ligne() {
+    fn a_rescan_without_a_calendar_erases_the_row() {
         let (store, id) = store_with_mailbox();
         let account = test_account(&store);
         store
-            .save_body_full(id, 1, "<p>x</p>", &[], Some(&invitation_projet()))
+            .save_body_full(id, 1, "<p>x</p>", &[], Some(&project_invitation()))
             .unwrap();
         store.save_body(id, 1, "<p>x</p>", &[]).unwrap();
         assert_eq!(store.invitation(account, "INBOX", 1).unwrap(), None);
     }
 
-    fn brouillon_reponse() -> crate::compose::Draft {
+    fn reply_draft() -> crate::compose::Draft {
         let mut draft = crate::compose(
             "moi@exemple.fr",
             "claire@exemple.fr",
             "",
             "",
-            "Accepté : Point projet",
-            "Accepté : Point projet",
+            "Accepted: Project sync",
+            "Accepted: Project sync",
             None,
         )
         .unwrap();
@@ -6376,65 +6418,63 @@ mod tests {
         draft
     }
 
-    /// D6 : l'email iTIP se journalise ET la réponse se consigne — UNE
-    /// transaction ; la réponse survit au re-scan du corps (deux vérités
-    /// distinctes — le PARTSTAT lu du message ne l'écrase pas).
+    /// D6: the iTIP email gets logged AND the reply gets recorded — ONE
+    /// transaction; the reply survives the body's rescan (two distinct
+    /// truths — the PARTSTAT read from the message does not overwrite
+    /// it).
     #[test]
-    fn la_reponse_se_journalise_avec_son_email_et_survit_au_rescan() {
+    fn the_reply_is_logged_with_its_email_and_survives_the_rescan() {
         let (store, id) = store_with_mailbox();
         let account = test_account(&store);
         store
-            .save_body_full(id, 1, "<p>x</p>", &[], Some(&invitation_projet()))
+            .save_body_full(id, 1, "<p>x</p>", &[], Some(&project_invitation()))
             .unwrap();
 
         let outbox_id = store
             .enqueue_reponse_invitation(
                 account,
-                &brouillon_reponse(),
+                &reply_draft(),
                 "INBOX",
                 1,
                 "accepte",
                 1_755_900_000,
             )
             .unwrap();
-        assert!(outbox_id.is_some(), "email journalisé");
+        assert!(outbox_id.is_some(), "email logged");
         store
-            .save_body_full(id, 1, "<p>x</p>", &[], Some(&invitation_projet()))
+            .save_body_full(id, 1, "<p>x</p>", &[], Some(&project_invitation()))
             .unwrap();
 
-        let stockee = store
-            .invitation(account, "INBOX", 1)
-            .unwrap()
-            .expect("ligne");
-        assert_eq!(stockee.reponse.as_deref(), Some("accepte"));
-        assert_eq!(stockee.reponse_epoch, Some(1_755_900_000));
+        let stored = store.invitation(account, "INBOX", 1).unwrap().expect("row");
+        assert_eq!(stored.reponse.as_deref(), Some("accepte"));
+        assert_eq!(stored.reponse_epoch, Some(1_755_900_000));
         assert_eq!(store.outbox_to_send(account).unwrap().len(), 1);
     }
 
-    /// La ligne a disparu entre l'affichage et le clic (expurgé, boîte
-    /// réinitialisée) : RIEN ne part — un email en file devant une carte
-    /// « pas répondu » inviterait au double envoi (revue).
+    /// The row disappeared between display and click (purged, mailbox
+    /// reset): NOTHING is sent — an email queued in front of a "not
+    /// answered" card would invite a double send (review).
     #[test]
-    fn une_reponse_sans_ligne_ne_journalise_rien() {
+    fn a_reply_without_a_row_logs_nothing() {
         let (store, _id) = store_with_mailbox();
         let account = test_account(&store);
         assert_eq!(
             store
-                .enqueue_reponse_invitation(account, &brouillon_reponse(), "INBOX", 9, "accepte", 1)
+                .enqueue_reponse_invitation(account, &reply_draft(), "INBOX", 9, "accepte", 1)
                 .unwrap(),
             None
         );
         assert!(
             store.outbox_to_send(account).unwrap().is_empty(),
-            "la transaction s'est rembobinée : aucun email en file"
+            "the transaction rolled back: no email in queue"
         );
     }
 
-    /// La revue PLAN-INVITATIONS : après un changement d'UIDVALIDITY,
-    /// les UIDs ne veulent plus rien dire — une carte (et sa réponse !)
-    /// qui survivrait collerait à un message sans rapport.
+    /// The PLAN-INVITATIONS review: after a UIDVALIDITY change, the UIDs
+    /// no longer mean anything — a card (and its reply!) that survived
+    /// would stick to an unrelated message.
     #[test]
-    fn reset_mailbox_efface_invitations_et_pieces() {
+    fn reset_mailbox_erases_invitations_and_attachments() {
         let (store, id) = store_with_mailbox();
         let account = test_account(&store);
         store
@@ -6442,8 +6482,8 @@ mod tests {
                 id,
                 1,
                 "<p>x</p>",
-                &[pdf(0, "un.pdf")],
-                Some(&invitation_projet()),
+                &[pdf(0, "one.pdf")],
+                Some(&project_invitation()),
             )
             .unwrap();
 
@@ -6453,20 +6493,18 @@ mod tests {
         assert!(store.attachments(account, "INBOX", 1).unwrap().is_empty());
     }
 
-    /// La réparation `pieces-calendrier` : un message scanné AVANT
-    /// PLAN-INVITATIONS avec une partie calendrier a des indices de
-    /// pièces DÉCALÉS (l'ancienne numérotation la comptait) et pas de
-    /// carte. À l'ouverture suivante de la base, corps et pièces de ces
-    /// messages sont jetés : le rattrapage les relira avec la
-    /// numérotation neuve — et la carte naîtra du même scan (adoption,
-    /// invariant §6.7). Sur base FICHIER : c'est la réouverture qui
-    /// répare. Les messages sans calendrier ne bougent pas.
+    /// The `pieces-calendrier` repair: a message scanned BEFORE
+    /// PLAN-INVITATIONS with a calendar part has SHIFTED attachment
+    /// indices (the old numbering counted it) and no card. At the
+    /// database's next opening, the body and attachments of these
+    /// messages are dropped: the backfill will reread them with the new
+    /// numbering — and the card will be born of the same scan (adoption,
+    /// invariant §6.7). On a FILE database: it is the reopening that
+    /// repairs it. Messages without a calendar do not move.
     #[test]
-    fn la_reparation_pieces_calendrier_fait_relire_les_messages_touches() {
-        let path = std::env::temp_dir().join(format!(
-            "wind-test-reparation-cal-{}.db",
-            std::process::id()
-        ));
+    fn the_calendar_attachments_repair_rereads_the_affected_messages() {
+        let path =
+            std::env::temp_dir().join(format!("wind-test-repair-cal-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         {
             let mut store = Store::open(&path).unwrap();
@@ -6483,7 +6521,7 @@ mod tests {
                     ],
                 )
                 .unwrap();
-            // L'état d'AVANT : la partie calendrier comptée en pièce 0.
+            // The BEFORE state: the calendar part counted as attachment 0.
             store
                 .save_body(
                     id,
@@ -6492,19 +6530,19 @@ mod tests {
                     &[
                         Attachment {
                             index: 0,
-                            name: "piece-jointe.calendar".into(),
+                            name: "attachment.calendar".into(),
                             mime: "text/calendar".into(),
                             size: 2048,
                         },
-                        pdf(1, "contrat.pdf"),
+                        pdf(1, "contract.pdf"),
                     ],
                 )
                 .unwrap();
             store
                 .save_body(id, 2, "<p>simple</p>", &[pdf(0, "note.pdf")])
                 .unwrap();
-            // Retire le marqueur posé à l'ouverture (base née réparée) :
-            // on rejoue l'arrivée d'une base d'AVANT la réparation.
+            // Removes the marker set at opening (database born repaired):
+            // we replay the arrival of a database from BEFORE the repair.
             store
                 .conn()
                 .execute(
@@ -6514,7 +6552,7 @@ mod tests {
                 .unwrap();
         }
 
-        Store::oublier_initialisation(&path);
+        Store::forget_initialization(&path);
         let store = Store::open(&path).unwrap();
         let account = store
             .adopt_or_create_account("moi@exemple.fr", "gmail")
@@ -6522,34 +6560,34 @@ mod tests {
         assert_eq!(
             store.body(account, "INBOX", 1).unwrap(),
             None,
-            "le message à calendrier sera relu"
+            "the message with a calendar will be reread"
         );
         assert!(store.attachments(account, "INBOX", 1).unwrap().is_empty());
         assert_eq!(
             store.body(account, "INBOX", 2).unwrap().as_deref(),
             Some("<p>simple</p>"),
-            "le message ordinaire ne bouge pas"
+            "the ordinary message does not move"
         );
         assert_eq!(store.attachments(account, "INBOX", 2).unwrap().len(), 1);
         drop(store);
         let _ = std::fs::remove_file(&path);
     }
 
-    /// Terrain R6 : un CANCEL éteint le REQUEST de la même réunion
-    /// (même event_uid, même compte), dans les DEUX ordres d'arrivée —
-    /// l'annulation arrive souvent dans une conversation neuve, c'est
-    /// la carte d'ORIGINE qui doit le dire.
+    /// Field R6: a CANCEL extinguishes the REQUEST of the same meeting
+    /// (same event_uid, same account), in BOTH arrival orders — the
+    /// cancellation often arrives in a fresh conversation, it is the
+    /// ORIGINAL card that must say so.
     #[test]
-    fn un_cancel_eteint_le_request_de_la_meme_reunion_dans_les_deux_ordres() {
-        let mut cancel = invitation_projet();
+    fn a_cancel_extinguishes_the_request_of_the_same_meeting_in_both_arrival_orders() {
+        let mut cancel = project_invitation();
         cancel.methode = "cancel".to_string();
         cancel.annule = true;
 
-        // Ordre 1 : le REQUEST d'abord, le CANCEL ensuite.
+        // Order 1: the REQUEST first, the CANCEL next.
         let (store, id) = store_with_mailbox();
         let account = test_account(&store);
         store
-            .save_body_full(id, 1, "<p>i</p>", &[], Some(&invitation_projet()))
+            .save_body_full(id, 1, "<p>i</p>", &[], Some(&project_invitation()))
             .unwrap();
         store
             .save_body_full(id, 2, "<p>a</p>", &[], Some(&cancel))
@@ -6558,60 +6596,60 @@ mod tests {
             store
                 .invitation(account, "INBOX", 1)
                 .unwrap()
-                .expect("ligne")
+                .expect("row")
                 .row
                 .annule,
-            "le REQUEST est éteint par le CANCEL"
+            "the REQUEST is extinguished by the CANCEL"
         );
 
-        // Une AUTRE réunion du même compte ne bouge pas.
-        let mut autre = invitation_projet();
-        autre.event_uid = "autre-reunion@exemple.fr".to_string();
+        // ANOTHER meeting of the same account does not move.
+        let mut other = project_invitation();
+        other.event_uid = "autre-reunion@exemple.fr".to_string();
         store
-            .save_body_full(id, 3, "<p>x</p>", &[], Some(&autre))
+            .save_body_full(id, 3, "<p>x</p>", &[], Some(&other))
             .unwrap();
         assert!(
             !store
                 .invitation(account, "INBOX", 3)
                 .unwrap()
-                .expect("ligne")
+                .expect("row")
                 .row
                 .annule
         );
 
-        // Ordre 2 : le CANCEL scanné AVANT (rattrapage dans le
-        // désordre) — le REQUEST naît annulé.
+        // Order 2: the CANCEL scanned BEFORE (out-of-order backfill) —
+        // the REQUEST is born cancelled.
         let (store, id) = store_with_mailbox();
         let account = test_account(&store);
         store
             .save_body_full(id, 2, "<p>a</p>", &[], Some(&cancel))
             .unwrap();
         store
-            .save_body_full(id, 1, "<p>i</p>", &[], Some(&invitation_projet()))
+            .save_body_full(id, 1, "<p>i</p>", &[], Some(&project_invitation()))
             .unwrap();
         assert!(
             store
                 .invitation(account, "INBOX", 1)
                 .unwrap()
-                .expect("ligne")
+                .expect("row")
                 .row
                 .annule
         );
     }
 
     #[test]
-    fn une_invitation_ne_fuit_pas_entre_comptes() {
+    fn an_invitation_does_not_leak_across_accounts() {
         let (store, id) = store_with_mailbox();
         store
-            .save_body_full(id, 1, "<p>x</p>", &[], Some(&invitation_projet()))
+            .save_body_full(id, 1, "<p>x</p>", &[], Some(&project_invitation()))
             .unwrap();
 
-        let autre = store
+        let other = store
             .adopt_or_create_account("autre@exemple.fr", "gmail")
             .unwrap();
-        store.create_mailbox(autre, "INBOX", 1).unwrap();
+        store.create_mailbox(other, "INBOX", 1).unwrap();
 
-        assert_eq!(store.invitation(autre, "INBOX", 1).unwrap(), None);
+        assert_eq!(store.invitation(other, "INBOX", 1).unwrap(), None);
     }
 
     #[test]
@@ -6625,7 +6663,7 @@ mod tests {
     #[test]
     fn envelope_returns_reply_context_fields() {
         let (mut store, id) = store_with_mailbox();
-        let original = envelope(7, "sujet", 100, false);
+        let original = envelope(7, "subject", 100, false);
         store
             .upsert_envelopes(id, std::slice::from_ref(&original))
             .unwrap();
@@ -6640,21 +6678,21 @@ mod tests {
         );
     }
 
-    /// ADR 0011 : sur une base FICHIER, l'ouverture passe en WAL — et le
-    /// mode persiste, une base héritée en rollback est convertie. C'est ce
-    /// qui empêche « database is locked » quand la jauge d'avancement lit
-    /// pendant qu'une synchronisation intégrale écrit — le premier défaut
-    /// que le terrain ait rendu sur l'ADR 0010.
+    /// ADR 0011: on a FILE database, opening switches to WAL — and the
+    /// mode persists, a legacy database in rollback mode is converted.
+    /// This is what prevents "database is locked" when the progress
+    /// gauge reads while a full synchronization writes — the first
+    /// defect the field returned on ADR 0010.
     ///
-    /// Sur base fichier et non en mémoire, comme le terrain : une base en
-    /// mémoire répond « memory » à ce PRAGMA, et le test validerait un
-    /// modèle faux.
+    /// On a file database and not in memory, like the field: an
+    /// in-memory database answers "memory" to this PRAGMA, and the test
+    /// would validate a false model.
     #[test]
-    fn une_base_fichier_s_ouvre_en_wal() {
+    fn a_file_database_opens_in_wal() {
         let path = std::env::temp_dir().join(format!("wind-test-wal-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
 
-        // Une base héritée, née AVANT le WAL : mode rollback (delete).
+        // A legacy database, born BEFORE WAL: rollback mode (delete).
         {
             let conn = Connection::open(&path).unwrap();
             conn.execute_batch("CREATE TABLE heritage (id INTEGER)")
@@ -6667,19 +6705,23 @@ mod tests {
             let mode: String = conn
                 .query_row("PRAGMA journal_mode", [], |row| row.get(0))
                 .unwrap();
-            assert_eq!(mode.to_lowercase(), "wal", "la base héritée est convertie");
+            assert_eq!(
+                mode.to_lowercase(),
+                "wal",
+                "the legacy database is converted"
+            );
         }
         let _ = std::fs::remove_file(&path);
     }
 
-    /// Terrain STOP 2 PLAN-AUDIT-V2 (2026-09-02) : sur la vraie base,
-    /// « table envelopes has no column named reply_to » à chaque passe du
-    /// veilleur — la colonne vivait dans le CREATE TABLE, jamais dans la
-    /// liste des colonnes migrées ; les décors e2e, semés à neuf, ne
-    /// pouvaient pas le voir. Une base d'avant la vague 2 reçoit la
-    /// colonne à la réouverture, et une relève y écrit.
+    /// Field STOP 2 PLAN-AUDIT-V2 (2026-09-02): on the real database,
+    /// "table envelopes has no column named reply_to" on every pass of
+    /// the watcher — the column lived in the CREATE TABLE, never in the
+    /// list of migrated columns; the e2e fixtures, freshly seeded, could
+    /// not see it. A database from before wave 2 receives the column at
+    /// reopening, and a poll writes to it.
     #[test]
-    fn une_base_d_avant_la_vague_2_recoit_la_colonne_reply_to() {
+    fn a_database_from_before_wave_2_receives_the_reply_to_column() {
         let path =
             std::env::temp_dir().join(format!("wind-test-reply-to-migr-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
@@ -6689,31 +6731,31 @@ mod tests {
             conn.execute_batch("ALTER TABLE envelopes DROP COLUMN reply_to")
                 .unwrap();
         }
-        Store::oublier_initialisation(&path);
+        Store::forget_initialization(&path);
 
         let mut store = Store::open(&path).unwrap();
         let account = test_account(&store);
         let mailbox = store.create_mailbox(account, "INBOX", 1).unwrap();
-        let mut liste = envelope(1, "Liste", 100, false);
-        liste.reply_to = Some("liste@exemple.fr".to_string());
-        store.upsert_envelopes(mailbox, &[liste]).unwrap();
+        let mut list = envelope(1, "List", 100, false);
+        list.reply_to = Some("liste@exemple.fr".to_string());
+        store.upsert_envelopes(mailbox, &[list]).unwrap();
         assert_eq!(
-            store.reply_to_de(account, "INBOX", 1).unwrap(),
+            store.reply_to_of(account, "INBOX", 1).unwrap(),
             Some("liste@exemple.fr".to_string())
         );
         let _ = std::fs::remove_file(&path);
     }
 
-    /// PLAN-AUDIT-V2 E1 : chaque commande du shell ouvre SA connexion —
-    /// 103 sites — et chacune rejouait le schéma, une vingtaine de
-    /// `table_xinfo` et les migrations (36 ms sur 200 k enveloppes, à
-    /// CHAQUE commande). Une fois l'initialisation complète RÉUSSIE sur un
-    /// chemin, les ouvertures suivantes du même processus ne la rejouent
-    /// pas. Preuve sans espion dans le code de production : on retire un
-    /// index derrière le dos du Store ; si le schéma était rejoué, le
-    /// `CREATE INDEX IF NOT EXISTS` le recréerait.
+    /// PLAN-AUDIT-V2 E1: every shell command opens ITS OWN connection —
+    /// 103 sites — and each one replayed the schema, some twenty
+    /// `table_xinfo` calls and the migrations (36 ms on 200k envelopes,
+    /// on EVERY command). Once the full initialization has SUCCEEDED on
+    /// a path, subsequent openings of the same process do not replay it.
+    /// Proof without a spy in production code: an index is removed
+    /// behind the Store's back; if the schema were replayed,
+    /// `CREATE INDEX IF NOT EXISTS` would recreate it.
     #[test]
-    fn une_seconde_ouverture_du_meme_chemin_ne_rejoue_pas_le_schema() {
+    fn a_second_opening_of_the_same_path_does_not_replay_the_schema() {
         let path =
             std::env::temp_dir().join(format!("wind-test-porte-rapide-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
@@ -6727,22 +6769,23 @@ mod tests {
         drop(Store::open(&path).unwrap());
 
         let conn = Connection::open(&path).unwrap();
-        let recree: i64 = conn
+        let recreated: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_pending_actions_message'",
                 [],
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(recree, 0, "la seconde ouverture a rejoué le schéma");
+        assert_eq!(recreated, 0, "the second opening replayed the schema");
         let _ = std::fs::remove_file(&path);
     }
 
-    /// La reconstruction de l'index de recherche doit faire afficher l'écran
-    /// de migration (ADR 0012) même sur une base DÉJÀ à jour côté fils : sans
-    /// cette détection dans `pending_adoption`, elle gèlerait le démarrage en
-    /// silence (constat terrain 2026-08-17). Sur base fichier, car la sonde
-    /// ouvre en lecture seule — une base en mémoire n'a pas de chemin.
+    /// Rebuilding the search index must make the migration screen show
+    /// (ADR 0012) even on a database ALREADY up to date on the thread
+    /// side: without this detection in `pending_adoption`, it would
+    /// freeze the startup in silence (field finding 2026-08-17). On a
+    /// file database, because the probe opens read-only — an in-memory
+    /// database has no path.
     #[test]
     fn pending_adoption_sees_an_old_search_index() {
         let path =
@@ -6753,11 +6796,11 @@ mod tests {
             let account = test_account(&store);
             let mailbox = store.create_mailbox(account, "INBOX", 1).unwrap();
             store
-                .upsert_envelopes(mailbox, &[envelope(1, "Sujet", 100, false)])
+                .upsert_envelopes(mailbox, &[envelope(1, "Subject", 100, false)])
                 .unwrap();
-            // Rétrograde l'index vers l'ancien schéma à trois colonnes : les
-            // fils restent adoptés (`user_version` inchangé), seul l'index est
-            // d'avant ce chantier — exactement l'état du terrain.
+            // Downgrades the index to the old three-column schema: the
+            // threads stay adopted (`user_version` unchanged), only the
+            // index predates this job — exactly the field's state.
             store
                 .conn()
                 .execute_batch(
@@ -6776,29 +6819,29 @@ mod tests {
                      );",
                 )
                 .unwrap();
-        } // fermeture propre → checkpoint du WAL, la sonde lecture seule lit.
+        } // clean close -> WAL checkpoint, the read-only probe reads.
 
         assert_eq!(
             Store::pending_adoption(&path).unwrap(),
             Some(1),
-            "l'ancien schéma FTS fait afficher l'écran, fils déjà adoptés"
+            "the old FTS schema makes the screen show, threads already adopted"
         );
 
-        // Une ouverture pleine reconstruit ; ensuite, plus rien à annoncer.
-        Store::oublier_initialisation(&path);
+        // A full opening rebuilds it; after that, nothing left to report.
+        Store::forget_initialization(&path);
         {
             Store::open(&path).unwrap();
         }
         assert_eq!(
             Store::pending_adoption(&path).unwrap(),
             None,
-            "reconstruit → l'écran ne se réaffiche pas"
+            "rebuilt -> the screen does not show again"
         );
         let _ = std::fs::remove_file(&path);
     }
 
-    /// Une base Phase 1 (sans les colonnes de réponse) doit s'ouvrir et
-    /// s'enrichir sans perdre les enveloppes déjà synchronisées.
+    /// A Phase 1 database (without the reply columns) must open and
+    /// enrich itself without losing the already-synced envelopes.
     #[test]
     fn opens_and_migrates_a_phase1_database() {
         let path =
@@ -6825,7 +6868,7 @@ mod tests {
                 );
                 INSERT INTO mailboxes (id, name, uid_validity) VALUES (1, 'INBOX', 1);
                 INSERT INTO envelopes (mailbox_id, uid, subject, sender, date_epoch, seen)
-                VALUES (1, 42, 'hérité de la phase 1', 'Alice', 100, 1);",
+                VALUES (1, 42, 'inherited from phase 1', 'Alice', 100, 1);",
             )
             .unwrap();
         }
@@ -6834,26 +6877,22 @@ mod tests {
         let rows = recent(&store, 0, 10);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].uid, 42);
-        assert_eq!(rows[0].subject.as_deref(), Some("hérité de la phase 1"));
+        assert_eq!(rows[0].subject.as_deref(), Some("inherited from phase 1"));
         assert_eq!(
             rows[0].sender_address, None,
-            "colonne ajoutée par migration : valeur inconnue pour l'existant"
+            "column added by migration: value unknown for the existing row"
         );
-        assert!(
-            !rows[0].flagged,
-            "étoile absente par défaut après migration"
-        );
+        assert!(!rows[0].flagged, "star absent by default after migration");
 
         drop(store);
         let _ = std::fs::remove_file(&path);
     }
 
-    /// R2 (PLAN-RETOURS-MAIL) : une enveloppe synchronisée AVANT le
-    /// correctif porte les backslash-escapes IMAP dans son objet et le nom
-    /// de son expéditeur ; la migration les retire une fois. Le cas terrain
-    /// « Test \"Envoyés\" ».
+    /// R2 (PLAN-RETOURS-MAIL): an envelope synced BEFORE the fix carries
+    /// IMAP backslash-escapes in its subject and its sender name; the
+    /// migration removes them once. The field case "Test \"Sent\"".
     #[test]
-    fn migration_retire_les_escapes_imap_des_objets_existants() {
+    fn migration_removes_the_imap_escapes_from_existing_subjects() {
         let path =
             std::env::temp_dir().join(format!("wind-test-escapes-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
@@ -6884,13 +6923,13 @@ mod tests {
                 "INSERT INTO envelopes
                     (mailbox_id, uid, subject, sender, sender_address, date_epoch, seen)
                  VALUES (1, 7, ?1, ?2, ?3, 100, 1)",
-                params![r#"Test \"Envoyes\""#, r#"Societe \"ACME\""#, "info@acme.fr"],
+                params![r#"Test \"Sent\""#, r#"Company \"ACME\""#, "info@acme.fr"],
             )
             .unwrap();
-            // Un objet propre, sans escape : il doit traverser intact.
+            // A clean subject, without escapes: it must pass through intact.
             conn.execute(
                 "INSERT INTO envelopes (mailbox_id, uid, subject, sender, date_epoch, seen)
-                 VALUES (1, 8, 'Reunion de demain', 'Alice', 90, 1)",
+                 VALUES (1, 8, 'Meeting tomorrow', 'Alice', 90, 1)",
                 [],
             )
             .unwrap();
@@ -6898,20 +6937,20 @@ mod tests {
 
         let store = Store::open(&path).unwrap();
         let rows = recent(&store, 0, 10);
-        let sept = rows.iter().find(|e| e.uid == 7).unwrap();
-        assert_eq!(sept.subject.as_deref(), Some(r#"Test "Envoyes""#));
-        assert_eq!(sept.sender.as_deref(), Some(r#"Societe "ACME""#));
-        let huit = rows.iter().find(|e| e.uid == 8).unwrap();
-        assert_eq!(huit.subject.as_deref(), Some("Reunion de demain"));
+        let seven = rows.iter().find(|e| e.uid == 7).unwrap();
+        assert_eq!(seven.subject.as_deref(), Some(r#"Test "Sent""#));
+        assert_eq!(seven.sender.as_deref(), Some(r#"Company "ACME""#));
+        let eight = rows.iter().find(|e| e.uid == 8).unwrap();
+        assert_eq!(eight.subject.as_deref(), Some("Meeting tomorrow"));
 
         drop(store);
         let _ = std::fs::remove_file(&path);
     }
 
-    /// Migration Phase 2 → 3 sur une base complète : toutes les données
-    /// (enveloppes, corps, actions, brouillons, tombstones, boîte d'envoi)
-    /// sont adoptées par le compte en attente — zéro perte, et la première
-    /// connexion revendique le tout.
+    /// Phase 2 → 3 migration on a full database: all the data
+    /// (envelopes, bodies, actions, drafts, tombstones, outbox)
+    /// are adopted by the pending account — zero loss, and the first
+    /// connection claims everything.
     #[test]
     fn migrates_a_full_phase2_database_and_adopts_everything() {
         let path =
@@ -6970,29 +7009,29 @@ mod tests {
                 );
                 INSERT INTO mailboxes (id, name, uid_validity) VALUES (1, 'INBOX', 7);
                 INSERT INTO envelopes (mailbox_id, uid, subject, seen, flagged)
-                    VALUES (1, 42, 'hérité', 1, 1);
-                INSERT INTO bodies VALUES (1, 42, '<p>corps</p>');
+                    VALUES (1, 42, 'legacy', 1, 1);
+                INSERT INTO bodies VALUES (1, 42, '<p>body</p>');
                 INSERT INTO pending_actions (mailbox_id, uid, kind) VALUES (1, 42, 'mark_seen');
                 INSERT INTO drafts (to_raw, subject, body, updated_epoch, remote_uid, pushed_epoch)
-                    VALUES ('x@y.fr', 'précieux', 'texte', 10, 77, 10);
+                    VALUES ('x@y.fr', 'precious', 'text', 10, 77, 10);
                 INSERT INTO draft_tombstones VALUES (99);
                 INSERT INTO drafts_remote VALUES (1, 1234);
                 INSERT INTO outbox (message_id, sender, recipients, subject, body_text, queued_epoch)
-                    VALUES ('<m@x>', 'moi@y.fr', 'toi@y.fr', 's', 'b', 20);",
+                    VALUES ('<m@x>', 'me@y.fr', 'you@y.fr', 's', 'b', 20);",
             )
             .unwrap();
         }
 
         let store = Store::open(&path).unwrap();
         let account = store
-            .adopt_or_create_account("legacy@exemple.fr", "gmail")
+            .adopt_or_create_account("legacy@example.fr", "gmail")
             .unwrap();
-        assert_eq!(account, 1, "la revendication prend le compte en attente");
+        assert_eq!(account, 1, "claiming takes over the pending account");
 
         assert_eq!(store.recent(account, "INBOX", 0, 10).unwrap()[0].uid, 42);
         assert_eq!(
             store.body(1, "INBOX", 42).unwrap().as_deref(),
-            Some("<p>corps</p>")
+            Some("<p>body</p>")
         );
         let drafts = store.drafts().unwrap();
         assert_eq!(drafts[0].account_id, 1);
@@ -7000,25 +7039,25 @@ mod tests {
         assert_eq!(store.draft_tombstones(1).unwrap(), vec![99]);
         assert!(
             !store.align_drafts_uidvalidity(1, 1234).unwrap(),
-            "l'UIDVALIDITY des brouillons a survécu : pas de réinitialisation"
+            "the drafts' UIDVALIDITY survived: no reset"
         );
         assert_eq!(store.outbox_to_send(1).unwrap().len(), 1);
         assert_eq!(store.accounts().unwrap().len(), 1);
 
         let second = store
-            .adopt_or_create_account("deux@exemple.fr", "gmail")
+            .adopt_or_create_account("two@example.fr", "gmail")
             .unwrap();
-        assert_ne!(second, 1, "le placeholder ne se revendique qu'une fois");
+        assert_ne!(second, 1, "the placeholder is claimed only once");
 
         drop(store);
         let _ = std::fs::remove_file(&path);
     }
 
-    /// PLAN-COMPOSITION-HTML E1 : une base héritée (d'avant le corps
-    /// HTML) gagne les colonnes `body_html` de `drafts` et `outbox` à
-    /// l'ouverture — NULL sur l'existant, le chemin texte intact.
-    /// Sur base de FICHIER : c'est la passe réelle qui est prouvée,
-    /// pas un schéma neuf (invariant #7).
+    /// PLAN-COMPOSITION-HTML E1: a legacy database (from before HTML
+    /// bodies) gains the `body_html` columns of `drafts` and `outbox` on
+    /// open — NULL on existing rows, the text path untouched.
+    /// On a FILE database: it is the real migration pass that is proved,
+    /// not a fresh schema (invariant #7).
     #[test]
     fn legacy_database_gains_body_html_columns_with_null_on_existing_rows() {
         let path =
@@ -7042,9 +7081,9 @@ mod tests {
                     queued_epoch INTEGER NOT NULL
                 );
                 INSERT INTO drafts (to_raw, subject, body, updated_epoch)
-                    VALUES ('x@y.fr', 's', 'texte brut', 10);
+                    VALUES ('x@y.fr', 's', 'plain text', 10);
                 INSERT INTO outbox (message_id, sender, recipients, subject, body_text, queued_epoch)
-                    VALUES ('<m@x>', 'moi@y.fr', 'toi@y.fr', 's', 'b', 20);",
+                    VALUES ('<m@x>', 'me@y.fr', 'you@y.fr', 's', 'b', 20);",
             )
             .unwrap();
         }
@@ -7055,34 +7094,34 @@ mod tests {
                 table_columns(store.conn(), table)
                     .unwrap()
                     .contains("body_html"),
-                "{table} doit gagner body_html à l'ouverture"
+                "{table} must gain body_html on open"
             );
         }
-        let ancien: Option<String> = store
+        let old: Option<String> = store
             .conn()
             .query_row("SELECT body_html FROM drafts", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(ancien, None, "l'existant reste NULL : chemin texte intact");
-        let ancien: Option<String> = store
+        assert_eq!(old, None, "existing rows stay NULL: text path untouched");
+        let old: Option<String> = store
             .conn()
             .query_row("SELECT body_html FROM outbox", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(ancien, None);
+        assert_eq!(old, None);
 
         drop(store);
         let _ = std::fs::remove_file(&path);
     }
 
-    /// Le cœur produit du multi-comptes : la même boîte de tous les
-    /// comptes, fusionnée par date — chaque ligne connaît son compte.
+    /// The core deliverable of multi-account: the same mailbox for every
+    /// account, merged by date — each row knows its own account.
     #[test]
     fn unified_recent_merges_accounts_by_date() {
         let store = Store::open_in_memory().unwrap();
         let first = store
-            .adopt_or_create_account("a@exemple.fr", "gmail")
+            .adopt_or_create_account("a@example.fr", "gmail")
             .unwrap();
         let second = store
-            .adopt_or_create_account("b@exemple.fr", "gmail")
+            .adopt_or_create_account("b@example.fr", "gmail")
             .unwrap();
         let inbox_a = store.create_mailbox(first, "INBOX", 1).unwrap();
         let inbox_b = store.create_mailbox(second, "INBOX", 1).unwrap();
@@ -7092,8 +7131,8 @@ mod tests {
             .upsert_envelopes(
                 inbox_a,
                 &[
-                    envelope(1, "a-ancien", 100, false),
-                    envelope(2, "a-récent", 300, false),
+                    envelope(1, "a-old", 100, false),
+                    envelope(2, "a-recent", 300, false),
                 ],
             )
             .unwrap();
@@ -7101,8 +7140,8 @@ mod tests {
             .upsert_envelopes(
                 inbox_b,
                 &[
-                    envelope(1, "b-milieu", 200, false),
-                    envelope(2, "b-dernier", 400, false),
+                    envelope(1, "b-middle", 200, false),
+                    envelope(2, "b-last", 400, false),
                 ],
             )
             .unwrap();
@@ -7120,15 +7159,15 @@ mod tests {
         assert_eq!(
             order,
             vec![
-                ("b@exemple.fr", "b-dernier"),
-                ("a@exemple.fr", "a-récent"),
-                ("b@exemple.fr", "b-milieu"),
-                ("a@exemple.fr", "a-ancien"),
+                ("b@example.fr", "b-last"),
+                ("a@example.fr", "a-recent"),
+                ("b@example.fr", "b-middle"),
+                ("a@example.fr", "a-old"),
             ],
-            "fusion par date, chaque ligne porte son compte"
+            "merged by date, each row carries its account"
         );
         assert_eq!(store.unified_count().unwrap(), 4);
-        // Même UID dans deux comptes : deux messages distincts.
+        // Same UID in two accounts: two distinct messages.
         assert!(store.envelope(first, "INBOX", 1).unwrap().is_some());
         assert!(store.envelope(second, "INBOX", 1).unwrap().is_some());
     }
@@ -7144,11 +7183,11 @@ mod tests {
         assert_eq!(store.body(test_account(&store), "INBOX", 1).unwrap(), None);
     }
 
-    /// Réparation `corps-fffd` : un corps mutilé au décodage (U+FFFD) est
-    /// purgé pour que le rattrapage le retélécharge avec le décodeur
-    /// corrigé ; un corps sain reste en place.
+    /// `corps-fffd` repair: a body mutilated at decoding time (U+FFFD) is
+    /// purged so that the backfill redownloads it with the fixed decoder;
+    /// a healthy body is left in place.
     #[test]
-    fn reparation_corps_fffd_purge_les_corps_mutiles() {
+    fn the_corps_fffd_repair_purges_mutilated_bodies() {
         let (mut store, id) = store_with_mailbox();
         store
             .upsert_envelopes(
@@ -7156,12 +7195,10 @@ mod tests {
                 &[envelope(1, "a", 100, false), envelope(2, "b", 100, false)],
             )
             .unwrap();
-        store
-            .save_body(id, 1, "<p>journ\u{FFFD}es</p>", &[])
-            .unwrap();
-        store.save_body(id, 2, "<p>sain</p>", &[]).unwrap();
-        // Simule une base d'avant la réparation : le marqueur disparaît,
-        // et la migration se rejoue comme à la prochaine ouverture.
+        store.save_body(id, 1, "<p>tod\u{FFFD}ay</p>", &[]).unwrap();
+        store.save_body(id, 2, "<p>healthy</p>", &[]).unwrap();
+        // Simulates a database from before the repair: the marker
+        // disappears, and the migration replays as on the next open.
         store
             .conn()
             .execute("DELETE FROM reparations WHERE nom = 'corps-fffd'", [])
@@ -7171,27 +7208,27 @@ mod tests {
         assert_eq!(
             store.body(account, "INBOX", 1).unwrap(),
             None,
-            "corps mutilé purgé"
+            "mutilated body purged"
         );
         assert!(
             store.body(account, "INBOX", 2).unwrap().is_some(),
-            "corps sain conservé"
+            "healthy body kept"
         );
-        // Le message purgé redevient une cible du rattrapage.
+        // The purged message becomes a backfill target again.
         assert_eq!(
             store.bodies_to_backfill(account, "INBOX", 0, 10).unwrap(),
             vec![1]
         );
     }
 
-    /// Régression (bug #2) : ré-ajouter un compte générique déjà connu
-    /// doit renvoyer le MÊME id et appliquer la nouvelle configuration.
-    /// Sur le chemin UPDATE de l'upsert, `last_insert_rowid()` renvoyait
-    /// 0 — un id fantôme que l'UI récupérait pour la pastille et la
-    /// sélection. Chaque commande ouvre SA connexion : on modélise donc
-    /// le ré-ajout par deux `Store` distincts sur la même base fichier,
-    /// car c'est la connexion fraîche (sans INSERT préalable) qui emprunte
-    /// le chemin UPDATE et exhibe le 0.
+    /// Regression (bug #2): re-adding an already-known generic account
+    /// must return the SAME id and apply the new configuration.
+    /// On the UPDATE path of the upsert, `last_insert_rowid()` used to
+    /// return 0 — a phantom id that the UI picked up for the badge and
+    /// the selection. Each command opens ITS OWN connection: so the
+    /// re-add is modeled with two distinct `Store`s on the same file
+    /// database, because it is the fresh connection (with no prior
+    /// INSERT) that takes the UPDATE path and exhibits the 0.
     #[test]
     fn re_adding_a_generic_account_returns_the_same_id_and_updates_config() {
         let path = std::env::temp_dir().join(format!(
@@ -7207,8 +7244,8 @@ mod tests {
             let store = Store::open(&path).unwrap();
             store
                 .create_generic_account(
-                    "compte@exemple.fr",
-                    "compte",
+                    "account@example.fr",
+                    "account",
                     "imap.a.fr",
                     993,
                     "smtp.a.fr",
@@ -7220,7 +7257,7 @@ mod tests {
             let store = Store::open(&path).unwrap();
             store
                 .create_generic_account(
-                    "compte@exemple.fr",
+                    "account@example.fr",
                     "login",
                     "imap.b.fr",
                     143,
@@ -7236,16 +7273,16 @@ mod tests {
                 store.account_config(first).unwrap(),
             )
         };
-        // Nettoyage avant les assertions : un échec ne doit pas laisser de
-        // fichier temporaire derrière lui.
+        // Cleanup before the assertions: a failure must not leave a
+        // temporary file behind.
         let _ = std::fs::remove_file(&path);
 
-        assert!(first > 0, "la primo-création doit renvoyer un id réel");
+        assert!(first > 0, "the first creation must return a real id");
         assert_eq!(
             second, first,
-            "le ré-ajout doit renvoyer l'id existant, jamais 0"
+            "re-adding must return the existing id, never 0"
         );
-        assert_eq!(count, 1, "un seul compte, pas un doublon");
+        assert_eq!(count, 1, "a single account, no duplicate");
         assert_eq!(config.username.as_deref(), Some("login"));
         assert_eq!(config.imap_host.as_deref(), Some("imap.b.fr"));
         assert_eq!(config.imap_port, Some(143));
@@ -7253,9 +7290,9 @@ mod tests {
         assert_eq!(config.smtp_port, Some(587));
     }
 
-    /// Le rattrapage vise les messages RÉCENTS sans corps, du plus récent
-    /// au plus ancien : c'est l'ordre où la recherche a le plus de valeur,
-    /// et celui qui rend la reprise après coupure naturelle.
+    /// The backfill targets RECENT bodyless messages, newest first: this
+    /// is the order in which search gains the most value, and the one
+    /// that makes resuming after an interruption feel natural.
     #[test]
     fn backfill_lists_recent_bodyless_messages_newest_first() {
         let (mut store, id) = store_with_mailbox();
@@ -7263,9 +7300,9 @@ mod tests {
             .upsert_envelopes(
                 id,
                 &[
-                    envelope(1, "ancien", 1_000, false),
-                    envelope(2, "milieu", 2_000, false),
-                    envelope(3, "récent", 3_000, false),
+                    envelope(1, "old", 1_000, false),
+                    envelope(2, "middle", 2_000, false),
+                    envelope(3, "recent", 3_000, false),
                 ],
             )
             .unwrap();
@@ -7282,12 +7319,12 @@ mod tests {
             .upsert_envelopes(
                 id,
                 &[
-                    envelope(1, "sans corps", 1_000, false),
-                    envelope(2, "avec corps", 2_000, false),
+                    envelope(1, "without body", 1_000, false),
+                    envelope(2, "with body", 2_000, false),
                 ],
             )
             .unwrap();
-        store.save_body(id, 2, "<p>déjà là</p>", &[]).unwrap();
+        store.save_body(id, 2, "<p>already there</p>", &[]).unwrap();
         let account = test_account(&store);
 
         assert_eq!(
@@ -7296,8 +7333,8 @@ mod tests {
         );
     }
 
-    /// L'horizon de récence est ce qui BORNE le coût (ADR 0007) : au-delà,
-    /// on ne rapatrie rien.
+    /// The recency horizon is what BOUNDS the cost (ADR 0007): beyond it,
+    /// nothing is fetched back.
     #[test]
     fn backfill_respects_the_recency_horizon() {
         let (mut store, id) = store_with_mailbox();
@@ -7305,8 +7342,8 @@ mod tests {
             .upsert_envelopes(
                 id,
                 &[
-                    envelope(1, "hors horizon", 1_000, false),
-                    envelope(2, "dans l'horizon", 5_000, false),
+                    envelope(1, "outside the horizon", 1_000, false),
+                    envelope(2, "inside the horizon", 5_000, false),
                 ],
             )
             .unwrap();
@@ -7342,21 +7379,21 @@ mod tests {
     fn backfill_never_leaks_another_accounts_messages() {
         let (mut store, mine) = store_with_mailbox();
         let other = store
-            .adopt_or_create_account("autre@exemple.fr", "gmail")
+            .adopt_or_create_account("other@example.fr", "gmail")
             .unwrap();
         let theirs = store.create_mailbox(other, "INBOX", 1).unwrap();
         store
-            .upsert_envelopes(mine, &[envelope(1, "à moi", 1_000, false)])
+            .upsert_envelopes(mine, &[envelope(1, "mine", 1_000, false)])
             .unwrap();
         store
-            .upsert_envelopes(theirs, &[envelope(1, "à l'autre", 2_000, false)])
+            .upsert_envelopes(theirs, &[envelope(1, "someone else's", 2_000, false)])
             .unwrap();
         let account = test_account(&store);
 
         assert_eq!(
             store.bodies_to_backfill(account, "INBOX", 0, 10).unwrap(),
             vec![1],
-            "un seul message : celui du compte demandé"
+            "a single message: the one belonging to the requested account"
         );
         assert_eq!(
             store.bodies_to_backfill(other, "INBOX", 0, 10).unwrap(),
@@ -7365,11 +7402,11 @@ mod tests {
     }
 
     // -----------------------------------------------------------------
-    // Regroupement en conversations
+    // Grouping into conversations
     // -----------------------------------------------------------------
 
-    /// Une réponse à `parent`, dans le format de [`envelope`] — dont le
-    /// `Message-ID` est `<m{uid}@example.com>`.
+    /// A reply to `parent`, in the format of [`envelope`] — whose
+    /// `Message-ID` is `<m{uid}@example.com>`.
     fn reply(uid: Uid, subject: &str, epoch: i64, seen: bool, parent: Uid) -> Envelope {
         Envelope {
             in_reply_to: Some(format!("<m{parent}@example.com>")),
@@ -7385,164 +7422,168 @@ mod tests {
         rows.iter().map(|row| row.envelope.uid).collect()
     }
 
-    /// Le cœur du chantier : deux messages, une seule ligne.
+    /// The heart of the job: two messages, a single row.
     #[test]
-    fn la_liste_montre_une_ligne_par_conversation() {
+    fn the_list_shows_one_row_per_conversation() {
         let (mut store, id) = store_with_mailbox();
         store
             .upsert_envelopes(
                 id,
                 &[
-                    envelope(1, "Devis", 100, true),
-                    reply(2, "Re: Devis", 200, true, 1),
+                    envelope(1, "Quote", 100, true),
+                    reply(2, "Re: Quote", 200, true, 1),
                 ],
             )
             .unwrap();
 
         let rows = unified(&store);
-        assert_eq!(rows.len(), 1, "un fil, et non deux messages");
+        assert_eq!(rows.len(), 1, "one thread, not two messages");
         assert_eq!(rows[0].thread_size, 2);
-        assert_eq!(
-            rows[0].envelope.uid, 2,
-            "la ligne montre le DERNIER message"
-        );
+        assert_eq!(rows[0].envelope.uid, 2, "the row shows the LAST message");
         assert_eq!(
             store.unified_count().unwrap(),
             1,
-            "le défilement compte des conversations, sinon il défile dans le vide"
+            "scrolling counts conversations, otherwise it scrolls into thin air"
         );
     }
 
     #[test]
-    fn une_reponse_fait_remonter_tout_le_fil() {
+    fn a_reply_brings_the_whole_thread_back_up() {
         let (mut store, id) = store_with_mailbox();
         store
             .upsert_envelopes(
                 id,
                 &[
-                    envelope(1, "Devis", 100, true),
-                    envelope(2, "Facture", 200, true),
+                    envelope(1, "Quote", 100, true),
+                    envelope(2, "Invoice", 200, true),
                 ],
             )
             .unwrap();
         assert_eq!(uids(&unified(&store)), vec![2, 1]);
 
         store
-            .upsert_envelopes(id, &[reply(3, "Re: Devis", 300, true, 1)])
+            .upsert_envelopes(id, &[reply(3, "Re: Quote", 300, true, 1)])
             .unwrap();
 
         let rows = unified(&store);
         assert_eq!(
             uids(&rows),
             vec![3, 2],
-            "le devis repasse devant la facture"
+            "the quote moves back ahead of the invoice"
         );
         assert_eq!(rows[0].thread_size, 2);
     }
 
-    /// Un fil dont le dernier message est lu, mais qui garde un non-lu
-    /// plus haut, doit rester en gras. Lire l'état du seul message affiché
-    /// donnerait la réponse inverse.
+    /// A thread whose last message is read, but which still holds an
+    /// unread message higher up, must stay bold. Reading the state of
+    /// only the displayed message would give the opposite answer.
     #[test]
-    fn un_fil_reste_non_lu_tant_qu_un_de_ses_messages_l_est() {
+    fn a_thread_stays_unread_while_any_of_its_messages_is() {
         let (mut store, id) = store_with_mailbox();
         store
             .upsert_envelopes(
                 id,
                 &[
-                    envelope(1, "Devis", 100, false),
-                    reply(2, "Re: Devis", 200, true, 1),
+                    envelope(1, "Quote", 100, false),
+                    reply(2, "Re: Quote", 200, true, 1),
                 ],
             )
             .unwrap();
 
         let rows = unified(&store);
-        assert!(rows[0].envelope.seen, "le dernier message est lu…");
-        assert_eq!(rows[0].thread_unseen, 1, "…mais le fil garde un non-lu");
+        assert!(rows[0].envelope.seen, "the last message is read…");
+        assert_eq!(
+            rows[0].thread_unseen, 1,
+            "…but the thread still holds an unread one"
+        );
 
         store.set_seen_local(id, 1, true).unwrap();
         assert_eq!(
             unified(&store)[0].thread_unseen,
             0,
-            "lire le message manquant éteint le fil"
+            "reading the missing message clears the thread"
         );
     }
 
-    /// Le cas qui justifie la passe sur les en-têtes complets : dans une
-    /// boîte de réception, le message du milieu d'un échange est celui
-    /// qu'on a soi-même ENVOYÉ — il n'y est pas. `In-Reply-To` seul laisse
-    /// donc deux fils ; `References`, qui porte aussi la racine, les
-    /// recolle.
+    /// The case that justifies the pass over full headers: in an inbox,
+    /// the middle message of an exchange is the one WE sent — it isn't
+    /// there. `In-Reply-To` alone therefore leaves two threads;
+    /// `References`, which also carries the root, glues them back
+    /// together.
     #[test]
-    fn les_references_recollent_deux_moities_de_fil() {
+    fn references_glue_two_thread_halves_back_together() {
         let (mut store, id) = store_with_mailbox();
         store
             .upsert_envelopes(
                 id,
                 &[
-                    envelope(1, "Devis", 100, true),
-                    // Répond à <m2@…> : notre propre réponse, absente.
-                    reply(3, "Re: Devis", 300, true, 2),
+                    envelope(1, "Quote", 100, true),
+                    // Replies to <m2@…>: our own reply, absent.
+                    reply(3, "Re: Quote", 300, true, 2),
                 ],
             )
             .unwrap();
-        assert_eq!(unified(&store).len(), 2, "deux fils, faute du chaînon");
+        assert_eq!(
+            unified(&store).len(),
+            2,
+            "two threads, for lack of the missing link"
+        );
 
         assert!(
             store
                 .set_thread_headers(id, 3, None, "<m1@example.com> <m2@example.com>")
                 .unwrap(),
-            "le rattachement a changé"
+            "the attachment changed"
         );
 
         let rows = unified(&store);
-        assert_eq!(rows.len(), 1, "les deux moitiés se rejoignent");
+        assert_eq!(rows.len(), 1, "the two halves join back together");
         assert_eq!(rows[0].thread_size, 2);
         assert_eq!(rows[0].envelope.uid, 3);
     }
 
-    /// Une re-synchronisation réécrit l'enveloppe. Si elle écrasait les
-    /// `References` déjà acquises, elle DÉGROUPERAIT un fil recollé : le
-    /// regroupement se déferait tout seul, sans que rien ne le signale.
-    /// C'est le piège qui avait coûté les pièces jointes.
+    /// A resync rewrites the envelope. If it overwrote the `References`
+    /// already acquired, it would UNGROUP a glued thread: the grouping
+    /// would silently come undone, with nothing to signal it. This is
+    /// the trap that had cost us the attachments.
     #[test]
-    fn une_resynchronisation_ne_degroupe_pas_un_fil_recolle() {
+    fn a_resync_does_not_ungroup_a_glued_thread() {
         let (mut store, id) = store_with_mailbox();
-        let arrivee = [
-            envelope(1, "Devis", 100, true),
-            reply(3, "Re: Devis", 300, true, 2),
+        let arrival = [
+            envelope(1, "Quote", 100, true),
+            reply(3, "Re: Quote", 300, true, 2),
         ];
-        store.upsert_envelopes(id, &arrivee).unwrap();
+        store.upsert_envelopes(id, &arrival).unwrap();
         store
             .set_thread_headers(id, 3, None, "<m1@example.com> <m2@example.com>")
             .unwrap();
         assert_eq!(unified(&store).len(), 1);
 
-        store.upsert_envelopes(id, &arrivee).unwrap();
+        store.upsert_envelopes(id, &arrival).unwrap();
 
         let rows = unified(&store);
-        assert_eq!(rows.len(), 1, "le fil tient la re-synchronisation");
+        assert_eq!(rows.len(), 1, "the thread holds through the resync");
         assert_eq!(rows[0].thread_size, 2);
     }
 
-    /// Le piège des pièces jointes appliqué aux fils : une base d'avant le
-    /// regroupement a `thread_id` NULL partout. La liste part de
-    /// `threads` — sans adoption, elle serait VIDE à la première
-    /// ouverture, et pour toujours.
+    /// The attachments trap applied to threads: a database from before
+    /// grouping has `thread_id` NULL everywhere. The list starts from
+    /// `threads` — without adoption, it would be EMPTY on the first
+    /// open, and forever.
     #[test]
-    fn une_base_heritee_voit_tous_ses_messages_adoptes() {
+    fn a_legacy_database_sees_all_its_messages_adopted() {
         let (mut store, id) = store_with_mailbox();
         store
             .upsert_envelopes(
                 id,
                 &[
-                    envelope(1, "Devis", 100, true),
-                    envelope(2, "Facture", 200, true),
+                    envelope(1, "Quote", 100, true),
+                    envelope(2, "Invoice", 200, true),
                 ],
             )
             .unwrap();
 
-        // On rembobine à l'état d'une base d'avant les fils.
+        // Rewind to the state of a database from before threads.
         store
             .conn()
             .execute_batch(
@@ -7553,7 +7594,7 @@ mod tests {
             .unwrap();
         assert!(
             unified(&store).is_empty(),
-            "sans adoption, la boîte entière disparaît de l'écran"
+            "without adoption, the entire mailbox disappears from the screen"
         );
 
         crate::thread::migrate_threads(store.conn()).unwrap();
@@ -7562,47 +7603,51 @@ mod tests {
         assert_eq!(store.unified_count().unwrap(), 2);
     }
 
-    /// Le désordre d'arrivée ne doit rien changer : ici la réponse précède
-    /// son parent dans le même lot.
+    /// Arrival order must change nothing: here the reply precedes its
+    /// parent in the same batch.
     #[test]
-    fn un_fil_se_lit_du_plus_ancien_au_plus_recent() {
+    fn a_thread_reads_from_oldest_to_newest() {
         let (mut store, id) = store_with_mailbox();
         store
             .upsert_envelopes(
                 id,
                 &[
-                    reply(2, "Re: Devis", 200, true, 1),
-                    envelope(1, "Devis", 100, true),
+                    reply(2, "Re: Quote", 200, true, 1),
+                    envelope(1, "Quote", 100, true),
                 ],
             )
             .unwrap();
 
         let rows = unified(&store);
-        assert_eq!(rows.len(), 1, "l'ordre d'arrivée ne casse pas le fil");
+        assert_eq!(rows.len(), 1, "arrival order does not break the thread");
         let thread = rows[0].thread_id.unwrap();
         let messages = store.thread_messages(thread).unwrap();
         assert_eq!(uids(&messages), vec![1, 2]);
-        // Chaque message repart en connaissant la taille de SON fil :
-        // sinon l'écran qui le rouvre conclurait qu'il est seul.
+        // Each message comes back knowing the size of ITS thread:
+        // otherwise the screen that reopens it would conclude it's alone.
         assert!(messages.iter().all(|m| m.thread_size == 2));
     }
 
     #[test]
-    fn retirer_les_messages_d_un_fil_le_fait_disparaitre() {
+    fn removing_a_threads_messages_makes_it_disappear() {
         let (mut store, id) = store_with_mailbox();
         store
             .upsert_envelopes(
                 id,
                 &[
-                    envelope(1, "Devis", 100, true),
-                    reply(2, "Re: Devis", 200, true, 1),
+                    envelope(1, "Quote", 100, true),
+                    reply(2, "Re: Quote", 200, true, 1),
                 ],
             )
             .unwrap();
 
         store.remove_local(id, 2).unwrap();
         let rows = unified(&store);
-        assert_eq!(uids(&rows), vec![1], "le fil retombe sur ce qui reste");
+        assert_eq!(
+            uids(&rows),
+            vec![1],
+            "the thread falls back on what remains"
+        );
         assert_eq!(rows[0].thread_size, 1);
 
         store.remove_local(id, 1).unwrap();
@@ -7610,17 +7655,17 @@ mod tests {
         assert_eq!(store.unified_count().unwrap(), 0);
     }
 
-    /// Le défaut du terrain, de bout en bout : deux messages étrangers
-    /// dont l'`In-Reply-To` est une PHRASE — pas un identifiant — doivent
-    /// rester deux conversations.
+    /// The field's own finding, end to end: two unrelated messages whose
+    /// `In-Reply-To` is a SENTENCE — not an identifier — must remain two
+    /// conversations.
     ///
-    /// Avant correction, chaque mot de la phrase devenait une ancre
-    /// commune et les réunissait. Sur une vraie boîte, cela donnait un
-    /// fil de 43 messages sans rapport les uns avec les autres.
+    /// Before the fix, every word of the sentence became a shared anchor
+    /// and merged them together. On a real mailbox this produced a
+    /// 43-message thread with no relation between its messages.
     #[test]
-    fn deux_messages_dont_l_en_tete_est_en_prose_ne_fusionnent_pas() {
+    fn two_messages_whose_header_is_prose_do_not_merge() {
         let (mut store, id) = store_with_mailbox();
-        let prose = "Votre message du 3 janvier";
+        let prose = "Your message of January 3rd";
         store
             .upsert_envelopes(
                 id,
@@ -7631,35 +7676,35 @@ mod tests {
                     },
                     Envelope {
                         in_reply_to: Some(prose.to_string()),
-                        ..envelope(2, "Autre promotion", 200, true)
+                        ..envelope(2, "Another promotion", 200, true)
                     },
                 ],
             )
             .unwrap();
 
-        assert_eq!(unified(&store).len(), 2, "aucun lien entre ces deux-là");
+        assert_eq!(unified(&store).len(), 2, "no link between these two");
     }
 
-    /// Une base regroupée par l'ancienne règle porte des fils FAUX, et
-    /// corriger le code ne les répare pas tout seul. Le marqueur de
-    /// version les fait refaire à l'ouverture — sans réseau, les en-têtes
-    /// bruts étant intacts en base.
+    /// A database grouped by the old rule carries FALSE threads, and
+    /// fixing the code does not repair them on its own. The version
+    /// marker makes them redone on open — without a network, since the
+    /// raw headers are intact in the database.
     #[test]
-    fn une_base_mal_regroupee_est_refaite_a_l_ouverture() {
+    fn a_badly_grouped_database_is_redone_on_open() {
         let (mut store, id) = store_with_mailbox();
         store
             .upsert_envelopes(
                 id,
                 &[
                     envelope(1, "Promotion", 100, true),
-                    envelope(2, "Autre promotion", 200, true),
+                    envelope(2, "Another promotion", 200, true),
                 ],
             )
             .unwrap();
         assert_eq!(unified(&store).len(), 2);
 
-        // On rejoue l'état que produisait la règle permissive : un seul
-        // fil pour deux messages étrangers, et la version d'avant.
+        // Replays the state that the permissive rule used to produce: a
+        // single thread for two unrelated messages, and the old version.
         store
             .conn()
             .execute_batch(
@@ -7670,37 +7715,40 @@ mod tests {
                  PRAGMA user_version = 0;",
             )
             .unwrap();
-        assert_eq!(unified(&store).len(), 1, "l'état fautif est bien reproduit");
+        assert_eq!(
+            unified(&store).len(),
+            1,
+            "the faulty state is correctly reproduced"
+        );
 
         crate::thread::migrate_threads(store.conn()).unwrap();
 
-        assert_eq!(unified(&store).len(), 2, "les fils sont refaits");
+        assert_eq!(unified(&store).len(), 2, "the threads are redone");
         let version: i64 = store
             .conn()
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        // Contre la CONSTANTE, jamais contre un littéral : chaque
-        // changement de règle de regroupement l'incrémente, et un « 1 »
-        // en dur ferait échouer ce test pour une raison qui n'est pas la
-        // sienne.
+        // Against the CONSTANT, never against a literal: every change to
+        // the grouping rule increments it, and a hardcoded "1" would fail
+        // this test for a reason that isn't its own.
         assert_eq!(
             version,
             crate::thread::THREADING_VERSION,
-            "et la reconstruction ne se rejoue pas"
+            "and the rebuild does not replay again"
         );
     }
 
-    /// UIDVALIDITY invalidée : les fils partent avec le reste, et
-    /// l'annuaire ne doit pas empêcher une repopulation propre.
+    /// UIDVALIDITY invalidated: threads go with the rest, and the
+    /// directory must not prevent a clean repopulation.
     #[test]
-    fn reset_mailbox_efface_aussi_les_fils() {
+    fn reset_mailbox_also_clears_threads() {
         let (mut store, id) = store_with_mailbox();
         store
             .upsert_envelopes(
                 id,
                 &[
-                    envelope(1, "Devis", 100, true),
-                    reply(2, "Re: Devis", 200, true, 1),
+                    envelope(1, "Quote", 100, true),
+                    reply(2, "Re: Quote", 200, true, 1),
                 ],
             )
             .unwrap();
@@ -7708,19 +7756,23 @@ mod tests {
         assert!(unified(&store).is_empty());
 
         store
-            .upsert_envelopes(id, &[envelope(1, "Devis", 100, true)])
+            .upsert_envelopes(id, &[envelope(1, "Quote", 100, true)])
             .unwrap();
-        assert_eq!(unified(&store).len(), 1, "la boîte se repeuple sans butée");
+        assert_eq!(
+            unified(&store).len(),
+            1,
+            "the mailbox repopulates without a stop"
+        );
     }
 
-    /// Rejoue sur `path` les tables telles que la version 1 des fils les
-    /// créait — le seul décor où la passe d'adoption a du travail réel.
-    /// Partagé par le test d'ouverture ci-dessous et par ceux du
-    /// rembobinage (chantier Phase 5).
-    fn rembobine_au_schema_v1(path: &Path) {
-        // Une base rembobinée à la main est une base d'AVANT : le registre
-        // de la porte rapide (E1) ne doit plus la connaître.
-        Store::oublier_initialisation(path);
+    /// Replays on `path` the tables as version 1 of threads created
+    /// them — the only fixture where the adoption pass has real work to
+    /// do. Shared by the open test below and by the rewind tests
+    /// (Phase 5 job).
+    fn rewind_to_schema_v1(path: &Path) {
+        // A database rewound by hand is a database from BEFORE: the fast
+        // path registry (E1) must no longer know about it.
+        Store::forget_initialization(path);
         let conn = Connection::open(path).unwrap();
         conn.execute_batch(
             "DROP TABLE thread_links;
@@ -7748,84 +7800,87 @@ mod tests {
         .unwrap();
     }
 
-    /// Défaut trouvé au TERRAIN, pas ici : une base créée par la version
-    /// précédente porte une table `threads` sans `inbox_size`.
-    /// `CREATE TABLE IF NOT EXISTS` ne la touche pas — mais l'index
-    /// partiel, lui, n'existe pas encore, donc SQLite le crée vraiment :
-    /// il échoue sur une colonne absente, et **l'ouverture entière est
-    /// refusée** (« no such column: inbox_size »). L'application ne
-    /// démarrait plus.
+    /// Finding from the FIELD, not here: a database created by the
+    /// previous version carries a `threads` table with no `inbox_size`.
+    /// `CREATE TABLE IF NOT EXISTS` does not touch it — but the partial
+    /// index does not exist yet, so SQLite really tries to create it:
+    /// it fails on a missing column, and **the entire open is refused**
+    /// ("no such column: inbox_size"). The app would no longer start.
     ///
-    /// Aucun test ne pouvait l'attraper : ils créent tous une base neuve,
-    /// donc déjà au schéma courant. Celui-ci REMBOBINE une vraie base au
-    /// schéma d'avant — le seul décor où le défaut existe.
+    /// No test could catch it: they all create a fresh database, already
+    /// on the current schema. This one REWINDS a real database to the
+    /// previous schema — the only fixture where the defect exists.
     #[test]
-    fn une_base_au_schema_des_fils_precedent_s_ouvre_et_se_migre() {
+    fn a_database_on_the_previous_threads_schema_opens_and_migrates() {
         let path =
-            std::env::temp_dir().join(format!("wind-test-fils-v1-{}.db", std::process::id()));
+            std::env::temp_dir().join(format!("wind-test-threads-v1-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
 
         {
             let mut store = Store::open(&path).unwrap();
             let account = store
-                .adopt_or_create_account("moi@exemple.fr", "gmail")
+                .adopt_or_create_account("me@example.fr", "gmail")
                 .unwrap();
             let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
-            let mut premier = envelope(1, "Devis", 100, true);
-            premier.message_id = Some("<a@exemple.fr>".to_string());
-            let mut second = envelope(2, "Re: Devis", 200, true);
-            second.message_id = Some("<b@exemple.fr>".to_string());
-            second.in_reply_to = Some("<a@exemple.fr>".to_string());
-            store.upsert_envelopes(inbox, &[premier, second]).unwrap();
-            assert_eq!(unified(&store).len(), 1, "décor : un fil de deux messages");
+            let mut first = envelope(1, "Quote", 100, true);
+            first.message_id = Some("<a@example.fr>".to_string());
+            let mut second = envelope(2, "Re: Quote", 200, true);
+            second.message_id = Some("<b@example.fr>".to_string());
+            second.in_reply_to = Some("<a@example.fr>".to_string());
+            store.upsert_envelopes(inbox, &[first, second]).unwrap();
+            assert_eq!(
+                unified(&store).len(),
+                1,
+                "fixture: a thread of two messages"
+            );
         }
 
-        // Rembobinage : les tables telles que la version 1 les créait.
-        rembobine_au_schema_v1(&path);
+        // Rewind: the tables as version 1 created them.
+        rewind_to_schema_v1(&path);
 
-        // C'est CETTE ouverture qui refusait de se faire.
+        // This is the open that used to be refused.
         let store = Store::open(&path).unwrap();
-        let lignes = unified(&store);
-        assert_eq!(lignes.len(), 1, "le fil est refait, et la liste le montre");
-        assert_eq!(lignes[0].thread_size, 2, "avec son compteur");
+        let rows = unified(&store);
+        assert_eq!(rows.len(), 1, "the thread is redone, and the list shows it");
+        assert_eq!(rows[0].thread_size, 2, "with its counter");
 
         drop(store);
         let _ = std::fs::remove_file(&path);
     }
 
-    /// LE test du chantier Phase 5 (passation §8) : l'adoption n'est PAS
-    /// fractionnable — la liste part de `threads`, une adoption partielle
-    /// persistée serait une boîte à moitié vide. « Interruptible » veut
-    /// donc dire : annuler AU MILIEU de la passe défait TOUT et laisse
-    /// `user_version` inchangé, pour que la passe entière se rejoue au
-    /// prochain lancement — où la liste est complète.
+    /// THE test of the Phase 5 job (handover §8): adoption is NOT
+    /// splittable — the list starts from `threads`, a partially persisted
+    /// adoption would be a half-empty mailbox. "Interruptible" therefore
+    /// means: cancelling IN THE MIDDLE of the pass undoes EVERYTHING and
+    /// leaves `user_version` unchanged, so the entire pass replays at the
+    /// next launch — where the list is complete.
     #[test]
-    fn annuler_l_adoption_defait_tout_et_laisse_user_version_inchangee() {
-        let path =
-            std::env::temp_dir().join(format!("wind-test-rembobinage-{}.db", std::process::id()));
+    fn cancelling_adoption_undoes_everything_and_leaves_user_version_unchanged() {
+        let path = std::env::temp_dir().join(format!("wind-test-rewind-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
 
-        // Assez de messages pour que l'annulation tombe en PLEINE passe :
-        // l'avancement se rapporte par paliers, il faut en franchir un.
+        // Enough messages for the cancellation to land IN THE MIDDLE of
+        // the pass: progress is reported in stages, one must be crossed.
         const MESSAGES: u32 = 1_200;
         {
             let mut store = Store::open(&path).unwrap();
             let account = store
-                .adopt_or_create_account("moi@exemple.fr", "gmail")
+                .adopt_or_create_account("me@example.fr", "gmail")
                 .unwrap();
             let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
-            let decor: Vec<Envelope> = (1..=MESSAGES)
-                .map(|uid| envelope(uid, "Sujet", 100 + i64::from(uid), true))
+            let fixture: Vec<Envelope> = (1..=MESSAGES)
+                .map(|uid| envelope(uid, "Subject", 100 + i64::from(uid), true))
                 .collect();
-            store.upsert_envelopes(inbox, &decor).unwrap();
+            store.upsert_envelopes(inbox, &fixture).unwrap();
         }
-        rembobine_au_schema_v1(&path);
+        rewind_to_schema_v1(&path);
 
-        // Annuler dès que 1 000 messages sont passés — au milieu, pas au
-        // seuil de la porte : le rembobinage doit défaire du travail réel.
-        let mut plus_haut_fait = 0;
+        // Cancel as soon as 1,000 messages have gone through — in the
+        // middle, not at the gate's threshold: the rewind must undo real
+        // work.
+        let mut highest_done = 0;
         let result = Store::open_with_progress(&path, |p| {
-            plus_haut_fait = plus_haut_fait.max(p.done);
+            highest_done = highest_done.max(p.done);
             if p.done >= 1_000 {
                 ControlFlow::Break(())
             } else {
@@ -7834,23 +7889,23 @@ mod tests {
         });
         assert!(
             matches!(result, Err(Error::Interrupted)),
-            "annuler doit rendre Error::Interrupted, pas un Store"
+            "cancelling must return Error::Interrupted, not a Store"
         );
         assert!(
-            plus_haut_fait >= 1_000,
-            "le décor doit exercer une annulation EN COURS de passe \
-             (relevé le plus haut : {plus_haut_fait})"
+            highest_done >= 1_000,
+            "the fixture must exercise a cancellation IN PROGRESS \
+             (highest reading: {highest_done})"
         );
 
-        // Tout est défait : la base est revenue à l'état d'AVANT
-        // l'ouverture annulée.
+        // Everything is undone: the database is back to the state
+        // BEFORE the cancelled open.
         {
             let conn = Connection::open(&path).unwrap();
             let version: i64 = conn
                 .query_row("PRAGMA user_version", [], |row| row.get(0))
                 .unwrap();
-            assert_eq!(version, 1, "user_version inchangé : la passe se rejouera");
-            let forme_neuve: i64 = conn
+            assert_eq!(version, 1, "user_version unchanged: the pass will replay");
+            let new_shape: i64 = conn
                 .query_row(
                     "SELECT COUNT(*) FROM pragma_table_info('threads')
                      WHERE name = 'inbox_size'",
@@ -7859,19 +7914,19 @@ mod tests {
                 )
                 .unwrap();
             assert_eq!(
-                forme_neuve, 0,
-                "la table v1 est intacte : le DROP aussi est rembobiné"
+                new_shape, 0,
+                "the v1 table is intact: the DROP is rewound too"
             );
-            let enveloppes: i64 = conn
+            let envelopes: i64 = conn
                 .query_row("SELECT COUNT(*) FROM envelopes", [], |row| row.get(0))
                 .unwrap();
-            assert_eq!(enveloppes, i64::from(MESSAGES), "aucun message perdu");
+            assert_eq!(envelopes, i64::from(MESSAGES), "no message lost");
         }
 
-        // Le prochain lancement rejoue la passe ENTIÈRE : liste complète.
+        // The next launch replays the WHOLE pass: complete list.
         {
             let store = Store::open(&path).unwrap();
-            let sans_fil: i64 = store
+            let threadless: i64 = store
                 .conn()
                 .query_row(
                     "SELECT COUNT(*) FROM envelopes WHERE thread_id IS NULL",
@@ -7879,7 +7934,7 @@ mod tests {
                     |row| row.get(0),
                 )
                 .unwrap();
-            assert_eq!(sans_fil, 0, "tous les messages hérités sont adoptés");
+            assert_eq!(threadless, 0, "every legacy message is adopted");
             let version: i64 = store
                 .conn()
                 .query_row("PRAGMA user_version", [], |row| row.get(0))
@@ -7889,191 +7944,196 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
-    /// L'avancement est OBSERVABLE (enseignement §9) : le total s'annonce
-    /// d'emblée et ne bouge plus, l'avancement ne recule jamais, et
-    /// « fini » ne se dit qu'à la fin — jamais avant.
+    /// Progress is OBSERVABLE (lesson §9): the total is announced up
+    /// front and never moves again, progress never goes backwards, and
+    /// "done" is only said at the end — never before.
     #[test]
-    fn l_adoption_annonce_son_avancement_du_depart_a_la_fin() {
+    fn adoption_reports_its_progress_from_start_to_finish() {
         let path = std::env::temp_dir().join(format!(
-            "wind-test-avancement-adoption-{}.db",
+            "wind-test-adoption-progress-{}.db",
             std::process::id()
         ));
         let _ = std::fs::remove_file(&path);
         {
             let mut store = Store::open(&path).unwrap();
             let account = store
-                .adopt_or_create_account("moi@exemple.fr", "gmail")
+                .adopt_or_create_account("me@example.fr", "gmail")
                 .unwrap();
             let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
             store
                 .upsert_envelopes(
                     inbox,
                     &[
-                        envelope(1, "Devis", 100, true),
-                        reply(2, "Re: Devis", 200, true, 1),
+                        envelope(1, "Quote", 100, true),
+                        reply(2, "Re: Quote", 200, true, 1),
                     ],
                 )
                 .unwrap();
         }
-        rembobine_au_schema_v1(&path);
+        rewind_to_schema_v1(&path);
 
-        let mut releves: Vec<AdoptionProgress> = Vec::new();
+        let mut reports: Vec<AdoptionProgress> = Vec::new();
         let store = Store::open_with_progress(&path, |p| {
-            releves.push(p);
+            reports.push(p);
             ControlFlow::Continue(())
         })
         .unwrap();
 
-        assert!(!releves.is_empty(), "une adoption muette n'est pas visible");
-        assert_eq!(releves[0].done, 0, "le départ se dit tout de suite");
-        assert!(releves[0].total > 0, "le total est annoncé d'emblée");
-        for paire in releves.windows(2) {
-            assert!(paire[1].done >= paire[0].done, "l'avancement ne recule pas");
+        assert!(!reports.is_empty(), "a silent adoption is not observable");
+        assert_eq!(reports[0].done, 0, "the start is announced right away");
+        assert!(reports[0].total > 0, "the total is announced up front");
+        for pair in reports.windows(2) {
+            assert!(
+                pair[1].done >= pair[0].done,
+                "progress does not go backwards"
+            );
             assert_eq!(
-                paire[1].total, paire[0].total,
-                "le total ne bouge pas en route — une barre qui recule \
-                 est pire qu'une barre imprécise"
+                pair[1].total, pair[0].total,
+                "the total does not move mid-flight — a bar that goes \
+                 backwards is worse than an imprecise bar"
             );
         }
-        let dernier = releves.last().unwrap();
-        assert_eq!(
-            dernier.done, dernier.total,
-            "le dernier relevé dit « fini »"
-        );
+        let last = reports.last().unwrap();
+        assert_eq!(last.done, last.total, "the last report says \"done\"");
         assert!(
-            releves[..releves.len() - 1]
+            reports[..reports.len() - 1]
                 .iter()
                 .all(|p| p.done < p.total),
-            "et il est le SEUL : jamais « 100 % » avant la fin"
+            "and it is the ONLY one: never \"100%\" before the end"
         );
 
-        let lignes = unified(&store);
-        assert_eq!(lignes.len(), 1, "le fil est refait");
-        assert_eq!(lignes[0].thread_size, 2, "avec son compteur");
+        let rows = unified(&store);
+        assert_eq!(rows.len(), 1, "the thread is redone");
+        assert_eq!(rows[0].thread_size, 2, "with its counter");
         drop(store);
         let _ = std::fs::remove_file(&path);
     }
 
-    /// La sonde répond sans rien déclencher : le desktop l'appelle AVANT
-    /// la première vraie ouverture pour décider d'afficher l'écran de
-    /// migration — si elle migrait elle-même, l'écran arriverait après
-    /// la bataille.
+    /// The probe answers without triggering anything: the desktop calls
+    /// it BEFORE the first real open to decide whether to show the
+    /// migration screen — if it migrated on its own, the screen would
+    /// arrive after the fact.
     #[test]
-    fn la_sonde_dit_quand_une_adoption_attend_sans_la_declencher() {
+    fn the_probe_says_when_an_adoption_is_pending_without_triggering_it() {
         let path = std::env::temp_dir().join(format!(
-            "wind-test-sonde-adoption-{}.db",
+            "wind-test-probe-adoption-{}.db",
             std::process::id()
         ));
         let _ = std::fs::remove_file(&path);
 
-        // Fichier absent : première installation, rien d'hérité — et la
-        // sonde ne doit PAS créer le fichier.
+        // File absent: first install, nothing legacy — and the probe
+        // must NOT create the file.
         assert_eq!(Store::pending_adoption(&path).unwrap(), None);
-        assert!(!path.exists(), "une sonde ne laisse pas de trace");
+        assert!(!path.exists(), "a probe leaves no trace");
 
         {
             let mut store = Store::open(&path).unwrap();
             let account = store
-                .adopt_or_create_account("moi@exemple.fr", "gmail")
+                .adopt_or_create_account("me@example.fr", "gmail")
                 .unwrap();
             let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
             store
                 .upsert_envelopes(
                     inbox,
                     &[
-                        envelope(1, "Devis", 100, true),
-                        reply(2, "Re: Devis", 200, true, 1),
+                        envelope(1, "Quote", 100, true),
+                        reply(2, "Re: Quote", 200, true, 1),
                     ],
                 )
                 .unwrap();
-            // Un message HORS portée (ADR 0010 §3) : la passe ne
-            // l'adoptera jamais, la sonde ne doit pas l'annoncer.
+            // A message OUT OF SCOPE (ADR 0010 §3): the pass will never
+            // adopt it, the probe must not announce it.
             let spam = store.create_mailbox(account, "Spam", 1).unwrap();
             store
-                .upsert_envelopes(spam, &[envelope(1, "Gagné !", 300, true)])
+                .upsert_envelopes(spam, &[envelope(1, "You won!", 300, true)])
                 .unwrap();
         }
-        // Base à jour : rien à annoncer.
+        // Up-to-date database: nothing to announce.
         assert_eq!(Store::pending_adoption(&path).unwrap(), None);
 
-        rembobine_au_schema_v1(&path);
+        rewind_to_schema_v1(&path);
         assert_eq!(
             Store::pending_adoption(&path).unwrap(),
             Some(2),
-            "une base héritée annonce ses messages à adopter — la PORTÉE, \
-             pas la base entière : un chiffre doit désigner ce qu'il dit"
+            "a legacy database announces its messages to adopt — the SCOPE, \
+             not the whole database: a figure must name what it says"
         );
-        // Et RIEN n'a été déclenché : la version n'a pas bougé.
+        // And NOTHING was triggered: the version has not moved.
         {
             let conn = Connection::open(&path).unwrap();
             let version: i64 = conn
                 .query_row("PRAGMA user_version", [], |row| row.get(0))
                 .unwrap();
-            assert_eq!(version, 1, "la sonde n'a pas migré à notre place");
+            assert_eq!(version, 1, "the probe did not migrate on our behalf");
         }
         let _ = std::fs::remove_file(&path);
     }
 
-    /// La langue se restaure AVANT le premier rendu, donc AVANT l'écran
-    /// de migration (constat terrain 2026-08-15) : sa lecture doit être
-    /// une sonde en lecture seule — avec l'ouverture pleine, l'adoption
-    /// d'une base héritée se payait en silence au chargement de la
-    /// langue, sans modale, sans avancement, sans annulation — tout ce
-    /// que l'ADR 0012 interdit. Le décor REMBOBINE une vraie base de
-    /// fichier (invariant §6.7) : le seul où la faute existe.
+    /// The language is restored BEFORE the first render, so BEFORE the
+    /// migration screen (field finding 2026-08-15): reading it must be a
+    /// read-only probe — with a full open, adopting a legacy database
+    /// used to be paid for silently while loading the language, with no
+    /// modal, no progress, no cancellation — everything ADR 0012
+    /// forbids. The fixture REWINDS a real file database (invariant
+    /// §6.7): the only one where the defect exists.
     #[test]
-    fn la_langue_se_lit_sans_adopter_la_base() {
-        let path =
-            std::env::temp_dir().join(format!("wind-test-langue-sonde-{}.db", std::process::id()));
+    fn the_language_reads_without_adopting_the_database() {
+        let path = std::env::temp_dir().join(format!(
+            "wind-test-language-probe-{}.db",
+            std::process::id()
+        ));
         let _ = std::fs::remove_file(&path);
 
-        // Fichier absent : première installation — et la sonde ne doit
-        // PAS créer le fichier.
+        // File absent: first install — and the probe must NOT create the
+        // file.
         assert_eq!(Store::text_pref_readonly(&path, "lang").unwrap(), None);
-        assert!(!path.exists(), "une sonde ne laisse pas de trace");
+        assert!(!path.exists(), "a probe leaves no trace");
 
         {
             let mut store = Store::open(&path).unwrap();
             let account = store
-                .adopt_or_create_account("moi@exemple.fr", "gmail")
+                .adopt_or_create_account("me@example.fr", "gmail")
                 .unwrap();
             let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
             store
                 .upsert_envelopes(
                     inbox,
                     &[
-                        envelope(1, "Devis", 100, true),
-                        reply(2, "Re: Devis", 200, true, 1),
+                        envelope(1, "Quote", 100, true),
+                        reply(2, "Re: Quote", 200, true, 1),
                     ],
                 )
                 .unwrap();
             store.set_text_pref("lang", "en").unwrap();
         }
-        rembobine_au_schema_v1(&path);
+        rewind_to_schema_v1(&path);
 
-        // La préférence se lit…
+        // The preference reads back…
         assert_eq!(
             Store::text_pref_readonly(&path, "lang").unwrap(),
             Some("en".to_string())
         );
-        // …et RIEN n'a été déclenché : la version n'a pas bougé, la
-        // modale trouvera l'adoption toujours en attente.
+        // …and NOTHING was triggered: the version has not moved, the
+        // modal will still find the adoption pending.
         {
             let conn = Connection::open(&path).unwrap();
             let version: i64 = conn
                 .query_row("PRAGMA user_version", [], |row| row.get(0))
                 .unwrap();
-            assert_eq!(version, 1, "lire la langue n'a pas migré à notre place");
+            assert_eq!(
+                version, 1,
+                "reading the language did not migrate on our behalf"
+            );
         }
         assert_eq!(
             Store::pending_adoption(&path).unwrap(),
             Some(2),
-            "l'écran de migration garde sa raison d'être"
+            "the migration screen still has a reason to exist"
         );
 
-        // Une base héritée d'AVANT le WAL vit en mode rollback (delete) —
-        // c'est la forme réelle du terrain, pas celle que Store::open
-        // laisse derrière lui : la sonde doit y répondre aussi.
+        // A legacy database from before WAL lives in rollback (delete)
+        // mode — the real shape found in the field, not the one
+        // `Store::open` leaves behind: the probe must answer there too.
         Connection::open(&path)
             .unwrap()
             .query_row("PRAGMA journal_mode = delete", [], |row| {
@@ -8083,11 +8143,11 @@ mod tests {
         assert_eq!(
             Store::text_pref_readonly(&path, "lang").unwrap(),
             Some("en".to_string()),
-            "la sonde répond aussi sur une base en mode rollback"
+            "the probe also answers on a database in rollback mode"
         );
 
-        // Une base d'avant les préférences (pas de table `prefs`) : la
-        // sonde répond « pas de préférence », elle n'échoue pas.
+        // A database from before preferences (no `prefs` table): the
+        // probe answers "no preference", it does not fail.
         Connection::open(&path)
             .unwrap()
             .execute_batch("DROP TABLE prefs")
@@ -8096,291 +8156,296 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
-    /// Sur une base à jour il n'y a RIEN à adopter — et donc rien à dire.
-    /// Un bandeau de migration à chaque lancement serait un faux signal,
-    /// et chaque commande du desktop ouvre sa propre connexion.
+    /// On an up-to-date database there is NOTHING to adopt — and so
+    /// nothing to say. A migration banner on every launch would be a
+    /// false signal, and every desktop command opens its own connection.
     #[test]
-    fn une_base_a_jour_s_ouvre_sans_annoncer_de_migration() {
+    fn an_up_to_date_database_opens_without_announcing_a_migration() {
         let path = std::env::temp_dir().join(format!(
-            "wind-test-adoption-muette-{}.db",
+            "wind-test-silent-adoption-{}.db",
             std::process::id()
         ));
         let _ = std::fs::remove_file(&path);
         {
             let mut store = Store::open(&path).unwrap();
             let account = store
-                .adopt_or_create_account("moi@exemple.fr", "gmail")
+                .adopt_or_create_account("me@example.fr", "gmail")
                 .unwrap();
             let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
             store
                 .upsert_envelopes(
                     inbox,
                     &[
-                        envelope(1, "Devis", 100, true),
-                        reply(2, "Re: Devis", 200, true, 1),
+                        envelope(1, "Quote", 100, true),
+                        reply(2, "Re: Quote", 200, true, 1),
                     ],
                 )
                 .unwrap();
         }
 
-        let mut appels = 0;
+        let mut calls = 0;
         let store = Store::open_with_progress(&path, |_| {
-            appels += 1;
+            calls += 1;
             ControlFlow::Continue(())
         })
         .unwrap();
-        assert_eq!(appels, 0, "rien à adopter, rien à raconter");
-        assert_eq!(unified(&store).len(), 1, "et la liste est là");
+        assert_eq!(calls, 0, "nothing to adopt, nothing to report");
+        assert_eq!(unified(&store).len(), 1, "and the list is there");
         drop(store);
         let _ = std::fs::remove_file(&path);
     }
 
-    /// LE point du chantier de l'[ADR 0009] : un message reçu et la
-    /// réponse qu'on lui a faite appartiennent au même échange, donc au
-    /// même fil — bien qu'ils vivent dans **deux boîtes différentes**.
+    /// THE point of the [ADR 0009] job: a received message and the reply
+    /// we made to it belong to the same exchange, so the same thread —
+    /// even though they live in **two different mailboxes**.
     ///
-    /// Avant, les fils étaient cloisonnés par boîte : cette réponse aurait
-    /// formé son propre fil dans son propre espace d'identifiants, et
-    /// synchroniser « Envoyés » aurait coûté sans rien rapporter.
+    /// Before, threads were siloed by mailbox: this reply would have
+    /// formed its own thread in its own id space, and syncing "Sent"
+    /// would have cost without paying anything back.
     ///
-    /// Le décor donne le même UID (1) aux deux messages, à dessein :
-    /// l'identité d'un message est `(compte, boîte, UID)`, et un
-    /// regroupement qui confondrait deux UID égaux se verrait ici.
+    /// The fixture deliberately gives the same UID (1) to both messages:
+    /// a message's identity is `(account, mailbox, UID)`, and any
+    /// grouping that confused two equal UIDs would show up here.
     #[test]
-    fn une_reponse_dans_envoyes_rejoint_le_fil_du_message_recu() {
+    fn a_reply_in_sent_joins_the_received_messages_thread() {
         let mut store = Store::open_in_memory().unwrap();
         let account = store
-            .adopt_or_create_account("moi@exemple.fr", "gmail")
+            .adopt_or_create_account("me@example.fr", "gmail")
             .unwrap();
         let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
-        let envoyes = store.create_mailbox(account, "Sent", 1).unwrap();
-        // Le décor doit DÉCLARER la portée qu'il exerce : depuis l'ADR 0010
-        // une boîte ne regroupe que si on l'a dite dedans, et le nom du
-        // dossier des envois varie d'un serveur à l'autre.
+        let sent = store.create_mailbox(account, "Sent", 1).unwrap();
+        // The fixture must DECLARE the scope it exercises: since ADR
+        // 0010, a mailbox only groups if it has been told to, and the
+        // name of the sent folder varies from one server to the next.
         store.set_thread_scope(account, Some("Sent")).unwrap();
 
-        // Alice écrit.
-        let mut recu = envelope(1, "Devis", 100, true);
-        recu.message_id = Some("<alice-1@exemple.fr>".to_string());
-        store.upsert_envelopes(inbox, &[recu]).unwrap();
+        // Alice writes.
+        let mut received = envelope(1, "Quote", 100, true);
+        received.message_id = Some("<alice-1@example.fr>".to_string());
+        store.upsert_envelopes(inbox, &[received]).unwrap();
 
-        // Je réponds : le message part dans « Envoyés » et cite le premier.
-        let mut reponse = envelope(1, "Re: Devis", 200, true);
-        reponse.message_id = Some("<moi-1@exemple.fr>".to_string());
-        reponse.in_reply_to = Some("<alice-1@exemple.fr>".to_string());
-        store.upsert_envelopes(envoyes, &[reponse]).unwrap();
+        // I reply: the message goes into "Sent" and quotes the first one.
+        let mut reply = envelope(1, "Re: Quote", 200, true);
+        reply.message_id = Some("<me-1@example.fr>".to_string());
+        reply.in_reply_to = Some("<alice-1@example.fr>".to_string());
+        store.upsert_envelopes(sent, &[reply]).unwrap();
 
-        let lignes = unified(&store);
-        assert_eq!(lignes.len(), 1, "un seul fil, pas deux");
+        let rows = unified(&store);
+        assert_eq!(rows.len(), 1, "a single thread, not two");
         assert_eq!(
-            lignes[0].thread_size, 2,
-            "le compteur couvre tout l'échange, envoyés compris"
+            rows[0].thread_size, 2,
+            "the counter covers the whole exchange, sent items included"
         );
         assert_eq!(
-            lignes[0].envelope.subject.as_deref(),
-            Some("Re: Devis"),
-            "le fil est représenté par son message le plus récent, \
-             même quand c'est notre propre réponse"
+            rows[0].envelope.subject.as_deref(),
+            Some("Re: Quote"),
+            "the thread is represented by its most recent message, \
+             even when it is our own reply"
         );
     }
 
-    /// Deux messages du MÊME compte peuvent porter le MÊME UID dès qu'ils
-    /// vivent dans deux boîtes — c'est la règle et non l'exception, les
-    /// UID étant attribués par boîte et repartant de 1.
+    /// Two messages from the SAME account can carry the SAME UID as soon
+    /// as they live in two mailboxes — this is the rule, not the
+    /// exception, since UIDs are assigned per mailbox and restart at 1.
     ///
-    /// Chaque ligne doit donc dire **où elle habite**. Sans cela, ouvrir
-    /// notre réponse depuis le bandeau de conversation afficherait le
-    /// message reçu à sa place, et le marquerait lu — l'invariant §6.2 de
-    /// la passation, corrigé ici pour deux boîtes.
+    /// Each row must therefore say **where it lives**. Without this,
+    /// opening our reply from the conversation banner would display the
+    /// received message in its place, and mark it read — invariant §6.2
+    /// of the handover, amended here for two mailboxes.
     #[test]
-    fn chaque_ligne_dit_dans_quelle_boite_elle_habite() {
+    fn each_row_says_which_mailbox_it_lives_in() {
         let mut store = Store::open_in_memory().unwrap();
         let account = store
-            .adopt_or_create_account("moi@exemple.fr", "gmail")
+            .adopt_or_create_account("me@example.fr", "gmail")
             .unwrap();
         let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
-        let envoyes = store.create_mailbox(account, "Sent", 1).unwrap();
-        // Le décor doit DÉCLARER la portée qu'il exerce : depuis l'ADR 0010
-        // une boîte ne regroupe que si on l'a dite dedans, et le nom du
-        // dossier des envois varie d'un serveur à l'autre.
+        let sent = store.create_mailbox(account, "Sent", 1).unwrap();
+        // The fixture must DECLARE the scope it exercises: since ADR
+        // 0010, a mailbox only groups if it has been told to, and the
+        // name of the sent folder varies from one server to the next.
         store.set_thread_scope(account, Some("Sent")).unwrap();
 
-        let mut recu = envelope(1, "Devis", 100, true);
-        recu.message_id = Some("<alice-9@exemple.fr>".to_string());
-        store.upsert_envelopes(inbox, &[recu]).unwrap();
-        let mut reponse = envelope(1, "Re: Devis", 200, true);
-        reponse.message_id = Some("<moi-9@exemple.fr>".to_string());
-        reponse.in_reply_to = Some("<alice-9@exemple.fr>".to_string());
-        store.upsert_envelopes(envoyes, &[reponse]).unwrap();
+        let mut received = envelope(1, "Quote", 100, true);
+        received.message_id = Some("<alice-9@example.fr>".to_string());
+        store.upsert_envelopes(inbox, &[received]).unwrap();
+        let mut reply = envelope(1, "Re: Quote", 200, true);
+        reply.message_id = Some("<me-9@example.fr>".to_string());
+        reply.in_reply_to = Some("<alice-9@example.fr>".to_string());
+        store.upsert_envelopes(sent, &[reply]).unwrap();
 
-        let fil = unified(&store)[0].thread_id.unwrap();
-        let messages = store.thread_messages(fil).unwrap();
+        let thread = unified(&store)[0].thread_id.unwrap();
+        let messages = store.thread_messages(thread).unwrap();
 
         assert_eq!(messages.len(), 2);
         assert!(
-            messages.iter().all(|ligne| ligne.envelope.uid == 1),
-            "le décor a bien deux messages de même UID : c'est tout l'objet"
+            messages.iter().all(|row| row.envelope.uid == 1),
+            "the fixture does have two messages sharing the same UID: that's the whole point"
         );
-        let boites: Vec<&str> = messages.iter().map(|l| l.mailbox.as_str()).collect();
-        assert!(boites.contains(&"INBOX"), "boîtes vues : {boites:?}");
-        assert!(boites.contains(&"Sent"), "boîtes vues : {boites:?}");
+        let mailboxes: Vec<&str> = messages.iter().map(|l| l.mailbox.as_str()).collect();
+        assert!(
+            mailboxes.contains(&"INBOX"),
+            "mailboxes seen: {mailboxes:?}"
+        );
+        assert!(mailboxes.contains(&"Sent"), "mailboxes seen: {mailboxes:?}");
     }
 
-    /// L'autre face de la même règle : écrire à quelqu'un qui ne répond
-    /// jamais ne crée PAS de conversation dans la boîte de réception.
-    /// C'est ce que le compteur `inbox_size` protège, et c'est aussi ce
-    /// qui rend l'index partiel possible (ADR 0009 §2 et §4).
+    /// The other side of the same rule: writing to someone who never
+    /// replies does NOT create a conversation in the inbox. This is what
+    /// the `inbox_size` counter protects, and it is also what makes the
+    /// partial index possible (ADR 0009 §2 and §4).
     #[test]
-    fn un_fil_purement_sortant_n_a_pas_de_ligne() {
+    fn a_purely_outgoing_thread_has_no_row() {
         let mut store = Store::open_in_memory().unwrap();
         let account = store
-            .adopt_or_create_account("moi@exemple.fr", "gmail")
+            .adopt_or_create_account("me@example.fr", "gmail")
             .unwrap();
         store.create_mailbox(account, "INBOX", 1).unwrap();
-        let envoyes = store.create_mailbox(account, "Sent", 1).unwrap();
-        // Le décor doit DÉCLARER la portée qu'il exerce : depuis l'ADR 0010
-        // une boîte ne regroupe que si on l'a dite dedans, et le nom du
-        // dossier des envois varie d'un serveur à l'autre.
+        let sent = store.create_mailbox(account, "Sent", 1).unwrap();
+        // The fixture must DECLARE the scope it exercises: since ADR
+        // 0010, a mailbox only groups if it has been told to, and the
+        // name of the sent folder varies from one server to the next.
         store.set_thread_scope(account, Some("Sent")).unwrap();
 
-        let mut sortant = envelope(1, "Ma proposition", 100, true);
-        sortant.message_id = Some("<moi-2@exemple.fr>".to_string());
-        store.upsert_envelopes(envoyes, &[sortant]).unwrap();
+        let mut outgoing = envelope(1, "My proposal", 100, true);
+        outgoing.message_id = Some("<me-2@example.fr>".to_string());
+        store.upsert_envelopes(sent, &[outgoing]).unwrap();
 
         assert!(
             unified(&store).is_empty(),
-            "rien n'a été reçu : la boîte de réception reste vide"
+            "nothing was received: the inbox stays empty"
         );
         assert_eq!(store.unified_count().unwrap(), 0);
     }
 
-    /// [ADR 0010] §3 — on STOCKE tout, on ne REGROUPE que dans la portée.
+    /// [ADR 0010] §3 — we STORE everything, we only GROUP within scope.
     ///
-    /// Depuis l'[ADR 0009] un fil appartient au COMPTE. Dès que la
-    /// synchronisation intégrale verse Archive, Corbeille et Spam dans ce
-    /// même compte, leurs messages rejoindraient les fils **tout seuls** —
-    /// et trois agrégats se corrompraient sans qu'aucun test ne le voie :
+    /// Since [ADR 0009] a thread belongs to the ACCOUNT. As soon as full
+    /// sync pours Archive, Trash and Spam into that same account, their
+    /// messages would join threads **on their own** — and three
+    /// aggregates would silently get corrupted, with no test to see it:
     ///
-    /// - `size` : « 12 messages » sur un fil qui en montre 3 ;
-    /// - `unseen` : un fil éternellement non lu à cause d'un spam ;
-    /// - `last_epoch` : **la conversation remonte en tête de liste parce
-    ///   qu'un spam s'y est accroché**.
+    /// - `size`: "12 messages" on a thread that shows 3;
+    /// - `unseen`: a thread perpetually unread because of a spam message;
+    /// - `last_epoch`: **the conversation jumps to the top of the list
+    ///   because a spam message latched onto it**.
     ///
-    /// Le troisième est un défaut de CORRECTION : la liste mentirait sur
-    /// l'ordre des échanges, sans recours pour l'utilisateur. Même motif de
-    /// refus que le regroupement par sujet (ADR 0008 §2).
+    /// The third is a CORRECTNESS defect: the list would lie about the
+    /// order of exchanges, with no recourse for the user. Same reason
+    /// for refusal as grouping by subject (ADR 0008 §2).
     ///
-    /// Le compilateur ne protège rien ici — une boîte est une chaîne comme
-    /// une autre (passation §6.2). C'est ce test qui tient l'invariant.
+    /// The compiler protects nothing here — a mailbox is a string like
+    /// any other (handover §6.2). It's this test that holds the
+    /// invariant.
     #[test]
-    fn un_message_hors_portee_ne_rejoint_pas_le_fil() {
+    fn a_message_out_of_scope_does_not_join_the_thread() {
         let mut store = Store::open_in_memory().unwrap();
         let account = store
-            .adopt_or_create_account("moi@exemple.fr", "gmail")
+            .adopt_or_create_account("me@example.fr", "gmail")
             .unwrap();
         let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
         let spam = store.create_mailbox(account, "Spam", 1).unwrap();
 
-        let mut recu = envelope(1, "Devis", 100, true);
-        recu.message_id = Some("<alice-10@exemple.fr>".to_string());
-        store.upsert_envelopes(inbox, &[recu]).unwrap();
+        let mut received = envelope(1, "Quote", 100, true);
+        received.message_id = Some("<alice-10@example.fr>".to_string());
+        store.upsert_envelopes(inbox, &[received]).unwrap();
 
-        // Le spam cite le message reçu — c'est exactement ce qui le ferait
-        // rejoindre le fil. Il est PLUS RÉCENT et NON LU : s'il entrait,
-        // les trois agrégats bougeraient d'un coup.
-        let mut indesirable = envelope(1, "GAGNEZ 1000 EUROS", 300, false);
-        indesirable.message_id = Some("<spam-1@ailleurs.example>".to_string());
-        indesirable.in_reply_to = Some("<alice-10@exemple.fr>".to_string());
-        store.upsert_envelopes(spam, &[indesirable]).unwrap();
+        // The spam message quotes the received message — exactly what
+        // would make it join the thread. It is MORE RECENT and UNREAD:
+        // if it got in, all three aggregates would move at once.
+        let mut junk = envelope(1, "WIN 1000 EUROS", 300, false);
+        junk.message_id = Some("<spam-1@elsewhere.example>".to_string());
+        junk.in_reply_to = Some("<alice-10@example.fr>".to_string());
+        store.upsert_envelopes(spam, &[junk]).unwrap();
 
-        let lignes = unified(&store);
-        assert_eq!(lignes.len(), 1, "un seul fil");
+        let rows = unified(&store);
+        assert_eq!(rows.len(), 1, "a single thread");
         assert_eq!(
-            lignes[0].thread_size, 1,
-            "le spam ne compte pas dans l'échange"
+            rows[0].thread_size, 1,
+            "the spam message does not count in the exchange"
         );
         assert_eq!(
-            lignes[0].envelope.subject.as_deref(),
-            Some("Devis"),
-            "le fil reste représenté par le message reçu, pas par le spam \
-             qui s'y est accroché"
+            rows[0].envelope.subject.as_deref(),
+            Some("Quote"),
+            "the thread stays represented by the received message, not by \
+             the spam that latched onto it"
         );
         assert_eq!(
-            lignes[0].thread_unseen, 0,
-            "un spam jamais ouvert ne rend pas la conversation non lue"
+            rows[0].thread_unseen, 0,
+            "a spam message never opened does not make the conversation unread"
         );
 
-        // L'autre moitié de l'ADR 0010 : hors portée ne veut pas dire
-        // absent. Le message est stocké — donc cherchable.
+        // The other half of ADR 0010: out of scope does not mean absent.
+        // The message is stored — so it is searchable.
         assert!(
             store.envelope(account, "Spam", 1).unwrap().is_some(),
-            "le spam est bien en base : on stocke tout, on ne regroupe pas tout"
+            "the spam message is indeed in the database: we store everything, we don't group everything"
         );
     }
 
-    /// La portée déclarée AVANT que la boîte n'existe doit valoir quand
-    /// même — c'est le cas normal, pas le cas limite.
+    /// A scope declared BEFORE the mailbox exists must still count —
+    /// this is the normal case, not the edge case.
     ///
-    /// La boucle de synchronisation de l'[ADR 0010] **crée** le dossier des
-    /// envois : au moment où l'on déclare la portée, il n'y a aucune ligne
-    /// à mettre à jour. Si la portée ne vivait que sur `mailboxes`, cette
-    /// déclaration serait perdue, la boîte naîtrait hors portée, et ses
-    /// messages resteraient sans fil jusqu'au prochain démarrage — la liste
-    /// afficherait un échange amputé de nos réponses, sans rien signaler.
+    /// The [ADR 0010] sync loop **creates** the sent folder: at the
+    /// moment the scope is declared, there is no row yet to update. If
+    /// the scope only lived on `mailboxes`, this declaration would be
+    /// lost, the mailbox would be born out of scope, and its messages
+    /// would stay threadless until the next startup — the list would
+    /// show an exchange amputated of our replies, with nothing to signal
+    /// it.
     ///
-    /// D'où la mémoire portée par le COMPTE, que ce test garde.
+    /// Hence the memory carried by the ACCOUNT, which this test guards.
     #[test]
-    fn une_portee_declaree_avant_la_creation_de_la_boite_vaut_quand_meme() {
+    fn a_scope_declared_before_the_mailbox_is_created_still_counts() {
         let mut store = Store::open_in_memory().unwrap();
         let account = store
-            .adopt_or_create_account("moi@exemple.fr", "gmail")
+            .adopt_or_create_account("me@example.fr", "gmail")
             .unwrap();
         let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
 
-        // On déclare « Envoyés » AVANT de l'avoir créé — l'ordre réel.
+        // We declare "Sent" BEFORE creating it — the real order.
         store.set_thread_scope(account, Some("Sent")).unwrap();
-        let envoyes = store.create_mailbox(account, "Sent", 1).unwrap();
+        let sent = store.create_mailbox(account, "Sent", 1).unwrap();
 
-        let mut recu = envelope(1, "Devis", 100, true);
-        recu.message_id = Some("<alice-11@exemple.fr>".to_string());
-        store.upsert_envelopes(inbox, &[recu]).unwrap();
-        let mut reponse = envelope(1, "Re: Devis", 200, true);
-        reponse.message_id = Some("<moi-11@exemple.fr>".to_string());
-        reponse.in_reply_to = Some("<alice-11@exemple.fr>".to_string());
-        store.upsert_envelopes(envoyes, &[reponse]).unwrap();
+        let mut received = envelope(1, "Quote", 100, true);
+        received.message_id = Some("<alice-11@example.fr>".to_string());
+        store.upsert_envelopes(inbox, &[received]).unwrap();
+        let mut reply = envelope(1, "Re: Quote", 200, true);
+        reply.message_id = Some("<me-11@example.fr>".to_string());
+        reply.in_reply_to = Some("<alice-11@example.fr>".to_string());
+        store.upsert_envelopes(sent, &[reply]).unwrap();
 
-        let lignes = unified(&store);
-        assert_eq!(lignes.len(), 1, "un seul fil");
+        let rows = unified(&store);
+        assert_eq!(rows.len(), 1, "a single thread");
         assert_eq!(
-            lignes[0].thread_size, 2,
-            "la réponse a rejoint le fil dès son écriture, sans attendre \
-             un redémarrage"
+            rows[0].thread_size, 2,
+            "the reply joined the thread as soon as it was written, without \
+             waiting for a restart"
         );
     }
 
-    /// La promesse de l'[ADR 0008] §4 — « le coût d'une page ne dépend
-    /// plus de la taille de la boîte » — repose ENTIÈREMENT sur un index
-    /// qui porte le tri. Si SQLite matérialise l'ordre dans un B-arbre
-    /// temporaire, elle est rompue : silencieusement, et seulement à
-    /// l'échelle, là où plus aucun test fonctionnel ne regarde.
+    /// The promise of [ADR 0008] §4 — "the cost of a page no longer
+    /// depends on the size of the mailbox" — rests ENTIRELY on an index
+    /// that carries the sort order. If SQLite materializes the order in
+    /// a temporary B-tree, the promise is broken: silently, and only at
+    /// scale, exactly where no functional test looks anymore.
     ///
-    /// C'est arrivé. Le gate 3 a mesuré **987 ms** pour une page à
-    /// 160 000 conversations, contre 0,66 ms une fois l'index posé.
-    /// L'index d'origine était préfixé par `mailbox_id` : il servait une
-    /// boîte, mais pas la **boîte unifiée**, qui les couvre toutes et qui
-    /// est la vue par défaut du produit. Deux comptes suffisent à le
-    /// reproduire — d'où ce décor.
+    /// It happened. Gate 3 measured **987 ms** for a page over 160,000
+    /// conversations, against 0.66 ms once the index was in place. The
+    /// original index was prefixed by `mailbox_id`: it served a single
+    /// mailbox, but not the **unified mailbox**, which covers all of
+    /// them and is the product's default view. Two accounts are enough
+    /// to reproduce it — hence this fixture.
     ///
-    /// On interroge le plan plutôt qu'un chronomètre : une durée dépend
-    /// de la machine, un plan d'exécution non.
+    /// We interrogate the query plan rather than a stopwatch: a duration
+    /// depends on the machine, an execution plan does not.
     #[test]
-    fn la_boite_unifiee_ne_materialise_pas_son_tri() {
+    fn the_unified_mailbox_does_not_materialize_its_sort() {
         let mut store = Store::open_in_memory().unwrap();
-        for (email, uids) in [("un@exemple.fr", 1..60u32), ("deux@exemple.fr", 60..120)] {
+        for (email, uids) in [("one@example.fr", 1..60u32), ("two@example.fr", 60..120)] {
             let account = store.adopt_or_create_account(email, "gmail").unwrap();
             let mailbox = store.create_mailbox(account, "INBOX", 1).unwrap();
             let envelopes: Vec<Envelope> = uids
-                .map(|uid| envelope(uid, "Sujet", 1_600_000_000 + i64::from(uid), true))
+                .map(|uid| envelope(uid, "Subject", 1_600_000_000 + i64::from(uid), true))
                 .collect();
             store.upsert_envelopes(mailbox, &envelopes).unwrap();
         }
@@ -8398,50 +8463,50 @@ mod tests {
             .collect::<Result<_, _>>()
             .unwrap();
 
-        // « FOR LAST TERM OF ORDER BY » est acceptable : ce tri-là ne
-        // départage que les ex æquo de date ET d'UID. C'est le tri
-        // COMPLET qui coûte, et lui seul est interdit ici.
+        // "FOR LAST TERM OF ORDER BY" is acceptable: that sort only
+        // breaks ties on date AND UID. It's the FULL sort that costs,
+        // and only that one is forbidden here.
         assert!(
             !plan
                 .iter()
-                .any(|etape| etape.contains("TEMP B-TREE FOR ORDER BY")),
-            "la page de la boîte unifiée matérialise son tri — le coût \
-             redevient proportionnel à la taille de la boîte.\nPlan :\n{}",
+                .any(|step| step.contains("TEMP B-TREE FOR ORDER BY")),
+            "the unified mailbox page materializes its sort — the cost \
+             becomes proportional to the mailbox size again.\nPlan:\n{}",
             plan.join("\n")
         );
-        // R4 : la sous-requête des épingles (PINNED_THREADS) doit partir
-        // de `pins` (minuscule) et SONDER `envelopes` par sa clé — sans
-        // le CROSS JOIN directif, SQLite (sans ANALYZE, le cas de
-        // production) scanne `envelopes` ENTIÈRE à chaque page : ~24 ms
-        // mesurés à 200 k, sur le chemin le plus chaud (revue
+        // R4: the pinned-threads subquery (PINNED_THREADS) must start
+        // from `pins` (lowercase) and PROBE `envelopes` by its key —
+        // without the directive CROSS JOIN, SQLite (without ANALYZE, the
+        // production case) scans `envelopes` ENTIRELY on every page:
+        // ~24 ms measured at 200k, on the hottest path (review
         // 2026-08-21).
         assert!(
-            !plan.iter().any(|etape| etape.contains("SCAN pe")),
-            "la sous-requête des épingles scanne `envelopes` — l'ordre \
-             de jointure a perdu sa directive.\nPlan :\n{}",
+            !plan.iter().any(|step| step.contains("SCAN pe")),
+            "the pinned-threads subquery scans `envelopes` — the join \
+             order has lost its directive.\nPlan:\n{}",
             plan.join("\n")
         );
         assert!(
-            plan.iter().any(|etape| etape.contains("SCAN p")),
-            "la sous-requête des épingles ne part plus de `pins`.\nPlan :\n{}",
+            plan.iter().any(|step| step.contains("SCAN p")),
+            "the pinned-threads subquery no longer starts from `pins`.\nPlan:\n{}",
             plan.join("\n")
         );
     }
 
-    /// PLAN-AUDIT-V2 E4 : les groupes du Nettoyage (un expéditeur × son
-    /// courrier) coûtaient 380 ms sur 200 k enveloppes et 5 000 expéditeurs
-    /// — un parcours par l'index de DATE puis un B-tree temporaire de
-    /// regroupement. L'index des expéditeurs, étendu à la boîte, COUVRE
-    /// l'agrégat : le plan doit passer par lui, jamais par l'index de date
-    /// (un test de plan d'exécution, leçon STANDARD §9).
+    /// PLAN-AUDIT-V2 E4: the cleanup groups (one sender × their mail)
+    /// cost 380 ms over 200k envelopes and 5,000 senders — a scan
+    /// through the DATE index followed by a temporary grouping B-tree.
+    /// The senders index, extended to the mailbox, COVERS the aggregate:
+    /// the plan must go through it, never through the date index (a
+    /// query-plan test, STANDARD §9 lesson).
     #[test]
-    fn les_groupes_du_nettoyage_se_lisent_par_l_index_des_expediteurs() {
+    fn cleanup_groups_are_read_via_the_senders_index() {
         let store = Store::open_in_memory().unwrap();
         let account = store
-            .adopt_or_create_account("moi@exemple.fr", "gmail")
+            .adopt_or_create_account("me@example.fr", "gmail")
             .unwrap();
         let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
-        let sql = Store::nettoyage_groupes_sql(&[inbox]);
+        let sql = Store::cleanup_groups_sql(&[inbox]);
         let plan: Vec<String> = store
             .conn()
             .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
@@ -8451,18 +8516,15 @@ mod tests {
             .collect::<Result<_, _>>()
             .unwrap();
         assert!(
-            plan.iter()
-                .any(|ligne| ligne.contains("idx_envelopes_sender")),
-            "l'agrégat ne passe pas par l'index des expéditeurs : {plan:?}"
+            plan.iter().any(|row| row.contains("idx_envelopes_sender")),
+            "the aggregate does not go through the senders index: {plan:?}"
         );
         assert!(
-            !plan
-                .iter()
-                .any(|ligne| ligne.contains("idx_envelopes_date")),
-            "l'agrégat parcourt l'index de date : {plan:?}"
+            !plan.iter().any(|row| row.contains("idx_envelopes_date")),
+            "the aggregate scans the date index: {plan:?}"
         );
-        // Le courrier d'un groupe, même exigence (116 ms sur 200 k sinon).
-        let sql = Store::nettoyage_messages_sql(&[inbox]);
+        // A group's mail, same requirement (116 ms at 200k otherwise).
+        let sql = Store::cleanup_messages_sql(&[inbox]);
         let plan: Vec<String> = store
             .conn()
             .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
@@ -8473,57 +8535,57 @@ mod tests {
             .unwrap();
         assert!(
             plan.iter()
-                .any(|ligne| ligne.contains("idx_envelopes_sender (sender_norm=?)")),
-            "le courrier d'un groupe ne se cherche pas par l'expéditeur : {plan:?}"
+                .any(|row| row.contains("idx_envelopes_sender (sender_norm=?)")),
+            "a group's mail is not looked up by sender: {plan:?}"
         );
     }
 
-    /// Revue de la vague 2 : `PRAGMA foreign_keys = ON` vit dans `SCHEMA`
-    /// et vaut PAR CONNEXION — la porte rapide ne rejoue pas le schéma.
-    /// Ce test est resté vert AVANT la ligne posée dans `init_with` :
-    /// rusqlite `bundled` active les clés par défaut à la compilation.
-    /// Il garde la ceinture : sur base FICHIER (une base mémoire n'entre
-    /// jamais au registre), la seconde ouverture efface encore les boîtes
-    /// d'un compte supprimé, quel que soit le drapeau de compilation.
+    /// Wave 2 review: `PRAGMA foreign_keys = ON` lives in `SCHEMA` and
+    /// holds PER CONNECTION — the fast path does not replay the schema.
+    /// This test stayed green BEFORE the line was added to `init_with`:
+    /// rusqlite's `bundled` enables foreign keys by default at compile
+    /// time. It keeps the belt anyway: on a FILE database (an in-memory
+    /// database never enters the registry), the second open still clears
+    /// the mailboxes of a deleted account, whatever the compile flag.
     #[test]
-    fn la_porte_rapide_garde_les_cles_etrangeres() {
+    fn the_fast_path_keeps_foreign_keys_enabled() {
         let path =
-            std::env::temp_dir().join(format!("wind-test-porte-fk-{}.db", std::process::id()));
+            std::env::temp_dir().join(format!("wind-test-fast-path-fk-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         drop(Store::open(&path).unwrap());
 
         let mut store = Store::open(&path).unwrap();
-        let actives: i64 = store
+        let enabled: i64 = store
             .conn()
             .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(
-            actives, 1,
-            "clés étrangères éteintes sur la seconde connexion"
-        );
+        assert_eq!(enabled, 1, "foreign keys off on the second connection");
         let account = store
-            .adopt_or_create_account("moi@exemple.fr", "gmail")
+            .adopt_or_create_account("me@example.fr", "gmail")
             .unwrap();
         store.create_mailbox(account, "INBOX", 1).unwrap();
         store.delete_account(account).unwrap();
-        let boites: i64 = store
+        let mailboxes: i64 = store
             .conn()
             .query_row("SELECT COUNT(*) FROM mailboxes", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(boites, 0, "la cascade du compte supprimé n'a pas joué");
+        assert_eq!(
+            mailboxes, 0,
+            "the cascade of the deleted account did not fire"
+        );
         drop(store);
         let _ = std::fs::remove_file(&path);
     }
 
-    /// Une base du parc porte l'index des expéditeurs à DEUX colonnes ;
-    /// à la réouverture il gagne la boîte (même patron que l'index de
-    /// date ci-dessous).
+    /// A database from the field carries the senders index with TWO
+    /// columns; on reopen it gains the mailbox (same pattern as the date
+    /// index below).
     #[test]
-    fn l_index_des_expediteurs_herite_gagne_la_boite_a_la_reouverture() {
+    fn the_inherited_senders_index_gains_the_mailbox_on_reopen() {
         let path =
             std::env::temp_dir().join(format!("wind-test-idx-sender-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
-        let lire_sql = |conn: &Connection| -> String {
+        let read_sql = |conn: &Connection| -> String {
             conn.query_row(
                 "SELECT sql FROM sqlite_master WHERE name = 'idx_envelopes_sender'",
                 [],
@@ -8541,35 +8603,36 @@ mod tests {
                          ON envelopes(sender_norm, date_epoch);",
                 )
                 .unwrap();
-            assert!(!lire_sql(store.conn()).contains("mailbox_id"));
+            assert!(!read_sql(store.conn()).contains("mailbox_id"));
         }
-        Store::oublier_initialisation(&path);
+        Store::forget_initialization(&path);
         let store = Store::open(&path).unwrap();
         assert!(
-            lire_sql(store.conn()).contains("mailbox_id"),
-            "l'index hérité n'a pas été reconstruit"
+            read_sql(store.conn()).contains("mailbox_id"),
+            "the inherited index was not rebuilt"
         );
         drop(store);
         let _ = std::fs::remove_file(&path);
     }
 
-    /// PLAN-DEMARRAGE, E1-bis — l'index de date des enveloppes gagne
-    /// `uid`, et **`CREATE INDEX IF NOT EXISTS` ne suffit PAS** : sur une
-    /// base existante l'index porte déjà ce nom, la création est un no-op
-    /// muet, et le défaut survivrait à la mise à jour. La migration lit
-    /// donc sa DÉFINITION, pas son nom.
+    /// PLAN-DEMARRAGE, E1-bis — the envelopes date index gains `uid`,
+    /// and **`CREATE INDEX IF NOT EXISTS` is NOT enough**: on an existing
+    /// database the index already carries that name, the creation is a
+    /// silent no-op, and the defect would survive the update. The
+    /// migration therefore reads its DEFINITION, not its name.
     ///
-    /// Sans ce test, la branche de reconstruction n'est **jamais jouée** :
-    /// toute base née d'un `Store::open` porte l'index à jour dès le
-    /// `SCHEMA`, et `migrate()` n'a plus rien à faire. Il faut donc
-    /// rétrograder l'index à la main pour exercer le chemin du parc.
+    /// Without this test, the rebuild branch is **never exercised**:
+    /// every database born from a `Store::open` carries the up-to-date
+    /// index straight from `SCHEMA`, and `migrate()` has nothing left to
+    /// do. The index must therefore be downgraded by hand to exercise
+    /// the field's code path.
     #[test]
-    fn l_index_de_date_herite_gagne_uid_a_la_reouverture() {
+    fn the_inherited_date_index_gains_uid_on_reopen() {
         let path =
             std::env::temp_dir().join(format!("wind-test-idx-date-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
 
-        let lire_sql = |store: &Store| -> String {
+        let read_sql = |store: &Store| -> String {
             store
                 .conn()
                 .query_row(
@@ -8582,8 +8645,8 @@ mod tests {
 
         {
             let store = Store::open(&path).unwrap();
-            // Rétrograde l'index à sa forme d'avant le chantier — l'état
-            // exact de toute base du parc au moment de la mise à jour.
+            // Downgrades the index to its shape from before the job — the
+            // exact state of any database in the field at update time.
             store
                 .conn()
                 .execute_batch(
@@ -8593,72 +8656,72 @@ mod tests {
                 )
                 .unwrap();
             assert!(
-                !lire_sql(&store).contains("uid"),
-                "le décor doit partir de l'index COURT, sinon le test ne prouve rien"
+                !read_sql(&store).contains("uid"),
+                "the fixture must start from the SHORT index, otherwise the test proves nothing"
             );
         }
 
-        Store::oublier_initialisation(&path);
+        Store::forget_initialization(&path);
         let store = Store::open(&path).unwrap();
-        let sql = lire_sql(&store);
+        let sql = read_sql(&store);
         assert!(
             sql.contains("uid"),
-            "l'index hérité n'a pas été reconstruit à l'ouverture — la sonde de définition ne fait rien, et le parc garderait le défaut.
-SQL : {sql}"
+            "the inherited index was not rebuilt on open — the definition probe does nothing, and the field would keep the defect.
+SQL: {sql}"
         );
         drop(store);
         let _ = std::fs::remove_file(&path);
     }
 
-    /// PLAN-DEMARRAGE, défaut 01 — la sonde « combien de corps
-    /// manquent ? » tenait le VERROU GLOBAL des commandes **8 870 ms à
-    /// chaque démarrage** (20 839 ms en SQL pur à froid), mesuré le
-    /// 2026-08-26 sur la base du terrain : 251 466 corps, 11,4 Go.
+    /// PLAN-DEMARRAGE, defect 01 — the probe "how many bodies are
+    /// missing?" held the GLOBAL LOCK on commands **8,870 ms at every
+    /// startup** (20,839 ms in pure SQL cold), measured on 2026-08-26
+    /// on the field database: 251,466 bodies, 11.4 GB.
     ///
-    /// La cause n'était pas la jointure. C'était la lecture d'une
-    /// COLONNE de `bodies` : absente de l'auto-index de la clé primaire,
-    /// elle forçait SQLite à rappeler la LIGNE — 56 ko en moyenne — pour
-    /// lire un bit. 251 k lectures aléatoires dans 11,4 Go.
+    /// The cause was not the join. It was reading one COLUMN of
+    /// `bodies`: absent from the primary key's auto-index, it forced
+    /// SQLite to fetch the ROW — 56 KB on average — to read one bit.
+    /// 251k random reads across 11.4 GB.
     ///
-    /// Le plan le dit d'un seul mot : `COVERING`. Tant que la
-    /// sous-requête ne lit AUCUNE colonne de `bodies`, l'existence de la
-    /// ligne se tranche dans l'index seul. Qu'on y rajoute une colonne un
-    /// jour, et le mot disparaît — c'est cela, et rien d'autre, que ce
-    /// test garde.
+    /// The plan says it in one word: `COVERING`. As long as the
+    /// subquery reads NO column of `bodies`, the existence of the row
+    /// is decided from the index alone. Add a column to it one day,
+    /// and the word disappears — that, and nothing else, is what this
+    /// test guards.
     ///
-    /// On interroge le plan plutôt qu'un chronomètre : une durée dépend
-    /// de la machine, un plan d'exécution non.
+    /// We query the plan rather than a stopwatch: a duration depends
+    /// on the machine, an execution plan does not.
     #[test]
-    fn les_sondes_de_corps_manquants_ne_rappellent_jamais_la_ligne_grasse() {
+    fn missing_body_probes_never_fetch_the_fat_row() {
         let (mut store, inbox) = store_with_mailbox();
         let envelopes: Vec<Envelope> = (1..=40u32)
-            .map(|uid| envelope(uid, "Sujet", 1_600_000_000 + i64::from(uid), true))
+            .map(|uid| envelope(uid, "Subject", 1_600_000_000 + i64::from(uid), true))
             .collect();
         store.upsert_envelopes(inbox, &envelopes).unwrap();
-        // Des corps pour les trois quarts : la sous-requête doit avoir
-        // des lignes à trouver ET des lignes à ne pas trouver.
+        // Bodies for three quarters: the subquery must have both rows
+        // to find AND rows not to find.
         for uid in 1..=30u32 {
-            store.save_body(inbox, uid, "<p>corps</p>", &[]).unwrap();
+            store.save_body(inbox, uid, "<p>body</p>", &[]).unwrap();
         }
 
-        let mut compte = store
+        let mut count = store
             .0
             .prepare(&format!(
                 "EXPLAIN QUERY PLAN {}",
                 bodies_pending_count_sql()
             ))
             .unwrap();
-        let plan_compte: Vec<String> = compte
+        let count_plan: Vec<String> = count
             .query_map(params![1i64, "INBOX", 0i64], |row| row.get::<_, String>(3))
             .unwrap()
             .collect::<Result<_, _>>()
             .unwrap();
 
-        let mut liste = store
+        let mut list = store
             .0
             .prepare(&format!("EXPLAIN QUERY PLAN {}", bodies_to_backfill_sql()))
             .unwrap();
-        let plan_liste: Vec<String> = liste
+        let list_plan: Vec<String> = list
             .query_map(params![1i64, "INBOX", 0i64, 10i64], |row| {
                 row.get::<_, String>(3)
             })
@@ -8666,48 +8729,50 @@ SQL : {sql}"
             .collect::<Result<_, _>>()
             .unwrap();
 
-        for (quoi, plan) in [
-            ("le compte des manquants", &plan_compte),
-            ("la liste de travail du rattrapage", &plan_liste),
+        for (what, plan) in [
+            ("the count of missing", &count_plan),
+            ("the backfill work list", &list_plan),
         ] {
             for (alias, table) in [(" e ", "envelopes"), (" b ", "bodies")] {
-                let etape = plan
+                let step = plan
                     .iter()
-                    .find(|etape| etape.contains(alias))
+                    .find(|step| step.contains(alias))
                     .unwrap_or_else(|| {
                         panic!(
-                            "{quoi} : aucune etape ne touche `{table}`.\nPlan :\n{}",
+                            "{what}: no step touches `{table}`.\nPlan:\n{}",
                             plan.join("\n")
                         )
                     });
                 assert!(
-                    etape.contains("COVERING"),
-                    "{quoi} : l'acces a `{table}` n'est PAS couvert par son \
-index — SQLite rappelle la ligne pour y lire une colonne que l'index ne \
-porte pas. C'est le defaut de PLAN-DEMARRAGE, des DEUX cotes : 8 870 ms \
-de verrou tenu cote `bodies`, 521,9 ms de sonde cote `envelopes`.\n\
-Etape : {etape}\nPlan :\n{}",
+                    step.contains("COVERING"),
+                    "{what}: access to `{table}` is NOT covered by its \
+index — SQLite fetches the row to read a column the index does not \
+carry. That is the PLAN-DEMARRAGE defect, on BOTH sides: 8,870 ms of \
+lock held on the `bodies` side, 521.9 ms of probe on the `envelopes` \
+side.\n\
+Step: {step}\nPlan:\n{}",
                     plan.join("\n")
                 );
             }
         }
     }
 
-    /// R4 (PLAN-RETOURS-7) : une conversation épinglée se sert À PART
-    /// (`pinned_unified_scoped`) et QUITTE le flot paginé comme son
-    /// comptage (décision D5 : la liste ne montre jamais deux fois le
-    /// même message). Désépingler la rend au flot. L'épingle est bornée
-    /// au compte et suit l'onglet « Non lus » comme la page.
+    /// R4 (PLAN-RETOURS-7): a pinned conversation is served SEPARATELY
+    /// (`pinned_unified_scoped`) and LEAVES the paginated flow along
+    /// with its count (decision D5: the list never shows the same
+    /// message twice). Unpinning returns it to the flow. The pin is
+    /// bounded to the account and follows the "Unread" tab like the
+    /// page.
     #[test]
-    fn une_epingle_sert_sa_conversation_a_part_et_hors_du_flot() {
+    fn a_pin_serves_its_conversation_separately_and_out_of_the_flow() {
         let (mut store, inbox) = store_with_mailbox();
         store
             .upsert_envelopes(
                 inbox,
                 &[
-                    envelope(1, "ancien", 100, true),
-                    envelope(2, "milieu", 200, true),
-                    envelope(3, "récent", 300, true),
+                    envelope(1, "old", 100, true),
+                    envelope(2, "middle", 200, true),
+                    envelope(3, "recent", 300, true),
                 ],
             )
             .unwrap();
@@ -8718,19 +8783,19 @@ Etape : {etape}\nPlan :\n{}",
                 .is_empty()
         );
 
-        assert!(store.toggle_pin(inbox, 1, 1_000).unwrap(), "épinglé");
-        let epingles = store.pinned_unified_scoped(None, false, false).unwrap();
-        assert_eq!(epingles.len(), 1);
-        assert_eq!(epingles[0].envelope.uid, 1);
-        let flot = store.unified_recent_scoped(None, false, 0, 10).unwrap();
+        assert!(store.toggle_pin(inbox, 1, 1_000).unwrap(), "pinned");
+        let pinned = store.pinned_unified_scoped(None, false, false).unwrap();
+        assert_eq!(pinned.len(), 1);
+        assert_eq!(pinned[0].envelope.uid, 1);
+        let flow = store.unified_recent_scoped(None, false, 0, 10).unwrap();
         assert!(
-            flot.iter().all(|row| row.envelope.uid != 1),
-            "la conversation épinglée quitte le flot"
+            flow.iter().all(|row| row.envelope.uid != 1),
+            "the pinned conversation leaves the flow"
         );
-        assert_eq!(flot.len(), 2);
+        assert_eq!(flow.len(), 2);
         assert_eq!(store.unified_count_scoped(None, false).unwrap(), 2);
-        // Bornes de la portée : un AUTRE compte n'a pas cette épingle,
-        // et l'onglet « Non lus » ne la montre pas (tout est lu ici).
+        // Scope bounds: an OTHER account does not have this pin, and
+        // the "Unread" tab does not show it (everything is read here).
         assert!(
             store
                 .pinned_unified_scoped(Some(999), false, false)
@@ -8744,7 +8809,7 @@ Etape : {etape}\nPlan :\n{}",
                 .is_empty()
         );
 
-        assert!(!store.toggle_pin(inbox, 1, 1_001).unwrap(), "désépinglé");
+        assert!(!store.toggle_pin(inbox, 1, 1_001).unwrap(), "unpinned");
         assert!(
             store
                 .pinned_unified_scoped(None, false, false)
@@ -8754,12 +8819,12 @@ Etape : {etape}\nPlan :\n{}",
         assert_eq!(store.unified_count_scoped(None, false).unwrap(), 3);
     }
 
-    /// R1 (PLAN-RETOURS-11, D1-D2) : le choix « Afficher les images »
-    /// est une exception EXPLICITE écrite en base, par MESSAGE (clé
-    /// d'enveloppe, patron de `pins`) — rouvrir le message ne
-    /// redemande pas, et le message voisin n'hérite de rien.
+    /// R1 (PLAN-RETOURS-11, D1-D2): the "Show images" choice is an
+    /// EXPLICIT exception written to the database, per MESSAGE
+    /// (envelope key, `pins` pattern) — reopening the message does not
+    /// ask again, and the neighboring message inherits nothing.
     #[test]
-    fn le_choix_d_images_par_message_persiste_et_ne_deteint_pas() {
+    fn the_image_choice_per_message_persists_and_does_not_bleed_over() {
         let (mut store, inbox) = store_with_mailbox();
         store
             .upsert_envelopes(
@@ -8769,44 +8834,47 @@ Etape : {etape}\nPlan :\n{}",
             .unwrap();
         assert!(
             !store.images_allowed(inbox, 1).unwrap(),
-            "bloqué par défaut"
+            "blocked by default"
         );
         store.allow_images_message(inbox, 1, 1_000).unwrap();
         assert!(store.images_allowed(inbox, 1).unwrap());
         assert!(
             !store.images_allowed(inbox, 2).unwrap(),
-            "le choix est PAR message"
+            "the choice is PER message"
         );
     }
 
-    /// R1 (D3-D4) : la règle d'expéditeur se pose DEPUIS un message —
-    /// l'adresse est lue de l'ENVELOPPE (jamais de l'UI), normalisée
-    /// en minuscules — couvre tous ses messages, se liste et se
-    /// révoque.
+    /// R1 (D3-D4): the sender rule is set FROM a message — the address
+    /// is read from the ENVELOPE (never from the UI), normalized to
+    /// lowercase — covers all its messages, and can be listed and
+    /// revoked.
     #[test]
-    fn la_regle_d_expediteur_couvre_ses_messages_et_se_revoque() {
+    fn the_sender_rule_covers_its_messages_and_can_be_revoked() {
         let (mut store, inbox) = store_with_mailbox();
-        let mut expediteur = envelope(1, "a", 100, true);
-        expediteur.sender_address = Some("No-Reply@Registrar.FR".to_string());
-        let mut pareil = envelope(2, "b", 200, true);
-        pareil.sender_address = Some("no-reply@registrar.fr".to_string());
-        let tiers = envelope(3, "c", 300, true); // alice@example.com
+        let mut sender = envelope(1, "a", 100, true);
+        sender.sender_address = Some("No-Reply@Registrar.FR".to_string());
+        let mut same = envelope(2, "b", 200, true);
+        same.sender_address = Some("no-reply@registrar.fr".to_string());
+        let third_party = envelope(3, "c", 300, true); // alice@example.com
         store
-            .upsert_envelopes(inbox, &[expediteur, pareil, tiers])
+            .upsert_envelopes(inbox, &[sender, same, third_party])
             .unwrap();
 
-        let posee = store.allow_images_sender_of(inbox, 1, 1_000).unwrap();
+        let applied = store.allow_images_sender_of(inbox, 1, 1_000).unwrap();
         assert_eq!(
-            posee.as_deref(),
+            applied.as_deref(),
             Some("no-reply@registrar.fr"),
-            "l'adresse posée est normalisée"
+            "the applied address is normalized"
         );
         assert!(store.images_allowed(inbox, 1).unwrap());
         assert!(
             store.images_allowed(inbox, 2).unwrap(),
-            "tous les messages de l'expéditeur, quelle que soit la casse"
+            "all of the sender's messages, whatever the case"
         );
-        assert!(!store.images_allowed(inbox, 3).unwrap(), "jamais un tiers");
+        assert!(
+            !store.images_allowed(inbox, 3).unwrap(),
+            "never a third party"
+        );
         assert_eq!(
             store.images_senders().unwrap(),
             vec!["no-reply@registrar.fr".to_string()]
@@ -8816,17 +8884,17 @@ Etape : {etape}\nPlan :\n{}",
         assert!(store.images_senders().unwrap().is_empty());
         assert!(
             !store.images_allowed(inbox, 1).unwrap(),
-            "révoquée — la garde revient"
+            "revoked — the guard returns"
         );
     }
 
-    /// R1 (revue 2026-08-28) : l'accord d'images PAR MESSAGE meurt au
-    /// changement d'UIDVALIDITY — un UID recyclé ne doit JAMAIS
-    /// hériter d'un consentement (le pixel espion d'un inconnu
-    /// partirait sans bandeau ni geste). Même contrat que
-    /// `invitations`/`attachments` dans `reset_mailbox`.
+    /// R1 (review 2026-08-28): the PER-MESSAGE image consent dies on a
+    /// UIDVALIDITY change — a recycled UID must NEVER inherit a
+    /// consent (a stranger's tracking pixel would fire with no banner
+    /// and no gesture). Same contract as `invitations`/`attachments`
+    /// in `reset_mailbox`.
     #[test]
-    fn le_reset_uidvalidity_purge_la_memoire_d_images_par_message() {
+    fn the_uidvalidity_reset_purges_the_per_message_image_memory() {
         let (mut store, inbox) = store_with_mailbox();
         store
             .upsert_envelopes(inbox, &[envelope(1, "a", 100, true)])
@@ -8836,55 +8904,58 @@ Etape : {etape}\nPlan :\n{}",
 
         store.reset_mailbox(inbox, 2).unwrap();
         store
-            .upsert_envelopes(inbox, &[envelope(1, "tout autre", 200, true)])
+            .upsert_envelopes(inbox, &[envelope(1, "something else entirely", 200, true)])
             .unwrap();
         assert!(
             !store.images_allowed(inbox, 1).unwrap(),
-            "un UID recyclé n'hérite d'aucun accord"
+            "a recycled UID inherits no consent"
         );
     }
 
-    /// R1 : une enveloppe SANS adresse d'expéditeur ne pose RIEN —
-    /// jamais une règle vide qui accorderait on ne sait quoi.
+    /// R1: an envelope WITHOUT a sender address sets NOTHING — never
+    /// an empty rule that would grant who-knows-what.
     #[test]
-    fn pas_d_adresse_d_expediteur_pas_de_regle() {
+    fn no_sender_address_no_rule() {
         let (mut store, inbox) = store_with_mailbox();
-        let mut sans = envelope(1, "a", 100, true);
-        sans.sender_address = None;
-        store.upsert_envelopes(inbox, &[sans]).unwrap();
+        let mut without = envelope(1, "a", 100, true);
+        without.sender_address = None;
+        store.upsert_envelopes(inbox, &[without]).unwrap();
         assert_eq!(store.allow_images_sender_of(inbox, 1, 1_000).unwrap(), None);
         assert!(store.images_senders().unwrap().is_empty());
         assert!(!store.images_allowed(inbox, 1).unwrap());
     }
 
-    /// R4 : l'épingle suit le FIL — posée sur un message, elle tient
-    /// quand une réponse déplace la tête de la conversation ;
-    /// `pin_state` répond par le fil, et désépingler depuis la tête
-    /// NOUVELLE libère le fil entier.
+    /// R4: the pin follows the THREAD — set on a message, it holds
+    /// when a reply moves the head of the conversation; `pin_state`
+    /// answers per thread, and unpinning from the NEW head releases
+    /// the whole thread.
     #[test]
-    fn une_epingle_suit_le_fil_et_sa_tete_nouvelle() {
+    fn a_pin_follows_the_thread_and_its_new_head() {
         let (mut store, inbox) = store_with_mailbox();
         store
-            .upsert_envelopes(inbox, &[envelope(1, "sujet", 100, true)])
+            .upsert_envelopes(inbox, &[envelope(1, "subject", 100, true)])
             .unwrap();
         assert!(store.toggle_pin(inbox, 1, 1_000).unwrap());
 
-        let mut reponse = envelope(2, "Re: sujet", 400, true);
-        reponse.in_reply_to = Some("<m1@example.com>".to_string());
-        store.upsert_envelopes(inbox, &[reponse]).unwrap();
+        let mut reply = envelope(2, "Re: subject", 400, true);
+        reply.in_reply_to = Some("<m1@example.com>".to_string());
+        store.upsert_envelopes(inbox, &[reply]).unwrap();
 
-        let epingles = store.pinned_unified_scoped(None, false, false).unwrap();
-        assert_eq!(epingles.len(), 1, "un fil épinglé = UNE ligne");
-        assert_eq!(epingles[0].envelope.uid, 2, "la ligne est la tête du fil");
-        assert_eq!(epingles[0].thread_size, 2);
+        let pinned = store.pinned_unified_scoped(None, false, false).unwrap();
+        assert_eq!(pinned.len(), 1, "a pinned thread = ONE row");
+        assert_eq!(
+            pinned[0].envelope.uid, 2,
+            "the row is the head of the thread"
+        );
+        assert_eq!(pinned[0].thread_size, 2);
         assert!(
             store.pin_state(inbox, 2).unwrap(),
-            "l'état se lit par le fil"
+            "the state is read per thread"
         );
 
         assert!(
             !store.toggle_pin(inbox, 2, 1_001).unwrap(),
-            "désépinglé depuis la tête nouvelle"
+            "unpinned from the new head"
         );
         assert!(
             store
@@ -8896,90 +8967,85 @@ Etape : {etape}\nPlan :\n{}",
         assert_eq!(store.unified_count_scoped(None, false).unwrap(), 1);
     }
 
-    /// PLAN-MODE-ORGANISE E1 (D1 : routage LOCAL seul, patron
-    /// `images_expediteurs`). La pose normalise l'adresse par LA même
-    /// autorité que la garde d'images, écrase la décision précédente
-    /// (un seul verdict par expéditeur), et « Réintégrer » = DELETE —
-    /// quelle que soit la casse fournie par l'appelant.
+    /// PLAN-MODE-ORGANISE E1 (D1: routing is LOCAL only, `images_expediteurs`
+    /// pattern). Setting it normalizes the address through THE SAME
+    /// authority as the image guard, overwrites the previous decision
+    /// (a single verdict per sender), and "Reinstate" = DELETE —
+    /// whatever the case supplied by the caller.
     #[test]
-    fn routage_pose_normalise_ecrase_et_se_retire() {
+    fn routing_set_normalizes_overwrites_and_can_be_removed() {
         let store = Store::open_in_memory().unwrap();
         store
-            .router_expediteur("  Ada@Exemple.FR ", "kiosque", None, 1_700_000_000)
+            .route_sender("  Ada@Exemple.FR ", "kiosque", None, 1_700_000_000)
             .unwrap();
-        let r = store.routage_de("ada@exemple.fr").unwrap().unwrap();
+        let r = store.routing_of("ada@exemple.fr").unwrap().unwrap();
         assert_eq!(
-            (r.destination.as_str(), r.regle.as_deref()),
+            (r.destination.as_str(), r.rule.as_deref()),
             ("kiosque", None)
         );
         store
-            .router_expediteur("ada@exemple.fr", "ecarte", Some("corbeille"), 1_700_000_100)
+            .route_sender("ada@exemple.fr", "ecarte", Some("corbeille"), 1_700_000_100)
             .unwrap();
-        let r = store.routage_de("ADA@EXEMPLE.FR").unwrap().unwrap();
+        let r = store.routing_of("ADA@EXEMPLE.FR").unwrap().unwrap();
         assert_eq!(
-            (r.destination.as_str(), r.regle.as_deref()),
+            (r.destination.as_str(), r.rule.as_deref()),
             ("ecarte", Some("corbeille"))
         );
-        store.retirer_routage(" ada@EXEMPLE.fr ").unwrap();
-        assert!(store.routage_de("ada@exemple.fr").unwrap().is_none());
+        store.remove_routing(" ada@EXEMPLE.fr ").unwrap();
+        assert!(store.routing_of("ada@exemple.fr").unwrap().is_none());
     }
 
-    /// Le vocabulaire est FERMÉ : une destination ou une règle hors
-    /// table est refusée AVANT toute écriture (décision pure, jamais un
-    /// CHECK SQLite en première ligne) ; une règle n'a de sens que sur
-    /// un expéditeur écarté ; une adresse vide n'écrit jamais une règle
-    /// fantôme.
+    /// The vocabulary is CLOSED: a destination or a rule outside the
+    /// table is refused BEFORE any write (a pure decision, never a
+    /// SQLite CHECK as the first line of defense); a rule only makes
+    /// sense on a screened-out sender; an empty address never writes a
+    /// phantom rule.
     #[test]
-    fn routage_refuse_hors_vocabulaire() {
+    fn routing_refuses_outside_the_vocabulary() {
         let store = Store::open_in_memory().unwrap();
+        assert!(store.route_sender("a@b.fr", "poubelle", None, 1).is_err());
         assert!(
             store
-                .router_expediteur("a@b.fr", "poubelle", None, 1)
+                .route_sender("a@b.fr", "ecarte", Some("suppression-definitive"), 1)
                 .is_err()
         );
         assert!(
             store
-                .router_expediteur("a@b.fr", "ecarte", Some("suppression-definitive"), 1)
-                .is_err()
-        );
-        assert!(
-            store
-                .router_expediteur("a@b.fr", "kiosque", Some("corbeille"), 1)
+                .route_sender("a@b.fr", "kiosque", Some("corbeille"), 1)
                 .is_err(),
-            "une règle du Non sur une destination servie n'a pas de sens"
+            "a No rule on a served destination makes no sense"
         );
-        assert!(store.router_expediteur("   ", "kiosque", None, 1).is_err());
-        assert!(store.routages().unwrap().is_empty(), "rien n'a été écrit");
+        assert!(store.route_sender("   ", "kiosque", None, 1).is_err());
+        assert!(store.routings().unwrap().is_empty(), "nothing was written");
     }
 
-    /// PLAN-MODE-ORGANISE E1 : une page du Kiosque ou du Registre —
-    /// le flot unifié de la Réception, borné aux fils dont la TÊTE
-    /// vient d'un expéditeur routé vers cette destination. Même
-    /// squelette, mêmes exclusions (épingles), même tri que la
-    /// Réception ; la sonde est PK → PK (spike S2 : 0,209 ms à 200 k,
-    /// jamais un scan).
+    /// PLAN-MODE-ORGANISE E1: a page of the Feed or the Paper trail —
+    /// the Inbox's unified flow, bounded to threads whose HEAD comes
+    /// from a sender routed to that destination. Same skeleton, same
+    /// exclusions (pins), same sort as the Inbox; the probe is PK → PK
+    /// (spike S2: 0.209 ms at 200k, never a scan).
     #[test]
-    fn le_kiosque_ne_sert_que_les_expediteurs_routes() {
+    fn the_feed_only_serves_routed_senders() {
         let (mut store, inbox) = store_with_mailbox();
-        let mut lettre = envelope(1, "La lettre", 100, true);
-        lettre.sender_address = Some("Lettre@infolettre.fr".to_string());
-        lettre.message_id = Some("<l1@infolettre.fr>".to_string());
-        let ordinaire = envelope(2, "Bonjour", 200, false);
-        store.upsert_envelopes(inbox, &[lettre, ordinaire]).unwrap();
+        let mut letter = envelope(1, "The letter", 100, true);
+        letter.sender_address = Some("Lettre@infolettre.fr".to_string());
+        letter.message_id = Some("<l1@infolettre.fr>".to_string());
+        let ordinary = envelope(2, "Hello", 200, false);
+        store.upsert_envelopes(inbox, &[letter, ordinary]).unwrap();
         store
-            .router_expediteur("lettre@infolettre.fr", "kiosque", None, 300)
+            .route_sender("lettre@infolettre.fr", "kiosque", None, 300)
             .unwrap();
 
-        let kiosque = store
+        let feed = store
             .routage_unified_scoped("kiosque", None, false, 0, 10)
             .unwrap();
-        assert_eq!(kiosque.len(), 1);
-        assert_eq!(kiosque[0].envelope.uid, 1);
+        assert_eq!(feed.len(), 1);
+        assert_eq!(feed[0].envelope.uid, 1);
         assert_eq!(
             store.routage_count_scoped("kiosque", None, false).unwrap(),
             1
         );
-        // Le Registre est vide : la destination filtre vraiment.
+        // The Paper trail is empty: the destination really filters.
         assert!(
             store
                 .routage_unified_scoped("registre", None, false, 0, 10)
@@ -8990,22 +9056,23 @@ Etape : {etape}\nPlan :\n{}",
             store.routage_count_scoped("registre", None, false).unwrap(),
             0
         );
-        // La Réception, elle, montre TOUJOURS tout (E1 : le retrait du
-        // flot est l'affaire de l'étape E2 — rétention du Portier).
+        // The Inbox, meanwhile, ALWAYS shows everything (E1: taking
+        // items out of the flow is the job of step E2 — Screener
+        // retention).
         assert_eq!(store.unified_count_scoped(None, false).unwrap(), 2);
     }
 
-    /// La garde de plan du service du Kiosque (leçon `pins`) : la sonde
-    /// de routage se joue par CLÉS (envelopes PK, routage PK) — jamais
-    /// un parcours d'`envelopes`.
+    /// The plan guard for serving the Feed (`pins` lesson): the
+    /// routing probe is played by KEYS (envelopes PK, routing PK) —
+    /// never a scan of `envelopes`.
     #[test]
-    fn le_kiosque_ne_scanne_jamais_les_enveloppes() {
+    fn the_feed_never_scans_the_envelopes() {
         let store = Store::open_in_memory().unwrap();
         let plan: Vec<String> = store
             .0
             .prepare(&format!(
                 "EXPLAIN QUERY PLAN {}",
-                routage_page_sql(false, false)
+                routing_page_sql(false, false)
             ))
             .unwrap()
             .query_map(params![10, 0, "kiosque"], |row| row.get::<_, String>(3))
@@ -9016,57 +9083,57 @@ Etape : {etape}\nPlan :\n{}",
             .iter()
             .filter(|l| l.starts_with("SCAN") && l.contains("envelopes"))
             .collect();
-        assert!(scans.is_empty(), "plan avec scan d'envelopes : {plan:?}");
+        assert!(scans.is_empty(), "plan with an envelopes scan: {plan:?}");
     }
 
-    /// Revue E1 : la TÊTE d'un fil est le dernier message TOUTES
-    /// boîtes confondues — Envoyés compris. Le geste et le filtre ne
-    /// doivent jamais s'ancrer dessus : (1) « Déplacer vers… » depuis
-    /// un fil où l'utilisateur a répondu en dernier doit router le
-    /// CORRESPONDANT, jamais soi ; (2) un fil routé au Kiosque n'en
-    /// sort pas parce qu'on y a répondu ; (3) un fil épinglé routé
-    /// reste visible dans sa destination (les épingles ne se préposent
-    /// qu'en Réception — l'exclure ici le ferait disparaître partout).
+    /// Review E1: the HEAD of a thread is the last message across ALL
+    /// mailboxes — Sent included. The gesture and the filter must
+    /// never anchor on it: (1) "Move to…" from a thread where the
+    /// user replied last must route the CORRESPONDENT, never
+    /// themselves; (2) a thread routed to the Feed does not leave it
+    /// because we replied there; (3) a pinned routed thread stays
+    /// visible in its destination (pins are only surfaced in the
+    /// Inbox — excluding it here would make it disappear everywhere).
     #[test]
-    fn le_routage_ignore_sa_propre_reponse_et_garde_les_epingles() {
+    fn routing_ignores_its_own_reply_and_keeps_pins() {
         let (mut store, inbox) = store_with_mailbox();
-        // Les envois entrent dans la portée du regroupement (ADR 0009)
-        // — sans quoi la réponse resterait hors fil et le décor ne
-        // rejouerait pas la racine (tête = Envoyés).
+        // Sent items enter the grouping scope (ADR 0009) — without
+        // which the reply would stay out of the thread and the
+        // fixture would not replay the root (head = Sent).
         store
             .set_thread_scope(test_account(&store), Some("Envoyes"))
             .unwrap();
-        let envoyes = store
+        let sent = store
             .create_mailbox(test_account(&store), "Envoyes", 1)
             .unwrap();
-        let mut lettre = envelope(1, "La lettre", 100, true);
-        lettre.sender_address = Some("lettre@infolettre.fr".to_string());
-        lettre.message_id = Some("<l1@infolettre.fr>".to_string());
-        store.upsert_envelopes(inbox, &[lettre]).unwrap();
-        // La réponse de l'utilisateur, en Envoyés — elle devient la
-        // TÊTE du fil (date la plus récente).
-        let mut reponse = envelope(1, "Re: La lettre", 500, true);
-        reponse.sender_address = Some("test@exemple.fr".to_string());
-        reponse.message_id = Some("<r1@exemple.fr>".to_string());
-        reponse.in_reply_to = Some("<l1@infolettre.fr>".to_string());
-        store.upsert_envelopes(envoyes, &[reponse]).unwrap();
+        let mut letter = envelope(1, "The letter", 100, true);
+        letter.sender_address = Some("lettre@infolettre.fr".to_string());
+        letter.message_id = Some("<l1@infolettre.fr>".to_string());
+        store.upsert_envelopes(inbox, &[letter]).unwrap();
+        // The user's reply, in Sent — it becomes the HEAD of the
+        // thread (most recent date).
+        let mut reply = envelope(1, "Re: The letter", 500, true);
+        reply.sender_address = Some("test@exemple.fr".to_string());
+        reply.message_id = Some("<r1@exemple.fr>".to_string());
+        reply.in_reply_to = Some("<l1@infolettre.fr>".to_string());
+        store.upsert_envelopes(sent, &[reply]).unwrap();
 
-        // (1) Le geste depuis la tête (la propre réponse) route le
-        // correspondant, jamais soi.
-        let adresse = store
-            .router_expediteur_of(envoyes, 1, "kiosque", None, 600)
+        // (1) The gesture from the head (the user's own reply) routes
+        // the correspondent, never themselves.
+        let address = store
+            .route_sender_of(sent, 1, "kiosque", None, 600)
             .unwrap();
-        assert_eq!(adresse.as_deref(), Some("lettre@infolettre.fr"));
-        // (2) Le fil est au Kiosque malgré sa tête « Envoyés ».
-        let kiosque = store
+        assert_eq!(address.as_deref(), Some("lettre@infolettre.fr"));
+        // (2) The thread is in the Feed despite its "Sent" head.
+        let feed = store
             .routage_unified_scoped("kiosque", None, false, 0, 10)
             .unwrap();
-        assert_eq!(kiosque.len(), 1);
+        assert_eq!(feed.len(), 1);
         assert_eq!(
             store.routage_count_scoped("kiosque", None, false).unwrap(),
             1
         );
-        // (3) Épinglé, il reste visible au Kiosque — page ET total.
+        // (3) Pinned, it stays visible in the Feed — page AND total.
         assert!(store.toggle_pin(inbox, 1, 700).unwrap());
         assert_eq!(
             store
@@ -9081,26 +9148,29 @@ Etape : {etape}\nPlan :\n{}",
         );
     }
 
-    /// « Déplacer vers… » (E1) : l'adresse est résolue de l'ENVELOPPE
-    /// côté cœur — l'UI ne parse jamais une adresse (patron
-    /// `allow_images_sender_of`). Rend l'adresse routée ; None si
-    /// l'enveloppe n'a pas d'adresse (jamais un verdict fantôme).
+    /// "Move to…" (E1): the address is resolved from the ENVELOPE on
+    /// the core side — the UI never parses an address
+    /// (`allow_images_sender_of` pattern). Returns the routed
+    /// address; None if the envelope has no address (never a phantom
+    /// verdict).
     #[test]
-    fn le_routage_depuis_l_enveloppe_resout_l_adresse_au_coeur() {
+    fn routing_from_the_envelope_resolves_the_address_in_the_core() {
         let (mut store, inbox) = store_with_mailbox();
-        let mut env = envelope(1, "sujet", 100, true);
+        let mut env = envelope(1, "subject", 100, true);
         env.sender_address = Some("  ADA@Exemple.FR ".to_string());
-        let mut sans_adresse = envelope(2, "anonyme", 200, true);
-        sans_adresse.sender_address = None;
-        store.upsert_envelopes(inbox, &[env, sans_adresse]).unwrap();
-
-        let adresse = store
-            .router_expediteur_of(inbox, 1, "registre", None, 300)
+        let mut without_address = envelope(2, "anonymous", 200, true);
+        without_address.sender_address = None;
+        store
+            .upsert_envelopes(inbox, &[env, without_address])
             .unwrap();
-        assert_eq!(adresse.as_deref(), Some("ada@exemple.fr"));
+
+        let address = store
+            .route_sender_of(inbox, 1, "registre", None, 300)
+            .unwrap();
+        assert_eq!(address.as_deref(), Some("ada@exemple.fr"));
         assert_eq!(
             store
-                .routage_de("ada@exemple.fr")
+                .routing_of("ada@exemple.fr")
                 .unwrap()
                 .unwrap()
                 .destination,
@@ -9108,245 +9178,247 @@ Etape : {etape}\nPlan :\n{}",
         );
         assert_eq!(
             store
-                .router_expediteur_of(inbox, 2, "kiosque", None, 400)
+                .route_sender_of(inbox, 2, "kiosque", None, 400)
                 .unwrap(),
             None
         );
         assert_eq!(
-            store.routages().unwrap().len(),
+            store.routings().unwrap().len(),
             1,
-            "rien d'écrit sans adresse"
+            "nothing written without an address"
         );
     }
 
-    /// Le mode organisé vit en `prefs` SQLite (D2 amendée : le Rust
-    /// doit lire l'état — les règles du Non s'éteignent avec lui) et
-    /// l'ÉPOQUE DE PREMIÈRE ACTIVATION ne bouge JAMAIS (D3 « arrivées
-    /// seules » : c'est elle qui borne la rétention du Portier ; la
-    /// réécrire à chaque bascule déverserait ou retiendrait du courrier
-    /// en silence). Éteint par défaut, l'état et l'époque s'écrivent
-    /// ENSEMBLE à la première activation (jamais l'un sans l'autre).
+    /// Organized mode lives in SQLite `prefs` (D2 amended: Rust must
+    /// read the state — the No rules turn off with it) and the
+    /// FIRST-ACTIVATION EPOCH NEVER moves (D3 "arrivals only": it is
+    /// what bounds Screener retention; rewriting it on every toggle
+    /// would silently dump or hold back mail). Off by default, the
+    /// state and the epoch are written TOGETHER on first activation
+    /// (never one without the other).
     #[test]
-    fn mode_organise_garde_l_epoque_de_premiere_activation() {
+    fn organized_mode_keeps_the_first_activation_epoch() {
         let mut store = Store::open_in_memory().unwrap();
-        assert!(!store.mode_organise().unwrap());
-        assert_eq!(store.mode_organise_epoch().unwrap(), None);
-        store.set_mode_organise(true, 100).unwrap();
-        assert!(store.mode_organise().unwrap());
-        assert_eq!(store.mode_organise_epoch().unwrap(), Some(100));
-        store.set_mode_organise(false, 200).unwrap();
-        assert!(!store.mode_organise().unwrap());
-        store.set_mode_organise(true, 300).unwrap();
+        assert!(!store.organized_mode().unwrap());
+        assert_eq!(store.organized_mode_epoch().unwrap(), None);
+        store.set_organized_mode(true, 100).unwrap();
+        assert!(store.organized_mode().unwrap());
+        assert_eq!(store.organized_mode_epoch().unwrap(), Some(100));
+        store.set_organized_mode(false, 200).unwrap();
+        assert!(!store.organized_mode().unwrap());
+        store.set_organized_mode(true, 300).unwrap();
         assert_eq!(
-            store.mode_organise_epoch().unwrap(),
+            store.organized_mode_epoch().unwrap(),
             Some(100),
-            "l'époque de PREMIÈRE activation est gravée"
+            "the FIRST activation epoch is set in stone"
         );
     }
 
-    /// RETOURS-13 R10 — la mémoire « lu » du Kiosque (patron
-    /// `pins`/`mis_de_cote` : clé d'enveloppe, locale au poste). Une
-    /// carte lue jusqu'en bas se marque ; la marque est idempotente,
-    /// meurt avec sa boîte (`reset_mailbox`) et avec son message
-    /// (`remove_local`) — un UID recyclé n'hérite d'aucune lecture.
+    /// RETOURS-13 R10 — the Feed's "read" memory (`pins`/`mis_de_cote`
+    /// pattern: envelope key, local to the workstation). A card read
+    /// down to the bottom gets marked; the mark is idempotent, dies
+    /// with its mailbox (`reset_mailbox`) and with its message
+    /// (`remove_local`) — a recycled UID inherits no read state.
     #[test]
-    fn kiosque_lu_se_marque_et_meurt_avec_sa_boite_et_son_message() {
+    fn feed_read_gets_marked_and_dies_with_its_mailbox_and_its_message() {
         let (mut store, inbox) = store_with_mailbox();
         store
-            .upsert_envelopes(inbox, &[envelope(1, "lettre", 1_000, false)])
+            .upsert_envelopes(inbox, &[envelope(1, "letter", 1_000, false)])
             .unwrap();
         store
-            .upsert_envelopes(inbox, &[envelope(2, "autre", 1_100, false)])
+            .upsert_envelopes(inbox, &[envelope(2, "other", 1_100, false)])
             .unwrap();
-        assert!(!store.kiosque_lu(inbox, 1).unwrap());
-        store.marquer_kiosque_lu(inbox, 1, 2_000).unwrap();
-        store.marquer_kiosque_lu(inbox, 1, 2_100).unwrap(); // idempotent
-        assert!(store.kiosque_lu(inbox, 1).unwrap());
-        store.marquer_kiosque_lu(inbox, 2, 2_200).unwrap();
-        // Le message part : sa marque aussi.
+        assert!(!store.feed_read(inbox, 1).unwrap());
+        store.mark_feed_read(inbox, 1, 2_000).unwrap();
+        store.mark_feed_read(inbox, 1, 2_100).unwrap(); // idempotent
+        assert!(store.feed_read(inbox, 1).unwrap());
+        store.mark_feed_read(inbox, 2, 2_200).unwrap();
+        // The message leaves: its mark leaves too.
         store.remove_local(inbox, 1).unwrap();
-        assert!(!store.kiosque_lu(inbox, 1).unwrap());
-        // La boîte se réinitialise : plus aucune marque.
+        assert!(!store.feed_read(inbox, 1).unwrap());
+        // The mailbox resets: no more marks at all.
         store.reset_mailbox(inbox, 2).unwrap();
-        assert!(!store.kiosque_lu(inbox, 2).unwrap());
+        assert!(!store.feed_read(inbox, 2).unwrap());
     }
 
-    /// RETOURS-14 R8 (terrain 2026-08-31) — un OUI au Portier vaut
-    /// confiance : le verdict pose AUSSI la règle « toujours afficher
-    /// les images de cet expéditeur » (table `images_expediteurs`,
-    /// révocable aux Réglages > Affichage comme toute règle). Un Non
-    /// ne pose rien et ne retire rien — la garde d'images a sa propre
-    /// porte de sortie.
+    /// RETOURS-14 R8 (field 2026-08-31) — a YES to the Screener means
+    /// trust: the verdict ALSO sets the rule "always show this
+    /// sender's images" (`images_expediteurs` table, revocable in
+    /// Settings > Display like any rule). A No sets nothing and
+    /// removes nothing — the image guard has its own exit door.
     #[test]
-    fn un_oui_au_portier_autorise_les_images_de_l_expediteur() {
+    fn a_yes_to_the_screener_allows_the_senders_images() {
         let (mut store, inbox) = store_with_mailbox();
-        let mut bienvenu = envelope(1, "Bonjour", 100, false);
-        bienvenu.sender_address = Some("Ami@exemple.fr".to_string());
-        bienvenu.message_id = Some("<a1@exemple.fr>".to_string());
-        let mut intrus = envelope(2, "Promo", 200, false);
-        intrus.sender_address = Some("promo@exemple.fr".to_string());
-        intrus.message_id = Some("<p1@exemple.fr>".to_string());
-        store.upsert_envelopes(inbox, &[bienvenu, intrus]).unwrap();
+        let mut welcome = envelope(1, "Hello", 100, false);
+        welcome.sender_address = Some("Ami@exemple.fr".to_string());
+        welcome.message_id = Some("<a1@exemple.fr>".to_string());
+        let mut intruder = envelope(2, "Promo", 200, false);
+        intruder.sender_address = Some("promo@exemple.fr".to_string());
+        intruder.message_id = Some("<p1@exemple.fr>".to_string());
+        store.upsert_envelopes(inbox, &[welcome, intruder]).unwrap();
         assert!(!store.images_allowed(inbox, 1).unwrap());
 
-        // Le Oui (toute destination servie) pose la règle — adresse
-        // normalisée par LA porte (adresse_images).
+        // The Yes (any served destination) sets the rule — address
+        // normalized by THE gate (images_address).
         store
-            .router_expediteur("ami@exemple.fr", "reception", None, 300)
+            .route_sender("ami@exemple.fr", "reception", None, 300)
             .unwrap();
         assert!(store.images_allowed(inbox, 1).unwrap());
-        // Le Non n'autorise rien.
+        // The No allows nothing.
         store
-            .router_expediteur("promo@exemple.fr", "ecarte", Some("spam"), 300)
+            .route_sender("promo@exemple.fr", "ecarte", Some("spam"), 300)
             .unwrap();
         assert!(!store.images_allowed(inbox, 2).unwrap());
-        // La porte de sortie existante défait la règle posée par le Oui.
+        // The pre-existing exit door undoes the rule set by the Yes.
         store.revoke_images_sender("ami@exemple.fr").unwrap();
         assert!(!store.images_allowed(inbox, 1).unwrap());
     }
 
-    /// RETOURS-14 R6 (D7) — le Registre se regroupe par EXPÉDITEUR,
-    /// les groupes triés par récence du dernier message (patron du
-    /// Nettoyage), et la page d'UN groupe rend les fils de ce seul
-    /// expéditeur, au tri de la vue.
+    /// RETOURS-14 R6 (D7) — the Paper trail groups by SENDER, groups
+    /// sorted by the recency of the last message (Cleanup pattern),
+    /// and a group's page returns the threads of that one sender, in
+    /// the view's sort order.
     #[test]
-    fn le_registre_se_groupe_par_expediteur_a_la_recence() {
+    fn the_paper_trail_groups_by_sender_by_recency() {
         let (mut store, inbox) = store_with_mailbox();
-        let mut ancien = envelope(1, "Reçu A", 100, true);
-        ancien.sender_address = Some("recu@boutique.fr".to_string());
-        ancien.message_id = Some("<r1@boutique.fr>".to_string());
-        let mut recent = envelope(2, "Avis B", 300, true);
+        let mut old = envelope(1, "Receipt A", 100, true);
+        old.sender_address = Some("recu@boutique.fr".to_string());
+        old.message_id = Some("<r1@boutique.fr>".to_string());
+        let mut recent = envelope(2, "Notice B", 300, true);
         recent.sender_address = Some("avis@banque.fr".to_string());
         recent.message_id = Some("<b1@banque.fr>".to_string());
-        let mut second = envelope(3, "Reçu C", 200, true);
+        let mut second = envelope(3, "Receipt C", 200, true);
         second.sender_address = Some("recu@boutique.fr".to_string());
         second.message_id = Some("<r2@boutique.fr>".to_string());
-        let hors = envelope(4, "Bonjour", 400, false);
+        let outside = envelope(4, "Hello", 400, false);
         store
-            .upsert_envelopes(inbox, &[ancien, recent, second, hors])
+            .upsert_envelopes(inbox, &[old, recent, second, outside])
             .unwrap();
         store
-            .router_expediteur("recu@boutique.fr", "registre", None, 500)
+            .route_sender("recu@boutique.fr", "registre", None, 500)
             .unwrap();
         store
-            .router_expediteur("avis@banque.fr", "registre", None, 500)
+            .route_sender("avis@banque.fr", "registre", None, 500)
             .unwrap();
 
-        let groupes = store.registre_groupes(None).unwrap();
-        assert_eq!(groupes.len(), 2, "un groupe par expéditeur routé");
-        // La récence d'abord (D7) : banque (300) avant boutique (200).
-        assert_eq!(groupes[0].address, "avis@banque.fr");
-        assert_eq!(groupes[0].fils, 1);
-        assert_eq!(groupes[1].address, "recu@boutique.fr");
-        assert_eq!(groupes[1].fils, 2);
-        assert_eq!(groupes[1].dernier_epoch, 200);
-        assert_eq!(groupes[1].dernier_objet.as_deref(), Some("Reçu C"));
+        let groups = store.registre_groupes(None).unwrap();
+        assert_eq!(groups.len(), 2, "one group per routed sender");
+        // Recency first (D7): banque (300) before boutique (200).
+        assert_eq!(groups[0].address, "avis@banque.fr");
+        assert_eq!(groups[0].fils, 1);
+        assert_eq!(groups[1].address, "recu@boutique.fr");
+        assert_eq!(groups[1].fils, 2);
+        assert_eq!(groups[1].last_epoch, 200);
+        assert_eq!(groups[1].last_subject.as_deref(), Some("Receipt C"));
 
-        // La page d'un groupe : les fils de CE seul expéditeur, les
-        // plus récents en tête.
+        // A group's page: the threads of THIS one sender, most recent
+        // first.
         let page = store
             .registre_groupe_scoped("recu@boutique.fr", None, 0, 10)
             .unwrap();
         assert_eq!(page.len(), 2);
         assert_eq!(page[0].envelope.uid, 3);
         assert_eq!(page[1].envelope.uid, 1);
-        // Le filtre de compte borne comme partout.
-        let autre = store
+        // The account filter bounds it like everywhere else.
+        let other = store
             .registre_groupe_scoped("recu@boutique.fr", Some(999), 0, 10)
             .unwrap();
-        assert!(autre.is_empty());
+        assert!(other.is_empty());
     }
 
-    /// RETOURS-14 R7 (D8) — la pastille nav du Kiosque compte les
-    /// cartes PAS ENCORE OUVERTES (mémoire `kiosque_lus`), jamais le
-    /// `seen` IMAP : c'est la sémantique de la page elle-même (les
-    /// sections Non lus / Lus précédemment). Le décor est vu côté
-    /// serveur (`seen = true`) : si la requête comptait l'`unseen`,
-    /// elle rendrait zéro.
+    /// RETOURS-14 R7 (D8) — the Feed's nav badge counts cards NOT YET
+    /// OPENED (`kiosque_lus` memory), never the IMAP `seen` flag: that
+    /// is the semantics of the page itself (the Unread / Previously
+    /// read sections). The fixture is seen server-side (`seen =
+    /// true`): if the query counted `unseen`, it would return zero.
     #[test]
-    fn la_pastille_du_kiosque_compte_les_cartes_jamais_ouvertes() {
+    fn the_feed_badge_counts_never_opened_cards() {
         let (mut store, inbox) = store_with_mailbox();
-        let mut a = envelope(1, "Lettre A", 100, true);
+        let mut a = envelope(1, "Letter A", 100, true);
         a.sender_address = Some("lettre@infolettre.fr".to_string());
         a.message_id = Some("<a@infolettre.fr>".to_string());
-        let mut b = envelope(2, "Lettre B", 200, true);
+        let mut b = envelope(2, "Letter B", 200, true);
         b.sender_address = Some("lettre@infolettre.fr".to_string());
         b.message_id = Some("<b@infolettre.fr>".to_string());
-        let ordinaire = envelope(3, "Bonjour", 300, false);
-        store.upsert_envelopes(inbox, &[a, b, ordinaire]).unwrap();
+        let ordinary = envelope(3, "Hello", 300, false);
+        store.upsert_envelopes(inbox, &[a, b, ordinary]).unwrap();
         store
-            .router_expediteur("lettre@infolettre.fr", "kiosque", None, 400)
+            .route_sender("lettre@infolettre.fr", "kiosque", None, 400)
             .unwrap();
 
-        // Deux cartes au Kiosque, aucune ouverte — le seen IMAP (true)
-        // ne compte pas ; le message non routé non plus.
+        // Two cards in the Feed, none opened — the IMAP seen flag
+        // (true) does not count; neither does the unrouted message.
         assert_eq!(store.kiosque_non_ouverts(None).unwrap(), 2);
-        // Le filtre de compte se prouve PENDANT qu'il reste du non-lu
-        // (revue : à zéro partout, un filtre ignoré passerait vert) :
-        // le bon compte voit 2, un compte étranger 0.
-        let compte = test_account(&store);
-        assert_eq!(store.kiosque_non_ouverts(Some(compte)).unwrap(), 2);
-        assert_eq!(store.kiosque_non_ouverts(Some(compte + 1)).unwrap(), 0);
-        // Ouvrir une carte la retire du compte.
-        store.marquer_kiosque_lu(inbox, 2, 500).unwrap();
+        // The account filter is proven WHILE some unread remains
+        // (review: at zero everywhere, an ignored filter would pass
+        // green): the right account sees 2, a foreign account 0.
+        let account = test_account(&store);
+        assert_eq!(store.kiosque_non_ouverts(Some(account)).unwrap(), 2);
+        assert_eq!(store.kiosque_non_ouverts(Some(account + 1)).unwrap(), 0);
+        // Opening a card removes it from the count.
+        store.mark_feed_read(inbox, 2, 500).unwrap();
         assert_eq!(store.kiosque_non_ouverts(None).unwrap(), 1);
-        store.marquer_kiosque_lu(inbox, 1, 600).unwrap();
+        store.mark_feed_read(inbox, 1, 600).unwrap();
         assert_eq!(store.kiosque_non_ouverts(None).unwrap(), 0);
     }
 
-    /// RETOURS-13 R5/R9 — les actions PAR DÉFAUT des boutons du
-    /// Portier : livrées Oui → Réception, Non → Corbeille ; réglables
-    /// dans un vocabulaire FERMÉ (les destinations du Oui, les règles
-    /// du Non plus « écarter sans déplacer ») ; une pref corrompue
-    /// retombe au défaut — jamais un verdict au vocabulaire troué.
+    /// RETOURS-13 R5/R9 — the Screener buttons' DEFAULT actions:
+    /// shipped as Yes → Inbox, No → Trash; configurable within a
+    /// CLOSED vocabulary (the Yes destinations, the No rules plus
+    /// "screen out without moving"); a corrupted pref falls back to
+    /// the default — never a verdict with a broken vocabulary.
     #[test]
-    fn portier_defauts_livres_puis_reglables_au_vocabulaire_ferme() {
+    fn screener_defaults_ship_then_configurable_within_the_closed_vocabulary() {
         let mut store = Store::open_in_memory().unwrap();
         assert_eq!(
-            store.portier_defauts().unwrap(),
+            store.screener_defaults().unwrap(),
             ("reception".to_string(), "corbeille".to_string()),
-            "les défauts livrés : Oui → Réception, Non → Corbeille"
+            "the shipped defaults: Yes → Inbox, No → Trash"
         );
-        store.set_portier_defauts("kiosque", "archive").unwrap();
+        store.set_screener_defaults("kiosque", "archive").unwrap();
         assert_eq!(
-            store.portier_defauts().unwrap(),
+            store.screener_defaults().unwrap(),
             ("kiosque".to_string(), "archive".to_string())
         );
-        store.set_portier_defauts("reception", "ecarte").unwrap();
-        assert_eq!(store.portier_defauts().unwrap().1, "ecarte");
-        // Le vocabulaire est fermé : « ecarte » n'est pas un Oui, une
-        // destination n'est pas une règle du Non.
-        assert!(store.set_portier_defauts("ecarte", "corbeille").is_err());
-        assert!(store.set_portier_defauts("reception", "registre").is_err());
-        // Une pref corrompue (écrite hors porte) retombe au défaut.
+        store.set_screener_defaults("reception", "ecarte").unwrap();
+        assert_eq!(store.screener_defaults().unwrap().1, "ecarte");
+        // The vocabulary is closed: "ecarte" is not a Yes, a
+        // destination is not a No rule.
+        assert!(store.set_screener_defaults("ecarte", "corbeille").is_err());
+        assert!(
+            store
+                .set_screener_defaults("reception", "registre")
+                .is_err()
+        );
+        // A corrupted pref (written outside the gate) falls back to
+        // the default.
         store
             .set_text_pref("portier_defaut_oui", "poubelle")
             .unwrap();
-        assert_eq!(store.portier_defauts().unwrap().0, "reception");
+        assert_eq!(store.screener_defaults().unwrap().0, "reception");
     }
 
-    /// PLAN-MODE-ORGANISE E2 — la rétention du Portier (D3 « arrivées
-    /// seules »). Un expéditeur SANS ligne de routage dont le courrier
-    /// n'existe QU'APRÈS l'époque d'activation attend au Portier : son
-    /// fil quitte le flot ET les totaux de la Réception organisée
-    /// (exclusion partagée, leçon `pins`). L'historique d'un connu
-    /// reste en Réception, et le mode CLASSIQUE ne bouge pas d'un
-    /// message.
+    /// PLAN-MODE-ORGANISE E2 — Screener retention (D3 "arrivals
+    /// only"). A sender WITHOUT a routing row whose mail only exists
+    /// AFTER the activation epoch waits at the Screener: its thread
+    /// leaves the flow AND the totals of the organized Inbox (shared
+    /// exclusion, `pins` lesson). A known sender's history stays in
+    /// the Inbox, and CLASSIC mode does not move a single message.
     #[test]
-    fn un_inconnu_apres_l_epoque_attend_au_portier_hors_flot_et_totaux() {
+    fn an_unknown_sender_after_the_epoch_waits_at_the_screener_out_of_the_flow_and_totals() {
         let (mut store, inbox) = store_with_mailbox();
-        store.set_mode_organise(true, 1_000).unwrap();
-        // L'ancien : du courrier avant ET après l'époque.
-        let mut avant = envelope(1, "d'hier", 500, true);
-        avant.sender_address = Some("ancien@exemple.fr".to_string());
-        let mut apres = envelope(2, "d'aujourd'hui", 1_500, false);
-        apres.sender_address = Some("ancien@exemple.fr".to_string());
-        // L'inconnu : premier message POSTÉRIEUR à l'époque.
-        let mut inconnu = envelope(3, "premiere fois", 1_600, false);
-        inconnu.sender = Some("Nouvelle Venue".to_string());
-        inconnu.sender_address = Some("Nouv@Exemple.FR".to_string());
+        store.set_organized_mode(true, 1_000).unwrap();
+        // The known one: mail before AND after the epoch.
+        let mut before = envelope(1, "from yesterday", 500, true);
+        before.sender_address = Some("ancien@exemple.fr".to_string());
+        let mut after = envelope(2, "from today", 1_500, false);
+        after.sender_address = Some("ancien@exemple.fr".to_string());
+        // The unknown one: first message AFTER the epoch.
+        let mut unknown = envelope(3, "first time", 1_600, false);
+        unknown.sender = Some("New Arrival".to_string());
+        unknown.sender_address = Some("Nouv@Exemple.FR".to_string());
         store
-            .upsert_envelopes(inbox, &[avant, apres, inconnu])
+            .upsert_envelopes(inbox, &[before, after, unknown])
             .unwrap();
 
         let page = store
@@ -9355,53 +9427,54 @@ Etape : {etape}\nPlan :\n{}",
         assert_eq!(
             page.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
             vec![2, 1],
-            "la Réception organisée ne sert que l'ancien"
+            "the organized Inbox only serves the known sender"
         );
         assert_eq!(
             store.reception_organisee_count_scoped(None, false).unwrap(),
             2,
-            "le total suit le flot (exclusion partagée)"
+            "the total follows the flow (shared exclusion)"
         );
         assert_eq!(
             store.unified_count_scoped(None, false).unwrap(),
             3,
-            "le mode classique montre TOUJOURS tout"
+            "classic mode ALWAYS shows everything"
         );
-        let attente = store.portier_attente().unwrap();
-        assert_eq!(attente.len(), 1);
-        assert_eq!(attente[0].address, "nouv@exemple.fr");
+        let waiting = store.screener_waiting().unwrap();
+        assert_eq!(waiting.len(), 1);
+        assert_eq!(waiting[0].address, "nouv@exemple.fr");
         assert_eq!(
-            attente[0].ligne.envelope.uid, 3,
-            "le rang porte son dernier message"
+            waiting[0].row.envelope.uid, 3,
+            "the rank carries its last message"
         );
-        assert_eq!(store.portier_total().unwrap(), 1);
+        assert_eq!(store.screener_total().unwrap(), 1);
     }
 
-    /// Le guichet du Portier : le Oui nu rend l'expéditeur à la
-    /// Réception, le Non avec règle l'écarte — dans les DEUX cas il
-    /// quitte l'attente, et l'historique dit la règle choisie.
+    /// The Screener gate: a plain Yes returns the sender to the
+    /// Inbox, a No with a rule screens it out — in BOTH cases it
+    /// leaves the waiting list, and the history records the rule
+    /// chosen.
     #[test]
-    fn le_oui_libere_le_non_ecarte_et_l_attente_se_vide() {
+    fn a_yes_releases_a_no_screens_out_and_the_waiting_list_empties() {
         let (mut store, inbox) = store_with_mailbox();
-        store.set_mode_organise(true, 1_000).unwrap();
-        let mut a = envelope(1, "bonjour", 1_500, false);
+        store.set_organized_mode(true, 1_000).unwrap();
+        let mut a = envelope(1, "hello", 1_500, false);
         a.sender_address = Some("a@exemple.fr".to_string());
-        let mut b = envelope(2, "offre", 1_600, false);
+        let mut b = envelope(2, "offer", 1_600, false);
         b.sender_address = Some("b@exemple.fr".to_string());
         store.upsert_envelopes(inbox, &[a, b]).unwrap();
-        assert_eq!(store.portier_attente().unwrap().len(), 2);
+        assert_eq!(store.screener_waiting().unwrap().len(), 2);
         assert_eq!(
             store.reception_organisee_count_scoped(None, false).unwrap(),
             0
         );
 
-        // Oui nu → Réception : le fil revient, page ET total.
+        // Plain Yes → Inbox: the thread comes back, page AND total.
         store
-            .router_expediteur("a@exemple.fr", "reception", None, 2_000)
+            .route_sender("a@exemple.fr", "reception", None, 2_000)
             .unwrap();
         assert_eq!(
             store
-                .portier_attente()
+                .screener_waiting()
                 .unwrap()
                 .iter()
                 .map(|r| r.address.as_str())
@@ -9418,206 +9491,213 @@ Etape : {etape}\nPlan :\n{}",
             1
         );
 
-        // Non avec règle → écarté : hors Réception, hors vues servies,
-        // et l'historique porte la règle.
+        // No with a rule → screened out: out of the Inbox, out of
+        // every served view, and the history carries the rule.
         store
-            .router_expediteur("b@exemple.fr", "ecarte", Some("archive"), 2_100)
+            .route_sender("b@exemple.fr", "ecarte", Some("archive"), 2_100)
             .unwrap();
-        assert!(store.portier_attente().unwrap().is_empty());
-        assert_eq!(store.portier_total().unwrap(), 0);
+        assert!(store.screener_waiting().unwrap().is_empty());
+        assert_eq!(store.screener_total().unwrap(), 0);
         assert_eq!(
             store.reception_organisee_count_scoped(None, false).unwrap(),
             1,
-            "l'écarté ne revient pas en Réception"
+            "the screened-out sender does not return to the Inbox"
         );
         assert!(
             store
                 .routage_unified_scoped("kiosque", None, false, 0, 10)
                 .unwrap()
                 .is_empty(),
-            "écarté n'est pas une vue servie"
+            "screened out is not a served view"
         );
-        let verdict = store.routage_de("b@exemple.fr").unwrap().unwrap();
+        let verdict = store.routing_of("b@exemple.fr").unwrap().unwrap();
         assert_eq!(
-            (verdict.destination.as_str(), verdict.regle.as_deref()),
+            (verdict.destination.as_str(), verdict.rule.as_deref()),
             ("ecarte", Some("archive"))
         );
     }
 
-    /// « Réintégrer » à l'historique = DELETE de la ligne : un inconnu
-    /// écarté REVIENT au Portier (ses messages réapparaissent), un
-    /// ancien routé revient simplement en Réception — jamais au
-    /// Portier, son courrier d'avant l'époque fait foi.
+    /// "Reinstate" from the history = DELETE of the row: a
+    /// screened-out unknown sender RETURNS to the Screener (their
+    /// messages reappear), a routed known sender simply returns to
+    /// the Inbox — never to the Screener, their pre-epoch mail is
+    /// proof enough.
     #[test]
-    fn la_reintegration_rend_l_inconnu_au_portier_et_l_ancien_a_la_reception() {
+    fn reinstating_returns_the_unknown_sender_to_the_screener_and_the_known_one_to_the_inbox() {
         let (mut store, inbox) = store_with_mailbox();
-        store.set_mode_organise(true, 1_000).unwrap();
-        let mut ancien = envelope(1, "d'hier", 500, true);
-        ancien.sender_address = Some("ancien@exemple.fr".to_string());
-        let mut inconnu = envelope(2, "premiere fois", 1_500, false);
-        inconnu.sender_address = Some("nouv@exemple.fr".to_string());
-        store.upsert_envelopes(inbox, &[ancien, inconnu]).unwrap();
+        store.set_organized_mode(true, 1_000).unwrap();
+        let mut known = envelope(1, "from yesterday", 500, true);
+        known.sender_address = Some("ancien@exemple.fr".to_string());
+        let mut unknown = envelope(2, "first time", 1_500, false);
+        unknown.sender_address = Some("nouv@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[known, unknown]).unwrap();
         store
-            .router_expediteur("nouv@exemple.fr", "ecarte", Some("spam"), 2_000)
+            .route_sender("nouv@exemple.fr", "ecarte", Some("spam"), 2_000)
             .unwrap();
         store
-            .router_expediteur("ancien@exemple.fr", "kiosque", None, 2_000)
+            .route_sender("ancien@exemple.fr", "kiosque", None, 2_000)
             .unwrap();
-        assert!(store.portier_attente().unwrap().is_empty());
+        assert!(store.screener_waiting().unwrap().is_empty());
         assert_eq!(
             store.reception_organisee_count_scoped(None, false).unwrap(),
             0
         );
 
-        store.retirer_routage("nouv@exemple.fr").unwrap();
-        let attente = store.portier_attente().unwrap();
-        assert_eq!(attente.len(), 1, "l'inconnu réintégré re-attend au Portier");
-        assert_eq!(attente[0].address, "nouv@exemple.fr");
-
-        store.retirer_routage("ancien@exemple.fr").unwrap();
+        store.remove_routing("nouv@exemple.fr").unwrap();
+        let waiting = store.screener_waiting().unwrap();
         assert_eq!(
-            store.portier_attente().unwrap().len(),
+            waiting.len(),
             1,
-            "l'ancien ne passe JAMAIS au Portier : son courrier d'avant l'époque fait foi"
+            "the reinstated unknown sender waits again at the Screener"
+        );
+        assert_eq!(waiting[0].address, "nouv@exemple.fr");
+
+        store.remove_routing("ancien@exemple.fr").unwrap();
+        assert_eq!(
+            store.screener_waiting().unwrap().len(),
+            1,
+            "the known sender NEVER goes through the Screener: their pre-epoch mail is proof enough"
         );
         assert_eq!(
             store.reception_organisee_count_scoped(None, false).unwrap(),
             1,
-            "l'ancien est rendu à la Réception"
+            "the known sender is returned to the Inbox"
         );
     }
 
-    /// Règle d'or — jamais perdre de courrier : un fil MÊLÉ (un inconnu
-    /// répond dans le fil d'un connu) RESTE en Réception ; l'inconnu
-    /// attend quand même au Portier. La rétention ne prend un fil que
-    /// s'il est ENTIÈREMENT à des expéditeurs en attente.
+    /// Golden rule — never lose mail: a MIXED thread (an unknown
+    /// sender replies in a known sender's thread) STAYS in the Inbox;
+    /// the unknown sender still waits at the Screener. Retention only
+    /// takes a thread if it belongs ENTIRELY to waiting senders.
     #[test]
-    fn un_fil_mele_reste_en_reception_et_l_inconnu_attend_quand_meme() {
+    fn a_mixed_thread_stays_in_the_inbox_and_the_unknown_sender_still_waits() {
         let (mut store, inbox) = store_with_mailbox();
-        store.set_mode_organise(true, 1_000).unwrap();
-        let mut hier = envelope(1, "hier", 500, true);
-        hier.sender_address = Some("connu@exemple.fr".to_string());
-        let mut racine = envelope(2, "projet", 1_500, false);
-        racine.sender_address = Some("connu@exemple.fr".to_string());
-        store.upsert_envelopes(inbox, &[hier, racine]).unwrap();
-        let mut intrus = envelope(3, "Re: projet", 1_600, false);
-        intrus.sender_address = Some("nouv@exemple.fr".to_string());
-        intrus.in_reply_to = Some("<m2@example.com>".to_string());
-        store.upsert_envelopes(inbox, &[intrus]).unwrap();
+        store.set_organized_mode(true, 1_000).unwrap();
+        let mut yesterday = envelope(1, "yesterday", 500, true);
+        yesterday.sender_address = Some("connu@exemple.fr".to_string());
+        let mut root = envelope(2, "project", 1_500, false);
+        root.sender_address = Some("connu@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[yesterday, root]).unwrap();
+        let mut intruder = envelope(3, "Re: project", 1_600, false);
+        intruder.sender_address = Some("nouv@exemple.fr".to_string());
+        intruder.in_reply_to = Some("<m2@example.com>".to_string());
+        store.upsert_envelopes(inbox, &[intruder]).unwrap();
 
         assert_eq!(
             store.reception_organisee_count_scoped(None, false).unwrap(),
             2,
-            "le fil mêlé et le fil d'hier restent en Réception"
+            "the mixed thread and yesterday's thread stay in the Inbox"
         );
-        let attente = store.portier_attente().unwrap();
+        let waiting = store.screener_waiting().unwrap();
         assert_eq!(
-            attente
+            waiting
                 .iter()
                 .map(|r| r.address.as_str())
                 .collect::<Vec<_>>(),
             vec!["nouv@exemple.fr"],
-            "l'inconnu attend au Portier même si son fil est mêlé"
+            "the unknown sender waits at the Screener even though their thread is mixed"
         );
     }
 
-    /// Jamais soi au Portier (leçon E1 « jamais sa propre adresse »),
-    /// et jamais une attente sans adresse.
+    /// Never yourself at the Screener (E1 lesson "never your own
+    /// address"), and never a waiting entry without an address.
     #[test]
-    fn jamais_soi_ni_sans_adresse_au_portier() {
+    fn never_yourself_or_without_an_address_at_the_screener() {
         let (mut store, inbox) = store_with_mailbox();
-        store.set_mode_organise(true, 1_000).unwrap();
-        let mut soi = envelope(1, "note a moi-meme", 1_500, false);
-        soi.sender_address = Some("Test@Exemple.FR".to_string());
-        let mut muet = envelope(2, "anonyme", 1_600, false);
-        muet.sender_address = None;
-        store.upsert_envelopes(inbox, &[soi, muet]).unwrap();
-        assert!(store.portier_attente().unwrap().is_empty());
+        store.set_organized_mode(true, 1_000).unwrap();
+        let mut self_mail = envelope(1, "note to self", 1_500, false);
+        self_mail.sender_address = Some("Test@Exemple.FR".to_string());
+        let mut silent = envelope(2, "anonymous", 1_600, false);
+        silent.sender_address = None;
+        store.upsert_envelopes(inbox, &[self_mail, silent]).unwrap();
+        assert!(store.screener_waiting().unwrap().is_empty());
         assert_eq!(
             store.reception_organisee_count_scoped(None, false).unwrap(),
             2,
-            "rien n'est retenu : ni soi, ni un message sans adresse"
+            "nothing is held back: neither ourselves nor a message without an address"
         );
     }
 
-    /// La synchro n'arrive pas dans l'ordre : si le courrier ANCIEN
-    /// d'un expéditeur (antérieur à l'époque) arrive APRÈS son courrier
-    /// neuf, l'attente posée à tort se défait et le fil est libéré —
-    /// l'expéditeur était connu, la base ne le savait pas encore.
+    /// Sync does not arrive in order: if a sender's OLD mail
+    /// (predating the epoch) arrives AFTER their new mail, the
+    /// waiting entry wrongly set unwinds and the thread is released —
+    /// the sender was known, the database just did not know it yet.
     #[test]
-    fn le_courrier_ancien_qui_arrive_apres_coup_defait_l_attente() {
+    fn old_mail_arriving_after_the_fact_undoes_the_waiting_entry() {
         let (mut store, inbox) = store_with_mailbox();
-        store.set_mode_organise(true, 1_000).unwrap();
-        let mut neuf = envelope(1, "recent", 1_500, false);
-        neuf.sender_address = Some("connu@exemple.fr".to_string());
-        store.upsert_envelopes(inbox, &[neuf]).unwrap();
-        assert_eq!(store.portier_attente().unwrap().len(), 1);
+        store.set_organized_mode(true, 1_000).unwrap();
+        let mut new_mail = envelope(1, "recent", 1_500, false);
+        new_mail.sender_address = Some("connu@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[new_mail]).unwrap();
+        assert_eq!(store.screener_waiting().unwrap().len(), 1);
 
-        let mut ancien = envelope(2, "l'historique arrive", 500, true);
-        ancien.sender_address = Some("connu@exemple.fr".to_string());
-        store.upsert_envelopes(inbox, &[ancien]).unwrap();
+        let mut old_mail = envelope(2, "history arrives", 500, true);
+        old_mail.sender_address = Some("connu@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[old_mail]).unwrap();
         assert!(
-            store.portier_attente().unwrap().is_empty(),
-            "le courrier d'avant l'époque prouve le connu"
+            store.screener_waiting().unwrap().is_empty(),
+            "pre-epoch mail proves the sender is known"
         );
         assert_eq!(
             store.reception_organisee_count_scoped(None, false).unwrap(),
             2,
-            "ses fils sont libérés, page et totaux"
+            "their threads are released, page and totals"
         );
     }
 
-    /// L'attente est DÉRIVÉE du courrier : quand la boîte se
-    /// réinitialise (UIDVALIDITY), les rangs du Portier qui ne
-    /// s'appuient plus sur rien meurent avec elle (leçon A43/A89 — un
-    /// UID recyclé ne doit hériter d'aucune décision).
+    /// Waiting entries are DERIVED from mail: when the mailbox resets
+    /// (UIDVALIDITY), the Screener ranks that no longer rest on
+    /// anything die with it (A43/A89 lesson — a recycled UID must
+    /// inherit no decision).
     #[test]
-    fn l_attente_meurt_avec_le_courrier_qui_la_portait() {
+    fn the_waiting_entry_dies_with_the_mail_that_carried_it() {
         let (mut store, inbox) = store_with_mailbox();
-        store.set_mode_organise(true, 1_000).unwrap();
-        let mut inconnu = envelope(1, "premiere fois", 1_500, false);
-        inconnu.sender_address = Some("nouv@exemple.fr".to_string());
-        store.upsert_envelopes(inbox, &[inconnu]).unwrap();
-        assert_eq!(store.portier_attente().unwrap().len(), 1);
+        store.set_organized_mode(true, 1_000).unwrap();
+        let mut unknown = envelope(1, "first time", 1_500, false);
+        unknown.sender_address = Some("nouv@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[unknown]).unwrap();
+        assert_eq!(store.screener_waiting().unwrap().len(), 1);
 
         store.reset_mailbox(inbox, 2).unwrap();
         assert!(
-            store.portier_attente().unwrap().is_empty(),
-            "plus de courrier, plus d'attente"
+            store.screener_waiting().unwrap().is_empty(),
+            "no more mail, no more waiting"
         );
-        assert_eq!(store.portier_total().unwrap(), 0);
+        assert_eq!(store.screener_total().unwrap(), 0);
     }
 
-    /// Revue E2, règle d'or — jamais perdre de courrier : le Non sur un
-    /// INTRUS (un écarté qui a répondu dans le fil d'un connu) ne cache
-    /// pas le fil du connu. `ecarte` n'a AUCUNE vue servie : cacher le
-    /// fil mêlé le ferait disparaître de partout. Seul un fil
-    /// ENTIÈREMENT aux écartés/attente se cache.
+    /// Review E2, golden rule — never lose mail: a No on an INTRUDER
+    /// (a screened-out sender who replied in a known sender's thread)
+    /// does not hide the known sender's thread. `ecarte` has NO
+    /// served view: hiding the mixed thread would make it disappear
+    /// everywhere. Only a thread ENTIRELY made of screened-out/waiting
+    /// senders gets hidden.
     #[test]
-    fn le_non_sur_un_intrus_ne_cache_pas_le_fil_du_connu() {
+    fn a_no_on_an_intruder_does_not_hide_the_known_senders_thread() {
         let (mut store, inbox) = store_with_mailbox();
-        store.set_mode_organise(true, 1_000).unwrap();
-        let mut hier = envelope(1, "hier", 500, true);
-        hier.sender_address = Some("connu@exemple.fr".to_string());
-        let mut racine = envelope(2, "projet", 1_500, false);
-        racine.sender_address = Some("connu@exemple.fr".to_string());
-        let mut intrus = envelope(3, "Re: projet", 1_600, false);
-        intrus.sender_address = Some("spam@exemple.fr".to_string());
-        intrus.in_reply_to = Some("<m2@example.com>".to_string());
+        store.set_organized_mode(true, 1_000).unwrap();
+        let mut yesterday = envelope(1, "yesterday", 500, true);
+        yesterday.sender_address = Some("connu@exemple.fr".to_string());
+        let mut root = envelope(2, "project", 1_500, false);
+        root.sender_address = Some("connu@exemple.fr".to_string());
+        let mut intruder = envelope(3, "Re: project", 1_600, false);
+        intruder.sender_address = Some("spam@exemple.fr".to_string());
+        intruder.in_reply_to = Some("<m2@example.com>".to_string());
         store
-            .upsert_envelopes(inbox, &[hier, racine, intrus])
+            .upsert_envelopes(inbox, &[yesterday, root, intruder])
             .unwrap();
-        // Un inconnu SEUL, écarté lui aussi : son fil, entièrement à
-        // lui, se cache — le contraste qui prouve la règle.
-        let mut seul = envelope(4, "offre", 1_700, false);
-        seul.sender_address = Some("promo@exemple.fr".to_string());
-        store.upsert_envelopes(inbox, &[seul]).unwrap();
+        // An unknown sender ALONE, screened out too: their thread,
+        // entirely theirs, gets hidden — the contrast that proves the
+        // rule.
+        let mut alone = envelope(4, "offer", 1_700, false);
+        alone.sender_address = Some("promo@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[alone]).unwrap();
 
         store
-            .router_expediteur("spam@exemple.fr", "ecarte", Some("spam"), 2_000)
+            .route_sender("spam@exemple.fr", "ecarte", Some("spam"), 2_000)
             .unwrap();
         store
-            .router_expediteur("promo@exemple.fr", "ecarte", None, 2_000)
+            .route_sender("promo@exemple.fr", "ecarte", None, 2_000)
             .unwrap();
         let page = store
             .reception_organisee_scoped(None, false, 0, 10)
@@ -9625,7 +9705,7 @@ Etape : {etape}\nPlan :\n{}",
         assert_eq!(
             page.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
             vec![3, 1],
-            "le fil mêlé du connu RESTE (tête intruse comprise), le fil du promo seul se cache"
+            "the known sender's mixed thread STAYS (intruder head included), the promo-only thread gets hidden"
         );
         assert_eq!(
             store.reception_organisee_count_scoped(None, false).unwrap(),
@@ -9636,143 +9716,147 @@ Etape : {etape}\nPlan :\n{}",
                 .routage_unified_scoped("kiosque", None, false, 0, 10)
                 .unwrap()
                 .is_empty(),
-            "écarté n'est pas une vue servie"
+            "screened out is not a served view"
         );
     }
 
-    /// Un message SANS en-tête Date ne prouve JAMAIS le connu : le
-    /// traiter comme antérieur à l'époque ferait contourner le guichet
-    /// par les expéditeurs mêmes qu'il existe pour trier (le spam sans
-    /// Date est courant) — et défairait une attente légitime.
+    /// A message WITHOUT a Date header NEVER proves the known status:
+    /// treating it as predating the epoch would let it bypass the
+    /// very gate that exists to sort those senders (spam without a
+    /// Date is common) — and would undo a legitimate waiting entry.
     #[test]
-    fn un_message_sans_date_n_est_jamais_une_preuve_de_connu() {
+    fn a_message_without_a_date_is_never_proof_of_a_known_sender() {
         let (mut store, inbox) = store_with_mailbox();
-        store.set_mode_organise(true, 1_000).unwrap();
-        let mut sans_date = envelope(1, "sans date", 0, false);
-        sans_date.sender_address = Some("nouv@exemple.fr".to_string());
-        sans_date.date = None;
-        store.upsert_envelopes(inbox, &[sans_date]).unwrap();
+        store.set_organized_mode(true, 1_000).unwrap();
+        let mut without_date = envelope(1, "no date", 0, false);
+        without_date.sender_address = Some("nouv@exemple.fr".to_string());
+        without_date.date = None;
+        store.upsert_envelopes(inbox, &[without_date]).unwrap();
         assert_eq!(
-            store.portier_attente().unwrap().len(),
+            store.screener_waiting().unwrap().len(),
             1,
-            "l'inconnu sans date attend au guichet — jamais un contournement"
+            "the dateless unknown sender waits at the gate — never a bypass"
         );
 
-        let mut datee = envelope(2, "datee", 1_500, false);
-        datee.sender_address = Some("autre@exemple.fr".to_string());
-        let mut sans_date2 = envelope(3, "re-sans date", 0, false);
-        sans_date2.sender_address = Some("autre@exemple.fr".to_string());
-        sans_date2.date = None;
-        store.upsert_envelopes(inbox, &[datee, sans_date2]).unwrap();
+        let mut dated = envelope(2, "dated", 1_500, false);
+        dated.sender_address = Some("autre@exemple.fr".to_string());
+        let mut without_date2 = envelope(3, "re-no date", 0, false);
+        without_date2.sender_address = Some("autre@exemple.fr".to_string());
+        without_date2.date = None;
+        store
+            .upsert_envelopes(inbox, &[dated, without_date2])
+            .unwrap();
         assert_eq!(
             store
-                .portier_attente()
+                .screener_waiting()
                 .unwrap()
                 .iter()
                 .filter(|r| r.address == "autre@exemple.fr")
                 .count(),
             1,
-            "un second message sans date ne défait pas l'attente"
+            "a second dateless message does not undo the waiting entry"
         );
     }
 
-    /// La réintégration suit la MÊME règle que l'arrivée (D3) : seul un
-    /// expéditeur dont du courrier est ARRIVÉ (INBOX) après l'époque
-    /// re-attend au Portier — un expéditeur vu seulement en Archives ou
-    /// aux Indésirables n'a jamais passé le guichet, il n'y entre pas
-    /// par la porte de sortie.
+    /// Reinstating follows the SAME rule as arrival (D3): only a
+    /// sender with mail that ARRIVED (INBOX) after the epoch waits at
+    /// the Screener again — a sender seen only in Archive or Junk
+    /// never went through the gate, and does not enter through the
+    /// exit door.
     #[test]
-    fn la_reintegration_n_admet_que_les_arrivees() {
+    fn reinstating_only_admits_arrivals() {
         let (mut store, inbox) = store_with_mailbox();
-        store.set_mode_organise(true, 1_000).unwrap();
-        let archives = store
+        store.set_organized_mode(true, 1_000).unwrap();
+        let archive = store
             .create_mailbox(test_account(&store), "Archives", 1)
             .unwrap();
-        let mut hors_guichet = envelope(1, "vu en archives", 1_500, true);
-        hors_guichet.sender_address = Some("ailleurs@exemple.fr".to_string());
-        store.upsert_envelopes(archives, &[hors_guichet]).unwrap();
-        let mut arrive = envelope(1, "arrive", 1_600, false);
-        arrive.sender_address = Some("guichet@exemple.fr".to_string());
-        store.upsert_envelopes(inbox, &[arrive]).unwrap();
+        let mut outside_the_gate = envelope(1, "seen in archive", 1_500, true);
+        outside_the_gate.sender_address = Some("ailleurs@exemple.fr".to_string());
+        store
+            .upsert_envelopes(archive, &[outside_the_gate])
+            .unwrap();
+        let mut arrived = envelope(1, "arrived", 1_600, false);
+        arrived.sender_address = Some("guichet@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[arrived]).unwrap();
 
         store
-            .router_expediteur("ailleurs@exemple.fr", "ecarte", None, 2_000)
+            .route_sender("ailleurs@exemple.fr", "ecarte", None, 2_000)
             .unwrap();
         store
-            .router_expediteur("guichet@exemple.fr", "ecarte", None, 2_000)
+            .route_sender("guichet@exemple.fr", "ecarte", None, 2_000)
             .unwrap();
-        store.retirer_routage("ailleurs@exemple.fr").unwrap();
-        store.retirer_routage("guichet@exemple.fr").unwrap();
+        store.remove_routing("ailleurs@exemple.fr").unwrap();
+        store.remove_routing("guichet@exemple.fr").unwrap();
         assert_eq!(
             store
-                .portier_attente()
+                .screener_waiting()
                 .unwrap()
                 .iter()
                 .map(|r| r.address.as_str())
                 .collect::<Vec<_>>(),
             vec!["guichet@exemple.fr"],
-            "seule l'arrivée réintègre au guichet"
+            "only the arrival reinstates at the gate"
         );
     }
 
-    /// La pastille et le guichet ne disent que les ARRIVÉES : un
-    /// message du même expéditeur vivant ailleurs (corbeille,
-    /// archives) n'est ni compté ni servi comme rang.
+    /// The badge and the gate only report ARRIVALS: a message from
+    /// the same sender living elsewhere (trash, archive) is neither
+    /// counted nor served as a rank.
     #[test]
-    fn le_guichet_ne_compte_que_les_arrivees() {
+    fn the_gate_only_counts_arrivals() {
         let (mut store, inbox) = store_with_mailbox();
-        store.set_mode_organise(true, 1_000).unwrap();
-        let corbeille = store
+        store.set_organized_mode(true, 1_000).unwrap();
+        let trash = store
             .create_mailbox(test_account(&store), "Corbeille", 1)
             .unwrap();
-        let mut arrive = envelope(1, "arrive", 1_500, false);
-        arrive.sender_address = Some("nouv@exemple.fr".to_string());
-        store.upsert_envelopes(inbox, &[arrive]).unwrap();
-        let mut jetee = envelope(1, "deja jetee", 1_600, false);
-        jetee.sender_address = Some("nouv@exemple.fr".to_string());
-        store.upsert_envelopes(corbeille, &[jetee]).unwrap();
+        let mut arrived = envelope(1, "arrived", 1_500, false);
+        arrived.sender_address = Some("nouv@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[arrived]).unwrap();
+        let mut thrown_away = envelope(1, "already thrown away", 1_600, false);
+        thrown_away.sender_address = Some("nouv@exemple.fr".to_string());
+        store.upsert_envelopes(trash, &[thrown_away]).unwrap();
 
         assert_eq!(
-            store.portier_total().unwrap(),
+            store.screener_total().unwrap(),
             1,
-            "la corbeille ne compte pas"
+            "the trash does not count"
         );
-        let attente = store.portier_attente().unwrap();
-        assert_eq!(attente.len(), 1);
+        let waiting = store.screener_waiting().unwrap();
+        assert_eq!(waiting.len(), 1);
         assert_eq!(
-            attente[0].ligne.envelope.uid, 1,
-            "le rang montre l'arrivée, jamais le message jeté"
+            waiting[0].row.envelope.uid, 1,
+            "the rank shows the arrival, never the discarded message"
         );
-        assert_eq!(attente[0].ligne.mailbox, "INBOX");
+        assert_eq!(waiting[0].row.mailbox, "INBOX");
     }
 
-    /// L'exclusion partagée s'étend aux ÉPINGLES et au compteur de la
-    /// nav : en Réception organisée, un fil épinglé routé au Kiosque ne
-    /// se prépose plus (il vit dans sa vue), et le non-lu d'un retenu ne
-    /// gonfle pas la pastille de la Réception — le classique, lui, ne
-    /// bouge pas.
+    /// Shared exclusion extends to PINS and to the nav counter: in
+    /// the organized Inbox, a pinned thread routed to the Feed no
+    /// longer surfaces (it lives in its own view), and the unread
+    /// count of a held-back sender does not inflate the Inbox badge —
+    /// classic mode, meanwhile, does not move.
     #[test]
-    fn les_epingles_et_la_pastille_suivent_l_exclusion_partagee() {
+    fn pins_and_the_badge_follow_the_shared_exclusion() {
         let (mut store, inbox) = store_with_mailbox();
-        store.set_mode_organise(true, 1_000).unwrap();
-        let mut lettre = envelope(1, "la lettre", 500, false);
-        lettre.sender_address = Some("lettre@exemple.fr".to_string());
-        let ordinaire = envelope(2, "bonjour", 600, false);
-        store.upsert_envelopes(inbox, &[lettre, ordinaire]).unwrap();
+        store.set_organized_mode(true, 1_000).unwrap();
+        let mut letter = envelope(1, "the letter", 500, false);
+        letter.sender_address = Some("lettre@exemple.fr".to_string());
+        let ordinary = envelope(2, "hello", 600, false);
+        store.upsert_envelopes(inbox, &[letter, ordinary]).unwrap();
         assert!(store.toggle_pin(inbox, 1, 700).unwrap());
         store
-            .router_expediteur("lettre@exemple.fr", "kiosque", None, 2_000)
+            .route_sender("lettre@exemple.fr", "kiosque", None, 2_000)
             .unwrap();
-        let mut retenu = envelope(3, "premiere fois", 1_500, false);
-        retenu.sender_address = Some("nouv@exemple.fr".to_string());
-        store.upsert_envelopes(inbox, &[retenu]).unwrap();
+        let mut held_back = envelope(3, "first time", 1_500, false);
+        held_back.sender_address = Some("nouv@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[held_back]).unwrap();
 
         assert!(
             store
                 .pinned_unified_scoped(None, false, true)
                 .unwrap()
                 .is_empty(),
-            "l'épingle d'un fil routé ne se prépose plus en Réception organisée"
+            "a routed thread's pin no longer surfaces in the organized Inbox"
         );
         assert_eq!(
             store
@@ -9780,34 +9864,34 @@ Etape : {etape}\nPlan :\n{}",
                 .unwrap()
                 .len(),
             1,
-            "le classique garde son épingle"
+            "classic mode keeps its pin"
         );
-        let compte = test_account(&store);
-        let dossiers = store.canonical_folders(compte).unwrap();
-        let (organise, _) = store.nav_unread_counts(compte, &dossiers, true).unwrap();
+        let account = test_account(&store);
+        let folders = store.canonical_folders(account).unwrap();
+        let (organized, _) = store.nav_unread_counts(account, &folders, true).unwrap();
         assert_eq!(
-            organise, 1,
-            "seul l'ordinaire non-lu compte (le routé épinglé et le retenu, non)"
+            organized, 1,
+            "only the ordinary unread message counts (the pinned routed one and the held-back one do not)"
         );
-        let (classique, _) = store.nav_unread_counts(compte, &dossiers, false).unwrap();
-        assert_eq!(classique, 3);
+        let (classic, _) = store.nav_unread_counts(account, &folders, false).unwrap();
+        assert_eq!(classic, 3);
     }
 
-    /// E1 → E2 au terrain : le mode a pu être ACTIVÉ avant cette
-    /// version (terrain E1 sur les postes du CE) — les inconnus
-    /// arrivés entre l'activation et la mise à jour se rattrapent à la
-    /// migration, sinon ils passeraient le guichet pour toujours, en
-    /// silence. Décor : une base E2 dont on efface les artefacts E2
-    /// (colonne + attente) pour rejouer l'état E1 exact, puis une
-    /// réouverture.
+    /// E1 → E2 in the field: the mode may have been ACTIVATED before
+    /// this version (E1 in the field, on the CE's workstations) —
+    /// unknown senders who arrived between activation and the update
+    /// get caught up by the migration, otherwise they would bypass
+    /// the gate forever, silently. Fixture: an E2 database whose E2
+    /// artifacts (column + waiting entries) are erased to replay the
+    /// exact E1 state, then a reopen.
     #[test]
-    fn la_migration_rattrape_l_attente_d_une_base_d_avant_e2() {
+    fn the_migration_catches_up_the_waiting_list_of_a_pre_e2_database() {
         let path = std::env::temp_dir().join(format!(
             "wind-test-rattrapage-portier-{}.db",
             std::process::id()
         ));
-        for suffixe in ["", "-wal", "-shm"] {
-            let _ = std::fs::remove_file(format!("{}{suffixe}", path.display()));
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
         }
         {
             let mut store = Store::open(&path).unwrap();
@@ -9815,15 +9899,16 @@ Etape : {etape}\nPlan :\n{}",
                 .adopt_or_create_account("test@exemple.fr", "gmail")
                 .unwrap();
             let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
-            store.set_mode_organise(true, 1_000).unwrap();
-            let mut ancien = envelope(1, "d'hier", 500, true);
-            ancien.sender_address = Some("ancien@exemple.fr".to_string());
-            let mut inconnu = envelope(2, "premiere fois", 1_500, false);
-            inconnu.sender_address = Some("nouv@exemple.fr".to_string());
-            store.upsert_envelopes(inbox, &[ancien, inconnu]).unwrap();
-            // Rejoue l'état E1 : ni colonne de drapeau, ni attente.
-            // Reconstruction (pas de DROP COLUMN : SQLite bute sur les
-            // commentaires du SQL stocké — « incomplete input »).
+            store.set_organized_mode(true, 1_000).unwrap();
+            let mut known = envelope(1, "from yesterday", 500, true);
+            known.sender_address = Some("ancien@exemple.fr".to_string());
+            let mut unknown = envelope(2, "first time", 1_500, false);
+            unknown.sender_address = Some("nouv@exemple.fr".to_string());
+            store.upsert_envelopes(inbox, &[known, unknown]).unwrap();
+            // Replays E1 state: neither the flag column nor a waiting
+            // entry.
+            // Reconstruction (not DROP COLUMN: SQLite chokes on the
+            // comments in the stored SQL — "incomplete input").
             store
                 .0
                 .execute_batch(
@@ -9838,116 +9923,116 @@ Etape : {etape}\nPlan :\n{}",
                 )
                 .unwrap();
         }
-        Store::oublier_initialisation(&path);
+        Store::forget_initialization(&path);
         let store = Store::open(&path).unwrap();
-        let attente = store.portier_attente().unwrap();
+        let waiting = store.screener_waiting().unwrap();
         assert_eq!(
-            attente
+            waiting
                 .iter()
                 .map(|r| r.address.as_str())
                 .collect::<Vec<_>>(),
             vec!["nouv@exemple.fr"],
-            "l'inconnu d'avant la mise à jour re-attend au guichet"
+            "the pre-update unknown sender waits at the gate again"
         );
         assert_eq!(
             store.reception_organisee_count_scoped(None, false).unwrap(),
             1,
-            "son fil est retenu, celui de l'ancien reste"
+            "their thread is held back, the known sender's stays"
         );
         drop(store);
-        for suffixe in ["", "-wal", "-shm"] {
-            let _ = std::fs::remove_file(format!("{}{suffixe}", path.display()));
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
         }
     }
 
-    /// PLAN-MODE-ORGANISE E3 — les règles du Non à la synchro. Un
-    /// message qui ARRIVE d'un expéditeur écarté AVEC règle est traité
-    /// PLAN-HORIZON-NETTOYAGE volet B (D5-D8) — la session de
-    /// nettoyage : une seule, persistée ; démarrer fige la borne et
-    /// compte les groupes ; le verdict de GROUPE route l'avenir ET
-    /// traite le stock DE LA PLAGE (jamais l'antérieur) ; la
-    /// progression avance ; terminer efface la session.
+    /// PLAN-MODE-ORGANISE E3 — the No rules at sync time. A message
+    /// that ARRIVES from a screened-out sender WITH a rule is handled
+    /// as PLAN-HORIZON-NETTOYAGE panel B (D5-D8) — the cleanup
+    /// session: a single one, persisted; starting freezes the bound
+    /// and counts the groups; a GROUP verdict routes the future AND
+    /// processes the stock WITHIN THE RANGE (never what precedes it);
+    /// progress advances; finishing erases the session.
     #[test]
-    fn nettoyage_session_groupes_verdicts_et_progression() {
-        const JOUR: i64 = 86_400;
-        let now = 100 * JOUR;
+    fn cleanup_session_groups_verdicts_and_progress() {
+        const DAY: i64 = 86_400;
+        let now = 100 * DAY;
         let (mut store, inbox) = store_with_mailbox();
-        store.set_mode_organise(true, 1_000).unwrap();
+        store.set_organized_mode(true, 1_000).unwrap();
 
-        let sème = |uid, sujet: &str, epoch, adresse: &str| {
-            let mut e = envelope(uid, sujet, epoch, true);
-            e.sender_address = Some(adresse.to_string());
+        let seed = |uid, subject: &str, epoch, address: &str| {
+            let mut e = envelope(uid, subject, epoch, true);
+            e.sender_address = Some(address.to_string());
             e
         };
         store
             .upsert_envelopes(
                 inbox,
                 &[
-                    sème(1, "lettre", now - 2 * JOUR, "un@exemple.fr"),
-                    sème(2, "relance", now - JOUR, "un@exemple.fr"),
-                    sème(3, "offre", now - 3 * JOUR, "deux@exemple.fr"),
-                    // Le stock ANTÉRIEUR à la plage du même expéditeur :
-                    // jamais touché par le verdict.
-                    sème(5, "tres vieille offre", 500, "deux@exemple.fr"),
-                    // Un expéditeur entièrement hors plage : pas un groupe.
-                    sème(4, "archives", 1_000, "vieux@exemple.fr"),
-                    // Déjà routé (D7) : jamais re-demandé.
-                    sème(6, "news", now - JOUR, "route@exemple.fr"),
-                    // Soi-même : jamais un groupe.
-                    sème(7, "note a moi", now - JOUR, "test@exemple.fr"),
+                    seed(1, "letter", now - 2 * DAY, "un@exemple.fr"),
+                    seed(2, "follow-up", now - DAY, "un@exemple.fr"),
+                    seed(3, "offer", now - 3 * DAY, "deux@exemple.fr"),
+                    // The stock PREDATING the range from the same
+                    // sender: never touched by the verdict.
+                    seed(5, "very old offer", 500, "deux@exemple.fr"),
+                    // A sender entirely outside the range: not a
+                    // group.
+                    seed(4, "archive", 1_000, "vieux@exemple.fr"),
+                    // Already routed (D7): never asked again.
+                    seed(6, "news", now - DAY, "route@exemple.fr"),
+                    // Yourself: never a group.
+                    seed(7, "note to self", now - DAY, "test@exemple.fr"),
                 ],
             )
             .unwrap();
         store
-            .router_expediteur("route@exemple.fr", "kiosque", None, 2_000)
+            .route_sender("route@exemple.fr", "kiosque", None, 2_000)
             .unwrap();
 
-        assert!(store.nettoyage_etat().unwrap().is_none());
+        assert!(store.cleanup_state().unwrap().is_none());
         assert!(
-            store
-                .nettoyage_demarrer("un siecle", "reception", now)
-                .is_err(),
-            "le vocabulaire des plages est fermé"
+            store.cleanup_start("un siecle", "reception", now).is_err(),
+            "the range vocabulary is closed"
         );
         assert!(
-            store.nettoyage_demarrer("3m", "le grenier", now).is_err(),
-            "le vocabulaire des périmètres est fermé"
+            store.cleanup_start("3m", "le grenier", now).is_err(),
+            "the scope vocabulary is closed"
         );
 
-        let session = store.nettoyage_demarrer("3m", "reception", now).unwrap();
-        assert_eq!((session.total, session.traites), (2, 0));
-        let groupes = store.nettoyage_groupes().unwrap();
+        let session = store.cleanup_start("3m", "reception", now).unwrap();
+        assert_eq!((session.total, session.handled), (2, 0));
+        let groups = store.cleanup_groups().unwrap();
         assert_eq!(
-            groupes
+            groups
                 .iter()
                 .map(|g| (g.address.as_str(), g.messages))
                 .collect::<Vec<_>>(),
             vec![("un@exemple.fr", 2), ("deux@exemple.fr", 1)],
-            "les groupes de la plage, le plus récent en tête — routés, soi et hors-plage exclus"
+            "the range's groups, most recent first — routed, self and out-of-range excluded"
         );
 
-        // Oui de groupe : routage seul, aucune action serveur.
+        // Group Yes: routing only, no server action.
         store
-            .nettoyage_verdict("un@exemple.fr", "reception", None, now)
+            .cleanup_verdict("un@exemple.fr", "reception", None, now)
             .unwrap();
         assert!(store.pending_actions(inbox).unwrap().is_empty());
-        let etat = store.nettoyage_etat().unwrap().unwrap();
-        assert_eq!((etat.total, etat.traites), (2, 1));
-        assert_eq!(store.nettoyage_groupes().unwrap().len(), 1);
+        let state = store.cleanup_state().unwrap().unwrap();
+        assert_eq!((state.total, state.handled), (2, 1));
+        assert_eq!(store.cleanup_groups().unwrap().len(), 1);
 
-        // Naviguer dans un groupe : SES messages de la plage, jamais
-        // l'antérieur — la lecture que l'écran de tri offre au clic.
-        let dedans = store.nettoyage_messages("deux@exemple.fr").unwrap();
+        // Navigating into a group: ITS messages from the range,
+        // never what precedes it — the reading the sort screen offers
+        // on click.
+        let inside = store.cleanup_messages("deux@exemple.fr").unwrap();
         assert_eq!(
-            dedans.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
+            inside.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
             vec![3],
-            "le groupe montre son courrier de la plage seulement"
+            "the group shows only its mail from the range"
         );
 
-        // Non + corbeille : le stock DE LA PLAGE part (uid 3), jamais
-        // l'antérieur (uid 5) ; l'action est la corbeille du serveur.
+        // No + trash: the stock WITHIN THE RANGE leaves (uid 3), never
+        // what precedes it (uid 5); the action is the server's trash.
         store
-            .nettoyage_verdict("deux@exemple.fr", "ecarte", Some("corbeille"), now)
+            .cleanup_verdict("deux@exemple.fr", "ecarte", Some("corbeille"), now)
             .unwrap();
         let actions = store.pending_actions(inbox).unwrap();
         assert_eq!(
@@ -9956,89 +10041,88 @@ Etape : {etape}\nPlan :\n{}",
                 .map(|a| (a.uid, a.action.clone()))
                 .collect::<Vec<_>>(),
             vec![(3, Action::Delete)],
-            "le stock de la plage seulement — D4 : jamais une suppression définitive"
+            "the range's stock only — D4: never a permanent delete"
         );
-        let compte = test_account(&store);
+        let account = test_account(&store);
         assert!(
-            store.envelope(compte, "INBOX", 5).unwrap().is_some(),
-            "l'antérieur à la plage reste en base"
+            store.envelope(account, "INBOX", 5).unwrap().is_some(),
+            "what predates the range stays in the database"
         );
         assert!(
-            store.envelope(compte, "INBOX", 3).unwrap().is_none(),
-            "le stock traité quitte la copie locale"
+            store.envelope(account, "INBOX", 3).unwrap().is_none(),
+            "the processed stock leaves the local copy"
         );
-        let etat = store.nettoyage_etat().unwrap().unwrap();
-        assert_eq!((etat.total, etat.traites), (2, 2));
+        let state = store.cleanup_state().unwrap().unwrap();
+        assert_eq!((state.total, state.handled), (2, 2));
 
-        store.nettoyage_terminer().unwrap();
-        assert!(store.nettoyage_etat().unwrap().is_none());
+        store.cleanup_finish().unwrap();
+        assert!(store.cleanup_state().unwrap().is_none());
         assert!(
             store
-                .nettoyage_verdict("vieux@exemple.fr", "reception", None, now)
+                .cleanup_verdict("vieux@exemple.fr", "reception", None, now)
                 .is_err(),
-            "un verdict sans session en cours se refuse"
+            "a verdict with no session in progress is refused"
         );
     }
 
-    /// D6 (CE, mot pour mot) : le périmètre se choisit — « Réception
-    /// seule » ignore les dossiers utilisateur, « Réception +
-    /// Dossiers » les couvre.
+    /// D6 (CE, verbatim): the scope is chosen — "Inbox only" ignores
+    /// user folders, "Inbox + Folders" covers them.
     #[test]
-    fn nettoyage_perimetre_reception_ou_dossiers() {
-        const JOUR: i64 = 86_400;
-        let now = 100 * JOUR;
+    fn cleanup_scope_inbox_or_folders() {
+        const DAY: i64 = 86_400;
+        let now = 100 * DAY;
         let (mut store, inbox) = store_with_mailbox();
         let account = test_account(&store);
-        store.set_mode_organise(true, 1_000).unwrap();
-        let projets = store.create_mailbox(account, "Projets", 1).unwrap();
+        store.set_organized_mode(true, 1_000).unwrap();
+        let projects = store.create_mailbox(account, "Projets", 1).unwrap();
 
-        let mut boite = envelope(1, "bonjour", now - JOUR, true);
-        boite.sender_address = Some("un@exemple.fr".to_string());
-        store.upsert_envelopes(inbox, &[boite]).unwrap();
-        let mut range = envelope(1, "range", now - JOUR, true);
-        range.sender_address = Some("proj@exemple.fr".to_string());
-        store.upsert_envelopes(projets, &[range]).unwrap();
+        let mut inbox_msg = envelope(1, "hello", now - DAY, true);
+        inbox_msg.sender_address = Some("un@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[inbox_msg]).unwrap();
+        let mut filed = envelope(1, "filed", now - DAY, true);
+        filed.sender_address = Some("proj@exemple.fr".to_string());
+        store.upsert_envelopes(projects, &[filed]).unwrap();
 
-        let session = store.nettoyage_demarrer("tout", "reception", now).unwrap();
-        assert_eq!(session.total, 1, "Réception seule : le dossier n'entre pas");
-        store.nettoyage_terminer().unwrap();
+        let session = store.cleanup_start("tout", "reception", now).unwrap();
+        assert_eq!(session.total, 1, "Inbox only: the folder does not enter");
+        store.cleanup_finish().unwrap();
 
-        let session = store.nettoyage_demarrer("tout", "dossiers", now).unwrap();
-        assert_eq!(session.total, 2, "Réception + Dossiers : les deux groupes");
-        let adresses: Vec<_> = store
-            .nettoyage_groupes()
+        let session = store.cleanup_start("tout", "dossiers", now).unwrap();
+        assert_eq!(session.total, 2, "Inbox + Folders: both groups");
+        let addresses: Vec<_> = store
+            .cleanup_groups()
             .unwrap()
             .into_iter()
             .map(|g| g.address)
             .collect();
-        assert!(adresses.contains(&"proj@exemple.fr".to_string()));
+        assert!(addresses.contains(&"proj@exemple.fr".to_string()));
     }
 
-    /// par le chemin des gestes : action journalisée (`pending_actions`,
-    /// rejouée en tête de chaque synchro) + disparition locale — sans
-    /// écho (ce n'est pas un geste utilisateur). `archive` → Archive,
-    /// `corbeille` → Delete (la corbeille du serveur, JAMAIS une
-    /// suppression définitive — D4).
+    /// Via the gesture path: a logged action (`pending_actions`,
+    /// replayed at the head of every sync) + local disappearance — no
+    /// echo (this is not a user gesture). `archive` → Archive,
+    /// `corbeille` → Delete (the server's trash, NEVER a permanent
+    /// delete — D4).
     #[test]
-    fn la_regle_du_non_s_execute_a_l_arrivee() {
+    fn the_no_rule_runs_on_arrival() {
         let (mut store, inbox) = store_with_mailbox();
-        store.set_mode_organise(true, 1_000).unwrap();
+        store.set_organized_mode(true, 1_000).unwrap();
         store
-            .router_expediteur("promo@exemple.fr", "ecarte", Some("archive"), 2_000)
+            .route_sender("promo@exemple.fr", "ecarte", Some("archive"), 2_000)
             .unwrap();
         store
-            .router_expediteur("pub@exemple.fr", "ecarte", Some("corbeille"), 2_000)
+            .route_sender("pub@exemple.fr", "ecarte", Some("corbeille"), 2_000)
             .unwrap();
-        let mut offre = envelope(1, "offre", 2_500, false);
-        offre.sender_address = Some("promo@exemple.fr".to_string());
-        let mut relance = envelope(2, "relance", 2_600, false);
-        relance.sender_address = Some("pub@exemple.fr".to_string());
-        store.upsert_envelopes(inbox, &[offre, relance]).unwrap();
+        let mut offer = envelope(1, "offer", 2_500, false);
+        offer.sender_address = Some("promo@exemple.fr".to_string());
+        let mut follow_up = envelope(2, "follow-up", 2_600, false);
+        follow_up.sender_address = Some("pub@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[offer, follow_up]).unwrap();
 
         assert_eq!(
             store.count(inbox).unwrap(),
             0,
-            "les deux ont quitté la boîte locale"
+            "both left the local mailbox"
         );
         let actions = store.pending_actions(inbox).unwrap();
         assert_eq!(
@@ -10047,29 +10131,30 @@ Etape : {etape}\nPlan :\n{}",
                 .map(|a| (a.uid, a.action.clone()))
                 .collect::<Vec<_>>(),
             vec![(1, Action::Archive), (2, Action::Delete)],
-            "archive → Archive, corbeille → Delete (jamais définitive)"
+            "archive → Archive, corbeille → Delete (never permanent)"
         );
     }
 
-    /// La règle `spam` part vers le dossier indésirable RÉSOLU du compte
-    /// (`canonical_folders`, comme le geste) ; sans dossier reconnu, on
-    /// ne fait RIEN — jamais une destination inventée (règle d'or).
+    /// The `spam` rule goes to the account's RESOLVED junk folder
+    /// (`canonical_folders`, like the gesture); with no recognized
+    /// folder, we do NOTHING — never an invented destination (golden
+    /// rule).
     #[test]
-    fn la_regle_spam_va_au_dossier_indesirable_resolu() {
+    fn the_spam_rule_goes_to_the_resolved_junk_folder() {
         let (mut store, inbox) = store_with_mailbox();
         let account = test_account(&store);
-        store.set_mode_organise(true, 1_000).unwrap();
+        store.set_organized_mode(true, 1_000).unwrap();
         store
-            .router_expediteur("arnaque@exemple.fr", "ecarte", Some("spam"), 2_000)
+            .route_sender("arnaque@exemple.fr", "ecarte", Some("spam"), 2_000)
             .unwrap();
-        // Sans dossier indésirable reconnu : le message RESTE.
-        let mut avant = envelope(1, "avant", 2_500, false);
-        avant.sender_address = Some("arnaque@exemple.fr".to_string());
-        store.upsert_envelopes(inbox, &[avant]).unwrap();
+        // With no recognized junk folder: the message STAYS.
+        let mut before = envelope(1, "before", 2_500, false);
+        before.sender_address = Some("arnaque@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[before]).unwrap();
         assert_eq!(
             store.count(inbox).unwrap(),
             1,
-            "sans dossier reconnu, rien ne bouge"
+            "with no recognized folder, nothing moves"
         );
         assert!(store.pending_actions(inbox).unwrap().is_empty());
 
@@ -10084,13 +10169,13 @@ Etape : {etape}\nPlan :\n{}",
                 }],
             )
             .unwrap();
-        let mut apres = envelope(2, "apres", 2_600, false);
-        apres.sender_address = Some("arnaque@exemple.fr".to_string());
-        store.upsert_envelopes(inbox, &[apres]).unwrap();
+        let mut after = envelope(2, "after", 2_600, false);
+        after.sender_address = Some("arnaque@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[after]).unwrap();
         assert_eq!(
             store.count(inbox).unwrap(),
             1,
-            "le nouveau est parti, l'ancien reste"
+            "the new one left, the old one stays"
         );
         assert_eq!(
             store
@@ -10103,60 +10188,59 @@ Etape : {etape}\nPlan :\n{}",
         );
     }
 
-    /// D2 — les règles du Non S'ÉTEIGNENT avec le mode : mode désactivé,
-    /// un message d'un écarté avec règle arrive et RESTE. Et un écarté
-    /// SANS règle ne déclenche jamais rien (le Non nu ne fait que
-    /// cacher).
+    /// D2 — the No rules TURN OFF with the mode: mode disabled, a
+    /// message from a screened-out sender with a rule arrives and
+    /// STAYS. And a screened-out sender WITHOUT a rule never triggers
+    /// anything (a plain No only hides).
     #[test]
-    fn les_regles_du_non_s_eteignent_avec_le_mode() {
+    fn the_no_rules_turn_off_with_the_mode() {
         let (mut store, inbox) = store_with_mailbox();
-        store.set_mode_organise(true, 1_000).unwrap();
+        store.set_organized_mode(true, 1_000).unwrap();
         store
-            .router_expediteur("promo@exemple.fr", "ecarte", Some("archive"), 2_000)
+            .route_sender("promo@exemple.fr", "ecarte", Some("archive"), 2_000)
             .unwrap();
         store
-            .router_expediteur("muet@exemple.fr", "ecarte", None, 2_000)
+            .route_sender("muet@exemple.fr", "ecarte", None, 2_000)
             .unwrap();
-        store.set_mode_organise(false, 3_000).unwrap();
-        let mut pendant_off = envelope(1, "pendant off", 3_500, false);
-        pendant_off.sender_address = Some("promo@exemple.fr".to_string());
-        store.upsert_envelopes(inbox, &[pendant_off]).unwrap();
-        assert_eq!(
-            store.count(inbox).unwrap(),
-            1,
-            "mode éteint : la règle dort"
-        );
+        store.set_organized_mode(false, 3_000).unwrap();
+        let mut while_off = envelope(1, "while off", 3_500, false);
+        while_off.sender_address = Some("promo@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[while_off]).unwrap();
+        assert_eq!(store.count(inbox).unwrap(), 1, "mode off: the rule sleeps");
         assert!(store.pending_actions(inbox).unwrap().is_empty());
 
-        store.set_mode_organise(true, 4_000).unwrap();
-        let mut sans_regle = envelope(2, "sans regle", 4_500, false);
-        sans_regle.sender_address = Some("muet@exemple.fr".to_string());
-        store.upsert_envelopes(inbox, &[sans_regle]).unwrap();
-        assert_eq!(store.count(inbox).unwrap(), 2, "le Non nu ne traite rien");
+        store.set_organized_mode(true, 4_000).unwrap();
+        let mut without_rule = envelope(2, "no rule", 4_500, false);
+        without_rule.sender_address = Some("muet@exemple.fr".to_string());
+        store.upsert_envelopes(inbox, &[without_rule]).unwrap();
+        assert_eq!(
+            store.count(inbox).unwrap(),
+            2,
+            "a plain No processes nothing"
+        );
         assert!(store.pending_actions(inbox).unwrap().is_empty());
     }
 
-    /// Re-livraison (revue E3) : le retrait local fait reculer
-    /// `max_uid` — si le rejeu échoue, la synchro suivante re-présente
-    /// le même uid. La règle re-retire localement mais ne JOURNALISE
-    /// jamais deux fois : une seconde action identique sur un uid déjà
-    /// parti du serveur coincerait toute la file du rejeu derrière un
-    /// échec permanent.
+    /// Re-delivery (review E3): a local removal pulls `max_uid` back
+    /// — if the replay fails, the next sync re-presents the same uid.
+    /// The rule removes it locally again but NEVER logs it twice: a
+    /// second identical action on a uid already gone from the server
+    /// would jam the whole replay queue behind a permanent failure.
     #[test]
-    fn une_re_livraison_ne_journalise_jamais_deux_fois() {
+    fn a_redelivery_never_logs_twice() {
         let (mut store, inbox) = store_with_mailbox();
-        store.set_mode_organise(true, 1_000).unwrap();
+        store.set_organized_mode(true, 1_000).unwrap();
         store
-            .router_expediteur("promo@exemple.fr", "ecarte", Some("archive"), 2_000)
+            .route_sender("promo@exemple.fr", "ecarte", Some("archive"), 2_000)
             .unwrap();
-        let mut offre = envelope(1, "offre", 2_500, false);
-        offre.sender_address = Some("promo@exemple.fr".to_string());
+        let mut offer = envelope(1, "offer", 2_500, false);
+        offer.sender_address = Some("promo@exemple.fr".to_string());
         store
-            .upsert_envelopes(inbox, std::slice::from_ref(&offre))
+            .upsert_envelopes(inbox, std::slice::from_ref(&offer))
             .unwrap();
-        // Le serveur re-présente le même uid (rejeu pas encore passé).
-        store.upsert_envelopes(inbox, &[offre]).unwrap();
-        assert_eq!(store.count(inbox).unwrap(), 0, "re-retiré localement");
+        // The server re-presents the same uid (replay not yet run).
+        store.upsert_envelopes(inbox, &[offer]).unwrap();
+        assert_eq!(store.count(inbox).unwrap(), 0, "removed locally again");
         assert_eq!(
             store
                 .pending_actions(inbox)
@@ -10165,32 +10249,34 @@ Etape : {etape}\nPlan :\n{}",
                 .map(|a| (a.uid, a.action.clone()))
                 .collect::<Vec<_>>(),
             vec![(1, Action::Archive)],
-            "UNE seule action journalisée"
+            "ONE action logged"
         );
     }
 
-    /// « Ses PROCHAINS messages » (les toasts du guichet) : la règle ne
-    /// touche que le courrier POSTÉRIEUR au verdict — un backfill de
-    /// courrier ancien (ajout d'un compte, désordre de synchro)
-    /// n'archive ni ne jette jamais l'historique. Un message SANS date
-    /// est une arrivée d'aujourd'hui : la règle s'applique.
+    /// "Their NEXT messages" (the gate's toasts): the rule only
+    /// touches mail AFTER the verdict — a backfill of old mail
+    /// (adding an account, sync disorder) never archives or discards
+    /// the history. A message WITHOUT a date is treated as arriving
+    /// today: the rule applies.
     #[test]
-    fn la_regle_ne_touche_jamais_le_courrier_anterieur_au_verdict() {
+    fn the_rule_never_touches_mail_predating_the_verdict() {
         let (mut store, inbox) = store_with_mailbox();
-        store.set_mode_organise(true, 1_000).unwrap();
+        store.set_organized_mode(true, 1_000).unwrap();
         store
-            .router_expediteur("promo@exemple.fr", "ecarte", Some("corbeille"), 2_000)
+            .route_sender("promo@exemple.fr", "ecarte", Some("corbeille"), 2_000)
             .unwrap();
-        let mut ancien = envelope(1, "d'avant le verdict", 1_500, true);
-        ancien.sender_address = Some("promo@exemple.fr".to_string());
-        let mut sans_date = envelope(2, "sans date", 0, false);
-        sans_date.sender_address = Some("promo@exemple.fr".to_string());
-        sans_date.date = None;
-        store.upsert_envelopes(inbox, &[ancien, sans_date]).unwrap();
+        let mut before = envelope(1, "before the verdict", 1_500, true);
+        before.sender_address = Some("promo@exemple.fr".to_string());
+        let mut without_date = envelope(2, "no date", 0, false);
+        without_date.sender_address = Some("promo@exemple.fr".to_string());
+        without_date.date = None;
+        store
+            .upsert_envelopes(inbox, &[before, without_date])
+            .unwrap();
         assert_eq!(
             store.count(inbox).unwrap(),
             1,
-            "l'antérieur au verdict reste ; le sans-date (arrivée d'aujourd'hui) est traité"
+            "what predates the verdict stays; the dateless one (today's arrival) is processed"
         );
         assert_eq!(
             store
@@ -10203,165 +10289,165 @@ Etape : {etape}\nPlan :\n{}",
         );
     }
 
-    /// PLAN-MODE-ORGANISE E4 — les sections de la Réception organisée
-    /// (verdict S1, variante A2) : UN flot ordonné « non-lus d'abord,
-    /// puis la date » — « Nouveau pour vous » puis « Déjà consulté »
-    /// sont DEUX bornes de la même source paginée, la couture est le
-    /// COUNT des non-lus. Le classique, lui, ne bouge pas d'un rang.
+    /// PLAN-MODE-ORGANISE E4 — the organized Inbox's sections
+    /// (verdict S1, variant A2): ONE ordered flow "unread first, then
+    /// date" — "New for you" then "Already seen" are TWO bounds of
+    /// the same paginated source, the seam is the unread COUNT.
+    /// Classic mode, meanwhile, does not move a single rank.
     #[test]
-    fn la_reception_organisee_sert_les_non_lus_en_tete() {
+    fn the_organized_inbox_serves_unread_first() {
         let (mut store, inbox) = store_with_mailbox();
-        store.set_mode_organise(true, 1_000).unwrap();
+        store.set_organized_mode(true, 1_000).unwrap();
         store
             .upsert_envelopes(
                 inbox,
                 &[
-                    envelope(1, "lu ancien", 100, true),
-                    envelope(2, "nonlu recent", 200, false),
-                    envelope(3, "lu recent", 300, true),
-                    envelope(4, "nonlu ancien", 150, false),
+                    envelope(1, "read old", 100, true),
+                    envelope(2, "unread recent", 200, false),
+                    envelope(3, "read recent", 300, true),
+                    envelope(4, "unread old", 150, false),
                 ],
             )
             .unwrap();
-        let organise = store
+        let organized = store
             .reception_organisee_scoped(None, false, 0, 10)
             .unwrap();
         assert_eq!(
-            organise.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
+            organized.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
             vec![2, 4, 3, 1],
-            "les non-lus d'abord (par date), puis les lus (par date)"
+            "unread first (by date), then read (by date)"
         );
-        let compte = test_account(&store);
-        let borne = store
-            .reception_organisee_scoped(Some(compte), false, 0, 10)
+        let account = test_account(&store);
+        let bounded = store
+            .reception_organisee_scoped(Some(account), false, 0, 10)
             .unwrap();
         assert_eq!(
-            borne.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
+            bounded.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
             vec![2, 4, 3, 1],
-            "même ordre borné à un compte"
+            "same order bounded to an account"
         );
         assert_eq!(
             store.reception_organisee_count_scoped(None, true).unwrap(),
             2,
-            "la couture : le COUNT des non-lus dit où la seconde section commence"
+            "the seam: the unread COUNT says where the second section starts"
         );
-        // Le classique, INTACT : la date seule.
-        let classique = store.unified_recent_scoped(None, false, 0, 10).unwrap();
+        // Classic mode, UNTOUCHED: date only.
+        let classic = store.unified_recent_scoped(None, false, 0, 10).unwrap();
         assert_eq!(
-            classique.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
+            classic.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
             vec![3, 2, 4, 1]
         );
     }
 
-    /// PLAN-MODE-ORGANISE E5 — Mis de côté (patron `pins` : clé
-    /// d'ENVELOPPE qui survit à la reconstruction des fils, état par
-    /// FIL). Un fil mis de côté quitte TOUTES les vues organisées —
-    /// Réception, sa vue de routage, les épingles préposées — et vit
-    /// dans la pile ; « Terminé » le rend d'où il vient. Le mode
-    /// CLASSIQUE ne bouge pas d'un message.
+    /// PLAN-MODE-ORGANISE E5 — Set aside (`pins` pattern: an ENVELOPE
+    /// key that survives thread rebuilding, state per THREAD). A
+    /// set-aside thread leaves ALL organized views — Inbox, its
+    /// routing view, surfaced pins — and lives in the pile; "Done"
+    /// returns it to where it came from. CLASSIC mode does not move a
+    /// single message.
     #[test]
-    fn un_fil_mis_de_cote_vit_dans_la_pile_et_revient_termine() {
+    fn a_set_aside_thread_lives_in_the_pile_and_returns_when_done() {
         let (mut store, inbox) = store_with_mailbox();
-        store.set_mode_organise(true, 1_000).unwrap();
-        let mut lettre = envelope(1, "la lettre", 100, false);
-        lettre.sender_address = Some("lettre@exemple.fr".to_string());
-        let ordinaire = envelope(2, "bonjour", 200, false);
-        store.upsert_envelopes(inbox, &[lettre, ordinaire]).unwrap();
+        store.set_organized_mode(true, 1_000).unwrap();
+        let mut letter = envelope(1, "the letter", 100, false);
+        letter.sender_address = Some("lettre@exemple.fr".to_string());
+        let ordinary = envelope(2, "hello", 200, false);
+        store.upsert_envelopes(inbox, &[letter, ordinary]).unwrap();
         store
-            .router_expediteur("lettre@exemple.fr", "kiosque", None, 300)
+            .route_sender("lettre@exemple.fr", "kiosque", None, 300)
             .unwrap();
 
-        assert!(store.toggle_mis_de_cote(inbox, 2, 1_000).unwrap());
-        assert!(store.etat_mis_de_cote(inbox, 2).unwrap());
+        assert!(store.toggle_set_aside(inbox, 2, 1_000).unwrap());
+        assert!(store.set_aside_state(inbox, 2).unwrap());
         assert!(
             store
                 .reception_organisee_scoped(None, false, 0, 10)
                 .unwrap()
                 .is_empty(),
-            "le fil mis de côté quitte la Réception organisée"
+            "the set-aside thread leaves the organized Inbox"
         );
         assert_eq!(
             store.reception_organisee_count_scoped(None, false).unwrap(),
             0,
-            "le total suit (exclusion partagée)"
+            "the total follows (shared exclusion)"
         );
         assert_eq!(
             store.unified_count_scoped(None, false).unwrap(),
             2,
-            "le classique montre TOUJOURS tout"
+            "classic mode ALWAYS shows everything"
         );
-        // La pile : la mini-carte du fil, la plus récente en tête.
-        assert!(store.toggle_mis_de_cote(inbox, 1, 1_100).unwrap());
-        let pile = store.pile_mis_de_cote().unwrap();
+        // The pile: the thread's mini-card, most recent first.
+        assert!(store.toggle_set_aside(inbox, 1, 1_100).unwrap());
+        let pile = store.set_aside_pile().unwrap();
         assert_eq!(
             pile.iter().map(|r| r.envelope.uid).collect::<Vec<_>>(),
             vec![2, 1],
-            "la pile, du plus récent au plus ancien"
+            "the pile, most recent to oldest"
         );
         assert!(
             store
                 .routage_unified_scoped("kiosque", None, false, 0, 10)
                 .unwrap()
                 .is_empty(),
-            "mis de côté, la lettre quitte AUSSI sa vue de routage"
+            "set aside, the letter ALSO leaves its routing view"
         );
 
-        // « Terminé » : le fil revient D'OÙ IL VIENT.
-        assert!(!store.toggle_mis_de_cote(inbox, 2, 1_200).unwrap());
+        // "Done": the thread returns TO WHERE IT CAME FROM.
+        assert!(!store.toggle_set_aside(inbox, 2, 1_200).unwrap());
         assert_eq!(
             store.reception_organisee_count_scoped(None, false).unwrap(),
             1,
-            "l'ordinaire revient en Réception"
+            "the ordinary one returns to the Inbox"
         );
-        assert!(!store.toggle_mis_de_cote(inbox, 1, 1_300).unwrap());
+        assert!(!store.toggle_set_aside(inbox, 1, 1_300).unwrap());
         assert_eq!(
             store
                 .routage_unified_scoped("kiosque", None, false, 0, 10)
                 .unwrap()
                 .len(),
             1,
-            "la lettre revient au Kiosque"
+            "the letter returns to the Feed"
         );
-        assert!(store.pile_mis_de_cote().unwrap().is_empty());
+        assert!(store.set_aside_pile().unwrap().is_empty());
 
-        // La pastille de la nav suit la pile (constat de capture E5) :
-        // un non-lu mis de côté ne compte plus en mode organisé.
-        assert!(store.toggle_mis_de_cote(inbox, 2, 1_400).unwrap());
-        let compte = test_account(&store);
-        let dossiers = store.canonical_folders(compte).unwrap();
-        let (organise, _) = store.nav_unread_counts(compte, &dossiers, true).unwrap();
-        assert_eq!(organise, 0, "le non-lu mis de côté quitte la pastille");
-        let (classique, _) = store.nav_unread_counts(compte, &dossiers, false).unwrap();
-        assert_eq!(classique, 2, "le classique ne bouge pas");
+        // The nav badge follows the pile (E5 capture finding): a
+        // set-aside unread no longer counts in organized mode.
+        assert!(store.toggle_set_aside(inbox, 2, 1_400).unwrap());
+        let account = test_account(&store);
+        let folders = store.canonical_folders(account).unwrap();
+        let (organized, _) = store.nav_unread_counts(account, &folders, true).unwrap();
+        assert_eq!(organized, 0, "the set-aside unread leaves the badge");
+        let (classic, _) = store.nav_unread_counts(account, &folders, false).unwrap();
+        assert_eq!(classic, 2, "classic mode does not move");
     }
 
-    /// La mise de côté suit le FIL (patron pins) : posée sur un
-    /// message, elle tient quand une réponse déplace la tête ; une
-    /// épingle mise de côté quitte la section préposée de la Réception
-    /// organisée (le classique la garde).
+    /// Setting aside follows the THREAD (pins pattern): set on a
+    /// message, it holds when a reply moves the head; a set-aside pin
+    /// leaves the organized Inbox's surfaced section (classic mode
+    /// keeps it).
     #[test]
-    fn la_mise_de_cote_suit_le_fil_et_retire_l_epingle_preposee() {
+    fn setting_aside_follows_the_thread_and_removes_the_surfaced_pin() {
         let (mut store, inbox) = store_with_mailbox();
-        store.set_mode_organise(true, 1_000).unwrap();
+        store.set_organized_mode(true, 1_000).unwrap();
         store
-            .upsert_envelopes(inbox, &[envelope(1, "sujet", 100, true)])
+            .upsert_envelopes(inbox, &[envelope(1, "subject", 100, true)])
             .unwrap();
         assert!(store.toggle_pin(inbox, 1, 500).unwrap());
-        assert!(store.toggle_mis_de_cote(inbox, 1, 600).unwrap());
-        let mut reponse = envelope(2, "Re: sujet", 700, true);
-        reponse.in_reply_to = Some("<m1@example.com>".to_string());
-        store.upsert_envelopes(inbox, &[reponse]).unwrap();
+        assert!(store.toggle_set_aside(inbox, 1, 600).unwrap());
+        let mut reply = envelope(2, "Re: subject", 700, true);
+        reply.in_reply_to = Some("<m1@example.com>".to_string());
+        store.upsert_envelopes(inbox, &[reply]).unwrap();
 
         assert!(
-            store.etat_mis_de_cote(inbox, 2).unwrap(),
-            "l'état se lit par le fil, tête nouvelle comprise"
+            store.set_aside_state(inbox, 2).unwrap(),
+            "the state is read per thread, new head included"
         );
         assert!(
             store
                 .pinned_unified_scoped(None, false, true)
                 .unwrap()
                 .is_empty(),
-            "l'épingle d'un fil mis de côté ne se prépose plus en mode organisé"
+            "a set-aside thread's pin no longer surfaces in organized mode"
         );
         assert_eq!(
             store
@@ -10369,18 +10455,18 @@ Etape : {etape}\nPlan :\n{}",
                 .unwrap()
                 .len(),
             1,
-            "le classique garde son épingle"
+            "classic mode keeps its pin"
         );
-        // « Terminé » depuis la tête NOUVELLE libère le fil entier.
-        assert!(!store.toggle_mis_de_cote(inbox, 2, 800).unwrap());
-        assert!(!store.etat_mis_de_cote(inbox, 1).unwrap());
+        // "Done" from the NEW head releases the whole thread.
+        assert!(!store.toggle_set_aside(inbox, 2, 800).unwrap());
+        assert!(!store.set_aside_state(inbox, 1).unwrap());
     }
 
-    /// A43/A89 : la mise de côté meurt avec son courrier — une boîte
-    /// réinitialisée (UIDVALIDITY) et un retrait local la purgent, un
-    /// UID recyclé n'hérite de rien.
+    /// A43/A89: setting aside dies with its mail — a reset mailbox
+    /// (UIDVALIDITY) and a local removal purge it, a recycled UID
+    /// inherits nothing.
     #[test]
-    fn la_mise_de_cote_meurt_avec_son_courrier() {
+    fn setting_aside_dies_with_its_mail() {
         let (mut store, inbox) = store_with_mailbox();
         store
             .upsert_envelopes(
@@ -10388,24 +10474,25 @@ Etape : {etape}\nPlan :\n{}",
                 &[envelope(1, "a", 100, true), envelope(2, "b", 200, true)],
             )
             .unwrap();
-        assert!(store.toggle_mis_de_cote(inbox, 1, 300).unwrap());
+        assert!(store.toggle_set_aside(inbox, 1, 300).unwrap());
         store.remove_local(inbox, 1).unwrap();
-        assert!(store.pile_mis_de_cote().unwrap().is_empty());
+        assert!(store.set_aside_pile().unwrap().is_empty());
 
-        assert!(store.toggle_mis_de_cote(inbox, 2, 400).unwrap());
+        assert!(store.toggle_set_aside(inbox, 2, 400).unwrap());
         store.reset_mailbox(inbox, 2).unwrap();
         assert!(
-            store.pile_mis_de_cote().unwrap().is_empty(),
-            "l'UIDVALIDITY neuve ne laisse aucune mise de côté fantôme"
+            store.set_aside_pile().unwrap().is_empty(),
+            "the fresh UIDVALIDITY leaves no phantom set-aside entry"
         );
     }
 
-    /// La garde de plan de la Réception organisée (leçon S2-bis,
-    /// spikes/routage-plan) : la page suit l'index PARTIEL miroir
-    /// (`idx_threads_date_organise`) — offset stable par construction,
-    /// jamais une sonde par rangée sautée, jamais un scan d'envelopes.
+    /// The organized Inbox's plan guard (S2-bis lesson,
+    /// spikes/routage-plan): the page follows the mirrored PARTIAL
+    /// index (`idx_threads_date_organise`) — a stable offset by
+    /// construction, never a probe per skipped row, never an
+    /// envelopes scan.
     #[test]
-    fn la_reception_organisee_suit_l_index_partiel_jamais_un_scan() {
+    fn the_organized_inbox_follows_the_partial_index_never_a_scan() {
         let store = Store::open_in_memory().unwrap();
         let plan: Vec<String> = store
             .0
@@ -10420,40 +10507,41 @@ Etape : {etape}\nPlan :\n{}",
             .unwrap();
         assert!(
             plan.iter().any(|l| l.contains("idx_threads_date_organise")),
-            "la page ne suit pas l'index partiel : {plan:?}"
+            "the page does not follow the partial index: {plan:?}"
         );
         assert!(
             !plan
                 .iter()
                 .any(|l| l.starts_with("SCAN") && l.contains("envelopes")),
-            "plan avec scan d'envelopes : {plan:?}"
+            "plan with an envelopes scan: {plan:?}"
         );
-        // E4 : l'index PORTE le tri à sections DANS le squelette
-        // paginé — un tri matérialisé AVANT le LIMIT serait le tri de
-        // toute la boîte (548 ms mesurées au spike S1 sans l'index
-        // d'expression). Le re-tri EXTERNE des ≤200 lignes retenues
-        // (après « SCAN t ») est borné et légitime — l'expression de
-        // section ne se dérive pas de la jointure.
-        let jointure = plan
+        // E4: the index CARRIES the sectioned sort INSIDE the
+        // paginated skeleton — a materialized sort BEFORE the LIMIT
+        // would be a sort of the whole mailbox (548 ms measured at
+        // spike S1 without the expression index). The EXTERNAL
+        // re-sort of the ≤200 retained rows (after "SCAN t") is
+        // bounded and legitimate — the section expression is not
+        // derived from the join.
+        let join = plan
             .iter()
             .position(|l| l == "SCAN t")
-            .expect("le plan a perdu sa co-routine paginée");
+            .expect("the plan lost its paginated co-routine");
         assert!(
-            !plan[..jointure].iter().any(|l| l.contains("TEMP B-TREE")),
-            "tri matérialisé DANS le squelette paginé : {plan:?}"
+            !plan[..join].iter().any(|l| l.contains("TEMP B-TREE")),
+            "materialized sort INSIDE the paginated skeleton: {plan:?}"
         );
-        // Revue E4 : les DEUX autres chemins organisés portent la même
-        // garde — la vue « Boîtes » (index préfixé par compte) et
-        // l'onglet Non lus. Sans elle, un changement de clé d'index
-        // rendrait le tri matérialisé de S1 (548 ms/page) en silence.
-        for (nom, sql, params_n) in [
+        // Review E4: the OTHER TWO organized paths carry the same
+        // guard — the "Mailboxes" view (index prefixed by account)
+        // and the Unread tab. Without it, a change of index key would
+        // silently bring back S1's materialized sort (548 ms/page).
+        for (name, sql, param_n) in [
             (
-                "par compte",
+                "by account",
                 unified_page_sql(true, false, true),
                 params![10, 0, 1].to_vec(),
             ),
             (
-                "non-lus",
+                "unread",
                 unified_page_sql(false, true, true),
                 params![10, 0].to_vec(),
             ),
@@ -10462,7 +10550,7 @@ Etape : {etape}\nPlan :\n{}",
                 .0
                 .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
                 .unwrap()
-                .query_map(rusqlite::params_from_iter(params_n), |row| {
+                .query_map(rusqlite::params_from_iter(param_n), |row| {
                     row.get::<_, String>(3)
                 })
                 .unwrap()
@@ -10470,35 +10558,36 @@ Etape : {etape}\nPlan :\n{}",
                 .unwrap();
             assert!(
                 plan.iter().any(|l| l.contains("idx_threads_date_organise")),
-                "chemin organisé « {nom} » sans index partiel : {plan:?}"
+                "organized path \"{name}\" without the partial index: {plan:?}"
             );
-            let jointure = plan
+            let join = plan
                 .iter()
                 .position(|l| l == "SCAN t")
-                .expect("co-routine paginée absente");
+                .expect("paginated co-routine missing");
             assert!(
-                !plan[..jointure].iter().any(|l| l.contains("TEMP B-TREE")),
-                "chemin organisé « {nom} » : tri matérialisé dans le squelette : {plan:?}"
+                !plan[..join].iter().any(|l| l.contains("TEMP B-TREE")),
+                "organized path \"{name}\": materialized sort in the skeleton: {plan:?}"
             );
         }
     }
 
-    /// L'historique du Portier lit la liste du plus récent décidé au
-    /// plus ancien — l'œil y cherche la dernière décision.
+    /// The Screener's history reads the list from most recently
+    /// decided to oldest — the eye is looking for the latest
+    /// decision.
     #[test]
-    fn routages_se_listent_du_plus_recent() {
+    fn routings_list_from_the_most_recent() {
         let store = Store::open_in_memory().unwrap();
         store
-            .router_expediteur("ancien@ex.fr", "registre", None, 100)
+            .route_sender("ancien@ex.fr", "registre", None, 100)
             .unwrap();
         store
-            .router_expediteur("recent@ex.fr", "ecarte", Some("archive"), 200)
+            .route_sender("recent@ex.fr", "ecarte", Some("archive"), 200)
             .unwrap();
-        let liste = store.routages().unwrap();
+        let list = store.routings().unwrap();
         assert_eq!(
-            liste.iter().map(|r| r.address.as_str()).collect::<Vec<_>>(),
+            list.iter().map(|r| r.address.as_str()).collect::<Vec<_>>(),
             vec!["recent@ex.fr", "ancien@ex.fr"]
         );
-        assert_eq!(liste[0].regle.as_deref(), Some("archive"));
+        assert_eq!(list[0].rule.as_deref(), Some("archive"));
     }
 }

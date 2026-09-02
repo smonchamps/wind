@@ -38,7 +38,7 @@ pub struct Draft {
     /// Message-ID du message auquel on répond (fil de discussion).
     pub in_reply_to: Option<String>,
     /// La chaîne `References` (RFC 5322 §3.6.4) : celles du parent + son
-    /// Message-ID — lue en base par `Store::references_de` (E7). `None`
+    /// Message-ID — lue en base par `Store::references_of` (E7). `None`
     /// = le parent seul (`in_reply_to`), chemin d'avant.
     pub references: Option<String>,
     /// Marqué « important » par l'expéditeur (PLAN-RETOURS-6, R3) :

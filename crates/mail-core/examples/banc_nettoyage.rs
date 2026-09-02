@@ -1,6 +1,6 @@
 //! Banc du Nettoyage de printemps et du Portier (PLAN-AUDIT-V2 E4) : que
 //! coûtent les lectures non bornées de l'audit — groupes, courrier d'un
-//! groupe, attente du Portier, pile, routages — et le verdict sur le plus
+//! groupe, attente du Portier, pile, routings — et le verdict sur le plus
 //! gros groupe, sur une base donnée ? Durées et décomptes seuls : aucun
 //! sujet, aucun expéditeur imprimé.
 //!
@@ -35,43 +35,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("usage : banc_nettoyage <chemin.db>")?;
     let mut store = Store::open(std::path::Path::new(&path))?;
     let now = chrono::Utc::now().timestamp();
-    store.set_mode_organise(true, 0)?;
+    store.set_organized_mode(true, 0)?;
     // L'attente du Portier se remplit à l'ARRIVÉE (upsert sous mode
     // organisé) ; sur un décor déjà semé on la peuple à la main : tout
     // expéditeur en attente — le pire cas de la lecture mesurée.
     {
         let conn = rusqlite::Connection::open(&path)?;
         conn.execute_batch(
-            "INSERT OR IGNORE INTO portier_attente (address)
+            "INSERT OR IGNORE INTO screener_waiting (address)
              SELECT DISTINCT sender_norm FROM envelopes WHERE sender_norm IS NOT NULL",
         )?;
     }
 
-    let session = chrono("nettoyage_demarrer", || {
-        store.nettoyage_demarrer("tout", "dossiersArchives", now)
+    let session = chrono("cleanup_start", || {
+        store.cleanup_start("tout", "dossiersArchives", now)
     })?;
     println!("  {} groupes annoncés", session.total);
-    let groupes = chrono("nettoyage_groupes", || store.nettoyage_groupes())?;
+    let groupes = chrono("cleanup_groups", || store.cleanup_groups())?;
     println!("  {} groupes rendus", groupes.len());
     let gros = groupes
         .iter()
         .max_by_key(|groupe| groupe.messages)
         .ok_or("aucun groupe : la base est vide ?")?
         .clone();
-    let messages = chrono("nettoyage_messages (gros)", || {
-        store.nettoyage_messages(&gros.address)
+    let messages = chrono("cleanup_messages (gros)", || {
+        store.cleanup_messages(&gros.address)
     })?;
     println!("  {} messages dans le plus gros groupe", messages.len());
-    let attente = chrono("portier_attente", || store.portier_attente())?;
+    let attente = chrono("screener_waiting", || store.screener_waiting())?;
     println!("  {} en attente", attente.len());
-    let pile = chrono("pile_mis_de_cote", || store.pile_mis_de_cote())?;
+    let pile = chrono("set_aside_pile", || store.set_aside_pile())?;
     println!("  {} mis de côté", pile.len());
-    let routages = chrono("routages", || store.routages())?;
-    println!("  {} routages", routages.len());
-    let traites = chrono("nettoyage_verdict (gros)", || {
-        store.nettoyage_verdict(&gros.address, "ecarte", Some("archive"), now)
+    let routings = chrono("routings", || store.routings())?;
+    println!("  {} routings", routings.len());
+    let traites = chrono("cleanup_verdict (gros)", || {
+        store.cleanup_verdict(&gros.address, "ecarte", Some("archive"), now)
     })?;
     println!("  {traites} messages archivés par le verdict");
-    store.nettoyage_terminer()?;
+    store.cleanup_finish()?;
     Ok(())
 }

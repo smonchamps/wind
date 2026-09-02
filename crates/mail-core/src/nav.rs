@@ -21,8 +21,8 @@ use rusqlite::{OptionalExtension, params, params_from_iter};
 
 use crate::error::Error;
 use crate::store::{
-    InvitationRang, PINNED_THREADS, SELECT_UNIFIED, Store, THREAD_AGGREGATE, UnifiedRow,
-    fil_route_sql, routage_page_sql, row_to_threaded, unified_page_sql,
+    InvitationRank, PINNED_THREADS, SELECT_UNIFIED, Store, THREAD_AGGREGATE, UnifiedRow,
+    routing_page_sql, row_to_threaded, thread_route_sql, unified_page_sql,
 };
 use crate::thread::RECEIVED_MAILBOX;
 
@@ -33,9 +33,9 @@ use crate::thread::RECEIVED_MAILBOX;
 pub struct GroupeRegistre {
     pub address: String,
     pub fils: u64,
-    pub dernier_epoch: i64,
+    pub last_epoch: i64,
     pub qui: Option<String>,
-    pub dernier_objet: Option<String>,
+    pub last_subject: Option<String>,
 }
 
 /// Les dossiers canoniques d'UN compte, en noms RÉSEAU (`folders.wire`,
@@ -343,7 +343,7 @@ impl Store {
         // liste refuse de montrer (constat de capture E5 : pastille à
         // 2 devant une liste sans non-lu).
         let retenue = if organise {
-            crate::store::exclusion_organisee()
+            crate::store::organized_exclusion()
         } else {
             String::new()
         };
@@ -409,7 +409,7 @@ impl Store {
         };
         let filtre_non_lues = if non_lues { " AND unseen > 0" } else { "" };
         let retenue = if organise {
-            crate::store::exclusion_organisee()
+            crate::store::organized_exclusion()
         } else {
             String::new()
         };
@@ -468,7 +468,7 @@ impl Store {
 
     /// La page du Kiosque ou du Registre (PLAN-MODE-ORGANISE E1) —
     /// le flot unifié borné aux fils dont la tête vient d'un
-    /// expéditeur routé vers `destination` ([`routage_page_sql`] :
+    /// expéditeur routé vers `destination` ([`routing_page_sql`] :
     /// même squelette, mêmes exclusions, même tri que la Réception).
     pub fn routage_unified_scoped(
         &self,
@@ -480,7 +480,7 @@ impl Store {
     ) -> Result<Vec<UnifiedRow>, Error> {
         let mut stmt = self
             .conn()
-            .prepare(&routage_page_sql(account_id.is_some(), non_lues))?;
+            .prepare(&routing_page_sql(account_id.is_some(), non_lues))?;
         let rows = match account_id {
             None => stmt
                 .query_map(
@@ -517,8 +517,8 @@ impl Store {
         // Le COUNT renumérote ses paramètres (?1 destination, ?2
         // compte) — le fragment partagé prend l'index en argument,
         // jamais une copie divergente du EXISTS.
-        let fil_route = fil_route_sql("?1");
-        let hors_pile = format!(" AND id NOT IN ({})", crate::store::MIS_DE_COTE_THREADS);
+        let fil_route = thread_route_sql("?1");
+        let hors_pile = format!(" AND id NOT IN ({})", crate::store::SET_ASIDE_THREADS);
         let sql = format!(
             "SELECT COUNT(*) FROM threads
               WHERE inbox_size > 0
@@ -539,7 +539,7 @@ impl Store {
     /// cartes PAS ENCORE OUVERTES. La sémantique est celle de la PAGE
     /// (mémoire `kiosque_lus`, RETOURS-13 R10), jamais l'`unseen` IMAP
     /// — les deux divergent dès qu'un autre client marque lu. Mêmes
-    /// bornes que la page ([`routage_page_sql`] : fils routés
+    /// bornes que la page ([`routing_page_sql`] : fils routés
     /// `kiosque`, hors pile) ; l'identité d'une carte est la TÊTE du
     /// fil (`last_mailbox_id`/`last_uid`), celle que `kiosque_cartes`
     /// sonde — un fil dont la tête change redevient « à ouvrir »,
@@ -550,8 +550,8 @@ impl Store {
         } else {
             ""
         };
-        let fil_route = fil_route_sql("'kiosque'");
-        let hors_pile = format!(" AND id NOT IN ({})", crate::store::MIS_DE_COTE_THREADS);
+        let fil_route = thread_route_sql("'kiosque'");
+        let hors_pile = format!(" AND id NOT IN ({})", crate::store::SET_ASIDE_THREADS);
         let sql = format!(
             "SELECT COUNT(*) FROM threads
               WHERE inbox_size > 0
@@ -569,12 +569,12 @@ impl Store {
 
     /// RETOURS-14 R6 (D7) — les groupes du Registre : un expéditeur ×
     /// ses fils, triés par récence du dernier message (le patron de
-    /// `nettoyage_groupes`, jamais l'alphabet — D7). La clé de groupe
+    /// `cleanup_groups`, jamais l'alphabet — D7). La clé de groupe
     /// est l'expéditeur de la TÊTE du fil — celle que la vue affiche.
     /// Une passe : avec un max() SEUL, SQLite garantit que les
     /// colonnes nues (sender, subject) viennent de la ligne du max.
-    /// `threads` garde son nom plein : [`fil_route_sql`] et
-    /// [`MIS_DE_COTE_THREADS`] le visent tel quel. Un fil dont la tête
+    /// `threads` garde son nom plein : [`thread_route_sql`] et
+    /// [`SET_ASIDE_THREADS`] le visent tel quel. Un fil dont la tête
     /// n'a PAS d'adresse d'expéditeur (`sender_norm` NULL — message
     /// sans From) est passé, jamais une erreur qui viderait la vue
     /// entière (revue).
@@ -584,10 +584,10 @@ impl Store {
         } else {
             ""
         };
-        let fil_route = fil_route_sql("'registre'");
+        let fil_route = thread_route_sql("'registre'");
         let hors_pile = format!(
             " AND threads.id NOT IN ({})",
-            crate::store::MIS_DE_COTE_THREADS
+            crate::store::SET_ASIDE_THREADS
         );
         let sql = format!(
             "SELECT he.sender_norm, COUNT(*), MAX(threads.last_epoch), he.sender, he.subject
@@ -605,9 +605,9 @@ impl Store {
             Ok(GroupeRegistre {
                 address: row.get(0)?,
                 fils: row.get::<_, i64>(1)? as u64,
-                dernier_epoch: row.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                last_epoch: row.get::<_, Option<i64>>(2)?.unwrap_or(0),
                 qui: row.get(3)?,
-                dernier_objet: row.get(4)?,
+                last_subject: row.get(4)?,
             })
         };
         let groupes = match account_id {
@@ -623,7 +623,7 @@ impl Store {
 
     /// La page d'UN groupe du Registre — les fils dont la tête vient
     /// de cet expéditeur, au squelette et au tri de la vue
-    /// ([`routage_page_sql`]). `?1` limit, `?2` offset, `?3` adresse,
+    /// ([`routing_page_sql`]). `?1` limit, `?2` offset, `?3` adresse,
     /// `?4` compte (si borné).
     pub fn registre_groupe_scoped(
         &self,
@@ -637,8 +637,8 @@ impl Store {
         } else {
             ""
         };
-        let fil_route = fil_route_sql("'registre'");
-        let hors_pile = format!(" AND id NOT IN ({})", crate::store::MIS_DE_COTE_THREADS);
+        let fil_route = thread_route_sql("'registre'");
+        let hors_pile = format!(" AND id NOT IN ({})", crate::store::SET_ASIDE_THREADS);
         let tete = "AND EXISTS (SELECT 1 FROM envelopes he
                                  WHERE he.mailbox_id = threads.last_mailbox_id
                                    AND he.uid = threads.last_uid
@@ -697,7 +697,7 @@ impl Store {
         // sa vue, un fil retenu attend au Portier ; le préposer ici
         // afficherait une rangée que le total refuse de compter.
         let retenue = if organise {
-            crate::store::exclusion_organisee()
+            crate::store::organized_exclusion()
         } else {
             String::new()
         };
@@ -740,7 +740,7 @@ impl Store {
         thread_ids.sort_unstable();
         thread_ids.dedup();
         struct FaceInvitation {
-            rang: InvitationRang,
+            rang: InvitationRank,
             subject: Option<String>,
             sender: Option<String>,
             sender_address: Option<String>,
@@ -782,13 +782,13 @@ impl Store {
                 Ok((
                     row.get::<_, i64>(0)?,
                     FaceInvitation {
-                        rang: InvitationRang {
+                        rang: InvitationRank {
                             mailbox: row.get(1)?,
                             uid: row.get(2)?,
-                            titre: row.get(3)?,
-                            reponse: row.get(4)?,
-                            annulee: row.get(5)?,
-                            peut_repondre: row.get(6)?,
+                            title: row.get(3)?,
+                            reply: row.get(4)?,
+                            cancelled: row.get(5)?,
+                            can_reply: row.get(6)?,
                         },
                         subject: row.get(7)?,
                         sender: row.get(8)?,
@@ -814,7 +814,7 @@ impl Store {
                     };
                     // R11 : répondu → le visage de la ligne est
                     // l'invitation, pas notre dernier email.
-                    if face.rang.reponse.is_some() {
+                    if face.rang.reply.is_some() {
                         ligne.envelope.subject = face.subject.clone();
                         ligne.envelope.sender = face.sender.clone();
                         ligne.envelope.sender_address = face.sender_address.clone();
@@ -838,13 +838,13 @@ impl Store {
                                 AND i.methode = 'request'",
                             params![ligne.account_id, ligne.mailbox, ligne.envelope.uid],
                             |row| {
-                                Ok(InvitationRang {
+                                Ok(InvitationRank {
                                     mailbox: ligne.mailbox.clone(),
                                     uid: ligne.envelope.uid,
-                                    titre: row.get(0)?,
-                                    reponse: row.get(1)?,
-                                    annulee: row.get(2)?,
-                                    peut_repondre: row.get(3)?,
+                                    title: row.get(0)?,
+                                    reply: row.get(1)?,
+                                    cancelled: row.get(2)?,
+                                    can_reply: row.get(3)?,
                                 })
                             },
                         )
@@ -1675,9 +1675,9 @@ mod tests {
         // R10 : le badge vise le MESSAGE d'invitation, pas la tête.
         let badge = page[0].invitation.as_ref().expect("badge");
         assert_eq!(badge.uid, 1);
-        assert_eq!(badge.titre, "Atelier de septembre");
-        assert!(badge.peut_repondre);
-        assert_eq!(badge.reponse, None);
+        assert_eq!(badge.title, "Atelier de septembre");
+        assert!(badge.can_reply);
+        assert_eq!(badge.reply, None);
         // Sans réponse consignée, la ligne garde le visage de la tête.
         assert_eq!(
             page[0].envelope.subject.as_deref(),
@@ -1709,7 +1709,7 @@ mod tests {
         );
         assert_eq!(page[0].preview.as_deref(), Some("venez nombreux"));
         assert_eq!(
-            page[0].invitation.as_ref().unwrap().reponse.as_deref(),
+            page[0].invitation.as_ref().unwrap().reply.as_deref(),
             Some("accepte")
         );
     }

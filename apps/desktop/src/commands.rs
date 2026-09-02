@@ -762,7 +762,7 @@ fn relever_inbox(
     // (l'observation consignée de PLAN-SYNCHRO) ; mesuré sur `fetched`,
     // le lot « débordait » à CHAQUE arrivée et la ligne naissait muette,
     // remplie 3-4 s plus tard par la pompe.
-    let arrivees = match store.arrivees_depuis(account_id, MAILBOX, last_uid_before) {
+    let arrivees = match store.arrivals_since(account_id, MAILBOX, last_uid_before) {
         Ok(n) => n as usize,
         Err(err) => {
             problems.push(format!("compte des arrivées : {err}"));
@@ -1726,10 +1726,10 @@ fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
         invitation: row.invitation.map(|rang| InvitationLigne {
             mailbox: rang.mailbox,
             uid: rang.uid,
-            titre: rang.titre,
-            reponse: rang.reponse,
-            annulee: rang.annulee,
-            peut_repondre: rang.peut_repondre,
+            titre: rang.title,
+            reponse: rang.reply,
+            annulee: rang.cancelled,
+            peut_repondre: rang.can_reply,
         }),
     }
 }
@@ -1755,7 +1755,7 @@ fn lire_nav(store: &Store) -> Result<Vec<NavAccount>, String> {
     // E2 : en mode organisé, la pastille de la Réception suit
     // l'exclusion partagée — le non-lu d'un retenu appartient à la
     // pastille du Portier, jamais aux deux.
-    let organise = store.mode_organise().map_err(|err| err.to_string())?;
+    let organise = store.organized_mode().map_err(|err| err.to_string())?;
     let mut sortie = Vec::new();
     for compte in store.accounts().map_err(|err| err.to_string())? {
         let dossiers = store
@@ -1805,7 +1805,7 @@ pub async fn list_category(
             // (drapeau + index partiel — jamais une sonde par rangée).
             // Le mode classique passe par la requête HISTORIQUE, au
             // caractère près : zéro diff (garde e2e).
-            let organise = store.mode_organise().map_err(|err| err.to_string())?;
+            let organise = store.organized_mode().map_err(|err| err.to_string())?;
             let mut lignes = if organise {
                 store
                     .reception_organisee_scoped(account_id, non_lus, offset, limit)
@@ -1947,7 +1947,7 @@ pub async fn category_total(
         if category == "reception" {
             // E2 : le total suit le flot — exclusion PARTAGÉE avec la
             // page (leçon `pins`), et le classique reste intact.
-            let organise = store.mode_organise().map_err(|err| err.to_string())?;
+            let organise = store.organized_mode().map_err(|err| err.to_string())?;
             return if organise {
                 store
                     .reception_organisee_count_scoped(account_id, non_lus)
@@ -2351,7 +2351,7 @@ pub async fn repondre_invitation(
         .map_err(|err| err.to_string())?;
         // E7 : la chaîne References entière (RFC 5322 §3.6.4).
         draft.references = store
-            .references_de(account_id, &mailbox, uid)
+            .references_of(account_id, &mailbox, uid)
             .map_err(|err| err.to_string())?;
         draft.ics_reply = Some(mail_ical::itip_reply(&mail_ical::ReplyRequest {
             uid: &stockee.row.event_uid,
@@ -3091,7 +3091,7 @@ pub async fn revoke_images_sender(app: AppHandle, address: String) -> Result<(),
 pub async fn mode_organise_get(app: AppHandle) -> Result<bool, String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store.mode_organise().map_err(|err| err.to_string())
+        store.organized_mode().map_err(|err| err.to_string())
     })
     .await
 }
@@ -3103,7 +3103,7 @@ pub async fn mode_organise_set(app: AppHandle, actif: bool) -> Result<(), String
     hors_pompe(app, move |app| {
         let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
-            .set_mode_organise(actif, epoch_maintenant())
+            .set_organized_mode(actif, epoch_maintenant())
             .map_err(|err| err.to_string())
     })
     .await
@@ -3152,7 +3152,7 @@ pub struct PortierDefauts {
 pub async fn portier_defauts_get(app: AppHandle) -> Result<PortierDefauts, String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        let (oui, non) = store.portier_defauts().map_err(|err| err.to_string())?;
+        let (oui, non) = store.screener_defaults().map_err(|err| err.to_string())?;
         Ok(PortierDefauts { oui, non })
     })
     .await
@@ -3165,7 +3165,7 @@ pub async fn portier_defauts_set(app: AppHandle, oui: String, non: String) -> Re
     hors_pompe(app, move |app| {
         let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
-            .set_portier_defauts(&oui, &non)
+            .set_screener_defaults(&oui, &non)
             .map_err(|err| err.to_string())
     })
     .await
@@ -3194,7 +3194,7 @@ pub async fn router_expediteur(
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
-            .router_expediteur(&address, &destination, regle.as_deref(), epoch_maintenant())
+            .route_sender(&address, &destination, regle.as_deref(), epoch_maintenant())
             .map_err(|err| err.to_string())
     })
     .await
@@ -3223,7 +3223,7 @@ pub async fn router_expediteur_de(
             return Err(format!("boîte inconnue : {mailbox}"));
         };
         store
-            .router_expediteur_of(
+            .route_sender_of(
                 state.mailbox_id,
                 uid,
                 &destination,
@@ -3241,7 +3241,7 @@ pub async fn retirer_routage(app: AppHandle, address: String) -> Result<(), Stri
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
-            .retirer_routage(&address)
+            .remove_routing(&address)
             .map_err(|err| err.to_string())
     })
     .await
@@ -3254,13 +3254,13 @@ pub async fn routages(app: AppHandle) -> Result<Vec<RoutagePayload>, String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         Ok(store
-            .routages()
+            .routings()
             .map_err(|err| err.to_string())?
             .into_iter()
             .map(|r| RoutagePayload {
                 address: r.address,
                 destination: r.destination,
-                regle: r.regle,
+                regle: r.rule,
                 epoch: r.epoch,
             })
             .collect())
@@ -3285,12 +3285,12 @@ pub async fn portier_attente(app: AppHandle) -> Result<Vec<PortierRow>, String> 
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         Ok(store
-            .portier_attente()
+            .screener_waiting()
             .map_err(|err| err.to_string())?
             .into_iter()
             .map(|rang| PortierRow {
                 address: rang.address,
-                row: to_message_row(rang.ligne),
+                row: to_message_row(rang.row),
             })
             .collect())
     })
@@ -3303,7 +3303,7 @@ pub async fn portier_attente(app: AppHandle) -> Result<Vec<PortierRow>, String> 
 pub async fn portier_total(app: AppHandle) -> Result<u64, String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store.portier_total().map_err(|err| err.to_string())
+        store.screener_total().map_err(|err| err.to_string())
     })
     .await
 }
@@ -3314,14 +3314,14 @@ pub async fn portier_total(app: AppHandle) -> Result<u64, String> {
 pub async fn portier_adresses(app: AppHandle) -> Result<Vec<String>, String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store.portier_adresses().map_err(|err| err.to_string())
+        store.screener_addresses().map_err(|err| err.to_string())
     })
     .await
 }
 
 /// RETOURS-14 R7 (D8) — la pastille du Kiosque : combien de cartes
 /// n'ont JAMAIS été ouvertes (mémoire `kiosque_lus`, la sémantique de
-/// la page — jamais l'`unseen` IMAP). Globale, comme `portier_total`.
+/// la page — jamais l'`unseen` IMAP). Globale, comme `screener_total`.
 #[tauri::command]
 pub async fn kiosque_non_ouverts(app: AppHandle) -> Result<u64, String> {
     hors_pompe(app, move |app| {
@@ -3348,13 +3348,13 @@ pub struct SessionNettoyagePayload {
     pub traites: u64,
 }
 
-impl From<mail_core::SessionNettoyage> for SessionNettoyagePayload {
-    fn from(s: mail_core::SessionNettoyage) -> Self {
+impl From<mail_core::CleanupSession> for SessionNettoyagePayload {
+    fn from(s: mail_core::CleanupSession) -> Self {
         SessionNettoyagePayload {
-            plage: s.plage,
-            perimetre: s.perimetre,
+            plage: s.range,
+            perimetre: s.scope,
             total: s.total,
-            traites: s.traites,
+            traites: s.handled,
         }
     }
 }
@@ -3369,14 +3369,14 @@ pub struct GroupeNettoyagePayload {
     pub dernier_objet: Option<String>,
 }
 
-impl From<mail_core::GroupeNettoyage> for GroupeNettoyagePayload {
-    fn from(g: mail_core::GroupeNettoyage) -> Self {
+impl From<mail_core::CleanupGroup> for GroupeNettoyagePayload {
+    fn from(g: mail_core::CleanupGroup) -> Self {
         GroupeNettoyagePayload {
             address: g.address,
-            qui: g.qui,
+            qui: g.who,
             messages: g.messages,
-            dernier_epoch: g.dernier_epoch,
-            dernier_objet: g.dernier_objet,
+            dernier_epoch: g.last_epoch,
+            dernier_objet: g.last_subject,
         }
     }
 }
@@ -3399,8 +3399,8 @@ impl From<mail_core::GroupeRegistre> for GroupeRegistrePayload {
             address: g.address,
             qui: g.qui,
             fils: g.fils,
-            dernier_epoch: g.dernier_epoch,
-            dernier_objet: g.dernier_objet,
+            dernier_epoch: g.last_epoch,
+            dernier_objet: g.last_subject,
         }
     }
 }
@@ -3454,7 +3454,7 @@ pub async fn nettoyage_etat(app: AppHandle) -> Result<Option<SessionNettoyagePay
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         Ok(store
-            .nettoyage_etat()
+            .cleanup_state()
             .map_err(|err| err.to_string())?
             .map(Into::into))
     })
@@ -3471,7 +3471,7 @@ pub async fn nettoyage_demarrer(
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
-            .nettoyage_demarrer(&plage, &perimetre, epoch_maintenant())
+            .cleanup_start(&plage, &perimetre, epoch_maintenant())
             .map(Into::into)
             .map_err(|err| err.to_string())
     })
@@ -3488,7 +3488,7 @@ pub async fn nettoyage_groupes(app: AppHandle) -> Result<Vec<GroupeNettoyagePayl
         // base 200 k »), lisible après coup dans `wind.log` — décompte et
         // durée, jamais une adresse (§6.8).
         let depart = std::time::Instant::now();
-        let groupes = store.nettoyage_groupes().map_err(|err| err.to_string())?;
+        let groupes = store.cleanup_groups().map_err(|err| err.to_string())?;
         crate::trace::trace(&format!(
             "nettoyage : {} groupes en {} ms",
             groupes.len(),
@@ -3508,7 +3508,7 @@ pub async fn nettoyage_messages(
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         Ok(store
-            .nettoyage_messages(&address)
+            .cleanup_messages(&address)
             .map_err(|err| err.to_string())?
             .into_iter()
             .map(to_message_row)
@@ -3530,10 +3530,10 @@ pub async fn nettoyage_verdict(
     hors_pompe(app, move |app| {
         let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
-            .nettoyage_verdict(&address, &destination, regle.as_deref(), epoch_maintenant())
+            .cleanup_verdict(&address, &destination, regle.as_deref(), epoch_maintenant())
             .map_err(|err| err.to_string())?;
         Ok(store
-            .nettoyage_etat()
+            .cleanup_state()
             .map_err(|err| err.to_string())?
             .map(Into::into))
     })
@@ -3545,7 +3545,7 @@ pub async fn nettoyage_verdict(
 pub async fn nettoyage_terminer(app: AppHandle) -> Result<(), String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store.nettoyage_terminer().map_err(|err| err.to_string())
+        store.cleanup_finish().map_err(|err| err.to_string())
     })
     .await
 }
@@ -3568,7 +3568,7 @@ pub async fn toggle_mis_de_cote(
             return Err(format!("boîte inconnue : {mailbox}"));
         };
         store
-            .toggle_mis_de_cote(state.mailbox_id, uid, epoch_maintenant())
+            .toggle_set_aside(state.mailbox_id, uid, epoch_maintenant())
             .map_err(|err| err.to_string())
     })
     .await
@@ -3580,7 +3580,7 @@ pub async fn toggle_mis_de_cote(
 pub async fn pile_mis_de_cote(app: AppHandle) -> Result<Vec<MessageRow>, String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        let mut lignes = store.pile_mis_de_cote().map_err(|err| err.to_string())?;
+        let mut lignes = store.set_aside_pile().map_err(|err| err.to_string())?;
         store
             .enrichir_lignes(&mut lignes)
             .map_err(|err| err.to_string())?;
@@ -3658,7 +3658,7 @@ pub async fn kiosque_cartes(
             };
             // R10 : le « lu » de la carte — sonde PK, une par carte.
             let lu = mailbox_id
-                .map(|id| store.kiosque_lu(id, row.uid))
+                .map(|id| store.feed_read(id, row.uid))
                 .transpose()
                 .map_err(|err| err.to_string())?
                 .unwrap_or(false);
@@ -3703,7 +3703,7 @@ pub async fn kiosque_cartes(
 }
 
 /// RETOURS-13 R10 — une carte du Kiosque défilée jusqu'en bas se
-/// marque lue (idempotent ; patron d'adressage de `toggle_mis_de_cote`).
+/// marque lue (idempotent ; patron d'adressage de `toggle_set_aside`).
 #[tauri::command]
 pub async fn kiosque_marquer_lu(
     app: AppHandle,
@@ -3720,7 +3720,7 @@ pub async fn kiosque_marquer_lu(
             return Err(format!("boîte inconnue : {mailbox}"));
         };
         store
-            .marquer_kiosque_lu(state.mailbox_id, uid, epoch_maintenant())
+            .mark_feed_read(state.mailbox_id, uid, epoch_maintenant())
             .map_err(|err| err.to_string())
     })
     .await
@@ -3739,7 +3739,7 @@ pub async fn pinned_rows(
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         // E2 : la section préposée suit l'exclusion partagée de la
         // Réception organisée — un épinglé routé vit dans sa vue.
-        let organise = store.mode_organise().map_err(|err| err.to_string())?;
+        let organise = store.organized_mode().map_err(|err| err.to_string())?;
         let mut lignes = store
             .pinned_unified_scoped(account_id, non_lus, organise)
             .map_err(|err| err.to_string())?;
@@ -3832,7 +3832,7 @@ pub struct OutboxStatus {
     /// PLAN-AUDIT-V1 E3 (D2) : actions du journal en QUARANTAINE (refus
     /// du serveur, ou cinq échecs) — tous comptes. La fente le dit ;
     /// l'intention n'est plus perdue en silence.
-    pub actions_refusees: u64,
+    pub refused_actions: u64,
 }
 
 /// Pré-remplissage d'une réponse : destinataire = adresse brute de
@@ -3846,7 +3846,7 @@ pub async fn reply_context(
     uid: u32,
 ) -> Result<ComposeContext, String> {
     let (envelope, own) = enveloppe_et_compte(&app, account_id, &mailbox, uid).await?;
-    let repondre_a = reply_to_de(&app, account_id, &mailbox, uid).await?;
+    let repondre_a = reply_to_of(&app, account_id, &mailbox, uid).await?;
     // Notre propre message ? (l'expéditeur est le compte). Répondre à
     // l'expéditeur nous écrirait à nous-mêmes.
     let is_own = envelope
@@ -3896,7 +3896,7 @@ pub async fn reply_context(
 /// sous `hors_pompe` (E5) — la matière commune des trois contextes de
 /// composition.
 /// Le `Reply-To` du message, lu à la demande (PLAN-AUDIT-V2 E5).
-async fn reply_to_de(
+async fn reply_to_of(
     app: &AppHandle,
     account_id: i64,
     mailbox: &str,
@@ -3906,7 +3906,7 @@ async fn reply_to_de(
     hors_pompe(app.clone(), move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
-            .reply_to_de(account_id, &boite, uid)
+            .reply_to_of(account_id, &boite, uid)
             .map_err(|err| err.to_string())
     })
     .await
@@ -3981,7 +3981,7 @@ pub async fn reply_all_context(
     uid: u32,
 ) -> Result<ComposeContext, String> {
     let (envelope, own) = enveloppe_et_compte(&app, account_id, &mailbox, uid).await?;
-    let repondre_a = reply_to_de(&app, account_id, &mailbox, uid).await?;
+    let repondre_a = reply_to_of(&app, account_id, &mailbox, uid).await?;
     // Destinataires connus en base : chemin instantané, aucun réseau. Non
     // vide = « lu » (un reçu porte toujours au moins soi en À) ; vide =
     // pas encore rattrapé, on relit le serveur une fois.
@@ -4195,7 +4195,7 @@ pub async fn queue_send(
         // la sait, l'adaptateur la recopie.
         draft.references = parent.as_ref().and_then(|(uid, mailbox)| {
             store
-                .references_de(account_id, mailbox, *uid)
+                .references_of(account_id, mailbox, *uid)
                 .ok()
                 .flatten()
         });
@@ -4782,7 +4782,7 @@ fn lire_envois(store: &Store) -> Result<OutboxStatus, String> {
         scheduled: 0,
         next_scheduled_epoch: None,
         entries: Vec::new(),
-        actions_refusees: store.actions_refusees().map_err(|err| err.to_string())?,
+        refused_actions: store.refused_actions().map_err(|err| err.to_string())?,
     };
     let maintenant = chrono::Utc::now().timestamp();
     for message in store.outbox_metadonnees().map_err(|err| err.to_string())? {

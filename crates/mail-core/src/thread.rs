@@ -256,7 +256,7 @@ CREATE TABLE IF NOT EXISTS threads (
     inbox_size INTEGER NOT NULL DEFAULT 0,
     -- Le fil est-il HORS de la Réception ORGANISÉE (Mode organisé E2) :
     -- il porte un message d'un expéditeur routé AILLEURS (il vit dans
-    -- sa vue — miroir de fil_route_sql), ou TOUS ses messages viennent
+    -- sa vue — miroir de thread_route_sql), ou TOUS ses messages viennent
     -- d'inconnus en attente au Portier (un fil mêlé RESTE — règle
     -- d'or). Entretenu par `refresh`, comme size/unseen — verdict
     -- S2-bis : toute forme calculée à la requête s'effondre à l'offset
@@ -426,7 +426,7 @@ pub(crate) fn refresh(conn: &Connection, thread: ThreadId) -> Result<(), Error> 
             // `organise_hors` se recalcule AVEC l'agrégat — même règle
             // que size/unseen : jamais incrémenter, une dérive se voit
             // pour toujours. La règle vit dans UN fragment partagé
-            // (`store::organise_hors_sql` — règle d'or comprise : un
+            // (`store::organized_off_sql` — règle d'or comprise : un
             // fil mêlé reste) ; sondes par clés, ~0 quand le mode n'a
             // jamais servi (tables vides, garde O(1) en tête de CASE).
             // Le texte SQL est stable : `prepare_cached` tient.
@@ -435,7 +435,7 @@ pub(crate) fn refresh(conn: &Connection, thread: ThreadId) -> Result<(), Error> 
                                     size = ?5, unseen = ?6, inbox_size = ?7,
                                     organise_hors = {}
                  WHERE id = ?1",
-                crate::store::organise_hors_sql("?1")
+                crate::store::organized_off_sql("?1")
             ))?
             .execute(params![
                 thread,

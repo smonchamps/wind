@@ -66,8 +66,8 @@ pub use remote::{
 };
 pub use search::WIDE_QUERY_THRESHOLD;
 pub use store::{
-    Account, AccountConfig, AdoptionProgress, GroupeNettoyage, InvitationRang,
-    PERIMETRES_NETTOYAGE, PLAGES_NETTOYAGE, SessionNettoyage, Store, SyncState, UnifiedRow,
+    Account, AccountConfig, AdoptionProgress, CLEANUP_RANGES, CLEANUP_SCOPES, CleanupGroup,
+    CleanupSession, InvitationRank, Store, SyncState, UnifiedRow,
 };
 pub use sync::{
     RepereLocal, SYNC_BYTES_PER_MESSAGE, SyncEngine, SyncMode, SyncReport, disk_shortfall,

@@ -562,7 +562,7 @@ pub struct OutboxReport {
 /// refusé (PLAN-AUDIT-V2 E7, décision CE D5) : LE seuil de la quarantaine
 /// des actions, une seule valeur — la revue en avait trouvé deux. Avant, `attempts` se comptait sans jamais se lire : un
 /// message empoisonné retenait la file du compte à vie.
-pub const SEUIL_ENVOI: u32 = Store::SEUIL_QUARANTAINE as u32;
+pub const SEUIL_ENVOI: u32 = Store::QUARANTINE_THRESHOLD as u32;
 
 pub fn flush_outbox(
     transport: &mut dyn MailTransport,
@@ -673,7 +673,7 @@ mod tests {
         parent.message_id = Some("<c@x>".to_string());
         store.upsert_envelopes(inbox, &[parent]).unwrap();
         assert_eq!(
-            store.references_de(account, "INBOX", 1).unwrap().as_deref(),
+            store.references_of(account, "INBOX", 1).unwrap().as_deref(),
             Some("<c@x>"),
             "sans References connues, le Message-ID du parent seul"
         );
@@ -685,10 +685,10 @@ mod tests {
             )
             .unwrap();
         assert_eq!(
-            store.references_de(account, "INBOX", 1).unwrap().as_deref(),
+            store.references_of(account, "INBOX", 1).unwrap().as_deref(),
             Some("<a@x> <b@x> <c@x>")
         );
-        assert_eq!(store.references_de(account, "INBOX", 9).unwrap(), None);
+        assert_eq!(store.references_of(account, "INBOX", 9).unwrap(), None);
     }
 
     #[test]

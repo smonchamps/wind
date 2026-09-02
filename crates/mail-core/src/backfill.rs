@@ -50,7 +50,7 @@ pub const NO_HORIZON: i64 = i64::MIN;
 /// Le vocabulaire FERMÉ du réglage « profondeur d'historique » (ADR 0029,
 /// PLAN-HORIZON-NETTOYAGE D1) — les valeurs offertes au guichet d'ajout
 /// de compte, dans l'ordre du sélecteur. La valeur vit en pref par compte
-/// (`horizon_import.{id}`, [`crate::store::PREFS_PAR_COMPTE`]).
+/// (`horizon_import.{id}`, [`crate::store::PREFS_PER_ACCOUNT`]).
 pub const HORIZONS_IMPORT: &[&str] = &["1m", "2m", "3m", "6m", "1a", "2a", "tout"];
 
 /// Traduit la valeur symbolique en borne d'epoch pour les pompes de
@@ -71,7 +71,7 @@ pub fn horizon_epoch(valeur: &str, now: i64) -> i64 {
         "1a" => 365,
         "2a" => 730,
         // « 5 ans » n'appartient qu'au vocabulaire du Nettoyage de
-        // printemps (PLAGES_NETTOYAGE) — HORIZONS_IMPORT garde la porte
+        // printemps (CLEANUP_RANGES) — HORIZONS_IMPORT garde la porte
         // du réglage d'import, la traduction est commune.
         "5a" => 1826,
         _ => return NO_HORIZON,
@@ -371,14 +371,14 @@ mod horizon_tests {
     /// Le filet d'exhaustivité (revue 2026-08-30) : chaque membre des
     /// DEUX vocabulaires (import ET nettoyage) a son bras dans
     /// `horizon_epoch` — sauf « tout ». Sans lui, ajouter « 10a » à
-    /// `PLAGES_NETTOYAGE` sans toucher au match ferait tomber la plage
+    /// `CLEANUP_RANGES` sans toucher au match ferait tomber la plage
     /// au défaut « tout » : un nettoyage-corbeille balaierait TOUT
     /// l'historique au lieu des 10 ans choisis. Pour l'import, le même
     /// trou est bénin (on importe plus) — pour le nettoyage il est
     /// DESTRUCTIF.
     #[test]
     fn chaque_valeur_des_vocabulaires_a_sa_duree() {
-        for valeur in crate::store::PLAGES_NETTOYAGE
+        for valeur in crate::store::CLEANUP_RANGES
             .iter()
             .chain(super::HORIZONS_IMPORT)
         {

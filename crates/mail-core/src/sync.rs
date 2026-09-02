@@ -39,7 +39,7 @@ pub(crate) fn plan_sync(etat: Option<&SyncState>, instantane: &MailboxSnapshot) 
     match etat {
         None => SyncPlan::Initial,
         Some(etat) if etat.uid_validity != instantane.uid_validity => SyncPlan::Reset,
-        Some(etat) if !etat.initialisee => SyncPlan::Initial,
+        Some(etat) if !etat.initialized => SyncPlan::Initial,
         Some(etat) => SyncPlan::Incremental {
             modseq: etat.highest_modseq,
         },
@@ -110,7 +110,7 @@ impl SyncEngine {
                     uid_validity: snapshot.uid_validity,
                     last_uid: 0,
                     highest_modseq: None,
-                    initialisee: false,
+                    initialized: false,
                     ..stale
                 }
             }
@@ -123,7 +123,7 @@ impl SyncEngine {
                     uid_validity: snapshot.uid_validity,
                     last_uid: 0,
                     highest_modseq: None,
-                    initialisee: false,
+                    initialized: false,
                 }
             }
         };
@@ -174,7 +174,7 @@ impl SyncEngine {
         // Reprenable (PLAN-AUDIT-V2 E5) : une initiale coupée au lot k
         // (bridage, coupure) repartait de zéro. Ce qui est en base n'est
         // plus redemandé — la passe reprend là où elle s'est arrêtée.
-        let connus = store.uids_connus(mailbox_id)?;
+        let connus = store.known_uids(mailbox_id)?;
         uids.retain(|uid| !connus.contains(uid));
         uids.sort_unstable_by(|a, b| b.cmp(a));
 
@@ -293,11 +293,11 @@ fn replay_actions(
                 replayed += 1;
             }
             Err(Error::Refus(motif)) => {
-                store.refuser_action(pending.id, &motif)?;
+                store.refuse_action(pending.id, &motif)?;
                 refusees += 1;
             }
             Err(err) => {
-                if store.noter_echec_action(pending.id, &err.to_string())? {
+                if store.note_action_failure(pending.id, &err.to_string())? {
                     refusees += 1;
                 }
                 break;
@@ -898,13 +898,13 @@ mod tests {
         }
     }
 
-    fn etat(uid_validity: u32, initialisee: bool, highest_modseq: Option<u64>) -> SyncState {
+    fn etat(uid_validity: u32, initialized: bool, highest_modseq: Option<u64>) -> SyncState {
         SyncState {
             mailbox_id: 7,
             uid_validity,
             last_uid: 0,
             highest_modseq,
-            initialisee,
+            initialized,
         }
     }
 
@@ -939,7 +939,7 @@ mod tests {
             store.pending_actions(id).unwrap().is_empty(),
             "la file ACTIVE est vide : la refusée n'y est plus"
         );
-        assert_eq!(store.actions_refusees().unwrap(), 1);
+        assert_eq!(store.refused_actions().unwrap(), 1);
         assert!(
             !store.has_pending_actions(id).unwrap(),
             "une refusée ne force plus la relève à chaque cycle (faut_relever)"
