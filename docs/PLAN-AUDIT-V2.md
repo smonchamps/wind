@@ -696,16 +696,173 @@ E8+E9, revue.
   cohérence du Système 68 jetons ; specs des huit surfaces : 91/94 au
   premier passage (les trois ci-dessus), puis vertes.
 
+## Revue à regard neuf (2026-09-02, `/code-review high` sur `b96878b..HEAD` + arbre)
+
+Huit angles (Sonnet : diff ligne à ligne, comportements retirés,
+traçage inter-fichiers, réutilisation, simplification, efficacité,
+altitude, conventions) / ~30 candidats / vérifiés sur pièces et par
+test — **un réfuté par la preuve, quatorze corrigés, le reste
+consigné** :
+
+1. **Réfuté en le prouvant** — « la porte rapide d'E1 ouvre les
+   connexions SANS `PRAGMA foreign_keys` (il vit dans `SCHEMA`), les
+   cascades de `delete_account` ne jouent plus » : le test écrit pour
+   le prouver est resté VERT sans la ligne — rusqlite `bundled` compile
+   SQLite avec `SQLITE_DEFAULT_FOREIGN_KEYS=1`. La ligne reste avant la
+   porte (une ceinture qui ne dépend pas d'un drapeau de compilation) et
+   le test la garde (`la_porte_rapide_garde_les_cles_etrangeres`).
+2. **`agir_groupe` disait « N faits » en sautant les boîtes inconnues**
+   (CONFIRMED, deux angles) — désormais un REFUS franc du lot (D6, tout
+   ou rien), test étendu (cible sur « Disparue » ⇒ Err, 0 écriture).
+3. **`substituer_transfert` tronquait tout après le marqueur**
+   (CONFIRMED) — une conclusion tapée APRÈS le bloc transféré partait
+   à la poubelle ; appariement des `<div>` (imbrications du courrier
+   cité comprises), test : avant ET après conservés.
+4. **Un transfert dont la source a disparu bloquait l'envoi**
+   (CONFIRMED) — repli : le message part au pixel neutre, une ligne de
+   `wind.log` le dit.
+5. `NOT IN` gardé contre un `NULL` (`address IS NOT NULL`, `email IS
+   NOT NULL` — un `NULL` vidait tout le Nettoyage) ; le marqueur se
+   cherche par l'ATTRIBUT puis la balise (un `style` posé avant par
+   l'éditeur ne le fait plus rater, test) ; `largeur={220}` numérique.
+6. Efficacité : `messages_du_fil` (trois colonnes) remplace
+   `thread_messages` dans le lot ; `sync_state` mémorisé par (compte,
+   boîte) ; `a_reindexer` compare par référence (cinq clones par
+   enveloppe relue) ; `outbox_avec(octets)` unique.
+7. Altitude/conventions : la source du transfert est un type du cœur
+   (`SourceTransfert { account_id, uid, mailbox }`, `cle()` /
+   `source_du_transfert` parsent et encodent, testés — le shell ne fait
+   que relire et substituer) ; `SEUIL_ENVOI` = `Store::SEUIL_QUARANTAINE`
+   (deux constantes pour un seuil) ; le nom de l'index des expéditeurs
+   en UNE constante (`INDEX_EXPEDITEURS`, quatre `INDEXED BY`) ; le
+   bornage à la fenêtre vit dans `Menu.svelte` (sa vraie taille), les
+   sept parents passent l'ancre nue (sept `Math.min` à constantes
+   divergentes retirés).
+
+Consignés sans correction (D-52) : la sonde `RFC822.SIZE` coûte un
+aller-retour par lot de 50 corps pour une borne rarement atteinte
+(l'alternative — stocker la taille à la relève — est un chantier) ;
+`etat_ui` à 5 s double la cadence de la nav et des envois (assumé :
+c'est la relève par le veilleur qui impose 5 s) ; `mesurerFenetre`
+parcourt les cartes à chaque frame de défilement (200 nœuds, ~1 ms) ;
+`__e2ePanne` est une cinquième couture sans `import.meta.env` (vague 3
+avec les quatre autres) ; le registre de la porte rapide est clé par
+CHEMIN, pas par identité de fichier — sûr sous la mono-instance, non
+gardé par le code (un outil qui remplacerait le fichier dans le même
+processus ouvrirait une base sans schéma).
+
+Après revue : mail-core 447 → 448, clippy propre, specs des menus 38/38,
+les trois specs jadis flaky 79/79 avec la coalescence en front montant.
+
+### Andon de la gate finale (2026-09-02)
+
+La gate finale après revue est sortie ROUGE à l'étape e2e :
+`refonte-ecran02:1228` (transfert hors ligne, PJ-D4), échec identique
+aux deux tentatives, reproduit seul (52 passés, 1 échec). Constat par
+une spec jetable : au clic « Envoyer », ni toast ni erreur, la
+composition reste — `queue_send` ne répond JAMAIS. Cause : le
+`fin_du_bloc` posé en revue (comptage des `<div>` imbriqués) avançait
+octet par octet avec `bas[i..]` sur une `str` ; le premier « é » du
+corps (« Message transféré ») tombait hors frontière de caractère et
+PANIQUAIT ; nue dans la tâche async de la commande, la panique laissait
+l'invoke sans réponse. Le test unitaire de la revue n'avait que de
+l'ASCII, et la spec du transfert n'avait pas été rejouée après cette
+correction — seules les specs « flaky » l'avaient été.
+
+Deux corrections, TDD (RED montré : « start byte index 69 is not a
+char boundary; it is inside 'é' ») : `fin_du_bloc` travaille sur les
+octets (les balises cherchées sont ASCII, l'index rendu reste une
+frontière) ; rendu ET substitution passent sous `hors_pompe`, où
+`spawn_blocking` rapporte une panique comme une erreur dite — plus
+jamais un gel muet. mail-core 448 → 449. Enseignement au STANDARD §9.
+
 ## Gate & terrain
 
 - Boucle intérieure : `cargo test -p <crate> <nom>` par étape ; specs
   e2e impactées en fichier entier (E6 : `selection-multiple`, E9 :
   les cinq specs touchées).
-- Gates complètes : après E3, après E6, finale ; `/code-review high`
-  sur l'ensemble avant le dernier commit.
-- STOP 2 : checklist remise au CE avec les commandes (`terrain.ps1`,
-  `lancer-wind.ps1`, `diagnostic_ouverture` sur la base réelle,
-  `wind.log` du Nettoyage, sonde 60 s).
+- Gates complètes jouées : E1-E3, E4-E6, E7-E9, E10, E11 — cinq
+  vertes (3,6 à 5,4 min ; flaky 0 à 2, nommés) ; finale après revue
+  ROUGE (andon, ci-dessus) ; finale après andon VERTE en 2,9 min,
+  193 e2e, flaky 0.
+
+## STOP 2 — checklist de terrain (CE)
+
+Préparer le poste (état de la base, build release AVEC trace) :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\terrain.ps1
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\lancer-wind.ps1
+```
+
+1. **E1 — ouverture, sur la VRAIE base** (durées seules, aucun contenu
+   lu). Attendu : le second `Store::open` sous 5 ms (200 k : 0,9 ms) ;
+   le premier porte la reconstruction de l'index des expéditeurs UNE
+   fois (≈ 0,7-1 s sur 250 k), puis retombe.
+
+```powershell
+cargo run -p mail-core --example diagnostic_ouverture --release -- "$env:APPDATA\dev.elements.wind\wind.db"
+```
+
+2. **E4 — Nettoyage de printemps** : ouvrir la section, choisir
+   « tout » / « dossiers et archives », poser un verdict sur le plus
+   gros groupe. Attendu : la liste des groupes en moins d'une seconde
+   perçue, et dans `wind.log` une ligne « nettoyage : N groupes en
+   X ms » — **X < 200 ms** sur la base réelle (200 k / 5 000 : 67 ms).
+
+```powershell
+Get-Content "$env:APPDATA\dev.elements.wind\wind.log" -Tail 30
+```
+
+3. **E6 — geste de masse** : cocher 20 conversations (dont un fil de
+   plusieurs messages), Archiver. Attendu : UN toast « 20 conversations
+   archivées », la barre ne gèle pas, les 20 partent d'un coup (les fils
+   entiers) ; annuler = rien (tout ou rien).
+4. **E7 — envoi empoisonné** : hors ligne, envoyer un message, remettre
+   en ligne avec un mot de passe SMTP faux (compte générique) : après
+   cinq cycles (≈ 25 min) la fente dit « refusé » avec le motif, et un
+   second message en file derrière est tenté. (Si pas de compte
+   générique : lire la ligne de la fente sur le premier échec, c'est le
+   même chemin.)
+5. **E10 — Kiosque** : mode organisé, dix pages de Kiosque défilées.
+   Attendu : pas de saut au retour vers le haut ; RAM privée (Gestionnaire
+   des tâches, processus WebView2) — noter la valeur ; une relève
+   pendant la lecture d'une carte ne la déplace pas de section.
+6. **E10 — transfert** : transférer une infolettre à images distantes.
+   Attendu : AUCUNE image chargée dans le composeur (pixels neutres),
+   le destinataire reçoit les images ; un mot tapé avant ET après le
+   bloc arrive.
+7. **E10 — corps non servi** : difficile à provoquer au terrain ; le
+   filet e2e couvre. Si un cadre reste vide, la ligne « Le message n’a
+   pas pu être chargé. » + Réessayer doit y être.
+8. **E11 — menus** : sur chaque surface (⋯ d'une rangée, carte du
+   Kiosque, Portier, Nettoyage, Registre, tri, Réglages > Portier,
+   « Déplacer vers… » du fil) : ouvrir, ↓ ↓ Entrée ; puis ouvrir,
+   Échap — le focus revient sur le bouton ; un clic ailleurs ferme ;
+   le menu ne sort jamais de la fenêtre (le tester près du bord bas).
+   **Verdict d'apparence sur les huit** (un seul dessin). Réglages :
+   le focus est dans le panneau à l'ouverture (Tab avance dedans).
+9. **E11 — raccourcis depuis le corps** : cliquer DANS le corps d'un
+   message, frapper `e` : la conversation s'archive (avant : rien).
+10. **E5 — Reply-To** : répondre à un message de liste/notification
+    portant `Reply-To` : le À vise l'adresse de `Reply-To`.
+11. **Gel** : sonde 60 s pendant un geste de masse de 50 conversations
+    et l'ouverture du Nettoyage. Attendu « OK : aucun gel > 150 ms ».
+    **Jamais pendant une gate.**
+
+```powershell
+python e2e\sonde-gel.py C:\mesure\clarity.db 60
+```
+
+12. **wind.log** : aucune adresse, aucun sujet ; la ligne « sans
+    CONDSTORE » ne doit PAS apparaître (Gmail, Microsoft).
+
+Budgets à re-mesurer (STANDARD §3) : gel de la pompe 0 > 150 ms
+(point 11) ; démarrage inchangé (`terrain.ps1` lit `demarrage`) ; RAM
+privée < 200 Mo après le point 5.
 
 ## § Décisions CE — tranchées au STOP 1, le 2026-09-02
 

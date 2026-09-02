@@ -314,32 +314,97 @@ fn echapper_attribut(valeur: &str) -> String {
         .replace('>', "&gt;")
 }
 
+/// D'où vient un bloc transféré : le compte, l'UID et la boîte du
+/// message d'origine — ce que le marqueur porte (`compte/uid/boîte`, la
+/// boîte en dernier parce qu'elle peut contenir des `/`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceTransfert {
+    pub account_id: i64,
+    pub uid: crate::Uid,
+    pub mailbox: String,
+}
+
+impl SourceTransfert {
+    /// La valeur du marqueur — l'inverse exact de [`source_du_transfert`].
+    pub fn cle(&self) -> String {
+        format!("{}/{}/{}", self.account_id, self.uid, self.mailbox)
+    }
+}
+
 /// La source du bloc transféré d'un corps composé, telle que le
-/// marqueur la porte — `None` sans marqueur (réponse, message neuf).
-pub fn source_du_transfert(body_html: &str) -> Option<String> {
+/// marqueur la porte — `None` sans marqueur (réponse, message neuf) ou
+/// si la valeur n'a pas la forme attendue. Décision pure : le shell ne
+/// fait que relire la source et substituer (revue, STANDARD §4).
+pub fn source_du_transfert(body_html: &str) -> Option<SourceTransfert> {
     let cle = format!("{MARQUEUR_TRANSFERT}=\"");
     let debut = body_html.find(&cle)? + cle.len();
     let fin = body_html[debut..].find('"')? + debut;
-    Some(
-        body_html[debut..fin]
-            .replace("&quot;", "\"")
-            .replace("&lt;", "<")
-            .replace("&gt;", ">")
-            .replace("&amp;", "&"),
+    let valeur = body_html[debut..fin]
+        .replace("&quot;", "\"")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&");
+    let (compte, reste) = valeur.split_once('/')?;
+    let (uid, mailbox) = reste.split_once('/')?;
+    Some(SourceTransfert {
+        account_id: compte.parse().ok()?,
+        uid: uid.parse().ok()?,
+        mailbox: mailbox.to_string(),
+    })
+}
+
+/// Remplace le bloc transféré — le `<div>` marqué, jusqu'à SA fermeture
+/// (les `<div>` imbriqués du courrier cité sont comptés) — par
+/// `corps_frais` (le rendu avec ses images distantes). Ce que
+/// l'utilisateur a tapé avant ET après le bloc reste ; une retouche DANS
+/// le bloc est perdue (limite dite : on transmet, on ne commente pas
+/// ligne à ligne). Un bloc jamais fermé se remplace jusqu'à la fin.
+pub fn substituer_transfert(body_html: &str, corps_frais: &str) -> String {
+    // Par l'ATTRIBUT, puis la balise qui le porte (revue) : un éditeur
+    // qui pose `style` ou `class` avant le marqueur ne le fait pas rater.
+    let cle = format!(" {MARQUEUR_TRANSFERT}=");
+    let Some(attribut) = body_html.find(&cle) else {
+        return body_html.to_string();
+    };
+    let Some(debut) = body_html[..attribut].rfind('<') else {
+        return body_html.to_string();
+    };
+    let fin = fin_du_bloc(&body_html[debut..]).map_or(body_html.len(), |l| debut + l);
+    format!(
+        "{}<div>{corps_frais}</div>{}",
+        &body_html[..debut],
+        &body_html[fin..]
     )
 }
 
-/// Remplace le bloc transféré — du marqueur à la FIN du corps, le bloc
-/// est toujours dernier — par `corps_frais` (le rendu avec ses images
-/// distantes). Ce que l'utilisateur a tapé AVANT le bloc reste ; une
-/// retouche DANS le bloc transféré est perdue (limite dite : on
-/// transmet, on ne commente pas ligne à ligne).
-pub fn substituer_transfert(body_html: &str, corps_frais: &str) -> String {
-    let cle = format!("<div {MARQUEUR_TRANSFERT}=");
-    match body_html.find(&cle) {
-        Some(debut) => format!("{}<div>{corps_frais}</div>", &body_html[..debut]),
-        None => body_html.to_string(),
+/// La longueur du premier élément `<div …>…</div>` de `html`, fermetures
+/// imbriquées comprises — `None` s'il n'est jamais fermé. Insensible à
+/// la casse (le composeur peut réécrire `<DIV>`).
+fn fin_du_bloc(html: &str) -> Option<usize> {
+    // Sur les OCTETS, jamais `str[i..]` : l'avance octet par octet
+    // tombait au milieu d'un « é » et paniquait (andon de gate,
+    // 2026-09-02). Les balises cherchées sont ASCII : l'index rendu
+    // est une frontière de caractère.
+    let bas = html.to_ascii_lowercase();
+    let bas = bas.as_bytes();
+    let mut profondeur = 0usize;
+    let mut i = 0;
+    while i < bas.len() {
+        if bas[i..].starts_with(b"</div") {
+            profondeur = profondeur.checked_sub(1)?;
+            let ferme = bas[i..].iter().position(|&c| c == b'>')? + i + 1;
+            if profondeur == 0 {
+                return Some(ferme);
+            }
+            i = ferme;
+        } else if bas[i..].starts_with(b"<div") {
+            profondeur += 1;
+            i += 4;
+        } else {
+            i += 1;
+        }
     }
+    None
 }
 
 /// Bloc d'un transfert : l'en-tête d'origine (De/Date/Objet) puis le texte
@@ -663,44 +728,92 @@ mod tests {
     /// au clic, « Annuler » ne le rattrapait pas) ; à l'envoi, le bloc
     /// transféré est remplacé par le rendu AVEC les vraies URL — le
     /// destinataire reçoit le même message.
+    /// Andon de gate (2026-09-02) : « transféré » dans le bloc — un octet
+    /// non ASCII faisait PANIQUER `fin_du_bloc` (découpe d'une `str` hors
+    /// frontière de caractère) ; la tâche async tombait et `queue_send`
+    /// ne répondait jamais : composition figée, ni toast ni erreur. Le
+    /// test de la revue n'avait que de l'ASCII.
+    #[test]
+    fn un_bloc_accentue_se_substitue_sans_paniquer() {
+        let corps = format!(
+            "<p>Salut é</p><div {MARQUEUR_TRANSFERT}=\"1/17/INBOX\">             <p>Message transféré — été</p><div>à</div></div><p>après</p>"
+        );
+        assert_eq!(
+            substituer_transfert(&corps, "Z"),
+            "<p>Salut é</p><div>Z</div><p>après</p>"
+        );
+    }
+
     #[test]
     fn un_transfert_n_embarque_aucune_image_distante_a_la_composition_mais_les_rend_a_l_envoi() {
         let bloque = r#"<p>lettre</p><img src="data:image/gif;base64,R0lGOD" alt="">"#;
+        let source = SourceTransfert {
+            account_id: 3,
+            uid: 42,
+            mailbox: "INBOX".to_string(),
+        };
         let compose = quote_forward_html(
             Some("Alice"),
             Some("2026-09-02"),
             Some("Lettre"),
             bloque,
-            Some("3/42/INBOX"),
+            Some(&source.cle()),
         );
         assert!(!compose.contains("https://"), "{compose}");
         assert!(
             compose.contains(r#"data-wind-transfert="3/42/INBOX""#),
             "{compose}"
         );
-        assert_eq!(source_du_transfert(&compose).as_deref(), Some("3/42/INBOX"));
+        assert_eq!(source_du_transfert(&compose), Some(source));
 
-        let edite = format!("<div>mon mot</div>{compose}");
+        // Tapé AVANT et APRÈS le bloc : les deux restent (revue — la
+        // première version tronquait tout après le marqueur).
+        let edite = format!("<div>mon mot</div>{compose}<div>et ma conclusion</div>");
         let frais = r#"<p>lettre</p><img src="https://x.example/p.gif" alt="">"#;
         let envoye = substituer_transfert(&edite, frais);
+        assert!(envoye.starts_with("<div>mon mot</div><br><br>"), "{envoye}");
         assert!(
-            envoye.starts_with("<div>mon mot</div><br><br>"),
-            "le mot tapé reste : {envoye}"
+            envoye.ends_with("</div><div>et ma conclusion</div>"),
+            "{envoye}"
         );
         assert!(envoye.contains("https://x.example/p.gif"), "{envoye}");
         assert!(!envoye.contains("data:image"), "{envoye}");
-        assert!(
-            !envoye.contains("data-wind-transfert"),
-            "le marqueur ne part pas : {envoye}"
+        assert!(!envoye.contains("data-wind-transfert"), "{envoye}");
+        // Un courrier cité plein de <div> imbriqués : la fermeture est la
+        // BONNE, pas la première venue.
+        let imbrique = quote_forward_html(
+            None,
+            None,
+            None,
+            "<div><div>a</div><div>b</div></div>",
+            Some("1/1/INBOX"),
         );
+        let envoye = substituer_transfert(&format!("{imbrique}<p>fin</p>"), "X");
+        assert!(envoye.ends_with("<div>X</div><p>fin</p>"), "{envoye}");
+        // L'éditeur a posé un attribut AVANT le marqueur : trouvé quand même.
+        let reserialise = imbrique.replace(
+            "<div data-wind-transfert",
+            r#"<div style="x" data-wind-transfert"#,
+        );
+        assert!(substituer_transfert(&reserialise, "Y").contains("<div>Y</div>"));
         // Sans marqueur (une réponse, un message neuf) : rien ne bouge.
         assert_eq!(substituer_transfert("<p>a</p>", frais), "<p>a</p>");
         assert_eq!(source_du_transfert("<p>a</p>"), None);
-        // Un nom de boîte avec des guillemets survit à l'aller-retour.
-        let bizarre = quote_forward_html(None, None, None, "", Some(r#"1/2/Dossier "cité""#));
+        // Un nom de boîte avec des guillemets ET des `/` survit à
+        // l'aller-retour ; une valeur mal formée ne vaut rien.
+        let bizarre =
+            quote_forward_html(None, None, None, "", Some(r#"1/2/[Gmail]/Dossier "cité""#));
         assert_eq!(
-            source_du_transfert(&bizarre).as_deref(),
-            Some(r#"1/2/Dossier "cité""#)
+            source_du_transfert(&bizarre),
+            Some(SourceTransfert {
+                account_id: 1,
+                uid: 2,
+                mailbox: r#"[Gmail]/Dossier "cité""#.to_string()
+            })
+        );
+        assert_eq!(
+            source_du_transfert(r#"<div data-wind-transfert="x/y/z">"#),
+            None
         );
     }
 

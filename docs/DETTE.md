@@ -326,8 +326,17 @@ motivée.)
   de la sonde unique `etat_ui` (vague 3, avec la pagination des
   commandes) ; (4) `decode_header` parse encore un message synthétique
   par sujet — non mesuré comme coût ; (5) le test « archiver au
-  raccourci depuis l'écran 03 » a flaké une fois après le coalescement
-  des resservies (E10) — à surveiller au compteur de flaky.
+  raccourci depuis l'écran 03 » a flaké deux fois après le coalescement
+  des resservies (E10) — passé en front montant à la revue, 79/79 depuis ;
+  (6) la sonde `RFC822.SIZE` coûte un aller-retour par lot de 50 corps
+  pour une borne (32 Mo) rarement atteinte — l'alternative est de
+  stocker la taille à la relève des enveloppes (chantier) ; (7) `etat_ui`
+  à 5 s double la cadence de la nav et des envois (la relève par le
+  veilleur impose 5 s ; assumé) ; (8) `__e2ePanne` est une cinquième
+  couture e2e compilée en production, sans `import.meta.env` (vague 3,
+  avec les quatre autres) ; (9) le registre de la porte rapide d'E1 est
+  clé par CHEMIN, pas par identité de fichier — sûr sous la mono-instance,
+  non gardé par le code.
 - **Rouvre si** : un testeur retouche un transfert et perd sa retouche ;
   le compteur « flaky : N » nomme deux fois le même test.
 

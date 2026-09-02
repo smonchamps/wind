@@ -182,8 +182,8 @@
     const rect = e.currentTarget.getBoundingClientRect();
     menuDecision = {
       address: r.address,
-      x: Math.min(rect.left, window.innerWidth - 260),
-      y: Math.min(rect.bottom + 4, window.innerHeight - 320),
+      x: rect.left,
+      y: rect.bottom + 4,
     };
   }
   const TOAST_NON = {

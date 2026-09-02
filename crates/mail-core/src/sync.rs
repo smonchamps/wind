@@ -64,6 +64,10 @@ pub struct SyncReport {
     /// Actions entrées en QUARANTAINE pendant ce rejeu (E3) : refus
     /// définitif du serveur, ou cinquième échec transitoire.
     pub refusees: usize,
+    /// Le serveur n'annonce pas CONDSTORE : ses drapeaux ne se
+    /// resynchronisent jamais (D-51, décision CE D3 de PLAN-AUDIT-V2 —
+    /// dette dite, tracée par le shell).
+    pub sans_condstore: bool,
 }
 
 pub struct SyncEngine {
@@ -93,6 +97,7 @@ impl SyncEngine {
         mailbox: &str,
     ) -> Result<SyncReport, Error> {
         let snapshot = server.select(mailbox)?;
+        let sans_condstore = snapshot.highest_modseq.is_none();
 
         // La DÉCISION est pure (`plan_sync`, STANDARD §4) ; ici on ne
         // fait que l'exécuter.
@@ -152,7 +157,10 @@ impl SyncEngine {
         // terrain du 2026-08-13 (ADR 0017). L'orchestrateur la rafraîchit
         // UNE fois par cycle, à l'inventaire, avec la liste qu'il a déjà
         // en main — déplacer hors ligne reste servi.
-        Ok(report)
+        Ok(SyncReport {
+            sans_condstore,
+            ..report
+        })
     }
 
     fn initial_sync(
@@ -182,6 +190,7 @@ impl SyncEngine {
             deleted: 0,
             replayed: 0,
             refusees: 0,
+            sans_condstore: false,
         })
     }
 
@@ -245,6 +254,7 @@ impl SyncEngine {
             deleted,
             replayed: 0,
             refusees: 0,
+            sans_condstore: false,
         })
     }
 }

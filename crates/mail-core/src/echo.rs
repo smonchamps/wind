@@ -479,7 +479,7 @@ impl Store {
     ///
     /// Rend le nombre de conversations traitées. `Spam` sans dossier
     /// indésirable sur un compte visé est un refus franc, AVANT toute
-    /// écriture ; une boîte inconnue en base est sautée (comme l'unitaire).
+    /// écriture ; une boîte inconnue en base refuse le lot (rien de fait).
     pub fn agir_groupe(&self, cibles: &[CibleGeste], geste: &GesteGroupe) -> Result<usize, Error> {
         let mut messages: Vec<(i64, String, Uid)> = Vec::new();
         let mut vus: BTreeSet<(i64, String, Uid)> = BTreeSet::new();
@@ -487,14 +487,8 @@ impl Store {
             let seule = vec![(cible.account_id, cible.mailbox.clone(), cible.uid)];
             let du_fil = match cible.thread_id {
                 Some(thread) => {
-                    let fil = self.thread_messages(thread)?;
-                    if fil.is_empty() {
-                        seule
-                    } else {
-                        fil.into_iter()
-                            .map(|rang| (rang.account_id, rang.mailbox, rang.envelope.uid))
-                            .collect()
-                    }
+                    let fil = self.messages_du_fil(thread)?;
+                    if fil.is_empty() { seule } else { fil }
                 }
                 None => seule,
             };
@@ -519,12 +513,29 @@ impl Store {
                 indesirables.insert(account, dossier);
             }
         }
+        // La boîte de chaque (compte, nom) résolue UNE fois — un lot de 250
+        // messages vit dans une ou deux boîtes (revue).
+        let mut boites: BTreeMap<(i64, String), Option<i64>> = BTreeMap::new();
         let tx = self.conn().unchecked_transaction()?;
         for (account_id, mailbox, uid) in &messages {
-            let Some(state) = self.sync_state(*account_id, mailbox)? else {
-                continue;
+            let cle = (*account_id, mailbox.clone());
+            let resolue = match boites.get(&cle) {
+                Some(id) => *id,
+                None => {
+                    let id = self.sync_state(*account_id, mailbox)?.map(|s| s.mailbox_id);
+                    boites.insert(cle, id);
+                    id
+                }
             };
-            let mailbox_id = state.mailbox_id;
+            // Tout ou rien (D6) : une boîte que la base ne connaît pas
+            // (renommée, disparue en cours de geste) refuse le LOT — avant,
+            // le message était sauté en silence et le bilan disait
+            // « N faits » (revue).
+            let Some(mailbox_id) = resolue else {
+                return Err(Error::Refus(format!(
+                    "boîte inconnue en base pour le compte {account_id} : le lot est refusé"
+                )));
+            };
             match geste {
                 GesteGroupe::Archive => {
                     self.geste_sous(&tx, mailbox_id, *uid, Action::Archive, Some("archives"))?;
@@ -838,6 +849,24 @@ mod tests {
         assert_eq!(compte("echos"), 0);
 
         store.conn().execute_batch("DROP TRIGGER panne").unwrap();
+
+        // Une cible sur une boîte inconnue : le lot est refusé, rien ne
+        // part — le bilan ne dit jamais « 50 faits » pour 49 (revue).
+        let mut avec_inconnue = cibles.clone();
+        avec_inconnue.push(CibleGeste {
+            account_id: account,
+            mailbox: "Disparue".to_string(),
+            uid: 1,
+            thread_id: None,
+        });
+        assert!(
+            store
+                .agir_groupe(&avec_inconnue, &GesteGroupe::Archive)
+                .is_err()
+        );
+        assert_eq!(compte("envelopes"), 50);
+        assert_eq!(compte("pending_actions"), 0);
+
         assert_eq!(
             store.agir_groupe(&cibles, &GesteGroupe::Archive).unwrap(),
             50

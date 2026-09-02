@@ -31,8 +31,8 @@
       return;
     }
     const r = e.currentTarget.getBoundingClientRect();
-    x = Math.min(r.right - 230, window.innerWidth - 240);
-    y = Math.min(r.bottom + 4, window.innerHeight - 170);
+    x = r.right - 230;
+    y = r.bottom + 4;
     ouvert = true;
   }
   function choisir(id) {

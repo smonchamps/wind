@@ -136,8 +136,8 @@
     menuGestes = {
       ligne,
       cle: cleLigne(ligne),
-      x: Math.min(r.left, window.innerWidth - 260),
-      y: Math.min(r.bottom + 4, window.innerHeight - 210),
+      x: r.left,
+      y: r.bottom + 4,
     };
   }
   function geste(destination) {

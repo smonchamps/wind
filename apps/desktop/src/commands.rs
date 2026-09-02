@@ -741,6 +741,7 @@ fn relever_inbox(
             deleted: 0,
             replayed: 0,
             refusees: 0,
+            sans_condstore: false,
         }
     };
 
@@ -811,6 +812,14 @@ fn relever_inbox(
     // Revue PLAN-AUDIT-V1 : le cycle qui met une action en quarantaine le
     // DIT — sinon seul le compteur global de la fente le révèle, sans
     // lien avec le cycle fautif. Point de sortie unique des quatre chemins.
+    // D-51 (décision CE D3, PLAN-AUDIT-V2) : un serveur sans CONDSTORE ne
+    // resynchronise jamais ses drapeaux — dette dite, nommée UNE fois par
+    // compte et par session dans `wind.log`, pour savoir si le cas existe.
+    if report.sans_condstore && sans_condstore_premiere_fois(account_id) {
+        crate::trace::trace(&format!(
+            "compte {account_id} : sans CONDSTORE, drapeaux non resynchronisés (D-51)"
+        ));
+    }
     if report.refusees > 0 {
         crate::trace::trace(&format!(
             "relève compte {account_id} : {} action(s) mise(s) en quarantaine",
@@ -2608,6 +2617,18 @@ pub struct BilanGroupe {
     pub total: usize,
 }
 
+/// Les comptes déjà nommés « sans CONDSTORE » dans cette session — la
+/// ligne se dit une fois, pas à chaque relève.
+fn sans_condstore_premiere_fois(account_id: i64) -> bool {
+    static DITS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<i64>>> =
+        std::sync::OnceLock::new();
+    let dits = DITS.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+    match dits.lock() {
+        Ok(mut dits) => dits.insert(account_id),
+        Err(empoisonne) => empoisonne.into_inner().insert(account_id),
+    }
+}
+
 /// Le geste de MASSE de la barre de sélection (PLAN-AUDIT-V2 E6) : UN
 /// appel, UNE transaction, tout ou rien (D6) — l'UI rejouait N × k
 /// commandes unitaires en série. `action` : les clés de la barre
@@ -4030,7 +4051,12 @@ pub async fn forward_context(
     // D8 (PLAN-AUDIT-V2 E10) : AUCUNE image distante au composeur — le
     // pixel de suivi partait au clic « Transférer ». Le bloc porte sa
     // SOURCE ; `queue_send` rend les vraies URL au moment d'envoyer.
-    let source = format!("{account_id}/{uid}/{mailbox}");
+    let source = mail_core::SourceTransfert {
+        account_id,
+        uid,
+        mailbox: mailbox.clone(),
+    }
+    .cle();
     // Verdict terrain D5 (2026-08-20) : un transfert TRANSMET — les
     // images distantes sont CONSERVÉES (`AllowRemote`), le destinataire
     // reçoit le message entier. L'exception §6.4 est assumée et
@@ -4072,24 +4098,33 @@ async fn rendre_les_images_du_transfert(
     let Some(source) = mail_core::source_du_transfert(&html) else {
         return Ok(html);
     };
-    let Some((compte, reste)) = source.split_once('/') else {
-        return Ok(html);
-    };
-    let Some((uid, mailbox)) = reste.split_once('/') else {
-        return Ok(html);
-    };
-    let (Ok(compte), Ok(uid)) = (compte.parse::<i64>(), uid.parse::<u32>()) else {
-        return Ok(html);
-    };
-    if compte != account_id {
+    if source.account_id != account_id {
         return Ok(html);
     }
-    let brut = raw_body(app, account_id, mailbox, uid).await?;
-    let frais = hors_pompe(app.clone(), move |_| {
-        Ok(mail_render::sanitize_with(&brut, mail_render::ImagePolicy::AllowRemote).html)
+    // La source a pu disparaître entre la composition et l'envoi
+    // (nettoyage, purge serveur) : le message PART quand même, avec son
+    // bloc au pixel neutre — jamais un envoi bloqué par une citation
+    // (revue ; la boîte d'envoi est résiliente hors ligne, ce chemin
+    // aussi).
+    let brut = match raw_body(app, account_id, &source.mailbox, source.uid).await {
+        Ok(brut) => brut,
+        Err(err) => {
+            crate::trace::trace(&format!(
+                "transfert : source introuvable a l'envoi ({err}) - bloc envoye sans images distantes"
+            ));
+            return Ok(html);
+        }
+    };
+    // Rendu ET substitution sous `hors_pompe` : une panique dans une
+    // décision pure y devient une erreur DITE (spawn_blocking la
+    // rapporte) — nue dans la tâche async, elle laissait l'invoke sans
+    // réponse et la composition figée sans un mot (andon de gate,
+    // 2026-09-02).
+    hors_pompe(app.clone(), move |_| {
+        let frais = mail_render::sanitize_with(&brut, mail_render::ImagePolicy::AllowRemote).html;
+        Ok(mail_core::substituer_transfert(&html, &frais))
     })
-    .await?;
-    Ok(mail_core::substituer_transfert(&html, &frais))
+    .await
 }
 
 /// Date au format de la ligne d'attribution d'une citation.

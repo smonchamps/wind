@@ -123,8 +123,8 @@
     const r = e.currentTarget.getBoundingClientRect();
     menu = {
       address: g.address, qui: g.qui ?? g.address,
-      x: Math.min(r.left, window.innerWidth - 260),
-      y: Math.min(r.bottom + 4, window.innerHeight - 170),
+      x: r.left,
+      y: r.bottom + 4,
     };
   }
   function geste(destination) {
@@ -197,7 +197,7 @@
 </div>
 
 <Menu ouvert={menu !== null} x={menu?.x ?? 0} y={menu?.y ?? 0}
-      testid="registre-menu" largeur=220 onfermer={() => (menu = null)}>
+      testid="registre-menu" largeur={220} onfermer={() => (menu = null)}>
     {#each ['reception', 'kiosque'] as dest (dest)}
       <button type="button" role="menuitem" data-testid={`registre-vers-${dest}`}
               onclick={() => geste(dest)}>

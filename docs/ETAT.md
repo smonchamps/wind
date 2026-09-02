@@ -56,7 +56,32 @@ part avec la vague 1 en **0.16.0** (MINEURE : comportements changés),
 clause de réouverture : un gel au clic de lien ou un pixel HTTP
 signalé par un testeur ⇒ 0.15.1 le jour même.
 
-✅ **Aucun chantier en cours.** Dernier soldé :
+🔧 **Chantier en cours : [PLAN-AUDIT-V2](PLAN-AUDIT-V2.md)** — la
+vague 2 de l'audit (dix lots S2 mesurables + le front, D1 : « tout en
+un chantier »), ouverte le 2026-09-02, GO CE au STOP 1 (D1-D8), **onze
+étapes LIVRÉES le jour même**, STOP visuel CE joué (menu unique, ligne
+« Réessayer »), revue à regard neuf 8 angles / ~30 candidats / 14
+corrigés / 1 réfuté par la preuve, six gates complètes vertes —
+**en attente du STOP 2 (terrain CE)** : checklist de douze points au
+PLAN (`diagnostic_ouverture` sur la base réelle, `wind.log` du
+Nettoyage, geste de masse, transfert sans image, huit menus au
+clavier, sonde de gel). Chiffres : second `Store::open` 36 → 0,9 ms
+(E1) ; corps de 28 Mo indexé 401 → 338 ms et 210 → 133 Mo (E2) ;
+`HEADER.FIELDS`, lots bornés, une `LIST` et une `CAPABILITY`, analyse
+MIME unique 18,2 → 11,1 ms (E3) ; `nettoyage_groupes` 380 → 67 ms,
+`nettoyage_messages` 109 → 1 ms sur 200 k / 5 000 expéditeurs (E4) ;
+initiale reprenable, SPECIAL-USE, chevrons, `Reply-To`, écho d'envoi
+(E5) ; geste de masse en UN appel tout ou rien (E6) ; envoi refusé au
+5e échec (E7) ; CSP et chemins bornés (E8) ; actions CI par SHA,
+« flaky : N », hook → `gate.ps1` (E9) ; corps réessayable, Kiosque
+fusionné et fenêtré, sonde `etat_ui`, transfert sans image distante
+(E10, A107) ; `Menu.svelte` unique au clavier (E11, A108). ADR 0031 ;
+D-47 et D-4 amendées ; D-51, D-52 neuves ; CHANGELOG 0.17.0 écrite.
+**Encore dû** : 0.16.0 à publier AVANT (décision D2 : `faire-release.ps1
+0.16.0` depuis `main`, puis vérification et preuve de MAJ), le ticket
+support GitHub (`051bb01`).
+
+Dernier soldé avant lui :
 **[PLAN-AUDIT-V1](PLAN-AUDIT-V1.md)** (2026-09-02, terrain CE « ok »,
 0 KO, CI verte run 33568895402, **ADR 0030**) — la vague 1 de l'audit
 (les S1 du cœur et du shell), ouverte le 2026-09-01 au soir, GO CE au

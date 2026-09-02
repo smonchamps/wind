@@ -356,24 +356,22 @@ impl Store {
     /// (toutes les 10 s) et toute liste : le `.len()` d'une pièce ne vaut
     /// pas 25 Mo relus (PLAN-AUDIT-V2 E7).
     pub fn outbox_metadonnees(&self) -> Result<Vec<OutboxMessage>, Error> {
-        let mut stmt = self
-            .conn()
-            .prepare(&format!("{OUTBOX_SELECT} ORDER BY id"))?;
-        let rows = stmt
-            .query_map([], row_to_outbox)?
-            .collect::<Result<Vec<_>, _>>()?;
-        self.charger_pieces(rows, false)
+        self.outbox_avec(false)
     }
 
-    /// Toute la boîte d'envoi, dans l'ordre d'émission.
+    /// Toute la boîte d'envoi, dans l'ordre d'émission, pièces comprises.
     pub fn outbox(&self) -> Result<Vec<OutboxMessage>, Error> {
+        self.outbox_avec(true)
+    }
+
+    fn outbox_avec(&self, octets: bool) -> Result<Vec<OutboxMessage>, Error> {
         let mut stmt = self
             .conn()
             .prepare(&format!("{OUTBOX_SELECT} ORDER BY id"))?;
         let rows = stmt
             .query_map([], row_to_outbox)?
             .collect::<Result<Vec<_>, _>>()?;
-        self.load_outbox_attachments(rows)
+        self.charger_pieces(rows, octets)
     }
 
     /// Les messages dans un état donné, dans l'ordre d'émission.
@@ -561,10 +559,10 @@ pub struct OutboxReport {
 /// Au premier échec transitoire la pompe s'arrête : le réseau est tombé,
 /// inutile d'insister, la file survit telle quelle.
 /// Combien d'échecs TRANSITOIRES consécutifs avant qu'un envoi soit
-/// refusé (PLAN-AUDIT-V2 E7, décision CE D5 : 5, comme la quarantaine
-/// des actions). Avant, `attempts` se comptait sans jamais se lire : un
+/// refusé (PLAN-AUDIT-V2 E7, décision CE D5) : LE seuil de la quarantaine
+/// des actions, une seule valeur — la revue en avait trouvé deux. Avant, `attempts` se comptait sans jamais se lire : un
 /// message empoisonné retenait la file du compte à vie.
-pub const SEUIL_ENVOI: u32 = 5;
+pub const SEUIL_ENVOI: u32 = Store::SEUIL_QUARANTAINE as u32;
 
 pub fn flush_outbox(
     transport: &mut dyn MailTransport,

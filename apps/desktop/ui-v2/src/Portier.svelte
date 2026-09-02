@@ -122,8 +122,8 @@
       address: rang.address,
       qui: rang.row.sender,
       type,
-      x: Math.min(r.left, window.innerWidth - 250),
-      y: Math.min(r.bottom + 4, window.innerHeight - 170),
+      x: r.left,
+      y: r.bottom + 4,
     };
   }
 </script>

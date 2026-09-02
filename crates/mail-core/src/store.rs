@@ -978,6 +978,15 @@ impl Store {
         // n'a lieu qu'après COMMIT de l'adoption (une annulation, un
         // échec : rien d'inscrit, la passe entière se rejoue). Une base
         // mémoire n'a pas de chemin : jamais inscrite.
+        // Les clés étrangères sont un réglage PAR CONNEXION : `SCHEMA` les
+        // active en tête, et la porte rapide ne rejoue pas `SCHEMA`. La
+        // revue de la vague 2 y a vu des cascades perdues ; le test qui
+        // devait le prouver est resté VERT sans cette ligne — rusqlite
+        // `bundled` compile SQLite avec `SQLITE_DEFAULT_FOREIGN_KEYS=1`.
+        // La ligne reste, avant la porte : une ceinture qui ne dépend
+        // pas d'un drapeau de compilation (le test la garde).
+        conn.execute_batch("PRAGMA foreign_keys = ON")?;
+        conn.execute_batch("PRAGMA foreign_keys = ON")?;
         let cle = cle_fichier(&conn);
         if let Some(cle) = &cle
             && registre_initialisees().contains(cle)
@@ -1711,15 +1720,15 @@ impl Store {
                     })
                     .optional()?;
                 let nouveau = deja.is_none();
+                // Comparaison par référence (revue) : cinq clones par
+                // enveloppe relue, c'était 25 000 allocations pour rien
+                // sur 5 000 deltas CONDSTORE.
                 let a_reindexer = deja.as_ref().is_none_or(|deja| {
-                    *deja
-                        != (
-                            envelope.subject.clone(),
-                            envelope.sender.clone(),
-                            envelope.sender_address.clone(),
-                            to_field.clone(),
-                            cc_field.clone(),
-                        )
+                    deja.0.as_deref() != envelope.subject.as_deref()
+                        || deja.1.as_deref() != envelope.sender.as_deref()
+                        || deja.2.as_deref() != envelope.sender_address.as_deref()
+                        || deja.3.as_deref() != to_field.as_deref()
+                        || deja.4.as_deref() != cc_field.as_deref()
                 });
                 stmt.execute(params![
                     mailbox_id,
@@ -3493,8 +3502,8 @@ impl Store {
             "e.mailbox_id IN ({liste})
                AND (e.date_epoch > ?1 OR e.date_epoch IS NULL)
                AND e.sender_norm IS NOT NULL
-               AND e.sender_norm NOT IN (SELECT address FROM routage_expediteurs)
-               AND e.sender_norm NOT IN (SELECT lower(trim(email)) FROM accounts)"
+               AND e.sender_norm NOT IN (SELECT address FROM routage_expediteurs WHERE address IS NOT NULL)
+               AND e.sender_norm NOT IN (SELECT lower(trim(email)) FROM accounts WHERE email IS NOT NULL)"
         )
     }
 
@@ -3523,10 +3532,10 @@ impl Store {
             "SELECT g.sender_norm, g.n, g.dernier, e.sender, e.subject
                FROM (SELECT e.sender_norm AS sender_norm, COUNT(*) AS n,
                             MAX(e.date_epoch) AS dernier
-                       FROM envelopes e INDEXED BY idx_envelopes_sender
+                       FROM envelopes e INDEXED BY {INDEX_EXPEDITEURS}
                       WHERE {critere}
                       GROUP BY e.sender_norm) g
-               CROSS JOIN envelopes e INDEXED BY idx_envelopes_sender
+               CROSS JOIN envelopes e INDEXED BY {INDEX_EXPEDITEURS}
                  ON e.sender_norm = g.sender_norm
                 AND e.date_epoch IS g.dernier
                 AND e.mailbox_id IN ({liste})
@@ -3543,7 +3552,7 @@ impl Store {
         let critere = Self::nettoyage_critere(ids);
         format!(
             "{SELECT_UNIFIED}, COALESCE(t.size, 1), COALESCE(t.unseen, 1 - e.seen)
-             FROM envelopes e INDEXED BY idx_envelopes_sender
+             FROM envelopes e INDEXED BY {INDEX_EXPEDITEURS}
              JOIN mailboxes m ON m.id = e.mailbox_id
              JOIN accounts a ON a.id = m.account_id
              LEFT JOIN threads t ON t.id = e.thread_id
@@ -3557,7 +3566,7 @@ impl Store {
         let critere = Self::nettoyage_critere(ids);
         let total: i64 = self.0.query_row(
             &format!(
-                "SELECT COUNT(*) FROM (SELECT 1 FROM envelopes e INDEXED BY idx_envelopes_sender
+                "SELECT COUNT(*) FROM (SELECT 1 FROM envelopes e INDEXED BY {INDEX_EXPEDITEURS}
                   WHERE {critere} GROUP BY e.sender_norm)"
             ),
             params![borne],
@@ -3797,6 +3806,24 @@ impl Store {
 
     /// Les messages d'une conversation, du plus ancien au plus récent —
     /// l'ordre de lecture d'un échange.
+    /// Les messages d'un fil, en TROIS colonnes (compte, boîte, UID) —
+    /// ce qu'un geste de masse a besoin de savoir, sans hydrater les
+    /// rangées entières (revue de la vague 2 : `thread_messages` joignait
+    /// corps et fils pour trois scalaires).
+    pub fn messages_du_fil(&self, thread_id: i64) -> Result<Vec<(i64, String, Uid)>, Error> {
+        let mut stmt = self.0.prepare_cached(
+            "SELECT m.account_id, m.name, e.uid FROM envelopes e
+             JOIN mailboxes m ON m.id = e.mailbox_id
+             WHERE e.thread_id = ?1 ORDER BY e.date_epoch DESC, e.uid DESC",
+        )?;
+        let rows = stmt
+            .query_map([thread_id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     pub fn thread_messages(&self, thread_id: i64) -> Result<Vec<UnifiedRow>, Error> {
         // Jointure sur `threads`, et non le mapping « message seul » :
         // chaque message doit repartir en connaissant la taille de SON
@@ -4546,16 +4573,11 @@ fn migrate(
     // les sondes par expéditeur (Portier, stock d'un verdict) le servent
     // toujours par son préfixe. Une base du parc portait l'index à deux
     // colonnes : reconstruit, même patron que l'index de date.
-    conn.execute_batch(
-        "CREATE INDEX IF NOT EXISTS idx_envelopes_sender
-             ON envelopes(sender_norm, date_epoch, mailbox_id);",
-    )?;
-    reconstruire_index_si_ancien(
-        conn,
-        "idx_envelopes_sender",
-        "mailbox_id",
-        "CREATE INDEX idx_envelopes_sender ON envelopes(sender_norm, date_epoch, mailbox_id);",
-    )?;
+    let creation = format!(
+        "CREATE INDEX {INDEX_EXPEDITEURS} ON envelopes(sender_norm, date_epoch, mailbox_id);"
+    );
+    conn.execute_batch(&creation.replace("CREATE INDEX", "CREATE INDEX IF NOT EXISTS"))?;
+    reconstruire_index_si_ancien(conn, INDEX_EXPEDITEURS, "mailbox_id", &creation)?;
     // Le drapeau de rétention des fils (E2, verdict S2-bis : V4 —
     // entretenu par `thread::refresh` comme `size`/`unseen`, servi par
     // l'index partiel miroir). Sur une base héritée, `threads` existe
@@ -4694,6 +4716,11 @@ fn migrate_multi_account(conn: &Connection) -> Result<(), Error> {
     )?;
     Ok(())
 }
+
+/// L'index des expéditeurs (expéditeur, date, boîte) — nommé UNE fois :
+/// les requêtes du Nettoyage l'exigent par `INDEXED BY` (revue : quatre
+/// copies du nom, un renommage en aurait oublié une en silence).
+pub(crate) const INDEX_EXPEDITEURS: &str = "idx_envelopes_sender";
 
 /// Les champs d'une enveloppe qui vivent dans l'index de recherche —
 /// tels que relus en base, pour savoir si une re-synchronisation les a
@@ -8411,6 +8438,43 @@ mod tests {
                 .any(|ligne| ligne.contains("idx_envelopes_sender (sender_norm=?)")),
             "le courrier d'un groupe ne se cherche pas par l'expéditeur : {plan:?}"
         );
+    }
+
+    /// Revue de la vague 2 : `PRAGMA foreign_keys = ON` vit dans `SCHEMA`
+    /// et vaut PAR CONNEXION — la porte rapide ne rejoue pas le schéma.
+    /// Ce test est resté vert AVANT la ligne posée dans `init_with` :
+    /// rusqlite `bundled` active les clés par défaut à la compilation.
+    /// Il garde la ceinture : sur base FICHIER (une base mémoire n'entre
+    /// jamais au registre), la seconde ouverture efface encore les boîtes
+    /// d'un compte supprimé, quel que soit le drapeau de compilation.
+    #[test]
+    fn la_porte_rapide_garde_les_cles_etrangeres() {
+        let path =
+            std::env::temp_dir().join(format!("wind-test-porte-fk-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        drop(Store::open(&path).unwrap());
+
+        let mut store = Store::open(&path).unwrap();
+        let actives: i64 = store
+            .conn()
+            .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            actives, 1,
+            "clés étrangères éteintes sur la seconde connexion"
+        );
+        let account = store
+            .adopt_or_create_account("moi@exemple.fr", "gmail")
+            .unwrap();
+        store.create_mailbox(account, "INBOX", 1).unwrap();
+        store.delete_account(account).unwrap();
+        let boites: i64 = store
+            .conn()
+            .query_row("SELECT COUNT(*) FROM mailboxes", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(boites, 0, "la cascade du compte supprimé n'a pas joué");
+        drop(store);
+        let _ = std::fs::remove_file(&path);
     }
 
     /// Une base du parc porte l'index des expéditeurs à DEUX colonnes ;

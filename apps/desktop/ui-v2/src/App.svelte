@@ -401,17 +401,15 @@
   // PLAN-AUDIT-V2 E10 : après un geste, la nav était demandée jusqu'à
   // trois fois en rafale — coalescée (50 ms) sur le chemin qui va
   // chercher ; la sonde de repos (`etat_ui`) fournit l'instantané.
-  let navEnAttente = false;
+  let navRecente = false;
   function chargerNav(instantaneFourni = null) {
     if (instantaneFourni !== null) return chargerNavMaintenant(instantaneFourni);
-    if (navEnAttente) return Promise.resolve();
-    navEnAttente = true;
-    return new Promise((resoudre) => {
-      setTimeout(() => {
-        navEnAttente = false;
-        chargerNavMaintenant(null).then(resoudre, resoudre);
-      }, 50);
-    });
+    if (navRecente) return Promise.resolve();
+    navRecente = true;
+    setTimeout(() => {
+      navRecente = false;
+    }, 50);
+    return chargerNavMaintenant(null);
   }
   async function chargerNavMaintenant(instantaneFourni) {
     const jeton = ++jetonNav;
@@ -1424,16 +1422,20 @@
   // nav et passe d'après-geste sautaient avec).
   // PLAN-AUDIT-V2 E10 : un geste faisait trois resservies en rafale
   // (geste, relecture, passe d'après-geste) — coalescées à 50 ms.
-  let resservieEnAttente = false;
+  // Front MONTANT : la première demande part tout de suite (l'ordre
+  // d'avant, que le triage clavier A38 suppose), les suivantes dans les
+  // 50 ms sont absorbées — un front descendant a fait flaker « archiver
+  // au raccourci depuis l'écran 03 » (revue E10).
+  let resservieRecente = false;
   function rechargerVues() {
-    if (resservieEnAttente) return;
-    resservieEnAttente = true;
+    if (resservieRecente) return;
+    resservieRecente = true;
     setTimeout(() => {
-      resservieEnAttente = false;
-      liste?.recharger();
-      kiosque?.recharger();
-      registre?.recharger();
+      resservieRecente = false;
     }, 50);
+    liste?.recharger();
+    kiosque?.recharger();
+    registre?.recharger();
   }
 
   async function sonderEtat() {

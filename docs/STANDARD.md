@@ -923,6 +923,27 @@ macro-tâche fait rater la frappe suivante (race avec Playwright) ;
 la règle qui tient : **un clic sur le déclencheur n'est jamais
 « dehors »** (PLAN-AUDIT-V2 E11, `Menu.svelte`).
 
+### Une correction de revue est un incrément comme un autre
+
+À PLAN-AUDIT-V2, la revue à regard neuf a remplacé une recherche de
+`</div>` par un comptage des blocs imbriqués — validé par un test
+unitaire en ASCII et par les seules specs « flaky » rejouées. La
+gate finale est sortie rouge : le corps réel disait « transféré », la
+boucle avançait octet par octet avec `str[i..]`, l'index tombait dans
+un « é » et la fonction PANIQUAIT. Deux règles en une :
+
+- **On avance sur des octets (`as_bytes()`), jamais sur une `str`
+  indexée octet par octet** — `body.rs` avance par caractère, c'est la
+  seule autre forme admise. Un test de chaîne sans accent ne prouve
+  rien sur un chemin qui verra du français.
+- **Une décision pure appelée depuis une commande async tourne sous
+  `hors_pompe`** : `spawn_blocking` rapporte une panique comme une
+  erreur dite ; nue dans la tâche, elle laisse l'invoke sans réponse et
+  l'UI figée sans un mot — ni toast, ni trace, ni test qui le nomme.
+
+Et la règle de méthode : une correction de revue rejoue la spec du
+chemin qu'elle touche, pas seulement les specs qu'on surveillait.
+
 ## 10. Carte des fichiers
 
 | Fichier | Rôle |
