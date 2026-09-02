@@ -170,8 +170,8 @@ fn veille_session(
                 return Ok(());
             }
         }
-        match server.veiller(commands::MAILBOX, RELANCE) {
-            Ok(mail_imap::Veille::Courrier) => {
+        match server.watch(commands::MAILBOX, RELANCE) {
+            Ok(mail_imap::Watch::Mail) => {
                 // Du courrier ! La passe légère du compte le relève —
                 // sur SA connexion à elle (timeouts P0 intacts), pendant
                 // que celle-ci retourne veiller.
@@ -181,7 +181,7 @@ fn veille_session(
             }
             // Battement de cœur : le DONE/re-IDLE du prochain tour
             // prouvera que la connexion vit.
-            Ok(mail_imap::Veille::Echeance) => {}
+            Ok(mail_imap::Watch::Timeout) => {}
             Err(err) => return Err(err.to_string()),
         }
     }

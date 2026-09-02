@@ -1,22 +1,22 @@
-//! UTF-7 modifié (RFC 3501 §5.1.3) : les noms de dossiers IMAP.
+//! Modified UTF-7 (RFC 3501 §5.1.3): the IMAP folder names.
 //!
-//! IMAP est antérieur à UTF-8. Un dossier « Actualité » circule encodé
-//! `Actualit&AOk-` : `&` ouvre une séquence, `-` la ferme, et le contenu
-//! est du base64 d'UTF-16BE — avec `,` à la place de `/` dans l'alphabet.
-//! `&-` est la façon d'écrire un `&` littéral.
+//! IMAP predates UTF-8. A folder "Actualité" travels encoded
+//! `Actualit&AOk-`: `&` opens a sequence, `-` closes it, and the content is
+//! base64 of UTF-16BE — with `,` in place of `/` in the alphabet. `&-` is
+//! the way to write a literal `&`.
 //!
-//! **Ce module ne décode QUE pour l'affichage et les comparaisons.** Le
-//! nom encodé reste celui qu'on renvoie au serveur : envoyer « Actualité »
-//! là où le protocole attend `Actualit&AOk-` ferait échouer le SELECT.
-//! Les deux noms doivent donc coexister, jamais se remplacer.
+//! **This module ONLY decodes for display and comparisons.** The encoded
+//! name remains the one sent back to the server: sending "Actualité" where
+//! the protocol expects `Actualit&AOk-` would fail the SELECT. Both names
+//! must therefore coexist, never replace each other.
 
 use base64::Engine;
 
-/// Décode un nom de dossier IMAP pour l'ŒIL humain.
+/// Decodes an IMAP folder name for the human EYE.
 ///
-/// Ne peut pas échouer : une séquence malformée est recopiée telle
-/// quelle. Un nom un peu laid vaut mieux qu'un dossier disparu — la
-/// règle « jamais de perte » vaut aussi pour ce qu'on affiche.
+/// Cannot fail: a malformed sequence is copied as is. A slightly ugly name
+/// beats a vanished folder — the "never lose" rule also holds for what is
+/// displayed.
 pub(crate) fn decode(raw: &str) -> String {
     let bytes = raw.as_bytes();
     let mut out = String::with_capacity(raw.len());
@@ -24,8 +24,8 @@ pub(crate) fn decode(raw: &str) -> String {
 
     while index < bytes.len() {
         if bytes[index] != b'&' {
-            // Les octets hors séquence sont de l'ASCII imprimable ; on
-            // avance caractère par caractère pour rester UTF-8-sûr.
+            // Bytes outside a sequence are printable ASCII; we advance
+            // character by character to stay UTF-8 safe.
             let rest = &raw[index..];
             let ch = rest.chars().next().unwrap_or('&');
             out.push(ch);
@@ -33,7 +33,7 @@ pub(crate) fn decode(raw: &str) -> String {
             continue;
         }
         match bytes[index + 1..].iter().position(|&b| b == b'-') {
-            // `&-` : une esperluette littérale.
+            // `&-`: a literal ampersand.
             Some(0) => {
                 out.push('&');
                 index += 2;
@@ -43,13 +43,13 @@ pub(crate) fn decode(raw: &str) -> String {
                 let end = start + offset;
                 match decode_segment(&raw[start..end]) {
                     Some(decoded) => out.push_str(&decoded),
-                    // Illisible : on recopie la séquence brute plutôt que
-                    // d'inventer ou de perdre.
+                    // Unreadable: copy the raw sequence rather than invent
+                    // or lose.
                     None => out.push_str(&raw[index..=end]),
                 }
                 index = end + 1;
             }
-            // Séquence jamais refermée : le reste est recopié tel quel.
+            // Sequence never closed: the rest is copied as is.
             None => {
                 out.push_str(&raw[index..]);
                 break;
@@ -59,13 +59,13 @@ pub(crate) fn decode(raw: &str) -> String {
     out
 }
 
-/// Un segment entre `&` et `-` : base64 modifié d'UTF-16BE.
+/// A segment between `&` and `-`: modified base64 of UTF-16BE.
 fn decode_segment(segment: &str) -> Option<String> {
     if segment.is_empty() {
         return None;
     }
-    // L'alphabet d'IMAP remplace `/` par `,` — sinon c'est du base64
-    // standard, sans remplissage.
+    // IMAP's alphabet replaces `/` by `,` — otherwise it is standard
+    // base64, without padding.
     let standard = segment.replace(',', "/");
     let bytes = base64::engine::general_purpose::STANDARD_NO_PAD
         .decode(standard)
@@ -77,8 +77,8 @@ fn decode_segment(segment: &str) -> Option<String> {
         .chunks_exact(2)
         .map(|pair| u16::from_be_bytes([pair[0], pair[1]]))
         .collect();
-    // `from_utf16` refuse les surrogates orphelins : c'est voulu, ils
-    // signalent un encodage cassé.
+    // `from_utf16` refuses orphan surrogates: intended, they signal a
+    // broken encoding.
     String::from_utf16(&units).ok()
 }
 
@@ -93,8 +93,8 @@ mod tests {
         assert_eq!(decode(""), "");
     }
 
-    /// Le cas exact relevé sur le terrain, consigné dans l'ADR 0006 :
-    /// un compte affichait `Actualit&AOk-` au lieu d'« Actualité ».
+    /// The exact case seen in the field, recorded in ADR 0006: an account
+    /// displayed `Actualit&AOk-` instead of "Actualité".
     #[test]
     fn decodes_the_accented_name_seen_in_production() {
         assert_eq!(decode("Actualit&AOk-"), "Actualité");
@@ -106,31 +106,31 @@ mod tests {
         assert_eq!(decode("Dossier/&AOk-l&AOk-ments"), "Dossier/éléments");
     }
 
-    /// `&-` est la seule façon d'écrire une esperluette : sans ce cas,
-    /// « Ventes & Marketing » deviendrait illisible.
+    /// `&-` is the only way to write an ampersand: without this case,
+    /// "Ventes & Marketing" would become unreadable.
     #[test]
     fn an_escaped_ampersand_comes_back_as_itself() {
         assert_eq!(decode("&-"), "&");
         assert_eq!(decode("Ventes &- Marketing"), "Ventes & Marketing");
     }
 
-    /// Alphabets non latins : le `,` de l'alphabet modifié n'apparaît que
-    /// sur certains contenus, et c'est exactement là que les décodeurs
-    /// écrits à la main se trompent.
+    /// Non-Latin scripts: the `,` of the modified alphabet only appears on
+    /// some contents, and that is exactly where hand-written decoders go
+    /// wrong.
     #[test]
     fn decodes_non_latin_scripts() {
         assert_eq!(decode("&BBIEMAQ2BD0EPg-"), "Важно");
         assert_eq!(decode("&ZeVnLIqe-"), "日本語");
     }
 
-    /// Hors du plan multilingue de base, UTF-16 utilise deux unités.
+    /// Outside the basic multilingual plane, UTF-16 uses two units.
     #[test]
     fn decodes_a_surrogate_pair() {
         assert_eq!(decode("&2D3es9g93qU-"), "🚳🚥");
     }
 
-    /// Un nom mal encodé ne doit ni faire paniquer, ni disparaître : il
-    /// s'affiche tel quel, et l'utilisateur voit au moins son dossier.
+    /// A badly encoded name must neither panic nor disappear: it is
+    /// displayed as is, and the user at least sees their folder.
     #[test]
     fn malformed_sequences_survive_verbatim() {
         assert_eq!(decode("Actualit&AOk"), "Actualit&AOk");
@@ -139,18 +139,18 @@ mod tests {
         assert_eq!(decode("&AO-"), "&AO-");
     }
 
-    /// Le décodage ne doit jamais faire perdre le nom réseau : c'est
-    /// l'appelant qui garde les deux. Ce test documente la règle en
-    /// montrant qu'un nom décodé n'est PAS ré-encodable ici.
+    /// Decoding must never lose the wire name: the caller keeps both. This
+    /// test documents the rule by showing that a decoded name is NOT
+    /// re-encodable here.
     #[test]
     fn decoding_is_not_reversible_here_by_design() {
         let wire = "Actualit&AOk-";
         let display = decode(wire);
-        assert_ne!(display, wire, "l'affichage diffère du nom réseau");
+        assert_ne!(display, wire, "the display differs from the wire name");
         assert_eq!(
             decode(&display),
             display,
-            "re-décoder un nom déjà décodé ne doit rien casser"
+            "re-decoding an already decoded name must break nothing"
         );
     }
 }

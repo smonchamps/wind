@@ -1,9 +1,9 @@
-//! Validation de bout en bout : le `SyncEngine` de mail-core branché sur
-//! l'adaptateur IMAP réel, contre votre compte Gmail.
+//! End-to-end validation: mail-core's `SyncEngine` wired to the real IMAP
+//! adapter, against your Gmail account.
 //!
-//! Prérequis : `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` dans l'environnement
-//! et un compte déjà connecté via l'application Wind (le refresh token
-//! vit dans le Credential Manager, service « wind-mail »).
+//! Prerequisites: `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` in the environment
+//! and an account already connected through the Wind application (the
+//! refresh token lives in the Credential Manager, service "wind-mail").
 //!
 //! ```powershell
 //! cargo run -p mail-imap --example sync_gmail --release
@@ -17,17 +17,17 @@ use mail_core::{Store, SyncEngine};
 use mail_imap::ImapServer;
 
 fn main() -> anyhow::Result<()> {
-    let auth = Authenticator::google_from_env().context("configuration OAuth")?;
+    let auth = Authenticator::google_from_env().context("OAuth configuration")?;
     let account = match std::env::var("WIND_ACCOUNT") {
         Ok(email) => auth.authenticate_silent(&email),
         Err(_) => auth.authenticate_silent_legacy(),
     }
-    .context("connectez d'abord un compte via Wind (ou définissez WIND_ACCOUNT)")?;
+    .context("connect an account through Wind first (or set WIND_ACCOUNT)")?;
 
     let timer = Instant::now();
     let mut server =
         ImapServer::connect_xoauth2("imap.gmail.com", 993, &account.email, &account.access_token)?;
-    println!("Connecté ({}) en {:?}", account.email, timer.elapsed());
+    println!("Connected ({}) in {:?}", account.email, timer.elapsed());
 
     let db_path = std::path::PathBuf::from("target/mail-imap-example.db");
     let mut store = Store::open(&db_path)?;
@@ -36,7 +36,7 @@ fn main() -> anyhow::Result<()> {
     let timer = Instant::now();
     let report = SyncEngine::default().sync(&mut server, &mut store, account_id, "INBOX")?;
     println!(
-        "Synchronisation {:?} : {} enveloppe(s) récupérée(s)/mise(s) à jour, {} supprimée(s), en {:?}",
+        "Sync {:?}: {} envelope(s) fetched/updated, {} deleted, in {:?}",
         report.mode,
         report.fetched,
         report.deleted,
@@ -47,7 +47,7 @@ fn main() -> anyhow::Result<()> {
     let timer = Instant::now();
     let recent = store.recent(account_id, "INBOX", 0, 10)?;
     println!(
-        "Les 10 plus récents (lus depuis SQLite en {:?}) :",
+        "The 10 most recent (read from SQLite in {:?}):",
         timer.elapsed()
     );
     for envelope in recent {
@@ -58,8 +58,8 @@ fn main() -> anyhow::Result<()> {
             .unwrap_or_else(|| "????-??-??".to_string());
         println!(
             "{marker} {date}  {:28}  {}",
-            truncate(envelope.sender.as_deref().unwrap_or("(inconnu)"), 28),
-            truncate(envelope.subject.as_deref().unwrap_or("(sans sujet)"), 58),
+            truncate(envelope.sender.as_deref().unwrap_or("(unknown)"), 28),
+            truncate(envelope.subject.as_deref().unwrap_or("(no subject)"), 58),
         );
     }
     Ok(())

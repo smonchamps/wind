@@ -1,102 +1,101 @@
-//! PLAN-AUDIT-V2 E3 — ce que l'adaptateur ENVOIE, prouvé sur le faux
-//! serveur scripté ([`crate::faux_serveur`]). Chaque test a été joué RED
-//! contre l'adaptateur d'avant (voir le PLAN).
+//! PLAN-AUDIT-V2 E3 — what the adapter SENDS, proven on the scripted fake
+//! server ([`crate::fake_server`]). Every test was played RED against the
+//! adapter of before (see the PLAN).
 
 use mail_core::MailServer;
 
-use crate::faux_serveur::{FauxImap, Script, litteral, uids_de};
+use crate::fake_server::{FakeImap, Script, literal, uids_of};
 
-fn mime_minuscule(uid: u32) -> String {
+fn tiny_mime(uid: u32) -> String {
     format!(
-        "From: alice@ex.fr\r\nSubject: message {uid}\r\nContent-Type: text/plain\r\n\r\nbonjour {uid}\r\n"
+        "From: alice@ex.fr\r\nSubject: message {uid}\r\nContent-Type: text/plain\r\n\r\nhello {uid}\r\n"
     )
 }
 
-fn enveloppe(uid: u32) -> String {
+fn envelope(uid: u32) -> String {
     format!(
         "* {uid} FETCH (UID {uid} FLAGS (\\Seen) INTERNALDATE \"01-Jan-2026 00:00:00 +0000\" \
-         ENVELOPE (\"Thu, 1 Jan 2026 00:00:00 +0000\" \"Sujet {uid}\" \
+         ENVELOPE (\"Thu, 1 Jan 2026 00:00:00 +0000\" \"Subject {uid}\" \
          ((\"Alice\" NIL \"alice\" \"ex.fr\")) NIL NIL NIL NIL NIL NIL \"<m{uid}@ex.fr>\"))"
     )
 }
 
-/// Le banc du rattrapage : 50 corps multipart de ~56 ko (texte, HTML,
-/// une pièce de 30 ko en base64) passés par l'analyse — le poste CPU
-/// dominant du rattrapage. `cargo test -p mail-imap banc_analyse --
-/// --ignored --nocapture`.
+/// The backfill bench: 50 multipart bodies of ~56 KB (text, HTML, a 30 KB
+/// base64 attachment) through the parse — the dominant CPU post of the
+/// backfill. `cargo test -p mail-imap bench_parse -- --ignored --nocapture`.
 #[test]
-#[ignore = "banc : mesure, pas un filet"]
-fn banc_analyse_de_50_corps() {
-    let piece = "QUJDRA==".repeat(30 * 1024 / 8);
-    let html = "<p>Bonjour &agrave; tous, voici la lettre du mois.</p>".repeat(400);
-    let brut = format!(
-        "From: alice@ex.fr\r\nTo: bob@ex.fr\r\nSubject: lettre\r\nMIME-Version: 1.0\r\n\
+#[ignore = "bench: a measurement, not a net"]
+fn bench_parse_50_bodies() {
+    let attachment = "QUJDRA==".repeat(30 * 1024 / 8);
+    let html = "<p>Hello everyone, here is the letter of the month.</p>".repeat(400);
+    let raw = format!(
+        "From: alice@ex.fr\r\nTo: bob@ex.fr\r\nSubject: letter\r\nMIME-Version: 1.0\r\n\
          Content-Type: multipart/mixed; boundary=\"b1\"\r\n\r\n\
          --b1\r\nContent-Type: multipart/alternative; boundary=\"b2\"\r\n\r\n\
-         --b2\r\nContent-Type: text/plain\r\n\r\nBonjour a tous\r\n\
+         --b2\r\nContent-Type: text/plain\r\n\r\nHello everyone\r\n\
          --b2\r\nContent-Type: text/html\r\n\r\n{html}\r\n--b2--\r\n\
          --b1\r\nContent-Type: application/pdf; name=\"doc.pdf\"\r\n\
          Content-Disposition: attachment; filename=\"doc.pdf\"\r\n\
-         Content-Transfer-Encoding: base64\r\n\r\n{piece}\r\n--b1--\r\n"
+         Content-Transfer-Encoding: base64\r\n\r\n{attachment}\r\n--b1--\r\n"
     );
-    println!("corps : {} ko", brut.len() / 1024);
-    let depart = std::time::Instant::now();
-    let mut pieces = 0;
+    println!("body: {} KB", raw.len() / 1024);
+    let start = std::time::Instant::now();
+    let mut attachments = 0;
     for _ in 0..50 {
-        let corps = crate::body_from_raw(brut.as_bytes()).expect("analysable");
-        pieces += corps.attachments.len();
+        let body = crate::body_from_raw(raw.as_bytes()).expect("parseable");
+        attachments += body.attachments.len();
     }
     println!(
-        "50 corps analysés en {:?} ({pieces} pièces vues)",
-        depart.elapsed()
+        "50 bodies parsed in {:?} ({attachments} attachments seen)",
+        start.elapsed()
     );
 }
 
 #[test]
-fn les_en_tetes_de_fil_ne_demandent_que_trois_champs() {
+fn thread_headers_ask_for_three_fields_only() {
     let mut script = Script::simple();
-    script.fetch = Box::new(|commande| {
-        let texte = "Message-ID: <m1@ex.fr>\r\nReferences: <a@ex.fr> <b@ex.fr>\r\n\r\n";
-        uids_de(commande)
+    script.fetch = Box::new(|command| {
+        let text = "Message-ID: <m1@ex.fr>\r\nReferences: <a@ex.fr> <b@ex.fr>\r\n\r\n";
+        uids_of(command)
             .into_iter()
             .map(|uid| {
                 format!(
                     "* {uid} FETCH (UID {uid} BODY[HEADER.FIELDS (MESSAGE-ID IN-REPLY-TO REFERENCES)] {})",
-                    litteral(texte)
+                    literal(text)
                 )
             })
             .collect()
     });
-    let faux = FauxImap::lancer(script);
-    let mut serveur = faux.connecter();
+    let fake = FakeImap::start(script);
+    let mut server = fake.connect();
 
-    let lus = serveur.fetch_thread_headers("INBOX", &[1]).unwrap();
-    assert_eq!(lus.len(), 1);
-    assert_eq!(lus[0].1.references.as_deref(), Some("<a@ex.fr> <b@ex.fr>"));
+    let read = server.fetch_thread_headers("INBOX", &[1]).unwrap();
+    assert_eq!(read.len(), 1);
+    assert_eq!(read[0].1.references.as_deref(), Some("<a@ex.fr> <b@ex.fr>"));
 
-    let fetch = faux
-        .commandes()
+    let fetch = fake
+        .commands()
         .into_iter()
         .find(|c| c.starts_with("UID FETCH"))
-        .expect("un FETCH est parti");
+        .expect("a FETCH went out");
     assert!(
         fetch.contains("BODY.PEEK[HEADER.FIELDS (MESSAGE-ID IN-REPLY-TO REFERENCES)]"),
-        "le bloc d'en-têtes entier est demandé : {fetch}"
+        "the whole header block is requested: {fetch}"
     );
 }
 
 #[test]
-fn un_lot_de_corps_est_borne_a_32_mo() {
+fn a_body_batch_is_bounded_to_32_mb() {
     let mut script = Script::simple();
-    script.fetch = Box::new(|commande| {
-        let uids = uids_de(commande);
-        if commande.contains("RFC822.SIZE") {
-            // 20 Mo, 20 Mo, 1 ko : les deux premiers ne tiennent pas
-            // ensemble sous 32 Mo, le troisième suit le deuxième.
+    script.fetch = Box::new(|command| {
+        let uids = uids_of(command);
+        if command.contains("RFC822.SIZE") {
+            // 20 MB, 20 MB, 1 KB: the first two do not fit together under
+            // 32 MB, the third follows the second.
             uids.into_iter()
                 .map(|uid| {
-                    let taille = if uid == 3 { 1024 } else { 20 * 1024 * 1024 };
-                    format!("* {uid} FETCH (UID {uid} RFC822.SIZE {taille})")
+                    let size = if uid == 3 { 1024 } else { 20 * 1024 * 1024 };
+                    format!("* {uid} FETCH (UID {uid} RFC822.SIZE {size})")
                 })
                 .collect()
         } else {
@@ -104,128 +103,128 @@ fn un_lot_de_corps_est_borne_a_32_mo() {
                 .map(|uid| {
                     format!(
                         "* {uid} FETCH (UID {uid} BODY[] {})",
-                        litteral(&mime_minuscule(uid))
+                        literal(&tiny_mime(uid))
                     )
                 })
                 .collect()
         }
     });
-    let faux = FauxImap::lancer(script);
-    let mut serveur = faux.connecter();
+    let fake = FakeImap::start(script);
+    let mut server = fake.connect();
 
-    let corps = serveur.fetch_bodies_html("INBOX", &[1, 2, 3]).unwrap();
-    assert_eq!(corps.len(), 3, "les trois corps arrivent");
+    let bodies = server.fetch_bodies_html("INBOX", &[1, 2, 3]).unwrap();
+    assert_eq!(bodies.len(), 3, "the three bodies arrive");
 
-    let lots: Vec<String> = faux
-        .commandes()
+    let batches: Vec<String> = fake
+        .commands()
         .into_iter()
         .filter(|c| c.contains("BODY.PEEK[]"))
         .collect();
-    assert_eq!(lots.len(), 2, "deux lots attendus, vus : {lots:?}");
-    assert!(lots[0].starts_with("UID FETCH 1 "), "{}", lots[0]);
-    assert!(lots[1].starts_with("UID FETCH 2:3 "), "{}", lots[1]);
+    assert_eq!(batches.len(), 2, "two batches expected, seen: {batches:?}");
+    assert!(batches[0].starts_with("UID FETCH 1 "), "{}", batches[0]);
+    assert!(batches[1].starts_with("UID FETCH 2:3 "), "{}", batches[1]);
 }
 
 #[test]
-fn un_serveur_sans_uidplus_n_envoie_jamais_uid_expunge() {
+fn a_server_without_uidplus_never_gets_uid_expunge() {
     let mut script = Script::simple();
-    script.capacites = "IMAP4rev1".to_string();
-    let faux = FauxImap::lancer(script);
-    let mut serveur = faux.connecter();
+    script.capabilities = "IMAP4rev1".to_string();
+    let fake = FakeImap::start(script);
+    let mut server = fake.connect();
 
-    serveur.move_to("INBOX", 1, "Archive").unwrap();
+    server.move_to("INBOX", 1, "Archive").unwrap();
 
-    let commandes = faux.commandes();
+    let commands = fake.commands();
     assert!(
-        commandes.iter().any(|c| c.starts_with("UID COPY 1 ")),
-        "sans MOVE, une copie : {commandes:?}"
+        commands.iter().any(|c| c.starts_with("UID COPY 1 ")),
+        "without MOVE, a copy: {commands:?}"
     );
     assert!(
-        !commandes.iter().any(|c| c.starts_with("UID EXPUNGE")),
-        "UID EXPUNGE sans UIDPLUS : {commandes:?}"
+        !commands.iter().any(|c| c.starts_with("UID EXPUNGE")),
+        "UID EXPUNGE without UIDPLUS: {commands:?}"
     );
     assert!(
-        commandes.iter().any(|c| c == "EXPUNGE"),
-        "l'EXPUNGE de RFC 3501 manque : {commandes:?}"
+        commands.iter().any(|c| c == "EXPUNGE"),
+        "the RFC 3501 EXPUNGE is missing: {commands:?}"
     );
 }
 
 #[test]
-fn une_session_ne_liste_qu_une_fois_pour_les_dossiers_speciaux() {
-    let faux = FauxImap::lancer(Script::simple());
-    let mut serveur = faux.connecter();
+fn a_session_lists_only_once_for_the_special_folders() {
+    let fake = FakeImap::start(Script::simple());
+    let mut server = fake.connect();
 
     assert_eq!(
-        serveur.drafts_folder_name().unwrap().as_deref(),
+        server.drafts_folder_name().unwrap().as_deref(),
         Some("Brouillons")
     );
     assert_eq!(
-        serveur.sent_folder_name().unwrap().as_deref(),
+        server.sent_folder_name().unwrap().as_deref(),
         Some("Envoyes")
     );
-    serveur.delete("INBOX", 1).unwrap(); // la corbeille, troisième lecteur
+    server.delete("INBOX", 1).unwrap(); // the trash, third reader
 
-    let listes = faux
-        .commandes()
+    let lists = fake
+        .commands()
         .iter()
         .filter(|c| c.starts_with("LIST"))
         .count();
-    assert_eq!(listes, 1, "une LIST par session : {:?}", faux.commandes());
+    assert_eq!(lists, 1, "one LIST per session: {:?}", fake.commands());
 }
 
 #[test]
-fn une_session_n_interroge_capability_qu_une_fois() {
-    let faux = FauxImap::lancer(Script::simple());
-    let mut serveur = faux.connecter();
+fn a_session_queries_capability_only_once() {
+    let fake = FakeImap::start(Script::simple());
+    let mut server = fake.connect();
 
-    let _ = serveur.changes_since("INBOX", 5).unwrap(); // CONDSTORE
-    serveur.move_to("INBOX", 1, "Archive").unwrap(); // MOVE
+    let _ = server.changes_since("INBOX", 5).unwrap(); // CONDSTORE
+    server.move_to("INBOX", 1, "Archive").unwrap(); // MOVE
 
-    let capabilites = faux
-        .commandes()
+    let capabilities = fake
+        .commands()
         .iter()
         .filter(|c| c.starts_with("CAPABILITY"))
         .count();
     assert_eq!(
-        capabilites,
+        capabilities,
         1,
-        "une CAPABILITY par session : {:?}",
-        faux.commandes()
+        "one CAPABILITY per session: {:?}",
+        fake.commands()
     );
 }
 
 #[test]
-fn les_changements_sont_demandes_en_drapeaux_puis_en_enveloppes_par_lots() {
+fn changes_are_requested_as_flags_then_as_envelopes_by_batches() {
     let mut script = Script::simple();
-    script.fetch = Box::new(|commande| {
-        if commande.contains("CHANGEDSINCE") {
+    script.fetch = Box::new(|command| {
+        if command.contains("CHANGEDSINCE") {
             (1..=501)
                 .map(|uid| format!("* {uid} FETCH (UID {uid} FLAGS (\\Seen) MODSEQ (6))"))
                 .collect()
         } else {
-            uids_de(commande).into_iter().map(enveloppe).collect()
+            uids_of(command).into_iter().map(envelope).collect()
         }
     });
-    let faux = FauxImap::lancer(script);
-    let mut serveur = faux.connecter();
+    let fake = FakeImap::start(script);
+    let mut server = fake.connect();
 
-    let enveloppes = serveur.changes_since("INBOX", 5).unwrap().unwrap();
-    assert_eq!(enveloppes.len(), 501);
-    assert_eq!(enveloppes[0].subject.as_deref(), Some("Sujet 1"));
+    let envelopes = server.changes_since("INBOX", 5).unwrap().unwrap();
+    assert_eq!(envelopes.len(), 501);
+    assert_eq!(envelopes[0].subject.as_deref(), Some("Subject 1"));
 
-    let fetches: Vec<String> = faux
-        .commandes()
+    let fetches: Vec<String> = fake
+        .commands()
         .into_iter()
         .filter(|c| c.starts_with("UID FETCH"))
         .collect();
     assert_eq!(
         fetches[0], "UID FETCH 1:* (UID FLAGS) (CHANGEDSINCE 5)",
-        "les drapeaux d'abord, sans enveloppe"
+        "the flags first, without envelope"
     );
     assert_eq!(
         fetches.len(),
         3,
-        "puis deux lots d'enveloppes : {fetches:?}"
+        "then two batches of envelopes: {fetches:?}"
     );
     assert!(
         fetches[1].starts_with("UID FETCH 1:500 (UID ENVELOPE"),
