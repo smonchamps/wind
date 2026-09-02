@@ -86,9 +86,15 @@ réponse flottante en bas de message). D9 : fenêtre du Kiosque à 5 ;
 GPU, budget 200 dépassé → D-53** (racine : une iframe par carte ; le
 budget lui-même reste à préciser : repos, ou geste le plus lourd).
 Dette D-51 (CONDSTORE absent), D-52 (limites dites), D-53, D-54 (flaky
-`selection-multiple:174` ×3). **Encore dû** : 0.16.0 à publier AVANT
-0.17.0 (D2 : `faire-release.ps1 0.16.0` depuis `main`, puis
-vérification et preuve de MAJ ; CHANGELOG 0.17.0 écrite), le ticket
+`selection-multiple:174` ×3). **0.16.0 PUBLIÉE le 2026-09-02** (`343c8d0`,
+vagues 0 et 1 de l'audit ; `verifier-release.ps1` : tout passe, crypto
+minisign non prouvée faute d'outil au PATH ; **auto-update prouvé aux
+deux postes**). Au passage, deux filets d'outillage : le script de
+vérification ne parsait plus sous PowerShell 5.1 (tiret cadratin dans
+une chaîne d'un `.ps1` sans BOM, §7.1) — la gate parse désormais chaque
+`.ps1` ; et `barres-fil:25` attend la carte avant de la lire.
+**Encore dû** : 0.17.0 (vague 2 ; CHANGELOG écrite — `faire-release.ps1
+0.17.0` depuis `main`, puis vérification et preuve de MAJ), le ticket
 support GitHub (`051bb01`).
 
 Dernier soldé avant lui :
@@ -578,7 +584,7 @@ banc écrivait `$n` dans sa boucle bornée par `$N` — **en PowerShell
 c'est la même variable** ; un `-N 3` partait pour ~550 tours. C'est
 aussi ce qui explique les « 19 lancements » de la campagne du 26/08.
 
-**Reste :** 0.16.0 à publier AVANT 0.17.0 (D2), le ticket support
+**Reste :** 0.17.0 à publier (0.16.0 l'est), le ticket support
 GitHub ; PLAN-BASCULE-ANGLAIS en cours dans une autre session.
 
 **Dernier chantier soldé : [PLAN-ESPACEMENT](PLAN-ESPACEMENT.md)**

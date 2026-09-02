@@ -70,7 +70,7 @@ pas faire.
   une rangée après vingt rangées (les gabarits de hauteur ignoraient le
   bloc de boîte et le ⋯ du mode organisé).
 
-## [0.16.0] - à venir
+## [0.16.0] - 2026-09-02
 
 Wind se protège mieux de lui-même : une seule instance, des gestes
 qui ne se perdent plus en silence, des attentes qui finissent.
