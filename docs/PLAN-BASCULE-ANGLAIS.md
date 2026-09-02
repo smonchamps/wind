@@ -183,7 +183,7 @@ empruntent le chemin rapide documentaire du hook, étapes 1-6).
 
 ### E0 — Glossaire et dictionnaire (M)
 
-> **Livré le 2026-09-02, STOP 1 bis attendu** : [GLOSSARY.md](GLOSSARY.md)
+> **Livré le 2026-09-02, STOP 1 bis joué le jour même : « Validé tel quel » (CE)** — [GLOSSARY.md](GLOSSARY.md)
 > (en anglais — le premier document du dépôt à l'être, à dessein) et
 > `scripts/rename/` : `tokens.csv` (1 588 segments et locutions),
 > `dictionary.csv` (1 210 identifiants dérivés), `keys.csv` (480 clés de
@@ -210,6 +210,27 @@ empruntent le chemin rapide documentaire du hook, étapes 1-6).
   jetons CSS, les clés des catalogues.
 
 ### E1 — Trois filets, prouvés en les cassant (M)
+
+> **Livré le 2026-09-02.** `e2e/language-gate.mjs` (cliquet : 275 fichiers
+> suivis, 260 avec du français, **142 113 marqueurs** à la base de
+> référence `e2e/language-baseline.json` ; `spikes/`, `docs/archives/`,
+> `catalogue.fr.js`, `BETA.fr.md`, `scripts/rename/` exemptés ; une
+> ligne portant `lang:fr` est exemptée), `e2e/ipc-contract.mjs`
+> (110 commandes définies, 111 enregistrées, 104 appelées par nom ;
+> **`queue_send` n'était vu par personne** — un commentaire entre les
+> attributs), `e2e/docs-links.mjs` (77 fichiers, 207 liens relatifs, 0
+> mort ; 3 morts trouvés dans `spikes/`, hors périmètre). **Chacun prouvé
+> en le cassant** : un mot français ajouté à `dependabot.yml` (11 → 16,
+> rouge), un `appel('nope_cmd')` (rouge), un lien mort dans GLOSSARY.md
+> (rouge), puis vert une fois rétabli. **E1c set-based, mesuré** : eslint
+> `no-undef` (flat config, plugin Svelte, runes en globals) attrape la
+> casse en 3-5 s dans `.svelte` ET `.js`, 0 erreur préexistante ;
+> `svelte-check --threshold error` l'attrape aussi (8,5 s) mais sur
+> **1 059 erreurs préexistantes** (`checkJs`) — rejeté, désinstallé.
+> Gate : 13 étapes (7-9 neuves, jouées aussi sur le chemin documentaire),
+> `npm run lint` dans l'étape 2 ; CI : quatre pas neufs au job `ui-v2`.
+> Les ajouts de ce commit sont écrits en anglais : le cliquet interdit
+> déjà toute hausse.
 
 - **E1a `e2e/language-gate.mjs`** : le cliquet de §3.3, ajouté à
   `gate.ps1` (étape textuelle, secondes) et à `ci.yml` job `ui-v2`.
@@ -394,7 +415,7 @@ corrige ce chiffre au STOP intermédiaire proposé à D10.
 | D11 | Documents des testeurs (`BETA.md`, mot d'invitation, guide) : conserver une copie française `docs/BETA.fr.md` tant que la vague 1 (T1-T5) court ? | Oui si les cinq testeurs lisent le français (fait connu du CE seul, mémoire « identités hors dépôt ») |**2026-09-02 : « Oui, BETA.fr.md conservé »** |
 | D12 | Jetons CSS français (`--marque`, `--r-controle`, `--rep-*`) : renommer (trois fichiers, gate DC-D6) ou tolérer ? | Renommer à E5, en un commit dédié — le Système est la référence de l'UI, il ne peut pas rester mixte |**2026-09-02 : « Oui, en bloc »** |
 | D13 | `CHANGELOG.md` : traduire tout (758 l., public, lu par la release) ou l'en-tête + entrées à venir ? | Tout : un journal public bilingue est illisible ; les Releases déjà publiées gardent leurs notes |**2026-09-02 : « Oui, en bloc »** |
-| D14 | Le glossaire E0 : relu et **validé CE avant E2** (c'est la conception du chantier) ? | Oui : STOP 1 bis, une heure, sur le tableau des mots |**2026-09-02 : « Oui, je valide le glossaire »** — STOP 1 bis |
+| D14 | Le glossaire E0 : relu et **validé CE avant E2** (c'est la conception du chantier) ? | Oui : STOP 1 bis, une heure, sur le tableau des mots |**2026-09-02 : « Oui, je valide le glossaire »** — STOP 1 bis joué le 2026-09-02 : « Validé tel quel » |
 
 ## 7. Checklist terrain (STOP 2) — ce que le CE joue
 

@@ -74,6 +74,17 @@ jobs:
         run: node e2e/coherence-systeme.mjs
       - name: Garde du thread principal (PLAN-GELS)
         run: node e2e/garde-thread-principal.mjs
+      # PLAN-BASCULE-ANGLAIS E1: the four nets of the switch, same scripts
+      # as gate.ps1 (steps 2 and 7-9).
+      - name: Lint ui-v2 (eslint no-undef)
+        run: npm run lint
+        working-directory: apps/desktop/ui-v2
+      - name: Language ratchet
+        run: node e2e/language-gate.mjs
+      - name: IPC contract (Tauri commands)
+        run: node e2e/ipc-contract.mjs
+      - name: Markdown links
+        run: node e2e/docs-links.mjs
 
   audit:
     name: cargo audit (CVE des dépendances)

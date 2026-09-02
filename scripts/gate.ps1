@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
   gate.ps1 -- la gate complete de Wind en UN appel (PLAN-KAIZEN-CLAUDE
-  vague 2, E2). Dix etapes, l'ordre du hook pre-push (echouer tot),
+  vague 2, E2). Treize etapes, l'ordre du hook pre-push (echouer tot),
   fail-fast, et AUCUNE redirection vers le neant : le verdict chiffre de
   chaque etape (tests, paires, avertissements) doit sortir.
 
@@ -26,7 +26,7 @@ $rapport = @()
 
 function Etape($no, $titre, [scriptblock]$corps) {
     Write-Host ""
-    Write-Host "[$no/10] $titre" -ForegroundColor Cyan
+    Write-Host "[$no/13] $titre" -ForegroundColor Cyan
     $t = [System.Diagnostics.Stopwatch]::StartNew()
     # try/catch : une exception terminante (commande absente du PATH,
     # Push-Location rate) doit produire le MEME verdict rouge nomme
@@ -35,16 +35,16 @@ function Etape($no, $titre, [scriptblock]$corps) {
     catch {
         Write-Host $_.Exception.Message -ForegroundColor Red
         Write-Host ""
-        Write-Host "GATE ROUGE a l'etape [$no/10] $titre (exception)" -ForegroundColor Red
+        Write-Host "GATE ROUGE a l'etape [$no/13] $titre (exception)" -ForegroundColor Red
         exit 1
     }
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
-        Write-Host "GATE ROUGE a l'etape [$no/10] $titre (code $LASTEXITCODE)" -ForegroundColor Red
+        Write-Host "GATE ROUGE a l'etape [$no/13] $titre (code $LASTEXITCODE)" -ForegroundColor Red
         exit 1
     }
     $t.Stop()
-    $script:rapport += ("  [{0}/10] {1,-28} {2,7:n1} s" -f $no, $titre, $t.Elapsed.TotalSeconds)
+    $script:rapport += ("  [{0}/13] {1,-28} {2,7:n1} s" -f $no, $titre, $t.Elapsed.TotalSeconds)
 }
 
 Etape 1 "format" { cargo fmt --all -- --check }
@@ -62,6 +62,10 @@ Etape 2 "build ui-v2" {
             Write-Host "avertissement vite-plugin-svelte = rouge (zero avertissement exige)" -ForegroundColor Red
             $global:LASTEXITCODE = 1
         }
+        # PLAN-BASCULE-ANGLAIS E1c (measured 2026-09-02): eslint no-undef,
+        # 3 s, 0 pre-existing errors, catches a missed rename in .svelte and
+        # .js alike; svelte-check rejected (1 059 pre-existing errors).
+        if ($LASTEXITCODE -eq 0) { & npm run lint }
     } finally { Pop-Location }
 }
 
@@ -96,23 +100,34 @@ Etape 6 "syntaxe des scripts (node --check, parser PowerShell)" {
     }
 }
 
+# PLAN-BASCULE-ANGLAIS E1: three textual nets, in seconds, played on the
+# docs-only path too. The language ratchet refuses any RISE of French per
+# file (e2e/language-baseline.json, lowered at each step with --update);
+# the IPC contract compares generate_handler!, the #[tauri::command] fns
+# and the appel('...') of the UI; every relative markdown link must resolve.
+Etape 7 "language ratchet" { node e2e/language-gate.mjs }
+
+Etape 8 "IPC contract (Tauri commands)" { node e2e/ipc-contract.mjs }
+
+Etape 9 "markdown links" { node e2e/docs-links.mjs }
+
 if ($DocsSeulement) {
     $chrono.Stop()
     Write-Host ""
-    Write-Host "Diff documentaire seul : etapes 7-10 sautees. Gate documentaire VERTE en $([math]::Round($chrono.Elapsed.TotalSeconds)) s." -ForegroundColor Green
+    Write-Host "Diff documentaire seul : etapes 10-13 sautees. Gate documentaire VERTE en $([math]::Round($chrono.Elapsed.TotalSeconds)) s." -ForegroundColor Green
     $rapport | ForEach-Object { Write-Host $_ }
     exit 0
 }
 
-Etape 7 "clippy (warnings = erreurs)" { cargo clippy --workspace --all-targets -- -D warnings }
+Etape 10 "clippy (warnings = erreurs)" { cargo clippy --workspace --all-targets -- -D warnings }
 
 # --all-targets n'est PAS decoratif : sans lui, cargo ignore les tests
 # des EXEMPLES (diagnostics du terrain, crates/mail-core/examples/).
-Etape 8 "tests Rust (--all-targets)" { cargo test --workspace --all-targets }
+Etape 11 "tests Rust (--all-targets)" { cargo test --workspace --all-targets }
 
-Etape 9 "tests Rust (--doc)" { cargo test --workspace --doc }
+Etape 12 "tests Rust (--doc)" { cargo test --workspace --doc }
 
-Etape 10 "e2e (fenetre pilotee CDP)" {
+Etape 13 "e2e (fenetre pilotee CDP)" {
     Push-Location (Join-Path $root "e2e")
     try { npm test } finally { Pop-Location }
 }
