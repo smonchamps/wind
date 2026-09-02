@@ -45,6 +45,12 @@ pas faire.
   lourd pèse un tiers de mémoire en moins.
 - Le Kiosque garde ses cartes entre deux relèves (la carte lue ne saute
   plus de section) et ne tient vivantes que celles proches de l'écran.
+- **Les barres du fil.** En trois volets, la barre de tri (Archiver,
+  Signaler comme spam, Épingler) est collée sous l'entête du fil et
+  reste en tête au défilement ; en plein écran, ses gestes vivent dans
+  la barre d'entête, alignés sur la colonne des messages ; la barre
+  Répondre / Répondre à tous / Transférer / Supprimer flotte en bas de
+  chaque message tant qu'il défile.
 - La synchro initiale reprend là où elle s'est arrêtée ; les dossiers
   spéciaux se reconnaissent au rôle annoncé par le serveur (« [Google
   Mail] » compris) ; une adresse entre chevrons n'est plus prise pour
@@ -60,6 +66,9 @@ pas faire.
 - Une boîte illisible ne passe plus pour « sans dossier Envoyés ».
 - Un serveur sans UIDPLUS n'accumule plus de doublons au déplacement.
 - Une erreur de lecture d'un corps n'est plus définitive.
+- En Réception organisée, la bande « Déjà consulté » ne chevauche plus
+  une rangée après vingt rangées (les gabarits de hauteur ignoraient le
+  bloc de boîte et le ⋯ du mode organisé).
 
 ## [0.16.0] - à venir
 

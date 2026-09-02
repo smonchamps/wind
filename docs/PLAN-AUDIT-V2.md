@@ -1,5 +1,38 @@
 # PLAN-AUDIT-V2 — vague 2 de l'audit du 2026-09-01 : perf et robustesse mesurables (S2)
 
+> **CHANTIER SOLDÉ le 2026-09-02 — terrain complet** (GO CE au STOP 1
+> le 2026-09-02 au matin, D1-D8 ; STOP visuel E10/E11 « OK, porter les
+> sept autres » ; **STOP 2 en six passes le même jour** : passe 1 —
+> 9 OK, **3 KO** (migration `reply_to` absente sur la vraie base,
+> « Toujours afficher les images » sans effet au Kiosque au-delà de la
+> page 0, mot tapé après le bloc transféré perdu) ; passe 2 — D9
+> (fenêtre du Kiosque à 5), **1 KO** (« Déjà consulté » chevauchant une
+> rangée : sondes de la Liste) et la remarque sur la barre du fil ;
+> passes 3 à 5 — les barres du fil redessinées sur verdicts CE
+> (collée au volet, dans l'entête à l'écran 03, réponse flottante en bas
+> de message, retour à sa largeur) ; passe 6 — OK).
+> Commits `e0ce62d` (E1-E3), `595ac6e` (E4-E6), `2b9c03e` (E7-E9),
+> `ed42fce` (E10, A107), `a77ab47` (E11, A108), `0f14970` (revue à
+> regard neuf + andon `fin_du_bloc`), `7d474ad` (terrain passe 1),
+> `fe5ffec` (D9), `0a42bd9`, `0a3fb7d` (passe 2), `f40d694` (passe 3),
+> `b2ce771` (passe 4), `e63d50e` (passe 5) ; CI verte à chaque push,
+> dernière run 33642403656 ; journal **A107, A108, A109** ; **ADR
+> 0031** ; dette D-51 à D-54 ; STANDARD §7.1 (quatre pièges), §9 (trois
+> enseignements). Release : **0.17.0** (D2 : 0.16.0 à publier AVANT ;
+> entrée CHANGELOG écrite).
+>
+> **Chiffres kaizen** (session acb9b986, le jour entier) : 7,1 h de
+> mur, 7 prompts CE, 1 323 tours, ≈ 80,6 M d'équiv. input fil principal
+> + 17,1 M sur 13 agents (cinq reconnaissances Sonnet, huit angles de
+> revue) ; **16 gates complètes jouées** (cinq d'étapes, une finale
+> rouge → verte, dix de terrain dont trois rouges : format, cohérence du
+> Système, filet R1 remplacé) + 11 pre-push ; **STOP 2 : 4 KO en deux
+> passes**, quatre retouches d'apparence en trois passes ; mur bloqué
+> sur commandes > 30 s : 94 min (e2e 35, cargo 27, shell 32). Tours par
+> prompt : 189 (cible T4 ≤ 25 — un chantier de onze étapes et six
+> passes terrain tenu dans une seule session ; à scinder la prochaine
+> fois, c'est la perte kaizen n° 1).
+>
 > Ouvert le 2026-09-02, à la suite de
 > [AUDIT-2026-09-01.md](AUDIT-2026-09-01.md) §5 vague 2, la vague 1
 > ([PLAN-AUDIT-V1](PLAN-AUDIT-V1.md)) soldée le même jour. Dix lots

@@ -58,35 +58,37 @@ part avec la vague 1 en **0.16.0** (MINEURE : comportements changés),
 clause de réouverture : un gel au clic de lien ou un pixel HTTP
 signalé par un testeur ⇒ 0.15.1 le jour même.
 
-🔧 **Chantier en cours : [PLAN-AUDIT-V2](PLAN-AUDIT-V2.md)** — la
-vague 2 de l'audit (dix lots S2 mesurables + le front, D1 : « tout en
-un chantier »), ouverte le 2026-09-02, GO CE au STOP 1 (D1-D8), **onze
-étapes LIVRÉES le jour même**, STOP visuel CE joué (menu unique, ligne
-« Réessayer »), revue à regard neuf 8 angles / ~30 candidats / 14
-corrigés / 1 réfuté par la preuve, gate finale ROUGE puis VERTE (andon :
-panique UTF-8 dans `fin_du_bloc`), `0f14970` poussé, CI verte
-33622785346 — **STOP 2 joué le 2026-09-02 : 9 OK, 3 KO corrigés le
-jour même** (migration `reply_to` absente sur la vraie base — le
-veilleur échouait à chaque passe ; « Toujours afficher les images »
-sans effet au Kiosque au-delà de la page 0 ; mot tapé après le bloc
-transféré perdu à l'envoi — A109), **passe 2 de terrain attendue** avec
-la décision **D9** (fenêtre du Kiosque : RAM 249 Mo après dix pages,
-budget 200 — banc à trois largeurs au PLAN, D-53) et deux observations à
-instruire (« Déjà consulté » chevauchant une rangée ; passe d'inventaire
-à 505 s sous les échecs). Chiffres : second `Store::open` 36 → 0,9 ms
-(E1) ; corps de 28 Mo indexé 401 → 338 ms et 210 → 133 Mo (E2) ;
-`HEADER.FIELDS`, lots bornés, une `LIST` et une `CAPABILITY`, analyse
-MIME unique 18,2 → 11,1 ms (E3) ; `nettoyage_groupes` 380 → 67 ms,
-`nettoyage_messages` 109 → 1 ms sur 200 k / 5 000 expéditeurs (E4) ;
-initiale reprenable, SPECIAL-USE, chevrons, `Reply-To`, écho d'envoi
-(E5) ; geste de masse en UN appel tout ou rien (E6) ; envoi refusé au
-5e échec (E7) ; CSP et chemins bornés (E8) ; actions CI par SHA,
-« flaky : N », hook → `gate.ps1` (E9) ; corps réessayable, Kiosque
-fusionné et fenêtré, sonde `etat_ui`, transfert sans image distante
-(E10, A107) ; `Menu.svelte` unique au clavier (E11, A108). ADR 0031 ;
-D-47 et D-4 amendées ; D-51, D-52 neuves ; CHANGELOG 0.17.0 écrite.
-**Encore dû** : 0.16.0 à publier AVANT (décision D2 : `faire-release.ps1
-0.16.0` depuis `main`, puis vérification et preuve de MAJ), le ticket
+**Dernier chantier soldé : [PLAN-AUDIT-V2](PLAN-AUDIT-V2.md)**
+(2026-09-02, terrain complet en six passes, CI verte run 33642403656,
+**ADR 0031**, journal A107-A109) — la vague 2 de l'audit (dix lots S2
+mesurables + le front, D1 : « tout en un chantier »), ouverte et
+soldée le même jour. **Onze étapes** : second `Store::open` 36 →
+0,9 ms (E1) ; corps de 28 Mo indexé 401 → 338 ms et 210 → 133 Mo (E2)
+; `HEADER.FIELDS`, lots bornés, une `LIST` et une `CAPABILITY`,
+analyse MIME unique (E3) ; `nettoyage_groupes` 380 → 67 ms sur 200 k /
+5 000 expéditeurs (E4) ; initiale reprenable, SPECIAL-USE, `Reply-To`,
+écho d'envoi (E5) ; geste de masse en UN appel tout ou rien (E6) ;
+envoi refusé au 5e échec (E7) ; CSP et chemins bornés (E8) ; actions
+CI par SHA, « flaky : N », hook → `gate.ps1` (E9) ; corps réessayable,
+Kiosque fusionné et fenêtré, sonde `etat_ui`, transfert sans image
+distante (E10, A107) ; `Menu.svelte` unique au clavier (E11, A108).
+Revue à regard neuf (14 corrections), andon de gate (panique UTF-8
+dans `fin_du_bloc`). **Terrain : 4 KO corrigés le jour même** —
+migration `reply_to` absente sur la vraie base (le veilleur échouait à
+chaque passe ; leçon §9 « adopter les données anciennes » récidivée),
+garde d'images du Kiosque au-delà de la page 0, ligne éditable après
+le bloc transféré, sondes de la Liste fidèles à la rangée (« Déjà
+consulté » chevauchait une rangée) — puis **les barres du fil
+redessinées sur verdicts CE** (A109 : collée sous l'entête au volet,
+dans la barre d'entête à l'écran 03 alignée sur la colonne, barre de
+réponse flottante en bas de message). D9 : fenêtre du Kiosque à 5 ;
+**RAM après dix pages de Kiosque : 251 Mo dont 132 pour le processus
+GPU, budget 200 dépassé → D-53** (racine : une iframe par carte ; le
+budget lui-même reste à préciser : repos, ou geste le plus lourd).
+Dette D-51 (CONDSTORE absent), D-52 (limites dites), D-53, D-54 (flaky
+`selection-multiple:174` ×3). **Encore dû** : 0.16.0 à publier AVANT
+0.17.0 (D2 : `faire-release.ps1 0.16.0` depuis `main`, puis
+vérification et preuve de MAJ ; CHANGELOG 0.17.0 écrite), le ticket
 support GitHub (`051bb01`).
 
 Dernier soldé avant lui :
@@ -576,8 +578,8 @@ banc écrivait `$n` dans sa boucle bornée par `$N` — **en PowerShell
 c'est la même variable** ; un `-N 3` partait pour ~550 tours. C'est
 aussi ce qui explique les « 19 lancements » de la campagne du 26/08.
 
-**Reste :** la passe 2 de terrain (STOP 2, trois corrections + D9),
-puis `/solde`, puis 0.16.0 AVANT 0.17.0 (D2).
+**Reste :** 0.16.0 à publier AVANT 0.17.0 (D2), le ticket support
+GitHub ; PLAN-BASCULE-ANGLAIS en cours dans une autre session.
 
 **Dernier chantier soldé : [PLAN-ESPACEMENT](PLAN-ESPACEMENT.md)**
 (2026-08-25, terrain CE **7/7 zéro constat**, gate verte 2 min, e2e
