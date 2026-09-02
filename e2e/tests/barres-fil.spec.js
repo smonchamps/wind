@@ -26,6 +26,10 @@ test("volet : la barre de tri est collée sous l'entête, la barre de réponse f
   await page.locator('[data-testid="ligne"]', { hasText: 'Relecture du contrat Vantis' }).click();
   const barre = page.locator('[data-testid="barre-fil"]');
   await expect(barre).toBeVisible();
+  // La carte du dernier message se rend APRES la barre (corps servi) :
+  // sans cette attente, la lecture tombait sur un nul (flaky, gate du
+  // 2026-09-02, une fois).
+  await expect(page.locator('[data-testid="actions-message"]').first()).toBeVisible();
   const geo = await page.evaluate(() => {
     const barre = document.querySelector('[data-testid="barre-fil"]');
     const puces = document.querySelector('[data-testid="fil-puces"]');
