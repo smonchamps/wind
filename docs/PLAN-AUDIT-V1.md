@@ -1,5 +1,22 @@
 # PLAN-AUDIT-V1 — vague 1 de l'audit du 2026-09-01 : les S1 du cœur et du shell
 
+> **CHANTIER SOLDÉ le 2026-09-02 — terrain complet** (GO CE au STOP 1
+> le 2026-09-01 au soir, D1-D4 ; verdict terrain « ok » le 2026-09-02
+> au matin, **0 constat KO au STOP 2** ; `wind.log` relevé par le CE :
+> relève des deux comptes et vidange tracées, sans sujet ni adresse).
+> Commits `152a382` (E1), `15c312e` (E2+E3), `62ae2f7` (E4), `17b3009`
+> (E5), `67ad6e0` (E6-E9), `75f9408` (revue, dix corrections) ; CI verte
+> run 33568895402 ; journal **A106** ; **ADR 0030**. Release : 0.16.0
+> (décision B, entrée CHANGELOG écrite à la clôture).
+>
+> **Chiffres kaizen** (session unique 145b0508, qui couvre AUSSI l'audit
+> complet et la vague 0) : 11,8 h de mur, 26 prompts CE, 642 tours,
+> ≈ 42,7 M d'équiv. input fil principal + 34,3 M sur 24 agents (six
+> auditeurs, huit angles de revue, dix vérificateurs) ; **6 gates
+> complètes jouées pour la vague 1** (E1, E2+E3, E4, E5, E6-E9, finale)
+> + 6 pre-push ; mur bloqué sur commandes > 30 s : 235 min sur la
+> semaine (e2e 148 min — la gate par étape se paie).
+>
 > Ouvert le 2026-09-01 (soir), à la suite de
 > [AUDIT-2026-09-01.md](AUDIT-2026-09-01.md) §5 vague 1, vague 0
 > livrée le même jour (`12114d6`, `0f1ed96`, `fb8c671`, `3097d22`).

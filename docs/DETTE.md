@@ -263,6 +263,37 @@ motivée.)
   disproportionné pour la fréquence.
 - **Rouvre si** : l'usage réel montre le faux succès gênant.
 
+### D-49 · Propreté reportée de la revue PLAN-AUDIT-V1 (vague 3 de l'audit)
+
+- **Fait (revue à regard neuf, 2026-09-02)** : neuf candidats de
+  propreté vérifiés mais non retenus, la vague 1 ne corrigeant que
+  des S1 : `into_inner` recopié sept fois (une aide `verrou_repris`) ;
+  `hors_pompe(app, |app| auth_for(&app, id))` ×4 (`session_de`) ;
+  `trace::trace` et `trace_maj` — deux writers de ligne datée, seul
+  `wind.log` est borné au méga ; `is_connection_error` dupliqué
+  IMAP/SMTP sur le préfixe « connexion » ; `instance::dossier_de_la_base`
+  recalcule la règle de `db_path` (deux sources du chemin, sans test
+  qui les lie) ; `sync_inbox`/`sync_inbox_light` toujours jumeaux ;
+  `remove_local` à deux chemins (`is_autocommit`) ; `compose()` sans
+  `references` (posée après coup à deux sites) ; `SEUIL_QUARANTAINE`
+  gravé dans le Store ; `reply_*`/`forward_context` prennent le verrou
+  trois fois (chemins rares).
+- **Raison du report** : aucun n'est un défaut observable ; la vague 3
+  de l'audit (`docs/AUDIT-2026-09-01.md` §5) réorganise ces fichiers.
+- **Rouvre si** : un chantier touche l'un de ces sites — le corriger au
+  passage, pas en refactor gratuit (§2.6).
+
+### D-50 · Deux limites dites de la vague 1 à confirmer au terrain
+
+- **Fait (PLAN-AUDIT-V1 E8, 2026-09-02)** : (1) le refresh token
+  renouvelé par Microsoft est désormais stocké s'il change — non
+  prouvé en test (le coffre ne se simule pas) ; à confirmer sur un
+  compte Microsoft au-delà de 90 jours ; (2) le repli « ouvrez
+  manuellement » (`BrowserFallback`) rend la main sans attendre la
+  redirection — cas rare (aucun navigateur), inchangé.
+- **Rouvre si** : une déconnexion silencieuse Microsoft après 90 j, ou
+  un testeur sans navigateur par défaut.
+
 ## Soldée
 
 ### ~~D-36 · La colonne fantôme de `echos` naît sur toute base neuve~~ — soldée le 2026-09-01

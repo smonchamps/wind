@@ -56,10 +56,11 @@ part avec la vague 1 en **0.16.0** (MINEURE : comportements changés),
 clause de réouverture : un gel au clic de lien ou un pixel HTTP
 signalé par un testeur ⇒ 0.15.1 le jour même.
 
-🚧 **Chantier EN COURS : [PLAN-AUDIT-V1](PLAN-AUDIT-V1.md)** — la vague
-1 de l'audit (les S1 du cœur et du shell), ouverte le 2026-09-01 au
-soir, GO CE au STOP 1 (D1-D4 tranchées), **implémentée en une nuit
-(2026-09-02), neuf étapes livrées** : mono-instance par verrou fichier
+✅ **Aucun chantier en cours.** Dernier soldé :
+**[PLAN-AUDIT-V1](PLAN-AUDIT-V1.md)** (2026-09-02, terrain CE « ok »,
+0 KO, CI verte run 33568895402, **ADR 0030**) — la vague 1 de l'audit
+(les S1 du cœur et du shell), ouverte le 2026-09-01 au soir, GO CE au
+STOP 1 (D1-D4 tranchées), **neuf étapes livrées** : mono-instance par verrou fichier
 (E1), `plan_sync` pur contre la synchro « initiale » d'une boîte vidée
 (E2), quarantaine des actions refusées + ligne dans la fente (E3,
 A106), purges atomiques et une seule liste de tables (E4), garde du
@@ -72,12 +73,18 @@ d'auth (E7), refresh token renouvelé stocké + attente OAuth bornée à
 5 min + `Debug` masqués (E8), `wind.log` borné au méga sans PII (E9).
 Revue à regard neuf 8 angles / 10 vérifiés / **10 corrigés** (dont la
 course déménagement-verrou, la refusée éternelle, l'adresse dans
-`wind.log`). Cinq gates complètes vertes + la finale. **STOP 2 — terrain
-CE dû** : checklist de huit gestes au PLAN (double lancement, boîte
-vidée ⇒ bulle, action refusée ⇒ fente, sonde de gel 60 s, veille 5 min,
-fil chez le destinataire, attente OAuth, `wind.log`). Tests : mail-core
-422 → 433, mail-imap 70 → 72, mail-smtp 26 → 29, mail-auth 21 → 24,
-desktop 27 → 31, e2e 187. Puis `/solde` et **0.16.0** (décision B).
+`wind.log`). Six gates complètes vertes. Tests : mail-core 422 → 433, mail-imap
+70 → 72, mail-smtp 26 → 29, mail-auth 21 → 24, desktop 27 → 31, e2e
+187. Dette : **D-49** (propreté reportée de la revue, vague 3) et
+**D-50** (refresh token Microsoft et `BrowserFallback` à confirmer).
+**Prochain sujet, au choix du CE : la release 0.16.0** (décision B —
+l'entrée CHANGELOG est écrite, `scripts\faire-release.ps1 0.16.0`
+depuis `main` ; puis `verifier-release.ps1` et la preuve de MAJ n-1→n
+sur les deux postes, `maj.log` lisible après coup), **les retours de la
+bêta** (relance des silencieux le 2026-09-03), ou **la vague 2 de
+l'audit** (dix lots S2 mesurables, `AUDIT-2026-09-01.md` §5). Encore
+dû hors chantier : le ticket support GitHub (purge de `refs/pull/1-4`
+et de l'objet `051bb01`) — vérifier `gh api repos/smonchamps/wind/commits/051bb01…` ⇒ 404.
 
 Chantier précédent :
 **[PLAN-RETOURS-14](PLAN-RETOURS-14.md)** (2026-08-31, ouvert et

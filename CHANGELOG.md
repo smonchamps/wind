@@ -12,6 +12,45 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.16.0] - à venir
+
+Wind se protège mieux de lui-même : une seule instance, des gestes
+qui ne se perdent plus en silence, des attentes qui finissent.
+
+### Ajouté
+
+- **Une seule fenêtre Wind à la fois.** Un second lancement dit
+  « Wind est déjà ouvert. » et se retire — plus de doubles
+  notifications ni d'envois qui se disputent.
+- **Les actions que le serveur refuse se voient.** Quand un
+  déplacement ou un marquage est refusé par le serveur (dossier
+  disparu, par exemple), Wind le dit dans la ligne d'avis au lieu de
+  bloquer en silence tous les gestes suivants de cette boîte ; le
+  message reste où il était, et un nouveau geste dessus remplace
+  l'ancien.
+- **Un journal léger à côté de la base** (`wind.log`, un méga au plus,
+  jamais de sujet ni d'adresse) pour comprendre après coup une relève
+  ou un envoi.
+
+### Corrigé
+
+- **Une boîte vidée puis regarnie notifie de nouveau** — un vidage
+  complet faisait passer la boîte pour « jamais synchronisée », donc
+  muette.
+- **La veille temps réel ne peut plus geler sans fin** sur un serveur
+  ou un réseau qui acquitte sans répondre : elle expire et se
+  reconnecte.
+- **Un jeton expiré en pleine série d'envois ne fait plus « refuser »
+  un message sain** ; les réponses portent la chaîne de références
+  complète, pour rester dans la conversation chez le destinataire.
+- **L'ajout d'un compte n'attend plus indéfiniment** un consentement
+  qui ne vient pas : cinq minutes, puis on peut recommencer.
+- **Les images accordées ne se chargent qu'en HTTPS**, sans révéler
+  l'origine de la demande ; un clic sur un lien ne bloque plus la
+  fenêtre pendant l'ouverture du navigateur.
+- Des purges locales rendues atomiques et complètes (plus de reliquats
+  de pièces ou d'invitations après une suppression côté serveur).
+
 ## [0.15.0] - 2026-08-30
 
 La profondeur d'historique se choisit, et le grand ménage arrive.
