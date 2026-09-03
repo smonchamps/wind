@@ -1,10 +1,10 @@
-# Passation — scindée le 2026-08-19
+# Handover — split on 2026-08-19
 
-Ce document a été scindé (PLAN-DOCUMENTATION, décisions CE D1-D2) :
-le **standard** (méthode, produit, architecture, invariants,
-environnement, enseignements) vit dans [STANDARD.md](STANDARD.md) ;
-l'**état de reprise** (version livrée, prochain chantier, chiffres du
-terrain) vit dans [STATE.md](STATE.md).
+This document was split (PLAN-DOCUMENTATION, CE decisions D1-D2):
+the **standard** (method, product, architecture, invariants,
+environment, lessons) lives in [STANDARD.md](STANDARD.md); the
+**handover snapshot** (shipped version, next job, field figures)
+lives in [STATE.md](STATE.md).
 
-Stub temporaire — retrait consigné en [DEBT.md](DEBT.md) D-24
-(condition : deux reprises à froid propres).
+Temporary stub — its removal is recorded in [DEBT.md](DEBT.md) D-24
+(condition: two clean cold restarts).
