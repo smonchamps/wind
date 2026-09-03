@@ -408,7 +408,7 @@ thread + search ; le reste).
 > rename in the same commit: the System coherence net reads `MARKER_ICONS`/
 > `MARKER_HUES` from `commands.rs`, the main-thread guard matches `off_pump(`.
 > One shell error string a spec asserts (“connexion IMAP impossible”, the
-> onboarding contract test) stays French, `lang:fr`, until E5/E6.
+> onboarding contract test) stays French, `lang:fr`, until E5/E6. **Field (STOP 2) on 2026-09-03: E3c and E4 validated by the CE, no finding** — release launched with trace, both accounts polled, cleanup groups 99 ms cold / 16 ms warm, every screen of the checklist OK.
 
 `commands.rs` (110 commandes, ~45 renommées), `veilleur.rs` →
 `watcher.rs`, `demenagement.rs` → `relocation.rs`, `instance.rs`,
