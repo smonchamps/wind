@@ -179,7 +179,7 @@ Mesure avant livraison : la requête sous ~50 ms sur décor 200 k
   (taper 3 lettres → choisir → l'adresse au champ, Cc et Cci compris).
 - **E6 — qualité et sortie** : revue à regard neuf (`/code-review
   high`), gate complète, **terrain (STOP 2)**, docs (A-n, STATE,
-  DETTE si report), version selon §2.9 : correctif seul → **0.2.2**
+  DEBT si report), version selon §2.9 : correctif seul → **0.2.2**
   (CORRECTIF) ; avec l'autocomplétion → **0.3.0** (MINEUR, capacité
   nouvelle).
 

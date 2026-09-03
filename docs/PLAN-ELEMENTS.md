@@ -188,7 +188,7 @@ c'est ici que la dette V9 (D4) se juge sur pièce.
 - **Gate complète** ; journal du Système : entrée d'adoption (série
   selon D1) ; **ADR** (structurante : le Système Elements remplace
   Wada — modèle 0004, réversibilité V14 en une ligne) ; CHANGELOG ;
-  ETAT ; DETTE (V9 palier 16, et ce que la revue reporte).
+  ETAT ; DEBT (V9 palier 16, et ce que la revue reporte).
 
 Puis **⛔ STOP 2 terrain** (checklist + commandes PowerShell :
 `scripts/field.ps1`, `scripts/run-wind.ps1`), corrections le jour
@@ -232,7 +232,7 @@ plan, `/close` à la CI verte). Release selon D5.
   paliers 16 + 12 paliers 10–12 (86 dessins, chantier de dessin avant
   toute livraison).
   — *Réponse CE (2026-08-24) : « Maîtres réduits » — option (a), dette
-  V9 consignée à DETTE, verdict de netteté au STOP visuel d'E2 et au
+  V9 consignée à DEBT, verdict de netteté au STOP visuel d'E2 et au
   terrain.*
 - **D5 — Le véhicule de release.** La 0.8.0 est publiée (preuve OAuth
   du second poste encore différée). (a) **0.9.0, MINEUR**, à la fin du

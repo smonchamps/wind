@@ -628,7 +628,7 @@ is proven only in the field.
 ## 8. What remains → [STATE.md](STATE.md)
 
 Recent jobs, the long tail, and deliberate deferrals live in
-[STATE.md](STATE.md); the detailed debt, in [DETTE.md](DETTE.md).
+[STATE.md](STATE.md); the detailed debt, in [DEBT.md](DEBT.md).
 
 ---
 

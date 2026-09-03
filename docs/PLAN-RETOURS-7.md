@@ -6,7 +6,7 @@
 > (10 trouvailles : 9 corrigées avant la gate — dont le scan
 > d'`envelopes` de la sous-requête des épingles, mesuré ~24 ms/page à
 > 200 k, mort par `CROSS JOIN` directif + garde de plan étendue —,
-> 1 assumée : DETTE **D-28**), gate complète verte TROIS fois (avant
+> 1 assumée : DEBT **D-28**), gate complète verte TROIS fois (avant
 > terrain, après le constat, au pre-push), **terrain validé en deux
 > passes le 2026-08-21** (1re : 4 OK + 1 constat visuel corrigé dans
 > la session — la ligne épinglée au dessin de la tuile de nav ; 2e :
@@ -213,7 +213,7 @@ réversibilité.)
   désépingler la rend à sa place ; Système amendé (A-n).
 - **E7 — qualité et sortie** : revue à regard neuf
   (`/code-review high`), gate complète, **terrain (STOP 2)** avec
-  commandes PowerShell prêtes, docs (journal A-n, ETAT, DETTE si
+  commandes PowerShell prêtes, docs (journal A-n, ETAT, DEBT si
   report), CHANGELOG **avant** release (§2.9 ⚠️), version selon D6 —
   capacité nouvelle (épingles) → **0.5.0** (MINEUR).
 
@@ -284,7 +284,7 @@ réversibilité.)
   dans `nav.rs` « tout est lecture » (déménagées à `store.rs`), la
   duplication `thread_of`/squelette SQL, le fenêtrage non recalé —
   **1 assumée** : l'épingle orpheline si le message-clé quitte sa
-  boîte (DETTE **D-28**).
+  boîte (DEBT **D-28**).
 - e2e : nouveau spec `refonte-retours-7.spec.js` (5 parcours),
   103 → **108** ; deux assertions de la barre du fil étendues
   (`epingler` en Réception).

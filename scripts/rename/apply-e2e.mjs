@@ -97,7 +97,7 @@ const POINTER_FILES = [
   'apps/desktop/ui-v2/src/system.css',
   'docs/STANDARD.md',
   'docs/STATE.md',
-  'docs/DETTE.md',
+  'docs/DEBT.md',
   'docs/WORKFLOW.md',
   'docs/AUDIT-2026-09-01.md',
   'docs/design/systeme.dc.html',

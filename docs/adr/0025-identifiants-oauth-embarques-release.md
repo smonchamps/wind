@@ -46,7 +46,7 @@ avec un message de développeur. Un bêta-testeur ne fera jamais de
 ## Limites nommées
 
 - La table `$oauth` du script duplique les `option_env!` de
-  `provider.rs` (DETTE D-34) : un fournisseur ajouté côté Rust doit
+  `provider.rs` (DEBT D-34) : un fournisseur ajouté côté Rust doit
   l'être côté script, sinon sa release part sans identifiant.
 - ~~**Preuve terrain différée** : la première release qui suit (0.8.0)
   doit connecter un compte sur un poste SANS `setx` — c'est elle qui

@@ -36,7 +36,7 @@
 en quarantaine les envois l'une de l'autre ») ; les verrous
 `outbox_flush`/`drafts_push`/`bodies_backfill` sont par processus ;
 aucun plugin single-instance (`Cargo.toml`), aucune mention en
-DETTE/ETAT/ADR. `fs4` 0.13 est déjà en dépendance (`commands.rs:1368`,
+DEBT/ETAT/ADR. `fs4` 0.13 est déjà en dépendance (`commands.rs:1368`,
 garde d'espace) et expose `try_lock_exclusive`.
 **Décision CE du 2026-09-01 : verrou fichier, pas de plugin.**
 

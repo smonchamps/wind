@@ -260,7 +260,7 @@ sur le fichier qui contient aussi la définition).
   `adresse_images` ; le badge peut manquer, jamais mentir.
 - Le dessin de la pile et le rang deux-lignes sont recopiés
   (Kiosque/Registre/Nettoyage) et le ⋯ du Registre est une copie de
-  plus des menus — famille **D-47**, consignée à DETTE.
+  plus des menus — famille **D-47**, consignée à DEBT.
 - La bande de section collée recouvre brièvement la bande réelle au
   passage d'une frontière (pas de « push » natif) — transitoire.
 - Les tests de `retours-14-reception.spec.js` héritent l'un de

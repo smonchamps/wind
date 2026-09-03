@@ -22,7 +22,7 @@ facts only; verify every condition before writing anything.
    field touch-ups if any and their A-n (model: PLAN-WADA).
 2. **`docs/STATE.md`**: the state reflects the delivered job; budgets
    re-measured if touched; lessons learnt added where they live.
-3. **Debt**: what is deferred goes to `docs/DETTE.md`, named, with the
+3. **Debt**: what is deferred goes to `docs/DEBT.md`, named, with the
    reason for the deferral (§2.6 — a deferral is written down).
 4. **ADR** if a structuring decision has none yet.
 5. **Persistent memory**: the plan's file moves to "closed", absolute

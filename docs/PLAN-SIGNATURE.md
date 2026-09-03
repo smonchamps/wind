@@ -2,7 +2,7 @@
 
 > **CHANTIER SOLDÉ le 2026-08-27 — terrain complet.** STOP 1 le
 > 2026-08-26 (D1-D5, §5) ; E1 échouée proprement le 27 (D2 : attendre
-> + filet seul, E2/E3 gelées → DETTE D-39) ; E4 en TDD ; **revue à
+> + filet seul, E2/E3 gelées → DEBT D-39) ; E4 en TDD ; **revue à
 > regard neuf : 10 trouvailles, 10 corrigées** ; **gate complète VERTE
 > 9/9** (2,2 min, 138 e2e) ; Système : **A85**. Commits `e00bd3f`
 > (E4), `e97ad60` (intermittence SAC), `d0812ac` (release) — **CI
@@ -166,7 +166,7 @@ signée, vérification §2.10 (18/18), puis terrain :
 **E6 — documentation.** ADR 0027 (la signature de code : lève le
 report de l'ADR 0013 décision 3, consigne le choix Trusted Signing et
 les faits SAC) ; STANDARD §2.9/§2.10 amendés (secrets du poste,
-20 contrôles) ; ETAT ; mémoire persistante ; DETTE si l'issue amont
+20 contrôles) ; ETAT ; mémoire persistante ; DEBT si l'issue amont
 reste ouverte.
 
 ## 5. Décisions CE — tranchées le 2026-08-26 (STOP 1 passé)
@@ -182,7 +182,7 @@ reste ouverte.
   visible et retentable, l'auto-update x64 reste une loterie SAC tant
   que rien n'est signé. **E2 et E3 sont GELÉES**, à réveiller quand la
   porte individuelle rouvre (ou si une autre voie de signature est
-  choisie) → consigné en DETTE.
+  choisie) → consigné en DEBT.
 - **D3 — Les secrets de signature : « Fichier sous C:\Keys ».** Le
   patron de la clé minisign — chemins lus par `make-release.ps1`,
   jamais le dépôt, jamais de variables persistantes.

@@ -6,5 +6,5 @@ environnement, enseignements) vit dans [STANDARD.md](STANDARD.md) ;
 l'**état de reprise** (version livrée, prochain chantier, chiffres du
 terrain) vit dans [STATE.md](STATE.md).
 
-Stub temporaire — retrait consigné en [DETTE.md](DETTE.md) D-24
+Stub temporaire — retrait consigné en [DEBT.md](DEBT.md) D-24
 (condition : deux reprises à froid propres).

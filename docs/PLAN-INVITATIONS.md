@@ -8,7 +8,7 @@
 > et visage dans la liste, somme des pièces du fil), 2e passe
 > (optimisme instantané, icônes + tons, Supprimer par message), 3e
 > passe (puce instantanée même sans sélection — bump `version` du
-> fenêtrage), 4e passe : OK. Reports : DETTE D-29, D-30, D-31.
+> fenêtrage), 4e passe : OK. Reports : DEBT D-29, D-30, D-31.
 > **Livré en 0.7.0** (décision D7), publiée le 2026-08-23 et vérifiée
 > **18/18 PASS** le jour même.
 
@@ -233,7 +233,7 @@ grammaire de dates DÉDUPLIQUÉS (`Store::account_email`,
 `quand.dateAbsolue`), CSS des boutons fusionné ; (10) le décor e2e
 traverse le VRAI parseur (ICS semé en UTC, horaire local asserté) ;
 (11) **ADR 0024** écrit, STANDARD §4/§5/§10 amendés. **Assumées** :
-DETTE **D-29** (cas C : corps vide définitif — recherche/transfert),
+DEBT **D-29** (cas C : corps vide définitif — recherche/transfert),
 **D-30** (invitation héritée sans ligne de pièce calendrier : pas de
 carte avant relecture fortuite), **D-31** (`drafts` sans `ics_reply`,
 chemin inatteignable).

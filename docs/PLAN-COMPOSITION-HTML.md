@@ -7,7 +7,7 @@
 > même (reconnexion d'un compte au jeton mort — A63 ; l'avis de
 > déconnexion mène aux Réglages). Journal Système **A62** (composeur
 > riche) et **A63** (reconnexion). Revue à regard neuf : 10 trouvailles
-> confirmées, corrigées. Reports : DETTE **D-25**. Release **0.2.0** à
+> confirmées, corrigées. Reports : DEBT **D-25**. Release **0.2.0** à
 > publier (`scripts/make-release.ps1`, geste CE).
 >
 > Chantier ouvert le 2026-08-19 (`/job`), issu du report R4 de

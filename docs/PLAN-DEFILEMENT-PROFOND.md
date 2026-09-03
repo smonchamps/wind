@@ -8,7 +8,7 @@
 > la session (2-3 s à l'arrêt du geste, 3-5 s au démarrage/premier
 > clic Archives → racine : les comptages sur le chemin d'affichage) ;
 > troisième passe « OK au terrain ». Journal Système **A64**. Revue à
-> regard neuf : 10 trouvailles confirmées, corrigées. Reports : DETTE
+> regard neuf : 10 trouvailles confirmées, corrigées. Reports : DEBT
 > **D-26**. e2e : 94 → **97**. Version : CORRECTIF (0.2.1 au moment de
 > publier).
 >
@@ -133,7 +133,7 @@ de source (ou équivalent par génération).
   retenu), rejoué : rafale ≤ 8, rétablissement local en secondes,
   bascule de dossier toujours servie. Gate complète (`/gate`), Système
   amendé (journal A-n : la liste ne demande que ce qu'elle montre ;
-  l'état vide ne s'affirme qu'après preuve), ETAT/DETTE mis à jour.
+  l'état vide ne s'affirme qu'après preuve), ETAT/DEBT mis à jour.
 - **E4 — terrain (STOP 2)**. Sur la vraie base : le geste exact du
   constat (drag tenu à 1/3 d'Archives), chiffres attendus : lignes ou
   « .. » pendant le geste, service en ~1 s à l'arrêt (une page
@@ -150,10 +150,10 @@ de source (ou équivalent par génération).
   catégories. Proposition : **assumer** ~250 ms-1 s pour UNE page
   profonde isolée (une seule en vol, écran honnête qui dit le
   chargement), consigner le report « pagination profonde des
-  catégories » en DETTE avec ses chiffres, re-mesurer au terrain en
+  catégories » en DEBT avec ses chiffres, re-mesurer au terrain en
   E4 ; l'alternative est un chantier cœur dédié avant celui-ci.
   → **Réponse CE (2026-08-20) : « Assumer ~250 ms-1 s »** — une seule
-  page en vol, écran qui dit le chargement, report en DETTE avec les
+  page en vol, écran qui dit le chargement, report en DEBT avec les
   chiffres, re-mesure au terrain en E4.
 - **D2 — Le banc au dépôt.** `mesure-defilement.mjs` (155 lignes,
   patron de `mesure-scrollbar`/`mesure-v2`) entre au dépôt comme banc
@@ -188,7 +188,7 @@ quel — l'implémentation TDD commence (aucun code de production n'a été
   **2**, attente bout-en-bout p50 **2 408 → 104 ms** (max 6 169 →
   129 ms), lignes servies **0,5 s** après l'arrêt (avant : 9 s
   localement, minutes au terrain), bascule de dossier immédiate et
-  servie. Système amendé (**A64**), DETTE **D-26** (D1 : coût
+  servie. Système amendé (**A64**), DEBT **D-26** (D1 : coût
   O(offset) assumé). **Gate complète verte (2026-08-20)** : fmt, build
   ui-v2 sans avertissement, contrastes (700 paires), cohérence
   (476 valeurs), garde thread principal (66 commandes), clippy, tests

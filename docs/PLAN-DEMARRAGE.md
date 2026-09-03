@@ -114,7 +114,7 @@ seul tick (`App.svelte:900-966`), huit prennent le verrou ;
 Chronologie relevée : rafale à 856 ms, liste à 880 ms. **La seule
 commande dont l'utilisateur attend le résultat est la dernière servie.**
 
-**La dette était écrite, avec sa clause.** D-8 (`docs/DETTE.md`,
+**La dette était écrite, avec sa clause.** D-8 (`docs/DEBT.md`,
 2026-08-15) portait `pending_total` à 575 ms, décision CE « les
 optimiser sans constat serait du travail sans mesure », clause
 « **Rouvre si : le terrain désigne le coût.** » La base est passée de
@@ -741,7 +741,7 @@ n'a été écrit.
 | **E3** | **Le flash de thème (D2)** : `fenetre.theme()` attendu avant `mount()`, ou le thème posé côté Rust avant la navigation — le seul canal vivant du thème OS dans WebView2 (A42 : `prefers-color-scheme` ne suit pas l'OS dans `wry`). Plus **le ménage de D6** : `db_path()` cesse de faire un `create_dir_all` par commande (`commands.rs:4792`). | e2e du fichier touché |
 | **E4** | *(conditionnel — sur le chiffre de E1)* Le **balayage repayé par lot** (§3.2), voie (i) ou (ii) selon ce que la mesure aura montré. | tests `mail-core` |
 | **E5** | **Les paliers instrumentés et la gate de démarrage** : les quatre paliers horodatés, `mesure-v2` doté de `MESURE_CORPS` / `MESURE_KO` (D4), médiane sur N lancements — jamais un seul —, `balayerZombies` appelé, et le **palier 3 « liste peinte » opposable** (D1) — les paliers 1, 2 et 4 mesurés et publiés sans l'être. **La gate du chantier est là** : sous 1 000 ms à froid, sinon andon. | banc |
-| **E6** | **Documentation** : Système **A84** (l'invariant du premier écran), **ADR 0027** si le CE valide l'invariant comme structurant, `DETTE.md` (D-8 rouverte et son chiffre périmé corrigé, D-36 et suivantes pour les refus du §2), `STANDARD.md` §3 (le budget du balayage de migration, dans la famille de l'adoption et du FTS) et §9 (l'enseignement de §3.1), `STATE.md`. | **gate complète, une fois** |
+| **E6** | **Documentation** : Système **A84** (l'invariant du premier écran), **ADR 0027** si le CE valide l'invariant comme structurant, `DEBT.md` (D-8 rouverte et son chiffre périmé corrigé, D-36 et suivantes pour les refus du §2), `STANDARD.md` §3 (le budget du balayage de migration, dans la famille de l'adoption et du FTS) et §9 (l'enseignement de §3.1), `STATE.md`. | **gate complète, une fois** |
 
 ### Le protocole du STOP mesuré — et ses trois pièges
 

@@ -212,7 +212,7 @@ patron de surimpression locale que le nuancier de couleurs (R4).
   Système amendé (A-n).
 - **E5 — qualité et sortie** : revue à regard neuf (`/code-review
   high`), gate complète, **terrain (STOP 2)** avec commandes
-  PowerShell prêtes, docs (journal A-n, ETAT, DETTE si report),
+  PowerShell prêtes, docs (journal A-n, ETAT, DEBT si report),
   CHANGELOG **avant** release (§2.9 ⚠️), version selon D5 —
   capacités nouvelles → **0.4.0** (MINEUR).
 
