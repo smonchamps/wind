@@ -6,7 +6,7 @@
 > invariants and the traps live in [STANDARD.md](STANDARD.md) —
 > they are not rewritten, they are amended.
 >
-> Extracted from PASSATION.md (§1 + §8) on 2026-08-19 — PLAN-DOCUMENTATION.
+> Extracted from HANDOVER.md (§1 + §8) on 2026-08-19 — PLAN-DOCUMENTATION.
 
 ---
 
@@ -1171,7 +1171,7 @@ this document** (rewritten with every job), the 24 closed plans and
 5 phase reviews in [archives/](archives/), the orphan normative content
 repatriated to the repository (release verification → STANDARD §2.10, the
 hot-cache trap → §9); Claude's memories now carry only machine
-facts and pointers. Temporary PASSATION.md stub (D-24: one
+facts and pointers. Temporary HANDOVER.md stub (D-24: one
 clean resumption of the two required, counted).
 
 **Previous closed job: PLAN-RETOURS-4** (2026-08-18, `52aec3e`, A59-A61,

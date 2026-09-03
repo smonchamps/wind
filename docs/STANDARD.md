@@ -7,7 +7,7 @@
 > current state** (shipped version, next job, field figures) lives in
 > [STATE.md](STATE.md), the handover snapshot.
 >
-> Born from the split of PASSATION.md on 2026-08-19
+> Born from the split of HANDOVER.md on 2026-08-19
 > (PLAN-DOCUMENTATION, CE decisions D1-D2). **The numbering §2-§10 is
 > frozen**: any external reference (« §2.9 », « §7.1 ») stays true.
 ---

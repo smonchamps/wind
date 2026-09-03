@@ -6,7 +6,7 @@ Le format s'inspire de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 et le projet suit le [versionnage sémantique](https://semver.org/lang/fr/) :
 la règle d'incrémentation `MAJEUR.MINEUR.CORRECTIF` propre à Wind (Wind
 n'exposant aucune API publique) est fixée dans
-[`docs/PASSATION.md`](docs/PASSATION.md) §2.9.
+[`docs/HANDOVER.md`](docs/HANDOVER.md) §2.9.
 
 Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à

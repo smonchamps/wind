@@ -522,10 +522,10 @@ deferral = one justified line.)
   cancel path alone brings little ; the success path stays field-only.
   To be investigated if a composition/attachments bench is set up.
 
-### D-24 · PASSATION.md stub to be removed
+### D-24 · HANDOVER.md stub to be removed
 
 - **Fact (PLAN-DOCUMENTATION, 2026-08-19, CE decision D3)**:
-  PASSATION.md is split into STANDARD.md (the working standard) and
+  HANDOVER.md is split into STANDARD.md (the working standard) and
   ETAT.md (the handover snapshot) ; a few-line stub remains at the
   historical path — a poka-yoke for old memories and the former
   resumption ritual.
