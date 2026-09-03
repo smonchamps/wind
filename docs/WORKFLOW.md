@@ -110,7 +110,7 @@ When the design meets a hard point, the decision is made on figures
 worktree, each building a throw-away prototype in `spikes/` and
 reporting a protocol and measurements — never an opinion. The main
 session compares the reports, the CE decides. Model:
-[ADR 0004](adr/0004-moteur-de-recherche-fts5.md).
+[ADR 0004](adr/0004-fts5-search-engine.md).
 
 It is the **only** custom agent, on purpose: splitting design,
 implementation or documentation into separate agents would lose, at

@@ -18,7 +18,7 @@
 //! - **batched**: a round trip per message costs ~192 ms on a real server
 //!   (`spikes/body-backfill`). Bodies are requested in batches.
 //!
-//! [ADR 0007]: ../../../docs/adr/0007-rattrapage-des-corps.md
+//! [ADR 0007]: ../../../docs/adr/0007-body-backfill.md
 
 use std::collections::HashSet;
 
@@ -44,7 +44,7 @@ pub const BACKFILL_BATCH: usize = 50;
 /// header — produces a negative epoch, and "everything" must cover that
 /// too.
 ///
-/// [ADR 0010]: ../../../docs/adr/0010-synchronisation-integrale.md
+/// [ADR 0010]: ../../../docs/adr/0010-full-synchronization.md
 pub const NO_HORIZON: i64 = i64::MIN;
 
 /// The CLOSED vocabulary of the "history depth" setting (ADR 0029,

@@ -326,7 +326,7 @@ fn replay_actions(
 /// (`\Noselect`), and SELECT would fail on each of them one by one.
 ///
 /// [ADR 0009]: ../../../docs/adr/0009-portee-des-threads-au-compte.md
-/// [ADR 0010]: ../../../docs/adr/0010-synchronisation-integrale.md
+/// [ADR 0010]: ../../../docs/adr/0010-full-synchronization.md
 pub fn sync_order(folders: &[crate::remote::Folder], sent: Option<&str>) -> Vec<String> {
     let mut order: Vec<String> = Vec::with_capacity(folders.len() + 1);
     // INBOX even if the server does not list it: it always exists, and an
@@ -355,7 +355,7 @@ pub fn sync_order(folders: &[crate::remote::Folder], sent: Option<&str>) -> Vec<
 /// **Deliberately high**: announcing too much and delivering beats
 /// starting and failing halfway through.
 ///
-/// [ADR 0010]: ../../../docs/adr/0010-synchronisation-integrale.md
+/// [ADR 0010]: ../../../docs/adr/0010-full-synchronization.md
 pub const SYNC_BYTES_PER_MESSAGE: u64 = 50 * 1024;
 
 /// The space that WOULD BE MISSING to bring `pending` messages home — a
@@ -369,7 +369,7 @@ pub const SYNC_BYTES_PER_MESSAGE: u64 = 50 * 1024;
 /// No hidden margin on top: the per-message estimate is already high, and
 /// two stacked margins end up refusing syncs that would actually fit.
 ///
-/// [ADR 0010]: ../../../docs/adr/0010-synchronisation-integrale.md
+/// [ADR 0010]: ../../../docs/adr/0010-full-synchronization.md
 pub fn disk_shortfall(pending: u64, available_bytes: u64) -> Option<u64> {
     let needed = pending.saturating_mul(SYNC_BYTES_PER_MESSAGE);
     if needed <= available_bytes {

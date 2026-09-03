@@ -3,7 +3,7 @@
 #
 # It exists because a hosted GitHub runner CANNOT open a WebView2 window
 # (measured: application alive, mute, without CDP — see
-# docs/adr/0005-gate-e2e-hors-ci-hebergee.md). The E2E journeys therefore
+# docs/adr/0005-e2e-gate-outside-hosted-ci.md). The E2E journeys therefore
 # only run from here.
 #
 # What it prevents, concretely: shipping while announcing "tests green"

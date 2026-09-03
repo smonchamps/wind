@@ -4,7 +4,7 @@
 //! is local and free, bytes are paid for on demand.
 //!
 //! They cost no extra network round trip: a message's body is already
-//! fetched in full ([ADR 0007](../../../docs/adr/0007-rattrapage-des-corps.md)),
+//! fetched in full ([ADR 0007](../../../docs/adr/0007-body-backfill.md)),
 //! and this metadata is read in the same bytes. The attachment's
 //! **bytes**, though, are never stored: at 62 KB per body the disk
 //! budget holds, it would not hold with the files added in.

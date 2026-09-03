@@ -2590,7 +2590,7 @@ impl Store {
     }
 
     /// RECENT messages whose body is still missing, newest to oldest — the
-    /// backfill's work ([ADR 0007](../../../docs/adr/0007-rattrapage-des-corps.md)).
+    /// backfill's work ([ADR 0007](../../../docs/adr/0007-body-backfill.md)).
     ///
     /// `since_epoch` bounds the cost: it is the recency horizon.
     /// Descending order makes recovery after an interruption natural — we

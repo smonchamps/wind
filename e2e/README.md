@@ -59,7 +59,7 @@ played as a whole file.
 ## The gate
 
 The specs **do not run in the hosted CI**: a GitHub runner cannot open a
-WebView2 window (measured — [ADR 0005](../docs/adr/0005-gate-e2e-hors-ci-hebergee.md)).
+WebView2 window (measured — [ADR 0005](../docs/adr/0005-e2e-gate-outside-hosted-ci.md)).
 They are played by the versioned `pre-push` hook, armed once per clone:
 
 ```powershell

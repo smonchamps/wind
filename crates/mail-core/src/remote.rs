@@ -90,7 +90,7 @@ pub struct MailboxSnapshot {
     ///
     /// Free: the SELECT reply always carries it, we used to throw it
     /// away. It is the **denominator** of full synchronization progress
-    /// ([ADR 0010](../../../docs/adr/0010-synchronisation-integrale.md) §5)
+    /// ([ADR 0010](../../../docs/adr/0010-full-synchronization.md) §5)
     /// — without it, "12,000 messages fetched" does not say whether we
     /// are a tenth of the way in or at the end.
     pub exists: u32,
@@ -292,9 +292,9 @@ pub trait MailServer {
     ///
     /// A single round trip (STATUS in IMAP, designed exactly to query an
     /// unselected mailbox) that serves TWO decisions: the disk-space
-    /// guard ([ADR 0010](../../../docs/adr/0010-synchronisation-integrale.md)
+    /// guard ([ADR 0010](../../../docs/adr/0010-full-synchronization.md)
     /// §4) which sums `messages` BEFORE committing, and guarded polling
-    /// ([ADR 0017](../../../docs/adr/0017-releve-gardee-par-status.md))
+    /// ([ADR 0017](../../../docs/adr/0017-poll-guarded-by-status.md))
     /// — `must_poll` skips folders where nothing moved. `uid_next` and
     /// `uid_validity` are optional: a server that keeps silent on them
     /// makes the decision conservative (we poll), never wrong.

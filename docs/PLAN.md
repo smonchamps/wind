@@ -34,7 +34,7 @@ reliability.
 | Opening a message | < 50 ms | Phase 1 |
 | Search over 100 000 messages | < 100 ms | Phase 3 |
 | RAM in everyday use | < 200 MB | Phase 1 |
-| Local database (3 accounts, bodies backfilled) | < 1 GB | Phase 3 ([ADR 0007](adr/0007-rattrapage-des-corps.md)) |
+| Local database (3 accounts, bodies backfilled) | < 1 GB | Phase 3 ([ADR 0007](adr/0007-body-backfill.md)) |
 | List scrolling | 60 fps | Phase 1 |
 | Windows installer size | < 15 MB | **measured: 4,75 MB** (NSIS, 2026-07-21) |
 | Data loss | 0, proven by crash-recovery tests | Phase 2 |

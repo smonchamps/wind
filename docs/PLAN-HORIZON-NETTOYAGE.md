@@ -30,7 +30,7 @@
   (`crates/mail-core/src/sync.rs:55-115`) liste TOUS les UID de chaque
   boîte et les rapatrie par lots de 500. Aucun paramètre de date ni de
   quota dans la signature.
-- **C'est une décision gelée** : [ADR 0010](adr/0010-synchronisation-integrale.md)
+- **C'est une décision gelée** : [ADR 0010](adr/0010-full-synchronization.md)
   (2026-07-25) — « l'intégralité de la boîte, tous dossiers confondus,
   sans horizon » — qui a révisé l'ADR 0007 (horizon 12 mois). Toucher à
   la profondeur d'import exige un ADR neuf qui l'amende.

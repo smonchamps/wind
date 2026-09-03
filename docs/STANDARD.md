@@ -70,7 +70,7 @@ for: the sync engine, the web bridge, HTML rendering, OAuth, the search engine.
 ### 2.3 Set-based — explore, then eliminate on figures
 Several options are compared and decided **on measurements, not
 opinions**. Tie-breaking rule: the alternative must beat the hypothesis
-*clearly* to unseat it. Model to imitate: [ADR 0004](adr/0004-moteur-de-recherche-fts5.md).
+*clearly* to unseat it. Model to imitate: [ADR 0004](adr/0004-fts5-search-engine.md).
 
 ### 2.4 Jidoka — quality built into the process
 - **TDD**: the test fails (RED) before the implementation (GREEN). When a
@@ -138,7 +138,7 @@ We go down the list, stopping at the first "yes":
      MAJOR. Adding a channel breaks nothing (each workstation's updater
      only reads its own `{os}-{arch}` key) — removing or breaking a channel does;
    - it carries a **non-reversible data migration** (contrary
-     to [ADR 0012](adr/0012-migration-visible-interruptible.md));
+     to [ADR 0012](adr/0012-visible-interruptible-migration.md));
    - \+ the **single** `0.x → 1.0.0` transition at the "past initial
      development" milestone (leaving beta) — a shusa product decision.
 2. **MINOR** (`y`+1, then `z` → 0) — if the release **adds at least one
@@ -147,8 +147,8 @@ We go down the list, stopping at the first "yes":
    adjustments to existing behavior, perf, internal streamlining, cleanups.
 
 The release is published via `scripts/make-release.ps1 <version>`
-([ADR 0013](adr/0013-installeur-nsis-maj-signee.md), bi-arch since
-[ADR 0023](adr/0023-retour-canal-x64.md): two `--target` builds,
+([ADR 0013](adr/0013-nsis-installer-signed-update.md), bi-arch since
+[ADR 0023](adr/0023-x64-channel-return.md): two `--target` builds,
 native arm64 + local x64 cross-build, **all-or-nothing** — a failed
 build blocks the whole release, never a channel left behind); the GitHub
 tag stays the **bare version**.
@@ -305,23 +305,23 @@ to test field scenarios without a network.
 
 | ADR | Decision | Takeaway |
 |---|---|---|
-| [0001](adr/0001-structure-workspace.md) | Multi-crate Cargo workspace | `mail-core` with no UI/network dependency |
-| [0002](adr/0002-shell-desktop-tauri.md) | Desktop shell = Tauri 2 (WebView2) | The RAM that counts = **private** working set |
-| [0003](adr/0003-boite-envoi-smtp.md) | SMTP outbox + golden rules | Journal BEFORE network; anti-phantom quarantine |
-| [0004](adr/0004-moteur-de-recherche-fts5.md) | Search = SQLite **FTS5** | The index lives INSIDE the database (transactional) |
-| [0005](adr/0005-gate-e2e-hors-ci-hebergee.md) | E2E outside hosted CI | A GitHub runner cannot open WebView2 — hence the `pre-push` hook |
+| [0001](adr/0001-workspace-structure.md) | Multi-crate Cargo workspace | `mail-core` with no UI/network dependency |
+| [0002](adr/0002-tauri-desktop-shell.md) | Desktop shell = Tauri 2 (WebView2) | The RAM that counts = **private** working set |
+| [0003](adr/0003-smtp-outbox.md) | SMTP outbox + golden rules | Journal BEFORE network; anti-phantom quarantine |
+| [0004](adr/0004-fts5-search-engine.md) | Search = SQLite **FTS5** | The index lives INSIDE the database (transactional) |
+| [0005](adr/0005-e2e-gate-outside-hosted-ci.md) | E2E outside hosted CI | A GitHub runner cannot open WebView2 — hence the `pre-push` hook |
 | [0006](adr/0006-microsoft-imap-oauth2.md) | Microsoft via IMAP+OAuth2, not Graph | Graph remains the encrypted plan B |
-| [0007](adr/0007-rattrapage-des-corps.md) | Bounded, resumable, grouped body backfill | **Horizon lifted by ADR 0010**; the shape (bounded/resumable/grouped) remains |
-| [0008](adr/0008-regroupement-en-conversations.md) | Conversations = union-find on RFC 5322 headers | **Never a subject-line fallback**; recomputed aggregate; an identifier requires an at sign |
-| [0009](adr/0009-portee-des-fils-au-compte.md) | Thread scope = the **account** | "Sent" synced; **partial index** or gate 3 is lost |
-| [0010](adr/0010-synchronisation-integrale.md) | **Full synchronization** — everything, no horizon or quota | Gate < 1 GB **lifted**; **storing ≠ grouping** (scope = INBOX + Sent); disk-space guard; progress in % |
-| [0011](adr/0011-journal-wal.md) | SQLite journal in **WAL** | A read no longer blocks a long sync; persistent, legacy databases converted |
-| [0012](adr/0012-migration-visible-interruptible.md) | **Visible and interruptible** migration | Adoption is ONE reversible transaction — canceling leaves `user_version` unchanged, never a partial adoption; read-only `pending_adoption` probe, which announces the **scope** |
-| [0013](adr/0013-installeur-nsis-maj-signee.md) | **NSIS** installer + signed update | **Not MSIX** (would virtualize `%APPDATA%`, orphan the database); minisign-signed updater, driven from Rust; Windows signature deferred; GitHub tag = **bare version**, `latest.json` without BOM (`scripts/make-release.ps1`) |
-| [0014](adr/0014-telemetrie-de-crash-locale.md) | **Local, opt-in** crash telemetry | Local file only (no network/third party); panics only; **panic message dropped** (the only PII vector); a hook that never touches the database; a main-thread crash does a **double panic** (`SEQ` counter + `cannot unwind` filter) |
-| [0015](adr/0015-socle-ui-v2-svelte.md) | **UI v2 foundation = Svelte**, single web frontend carried everywhere (Tauri 2 desktop+mobile + browser) | Set-based decision (vanilla / Svelte / WASM) **on measurement**: 256k list + theme toggle, two engines (desktop Blink, Android-class CPU ×6) — rendering neutralized by windowing + CSS theme. **System written once** (Strategy A); WASM ruled out, vanilla as fallback; **iOS/WKWebView: field validation still due**; UI↔core boundary = transport port; `mail-core` untouched (ADR 0001) |
-| [0019](adr/0019-commandes-hors-du-thread-principal.md) | **Blocking commands off the main thread**, one at a time (`off_pump` = spawn_blocking + global lock) | The pump only pumps (measured freeze: 25.2 s/40 s → 0); the previous serialization is KEPT; `main-thread-guard.mjs` gate + "no freeze > 150 ms" budget (`freeze-probe.py`) |
-| [0024](adr/0024-parseur-icalendar-calcard.md) | iCalendar invitations = **calcard** in pure `mail-ical` | Decided by spikes (shared corpus) on **cost of ownership**; native Windows TZIDs; ⚠️ `resolve()` never `resolve_or_default` — an unknown TZID renders a FLOATING time stated as such (guard D1), never wrongly converted |
+| [0007](adr/0007-body-backfill.md) | Bounded, resumable, grouped body backfill | **Horizon lifted by ADR 0010**; the shape (bounded/resumable/grouped) remains |
+| [0008](adr/0008-conversation-threading.md) | Conversations = union-find on RFC 5322 headers | **Never a subject-line fallback**; recomputed aggregate; an identifier requires an at sign |
+| [0009](adr/0009-thread-scope-per-account.md) | Thread scope = the **account** | "Sent" synced; **partial index** or gate 3 is lost |
+| [0010](adr/0010-full-synchronization.md) | **Full synchronization** — everything, no horizon or quota | Gate < 1 GB **lifted**; **storing ≠ grouping** (scope = INBOX + Sent); disk-space guard; progress in % |
+| [0011](adr/0011-wal-journal.md) | SQLite journal in **WAL** | A read no longer blocks a long sync; persistent, legacy databases converted |
+| [0012](adr/0012-visible-interruptible-migration.md) | **Visible and interruptible** migration | Adoption is ONE reversible transaction — canceling leaves `user_version` unchanged, never a partial adoption; read-only `pending_adoption` probe, which announces the **scope** |
+| [0013](adr/0013-nsis-installer-signed-update.md) | **NSIS** installer + signed update | **Not MSIX** (would virtualize `%APPDATA%`, orphan the database); minisign-signed updater, driven from Rust; Windows signature deferred; GitHub tag = **bare version**, `latest.json` without BOM (`scripts/make-release.ps1`) |
+| [0014](adr/0014-local-crash-telemetry.md) | **Local, opt-in** crash telemetry | Local file only (no network/third party); panics only; **panic message dropped** (the only PII vector); a hook that never touches the database; a main-thread crash does a **double panic** (`SEQ` counter + `cannot unwind` filter) |
+| [0015](adr/0015-ui-v2-svelte-foundation.md) | **UI v2 foundation = Svelte**, single web frontend carried everywhere (Tauri 2 desktop+mobile + browser) | Set-based decision (vanilla / Svelte / WASM) **on measurement**: 256k list + theme toggle, two engines (desktop Blink, Android-class CPU ×6) — rendering neutralized by windowing + CSS theme. **System written once** (Strategy A); WASM ruled out, vanilla as fallback; **iOS/WKWebView: field validation still due**; UI↔core boundary = transport port; `mail-core` untouched (ADR 0001) |
+| [0019](adr/0019-commands-off-the-main-thread.md) | **Blocking commands off the main thread**, one at a time (`off_pump` = spawn_blocking + global lock) | The pump only pumps (measured freeze: 25.2 s/40 s → 0); the previous serialization is KEPT; `main-thread-guard.mjs` gate + "no freeze > 150 ms" budget (`freeze-probe.py`) |
+| [0024](adr/0024-icalendar-parser-calcard.md) | iCalendar invitations = **calcard** in pure `mail-ical` | Decided by spikes (shared corpus) on **cost of ownership**; native Windows TZIDs; ⚠️ `resolve()` never `resolve_or_default` — an unknown TZID renders a FLOATING time stated as such (guard D1), never wrongly converted |
 
 Phase 0 decisions ([PHASE0.md](archives/PHASE0.md) §2): local SQLite;
 CONDSTORE; MIME parsing by `mail-parser`; OAuth2 PKCE loopback + OS

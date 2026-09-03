@@ -1,158 +1,160 @@
-# ADR 0006 — Microsoft 365 : IMAP+OAuth2 confirmé, Graph en plan B chiffré
+# ADR 0006 — Microsoft 365: IMAP+OAuth2 confirmed, Graph as a priced plan B
 
-Date : 2026-07-21 · Statut : accepté
+Date: 2026-07-21 · Status: accepted
 
-## Contexte
+## Context
 
-La Phase 0 avait explicitement **reporté** ce départage à la Phase 3
-([PHASE0.md](../archives/PHASE0.md) §3), la grille set-based du plan
-([PLAN.md](../PLAN.md) §2.4) posant *Graph API* en hypothèse du Chef
-Ingénieur, sur critères d'élimination : **fiabilité, quotas, effort**.
+Phase 0 had explicitly **deferred** this decision to Phase 3
+([PHASE0.md](../archives/PHASE0.md) §3), the plan's set-based grid
+([PLAN.md](../PLAN.md) §2.4) setting *Graph API* as the Chief Engineer's
+hypothesis, on elimination criteria: **reliability, quotas, effort**.
 
-Deux faits devaient être établis avant de trancher — aucun ne pouvait
-l'être par raisonnement :
+Two facts had to be established before deciding — neither could be settled
+by reasoning:
 
-1. **IMAP+OAuth2 est-il encore supporté ?** L'argument qui aurait imposé
-   Graph était « IMAP est condamné ».
-2. **SMTP AUTH est-il ouvert ?** Sans lui, la règle d'or « jamais d'envoi
-   perdu » ([ADR 0003](0003-boite-envoi-smtp.md)) n'a plus de support côté
-   Microsoft, et l'envoi devrait passer par Graph.
+1. **Is IMAP+OAuth2 still supported?** The argument that would have forced
+   Graph was "IMAP is doomed".
+2. **Is SMTP AUTH open?** Without it, the golden rule "never a lost send"
+   ([ADR 0003](0003-smtp-outbox.md)) has no support on the Microsoft side
+   left, and sending would have to go through Graph.
 
-## Recherche : l'argument « IMAP condamné » est faux
+## Research: the "IMAP is doomed" argument is false
 
-Microsoft n'a jamais déprécié les *protocoles* — seulement **Basic Auth**
-(achevé fin 2022 pour IMAP/POP/EAS). Ce qui bouge en 2026 ne concerne que
-SMTP AUTH **en Basic Auth** : désactivé par défaut fin décembre 2026,
-retrait final annoncé au 2ᵉ semestre 2027. Pour les nouveaux tenants,
-**OAuth est explicitement la méthode retenue**.
+Microsoft has never deprecated the *protocols* — only **Basic Auth**
+(completed end of 2022 for IMAP/POP/EAS). What is moving in 2026 concerns
+only SMTP AUTH **over Basic Auth**: disabled by default end of December
+2026, final retirement announced for H2 2027. For new tenants, **OAuth is
+explicitly the recommended method**.
 
-Sources : [Deprecation of Basic authentication in Exchange Online](https://learn.microsoft.com/en-us/exchange/clients-and-mobile-in-exchange-online/deprecation-of-basic-authentication-exchange-online) ·
+Sources: [Deprecation of Basic authentication in Exchange Online](https://learn.microsoft.com/en-us/exchange/clients-and-mobile-in-exchange-online/deprecation-of-basic-authentication-exchange-online) ·
 [Updated SMTP AUTH Basic Authentication Deprecation Timeline](https://techcommunity.microsoft.com/blog/exchange/updated-exchange-online-smtp-auth-basic-authentication-deprecation-timeline/4489835)
 
-## Mesures — compte Outlook.com réel ([`spikes/microsoft`](../../spikes/microsoft/README.md))
+## Measurements — real Outlook.com account ([`spikes/microsoft`](../../spikes/microsoft/README.md))
 
-| Mesure | Résultat |
+| Measurement | Result |
 |---|---|
-| Scopes **accordés** | `IMAP.AccessAsUser.All` + `SMTP.Send` — pas de consentement partiel |
-| Refresh token | reçu → reconnexion silencieuse possible |
-| Connexion IMAP XOAUTH2 | 389–551 ms |
-| LIST (41 dossiers) | 54–144 ms |
-| **SMTP AUTH** (`smtp.office365.com:587` STARTTLS) | **OUVERT**, 0,8–1,2 s |
+| Scopes **granted** | `IMAP.AccessAsUser.All` + `SMTP.Send` — no partial consent |
+| Refresh token | received → silent reconnection possible |
+| IMAP XOAUTH2 connection | 389–551 ms |
+| LIST (41 folders) | 54–144 ms |
+| **SMTP AUTH** (`smtp.office365.com:587` STARTTLS) | **OPEN**, 0.8–1.2 s |
 
-## Décision
+## Decision
 
-**IMAP+OAuth2 est confirmé** pour Microsoft 365 / Outlook.com en v1 ;
-**Graph reste le plan B**, documenté et chiffré.
+**IMAP+OAuth2 is confirmed** for Microsoft 365 / Outlook.com in v1; **Graph
+stays the plan B**, documented and priced.
 
-La règle de départage est celle de l'[ADR 0004](0004-moteur-de-recherche-fts5.md) :
-l'alternative doit battre l'hypothèse **nettement**. Ici, Graph ne le fait
-pas — son seul avantage décisif (« IMAP est condamné ») est réfuté, et
-l'asymétrie d'effort est écrasante :
+The tie-breaking rule is the one from [ADR 0004](0004-fts5-search-engine.md):
+the alternative must beat the hypothesis **clearly**. Here, Graph does not —
+its one decisive advantage ("IMAP is doomed") is refuted, and the effort
+asymmetry is overwhelming:
 
 | | IMAP+OAuth2 | Graph |
 |---|---|---|
-| Moteur de synchro, boîte d'envoi et ses règles d'or, brouillons, stockage | **réutilisés sans une ligne de neuf** | à réécrire contre REST |
-| Adaptateurs | déjà paramétrés par hôte (`connect_xoauth2(host, port, …)`) | nouvel adaptateur `MailServer` + `MailTransport` |
-| Reste à faire | ~~endpoints/scopes par fournisseur, hôtes par compte~~ → **fait** ; reste l'UI d'ajout | pagination, delta, quotas, modèle propre |
+| Sync engine, outbox and its golden rules, drafts, storage | **reused with zero new lines** | to rewrite against REST |
+| Adapters | already parameterized per host (`connect_xoauth2(host, port, …)`) | new `MailServer` + `MailTransport` adapter |
+| Remaining work | ~~endpoints/scopes per provider, hosts per account~~ → **done**; the add-account UI remains | pagination, delta, quotas, a whole new model |
 
-### La couche d'authentification, généralisée
+### The authentication layer, generalized
 
-`GmailAuth` était un nom qui mentait : la classe portait Google en dur
-dans ses constantes, et l'application ses serveurs dans les siennes.
-Le parcours est désormais **unique** ; ce qui distingue un fournisseur
-est décrit en **données** dans `mail-auth::provider` — endpoints, scopes,
-règle de vérification du consentement, hôte de redirection, politique de
-secret client, stratégie d'identité, serveurs IMAP/SMTP.
+`GmailAuth` was a name that lied: the class carried Google hardcoded in its
+constants, and the application its servers in its own. The flow is now
+**unique**; what distinguishes a provider is described as **data** in
+`mail-auth::provider` — endpoints, scopes, the consent-verification rule,
+the redirect host, the client-secret policy, the identity strategy, the
+IMAP/SMTP servers.
 
-Trois choix méritent d'être gelés ici :
+Three choices are worth freezing here:
 
-- **Les descripteurs sont testés contre le spike**, pas contre la doc.
-  Les valeurs Microsoft qui figurent dans le code sont celles qu'un
-  compte réel a effectivement acceptées.
-- **Trois identifiants sont épinglés par des tests** : la clé du coffre
-  (`gmail-refresh:`), la valeur en base (`accounts.provider = "gmail"`)
-  et leur unicité entre fournisseurs. Aucun de ces renommages ne casse
-  quoi que ce soit à la compilation ; tous déconnecteraient
-  silencieusement les comptes existants.
-- **Microsoft ne livre pas l'identité du compte** dans le périmètre de
-  scopes mesuré : `Identity::Declared`, l'adresse est saisie. La piste
-  `openid profile email` + `graph.microsoft.com/oidc/userinfo` est
-  documentée dans le code mais **non mesurée** — donc non retenue.
+- **The descriptors are tested against the spike**, not against the docs.
+  The Microsoft values in the code are the ones a real account actually
+  accepted.
+- **Three identifiers are pinned by tests**: the vault key
+  (`gmail-refresh:`), the database value (`accounts.provider = "gmail"`)
+  and their uniqueness across providers. None of these renames breaks
+  anything at compile time; all of them would silently disconnect existing
+  accounts.
+- **Microsoft does not deliver account identity** within the measured
+  scope perimeter: `Identity::Declared`, the address is entered by hand.
+  The `openid profile email` + `graph.microsoft.com/oidc/userinfo` path is
+  documented in the code but **not measured** — hence not adopted.
 
-### Les deux pièges, gelés ici
+### The two traps, frozen here
 
-1. **Les scopes sont ceux de la RESSOURCE Outlook**, pas les noms courts de
-   Graph — `https://outlook.office.com/IMAP.AccessAsUser.All` et
+1. **The scopes are those of the Outlook RESOURCE**, not Graph's short
+   names — `https://outlook.office.com/IMAP.AccessAsUser.All` and
    `https://outlook.office.com/SMTP.Send`, plus `offline_access`.
-2. **SMTP est en 587 STARTTLS**, jamais en 465 implicite. ~~Le chemin
-   XOAUTH2 de `mail-smtp` câble encore 465 en dur.~~ **Soldé** : les deux
-   modes d'authentification passent désormais par un chemin unique
-   (`transport_builder`), et deux tests hors-ligne prouvent que le port
-   demandé est bien celui joint. La duplication qui avait laissé le
-   correctif `fb11538` ne profiter qu'au mot de passe n'existe plus.
+2. **SMTP is on 587 STARTTLS**, never implicit 465. ~~The XOAUTH2 path of
+   `mail-smtp` still hardcodes 465.~~ **Closed out**: both authentication
+   modes now go through a single path (`transport_builder`), and two
+   offline tests prove the requested port is the one actually reached. The
+   duplication that had left the `fb11538` fix benefit only the password
+   path no longer exists.
 
-## Conséquence inattendue : l'archivage
+## Unexpected consequence: archiving
 
-Exchange annonce `\Drafts`, `\Junk`, `\Sent` et `\Trash`, mais **ni
-`\Archive` ni `\All`** — alors que le dossier `Archive` existe et sert
-(13 sous-dossiers sur le compte mesuré). Le garde-fou anti-destruction de
-[`e37a105`](../../crates/mail-imap/src/convert.rs) aurait donc **refusé**
-d'archiver sur tout compte Microsoft — comportement correct, mais
-fonctionnalité indisponible.
+Exchange announces `\Drafts`, `\Junk`, `\Sent` and `\Trash`, but **neither
+`\Archive` nor `\All`** — even though the `Archive` folder exists and is
+used (13 subfolders on the measured account). The anti-destruction
+guardrail of [`e37a105`](../../crates/mail-imap/src/convert.rs) would
+therefore have **refused** to archive on any Microsoft account — correct
+behavior, but the feature unavailable.
 
-D'où un **repli par nom** (`archive`, `archives`) après les attributs
-annoncés : exception délibérée à la règle « jamais de nom en dur »,
-**justifiée par la mesure et par elle seule**. Ordre de priorité gelé :
-`\Archive` → `\All` → nom connu → refus.
+Hence a **by-name fallback** (`archive`, `archives`) after the announced
+attributes: a deliberate exception to the "never a hardcoded name" rule,
+**justified by measurement and by measurement alone**. Frozen priority
+order: `\Archive` → `\All` → known name → refuse.
 
-## Validation terrain (2026-07-21, compte Microsoft réel)
+## Field validation (2026-07-21, real Microsoft account)
 
-Le parcours complet a été joué **depuis l'application**, pas depuis le
-banc. Les cinq points passent :
+The full journey was played **from the application**, not from the bench.
+All five points pass:
 
-| | Vérifié |
+| | Verified |
 |---|---|
-| Ajout du compte | consentement navigateur, adresse déclarée, pastille affichée |
-| Synchro | les messages Outlook remontent dans la boîte unifiée |
-| Rattrapage | le bandeau repart sur le nouveau compte |
-| Reconnexion | **silencieuse** au relancement — le refresh token du coffre tient |
-| Envoi | **un vrai message part en 587/STARTTLS** |
+| Add account | browser consent, address declared, badge shown |
+| Sync | Outlook messages come up in the unified inbox |
+| Backfill | the banner resumes on the new account |
+| Reconnect | **silent** on relaunch — the vault's refresh token holds |
+| Send | **a real message goes out over 587/STARTTLS** |
 
-Le dernier point est le plus important, et il ne pouvait pas être obtenu
-autrement. Le correctif du bug #3 n'était prouvé que **contre un faux
-serveur** : les tests montrent quel port est joint, jamais qu'un message
-en sort. C'est la validation terrain, et elle seule, qui ferme cette
-boucle — exactement le rôle qu'on lui donne.
+The last point matters most, and it could not have been obtained any other
+way. Bug #3's fix had only been proven **against a fake server**: the
+tests show which port is reached, never that a message actually leaves.
+It is field validation, and field validation alone, that closes this loop
+— exactly the role assigned to it.
 
-La reconnexion silencieuse valide au passage deux décisions prises sans
-mesure directe : `offline_access` suffit bien à obtenir un refresh token
-côté Microsoft (là où Google exige `access_type=offline` + `prompt=consent`),
-et les préfixes de coffre disjoints font cohabiter les fournisseurs.
+The silent reconnection validates, in passing, two decisions made without
+direct measurement: `offline_access` alone is indeed enough to obtain a
+refresh token on the Microsoft side (where Google requires
+`access_type=offline` + `prompt=consent`), and the disjoint vault prefixes
+let providers coexist.
 
-**Non levé** : `Identity::Declared`. L'adresse saisie a fonctionné, ce qui
-ne dit rien de la piste OIDC — elle reste non mesurée, donc non retenue.
+**Not resolved**: `Identity::Declared`. The entered address worked, which
+says nothing about the OIDC path — it remains unmeasured, hence not
+adopted.
 
-## Conséquences
+## Consequences
 
-- ~~La productionisation suit : généraliser la couche OAuth par fournisseur
-  (`GmailAuth` est figé sur Google), sortir les hôtes des constantes de
-  `commands.rs`, corriger le port SMTP XOAUTH2.~~ **Fait et validé sur le
-  terrain.** Microsoft est un fournisseur de premier rang.
-- **Risque nommé** : SMTP AUTH est ouvert sur le tenant mesuré, mais
-  Microsoft le ferme par défaut sur certains tenants d'entreprise. Le cas
-  se manifestera par un refus à la connexion, pas par une perte — la
-  boîte d'envoi conserve le message. À traiter en bêta si le cas survient.
-- ~~**Dette repérée** : les noms de dossiers reviennent en UTF-7 modifié
-  non décodé (`Actualit&AOk-`).~~ **Soldée** : `mail-imap::mutf7` décode
-  RFC 3501 §5.1.3, avec une règle explicite — on décode pour l'**œil** et
-  pour les **comparaisons**, jamais pour le protocole. Le nom réseau reste
-  celui qu'on renvoie au serveur ; les deux coexistent.
+- ~~Productionization follows: generalize the per-provider OAuth layer
+  (`GmailAuth` is frozen on Google), pull the hosts out of `commands.rs`'s
+  constants, fix the SMTP XOAUTH2 port.~~ **Done and field-validated.**
+  Microsoft is a first-class provider.
+- **Risk named**: SMTP AUTH is open on the measured tenant, but Microsoft
+  closes it by default on some enterprise tenants. The case will show up
+  as a connection refusal, not a loss — the outbox keeps the message. To
+  be handled in beta if the case occurs.
+- ~~**Debt spotted**: folder names come back in undecoded modified
+  UTF-7** (`Actualit&AOk-`).~~ **Closed out**: `mail-imap::mutf7` decodes
+  per RFC 3501 §5.1.3, with an explicit rule — decoding is for the **eye**
+  and for **comparisons**, never for the protocol. The wire name stays the
+  one sent back to the server; the two coexist.
 
-  Effet immédiat et non recherché : le repli par nom de l'archivage
-  reconnaît désormais un dossier `Archiv&AOk-s`. Sur un serveur
-  francophone sans attribut `\Archive` — exactement le cas Exchange qui a
-  motivé ce repli — l'archivage était jusqu'ici indisponible.
-- **Bascule vers Graph** si l'un de ces trois signaux apparaît : SMTP AUTH
-  massivement fermé chez les utilisateurs bêta, annonce de retrait d'IMAP
-  OAuth, ou quotas IMAP rédhibitoires à l'échelle. Le banc reste dans
-  `spikes/microsoft`, relançable.
+  Immediate, unsought effect: the archiving by-name fallback now
+  recognizes an `Archiv&AOk-s` folder. On a French-language server with
+  no `\Archive` attribute — exactly the Exchange case that motivated this
+  fallback — archiving had until now been unavailable.
+- **Switch to Graph** if any of these three signals appears: SMTP AUTH
+  massively closed among beta users, an announced IMAP OAuth retirement,
+  or IMAP quotas becoming prohibitive at scale. The bench stays in
+  `spikes/microsoft`, re-runnable.
