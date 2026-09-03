@@ -932,6 +932,18 @@ non-archived `PLAN-*.md`: the closed ones go to `archives/` first
 plan and PLAN-AUDIT-V2 (in progress) translated. `ANNOTATIONS-V3.md`,
 `assets/icones/README.md`.
 
+> **E7 delivered on 2026-09-04, fourteen commits** (`625f8d4` →
+> `abafad7`): every listed document translated; the decided renames
+> applied with referrers swept per commit — `STATE`, `DEBT` (D-n
+> multiset identical), `HANDOVER`, the 31 ADR slugs,
+> `PLAN-ENGLISH-SWITCH`; the 23 closed plans moved to `archives/`
+> (banner at E9); WORKFLOW was already English (E2), its slot a no-op;
+> PLAN-AUDIT-V2, closed since, moved instead of translated. Twenty-five
+> Sonnet agents under structure oracles; docs-links and the ratchet
+> green at each commit; baseline 76 919 → 19 633. Repaired in passing:
+> the D22-D26 records jammed on line 1 of this plan; nine stale bench
+> pointers in STANDARD §7.3 and the `-DocsOnly` flag.
+
 ### E8 — The System and the architecture map (G)
 
 `systeme.dc.html` (~37,000 words): translate the prose **in place**, the
