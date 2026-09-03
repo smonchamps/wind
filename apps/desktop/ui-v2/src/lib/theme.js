@@ -1,183 +1,186 @@
-// Thèmes de Wind (V7 amendée par A94/ADR 0027 : la table est courte
-// et VIVANTE) : `elements` (défaut, aucun attribut posé) et sa nuit,
-// puis `innamoramento` et sa nuit (PLAN-MONA, né « Mona », renommé
-// par le CE le 2026-08-29 — A95). La table Wada de 28 thèmes
-// (A42) reste retirée ; la mécanique du suivi OS est inchangée : quand
-// le suivi de l'OS sombre est actif et que l'OS est en sombre, la
-// déclinaison -nuit du thème CHOISI s'affiche — le choix persisté
-// reste le thème de base, le suffixe est un état dérivé, jamais
-// enregistré. Un thème -nuit choisi à la main reste en paix.
+// Wind's themes (V7 amended by A94/ADR 0027: the table is short
+// and LIVING): `elements` (default, no attribute set) and its night,
+// then `innamoramento` and its night (PLAN-MONA, born “Mona”, renamed
+// by the CE on 2026-08-29 — A95). The 28-theme Wada table
+// (A42) stays removed; the OS-tracking mechanics are unchanged: when
+// dark OS tracking is active and the OS is dark, the -night variant
+// of the CHOSEN theme is shown — the persisted choice stays the base
+// theme, the suffix is a derived state, never stored. A manually
+// chosen -night theme is left in peace.
 
-const CLE = 'wind-theme';
-const CLE_AUTO = 'wind-theme-auto';
+const KEY = 'wind-theme';
+const AUTO_KEY = 'wind-theme-auto';
 
-// Les fiches du sélecteur (Réglages, accueil) — pastilles VERBATIM de
-// la table du contrat, dans l'ordre accent, fond, filet, surface,
-// encre (`panel` est mort — V3 ; le filet entre à sa place : depuis V3
-// c'est LUI qui dessine la séparation, les vignettes le montrent).
-// Les mêmes valeurs vivent en jetons dans systeme.css : les pastilles
-// doivent montrer chaque thème SANS l'appliquer, d'où les hex répétés
-// ici — la gate coherence-systeme.mjs les tient égales aux jetons
-// livrés. Libellés et descriptions vivent au catalogue
+// The selector's cards (Settings, onboarding) — swatches VERBATIM
+// from the contract table, in the order accent, background, net,
+// surface, ink (`panel` is dead — V3; the net takes its place: since
+// V3 it is THE one that draws the separation, the thumbnails show it).
+// The same values live as tokens in systeme.css: the swatches must
+// show each theme WITHOUT applying it, hence the hex values repeated
+// here — the coherence-systeme.mjs gate keeps them equal to the
+// shipped tokens. Labels and descriptions live in the catalogue
 // (`theme.<id>.nom` / `theme.<id>.desc` — PLAN-LANGUES, A15).
-// Déclarées AVANT la migration ci-dessous : la garde en dérive.
-export const FICHES = [
-  { id: 'elements', pastilles: ['#1A7A7A', '#F3F2EE', '#CBC8BB', '#FFFFFF', '#191D1E'] },
-  { id: 'elements-nuit', pastilles: ['#3FA39C', '#0D100F', '#333B3A', '#171B1A', '#ECEDEA'] },
-  { id: 'innamoramento', pastilles: ['#AD204C', '#F4F0F1', '#CDBFC4', '#FFFFFF', '#1D181A'] },
-  { id: 'innamoramento-nuit', pastilles: ['#E58BA4', '#151012', '#3E3339', '#1E171A', '#EEEAEC'] },
+// Declared BEFORE the migration below: the guard derives from it.
+export const THEME_CARDS = [
+  { id: 'elements', swatches: ['#1A7A7A', '#F3F2EE', '#CBC8BB', '#FFFFFF', '#191D1E'] },
+  { id: 'elements-nuit', swatches: ['#3FA39C', '#0D100F', '#333B3A', '#171B1A', '#ECEDEA'] },
+  { id: 'innamoramento', swatches: ['#AD204C', '#F4F0F1', '#CDBFC4', '#FFFFFF', '#1D181A'] },
+  { id: 'innamoramento-nuit', swatches: ['#E58BA4', '#151012', '#3E3339', '#1E171A', '#EEEAEC'] },
 ];
 
-// La liste des identifiants se DÉRIVE des fiches : une seule table à
-// maintenir — une fiche sans thème (ou l'inverse) est impossible par
-// construction, et la gate coherence-systeme.mjs tient les pastilles
-// égales aux jetons livrés.
-export const THEMES = FICHES.map((f) => f.id);
+// The list of ids is DERIVED from the cards: a single table to
+// maintain — a card without a theme (or the reverse) is impossible
+// by construction, and the coherence-systeme.mjs gate keeps the
+// swatches equal to the shipped tokens.
+export const THEMES = THEME_CARDS.map((f) => f.id);
 
-// Recopie des clés Discovery d'avant la bascule (PLAN-WIND E3) : le
-// choix survit au renommage, les anciennes clés sont retirées. Le
-// profil WebView2 est déménagé tel quel par l'application — les
-// anciennes clés sont donc bien là au premier lancement Wind.
+// Copy of the Discovery keys from before the switch (PLAN-WIND E3):
+// the choice survives the rename, the old keys are removed. The
+// WebView2 profile is relocated as is by the application — the
+// old keys are therefore indeed there on Wind's first launch.
 try {
-  for (const [ancienne, neuve] of [['discovery-theme', CLE], ['discovery-theme-auto', CLE_AUTO]]) {
-    const value = localStorage.getItem(ancienne);
+  for (const [old, fresh] of [['discovery-theme', KEY], ['discovery-theme-auto', AUTO_KEY]]) {
+    const value = localStorage.getItem(old);
     if (value !== null) {
-      if (localStorage.getItem(neuve) === null) localStorage.setItem(neuve, value);
-      localStorage.removeItem(ancienne);
+      if (localStorage.getItem(fresh) === null) localStorage.setItem(fresh, value);
+      localStorage.removeItem(old);
     }
   }
-  // V7 : la table Wada est retirée — la POLARITÉ est le seul choix qui
-  // survive, et elle est ÉCRITE (le motif d'A42, qui migrait « nuit »
-  // vers nature-nuit, rejoué sur la table entière) : tout ancien choix
-  // sombre (`nuit` d'avant A42, ou un `<wada>-nuit`) devient
-  // `elements-nuit`. Les anciens choix CLAIRS retombent sur le défaut
-  // par le garde-fou de themeActuel(), silencieusement — comme les
-  // cinq thèmes retirés d'A42 avant eux.
-  // A95 : « Mona » est renommée « Innamoramento » (CE, 2026-08-29,
-  // jamais publiée en release) — un choix persisté sous l'ancien id
-  // suit le renommage, AVANT la règle des orphelins -nuit (sinon
-  // `mona-nuit` retombait en elements-nuit). Les polarités se
-  // DÉRIVENT de la paire de base (le motif de THEMES : une paire
-  // -nuit en dur oubliée raterait la migration en silence).
-  const choixARenommer = localStorage.getItem(CLE);
-  for (const [ancien, neuf] of [['mona', 'innamoramento']]) {
-    for (const suffixe of ['', '-nuit']) {
-      if (choixARenommer === ancien + suffixe) localStorage.setItem(CLE, neuf + suffixe);
+  // V7: the Wada table is removed — POLARITY is the only choice that
+  // survives, and it is WRITTEN (A42's pattern, which migrated “nuit”
+  // to nature-nuit, replayed on the whole table): any old dark choice
+  // (`night` from before A42, or a `<wada>-nuit`) becomes
+  // `elements-nuit`. Old LIGHT choices fall back to the default via
+  // themeActuel()'s guard rail, silently — like the five themes
+  // removed by A42 before them.
+  // A95: “Mona” is renamed “Innamoramento” (CE, 2026-08-29,
+  // never published in a release) — a choice persisted under the old
+  // id follows the rename, BEFORE the -night orphan rule (otherwise
+  // `mona-nuit` would fall back to elements-nuit). The polarities are
+  // DERIVED from the base pair (the THEMES pattern: a hardcoded
+  // -night pair forgotten would miss the migration in silence).
+  const choiceToRename = localStorage.getItem(KEY);
+  for (const [oldId, newId] of [['mona', 'innamoramento']]) {
+    for (const suffix of ['', '-nuit']) {
+      if (choiceToRename === oldId + suffix) localStorage.setItem(KEY, newId + suffix);
     }
   }
-  // A94 : les choix VALIDES se dérivent de THEMES (déclarée au-dessus,
-  // revue PLAN-MONA) — une liste en dur ici réarmait le bug à chaque
-  // ajout : sans « innamoramento-nuit », un choix sombre persisté était
-  // réécrit en elements-nuit à chaque démarrage (prouvé RED).
-  const choix = localStorage.getItem(CLE);
-  if (choix !== null && !THEMES.includes(choix)
-      && (choix === 'nuit' || choix.endsWith('-nuit'))) {
-    localStorage.setItem(CLE, 'elements-nuit');
+  // A94: VALID choices are derived from THEMES (declared above,
+  // PLAN-MONA review) — a hardcoded list here rearmed the bug on
+  // every addition: without “innamoramento-nuit”, a persisted dark
+  // choice was rewritten to elements-nuit on every startup (proven RED).
+  const choice = localStorage.getItem(KEY);
+  if (choice !== null && !THEMES.includes(choice)
+      && (choice === 'nuit' || choice.endsWith('-nuit'))) {
+    localStorage.setItem(KEY, 'elements-nuit');
   }
-} catch { /* stockage indisponible : rien à migrer */ }
+} catch { /* storage unavailable: nothing to migrate */ }
 
-export function themeActuel() {
+export function currentTheme() {
   let name = 'elements';
-  try { name = localStorage.getItem(CLE) || 'elements'; } catch { /* stockage indisponible : défaut */ }
+  try { name = localStorage.getItem(KEY) || 'elements'; } catch { /* storage unavailable: default */ }
   return THEMES.includes(name) ? name : 'elements';
 }
 
-// Constat terrain A42 (2026-08-16, sondes au banc) : dans le WebView2
-// de Tauri/wry, prefers-color-scheme ne suit PAS l'OS — jamais sombre,
-// zéro événement, même sous une vraie bascule (registre + diffusion
-// WM_SETTINGCHANGE). La source est l'API fenêtre Tauri (theme() +
-// onThemeChanged), qui a tiré dans les deux sens à chaque bascule ;
-// matchMedia reste le repli hors Tauri et la poignée du banc e2e
-// (emulateMedia). Les DEUX canaux écrivent le même état et le dernier
-// signal gagne — jamais un OU permanent : machine hôte en sombre, un
-// OU rendrait emulateMedia('light') à jamais perdant (constaté au banc,
-// D6 rouge à la première version du remède).
-let sombreSignale = null;
+// A42 field finding (2026-08-16, bench probes): in Tauri/wry's
+// WebView2, prefers-color-scheme does NOT follow the OS — never
+// dark, zero events, even under a real toggle (registry + broadcast
+// WM_SETTINGCHANGE). The source is the Tauri window API (theme() +
+// onThemeChanged), which fired correctly both ways on every toggle;
+// matchMedia stays the fallback outside Tauri and the e2e bench's
+// handle (emulateMedia). BOTH channels write the same state and the
+// last signal wins — never a permanent OR: with the host machine
+// dark, an OR would make emulateMedia('light') forever losing
+// (observed at the bench, D6 red on the remedy's first version).
+let darkFlagged = null;
 
-function osSombre() {
-  return sombreSignale
+function osDark() {
+  return darkFlagged
     ?? (globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false);
 }
 
-function poser(name) {
+function setThemeAttribute(name) {
   if (name === 'elements') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = name;
-  // A44 : le `color-scheme` des barres natives ne se pose PAS ici —
-  // il vit en CSS, à côté des jetons (`:root[data-theme$="-nuit"]`,
-  // systeme.css) : tout chemin qui pose data-theme l'obtient, sans JS.
-  // Revue A42 : la coche de Réglages suit la fiche AFFICHÉE — le
-  // signal dit « le thème posé vient de changer », quel qu'en soit le
-  // chemin (choix, bascule du suivi, événement OS en cours de session).
+  // A44: the native bars' `color-scheme` is NOT set here —
+  // it lives in CSS, next to the tokens (`:root[data-theme$="-nuit"]`,
+  // systeme.css): every path that sets data-theme gets it, without JS.
+  // A42 review: the Settings checkmark follows the DISPLAYED card —
+  // the signal says “the set theme has just changed”, whatever the
+  // path (choice, tracking toggle, OS event during the session).
   document.dispatchEvent(new CustomEvent('wind:theme-affiche'));
 }
 
-// Le thème POSÉ sur <html> — l'état dérivé, jamais persisté (A42).
-// C'est lui que la coche de Réglages désigne (revue A42) : sous suivi
-// OS + OS sombre, l'œil voit la déclinaison -nuit, la coche aussi.
-export function themeAffiche() {
+// The theme SET on <html> — the derived state, never persisted (A42).
+// This is what the Settings checkmark designates (A42 review): under
+// OS tracking + dark OS, the eye sees the -night variant, so does the
+// checkmark.
+export function displayedTheme() {
   return document.documentElement.dataset.theme ?? 'elements';
 }
 
-// R3 (PLAN-RETOURS-4, D3, 2026-08-18) : `paletteLecture()` est RETIRÉE.
-// Le corps d'un message s'affiche désormais sur dalle claire dans tous
-// les thèmes (le cœur bake `Palette::default` — voir `message_body`) :
-// la dalle sombre d'A42 rendait illisible le texte à couleurs
-// d'expéditeur. Le front n'a donc plus de palette à transmettre.
+// R3 (PLAN-RETOURS-4, D3, 2026-08-18): `paletteLecture()` is REMOVED.
+// A message's body now displays on a light slab in every theme (the
+// core bakes `Palette::default` — see `message_body`): A42's dark
+// slab made sender-colored text unreadable. The front therefore no
+// longer has a palette to pass on.
 
-// L'unique endroit qui décide du thème AFFICHÉ : quand le suivi de
-// l'OS est actif et que l'OS est sombre, la déclinaison -nuit du thème
-// choisi (A42). L'appartenance à THEMES est la garde unique : elle
-// laisse en paix un thème déjà -nuit (« elements-nuit-nuit » n'existe
-// pas) et refuse de poser un attribut orphelin qu'aucun bloc CSS ne
-// servirait — le choix s'affiche tel quel plutôt qu'en palette défaut.
-function refleter() {
-  const choisi = themeActuel();
-  const nuit = `${choisi}-nuit`;
-  poser(suiviOs() && osSombre() && THEMES.includes(nuit) ? nuit : choisi);
+// The one place that decides the DISPLAYED theme: when OS tracking
+// is active and the OS is dark, the -night variant of the
+// chosen theme (A42). Membership in THEMES is the sole guard: it
+// leaves an already -night theme in peace (“elements-nuit-nuit” does
+// not exist) and refuses to set an orphan attribute that no CSS
+// block would serve — the choice is shown as is rather than as a
+// default palette.
+function reflectTheme() {
+  const chosen = currentTheme();
+  const night = `${chosen}-nuit`;
+  setThemeAttribute(osTracking() && osDark() && THEMES.includes(night) ? night : chosen);
 }
 
-export function suiviOs() {
-  try { return localStorage.getItem(CLE_AUTO) === '1'; } catch { return false; }
+export function osTracking() {
+  try { return localStorage.getItem(AUTO_KEY) === '1'; } catch { return false; }
 }
 
-export function appliquerSuiviOs(active) {
-  try { localStorage.setItem(CLE_AUTO, active ? '1' : '0'); } catch { /* le choix ne survivra pas, rien d'autre à faire */ }
-  refleter();
+export function applyOsTracking(active) {
+  try { localStorage.setItem(AUTO_KEY, active ? '1' : '0'); } catch { /* the choice will not survive, nothing else to do */ }
+  reflectTheme();
 }
 
-export function appliquerTheme(name) {
+export function applyTheme(name) {
   if (!THEMES.includes(name)) return;
-  try { localStorage.setItem(CLE, name); } catch { /* stockage indisponible : le choix ne survivra pas, rien d'autre à faire */ }
-  refleter();
+  try { localStorage.setItem(KEY, name); } catch { /* storage unavailable: the choice will not survive, nothing else to do */ }
+  reflectTheme();
 }
 
-export function restaurerTheme() {
-  // L'OS peut basculer en cours de session (mode nuit planifié) : le
-  // reflet suit sans redémarrage, par le canal Tauri (le seul vivant
-  // en production — constat terrain A42) ET par matchMedia (repli hors
-  // Tauri, poignée e2e). Les rejets se taisent : hors Tauri la fenêtre
-  // n'existe pas, le repli fait foi.
-  const fenetre = globalThis.window?.__TAURI__?.window?.getCurrentWindow?.();
-  if (fenetre) {
-    fenetre.theme()
+export function restoreTheme() {
+  // The OS can toggle mid-session (scheduled night mode): the
+  // reflection follows without a restart, through the Tauri channel
+  // (the only one alive in production — A42 field finding) AND through
+  // matchMedia (fallback outside Tauri, e2e handle). Rejections stay
+  // silent: outside Tauri the window does not exist, the fallback is
+  // authoritative.
+  const window = globalThis.window?.__TAURI__?.window?.getCurrentWindow?.();
+  if (window) {
+    window.theme()
       .then((t) => {
-        // L'état initial ne bat jamais un signal déjà arrivé.
-        if (sombreSignale === null) {
-          sombreSignale = t === 'dark';
-          refleter();
+        // The initial state never overrides a signal that has already arrived.
+        if (darkFlagged === null) {
+          darkFlagged = t === 'dark';
+          reflectTheme();
         }
       })
-      .catch(() => { /* thème illisible : le repli matchMedia fait foi */ });
-    fenetre.onThemeChanged(({ payload }) => {
-      sombreSignale = payload === 'dark';
-      refleter();
-    }).catch(() => { /* écoute refusée : le repli matchMedia fait foi */ });
+      .catch(() => { /* unreadable theme: the matchMedia fallback is authoritative */ });
+    window.onThemeChanged(({ payload }) => {
+      darkFlagged = payload === 'dark';
+      reflectTheme();
+    }).catch(() => { /* listen refused: the matchMedia fallback is authoritative */ });
   }
-  refleter();
+  reflectTheme();
   globalThis.matchMedia?.('(prefers-color-scheme: dark)')
     .addEventListener?.('change', (e) => {
-      sombreSignale = e.matches;
-      refleter();
+      darkFlagged = e.matches;
+      reflectTheme();
     });
-  return themeActuel();
+  return currentTheme();
 }

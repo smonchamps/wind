@@ -1,21 +1,22 @@
 <script>
-  // LE menu du produit (PLAN-AUDIT-V2 E11 — clôt D-47 : huit copies du
-  // dessin et de la mécanique, trois ombres, trois z-index, un jeton
-  // `--ombre` inexistant ; A8 tenu : `role="menu"` promettait un clavier
-  // absent). Un seul composant : ancrage, flèches ↑/↓, Début/Fin, Échap
-  // et Tab ferment, clic dehors ferme, le focus se pose sur le premier
-  // item à l'ouverture et REVIENT au déclencheur à la fermeture. Le
-  // parent ne fournit que les items (snippet) et l'état `ouvert`.
+  // THE product's menu (PLAN-AUDIT-V2 E11 — closes D-47: eight copies
+  // of the drawing and the mechanics, three shadows, three z-indexes,
+  // a nonexistent `--ombre` token; A8 held: `role="menu"` promised a
+  // keyboard that was absent). One single component: anchoring,
+  // ↑/↓ arrows, Home/End, Escape and Tab close, an outside click
+  // closes, the focus lands on the first item on opening and RETURNS
+  // to the trigger on closing. The parent supplies only the items
+  // (snippet) and the `isOpen` state.
   let {
-    ouvert = false,
+    isOpen = false,
     x = 0,
     y = 0,
     testid = 'menu',
-    largeur = 240,
-    // `absolu` : ancré sous son déclencheur (position:absolute dans un
-    // parent relatif) au lieu de coordonnées fixes.
-    absolu = false,
-    onfermer = () => {},
+    width = 240,
+    // `absolute`: anchored under its trigger (position:absolute inside a
+    // relative parent) instead of fixed coordinates.
+    absolute = false,
+    onclose = () => {},
     children,
   } = $props();
 
@@ -24,80 +25,80 @@
     mailbox ? [...mailbox.querySelectorAll('[role^="menuitem"]:not([disabled])')] : [];
 
   $effect(() => {
-    if (!ouvert) return;
-    const declencheur = document.activeElement;
-    // Après le rendu : le menu se BORNE à la fenêtre (sa vraie taille,
-    // pas une constante recopiée sept fois — revue), puis le premier
-    // item prend le focus.
+    if (!isOpen) return;
+    const trigger = document.activeElement;
+    // After render: the menu BOUNDS itself to the window (its real
+    // size, not a constant copied seven times — review), then the
+    // first item takes the focus.
     queueMicrotask(() => {
-      if (mailbox && !absolu) {
+      if (mailbox && !absolute) {
         const r = mailbox.getBoundingClientRect();
         if (r.right > window.innerWidth - 8) mailbox.style.left = `${Math.max(8, window.innerWidth - r.width - 8)}px`;
         if (r.bottom > window.innerHeight - 8) mailbox.style.top = `${Math.max(8, window.innerHeight - r.height - 8)}px`;
       }
       items()[0]?.focus();
     });
-    const clic = (e) => {
-      // Le clic d'OUVERTURE arrive ici aussi (l'effet court pendant sa
-      // propagation) : un clic sur le déclencheur n'est jamais « dehors »
-      // — le parent décide de sa bascule.
-      if (declencheur?.contains?.(e.target)) return;
-      if (mailbox && !mailbox.contains(e.target)) onfermer();
+    const click = (e) => {
+      // The OPENING click arrives here too (the effect runs during
+      // its propagation): a click on the trigger is never “outside”
+      // — the parent decides its toggle.
+      if (trigger?.contains?.(e.target)) return;
+      if (mailbox && !mailbox.contains(e.target)) onclose();
     };
-    const touche = (e) => {
-      const liste = items();
-      if (liste.length === 0) return;
-      const i = liste.indexOf(document.activeElement);
+    const key = (e) => {
+      const list = items();
+      if (list.length === 0) return;
+      const i = list.indexOf(document.activeElement);
       switch (e.key) {
         case 'Escape':
           e.preventDefault();
-          onfermer();
+          onclose();
           break;
         case 'Tab':
-          onfermer();
+          onclose();
           break;
         case 'ArrowDown':
           e.preventDefault();
-          liste[(i + 1) % liste.length].focus();
+          list[(i + 1) % list.length].focus();
           break;
         case 'ArrowUp':
           e.preventDefault();
-          liste[(i - 1 + liste.length) % liste.length].focus();
+          list[(i - 1 + list.length) % list.length].focus();
           break;
         case 'Home':
           e.preventDefault();
-          liste[0].focus();
+          list[0].focus();
           break;
         case 'End':
           e.preventDefault();
-          liste[liste.length - 1].focus();
+          list[list.length - 1].focus();
           break;
         default:
       }
     };
-    window.addEventListener('click', clic);
-    window.addEventListener('keydown', touche);
+    window.addEventListener('click', click);
+    window.addEventListener('keydown', key);
     return () => {
-      window.removeEventListener('click', clic);
-      window.removeEventListener('keydown', touche);
-      // Le focus revient d'où il est parti — le déclencheur, s'il vit.
-      if (declencheur?.isConnected && typeof declencheur.focus === 'function') declencheur.focus();
+      window.removeEventListener('click', click);
+      window.removeEventListener('keydown', key);
+      // The focus returns where it left from — the trigger, if it still lives.
+      if (trigger?.isConnected && typeof trigger.focus === 'function') trigger.focus();
     };
   });
 </script>
 
-{#if ouvert}
-  <div class="menu" class:absolu role="menu" data-testid={testid} bind:this={mailbox}
-       style={absolu ? `min-width:${largeur}px` : `left:${x}px; top:${y}px; min-width:${largeur}px`}>
+{#if isOpen}
+  <div class="menu" class:absolu={absolute} role="menu" data-testid={testid} bind:this={mailbox}
+       style={absolute ? `min-width:${width}px` : `left:${x}px; top:${y}px; min-width:${width}px`}>
     {@render children()}
   </div>
 {/if}
 
 <style>
-  /* Le dessin unique (famille D-47) : la carte flottante des gestes de
-     la Liste — z-index 30 (au-dessus des barres collantes, sous rien
-     d'autre : un menu est toujours l'objet le plus haut), l'ombre du
-     jeton --shadow, le rayon des contrôles. */
+  /* The single drawing (D-47 family): the List's gestures' floating
+     card — z-index 30 (above the sticky bars, below nothing else: a
+     menu is always the topmost object), the --shadow token's shadow,
+     the controls' radius. */
   .menu {
     position:fixed; z-index:30; padding:6px; display:flex; flex-direction:column;
     background:var(--surface); border:1px solid var(--border);

@@ -1,30 +1,30 @@
-/* Système « Elements » (PLAN-ELEMENTS, V1-V14 au journal du Système)
-   — jetons et styles de base. 17 rôles × 4 thèmes : « Elements »
-   (défaut, sans attribut), « Elements · nuit », et depuis A94 (V7
-   amendée — la table est courte et VIVANTE, ADR 0027)
-   « Innamoramento » et « Innamoramento · nuit » (née « Mona »,
-   renommée A95 ; accent CE #AD204C, tuile déclinée de #A0868F).
-   --panel est mort (V3) : le
-   fond est le sol UNIQUE, le filet de 1 px porte seul la séparation —
-   ses paires sont MESURÉES (e2e/contraste.mjs, seuil = le filet
-   qu'expédiait Clarity). --marque est le teal EXACT du jeu d'icônes
-   (V1) : COMPOSANT seulement (3:1), jamais du texte — l'encre qui se
-   lit est --accent, même teinte, luminosité minimale (remède A8).
-   Couleurs de MARQUE figées HORS thèmes et hors table (W-D3, bornée
-   par V11) : structure #141414, tuile #F2EDE3, teal #1F8A8A — en
-   TUILE seulement ; en glyphe la marque suit l'encre courante. Toute
-   couleur passe par un jeton — bascule de thème O(1) via
+/* “Elements” System (PLAN-ELEMENTS, V1-V14 in the System log)
+   — base tokens and styles. 17 roles × 4 themes: “Elements”
+   (default, no attribute), “Elements · night”, and since A94 (V7
+   amended — the table is short and LIVING, ADR 0027)
+   “Innamoramento” and “Innamoramento · night” (born “Mona”,
+   renamed A95; CE accent #AD204C, tile derived from #A0868F).
+   --panel is dead (V3): the
+   background is the SOLE ground, the 1 px net alone carries the
+   separation — its pairs are MEASURED (e2e/contraste.mjs, threshold =
+   the net that Clarity shipped). --marque is the EXACT teal of the
+   icon set (V1): COMPONENT only (3:1), never text — the ink that
+   reads is --accent, same hue, minimum lightness (remedy A8).
+   BRAND colors frozen OUTSIDE the themes and outside the table (W-D3,
+   bounded by V11): structure #141414, tile #F2EDE3, teal #1F8A8A — in
+   TILE only; in glyph form the brand follows the current ink. Every
+   color goes through a token — O(1) theme toggle via
    <html data-theme="…">. */
 
-/* V14 — les trois jetons de FORME, à zéro : coin vif partout, plus un
-   littéral de rayon dans le système (la gate de cohérence y veille).
-   Sur `html` et non `:root` : ils ne dépendent pas de la polarité, le
-   contrat des jetons de couleur ne s'en gonfle pas. Restent DEUX
-   formes rondes qui disent quelque chose — le disque (l'état,
-   l'identité, la poignée d'interrupteur : 50 %) et la pilule de la
-   piste d'interrupteur (999px). L'exception déclarée et permanente :
-   l'icône d'application garde son rayon de plateforme (15/64).
-   Rembobiner V14 tient en une ligne : remettre 10px / 6px / 2px. */
+/* V14 — the three SHAPE tokens, at zero: sharp corner everywhere, not
+   a single radius literal left in the system (the coherence gate
+   watches over it). On `html` and not `:root`: they do not depend on
+   polarity, the color token contract is not inflated by them. TWO
+   round shapes remain that say something — the disc (state, identity,
+   the switch handle: 50%) and the pill of the switch track (999px).
+   The declared and permanent exception: the app icon keeps its
+   platform radius (15/64).
+   Rewinding V14 fits in one line: put back 10px / 6px / 2px. */
 html {
   --r-surface:0;
   --r-controle:0;
@@ -32,7 +32,7 @@ html {
 }
 
 :root {
-  /* Elements — défaut (V7) */
+  /* Elements — default (V7) */
   --bg:#F3F2EE; --surface:#FFFFFF;
   --ink:#191D1E; --ink2:#565C5E; --muted:#606668;
   --border:#CBC8BB; --accent:#1A7A7A; --accentH:#14625E;
@@ -42,7 +42,7 @@ html {
   --shadow:0 2px 8px rgba(25,29,30,0.08); --scrim:rgba(25,29,30,0.28);
 }
 :root[data-theme="elements-nuit"] {
-  /* Elements · nuit */
+  /* Elements · night */
   --bg:#0D100F; --surface:#171B1A;
   --ink:#ECEDEA; --ink2:#B4BAB8; --muted:#98A0A1;
   --border:#333B3A; --accent:#3FA39C; --accentH:#55B7B0;
@@ -52,13 +52,13 @@ html {
   --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
 }
 :root[data-theme="innamoramento"] {
-  /* Innamoramento — clair (A94, née « Mona », renommée A95).
-     L'accent CE #AD204C tient 6,80:1 sur blanc :
-     il sert d'accent ET de marque tel quel, sans le dédoublement
-     d'Elements (remède A8 sans objet ici). La tuile décline la TEINTE
-     de #A0868F (mi-ton impossible aux seuils — mesuré 2,04:1 sous
-     ink2, 1,88:1 sous le pire repère) : éclaircie en clair, comme
-     Elements décline la sienne. */
+  /* Innamoramento — light (A94, born “Mona”, renamed A95).
+     The CE accent #AD204C holds 6.80:1 on white:
+     it serves as accent AND brand as is, without Elements' doubling
+     (remedy A8 not applicable here). The tile derives the HUE
+     of #A0868F (a mid-tone impossible at the thresholds — measured
+     2.04:1 under ink2, 1.88:1 under the worst marker): lightened for
+     light mode, as Elements derives its own. */
   --bg:#F4F0F1; --surface:#FFFFFF;
   --ink:#1D181A; --ink2:#59484E; --muted:#5F4C53;
   --border:#CDBFC4; --accent:#AD204C; --accentH:#8E1A3E;
@@ -68,9 +68,9 @@ html {
   --shadow:0 2px 8px rgba(29,24,26,0.08); --scrim:rgba(29,24,26,0.28);
 }
 :root[data-theme="innamoramento-nuit"] {
-  /* Innamoramento · nuit — le rose éclairci à teinte constante (#E58BA4), le
-     motif d'Elements-nuit (#1A7A7A → #3FA39C) ; la tuile assombrie
-     (#A0868F ne peut porter AUCUNE encre à 4,5:1 — blanc pur : 3,33). */
+  /* Innamoramento · night — the pink lightened at constant hue (#E58BA4), the
+     Elements-night pattern (#1A7A7A → #3FA39C); the tile darkened
+     (#A0868F can carry NO ink at 4.5:1 — pure white: 3.33). */
   --bg:#151012; --surface:#1E171A;
   --ink:#EEEAEC; --ink2:#BCB1B6; --muted:#A2969C;
   --border:#3E3339; --accent:#E58BA4; --accentH:#EFA5B9;
@@ -80,23 +80,23 @@ html {
   --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
 }
 
-/* Icônes « Elements » (V8 — PLAN-ELEMENTS) : le jeu entier est DESSINÉ
-   et servi en SVG en ligne (Icone.svelte, lib/icones.js) — Material
-   Symbols et son sous-ensemble vendorisé sont morts, et avec eux la
-   dernière dépendance de fonte du produit. L'encre est currentColor ;
-   le disque d'état et le rabat de la marque prennent --marque. La
-   taille se pose par l'attribut (16 par défaut) ; un contexte plus
-   petit la fixe en CSS (width/height sur .ic), qui prime. */
+/* “Elements” icons (V8 — PLAN-ELEMENTS): the entire set is DRAWN
+   and served as inline SVG (Icon.svelte, lib/icons.js) — Material
+   Symbols and its vendored subset are dead, and with them the
+   product's last font dependency. The ink is currentColor;
+   the state disc and the brand flap take --marque. The
+   size is set by the attribute (16 by default); a smaller context
+   fixes it in CSS (width/height on .ic), which takes precedence. */
 .ic { flex:none; vertical-align:middle; }
-/* A12 — « Transférer » porte la flèche de « Répondre » en symétrie
-   verticale (verdict terrain) : le glyphe `reply`, retourné. */
+/* A12 — “Forward” carries the “Reply” arrow in vertical symmetry
+   (field verdict): the `reply` glyph, flipped. */
 .ic.miroir { transform:scaleX(-1); }
 
-/* V2/V4 — la paire disque / anneau : le disque plein --marque de 9 px
-   dit l'état (non-lu d'une rangée, repos de la barre d'état) ; l'anneau
-   ÉVIDÉ du même diamètre (2 px de paroi, quart haut ouvert) dit qu'une
-   action tourne. Ce n'est pas une forme de plus : c'est le même objet.
-   A52 tient : le pourcentage vit dans le TEXTE, jamais ici. */
+/* V2/V4 — the disc / ring pair: the 9 px solid --marque disc
+   says the state (unread row, status bar at rest); the HOLLOW ring
+   of the same diameter (2 px wall, open top quarter) says an
+   action is spinning. It is not one more shape: it is the same object.
+   A52 holds: the percentage lives in the TEXT, never here. */
 .disque {
   width:9px; height:9px; border-radius:50%;
   background:var(--marque); flex:none;
@@ -109,55 +109,57 @@ html {
 @keyframes tourne { to { transform:rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .anneau { animation:none; } }
 
-/* V11 — la bande de marque (tuile figée + « Wind ») : une seule
-   règle pour ses emplacements (migration, « À propos ») — deux copies
-   divergeraient en silence (revue PLAN-ELEMENTS). */
+/* V11 — the brand band (frozen tile + “Wind”): a single
+   rule for its locations (migration, “About”) — two copies
+   would drift apart in silence (PLAN-ELEMENTS review). */
 .marque-bande {
   display:flex; align-items:center; gap:12px;
   font-size:15px; color:var(--ink);
 }
 
-/* A74, amendé A82 — la pastille de repère ne vit plus qu'aux Réglages
-   (rangée de compte, nuancier de choix), à sa seule taille de 20 px
-   (glyphe 12). Le badge de liste de 16 px est mort avec A80/A82. */
+/* A74, amended A82 — the marker badge now lives only in Settings
+   (account row, choice swatch picker), at its single size of 20 px
+   (glyph 12). The 16 px list badge died with A80/A82. */
 .repere.p20 { width:20px; height:20px; }
 .repere.p20 .ic { width:12px; height:12px; }
 
-/* A82 — le repère NU : le tracé du repère, à la teinte du compte, sans
-   contenant. Deux tailles d'emploi, portées par l'attribut de l'icône :
-   16 px (nav — la taille des glyphes de dossier) et 14 px (ligne
-   d'entête et volet de lecture — la taille de leur texte). */
+/* A82 — the BARE marker: the marker's outline, in the account's hue,
+   with no container. Two sizes of use, carried by the icon's
+   attribute: 16 px (nav — the size of the folder glyphs) and 14 px
+   (header row and reading pane — the size of their text). */
 .repere-nu { display:inline-flex; flex:none; }
 
-/* A74 (PLAN-RETOURS-8 R1), amendé A82 — le nuancier des repères de
-   compte : des couleurs de CONTENU (comme le nuancier du composeur),
-   pas des jetons de thème. Fait mesuré (banc sur les jetons réels) :
-   aucune teinte unique ne tient 3:1 sur les fonds clairs ET sur les
-   fonds -nuit — chaque famille vit donc en DEUX déclinaisons, la
-   sombre servie aux thèmes clairs (glyphe blanc), la claire à toute
-   polarité -nuit (glyphe #1c1b1b — sélecteur $="-nuit" depuis A94).
-   Depuis A82 chaque hex sert DEUX
-   fois — en background (pastille des Réglages) et en color (tracé) :
-   les 24 hex vivent en JETONS --mk-<hue>, une table par polarité,
-   jamais recopiés.
-   ATTENTION (piège du parseur) : jetons.mjs (lireThemes) capture
-   --([a-zA-Z][a-zA-Z0-9]*) — le trait d'union des --mk-* les fait
-   échapper au contrat des 17 jetons de thème, et c'est VOULU (le
-   nuancier est du contenu, pas un jeton de thème). « Corriger » cette
-   classe en [a-zA-Z0-9-] ferait tomber le contrôle 1 de
-   coherence-systeme.mjs sur 12 jetons « livrés mais absents du doc ».
-   Les 24 hex sont mesurés par e2e/contraste.mjs (section REPERES) :
-   >= 3:1 sur bg/sel/hover/surface/tuile de leur polarité — Réglages
-   (pastille), nav et ligne (tracé) —, glyphe de pastille >= 4,5:1. */
+/* A74 (PLAN-RETOURS-8 R1), amended A82 — the account marker swatch
+   picker: CONTENT colors (like the composer's swatch picker),
+   not theme tokens. Measured fact (bench on the real tokens):
+   no single hue holds 3:1 on the light backgrounds AND on the
+   -night backgrounds — each family therefore lives in TWO variants,
+   the dark one served to the light themes (white glyph), the light
+   one to every -night polarity (glyph #1c1b1b — selector $="-nuit"
+   since A94).
+   Since A82 each hex serves TWICE
+   — as background (Settings badge) and as color (outline):
+   the 24 hex values live as --mk-<hue> TOKENS, one table per polarity,
+   never copied.
+   WARNING (parser trap): jetons.mjs (lireThemes) captures
+   --([a-zA-Z][a-zA-Z0-9]*) — the hyphen in --mk-* makes them
+   escape the 17-theme-token contract, and this is INTENTIONAL (the
+   swatch picker is content, not a theme token). “Fixing” this
+   class to [a-zA-Z0-9-] would trip check 1 of
+   coherence-systeme.mjs on 12 tokens “shipped but absent from the
+   doc”.
+   The 24 hex values are measured by e2e/contraste.mjs (REPERES
+   section): >= 3:1 on bg/sel/hover/surface/tuile of their polarity —
+   Settings (badge), nav and row (outline) —, badge glyph >= 4.5:1. */
 :root {
   --mk-red:#a93226; --mk-orange:#9c4a06; --mk-ochre:#7a5c00;
   --mk-olive:#556000; --mk-green:#186a2b; --mk-pine:#0b635d;
   --mk-blue:#0a5a8f; --mk-indigo:#3f4dbb; --mk-violet:#712cb0;
   --mk-magenta:#991d7c; --mk-pink:#ad204c; --mk-brown:#7a4a1b;
 }
-/* A94 : la table claire sert TOUTE polarité -nuit (le sélecteur du
-   color-scheme, plus bas, fait pareil depuis A44) — un thème sombre de
-   plus n'a pas à recopier 12 hex. */
+/* A94: the light table serves EVERY -night polarity (the color-scheme
+   selector, further down, has done the same since A44) — one more
+   dark theme does not have to copy 12 hex values. */
 :root[data-theme$="-nuit"] {
   --mk-red:#f1998e; --mk-orange:#f2a76c; --mk-ochre:#e5c04b;
   --mk-olive:#c3cc4e; --mk-green:#7fd18c; --mk-pine:#5ecec4;
@@ -194,21 +196,22 @@ html {
 .repere-nu[data-teinte="pink"]    { color:var(--mk-pink); }
 .repere-nu[data-teinte="brown"]    { color:var(--mk-brown); }
 
-/* A80 — le bloc de boîte : « sur <tracé> Libellé ». Partagé par la
-   liste et le fil (trois poses), donc ici et pas dans un composant.
-   L'ORDRE DE TRONCATURE EST LE DESSIN : l'heure ne cède jamais, le
-   bloc cède trois fois plus vite que l'expéditeur, et le tiers est un
-   plafond mesuré (PLAN-REPERE-LIGNE §1.3). La préposition et le tracé
-   ne rétrécissent pas : un « sur » tronqué ne dirait rien. */
-/* PAS de min-width:0 ici, et c'est mesuré (revue) : avec lui, le bloc
-   descend SOUS sa largeur min-content — « sur » et le tracé sont
-   flex:none, ils ne cèdent pas — et débordent d'un bloc large de 0 px
-   pour se peindre par-dessus l'heure (29 px de recouvrement au défaut
-   de 400 px, dossier Envoyés à plusieurs destinataires). Le minimum
-   automatique du flex garde donc le plancher « sur <tracé> » ; c'est
-   .lib qui porte le min-width:0, donc l'ellipse. Et surtout PAS
-   d'overflow:hidden en ceinture : sur un inline-flex il déplacerait la
-   baseline, donc la hauteur sondée de la rangée (A44). */
+/* A80 — the mailbox block: “on <outline> Label”. Shared by the
+   list and the thread (three poses), hence here and not in a
+   component. THE TRUNCATION ORDER IS THE DESIGN: the time never
+   yields, the block yields three times faster than the sender, and
+   the third is a measured cap (PLAN-REPERE-LIGNE §1.3). The
+   preposition and the outline do not shrink: a truncated “on” would
+   say nothing. */
+/* NO min-width:0 here, and this is measured (review): with it, the
+   block drops BELOW its min-content width — “on” and the outline are
+   flex:none, they do not yield — and overflow from a block 0 px wide
+   to paint over the time (29 px of overlap at the default 400 px,
+   Sent folder with several recipients). The flex's automatic minimum
+   thus keeps the “on <outline>” floor; it is .lib that carries the
+   min-width:0, hence the ellipsis. And above all NO
+   overflow:hidden as a belt: on an inline-flex it would shift the
+   baseline, hence the row's probed height (A44). */
 .boite {
   flex:0 3 auto; max-width:33%;
   display:inline-flex; align-items:center; gap:5px;
@@ -217,55 +220,55 @@ html {
 .boite .mot { color:var(--muted); flex:none; }
 .boite .repere-nu { flex:none; }
 .boite .lib { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-/* Une rangée non lue met la graisse sur ce qu'elle DIT, pas sur ses
-   circonstances (A8/V6) : le bloc reste en graisse normale. */
+/* An unread row puts the weight on what it SAYS, not on its
+   circumstances (A8/V6): the block stays at normal weight. */
 .nonlu .boite { font-weight:400; }
 
-/* V6 — le REGISTRE D'AFFICHAGE : titre de conversation (24 px) et
-   hero d'accueil (40 px) en graisse 340, interlettrage -.03em — la
-   grammaire du document d'icônes. L'autorité reste graduée par la
-   TAILLE ; rien au-dessous de 24 px ne change. Segoe UI Variable
-   Display porte l'axe de graisse sur Windows 11 ; repli EXPLICITE :
-   sans fonte variable, 340 retombe sur 400 — le titre reste un titre,
-   il n'est jamais gras, aucun dessin ne dépend de la graisse. */
+/* V6 — the DISPLAY REGISTER: conversation title (24 px) and
+   onboarding hero (40 px) at weight 340, letter-spacing -.03em — the
+   grammar of the icon document. Authority stays graded by SIZE;
+   nothing below 24 px changes. Segoe UI Variable Display carries the
+   weight axis on Windows 11; EXPLICIT fallback: without a variable
+   font, 340 falls back to 400 — the title stays a title, it is never
+   bold, no design depends on the weight. */
 .display {
   font-family:'Segoe UI Variable Display', -apple-system,
     BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-weight:340; letter-spacing:-.03em;
 }
 
-/* RETOURS-13 R7/R11 — l'ENTÊTE D'UNE VUE ORGANISÉE (Portier, Kiosque) :
-   glyphe + titre 24 px sur une ligne, sous-titre 13 px, règle-libellé
-   de section en capitales. UNE copie ici — les deux scènes la
-   partagent ; deux copies divergeraient en silence (leçon .boite). */
+/* RETOURS-13 R7/R11 — the HEADER OF AN ORGANIZED VIEW (Screener, Feed):
+   glyph + 24 px title on one line, 13 px subtitle, section
+   label-rule in capitals. ONE copy here — both scenes share it;
+   two copies would drift apart in silence (.boite lesson). */
 .entete-vue {
   margin:0 0 6px; font-size:24px; line-height:1.25; color:var(--ink);
   display:flex; align-items:center; gap:10px;
 }
 .entete-vue .glyphe-titre { display:inline-flex; color:var(--ink); }
-/* Terrain RETOURS-13 (C1) : le glyphe du titre en NON GRAS — agrandi à
-   26 px, le tracé de 2 s'épaissit à l'échelle et pèse face au display
-   340 ; on l'amincit en unités du viewBox (1.5 → ~1,6 px rendus). */
+/* RETOURS-13 field finding (C1): the title glyph in NON-BOLD — enlarged
+   to 26 px, the stroke of 2 thickens at scale and weighs against the
+   340 display; it is thinned in viewBox units (1.5 → ~1.6 px rendered). */
 .entete-vue .glyphe-titre .ic g { stroke-width:1.5; }
 .sous-titre-vue {
   margin:0 0 24px; font-size:13px; line-height:1.5; color:var(--ink2);
   max-width:66ch;
 }
-/* La règle-libellé : libellé nu, 8 px d'écart — le filet supérieur du
-   premier rang dessous fait séparateur (verdict CE, prototype E2). */
+/* The label-rule: bare label, 8 px gap — the top net of the
+   first row below acts as separator (CE verdict, E2 prototype). */
 .regle-libelle {
   margin:30px 0 8px; font-size:11px; letter-spacing:.1em;
   text-transform:uppercase; color:var(--muted); font-weight:600;
 }
 
-/* A8 — le focus est VISIBLE, partout, au clavier seulement : anneau
-   accent 2 px décalé de 2 px. Jamais supprimé sans remplacement. */
+/* A8 — focus is VISIBLE, everywhere, keyboard only: 2 px accent
+   ring offset by 2 px. Never removed without a replacement. */
 :focus-visible {
   outline:2px solid var(--accent);
   outline-offset:2px;
 }
 
-/* A8 — le mouvement respecte la préférence de l'utilisateur. */
+/* A8 — motion respects the user's preference. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration:0.01ms !important;
@@ -274,20 +277,20 @@ html {
   }
 }
 
-/* Barres de défilement (A7, amendé A44 — PLAN-RETOURS-V3 R4) : la
-   barre NATIVE en surimpression, celle du prototype Classique — fine,
-   sans piste ni flèches, posée SUR le contenu, visible au défilement
-   et au survol seulement. Le trait Chromium `OverlayScrollbar` est
-   activé par la conf Tauri (`additionalBrowserArgs`) et repris par le
-   lanceur e2e ; mesure du 2026-08-16 : épaisseur réservée 0 px (15 px
-   en classique, 10 px sous les anciennes règles webkit A7, retirées à
-   ce commit). La poignée ne lit pas les jetons : elle suit
-   `color-scheme` — les deux règles ci-dessous, à côté des jetons, la
-   font claire sur elements-nuit et sombre sur le thème clair,
-   pour TOUT chemin qui pose data-theme, sans JS. Toute règle webkit de
-   barre (ou scrollbar-width/scrollbar-color posée) ferait retomber
-   l'élément hors du chemin overlay : ne pas en poser — la gate de
-   cohérence y veille. */
+/* Scrollbars (A7, amended A44 — PLAN-RETOURS-V3 R4): the NATIVE
+   overlay bar, the one from the Classic prototype — thin,
+   no track or arrows, laid OVER the content, visible on scroll
+   and on hover only. The Chromium `OverlayScrollbar` flag is
+   enabled by the Tauri config (`additionalBrowserArgs`) and picked up
+   by the e2e launcher; measured on 2026-08-16: reserved thickness 0 px
+   (15 px in classic mode, 10 px under the old webkit A7 rules, removed
+   at this commit). The handle does not read the tokens: it follows
+   `color-scheme` — the two rules below, next to the tokens, make it
+   light on elements-night and dark on the light theme,
+   for EVERY path that sets data-theme, without JS. Any webkit
+   scrollbar rule (or a set scrollbar-width/scrollbar-color) would
+   drop the element out of the overlay path: do not add one — the
+   coherence gate watches over it. */
 :root { color-scheme:light; }
 :root[data-theme$="-nuit"] { color-scheme:dark; }
 

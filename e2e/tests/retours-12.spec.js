@@ -60,7 +60,7 @@ test("un compte ajouté Wind ouvert est dit connecté aux Réglages, sans redém
   // compte vient d'être connecté.
   await expect(page.locator('[data-testid="compte-deconnecte"]')).toHaveCount(0);
   const relectures = await page.evaluate(() => {
-    const n = window.__e2eJournal.filter((r) => r.commande === 'connect_accounts').length;
+    const n = window.__e2eJournal.filter((r) => r.command === 'connect_accounts').length;
     // La couture ne survit pas au test : les cycles suivants du décor
     // repassent par le vrai chemin.
     delete window.__e2eAjout;

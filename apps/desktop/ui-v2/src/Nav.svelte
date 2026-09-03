@@ -1,138 +1,137 @@
 <script>
-  // Nav 248 px de l'écran 02 — le dessin des pistes (A29, amendé V4/
-  // V14) : rangées 14 px à coin vif, item actif en teinte de sélection
-  // bordée d'accent, compteur de non-lus en NOMBRE nu à l'accent (la
-  // pastille pleine est morte). Les compteurs « héros / total » quittent
-  // la nav (W2-D4) — la barre de statut dit les totaux. Les six dossiers
-  // canoniques, puis « Boîtes » : Toutes les boîtes + un rang par compte
-  // RÉEL — la fiction « Travail / Personnel » n'existe pas ; icône
-  // `person` (décision D7), libellé = adresse. La boîte EN COURS prend
-  // le dessin de la tuile d'événement (--tuile/--tuileInk, W2-D5).
-  import Icone from './Icone.svelte';
-  import { activation } from './lib/clavier.js';
-  import { cleLibelleBoite } from './lib/organise.svelte.js';
-  import { t } from './lib/texte.svelte.js';
+  // Nav 248 px of screen 02 — the tracks' drawing (A29, amended V4/
+  // V14): 14 px rows with sharp corners, active item in selection hue
+  // bordered in accent, unread count as a BARE NUMBER in accent (the
+  // solid badge is dead). The “hero / total” counts leave the nav
+  // (W2-D4) — the status bar states the totals. The six canonical
+  // folders, then “Mailboxes”: All mailboxes + one row per REAL
+  // account — the “Work / Personal” fiction does not exist; `person`
+  // icon (decision D7), label = address. The CURRENT mailbox takes
+  // the event tile's drawing (--tuile/--tuileInk, W2-D5).
+  import Icon from './Icon.svelte';
+  import { activation } from './lib/keyboard.js';
+  import { mailboxLabelKey } from './lib/organized.svelte.js';
+  import { t } from './lib/text.svelte.js';
 
-  // R1 (PLAN-RETOURS-8, A74), amendé A82 : un compte peut porter un
-  // repère (icône du jeu dédié + teinte du nuancier) — il remplace
-  // `person` par le TRACÉ nu du glyphe à la teinte du compte, 16 px
-  // comme les glyphes de dossier (la pastille pleine a quitté la nav :
-  // la nav et la ligne portent exactement le même objet, D2). Sans
-  // repère, le rendu D7 d'origine ne change pas.
-  // PLAN-RETOURS-9 (D4) : le nom personnalisé REMPLACE l'adresse sur
-  // la tuile — la nav dit l'identité choisie, pas la donnée technique.
-  // PLAN-MODE-ORGANISE E1/E2 : en mode organisé, Kiosque, Registre et
-  // Portier s'insèrent sous la Réception — le patron rang/pastille/
-  // onchoisir est le même, seule la table des dossiers se recompose.
-  // La pastille du Portier (`portier`, E2) compte les MESSAGES en
-  // attente au guichet — le dessin du prototype. Mode classique :
-  // zéro diff.
+  // R1 (PLAN-RETOURS-8, A74), amended A82: an account can carry a
+  // marker (icon from the dedicated set + hue from the swatch) — it
+  // replaces `person` with the glyph's bare STROKE in the account's
+  // hue, 16 px like the folder glyphs (the solid badge left the nav:
+  // the nav and the row carry exactly the same object, D2). Without a
+  // marker, the original D7 rendering does not change.
+  // PLAN-RETOURS-9 (D4): the custom name REPLACES the address on the
+  // tile — the nav states the chosen identity, not the technical data.
+  // PLAN-MODE-ORGANISE E1/E2: in organized mode, Feed, Paper trail and
+  // Screener insert under the Inbox — the row/badge/onchoose pattern
+  // is the same, only the folder table recomposes. The Screener's
+  // badge (`screener`, E2) counts the MESSAGES waiting at the desk —
+  // the prototype's drawing. Classic mode: zero diff.
   let {
-    comptes = [], reperes = {}, noms = {}, categorie, account,
-    organise = false, portier = 0,
-    // RETOURS-14 R7 : les pastilles du Kiosque (cartes jamais
-    // ouvertes, D8) et du Registre (non-lu IMAP), patron `portier`.
-    kiosque = 0, registre = 0,
-    onchoisir = () => {},
+    accounts = [], markers = {}, names = {}, category, account,
+    organized = false, screener = 0,
+    // RETOURS-14 R7: the Feed's badges (cards never
+    // opened, D8) and the Paper trail's (IMAP unread), `screener` pattern.
+    feed = 0, paperTrail = 0,
+    onchoose = () => {},
   } = $props();
 
-  const somme = (champ) => comptes.reduce((n, c) => n + c[champ], 0);
+  const sum = (field) => accounts.reduce((n, c) => n + c[field], 0);
 
-  // Le filtre de compte borne les compteurs des dossiers, comme au
-  // prototype où changer de Boîte re-filtre la liste.
-  const vue = $derived(
-    account === null ? null : comptes.find((c) => c.account_id === account),
+  // The account filter bounds the folders' counts, as in the
+  // prototype where changing Mailbox re-filters the list.
+  const view = $derived(
+    account === null ? null : accounts.find((c) => c.account_id === account),
   );
-  const de = (champ) => (vue ? vue[champ] : somme(champ));
+  const de = (field) => (view ? view[field] : sum(field));
 
-  const dossiers = $derived([
+  const folders = $derived([
     {
-      // RETOURS-13 R3 : le libellé sort de LA règle partagée — en mode
-      // organisé « Réception », au classique le libellé long.
+      // RETOURS-13 R3: the label comes from THE shared rule — in
+      // organized mode “Inbox”, in classic the long label.
       id: 'inbox', icon: 'inbox',
-      libelle: t(cleLibelleBoite('inbox')),
+      label: t(mailboxLabelKey('inbox')),
       unread: de('inbox_unread'),
     },
-    ...(organise
+    ...(organized
       ? [
-          { id: 'feed', icon: 'feed', libelle: t('boite.feed'), unread: kiosque },
-          { id: 'paper_trail', icon: 'paper_trail', libelle: t('boite.paper_trail'), unread: registre },
-          { id: 'screener', icon: 'screener', libelle: t('boite.screener'), unread: portier },
-          // Volet B (PLAN-HORIZON-NETTOYAGE) : la 5e section du mode.
-          { id: 'cleanup', icon: 'cleanup', libelle: t('boite.cleanup') },
+          { id: 'feed', icon: 'feed', label: t('mailbox.feed'), unread: feed },
+          { id: 'paper_trail', icon: 'paper_trail', label: t('mailbox.paper_trail'), unread: paperTrail },
+          { id: 'screener', icon: 'screener', label: t('mailbox.screener'), unread: screener },
+          // Part B (PLAN-HORIZON-NETTOYAGE): the mode's 5th section.
+          { id: 'cleanup', icon: 'cleanup', label: t('mailbox.cleanup') },
         ]
       : []),
-    { id: 'sent', icon: 'send', libelle: t('boite.sent') },
-    { id: 'drafts', icon: 'edit_note', libelle: t('boite.drafts') },
+    { id: 'sent', icon: 'send', label: t('mailbox.sent') },
+    { id: 'drafts', icon: 'edit_note', label: t('mailbox.drafts') },
     {
-      id: 'junk', icon: 'report', libelle: t('boite.junk'),
+      id: 'junk', icon: 'report', label: t('mailbox.junk'),
       unread: de('junk_unread'),
     },
-    { id: 'archive', icon: 'inventory_2', libelle: t('boite.archive') },
-    { id: 'trash', icon: 'delete', libelle: t('boite.trash') },
+    { id: 'archive', icon: 'inventory_2', label: t('mailbox.archive') },
+    { id: 'trash', icon: 'delete', label: t('mailbox.trash') },
   ]);
 
-  // La tuile ne compte rien (A36, terrain E3) : la pastille de la
-  // Réception dit déjà le non-lu — la tuile ne porte que l'identité.
-  const boites = $derived([
-    { id: null, icon: 'all_inbox', libelle: t('nav.toutes') },
-    ...comptes.map((c) => ({
-      id: c.account_id, icon: 'person', libelle: noms[c.account_id] ?? c.email,
-      repere: reperes[c.account_id] ?? null,
+  // The tile counts nothing (A36, field E3): the Inbox's badge
+  // already states the unread — the tile carries only the identity.
+  const mailboxes = $derived([
+    { id: null, icon: 'all_inbox', label: t('nav.all') },
+    ...accounts.map((c) => ({
+      id: c.account_id, icon: 'person', label: names[c.account_id] ?? c.email,
+      marker: markers[c.account_id] ?? null,
     })),
   ]);
 </script>
 
 <nav aria-label={t('nav.aria')} data-testid="nav">
-  {#each dossiers as d (d.id)}
-    <div class="rang" class:actif={categorie === d.id}
+  {#each folders as d (d.id)}
+    <div class="rang" class:actif={category === d.id}
          data-testid="nav-dossier" data-categorie={d.id}
-         role="button" tabindex="0" aria-current={categorie === d.id}
-         onclick={() => onchoisir({ categorie: d.id })}
-         onkeydown={activation(() => onchoisir({ categorie: d.id }))}>
-      <span class="icone" aria-hidden="true"><Icone name={d.icon} /></span>
-      <span class="libelle">{d.libelle}</span>
+         role="button" tabindex="0" aria-current={category === d.id}
+         onclick={() => onchoose({ category: d.id })}
+         onkeydown={activation(() => onchoose({ category: d.id }))}>
+      <span class="icone" aria-hidden="true"><Icon name={d.icon} /></span>
+      <span class="libelle">{d.label}</span>
       {#if d.unread > 0}
         <span class="pastille">{d.unread}</span>
       {/if}
     </div>
-    {#if organise && d.id === 'cleanup'}
-      <!-- RETOURS-13 R12 : le filet entre les dossiers organisés et
-           le reste — le dessin du filet de `.boites`. -->
+    {#if organized && d.id === 'cleanup'}
+      <!-- RETOURS-13 R12: the divider between the organized folders
+           and the rest — the drawing of `.boites`'s divider. -->
       <div class="separateur" data-testid="nav-separateur"></div>
     {/if}
   {/each}
 
   <div class="boites">
-    <p class="titre">{t('nav.boites')}</p>
-    {#each boites as b (b.id)}
+    <p class="titre">{t('nav.mailboxes')}</p>
+    {#each mailboxes as b (b.id)}
       {#if account === b.id}
-        <!-- La boîte en cours : la tuile d'événement (A29, W2-D5),
-             l'adresse seule — sans compteur (A36). -->
+        <!-- The current mailbox: the event tile (A29, W2-D5),
+             the address alone — no counter (A36). -->
         <div class="tuile" data-testid="nav-boite"
              role="button" tabindex="0" aria-current="true"
-             onclick={() => onchoisir({ account: b.id })}
-             onkeydown={activation(() => onchoisir({ account: b.id }))}>
-          {#if b.repere}
+             onclick={() => onchoose({ account: b.id })}
+             onkeydown={activation(() => onchoose({ account: b.id }))}>
+          {#if b.marker}
             <span class="repere-nu" data-testid="nav-repere"
-                  data-teinte={b.repere.hue} aria-hidden="true"><Icone name={b.repere.icon} taille={16} /></span>
+                  data-teinte={b.marker.hue} aria-hidden="true"><Icon name={b.marker.icon} size={16} /></span>
           {:else}
-            <span class="icone-tuile" aria-hidden="true"><Icone name={b.icon} /></span>
+            <span class="icone-tuile" aria-hidden="true"><Icon name={b.icon} /></span>
           {/if}
-          <span class="titre-tuile">{b.libelle}</span>
+          <span class="titre-tuile">{b.label}</span>
         </div>
       {:else}
         <div class="rang" data-testid="nav-boite"
              role="button" tabindex="0" aria-current="false"
-             onclick={() => onchoisir({ account: b.id })}
-             onkeydown={activation(() => onchoisir({ account: b.id }))}>
-          {#if b.repere}
+             onclick={() => onchoose({ account: b.id })}
+             onkeydown={activation(() => onchoose({ account: b.id }))}>
+          {#if b.marker}
             <span class="repere-nu" data-testid="nav-repere"
-                  data-teinte={b.repere.hue} aria-hidden="true"><Icone name={b.repere.icon} taille={16} /></span>
+                  data-teinte={b.marker.hue} aria-hidden="true"><Icon name={b.marker.icon} size={16} /></span>
           {:else}
-            <span class="icone" aria-hidden="true"><Icone name={b.icon} /></span>
+            <span class="icone" aria-hidden="true"><Icon name={b.icon} /></span>
           {/if}
-          <span class="libelle">{b.libelle}</span>
+          <span class="libelle">{b.label}</span>
         </div>
       {/if}
     {/each}
@@ -145,15 +144,15 @@
     padding:20px 12px; display:flex; flex-direction:column; gap:2px;
     min-height:0; overflow:auto;
   }
-  /* PLAN-RETOURS-10 R4 : le glyphe se cale sur la BASELINE du libellé,
-     puis descend de 2 px — le calage OPTIQUE choisi par le CE sur
-     planche (variante C, trois captures, terrain du 2026-08-27) : le
-     centrage flex d'origine posait le SVG ~2,6 px sous la baseline
-     (trop bas), la baseline pure le laissait paraître haut. La
-     mécanique : align-items:baseline exige que le SVG garde son
-     vertical-align par défaut (le `middle` global de `.ic`,
-     systeme.css, est rendu ci-dessous), et la descente est un
-     transform — hors géométrie, les rangées ne bougent pas. */
+  /* PLAN-RETOURS-10 R4: the glyph aligns to the label's BASELINE,
+     then drops 2 px — the OPTICAL alignment the CE chose on the
+     board (variant C, three captures, field pass of 2026-08-27): the
+     original flex centering placed the SVG ~2.6 px below the baseline
+     (too low), the pure baseline made it look too high. The
+     mechanics: align-items:baseline requires the SVG to keep its
+     default vertical-align (the global `middle` of `.ic`,
+     systeme.css, is overridden below), and the drop is a transform —
+     outside the geometry, the rows do not move. */
   .rang {
     display:flex; align-items:baseline; gap:10px; flex:none;
     padding:8px 10px; border-radius:var(--r-controle); cursor:pointer;
@@ -172,8 +171,8 @@
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
   .actif .libelle { font-weight:600; color:var(--ink); }
-  /* V4 — la pilule pleine est morte : le compteur est un NOMBRE nu,
-     chiffres tabulaires à l'accent (paire accent/bg mesurée en TEXTE). */
+  /* V4 — the solid pill is dead: the counter is a BARE NUMBER,
+     tabular digits in accent (accent/bg pair measured as TEXT). */
   .pastille {
     flex:none; font-size:12px; font-weight:600; color:var(--accent);
     font-variant-numeric:tabular-nums;

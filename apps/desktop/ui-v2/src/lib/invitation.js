@@ -1,134 +1,136 @@
-// La carte d'invitation (PLAN-INVITATIONS) : mise en forme PURE de la
-// vue servie par le cœur (elle voyage avec le corps, BodyView) —
-// horaires, statuts, lignes. La langue vient du catalogue ; la grammaire
-// des dates est celle de quand.js (dateAbsolue, quand.mois en abrégés).
+// The invitation card (PLAN-INVITATIONS): PURE formatting of the
+// view served by the core (it travels with the body, BodyView) —
+// times, statuses, lines. The language comes from the catalogue; the
+// date grammar is when.js's (absoluteDate, when.month abbreviated).
 //
-// Garde D1, par EXTRÉMITÉ : une heure FLOTTANTE (TZID inconnu du cœur)
-// s'affiche telle quelle, suffixée « heure locale de l'organisateur » —
-// jamais convertie ; un couple début-résolu/fin-flottante ne se compacte
-// jamais en une plage qui mentirait (revue).
-import { t } from './texte.svelte.js';
-import { dateAbsolue } from './quand.js';
+// D1 guard, per ENDPOINT: a FLOATING time (TZID unknown to the core)
+// is shown as is, suffixed “organizer's local time” — never
+// converted; a resolved-start/floating-end pair never compacts into a
+// range that would lie (review).
+import { t } from './text.svelte.js';
+import { absoluteDate } from './when.js';
 
 const pad = (n) => String(n).padStart(2, '0');
 
-// Les composantes locales d'un horaire de la vue : epoch résolu → heure
-// du poste ; sinon la forme texte du cœur (AAAA-MM-JJ ou
-// AAAA-MM-JJTHH:MM), lue telle quelle — `flottante` le dit.
-function composantes(inv, quel) {
-  const epoch = inv[`${quel}_epoch`];
+// The local components of a view's time: resolved epoch → the
+// workstation's time; otherwise the core's text form (YYYY-MM-DD or
+// YYYY-MM-DDTHH:MM), read as is — `floating` says so.
+function components(inv, which) {
+  const epoch = inv[`${which}_epoch`];
   if (epoch != null) {
     const d = new Date(epoch * 1000);
     return {
-      annee: d.getFullYear(), mois: d.getMonth(), jour: d.getDate(),
-      heure: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
-      flottante: false,
+      year: d.getFullYear(), month: d.getMonth(), day: d.getDate(),
+      time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+      floating: false,
     };
   }
-  const texte = inv[`${quel}_text`];
-  if (!texte) return null;
-  const [date, heure] = texte.split('T');
-  const [annee, mois, jour] = date.split('-').map(Number);
-  return { annee, mois: mois - 1, jour, heure: heure ?? null, flottante: heure != null };
+  const text = inv[`${which}_text`];
+  if (!text) return null;
+  const [date, time] = text.split('T');
+  const [year, month, day] = date.split('-').map(Number);
+  return { year, month: month - 1, day, time: time ?? null, floating: time != null };
 }
 
-// La tuile de date : mois abrégé + quantième — le repère visuel de la
-// carte, dessiné en --tuile/--tuileInk (la paire de la boîte en cours).
-export function tuileInvitation(inv) {
-  const debut = composantes(inv, 'start');
-  if (!debut) return null;
-  return { mois: t('quand.mois')[debut.mois], jour: String(debut.jour) };
+// The date tile: abbreviated month + day number — the card's visual
+// marker, drawn in --tuile/--tuileInk (the current mailbox's pair).
+export function invitationTile(inv) {
+  const start = components(inv, 'start');
+  if (!start) return null;
+  return { month: t('when.month')[start.month], day: String(start.day) };
 }
 
-// « Jeudi 3 sept. » — jour de semaine + la grammaire de quand.js.
-function dateLongue(c) {
-  const semaine = t('quand.jours')[new Date(c.annee, c.mois, c.jour).getDay()];
-  return `${semaine} ${dateAbsolue(c.annee, c.mois, c.jour)}`;
+// “Jeudi 3 sept.” — weekday + when.js's grammar.
+function longDate(c) {
+  const week = t('when.days')[new Date(c.year, c.month, c.day).getDay()];
+  return `${week} ${absoluteDate(c.year, c.month, c.day)}`;
 }
 
-const memeJour = (a, b) =>
-  b && a.annee === b.annee && a.mois === b.mois && a.jour === b.jour;
+const sameDay = (a, b) =>
+  b && a.year === b.year && a.month === b.month && a.day === b.day;
 
-export function quandInvitation(inv) {
-  const debut = composantes(inv, 'start');
-  if (!debut) return '';
-  const fin = composantes(inv, 'end');
-  let ligne;
-  if (inv.all_day || !debut.heure) {
-    ligne = dateLongue(debut);
-  } else if (fin?.heure && memeJour(debut, fin) && debut.flottante === fin.flottante) {
-    // La plage compacte exige des extrémités de MÊME résolution : mêler
-    // une heure convertie et une heure flottante fabriquerait
-    // « 14:30 – 13:30 » — la conversion mensongère que D1 interdit.
-    ligne = `${dateLongue(debut)} · ${debut.heure} – ${fin.heure}`;
-  } else if (fin?.heure) {
-    ligne = `${dateLongue(debut)}, ${debut.heure} – ${dateLongue(fin)}, ${fin.heure}`;
+export function whenInvitation(inv) {
+  const start = components(inv, 'start');
+  if (!start) return '';
+  const end = components(inv, 'end');
+  let line;
+  if (inv.all_day || !start.time) {
+    line = longDate(start);
+  } else if (end?.time && sameDay(start, end) && start.floating === end.floating) {
+    // The compact range requires endpoints of the SAME resolution:
+    // mixing a converted time and a floating time would manufacture
+    // “14:30 – 13:30” — the lying conversion that D1 forbids.
+    line = `${longDate(start)} · ${start.time} – ${end.time}`;
+  } else if (end?.time) {
+    line = `${longDate(start)}, ${start.time} – ${longDate(end)}, ${end.time}`;
   } else {
-    ligne = `${dateLongue(debut)} · ${debut.heure}`;
+    line = `${longDate(start)} · ${start.time}`;
   }
-  if (debut.flottante || fin?.flottante) ligne += ` (${t('inv.heureLocale')})`;
-  if (inv.recurrent) ligne += ` · ${t('inv.seRepete')}`;
-  return ligne;
+  if (start.floating || end?.floating) line += ` (${t('inv.localTime')})`;
+  if (inv.recurrent) line += ` · ${t('inv.repeats')}`;
+  return line;
 }
 
-export function kickerInvitation(inv) {
-  // L'annulation prime (lien croisé R6) : le REQUEST d'une réunion
-  // annulée dit « Invitation annulée » comme le CANCEL lui-même.
-  if (inv.cancelled) return t('inv.kickerAnnulee');
-  if (inv.method === 'reply') return t('inv.kickerReponse');
+export function invitationKicker(inv) {
+  // Cancellation takes priority (cross-link R6): the REQUEST of a
+  // cancelled meeting says “Invitation cancelled” just like the
+  // CANCEL itself.
+  if (inv.cancelled) return t('inv.kickerCancelled');
+  if (inv.method === 'reply') return t('inv.kickerReply');
   return t('inv.kicker');
 }
 
-// Les icônes des réponses (R7/R9) : le pendant rond de check_circle
-// pour refuser (`cancel` — jamais `close`, qui garde son sens
-// « fermer », A3), le point d'interrogation pour provisoire. Le ton
-// porte la couleur (accent / neutre / alerte) — le texte double
-// toujours l'icône (A8).
-export const ICONES_REPONSE = {
+// The reply icons (R7/R9): the round counterpart of check_circle
+// to decline (`cancel` — never `close`, which keeps its meaning
+// “close”, A3), the question mark for tentative. The tone
+// carries the color (accent / neutral / alert) — the text always
+// doubles the icon (A8).
+export const REPLY_ICONS = {
   accepted: 'check_circle',
   tentative: 'question_mark',
   declined: 'cancel',
 };
 
-// La puce du rang de liste (R11) : l'annulation prime, sinon la
-// réponse donnée. `null` = rien à dire (les gestes prennent la place).
-export function puceInvitation(badge) {
+// The list row's chip (R11): cancellation takes priority, otherwise
+// the given reply. `null` = nothing to say (the gestures take the place).
+export function invitationChip(badge) {
   if (badge.cancelled) {
-    return { texte: t('inv.puce_annulee'), icon: null, ton: 'annulee' };
+    return { text: t('inv.chip_cancelled'), icon: null, tone: 'cancelled' };
   }
-  if (ICONES_REPONSE[badge.reply]) {
+  if (REPLY_ICONS[badge.reply]) {
     return {
-      texte: t(`inv.puce_${badge.reply}`),
-      icon: ICONES_REPONSE[badge.reply],
-      ton: badge.reply,
+      text: t(`inv.chip_${badge.reply}`),
+      icon: REPLY_ICONS[badge.reply],
+      tone: badge.reply,
     };
   }
   return null;
 }
 
-// Le statut d'une invitation à répondre — D6 : la vue porte déjà la
-// DERNIÈRE réponse partie de Wind, sinon le PARTSTAT lu du message.
-export function statutInvitation(inv) {
+// The status of an invitation to reply to — D6: the view already
+// carries the LAST reply sent from Wind, otherwise the PARTSTAT read
+// from the message.
+export function invitationStatus(inv) {
   if (inv.method !== 'request') return '';
   return inv.status && inv.status !== 'no_reply'
-    ? t(`inv.vous_${inv.status}`)
-    : t('inv.sansReponse');
+    ? t(`inv.you_${inv.status}`)
+    : t('inv.noReply');
 }
 
-// « Sofia Nardi a accepté » — le REPLY reçu quand nous organisons.
-export function ligneRepondant(inv) {
+// “Sofia Nardi a accepté” — the REPLY received when we organize.
+export function attendeeLine(inv) {
   if (inv.method !== 'reply' || !inv.attendee) return '';
   const status = ['accepted', 'tentative', 'declined'].includes(inv.attendee_status)
     ? inv.attendee_status
     : 'no_reply';
-  return t(`inv.repondant_${status}`, { qui: inv.attendee });
+  return t(`inv.attendee_${status}`, { who: inv.attendee });
 }
 
-export function lieuOrganisateur(inv) {
+export function organizerLocation(inv) {
   if (inv.location && inv.organizer) {
-    return t('inv.lieuOrganisateur', { location: inv.location, qui: inv.organizer });
+    return t('inv.organizerLocation', { location: inv.location, who: inv.organizer });
   }
   if (inv.location) return inv.location;
-  if (inv.organizer) return t('inv.organisePar', { qui: inv.organizer });
+  if (inv.organizer) return t('inv.organizedBy', { who: inv.organizer });
   return '';
 }

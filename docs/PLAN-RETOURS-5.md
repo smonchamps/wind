@@ -62,17 +62,17 @@ deux points, tous deux lus dans le code et concordants avec la capture :
    dans la **colonne des destinataires** (commentaire : « sa
    destination EST le destinataire à afficher » — faux : `destination`
    est le slug de catégorie `envoyes`, pas une adresse). La liste
-   d'Envoyés affiche « À : `to_addrs` » ([Liste.svelte:46](../apps/desktop/ui-v2/src/Liste.svelte)),
+   d'Envoyés affiche « À : `to_addrs` » ([Liste.svelte:46](../apps/desktop/ui-v2/src/List.svelte)),
    la tête de message « adresse · à `to_addrs` »
-   ([Fil.svelte:93](../apps/desktop/ui-v2/src/Fil.svelte)) → pendant la
+   ([Fil.svelte:93](../apps/desktop/ui-v2/src/Thread.svelte)) → pendant la
    fenêtre de réconciliation, l'écran dit « à envoyes ». La table
    `echos` ne stocke pas les destinataires ; **l'outbox les porte**
    (`outbox.recipients`, lisible via `origin_outbox_id` ; l'enveloppe
    source porte `to_addrs` pour les échos de geste).
 2. **Section « FICHIERS JOINTS » vide** —
-   [Fil.svelte:239](../apps/desktop/ui-v2/src/Fil.svelte) rend la
+   [Fil.svelte:239](../apps/desktop/ui-v2/src/Thread.svelte) rend la
    section dès `attachment_count > 0`, mais
-   [fil.svelte.js:133](../apps/desktop/ui-v2/src/lib/fil.svelte.js)
+   [fil.svelte.js:133](../apps/desktop/ui-v2/src/lib/thread.svelte.js)
    ne rapatrie jamais les métadonnées de pièces d'un écho (elles n'ont
    pas de `(mailbox, uid)`) : un titre sans rien dessous. **Les
    métadonnées existent** : `outbox_attachments` garde nom/mime/taille
@@ -86,7 +86,7 @@ décor.
 ### 3. L'autocomplétion : ce que le produit sait déjà
 
 - Les champs À/Cc/Cci sont des `input` texte nus
-  ([Composition.svelte:878](../apps/desktop/ui-v2/src/Composition.svelte)) ;
+  ([Composition.svelte:878](../apps/desktop/ui-v2/src/Compose.svelte)) ;
   `EmailAddress::parse` **refuse chevrons, virgules et blancs**
   (anti-injection d'en-têtes, [address.rs](../crates/mail-core/src/address.rs))
   — le chemin d'envoi ne connaît que l'adresse nue.

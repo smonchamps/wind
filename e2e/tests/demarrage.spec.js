@@ -66,7 +66,7 @@ test('la première page de la liste est demandée avant les sondes du démarrage
   await page.locator('[data-testid="ligne"]').first().waitFor({ timeout: 30000 });
 
   const journal = await page.evaluate(() =>
-    window.__e2eJournal.map((releve) => releve.commande),
+    window.__e2eJournal.map((releve) => releve.command),
   );
 
   // --- Gardes anti-vacuité, AVANT toute assertion d'ordre -------------

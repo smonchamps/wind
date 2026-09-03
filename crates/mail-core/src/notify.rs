@@ -24,18 +24,18 @@ pub struct Notification {
 /// functions stay pure, testable per language.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Lang {
-    #[default]
     Fr,
+    #[default]
     En,
 }
 
 impl Lang {
-    /// The code set by the UI (`prefs.lang`). Absent or unknown = French
-    /// — the same fallback as the interface.
+    /// The code set by the UI (`prefs.lang`). Absent or unknown = English
+    /// — the same fallback as the interface (PLAN-BASCULE-ANGLAIS D4).
     pub fn from_pref(code: Option<&str>) -> Self {
         match code {
-            Some("en") => Self::En,
-            _ => Self::Fr,
+            Some("fr") => Self::Fr,
+            _ => Self::En,
         }
     }
 }
@@ -249,12 +249,13 @@ mod tests {
         assert_eq!(fallback.body, "(no subject)");
     }
 
-    /// `prefs.lang` absent or unknown = French — the UI's fallback.
+    /// `prefs.lang` absent or unknown = English — the UI's reference and
+    /// fallback (PLAN-BASCULE-ANGLAIS D4, ADR 0016 amended).
     #[test]
-    fn the_lang_pref_falls_back_to_french() {
-        assert_eq!(Lang::from_pref(None), Lang::Fr);
+    fn the_lang_pref_falls_back_to_english() {
+        assert_eq!(Lang::from_pref(None), Lang::En);
         assert_eq!(Lang::from_pref(Some("fr")), Lang::Fr);
         assert_eq!(Lang::from_pref(Some("en")), Lang::En);
-        assert_eq!(Lang::from_pref(Some("de")), Lang::Fr);
+        assert_eq!(Lang::from_pref(Some("de")), Lang::En);
     }
 }

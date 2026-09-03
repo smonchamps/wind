@@ -146,7 +146,7 @@ test('recharger garde les lignes servies — jamais de squelette (PLAN-REACTIVIT
       window.__e2eRetenue = new Promise((liberer) => {
         window.__e2eLiberer = liberer;
       });
-      window.__mesure.recharger();
+      window.__mesure.reload();
     });
     // Le vol est ouvert (transport retenu), le DOM a re-rendu : les
     // lignes tiennent, aucune attente.

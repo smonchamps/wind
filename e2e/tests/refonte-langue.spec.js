@@ -6,8 +6,8 @@
 // français — la langue canonique des autres parcours (L-6).
 import { test, expect } from '@playwright/test';
 import { launchAppV2, closeApp } from '../launch.mjs';
-import { FR } from '../../apps/desktop/ui-v2/src/lib/catalogue.fr.js';
-import { EN } from '../../apps/desktop/ui-v2/src/lib/catalogue.en.js';
+import { FR } from '../../apps/desktop/ui-v2/src/lib/catalog.fr.js';
+import { EN } from '../../apps/desktop/ui-v2/src/lib/catalog.en.js';
 
 let app;
 let browser;
@@ -27,7 +27,10 @@ test('les catalogues fr et en portent exactement les mêmes clés', () => {
   expect(Object.keys(EN).sort()).toEqual(Object.keys(FR).sort());
 });
 
-test('le français du prototype est la langue par défaut', async () => {
+// D4 (E5b): English is the default; the suite pins the WebView to `--lang=fr`
+// (launch.mjs), so the first launch DETECTS French — the default itself is
+// tested by e2e/language.test.mjs.
+test('the pinned French system language is detected at the first launch', async () => {
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   await expect(page.locator('[data-testid="ecrire"]')).toContainText('Écrire');
   await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
@@ -68,4 +71,18 @@ test('le retour au français rétablit les formes exactes du prototype', async (
   await expect(page.locator('[data-testid="ecrire"]')).toContainText('Écrire');
   await expect(page.locator('[data-testid="volet-lecture"]')).toContainText('Sélectionnez un message pour le lire.');
   await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
+});
+
+// D4 (E5b, 2026-09-03): English is the default of a REAL first launch —
+// an empty database, a WebView whose locale is neither French nor
+// English. The pure decision is unit-tested; this is the wiring
+// (`lang_get` → `detectLanguage` → `<html lang>` → the onboarding text).
+test('a first launch on a non-French system speaks English (D4)', async () => {
+  await closeApp({ app, browser });
+  ({ app, browser, page } = await launchAppV2({ vierge: true, lang: 'de-DE' }));
+  // The suite's WebView2 profile already carries the onboarding-done flag
+  // (localStorage), so the empty database opens on the header, not on the
+  // onboarding: the header is the witness.
+  await expect(page.locator('[data-testid="champ-recherche"]')).toHaveAttribute('placeholder', 'Search messages, people, files');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
 });

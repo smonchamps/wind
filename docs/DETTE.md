@@ -978,6 +978,29 @@ motivée.)
 - **Rouvre si** : un constat terrain « la liste ne bouge pas » sur un
   geste hors-Liste, ou au chantier multi-fenêtres/second poste.
 
+### D-55 · The database, the disk files, the `prefs` keys and the localStorage keys stay French
+
+- **Finding** (PLAN-BASCULE-ANGLAIS, Chief Engineer decision D3 of 2026-09-02;
+  GLOSSARY §1.6): the SQLite schema (26 tables, ~30 French columns),
+  the six `prefs` keys, the files on disk (`wind.db`, `wind.log`,
+  `maj.log`, `telemetry.json`, `discovery.db`) and the browser
+  `localStorage` keys (`wind-theme`, `wind-volets`, `wind-largeurs`,
+  `wind-espacement`, `wind-accueil-*`) keep their French names while
+  every identifier around them is English. The PLAN and the glossary
+  cite this debt as “D-54” — that number was already the flaky spec
+  above; it is D-55 from here.
+- **Why deferred**: renaming a column is a migration on every tester's
+  database; renaming a storage key silently resets their layout. Not a
+  behavior change the switch may embed (§5).
+- **Done on the way (E5b, 2026-09-03)**: two persisted VALUES did move,
+  with a read-side legacy map and no reset — the pane width shape
+  (`{ nav, liste }` → `{ nav, list }`) and the row spacing levels
+  (`faible|moyen|eleve` → `low|medium|high`). The keys themselves are
+  untouched.
+- **Reopen if**: a schema migration is scheduled for another reason
+  (rename the columns in the same migration), or the storage keys get a
+  versioned envelope.
+
 ### D-56 · Shell-composed text stays French while the UI may be English
 
 Opened on 2026-09-03 (PLAN-BASCULE-ANGLAIS E5, CE decision D17). The size

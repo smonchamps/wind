@@ -1,1282 +1,1296 @@
 <script>
-  // Écran 02 du prototype (A6) : entête 60 px, grille 236/400/1fr
-  // (236/1fr en deux volets — PLAN-VOLETS), barre de statut 36 px.
-  // Données et actions RÉELLES par le port.
-  // P5 : migration bloquante d'abord (ADR 0012), fente d'avis (au plus
-  // UN), ligne de progression (au plus UNE), recherche câblée (D1),
-  // raccourcis (D3).
-  import Icone from './Icone.svelte';
+  // Screen 02 of the prototype (A6): 60 px header, 236/400/1fr grid
+  // (236/1fr in two panes — PLAN-VOLETS), 36 px status bar.
+  // REAL data and actions through the port.
+  // P5: blocking migration first (ADR 0012), notice slot (at most
+  // ONE), progress line (at most ONE), wired-up search (D1),
+  // shortcuts (D3).
+  import Icon from './Icon.svelte';
   import { onMount, tick } from 'svelte';
-  import { appel } from './lib/transport.js';
-  import { t, poserLangueDetectee } from './lib/texte.svelte.js';
-  import { voletsActuels } from './lib/volets.svelte.js';
-  import { accueilFait, marquerAccueilFait, accueilCommence } from './lib/accueil.js';
+  import { call } from './lib/transport.js';
+  import { t, setDetectedLanguage } from './lib/text.svelte.js';
+  import { currentPanes } from './lib/panes.svelte.js';
+  import { onboardingDone, markOnboardingDone, onboardingStarted } from './lib/onboarding.js';
   import {
-    largeurActuelle,
-    reglerLargeur,
-    persisterLargeurs,
-    appliquerLargeur,
-    defautLargeur,
-    BORNES,
-  } from './lib/largeurs.svelte.js';
-  import { depuis, quandLong } from './lib/quand.js';
-  import { vueMelange } from './lib/boite.js';
+    currentWidth,
+    setWidth,
+    persistWidths,
+    applyWidth,
+    defaultWidth,
+    BOUNDS,
+  } from './lib/widths.svelte.js';
+  import { since, whenLong } from './lib/when.js';
+  import { mixedView } from './lib/mailbox.js';
   import Nav from './Nav.svelte';
-  import Liste from './Liste.svelte';
-  import Portier from './Portier.svelte';
-  import Nettoyage from './Nettoyage.svelte';
-  import PileMisDeCote from './PileMisDeCote.svelte';
-  import Kiosque from './Kiosque.svelte';
-  import Registre from './Registre.svelte';
-  import Lecture from './Lecture.svelte';
+  import List from './List.svelte';
+  import Screener from './Screener.svelte';
+  import Cleanup from './Cleanup.svelte';
+  import SetAsidePile from './SetAsidePile.svelte';
+  import Feed from './Feed.svelte';
+  import PaperTrail from './PaperTrail.svelte';
+  import Reading from './Reading.svelte';
   import Conversation from './Conversation.svelte';
-  import Composition from './Composition.svelte';
-  import Reglages from './Reglages.svelte';
-  import Retour from './Retour.svelte';
+  import Compose from './Compose.svelte';
+  import Settings from './Settings.svelte';
+  import Feedback from './Feedback.svelte';
   import Onboarding from './Onboarding.svelte';
-  import FenteAvis from './FenteAvis.svelte';
-  import ModaleMigration from './ModaleMigration.svelte';
+  import NoticeSlot from './NoticeSlot.svelte';
+  import MigrationModal from './MigrationModal.svelte';
   import Toast from './Toast.svelte';
-  import Marque from './Marque.svelte';
+  import Brand from './Brand.svelte';
   import {
-    fil, fermerFil, reduireFil, retirerMessage, estEcho, cleMsg,
-  } from './lib/fil.svelte.js';
-  // PLAN-MODE-ORGANISE E1 : le va-et-vient « Organisé » — l'état vit
-  // en prefs SQLite (D2 amendée), l'UI le reflète.
+    thread, closeThread, shrinkThread, removeMessage, isEcho, msgKey,
+  } from './lib/thread.svelte.js';
+  // PLAN-MODE-ORGANISE E1: the "Organized" toggle — the state lives
+  // in SQLite prefs (D2 amended), the UI reflects it.
   import {
-    modeOrganise, restaurerModeOrganise, basculerModeOrganise,
-    cleLibelleBoite,
-  } from './lib/organise.svelte.js';
+    organizedMode, restoreOrganizedMode, toggleOrganizedMode,
+    mailboxLabelKey,
+  } from './lib/organized.svelte.js';
 
-  let liste = $state(null);
-  let lecture = $state(null);
-  // La conversation REMPLACE l'écran (prototype) : elle se superpose en
-  // plein écran, la boîte reste montée dessous — défilement, pages et
-  // sélection sont intacts au retour.
+  let list = $state(null);
+  let reading = $state(null);
+  // The conversation REPLACES the screen (prototype): it overlays full
+  // screen, the mailbox stays mounted underneath — scrolling, pages and
+  // selection are intact on return.
   let conversation = $state(null);
-  let composition = $state(null);
-  let reglages = $state(null);
-  // Le formulaire de retour bêta (RETOURS-11 R3, terrain 2026-08-28).
-  let retour = $state(null);
-  let modaleMigration = $state(null);
-  let champRecherche = $state(null);
+  let compose = $state(null);
+  let settings = $state(null);
+  // The beta feedback form (RETOURS-11 R3, field 2026-08-28).
+  let back = $state(null);
+  let migrationModal = $state(null);
+  let searchField = $state(null);
 
-  // Rien ne touche la base tant qu'une base héritée n'est pas adoptée :
-  // les colonnes ne montent qu'après la modale de migration (ADR 0012).
-  let prete = $state(false);
+  // Nothing touches the database until a legacy database is adopted:
+  // the columns only appear after the migration modal (ADR 0012).
+  let ready = $state(false);
 
-  let comptes = $state([]);
-  // Les adresses actuellement CONNECTÉES (une session vit côté Rust) —
-  // sous-ensemble du registre `comptes` ; la différence, ce sont les
-  // comptes au jeton mort, que Réglages sait désormais reconnecter.
-  let connectes = $state([]);
-  // L'écran 01 ne s'affiche qu'une fois la nav CONNUE vide — jamais
-  // pendant le premier chargement, sinon il clignoterait à chaque
-  // démarrage.
-  let navPrete = $state(false);
-  // E2 : la pastille du Portier — le nombre de MESSAGES en attente au
-  // guichet, rechargée avec la nav (jamais sur le chemin d'affichage).
-  let portierTotal = $state(0);
-  // RETOURS-14 R7 : les pastilles du Kiosque (cartes jamais ouvertes,
-  // D8) et du Registre (non-lu IMAP) — le patron de `portierTotal`.
-  let kiosqueTotal = $state(0);
-  let registreTotal = $state(0);
-  // R2 (PLAN-RETOURS-8, A75) : le parcours de premier démarrage —
-  // null = pas encore décidé (un seul état, revue 2026-08-22), décidé
-  // une fois au premier instantané de nav, éteint au Terminer.
-  let accueilAJouer = $state(null);
-  // R1 (PLAN-RETOURS-8) : les repères de compte (icône + teinte),
-  // indexés par account_id — la nav et la liste les LISENT, Réglages
-  // les pose. Un compte absent de la table n'a pas de repère.
-  let reperes = $state({});
-  let noms = $state({});
-  let categorie = $state('inbox');
+  let accounts = $state([]);
+  // The addresses currently CONNECTED (a session lives on the Rust
+  // side) — a subset of the `accounts` registry; the difference is the
+  // accounts with a dead token, which Settings can now reconnect.
+  let connected = $state([]);
+  // Screen 01 only appears once the nav is KNOWN to be empty — never
+  // during the first load, otherwise it would flicker on every
+  // startup.
+  let navReady = $state(false);
+  // E2: the Screener badge — the number of MESSAGES waiting at the
+  // desk, reloaded with the nav (never on the display path).
+  let screenerTotal = $state(0);
+  // RETOURS-14 R7: the Feed badge (cards never opened, D8) and the
+  // Paper trail badge (IMAP unread) — the pattern of `screenerTotal`.
+  let feedTotal = $state(0);
+  let paperTrailTotal = $state(0);
+  // R2 (PLAN-RETOURS-8, A75): the first-launch journey — null = not
+  // yet decided (a single state, review 2026-08-22), decided once at
+  // the first nav snapshot, turned off at Finish.
+  let onboardingToPlay = $state(null);
+  // R1 (PLAN-RETOURS-8): the account markers (icon + hue), indexed by
+  // account_id — the nav and the list READ them, Settings sets them.
+  // An account missing from the table has no marker.
+  let markers = $state({});
+  let names = $state({});
+  let category = $state('inbox');
   let account = $state(null);
-  let onglet = $state('tous');
-  let recherche = $state('');
-  let nResultats = $state(null);
-  let nTotal = $state(null);
-  let totalListe = $state(0);
+  let tab = $state('tous');
+  let search = $state('');
+  let resultCount = $state(null);
+  let totalCount = $state(null);
+  let listTotal = $state(0);
   let sync = $state(null);
-  // Le cycle en cours, vu par la sonde d'activité (E1) : null au repos.
-  let activite = $state(null);
-  // L'heure qui fait vieillir « il y a N minutes » : re-cadencée toutes
-  // les 30 s, sans que personne ne clique.
-  let maintenant = $state(Date.now());
+  // The cycle in progress, seen by the activity probe (E1): null at rest.
+  let activity = $state(null);
+  // The clock that ages "N minutes ago": re-paced every 30 s, without
+  // anyone clicking.
+  let now = $state(Date.now());
   let toast = $state(null);
-  let toastMinuterie;
-  // La sélection courante, pour les raccourcis (D3) : r/f/e/Suppr
-  // agissent sur elle.
-  let selectionnee = $state(null);
+  let toastTimer;
+  // The current selection, for the shortcuts (D3): r/f/e/Delete act
+  // on it.
+  let selectedRow = $state(null);
 
-  // PLAN-VOLETS (V-D1) : le nombre de volets commande la grille ET la
-  // surface d'ouverture — 3 : le volet de lecture ; 2 et 1 : l'écran
-  // 03, plein écran (V-D2). La Lecture est DÉMONTÉE sous trois volets,
-  // d'où les gardes `lecture?.` partout ; en un volet la Nav quitte la
-  // grille et vit en TIROIR (E2). Au retour en trois volets, la
-  // sélection courante rouvre son volet — l'écran ne revient pas vide
-  // quand une ligne est encore choisie.
-  const volets = $derived(voletsActuels());
-  let voletsAvant = voletsActuels();
+  // PLAN-VOLETS (V-D1): the number of panes drives both the grid AND
+  // the opening surface — 3: the reading pane; 2 and 1: screen 03,
+  // full screen (V-D2). Reading is UNMOUNTED under three panes, hence
+  // the `lecture?.` guards everywhere; in one pane the Nav leaves the
+  // grid and lives in a DRAWER (E2). On return to three panes, the
+  // current selection reopens its pane — the screen does not come
+  // back empty when a row is still chosen.
+  const panes = $derived(currentPanes());
+  let panesBefore = currentPanes();
 
-  // PLAN-RETOURS-V3 R3 (verdict CE D3) : les frontières de la grille se
-  // règlent à la souris — nav|liste et liste|fil en trois volets,
-  // nav|liste seule en deux. La poignée capture le pointeur : le
-  // glissement suit hors de sa surface, l'iframe du fil ne l'avale
-  // jamais ; le double-clic rend le défaut ; les flèches font le même
-  // geste au clavier (A8), 16 px par pas. Les bornes vivent au module ;
-  // le PLAFOND vit ici (la fenêtre est une connaissance d'UI) : en
-  // trois volets, une frontière ne monte jamais au point d'écraser le
-  // fil sous RESERVE_FIL — les bornes maximales cumulées (400 + 640)
-  // dépassent la fenêtre par défaut, et une poignée poussée hors écran
-  // serait irrécupérable (revue 2026-08-16). Le glissement RÈGLE (état
-  // seul) ; le relâchement PERSISTE — jamais une écriture par
-  // pointermove. La saisie se défait aussi sur pointercancel et
-  // lostpointercapture (tactile, stylet, démontage du bloc en cours de
-  // geste) : sans quoi elle resterait armée et le prochain survol
-  // redimensionnerait sans bouton pressé.
-  const lNav = $derived(largeurActuelle('nav'));
-  const lListe = $derived(largeurActuelle('liste'));
-  const RESERVE_FIL = 120;
-  const plafondPoignee = (volet) =>
-    volets === 3
+  // PLAN-RETOURS-V3 R3 (CE verdict D3): the grid boundaries are set
+  // with the mouse — nav|list and list|thread in three panes, nav|list
+  // alone in two. The handle captures the pointer: the drag follows
+  // outside its surface, the thread's iframe never swallows it;
+  // double-click restores the default; the arrow keys do the same
+  // gesture from the keyboard (A8), 16 px per step. The bounds live in
+  // the module; the CAP lives here (the window is UI knowledge): in
+  // three panes, a boundary never rises to the point of crushing the
+  // thread under RESERVE_FIL — the cumulative maximum bounds
+  // (400 + 640) exceed the default window, and a handle pushed off
+  // screen would be unrecoverable (review 2026-08-16). The drag SETS
+  // (state only); the release PERSISTS — never a write per
+  // pointermove. The grab is also released on pointercancel and
+  // lostpointercapture (touch, stylus, block unmounted mid-gesture):
+  // without this it would stay armed and the next hover would resize
+  // with no button pressed.
+  const lNav = $derived(currentWidth('nav'));
+  const listWidth = $derived(currentWidth('list'));
+  const THREAD_RESERVE = 120;
+  const handleCap = (pane) =>
+    panes === 3
       ? window.innerWidth -
-        largeurActuelle(volet === 'nav' ? 'liste' : 'nav') -
-        RESERVE_FIL
+        currentWidth(pane === 'nav' ? 'list' : 'nav') -
+        THREAD_RESERVE
       : Infinity;
-  let saisiePoignee = null; // { volet, x0, l0 } — hors $state : seul l'état du module bouge
-  function saisirPoignee(volet, e) {
-    if (e.button !== 0) return; // le bouton principal seul saisit
-    saisiePoignee = { volet, x0: e.clientX, l0: largeurActuelle(volet) };
+  let handleGrab = null; // { pane, x0, l0 } — outside $state: only the module state moves
+  function grabHandle(pane, e) {
+    if (e.button !== 0) return; // only the primary button grabs
+    handleGrab = { pane, x0: e.clientX, l0: currentWidth(pane) };
     e.currentTarget.setPointerCapture(e.pointerId);
   }
-  function glisserPoignee(e) {
-    if (!saisiePoignee) return;
-    const { volet, x0, l0 } = saisiePoignee;
-    reglerLargeur(volet, l0 + (e.clientX - x0), plafondPoignee(volet));
+  function dragHandle(e) {
+    if (!handleGrab) return;
+    const { pane, x0, l0 } = handleGrab;
+    setWidth(pane, l0 + (e.clientX - x0), handleCap(pane));
   }
-  function relacherPoignee() {
-    if (!saisiePoignee) return;
-    saisiePoignee = null;
-    persisterLargeurs();
+  function releaseHandle() {
+    if (!handleGrab) return;
+    handleGrab = null;
+    persistWidths();
   }
-  function toucherPoignee(volet, e) {
-    const pas = e.key === 'ArrowLeft' ? -16 : e.key === 'ArrowRight' ? 16 : 0;
-    if (!pas) return;
+  function keyHandle(pane, e) {
+    const delta = e.key === 'ArrowLeft' ? -16 : e.key === 'ArrowRight' ? 16 : 0;
+    if (!delta) return;
     e.preventDefault();
-    appliquerLargeur(volet, largeurActuelle(volet) + pas, plafondPoignee(volet));
+    applyWidth(pane, currentWidth(pane) + delta, handleCap(pane));
   }
   $effect(() => {
-    const v = volets;
-    if (v === 3 && voletsAvant !== 3 && selectionnee && fil.cadre !== 'plein') lecture?.ouvrir(selectionnee);
-    // Quitter le mode un volet emporte le tiroir — il n'a plus de sens.
-    if (v !== 1) tiroirOuvert = false;
-    voletsAvant = v;
+    const v = panes;
+    if (v === 3 && panesBefore !== 3 && selectedRow && thread.frame !== 'full') reading?.open(selectedRow);
+    // Leaving one-pane mode takes the drawer with it — it no longer makes sense.
+    if (v !== 1) drawerOpen = false;
+    panesBefore = v;
   });
 
-  // Le tiroir de nav (mode un volet) : surimpression sous scrim, la
-  // Nav réutilisée telle quelle. Choisir un dossier ou un compte FERME
-  // — le geste accompli n'a plus besoin du panneau ; Échap et le scrim
-  // ferment aussi.
-  let tiroirOuvert = $state(false);
-  function choisirDuTiroir(quoi) {
-    tiroirOuvert = false;
-    choisir(quoi);
+  // The nav drawer (one-pane mode): an overlay under a scrim, the Nav
+  // reused as is. Choosing a folder or an account CLOSES it — the
+  // completed gesture no longer needs the panel; Escape and the scrim
+  // also close it.
+  let drawerOpen = $state(false);
+  function chooseFromDrawer(what) {
+    drawerOpen = false;
+    choose(what);
   }
 
-  // --- Fente d'avis (§6) : au plus UN, priorité décroissante ----------
-  // Les brouillons n'y vivent plus (PLAN-BROUILLONS) : ils sont en
-  // liste — dossier Brouillons et mention sur le fil.
-  let avisEnvoi = $state(null);
-  // PLAN-AUDIT-V1 E3 (D2) : des actions du journal en quarantaine —
-  // le serveur les a refusées. Un incident : juste après l'échec
-  // d'envoi, avant tout le reste. Sans bouton (vague 2).
-  let avisRefus = $state(null);
-  let avisConnexion = $state(null);
-  let avisMaj = $state(null);
-  let avisCrash = $state(null);
-  let avisTelemetrie = $state(null);
-  // R2 (PLAN-RETOURS-6, D2) : l'envoi programmé se voit et s'annule
-  // d'ici — informatif, donc DERNIER de la priorité (un incident prime).
-  let avisProgramme = $state(null);
-  const avis = $derived(
-    avisEnvoi ?? avisRefus ?? avisConnexion ?? avisMaj ?? avisCrash ?? avisTelemetrie ?? avisProgramme,
+  // --- Notice slot (§6): at most ONE, decreasing priority ----------
+  // Drafts no longer live there (PLAN-BROUILLONS): they are in the
+  // list — Drafts folder and a mention on the thread.
+  let sendNotice = $state(null);
+  // PLAN-AUDIT-V1 E3 (D2): quarantined log actions — the server
+  // refused them. An incident: right after the send failure, before
+  // everything else. No button (wave 2).
+  let refusalNotice = $state(null);
+  let connectionNotice = $state(null);
+  let updateNotice = $state(null);
+  let crashNotice = $state(null);
+  let telemetryNotice = $state(null);
+  // R2 (PLAN-RETOURS-6, D2): the scheduled send is seen and cancelled
+  // from here — informational, so LAST in priority (an incident takes
+  // precedence).
+  let scheduledNotice = $state(null);
+  const notice = $derived(
+    sendNotice ?? refusalNotice ?? connectionNotice ?? updateNotice ?? crashNotice ?? telemetryNotice ?? scheduledNotice,
   );
 
-  // --- Ligne de progression (§6) : au plus UNE ------------------------
-  let envoisEnAttente = $state(0);
-  // R2 : les envois programmés pas encore échus, et la plus proche
-  // échéance — séparés des « en attente » (eux n'attendent pas le
-  // réseau, ils attendent leur heure).
-  let envoisProgrammes = $state(0);
-  let prochainProgramme = $state(null);
-  let rattrapageApercus = $state(false);
-  let rattrapageCorps = $state(null); // restant, ou null si rien à faire
-  // R1 (PLAN-RETOURS-3, D1) : le % de corps déjà là sur le corpus en
-  // portée — calculé par le cœur (`backfill_percent`), affiché dans le
-  // TEXTE à côté du reste (A52 : le trait ne fait qu'une boucle).
-  let rattrapagePct = $state(null);
-  // Échec TOTAL de la dernière synchro : dans la ligne, pas la fente —
-  // §6 n'y met pas la synchro, et « hors ligne » n'est pas un incident.
-  let synchroEchec = $state(false);
-  // E3 : l'échec PARTIEL se dit — « 1 compte sur 2 injoignable ».
-  // `synchroEchec` ne couvrait que la panne totale : un compte mort sur
-  // deux était invisible, et l'horodatage rajeuni par le survivant.
-  let synchroPartiel = $state(null);
-  // P0-bis : l'état réseau de l'OS, remonté par la WebView quasi
-  // instantanément (l'équivalent de l'observer réseau de Thunderbird) —
-  // au lieu d'attendre qu'un cycle cale sur le timeout socket (120 s)
-  // pour comprendre qu'on est hors ligne. `navigator.onLine` peut mentir
-  // (Wi-Fi sans internet), mais le terrain a montré le cas qui compte :
-  // câble/Wi-Fi coupé, où il bascule juste.
+  // --- Progress line (§6): at most ONE ------------------------
+  let pendingSends = $state(0);
+  // R2: the scheduled sends not yet due, and the closest deadline —
+  // kept separate from the "pending" ones (those don't wait for the
+  // network, they wait for their time).
+  let scheduledSends = $state(0);
+  let nextScheduled = $state(null);
+  let previewBackfill = $state(false);
+  let bodyBackfill = $state(null); // remaining, or null if nothing to do
+  // R1 (PLAN-RETOURS-3, D1): the % of bodies already there on the
+  // corpus in scope — computed by the core (`backfill_percent`), shown
+  // in the TEXT next to the remainder (A52: the stroke only loops).
+  let backfillPct = $state(null);
+  // TOTAL failure of the last sync: in the line, not the slot — §6
+  // doesn't put sync there, and "offline" is not an incident.
+  let syncFailure = $state(false);
+  // E3: the PARTIAL failure is stated — "1 of 2 accounts unreachable".
+  // `syncFailure` only covered total failure: one dead account out of
+  // two was invisible, and the timestamp was refreshed by the survivor.
+  let syncPartial = $state(null);
+  // P0-bis: the OS network state, surfaced by the WebView almost
+  // instantly (the equivalent of Thunderbird's network observer) —
+  // instead of waiting for a cycle to stall on the socket timeout
+  // (120 s) to understand we're offline. `navigator.onLine` can lie
+  // (Wi-Fi with no internet), but the field has shown the case that
+  // matters: cable/Wi-Fi cut, where it switches correctly.
   let online = $state(navigator.onLine);
-  // Le verdict d'un bilan de relève (cycle complet OU passe légère) :
-  // panne totale, panne partielle, ou rien — une seule écriture, les
-  // deux états ne peuvent pas diverger.
-  function majEchecs(bilan) {
-    synchroEchec = bilan.accounts === 0 && bilan.errors.length > 0;
-    synchroPartiel = bilan.accounts_failed > 0 && bilan.accounts > 0
-      ? { n: bilan.accounts_failed, m: bilan.accounts_failed + bilan.accounts }
+  // The verdict of a poll report (full cycle OR light pass): total
+  // failure, partial failure, or nothing — a single write, the two
+  // states cannot diverge.
+  function failedUpdates(report) {
+    syncFailure = report.accounts === 0 && report.errors.length > 0;
+    syncPartial = report.accounts_failed > 0 && report.accounts > 0
+      ? { n: report.accounts_failed, m: report.accounts_failed + report.accounts }
       : null;
   }
 
-  // RETOURS-13 R3 : le libellé d'une boîte sort de LA règle partagée
-  // (cleLibelleBoite, lib/organise) — l'ancienne table LIBELLES ne
-  // faisait que recopier `boite.${id}`.
+  // RETOURS-13 R3: a mailbox's label comes out of THE shared rule
+  // (cleLibelleBoite, lib/organise) — the old LIBELLES table only
+  // copied `boite.${id}`.
 
-  // La ligne de statut ENTIÈRE — texte, paire disque/anneau (V2 :
-  // l'anneau `fil` dès qu'une action tourne, disque plein au repos
-  // `trait` ; A52 : le % vit dans le TEXTE), point d'alerte —
-  // sort d'une seule décision : les trois ne peuvent pas diverger. Au
-  // plus UNE progression (Système A4) ; priorités
-  // re-triées par la sincérité (PLAN-SYNCHRO E1) : le cycle courant
-  // d'abord — c'est lui que l'utilisateur attend — puis l'intégrale,
-  // les rattrapages, l'attente d'envoi, l'échec, le repos horodaté.
-  const ligne = $derived.by(() => {
-    if (nResultats !== null) {
-      // « N sur M » quand le rendu est plafonné (M > N), sinon « N résultats ».
-      const texte =
-        nTotal !== null && nTotal > nResultats
-          ? t('statut.recherchePlafond', { n: nResultats, total: nTotal })
-          : t('statut.recherche', { n: nResultats });
-      return { texte, fil: null, alerte: false };
+  // The ENTIRE status line — text, disc/ring pair (V2: the `thread` ring
+  // as soon as an action is running, `stroke` filled disc at rest;
+  // A52: the % lives in the TEXT), alert dot — comes out of a single
+  // decision: the three cannot diverge. At most ONE progress
+  // indicator (System A4); priorities re-sorted by sincerity
+  // (PLAN-SYNCHRO E1): the current cycle first — that's what the user
+  // is waiting for — then the full sync, the backfills, the send
+  // queue, the failure, the timestamped rest.
+  const line = $derived.by(() => {
+    if (resultCount !== null) {
+      // "N of M" when the render is capped (M > N), otherwise "N results".
+      const text =
+        totalCount !== null && totalCount > resultCount
+          ? t('status.searchCap', { n: resultCount, total: totalCount })
+          : t('status.search', { n: resultCount });
+      return { text, thread: null, alert: false };
     }
-    if (categorie !== 'inbox') {
-      // Un compte non PROUVÉ (null : la source n'a pas encore répondu,
-      // PLAN-DEFILEMENT-PROFOND E2) ne s'affiche pas — le nom de la
-      // boîte seul, jamais un « 0 éléments » d'attente.
+    if (category !== 'inbox') {
+      // An account not yet PROVEN (null: the source hasn't answered
+      // yet, PLAN-DEFILEMENT-PROFOND E2) is not shown — the mailbox
+      // name alone, never a waiting "0 items".
       return {
-        texte:
-          totalListe === null
-            ? t(cleLibelleBoite(categorie))
-            : t('statut.categorie', { mailbox: t(cleLibelleBoite(categorie)), n: totalListe }),
-        fil: null,
-        alerte: false,
+        text:
+          listTotal === null
+            ? t(mailboxLabelKey(category))
+            : t('status.category', { mailbox: t(mailboxLabelKey(category)), n: listTotal }),
+        thread: null,
+        alert: false,
       };
     }
-    // P0-bis : hors ligne, on le DIT — et tout de suite. Prime sur le
-    // bloc synchro : un « Synchronisation… » ou un « à jour » serait
-    // faux sans réseau. On vit sur le stock, et on dit depuis quand.
+    // P0-bis: offline, we SAY it — right away. Takes precedence over
+    // the sync block: a "Syncing…" or an "up to date" would be false
+    // without a network. We live off the stock, and we say since when.
     if (!online) {
       const last = sync?.last ?? null;
       return {
-        texte: last
-          ? t('statut.horsLigneDepuis', { depuis: depuis(last, maintenant) })
-          : t('statut.horsLigne'),
-        fil: null,
-        alerte: false,
+        text: last
+          ? t('status.offlineSince', { since: since(last, now) })
+          : t('status.offline'),
+        thread: null,
+        alert: false,
       };
     }
-    // Le cycle courant : plus jamais « à jour » pendant que la machine
-    // travaille — et TOUT ce qu'on sait s'affiche (terrain 2026-08-13 :
-    // « 2/2 · compte » figé 7 minutes pendant le balayage des dossiers).
-    // Rang, compte, boîte courante ; le % de l'intégrale quand il
-    // existe, car l'intégrale EST le cycle — le masquer était une
-    // régression sur l'affichage d'avant E1. Barre déterminée avec le
-    // %, balayage sinon.
-    if (enSynchro) {
+    // The current cycle: never "up to date" again while the machine is
+    // working — and EVERYTHING we know is shown (field 2026-08-13:
+    // "2/2 · account" stuck for 7 minutes during the folder sweep).
+    // Rank, account, current mailbox; the % of the full sync when it
+    // exists, because the full sync IS the cycle — hiding it was a
+    // regression from the pre-E1 display. Determinate bar with the %,
+    // sweep otherwise.
+    if (syncing) {
       const pct =
         sync && sync.percent !== null && sync.percent < 100 ? sync.percent : null;
-      const parts = [t('statut.cyclePrefixe')];
-      if (activite) {
-        if (activite.total > 1) {
-          parts.push(`${Math.min(activite.done + 1, activite.total)}/${activite.total}`);
+      const parts = [t('status.cyclePrefix')];
+      if (activity) {
+        if (activity.total > 1) {
+          parts.push(`${Math.min(activity.done + 1, activity.total)}/${activity.total}`);
         }
-        if (activite.account) parts.push(activite.account);
-        // La boîte en clair, ou l'étape traduite (le shell n'envoie
-        // qu'une clé — A15) : l'observation terrain doit pouvoir NOMMER
-        // ce qui est long.
-        if (activite.mailbox) parts.push(activite.mailbox);
-        else if (activite.phase) parts.push(t(`statut.phase.${activite.phase}`));
+        if (activity.account) parts.push(activity.account);
+        // The mailbox in clear text, or the translated step (the shell
+        // only sends a key — A15): field observation must be able to
+        // NAME what's taking long.
+        if (activity.mailbox) parts.push(activity.mailbox);
+        else if (activity.phase) parts.push(t(`status.phase.${activity.phase}`));
       }
-      let texte = `${parts.join(' · ')}…`;
-      // A52/D1 : le pourcentage de l'intégrale reste dans le TEXTE ; le
-      // trait, lui, ne fait plus que boucler pendant qu'une action tourne.
-      if (pct !== null) texte += ` · ${t('statut.pourcent', { p: pct })}`;
-      return { texte, fil: true, alerte: false };
+      let text = `${parts.join(' · ')}…`;
+      // A52/D1: the full-sync percentage stays in the TEXT; the
+      // stroke itself now only loops while an action is running.
+      if (pct !== null) text += ` · ${t('status.percent', { p: pct })}`;
+      return { text, thread: true, alert: false };
     }
     if (sync && sync.percent !== null && sync.percent < 100) {
       return {
-        texte: t('statut.synchro', { p: sync.percent }),
-        fil: true,
-        alerte: false,
+        text: t('status.sync', { p: sync.percent }),
+        thread: true,
+        alert: false,
       };
     }
-    if (rattrapageCorps !== null && rattrapageCorps > 0) {
-      // Le % accompagne le reste (D1) ; garde-fou si le dénominateur
-      // manquait (corpus vide — impossible quand il reste des corps).
+    if (bodyBackfill !== null && bodyBackfill > 0) {
+      // The % accompanies the remainder (D1); a safeguard in case the
+      // denominator were missing (empty corpus — impossible when
+      // bodies remain).
       return {
-        texte: rattrapagePct !== null
-          ? t('statut.rattrapageCorps', { n: rattrapageCorps, p: rattrapagePct })
-          : t('statut.rattrapageCorpsSeul', { n: rattrapageCorps }),
-        fil: true,
-        alerte: false,
+        text: backfillPct !== null
+          ? t('status.bodyBackfill', { n: bodyBackfill, p: backfillPct })
+          : t('status.bodyBackfillAlone', { n: bodyBackfill }),
+        thread: true,
+        alert: false,
       };
     }
-    if (rattrapageApercus) {
-      return { texte: t('statut.rattrapageApercus'), fil: true, alerte: false };
+    if (previewBackfill) {
+      return { text: t('status.previewBackfill'), thread: true, alert: false };
     }
-    if (envoisEnAttente > 0) {
-      // Un envoi en file est une action en cours (A52) : le trait boucle
-      // jusqu'à la vidange. Hors ligne est capté plus haut — le trait ne
-      // tourne jamais dans le vide.
-      return { texte: t('statut.envois', { n: envoisEnAttente }), fil: true, alerte: false };
+    if (pendingSends > 0) {
+      // A queued send is an action in progress (A52): the stroke loops
+      // until the flush. Offline is caught higher up — the stroke
+      // never spins for nothing.
+      return { text: t('status.sends', { n: pendingSends }), thread: true, alert: false };
     }
-    if (envoisProgrammes > 0 && prochainProgramme !== null) {
-      // R2 : un programmé n'attend pas le réseau, il attend son heure —
-      // un état de repos daté, pas un trait qui boucle.
+    if (scheduledSends > 0 && nextScheduled !== null) {
+      // R2: a scheduled send doesn't wait for the network, it waits
+      // for its time — a dated resting state, not a looping stroke.
       return {
-        texte: t('statut.programmes', {
-          n: envoisProgrammes,
-          quand: quandLong(prochainProgramme),
+        text: t('status.scheduled', {
+          n: scheduledSends,
+          when: whenLong(nextScheduled),
         }),
-        fil: null,
-        alerte: false,
+        thread: null,
+        alert: false,
       };
     }
-    // L'horodatage du prototype, enfin : « dernière synchronisation il
-    // y a N minutes » — et sur échec, depuis quand on vit sur le stock.
+    // The prototype's timestamp, at last: "last sync N minutes ago" —
+    // and on failure, since when we've been living off the stock.
     const last = sync?.last ?? null;
-    if (synchroEchec) {
+    if (syncFailure) {
       return {
-        texte: last
-          ? t('statut.synchroImpossibleDepuis', { depuis: depuis(last, maintenant) })
-          : t('statut.synchroImpossible'),
-        fil: null,
-        alerte: true,
+        text: last
+          ? t('status.syncFailedSince', { since: since(last, now) })
+          : t('status.syncFailed'),
+        thread: null,
+        alert: true,
       };
     }
-    // E3 : l'échec partiel — le courrier des comptes vivants est là,
-    // mais un compte au moins est à sec, et ça se dit (alerte).
-    if (synchroPartiel) {
+    // E3: the partial failure — the mail of the accounts that are
+    // alive is there, but at least one account is dry, and it's
+    // stated (alert).
+    if (syncPartial) {
       return {
-        texte: t('statut.synchroPartielle', { n: synchroPartiel.n, m: synchroPartiel.m }),
-        fil: null,
-        alerte: true,
+        text: t('status.syncPartial', { n: syncPartial.n, m: syncPartial.m }),
+        thread: null,
+        alert: true,
       };
     }
-    // V2 : aux états « À jour », le disque plein précède le texte —
-    // immobile (l'anneau ne tourne que pendant un cycle).
+    // V2: at the "Up to date" states, the filled disc precedes the
+    // text — motionless (the ring only spins during a cycle).
     return {
-      texte: last
-        ? t('statut.ajourDepuis', { depuis: depuis(last, maintenant) })
-        : t('statut.ajour'),
-      fil: null,
-      alerte: false,
-      trait: true,
+      text: last
+        ? t('status.upToDateSince', { since: since(last, now) })
+        : t('status.upToDate'),
+      thread: null,
+      alert: false,
+      stroke: true,
     };
   });
 
   function flash(message) {
     toast = message;
-    clearTimeout(toastMinuterie);
-    toastMinuterie = setTimeout(() => (toast = null), 2200);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (toast = null), 2200);
   }
 
-  // Garde de génération (même motif que Liste.svelte) : deux instantanés
-  // en vol peuvent se résoudre dans le désordre depuis que les commandes
-  // vivent hors de la pompe (PLAN-GELS) — sans elle, le plus VIEUX
-  // écraserait le frais et la pastille de non-lus remonterait seule.
-  let jetonNav = 0;
-  // PLAN-AUDIT-V2 E10 : après un geste, la nav était demandée jusqu'à
-  // trois fois en rafale — coalescée (50 ms) sur le chemin qui va
-  // chercher ; la sonde de repos (`ui_state`) fournit l'instantané.
-  let navRecente = false;
-  function chargerNav(instantaneFourni = null) {
-    if (instantaneFourni !== null) return chargerNavMaintenant(instantaneFourni);
-    if (navRecente) return Promise.resolve();
-    navRecente = true;
+  // Generation guard (same pattern as List.svelte): two in-flight
+  // snapshots can resolve out of order since the commands moved off
+  // the pump (PLAN-GELS) — without it, the OLDEST would overwrite the
+  // fresh one and the unread badge would drift on its own.
+  let navToken = 0;
+  // PLAN-AUDIT-V2 E10: after a gesture, the nav used to be requested
+  // up to three times in a burst — coalesced (50 ms) on the fetch
+  // path; the resting probe (`ui_state`) supplies the snapshot.
+  let navRecent = false;
+  function loadNav(providedSnapshot = null) {
+    if (providedSnapshot !== null) return loadNavNow(providedSnapshot);
+    if (navRecent) return Promise.resolve();
+    navRecent = true;
     setTimeout(() => {
-      navRecente = false;
+      navRecent = false;
     }, 50);
-    return chargerNavMaintenant(null);
+    return loadNavNow(null);
   }
-  async function chargerNavMaintenant(instantaneFourni) {
-    const jeton = ++jetonNav;
+  async function loadNavNow(providedSnapshot) {
+    const token = ++navToken;
     try {
-      const instantane = instantaneFourni ?? (await appel('nav_snapshot'));
-      if (jeton !== jetonNav) return;
-      comptes = instantane;
-      navPrete = true;
-      // E2 : la pastille du Portier suit la nav. SANS condition de
-      // mode (revue E2) : au démarrage, `restaurerModeOrganise()` n'a
-      // pas encore répondu quand le premier instantané arrive — un
-      // garde-fou `modeOrganise()` laisserait la pastille vide jusqu'à
-      // la sonde suivante (10 s). La commande vaut 0,26 ms ; hors
-      // mode, la valeur ne se peint nulle part.
-      appel('screener_total')
+      const snapshot = providedSnapshot ?? (await call('nav_snapshot'));
+      if (token !== navToken) return;
+      accounts = snapshot;
+      navReady = true;
+      // E2: the Screener badge follows the nav. WITHOUT a mode
+      // condition (E2 review): at startup, `restoreOrganizedMode()`
+      // hasn't answered yet when the first snapshot arrives — a
+      // `organizedMode()` guard would leave the badge empty until the
+      // next probe (10 s). The command costs 0.26 ms; outside the
+      // mode, the value is painted nowhere.
+      call('screener_total')
         .then((n) => {
-          if (jeton === jetonNav) portierTotal = n;
+          if (token === navToken) screenerTotal = n;
         })
         .catch(() => {});
-      // RETOURS-14 R7 (revue) : contrairement à `screener_total`
-      // (0,26 ms mesuré), ces deux COUNT sondent `threads` entier —
-      // ils ne se paient pas au classique, où les pastilles ne se
-      // peignent nulle part. Le trou du démarrage (mode pas encore
-      // relu) est refermé au retour de `restaurerModeOrganise()`.
-      // Coût réel sur une base de 200 k : à mesurer au terrain.
-      if (modeOrganise()) {
-        appel('feed_unopened')
+      // RETOURS-14 R7 (review): unlike `screener_total` (0.26 ms
+      // measured), these two COUNTs probe the entire `threads` — they
+      // aren't paid for in Classic mode, where the badges are painted
+      // nowhere. The startup gap (mode not yet reread) is closed on
+      // the return of `restoreOrganizedMode()`. Real cost on a 200 k
+      // database: to be measured in the field.
+      if (organizedMode()) {
+        call('feed_unopened')
           .then((n) => {
-            if (jeton === jetonNav) kiosqueTotal = n;
+            if (token === navToken) feedTotal = n;
           })
           .catch(() => {});
-        appel('category_total', { category: 'paper_trail', accountId: null, unread: true })
+        call('category_total', { category: 'paper_trail', accountId: null, unread: true })
           .then((n) => {
-            if (jeton === jetonNav) registreTotal = n;
+            if (token === navToken) paperTrailTotal = n;
           })
           .catch(() => {});
       }
-      // R2 (A75) : la décision « accueil à jouer » se prend UNE fois,
-      // au premier instantané. Une installation existante (des comptes
-      // déjà là SANS parcours commencé) est réputée accueillie — la
-      // clé se pose sans parcours ; un parcours COMMENCÉ puis
-      // abandonné (compte ajouté à l'étape 1, app quittée avant
-      // Terminer) reprend, lui, au prochain lancement (revue
-      // 2026-08-22) ; une base vierge joue le parcours entier. La
-      // couture e2e vit dans lib/accueil.js, pas ici.
-      if (accueilAJouer === null) {
-        if (comptes.length > 0 && !accueilFait() && !accueilCommence()) {
-          marquerAccueilFait();
+      // R2 (A75): the "onboarding to play" decision is made ONCE, at
+      // the first snapshot. An existing installation (accounts
+      // already there WITHOUT a journey started) is deemed onboarded
+      // — the key is set with no journey; a journey STARTED then
+      // abandoned (account added at step 1, app quit before Finish)
+      // resumes, on the other hand, at the next launch (review
+      // 2026-08-22); a blank database plays the whole journey. The
+      // e2e seam lives in lib/onboarding.js, not here.
+      if (onboardingToPlay === null) {
+        if (accounts.length > 0 && !onboardingDone() && !onboardingStarted()) {
+          markOnboardingDone();
         }
-        accueilAJouer = !accueilFait();
+        onboardingToPlay = !onboardingDone();
       }
     } catch (err) {
       console.error('nav_snapshot :', err);
     }
   }
 
-  // R1 : les repères, chargés UNE fois au démarrage — jamais sondés
-  // (une préférence ne bouge que par un geste local) ; un changement
-  // depuis Réglages PATCHE la table sur place (revue 2026-08-22 :
-  // jamais un rechargement complet par clic de teinte).
-  async function chargerReperes() {
+  // R1: the markers, loaded ONCE at startup — never probed (a
+  // preference only moves through a local gesture); a change from
+  // Settings PATCHES the table in place (review 2026-08-22: never a
+  // full reload on a hue click).
+  async function loadMarkers() {
     try {
-      const lignes = await appel('markers_get');
+      const lines = await call('markers_get');
       const map = {};
-      for (const l of lignes) map[l.account_id] = { icon: l.icon, hue: l.hue };
-      reperes = map;
+      for (const l of lines) map[l.account_id] = { icon: l.icon, hue: l.hue };
+      markers = map;
     } catch (err) {
       console.error('markers_get :', err);
     }
   }
-  function patcherRepere(id, repere) {
-    const map = { ...reperes };
-    if (repere) map[id] = repere;
+  function patchMarker(id, marker) {
+    const map = { ...markers };
+    if (marker) map[id] = marker;
     else delete map[id];
-    reperes = map;
+    markers = map;
   }
 
-  // PLAN-RETOURS-9 (D3/D4) : les noms personnalisés, même régime que
-  // les repères — chargés une fois, patchés au geste.
-  async function chargerNoms() {
+  // PLAN-RETOURS-9 (D3/D4): the custom names, same regime as the
+  // markers — loaded once, patched on gesture.
+  async function loadNames() {
     try {
-      const lignes = await appel('names_get');
+      const lines = await call('names_get');
       const map = {};
-      for (const l of lignes) map[l.account_id] = l.name;
-      noms = map;
+      for (const l of lines) map[l.account_id] = l.name;
+      names = map;
     } catch (err) {
       console.error('names_get :', err);
     }
   }
-  function patcherNom(id, name) {
-    const map = { ...noms };
+  function patchName(id, name) {
+    const map = { ...names };
     if (name) map[id] = name;
     else delete map[id];
-    noms = map;
+    names = map;
   }
 
-  // Rattrapage des aperçus pour les corps écrits avant la colonne
-  // `preview` : par lots, jamais sur le chemin d'ouverture ni au
-  // défilement. Converge puis se tait ; la liste se rafraîchit une fois
-  // la passe soldée pour montrer les aperçus rattrapés. Lot de 500
-  // (PLAN-GELS D2) : à 2 000 corps (~130 Mo lus, mesure du 2026-08-15)
-  // la transaction d'écriture s'allongeait — le verrou court protège les
-  // gestes UI concurrents du BUSY (leçon delete_draft).
-  let apercusEnCours = false;
-  async function rattraperApercus() {
-    // Gardée en réentrance comme `rattraperCorps` (PLAN-AUDIT-V2 E10) :
-    // deux pompes d'aperçus se doublaient sur la même file.
-    if (apercusEnCours) return;
-    apercusEnCours = true;
+  // Backfill of previews for bodies written before the `preview`
+  // column: in batches, never on the opening path nor on scroll.
+  // Converges then goes quiet; the list refreshes once the pass is
+  // closed out to show the backfilled previews. Batch of 500
+  // (PLAN-GELS D2): at 2,000 bodies (~130 MB read, measured
+  // 2026-08-15) the write transaction was lengthening — the short
+  // lock protects concurrent UI gestures from BUSY (delete_draft
+  // lesson).
+  let previewsInProgress = false;
+  async function backfillPreviews() {
+    // Guarded against reentrancy like `backfillBodies` (PLAN-AUDIT-V2
+    // E10): two preview pumps were doubling up on the same queue.
+    if (previewsInProgress) return;
+    previewsInProgress = true;
     try {
-      let restants = await appel('preview_catchup', { limit: 500 });
-      rattrapageApercus = restants > 0;
-      while (restants > 0) {
+      let remainingOnes = await call('preview_catchup', { limit: 500 });
+      previewBackfill = remainingOnes > 0;
+      while (remainingOnes > 0) {
         await new Promise((r) => setTimeout(r, 250));
-        restants = await appel('preview_catchup', { limit: 500 });
+        remainingOnes = await call('preview_catchup', { limit: 500 });
       }
-      rechargerVues();
+      reloadViews();
     } catch (err) {
       console.error('preview_catchup :', err);
     } finally {
-      apercusEnCours = false;
-      rattrapageApercus = false;
+      previewsInProgress = false;
+      previewBackfill = false;
     }
   }
-  // E4 : la génération de courrier, monotone — bumpée par toute relève
-  // INBOX qui a rapporté (cycle, bouton, veilleur IDLE). Quand elle
-  // bouge au repos, c'est un veilleur qui a relevé : la liste se
-  // recharge au battement de cette sonde (5 s), sans canal neuf (R0-S5).
-  let generationVue = null;
-  async function sonderSynchro(synchroFournie = null) {
+  // E4: the mail generation, monotone — bumped by any INBOX poll that
+  // reported something (cycle, button, IDLE watcher). When it moves
+  // at rest, it's a watcher that has polled: the list reloads on the
+  // beat of this probe (5 s), with no new channel (R0-S5).
+  let viewGeneration = null;
+  async function probeSync(providedSync = null) {
     try {
-      sync = synchroFournie ?? (await appel('sync_progress'));
+      sync = providedSync ?? (await call('sync_progress'));
       const generation = sync?.generation ?? null;
       if (generation !== null) {
-        if (generationVue !== null && generation !== generationVue) {
-          // E5bis (revue) : les scènes suivent les relèves — sans
-          // quoi une arrivée décale les offsets des pages suivantes
-          // (clés en collision) et une carte fraîche reste un aperçu.
-          rechargerVues();
-          chargerNav();
-          // E4 (PLAN-REACTIVITE) : la génération a bougé — un lot vient
-          // d'entrer. Ses corps sont déjà là (relève, R-D2) SAUF s'il a
-          // débordé la borne : la pompe couvre le débordement et le
-          // stock, gardée en réentrance — un no-op quand tout est là.
-          rattraperCorps();
+        if (viewGeneration !== null && generation !== viewGeneration) {
+          // E5bis (review): the scenes follow the polls — otherwise
+          // an arrival shifts the offsets of the following pages
+          // (colliding keys) and a fresh card stays a preview.
+          reloadViews();
+          loadNav();
+          // E4 (PLAN-REACTIVITE): the generation has moved — a batch
+          // just came in. Its bodies are already there (poll, R-D2)
+          // UNLESS it overflowed the limit: the pump covers the
+          // overflow and the stock, guarded against reentrancy — a
+          // no-op when everything is there.
+          backfillBodies();
         }
-        generationVue = generation;
+        viewGeneration = generation;
       }
-    } catch { /* hors ligne ou coeur occupé : le status garde sa dernière value */ }
+    } catch { /* offline or core busy: the status keeps its last value */ }
   }
 
-  // Rattrapage des corps (v1 l'avait en bandeau ; ici la ligne de
-  // progression) : un lot à la fois, arrêt franc si un lot ne rapporte
-  // rien — hors ligne, la boucle ne tourne pas à vide. Gardée en
-  // réentrance (E4) : la génération peut l'amorcer pendant qu'une passe
-  // court déjà — une pompe à la fois, le verrou shell n'empile rien.
-  let corpsEnCours = false;
-  async function rattraperCorps() {
-    if (corpsEnCours) return;
-    corpsEnCours = true;
+  // Body backfill (v1 had it in a banner; here it's the progress
+  // line): one batch at a time, hard stop if a batch reports nothing
+  // — offline, the loop doesn't spin for nothing. Guarded against
+  // reentrancy (E4): the generation can trigger it while a pass is
+  // already running — one pump at a time, the shell lock stacks
+  // nothing.
+  let bodyInProgress = false;
+  async function backfillBodies() {
+    if (bodyInProgress) return;
+    bodyInProgress = true;
     try {
-      const etat = await appel('backfill_status');
-      if (etat.remaining === 0) return;
-      rattrapageCorps = etat.remaining;
-      rattrapagePct = etat.percent;
-      let restant = etat.remaining;
-      while (restant > 0) {
-        const bilan = await appel('backfill_bodies');
-        restant = bilan.remaining;
-        rattrapageCorps = restant;
-        rattrapagePct = bilan.percent;
-        if (bilan.fetched === 0) break;
-        // E4 : les aperçus rattrapés se montrent au fil des lots — la
-        // resservie est invisible depuis E1, plus besoin d'attendre une
-        // recharge fortuite. E5bis : les cartes du Kiosque gagnent
-        // leurs corps au même rythme.
-        rechargerVues();
+      const state = await call('backfill_status');
+      if (state.remaining === 0) return;
+      bodyBackfill = state.remaining;
+      backfillPct = state.percent;
+      let remaining = state.remaining;
+      while (remaining > 0) {
+        const report = await call('backfill_bodies');
+        remaining = report.remaining;
+        bodyBackfill = remaining;
+        backfillPct = report.percent;
+        if (report.fetched === 0) break;
+        // E4: the backfilled previews appear batch by batch — the
+        // reload is invisible since E1, no more need to wait for a
+        // lucky refresh. E5bis: the Feed cards gain their bodies at
+        // the same pace.
+        reloadViews();
       }
     } catch (err) {
       console.error('backfill_bodies :', err);
     } finally {
-      corpsEnCours = false;
-      rattrapageCorps = null;
-      rattrapagePct = null;
+      bodyInProgress = false;
+      bodyBackfill = null;
+      backfillPct = null;
     }
   }
 
-  // --- Sources de la fente d'avis (§6), par priorité ------------------
+  // --- Sources of the notice slot (§6), by priority ------------------
 
-  // 1. Échec d'envoi — corollaire UI des règles d'or : JAMAIS invisible.
-  //    L'attente non fautive (queued) vit dans la ligne de progression.
-  // R2 : le départ d'un envoi programmé. La sonde (10 s) réarme cette
-  // minuterie courte quand l'échéance approche (< 60 s) — à l'heure
-  // dite, UNE vidange part. Jamais de minuterie longue : une annulation
-  // entre-temps est vue par la sonde suivante, qui désarme.
-  let minuterieProgramme = null;
-  function armerDepart(echeance) {
-    clearTimeout(minuterieProgramme);
-    minuterieProgramme = null;
-    if (echeance === null) return;
-    const delai = Math.max(0, echeance * 1000 - Date.now()) + 1000;
-    if (delai > 60000) return; // la sonde suivante réarmera, plus près
-    minuterieProgramme = setTimeout(async () => {
+  // 1. Send failure — UI corollary of the golden rules: NEVER invisible.
+  //    The blameless wait (queued) lives in the progress line.
+  // R2: the departure of a scheduled send. The probe (10 s) rearms this
+  // short timer when the deadline approaches (< 60 s) — at the appointed
+  // time, ONE flush goes out. Never a long timer: a cancellation in the
+  // meantime is seen by the next probe, which disarms it.
+  let scheduledTimer = null;
+  function armStart(deadline) {
+    clearTimeout(scheduledTimer);
+    scheduledTimer = null;
+    if (deadline === null) return;
+    const delay = Math.max(0, deadline * 1000 - Date.now()) + 1000;
+    if (delay > 60000) return; // the next probe will rearm, closer to it
+    scheduledTimer = setTimeout(async () => {
       try {
-        const bilan = await appel('flush_outbox');
-        if (bilan.sent > 0) {
-          // L'écho Envoyés est né à la vidange (E3) — la copie se
-          // montre sans attendre ; la réconciliation suivra au cycle.
-          liste?.recharger();
-          chargerNav();
+        const report = await call('flush_outbox');
+        if (report.sent > 0) {
+          // The Sent echo was born at the flush (E3) — the copy shows
+          // without waiting; reconciliation will follow at the cycle.
+          list?.reload();
+          loadNav();
         }
       } catch (err) {
-        console.error('flush_outbox (départ programmé) :', err);
+        console.error('flush_outbox (scheduled send):', err);
       }
-      sonderEnvois();
-    }, delai);
+      probeSends();
+    }, delay);
   }
 
-  async function sonderEnvois(etatFourni = null) {
+  async function probeSends(providedState = null) {
     try {
-      const etat = etatFourni ?? (await appel('outbox_status'));
-      const refusees = etat.actions_refusees ?? 0;
-      avisRefus = refusees > 0
-        ? { alerte: true, icon: 'error', texte: t('avis.actionsRefusees', { n: refusees }), actions: [] }
+      const state = providedState ?? (await call('outbox_status'));
+      const refused = state.actions_refusees ?? 0;
+      refusalNotice = refused > 0
+        ? { alert: true, icon: 'error', text: t('notice.refusedActions', { n: refused }), actions: [] }
         : null;
-      envoisEnAttente = etat.queued;
-      envoisProgrammes = etat.scheduled ?? 0;
-      prochainProgramme = etat.next_scheduled_epoch ?? null;
-      armerDepart(prochainProgramme);
-      // R2/D2 : le plus proche programmé se voit dans la fente, avec
-      // son geste d'annulation (retour en brouillon — réversible).
-      const programme = etat.entries.find((e) => e.send_at_epoch != null);
-      avisProgramme = programme
+      pendingSends = state.queued;
+      scheduledSends = state.scheduled ?? 0;
+      nextScheduled = state.next_scheduled_epoch ?? null;
+      armStart(nextScheduled);
+      // R2/D2: the nearest scheduled send is seen in the slot, with
+      // its cancel gesture (back to draft — reversible).
+      const scheduledEntry = state.entries.find((e) => e.send_at_epoch != null);
+      scheduledNotice = scheduledEntry
         ? {
             icon: 'schedule_send',
-            texte: t('avis.programme', {
-              subject: programme.subject,
-              quand: quandLong(programme.send_at_epoch),
+            text: t('notice.scheduled', {
+              subject: scheduledEntry.subject,
+              when: whenLong(scheduledEntry.send_at_epoch),
             }),
             actions: [
-              { libelle: t('action.annulerEnvoi'), principale: true, faire: async () => {
+              { label: t('action.cancelSend'), primary: true, do: async () => {
                 try {
-                  const brouillon = await appel('outbox_cancel_scheduled', { id: programme.id });
-                  flash(brouillon !== null ? t('toast.envoiAnnule') : t('erreur.annulerTard'));
+                  const draft = await call('outbox_cancel_scheduled', { id: scheduledEntry.id });
+                  flash(draft !== null ? t('toast.sendCancelled') : t('error.cancelLater'));
                 } catch (err) {
-                  flash(t('erreur.annulerEnvoi', { err }));
+                  flash(t('error.cancelSend', { err }));
                 }
-                sonderBrouillons();
-                sonderEnvois();
+                probeDrafts();
+                probeSends();
               } },
             ],
           }
         : null;
-      const probleme = etat.entries.find(
+      const problem = state.entries.find(
         (e) => e.state === 'interrupted' || e.state === 'rejected',
       );
-      if (!probleme) {
-        avisEnvoi = null;
+      if (!problem) {
+        sendNotice = null;
         return;
       }
-      const sort = probleme.state === 'rejected' ? 'avis.envoiRefuse' : 'avis.envoiInterrompu';
-      avisEnvoi = {
-        alerte: true,
+      const noticeKey = problem.state === 'rejected' ? 'notice.sendRefused' : 'notice.sendInterrupted';
+      sendNotice = {
+        alert: true,
         icon: 'error',
-        texte: t(sort, {
-          subject: probleme.subject,
-          erreur: probleme.error ? ` : ${probleme.error}` : '',
+        text: t(noticeKey, {
+          subject: problem.subject,
+          error: problem.error ? ` : ${problem.error}` : '',
         }),
         actions: [
-          { libelle: t('action.renvoyer'), principale: true, faire: async () => {
-            await appel('outbox_requeue', { id: probleme.id }).catch((err) => flash(t('erreur.renvoi', { err })));
-            await appel('flush_outbox').catch(() => {});
-            sonderEnvois();
+          { label: t('action.resend'), primary: true, do: async () => {
+            await call('outbox_requeue', { id: problem.id }).catch((err) => flash(t('error.resend', { err })));
+            await call('flush_outbox').catch(() => {});
+            probeSends();
           } },
-          { libelle: t('action.abandonner'), faire: async () => {
-            await appel('outbox_delete', { id: probleme.id }).catch((err) => flash(t('erreur.abandon', { err })));
-            sonderEnvois();
+          { label: t('action.discard'), do: async () => {
+            await call('outbox_delete', { id: problem.id }).catch((err) => flash(t('error.discard', { err })));
+            probeSends();
           } },
         ],
       };
-    } catch { /* la prochaine sonde suffira */ }
+    } catch { /* the next probe will do */ }
   }
 
-  // 2. Mise à jour signée (ADR 0013) : une vérification au démarrage,
-  //    en silence — hors ligne, pas d'avis, pas de bruit.
-  async function verifierMaj() {
-    let maj;
+  // 2. Signed update (ADR 0013): a check at startup,
+  //    silently — offline, no notice, no noise.
+  async function checkUpdate() {
+    let update;
     try {
-      maj = await appel('update_check');
+      update = await call('update_check');
     } catch { return; }
-    if (!maj) return;
-    proposerMaj(maj);
+    if (!update) return;
+    offerUpdate(update);
   }
-  // Le bandeau se (ré)arme depuis des données CONNUES — jamais un
-  // aller-retour réseau : un réarmement qui échouerait laisserait
-  // « Installation… » figé sans aucun bouton (revue PLAN-SIGNATURE).
-  function proposerMaj(maj) {
-    avisMaj = {
+  // The banner (re)arms itself from KNOWN data — never a network
+  // round trip: a rearm that failed would leave "Installing…" stuck
+  // with no button at all (PLAN-SIGNATURE review).
+  function offerUpdate(update) {
+    updateNotice = {
       icon: 'system_update_alt',
-      texte: t('avis.maj', { version: maj.version }),
+      text: t('notice.update', { version: update.version }),
       actions: [
-        { libelle: t('action.installer'), principale: true, faire: async () => {
-          avisMaj.texte = t('reglages.installation');
-          avisMaj.actions = [];
+        { label: t('action.install'), primary: true, do: async () => {
+          updateNotice.text = t('settings.installing');
+          updateNotice.actions = [];
           try {
-            // L'application redémarre sur la version neuve : cet appel
-            // ne rend pas la main en cas de succès. La version part
-            // avec : on n'installe que ce que le bandeau a annoncé.
-            await appel('update_install', { version: maj.version });
+            // The application restarts on the new version: this call
+            // doesn't return control on success. The version goes
+            // along with it: we only install what the banner announced.
+            await call('update_install', { version: update.version });
           } catch (err) {
-            proposerMaj(maj);
-            flash(t('erreur.maj', { err }));
+            offerUpdate(update);
+            flash(t('error.update', { err }));
           }
         } },
-        { libelle: t('action.plusTard'), faire: () => { avisMaj = null; } },
+        { label: t('action.later'), do: () => { updateNotice = null; } },
       ],
     };
   }
 
-  // 3 et 4. Télémétrie de crash (ADR 0014) : opt-in explicite, off par
-  //    défaut, rapports locaux — rien n'est envoyé sans l'utilisateur.
-  async function verifierTelemetrie() {
+  // 3 and 4. Crash telemetry (ADR 0014): explicit opt-in, off by
+  //    default, local reports — nothing is sent without the user.
+  async function checkTelemetry() {
     try {
-      const rapports = await appel('telemetry_pending');
-      if (rapports > 0) {
-        avisCrash = {
+      const reports = await call('telemetry_pending');
+      if (reports > 0) {
+        crashNotice = {
           icon: 'report',
-          texte: t('avis.crash', { n: rapports }),
+          text: t('notice.crash', { n: reports }),
           actions: [
-            { libelle: t('action.ouvrirRapports'), principale: true, faire: async () => {
-              await appel('telemetry_open_folder').catch((err) => flash(t('erreur.ouverture', { err })));
+            { label: t('action.openReports'), primary: true, do: async () => {
+              await call('telemetry_open_folder').catch((err) => flash(t('error.opening', { err })));
             } },
-            { libelle: t('action.ignorer'), faire: () => { avisCrash = null; } },
+            { label: t('action.dismiss'), do: () => { crashNotice = null; } },
           ],
         };
       }
-      const consentement = await appel('telemetry_consent_get');
-      if (consentement === 'unset') {
-        const trancher = async (enabled) => {
-          avisTelemetrie = null;
-          await appel('telemetry_consent_set', { enabled })
-            .catch((err) => flash(t('erreur.preference', { err })));
+      const consent = await call('telemetry_consent_get');
+      if (consent === 'unset') {
+        const decide = async (enabled) => {
+          telemetryNotice = null;
+          await call('telemetry_consent_set', { enabled })
+            .catch((err) => flash(t('error.preference', { err })));
         };
-        avisTelemetrie = {
+        telemetryNotice = {
           icon: 'volunteer_activism',
-          texte: t('avis.telemetrie'),
+          text: t('notice.telemetry'),
           actions: [
-            { libelle: t('action.activer'), principale: true, faire: () => trancher(true) },
-            { libelle: t('action.nonMerci'), faire: () => trancher(false) },
+            { label: t('action.enable'), primary: true, do: () => decide(true) },
+            { label: t('action.noThanks'), do: () => decide(false) },
           ],
         };
       }
-    } catch { /* pas de télémétrie disponible : pas d'avis, pas de bruit */ }
+    } catch { /* no telemetry available: no notice, no noise */ }
   }
 
-  // --- Brouillons en liste (PLAN-BROUILLONS) --------------------------
-  // Sondés comme le reste — le port reste du sondage (R0-S5), aucun
-  // canal neuf. La sonde nourrit le dossier Brouillons ET la mention
-  // sur les fils de la Réception ; le composeur la réveille à chaque
-  // geste local (onbrouillon) pour que la liste ne traîne pas 10 s.
-  let brouillons = $state([]);
-  // Jeton de fraîcheur : deux sondes peuvent voler ensemble (celle du
-  // geste et la périodique) — seule la DERNIÈRE émise a le droit de
-  // servir, sinon une réponse périmée ressert un brouillon supprimé.
-  let sondeBrouillons = 0;
-  async function sonderBrouillons() {
-    const mienne = ++sondeBrouillons;
+  // --- Drafts in the list (PLAN-BROUILLONS) --------------------------
+  // Probed like the rest — the port remains poll-based (R0-S5), no new
+  // channel. The probe feeds the Drafts folder AND the mention on the
+  // Inbox threads; the composer wakes it on every local gesture
+  // (onbrouillon) so the list doesn't lag 10 s.
+  let drafts = $state([]);
+  // Freshness token: two probes can fly together (the gesture one and
+  // the periodic one) — only the LAST one issued has the right to
+  // serve, otherwise a stale response re-serves a deleted draft.
+  let draftsProbe = 0;
+  async function probeDrafts() {
+    const mine = ++draftsProbe;
     try {
-      const lignes = await appel('list_drafts');
-      if (mienne === sondeBrouillons) brouillons = lignes;
-    } catch { /* la prochaine sonde suffira */ }
+      const lines = await call('list_drafts');
+      if (mine === draftsProbe) drafts = lines;
+    } catch { /* the next probe will do */ }
   }
-  function reprendreBrouillon(brouillon) {
-    composition.ouvrirBrouillon(brouillon);
+  function resumeDraft(draft) {
+    compose.openDraft(draft);
   }
 
-  // --- R1 : la colonne vertébrale de synchro (PLAN-RETRAIT-V1) --------
-  // v1 déclenchait tout ; v2 devient autonome — reconnexion silencieuse
-  // au démarrage, puis cycle AUTOMATIQUE (D5 : pas de bouton) : synchro,
-  // vidange de la boîte d'envoi (le réseau est peut-être revenu — règle
-  // d'or), reflet des brouillons. Séquence v1 conservée à l'identique.
+  // --- R1: the sync backbone (PLAN-RETRAIT-V1) --------
+  // v1 triggered everything; v2 becomes autonomous — silent
+  // reconnection at startup, then an AUTOMATIC cycle (D5: no button):
+  // sync, outbox flush (the network may be back — golden rule), draft
+  // reflection. v1 sequence kept identical.
 
-  async function connecter() {
+  async function connect() {
     try {
-      const bilan = await appel('connect_accounts');
-      // Les adresses qui tiennent une session : Réglages > Comptes en
-      // dérive l'état par compte — un jeton mort se VOIT et se répare
-      // sur place (« Reconnecter », constat terrain 2026-08-20).
-      connectes = bilan.accounts.map((a) => a.email);
-      if (bilan.problems.length > 0) {
-        // Dire LEQUEL manque et pourquoi — une pastille absente sans
-        // explication laisse l'utilisateur démuni (leçon v1).
-        avisConnexion = {
-          alerte: true,
+      const report = await call('connect_accounts');
+      // The addresses holding a session: Settings > Accounts derives
+      // the per-account state from it — a dead token is SEEN and
+      // repaired in place ("Reconnect", field finding 2026-08-20).
+      connected = report.accounts.map((a) => a.email);
+      if (report.problems.length > 0) {
+        // Say WHICH one is missing and why — an absent badge with no
+        // explanation leaves the user helpless (v1 lesson).
+        connectionNotice = {
+          alert: true,
           icon: 'link_off',
-          texte: t('avis.connexion', { details: bilan.problems.join(' ; ') }),
+          text: t('notice.connection', { details: report.problems.join(' ; ') }),
           actions: [
-            // Terrain 2026-08-20 : « Réessayer » rejouait la connexion
-            // SILENCIEUSE — condamnée avec un jeton mort. La porte utile
-            // est Réglages > Comptes, où l'état se voit et « Reconnecter »
-            // relance le consentement (A63). L'avis reste affiché : il
-            // tombera de lui-même à la reconnexion (connecter() le
-            // reposera ou l'effacera).
-            { libelle: t('entete.reglages'), principale: true, faire: () => {
-              reglages?.ouvrir();
+            // Field 2026-08-20: "Retry" used to replay the SILENT
+            // connection — doomed with a dead token. The useful door
+            // is Settings > Accounts, where the state is visible and
+            // "Reconnect" relaunches the consent flow (A63). The
+            // notice stays displayed: it will fall away on its own at
+            // reconnection (connecter() will reset it or clear it).
+            { label: t('header.settings'), primary: true, do: () => {
+              settings?.open();
             } },
-            { libelle: t('action.ignorer'), faire: () => { avisConnexion = null; } },
+            { label: t('action.dismiss'), do: () => { connectionNotice = null; } },
           ],
         };
       } else {
-        avisConnexion = null;
+        connectionNotice = null;
       }
     } catch (err) {
       console.error('connect_accounts :', err);
     }
   }
 
-  // $state : la barre d'état raconte le cycle pendant qu'il tourne (E1).
-  let enSynchro = $state(false);
-  // La sonde d'activité ne vit QUE pendant le cycle : à la seconde,
-  // purement mémoire côté shell (atomiques) — elle ne coûte rien à la
-  // boucle et rien au repos.
-  async function sonderActivite() {
+  // $state: the status bar tells the cycle's story while it's running (E1).
+  let syncing = $state(false);
+  // The activity probe lives ONLY during the cycle: at the second,
+  // purely in-memory on the shell side (atomics) — it costs nothing
+  // to the loop and nothing at rest.
+  async function probeActivity() {
     try {
-      activite = await appel('sync_activity');
-    } catch { /* la prochaine sonde suffira */ }
+      activity = await call('sync_activity');
+    } catch { /* the next probe will do */ }
   }
-  // P0 (PLAN-SYNCHRO) : le watchdog du cycle. Les timeouts socket de
-  // mail-imap achèvent un réseau qui cale ; le watchdog couvre ce qu'ils
-  // ne voient pas. 5 min : au-dessus du plus long silence légitime
-  // mesuré — l'intégrale du terrain avançait par lots de ~75 s, et
-  // chaque lot bouge l'avancement (`synchro.local`), donc la signature.
-  const IMMOBILITE_MAX = 5 * 60 * 1000;
-  // Cadences de synchro (PLAN-RETOURS-2, ADR 0021). Le cycle COMPLET
-  // (inventaire + balayage des dossiers + fils + brouillons) est cher sur
-  // un compte à beaucoup de dossiers ; depuis qu'IDLE (ADR 0018) tient
-  // INBOX en temps réel, il tourne à 30 min. La passe LÉGÈRE (STATUS INBOX
-  // seul) tourne à 5 min en filet — si un veilleur IDLE est tombé sans
-  // s'être reconnecté, INBOX reste fraîche à 5 min près malgré tout.
-  const CYCLE_COMPLET_MS = 30 * 60 * 1000;
-  const PASSE_LEGERE_MS = 5 * 60 * 1000;
-  // Le jeton interdit à la fin TARDIVE d'un cycle déclaré mort de
-  // toucher l'état d'un cycle relancé depuis.
-  let jetonCycle = 0;
-  async function synchroniser() {
-    if (enSynchro) return; // réentrance interdite : un cycle à la fois
-    // P0-bis : hors ligne, un cycle automatique ne partirait que pour
-    // caller sur les timeouts — la barre dit déjà « hors ligne », et le
-    // retour du réseau relèvera. Le geste manuel, lui, force (voir
-    // `relever`) : le clic est un ordre.
+  // P0 (PLAN-SYNCHRO): the cycle watchdog. The mail-imap socket
+  // timeouts finish off a network that has stalled; the watchdog
+  // covers what they don't see. 5 min: above the longest legitimate
+  // silence measured — the full sync in the field advanced in
+  // batches of ~75 s, and each batch moves the progress
+  // (`sync.local`), hence the signature.
+  const STALL_MAX_MS = 5 * 60 * 1000;
+  // Sync cadences (PLAN-RETOURS-2, ADR 0021). The FULL cycle
+  // (inventory + folder sweep + threads + drafts) is expensive on an
+  // account with many folders; since IDLE (ADR 0018) keeps INBOX
+  // real-time, it runs every 30 min. The LIGHT pass (STATUS INBOX
+  // only) runs every 5 min as a net — if an IDLE watcher dropped
+  // without reconnecting, INBOX still stays fresh to within 5 min
+  // regardless.
+  const FULL_CYCLE_MS = 30 * 60 * 1000;
+  const LIGHT_PASS_MS = 5 * 60 * 1000;
+  // The token forbids the LATE end of a cycle declared dead from
+  // touching the state of a cycle restarted since.
+  let cycleToken = 0;
+  async function runSyncCycle() {
+    if (syncing) return; // reentrancy forbidden: one cycle at a time
+    // P0-bis: offline, an automatic cycle would only leave to stall on
+    // timeouts — the bar already says "offline", and the network's
+    // return will trigger a poll. The manual gesture, though, forces
+    // it (see `poll`): the click is an order.
     if (!online) return;
-    enSynchro = true;
-    const jeton = ++jetonCycle;
-    sonderActivite();
-    // Un cycle dont NI l'activité NI l'avancement ne bougent pendant
-    // 5 min est déclaré mort : garde réarmée, échec affiché. Le watchdog
-    // ne tue rien (une commande en vol ne s'annule pas) — il rend la
-    // main ; c'est le timeout socket qui achève le thread gelé.
+    syncing = true;
+    const token = ++cycleToken;
+    probeActivity();
+    // A cycle where NEITHER the activity NOR the progress moves for
+    // 5 min is declared dead: guard rearmed, failure shown. The
+    // watchdog kills nothing (an in-flight command isn't cancelled) —
+    // it returns control; it's the socket timeout that finishes off
+    // the frozen thread.
     let signature = '';
-    let dernierMouvement = Date.now();
-    // P1 : le courrier d'INBOX se montre PAR COMPTE, dès que le
-    // compteur du cycle bouge — la liste n'attend plus la fin du cycle
-    // complet. Lu à la sonde existante : le port reste du sondage
-    // (R0-S5), aucun canal d'événements.
-    let courrierVu = 0;
-    const surveiller = async () => {
-      await sonderActivite();
-      if (activite && activite.mail > courrierVu) {
-        courrierVu = activite.mail;
-        liste?.recharger();
-        chargerNav();
+    let lastMove = Date.now();
+    // P1: INBOX mail shows PER ACCOUNT, as soon as the cycle counter
+    // moves — the list no longer waits for the end of the full cycle.
+    // Read from the existing probe: the port remains poll-based
+    // (R0-S5), no event channel.
+    let mailSeen = 0;
+    const monitor = async () => {
+      await probeActivity();
+      if (activity && activity.mail > mailSeen) {
+        mailSeen = activity.mail;
+        list?.reload();
+        loadNav();
       }
-      const trace = JSON.stringify([activite, sync?.local]);
+      const trace = JSON.stringify([activity, sync?.local]);
       if (trace !== signature) {
         signature = trace;
-        dernierMouvement = Date.now();
+        lastMove = Date.now();
         return;
       }
-      if (Date.now() - dernierMouvement < IMMOBILITE_MAX) return;
-      clearInterval(sonde);
-      jetonCycle += 1;
-      synchroEchec = true;
-      activite = null;
-      enSynchro = false;
-      console.error('sync_inbox : aucun mouvement depuis 5 min, cycle déclaré mort (P0)');
+      if (Date.now() - lastMove < STALL_MAX_MS) return;
+      clearInterval(probe);
+      cycleToken += 1;
+      syncFailure = true;
+      activity = null;
+      syncing = false;
+      console.error('sync_inbox: no movement for 5 min, cycle declared dead (P0)');
     };
-    const sonde = setInterval(surveiller, 1000);
+    const probe = setInterval(monitor, 1000);
     try {
-      const bilan = await appel('sync_inbox');
-      if (jeton !== jetonCycle) return; // déclaré mort entre-temps : trop tard
-      majEchecs(bilan);
-      // Le réseau est peut-être revenu : la boîte d'envoi retente sa
-      // chance, puis les brouillons se reflètent (poussée + purge).
-      await appel('flush_outbox').catch((err) => console.error('flush_outbox :', err));
-      await appel('sync_drafts').catch(() => { /* hors ligne : le cycle suivant retentera */ });
-      sonderEnvois();
-      chargerNav();
-      sonderBrouillons();
-      if (bilan.fetched > 0 || bilan.deleted > 0) {
-        liste?.recharger();
-        rattraperCorps();
+      const report = await call('sync_inbox');
+      if (token !== cycleToken) return; // declared dead in the meantime: too late
+      failedUpdates(report);
+      // The network may be back: the outbox tries its luck again,
+      // then the drafts are reflected (push + purge).
+      await call('flush_outbox').catch((err) => console.error('flush_outbox :', err));
+      await call('sync_drafts').catch(() => { /* offline: the next cycle will retry */ });
+      probeSends();
+      loadNav();
+      probeDrafts();
+      if (report.fetched > 0 || report.deleted > 0) {
+        list?.reload();
+        backfillBodies();
       }
     } catch (err) {
-      if (jeton === jetonCycle) synchroEchec = true;
+      if (token === cycleToken) syncFailure = true;
       console.error('sync_inbox :', err);
     } finally {
-      clearInterval(sonde);
-      if (jeton === jetonCycle) {
-        activite = null;
-        enSynchro = false;
-        // L'horodatage vient d'être posé par le shell : le relire tout de
-        // suite, sans attendre la sonde de 5 s.
-        sonderSynchro();
+      clearInterval(probe);
+      if (token === cycleToken) {
+        activity = null;
+        syncing = false;
+        // The timestamp was just set by the shell: reread it right
+        // away, without waiting for the 5 s probe.
+        probeSync();
       }
     }
   }
 
-  // E3 : le geste manuel (D5 rouverte) — la passe légère : STATUS INBOX
-  // par compte, relève seulement si ça a bougé (E2a), puis la boîte
-  // d'envoi retente sa chance (le réseau est peut-être revenu — c'est
-  // souvent POUR ça qu'on clique). Réponse en secondes, tenue par la
-  // gate d'E2a ; chaque commande est bornée par les timeouts P0, la
-  // passe se termine toujours — pas de watchdog dédié.
-  // `force` : le clic est un ORDRE — il traverse le recul par compte
-  // (anti-martèlement, shell) ; le réveil de veille, lui, le respecte.
-  async function relever(force) {
-    if (enSynchro) return; // le cycle travaille déjà — bouton inhibé
-    // Hors ligne, seul le geste manuel (clic, `force`) tente encore —
-    // le réveil de veille et le retour réseau attendent d'être en ligne.
+  // E3: the manual gesture (D5 reopened) — the light pass: STATUS
+  // INBOX per account, polls only if it moved (E2a), then the outbox
+  // tries its luck again (the network may be back — that's often WHY
+  // we click). Response in seconds, held by E2a's gate; every command
+  // is bounded by the P0 timeouts, the pass always ends — no
+  // dedicated watchdog.
+  // `force`: the click is an ORDER — it bypasses the per-account
+  // backoff (anti-hammering, shell); sleep-wake, on the other hand,
+  // respects it.
+  async function poll(force) {
+    if (syncing) return; // the cycle is already working — button inhibited
+    // Offline, only the manual gesture (click, `force`) still tries —
+    // sleep-wake and the network's return wait to be online.
     if (!force && !online) return;
-    enSynchro = true;
-    const jeton = ++jetonCycle;
-    sonderActivite();
-    const sonde = setInterval(sonderActivite, 1000);
+    syncing = true;
+    const token = ++cycleToken;
+    probeActivity();
+    const probe = setInterval(probeActivity, 1000);
     try {
-      const bilan = await appel('sync_inbox_light', { force: force === true });
-      if (jeton !== jetonCycle) return;
-      majEchecs(bilan);
-      await appel('flush_outbox').catch((err) => console.error('flush_outbox :', err));
-      sonderEnvois();
-      chargerNav();
-      if (bilan.fetched > 0 || bilan.deleted > 0) {
-        liste?.recharger();
-        rattraperCorps();
+      const report = await call('sync_inbox_light', { force: force === true });
+      if (token !== cycleToken) return;
+      failedUpdates(report);
+      await call('flush_outbox').catch((err) => console.error('flush_outbox :', err));
+      probeSends();
+      loadNav();
+      if (report.fetched > 0 || report.deleted > 0) {
+        list?.reload();
+        backfillBodies();
       }
     } catch (err) {
-      if (jeton === jetonCycle) synchroEchec = true;
+      if (token === cycleToken) syncFailure = true;
       console.error('sync_inbox_light :', err);
     } finally {
-      clearInterval(sonde);
-      if (jeton === jetonCycle) {
-        activite = null;
-        enSynchro = false;
-        sonderSynchro();
+      clearInterval(probe);
+      if (token === cycleToken) {
+        activity = null;
+        syncing = false;
+        probeSync();
       }
     }
   }
 
-  // Le démarrage, dans l'ordre qui protège : migration d'abord (rien ne
-  // touche la base avant), puis les boucles — et les contrôles uniques.
+  // Startup, in the order that protects: migration first (nothing
+  // touches the database before), then the loops — and the one-off
+  // checks.
   onMount(async () => {
-    const baseClaire = await modaleMigration.assurer();
-    // La langue détectée au premier lancement se pose ICI, pas avant :
-    // `lang_set` ouvre la base — avant la modale, il paierait l'adoption
-    // en silence (ADR 0012, A41). Et seulement si la sonde de migration
-    // a RÉPONDU : sinon cette écriture facultative serait elle-même la
-    // première ouverture pleine. Attendue, pas tirée : au premier
-    // lancement c'est elle qui crée le schéma — sérialisée avant la
-    // flotte des sondes, comme quand elle vivait avant le montage.
-    if (baseClaire) await poserLangueDetectee();
-    prete = true;
-    // LA LISTE D'ABORD (PLAN-DEMARRAGE, E2). `prete = true` ne peint pas
-    // tout de suite : Svelte planifie le flush par microtâche. Sans ce
-    // `tick`, les dix appels qui suivent partent AVANT que `<Liste>` ne
-    // soit monté, et sa première page se retrouve DOUZIÈME dans l'ordre
-    // d'émission — donc derrière sept sondes qui prennent le verrou
-    // global. Mesuré au terrain le 2026-08-26, run froid : la page était
-    // émise à 89,6 ms et servie à 440,6 ms, pour un travail propre de
-    // 28 ms.
+    const dbReady = await migrationModal.ensure();
+    // The language detected on first launch is set HERE, not before:
+    // `lang_set` opens the database — before the modal, it would
+    // silently pay for the adoption (ADR 0012, A41). And only if the
+    // migration probe has ANSWERED: otherwise this optional write
+    // would itself be the first full opening. Awaited, not fired: on
+    // first launch it's the one that creates the schema — serialized
+    // before the fleet of probes, as when it lived before mount.
+    if (dbReady) await setDetectedLanguage();
+    ready = true;
+    // THE LIST FIRST (PLAN-DEMARRAGE, E2). `prete = true` doesn't
+    // paint right away: Svelte schedules the flush as a microtask.
+    // Without this `tick`, the ten calls that follow leave BEFORE
+    // `<Liste>` is mounted, and its first page ends up TWELFTH in
+    // emission order — behind seven probes that take the global
+    // lock. Measured in the field on 2026-08-26, cold run: the page
+    // was emitted at 89.6 ms and served at 440.6 ms, for 28 ms of
+    // clean work.
     //
-    // Rendre la main au flush suffit : la liste demande sa page la
-    // PREMIÈRE, seule, donc elle prend le verrou sans concurrent. On ne
-    // DIFFÈRE rien — `chargerNav` reste juste derrière, et c'est
-    // délibéré : sa réponse porte le bloc de boîte de chaque rangée
-    // (A80), la retarder ferait repeindre toutes les lignes visibles.
+    // Returning control to the flush is enough: the list asks for its
+    // page FIRST, alone, so it takes the lock uncontested. We DEFER
+    // nothing — `loadNav` stays right behind, and that's
+    // deliberate: its response carries the mailbox block of every row
+    // (A80), delaying it would repaint every visible row.
     await tick();
-    chargerNav();
-    // Le mode organisé se relit APRÈS la première page de la liste
-    // (jamais un await avant elle — leçon PLAN-DEMARRAGE E2) : la nav
-    // se recompose à l'arrivée, une lecture PK.
-    restaurerModeOrganise().then(() => {
-      // RETOURS-14 (revue, course MESURÉE au décor e2e : page 0 servie
-      // à ~85 ms, relecture du mode à ~105 ms) : la dernière pompe de
-      // la liste part alors avec le mode ÉTEINT — la couture des
-      // sections de la Réception organisée n'est jamais demandée, et
-      // les pastilles organisées ont raté le premier instantané. La
-      // relecture RESSERT donc les vues et la nav ; hors mode, rien.
-      if (modeOrganise()) {
-        rechargerVues();
-        chargerNav();
+    loadNav();
+    // Organized mode is reread AFTER the first page of the list
+    // (never an await before it — PLAN-DEMARRAGE E2 lesson): the nav
+    // recomposes on arrival, a PK read.
+    restoreOrganizedMode().then(() => {
+      // RETOURS-14 (review, race MEASURED on the e2e fixture: page 0
+      // served at ~85 ms, mode reread at ~105 ms): the list's last
+      // pump then leaves with the mode OFF — the section seam of the
+      // Organized Inbox is never requested, and the organized badges
+      // missed the first snapshot. The reread therefore RE-SERVES the
+      // views and the nav; outside the mode, nothing.
+      if (organizedMode()) {
+        reloadViews();
+        loadNav();
       }
     });
-    chargerReperes();
-    chargerNoms();
-    // PLAN-AUDIT-V2 E10 : UNE sonde de repos (`ui_state` : nav, synchro,
-    // envois) toutes les 5 s — trois commandes, trois ouvertures de base
-    // par 10 s avant. Les brouillons gardent leur sonde (une liste).
-    sonderEtat();
-    setInterval(sonderEtat, 5000);
-    // « il y a N minutes » vieillit tout seul : 30 s suffisent pour une
-    // granularité à la minute.
-    setInterval(() => (maintenant = Date.now()), 30000);
-    setTimeout(rattraperApercus, 1500);
-    setTimeout(rattraperCorps, 3000);
-    verifierMaj();
-    verifierTelemetrie();
-    sonderBrouillons();
-    setInterval(sonderBrouillons, 10000);
-    // R1 — le cycle de synchro : APRÈS les premiers rendus (la liste est
-    // utilisable avant, « enveloppes d'abord ») ; jamais bloquant.
+    loadMarkers();
+    loadNames();
+    // PLAN-AUDIT-V2 E10: ONE resting probe (`ui_state`: nav, sync,
+    // sends) every 5 s — three commands, three database openings per
+    // 10 s before. Drafts keep their own probe (a list).
+    probeState();
+    setInterval(probeState, 5000);
+    // "N minutes ago" ages on its own: 30 s is enough for a minute's
+    // granularity.
+    setInterval(() => (now = Date.now()), 30000);
+    setTimeout(backfillPreviews, 1500);
+    setTimeout(backfillBodies, 3000);
+    checkUpdate();
+    checkTelemetry();
+    probeDrafts();
+    setInterval(probeDrafts, 10000);
+    // R1 — the sync cycle: AFTER the first renders (the list is
+    // usable before, "envelopes first"); never blocking.
     (async () => {
-      await connecter();
-      await synchroniser();
+      await connect();
+      await runSyncCycle();
     })();
-    // Le cycle complet à 30 min (IDLE tient INBOX, ADR 0018/0021),
-    // et une passe légère INBOX à 5 min en filet contre un veilleur tombé.
-    // La passe légère se sabre pendant un cycle (`enSynchro`) — jamais
-    // deux relèves du même INBOX.
-    setInterval(synchroniser, CYCLE_COMPLET_MS);
-    setInterval(() => relever(false), PASSE_LEGERE_MS);
-    // E3 : le réveil de veille — un tick en retard de plusieurs minutes
-    // signe une veille (saut d'horloge : les minuteries dorment avec la
-    // machine), et c'est LE moment où l'utilisateur regarde l'écran. La
-    // passe légère part aussitôt, sans attendre le prochain sondage à
-    // 5 min. Aucune API système : la dérive d'horloge suffit.
-    let dernierTic = Date.now();
+    // The full cycle every 30 min (IDLE holds INBOX, ADR 0018/0021),
+    // and a light INBOX pass every 5 min as a net against a dropped
+    // watcher. The light pass is cut short during a cycle
+    // (`syncing`) — never two polls of the same INBOX.
+    setInterval(runSyncCycle, FULL_CYCLE_MS);
+    setInterval(() => poll(false), LIGHT_PASS_MS);
+    // E3: sleep-wake — a tick running several minutes late signals a
+    // sleep (clock jump: timers sleep with the machine), and that's
+    // THE moment when the user looks at the screen. The light pass
+    // leaves right away, without waiting for the next poll at 5 min.
+    // No system API: the clock drift is enough.
+    let lastTick = Date.now();
     setInterval(() => {
       const tic = Date.now();
-      const retard = tic - dernierTic;
-      dernierTic = tic;
-      if (retard > 120000) relever(false);
+      const lag = tic - lastTick;
+      lastTick = tic;
+      if (lag > 120000) poll(false);
     }, 15000);
-    // P0-bis : l'état réseau de l'OS, en direct. `offline` bascule la
-    // barre à l'instant (plus d'attente du timeout 120 s) ; `online`
-    // relève tout de suite — le courrier retenu pendant la coupure
-    // arrive au retour, comme le fait Thunderbird. Événement, pas
-    // sondage : c'est le seul moyen d'être aussi prompt que l'OS.
+    // P0-bis: the OS network state, live. `offline` switches the bar
+    // instantly (no more waiting for the 120 s timeout); `online`
+    // polls right away — the mail held back during the outage arrives
+    // on return, the way Thunderbird does. Event, not polling: it's
+    // the only way to be as prompt as the OS.
     window.addEventListener('offline', () => {
       online = false;
-      // E4 : les veilleurs IDLE dorment hors ligne — reconnecter en
-      // boucle sans réseau ne servirait à rien.
-      appel('network_state', { online: false }).catch(() => {});
+      // E4: IDLE watchers sleep offline — reconnecting in a loop
+      // with no network would be pointless.
+      call('network_state', { online: false }).catch(() => {});
     });
     window.addEventListener('online', () => {
       online = true;
-      // Le retour du réseau efface les reculs (côté shell) et réveille
-      // les veilleurs ; la relève immédiate couvre le courrier retenu.
-      appel('network_state', { online: true }).catch(() => {});
-      relever(false);
-      // R-D3 (E3) : les gestes joués hors ligne attendent — la passe
-      // d'après-geste rejoue leurs actions et réconcilie leurs échos.
-      // Sans travail, elle ne coûte aucune connexion.
-      passeApresGeste(null);
+      // The network's return clears the backoffs (shell side) and
+      // wakes the watchers; the immediate poll covers the mail held
+      // back.
+      call('network_state', { online: true }).catch(() => {});
+      poll(false);
+      // R-D3 (E3): gestures played offline wait — the after-gesture
+      // pass replays their actions and reconciles their echoes. With
+      // no work, it costs no connection.
+      passAfterGesture(null);
     });
-    // L'état initial : si l'app démarre hors ligne, les veilleurs le
-    // savent tout de suite.
-    appel('network_state', { online: navigator.onLine }).catch(() => {});
+    // Initial state: if the app starts offline, the watchers know
+    // right away.
+    call('network_state', { online: navigator.onLine }).catch(() => {});
   });
 
-  function choisir(quoi) {
-    if ('categorie' in quoi) {
-      categorie = quoi.categorie;
-      onglet = 'tous';
-      // Le Portier n'est pas une liste : personne n'émettra de total —
-      // la barre de statut dit le nom de la vue, jamais un compte
-      // périmé de la vue précédente. Même règle au Kiosque en cartes,
-      // le temps que sa propre sonde réponde.
+  function choose(what) {
+    if ('category' in what) {
+      category = what.category;
+      tab = 'tous';
+      // The Screener isn't a list: nobody will emit a total — the
+      // status bar says the view's name, never a stale count from the
+      // previous view. Same rule at the Feed in cards, while its own
+      // probe hasn't answered yet.
       if (
-        quoi.categorie === 'screener'
-        || quoi.categorie === 'feed'
-        || quoi.categorie === 'cleanup'
-        // RETOURS-14 R6 : le Registre groupé émet son propre total.
-        || quoi.categorie === 'paper_trail'
-      ) totalListe = null;
+        what.category === 'screener'
+        || what.category === 'feed'
+        || what.category === 'cleanup'
+        // RETOURS-14 R6: the grouped Paper trail emits its own total.
+        || what.category === 'paper_trail'
+      ) listTotal = null;
     }
-    if ('account' in quoi) account = quoi.account;
-    recherche = '';
-    selectionnee = null;
-    fermerFil();
+    if ('account' in what) account = what.account;
+    search = '';
+    selectedRow = null;
+    closeThread();
   }
-  // E5 : la bascule de la pile — depuis la barre du fil ou le ⋯
-  // d'une rangée. Mis de côté : le fil quitte sa vue, la pile le
-  // garde ; « Reprendre »/« Terminé » le rend d'où il vient.
+  // E5: the pile toggle — from the thread bar or a row's ⋯. Set
+  // aside: the thread leaves its view, the pile keeps it;
+  // "Resume"/"Done" returns it to where it came from.
   let pile = $state(null);
-  let kiosque = $state(null);
-  // RETOURS-14 R6 : la vue groupée du Registre — même régime de
-  // rechargement que le Kiosque.
-  let registre = $state(null);
-  async function basculerCote(ligne, depuisFil = false) {
-    if (gesteSurEcho(ligne)) return;
+  let feed = $state(null);
+  // RETOURS-14 R6: the Paper trail's grouped view — same reload
+  // regime as the Feed.
+  let paperTrail = $state(null);
+  async function toggleAside(line, fromThread = false) {
+    if (gestureOnEcho(line)) return;
     try {
-      const aside = await appel('toggle_set_aside', {
-        accountId: ligne.account_id,
-        mailbox: ligne.mailbox,
-        uid: ligne.uid,
+      const aside = await call('toggle_set_aside', {
+        accountId: line.account_id,
+        mailbox: line.mailbox,
+        uid: line.uid,
       });
-      flash(t(aside ? 'toast.misDeCote' : 'toast.reprisPile'));
-      // La discipline de jeton du store (patron d'epinglerFil) : le
-      // bouton de la barre suit le geste — un « Reprendre » qui ne
-      // changerait pas d'étiquette re-mettrait de côté au clic suivant
-      // (revue E5).
-      if (fil.ligne && cleMsg(fil.ligne) === cleMsg(ligne)) fil.aside = aside;
-      rechargerVues();
-      pile?.recharger();
-      chargerNav();
-      // Depuis la surface de lecture : un fil mis de côté vient de
-      // quitter sa vue — l'écran 03 retourne à la boîte, le volet
-      // (Kiosque/Registre) se ferme (revue E5 : il montrait un fil
-      // parti, bouton menteur compris).
-      if (depuisFil && aside) {
-        if (fil.cadre === 'plein') retourBoite();
-        else fermerFil();
+      flash(t(aside ? 'toast.setAside' : 'toast.resumedPile'));
+      // The store's token discipline (pattern of epinglerFil): the
+      // bar's button follows the gesture — a "Resume" that didn't
+      // change its label would set aside again on the next click (E5
+      // review).
+      if (thread.line && msgKey(thread.line) === msgKey(line)) thread.aside = aside;
+      reloadViews();
+      pile?.reload();
+      loadNav();
+      // From the reading surface: a thread just set aside has just
+      // left its view — screen 03 returns to the mailbox, the pane
+      // (Feed/Paper trail) closes (E5 review: it was showing a thread
+      // that was gone, lying button included).
+      if (fromThread && aside) {
+        if (thread.frame === 'full') backToMailbox();
+        else closeThread();
       }
     } catch (err) {
-      flash(t('erreur.preference', { err }));
+      flash(t('error.preference', { err }));
     }
   }
-  // « Déplacer vers… » (E1) : l'expéditeur ENTIER change de
-  // destination — l'adresse est résolue de l'enveloppe côté cœur,
-  // le toast dit le geste, la liste se ressert (une vue Kiosque ou
-  // Registre change sous le geste).
-  // RETOURS-14 R6 (revue) : router par ADRESSE — le ⋯ d'un groupe du
-  // Registre n'a pas de ligne sous la main, il a l'expéditeur. Même
-  // porte (route_sender), mêmes toasts, même resservie.
-  async function routerAdresse(address, qui, destination) {
+  // "Move to…" (E1): the ENTIRE sender changes destination — the
+  // address is resolved from the envelope on the core side, the
+  // toast states the gesture, the list re-serves (a Feed or Paper
+  // trail view changes under the gesture).
+  // RETOURS-14 R6 (review): route by ADDRESS — a Paper trail group's
+  // ⋯ doesn't have a row at hand, it has the sender. Same door
+  // (route_sender), same toasts, same re-serve.
+  async function routeAddress(address, who, destination) {
     try {
-      await appel('route_sender', { address, destination, rule: null });
+      await call('route_sender', { address, destination, rule: null });
       if (destination === 'screened_out') {
-        flash(t('toast.portierNonNu', { qui }));
+        flash(t('toast.screenerNoBare', { who }));
       } else {
-        flash(t('toast.expediteurDeplace', { mailbox: t(cleLibelleBoite(destination)) }));
+        flash(t('toast.senderMoved', { mailbox: t(mailboxLabelKey(destination)) }));
       }
-      rechargerVues();
-      chargerNav();
+      reloadViews();
+      loadNav();
     } catch (err) {
-      flash(t('erreur.preference', { err }));
+      flash(t('error.preference', { err }));
     }
   }
-  async function deplacerExpediteur(ligne, destination) {
-    if (gesteSurEcho(ligne)) return;
+  async function moveSender(line, destination) {
+    if (gestureOnEcho(line)) return;
     try {
-      const adresse = await appel('route_sender_from', {
-        accountId: ligne.account_id,
-        mailbox: ligne.mailbox,
-        uid: ligne.uid,
+      const address = await call('route_sender_from', {
+        accountId: line.account_id,
+        mailbox: line.mailbox,
+        uid: line.uid,
         destination,
       });
-      if (adresse === null) {
-        flash(t('erreur.sansAdresse'));
+      if (address === null) {
+        flash(t('error.noAddress'));
         return;
       }
-      // E4 : « Écarter cet expéditeur » — le Non nu, depuis le ⋯
-      // d'une rangée ; le choix se rejoue à l'historique du Portier.
+      // E4: "Screen out this sender" — the bare No, from a row's ⋯;
+      // the choice replays into the Screener's history.
       if (destination === 'screened_out') {
-        flash(t('toast.portierNonNu', { qui: ligne.sender }));
+        flash(t('toast.screenerNoBare', { who: line.sender }));
       } else {
-        flash(t('toast.expediteurDeplace', { mailbox: t(cleLibelleBoite(destination)) }));
+        flash(t('toast.senderMoved', { mailbox: t(mailboxLabelKey(destination)) }));
       }
-      rechargerVues();
-      chargerNav();
+      reloadViews();
+      loadNav();
     } catch (err) {
-      flash(t('erreur.preference', { err }));
+      flash(t('error.preference', { err }));
     }
   }
-  // Le va-et-vient « Organisé » (PLAN-MODE-ORGANISE E1). Quitter le
-  // mode depuis une vue organisée rend la Réception — jamais une vue
-  // orpheline que la nav classique ne sait plus dire.
-  async function basculerOrganise() {
+  // The "Organized" toggle (PLAN-MODE-ORGANISE E1). Leaving the mode
+  // from an organized view returns to the Inbox — never an orphaned
+  // view that the classic nav no longer knows how to name.
+  async function toggleOrganized() {
     try {
-      const active = await basculerModeOrganise();
+      const active = await toggleOrganizedMode();
       if (
         !active
-        && (categorie === 'feed' || categorie === 'paper_trail'
-          || categorie === 'screener' || categorie === 'cleanup')
+        && (category === 'feed' || category === 'paper_trail'
+          || category === 'screener' || category === 'cleanup')
       ) {
-        choisir({ categorie: 'inbox' });
+        choose({ category: 'inbox' });
       } else {
-        // RETOURS-14 R2 (D3) : la Réception organisée n'a plus
-        // d'onglets — un filtre « Non lus » hérité du classique y
-        // resterait posé sans porte de sortie.
-        if (active) onglet = 'tous';
-        // La Réception affichée change de CONTENU avec le mode (E2 :
-        // rétention et routage) — la liste se ressert, comme après un
-        // « Déplacer vers… » ; sans quoi l'écran garde la page de
-        // l'autre mode jusqu'au prochain aller-retour.
-        liste?.recharger();
+        // RETOURS-14 R2 (D3): the Organized Inbox no longer has tabs
+        // — an "Unread" filter inherited from Classic would stay
+        // stuck there with no way out.
+        if (active) tab = 'tous';
+        // The displayed Inbox changes CONTENT with the mode (E2:
+        // retention and routing) — the list re-serves, as after a
+        // "Move to…"; otherwise the screen keeps the other mode's
+        // page until the next round trip.
+        list?.reload();
       }
-      chargerNav();
+      loadNav();
     } catch (err) {
-      flash(t('erreur.preference', { err }));
+      flash(t('error.preference', { err }));
     }
   }
-  function surOnglet(id) {
+  function onTab(id) {
     if (id === 'drafts') {
-      categorie = 'drafts';
+      category = 'drafts';
       return;
     }
-    if (categorie === 'drafts') categorie = 'inbox';
-    // RETOURS-14 R2 (D3, revue) : la Réception organisée n'a pas
-    // d'onglets — un « Non lus » posé depuis Brouillons (ou pendant
-    // une recherche) y resterait sans porte de sortie.
-    onglet = modeOrganise() && categorie === 'inbox' ? 'tous' : id;
-    selectionnee = null;
-    fermerFil();
+    if (category === 'drafts') category = 'inbox';
+    // RETOURS-14 R2 (D3, review): the Organized Inbox has no tabs —
+    // an "Unread" set from Drafts (or during a search) would stay
+    // there with no way out.
+    tab = organizedMode() && category === 'inbox' ? 'tous' : id;
+    selectedRow = null;
+    closeThread();
   }
 
-  // --- Raccourcis (D3) : c / r / f / e / Suppr / « / » / Échap --------
-  // Dans un champ de saisie, les lettres redeviennent des lettres — seul
-  // Échap garde un sens (sortir du champ, sans jeter le brouillon).
-  // s (étoile) et v (déplacer) suivent D2 : coupés à la bascule.
-  function surTouche(event) {
+  // --- Shortcuts (D3): c / r / f / e / Delete / "/" / Escape --------
+  // In an input field, letters go back to being letters — only Escape
+  // keeps a meaning (leave the field, without discarding the draft).
+  // s (star) and v (move) follow D2: cut at the toggle.
+  function onKey(event) {
     if (event.ctrlKey || event.metaKey || event.altKey) return;
-    // L'éditeur riche du composeur (PLAN-COMPOSITION-HTML) est un
-    // contenteditable : ni input ni textarea, mais une SAISIE — sans
-    // `isContentEditable`, taper « c », « e » ou Suppr dans le corps
-    // déclenchait les raccourcis globaux (Suppr supprimait la
-    // conversation sélectionnée pendant la frappe — vu à l'e2e).
-    const saisie = event.target instanceof HTMLInputElement
+    // The composer's rich editor (PLAN-COMPOSITION-HTML) is a
+    // contenteditable: neither an input nor a textarea, but an INPUT
+    // FIELD all the same — without `isContentEditable`, typing "c",
+    // "e" or Delete in the body triggered the global shortcuts
+    // (Delete used to delete the selected conversation while typing —
+    // seen at e2e).
+    const typing = event.target instanceof HTMLInputElement
       || event.target instanceof HTMLTextAreaElement
       || event.target.isContentEditable;
-    if (saisie) {
+    if (typing) {
       if (event.key === 'Escape') {
-        if (event.target === champRecherche) recherche = '';
+        if (event.target === searchField) search = '';
         event.target.blur();
       }
       return;
     }
     switch (event.key) {
       case 'c':
-        ecrire();
+        write();
         break;
       case 'r':
-        if (selectionnee) repondre(selectionnee);
+        if (selectedRow) reply(selectedRow);
         break;
       case 'f':
-        if (selectionnee) transferer(selectionnee);
+        if (selectedRow) forward(selectedRow);
         break;
-      // Terrain 2026-08-27 (R1-8) : quand un lot est coché, e/Suppr
-      // agissent sur LE LOT (le même chemin que la barre — agir gèle la
-      // barre et vide la sélection) ; sans lot, le triage unitaire A38.
+      // Field 2026-08-27 (R1-8): when a batch is checked, e/Delete
+      // act on THE BATCH (the same path as the bar — acting freezes
+      // the bar and clears the selection); with no batch, single-item
+      // triage A38.
       case 'e':
-        if (liste?.enSelection()) liste.agir('archive');
-        else if (selectionnee) avancerApres(selectionnee, archiver);
+        if (list?.selecting()) list.act('archive');
+        else if (selectedRow) advanceAfter(selectedRow, archive);
         break;
       case 'Delete':
-        if (liste?.enSelection()) liste.agir('delete');
-        else if (selectionnee) avancerApres(selectionnee, supprimer);
+        if (list?.selecting()) list.act('delete');
+        else if (selectedRow) advanceAfter(selectedRow, deleteConversation);
         break;
       case '/':
-        champRecherche?.focus();
+        searchField?.focus();
         break;
       case 'Escape':
-        if (composition?.estOuverte()) composition.fermer();
-        else if (reglages?.estOuverte()) reglages.fermer();
-        else if (conversation?.estOuverte()) retourBoite();
-        else if (tiroirOuvert) tiroirOuvert = false;
-        else if (recherche) recherche = '';
+        if (compose?.isOpen()) compose.close();
+        else if (settings?.isOpen()) settings.close();
+        else if (conversation?.isOpen()) backToMailbox();
+        else if (drawerOpen) drawerOpen = false;
+        else if (search) search = '';
         else return;
         break;
       default:
@@ -1285,305 +1299,312 @@
     event.preventDefault();
   }
 
-  // E3 (PLAN-REACTIVITE) : un écho local est une copie en cours de
-  // synchronisation — le geste dessus attend la réconciliation (une
-  // fenêtre de quelques secondes), et le toast le dit au lieu d'un
-  // échec silencieux. La ligne se reconnaît à sa boîte synthétique.
-  function gesteSurEcho(ligne) {
-    if (!estEcho(ligne)) return false;
-    flash(t('toast.echoAttente'));
+  // E3 (PLAN-REACTIVITE): a local echo is a copy mid-sync — a gesture
+  // on it waits for reconciliation (a window of a few seconds), and
+  // the toast says so instead of a silent failure. The row is
+  // recognized by its synthetic mailbox.
+  function gestureOnEcho(line) {
+    if (!isEcho(line)) return false;
+    flash(t('toast.echoPending'));
     return true;
   }
-  // E3 : la réconciliation court derrière le geste — le serveur suit,
-  // l'écho s'efface sous sa vraie ligne (invisible à l'œil, E1). Le
-  // bilan dit tout : incidents en console, courrier/balayage → liste
-  // resservie. `accountId: null` = tous les comptes qui ont du travail
-  // (le déclencheur du retour en ligne, R-D3).
-  function passeApresGeste(accountId) {
-    appel('sync_after_gesture', { accountId })
-      .then((bilan) => {
-        for (const incident of bilan.errors) console.error('sync_after_gesture :', incident);
-        if (bilan.fetched > 0 || bilan.deleted > 0 || bilan.reconciled > 0 || bilan.swept > 0) {
-          chargerNav();
-          liste?.recharger();
+  // E3: reconciliation runs behind the gesture — the server follows,
+  // the echo fades under its real row (invisible to the eye, E1). The
+  // report says it all: incidents in the console, mail/sweep → list
+  // re-served. `accountId: null` = all the accounts that have work
+  // (the trigger for the return online, R-D3).
+  function passAfterGesture(accountId) {
+    call('sync_after_gesture', { accountId })
+      .then((report) => {
+        for (const incident of report.errors) console.error('sync_after_gesture :', incident);
+        if (report.fetched > 0 || report.deleted > 0 || report.reconciled > 0 || report.swept > 0) {
+          loadNav();
+          list?.reload();
         }
       })
       .catch((err) => console.error('sync_after_gesture :', err));
   }
 
-  function ouvrirConversation(ligne) {
-    // D4 (UI v3) : l'exclusivité des cadres vit au store (fil.cadre) —
-    // agrandir est un changement de taille, jamais un rechargement.
-    conversation.ouvrir(ligne);
+  function openConversation(line) {
+    // D4 (UI v3): frame exclusivity lives in the store (fil.cadre) —
+    // expanding is a size change, never a reload.
+    conversation.open(line);
   }
-  // R4 (PLAN-RETOURS-7) : épingler/désépingler LA conversation ouverte.
-  // Le cœur rend le nouvel état (le fil suit, même si la tête a bougé),
-  // la liste se ressert — la section épinglée et le flot bougent
-  // ensemble (D5 : jamais deux fois la même ligne). Le geste n'est
-  // offert qu'en Réception (D4) et JAMAIS sur une recherche : un
-  // résultat peut vivre hors Réception — l'épingle serait invisible.
-  const epinglable = $derived(categorie === 'inbox' && nResultats === null);
-  // A80/D7, verdict terrain du 2026-08-25 (point 12) : le volet de
-  // lecture ne dit la boîte que là où la LISTE la dit — même règle,
-  // une seule expression (lib/boite.js). L'App est la seule à tenir les
-  // deux moitiés : le compte choisi et l'état de la recherche.
-  const melangeComptes = $derived(vueMelange(account, nResultats !== null));
-  async function epinglerFil(ligne) {
-    if (gesteSurEcho(ligne)) return;
+  // R4 (PLAN-RETOURS-7): pin/unpin THE open conversation. The core
+  // returns the new state (the thread follows, even if the head has
+  // moved), the list re-serves — the pinned section and the flow move
+  // together (D5: never the same row twice). The gesture is only
+  // offered in the Inbox (D4) and NEVER on a search: a result can
+  // live outside the Inbox — the pin would be invisible.
+  const pinnable = $derived(category === 'inbox' && resultCount === null);
+  // A80/D7, field verdict of 2026-08-25 (point 12): the reading pane
+  // only states the mailbox where the LIST states it — same rule, a
+  // single expression (lib/mailbox.js). The App is the only one holding
+  // both halves: the chosen account and the search state.
+  const mixedAccounts = $derived(mixedView(account, resultCount !== null));
+  async function pinThread(line) {
+    if (gestureOnEcho(line)) return;
     try {
-      const etat = await appel('toggle_pin', {
-        accountId: ligne.account_id,
-        mailbox: ligne.mailbox,
-        uid: ligne.uid,
+      const state = await call('toggle_pin', {
+        accountId: line.account_id,
+        mailbox: line.mailbox,
+        uid: line.uid,
       });
-      // La discipline de jeton du store (revue 2026-08-21) : la réponse
-      // n'habille le bouton que si le fil montre TOUJOURS cette
-      // conversation — sinon l'état d'une autre ligne atterrirait ici.
-      if (fil.ligne && cleMsg(fil.ligne) === cleMsg(ligne)) fil.epingle = etat;
-      liste?.recharger();
+      // The store's token discipline (review 2026-08-21): the
+      // response only dresses the button if the thread STILL shows
+      // this conversation — otherwise another row's state would land
+      // here.
+      if (thread.line && msgKey(thread.line) === msgKey(line)) thread.pin = state;
+      list?.reload();
     } catch (err) {
       console.error('toggle_pin :', err);
     }
   }
-  function retourBoite() {
-    reduireFil(volets === 3 && !receptionOrganisee);
-    // E4 : au retour d'écran 03, un fil LU quitte « Nouveau pour
-    // vous » — la liste et la couture se resservent, la nav suit.
-    if (receptionOrganisee) {
-      liste?.recharger();
-      pile?.recharger();
-      chargerNav();
+  function backToMailbox() {
+    shrinkThread(panes === 3 && !organizedInbox);
+    // E4: on return from screen 03, a READ thread leaves "New for
+    // you" — the list and the seam re-serve, the nav follows.
+    if (organizedInbox) {
+      list?.reload();
+      pile?.reload();
+      loadNav();
     }
   }
 
-  function ecrire() {
-    composition.ouvrir('new');
+  function write() {
+    compose.open('new');
   }
-  function repondre(ligne) {
-    if (gesteSurEcho(ligne)) return;
-    composition.ouvrir('reply', ligne);
+  function reply(line) {
+    if (gestureOnEcho(line)) return;
+    compose.open('reply', line);
   }
-  function repondreTous(ligne) {
-    if (gesteSurEcho(ligne)) return;
-    composition.ouvrir('reply_all', ligne);
+  function replyAll(line) {
+    if (gestureOnEcho(line)) return;
+    compose.open('reply_all', line);
   }
-  function transferer(ligne) {
-    if (gesteSurEcho(ligne)) return;
-    composition.ouvrir('forward', ligne);
+  function forward(line) {
+    if (gestureOnEcho(line)) return;
+    compose.open('forward', line);
   }
-  // Après une vidange : les compteurs (Envoyés) ont pu bouger.
-  function apresEnvoi() {
-    chargerNav();
+  // After a flush: the counters (Sent) may have moved.
+  function afterSend() {
+    loadNav();
   }
-  // E2 (PLAN-REACTIVITE) : la relève ciblée d'Envoyés rapporte du
-  // courrier — la copie est EN BASE, la liste se resert tout de suite
-  // (le cas exact du constat 0.1.5 : on envoie, on regarde Envoyés).
-  // E1 rend la resservie invisible ; la sonde de génération, bumpée par
-  // la même relève, repassera derrière sans coût.
-  function apresCourrierEnvoye() {
-    chargerNav();
-    liste?.recharger();
+  // E2 (PLAN-REACTIVITE): the targeted Sent poll reports mail — the
+  // copy is IN the database, the list re-serves right away (the exact
+  // case from finding 0.1.5: you send, you look at Sent). E1 makes
+  // the re-serve invisible; the generation probe, bumped by the same
+  // poll, will pass back over it for free.
+  function afterMailSent() {
+    loadNav();
+    list?.reload();
   }
-  // Porte simple (D4) : le compte est ajouté, la nav se recharge
-  // AUSSITÔT (lecture locale — jamais derrière le réseau, revue), et la
-  // première synchro part dès que la reconnexion a rendu son bilan.
-  // `connectes` ne se remplit qu'au retour de connect_accounts : sans le
-  // rappel, Réglages disait « Déconnecté » d'un compte qu'on venait de
-  // connecter, jusqu'au redémarrage (PLAN-RETOURS-12 R1 — le motif du
-  // geste « Reconnecter »).
-  async function compteAjoute() {
-    flash(t('toast.compteAjoute'));
-    chargerNav();
-    await connecter();
-    synchroniser();
+  // Simple door (D4): the account is added, the nav reloads RIGHT
+  // AWAY (local read — never behind the network, review), and the
+  // first sync leaves as soon as the reconnection has returned its
+  // report. `connected` only fills in on the return of
+  // connect_accounts: without the callback, Settings said
+  // "Disconnected" for an account that had just been connected, until
+  // restart (PLAN-RETOURS-12 R1 — the reason for the "Reconnect"
+  // gesture).
+  async function accountAdded() {
+    flash(t('toast.accountAdded'));
+    loadNav();
+    await connect();
+    runSyncCycle();
   }
-  // Le pendant du retrait : le courrier du compte a quitté la base, donc
-  // tout ce qui pouvait le montrer se replie — filtre de nav, sélection,
-  // volet de lecture — avant de recharger nav et liste. À zéro compte,
-  // l'écran 01 revient de lui-même (navPrete && comptes.length === 0).
-  function compteRetire(id) {
-    flash(t('toast.compteRetire'));
-    // Le repère du compte meurt avec lui (le shell purge ses prefs) —
-    // la table locale suit, sinon un id SQLite réutilisé hériterait de
-    // la pastille (revue 2026-08-22).
-    patcherRepere(id, null);
-    patcherNom(id, null);
+  // The counterpart of removal: the account's mail has left the
+  // database, so everything that could show it collapses — nav
+  // filter, selection, reading pane — before reloading nav and list.
+  // At zero accounts, screen 01 comes back on its own
+  // (navPrete && comptes.length === 0).
+  function accountRemoved(id) {
+    flash(t('toast.accountRemoved'));
+    // The account's marker dies with it (the shell purges its prefs)
+    // — the local table follows suit, otherwise a reused SQLite id
+    // would inherit the badge (review 2026-08-22).
+    patchMarker(id, null);
+    patchName(id, null);
     if (account === id) account = null;
-    selectionnee = null;
-    fermerFil();
-    chargerNav();
-    liste?.recharger();
+    selectedRow = null;
+    closeThread();
+    loadNav();
+    list?.reload();
   }
 
-  // RETOURS-14 (revue) : UNE resservie des vues — la liste ET les
-  // scènes du mode organisé. Les gestes ne visent plus `liste` nue :
-  // le Registre groupé ouvre ses fils dans le volet, la liste peut
-  // être DÉMONTÉE au moment du geste (TypeError avalé par le catch —
-  // nav et passe d'après-geste sautaient avec).
-  // PLAN-AUDIT-V2 E10 : un geste faisait trois resservies en rafale
-  // (geste, relecture, passe d'après-geste) — coalescées à 50 ms.
-  // Front MONTANT : la première demande part tout de suite (l'ordre
-  // d'avant, que le triage clavier A38 suppose), les suivantes dans les
-  // 50 ms sont absorbées — un front descendant a fait flaker « archiver
-  // au raccourci depuis l'écran 03 » (revue E10).
-  let resservieRecente = false;
-  function rechargerVues() {
-    if (resservieRecente) return;
-    resservieRecente = true;
+  // RETOURS-14 (review): ONE re-serve of the views — the list AND
+  // the organized-mode scenes. Gestures no longer target the bare
+  // `list`: the grouped Paper trail opens its threads in the pane,
+  // the list can be UNMOUNTED at the moment of the gesture (TypeError
+  // swallowed by the catch — nav and the after-gesture pass used to
+  // skip along with it).
+  // PLAN-AUDIT-V2 E10: a gesture made three re-serves in a burst
+  // (gesture, reread, after-gesture pass) — coalesced at 50 ms.
+  // RISING edge: the first request leaves right away (the old order,
+  // which the keyboard triage A38 assumes), the following ones
+  // within 50 ms are absorbed — a falling edge made "archive by
+  // shortcut from screen 03" flaky (E10 review).
+  let reloadRecent = false;
+  function reloadViews() {
+    if (reloadRecent) return;
+    reloadRecent = true;
     setTimeout(() => {
-      resservieRecente = false;
+      reloadRecent = false;
     }, 50);
-    liste?.recharger();
-    kiosque?.recharger();
-    registre?.recharger();
+    list?.reload();
+    feed?.reload();
+    paperTrail?.reload();
   }
 
-  async function sonderEtat() {
+  async function probeState() {
     try {
-      const etat = await appel('ui_state');
-      chargerNav(etat.nav);
-      sonderSynchro(etat.sync);
-      sonderEnvois(etat.outbox);
-    } catch { /* hors ligne ou coeur occupé : la prochaine sonde suffira */ }
+      const state = await call('ui_state');
+      loadNav(state.nav);
+      probeSync(state.sync);
+      probeSends(state.outbox);
+    } catch { /* offline or core busy: the next probe will do */ }
   }
 
-  function marquerVue(ligne) {
-    if (!(ligne.thread_unseen > 0)) return;
-    appel('mark_seen', {
-      accountId: ligne.account_id,
-      mailbox: ligne.mailbox,
-      uid: ligne.uid,
+  function markSeen(line) {
+    if (!(line.thread_unseen > 0)) return;
+    call('mark_seen', {
+      accountId: line.account_id,
+      mailbox: line.mailbox,
+      uid: line.uid,
       seen: true,
     })
       .then(() => {
-        liste?.marquerLue(ligne);
-        chargerNav();
+        list?.markRead(line);
+        loadNav();
       })
       .catch((err) => console.error('mark_seen :', err));
   }
-  // E4 : la Réception ORGANISÉE n'a pas de volet de lecture — un clic
-  // ouvre l'écran 03 (la surimpression existante), quel que soit le
-  // réglage de volets.
-  const receptionOrganisee = $derived(modeOrganise() && categorie === 'inbox');
-  // E5bis : le Kiosque en CARTES — une scène de lecture, pas une
-  // liste ; comme le Portier et la Réception organisée, pas de volet.
-  const kiosqueCartes = $derived(modeOrganise() && categorie === 'feed');
-  // RETOURS-14 R6 (D7) : le Registre groupé par expéditeur — la vue
-  // organisée seule ; le volet de lecture RESTE le lecteur.
-  const registreGroupe = $derived(modeOrganise() && categorie === 'paper_trail');
-  // LES scènes sans volet de lecture — UN prédicat (revue 2026-08-30 :
-  // l'énumération vivait copiée aux deux gardes Lecture/poignée ; la
-  // prochaine section pleine scène s'ajoute ICI, pas dans N sites).
-  const sceneSansLecture = $derived(
-    categorie === 'screener' || categorie === 'cleanup' || receptionOrganisee || kiosqueCartes,
+  // E4: the ORGANIZED Inbox has no reading pane — a click opens
+  // screen 03 (the existing overlay), regardless of the panes setting.
+  const organizedInbox = $derived(organizedMode() && category === 'inbox');
+  // E5bis: the Feed in CARDS — a reading scene, not a list; like the
+  // Screener and the Organized Inbox, no pane.
+  const feedCards = $derived(organizedMode() && category === 'feed');
+  // RETOURS-14 R6 (D7): the Paper trail grouped by sender — the
+  // organized view only; the reading pane REMAINS the reader.
+  const paperTrailGroup = $derived(organizedMode() && category === 'paper_trail');
+  // THE scenes with no reading pane — ONE predicate (review
+  // 2026-08-30: the enumeration used to live duplicated across the
+  // Reading/handle guards; the next full-scene section is added
+  // HERE, not in N places).
+  const sceneWithoutReading = $derived(
+    category === 'screener' || category === 'cleanup' || organizedInbox || feedCards,
   );
-  function surSelection(ligne) {
-    selectionnee = ligne;
-    // V-D2 : en deux volets, l'ouverture EST l'écran 03 — qui sait
-    // servir un message sans fil (écho compris). Le marquage lu ne
-    // bouge pas : seule la surface de destination change.
-    if (volets === 3 && !receptionOrganisee) lecture.ouvrir(ligne);
-    else conversation.ouvrir(ligne);
-    marquerVue(ligne);
+  function onSelection(line) {
+    selectedRow = line;
+    // V-D2: in two panes, opening IS screen 03 — which knows how to
+    // serve a message with no thread (echo included). Read-marking
+    // doesn't change: only the destination surface changes.
+    if (panes === 3 && !organizedInbox) reading.open(line);
+    else conversation.open(line);
+    markSeen(line);
   }
 
-  // archiver/supprimer disent leur succès : le triage clavier n'avance
-  // que sur un geste ABOUTI — jamais sur un écho différé ni un échec.
-  async function archiver(ligne) {
-    if (gesteSurEcho(ligne)) return false;
+  // archive/delete state their success: keyboard triage only advances
+  // on a COMPLETED gesture — never on a deferred echo nor a failure.
+  async function archive(line) {
+    if (gestureOnEcho(line)) return false;
     try {
-      await appel('archive_message', {
-        accountId: ligne.account_id,
-        mailbox: ligne.mailbox,
-        uid: ligne.uid,
+      await call('archive_message', {
+        accountId: line.account_id,
+        mailbox: line.mailbox,
+        uid: line.uid,
       });
-      flash(t('toast.archivee'));
-      // R1 (RETOURS-10) : la rangée partie quitte aussi la sélection
-      // multiple — la barre ne compte jamais une rangée qui n'est plus.
-      liste?.decocher(ligne);
-      fermerFil();
-      // L'écho de destination est DÉJÀ en base (même transaction que le
-      // geste, E3) : la resservie le montre en Archives < 1 s — le
-      // serveur suit par la passe, en silence.
-      rechargerVues();
-      chargerNav();
-      passeApresGeste(ligne.account_id);
+      flash(t('toast.archived'));
+      // R1 (RETOURS-10): the row that's gone also leaves the
+      // multi-select — the bar never counts a row that no longer
+      // exists.
+      list?.uncheck(line);
+      closeThread();
+      // The destination echo is ALREADY in the database (same
+      // transaction as the gesture, E3): the re-serve shows it in
+      // Archive in < 1 s — the server follows through the pass,
+      // silently.
+      reloadViews();
+      loadNav();
+      passAfterGesture(line.account_id);
       return true;
     } catch (err) {
       console.error('archive_message :', err);
       return false;
     }
   }
-  // Terrain R8' (2026-08-23) : « Supprimer » vit PAR message — la
-  // cible est un message du fil (ou la ligne d'un fil d'un seul). Le
-  // fil ouvert reste en place s'il lui reste des messages ; rend VRAI
-  // quand le fil s'est fermé (l'écran 03 retourne alors à la boîte).
-  async function supprimer(cible) {
-    if (gesteSurEcho(cible)) return false;
+  // Field R8' (2026-08-23): "Delete" lives PER message — the target
+  // is a thread message (or the row of a single-message thread). The
+  // open thread stays in place if it still has messages left;
+  // returns TRUE when the thread has closed (screen 03 then returns
+  // to the mailbox).
+  async function deleteConversation(target) {
+    if (gestureOnEcho(target)) return false;
     try {
-      await appel('delete_message', {
-        accountId: cible.account_id,
-        mailbox: cible.mailbox,
-        uid: cible.uid,
+      await call('delete_message', {
+        accountId: target.account_id,
+        mailbox: target.mailbox,
+        uid: target.uid,
       });
-      const restants = retirerMessage(cible);
-      const ferme = restants <= 0;
-      liste?.decocher(cible);
-      if (ferme) fermerFil();
-      flash(t(ferme ? 'toast.supprimee' : 'toast.messageSupprime'));
-      // Même mécanique qu'archiver : l'écho est en base, la Corbeille
-      // le montre tout de suite, la passe réconcilie derrière.
-      rechargerVues();
-      chargerNav();
-      passeApresGeste(cible.account_id);
-      // VRAI = geste abouti (le contrat d'avancerApres) — l'écran 03
-      // regarde fil.ligne pour savoir si le fil s'est fermé.
+      const remainingOnes = removeMessage(target);
+      const closed = remainingOnes <= 0;
+      list?.uncheck(target);
+      if (closed) closeThread();
+      flash(t(closed ? 'toast.deleted' : 'toast.messageDeleted'));
+      // Same mechanics as archive: the echo is in the database, the
+      // Trash shows it right away, the pass reconciles behind it.
+      reloadViews();
+      loadNav();
+      passAfterGesture(target.account_id);
+      // TRUE = completed gesture (the avancerApres contract) — screen
+      // 03 looks at fil.ligne to know whether the thread has closed.
       return true;
     } catch (err) {
       console.error('delete_message :', err);
       return false;
     }
   }
-  // R2 (PLAN-RETOURS-3) : signaler indésirable / le contraire. Même
-  // mécanique optimiste qu'archiver/supprimer — disparition locale,
-  // action MoveTo journalisée, le serveur suit. Le fil se ferme, la
-  // liste et la nav se rafraîchissent, la passe réconcilie derrière.
-  async function signalerSpam(ligne) {
-    if (gesteSurEcho(ligne)) return false;
+  // R2 (PLAN-RETOURS-3): report junk / the opposite. Same optimistic
+  // mechanics as archive/delete — local disappearance, logged MoveTo
+  // action, the server follows. The thread closes, the list and the
+  // nav refresh, the pass reconciles behind it.
+  async function reportSpam(line) {
+    if (gestureOnEcho(line)) return false;
     try {
-      await appel('report_spam', {
-        accountId: ligne.account_id,
-        mailbox: ligne.mailbox,
-        uid: ligne.uid,
+      await call('report_spam', {
+        accountId: line.account_id,
+        mailbox: line.mailbox,
+        uid: line.uid,
       });
-      flash(t('toast.spamSignale'));
-      liste?.decocher(ligne);
-      fermerFil();
-      rechargerVues();
-      chargerNav();
-      passeApresGeste(ligne.account_id);
+      flash(t('toast.spamReported'));
+      list?.uncheck(line);
+      closeThread();
+      reloadViews();
+      loadNav();
+      passAfterGesture(line.account_id);
       return true;
     } catch (err) {
-      // Le seul échec attendu : le compte n'a pas de dossier indésirable.
+      // The only expected failure: the account has no junk folder.
       console.error('report_spam :', err);
-      flash(t('erreur.spamImpossible'));
+      flash(t('error.spamFailed'));
       return false;
     }
   }
-  async function marquerLegitime(ligne) {
-    if (gesteSurEcho(ligne)) return false;
+  async function markLegitimate(line) {
+    if (gestureOnEcho(line)) return false;
     try {
-      await appel('mark_not_spam', {
-        accountId: ligne.account_id,
-        mailbox: ligne.mailbox,
-        uid: ligne.uid,
+      await call('mark_not_spam', {
+        accountId: line.account_id,
+        mailbox: line.mailbox,
+        uid: line.uid,
       });
-      flash(t('toast.pasSpam'));
-      liste?.decocher(ligne);
-      fermerFil();
-      rechargerVues();
-      chargerNav();
-      passeApresGeste(ligne.account_id);
+      flash(t('toast.notSpam'));
+      list?.uncheck(line);
+      closeThread();
+      reloadViews();
+      loadNav();
+      passAfterGesture(line.account_id);
       return true;
     } catch (err) {
       console.error('mark_not_spam :', err);
@@ -1591,373 +1612,378 @@
     }
   }
 
-  // PLAN-RETOURS-10 R1 : les gestes de MASSE de la barre de sélection.
-  // PLAN-AUDIT-V2 E6 : UN appel au cœur (`act_on_group`), UNE
-  // transaction, tout ou rien (D6) — avant, les commandes unitaires
-  // rejouaient en séquence (250 + 50 IPC pour 50 conversations, la
-  // barre gelée). Puis UN toast, UNE resservie, UNE passe par compte.
-  // Le fil ENTIER d'une rangée part (D6 de RETOURS-10) : le cœur le
-  // développe lui-même, `thread_messages` n'est plus demandé.
-  const GESTES_GROUPE = {
-    archive: { toast: 'toast.groupeArchivees', ferme: true },
-    delete: { toast: 'toast.groupeSupprimees', ferme: true },
-    spam: { toast: 'toast.groupeSpam', ferme: true },
-    not_spam: { toast: 'toast.groupePasSpam', ferme: true },
-    read: { toast: 'toast.groupeLues' },
-    unread: { toast: 'toast.groupeNonLues' },
+  // PLAN-RETOURS-10 R1: the BULK gestures of the selection bar.
+  // PLAN-AUDIT-V2 E6: ONE call to the core (`act_on_group`), ONE
+  // transaction, all or nothing (D6) — before, the unit commands used
+  // to replay in sequence (250 + 50 IPC for 50 conversations, the bar
+  // frozen). Then ONE toast, ONE re-serve, ONE pass per account.
+  // The ENTIRE thread of a row goes (D6 from RETOURS-10): the core
+  // expands it itself, `thread_messages` is no longer requested.
+  const GROUP_GESTURES = {
+    archive: { toast: 'toast.groupArchived', closed: true },
+    delete: { toast: 'toast.groupDeleted', closed: true },
+    spam: { toast: 'toast.groupSpam', closed: true },
+    not_spam: { toast: 'toast.groupNotSpam', closed: true },
+    read: { toast: 'toast.groupRead' },
+    unread: { toast: 'toast.groupUnread' },
   };
-  // La cible d'une commande par message — le cinquième site qui épelait
-  // ce triple à la main (revue).
-  const cibleDe = (l) => ({ accountId: l.account_id, mailbox: l.mailbox, uid: l.uid });
-  async function groupe(action, lignes) {
-    const geste = GESTES_GROUPE[action];
-    if (!geste) {
-      console.error(`groupe : action inconnue « ${action} »`);
+  // The target of a per-message command — the fifth site that used
+  // to spell out this triple by hand (review).
+  const targetFrom = (l) => ({ accountId: l.account_id, mailbox: l.mailbox, uid: l.uid });
+  async function group(action, lines) {
+    const gesture = GROUP_GESTURES[action];
+    if (!gesture) {
+      console.error(`group: unknown action “${action}”`);
       return;
     }
-    // Les échos s'écartent par le prédicat PUR (estEcho — gesteSurEcho
-    // flasherait un toast PAR écho, aussitôt écrasés) et restent au
-    // DÉNOMINATEUR : un lot amputé se dit, jamais un succès de façade.
-    const targets = lignes.filter((l) => !estEcho(l));
-    const total = lignes.length;
+    // The echoes are set aside by the PURE predicate (estEcho —
+    // gesteSurEcho would flash a toast PER echo, instantly
+    // overwritten) and stay in the DENOMINATOR: an amputated batch is
+    // stated, never a facade success.
+    const targets = lines.filter((l) => !isEcho(l));
+    const total = lines.length;
     if (targets.length === 0) {
-      if (total > 0) flash(t('toast.echoAttente'));
+      if (total > 0) flash(t('toast.echoPending'));
       return;
     }
     let done = 0;
-    let reussies = [];
-    let spamRefuse = false;
+    let succeeded = [];
+    let spamRefused = false;
     try {
-      const bilan = await appel('act_on_group', {
-        targets: targets.map((l) => ({ ...cibleDe(l), threadId: l.thread_id ?? null })),
+      const report = await call('act_on_group', {
+        targets: targets.map((l) => ({ ...targetFrom(l), threadId: l.thread_id ?? null })),
         action,
       });
-      done = bilan.done;
-      reussies = targets;
+      done = report.done;
+      succeeded = targets;
     } catch (err) {
-      // Tout ou rien (D6) : un refus laisse le lot intact — le seul
-      // échec ATTENDU est l'absence de dossier indésirable.
-      if (action === 'spam') spamRefuse = true;
+      // All or nothing (D6): a refusal leaves the batch intact — the
+      // only EXPECTED failure is the absence of a junk folder.
+      if (action === 'spam') spamRefused = true;
       console.error('act_on_group :', err);
     }
     flash(
       done === total
-        ? t(geste.toast, { n: done })
-        : action === 'spam' && done === 0 && spamRefuse
-          ? t('erreur.spamImpossible')
-          : t('erreur.groupePartiel', { done, total }),
+        ? t(gesture.toast, { n: done })
+        : action === 'spam' && done === 0 && spamRefused
+          ? t('error.spamFailed')
+          : t('error.groupPartial', { done, total }),
     );
-    // L'écho local du marquage lu, comme au chemin unitaire (marquerVue) :
-    // la graisse tombe à l'instant, la resservie dit la vérité derrière.
-    if (action === 'read') for (const l of reussies) liste?.marquerLue(l);
-    // Le fil ouvert ne se ferme que si SON geste a RÉUSSI — un échec le
-    // laisse en place, comme au chemin unitaire.
-    if (geste.ferme && selectionnee
-      && reussies.some((l) => cleMsg(l) === cleMsg(selectionnee))) {
-      fermerFil();
+    // The local echo of the read-marking, as on the unit path
+    // (marquerVue): the weight drops instantly, the re-serve tells
+    // the truth behind it.
+    if (action === 'read') for (const l of succeeded) list?.markRead(l);
+    // The open thread only closes if ITS gesture SUCCEEDED — a
+    // failure leaves it in place, as on the unit path.
+    if (gesture.closed && selectedRow
+      && succeeded.some((l) => msgKey(l) === msgKey(selectedRow))) {
+      closeThread();
     }
-    rechargerVues();
-    chargerNav();
-    if (geste.ferme) {
-      for (const id of new Set(reussies.map((l) => l.account_id))) passeApresGeste(id);
+    reloadViews();
+    loadNav();
+    if (gesture.closed) {
+      for (const id of new Set(succeeded.map((l) => l.account_id))) passAfterGesture(id);
     }
   }
 
-  // Le triage clavier s'enchaîne (A38) : après e/Suppr, la ligne du
-  // DESSOUS devient la sélection — capturée AVANT le geste (les lignes
-  // glissent à la resservie) ; dernière ligne : rien n'avance. En trois
-  // volets elle ouvre son volet comme au clic (vue, marquée lue) ; en
-  // 2/1 volets elle s'allume seulement — l'écran 03 ne s'impose jamais
-  // de lui-même. Conversation ouverte : le geste seul, comme avant. Le
-  // geste à la souris (boutons des volets) ne bouge pas la sélection.
-  async function avancerApres(ligne, geste) {
-    // Constat terrain (2026-08-15) : le clic laisse le focus sur une
-    // rangée ; la touche bascule le navigateur en modalité clavier et
-    // l'anneau :focus-visible surgirait sur ce nœud RECYCLÉ (rangées
-    // clées par index — il montre déjà une autre conversation) : des
-    // traits d'accent sans signification. La sélection (liseré) dit la
-    // position — le raccourci retire le focus de la rangée.
+  // Keyboard triage chains (A38): after e/Delete, the row BELOW
+  // becomes the selection — captured BEFORE the gesture (the rows
+  // shift on the re-serve); last row: nothing advances. In three
+  // panes it opens its pane like a click would (viewed, marked read);
+  // in 2/1 panes it only lights up — screen 03 never imposes itself
+  // on its own. Open conversation: the gesture alone, as before. The
+  // mouse gesture (pane buttons) doesn't move the selection.
+  async function advanceAfter(line, gesture) {
+    // Field finding (2026-08-15): the click leaves focus on a row;
+    // the key switches the browser into keyboard mode and the
+    // :focus-visible ring would pop up on this RECYCLED node (rows
+    // keyed by index — it's already showing another conversation):
+    // meaningless accent strokes. The selection (border) states the
+    // position — the shortcut removes focus from the row.
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-    const suivante = conversation?.estOuverte() ? null : (liste?.suivante(ligne) ?? null);
-    if (!(await geste(ligne)) || !suivante) return;
-    liste?.selectionner(suivante);
-    selectionnee = suivante;
-    // Revue E5 : en Réception ORGANISÉE le volet n'existe pas — ouvrir
-    // et marquer lue une conversation jamais montrée mentirait à la
-    // section « Nouveau pour vous » (le disque partait sans lecture).
-    if (volets === 3 && !receptionOrganisee) {
-      lecture?.ouvrir(suivante);
-      marquerVue(suivante);
+    const next = conversation?.isOpen() ? null : (list?.next(line) ?? null);
+    if (!(await gesture(line)) || !next) return;
+    list?.select(next);
+    selectedRow = next;
+    // E5 review: in the ORGANIZED Inbox the pane doesn't exist —
+    // opening and marking as read a conversation never shown would
+    // lie to the "New for you" section (the disc would leave without
+    // a read).
+    if (panes === 3 && !organizedInbox) {
+      reading?.open(next);
+      markSeen(next);
     }
   }
 
   export function api() {
-    return { liste, lecture };
+    return { list, reading };
   }
-  export function marquerDemarrage() {
-    const l = liste.etat();
-    perf = t('statut.perf', { total: l.total, ms: l.premierePageMs.toFixed(1) });
+  export function markStartup() {
+    const l = list.snapshot();
+    perf = t('status.perf', { total: l.total, ms: l.firstPageMs.toFixed(1) });
     startup = String(Math.round(performance.now()));
   }
-  let perf = $state(t('statut.demarrage'));
+  let perf = $state(t('status.startup'));
   let startup = $state('');
 </script>
 
-<!-- Au rétrécissement de la fenêtre, la LISTE cède : des largeurs
-     posées sur un grand écran ne doivent jamais écraser le fil sous sa
-     réserve ni pousser une poignée hors de l'écran (revue 2026-08-16,
-     même racine que le plafond des poignées). -->
-<svelte:window onkeydown={surTouche}
+<!-- When the window shrinks, the LIST yields: widths set on a large
+     screen must never crush the thread under its reserve nor push a
+     handle off screen (review 2026-08-16, same root cause as the
+     handle cap). -->
+<svelte:window onkeydown={onKey}
                onresize={() => {
-                 if (volets === 3) {
-                   reglerLargeur('liste', lListe, plafondPoignee('liste'));
-                   persisterLargeurs();
+                 if (panes === 3) {
+                   setWidth('list', listWidth, handleCap('list'));
+                   persistWidths();
                  }
                }} />
 
 <div class="ecran">
   <header class="entete" data-testid="entete">
-    {#if volets === 1}
-      <!-- Mode un volet (PLAN-VOLETS E2) : la nav vit en tiroir, le
-           bouton l'ouvre — 32 px, la grammaire des boutons d'entête. -->
+    {#if panes === 1}
+      <!-- One-pane mode (PLAN-VOLETS E2): the nav lives in a drawer,
+           the button opens it — 32 px, the header-button grammar. -->
       <button type="button" class="btn-tiroir" data-testid="btn-tiroir"
-              aria-label={t('nav.ouvrirTiroir')} aria-expanded={tiroirOuvert}
-              onclick={() => (tiroirOuvert = true)}>
-        <Icone name="menu" /></button>
+              aria-label={t('nav.openDrawer')} aria-expanded={drawerOpen}
+              onclick={() => (drawerOpen = true)}>
+        <Icon name="menu" /></button>
     {/if}
-    <!-- V1/V11 : la marque EN GLYPHE — l'enveloppe à l'encre courante,
-         rabat --marque, devant le mot « Wind » (18 px). Le trait
-         hitofude est mort (V2) ; la tuile figée reste aux contextes OS,
-         à l'accueil, à la migration et à « À propos ». 28 px depuis
-         PLAN-RETOURS-12 (D2) — 24 px (RETOURS-10) restait discret, 20 px
-         se perdait dans l'entête de 52. -->
-    <span class="marque" class:marque--libre={volets === 1}><Marque taille={28} />Wind</span>
+    <!-- V1/V11: the brand AS A GLYPH — the envelope in the current
+         ink, --marque flap, in front of the word "Wind" (18 px). The
+         hitofude stroke is dead (V2); the frozen tile stays for OS
+         contexts, onboarding, migration and "About". 28 px since
+         PLAN-RETOURS-12 (D2) — 24 px (RETOURS-10) stayed discreet,
+         20 px got lost in the 52 px header. -->
+    <span class="marque" class:marque--libre={panes === 1}><Brand size={28} />Wind</span>
     <span class="recherche" data-testid="recherche">
-      <Icone name="search" />
-      <input type="text" bind:this={champRecherche} bind:value={recherche}
-             data-testid="champ-recherche" aria-label={t('entete.recherche')}
-             placeholder={t('entete.chercher')}>
-      {#if recherche}
-        <!-- Verdict terrain (Annexe A) : vider la recherche en UN clic. -->
+      <Icon name="search" />
+      <input type="text" bind:this={searchField} bind:value={search}
+             data-testid="champ-recherche" aria-label={t('header.search')}
+             placeholder={t('header.searchHint')}>
+      {#if search}
+        <!-- Field verdict (Annex A): clear the search in ONE click. -->
         <button type="button" class="vider" data-testid="vider-recherche"
-                aria-label={t('entete.effacerRecherche')}
-                onclick={() => { recherche = ''; champRecherche?.focus(); }}>
-          <Icone name="close" /></button>
+                aria-label={t('header.clearSearch')}
+                onclick={() => { search = ''; searchField?.focus(); }}>
+          <Icon name="close" /></button>
       {/if}</span>
-    <!-- PLAN-MODE-ORGANISE E1 : le va-et-vient « Organisé », à droite
-         de la recherche (forme arrêtée au prototype) — pilule + disque,
-         les deux seules formes rondes légitimes (V14). -->
+    <!-- PLAN-MODE-ORGANISE E1: the "Organized" toggle, to the right
+         of the search (form settled at the prototype) — pill + disc,
+         the only two legitimate round shapes (V14). -->
     <button type="button" class="organise" data-testid="mode-organise"
-            role="switch" aria-checked={modeOrganise()}
-            onclick={basculerOrganise}>
-      <span class="piste" aria-hidden="true"><span class="disque"></span></span>{t('entete.organise')}</button>
-    <button type="button" class="principal" data-testid="ecrire" onclick={ecrire}>
-      <Icone name="edit_square" />{t('entete.ecrire')}</button>
-    <!-- Le retour bêta (RETOURS-11 R3) : sans compte, pas de bouton —
-         le message part par email depuis le premier account du poste. -->
-    {#if comptes.length > 0}
-      <button type="button" data-testid="feedback" onclick={() => retour.ouvrir()}>
-        <Icone name="feedback" />{t('entete.feedback')}</button>
+            role="switch" aria-checked={organizedMode()}
+            onclick={toggleOrganized}>
+      <span class="piste" aria-hidden="true"><span class="disque"></span></span>{t('header.organized')}</button>
+    <button type="button" class="principal" data-testid="ecrire" onclick={write}>
+      <Icon name="edit_square" />{t('header.compose')}</button>
+    <!-- The beta feedback (RETOURS-11 R3): with no account, no
+         button — the message goes out by email from the workstation's
+         first account. -->
+    {#if accounts.length > 0}
+      <button type="button" data-testid="feedback" onclick={() => back.open()}>
+        <Icon name="feedback" />{t('header.feedback')}</button>
     {/if}
-    <button type="button" data-testid="reglages" onclick={() => reglages.ouvrir()}>
-      <Icone name="settings" />{t('entete.reglages')}</button>
+    <button type="button" data-testid="reglages" onclick={() => settings.open()}>
+      <Icon name="settings" />{t('header.settings')}</button>
   </header>
 
-  <FenteAvis {avis} />
+  <NoticeSlot {notice} />
 
-  {#if prete}
-    <div class="colonnes" class:colonnes--2={volets === 2}
-         class:colonnes--1={volets === 1}
-         class:colonnes--organise={receptionOrganisee}
-         style="--l-nav:{lNav}px; --l-liste:{lListe}px">
-      {#if volets !== 1}
-        <Nav {comptes} {reperes} {noms} {categorie} {account}
-             organise={modeOrganise()} portier={portierTotal}
-             kiosque={kiosqueTotal} registre={registreTotal} onchoisir={choisir} />
+  {#if ready}
+    <div class="colonnes" class:colonnes--2={panes === 2}
+         class:colonnes--1={panes === 1}
+         class:colonnes--organise={organizedInbox}
+         style="--l-nav:{lNav}px; --l-liste:{listWidth}px">
+      {#if panes !== 1}
+        <Nav {accounts} {markers} {names} {category} {account}
+             organized={organizedMode()} screener={screenerTotal}
+             feed={feedTotal} paperTrail={paperTrailTotal} onchoose={choose} />
       {/if}
-      {#if categorie === 'cleanup'}
-        <!-- Volet B : le Nettoyage de printemps — même régime de scène
-             que le Portier (colonne, pas de volet de lecture). -->
+      {#if category === 'cleanup'}
+        <!-- Pane B: the Spring cleaning — same scene regime as the
+             Screener (column, no reading pane). -->
         <div class="cadre-portier">
-          <Nettoyage onflash={flash} onchange={chargerNav} />
+          <Cleanup onflash={flash} onchange={loadNav} />
         </div>
-      {:else if categorie === 'screener'}
-        <!-- E2 : le Portier n'est pas une liste — un rang par
-             EXPÉDITEUR en attente, un yes/no et rien d'autre. Sa
-             scène prend TOUTE la place à droite de la nav (colonne
-             centrée, comme l'écran 03) — le volet de lecture n'a
-             rien à y lire. -->
+      {:else if category === 'screener'}
+        <!-- E2: the Screener isn't a list — one row per waiting
+             SENDER, a yes/no and nothing else. Its scene takes UP ALL
+             the room to the right of the nav (centered column, like
+             screen 03) — the reading pane has nothing to read
+             there. -->
         <div class="cadre-portier">
-          <Portier onflash={flash} onchange={chargerNav} />
+          <Screener onflash={flash} onchange={loadNav} />
         </div>
-      {:else if kiosqueCartes}
-        <!-- E5bis : le Kiosque en cartes — les lettres déjà ouvertes,
-             la scène entière (décision CE du 2026-08-30). -->
+      {:else if feedCards}
+        <!-- E5bis: the Feed in cards — the letters already opened,
+             the whole scene (CE decision of 2026-08-30). -->
         <div class="cadre-portier">
-          <Kiosque bind:this={kiosque} {account}
-                   ondeplacer={deplacerExpediteur} oncote={basculerCote}
-                   ontotal={(t) => (totalListe = t)} />
+          <Feed bind:this={feed} {account}
+                   onmove={moveSender} onsetaside={toggleAside}
+                   ontotal={(t) => (listTotal = t)} />
         </div>
-      {:else if registreGroupe}
-        <!-- R6 : le Registre groupé prend la colonne de la liste — le
-             volet de lecture reste à droite, ouvrir passe par le
-             chemin de la liste (surSelection). -->
-        <Registre bind:this={registre} {account}
-                  onouvrir={surSelection} onrouter={routerAdresse}
-                  ontotal={(t) => (totalListe = t)} />
+      {:else if paperTrailGroup}
+        <!-- R6: the grouped Paper trail takes the list column — the
+             reading pane stays on the right, opening goes through the
+             list's path (surSelection). -->
+        <PaperTrail bind:this={paperTrail} {account}
+                  onopen={onSelection} onroute={routeAddress}
+                  ontotal={(t) => (listTotal = t)} />
       {:else}
-        <Liste bind:this={liste} {categorie} {account} {comptes} {reperes} {noms} {onglet} {recherche}
-               {brouillons} onreprendre={reprendreBrouillon}
-               onselect={surSelection} ononglet={surOnglet} ongroupe={groupe}
-               ontotal={(t) => (totalListe = t)}
-               organise={modeOrganise()} ondeplacer={deplacerExpediteur}
-               oncote={basculerCote}
-               onresultats={(n, total) => { nResultats = n; nTotal = total; }} onflash={flash} />
+        <List bind:this={list} {category} {account} {accounts} {markers} {names} {tab} {search}
+               {drafts} onresume={resumeDraft}
+               onselect={onSelection} ontab={onTab} ongroup={group}
+               ontotal={(t) => (listTotal = t)}
+               organized={organizedMode()} onmove={moveSender}
+               onsetaside={toggleAside}
+               onresults={(n, total) => { resultCount = n; totalCount = total; }} onflash={flash} />
       {/if}
-      {#if volets === 3 && !sceneSansLecture}
-        <Lecture bind:this={lecture} {brouillons} {reperes} {noms} {comptes} melange={melangeComptes} onreprendre={reprendreBrouillon}
-                 onarchiver={archiver} onsupprimer={supprimer}
-                 onconversation={ouvrirConversation}
-                 onrepondre={repondre} onrepondretous={repondreTous}
-                 ontransferer={transferer}
-                 onspam={signalerSpam} onnonspam={marquerLegitime}
-                 estIndesirable={categorie === 'junk'} onflash={flash}
-                 organise={modeOrganise()} ondeplacer={deplacerExpediteur}
-                 oncote={(l) => basculerCote(l, true)}
-                 {epinglable} onepingler={epinglerFil} />
+      {#if panes === 3 && !sceneWithoutReading}
+        <Reading bind:this={reading} {drafts} {markers} {names} {accounts} mixed={mixedAccounts} onresume={resumeDraft}
+                 onarchive={archive} ondelete={deleteConversation}
+                 onconversation={openConversation}
+                 onreply={reply} onreplyall={replyAll}
+                 onforward={forward}
+                 onspam={reportSpam} onnotspam={markLegitimate}
+                 isJunk={category === 'junk'} onflash={flash}
+                 organized={organizedMode()} onmove={moveSender}
+                 onsetaside={(l) => toggleAside(l, true)}
+                 {pinnable} onpin={pinThread} />
       {/if}
-      <!-- Les poignées (R3) : posées SUR les frontières de la grille,
-           hors flux — la grille ne gagne pas de colonne. Le motif ARIA
-           est le « window splitter » : separator focalisable,
-           aria-valuenow — la règle Svelte ne le connaît pas. UN seul
-           gabarit (revue 2026-08-16) : tout durcissement du geste vaut
-           pour les deux frontières par construction. -->
-      {#snippet poignee(volet, libelle, gauche)}
+      <!-- The handles (R3): placed ON the grid boundaries, out of
+           flow — the grid gains no column. The ARIA pattern is the
+           "window splitter": a focusable separator, aria-valuenow —
+           the Svelte linter doesn't know it. ONE single template
+           (review 2026-08-16): any hardening of the gesture applies
+           to both boundaries by construction. -->
+      {#snippet handle(pane, label, left)}
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
-        <div class="poignee" data-testid="poignee-{volet}" role="separator"
-             aria-orientation="vertical" aria-label={libelle}
-             tabindex="0" aria-valuemin={BORNES[volet][0]}
-             aria-valuemax={BORNES[volet][1]} aria-valuenow={largeurActuelle(volet)}
-             style="left:{gauche}px"
-             onpointerdown={(e) => saisirPoignee(volet, e)}
-             onpointermove={glisserPoignee} onpointerup={relacherPoignee}
-             onpointercancel={relacherPoignee}
-             onlostpointercapture={relacherPoignee}
-             ondblclick={() => defautLargeur(volet)}
-             onkeydown={(e) => toucherPoignee(volet, e)}></div>
+        <div class="poignee" data-testid="poignee-{pane}" role="separator"
+             aria-orientation="vertical" aria-label={label}
+             tabindex="0" aria-valuemin={BOUNDS[pane][0]}
+             aria-valuemax={BOUNDS[pane][1]} aria-valuenow={currentWidth(pane)}
+             style="left:{left}px"
+             onpointerdown={(e) => grabHandle(pane, e)}
+             onpointermove={dragHandle} onpointerup={releaseHandle}
+             onpointercancel={releaseHandle}
+             onlostpointercapture={releaseHandle}
+             ondblclick={() => defaultWidth(pane)}
+             onkeydown={(e) => keyHandle(pane, e)}></div>
       {/snippet}
-      {#if receptionOrganisee && !(fil.cadre === 'plein' && fil.ligne)}
-        <!-- E5 : la pile vit en bas à droite de la Réception organisée
-             (prototype) — éventail au clic, tableau plein écran. Elle
-             s'efface sous l'écran 03 (revue E5 : elle flottait
-             par-dessus la lecture, z 20 contre 1). -->
-        <PileMisDeCote bind:this={pile} onouvrir={ouvrirConversation} onflash={flash}
-                       onchange={() => { liste?.recharger(); chargerNav(); }} />
+      {#if organizedInbox && !(thread.frame === 'full' && thread.line)}
+        <!-- E5: the pile lives at the bottom right of the Organized
+             Inbox (prototype) — fans out on click, full-screen table.
+             It hides under screen 03 (E5 review: it used to float
+             over the reading pane, z 20 against 1). -->
+        <SetAsidePile bind:this={pile} onopen={openConversation} onflash={flash}
+                       onchange={() => { list?.reload(); loadNav(); }} />
       {/if}
-      {#if volets !== 1}
-        {@render poignee('nav', t('volets.poigneeNav'), lNav - 3)}
+      {#if panes !== 1}
+        {@render handle('nav', t('panes.handleNav'), lNav - 3)}
       {/if}
-      {#if volets === 3 && !sceneSansLecture}
-        {@render poignee('liste', t('volets.poigneeListe'), lNav + lListe - 3)}
+      {#if panes === 3 && !sceneWithoutReading}
+        {@render handle('list', t('panes.handleList'), lNav + listWidth - 3)}
       {/if}
     </div>
 
     <div class="statut" data-testid="statut">
-      <!-- V2 : la paire disque / anneau — le disque plein --marque de
-           9 px dit le repos (`ligne.trait`), l'anneau évidé du même
-           diamètre dit qu'une action tourne (`ligne.fil`). Le trait
-           hitofude est mort. A52 tient : le % vit dans le TEXTE. -->
+      <!-- V2: the disc / ring pair — the 9 px filled --marque disc
+           says rest (`line.stroke`), the hollow ring of the same
+           diameter says an action is running (`line.thread`). The
+           hitofude stroke is dead. A52 holds: the % lives in the
+           TEXT. -->
       <span class="texte">
-        {#if ligne.alerte}<span class="point-alerte" aria-hidden="true"></span>{/if}
-        {#if ligne.fil}
+        {#if line.alert}<span class="point-alerte" aria-hidden="true"></span>{/if}
+        {#if line.thread}
           <span class="anneau" aria-hidden="true"></span>
-        {:else if ligne.trait}
+        {:else if line.stroke}
           <span class="disque" aria-hidden="true"></span>
         {/if}
-        <span data-testid="progression">{ligne.texte}</span>
+        <span data-testid="progression">{line.text}</span>
       </span>
       <span id="perf" data-testid="perf" data-startup={startup}>{perf}</span>
-      <!-- E3 : le geste vit à côté de l'information qu'il rafraîchit
-           (S-D1, variante A). Inhibé pendant un cycle (le glyphe tourne :
-           la machine travaille déjà) ; sur échec, il devient le levier
-           au plus près de la panne. -->
-      <!-- Le bouton garde son glyphe sync, immobile (A36 : l'animation
-           vit dans le trait de la ligne, jamais ici). -->
+      <!-- E3: the gesture lives next to the information it refreshes
+           (S-D1, variant A). Inhibited during a cycle (the glyph is
+           spinning: the machine is already working); on failure, it
+           becomes the lever closest to the outage. -->
+      <!-- The button keeps its sync glyph, motionless (A36: the
+           animation lives in the line's stroke, never here). -->
       <button type="button" class="btn-statut" data-testid="btn-releve"
-              disabled={enSynchro} onclick={() => relever(true)}>
-        <Icone name="sync" />
-        {#if enSynchro}{t('action.synchronisation')}{:else if synchroEchec || synchroPartiel}{t('action.reessayer')}{:else}{t('action.synchroniser')}{/if}
+              disabled={syncing} onclick={() => poll(true)}>
+        <Icon name="sync" />
+        {#if syncing}{t('action.syncing')}{:else if syncFailure || syncPartial}{t('action.retry')}{:else}{t('action.sync')}{/if}
       </button>
     </div>
 
-    {#if volets === 1 && tiroirOuvert}
-      <!-- Le tiroir (PLAN-VOLETS E2) : géométrie du prototype validé
-           au GO — 268 px, en-tête 60 px (tuile de marque + fermer), la
-           Nav réutilisée TELLE QUELLE. Le scrim est un bouton : le
-           clic ferme, le clavier aussi (A8). -->
+    {#if panes === 1 && drawerOpen}
+      <!-- The drawer (PLAN-VOLETS E2): geometry of the prototype
+           validated at GO — 268 px, 60 px header (brand tile +
+           close), the Nav reused AS IS. The scrim is a button: click
+           closes it, so does the keyboard (A8). -->
       <button type="button" class="scrim-tiroir" data-testid="tiroir-scrim"
-              aria-label={t('nav.fermerTiroir')}
-              onclick={() => (tiroirOuvert = false)}></button>
+              aria-label={t('nav.closeDrawer')}
+              onclick={() => (drawerOpen = false)}></button>
       <div class="tiroir" data-testid="tiroir" role="dialog" aria-modal="true"
            aria-label={t('nav.aria')}>
         <div class="tete-tiroir">
-          <Marque taille={28} />Wind
+          <Brand size={28} />Wind
           <button type="button" class="btn-tiroir fermer-tiroir" data-testid="tiroir-fermer"
-                  aria-label={t('nav.fermerTiroir')}
-                  onclick={() => (tiroirOuvert = false)}>
-            <Icone name="close" /></button>
+                  aria-label={t('nav.closeDrawer')}
+                  onclick={() => (drawerOpen = false)}>
+            <Icon name="close" /></button>
         </div>
-        <Nav {comptes} {reperes} {noms} {categorie} {account}
-             organise={modeOrganise()} portier={portierTotal}
-             kiosque={kiosqueTotal} registre={registreTotal} onchoisir={choisirDuTiroir} />
+        <Nav {accounts} {markers} {names} {category} {account}
+             organized={organizedMode()} screener={screenerTotal}
+             feed={feedTotal} paperTrail={paperTrailTotal} onchoose={chooseFromDrawer} />
       </div>
     {/if}
 
-    <Conversation bind:this={conversation} {brouillons} {reperes} {noms} {comptes} melange={melangeComptes}
-                  onreprendre={reprendreBrouillon} onretour={retourBoite}
-                  onarchiver={async (l) => { await archiver(l); retourBoite(); }}
-                  onsupprimer={async (l) => {
-                    // Fil fermé (dernier message parti) OU geste refusé
-                    // (écho en attente — le toast l'a dit) : retour à la
-                    // boîte, le câblage d'avant. Le fil ne reste ouvert
-                    // que s'il lui reste des messages.
-                    const abouti = await supprimer(l);
-                    if (!fil.ligne || !abouti) retourBoite();
+    <Conversation bind:this={conversation} {drafts} {markers} {names} {accounts} mixed={mixedAccounts}
+                  onresume={resumeDraft} onback={backToMailbox}
+                  onarchive={async (l) => { await archive(l); backToMailbox(); }}
+                  ondelete={async (l) => {
+                    // Thread closed (last message gone) OR gesture refused
+                    // (echo pending — the toast said so): back to the
+                    // mailbox, the old wiring. The thread only stays open
+                    // if it still has messages left.
+                    const succeeded = await deleteConversation(l);
+                    if (!thread.line || !succeeded) backToMailbox();
                   }}
-                  onrepondre={repondre} onrepondretous={repondreTous}
-                  ontransferer={transferer}
-                  onspam={async (l) => { await signalerSpam(l); retourBoite(); }}
-                  onnonspam={async (l) => { await marquerLegitime(l); retourBoite(); }}
-                  estIndesirable={categorie === 'junk'}
-                  onecrire={ecrire}
+                  onreply={reply} onreplyall={replyAll}
+                  onforward={forward}
+                  onspam={async (l) => { await reportSpam(l); backToMailbox(); }}
+                  onnotspam={async (l) => { await markLegitimate(l); backToMailbox(); }}
+                  isJunk={category === 'junk'}
+                  oncompose={write}
                   onflash={flash}
-                  organise={modeOrganise()} ondeplacer={deplacerExpediteur}
-                  oncote={(l) => basculerCote(l, true)}
-                  {epinglable} onepingler={epinglerFil} />
+                  organized={organizedMode()} onmove={moveSender}
+                  onsetaside={(l) => toggleAside(l, true)}
+                  {pinnable} onpin={pinThread} />
 
-    <!-- R2 (A75) : le parcours complet (`accueilAJouer`, première
-         installation — il TIENT à travers ses quatre étapes, comptes
-         ajoutés ou no) ; sinon le guichet seul d'origine, à zéro
-         account, qui s'efface au premier ajout. -->
-    {#if navPrete && (accueilAJouer || comptes.length === 0)}
-      <Onboarding complet={accueilAJouer} {comptes} onajoute={compteAjoute}
-                  onfini={() => (accueilAJouer = false)} />
+    <!-- R2 (A75): the full journey (`onboardingToPlay`, first
+         installation — it HOLDS through its four steps, accounts
+         added or not); otherwise the original desk alone, at zero
+         accounts, which fades on the first addition. -->
+    {#if navReady && (onboardingToPlay || accounts.length === 0)}
+      <Onboarding complete={onboardingToPlay} {accounts} onadd={accountAdded}
+                  onfinish={() => (onboardingToPlay = false)} />
     {/if}
 
-    <Composition bind:this={composition} {comptes} {account} {noms}
-                 onflash={flash} onenvoye={apresEnvoi}
-                 oncourrier={apresCourrierEnvoye}
-                 onbrouillon={sonderBrouillons} />
-    <Retour bind:this={retour} {comptes} onflash={flash} />
-    <Reglages bind:this={reglages} {comptes} {connectes} {reperes} {noms}
-              onrepere={patcherRepere} onnom={patcherNom} onajoute={compteAjoute}
-              onsupprime={compteRetire}
+    <Compose bind:this={compose} {accounts} {account} {names}
+                 onflash={flash} onsent={afterSend}
+                 onmail={afterMailSent}
+                 ondraft={probeDrafts} />
+    <Feedback bind:this={back} {accounts} onflash={flash} />
+    <Settings bind:this={settings} {accounts} {connected} {markers} {names}
+              onmarker={patchMarker} onname={patchName} onadd={accountAdded}
+              onremove={accountRemoved}
               onflash={flash}
-              onroutage={() => { rechargerVues(); chargerNav(); }}
-              onreconnecte={async () => { await connecter(); synchroniser(); }} />
+              onrouting={() => { reloadViews(); loadNav(); }}
+              onreconnect={async () => { await connect(); runSyncCycle(); }} />
   {/if}
 
-  <ModaleMigration bind:this={modaleMigration} />
+  <MigrationModal bind:this={migrationModal} />
 
   <Toast message={toast} />
 </div>
@@ -1967,9 +1993,9 @@
     display:flex; flex-direction:column; height:100vh; position:relative;
     background:var(--bg); overflow:hidden;
   }
-  /* A30 : l'entête au jeton des panneaux, la recherche sur blanc.
-     UI v3, E4 (verdict CE 2026-08-16) : le gabarit de la maquette
-     Classique — 52 px, gouttières 14/12, recherche bornée à 520 px. */
+  /* A30: the header at the panel token, the search on white. UI v3, E4
+     (CE verdict 2026-08-16): the template of the Classic mockup —
+     52 px, 14/12 gutters, search capped at 520 px. */
   .entete {
     height:52px; flex:none; background:var(--bg);
     border-bottom:1px solid var(--border); display:flex;
@@ -1991,12 +2017,12 @@
     background:transparent; min-width:0;
   }
   .recherche input::placeholder { color:var(--ink2); }
-  /* La recherche est bornée (520 px) : les gestes d'entête tiennent la
-     droite, comme au gabarit de la maquette. */
+  /* The search is capped (520 px): the header controls hold the
+     right side, as in the mockup template. */
   .entete [data-testid="ecrire"] { margin-left:auto; }
-  /* PLAN-MODE-ORGANISE E1 : le va-et-vient — pilule de piste (999px)
-     et disque (50 %), les deux seules formes rondes légitimes (V14).
-     Actif : la piste prend l'accent, le disque glisse à droite. */
+  /* PLAN-MODE-ORGANISE E1: the toggle — track pill (999px) and disc
+     (50 %), the only two legitimate round shapes (V14). Active: the
+     track takes the accent, the disc slides to the right. */
   .organise {
     display:inline-flex; align-items:center; gap:8px; flex:none;
     font-size:13px; color:var(--ink2); background:transparent;
@@ -2035,33 +2061,34 @@
   }
   .principal:hover { background:var(--accentH); border-color:var(--accentH); }
 
-  /* A29 : la nav des pistes vit à 248 px (236 avant la v2) — depuis
-     R3 (PLAN-RETOURS-V3), 248 et 400 sont les DÉFAUTS : les largeurs
-     vivent en variables, réglées à la poignée, bornées au module. */
+  /* A29: the nav lane lives at 248 px (236 before v2) — since R3
+     (PLAN-RETOURS-V3), 248 and 400 are the DEFAULTS: the widths live
+     in variables, set at the handle, capped at the module. */
   .colonnes {
     flex:1; display:grid;
     grid-template-columns:var(--l-nav, 248px) var(--l-liste, 400px) minmax(0,1fr);
     min-height:0; position:relative;
   }
-  /* PLAN-VOLETS (V-D1) : en deux volets la liste prend la largeur —
-     gabarit de ligne inchangé (V-D3), l'aperçu respire. En un volet
-     (E2) la liste est seule : son filet droit n'a plus de voisin. */
+  /* PLAN-VOLETS (V-D1): in two panes the list takes the width — row
+     template unchanged (V-D3), the preview breathes. In one pane
+     (E2) the list is alone: its right hairline no longer has a
+     neighbor. */
   .colonnes--2 { grid-template-columns:var(--l-nav, 248px) minmax(0,1fr); }
   .colonnes--1 { grid-template-columns:minmax(0,1fr); }
-  /* E2 : la scène du Portier s'étend de la nav au bord droit — le
-     volet de lecture n'existe pas au guichet. */
+  /* E2: the Screener's scene extends from the nav to the right edge
+     — the reading pane doesn't exist at the desk. */
   .cadre-portier {
     grid-column:2 / -1; display:flex; min-width:0; min-height:0;
     overflow:hidden; background:var(--bg);
   }
   .colonnes--1 .cadre-portier { grid-column:1 / -1; }
-  /* E4 : la Réception organisée n'a pas de volet de lecture — la
-     liste s'étend de la nav au bord droit (colonne centrée dedans). */
+  /* E4: the Organized Inbox has no reading pane — the list extends
+     from the nav to the right edge (centered column inside). */
   .colonnes--organise > :global([data-testid="liste"]) { grid-column:2 / -1; }
   .colonnes--1.colonnes--organise > :global([data-testid="liste"]) { grid-column:1 / -1; }
-  /* La poignée (R3) : 7 px à cheval sur le filet, hors flux ; au
-     survol, à la saisie et au focus clavier, un trait d'accent de 2 px
-     dit la frontière — la grille, elle, ne bouge pas d'un pixel. */
+  /* The handle (R3): 7 px straddling the hairline, out of flow; on
+     hover, drag and keyboard focus, a 2 px accent stroke states the
+     boundary — the grid itself doesn't move a pixel. */
   .poignee {
     position:absolute; top:0; bottom:0; width:7px; z-index:1;
     cursor:col-resize; touch-action:none;
@@ -2074,8 +2101,8 @@
   .poignee:focus-visible::after { background:var(--accent); }
   .colonnes--1 > :global(.colonne) { border-right:none; }
 
-  /* Le bouton du tiroir (E2) : 32 px, la grammaire des boutons
-     d'entête ; la marque perd sa largeur de colonne en un volet. */
+  /* The drawer button (E2): 32 px, the header-button grammar; the
+     brand loses its column width in one pane. */
   .btn-tiroir {
     width:32px; height:32px; padding:0; flex:none; display:inline-flex;
     align-items:center; justify-content:center; color:var(--ink2);
@@ -2085,8 +2112,8 @@
   .btn-tiroir:hover { background:var(--sel); color:var(--ink); }
   .marque--libre { width:auto; }
 
-  /* Le tiroir : surimpression 268 px sous scrim, au niveau des
-     surimpressions (le scrim est un BOUTON — clic et clavier ferment). */
+  /* The drawer: a 268 px overlay under a scrim, at overlay level
+     (the scrim is a BUTTON — click and keyboard both close it). */
   .scrim-tiroir {
     position:absolute; inset:0; height:auto; padding:0; z-index:2;
     background:var(--scrim); border:none; cursor:default;
@@ -2113,10 +2140,10 @@
   #perf { font-variant-numeric:tabular-nums; flex:none; }
   .texte { display:flex; align-items:center; gap:8px; min-width:0; flex:1; }
   .texte span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  /* Le bouton de relève (E3, S-D1 variante A) : 26 px, il tient dans
-     les 36 px de la barre sans les forcer — cotes de la section
-     « Barre d'état et synchronisation » du Système (la maquette,
-     reversée, est morte au GO — DC-D4). */
+  /* The poll button (E3, S-D1 variant A): 26 px, it fits within the
+     bar's 36 px without forcing them — dimensions from the "Status
+     bar and sync" section of the System (the mockup, reverted, is
+     dead as of GO — DC-D4). */
   .btn-statut {
     height:26px; padding:0 12px; display:inline-flex; align-items:center;
     gap:7px; font-size:12px; font-weight:600; color:var(--ink2);

@@ -205,7 +205,7 @@ test('archiver groupé : un seul toast, les fils partent ENTIERS (D6)', async ()
   await page.locator('[data-testid="barre-archive"]').click();
   await expect(toast()).toContainText('2 conversations archivées');
   const gestes = await page.evaluate(() => {
-    const commandes = window.__e2eJournal.map((releve) => releve.commande);
+    const commandes = window.__e2eJournal.map((releve) => releve.command);
     delete window.__e2eJournal;
     return commandes;
   });

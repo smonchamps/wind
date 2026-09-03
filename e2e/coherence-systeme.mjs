@@ -95,7 +95,7 @@ const themeJs = readFileSync(
   'utf8',
 );
 const ROLES_PASTILLES = ['accent', 'bg', 'border', 'surface', 'ink'];
-const fiches = [...themeJs.matchAll(/\{ id: '([a-z-]+)', pastilles: \[([^\]]*)\] \}/g)];
+const fiches = [...themeJs.matchAll(/\{ id: '([a-z-]+)', swatches: \[([^\]]*)\] \}/g)];
 if (fiches.length !== NOMBRE_ATTENDU) {
   echec(`${fiches.length} fiche(s) lues dans lib/theme.js — ${NOMBRE_ATTENDU} attendues : FICHES a changé de forme, ou une fiche manque`);
 }
@@ -119,15 +119,15 @@ for (const [, id, brut] of fiches) {
 // la clé brute `theme.<id>.nom` sur la carte, en vert partout.
 for (const langue of ['fr', 'en']) {
   const cat = readFileSync(
-    path.join(root, 'apps', 'desktop', 'ui-v2', 'src', 'lib', `catalogue.${langue}.js`),
+    path.join(root, 'apps', 'desktop', 'ui-v2', 'src', 'lib', `catalog.${langue}.js`),
     'utf8',
   );
   const ids = new Set(
-    [...cat.matchAll(/'theme\.([a-z-]+)\.nom'/g)].map(([, id]) => id),
+    [...cat.matchAll(/'theme\.([a-z-]+)\.name'/g)].map(([, id]) => id),
   );
   for (const id of Object.keys(themesCss)) {
     if (!ids.has(id)) {
-      echec(`catalogue.${langue} : theme.${id}.nom manquant — la carte du sélecteur afficherait la clé brute`);
+      echec(`catalogue.${langue} : theme.${id}.name manquant — la carte du sélecteur afficherait la clé brute`);
     }
   }
   for (const id of ids) {
@@ -179,7 +179,7 @@ const commandsRs = readFileSync(
 );
 const wireRs = readFileSync(path.join(root, 'apps', 'desktop', 'src', 'wire.rs'), 'utf8');
 const reperesJs = readFileSync(
-  path.join(root, 'apps', 'desktop', 'ui-v2', 'src', 'lib', 'reperes.js'),
+  path.join(root, 'apps', 'desktop', 'ui-v2', 'src', 'lib', 'markers.js'),
   'utf8',
 );
 const listeRustDans = (src, nom) => [
@@ -204,8 +204,8 @@ const iconesRust = listeRust('MARKER_ICONS');
 // E5a (D16): the wire hues live in wire.rs (WIRE_HUES) — the French
 // MARKER_HUES of commands.rs is the database allowlist, never seen by the UI.
 const teintesRust = listeRustDans(wireRs, 'WIRE_HUES');
-compareListes('icône', iconesRust, 'commands.rs', listeJs('REPERE_ICONES'), 'lib/reperes.js');
-compareListes('teinte', teintesRust, 'wire.rs', listeJs('REPERE_TEINTES'), 'lib/reperes.js');
+compareListes('icône', iconesRust, 'commands.rs', listeJs('MARKER_ICONS'), 'lib/markers.js');
+compareListes('teinte', teintesRust, 'wire.rs', listeJs('MARKER_HUES'), 'lib/markers.js');
 const teintesCss = [
   ...new Set([...css.matchAll(/\.repere\[data-teinte="([a-z]+)"\]/g)].map(([, v]) => v)),
 ];
@@ -238,17 +238,17 @@ for (const [polarite, nuit] of [['clair', false], ['nuit', true]]) {
 }
 for (const langue of ['fr', 'en']) {
   const cat = readFileSync(
-    path.join(root, 'apps', 'desktop', 'ui-v2', 'src', 'lib', `catalogue.${langue}.js`),
+    path.join(root, 'apps', 'desktop', 'ui-v2', 'src', 'lib', `catalog.${langue}.js`),
     'utf8',
   );
   for (const icone of iconesRust) {
-    if (!cat.includes(`'repere.icone.${icone}'`)) {
-      echec(`catalogue.${langue} : repere.icone.${icone} manquant — la carte du choix afficherait la clé brute en infobulle`);
+    if (!cat.includes(`'marker.icon.${icone}'`)) {
+      echec(`catalogue.${langue} : marker.icon.${icone} manquant — la carte du choix afficherait la clé brute en infobulle`);
     }
   }
   for (const teinte of teintesRust) {
-    if (!cat.includes(`'repere.teinte.${teinte}'`)) {
-      echec(`catalogue.${langue} : repere.teinte.${teinte} manquant`);
+    if (!cat.includes(`'marker.hue.${teinte}'`)) {
+      echec(`catalogue.${langue} : marker.hue.${teinte} manquant`);
     }
   }
 }
@@ -266,7 +266,7 @@ for (const langue of ['fr', 'en']) {
 //      catalogue et n'est pas réservé (A53/A60/A62 : un réservé ne se
 //      pose pas).
 const iconesJs = readFileSync(
-  path.join(root, 'apps', 'desktop', 'ui-v2', 'src', 'lib', 'icones.js'),
+  path.join(root, 'apps', 'desktop', 'ui-v2', 'src', 'lib', 'icons.js'),
   'utf8',
 );
 const nomsCatalogue = [...iconesJs.matchAll(/^ {2}([a-z_0-9]+): *\{/gm)].map(([, n]) => n);
@@ -276,10 +276,10 @@ const reservesCatalogue = new Set(
 const nomsDoc = [...new Set(
   [...doc.matchAll(/<figcaption>([a-z_0-9]+)<\/figcaption>/g)].map(([, n]) => n),
 )];
-if (nomsCatalogue.length === 0) echec('lib/icones.js : aucun glyphe lu — le catalogue a changé de forme');
+if (nomsCatalogue.length === 0) echec('lib/icons.js : aucun glyphe lu — le catalogue a changé de forme');
 if (nomsDoc.length === 0) echec('le doc ne porte aucune grille de glyphes (figcaption) — la section Icônes a changé de forme');
 for (const n of nomsCatalogue) {
-  if (!nomsDoc.includes(n)) echec(`icône « ${n} » : au catalogue (lib/icones.js) mais absente de la grille du Système`);
+  if (!nomsDoc.includes(n)) echec(`icône « ${n} » : au catalogue (lib/icons.js) mais absente de la grille du Système`);
 }
 for (const n of nomsDoc) {
   if (!nomsCatalogue.includes(n)) echec(`icône « ${n} » : dessinée au Système mais absente du catalogue livré`);
@@ -291,8 +291,8 @@ for (const [, nom, brut] of iconesJs.matchAll(/^ {2}([a-z_0-9]+): *\{ *d:\[([^\]
     }
   }
 }
-// Deux formes d'emploi : le littéral (<Icone nom="x">) ET les tables
-// de configuration (`icone: 'x'` — dossiers de nav, groupes de
+// Deux formes d'emploi : le littéral (<Icon name="x">) ET les tables
+// de configuration (`icon: 'x'` — dossiers de nav, groupes de
 // Réglages, avis) qui coulent dans un nom={dynamique}. Sans la
 // seconde, un `icone: 'delet'` resterait vert et rendrait un SVG vide
 // en silence (revue PLAN-ELEMENTS, angle A).
@@ -300,16 +300,16 @@ const srcJsUi = (dossier) =>
   readdirSync(dossier, { withFileTypes: true }).flatMap((e) =>
     e.isDirectory()
       ? srcJsUi(path.join(dossier, e.name))
-      : /\.(js|svelte)$/.test(e.name) && !/catalogue\.[a-z]+\.js$/.test(e.name)
+      : /\.(js|svelte)$/.test(e.name) && !/catalog\.[a-z]+\.js$/.test(e.name)
         ? [path.join(dossier, e.name)]
         : [],
   );
 for (const fichier of srcJsUi(srcUi)) {
-  if (fichier.endsWith(`lib${path.sep}icones.js`)) continue;
+  if (fichier.endsWith(`lib${path.sep}icons.js`)) continue;
   const source = readFileSync(fichier, 'utf8');
   for (const [, nom] of [
-    ...source.matchAll(/<Icone[^>]*\bnom="([a-z_0-9]+)"/g),
-    ...source.matchAll(/\bicone:\s*'([a-z_0-9]+)'/g),
+    ...source.matchAll(/<Icon[^>]*\bname="([a-z_0-9]+)"/g),
+    ...source.matchAll(/\bicon:\s*'([a-z_0-9]+)'/g),
   ]) {
     if (!nomsCatalogue.includes(nom)) {
       echec(`${path.relative(root, fichier)} : icône « ${nom} » posée mais absente du catalogue`);
@@ -323,9 +323,9 @@ for (const fichier of srcJsUi(srcUi)) {
 // qui entre ou sort du jeu au catalogue sans les quatre autres
 // porteurs (commands.rs, lib/reperes.js, systeme.css, catalogues)
 // dériverait en silence.
-const reperesCatalogue = [...iconesJs.matchAll(/^ {2}([a-z_0-9]+): *\{[^\n]*\brepere:true/gm)]
+const reperesCatalogue = [...iconesJs.matchAll(/^ {2}([a-z_0-9]+): *\{[^\n]*\bmarker:true/gm)]
   .map(([, n]) => n);
-compareListes('icône', iconesRust, 'commands.rs', reperesCatalogue, 'lib/icones.js (repere:true)');
+compareListes('icône', iconesRust, 'commands.rs', reperesCatalogue, 'lib/icons.js (marker:true)');
 
 // --- 8. Zéro rayon : plus un littéral de border-radius (V14) ---------
 // Les trois jetons de forme (--r-surface, --r-controle, --r-tuile)

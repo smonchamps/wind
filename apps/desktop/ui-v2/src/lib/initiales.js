@@ -1,12 +1,12 @@
-// L'avatar aux initiales (UI v3, décision D2) : VISUEL seul — jamais
-// un bouton, la sélection en lot est une feature différée. Deux
-// lettres au plus, des deux premiers mots ; un nom vide (rare :
-// brouillon sans destinataire) rend un tiret, jamais un blanc.
-// Partagé liste/fil depuis le terrain A45 (cartes du volet).
-export function initiales(name) {
-  const lettres = (name ?? '').trim().split(/\s+/, 2)
-    .map((mot) => mot[0])
+// The initials avatar (UI v3, decision D2): VISUAL only — never
+// a button, batch selection is a deferred feature. At most two
+// letters, from the first two words; an empty name (rare:
+// a draft with no recipient) renders a dash, never a blank.
+// Shared by list/thread since field finding A45 (pane cards).
+export function initials(name) {
+  const letters = (name ?? '').trim().split(/\s+/, 2)
+    .map((word) => word[0])
     .join('')
     .toUpperCase();
-  return lettres || '—';
+  return letters || '—';
 }

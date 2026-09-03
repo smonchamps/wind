@@ -119,8 +119,8 @@ try {
 
   const etatEcran = () => page.evaluate(() => {
     const cadre = document.querySelector('[data-testid="liste"] .cadre');
-    const journal = window.__e2eJournal.filter((a) => a.commande === 'list_category');
-    const regles = journal.filter((a) => a.arrivee !== null).length;
+    const journal = window.__e2eJournal.filter((a) => a.command === 'list_category');
+    const regles = journal.filter((a) => a.arrival !== null).length;
     return {
       t: Math.round(performance.now()),
       appels: journal.length,
@@ -145,7 +145,7 @@ try {
   await page.locator('[data-testid="ligne"]').first().waitFor({ timeout: 30000 });
   // Le total est asynchrone (les lignes d'abord, le comptage au repos) :
   // le drag vise 1/3 de la VRAIE hauteur, pas du plancher provisoire.
-  await page.waitForFunction(() => window.__mesure.etat().totalPrecis, null, { timeout: 30000 });
+  await page.waitForFunction(() => window.__mesure.state().exactTotal, null, { timeout: 30000 });
   await new Promise((resolve) => setTimeout(resolve, 1000));
   const avantDrag = await etatEcran();
   console.log('avant drag :', JSON.stringify(avantDrag));
@@ -190,14 +190,14 @@ try {
 
   // --- Dépouillement ---------------------------------------------------
   const journal = (await page.evaluate(() => window.__e2eJournal))
-    .filter((a) => a.commande === 'list_category');
-  const regles = journal.filter((a) => a.arrivee !== null);
-  const durees = regles.map((a) => a.arrivee - a.depart);
+    .filter((a) => a.command === 'list_category');
+  const regles = journal.filter((a) => a.arrival !== null);
+  const durees = regles.map((a) => a.arrival - a.start);
   // Le plafond de vols simultanés — l'invariant E1 (≤ 2 après correction).
   const bornes = [];
   for (const a of journal) {
-    bornes.push([a.depart, +1]);
-    bornes.push([a.arrivee ?? Number.MAX_SAFE_INTEGER, -1]);
+    bornes.push([a.start, +1]);
+    bornes.push([a.arrival ?? Number.MAX_SAFE_INTEGER, -1]);
   }
   bornes.sort((x, y) => x[0] - y[0] || x[1] - y[1]);
   let courant = 0;

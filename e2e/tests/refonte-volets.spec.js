@@ -212,10 +212,10 @@ test('les volets se redimensionnent à la souris — bornes, persistance, double
   // liste (fenêtre 1000 : 1000 - 180 - 120 de réserve du fil = 700).
   await saisir('poignee-nav', -500);
   await expect.poll(() => largeur('nav')).toBe(180);
-  await saisir('poignee-liste', 120);
+  await saisir('poignee-list', 120);
   await expect.poll(() => largeur('liste')).toBe(520);
   // La borne haute retient la poignée : 640, jamais au-delà.
-  await saisir('poignee-liste', 500);
+  await saisir('poignee-list', 500);
   await expect.poll(() => largeur('liste')).toBe(640);
   // Le PLAFOND de la fenêtre retient l'autre frontière (revue
   // 2026-08-16) : nav max 400 écraserait le fil sous sa réserve —
@@ -232,7 +232,7 @@ test('les volets se redimensionnent à la souris — bornes, persistance, double
   await expect.poll(() => largeur('nav')).toBe(240);
 
   // Double-clic : chaque frontière rend son défaut.
-  await page.locator('[data-testid="poignee-liste"]').dblclick();
+  await page.locator('[data-testid="poignee-list"]').dblclick();
   await expect.poll(() => largeur('liste')).toBe(400);
   await page.locator('[data-testid="poignee-nav"]').dblclick();
   await expect.poll(() => largeur('nav')).toBe(248);

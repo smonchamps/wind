@@ -123,7 +123,7 @@ export async function purgerLocales(page, cles = CLES_LOCALES) {
     .catch(() => { /* fenêtre déjà morte */ });
 }
 
-export async function launchAppV2({ vierge = false, comptes = null } = {}) {
+export async function launchAppV2({ vierge = false, comptes = null, lang = 'fr' } = {}) {
   construireV2(root, { release: false });
 
   const db = path.join(
@@ -141,7 +141,7 @@ export async function launchAppV2({ vierge = false, comptes = null } = {}) {
   for (const suffixe of ['', '-wal', '-shm']) rmSync(`${db}${suffixe}`, { force: true });
   mkdirSync(path.dirname(db), { recursive: true });
   if (vierge) {
-    return attacher(db, []);
+    return attacher(db, [], lang);
   }
   if (comptes) {
     const etapes = [];
@@ -167,10 +167,11 @@ export async function launchAppV2({ vierge = false, comptes = null } = {}) {
     return attacher(
       db,
       comptes.filter((compte) => !compte.deconnecte).map((compte) => compte.email),
+      lang,
     );
   }
   seeder(db, [{ exemple: 'seed_clarity', args: '' }]);
-  return attacher(db, ['paul.merand@atelier-nord.fr', 'paul@merand.fr']);
+  return attacher(db, ['paul.merand@atelier-nord.fr', 'paul@merand.fr'], lang);
 }
 
 // L'ARRIVÉE de courrier en cours de spec (PLAN-MODE-ORGANISE E2) : des
@@ -199,7 +200,7 @@ export function injecterArrivee({ email, expediteur, n = 1, nom = null, sujet = 
   execSync(`"${exe}" ${args.join(' ')}`, { cwd: root, stdio: 'inherit' });
 }
 
-async function attacher(db, emails) {
+async function attacher(db, emails, lang = 'fr') {
   // Profil WebView2 explicite et inscriptible : sur un runner CI,
   // l'emplacement par défaut peut être refusé. Stable d'un lancement à
   // l'autre — un profil neuf à chaque fois rendrait chaque démarrage
@@ -223,7 +224,8 @@ async function attacher(db, emails) {
     // `--lang=fr` : la détection de langue au premier lancement
     // (navigator.language, PLAN-LANGUES) lit la locale du WebView — sans
     // cette épingle, la suite dépendrait de la langue de la machine.
-    // Le français reste la langue canonique des parcours (L-6).
+    // Le français reste la langue canonique des parcours (L-6). `lang`
+    // exists for one spec only: the English default of a first launch (D4).
     // Les arguments de PRODUCTION (tauri.conf.json) + le port CDP + la
     // langue épinglée, composés par args-navigateur.mjs — la variable
     // ÉCRASE la conf au niveau du loader WebView2, elle doit donc la
@@ -235,6 +237,7 @@ async function attacher(db, emails) {
       root,
       port,
       process.env.WIND_E2E_ARGS_EXTRA ?? '',
+      lang,
     ),
     WEBVIEW2_USER_DATA_FOLDER: profile,
   };

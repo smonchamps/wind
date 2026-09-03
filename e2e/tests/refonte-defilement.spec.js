@@ -53,12 +53,12 @@ test("les lignes ne suivent jamais le comptage — page d'abord, total au repos 
   await expect(page.locator('[data-testid="statut"]')).toContainText('Archives · 6000');
   const ordre = await page.evaluate(() => {
     const journal = window.__e2eJournal;
-    const page0 = journal.find((a) => a.commande === 'list_category');
-    const compte = journal.find((a) => a.commande === 'category_total');
+    const page0 = journal.find((a) => a.command === 'list_category');
+    const compte = journal.find((a) => a.command === 'category_total');
     delete window.__e2eJournal;
     return {
-      page0Arrivee: page0?.arrivee ?? null,
-      compteDepart: compte?.depart ?? null,
+      page0Arrivee: page0?.arrival ?? null,
+      compteDepart: compte?.start ?? null,
     };
   });
   expect(ordre.page0Arrivee).not.toBeNull();
@@ -97,7 +97,7 @@ test('un drag tenu ne garde jamais plus de deux pages en vol (E1)', async () => 
     // ne partent pas ; les suivantes attendront un vol libre, la file
     // du coeur ne grandit pas.
     const demandees = await page.evaluate(
-      () => window.__e2eJournal.filter((a) => a.commande === 'list_category').length,
+      () => window.__e2eJournal.filter((a) => a.command === 'list_category').length,
     );
     expect(demandees).toBeGreaterThanOrEqual(1);
     expect(demandees).toBeLessThanOrEqual(2);

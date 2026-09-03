@@ -51,8 +51,8 @@ for (const src of shell) {
 const ui = walk(path.join(root, 'apps', 'desktop', 'ui-v2', 'src'), ['.js', '.svelte']).map((p) => readFileSync(p, 'utf8')).join('\n');
 const specs = walk(path.join(root, 'e2e'), ['.js', '.mjs']).map((p) => readFileSync(p, 'utf8')).join('\n');
 const called = new Set([
-  ...[...ui.matchAll(/\bappel\(\s*['"]([a-z_][a-z0-9_]*)['"]/g)].map((m) => m[1]),
-  ...[...specs.matchAll(/\b(?:appel|invoke)\(\s*['"]([a-z_][a-z0-9_]*)['"]/g)].map((m) => m[1]),
+  ...[...ui.matchAll(/\bcall\(\s*['"]([a-z_][a-z0-9_]*)['"]/g)].map((m) => m[1]),
+  ...[...specs.matchAll(/\b(?:appel|call|invoke)\(\s*['"]([a-z_][a-z0-9_]*)['"]/g)].map((m) => m[1]),
 ]);
 
 let failures = 0;

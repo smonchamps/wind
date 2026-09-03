@@ -131,8 +131,8 @@ try {
   // Le total est ASYNCHRONE depuis PLAN-DEFILEMENT-PROFOND (les lignes
   // d'abord, le comptage au repos de la pompe) : les 300 sauts doivent
   // couvrir la vraie profondeur, pas le plancher des premières lignes.
-  await page.waitForFunction(() => window.__mesure.etat().totalPrecis);
-  const etat = await page.evaluate(() => window.__mesure.etat());
+  await page.waitForFunction(() => window.__mesure.state().exactTotal);
+  const etat = await page.evaluate(() => window.__mesure.state());
   console.log(`décor      : ${etat.total} lignes · gabarit ${etat.h1} px`);
 
   // MESURE_SANS_ACTIVITE=1 : peser la RAM AU REPOS, méthodologie ADR
@@ -145,7 +145,7 @@ try {
   const pages_ms = await page.evaluate(async () => {
     let graine = 42;
     const alea = () => ((graine = (graine * 1103515245 + 12345) % 2147483648) / 2147483648);
-    const total = window.__mesure.etat().total;
+    const total = window.__mesure.state().total;
     const mesures = [];
     for (let n = 0; n < 300; n++) {
       const index = Math.floor(alea() * Math.max(1, total - 40));
@@ -168,7 +168,7 @@ try {
   // Ouverture : 20 messages parmi les 400 plus récents (corps seedés).
   const ouvertures_ms = await page.evaluate(async () => {
     const mesures = [];
-    for (let n = 0; n < 20; n++) mesures.push(await window.__mesure.ouvrir(n * 20));
+    for (let n = 0; n < 20; n++) mesures.push(await window.__mesure.open(n * 20));
     return mesures;
   });
   console.log(`ouverture  : ${stats(ouvertures_ms)}`);

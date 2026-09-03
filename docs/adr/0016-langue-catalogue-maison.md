@@ -1,6 +1,6 @@
 # ADR 0016 — Langue de l'interface : catalogues plats maison, pas de bibliothèque i18n
 
-Date : 2026-08-12 · Statut : accepté (PLAN-LANGUES, décision L-2).
+Date : 2026-08-12 · Statut : accepté (PLAN-LANGUES, décision L-2) · **amended on 2026-09-03 (PLAN-BASCULE-ANGLAIS, decision D4 — see the end of the page)**.
 
 ## Contexte
 
@@ -39,3 +39,25 @@ langue du système si couverte, sinon `fr`.
 - Les formes de dates restent écrites à la main par langue (transposition
   A15), testables, exactes — `Intl` ne produit ni « Hier » contextuel ni
   « 1ᵉʳ ».
+
+## Amendment of 2026-09-03 — English is the reference (PLAN-BASCULE-ANGLAIS, D4)
+
+Decision D4 of the switch to English (Chief Engineer, 2026-09-02),
+applied at step E5b: **English is the reference language of the
+interface.** Three consequences, in place:
+
+- `t()` falls back to the ENGLISH text for a key missing from the active
+  catalogue (the fr/en key sets stay identical — the e2e spec and the
+  System net still diff them);
+- the first launch speaks English unless the system language is French
+  (`lib/language.js`: one pure decision, `detectLanguage`, tested by
+  `e2e/language.test.mjs`); the e2e suite keeps its WebView pinned to
+  `--lang=fr`, so the journeys stay French (L-6);
+- the shell composes the notifications in English when `prefs.lang` is
+  absent or unknown (`Lang::from_pref` defaults to `En`).
+
+The French catalogue is delivered word for word (D3) — only its keys
+are English (`catalog.fr.js`, glossary §5.4). Files renamed with the
+step: `lib/catalogue.fr.js` / `lib/catalogue.en.js` → `lib/catalog.fr.js`
+/ `lib/catalog.en.js`, `lib/texte.svelte.js` → `lib/text.svelte.js`.
+The next release is MINOR (a behavior of the first launch changes).

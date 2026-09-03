@@ -6,8 +6,8 @@
 // catalogue et restent hors périmètre (D4).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FR } from '../apps/desktop/ui-v2/src/lib/catalogue.fr.js';
-import { EN } from '../apps/desktop/ui-v2/src/lib/catalogue.en.js';
+import { FR } from '../apps/desktop/ui-v2/src/lib/catalog.fr.js';
+import { EN } from '../apps/desktop/ui-v2/src/lib/catalog.en.js';
 
 for (const [nom, table] of [['FR', FR], ['EN', EN]]) {
   test(`catalogue ${nom} : aucun tiret cadratin dans les textes`, () => {

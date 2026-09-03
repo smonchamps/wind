@@ -1,104 +1,104 @@
 <script>
-  // Écran 01, refondu en parcours de premier démarrage (PLAN-RETOURS-8
-  // R2, A75 — renverse « l'accueil qui ne réclame qu'une adresse » ;
-  // forme arrêtée au terrain du 2026-08-22, constats 1-8) : cinq
-  // étapes — comptes, disposition, thème, bêta (RETOURS-11, terrain du
-  // 2026-08-28), récapitulatif. Chaque étape dit son titre, puis
-  // « Étape n/5 », puis son texte. Deux régimes :
-  // `complet` (première installation : le parcours entier, la marque
-  // `wind-accueil-fait` posée au Terminer) et guichet seul (un poste
-  // revenu à zéro compte : l'accueil sans étapes, qui s'efface au
-  // premier compte — le comportement d'avant, inchangé).
+  // Screen 01, redesigned as a first-launch journey (PLAN-RETOURS-8
+  // R2, A75 — reverses "the onboarding that only asks for an address";
+  // form settled at the field of 2026-08-22, findings 1-8): five
+  // steps — accounts, layout, theme, beta (RETOURS-11, field of
+  // 2026-08-28), summary. Each step says its title, then
+  // "Step n/5", then its text. Two regimes:
+  // `complete` (first install: the whole journey, the mark
+  // `wind-accueil-fait` set at Finish) and desk only (a workstation
+  // back to zero accounts: onboarding without steps, which fades away
+  // at the first account — the prior behavior, unchanged).
   //
-  // L'étape 2 montre des CAPTURES RÉELLES de l'application (décor
-  // Clarity, e2e/capture-accueil.mjs — constat 5) ; l'étape 3 dessine
-  // ses fenêtres aux couleurs de FICHES ET dans la disposition choisie
-  // à l'étape 2 (constat 6). L'étape 5 récapitule les trois choix —
-  // chacun est une porte qui ramène à son étape (constat 8). Les
-  // étapes 2 et 3 ne touchent ni la base ni le réseau :
-  // `appliquerVolets` / `appliquerTheme` appliquent ET persistent.
-  // Seule l'étape 1 (GuichetCompte, A11) parle au shell.
-  import Icone from './Icone.svelte';
-  import GuichetCompte from './GuichetCompte.svelte';
-  import Marque from './Marque.svelte';
-  import { t } from './lib/texte.svelte.js';
-  import { FICHES, appliquerTheme, themeAffiche } from './lib/theme.js';
-  import { voletsActuels, appliquerVolets } from './lib/volets.svelte.js';
-  import { marquerAccueilFait, marquerAccueilCommence } from './lib/accueil.js';
-  import apercu3 from './assets/accueil/disposition-3.png';
-  import apercu2 from './assets/accueil/disposition-2.png';
-  import apercu1 from './assets/accueil/disposition-1.png';
+  // Step 2 shows REAL SCREENSHOTS of the application (Clarity
+  // fixture, e2e/capture-accueil.mjs — finding 5); step 3 draws
+  // its windows in the colors of CARDS AND in the layout chosen
+  // at step 2 (finding 6). Step 5 recaps the three choices —
+  // each is a door back to its step (finding 8). Steps
+  // 2 and 3 touch neither the database nor the network:
+  // `applyPanes` / `applyTheme` apply AND persist.
+  // Only step 1 (AccountDesk, A11) talks to the shell.
+  import Icon from './Icon.svelte';
+  import AccountDesk from './AccountDesk.svelte';
+  import Brand from './Brand.svelte';
+  import { t } from './lib/text.svelte.js';
+  import { THEME_CARDS, applyTheme, displayedTheme } from './lib/theme.js';
+  import { currentPanes, applyPanes } from './lib/panes.svelte.js';
+  import { markOnboardingDone, markOnboardingStarted } from './lib/onboarding.js';
+  import preview3 from './assets/accueil/disposition-3.png';
+  import preview2 from './assets/accueil/disposition-2.png';
+  import preview1 from './assets/accueil/disposition-1.png';
 
-  let { comptes = [], complet = false, onajoute = () => {}, onfini = () => {} } = $props();
+  let { accounts = [], complete = false, onadd = () => {}, onfinish = () => {} } = $props();
 
-  const ETAPES = 5;
-  const APERCUS = { 3: apercu3, 2: apercu2, 1: apercu1 };
-  let etape = $state(1);
-  // Constat 2 : dès qu'une adresse existe, la barre d'ajout se replie
-  // derrière « Ajouter une autre adresse email » — et se rouvre au
-  // clic. `surAjout` la replie après chaque ajout réussi.
-  let ajoutOuvert = $state(false);
-  // 2e passe terrain, constat 3 : l'aperçu de l'étape 2 est UNE image —
-  // celle du bouton survolé tant qu'il l'est, celle du choix sinon.
-  let survolVolets = $state(null);
-  // 3e passe, constat 2 : le guichet générique révélé prend toute la
-  // marche — le « Continuer » du parcours se masque pendant ce temps.
-  let generiqueOuvert = $state(false);
-  // D4 : l'étape 1 exige au moins un compte — Wind est utilisable dès
-  // la fin du parcours.
-  const peutContinuer = $derived(etape !== 1 || comptes.length > 0);
-  // Le volet choisi se LIT du module partagé ($state runes) — aucun
-  // miroir local à resynchroniser (revue 2026-08-22).
-  const volets = $derived(voletsActuels());
-  // La coche suit la fiche AFFICHÉE (le patron des Réglages, revue
-  // A42) : sous suivi OS sombre, c'est la déclinaison -nuit qui coche —
-  // y compris quand l'OS bascule pendant l'étape 3 (même écouteur que
-  // Réglages).
-  let themeActif = $state(themeAffiche());
-  // La fiche du thème AFFICHÉ — la miniature du récapitulatif s'en
-  // colore (2e passe, constat 4).
-  const ficheActive = $derived(FICHES.find((f) => f.id === themeActif) ?? FICHES[0]);
+  const STEPS = 5;
+  const PREVIEWS = { 3: preview3, 2: preview2, 1: preview1 };
+  let step = $state(1);
+  // Finding 2: as soon as one address exists, the add bar folds
+  // behind "Add another email address" — and reopens on
+  // click. `onAdd` folds it back after every successful add.
+  let addOpen = $state(false);
+  // 2nd field pass, finding 3: step 2's preview is ONE image —
+  // the hovered button's for as long as it is hovered, the chosen one's otherwise.
+  let panesHover = $state(null);
+  // 3rd pass, finding 2: the revealed generic desk takes over the
+  // whole step bar — the journey's "Continue" hides during that time.
+  let genericOpen = $state(false);
+  // D4: step 1 requires at least one account — Wind is usable as soon
+  // as the journey ends.
+  const canContinue = $derived(step !== 1 || accounts.length > 0);
+  // The chosen pane layout is READ from the shared module ($state runes) —
+  // no local mirror to resynchronize (review 2026-08-22).
+  const panes = $derived(currentPanes());
+  // The checkmark follows the DISPLAYED card (the Settings pattern,
+  // review A42): under OS dark tracking, it's the -night variant that
+  // gets checked — even when the OS switches during step 3 (same
+  // listener as Settings).
+  let activeTheme = $state(displayedTheme());
+  // The card of the DISPLAYED theme — the summary's thumbnail
+  // colors itself from it (2nd pass, finding 4).
+  const activeCard = $derived(THEME_CARDS.find((f) => f.id === activeTheme) ?? THEME_CARDS[0]);
   $effect(() => {
-    const suivre = () => (themeActif = themeAffiche());
-    document.addEventListener('wind:theme-affiche', suivre);
-    return () => document.removeEventListener('wind:theme-affiche', suivre);
+    const track = () => (activeTheme = displayedTheme());
+    document.addEventListener('wind:theme-affiche', track);
+    return () => document.removeEventListener('wind:theme-affiche', track);
   });
-  // La marque « commencé » se pose dès que le parcours S'AFFICHE : un
-  // compte ajouté à l'étape 1 puis l'app quittée avant Terminer ne
-  // fait pas une installation « déjà accueillie » — le parcours
-  // reprend (revue 2026-08-22).
+  // The "started" mark is set as soon as the journey DISPLAYS: an
+  // account added at step 1 then the app quit before Finish does not
+  // make an install "already onboarded" — the journey
+  // resumes (review 2026-08-22).
   $effect(() => {
-    if (complet) marquerAccueilCommence();
+    if (complete) markOnboardingStarted();
   });
 
-  function surAjout() {
-    ajoutOuvert = false;
-    generiqueOuvert = false;
-    onajoute();
+  function onAdd() {
+    addOpen = false;
+    genericOpen = false;
+    onadd();
   }
-  function continuer() {
-    if (!peutContinuer) return;
-    if (etape < ETAPES) etape += 1;
+  function proceed() {
+    if (!canContinue) return;
+    if (step < STEPS) step += 1;
   }
-  function retour() {
-    if (etape > 1) etape -= 1;
+  function back() {
+    if (step > 1) step -= 1;
   }
-  function choisirTheme(id) {
-    appliquerTheme(id);
-    themeActif = themeAffiche();
+  function chooseTheme(id) {
+    applyTheme(id);
+    activeTheme = displayedTheme();
   }
-  function terminer() {
-    marquerAccueilFait();
-    onfini();
+  function finish() {
+    markOnboardingDone();
+    onfinish();
   }
 </script>
 
 <div class="ecran01" data-testid="onboarding">
-  <!-- L'aperçu-fenêtre de l'étape 3 : n = disposition dessinée (celle
-       choisie à l'étape 2, constat 6), c = couleurs d'une fiche. V3 :
-       entête et nav ne sont plus en retrait (--panel est mort) — le
-       FILET de la fiche dessine seul la séparation, comme au produit. -->
-  {#snippet fenetre(n, c)}
+  <!-- The window-preview of step 3: n = drawn layout (the one
+       chosen at step 2, finding 6), c = a card's colors. V3:
+       header and nav are no longer inset (--panel is dead) — the
+       card's STROKE alone draws the separation, as in the product. -->
+  {#snippet window(n, c)}
     <span class="fenetre" aria-hidden="true"
           style="background:{c.bg}; border-color:{c.border}">
       <span class="f-tete" style="border-color:{c.border}"></span>
@@ -114,164 +114,164 @@
       </span>
     </span>
   {/snippet}
-  {#snippet progression(n)}
-    {#if complet}
+  {#snippet progress(n)}
+    {#if complete}
       <p class="progression" data-testid="accueil-progression">
-        {t('accueil.etape', { n, total: ETAPES })}</p>
+        {t('onboarding.step', { n, total: STEPS })}</p>
     {/if}
   {/snippet}
-  <div class="colonne" class:large={complet && etape !== 1}>
-    {#if !complet || etape === 1}
-      <!-- Constat 1 : « Bienvenue dans Wind » — la marque EN TUILE
-           (V11 : figée hors thèmes, rayon de plateforme) remplace le
-           trait hitofude (V2). Le bloc du guichet reste UN (étape 1 du
-           parcours ET écran d'un poste accueilli revenu à zéro
-           account). -->
-      <h3 class="titre display"><Marque tuile taille={40} />
-        <span>{t('accueil.bienvenue')} <span class="marque">Wind</span></span></h3>
-      {@render progression(1)}
-      <p class="sous">{t('accueil.ajouterSous')}</p>
-      {#if complet && comptes.length > 0}
+  <div class="colonne" class:large={complete && step !== 1}>
+    {#if !complete || step === 1}
+      <!-- Finding 1: "Welcome to Wind" — the TILED brand
+           (V11: frozen across themes, platform radius) replaces the
+           hitofude stroke (V2). The desk block stays ONE (step 1 of
+           the journey AND the screen of an onboarded workstation back
+           to zero accounts). -->
+      <h3 class="titre display"><Brand tile size={40} />
+        <span>{t('onboarding.welcome')} <span class="marque">Wind</span></span></h3>
+      {@render progress(1)}
+      <p class="sous">{t('onboarding.addUnder')}</p>
+      {#if complete && accounts.length > 0}
         <ul class="ajoutes" data-testid="accueil-comptes">
-          {#each comptes as c (c.account_id)}
-            <li><Icone name="check_circle" />{c.email}</li>
+          {#each accounts as c (c.account_id)}
+            <li><Icon name="check_circle" />{c.email}</li>
           {/each}
         </ul>
       {/if}
-      {#if comptes.length === 0 || ajoutOuvert}
-        <!-- Constat 1 (2e passe) : tant que Continuer n'est pas là
-             (aucun account), « Ajouter » est LE geste — primaire. -->
-        <GuichetCompte accueil ajoutPrincipal={comptes.length === 0}
-                       ongenerique={(v) => (generiqueOuvert = v)}
-                       onajoute={surAjout} />
+      {#if accounts.length === 0 || addOpen}
+        <!-- Finding 1 (2nd pass): as long as Continue is not there
+             (no account), "Add" is THE gesture — primary. -->
+        <AccountDesk accueil mainAdd={accounts.length === 0}
+                       ongeneric={(v) => (genericOpen = v)}
+                       onadd={onAdd} />
       {:else}
-        <!-- Constat 2 : la barre repliée derrière une porte explicite. -->
+        <!-- Finding 2: the bar folded behind an explicit door. -->
         <button type="button" class="secondaire" data-testid="accueil-ajouter-autre"
-                onclick={() => (ajoutOuvert = true)}>
-          {t('accueil.ajouterAutre')}</button>
+                onclick={() => (addOpen = true)}>
+          {t('onboarding.addOther')}</button>
       {/if}
-    {:else if etape === 2}
-      <h3 class="titre display">{t('accueil.voletsTitre')}</h3>
-      {@render progression(2)}
-      <p class="sous">{t('accueil.voletsSous')}</p>
-      <!-- Constats 5 (1re passe), 3 (2e) et 3 (3e passe) : UNE capture
-           RÉELLE de l'application — actualisée au survol (et au focus
-           clavier, A8) du bouton visé, revenue au choix sinon —,
-           l'ensemble image + boutons dans une élévation, boutons
-           centrés. -->
+    {:else if step === 2}
+      <h3 class="titre display">{t('onboarding.panesTitle')}</h3>
+      {@render progress(2)}
+      <p class="sous">{t('onboarding.panesUnder')}</p>
+      <!-- Findings 5 (1st pass), 3 (2nd) and 3 (3rd pass): ONE REAL
+           screenshot of the application — refreshed on hover (and on
+           keyboard focus, A8) of the targeted button, back to the
+           choice otherwise —, the image + buttons set together in one
+           elevation, buttons centered. -->
       <div class="cadre-volets">
         <img class="capture-grande" data-testid="accueil-apercu"
-             data-volets={survolVolets ?? volets}
-             src={APERCUS[survolVolets ?? volets]} alt="" />
+             data-volets={panesHover ?? panes}
+             src={PREVIEWS[panesHover ?? panes]} alt="" />
         <div class="boutons-volets" data-testid="accueil-volets">
           {#each [3, 2, 1] as n (n)}
-            <button type="button" class="choix-volet" class:choisie={volets === n}
+            <button type="button" class="choix-volet" class:choisie={panes === n}
                     data-testid="accueil-volet" data-volets={n}
-                    aria-pressed={volets === n}
-                    onclick={() => appliquerVolets(n)}
-                    onmouseenter={() => (survolVolets = n)}
-                    onmouseleave={() => (survolVolets = null)}
-                    onfocus={() => (survolVolets = n)}
-                    onblur={() => (survolVolets = null)}>
-              {t(`volets.${n}`)}</button>
+                    aria-pressed={panes === n}
+                    onclick={() => applyPanes(n)}
+                    onmouseenter={() => (panesHover = n)}
+                    onmouseleave={() => (panesHover = null)}
+                    onfocus={() => (panesHover = n)}
+                    onblur={() => (panesHover = null)}>
+              {t(`panes.${n}`)}</button>
           {/each}
         </div>
       </div>
-    {:else if etape === 3}
-      <h3 class="titre display">{t('accueil.themeTitre')}</h3>
-      {@render progression(3)}
-      <p class="sous">{t('accueil.themeSous')}</p>
+    {:else if step === 3}
+      <h3 class="titre display">{t('onboarding.themeTitle')}</h3>
+      {@render progress(3)}
+      <p class="sous">{t('onboarding.themeUnder')}</p>
       <div class="cartes themes" data-testid="accueil-themes">
-        {#each FICHES as fiche (fiche.id)}
-          {@const [accent, bg, border, surface] = fiche.pastilles}
-          <button type="button" class="carte" class:choisie={themeActif === fiche.id}
-                  data-testid="accueil-theme" data-theme-id={fiche.id}
-                  aria-pressed={themeActif === fiche.id}
-                  onclick={() => choisirTheme(fiche.id)}>
-            <!-- La fenêtre aux couleurs de LA fiche (FICHES est mesuré
-                 contre systeme.css par la gate), dans la disposition
-                 choisie (constat 6). -->
-            {@render fenetre(volets, { accent, bg, border, surface })}
-            <span class="carte-nom">{t(`theme.${fiche.id}.nom`)}</span>
+        {#each THEME_CARDS as card (card.id)}
+          {@const [accent, bg, border, surface] = card.swatches}
+          <button type="button" class="carte" class:choisie={activeTheme === card.id}
+                  data-testid="accueil-theme" data-theme-id={card.id}
+                  aria-pressed={activeTheme === card.id}
+                  onclick={() => chooseTheme(card.id)}>
+            <!-- The window in THE card's colors (CARDS is measured
+                 against system.css by the gate), in the chosen
+                 layout (finding 6). -->
+            {@render window(panes, { accent, bg, border, surface })}
+            <span class="carte-nom">{t(`theme.${card.id}.name`)}</span>
           </button>
         {/each}
       </div>
-    {:else if etape === 4}
-      <!-- L'étape bêta (RETOURS-11 R3, terrain du 2026-08-28) : dire
-           que Wind est en bêta et montrer le bouton Feedback de
-           l'entête — l'échantillon est INERTE (aria-hidden sur le
-           dessin), le vrai bouton vit en haut à droite une fois le
-           parcours fini. -->
-      <h3 class="titre display">{t('accueil.betaTitre')}</h3>
-      {@render progression(4)}
-      <p class="sous">{t('accueil.betaSous')}</p>
+    {:else if step === 4}
+      <!-- The beta step (RETOURS-11 R3, field of 2026-08-28): say
+           that Wind is in beta and show the header's Feedback
+           button — the sample is INERT (aria-hidden on the
+           drawing), the real button lives at the top right once the
+           journey is done. -->
+      <h3 class="titre display">{t('onboarding.betaTitle')}</h3>
+      {@render progress(4)}
+      <p class="sous">{t('onboarding.betaUnder')}</p>
       <div class="beta" data-testid="accueil-beta">
         <span class="echantillon" aria-hidden="true">
-          <Icone name="feedback" />{t('entete.feedback')}</span>
-        <p class="beta-texte">{t('accueil.betaBouton')}</p>
+          <Icon name="feedback" />{t('header.feedback')}</span>
+        <p class="beta-texte">{t('onboarding.betaButton')}</p>
       </div>
     {:else}
-      <h3 class="titre display">{t('accueil.finTitre')}</h3>
-      {@render progression(5)}
-      <p class="sous">{t('accueil.finTexte')}</p>
-      <!-- Constat 8 (1re passe) : chaque choix récapitulé est une
-           porte vers son étape ; constat 4 (2e passe) : miniatures
-           pour Disposition et Thème, et au survol comme au focus
-           clavier un VOILE couvre la rangée et dit « Revenir à cette
-           étape » — les règles visuelles du voile des pièces jointes
+      <h3 class="titre display">{t('onboarding.endTitle')}</h3>
+      {@render progress(5)}
+      <p class="sous">{t('onboarding.endText')}</p>
+      <!-- Finding 8 (1st pass): each recapped choice is a
+           door back to its step; finding 4 (2nd pass): thumbnails
+           for Layout and Theme, and on hover as on keyboard
+           focus a VEIL covers the row and says "Back to this
+           step" — the visual rules of the attachments' veil
            (A70). -->
       <div class="recap" data-testid="accueil-recap">
         <button type="button" class="ligne-recap" data-testid="recap-comptes"
-                aria-label="{t('groupe.comptes')} : {t('accueil.revenir')}"
-                onclick={() => (etape = 1)}>
-          <span class="recap-titre">{t('groupe.comptes')}</span>
-          <span class="recap-valeur">{comptes.map((c) => c.email).join(' · ')}</span>
+                aria-label="{t('group.accounts')} : {t('onboarding.goBack')}"
+                onclick={() => (step = 1)}>
+          <span class="recap-titre">{t('group.accounts')}</span>
+          <span class="recap-valeur">{accounts.map((c) => c.email).join(' · ')}</span>
           <span class="voile" aria-hidden="true">
-            <Icone name="arrow_back" />{t('accueil.revenir')}</span>
+            <Icon name="arrow_back" />{t('onboarding.goBack')}</span>
         </button>
         <button type="button" class="ligne-recap" data-testid="recap-volets"
-                aria-label="{t('reglages.volets')} : {t('accueil.revenir')}"
-                onclick={() => (etape = 2)}>
-          <span class="recap-titre">{t('reglages.volets')}</span>
-          <!-- 4e passe terrain : le texte AU-DESSUS de l'image. -->
-          <span class="recap-valeur">{t(`volets.${volets}`)}</span>
-          <img class="mini" src={APERCUS[volets]} alt="" />
+                aria-label="{t('settings.panes')} : {t('onboarding.goBack')}"
+                onclick={() => (step = 2)}>
+          <span class="recap-titre">{t('settings.panes')}</span>
+          <!-- 4th field pass: the text ABOVE the image. -->
+          <span class="recap-valeur">{t(`panes.${panes}`)}</span>
+          <img class="mini" src={PREVIEWS[panes]} alt="" />
           <span class="voile" aria-hidden="true">
-            <Icone name="arrow_back" />{t('accueil.revenir')}</span>
+            <Icon name="arrow_back" />{t('onboarding.goBack')}</span>
         </button>
         <button type="button" class="ligne-recap" data-testid="recap-theme"
-                aria-label="{t('accueil.theme')} : {t('accueil.revenir')}"
-                onclick={() => (etape = 3)}>
-          <span class="recap-titre">{t('accueil.theme')}</span>
-          <!-- 4e passe terrain : le texte AU-DESSUS de l'image. -->
-          <span class="recap-valeur">{t(`theme.${themeActif}.nom`)}</span>
-          {#if ficheActive}
-            {@const [accent, bg, border, surface] = ficheActive.pastilles}
-            <span class="mini-theme">{@render fenetre(volets, { accent, bg, border, surface })}</span>
+                aria-label="{t('onboarding.theme')} : {t('onboarding.goBack')}"
+                onclick={() => (step = 3)}>
+          <span class="recap-titre">{t('onboarding.theme')}</span>
+          <!-- 4th field pass: the text ABOVE the image. -->
+          <span class="recap-valeur">{t(`theme.${activeTheme}.name`)}</span>
+          {#if activeCard}
+            {@const [accent, bg, border, surface] = activeCard.swatches}
+            <span class="mini-theme">{@render window(panes, { accent, bg, border, surface })}</span>
           {/if}
           <span class="voile" aria-hidden="true">
-            <Icone name="arrow_back" />{t('accueil.revenir')}</span>
+            <Icon name="arrow_back" />{t('onboarding.goBack')}</span>
         </button>
       </div>
     {/if}
-    {#if complet}
+    {#if complete}
       <div class="marche">
-        {#if etape > 1}
+        {#if step > 1}
           <button type="button" class="secondaire" data-testid="accueil-retour"
-                  onclick={retour}>{t('accueil.retour')}</button>
+                  onclick={back}>{t('onboarding.back')}</button>
         {/if}
-        {#if etape < ETAPES}
-          <!-- 3e passe, constats 1-2 : « Continuer » ne s'affiche
-               JAMAIS grisé — absent tant qu'aucun compte n'existe, et
-               masqué pendant que le guichet générique est révélé
-               (« Ajouter » y est le geste primaire). -->
-          {#if peutContinuer && !(etape === 1 && generiqueOuvert)}
+        {#if step < STEPS}
+          <!-- 3rd pass, findings 1-2: "Continue" NEVER displays
+               grayed out — absent as long as no account exists, and
+               hidden while the generic desk is revealed
+               ("Add" is the primary gesture there). -->
+          {#if canContinue && !(step === 1 && genericOpen)}
             <button type="button" class="principal" data-testid="accueil-continuer"
-                    onclick={continuer}>{t('accueil.continuer')}</button>
+                    onclick={proceed}>{t('onboarding.continue')}</button>
           {/if}
         {:else}
           <button type="button" class="principal" data-testid="accueil-terminer"
-                  onclick={terminer}>{t('accueil.terminer')}</button>
+                  onclick={finish}>{t('onboarding.finish')}</button>
         {/if}
       </div>
     {/if}
@@ -279,8 +279,8 @@
 </div>
 
 <style>
-  /* Géométrie de l'écran 01 du prototype — la colonne s'élargit aux
-     étapes 2-4, l'écran défile si la grille des thèmes dépasse. */
+  /* Geometry of the prototype's screen 01 — the column widens at
+     steps 2-4, the screen scrolls if the theme grid overflows. */
   .ecran01 {
     position:absolute; inset:0; display:flex; align-items:safe center;
     justify-content:center; background:var(--bg); z-index:1;
@@ -288,14 +288,14 @@
   }
   .colonne { width:520px; display:flex; flex-direction:column; gap:22px; }
   .colonne.large { width:760px; }
-  /* V6 : les titres d'étapes passent au registre d'affichage
-     (graisse 340, -.03em — classe globale .display, posée sur chaque
-     h3) ; la taille ne bouge pas. */
+  /* V6: step titles switch to the display register
+     (weight 340, -.03em — global class .display, set on every
+     h3); the size does not move. */
   .titre {
     margin:0; font-size:40px; line-height:1.1; color:var(--ink);
     display:flex; align-items:center; gap:14px;
   }
-  /* La marque dans le titre : « Wind », insécable. */
+  /* The brand in the title: "Wind", non-breaking. */
   .marque { white-space:nowrap; }
   .progression {
     margin:0; font-size:13px; font-weight:600; color:var(--muted);
@@ -313,9 +313,9 @@
   .ajoutes :global(.ic) { color:var(--accent); }
 
   .cartes { display:flex; gap:14px; flex-wrap:wrap; }
-  /* V7/A94 : la table vivante en deux colonnes (2×2 à quatre fiches —
-     quatre de front écraserait les vignettes) ; la grille de 28 est
-     morte. L'écran défile si la grille dépasse (.ecran01). */
+  /* V7/A94: the living table in two columns (2×2 for four cards —
+     four abreast would crush the thumbnails); the 28 grid is
+     dead. The screen scrolls if the grid overflows (.ecran01). */
   .cartes.themes {
     display:grid; grid-template-columns:repeat(2, 1fr); gap:14px;
   }
@@ -325,18 +325,18 @@
     border-radius:var(--r-surface); cursor:pointer; flex:1;
   }
   .carte:hover { background:var(--sel); }
-  /* Constats 5/7 : la sélection se voit — contour épaissi (liseré
-     interne, aucun décalage de grille) + la teinte de sélection des
-     lignes du volet central. */
+  /* Findings 5/7: the selection is visible — thickened outline
+     (inner trim, no grid shift) + the selection tint of the
+     central pane's rows. */
   .carte.choisie {
     border-color:var(--accent);
     box-shadow:inset 0 0 0 1px var(--accent);
     background:var(--sel);
   }
   .carte-nom { font-size:13px; font-weight:600; color:var(--ink); }
-  /* Constat 3 (2e et 3e passes) : l'aperçu unique de l'étape 2 et sa
-     rangée de boutons, dans UNE élévation (surface + ombre unique),
-     boutons centrés. */
+  /* Finding 3 (2nd and 3rd passes): step 2's single preview and its
+     row of buttons, in ONE elevation (surface + single shadow),
+     buttons centered. */
   .cadre-volets {
     display:flex; flex-direction:column; gap:14px; padding:14px;
     background:var(--surface); border:1px solid var(--border);
@@ -359,7 +359,7 @@
     background:var(--sel);
   }
 
-  /* La fenêtre d'aperçu de l'étape 3, aux couleurs de la fiche. */
+  /* Step 3's preview window, in the card's colors. */
   .fenetre {
     display:flex; flex-direction:column; height:110px; border-radius:var(--r-controle);
     border:1px solid var(--border); overflow:hidden;
@@ -374,11 +374,11 @@
   .f-liste span:nth-child(2) { opacity:.85; }
   .f-lecture { width:38%; flex:none; border-left:1px solid var(--border); }
 
-  /* Constat 4 (3e passe) : les trois récaps côte à côte, chacun en
-     colonne (titre, miniature, valeur). */
-  /* L'étape bêta (RETOURS-11) : l'échantillon du bouton Feedback au
-     dessin exact de l'entête (bordure, rayon de contrôle, 13 px),
-     inerte — le texte explique, le dessin montre. */
+  /* Finding 4 (3rd pass): the three recaps side by side, each in a
+     column (title, thumbnail, value). */
+  /* The beta step (RETOURS-11): the Feedback button sample at the
+     header's exact drawing (border, control radius, 13 px),
+     inert — the text explains, the drawing shows. */
   .beta {
     display:flex; align-items:center; gap:18px; text-align:left;
     padding:14px 0;
@@ -405,8 +405,8 @@
     font-size:13px; line-height:1.4; color:var(--ink2); min-width:0;
     overflow:hidden; overflow-wrap:anywhere;
   }
-  /* Constat 4 (2e passe) : miniatures — la capture de la disposition,
-     la fenêtre aux couleurs du thème. */
+  /* Finding 4 (2nd pass): thumbnails — the layout's screenshot,
+     the window in the theme's colors. */
   .mini {
     width:100%; height:auto; flex:none; display:block;
     border-radius:var(--r-controle); border:1px solid var(--border);
@@ -416,9 +416,9 @@
   .mini-theme .f-tete { height:8px; }
   .mini-theme .f-liste { padding:3px; gap:2px; }
   .mini-theme .f-liste span { height:5px; border-radius:var(--r-controle); }
-  /* Le voile « Revenir à cette étape » : les règles du voile des
-     pièces jointes (A70) — recouvrement absolu, fond --sel opaque,
-     montré au survol ET au focus clavier (A8), géométrie stable. */
+  /* The "Back to this step" veil: the attachments' veil rules
+     (A70) — absolute overlay, opaque --sel background,
+     shown on hover AND on keyboard focus (A8), stable geometry. */
   .ligne-recap .voile {
     position:absolute; inset:0; display:none; align-items:center;
     justify-content:center; gap:6px; font-size:13px; font-weight:600;

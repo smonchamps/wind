@@ -33,7 +33,7 @@
 6. **What stays French — by decision, not by oversight** (D3, D11):
    - the SQLite schema (26 tables, ~30 French columns), the six `prefs`
      keys, the files on disk (`wind.db`, `wind.log`, `maj.log`,
-     `telemetry.json`, `discovery.db`) — debt D-54;
+     `telemetry.json`, `discovery.db`) — debt D-55;
    - the browser `localStorage` keys (`wind-theme`, `wind-volets`,
      `wind-largeurs`, `wind-espacement`, `wind-accueil-*`): persisted on
      every tester's machine, renaming them would silently reset their
@@ -310,10 +310,26 @@ Test ids and CSS classes follow the token table in kebab-case
   inventory and the derivation (Python, throw-away tooling of E0; E1
   ports the applier to Node so the repository keeps a single Python
   tool, `freeze-probe.py`).
-- The applier (`scripts/rename/apply.mjs`, written at E1) replaces
-  **whole identifiers only** (`\b…\b`), never inside string literals or
-  comments, one layer at a time; the compiler, the Vite build, the e2e
-  suite and the three nets of E1 decide. `cargo fmt` runs after every
-  pass.
+- The applier of the UI layer (`scripts/rename/apply-ui.mjs`, written
+  at E5b — E3 and E4 used throw-away passes) is a tokenizer, not a
+  `\b…\b` regex: it renames **whole identifiers only**, never inside
+  string literals, template-literal text, comments, regex literals,
+  `<style>` blocks, HTML attribute names or markup text; in a Svelte file
+  it follows the JS of `<script>` and of every `{…}` mustache, the
+  attribute names of component tags (props), `use:` actions and bare
+  `class:` directives (the class stays, the bound variable follows). It
+  also renames the catalogue keys (`keys.csv`, exact string literals and
+  template prefixes) and the files (`git mv`, import paths). Its
+  `--report` mode lists what must be reviewed by hand: string literals
+  equal to a dictionary word, a `new` name already declared next to its
+  `old`, `dataset.<word>` reads. The compiler, the Vite build, eslint
+  `no-undef`, the e2e suite and the nets decide.
 - Rows the CE strikes at STOP 1 bis are edited in `tokens.csv`, the
-  dictionary is regenerated — never patched by hand.
+  dictionary is regenerated — never patched by hand. Exception written
+  at E5b: the derivation had produced wrong words in ~80 rows (kebab or
+  snake names in camelCase positions, `langue.en` → `language.in`,
+  JavaScript keywords `delete`/`default`/`new`/`do`, the builtin
+  `queueMicrotask`) and had missed ~280 definitions (props, params,
+  destructured locals); those rows were corrected or added in
+  `dictionary.csv` and `keys.csv` by hand, tagged `leftover-E5b` /
+  `inventory-E5b` — listed in PLAN-BASCULE-ANGLAIS E5b.

@@ -1,113 +1,114 @@
-// Port de transport UI <-> coeur (R0-S5) — module ES pour la v2.
-// Le contrat hérité du transport v1 (retiré à B2) : une seule opération,
-// appel(commande, arguments) -> Promise. Succes = valeur JSON du coeur ;
-// echec = rejet portant le message (string) du Result<T, String>, tel
-// quel. Pas de canal d'evenements : la progression se lit par sondage.
+// UI <-> core transport port (R0-S5) — ES module for v2.
+// The contract inherited from the v1 transport (removed at B2): a single
+// operation, call(command, args) -> Promise. Success = the core's JSON
+// value; failure = a rejection carrying the message (string) from
+// Result<T, String>, as is. No event channel: progress is read by
+// polling.
 //
-// Impl EN-PROCESSUS (Tauri IPC). Hors Tauri : echec franc et nomme,
-// jamais un silence — l'impl distante (POST /api/appel/<commande>)
-// remplacera ce rejet sans changer l'application.
+// IN-PROCESS impl (Tauri IPC). Outside Tauri: a plain, named failure,
+// never silence — the remote impl (POST /api/appel/<commande>)
+// will replace this rejection without changing the application.
 
 const invoke = globalThis.window?.__TAURI__?.core?.invoke;
 
 const brut = invoke
-  ? (commande, args) => invoke(commande, args)
-  : (commande) => Promise.reject(
-      `transport indisponible : ${commande} (hors Tauri, impl distante non livree)`);
+  ? (command, args) => invoke(command, args)
+  : (command) => Promise.reject(
+      `transport unavailable: ${command} (outside Tauri, no remote implementation delivered)`);
 
-// Couture e2e (PLAN-REACTIVITE E1) : une promesse posee dans
-// `window.__e2eRetenue` RETIENT tout appel au coeur jusqu'a sa
-// resolution — l'assertion « une recharge ne montre jamais l'attente »
-// doit observer l'ecran PENDANT le vol d'une resservie. Hors e2e la
-// variable n'existe pas : le chemin est identique a avant.
+// e2e seam (PLAN-REACTIVITE E1): a promise set in
+// `window.__e2eRetenue` HOLDS every call to the core until it
+// resolves — the assertion “a reload never shows the wait” must
+// observe the screen WHILE a re-serve is in flight. Outside e2e the
+// variable does not exist: the path is identical to before.
 //
-// Couture e2e (PLAN-DEFILEMENT-PROFOND E1) : un tableau pose dans
-// `window.__e2eJournal` recoit un releve {commande, depart, arrivee}
-// par appel — l'assertion « jamais plus de N pages en vol » compte les
-// vols ouverts a chaque instant. Meme regle : hors e2e, rien.
-// Couture e2e (PLAN-RETOURS-12 R1) : le consentement OAuth n'est pas
-// pilotable par Playwright — des adresses posees dans `window.__e2eAjout`
-// font reussir l'ajout sans navigateur, et le bilan de `connect_accounts`
-// les porte comme connectees, a l'image de la session que le coeur pose
-// a l'ajout reel (add_oauth_account). Hors e2e la variable n'existe pas.
-// Rend un LANCEUR (pas une promesse) : la retenue `__e2eRetenue`
-// s'applique aussi a ces vols — la couture module le transport, jamais
-// l'ordre des choses (revue). Les retours sont minimaux : personne ne
-// lit le bilan d'ajout, et seul `email` est consomme du bilan de
-// connexion — un contrat plus riche serait un mensonge de test.
-const ajoutFactice = (commande, args) => {
-  const ajout = globalThis.window?.__e2eAjout;
-  if (!Array.isArray(ajout)) return null;
-  if (commande === 'add_account' || commande === 'add_microsoft_account') {
+// e2e seam (PLAN-DEFILEMENT-PROFOND E1): an array set in
+// `window.__e2eJournal` receives a record {command, start, arrival}
+// per call — the assertion “never more than N pages in flight” counts
+// the flights open at each instant. Same rule: outside e2e, nothing.
+// e2e seam (PLAN-RETOURS-12 R1): OAuth consent cannot be driven by
+// Playwright — addresses set in `window.__e2eAjout` make the addition
+// succeed without a browser, and `connect_accounts`'s report carries
+// them as connected, mirroring the session that the core sets on a
+// real addition (add_oauth_account). Outside e2e the variable does not
+// exist. Returns a LAUNCHER (not a promise): the `__e2eRetenue` hold
+// also applies to these flights — the seam modulates the transport,
+// never the order of things (review). The returns are minimal: no one
+// reads the addition report, and only `email` is consumed from the
+// connection report — a richer contract would be a test's lie.
+const fakeAdd = (command, args) => {
+  const add = globalThis.window?.__e2eAjout;
+  if (!Array.isArray(add)) return null;
+  if (command === 'add_account' || command === 'add_microsoft_account') {
     return () => Promise.resolve();
   }
-  if (commande === 'connect_accounts') {
-    return () => brut(commande, args).then((bilan) => ({
-      ...bilan,
-      accounts: [...bilan.accounts, ...ajout.map((email) => ({ email }))],
+  if (command === 'connect_accounts') {
+    return () => brut(command, args).then((report) => ({
+      ...report,
+      accounts: [...report.accounts, ...add.map((email) => ({ email }))],
     }));
   }
   return null;
 };
 
-// Couture e2e (PLAN-AUDIT-V2 E10) : un tableau de noms de commandes pose
-// dans `window.__e2ePanne` fait ECHOUER le prochain appel de chacune (une
-// fois) — le seul moyen de jouer « le coeur n'a pas repondu » sur un
-// decor. Hors e2e la variable n'existe pas : chemin identique.
-const panneFactice = (commande) => {
-  const panne = globalThis.window?.__e2ePanne;
-  if (!Array.isArray(panne)) return null;
-  const i = panne.indexOf(commande);
+// e2e seam (PLAN-AUDIT-V2 E10): an array of command names set
+// in `window.__e2ePanne` makes the next call of each one FAIL (once)
+// — the only way to play “the core has not answered” on a fixture.
+// Outside e2e the variable does not exist: identical path.
+const fakeFailure = (command) => {
+  const failure = globalThis.window?.__e2ePanne;
+  if (!Array.isArray(failure)) return null;
+  const i = failure.indexOf(command);
   if (i === -1) return null;
-  panne.splice(i, 1);
-  return () => Promise.reject(new Error(`panne e2e : ${commande}`));
+  failure.splice(i, 1);
+  return () => Promise.reject(new Error(`e2e failure: ${command}`));
 };
 
-export const appel = (commande, args) => {
-  const lancer = panneFactice(commande) ?? ajoutFactice(commande, args) ?? (() => brut(commande, args));
-  const retenue = globalThis.window?.__e2eRetenue;
-  const vol = retenue ? retenue.then(lancer) : lancer();
-  const journal = globalThis.window?.__e2eJournal;
-  if (journal) {
-    const releve = { commande, depart: performance.now(), arrivee: null };
-    journal.push(releve);
-    const poser = () => {
-      releve.arrivee = performance.now();
+export const call = (command, args) => {
+  const launch = fakeFailure(command) ?? fakeAdd(command, args) ?? (() => brut(command, args));
+  const hold = globalThis.window?.__e2eRetenue;
+  const flight = hold ? hold.then(launch) : launch();
+  const log = globalThis.window?.__e2eJournal;
+  if (log) {
+    const poll = { command, start: performance.now(), arrival: null };
+    log.push(poll);
+    const settle = () => {
+      poll.arrival = performance.now();
     };
-    vol.then(poser, poser);
+    flight.then(settle, settle);
   }
-  return vol;
+  return flight;
 };
 
-// Le selecteur de fichiers natif (plugin dialog), par le MEME canal
-// invoke que le reste — pas d'API globale a injecter, une seule
-// permission (dialog:allow-open). Rend une liste de chemins, vide si
-// l'utilisateur annule.
+// The native file picker (dialog plugin), over the SAME invoke
+// channel as the rest — no global API to inject, a single
+// permission (dialog:allow-open). Returns a list of paths, empty if
+// the user cancels.
 //
-// Couture e2e (PLAN-PIECES-JOINTES §7) : la boite de dialogue native
-// n'est pas pilotable par Playwright — la suite depose ses chemins de
-// fixtures dans `window.__e2ePieces` et le selecteur ne s'ouvre jamais ;
-// tout le reste du chemin (attach_files → puces → envoi) est le vrai.
-export const choisirFichiers = async () => {
+// e2e seam (PLAN-PIECES-JOINTES §7): the native dialog box
+// cannot be driven by Playwright — the suite drops its fixture
+// paths in `window.__e2ePieces` and the picker never opens;
+// the rest of the path (attach_files → chips → send) is the real one.
+export const chooseFiles = async () => {
   const injectes = globalThis.window?.__e2ePieces;
   if (injectes !== undefined) return Array.isArray(injectes) ? injectes : [];
-  const choix = await appel('plugin:dialog|open', { options: { multiple: true } });
-  if (!choix) return [];
-  return Array.isArray(choix) ? choix : [choix];
+  const choice = await call('plugin:dialog|open', { options: { multiple: true } });
+  if (!choice) return [];
+  return Array.isArray(choice) ? choice : [choice];
 };
 
-// Le dialogue « Enregistrer sous » natif (plugin dialog), pour telecharger
-// une piece recue (R1/PLAN-RETOURS-4). Meme canal invoke que le reste ;
-// `defaultPath` pre-remplit dossier + nom (Telechargements + nom assaini,
-// fourni par le coeur). Rend le chemin choisi, ou null si l'utilisateur
-// annule.
+// The native “Save as” dialog (dialog plugin), to download a
+// received attachment (R1/PLAN-RETOURS-4). Same invoke channel as the
+// rest; `defaultPath` prefills folder + name (Downloads + sanitized
+// name, supplied by the core). Returns the chosen path, or null if
+// the user cancels.
 //
-// Couture e2e (symetrique de `choisirFichiers`) : un chemin pose dans
-// `window.__e2eDestination` est rendu tel quel, le dialogue natif — non
-// pilotable par Playwright — ne s'ouvre jamais.
-export const choisirDestination = async (cheminParDefaut) => {
+// e2e seam (symmetric to `chooseFiles`): a path set in
+// `window.__e2eDestination` is returned as is, the native dialog —
+// not drivable by Playwright — never opens.
+export const chooseDestination = async (defaultPath) => {
   const injecte = globalThis.window?.__e2eDestination;
   if (injecte !== undefined) return injecte || null;
-  const choix = await appel('plugin:dialog|save', { options: { defaultPath: cheminParDefaut } });
-  return choix || null;
+  const choice = await call('plugin:dialog|save', { options: { defaultPath: defaultPath } });
+  return choice || null;
 };

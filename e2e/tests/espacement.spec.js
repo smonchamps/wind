@@ -31,9 +31,9 @@ test.describe.configure({ mode: 'serial' });
 // Les valeurs de la décision CE D1. Le delta est arithmétique : +6 px
 // de padding = +12 px de rangée, sur les DEUX gabarits.
 const CRANS = [
-  { niveau: 'faible', pad: 13, h1: 88, h2: 115 },
-  { niveau: 'moyen', pad: 19, h1: 100, h2: 127 },
-  { niveau: 'eleve', pad: 25, h1: 112, h2: 139 },
+  { niveau: 'low', pad: 13, h1: 88, h2: 115 },
+  { niveau: 'medium', pad: 19, h1: 100, h2: 127 },
+  { niveau: 'high', pad: 25, h1: 112, h2: 139 },
 ];
 
 // Une Réception PROFONDE : il faut de quoi défiler loin (le mensonge de
@@ -64,7 +64,7 @@ const poserCran = async (niveau) => {
   await page.waitForTimeout(200);
 };
 
-const geometrie = () => page.evaluate(() => window.__mesure.etat());
+const geometrie = () => page.evaluate(() => window.__mesure.state());
 
 // CE QUE L'UTILISATEUR VOIT, et non ce que le composant croit : le
 // sujet de la rangée réellement posée en haut du cadre. C'est la seule
@@ -97,7 +97,7 @@ test('les trois crans donnent les DEUX gabarits attendus (D1)', async () => {
     expect(h1).toBe(cran.h1);
     expect(h2).toBe(cran.h2);
   }
-  await poserCran('faible');
+  await poserCran('low');
 });
 
 test('la barre de défilement dit la hauteur RÉELLE des rangées', async () => {
@@ -131,27 +131,27 @@ test('la barre de défilement dit la hauteur RÉELLE des rangées', async () => 
     expect(mesure.scrollHeight).toBeGreaterThanOrEqual(total * cran.h1);
     expect(mesure.scrollHeight).toBeLessThan(total * (cran.h1 + 30));
   }
-  await poserCran('faible');
+  await poserCran('low');
 });
 
 test('bascule à chaud en profondeur : la ligne VUE ne bouge pas', async () => {
-  await poserCran('faible');
+  await poserCran('low');
   await page.evaluate(() => window.__mesure.page(200));
   await page.waitForTimeout(200);
 
-  const avantIndex = (await geometrie()).premier;
+  const avantIndex = (await geometrie()).first;
   const avantSujet = await sujetAuSommet();
   expect(avantIndex).toBeGreaterThan(150);
   expect(avantSujet).toBeTruthy();
 
-  await poserCran('eleve');
+  await poserCran('high');
 
   expect((await geometrie()).h1).toBe(112);
   // L'assertion qui compte : le MÊME message est en haut de l'écran.
   expect(await sujetAuSommet()).toBe(avantSujet);
-  expect(Math.abs((await geometrie()).premier - avantIndex)).toBeLessThanOrEqual(1);
+  expect(Math.abs((await geometrie()).first - avantIndex)).toBeLessThanOrEqual(1);
 
-  await poserCran('faible');
+  await poserCran('low');
 });
 
 test('bascule à chaud AVEC une conversation épinglée — le chemin du défaut', async () => {
@@ -159,7 +159,7 @@ test('bascule à chaud AVEC une conversation épinglée — le chemin du défaut
   // épinglées sont des rangées, elles grandissent avec le cran, leur
   // ResizeObserver réveille l'effet qui recalcule la position — et il
   // est ordonnancé AVANT le ré-ancrage. Sans épingle, ce chemin dort.
-  await poserCran('faible');
+  await poserCran('low');
   await page.locator('[data-testid="ligne"]').first().click();
   const epingler = page.locator('[data-testid="volet-lecture"] [data-testid="epingler"]');
   await epingler.click();
@@ -167,17 +167,17 @@ test('bascule à chaud AVEC une conversation épinglée — le chemin du défaut
 
   await page.evaluate(() => window.__mesure.page(200));
   await page.waitForTimeout(200);
-  const avantIndex = (await geometrie()).premier;
+  const avantIndex = (await geometrie()).first;
   const avantSujet = await sujetAuSommet();
   expect(avantIndex).toBeGreaterThan(150);
 
-  await poserCran('eleve');
+  await poserCran('high');
 
   expect(await sujetAuSommet()).toBe(avantSujet);
-  expect(Math.abs((await geometrie()).premier - avantIndex)).toBeLessThanOrEqual(1);
+  expect(Math.abs((await geometrie()).first - avantIndex)).toBeLessThanOrEqual(1);
 
   // Désépingler pour rendre le décor à la suite.
-  await poserCran('faible');
+  await poserCran('low');
   await page.locator('[data-testid="epingles"] [data-testid="ligne"]').first().click();
   await epingler.click();
   await expect(page.locator('[data-testid="epingles"]')).toHaveCount(0);
@@ -198,19 +198,19 @@ test('hors du flot fenêtré, changer de cran ne déplace pas la liste', async (
   const avant = await page.evaluate(() => document.querySelector('.cadre').scrollTop);
   expect(avant).toBeGreaterThan(0);
 
-  await poserCran('moyen');
+  await poserCran('medium');
   const apres = await page.evaluate(() => document.querySelector('.cadre').scrollTop);
   // La liste a pu bouger de quelques pixels (les rangées ont grandi),
   // mais elle n'a pas été RENVOYÉE en haut ni jetée en butée.
   expect(apres).toBeGreaterThan(0);
 
-  await poserCran('faible');
+  await poserCran('low');
   await page.locator('[data-testid="champ-recherche"]').press('Escape');
   await expect(page.locator('[data-testid="resultats"]')).toHaveCount(0);
 });
 
 test('le cran survit au relancement ; une valeur tordue retombe au défaut', async () => {
-  await poserCran('moyen');
+  await poserCran('medium');
   await page.reload();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   expect((await geometrie()).h1).toBe(100);

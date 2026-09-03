@@ -12,12 +12,12 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
-export function argsNavigateur(root, port, supplement = '') {
+export function argsNavigateur(root, port, supplement = '', lang = 'fr') {
   const conf = JSON.parse(
     readFileSync(path.join(root, 'apps', 'desktop', 'tauri.conf.json'), 'utf8'),
   );
   const prod = conf.app.windows[0].additionalBrowserArgs ?? '';
-  return [prod, `--remote-debugging-port=${port}`, '--lang=fr', supplement]
+  return [prod, `--remote-debugging-port=${port}`, `--lang=${lang}`, supplement]
     .filter(Boolean)
     .join(' ');
 }

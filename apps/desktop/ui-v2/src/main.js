@@ -1,73 +1,73 @@
-// Montage v2 — thème ET langue restaurés AVANT le premier rendu (pas
-// de flash ; la langue est une SONDE en lecture seule, sub-milliseconde :
-// avant la modale de migration, rien ne doit ouvrir la base — ADR 0012),
-// crochets de mesure exposés pour le banc P1 (mesure-v2.mjs) et les e2e.
+// v2 mount — theme AND language restored BEFORE the first render (no
+// flash; the language is a read-only PROBE, sub-millisecond: before
+// the migration modal, nothing must open the database — ADR 0012),
+// measurement hooks exposed for the P1 bench (mesure-v2.mjs) and the e2e.
 import './systeme.css';
 import { mount } from 'svelte';
-import { appliquerTheme, restaurerTheme, THEMES } from './lib/theme.js';
-import { restaurerLangue } from './lib/texte.svelte.js';
-import { restaurerVolets } from './lib/volets.svelte.js';
-import { restaurerLargeurs } from './lib/largeurs.svelte.js';
-import { restaurerEspacement } from './lib/espacement.svelte.js';
+import { applyTheme, restoreTheme, THEMES } from './lib/theme.js';
+import { restoreLanguage } from './lib/text.svelte.js';
+import { restorePanes } from './lib/panes.svelte.js';
+import { restoreWidths } from './lib/widths.svelte.js';
+import { restoreSpacing } from './lib/spacing.svelte.js';
 import App from './App.svelte';
 
-restaurerTheme();
-restaurerVolets();
-restaurerLargeurs();
-// A83 : AVANT le montage — la première sonde mesure ainsi déjà le bon
-// cran, et la liste ne se redessine pas au démarrage.
-restaurerEspacement();
-await restaurerLangue();
+restoreTheme();
+restorePanes();
+restoreWidths();
+// A83: BEFORE the mount — this way the first probe already measures the
+// right notch, and the list does not redraw itself at startup.
+restoreSpacing();
+await restoreLanguage();
 
 const app = mount(App, { target: document.getElementById('app') });
 
-// Démarrage : première page visible -> #perf porte data-startup, comme
-// en v1 — le banc attend ce signal.
-const attente = setInterval(() => {
-  const { liste } = app.api();
-  // `totalPrecis` aussi : depuis PLAN-DEFILEMENT-PROFOND le comptage
-  // suit les lignes — la ligne de perf ne doit pas figer le PLANCHER
-  // des premières lignes comme s'il était le nombre de conversations.
-  const etat = liste?.etat();
-  if (etat && etat.premierePageMs !== null && etat.totalPrecis) {
-    clearInterval(attente);
-    app.marquerDemarrage();
+// Startup: first page visible -> #perf carries data-startup, as in
+// v1 — the bench waits for this signal.
+const pending = setInterval(() => {
+  const { list } = app.api();
+  // `exactTotal` too: since PLAN-DEFILEMENT-PROFOND the count follows
+  // the rows — the perf line must not freeze the FLOOR of the first
+  // rows as if it were the number of conversations.
+  const state = list?.snapshot();
+  if (state && state.firstPageMs !== null && state.exactTotal) {
+    clearInterval(pending);
+    app.markStartup();
   }
 }, 16);
 
-// Banc de mesure : page (saut + service + rendu, reflow forcé), thème
-// (bascule à chaud), ouverture (message_body -> iframe).
+// Measurement bench: page (jump + serve + render, forced reflow), theme
+// (hot toggle), opening (message_body -> iframe).
 window.__mesure = {
   themes: THEMES,
-  etat() {
-    // Le volet de lecture n'est monté qu'en mode 3 volets (PLAN-VOLETS)
-    // — le banc mesure toujours le défaut, la garde évite juste un
-    // crash si l'état a été basculé à la main.
-    const { liste, lecture } = app.api();
-    return { ...liste.etat(), ...(lecture ? lecture.etat() : {}) };
+  state() {
+    // The reading pane is only mounted in 3-pane mode (PLAN-VOLETS)
+    // — the bench always measures the default, the guard just avoids
+    // a crash if the state has been toggled by hand.
+    const { list, reading } = app.api();
+    return { ...list.snapshot(), ...(reading ? reading.snapshot() : {}) };
   },
   async page(index) {
-    const { liste } = app.api();
-    return liste.allerEtServir(index);
+    const { list } = app.api();
+    return list.goAndServe(index);
   },
   theme(name) {
     const t0 = performance.now();
-    appliquerTheme(name);
+    applyTheme(name);
     void document.body.offsetHeight;
     return performance.now() - t0;
   },
-  async ouvrir(index) {
-    const { liste, lecture } = app.api();
-    await liste.allerEtServir(index);
-    const ligne = liste.ligneA(index);
-    if (!ligne) throw new Error(`aucune ligne servie à l'index ${index}`);
-    return lecture.ouvrir(ligne);
+  async open(index) {
+    const { list, reading } = app.api();
+    await list.goAndServe(index);
+    const line = list.rowAt(index);
+    if (!line) throw new Error(`no row served at index ${index}`);
+    return reading.open(line);
   },
-  // La recharge que le cycle et les gestes déclenchent (PLAN-REACTIVITE
-  // E1) — exposée pour l'assertion « jamais d'attente sur des lignes
-  // déjà servies », jouée transport retenu (__e2eRetenue).
-  recharger() {
-    const { liste } = app.api();
-    liste.recharger();
+  // The reload that the cycle and the gestures trigger (PLAN-REACTIVITE
+  // E1) — exposed for the assertion “never a wait on rows already
+  // served”, played with the transport on hold (__e2eRetenue).
+  reload() {
+    const { list } = app.api();
+    list.reload();
   },
 };

@@ -23,7 +23,7 @@
 - `Fil.svelte` porte l'unique barre du fil (`.actions` :
   archiver / signaler-spam / épingler, + mettre-de-côté et
   déplacer-vers en mode organisé), rendue **après** la liste des
-  messages ([Fil.svelte:559-599](../apps/desktop/ui-v2/src/Fil.svelte)).
+  messages ([Fil.svelte:559-599](../apps/desktop/ui-v2/src/Thread.svelte)).
   Répondre / Répondre à tous / Transférer / Supprimer sont PAR
   MESSAGE (`.actions-message`, lignes 504-556) — hors sujet.
 - Les deux cadres (volet de droite `Lecture.svelte`, écran 03
