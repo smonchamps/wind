@@ -559,8 +559,8 @@ cd apps/desktop
 cargo tauri build
 ```
 
-Mesures : `node e2e/measure-v2.mjs` (démarrage, page, RAM — `MESURE_DB`,
-`MESURE_COMPTES`, `MESURE_REUTILISER`), `e2e/measure-ram.ps1`, et
+Mesures : `node e2e/measure-v2.mjs` (démarrage, page, RAM — `MEASURE_DB`,
+`MEASURE_ACCOUNTS`, `MEASURE_REUSE`), `e2e/measure-ram.ps1`, et
 `python e2e/freeze-probe.py <base.db>` (gel de la pompe de messages,
 budget « aucun gel > 150 ms », PLAN-GELS — exige Python 3, seul outil
 du dépôt à le demander).

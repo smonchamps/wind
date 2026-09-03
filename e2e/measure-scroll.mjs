@@ -30,7 +30,7 @@
 //   of the finding); sample until recovery.
 //
 //   node measure-scroll.mjs
-//   MESURE_REUTILISER=1 to keep the database in place.
+//   MEASURE_REUSE=1 to keep the database in place.
 import { spawn, execSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
@@ -49,7 +49,7 @@ buildV2(root);
 
 // --- Seeded database ---------------------------------------------------
 const db = path.join(root, 'target', 'e2e', 'measure-scroll.db');
-if (process.env.MESURE_REUTILISER && existsSync(db)) {
+if (process.env.MEASURE_REUSE && existsSync(db)) {
   console.log(`reused database: ${db}`);
 } else {
   rmSync(db, { force: true });

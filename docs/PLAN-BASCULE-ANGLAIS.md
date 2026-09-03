@@ -903,6 +903,18 @@ libellés français restent (ils testent le fr, qui reste livré) ; le
 > Chief Engineer: the French onboarding steps, the French relative date
 > form and the French cleanup title are proven by no spec since
 > the suite runs in English (D28).
+>
+> **Commits and CI**: E6a `ec05019`, CI green 33802706071; E6b `60aa2af`,
+> CI green 33806065399. **Field (STOP 2) on 2026-09-03: validated by the
+> Chief Engineer, no finding** — `field.ps1` (12.39 GB database, 0.17.0
+> installed, credentials set), the compose weight read as shipped (D-56
+> stays a debt), the three benches under their new names (`freeze-probe`:
+> window at 71 ms, 0 freeze > 150 ms over 40 s; `measure-ram`: 172.6 Mo
+> over 7 processes; `measure-v2`: 256 312 envelopes, startup 1 128 ms,
+> page p50 15.1 ms / p95 26.6 ms, open p50 13.6 ms, RAM 264.4 Mo), the
+> full gate green in 157 s (200 e2e, flaky 0). **D27 and D28 decided and
+> applied the same day** (the bench variables renamed; the French sweep —
+> three more tests; the illustration rule → D-57).
 
 ### E7 — Documents vivants (G)
 
@@ -1010,8 +1022,8 @@ corrige ce chiffre au STOP intermédiaire proposé à D10.
 | D24 | `e2e/README.md`: translated as it is, or rewritten short and true — its selector contract (`#compose`, `#detail`, `#rows`, `app.js`, the four v1 journeys) describes the v1 UI, gone since the redesign; the gate is `scripts/gate.ps1` since AUDIT-V2 E9? | Rewrite: the isolation contract, the launch, the nets and benches, the DOM contract pointer to `dom.csv` and `dom-contract.test.mjs` — a translated stale page is still stale | |
 | D25 | The path pointers of the living docs updated in the E6a commit — file NAMES only, in STANDARD (17 lines, `e2e/mesure.mjs` already stale), the System (A114), AUDIT, DETTE, ETAT, GLOSSARY, the architecture map, WORKFLOW, the six memory files — the closed `PLAN-*.md` and the ADR bodies untouched (history: E7 moves them, D1 freezes them)? | Yes: a normative doc that names a file that no longer exists is a broken pointer the markdown-links net does not see (it checks links, not backticks) | |
 | D26 | The names the glossary lacks: `barres-fil` → `thread-bars`, `retours-12` → `feedback-12`, `retours-14` → `feedback-14`, `horizon-import` unchanged, `test-results/rapport.json` → `report.json`; and the dictionary rows `ligne`/`lignes`/`nLignes` reviewed site by site per D18 (`row` for a list row, `line` for a text line)? | As proposed | |
-| D27 | The bench environment variables `MESURE_DB`, `MESURE_COMPTES`, `MESURE_REUTILISER`, `MESURE_SANS_ACTIVITE` (read by `measure-v2.mjs`, `measure-scroll.mjs`, `diag-v2.mjs`, named in STANDARD §9 and the e2e README): renamed `MEASURE_DB`, `MEASURE_ACCOUNTS`, `MEASURE_REUSE`, `MEASURE_NO_ACTIVITY`, or kept as the bench contract? | Rename at E6b (the benches are played by hand, the docs that name them are E7) — but they are the Chief Engineer's own invocations | |
-| D28 | Since the suite runs in English (D22), the French forms proven by no spec: the onboarding step counter, the relative date form, the cleanup title and intro, the thread bar labels — extend `redesign-language.spec.js` with a French sweep of those screens (one more launch, ~10 s), or accept the gap (the French catalogue is delivered, D3, and its keys are audited)? And the onboarding illustrations (`assets/accueil/*.png`, French screenshots): regenerated in English by `capture-onboarding.mjs`, or kept French? | Extend the sweep (a catalogue regression on a French form would otherwise ship blind); regenerate the illustrations in English at the next onboarding job — the default UI is English, a French screenshot inside it is a seam the field sees | |
+| D27 | The bench environment variables `MESURE_DB`, `MESURE_COMPTES`, `MESURE_REUTILISER`, `MESURE_SANS_ACTIVITE` (read by `measure-v2.mjs`, `measure-scroll.mjs`, `diag-v2.mjs`, named in STANDARD §9 and the e2e README): renamed `MEASURE_DB`, `MEASURE_ACCOUNTS`, `MEASURE_REUSE`, `MEASURE_NO_ACTIVITY`, or kept as the bench contract? | Rename at E6b (the benches are played by hand, the docs that name them are E7) — but they are the Chief Engineer's own invocations | **2026-09-03: “Rename”** — applied the same day: `MEASURE_DB`, `MEASURE_ACCOUNTS`, `MEASURE_REUSE`, `MEASURE_NO_ACTIVITY` in the three benches, the e2e README and STANDARD §9 |
+| D28 | Since the suite runs in English (D22), the French forms proven by no spec: the onboarding step counter, the relative date form, the cleanup title and intro, the thread bar labels — extend `redesign-language.spec.js` with a French sweep of those screens (one more launch, ~10 s), or accept the gap (the French catalogue is delivered, D3, and its keys are audited)? And the onboarding illustrations (`assets/accueil/*.png`, French screenshots): regenerated in English by `capture-onboarding.mjs`, or kept French? | Extend the sweep (a catalogue regression on a French form would otherwise ship blind); regenerate the illustrations in English at the next onboarding job — the default UI is English, a French screenshot inside it is a seam the field sees | **2026-09-03: “Extend the French sweep. Regenerate in English at the next onboarding job. All screenshots must be in the language chosen by the user.”** — the sweep applied the same day (three tests in `redesign-language.spec.js`: the French relative date, the cleanup title, a fresh French first launch on the onboarding steps); the illustration rule enters the debt as D-57 |
 
 ## 7. Checklist terrain (STOP 2) — ce que le CE joue
 

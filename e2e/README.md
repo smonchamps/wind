@@ -98,7 +98,7 @@ and the specs move in the same commit.
 ## Benches, probes and tools (never during a gate)
 
 - [measure-v2.mjs](measure-v2.mjs) — startup, first page, RAM
-  (`MESURE_DB`, `MESURE_COMPTES`, `MESURE_REUTILISER`); STANDARD §9: a
+  (`MEASURE_DB`, `MEASURE_ACCOUNTS`, `MEASURE_REUSE`); STANDARD §9: a
   warm cache lies, measure cold.
 - [measure-scroll.mjs](measure-scroll.mjs), [measure-scrollbar.mjs](measure-scrollbar.mjs),
   [scroll-gesture.mjs](scroll-gesture.mjs) — the deep-scroll figures

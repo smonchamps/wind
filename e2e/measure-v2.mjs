@@ -4,10 +4,10 @@
 //
 //   node measure-v2.mjs
 //
-//   MESURE_DB          database path (default: target/e2e/measure-v2.db)
-//   MESURE_COMPTES     "email:count" pairs separated by commas
+//   MEASURE_DB          database path (default: target/e2e/measure-v2.db)
+//   MEASURE_ACCOUNTS     "email:count" pairs separated by commas
 //                      (default: mesure@exemple.fr:256312)
-//   MESURE_REUTILISER  =1 to keep the database in place
+//   MEASURE_REUSE  =1 to keep the database in place
 //
 // The shipped Tauri config points at `ui` (v1). The bench TEMPORARILY
 // swaps `frontendDist` to `ui-v2/dist`, builds, then RESTORES the
@@ -40,15 +40,15 @@ const root = path.resolve(import.meta.dirname, '..');
 buildV2(root);
 
 // --- 2. Database seeded at scale ---------------------------------------
-const db = process.env.MESURE_DB || path.join(root, 'target', 'e2e', 'measure-v2.db');
-const accounts = (process.env.MESURE_COMPTES || 'mesure@exemple.fr:256312')
+const db = process.env.MEASURE_DB || path.join(root, 'target', 'e2e', 'measure-v2.db');
+const accounts = (process.env.MEASURE_ACCOUNTS || 'mesure@exemple.fr:256312')
   .split(',')
   .map((entry) => {
     const [email, count] = entry.split(':');
     return { email: email.trim(), count: Number(count) };
   });
 
-if (process.env.MESURE_REUTILISER && existsSync(db)) {
+if (process.env.MEASURE_REUSE && existsSync(db)) {
   console.log(`reused database: ${db}`);
 } else {
   rmSync(db, { force: true });
@@ -137,10 +137,10 @@ try {
   const state = await page.evaluate(() => window.__mesure.state());
   console.log(`decor      : ${state.total} rows · template ${state.h1} px`);
 
-  // MESURE_SANS_ACTIVITE=1: weigh RAM AT REST, ADR 0002 methodology —
+  // MEASURE_NO_ACTIVITY=1: weigh RAM AT REST, ADR 0002 methodology —
   // the same posture as the v1 bench, without which the comparison
   // weighs a marathon runner against a sleeper.
-  const atRest = process.env.MESURE_SANS_ACTIVITE === '1';
+  const atRest = process.env.MEASURE_NO_ACTIVITY === '1';
 
   if (!atRest) {
   // Pages: 300 jumps spread over the depth, deterministic LCG.

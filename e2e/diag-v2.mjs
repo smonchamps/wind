@@ -14,7 +14,7 @@ import { allocateCdpPort } from './port-cdp.mjs';
 import { browserArgs } from './browser-args.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
-const db = process.env.MESURE_DB || path.join(root, 'target', 'e2e', 'measure-v2.db');
+const db = process.env.MEASURE_DB || path.join(root, 'target', 'e2e', 'measure-v2.db');
 const profile = path.join(root, 'target', 'e2e', 'webview2-mesure-v2');
 mkdirSync(profile, { recursive: true });
 for (const folder of ['Cache', 'Code Cache']) {

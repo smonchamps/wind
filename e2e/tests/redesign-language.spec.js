@@ -5,7 +5,7 @@
 // preference from the database, not a component state), then a return to
 // French — the canonical language of the other flows (L-6).
 import { test, expect } from '@playwright/test';
-import { launchAppV2, closeApp } from '../launch.mjs';
+import { launchAppV2, closeApp, purgeLocals } from '../launch.mjs';
 import { FR } from '../../apps/desktop/ui-v2/src/lib/catalog.fr.js';
 import { EN } from '../../apps/desktop/ui-v2/src/lib/catalog.en.js';
 
@@ -99,6 +99,27 @@ test('in French, the selection count agrees in number', async () => {
   await expect(page.locator('[data-testid="bar-selection"]')).toHaveCount(0);
 });
 
+// The French sweep of D28 (Chief Engineer decision of 2026-09-03): the
+// forms only the French catalogue renders, proven here since the suite
+// runs in English — the relative date of the expanded header, the
+// cleanup title, and the onboarding step counter (below, fresh launch).
+test('in French, the expanded header dates the message in French', async () => {
+  await page.locator('[data-testid="row"]').first().click();
+  const expanded = page.locator('[data-testid="reading-pane"] [data-testid="message-expanded"]');
+  await expect(expanded.locator('.message-head .when')).toHaveText(/^Aujourd'hui, 09:12$/); // lang:fr
+});
+
+test('in French, the cleanup screen carries its French title', async () => {
+  // the Cleanup rank exists in organized mode only (cleanup.spec.js)
+  await page.locator('[data-testid="organized-mode"]').click();
+  const rank = page.locator('[data-testid="nav-folder"][data-category="cleanup"]');
+  await expect(rank).toContainText('Nettoyage de printemps'); // lang:fr
+  await rank.click();
+  await expect(page.locator('[data-testid="cleanup"]')).toContainText('En lançant un nettoyage de printemps'); // lang:fr
+  await page.locator('[data-testid="nav-folder"][data-category="inbox"]').click();
+  await page.locator('[data-testid="organized-mode"]').click();
+});
+
 // D4 (E5b, 2026-09-03): English is the default of a REAL first launch —
 // an empty database, a WebView whose locale is neither French nor
 // English. The pure decision is unit-tested; this is the wiring
@@ -111,4 +132,16 @@ test('a first launch on a non-French system speaks English (D4)', async () => {
   // onboarding: the header is the witness.
   await expect(page.locator('[data-testid="search-field"]')).toHaveAttribute('placeholder', 'Search messages, people, files');
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+});
+
+// D28: a REAL French first launch (empty database, French locale, the
+// onboarding markers purged) speaks the French onboarding.
+test('a first launch on a French system shows the French onboarding steps', async () => {
+  await closeApp({ app, browser });
+  ({ app, browser, page } = await launchAppV2({ fresh: true, lang: 'fr' }));
+  await purgeLocals(page, ['wind-accueil-fait', 'wind-accueil-commence']);
+  await page.reload();
+  await expect(page.locator('[data-testid="onboarding"]')).toContainText('Étape 1/5'); // lang:fr
+  await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
+  await purgeLocals(page, ['wind-accueil-fait', 'wind-accueil-commence']);
 });

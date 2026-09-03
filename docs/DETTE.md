@@ -1011,3 +1011,19 @@ French, marked `lang:fr`, whatever the UI language. The clean fix is a
 behavior change the switch refuses to embed (§5): send bytes on the wire
 and format in the UI per language; give the dialogs an English text when
 `prefs.lang` is `en`. A small dedicated job once the switch is closed.
+
+**Seen in the field on 2026-09-03 (E6b)**: in the English interface the
+compose weight reads `2.8 Mo / 25 MB` — the total from `human_size`
+(shell, French), the limit from the catalogue (English). The spec
+asserts it as shipped (`redesign-screen02.spec.js`).
+
+### D-57 · The onboarding illustrations are French screenshots inside an English default UI
+
+Opened on 2026-09-03 (PLAN-BASCULE-ANGLAIS E6b, Chief Engineer decision
+D28). `assets/accueil/disposition-{1,2,3}.png` are screenshots of the
+French interface, captured by `e2e/capture-onboarding.mjs` (pinned to
+`lang: 'fr'` so a replay does not change a visible asset without a
+decision). The rule the Chief Engineer set: **every screenshot shown to
+the user is in the language the user chose** — one set per language,
+selected with the catalogue. To do at the next onboarding job: capture
+both sets, select per `lang`, unpin the script.
