@@ -9,7 +9,7 @@ Date: 2026-09-02 · Status: accepted
 ## Context
 
 Wave 2 of the 2026-09-01 audit (`docs/AUDIT-2026-09-01.md` §5,
-`docs/PLAN-AUDIT-V2.md`) handles the measurable S2 items. Most are
+`docs/archives/PLAN-AUDIT-V2.md`) handles the measurable S2 items. Most are
 technical remedies with no product decision — opening the database,
 Cleanup's indexes, IMAP batches, resumable sync. Five points belonged
 to the Chief Engineer: what becomes of a send that keeps failing, what

@@ -36,7 +36,7 @@ reliability.
 | RAM in everyday use | < 200 MB | Phase 1 |
 | Local database (3 accounts, bodies backfilled) | < 1 GB | Phase 3 ([ADR 0007](adr/0007-body-backfill.md)) |
 | List scrolling | 60 fps | Phase 1 |
-| Windows installer size | < 15 MB | **measured: 4,75 MB** (NSIS, 2026-07-21) |
+| Windows installer size | < 15 MB | **measured: 4.75 MB** (NSIS, 2026-07-21) |
 | Data loss | 0, proven by crash-recovery tests | Phase 2 |
 
 These budgets are **blocking gates**: a phase does not end if a budget is exceeded
@@ -244,7 +244,7 @@ months for Google/CASA) are on the critical path to public launch.
 
 ## 8. Measuring success
 
-- **Product:** perf budgets held continuously (§1); crash-free sessions > 99,5 %.
+- **Product:** perf budgets held continuously (§1); crash-free sessions > 99.5 %.
 - **Beta usage:** ≥ 60% of testers still use it as their main client after
   30 days; reduced morning triage time (measured, not self-reported).
 - **Engineering:** lead time for a fix < 48 h; zero critical defect open > 7 days.

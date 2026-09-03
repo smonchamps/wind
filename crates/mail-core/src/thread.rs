@@ -536,7 +536,7 @@ pub(crate) fn rebuild_account(conn: &Connection, account_id: i64) -> Result<(), 
 /// no code fix repairs them on its own. They must be redone.
 ///
 /// **2** — a thread's scope is the ACCOUNT, not the mailbox
-/// ([ADR 0009](../../../docs/adr/0009-portee-des-threads-au-compte.md)).
+/// ([ADR 0009](../../../docs/adr/0009-thread-scope-per-account.md)).
 ///
 /// Both tables change key, and SQLite cannot modify a primary key in
 /// place: they are **dropped then recreated**, where version 1 was

@@ -833,14 +833,14 @@ not UTF-8.**
 In Tauri 2, a command without `async` runs on the main thread — the
 message pump. Thirty-four commands opened the database from this
 thread; all was fine as long as they stayed under ~100 ms, then a
-130 MB backfill batch froze the window for 4,6 s straight (CE finding
+130 MB backfill batch froze the window for 4.6 s straight (CE finding
 on 2026-08-15: "the window cannot be moved"). The cost of the queries
 was not the root cause — their PLACE was: 865 ms is acceptable on a
 background thread, unacceptable on the pump. Root fix: every blocking
 command is `async`, a gate holds it (a named and justified exemption
 for pure state reads), and the symptom has its own instrument —
 `freeze-probe.py` measures the pump the way Windows judges it
-(`SendMessageTimeout`). Before/after on the same scenery: 25,2 s of
+(`SendMessageTimeout`). Before/after on the same scenery: 25.2 s of
 cumulative freezes → zero.
 
 ### A panic on the main thread makes TWO panics
@@ -888,7 +888,7 @@ Measuring a disk-bound reconstruction or migration on a freshly
 written copy (`Copy-Item`) is a lie: the copy leaves its pages in the
 RAM cache, so the re-read is served from memory. Measured fact
 (PLAN-RECHERCHE, 2026-08-17): FTS5 rebuild on 7 Go / 130 k bodies —
-**0,7 s** on a fresh copy, **~4 min** cold in the field, a **×340**
+**0.7 s** on a fresh copy, **~4 min** cold in the field, a **×340**
 gap (announced as "×5-10 at worst"). The dominant cost is not the
 computation but **re-reading the bodies** from disk — invisible on a
 warm cache. Product corollary: any FTS5 schema change forces a
@@ -924,7 +924,7 @@ Paid for the same day (PLAN-COMPOSITION-HTML, e2e on 2026-08-20):
 
 Two remedies from the 2026-09-01 audit seemed obvious and were
 REJECTED once measured: search's "COUNT per keystroke" was worth
-1,5 ms out of 57 (the cost is the date-sorted page — the proposed
+1.5 ms out of 57 (the cost is the date-sorted page — the proposed
 bound saved 1 ms), and `withGlobalTauri: false` protected nothing
 (`__TAURI_INTERNALS__.invoke` is still injected into every window —
 the CSP is the boundary). Conversely, the variance of a Cleanup

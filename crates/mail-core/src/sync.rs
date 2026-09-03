@@ -325,7 +325,7 @@ fn replay_actions(
 /// Non-selectable folders are excluded: they are containers with no mail
 /// (`\Noselect`), and SELECT would fail on each of them one by one.
 ///
-/// [ADR 0009]: ../../../docs/adr/0009-portee-des-threads-au-compte.md
+/// [ADR 0009]: ../../../docs/adr/0009-thread-scope-per-account.md
 /// [ADR 0010]: ../../../docs/adr/0010-full-synchronization.md
 pub fn sync_order(folders: &[crate::remote::Folder], sent: Option<&str>) -> Vec<String> {
     let mut order: Vec<String> = Vec::with_capacity(folders.len() + 1);

@@ -127,7 +127,7 @@ the commit convention.
 **Out of scope, by explicit refusal (§5)**: the git history; the
 **persisted** identifiers (SQLite schema, `prefs` keys, files on disk)
 unless decision D3 says otherwise; `spikes/` (throw-away, outside the
-workspace — 1,1 GB, 20 folders); any behavior change; any interface
+workspace — 1.1 GB, 20 folders); any behavior change; any interface
 language beyond fr/en.
 
 **At the CE's decision**: the archives (D1), the default language
@@ -225,7 +225,7 @@ documentary path, steps 1-6).
 > set-based, measured**: eslint `no-undef` (flat config, Svelte plugin,
 > runes as globals) catches the breakage in 3-5 s in `.svelte` AND
 > `.js`, 0 preexisting errors; `svelte-check --threshold error` also
-> catches it (8,5 s) but on **1 059 preexisting errors** (`checkJs`) —
+> catches it (8.5 s) but on **1 059 preexisting errors** (`checkJs`) —
 > rejected, uninstalled. Gate: 13 steps (7-9 new, also played on the
 > documentary path), `npm run lint` in step 2; CI: four new steps in
 > the `ui-v2` job. This commit's additions are written in English: the
@@ -926,14 +926,14 @@ the then-current version); `DETTE.md` (D-1…D-53, numbers intact);
 `PLAN.md`; `BETA.md` (D11); `AUDIT-2026-09-01.md`; `PASSATION.md`;
 `CHANGELOG.md` (D13 — the header and `## [0.17.0]` at minimum;
 `make-release.ps1` keeps reading `## [x.y.z]`); **31 ADRs** translated
-and renamed (`0008-conversation-grouping.md`), links fixed; the 30
+and renamed (`0008-conversation-threading.md`), links fixed; the 30
 non-archived `PLAN-*.md`: the closed ones go to `archives/` first
 (that is their place, PLAN-DOCUMENTATION), then D1 applies; the present
 plan and PLAN-AUDIT-V2 (in progress) translated. `ANNOTATIONS-V3.md`,
 `assets/icones/README.md`.
 
 > **E7 delivered on 2026-09-04, fourteen commits** (`625f8d4` →
-> `abafad7`): every listed document translated; the decided renames
+> `57b83ed`): every listed document translated; the decided renames
 > applied with referrers swept per commit — `STATE`, `DEBT` (D-n
 > multiset identical), `HANDOVER`, the 31 ADR slugs,
 > `PLAN-ENGLISH-SWITCH`; the 23 closed plans moved to `archives/`
