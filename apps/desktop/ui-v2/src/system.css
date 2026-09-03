@@ -90,29 +90,29 @@ html {
 .ic { flex:none; vertical-align:middle; }
 /* A12 — “Forward” carries the “Reply” arrow in vertical symmetry
    (field verdict): the `reply` glyph, flipped. */
-.ic.miroir { transform:scaleX(-1); }
+.ic.mirror { transform:scaleX(-1); }
 
 /* V2/V4 — the disc / ring pair: the 9 px solid --brand disc
    says the state (unread row, status bar at rest); the HOLLOW ring
    of the same diameter (2 px wall, open top quarter) says an
    action is spinning. It is not one more shape: it is the same object.
    A52 holds: the percentage lives in the TEXT, never here. */
-.disque {
+.disk {
   width:9px; height:9px; border-radius:50%;
   background:var(--brand); flex:none;
 }
-.anneau {
+.ring {
   width:9px; height:9px; border-radius:50%; flex:none;
   border:2px solid var(--brand); border-top-color:transparent;
   animation:tourne 1s linear infinite;
 }
 @keyframes tourne { to { transform:rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .anneau { animation:none; } }
+@media (prefers-reduced-motion: reduce) { .ring { animation:none; } }
 
 /* V11 — the brand band (frozen tile + “Wind”): a single
    rule for its locations (migration, “About”) — two copies
    would drift apart in silence (PLAN-ELEMENTS review). */
-.marque-bande {
+.brand-band {
   display:flex; align-items:center; gap:12px;
   font-size:15px; color:var(--ink);
 }
@@ -120,14 +120,14 @@ html {
 /* A74, amended A82 — the marker badge now lives only in Settings
    (account row, choice swatch picker), at its single size of 20 px
    (glyph 12). The 16 px list badge died with A80/A82. */
-.repere.p20 { width:20px; height:20px; }
-.repere.p20 .ic { width:12px; height:12px; }
+.marker.p20 { width:20px; height:20px; }
+.marker.p20 .ic { width:12px; height:12px; }
 
 /* A82 — the BARE marker: the marker's outline, in the account's hue,
    with no container. Two sizes of use, carried by the icon's
    attribute: 16 px (nav — the size of the folder glyphs) and 14 px
    (header row and reading pane — the size of their text). */
-.repere-nu { display:inline-flex; flex:none; }
+.bare-marker { display:inline-flex; flex:none; }
 
 /* A74 (PLAN-RETOURS-8 R1), amended A82 — the account marker swatch
    picker: CONTENT colors (like the composer's swatch picker),
@@ -166,35 +166,35 @@ html {
   --mk-blue:#72bdf0; --mk-indigo:#aab4fa; --mk-violet:#cba4f5;
   --mk-magenta:#f095d8; --mk-pink:#f79ab4; --mk-brown:#dcab7c;
 }
-.repere {
+.marker {
   display:inline-flex; align-items:center; justify-content:center;
   border-radius:50%; flex:none; color:#ffffff;
 }
-[data-theme$="-nuit"] .repere { color:#1c1b1b; }
-.repere[data-teinte="red"]   { background:var(--mk-red); }
-.repere[data-teinte="orange"]  { background:var(--mk-orange); }
-.repere[data-teinte="ochre"]    { background:var(--mk-ochre); }
-.repere[data-teinte="olive"]   { background:var(--mk-olive); }
-.repere[data-teinte="green"]    { background:var(--mk-green); }
-.repere[data-teinte="pine"]   { background:var(--mk-pine); }
-.repere[data-teinte="blue"]    { background:var(--mk-blue); }
-.repere[data-teinte="indigo"]  { background:var(--mk-indigo); }
-.repere[data-teinte="violet"]  { background:var(--mk-violet); }
-.repere[data-teinte="magenta"] { background:var(--mk-magenta); }
-.repere[data-teinte="pink"]    { background:var(--mk-pink); }
-.repere[data-teinte="brown"]    { background:var(--mk-brown); }
-.repere-nu[data-teinte="red"]   { color:var(--mk-red); }
-.repere-nu[data-teinte="orange"]  { color:var(--mk-orange); }
-.repere-nu[data-teinte="ochre"]    { color:var(--mk-ochre); }
-.repere-nu[data-teinte="olive"]   { color:var(--mk-olive); }
-.repere-nu[data-teinte="green"]    { color:var(--mk-green); }
-.repere-nu[data-teinte="pine"]   { color:var(--mk-pine); }
-.repere-nu[data-teinte="blue"]    { color:var(--mk-blue); }
-.repere-nu[data-teinte="indigo"]  { color:var(--mk-indigo); }
-.repere-nu[data-teinte="violet"]  { color:var(--mk-violet); }
-.repere-nu[data-teinte="magenta"] { color:var(--mk-magenta); }
-.repere-nu[data-teinte="pink"]    { color:var(--mk-pink); }
-.repere-nu[data-teinte="brown"]    { color:var(--mk-brown); }
+[data-theme$="-nuit"] .marker { color:#1c1b1b; }
+.marker[data-hue="red"]   { background:var(--mk-red); }
+.marker[data-hue="orange"]  { background:var(--mk-orange); }
+.marker[data-hue="ochre"]    { background:var(--mk-ochre); }
+.marker[data-hue="olive"]   { background:var(--mk-olive); }
+.marker[data-hue="green"]    { background:var(--mk-green); }
+.marker[data-hue="pine"]   { background:var(--mk-pine); }
+.marker[data-hue="blue"]    { background:var(--mk-blue); }
+.marker[data-hue="indigo"]  { background:var(--mk-indigo); }
+.marker[data-hue="violet"]  { background:var(--mk-violet); }
+.marker[data-hue="magenta"] { background:var(--mk-magenta); }
+.marker[data-hue="pink"]    { background:var(--mk-pink); }
+.marker[data-hue="brown"]    { background:var(--mk-brown); }
+.bare-marker[data-hue="red"]   { color:var(--mk-red); }
+.bare-marker[data-hue="orange"]  { color:var(--mk-orange); }
+.bare-marker[data-hue="ochre"]    { color:var(--mk-ochre); }
+.bare-marker[data-hue="olive"]   { color:var(--mk-olive); }
+.bare-marker[data-hue="green"]    { color:var(--mk-green); }
+.bare-marker[data-hue="pine"]   { color:var(--mk-pine); }
+.bare-marker[data-hue="blue"]    { color:var(--mk-blue); }
+.bare-marker[data-hue="indigo"]  { color:var(--mk-indigo); }
+.bare-marker[data-hue="violet"]  { color:var(--mk-violet); }
+.bare-marker[data-hue="magenta"] { color:var(--mk-magenta); }
+.bare-marker[data-hue="pink"]    { color:var(--mk-pink); }
+.bare-marker[data-hue="brown"]    { color:var(--mk-brown); }
 
 /* A80 — the mailbox block: “on <outline> Label”. Shared by the
    list and the thread (three poses), hence here and not in a
@@ -212,17 +212,17 @@ html {
    min-width:0, hence the ellipsis. And above all NO
    overflow:hidden as a belt: on an inline-flex it would shift the
    baseline, hence the row's probed height (A44). */
-.boite {
+.mailbox {
   flex:0 3 auto; max-width:33%;
   display:inline-flex; align-items:center; gap:5px;
   font-size:13px; color:var(--ink2); white-space:nowrap;
 }
-.boite .mot { color:var(--muted); flex:none; }
-.boite .repere-nu { flex:none; }
-.boite .lib { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mailbox .word { color:var(--muted); flex:none; }
+.mailbox .bare-marker { flex:none; }
+.mailbox .lbl { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 /* An unread row puts the weight on what it SAYS, not on its
    circumstances (A8/V6): the block stays at normal weight. */
-.nonlu .boite { font-weight:400; }
+.unread .mailbox { font-weight:400; }
 
 /* V6 — the DISPLAY REGISTER: conversation title (24 px) and
    onboarding hero (40 px) at weight 340, letter-spacing -.03em — the
@@ -241,22 +241,22 @@ html {
    glyph + 24 px title on one line, 13 px subtitle, section
    label-rule in capitals. ONE copy here — both scenes share it;
    two copies would drift apart in silence (.boite lesson). */
-.entete-vue {
+.header-view {
   margin:0 0 6px; font-size:24px; line-height:1.25; color:var(--ink);
   display:flex; align-items:center; gap:10px;
 }
-.entete-vue .glyphe-titre { display:inline-flex; color:var(--ink); }
+.header-view .glyph-title { display:inline-flex; color:var(--ink); }
 /* RETOURS-13 field finding (C1): the title glyph in NON-BOLD — enlarged
    to 26 px, the stroke of 2 thickens at scale and weighs against the
    340 display; it is thinned in viewBox units (1.5 → ~1.6 px rendered). */
-.entete-vue .glyphe-titre .ic g { stroke-width:1.5; }
-.sous-titre-vue {
+.header-view .glyph-title .ic g { stroke-width:1.5; }
+.subtitle-view {
   margin:0 0 24px; font-size:13px; line-height:1.5; color:var(--ink2);
   max-width:66ch;
 }
 /* The label-rule: bare label, 8 px gap — the top net of the
    first row below acts as separator (CE verdict, E2 prototype). */
-.regle-libelle {
+.rule-label {
   margin:30px 0 8px; font-size:11px; letter-spacing:.1em;
   text-transform:uppercase; color:var(--muted); font-weight:600;
 }

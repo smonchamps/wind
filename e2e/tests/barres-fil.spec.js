@@ -23,16 +23,16 @@ test.afterAll(async () => {
 });
 
 test("volet : la barre de tri est collée sous l'entête, la barre de réponse flotte en bas du message", async () => {
-  await page.locator('[data-testid="ligne"]', { hasText: 'Relecture du contrat Vantis' }).click();
-  const barre = page.locator('[data-testid="barre-fil"]');
+  await page.locator('[data-testid="row"]', { hasText: 'Relecture du contrat Vantis' }).click();
+  const barre = page.locator('[data-testid="bar-thread"]');
   await expect(barre).toBeVisible();
   // La carte du dernier message se rend APRES la barre (corps servi) :
   // sans cette attente, la lecture tombait sur un nul (flaky, gate du
   // 2026-09-02, une fois).
   await expect(page.locator('[data-testid="actions-message"]').first()).toBeVisible();
   const geo = await page.evaluate(() => {
-    const barre = document.querySelector('[data-testid="barre-fil"]');
-    const puces = document.querySelector('[data-testid="fil-puces"]');
+    const barre = document.querySelector('[data-testid="bar-thread"]');
+    const puces = document.querySelector('[data-testid="thread-chips"]');
     const reponse = document.querySelector('[data-testid="actions-message"]');
     return {
       ecart: barre.getBoundingClientRect().top - puces.getBoundingClientRect().bottom,
@@ -51,13 +51,13 @@ test("volet : la barre de tri est collée sous l'entête, la barre de réponse f
   // HAUT VISIBLE du cadre — pas 18 px dessous, avec le message qui
   // passe dans la bande (le sticky se borne au contenu, sous le padding).
   await page.setViewportSize({ width: 1180, height: 420 });
-  const volet = page.locator('[data-testid="volet-lecture"]');
+  const volet = page.locator('[data-testid="reading-pane"]');
   await volet.evaluate((el) => { el.scrollTop = el.scrollHeight; });
   await expect
     .poll(async () => {
       await volet.evaluate((el) => { el.scrollTop = el.scrollHeight; });
       const cadre = await volet.boundingBox();
-      const barre = await page.locator('[data-testid="barre-fil"]').boundingBox();
+      const barre = await page.locator('[data-testid="bar-thread"]').boundingBox();
       return barre ? Math.abs(barre.y - cadre.y) : 999;
     })
     .toBeLessThanOrEqual(1);
@@ -66,11 +66,11 @@ test("volet : la barre de tri est collée sous l'entête, la barre de réponse f
 });
 
 test("écran 03 : les gestes de tri vivent dans la barre d'entête, la barre de réponse reste visible au défilement", async () => {
-  await page.locator('[data-testid="voir-conversation"]').click();
+  await page.locator('[data-testid="see-conversation"]').click();
   const entete = page.locator('[data-testid="conversation"] header');
-  await expect(entete.locator('[data-testid="archiver"]')).toBeVisible();
-  await expect(entete.locator('[data-testid="signaler-spam"]')).toBeVisible();
-  await expect(page.locator('[data-testid="barre-fil"].volet')).toHaveCount(0);
+  await expect(entete.locator('[data-testid="archive"]')).toBeVisible();
+  await expect(entete.locator('[data-testid="report-spam"]')).toBeVisible();
+  await expect(page.locator('[data-testid="bar-thread"].pane')).toHaveCount(0);
   // La barre de réponse du dernier message est visible SANS défiler
   // jusqu'à lui : elle flotte au bas du scrollport, à 12 px du pied.
   const reponse = page.locator('[data-testid="actions-message"]').last();
@@ -84,13 +84,13 @@ test("écran 03 : les gestes de tri vivent dans la barre d'entête, la barre de 
   // Passe 4 (2026-09-02, CE) : les gestes de tri s'alignent sur le bord
   // GAUCHE de la colonne des messages.
   const alignement = await page.evaluate(() => {
-    const archiver = document.querySelector('[data-testid="conversation"] header [data-testid="archiver"]');
-    const colonne = document.querySelector('[data-testid="conversation"] .colonne');
+    const archiver = document.querySelector('[data-testid="conversation"] header [data-testid="archive"]');
+    const colonne = document.querySelector('[data-testid="conversation"] .column');
     return archiver.getBoundingClientRect().left - colonne.getBoundingClientRect().left;
   });
   expect(Math.abs(alignement)).toBeLessThanOrEqual(1);
   // Passe 5 (2026-09-02, CE) : le retour garde sa largeur de contenu —
   // dans la grille de l'entête il s'étirait sur toute sa piste.
-  const retour = await page.locator('[data-testid="retour-boite"]').boundingBox();
+  const retour = await page.locator('[data-testid="back-to-mailbox"]').boundingBox();
   expect(retour.width).toBeLessThan(300);
 });

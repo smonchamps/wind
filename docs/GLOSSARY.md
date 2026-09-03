@@ -291,6 +291,21 @@ Test ids and CSS classes follow the token table in kebab-case
 `__e2eRelease`, `__e2ePanne` → `__e2eFailure`, `__e2ePieces` →
 `__e2eAttachments`, `__e2eDestination` unchanged.
 
+Amended at E5d (CE decisions D18-D21 of 2026-09-03): the list row is
+`row` everywhere — the identifier in the UI (`line` was the E0 word,
+struck), the test ids `ligne` → `row`, `ligne-*` → `row-*`, the class
+`ligne` → `row`; two collisions of the E0 table are split — `ecrire` →
+`write` (the header button) next to `composition` → `compose` (the
+panel), `onboarding-continuer` → `desk-continue` (AccountDesk) next to
+`accueil-continuer` → `onboarding-continue`; the `data-*` attribute
+NAMES are a fourth kind of `dom.csv` (`attr`: `data-teinte` →
+`data-hue`, `data-categorie` → `data-category`, `data-nom` →
+`data-name`… — the VALUES were English since E5a, D16); the segments
+kept as they are because English, abbreviations or letters the System
+names: `ic`, `l1`, `l2`, `lab`, `msg`, `pct`, `sep`, `rail`, `port`,
+`scrim`, `kicker`, `p20`, `e`/`f`/`t`/`n`/`o`/`x`, `recap`, `desc`,
+`mini`, `display`.
+
 ## 6. How the dictionary is built and applied
 
 - `scripts/rename/tokens.csv` — the token tables above, one French
@@ -333,3 +348,30 @@ Test ids and CSS classes follow the token table in kebab-case
   destructured locals); those rows were corrected or added in
   `dictionary.csv` and `keys.csv` by hand, tagged `leftover-E5b` /
   `inventory-E5b` — listed in PLAN-BASCULE-ANGLAIS E5b.
+- The DOM layer (E5d) has its own pair. `scripts/rename/derive-dom.mjs`
+  reads what the UI and the specs ACTUALLY carry — every
+  `data-testid`, the `testid` prop of `Menu`, the prefixes of the ids
+  rendered from a value, every class token of `class="…"`, `class:` and
+  the `<style>` selectors, `system.css`, the specs' selector literals
+  and `toHaveClass` regexes, the `data-*` attribute names and the
+  `dataset.*` reads — derives each name segment by segment from
+  `tokens.csv` and appends to `dom.csv` the rows the E0 inventory lacked
+  (113 at E5d: 124 classes had no row, the `attr` kind did not exist);
+  it also lists the MERGES to check by hand (a new name already a class
+  in the same component — one at E5d, `actif` → `active` in
+  `Settings.svelte`, verified safe). A word the glossary lacks is added
+  to `tokens.csv` (49 at E5d: the 44 of D20 plus five the run needed,
+  listed in the plan's annex for STOP 2) and the derivation is run again
+  — the rows are never typed. `scripts/rename/apply-dom.mjs` applies the four
+  kinds in the UI and in `e2e/` in ONE run (the contract never has two
+  sides): the class tokens, the `class:` directive names (a bare one
+  becomes `class:new={old}`), the test ids and their rendered prefixes,
+  the attribute names, the `.old` selectors bounded on both sides in the
+  `<style>` blocks and `system.css`, and inside string or template
+  literals only: `[data-testid="old"]`, `getByTestId('old')`, `.old` in
+  a selector position, `[data-old`, `toHaveClass(/old/)`, the bare ids a
+  spec helper takes; the seams as whole identifiers everywhere. Its
+  `--report` lists the string literals rewritten outside a
+  `[data-testid=…]`, the bare ids, and the spec ids the UI does not
+  render after the pass. Proven on fixtures before touching the tree:
+  `e2e/apply-dom.test.mjs` (4 tests, in the test script).

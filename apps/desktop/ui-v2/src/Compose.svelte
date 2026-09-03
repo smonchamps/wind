@@ -1136,15 +1136,15 @@
      click). -->
 {#snippet menuSuggestions()}
   <ul class="suggestions" role="listbox" aria-label={t('compose.suggestions')}
-      data-testid="composition-suggestions">
+      data-testid="compose-suggestions">
     {#each suggestions as pick, i (pick.address)}
       <li role="option" aria-selected={i === suggestedChoice}>
-        <button type="button" class="suggestion" class:choisie={i === suggestedChoice}
-                data-testid="suggestion-adresse" tabindex="-1"
+        <button type="button" class="suggestion" class:chosen={i === suggestedChoice}
+                data-testid="address-suggestion" tabindex="-1"
                 onmousedown={(e) => e.preventDefault()}
                 onclick={() => insertSuggestion(pick)}>
-          {#if pick.name}<span class="nom">{pick.name}</span>{/if}
-          <span class="adresse">{pick.address}</span>
+          {#if pick.name}<span class="name">{pick.name}</span>{/if}
+          <span class="address">{pick.address}</span>
         </button>
       </li>
     {/each}
@@ -1152,23 +1152,23 @@
 {/snippet}
 
 {#if visible}
-  <div class="scrim" data-testid="composition">
-    <div class="carte" bind:this={card} role="dialog" aria-modal="true" aria-label={t(KICKERS[mode])}>
+  <div class="scrim" data-testid="compose">
+    <div class="card" bind:this={card} role="dialog" aria-modal="true" aria-label={t(KICKERS[mode])}>
       <!-- Field A46: the header no longer repeats the subject — the
            Subject field states it, just below. -->
-      <div class="tete">
-        <span class="kicker" data-testid="composition-kicker">{t(KICKERS[mode])}</span>
-        <span class="essor"></span>
-        <button type="button" class="fermer" aria-label={t('action.close')} onclick={close}>
+      <div class="head">
+        <span class="kicker" data-testid="compose-kicker">{t(KICKERS[mode])}</span>
+        <span class="grow"></span>
+        <button type="button" class="close" aria-label={t('action.close')} onclick={close}>
           <Icon name="close" /></button>
       </div>
-      <div class="champs">
-        <div class="rang">
-          <span class="etiquette">{t('conv.from')}</span>
+      <div class="fields">
+        <div class="rank">
+          <span class="label">{t('conv.from')}</span>
           {#if accounts.length > 1}
             <!-- A10: the sending account IS CHOSEN (field verdict) —
                  the prototype froze the row, v1 had the selector. -->
-            <select class="valeur" data-testid="composition-de" aria-label={t('compose.sendingAccount')}
+            <select class="value" data-testid="compose-from" aria-label={t('compose.sendingAccount')}
                     value={sender?.email ?? ''}
                     onchange={(e) => changeSender(e.target.value)}>
               {#each accounts as c (c.account_id)}
@@ -1176,77 +1176,77 @@
               {/each}
             </select>
           {:else}
-            <span class="valeur" data-testid="composition-de">{labelFor(sender)}</span>
+            <span class="value" data-testid="compose-from">{labelFor(sender)}</span>
           {/if}
         </div>
-        <div class="rang">
-          <span class="etiquette">{t('conv.to')}</span>
+        <div class="rank">
+          <span class="label">{t('conv.to')}</span>
           <input type="text" bind:this={toField} bind:value={a}
                  oninput={(e) => onAddressKeystroke('a', e.currentTarget.value)}
                  onkeydown={addressKeyboard} onblur={closeSuggestions}
-                 placeholder={t('compose.recipient')} data-testid="composition-a">
+                 placeholder={t('compose.recipient')} data-testid="compose-to">
           {#if suggestedField === 'a'}{@render menuSuggestions()}{/if}
           <!-- A54: Cc/Bcc open their row on request (or automatically
                if content is already there — resumption, “Reply
                all”). -->
           {#if !showCc}
-            <button type="button" class="puce" data-testid="composition-bouton-cc"
+            <button type="button" class="chip" data-testid="compose-cc-button"
                     onclick={() => { showCc = true; setTimeout(() => ccField?.focus(), 0); }}>
               <Icon name="group_add" />{t('compose.cc')}</button>
           {/if}
           {#if !showBcc}
-            <button type="button" class="puce" data-testid="composition-bouton-cci"
+            <button type="button" class="chip" data-testid="compose-bcc-button"
                     onclick={() => { showBcc = true; setTimeout(() => bccField?.focus(), 0); }}>
               <Icon name="visibility_off" />{t('compose.bcc')}</button>
           {/if}
         </div>
         {#if showCc}
-          <div class="rang">
-            <span class="etiquette">{t('compose.cc')}</span>
+          <div class="rank">
+            <span class="label">{t('compose.cc')}</span>
             <input type="text" bind:this={ccField} bind:value={cc}
                    oninput={(e) => onAddressKeystroke('cc', e.currentTarget.value)}
                    onkeydown={addressKeyboard} onblur={closeSuggestions}
-                   placeholder={t('compose.recipient')} data-testid="composition-cc">
+                   placeholder={t('compose.recipient')} data-testid="compose-cc">
             {#if suggestedField === 'cc'}{@render menuSuggestions()}{/if}
           </div>
         {/if}
         {#if showBcc}
-          <div class="rang">
-            <span class="etiquette">{t('compose.bcc')}</span>
+          <div class="rank">
+            <span class="label">{t('compose.bcc')}</span>
             <input type="text" bind:this={bccField} bind:value={cci}
                    oninput={(e) => onAddressKeystroke('cci', e.currentTarget.value)}
                    onkeydown={addressKeyboard} onblur={closeSuggestions}
-                   placeholder={t('compose.recipient')} data-testid="composition-cci">
+                   placeholder={t('compose.recipient')} data-testid="compose-cci">
             {#if suggestedField === 'cci'}{@render menuSuggestions()}{/if}
           </div>
         {/if}
-        <div class="rang">
-          <span class="etiquette">{t('conv.subject')}</span>
+        <div class="rank">
+          <span class="label">{t('conv.subject')}</span>
           <input type="text" bind:value={subject} oninput={scheduleSave}
-                 placeholder={t('compose.subjectPlaceholder')} data-testid="composition-objet">
+                 placeholder={t('compose.subjectPlaceholder')} data-testid="compose-subject">
         </div>
       </div>
-      <div class="zone-corps" bind:this={bodyArea}>
+      <div class="body-area" bind:this={bodyArea}>
         <!-- The rich editor (R4): contenteditable, content set by
              `setBody`, read by `bodyLoaded` — never a bind. The
              placeholder lives in CSS (:empty::before). The selection
              is tracked only by the document's `selectionchange` (it
              covers KEYBOARD AND mouse — no onkeyup/onmouseup
              duplicate). -->
-        <div class="corps-editeur" contenteditable="true" role="textbox" aria-multiline="true"
+        <div class="body-editor" contenteditable="true" role="textbox" aria-multiline="true"
              tabindex="0"
              bind:this={bodyField} oninput={onBodyKeystroke}
              data-placeholder={t('compose.bodyPlaceholder')}
              aria-label={t('compose.bodyPlaceholder')}
-             data-testid="composition-corps"></div>
+             data-testid="compose-body"></div>
       </div>
       {#if attachments.length > 0 || retrievals.length > 0}
-        <div class="fichiers" data-testid="composition-pieces">
+        <div class="files" data-testid="compose-attachments">
           {#each attachments as attachment (attachment.id)}
-            <span class="piece" data-testid="piece-compo">
+            <span class="attachment" data-testid="attachment-compose">
               <Icon name="description" />
-              <span class="nom">{attachment.name}</span><span class="taille">{attachment.human}</span>
-              <button type="button" class="retrait" data-testid="piece-retrait"
+              <span class="name">{attachment.name}</span><span class="size">{attachment.human}</span>
+              <button type="button" class="remove" data-testid="attachment-remove"
                       aria-label={t('compose.removeAttachment', { name: attachment.name })}
                       onclick={() => remove(attachment)}>
                 <Icon name="close" /></button>
@@ -1254,16 +1254,16 @@
           {/each}
           {#each retrievals as entry (entry.index)}
             {#if entry.status === 'encours'}
-              <span class="piece attente" data-testid="piece-rapatriement">
+              <span class="attachment pending" data-testid="attachment-retrieving">
                 <Icon name="hourglass_empty" />
                 {t('compose.retrieving', { name: entry.name })}</span>
             {:else}
-              <span class="piece echec" data-testid="piece-echec">
+              <span class="attachment failure" data-testid="attachment-failure">
                 <Icon name="description" />
-                <span class="nom">{entry.name}</span>
-                <button type="button" class="reessayer" data-testid="piece-reessayer"
+                <span class="name">{entry.name}</span>
+                <button type="button" class="retry" data-testid="attachment-retry"
                         onclick={() => retry(entry)}>{t('action.retry')}</button>
-                <button type="button" class="retrait" data-testid="piece-renoncer"
+                <button type="button" class="remove" data-testid="attachment-give-up"
                         aria-label={t('compose.removeAttachment', { name: entry.name })}
                         onclick={() => giveUp(entry)}>
                   <Icon name="close" /></button>
@@ -1271,22 +1271,22 @@
             {/if}
           {/each}
           {#if attachments.length > 0}
-            <span class="poids" data-testid="composition-poids">
+            <span class="weight" data-testid="compose-weight">
               {t('compose.totalWeight', { poids: humanWeight(totalWeight) })}</span>
           {/if}
         </div>
       {/if}
       {#if refusal}
-        <div class="refus" data-testid="composition-refus">
+        <div class="refusal" data-testid="compose-refusal">
           <Icon name="warning" />{refusal}
         </div>
       {/if}
       <!-- The REAL bar (R4, D1: exactly the requested buttons — Link
            and Quote removed). `onmousedown` neutralized everywhere:
            a format button never steals the body's selection. -->
-      <div class="format" data-testid="composition-format">
+      <div class="format" data-testid="compose-format">
         <select class="select-format" aria-label={t('compose.font')} title={t('compose.font')}
-                data-testid="composition-format-police"
+                data-testid="compose-format-font"
                 onchange={(e) => selectCommand(e, 'fontName')}>
           <option value="" disabled selected hidden>{t('compose.font')}</option>
           <option value="sans-serif">{t('compose.fontSans')}</option>
@@ -1294,7 +1294,7 @@
           <option value="monospace">{t('compose.fontMono')}</option>
         </select>
         <select class="select-format" aria-label={t('compose.size')} title={t('compose.size')}
-                data-testid="composition-format-taille"
+                data-testid="compose-format-size"
                 onchange={(e) => selectCommand(e, 'fontSize')}>
           <option value="" disabled selected hidden>{t('compose.size')}</option>
           <option value="2">{t('compose.sizeSmall')}</option>
@@ -1303,37 +1303,37 @@
           <option value="6">{t('compose.sizeVeryLarge')}</option>
         </select>
         <span class="sep" aria-hidden="true"></span>
-        <button type="button" class="bouton-format" class:actif={activeFormats.bold}
+        <button type="button" class="button-format" class:active={activeFormats.bold}
                 aria-label={t('compose.bold')} title={t('compose.bold')} aria-pressed={activeFormats.bold}
-                data-testid="composition-format-gras"
+                data-testid="compose-format-bold"
                 onmousedown={(e) => e.preventDefault()} onclick={() => command('bold')}>
           <Icon name="format_bold" /></button>
-        <button type="button" class="bouton-format" class:actif={activeFormats.italic}
+        <button type="button" class="button-format" class:active={activeFormats.italic}
                 aria-label={t('compose.italic')} title={t('compose.italic')} aria-pressed={activeFormats.italic}
-                data-testid="composition-format-italique"
+                data-testid="compose-format-italic"
                 onmousedown={(e) => e.preventDefault()} onclick={() => command('italic')}>
           <Icon name="format_italic" /></button>
-        <button type="button" class="bouton-format" class:actif={activeFormats.underline}
+        <button type="button" class="button-format" class:active={activeFormats.underline}
                 aria-label={t('compose.underline')} title={t('compose.underline')} aria-pressed={activeFormats.underline}
-                data-testid="composition-format-souligne"
+                data-testid="compose-format-underline"
                 onmousedown={(e) => e.preventDefault()} onclick={() => command('underline')}>
           <Icon name="format_underlined" /></button>
-        <button type="button" class="bouton-format" class:actif={activeFormats.strikethrough}
+        <button type="button" class="button-format" class:active={activeFormats.strikethrough}
                 aria-label={t('compose.strikethrough')} title={t('compose.strikethrough')} aria-pressed={activeFormats.strikethrough}
-                data-testid="composition-format-barre"
+                data-testid="compose-format-bar"
                 onmousedown={(e) => e.preventDefault()} onclick={() => command('strikeThrough')}>
           <Icon name="strikethrough_s" /></button>
-        <span class="groupe-couleur">
-          <button type="button" class="bouton-format"
+        <span class="group-color">
+          <button type="button" class="button-format"
                   aria-label={t('compose.color')} title={t('compose.color')}
-                  data-testid="composition-format-couleur"
+                  data-testid="compose-format-color"
                   onmousedown={(e) => e.preventDefault()}
                   onclick={() => (showColors = !showColors)}>
             <Icon name="format_color_text" /></button>
           {#if showColors}
-            <div class="palette" data-testid="composition-palette">
+            <div class="palette" data-testid="compose-palette">
               {#each COLORS as color (color)}
-                <button type="button" class="teinte" style="background:{color}"
+                <button type="button" class="hue" style="background:{color}"
                         aria-label={color}
                         onmousedown={(e) => e.preventDefault()}
                         onclick={() => command('foreColor', color)}></button>
@@ -1342,46 +1342,46 @@
           {/if}
         </span>
         <span class="sep" aria-hidden="true"></span>
-        <button type="button" class="bouton-format"
+        <button type="button" class="button-format"
                 aria-label={t('compose.alignLeft')} title={t('compose.alignLeft')}
-                data-testid="composition-format-gauche"
+                data-testid="compose-format-left"
                 onmousedown={(e) => e.preventDefault()} onclick={() => command('justifyLeft')}>
           <Icon name="format_align_left" /></button>
-        <button type="button" class="bouton-format"
+        <button type="button" class="button-format"
                 aria-label={t('compose.alignCenter')} title={t('compose.alignCenter')}
-                data-testid="composition-format-centre"
+                data-testid="compose-format-center"
                 onmousedown={(e) => e.preventDefault()} onclick={() => command('justifyCenter')}>
           <Icon name="format_align_center" /></button>
-        <button type="button" class="bouton-format"
+        <button type="button" class="button-format"
                 aria-label={t('compose.alignRight')} title={t('compose.alignRight')}
-                data-testid="composition-format-droite"
+                data-testid="compose-format-right"
                 onmousedown={(e) => e.preventDefault()} onclick={() => command('justifyRight')}>
           <Icon name="format_align_right" /></button>
         <span class="sep" aria-hidden="true"></span>
-        <button type="button" class="bouton-format" class:actif={activeFormats.bulletList}
+        <button type="button" class="button-format" class:active={activeFormats.bulletList}
                 aria-label={t('compose.listBullets')} title={t('compose.listBullets')} aria-pressed={activeFormats.bulletList}
-                data-testid="composition-format-puces"
+                data-testid="compose-format-bullets"
                 onmousedown={(e) => e.preventDefault()} onclick={() => command('insertUnorderedList')}>
           <Icon name="format_list_bulleted" /></button>
-        <button type="button" class="bouton-format" class:actif={activeFormats.numberedList}
+        <button type="button" class="button-format" class:active={activeFormats.numberedList}
                 aria-label={t('compose.listNumbered')} title={t('compose.listNumbered')} aria-pressed={activeFormats.numberedList}
-                data-testid="composition-format-numerotee"
+                data-testid="compose-format-numbered"
                 onmousedown={(e) => e.preventDefault()} onclick={() => command('insertOrderedList')}>
           <Icon name="format_list_numbered" /></button>
-        <button type="button" class="bouton-format"
+        <button type="button" class="button-format"
                 aria-label={t('compose.indentLess')} title={t('compose.indentLess')}
-                data-testid="composition-format-retrait-moins"
+                data-testid="compose-format-indent-less"
                 onmousedown={(e) => e.preventDefault()} onclick={() => command('outdent')}>
           <Icon name="format_indent_decrease" /></button>
-        <button type="button" class="bouton-format"
+        <button type="button" class="button-format"
                 aria-label={t('compose.indentMore')} title={t('compose.indentMore')}
-                data-testid="composition-format-retrait-plus"
+                data-testid="compose-format-indent-more"
                 onmousedown={(e) => e.preventDefault()} onclick={() => command('indent')}>
           <Icon name="format_indent_increase" /></button>
         <span class="sep" aria-hidden="true"></span>
-        <button type="button" class="bouton-format"
+        <button type="button" class="button-format"
                 aria-label={t('compose.clearFormat')} title={t('compose.clearFormat')}
-                data-testid="composition-format-effacer"
+                data-testid="compose-format-clear"
                 onmousedown={(e) => e.preventDefault()} onclick={() => command('removeFormat')}>
           <Icon name="format_clear" /></button>
         <span class="sep" aria-hidden="true"></span>
@@ -1389,9 +1389,9 @@
              formatting bar, in the format of its neighbors (icon
              only) — a toggle of the message's state (aria-pressed),
              not an action. -->
-        <button type="button" class="bouton-format" class:actif={important}
+        <button type="button" class="button-format" class:active={important}
                 aria-label={t('compose.importantTitle')} title={t('compose.importantTitle')}
-                aria-pressed={important} data-testid="composition-important"
+                aria-pressed={important} data-testid="compose-important"
                 onmousedown={(e) => e.preventDefault()}
                 onclick={() => { important = !important; scheduleSave(); }}>
           <Icon name="priority_high" /></button>
@@ -1400,60 +1400,60 @@
         <!-- R3/D3: the confirmation lives IN the footer, in the
              buttons' place — a discarded draft does not come back,
              the gesture states what it does before doing it. -->
-        <div class="pied confirmation" data-testid="composition-suppr-carte">
-          <span class="avert-suppr">{t('compose.deleteConfirm')}</span>
-          <span class="essor"></span>
-          <button type="button" class="danger" data-testid="composition-suppr-confirmer"
+        <div class="foot confirmation" data-testid="compose-delete-card">
+          <span class="warn-delete">{t('compose.deleteConfirm')}</span>
+          <span class="grow"></span>
+          <button type="button" class="danger" data-testid="compose-delete-confirm"
                   onclick={deleteDraft}>
             <Icon name="delete" />{t('action.delete')}</button>
-          <button type="button" class="annuler" data-testid="composition-suppr-annuler"
+          <button type="button" class="cancel" data-testid="compose-delete-cancel"
                   onclick={() => (deleteRequest = false)}>{t('action.cancel')}</button>
         </div>
       {:else}
-        <div class="pied">
-          <button type="button" class="principal" data-testid="composition-envoyer"
+        <div class="foot">
+          <button type="button" class="main" data-testid="compose-send"
                   disabled={sendInProgress} onclick={send}>
             <Icon name="send" />{t('action.send')}</button>
           <!-- R2: “Send later” — the card opens above the footer
                (same idiom as the color swatch), deadline preset to
                +1 h, native date+time control. -->
-          <span class="groupe-differe">
-            <button type="button" data-testid="composition-plus-tard"
+          <span class="group-deferred">
+            <button type="button" data-testid="compose-later"
                     disabled={sendInProgress} onclick={openDeferred}>
               <Icon name="schedule_send" />{t('compose.later')}</button>
             {#if showDeferred}
-              <div class="differe" data-testid="composition-differe">
-                <label class="differe-label">{t('compose.deferredWhen')}
+              <div class="deferred" data-testid="compose-deferred">
+                <label class="deferred-label">{t('compose.deferredWhen')}
                   <input type="datetime-local" bind:value={deferredDate}
-                         data-testid="composition-differe-date">
+                         data-testid="compose-deferred-date">
                 </label>
                 <!-- D1: the local semantics is STATED — never a
                      server promise we do not keep. -->
-                <p class="differe-note">{t('compose.deferredNote')}</p>
-                <div class="differe-actions">
-                  <button type="button" class="principal" data-testid="composition-differe-confirmer"
+                <p class="deferred-note">{t('compose.deferredNote')}</p>
+                <div class="deferred-actions">
+                  <button type="button" class="main" data-testid="compose-deferred-confirm"
                           onclick={scheduleSend}>
                     <Icon name="schedule_send" />{t('compose.schedule')}</button>
-                  <button type="button" class="annuler" data-testid="composition-differe-annuler"
+                  <button type="button" class="cancel" data-testid="compose-deferred-cancel"
                           onclick={() => (showDeferred = false)}>{t('action.cancel')}</button>
                 </div>
               </div>
             {/if}
           </span>
-          <button type="button" onclick={attach} data-testid="composition-joindre">
+          <button type="button" onclick={attach} data-testid="compose-attach">
             <Icon name="attach_file" />{t('compose.attach')}</button>
-          <button type="button" onclick={saveDraft} data-testid="composition-brouillon">
+          <button type="button" onclick={saveDraft} data-testid="compose-draft">
             <Icon name="drafts" />{t('compose.saveDraft')}</button>
-          <span class="essor"></span>
+          <span class="grow"></span>
           {#if canDelete}
             <!-- The destructive gesture on the RIGHT, detached from
                  the send cluster (less carelessness), before
                  “Cancel” which, itself, keeps. -->
-            <button type="button" class="supprimer" data-testid="composition-supprimer"
+            <button type="button" class="delete" data-testid="compose-delete"
                     onclick={() => (deleteRequest = true)}>
               <Icon name="delete" />{t('compose.deleteDraft')}</button>
           {/if}
-          <button type="button" class="annuler" data-testid="composition-annuler"
+          <button type="button" class="cancel" data-testid="compose-cancel"
                   onclick={close}>{t('action.cancel')}</button>
         </div>
       {/if}
@@ -1467,7 +1467,7 @@
     position:absolute; inset:0; background:var(--scrim); z-index:2;
     display:flex; align-items:center; justify-content:center; padding:36px;
   }
-  .carte {
+  .card {
     width:860px; max-height:100%; background:var(--surface);
     border:1px solid var(--border);
     border-radius:var(--r-surface); box-shadow:var(--shadow);
@@ -1477,7 +1477,7 @@
      footer (the status bar — --bg since V3, --panel is dead) — and
      as the formatting bar at the bottom of the card: the card is
      framed top/bottom in the same hue. */
-  .tete {
+  .head {
     height:48px; flex:none; padding:0 16px 0 22px; display:flex;
     align-items:center; gap:14px; border-bottom:1px solid var(--border);
     background:var(--bg);
@@ -1486,25 +1486,25 @@
     font-size:12px; letter-spacing:.1em; text-transform:uppercase;
     color:var(--muted); font-weight:600; white-space:nowrap;
   }
-  .essor { flex:1; }
-  .puce {
+  .grow { flex:1; }
+  .chip {
     height:32px; padding:0 12px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink2); background:var(--surface);
     border:1px solid var(--border); border-radius:var(--r-control); white-space:nowrap;
     flex:none;
   }
-  .fermer {
+  .close {
     height:32px; width:32px; padding:0; display:inline-flex; flex:none;
     align-items:center; justify-content:center; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--r-control); cursor:pointer;
   }
-  .fermer:hover { background:var(--sel); }
+  .close:hover { background:var(--sel); }
 
   /* A46: the header → “From” gap matches the prototype composer's
      drawing (.ccorps: 6 px), plus the former 18 px. */
-  .champs { padding:6px 22px 0; display:flex; flex-direction:column; }
-  .rang {
+  .fields { padding:6px 22px 0; display:flex; flex-direction:column; }
+  .rank {
     height:44px; display:flex; align-items:center; gap:14px;
     border-bottom:1px solid var(--border);
     /* The suggestions menu anchors to ITS field's row. */
@@ -1524,26 +1524,26 @@
     cursor:pointer; font-size:13px; text-align:left; font-family:inherit;
   }
   .suggestion:hover { background:var(--hover); }
-  .suggestion.choisie { background:var(--sel); }
-  .suggestion .nom { color:var(--ink); font-weight:600; white-space:nowrap; }
-  .suggestion .adresse { color:var(--muted); overflow:hidden; text-overflow:ellipsis; }
-  .etiquette { width:52px; font-size:13px; color:var(--muted); flex:none; }
-  .valeur { flex:1; font-size:13px; color:var(--ink); }
-  select.valeur {
+  .suggestion.chosen { background:var(--sel); }
+  .suggestion .name { color:var(--ink); font-weight:600; white-space:nowrap; }
+  .suggestion .address { color:var(--muted); overflow:hidden; text-overflow:ellipsis; }
+  .label { width:52px; font-size:13px; color:var(--muted); flex:none; }
+  .value { flex:1; font-size:13px; color:var(--ink); }
+  select.value {
     border:none; background:transparent; cursor:pointer; padding:0;
     font:inherit; font-size:13px; color:var(--ink); min-width:0;
   }
-  select.valeur option { background:var(--surface); color:var(--ink); }
-  .rang input {
+  select.value option { background:var(--surface); color:var(--ink); }
+  .rank input {
     flex:1; font-size:13px; color:var(--ink); border:none; outline:none;
     background:transparent; min-width:0;
   }
 
-  .zone-corps {
+  .body-area {
     padding:20px 22px; display:flex; flex-direction:column;
     min-height:220px; flex:1; overflow:auto;
   }
-  .corps-editeur {
+  .body-editor {
     flex:1; width:100%; min-height:180px; font-size:15px; line-height:1.65;
     color:var(--ink); border:none; outline:none;
     background:transparent; font-family:inherit;
@@ -1551,71 +1551,71 @@
   }
   /* The textarea's placeholder, redone: visible as long as the body
      is empty, in the muted hue. */
-  .corps-editeur:empty::before {
+  .body-editor:empty::before {
     content:attr(data-placeholder); color:var(--muted); pointer-events:none;
   }
   /* The rich quote: the left net that `quote_reply_html` sets as an
      inline style is the reference; this only styles the blockquotes
      born from the indent, with no style of its own. */
-  .corps-editeur :global(blockquote) { margin:0 0 0 0.8ex; }
+  .body-editor :global(blockquote) { margin:0 0 0 0.8ex; }
 
-  .fichiers { padding:0 22px 14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .files { padding:0 22px 14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
 
   /* The chip of an attachment to add (mockup §1): name + size +
      removal in the SAME chip — one manipulable object, not two
      reads. Symmetric margins (A33): 12 px on both sides — the
      removal cross does not reduce the margin on its side. */
-  .piece {
+  .attachment {
     height:32px; padding:0 12px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink2); background:var(--surface);
     border:1px solid var(--border); border-radius:var(--r-control); white-space:nowrap;
   }
-  .piece .nom { color:var(--ink); }
-  .piece .taille { font-size:12px; color:var(--muted); }
-  .retrait {
+  .attachment .name { color:var(--ink); }
+  .attachment .size { font-size:12px; color:var(--muted); }
+  .remove {
     height:22px; width:22px; padding:0; display:inline-flex; align-items:center;
     justify-content:center; color:var(--muted); background:transparent;
     border:none; border-radius:var(--r-control); cursor:pointer;
   }
-  .retrait:hover { background:var(--sel); color:var(--ink); }
-  .retrait :global(.ic) { width:13px; height:13px; }
+  .remove:hover { background:var(--sel); color:var(--ink); }
+  .remove :global(.ic) { width:13px; height:13px; }
   /* The retrieval states (mockup §3): waiting muted italic, failure
      with an --alert border and “Retry”. */
-  .piece.attente { color:var(--muted); font-style:italic; }
-  .piece.echec { border-color:var(--alert); }
-  .piece.echec .nom { color:var(--alert); font-weight:600; }
-  .reessayer {
+  .attachment.pending { color:var(--muted); font-style:italic; }
+  .attachment.failure { border-color:var(--alert); }
+  .attachment.failure .name { color:var(--alert); font-weight:600; }
+  .retry {
     height:22px; padding:0 8px; display:inline-flex; align-items:center;
     font-size:12px; font-family:inherit; font-weight:600; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border); border-radius:var(--r-control);
     cursor:pointer;
   }
-  .reessayer:hover { background:var(--sel); color:var(--ink); }
-  .poids { margin-left:auto; font-size:12.5px; color:var(--muted); white-space:nowrap; }
-  .refus {
+  .retry:hover { background:var(--sel); color:var(--ink); }
+  .weight { margin-left:auto; font-size:12.5px; color:var(--muted); white-space:nowrap; }
+  .refusal {
     padding:0 22px 14px; font-size:13px; color:var(--alert);
     display:flex; align-items:center; gap:8px;
   }
-  .refus :global(.ic) { width:14px; height:14px; }
+  .refusal :global(.ic) { width:14px; height:14px; }
 
   .format {
     flex:none; padding:8px 18px; border-top:1px solid var(--border);
     background:var(--bg); display:flex; align-items:center; gap:6px;
     flex-wrap:wrap;
   }
-  .bouton-format {
+  .button-format {
     height:32px; min-width:32px; padding:0 6px; display:inline-flex;
     align-items:center; justify-content:center; font-size:13px;
     color:var(--ink2); background:var(--surface); cursor:pointer;
     border:1px solid var(--border); border-radius:var(--r-control);
   }
-  .bouton-format:hover { background:var(--sel); color:var(--ink); }
+  .button-format:hover { background:var(--sel); color:var(--ink); }
   /* The active state states what the selection carries (aria-pressed
      likewise). */
-  .bouton-format.actif {
+  .button-format.active {
     background:var(--sel); color:var(--accent); border-color:var(--accent);
   }
-  .bouton-format :global(.ic), .supprimer :global(.ic) { width:18px; height:18px; }
+  .button-format :global(.ic), .delete :global(.ic) { width:18px; height:18px; }
   .select-format {
     height:32px; padding:0 8px; font:inherit; font-size:13px;
     color:var(--ink2); background:var(--surface); cursor:pointer;
@@ -1627,7 +1627,7 @@
     margin:0 4px;
   }
   /* The color swatch (D3): twelve fixed hues, above the bar. */
-  .groupe-couleur { position:relative; display:inline-flex; }
+  .group-color { position:relative; display:inline-flex; }
   .palette {
     position:absolute; bottom:38px; left:0; z-index:1;
     display:grid; grid-template-columns:repeat(6, 22px); gap:6px;
@@ -1635,13 +1635,13 @@
     border:1px solid var(--border); border-radius:var(--r-control);
     box-shadow:var(--shadow);
   }
-  .teinte {
+  .hue {
     height:22px; width:22px; min-width:0; padding:0;
     border:1px solid var(--border); border-radius:var(--r-control); cursor:pointer;
   }
-  .teinte:hover { outline:2px solid var(--accent); outline-offset:1px; }
+  .hue:hover { outline:2px solid var(--accent); outline-offset:1px; }
 
-  .pied {
+  .foot {
     flex:none; padding:14px 22px 18px; border-top:1px solid var(--border);
     display:flex; align-items:center; gap:12px;
   }
@@ -1653,49 +1653,49 @@
     border:1px solid var(--border); border-radius:var(--r-control); cursor:pointer;
     white-space:nowrap;
   }
-  .pied { flex-wrap:wrap; }
+  .foot { flex-wrap:wrap; }
   button:hover { background:var(--sel); }
-  .principal {
+  .main {
     font-weight:600; color:var(--onAccent); background:var(--accent);
     border-color:var(--accent);
   }
-  .principal:hover { background:var(--accentH); border-color:var(--accentH); }
-  .principal:disabled { opacity:.6; cursor:default; }
-  .annuler {
+  .main:hover { background:var(--accentH); border-color:var(--accentH); }
+  .main:disabled { opacity:.6; cursor:default; }
+  .cancel {
     margin-left:auto; height:auto; padding:0; border:none;
     background:transparent; font-size:13px; color:var(--muted);
     text-decoration:underline; cursor:pointer;
   }
-  .annuler:hover { background:transparent; color:var(--ink2); }
+  .cancel:hover { background:transparent; color:var(--ink2); }
   /* The spring pushes the destructive gesture and “Cancel” to the
      right, separated from the Send/Attach/Save cluster. */
-  .essor { flex:1; }
+  .grow { flex:1; }
   /* R2: the “Send later” card, above the footer — the same local
      overlay idiom as the color swatch. */
-  .groupe-differe { position:relative; display:inline-flex; }
-  .differe {
+  .group-deferred { position:relative; display:inline-flex; }
+  .deferred {
     position:absolute; bottom:40px; left:0; z-index:3; width:320px;
     padding:14px; background:var(--surface); border:1px solid var(--border);
     border-radius:var(--r-control); box-shadow:var(--shadow);
     display:flex; flex-direction:column; gap:10px;
   }
-  .differe-label {
+  .deferred-label {
     display:flex; align-items:center; gap:10px;
     font-size:13px; color:var(--ink2); white-space:nowrap;
   }
-  .differe-label input {
+  .deferred-label input {
     flex:1; min-width:0; height:32px; padding:0 8px; font:inherit;
     font-size:13px; color:var(--ink); background:var(--surface);
     border:1px solid var(--border); border-radius:var(--r-control);
   }
-  .differe-note { margin:0; font-size:12px; color:var(--muted); line-height:1.5; }
-  .differe-actions { display:flex; align-items:center; gap:12px; }
+  .deferred-note { margin:0; font-size:12px; color:var(--muted); line-height:1.5; }
+  .deferred-actions { display:flex; align-items:center; gap:12px; }
 
   /* R3: “Delete draft” and its confirmation — alert hue, never the
      accent color (which invites the click). */
-  .supprimer { color:var(--alert); border-color:var(--border); }
-  .supprimer:hover { background:var(--alert); color:var(--onAccent); border-color:var(--alert); }
-  .confirmation .avert-suppr { font-size:13px; color:var(--alert); font-weight:600; }
+  .delete { color:var(--alert); border-color:var(--border); }
+  .delete:hover { background:var(--alert); color:var(--onAccent); border-color:var(--alert); }
+  .confirmation .warn-delete { font-size:13px; color:var(--alert); font-weight:600; }
   .danger {
     font-weight:600; color:var(--onAccent); background:var(--alert);
     border-color:var(--alert);

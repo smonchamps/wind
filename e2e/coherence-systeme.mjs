@@ -132,7 +132,7 @@ for (const langue of ['fr', 'en']) {
   }
   for (const id of ids) {
     if (!themesCss[id]) {
-      echec(`catalogue.${langue} : theme.${id}.nom sans thème livré dans system.css`);
+      echec(`catalogue.${langue} : theme.${id}.name sans thème livré dans system.css`);
     }
   }
 }
@@ -207,7 +207,7 @@ const teintesRust = listeRustDans(wireRs, 'WIRE_HUES');
 compareListes('icône', iconesRust, 'commands.rs', listeJs('MARKER_ICONS'), 'lib/markers.js');
 compareListes('teinte', teintesRust, 'wire.rs', listeJs('MARKER_HUES'), 'lib/markers.js');
 const teintesCss = [
-  ...new Set([...css.matchAll(/\.repere\[data-teinte="([a-z]+)"\]/g)].map(([, v]) => v)),
+  ...new Set([...css.matchAll(/\.marker\[data-hue="([a-z]+)"\]/g)].map(([, v]) => v)),
 ];
 compareListes('teinte', teintesRust, 'wire.rs', teintesCss, 'system.css');
 // A82 : le repère se dessine désormais de DEUX façons — la pastille des
@@ -215,12 +215,12 @@ compareListes('teinte', teintesRust, 'wire.rs', teintesCss, 'system.css');
 // Contrôler la seule table de pastilles laisserait une teinte oubliée du
 // tracé passer en vert : le compte porterait sa couleur aux Réglages et
 // un glyphe à l'encre héritée partout où on le regarde vraiment.
-// (`.repere\[` ne matche pas `.repere-nu\[` : les deux relevés sont
+// (`.marker\[` ne matche pas `.bare-marker\[` : les deux relevés sont
 // disjoints, aucun doublon à craindre.)
 const teintesTrace = [
-  ...new Set([...css.matchAll(/\.repere-nu\[data-teinte="([a-z]+)"\]/g)].map(([, v]) => v)),
+  ...new Set([...css.matchAll(/\.bare-marker\[data-hue="([a-z]+)"\]/g)].map(([, v]) => v)),
 ];
-compareListes('teinte du tracé', teintesRust, 'wire.rs', teintesTrace, 'system.css (.repere-nu)');
+compareListes('teinte du tracé', teintesRust, 'wire.rs', teintesTrace, 'system.css (.bare-marker)');
 // Et les jetons eux-mêmes : depuis A82 les 24 hex vivent en --mk-<hue>,
 // une table par polarité. Un jeton manquant rendrait `color:var(--mk-x)`
 // sans valeur — le glyphe retomberait sur l'encre courante, en silence.

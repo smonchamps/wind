@@ -10,7 +10,7 @@
 // invisibles, et le verrou global de `off_pump` sérialise le tout —
 // la file se draine en minutes, TOUTES les commandes attendent derrière.
 //
-// Comptage : la couture `window.__e2eJournal` de transport.js (posée
+// Comptage : la couture `window.__e2eLog` de transport.js (posée
 // par PLAN-DEFILEMENT-PROFOND E1) — un relevé {commande, depart,
 // arrivee} par appel au coeur. (Deux voies écartées, constatées :
 // enrober `__TAURI__.core.invoke` perd la course contre l'injection
@@ -111,24 +111,24 @@ try {
   page.on('console', (message) => {
     if (message.type() === 'error') console.log(`[console] ${message.text()}`);
   });
-  await page.locator('[data-testid="ligne"]').first().waitFor({ timeout: 60000 });
+  await page.locator('[data-testid="row"]').first().waitFor({ timeout: 60000 });
 
   await page.evaluate(() => {
-    window.__e2eJournal = [];
+    window.__e2eLog = [];
   });
 
   const etatEcran = () => page.evaluate(() => {
-    const cadre = document.querySelector('[data-testid="liste"] .cadre');
-    const journal = window.__e2eJournal.filter((a) => a.command === 'list_category');
+    const cadre = document.querySelector('[data-testid="list"] .frame');
+    const journal = window.__e2eLog.filter((a) => a.command === 'list_category');
     const regles = journal.filter((a) => a.arrival !== null).length;
     return {
       t: Math.round(performance.now()),
       appels: journal.length,
       regles,
       enVol: journal.length - regles,
-      lignes: document.querySelectorAll('[data-testid="ligne"]').length,
-      attentes: document.querySelectorAll('[data-testid="ligne-attente"]').length,
-      videTexte: document.querySelector('[data-testid="liste"] .vide')?.textContent?.trim() ?? null,
+      lignes: document.querySelectorAll('[data-testid="row"]').length,
+      attentes: document.querySelectorAll('[data-testid="row-pending"]').length,
+      videTexte: document.querySelector('[data-testid="list"] .empty')?.textContent?.trim() ?? null,
       scrollTop: cadre ? Math.round(cadre.scrollTop) : null,
     };
   });
@@ -141,8 +141,8 @@ try {
   console.log(`bruit de fond : ${bruitParSeconde.toFixed(1)} appel(s)/s hors défilement`);
 
   // --- Archives, puis le drag ----------------------------------------
-  await page.locator('[data-testid="nav-dossier"][data-categorie="archive"]').click();
-  await page.locator('[data-testid="ligne"]').first().waitFor({ timeout: 30000 });
+  await page.locator('[data-testid="nav-folder"][data-category="archive"]').click();
+  await page.locator('[data-testid="row"]').first().waitFor({ timeout: 30000 });
   // Le total est asynchrone (les lignes d'abord, le comptage au repos) :
   // le drag vise 1/3 de la VRAIE hauteur, pas du plancher provisoire.
   await page.waitForFunction(() => window.__mesure.state().exactTotal, null, { timeout: 30000 });
@@ -171,11 +171,11 @@ try {
     if (!bascule && Date.now() - finDrag > 5000) {
       bascule = true;
       console.log('--- bascule Réception ---');
-      await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
+      await page.locator('[data-testid="nav-folder"][data-category="inbox"]').click();
       await new Promise((resolve) => setTimeout(resolve, 1500));
       console.log('réception  :', JSON.stringify(await etatEcran()));
       console.log('--- retour Archives ---');
-      await page.locator('[data-testid="nav-dossier"][data-categorie="archive"]').click();
+      await page.locator('[data-testid="nav-folder"][data-category="archive"]').click();
       await new Promise((resolve) => setTimeout(resolve, 1500));
       console.log('archives   :', JSON.stringify(await etatEcran()));
     }
@@ -189,7 +189,7 @@ try {
   }
 
   // --- Dépouillement ---------------------------------------------------
-  const journal = (await page.evaluate(() => window.__e2eJournal))
+  const journal = (await page.evaluate(() => window.__e2eLog))
     .filter((a) => a.command === 'list_category');
   const regles = journal.filter((a) => a.arrival !== null);
   const durees = regles.map((a) => a.arrival - a.start);

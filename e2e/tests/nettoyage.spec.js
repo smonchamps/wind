@@ -25,87 +25,87 @@ test.afterAll(async () => {
 });
 
 test('la 5e section n’existe qu’en mode organisé, et son intro dit le texte CE', async () => {
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
   // Au classique : pas de Nettoyage.
   await expect(
-    page.locator('[data-testid="nav-dossier"][data-categorie="cleanup"]'),
+    page.locator('[data-testid="nav-folder"][data-category="cleanup"]'),
   ).toHaveCount(0);
 
-  await page.locator('[data-testid="mode-organise"]').click();
-  const rang = page.locator('[data-testid="nav-dossier"][data-categorie="cleanup"]');
+  await page.locator('[data-testid="organized-mode"]').click();
+  const rang = page.locator('[data-testid="nav-folder"][data-category="cleanup"]');
   await expect(rang).toContainText('Nettoyage de printemps');
   await rang.click();
 
   // L'intro : titre avec glyphe, sous-texte CE mot pour mot, plage
   // (défaut 1 an), périmètre (défaut Réception seule), Démarrer.
-  await expect(page.locator('[data-testid="nettoyage-titre"] svg')).toHaveCount(1);
+  await expect(page.locator('[data-testid="cleanup-title"] svg')).toHaveCount(1);
   await expect(page.locator('[data-testid="cleanup"]')).toContainText(
     'En lançant un nettoyage de printemps, vous allez pouvoir trier vos archives',
   );
-  await expect(page.locator('[data-testid="nettoyage-plage"]')).toHaveCount(6);
+  await expect(page.locator('[data-testid="cleanup-range"]')).toHaveCount(6);
   await expect(
-    page.locator('[data-testid="nettoyage-plage"][data-plage="1a"]'),
+    page.locator('[data-testid="cleanup-range"][data-range="1a"]'),
   ).toHaveAttribute('aria-checked', 'true');
-  await expect(page.locator('[data-testid="nettoyage-perimetre"]')).toHaveCount(4);
+  await expect(page.locator('[data-testid="cleanup-scope"]')).toHaveCount(4);
   await expect(
-    page.locator('[data-testid="nettoyage-perimetre"][data-perimetre="inbox"]'),
+    page.locator('[data-testid="cleanup-scope"][data-scope="inbox"]'),
   ).toHaveAttribute('aria-checked', 'true');
-  await expect(page.locator('[data-testid="nettoyage-demarrer"]')).toBeVisible();
+  await expect(page.locator('[data-testid="cleanup-start"]')).toBeVisible();
 });
 
 test('démarrer ouvre le tri : groupes par expéditeur, progression à 0 %, navigation dans un groupe', async () => {
   // Le décor semé date de 2020 (gabarit) : la plage « tout » couvre —
   // et prouve au passage que le choix de plage est bien envoyé.
-  await page.locator('[data-testid="nettoyage-plage"][data-plage="all"]').click();
-  await page.locator('[data-testid="nettoyage-demarrer"]').click();
-  await expect(page.locator('[data-testid="nettoyage-groupe"]').first()).toBeVisible();
-  await expect(page.locator('[data-testid="nettoyage-progression"]')).toContainText('0 %');
+  await page.locator('[data-testid="cleanup-range"][data-range="all"]').click();
+  await page.locator('[data-testid="cleanup-start"]').click();
+  await expect(page.locator('[data-testid="cleanup-group"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="cleanup-progress"]')).toContainText('0 %');
 
   // Naviguer dans un groupe : ses messages se montrent — et se replient.
-  await page.locator('[data-testid="nettoyage-ouvrir"]').first().click();
-  await expect(page.locator('[data-testid="nettoyage-messages"]')).toBeVisible();
-  await page.locator('[data-testid="nettoyage-ouvrir"]').first().click();
-  await expect(page.locator('[data-testid="nettoyage-messages"]')).toHaveCount(0);
+  await page.locator('[data-testid="cleanup-open"]').first().click();
+  await expect(page.locator('[data-testid="cleanup-messages"]')).toBeVisible();
+  await page.locator('[data-testid="cleanup-open"]').first().click();
+  await expect(page.locator('[data-testid="cleanup-messages"]')).toHaveCount(0);
 });
 
 test('le Oui traite le groupe entier ; le Non fait quitter la Réception à son courrier (D5)', async () => {
-  const groupes = page.locator('[data-testid="nettoyage-groupe"]');
+  const groupes = page.locator('[data-testid="cleanup-group"]');
   const avant = await groupes.count();
   expect(avant).toBeGreaterThan(1);
 
   // Oui de groupe : il quitte la liste, la progression avance.
-  await page.locator('[data-testid="nettoyage-oui"]').first().click();
+  await page.locator('[data-testid="cleanup-yes"]').first().click();
   await expect(groupes).toHaveCount(avant - 1);
-  await expect(page.locator('[data-testid="nettoyage-progression"]')).not.toContainText('0 %');
+  await expect(page.locator('[data-testid="cleanup-progress"]')).not.toContainText('0 %');
 
   // Non (défaut livré : Corbeille) : le groupe part, et son STOCK de
   // la plage quitte la boîte locale — la Réception ne le montre plus.
-  const nomNon = await groupes.first().locator('.exp').innerText();
-  await page.locator('[data-testid="nettoyage-non"]').first().click();
+  const nomNon = await groupes.first().locator('.sender').innerText();
+  await page.locator('[data-testid="cleanup-no"]').first().click();
   await expect(groupes).toHaveCount(avant - 2);
-  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
-  await expect(page.locator('[data-testid="liste"]')).not.toContainText(nomNon);
+  await page.locator('[data-testid="nav-folder"][data-category="inbox"]').click();
+  await expect(page.locator('[data-testid="list"]')).not.toContainText(nomNon);
 });
 
 test('la session PERSISTE (D8) : un rechargement reprend le tri où il en était', async () => {
   await page.reload();
-  await expect(page.locator('[data-testid="mode-organise"]')).toHaveAttribute(
+  await expect(page.locator('[data-testid="organized-mode"]')).toHaveAttribute(
     'aria-checked',
     'true',
   );
-  await page.locator('[data-testid="nav-dossier"][data-categorie="cleanup"]').click();
+  await page.locator('[data-testid="nav-folder"][data-category="cleanup"]').click();
   // Pas l'intro : le tri, avec sa progression déjà entamée.
-  await expect(page.locator('[data-testid="nettoyage-demarrer"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="nettoyage-progression"]')).not.toContainText('0 %');
+  await expect(page.locator('[data-testid="cleanup-start"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="cleanup-progress"]')).not.toContainText('0 %');
 });
 
 test('terminer rend l’intro ; quitter le mode rend la nav classique', async () => {
-  await page.locator('[data-testid="nettoyage-terminer"]').click();
-  await expect(page.locator('[data-testid="nettoyage-demarrer"]')).toBeVisible();
+  await page.locator('[data-testid="cleanup-finish"]').click();
+  await expect(page.locator('[data-testid="cleanup-start"]')).toBeVisible();
 
-  await page.locator('[data-testid="mode-organise"]').click();
-  await expect(page.locator('[data-testid="nav-dossier"]')).toHaveCount(6);
+  await page.locator('[data-testid="organized-mode"]').click();
+  await expect(page.locator('[data-testid="nav-folder"]')).toHaveCount(6);
   await expect(
-    page.locator('[data-testid="nav-dossier"][data-categorie="cleanup"]'),
+    page.locator('[data-testid="nav-folder"][data-category="cleanup"]'),
   ).toHaveCount(0);
 });

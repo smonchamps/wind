@@ -116,7 +116,7 @@
     requestAnimationFrame(() => {
       measureRequested = false;
       const top = scene.getBoundingClientRect().top;
-      const articles = scene.querySelectorAll('article.carte');
+      const articles = scene.querySelectorAll('article.card');
       let first = 0;
       for (let i = 0; i < articles.length; i += 1) {
         if (articles[i].getBoundingClientRect().bottom > top) { first = i; break; }
@@ -126,8 +126,8 @@
       const fresh = { ...heights };
       articles.forEach((article, i) => {
         if (Math.abs(i - first) > WINDOW) {
-          const body = article.querySelector('iframe.corps');
-          if (body) fresh[article.dataset.cle] = body.offsetHeight;
+          const body = article.querySelector('iframe.body');
+          if (body) fresh[article.dataset.key] = body.offsetHeight;
         }
       });
       heights = fresh;
@@ -305,39 +305,39 @@
 
 
 {#snippet cardBlock(card)}
-  <article class="carte" data-testid="kiosque-carte" data-cle={cardKey(card.row)}>
-    <div class="de">
-      <span class="nom">{card.row.sender}</span>
-      <button type="button" class="gestes" data-testid="kiosque-gestes"
+  <article class="card" data-testid="feed-card" data-key={cardKey(card.row)}>
+    <div class="from">
+      <span class="name">{card.row.sender}</span>
+      <button type="button" class="gestures" data-testid="feed-gestures"
               aria-label={t('list.gestures')} aria-haspopup="menu"
               aria-expanded={menu?.key === cardKey(card.row)}
               onclick={(e) => openMenu(e, card)}>
         <Icon name="more_horiz" size={14} /></button>
-      <span class="heure">{when(card.row.epoch)}</span>
+      <span class="time">{when(card.row.epoch)}</span>
     </div>
     <!-- The fold (CE finding, 3 passes): the exact button of the
          reading pane — glyph + text, bare button —, ON THE SUBJECT
          LINE, aligned right. -->
-    <div class="rang-objet">
+    <div class="rank-subject">
       <h3 class="display">{card.row.subject}</h3>
-      <button type="button" class="nu" data-testid="kiosque-pli"
+      <button type="button" class="bare" data-testid="feed-fold"
               aria-expanded={!isCollapsed(card)}
               onclick={() => toggleCollapse(card)}>
         <Icon name={isCollapsed(card) ? 'unfold_more' : 'unfold_less'} />
         {isCollapsed(card) ? t('action.expand') : t('action.collapse')}</button>
     </div>
     {#if isCollapsed(card)}
-      <p class="apercu">{card.row.preview ?? ''}</p>
+      <p class="preview">{card.row.preview ?? ''}</p>
     {:else if offWindow(ranks.get(cardKey(card.row)) ?? 0) && card.document !== null}
       <!-- Out of window: the block keeps the height of the unmounted body. -->
-      <div class="corps-dormant" style={`height:${heights[cardKey(card.row)] ?? 0}px`}
-           data-testid="kiosque-corps-dormant"></div>
+      <div class="body-dormant" style={`height:${heights[cardKey(card.row)] ?? 0}px`}
+           data-testid="feed-dormant-body"></div>
     {:else if card.document !== null}
       {#if card.remote_images_blocked > 0}
         <!-- R1: the image guard, as in the reading pane —
              without it, a newsletter all in remote images would be
              an empty slab with no recourse (E5bis review). -->
-        <div class="garde-images" data-testid="kiosque-garde-images">
+        <div class="images-guard" data-testid="feed-images-guard">
           <span>{t('reading.blockedImages', { n: card.remote_images_blocked })}</span>
           <button type="button" onclick={() => grantImages(card, false)}>
             {t('reading.showImages')}</button>
@@ -345,34 +345,34 @@
             {t('reading.alwaysShowImages')}</button>
         </div>
       {/if}
-      <iframe class="corps" sandbox="allow-same-origin" srcdoc={card.document}
+      <iframe class="body" sandbox="allow-same-origin" srcdoc={card.document}
               title={card.row.subject} use:autoBody
               onload={(ev) => wireLinks(ev.currentTarget)}></iframe>
     {:else}
       <!-- Body not yet cached: the preview says the essential, the
            normal backfill will fill in the card. -->
-      <p class="apercu">{card.row.preview ?? ''}</p>
+      <p class="preview">{card.row.preview ?? ''}</p>
     {/if}
     {#if !card.read && !isCollapsed(card)}
       <!-- R10: the read witness — the FOOT of the elevation; to
            see it pass by is to have read the card to the bottom. -->
-      <div class="temoin-lu" use:readWitness={card} aria-hidden="true"></div>
+      <div class="read-witness" use:readWitness={card} aria-hidden="true"></div>
     {/if}
   </article>
 {/snippet}
 
 <div class="scene" data-testid="feed" onscroll={onScroll} bind:this={scene}>
-  <div class="colonne">
+  <div class="column">
     <!-- R11 (RETOURS-13): the header at the Screener's format — glyph +
          title + two CE sentences, left-justified on the column. -->
-    <h2 class="display entete-vue" data-testid="kiosque-titre">
-      <span class="glyphe-titre" aria-hidden="true"><Icon name="feed" size={26} /></span>{t('mailbox.feed')}</h2>
-    <p class="sous-titre-vue">{t('feed.subtitle1')}<br />{t('feed.subtitle2')}</p>
+    <h2 class="display header-view" data-testid="feed-title">
+      <span class="glyph-title" aria-hidden="true"><Icon name="feed" size={26} /></span>{t('mailbox.feed')}</h2>
+    <p class="subtitle-view">{t('feed.subtitle1')}<br />{t('feed.subtitle2')}</p>
     {#if cards.length}
       <!-- Field RETOURS-13 (C5): the section title stays visible
            when everything is read — the Screener's checkmark says the work is done. -->
-      <div class="ligne-section">
-        <p class="regle-libelle" data-testid="kiosque-section-nonlus">{t('feed.sectionUnread')}</p>
+      <div class="row-section">
+        <p class="rule-label" data-testid="feed-section-unread">{t('feed.sectionUnread')}</p>
         {#if unread.length}<SectionSort value={sortUnread} onchange={(v) => (sortUnread = v)} />{/if}
       </div>
       {#if unread.length}
@@ -380,26 +380,26 @@
           {@render cardBlock(card)}
         {/each}
       {:else}
-        <div class="tout-lu" data-testid="kiosque-tout-lu">
-          <span class="ic-oui" aria-hidden="true"><Icon name="check_circle" /></span>{t('feed.allRead')}
+        <div class="all-read" data-testid="feed-all-read">
+          <span class="ic-yes" aria-hidden="true"><Icon name="check_circle" /></span>{t('feed.allRead')}
         </div>
       {/if}
     {/if}
     {#if groups.length}
-      <div class="ligne-section">
-        <p class="regle-libelle" data-testid="kiosque-section-lus">{t('feed.sectionRead')}</p>
+      <div class="row-section">
+        <p class="rule-label" data-testid="feed-section-read">{t('feed.sectionRead')}</p>
         <SectionSort value={sortRead} onchange={(v) => (sortRead = v)} />
       </div>
       {#each groups as g (g.who)}
         <!-- D5: a collapsed group's row shows a PILE
              of elevations (the set-aside's visual); the click expands
              its cards, collapsed onto the subject line. -->
-        <button type="button" class="rang-groupe" data-testid="kiosque-groupe"
+        <button type="button" class="rank-group" data-testid="feed-group"
                 aria-expanded={!!openGroups[g.who]}
                 onclick={() => (openGroups[g.who] = !openGroups[g.who])}>
-          <span class="empile" aria-hidden="true"><span></span><span></span><span></span></span>
-          <span class="qui" data-testid="kiosque-groupe-nom">{g.who}</span>
-          <span class="nb">{g.cards.length}</span>
+          <span class="stacked" aria-hidden="true"><span></span><span></span><span></span></span>
+          <span class="who" data-testid="feed-group-name">{g.who}</span>
+          <span class="count">{g.cards.length}</span>
         </button>
         {#if openGroups[g.who]}
           {#each g.cards as card (cardKey(card.row))}
@@ -409,114 +409,114 @@
       {/each}
     {/if}
     {#if served && cards.length === 0 && !inFlight}
-      <p class="vide" data-testid="kiosque-vide">{t('feed.empty')}</p>
+      <p class="empty" data-testid="feed-empty">{t('feed.empty')}</p>
     {/if}
   </div>
 </div>
 
 <Menu isOpen={menu !== null} x={menu?.x ?? 0} y={menu?.y ?? 0}
-      testid="kiosque-menu" onclose={() => (menu = null)}>
+      testid="feed-menu" onclose={() => (menu = null)}>
     {#each ['inbox', 'paper_trail'] as dest (dest)}
-      <button type="button" role="menuitem" data-testid={`kiosque-vers-${dest}`}
+      <button type="button" role="menuitem" data-testid={`feed-to-${dest}`}
               onclick={() => gesture(onmove, dest)}>
         <Icon name={dest === 'inbox' ? 'inbox' : 'paper_trail'} />{t('list.moveTo', { mailbox: t(`mailbox.${dest}`) })}</button>
     {/each}
-    <div class="filet"></div>
-    <button type="button" role="menuitem" data-testid="kiosque-cote"
+    <div class="net"></div>
+    <button type="button" role="menuitem" data-testid="feed-aside"
             onclick={() => gesture(onsetaside)}>
       <Icon name="pile" />{t('pile.put')}</button>
-    <div class="filet"></div>
-    <button type="button" role="menuitem" data-testid="kiosque-ecarter"
+    <div class="net"></div>
+    <button type="button" role="menuitem" data-testid="feed-screen-out"
             onclick={() => gesture(onmove, 'screened_out')}>
       <Icon name="visibility_off" />{t('list.screenOut')}</button>
   </Menu>
 
 <style>
   .scene { flex:1; overflow:auto; padding:28px 36px 60px; min-width:0; }
-  .colonne { max-width:720px; margin:0 auto; }
+  .column { max-width:720px; margin:0 auto; }
   /* R11: the header and the label rule are the SHARED classes of
-     system.css (.entete-vue / .sous-titre-vue / .regle-libelle —
+     system.css (.header-view / .subtitle-view / .rule-label —
      one copy, Screener and Feed). */
-  .carte { padding:26px 0 10px; border-top:1px solid var(--border); }
+  .card { padding:26px 0 10px; border-top:1px solid var(--border); }
   /* R9: the section line carries the sort on the right. */
-  .ligne-section { display:flex; align-items:center; gap:10px; }
-  .ligne-section .regle-libelle { flex:1; min-width:0; }
+  .row-section { display:flex; align-items:center; gap:10px; }
+  .row-section .rule-label { flex:1; min-width:0; }
   /* R10 — a collapsed group's row: pile of elevations + name +
      count, the drawing of a row (never a filled button). */
-  .rang-groupe {
+  .rank-group {
     width:100%; display:flex; align-items:center; gap:12px;
     padding:12px 10px; font-size:13px; color:var(--ink); text-align:left;
     background:none; border:none; border-top:1px solid var(--border);
     cursor:pointer;
   }
-  .rang-groupe:hover { background:var(--hover); }
-  .rang-groupe .qui {
+  .rank-group:hover { background:var(--hover); }
+  .rank-group .who {
     flex:1; min-width:0; font-weight:600;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
-  .rang-groupe .nb {
+  .rank-group .count {
     flex:none; font-size:12px; font-weight:600; color:var(--accent);
     font-variant-numeric:tabular-nums;
   }
   /* The pile (D5): three offset elevations, the set-aside's fan
      visual in miniature. */
-  .empile { position:relative; width:20px; height:16px; flex:none; }
+  .stacked { position:relative; width:20px; height:16px; flex:none; }
   /* V14: zero radius — the pile's sheets are bare
      rectangles, like the set-aside pile's visual. */
-  .empile span {
+  .stacked span {
     position:absolute; inset:0; background:var(--surface);
     border:1px solid var(--border);
   }
-  .empile span:nth-child(1) { transform:translate(4px, -4px); }
-  .empile span:nth-child(2) { transform:translate(2px, -2px); }
+  .stacked span:nth-child(1) { transform:translate(4px, -4px); }
+  .stacked span:nth-child(2) { transform:translate(2px, -2px); }
   /* The read witness: a node with no geometry — it moves
      nothing, it only exists for the observer. */
-  .temoin-lu { height:1px; }
+  .read-witness { height:1px; }
   /* C5: "all read" — the Screener's checkmark (accent), the drawing
      of its emptiness (top stroke by the section, dimmed text). */
-  .tout-lu {
+  .all-read {
     display:flex; align-items:center; gap:8px; padding:12px 0;
     font-size:13px; color:var(--ink2); border-top:1px solid var(--border);
   }
-  .ic-oui :global(.ic) { color:var(--accent); }
-  .de { display:flex; align-items:baseline; gap:8px; margin-bottom:10px; }
-  .de .nom { font-size:13px; font-weight:600; color:var(--ink2); flex:1; min-width:0;
+  .ic-yes :global(.ic) { color:var(--accent); }
+  .from { display:flex; align-items:baseline; gap:8px; margin-bottom:10px; }
+  .from .name { font-size:13px; font-weight:600; color:var(--ink2); flex:1; min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .de .heure { font-size:12px; color:var(--muted); flex:none; }
+  .from .time { font-size:12px; color:var(--muted); flex:none; }
   /* The ⋯: reserved space, opacity only (the geometry does not move). */
-  .gestes {
+  .gestures {
     flex:none; width:24px; height:24px; padding:0; align-self:center;
     display:inline-flex; align-items:center; justify-content:center;
     opacity:0; color:var(--muted); background:none;
     border:1px solid transparent;
   }
-  .carte:hover .gestes, .gestes:focus-visible, .gestes[aria-expanded="true"] { opacity:1; }
-  .gestes:hover, .gestes[aria-expanded="true"] {
+  .card:hover .gestures, .gestures:focus-visible, .gestures[aria-expanded="true"] { opacity:1; }
+  .gestures:hover, .gestures[aria-expanded="true"] {
     background:var(--hover); border-color:var(--border); color:var(--ink);
   }
   /* The fold: the BARE button of the reading pane (glyph + text), on
      the SUBJECT LINE, on the right (CE finding, 3 passes). */
-  .rang-objet {
+  .rank-subject {
     display:flex; align-items:center; gap:12px; margin:0 0 12px;
   }
-  .rang-objet h3 { margin:0; flex:1; min-width:0; }
-  .rang-objet .nu { flex:none; }
-  .nu {
+  .rank-subject h3 { margin:0; flex:1; min-width:0; }
+  .rank-subject .bare { flex:none; }
+  .bare {
     height:26px; padding:0 9px; display:inline-flex; align-items:center;
     gap:6px; font-size:12px; color:var(--ink2); background:none;
     border:1px solid transparent; border-radius:var(--r-control); cursor:pointer;
     white-space:nowrap;
   }
-  .nu:hover { background:var(--sel); }
+  .bare:hover { background:var(--sel); }
   h3 { margin:0; font-size:24px; line-height:1.25; color:var(--ink); }
-  .corps { width:100%; border:none; display:block; background:#fff; }
-  .apercu { margin:0 0 8px; font-size:13px; line-height:1.5; color:var(--ink2); }
-  .garde-images {
+  .body { width:100%; border:none; display:block; background:#fff; }
+  .preview { margin:0 0 8px; font-size:13px; line-height:1.5; color:var(--ink2); }
+  .images-guard {
     display:flex; align-items:center; gap:10px; flex-wrap:wrap;
     padding:8px 12px; margin:0 0 8px; font-size:12px; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
   }
-  .garde-images button { height:26px; padding:0 10px; font-size:12px; }
-  .vide { margin:8px 0 0; font-size:13px; line-height:1.5; color:var(--ink2); max-width:66ch; }
-  .filet { border-top:1px solid var(--border); margin:4px 0; }
+  .images-guard button { height:26px; padding:0 10px; font-size:12px; }
+  .empty { margin:8px 0 0; font-size:13px; line-height:1.5; color:var(--ink2); max-width:66ch; }
+  .net { border-top:1px solid var(--border); margin:4px 0; }
 </style>

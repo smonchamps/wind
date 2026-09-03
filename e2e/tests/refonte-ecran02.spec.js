@@ -23,15 +23,15 @@ test.afterAll(async () => {
 });
 
 const dossier = (categorie) =>
-  page.locator(`[data-testid="nav-dossier"][data-categorie="${categorie}"]`);
+  page.locator(`[data-testid="nav-folder"][data-category="${categorie}"]`);
 
 test('la nav porte les pastilles de non-lus du décor Clarity (A29, W2-D4)', async () => {
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
   // Depuis A29 la nav ne dit QUE le non-lu, en pastille pleine — les
   // totaux (« 4 / 18 ») ont quitté la nav, la barre de statut les dit.
   // On vise l'élément pastille — le compteur seul, jamais la rangée
   // entière (V8 : les icônes sont des SVG, plus aucune ligature).
-  const pastille = (categorie) => dossier(categorie).locator('.pastille');
+  const pastille = (categorie) => dossier(categorie).locator('.badge');
   await expect(pastille('inbox')).toHaveText('4');
   await expect(dossier('inbox')).not.toContainText('/');
   await expect(pastille('sent')).toHaveCount(0);
@@ -46,14 +46,14 @@ test('la nav porte les pastilles de non-lus du décor Clarity (A29, W2-D4)', asy
     (el) => getComputedStyle(el).backgroundColor,
   );
   expect(['rgba(0, 0, 0, 0)', 'transparent']).toContain(fondPastille);
-  await expect(page.locator('[data-testid="ligne"].nonlu .disque').first()).toBeVisible();
-  await expect(page.locator('[data-testid="ligne"]:not(.nonlu) .disque')).toHaveCount(0);
+  await expect(page.locator('[data-testid="row"].unread .disk').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]:not(.unread) .disk')).toHaveCount(0);
   // Boîtes : l'agrégée + un rang par compte RÉEL ; la boîte en cours
   // (Toutes, au démarrage) est la tuile — l'identité seule, sans
   // compteur (A36, terrain E3).
-  await expect(page.locator('[data-testid="nav-boite"]')).toHaveCount(3);
-  await expect(page.locator('[data-testid="nav-boite"]').first()).toContainText('Toutes les boîtes');
-  await expect(page.locator('[data-testid="nav-boite"]').first()).not.toContainText('non lus');
+  await expect(page.locator('[data-testid="nav-mailbox"]')).toHaveCount(3);
+  await expect(page.locator('[data-testid="nav-mailbox"]').first()).toContainText('Toutes les boîtes');
+  await expect(page.locator('[data-testid="nav-mailbox"]').first()).not.toContainText('non lus');
 });
 
 // PLAN-RETOURS-10 R4 : le glyphe de nav se cale sur la baseline du
@@ -69,7 +69,7 @@ test('les glyphes de la nav tiennent le calage optique C — baseline + 2 px (RE
   const ecart = (loc) =>
     loc.evaluate((el) => {
       const svg = el.querySelector('svg.ic').getBoundingClientRect();
-      const libelle = el.querySelector('.libelle, .titre-tuile');
+      const libelle = el.querySelector('.label, .title-tile');
       const sonde = document.createElement('span');
       sonde.style.cssText =
         'display:inline-block;width:0;height:0;padding:0;margin:0;border:0';
@@ -83,17 +83,17 @@ test('les glyphes de la nav tiennent le calage optique C — baseline + 2 px (RE
   expect(Math.abs((await ecart(dossier('inbox'))) - 2)).toBeLessThanOrEqual(0.5);
   expect(Math.abs((await ecart(dossier('trash'))) - 2)).toBeLessThanOrEqual(0.5);
   expect(
-    Math.abs((await ecart(page.locator('[data-testid="nav-boite"]').first())) - 2),
+    Math.abs((await ecart(page.locator('[data-testid="nav-mailbox"]').first())) - 2),
   ).toBeLessThanOrEqual(0.5);
   expect(
-    Math.abs((await ecart(page.locator('[data-testid="nav-boite"]').nth(1))) - 2),
+    Math.abs((await ecart(page.locator('[data-testid="nav-mailbox"]').nth(1))) - 2),
   ).toBeLessThanOrEqual(0.5);
 });
 
 test('le volet liste porte son bandeau de titre — le nom de la boîte, sans bouton (UI v3, E1)', async () => {
   // Verdict CE du 2026-08-16 (ANNOTATIONS-V3 §3) : le bandeau de la
   // maquette Classique entre, SANS « Tout marquer lu » — le titre seul.
-  const titre = page.locator('[data-testid="liste-titre"]');
+  const titre = page.locator('[data-testid="list-title"]');
   await expect(titre).toHaveText('Boîte de réception');
   await expect(titre.locator('button')).toHaveCount(0);
   // PLAN-RETOURS-V3 R2 : le bandeau du haut au MÊME format visuel que
@@ -106,7 +106,7 @@ test('le volet liste porte son bandeau de titre — le nom de la boîte, sans bo
       return { h: el.offsetHeight, fond: s.backgroundColor };
     });
   const haut = await gabarit(titre);
-  const bas = await gabarit(page.locator('[data-testid="onglets"]'));
+  const bas = await gabarit(page.locator('[data-testid="tabs"]'));
   expect(haut.h).toBe(bas.h);
   expect(haut.fond).toBe(bas.fond);
   // La valeur calculée est arrondie au pixel MACHINE (0.666667px à
@@ -121,7 +121,7 @@ test('le volet liste porte son bandeau de titre — le nom de la boîte, sans bo
   // Retour à l'état de départ : la suite est sérielle.
   await dossier('inbox').click();
   await expect(titre).toHaveText('Boîte de réception');
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
 });
 
 // (A81 — PLAN-REPERE-LIGNE : le test « la ligne de liste porte
@@ -134,36 +134,36 @@ test('le volet liste porte son bandeau de titre — le nom de la boîte, sans bo
 test('recharger garde les lignes servies — jamais de squelette (PLAN-REACTIVITE E1)', async () => {
   // La recharge que le cycle et les gestes déclenchent en rafale ne
   // doit JAMAIS repasser par les lignes d'attente : le transport est
-  // RETENU (couture __e2eRetenue), la recharge part, et l'écran doit
+  // RETENU (couture __e2eHold), la recharge part, et l'écran doit
   // montrer les MÊMES lignes — zéro « … » — jusqu'à l'arrivée de la
   // version fraîche. Avant E1, `recharger()` jetait les pages : ce
   // test montrait N squelettes, déterministe.
-  const lignes = page.locator('[data-testid="ligne"]');
+  const lignes = page.locator('[data-testid="row"]');
   const avant = await lignes.count();
   expect(avant).toBeGreaterThan(0);
   try {
     await page.evaluate(() => {
-      window.__e2eRetenue = new Promise((liberer) => {
-        window.__e2eLiberer = liberer;
+      window.__e2eHold = new Promise((liberer) => {
+        window.__e2eRelease = liberer;
       });
       window.__mesure.reload();
     });
     // Le vol est ouvert (transport retenu), le DOM a re-rendu : les
     // lignes tiennent, aucune attente.
-    await expect(page.locator('[data-testid="ligne-attente"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="row-pending"]')).toHaveCount(0);
     await expect(lignes).toHaveCount(avant);
   } finally {
     // Libérer QUOI QU'IL ARRIVE : la suite est sérielle — une retenue
     // qui survivrait au test gèlerait tous les suivants.
     await page.evaluate(() => {
-      window.__e2eLiberer?.();
-      delete window.__e2eRetenue;
-      delete window.__e2eLiberer;
+      window.__e2eRelease?.();
+      delete window.__e2eHold;
+      delete window.__e2eRelease;
     });
   }
   // La version fraîche a remplacé sans clignoter.
   await expect(lignes.first()).toBeVisible();
-  await expect(page.locator('[data-testid="ligne-attente"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="row-pending"]')).toHaveCount(0);
 });
 
 test("la barre d'état date la dernière relève — même sur échec", async () => {
@@ -174,7 +174,7 @@ test("la barre d'état date la dernière relève — même sur échec", async ()
   // affichée peut glisser avec la durée du lancement, pas la forme.
   // (Le repos « Tous les messages sont à jour » reste couvert par la
   // spec onboarding, sans horodatage : boîte jamais relevée.)
-  await expect(page.locator('[data-testid="progression"]')).toContainText(
+  await expect(page.locator('[data-testid="progress"]')).toContainText(
     /Synchronisation impossible · nouvelle tentative automatique · dernière synchronisation il y a \d+ minutes?/,
   );
 });
@@ -184,12 +184,12 @@ test('le bouton de relève vit dans la barre — « Réessayer » sur échec (E3
   // plus près de la panne (S-D1, maquette état 6). Le clic déclenche la
   // passe légère RÉELLE — les comptes du décor n'ont pas de serveur,
   // l'échec doit rester dit après le geste, et le bouton se réarmer.
-  const bouton = page.locator('[data-testid="btn-releve"]');
+  const bouton = page.locator('[data-testid="btn-poll"]');
   await expect(bouton).toBeVisible();
   await expect(bouton).toBeEnabled();
   await expect(bouton).toContainText('Réessayer');
   await bouton.click();
-  await expect(page.locator('[data-testid="progression"]')).toContainText(
+  await expect(page.locator('[data-testid="progress"]')).toContainText(
     /Synchronisation impossible/,
   );
   await expect(bouton).toBeEnabled();
@@ -204,24 +204,24 @@ test("pendant un cycle, l'anneau remplace le disque de la barre d'état (V2)", a
   // renforce : le pourcentage vit dans le TEXTE, jamais dans la
   // signature. Le cycle du décor est bref (comptes sans serveur) : on
   // attrape l'anneau pendant la fenêtre.
-  const bouton = page.locator('[data-testid="btn-releve"]');
+  const bouton = page.locator('[data-testid="btn-poll"]');
   await expect(bouton).toBeEnabled();
   await bouton.click();
   await expect(
-    page.locator('[data-testid="statut"] .anneau'),
+    page.locator('[data-testid="status"] .ring'),
   ).toBeAttached({ timeout: 8000 });
   // La signature calligraphique ne revient jamais (A28/A36/A40 tombés).
-  await expect(page.locator('[data-testid="statut"] path.boucle')).toHaveCount(0);
+  await expect(page.locator('[data-testid="status"] path.boucle')).toHaveCount(0);
 });
 
 test('sélectionner ouvre le volet, lit le corps, et le non-lu tombe', async () => {
-  await page.locator('[data-testid="ligne"]').first().click();
-  await expect(page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]')).toHaveText(
+  await page.locator('[data-testid="row"]').first().click();
+  await expect(page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]')).toHaveText(
     'Relecture du contrat Vantis',
   );
   // Le corps vit dans l'iframe sandbox — invariant S1.
   await expect(
-    page.frameLocator('[data-testid="volet-lecture"] iframe').locator('body'),
+    page.frameLocator('[data-testid="reading-pane"] iframe').locator('body'),
   ).toContainText('Bonjour Paul');
   // mark_seen est RÉEL : le héros de la réception retombe.
   await expect(dossier('inbox')).toContainText('3');
@@ -232,21 +232,21 @@ test('un lien du corps part au navigateur système — le corps ne bouge pas', a
   // vers le site, refusé (X-Frame-Options / CSP) — WebView2 remplaçait
   // le corps par sa page « Ce contenu a été bloqué ». Depuis, le clic
   // est intercepté (lib/liens.js) et part à open_link ; la couture
-  // `__e2eLiens` capte l'URL au lieu d'ouvrir un navigateur réel —
+  // `__e2eLinks` capte l'URL au lieu d'ouvrir un navigateur réel —
   // tout l'amont (iframe allow-same-origin, interception, filtre de
   // schéma) est le vrai chemin.
   await page.evaluate(() => {
-    window.__e2eLiens = [];
+    window.__e2eLinks = [];
   });
-  const cadre = page.frameLocator('[data-testid="volet-lecture"] iframe');
+  const cadre = page.frameLocator('[data-testid="reading-pane"] iframe');
   try {
     await cadre.locator('a[href="https://espace.exemple/vantis"]').click();
     await expect
-      .poll(() => page.evaluate(() => window.__e2eLiens))
+      .poll(() => page.evaluate(() => window.__e2eLinks))
       .toEqual(['https://espace.exemple/vantis']);
   } finally {
     await page.evaluate(() => {
-      delete window.__e2eLiens;
+      delete window.__e2eLinks;
     });
   }
   // Le corps est toujours là — jamais de page « contenu bloqué ».
@@ -254,47 +254,47 @@ test('un lien du corps part au navigateur système — le corps ne bouge pas', a
 });
 
 test("l'onglet Non lus filtre côté coeur", async () => {
-  await page.locator('[data-onglet="nonlus"]').click();
-  await expect(page.locator('[data-testid="ligne"]')).toHaveCount(3);
-  await page.locator('[data-onglet="tous"]').click();
-  await expect(page.locator('[data-testid="ligne"]').nth(4)).toBeVisible();
+  await page.locator('[data-tab="nonlus"]').click();
+  await expect(page.locator('[data-testid="row"]')).toHaveCount(3);
+  await page.locator('[data-tab="tous"]').click();
+  await expect(page.locator('[data-testid="row"]').nth(4)).toBeVisible();
 });
 
 test('les dossiers canoniques servent leurs listes', async () => {
   await dossier('archive').click();
-  await expect(page.locator('[data-testid="statut"]')).toContainText(
+  await expect(page.locator('[data-testid="status"]')).toContainText(
     'Archives · 64 éléments',
   );
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
   await dossier('trash').click();
-  await expect(page.locator('[data-testid="statut"]')).toContainText(
+  await expect(page.locator('[data-testid="status"]')).toContainText(
     'Corbeille · 3 éléments',
   );
   await dossier('inbox').click();
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
 });
 
 test("la Boîte d'un compte borne la liste", async () => {
-  await page.locator('[data-testid="nav-boite"]').nth(2).click();
+  await page.locator('[data-testid="nav-mailbox"]').nth(2).click();
   // 3 depuis RETOURS-11 : le décor gagne un second message Registrar
   // (le filet de la règle d'expéditeur).
-  await expect(page.locator('[data-testid="ligne"]')).toHaveCount(3);
-  await page.locator('[data-testid="nav-boite"]').first().click();
-  await expect(page.locator('[data-testid="ligne"]').nth(4)).toBeVisible();
+  await expect(page.locator('[data-testid="row"]')).toHaveCount(3);
+  await page.locator('[data-testid="nav-mailbox"]').first().click();
+  await expect(page.locator('[data-testid="row"]').nth(4)).toBeVisible();
 });
 
 test('archiver agit sur le coeur et confirme par le toast', async () => {
-  await page.locator('[data-testid="ligne"]').nth(1).click();
-  await page.locator('[data-testid="archiver"]').click();
+  await page.locator('[data-testid="row"]').nth(1).click();
+  await page.locator('[data-testid="archive"]').click();
   await expect(page.locator('[data-testid="toast"]')).toContainText(
     'Conversation archivée.',
   );
   // Le total a quitté la nav (A29, W2-D4) : la preuve du coeur se lit
   // au dossier Archives — la barre de statut compte ses éléments.
   await dossier('archive').click();
-  await expect(page.locator('[data-testid="statut"]')).toContainText('Archives · 65');
+  await expect(page.locator('[data-testid="status"]')).toContainText('Archives · 65');
   await dossier('inbox').click();
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
 });
 
 test('le volet de lecture montre le FIL en cartes — anciens repliés, dernier déplié (UI v3, E3)', async () => {
@@ -302,18 +302,18 @@ test('le volet de lecture montre le FIL en cartes — anciens repliés, dernier 
   // volet et l'écran 03 sont deux cadres du MÊME objet (Fil) — ici le
   // cadre volet : titre, cartes repliées une ligne, dernière dépliée
   // dans sa propre iframe sandbox (S1 intact).
-  await page.locator('[data-testid="ligne"]').first().click();
-  const volet = page.locator('[data-testid="volet-lecture"]');
-  await expect(volet.locator('[data-testid="fil-sujet"]')).toHaveText(
+  await page.locator('[data-testid="row"]').first().click();
+  const volet = page.locator('[data-testid="reading-pane"]');
+  await expect(volet.locator('[data-testid="thread-subject"]')).toHaveText(
     'Relecture du contrat Vantis',
   );
-  await expect(volet.locator('[data-testid="message-replie"]')).toHaveCount(2);
-  await expect(volet.locator('[data-testid="message-deplie"]')).toHaveCount(1);
+  await expect(volet.locator('[data-testid="message-collapsed"]')).toHaveCount(2);
+  await expect(volet.locator('[data-testid="message-expanded"]')).toHaveCount(1);
   await expect(
-    volet.frameLocator('[data-testid="message-deplie"] iframe').locator('body'),
+    volet.frameLocator('[data-testid="message-expanded"] iframe').locator('body'),
   ).toContainText('Bonjour Paul');
   // Les fichiers joints du dernier message, dans le volet.
-  await expect(volet.locator('[data-testid="message-deplie"]')).toContainText(
+  await expect(volet.locator('[data-testid="message-expanded"]')).toContainText(
     'Contrat_Vantis_v4.pdf',
   );
 });
@@ -324,9 +324,9 @@ test('le fil au dessin exact de la maquette — avatars, entête deux lignes, he
   // TOUJOURS dit, fichiers SOMMÉS sur le fil —, boutons nus à droite,
   // cartes aux avatars, en-tête déplié en deux lignes « Nom <adresse> »
   // puis « À : … » (A92), heure longue ; le bloc De/À/Objet a disparu.
-  await page.locator('[data-testid="ligne"]').first().click();
-  const volet = page.locator('[data-testid="volet-lecture"]');
-  const puces = volet.locator('[data-testid="fil-puces"]');
+  await page.locator('[data-testid="row"]').first().click();
+  const volet = page.locator('[data-testid="reading-pane"]');
+  const puces = volet.locator('[data-testid="thread-chips"]');
   // 3 messages, et 3 fichiers = la somme du fil sur CE décor (PDF +
   // XLSX de Camille, après-scan, + XLSX de Sofia) — la ligne seule
   // n'en portait qu'un. La somme se stabilise quand message_body a
@@ -335,27 +335,27 @@ test('le fil au dessin exact de la maquette — avatars, entête deux lignes, he
   await expect(puces).toContainText('3 messages');
   await expect(puces).toContainText('3 fichiers');
   // Les boutons de droite sont NUS (bouton, sans bordure ni fond).
-  for (const testid of ['voir-conversation', 'tout-deplier']) {
+  for (const testid of ['see-conversation', 'all-expand']) {
     const bouton = volet.locator(`[data-testid="${testid}"]`);
-    await expect(bouton).toHaveClass(/nu/);
+    await expect(bouton).toHaveClass(/bare/);
     expect(await bouton.evaluate((el) => el.tagName)).toBe('BUTTON');
   }
   // Les cartes portent l'avatar aux initiales, comme la liste (E2).
-  const replies = volet.locator('[data-testid="message-replie"]');
+  const replies = volet.locator('[data-testid="message-collapsed"]');
   await expect(replies.nth(0).locator('.avatar')).toHaveText('PM');
   await expect(replies.nth(1).locator('.avatar')).toHaveText('SN');
-  const deplie = volet.locator('[data-testid="message-deplie"]');
+  const deplie = volet.locator('[data-testid="message-expanded"]');
   await expect(deplie.locator('.avatar')).toHaveText('CR');
   // L'en-tête déplié (PLAN-RETOURS-12 R5) : « Nom <adresse> » puis
   // « À : … » — le nom du compte vient de notre propre copie du fil
   // (Envoyés) — et l'heure longue.
-  await expect(deplie.locator('.adr-exp')).toHaveText('<c.rousseau@atelier-nord.fr>');
-  await expect(deplie.locator('[data-testid="ligne-a"]')).toHaveText(
+  await expect(deplie.locator('.addr-sender')).toHaveText('<c.rousseau@atelier-nord.fr>');
+  await expect(deplie.locator('[data-testid="row-to"]')).toHaveText(
     'À : Paul Mérand <paul.merand@atelier-nord.fr>',
   );
-  await expect(deplie.locator('.tete-message .quand')).toHaveText(/^Aujourd'hui, 09:12$/);
-  await expect(replies.nth(0).locator('.quand')).toHaveText(/, 18:20$/);
-  await expect(replies.nth(1).locator('.quand')).toHaveText(/, 11:05$/);
+  await expect(deplie.locator('.message-head .when')).toHaveText(/^Aujourd'hui, 09:12$/);
+  await expect(replies.nth(0).locator('.when')).toHaveText(/, 18:20$/);
+  await expect(replies.nth(1).locator('.when')).toHaveText(/, 11:05$/);
   // Le bloc De/À/Objet n'existe plus (la maquette dit tout en tête).
   await expect(deplie.locator('dl')).toHaveCount(0);
 });
@@ -365,27 +365,27 @@ test('le fil au message seul dit « 1 message » — et s\'ouvre sur « Tout rep
   // Le test « archiver » a rangé Planning aux Archives — on l'y suit.
   await dossier('archive').click();
   await page
-    .locator('[data-testid="ligne"]', { hasText: 'Planning de la semaine 33' })
+    .locator('[data-testid="row"]', { hasText: 'Planning de la semaine 33' })
     .first()
     .click();
-  const volet = page.locator('[data-testid="volet-lecture"]');
-  const puces = volet.locator('[data-testid="fil-puces"]');
+  const volet = page.locator('[data-testid="reading-pane"]');
+  const puces = volet.locator('[data-testid="thread-chips"]');
   await expect(puces).toContainText('1 message');
   await expect(puces).not.toContainText('fichier');
   // A47 : le message seul s'ouvre DÉPLIÉ — la bascule, dérivée de
   // l'état, dit donc « Tout replier » dès l'ouverture.
-  await expect(volet.locator('[data-testid="tout-replier"]')).toBeVisible();
-  const deplie = volet.locator('[data-testid="message-deplie"]');
+  await expect(volet.locator('[data-testid="all-collapse"]')).toBeVisible();
+  const deplie = volet.locator('[data-testid="message-expanded"]');
   await expect(deplie.locator('.avatar')).toHaveText('YB');
   // Sans copie à nous dans le fil, le destinataire est l'adresse du
   // compte, nue — le fait honnête, le cœur ne connaît pas notre nom.
-  await expect(deplie.locator('.adr-exp')).toHaveText('<y.belkacem@atelier-nord.fr>');
-  await expect(deplie.locator('[data-testid="ligne-a"]')).toHaveText(
+  await expect(deplie.locator('.addr-sender')).toHaveText('<y.belkacem@atelier-nord.fr>');
+  await expect(deplie.locator('[data-testid="row-to"]')).toHaveText(
     'À : paul.merand@atelier-nord.fr',
   );
-  await expect(deplie.locator('.tete-message .quand')).toHaveText(/^Aujourd'hui, 08:40$/);
+  await expect(deplie.locator('.message-head .when')).toHaveText(/^Aujourd'hui, 08:40$/);
   await dossier('inbox').click();
-  await page.locator('[data-testid="ligne"]').first().click();
+  await page.locator('[data-testid="row"]').first().click();
 });
 
 test("le volet est à plat, « Ouvrir » et « Déplier » à leur glyphe propre (terrain A46)", async () => {
@@ -394,55 +394,55 @@ test("le volet est à plat, « Ouvrir » et « Déplier » à leur glyphe propre
   // (dessin .voletLecture du prototype) ; « Voir la conversation »
   // devient « Ouvrir » (open_in_full — une icône, un sens, A3) ; les
   // libellés de bascule sont « Tout déplier »/« Tout replier » (A47).
-  await page.locator('[data-testid="ligne"]').first().click();
-  const volet = page.locator('[data-testid="volet-lecture"]');
-  const ouvrir = volet.locator('[data-testid="voir-conversation"]');
+  await page.locator('[data-testid="row"]').first().click();
+  const volet = page.locator('[data-testid="reading-pane"]');
+  const ouvrir = volet.locator('[data-testid="see-conversation"]');
   await expect(ouvrir).toContainText('Ouvrir');
-  await expect(ouvrir.locator('.ic')).toHaveAttribute('data-nom', 'open_in_full');
-  const deplier = volet.locator('[data-testid="tout-deplier"]');
+  await expect(ouvrir.locator('.ic')).toHaveAttribute('data-name', 'open_in_full');
+  const deplier = volet.locator('[data-testid="all-expand"]');
   await expect(deplier).toContainText('Tout déplier');
-  await expect(deplier.locator('.ic')).toHaveAttribute('data-nom', 'unfold_more');
+  await expect(deplier.locator('.ic')).toHaveAttribute('data-name', 'unfold_more');
   // À plat : le volet lui-même défile, la tête ne porte aucun filet.
   expect(await volet.evaluate((el) => getComputedStyle(el).overflowY)).toBe('auto');
   expect(
-    await volet.locator('.tete').evaluate((el) => getComputedStyle(el).borderBottomWidth),
+    await volet.locator('.head').evaluate((el) => getComputedStyle(el).borderBottomWidth),
   ).toBe('0px');
 });
 
 test("la bascule « Tout déplier »/« Tout replier » SUIT l'état réel des dépliages (terrain A47)", async () => {
-  const volet = page.locator('[data-testid="volet-lecture"]');
-  await volet.locator('[data-testid="tout-deplier"]').click();
-  await expect(volet.locator('[data-testid="message-deplie"]')).toHaveCount(3);
-  await expect(volet.locator('[data-testid="tout-deplier"]')).toHaveCount(0);
-  const replier = volet.locator('[data-testid="tout-replier"]');
+  const volet = page.locator('[data-testid="reading-pane"]');
+  await volet.locator('[data-testid="all-expand"]').click();
+  await expect(volet.locator('[data-testid="message-expanded"]')).toHaveCount(3);
+  await expect(volet.locator('[data-testid="all-expand"]')).toHaveCount(0);
+  const replier = volet.locator('[data-testid="all-collapse"]');
   await expect(replier).toContainText('Tout replier');
-  await expect(replier.locator('.ic')).toHaveAttribute('data-nom', 'unfold_less');
+  await expect(replier.locator('.ic')).toHaveAttribute('data-name', 'unfold_less');
   // Dérivée de l'état (A47, renverse le « geste seul » d'A46) :
   // replier un message à la MAIN la fait retomber sur « Tout
   // déplier »…
-  await volet.locator('[data-testid="message-deplie"]').first().locator('.tete-message').click();
-  await expect(volet.locator('[data-testid="message-replie"]')).toHaveCount(1);
-  await expect(volet.locator('[data-testid="tout-deplier"]')).toBeVisible();
+  await volet.locator('[data-testid="message-expanded"]').first().locator('.message-head').click();
+  await expect(volet.locator('[data-testid="message-collapsed"]')).toHaveCount(1);
+  await expect(volet.locator('[data-testid="all-expand"]')).toBeVisible();
   // …et le redéplier à la main la remet sur « Tout replier ».
-  await volet.locator('[data-testid="message-replie"]').click();
+  await volet.locator('[data-testid="message-collapsed"]').click();
   await expect(replier).toBeVisible();
   // « Tout replier » referme TOUT — le dernier compris.
   await replier.click();
-  await expect(volet.locator('[data-testid="message-deplie"]')).toHaveCount(0);
-  await expect(volet.locator('[data-testid="message-replie"]')).toHaveCount(3);
-  await expect(volet.locator('[data-testid="tout-deplier"]')).toBeVisible();
+  await expect(volet.locator('[data-testid="message-expanded"]')).toHaveCount(0);
+  await expect(volet.locator('[data-testid="message-collapsed"]')).toHaveCount(3);
+  await expect(volet.locator('[data-testid="all-expand"]')).toBeVisible();
   // Remettre le fil dans l'état d'ouverture : le dernier déplié.
-  await volet.locator('[data-testid="message-replie"]').last().click();
-  await expect(volet.locator('[data-testid="message-deplie"]')).toHaveCount(1);
+  await volet.locator('[data-testid="message-collapsed"]').last().click();
+  await expect(volet.locator('[data-testid="message-expanded"]')).toHaveCount(1);
 });
 
 test('la hauteur du corps suit le contenu — jamais de gabarit fixe (terrain A47)', async () => {
   // Le corps de Camille est court : l'iframe colle à son document
   // (l'ancien plancher figeait 220 px), à l'épaisseur d'un filet près.
-  const volet = page.locator('[data-testid="volet-lecture"]');
-  const corps = volet.locator('[data-testid="message-deplie"] iframe');
+  const volet = page.locator('[data-testid="reading-pane"]');
+  const corps = volet.locator('[data-testid="message-expanded"] iframe');
   await expect(
-    volet.frameLocator('[data-testid="message-deplie"] iframe').locator('body'),
+    volet.frameLocator('[data-testid="message-expanded"] iframe').locator('body'),
   ).toContainText('Bonjour Paul');
   // La preuve NON circulaire : le contenu se mesure iframe à zéro
   // (scrollHeight ≥ hauteur posée sinon), puis on compare à la
@@ -468,56 +468,56 @@ test("l'entête de composition ne répète plus l'objet, « De » colle à l'ent
   // avant — mais l'entête ne porte plus le rappel d'objet (le champ
   // Objet le dit dessous), et l'écart entête → « De » est celui du
   // composeur du prototype (6 px).
-  await page.locator('[data-testid="conv-brouillon"]').click();
-  const compo = page.locator('[data-testid="composition"]');
+  await page.locator('[data-testid="conv-draft"]').click();
+  const compo = page.locator('[data-testid="compose"]');
   await expect(compo).toBeVisible();
-  await expect(compo.locator('[data-testid="composition-kicker"]')).toBeVisible();
+  await expect(compo.locator('[data-testid="compose-kicker"]')).toBeVisible();
   // L'objet du brouillon ne vit que dans SON champ (valeur d'input,
   // hors textContent) — aucun rappel en texte dans la fenêtre.
   await expect(compo).not.toContainText('Relecture du contrat Vantis');
   expect(
     await compo
-      .locator('[data-testid="composition-de"]')
-      .evaluate((el) => getComputedStyle(el.closest('.champs')).paddingTop),
+      .locator('[data-testid="compose-from"]')
+      .evaluate((el) => getComputedStyle(el.closest('.fields')).paddingTop),
   ).toBe('6px');
-  await page.locator('[data-testid="composition-annuler"]').click();
+  await page.locator('[data-testid="compose-cancel"]').click();
   await expect(compo).toHaveCount(0);
 });
 
 // ——— Écran 03 : la conversation plein écran (P3) ————————————————————
 
 test('voir la conversation ouvre le fil plein écran, dernier message déplié', async () => {
-  await page.locator('[data-testid="ligne"]').first().click();
-  await page.locator('[data-testid="voir-conversation"]').click();
-  await expect(page.locator('[data-testid="conversation"] [data-testid="fil-sujet"]')).toHaveText(
+  await page.locator('[data-testid="row"]').first().click();
+  await page.locator('[data-testid="see-conversation"]').click();
+  await expect(page.locator('[data-testid="conversation"] [data-testid="thread-subject"]')).toHaveText(
     'Relecture du contrat Vantis',
   );
   // Exclusivité des cadres (D4, revue v3) : UN SEUL Fil monté.
-  await expect(page.locator('[data-testid="fil-sujet"]')).toHaveCount(1);
-  await expect(page.locator('[data-testid="message-replie"]')).toHaveCount(2);
-  await expect(page.locator('[data-testid="message-deplie"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="thread-subject"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="message-collapsed"]')).toHaveCount(2);
+  await expect(page.locator('[data-testid="message-expanded"]')).toHaveCount(1);
   // Le corps du déplié vit dans SA propre iframe sandbox (S1).
   await expect(
-    page.frameLocator('[data-testid="message-deplie"] iframe').locator('body'),
+    page.frameLocator('[data-testid="message-expanded"] iframe').locator('body'),
   ).toContainText('Bonjour Paul');
   // Les fichiers joints réels du message.
-  await expect(page.locator('[data-testid="message-deplie"]')).toContainText(
+  await expect(page.locator('[data-testid="message-expanded"]')).toContainText(
     'Contrat_Vantis_v4.pdf',
   );
 });
 
 test("tout déplier déplie le fil, l'entête d'un message le replie", async () => {
-  await page.locator('[data-testid="tout-deplier"]').click();
-  await expect(page.locator('[data-testid="message-deplie"]')).toHaveCount(3);
-  await page.locator('[data-testid="message-deplie"]').first().locator('.tete-message').click();
-  await expect(page.locator('[data-testid="message-replie"]')).toHaveCount(1);
+  await page.locator('[data-testid="all-expand"]').click();
+  await expect(page.locator('[data-testid="message-expanded"]')).toHaveCount(3);
+  await page.locator('[data-testid="message-expanded"]').first().locator('.message-head').click();
+  await expect(page.locator('[data-testid="message-collapsed"]')).toHaveCount(1);
 });
 
 test("le retour rend la boîte intacte, sélection comprise", async () => {
-  await page.locator('[data-testid="retour-boite"]').click();
+  await page.locator('[data-testid="back-to-mailbox"]').click();
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  await expect(page.locator('[data-testid="fil-sujet"]')).toHaveText(
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="thread-subject"]')).toHaveText(
     'Relecture du contrat Vantis',
   );
 });
@@ -525,19 +525,19 @@ test("le retour rend la boîte intacte, sélection comprise", async () => {
 // ——— Écran 04 + Réglages : composition et thèmes (P4) ————————————————
 
 test("écrire ouvre la composition ; l'annuler vide ne laisse rien", async () => {
-  await page.locator('[data-testid="ecrire"]').click();
-  await expect(page.locator('[data-testid="composition-kicker"]')).toHaveText(
+  await page.locator('[data-testid="write"]').click();
+  await expect(page.locator('[data-testid="compose-kicker"]')).toHaveText(
     'Nouveau message',
   );
   // Le compte émetteur SE CHOISIT (A10) : deux comptes au décor, le
   // premier par défaut, l'autre sélectionnable.
-  const de = page.locator('[data-testid="composition-de"]');
+  const de = page.locator('[data-testid="compose-from"]');
   await expect(de).toHaveValue('paul.merand@atelier-nord.fr');
   await expect(de.locator('option')).toHaveCount(2);
   await de.selectOption('paul@merand.fr');
   await expect(de).toHaveValue('paul@merand.fr');
-  await page.locator('[data-testid="composition-annuler"]').click();
-  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+  await page.locator('[data-testid="compose-cancel"]').click();
+  await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="toast"]')).toHaveCount(0);
 });
 
@@ -549,31 +549,31 @@ test('« Répondre à tous » se tient entre Répondre et Transférer, par messa
   // garde que le TRI (D5) et « Signaler comme spam » (R2/D2). Pas de
   // clic : hors ligne garanti.
   const barreMsg = await page
-    .locator('[data-testid="volet-lecture"] [data-testid="actions-message"]')
+    .locator('[data-testid="reading-pane"] [data-testid="actions-message"]')
     .last()
     .locator('button')
     .evaluateAll((boutons) => boutons.map((bouton) => bouton.dataset.testid));
-  expect(barreMsg).toEqual(['repondre', 'repondre-tous', 'transferer', 'supprimer']);
+  expect(barreMsg).toEqual(['reply', 'reply-all', 'forward', 'delete']);
   const barreFil = await page
-    .locator('[data-testid="volet-lecture"] .actions button')
+    .locator('[data-testid="reading-pane"] .actions button')
     .evaluateAll((boutons) => boutons.map((bouton) => bouton.dataset.testid));
   // « Épingler » a rejoint la barre du fil en Réception (RETOURS-7, D3).
-  expect(barreFil).toEqual(['archiver', 'signaler-spam', 'epingler']);
+  expect(barreFil).toEqual(['archive', 'report-spam', 'pin']);
 
-  await page.locator('[data-testid="voir-conversation"]').click();
+  await page.locator('[data-testid="see-conversation"]').click();
   const barreMsgConv = await page
     .locator('[data-testid="conversation"] [data-testid="actions-message"]')
     .last()
     .locator('button')
     .evaluateAll((boutons) => boutons.map((bouton) => bouton.dataset.testid));
-  expect(barreMsgConv).toEqual(['repondre', 'repondre-tous', 'transferer', 'supprimer']);
+  expect(barreMsgConv).toEqual(['reply', 'reply-all', 'forward', 'delete']);
   const barreFilConv = await page
     .locator('[data-testid="conversation"] .actions button')
     .evaluateAll((boutons) => boutons.map((bouton) => bouton.dataset.testid));
-  expect(barreFilConv).toEqual(['archiver', 'signaler-spam', 'epingler']);
+  expect(barreFilConv).toEqual(['archive', 'report-spam', 'pin']);
 
-  await page.locator('[data-testid="retour-boite"]').click();
-  await expect(page.locator('[data-testid="fil-sujet"]')).toHaveText(
+  await page.locator('[data-testid="back-to-mailbox"]').click();
+  await expect(page.locator('[data-testid="thread-subject"]')).toHaveText(
     'Relecture du contrat Vantis',
   );
 });
@@ -581,15 +581,15 @@ test('« Répondre à tous » se tient entre Répondre et Transférer, par messa
 test("répondre préremplit depuis le coeur : adresse, Re :, amorce, citation — sans les pièces d'origine", async () => {
   // R4 : la réponse est PAR message ; le dernier message déplié du fil
   // Vantis est celui de Camille Rousseau (`.last()`).
-  await page.locator('[data-testid="repondre"]').last().click();
-  await expect(page.locator('[data-testid="composition-kicker"]')).toHaveText('Répondre');
-  await expect(page.locator('[data-testid="composition-a"]')).toHaveValue(
+  await page.locator('[data-testid="reply"]').last().click();
+  await expect(page.locator('[data-testid="compose-kicker"]')).toHaveText('Répondre');
+  await expect(page.locator('[data-testid="compose-to"]')).toHaveValue(
     'c.rousseau@atelier-nord.fr',
   );
-  await expect(page.locator('[data-testid="composition-objet"]')).toHaveValue(
+  await expect(page.locator('[data-testid="compose-subject"]')).toHaveValue(
     'Re : Relecture du contrat Vantis',
   );
-  const corps = await page.locator('[data-testid="composition-corps"]').innerText();
+  const corps = await page.locator('[data-testid="compose-body"]').innerText();
   // L'ÉCART amorce → citation fait partie du contrat (une ligne vide,
   // pas quatre) : l'assertion mesure les deux sauts, pas juste l'amorce.
   expect(corps.startsWith('Bonjour Camille,\n\n')).toBe(true);
@@ -597,15 +597,15 @@ test("répondre préremplit depuis le coeur : adresse, Re :, amorce, citation �
   // E3 (PJ-D4) : une réponse ne porte PAS les pièces d'origine — la
   // puce du prototype promettait un envoi qui n'existait pas, elle est
   // tombée avec la fiction.
-  await expect(page.locator('[data-testid="composition"]')).not.toContainText(
+  await expect(page.locator('[data-testid="compose"]')).not.toContainText(
     'Contrat_Vantis_v4.pdf',
   );
-  await expect(page.locator('[data-testid="composition-pieces"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="compose-attachments"]')).toHaveCount(0);
 });
 
 test('enregistrer le brouillon conserve et confirme', async () => {
-  await page.locator('[data-testid="composition-brouillon"]').click();
-  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+  await page.locator('[data-testid="compose-draft"]').click();
+  await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="toast"]')).toContainText(
     'Brouillon enregistré.',
   );
@@ -614,47 +614,47 @@ test('enregistrer le brouillon conserve et confirme', async () => {
 test("envoyer journalise dans la boîte d'envoi et confirme", async () => {
   // R4 : la réponse est PAR message ; le dernier message déplié du fil
   // Vantis est celui de Camille Rousseau (`.last()`).
-  await page.locator('[data-testid="repondre"]').last().click();
-  await expect(page.locator('[data-testid="composition-a"]')).toHaveValue(
+  await page.locator('[data-testid="reply"]').last().click();
+  await expect(page.locator('[data-testid="compose-to"]')).toHaveValue(
     'c.rousseau@atelier-nord.fr',
   );
-  await page.locator('[data-testid="composition-envoyer"]').click();
-  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+  await page.locator('[data-testid="compose-send"]').click();
+  await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="toast"]')).toContainText('Message envoyé.');
 });
 
 // ——— P5 : recherche, garde d'images, fente d'avis, progression ———————
 
 test('la recherche sert ses résultats aux lignes du prototype (D1)', async () => {
-  await page.locator('[data-testid="champ-recherche"]').fill('Vantis');
-  await expect(page.locator('[data-testid="resultats"]')).toBeVisible();
+  await page.locator('[data-testid="search-field"]').fill('Vantis');
+  await expect(page.locator('[data-testid="results"]')).toBeVisible();
   // La recherche traverse les boîtes : le fil Vantis sort en plusieurs
   // messages (réception, envoyés…) — on exige sa présence, pas son rang.
   await expect(
-    page.locator('[data-testid="resultats"] [data-testid="ligne"]',
+    page.locator('[data-testid="results"] [data-testid="row"]',
       { hasText: 'Relecture du contrat Vantis' }).first(),
   ).toBeVisible();
-  await expect(page.locator('[data-testid="progression"]')).toContainText('Recherche ·');
+  await expect(page.locator('[data-testid="progress"]')).toContainText('Recherche ·');
   // Échap dans le champ : la boîte revient telle quelle.
-  await page.locator('[data-testid="champ-recherche"]').press('Escape');
-  await expect(page.locator('[data-testid="resultats"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await page.locator('[data-testid="search-field"]').press('Escape');
+  await expect(page.locator('[data-testid="results"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
 });
 
 test("l'aperçu décode les entités HTML — jamais de résidu &eacute;", async () => {
   // Le corps du décor porte &eacute; et &nbsp; : le texte visible doit
   // être celui du prototype, sans une seule esperluette.
-  const ligne = page.locator('[data-testid="ligne"]', { hasText: 'renouvellement du domaine' });
+  const ligne = page.locator('[data-testid="row"]', { hasText: 'renouvellement du domaine' });
   await expect(ligne).toContainText('pour éviter toute interruption de service.');
   await expect(ligne).not.toContainText('&');
 });
 
 test('les fichiers joints se prennent AU VOLET — un message seul n\'a pas de conversation (Annexe A)', async () => {
   // « Compte rendu du 4 août » : message SEUL, une pièce jointe.
-  await page.locator('[data-testid="ligne"]', { hasText: 'Compte rendu du 4 août' }).click();
+  await page.locator('[data-testid="row"]', { hasText: 'Compte rendu du 4 août' }).click();
   // R2 (PLAN-RETOURS-4, D4) : nom ET poids dans la MEME puce cliquable —
   // une seule puce par piece, portant les deux informations.
-  const puce = page.locator('[data-testid="lecture-fichiers"] [data-testid="piece-jointe"]');
+  const puce = page.locator('[data-testid="reading-files"] [data-testid="attachment"]');
   await expect(puce).toHaveCount(1);
   await expect(puce).toContainText('CR_04-08.pdf');
   await expect(puce).toContainText('220 Ko');
@@ -662,11 +662,11 @@ test('les fichiers joints se prennent AU VOLET — un message seul n\'a pas de c
 });
 
 test('la croix vide la recherche en un clic (verdict terrain)', async () => {
-  await page.locator('[data-testid="champ-recherche"]').fill('Vantis');
-  await expect(page.locator('[data-testid="resultats"]')).toBeVisible();
-  await page.locator('[data-testid="vider-recherche"]').click();
-  await expect(page.locator('[data-testid="champ-recherche"]')).toHaveValue('');
-  await expect(page.locator('[data-testid="resultats"]')).toHaveCount(0);
+  await page.locator('[data-testid="search-field"]').fill('Vantis');
+  await expect(page.locator('[data-testid="results"]')).toBeVisible();
+  await page.locator('[data-testid="clear-search"]').click();
+  await expect(page.locator('[data-testid="search-field"]')).toHaveValue('');
+  await expect(page.locator('[data-testid="results"]')).toHaveCount(0);
 });
 
 test('R3 : le corps reste sur dalle claire même sous un thème sombre (PLAN-RETOURS-4, D3)', async () => {
@@ -682,9 +682,9 @@ test('R3 : le corps reste sur dalle claire même sous un thème sombre (PLAN-RET
   // attend la garde visible, donc un message dont rien n'est encore
   // écrit en base.
   await page.evaluate(() => { document.documentElement.dataset.theme = 'elements-nuit'; });
-  await page.locator('[data-testid="ligne"]', { hasText: 'renouvellement du domaine' }).click();
-  await expect(page.locator('[data-testid="garde-images"]')).toBeVisible();
-  const srcdoc = await page.locator('iframe.corps').first().getAttribute('srcdoc');
+  await page.locator('[data-testid="row"]', { hasText: 'renouvellement du domaine' }).click();
+  await expect(page.locator('[data-testid="images-guard"]')).toBeVisible();
+  const srcdoc = await page.locator('iframe.body').first().getAttribute('srcdoc');
   expect(srcdoc).toContain('background:#ffffff');
   expect(srcdoc).toContain('color:#222222');
   expect(srcdoc).not.toContain('color-scheme:dark');
@@ -692,24 +692,24 @@ test('R3 : le corps reste sur dalle claire même sous un thème sombre (PLAN-RET
 });
 
 test("les images distantes restent bloquées ; « Afficher les images » SURVIT à la sélection (RETOURS-11, D1-D2)", async () => {
-  await page.locator('[data-testid="ligne"]', { hasText: 'renouvellement du domaine' }).click();
-  await expect(page.locator('[data-testid="garde-images"]')).toContainText(
+  await page.locator('[data-testid="row"]', { hasText: 'renouvellement du domaine' }).click();
+  await expect(page.locator('[data-testid="images-guard"]')).toContainText(
     '1 image distante bloquée',
   );
-  await page.locator('[data-testid="afficher-images"]').click();
-  await expect(page.locator('[data-testid="garde-images"]')).toHaveCount(0);
+  await page.locator('[data-testid="show-images"]').click();
+  await expect(page.locator('[data-testid="images-guard"]')).toHaveCount(0);
   // Revenir sur le message : la garde ne revient PAS — le choix est
   // écrit en base par MESSAGE (D1 renverse l'invariant A43 ; D2 : clé
   // d'enveloppe). L'ancre est le srcdoc : l'URL RÉELLE de l'image ne
   // s'y trouve que si le rendu a accordé les images (bloquée, c'est le
   // pixel neutre) — jamais un compte à 0 lu avant la peinture.
-  await page.locator('[data-testid="ligne"]').first().click();
-  await page.locator('[data-testid="ligne"]', { hasText: 'renouvellement du domaine' }).click();
-  await expect(page.locator('iframe.corps').first()).toHaveAttribute(
+  await page.locator('[data-testid="row"]').first().click();
+  await page.locator('[data-testid="row"]', { hasText: 'renouvellement du domaine' }).click();
+  await expect(page.locator('iframe.body').first()).toHaveAttribute(
     'srcdoc',
     /registrar\.exemple\/logo\.png/,
   );
-  await expect(page.locator('[data-testid="garde-images"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="images-guard"]')).toHaveCount(0);
 });
 
 test("« Toujours afficher » : la règle d'expéditeur se pose au bandeau et se révoque aux Réglages (RETOURS-11, D3-D4)", async () => {
@@ -719,34 +719,34 @@ test("« Toujours afficher » : la règle d'expéditeur se pose au bandeau et se
   // fond de la Réception, où la liste fenêtrée ne matérialise pas
   // forcément sa rangée (selon la hauteur de fenêtre) — la boîte à
   // 3 rangées, elle, le montre toujours.
-  await page.locator('[data-testid="nav-boite"]').nth(2).click();
-  await page.locator('[data-testid="ligne"]', { hasText: 'domaine renouvelé' }).click();
-  await expect(page.locator('[data-testid="garde-images"]')).toBeVisible();
-  await page.locator('[data-testid="toujours-afficher-images"]').click();
-  await expect(page.locator('iframe.corps').first()).toHaveAttribute(
+  await page.locator('[data-testid="nav-mailbox"]').nth(2).click();
+  await page.locator('[data-testid="row"]', { hasText: 'domaine renouvelé' }).click();
+  await expect(page.locator('[data-testid="images-guard"]')).toBeVisible();
+  await page.locator('[data-testid="always-show-images"]').click();
+  await expect(page.locator('iframe.body').first()).toHaveAttribute(
     'srcdoc',
     /registrar\.exemple\/logo\.png/,
   );
-  await expect(page.locator('[data-testid="garde-images"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="images-guard"]')).toHaveCount(0);
   // Réglages > Affichage : la règle est LISTÉE, et se retire (D4).
-  await page.locator('[data-testid="reglages"]').click();
-  await page.locator('[data-testid="reglages-groupe"][data-groupe="affichage"]').click();
-  const regle = page.locator('[data-testid="expediteur-images"]', {
+  await page.locator('[data-testid="settings"]').click();
+  await page.locator('[data-testid="settings-group"][data-group="affichage"]').click();
+  const regle = page.locator('[data-testid="sender-images"]', {
     hasText: 'no-reply@registrar.fr',
   });
   await expect(regle).toBeVisible();
-  await regle.locator('[data-testid="retirer-expediteur-images"]').click();
-  await expect(page.locator('[data-testid="expediteur-images"]')).toHaveCount(0);
-  await page.locator('[data-testid="reglages-termine"]').click();
+  await regle.locator('[data-testid="remove-image-sender"]').click();
+  await expect(page.locator('[data-testid="sender-images"]')).toHaveCount(0);
+  await page.locator('[data-testid="settings-done"]').click();
   // Révoquée, la garde REVIENT sur ce message : la preuve que l'accord
   // venait de la règle d'expéditeur SEULE (« Toujours » n'écrit pas de
   // choix par message) — le filet est non-vacant par construction.
-  await page.locator('[data-testid="ligne"]').first().click();
-  await page.locator('[data-testid="ligne"]', { hasText: 'domaine renouvelé' }).click();
-  await expect(page.locator('[data-testid="garde-images"]')).toBeVisible();
+  await page.locator('[data-testid="row"]').first().click();
+  await page.locator('[data-testid="row"]', { hasText: 'domaine renouvelé' }).click();
+  await expect(page.locator('[data-testid="images-guard"]')).toBeVisible();
   // Rendre la Réception aux tests suivants.
-  await page.locator('[data-testid="nav-boite"]').first().click();
-  await expect(page.locator('[data-testid="ligne"]').nth(4)).toBeVisible();
+  await page.locator('[data-testid="nav-mailbox"]').first().click();
+  await expect(page.locator('[data-testid="row"]').nth(4)).toBeVisible();
 });
 
 test('le brouillon vit en liste : mention sur le fil, reprise au dossier, fente muette', async () => {
@@ -754,50 +754,50 @@ test('le brouillon vit en liste : mention sur le fil, reprise au dossier, fente 
   // mention en Réception (variante B) et le dossier Brouillons, si.
   // Le brouillon du parcours P4 répond au fil Vantis : c'est LUI le
   // plus récent du fil, son corps prend l'aperçu.
-  await expect(page.locator('[data-testid="fente-avis"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="slot-notice"]')).toHaveCount(0);
   const fil = page
-    .locator('[data-testid="ligne"]', { hasText: 'Relecture du contrat Vantis' })
+    .locator('[data-testid="row"]', { hasText: 'Relecture du contrat Vantis' })
     .first();
-  await expect(fil.locator('[data-testid="mention-brouillon"]')).toHaveText('Brouillon : ');
+  await expect(fil.locator('[data-testid="mention-draft"]')).toHaveText('Brouillon : ');
   await expect(fil).toContainText('Bonjour Camille,');
 
   // Le dossier : les brouillons LOCAUX (2 du décor + celui de P4), du
   // plus récent au plus ancien ; la barre de statut compte comme les
   // autres catégories ; le clic REPREND — jamais une lecture.
   await dossier('drafts').click();
-  await expect(page.locator('[data-testid="dossier-brouillons"]')).toBeVisible();
-  await expect(page.locator('[data-testid="ligne-brouillon"]')).toHaveCount(3);
-  await expect(page.locator('[data-testid="progression"]')).toContainText(
+  await expect(page.locator('[data-testid="folder-drafts"]')).toBeVisible();
+  await expect(page.locator('[data-testid="row-draft"]')).toHaveCount(3);
+  await expect(page.locator('[data-testid="progress"]')).toContainText(
     'Brouillons · 3 éléments',
   );
-  await page.locator('[data-testid="ligne-brouillon"]').first().click();
-  await expect(page.locator('[data-testid="composition-objet"]')).toHaveValue(
+  await page.locator('[data-testid="row-draft"]').first().click();
+  await expect(page.locator('[data-testid="compose-subject"]')).toHaveValue(
     'Re : Relecture du contrat Vantis',
   );
-  await expect(page.locator('[data-testid="composition-a"]')).toHaveValue(
+  await expect(page.locator('[data-testid="compose-to"]')).toHaveValue(
     'c.rousseau@atelier-nord.fr',
   );
 
   // Vider puis fermer : le seul cas où fermer supprime — la ligne
   // quitte le dossier SANS attendre la sonde (onbrouillon).
-  await page.locator('[data-testid="composition-a"]').fill('');
-  await page.locator('[data-testid="composition-objet"]').fill('');
+  await page.locator('[data-testid="compose-to"]').fill('');
+  await page.locator('[data-testid="compose-subject"]').fill('');
   // `fill('')` sur un contenteditable est un no-op Chromium : on vide
   // comme l'utilisateur — tout sélectionner, supprimer.
-  await page.locator('[data-testid="composition-corps"]').click();
+  await page.locator('[data-testid="compose-body"]').click();
   await page.keyboard.press('Control+a');
   await page.keyboard.press('Delete');
-  await page.locator('[data-testid="composition-annuler"]').click();
-  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="ligne-brouillon"]')).toHaveCount(2);
+  await page.locator('[data-testid="compose-cancel"]').click();
+  await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="row-draft"]')).toHaveCount(2);
 
   // Retour en Réception : le fil Vantis garde sa mention — le brouillon
   // du DÉCOR le vise aussi, et c'est son corps qui reprend l'aperçu.
   await dossier('inbox').click();
   const encore = page
-    .locator('[data-testid="ligne"]', { hasText: 'Relecture du contrat Vantis' })
+    .locator('[data-testid="row"]', { hasText: 'Relecture du contrat Vantis' })
     .first();
-  await expect(encore.locator('[data-testid="mention-brouillon"]')).toBeVisible();
+  await expect(encore.locator('[data-testid="mention-draft"]')).toBeVisible();
   await expect(encore).toContainText('Merci pour la v4');
 });
 
@@ -806,33 +806,33 @@ test('la conversation porte le brouillon en dernière position, le clic reprend 
   // (B-D4-b) — bloc pointillé en fin de fil, corps du brouillon, clic
   // = reprise, la conversation reste montée sous le composeur.
   await page
-    .locator('[data-testid="ligne"]', { hasText: 'Relecture du contrat Vantis' })
+    .locator('[data-testid="row"]', { hasText: 'Relecture du contrat Vantis' })
     .first()
     .click();
-  await page.locator('[data-testid="voir-conversation"]').click();
-  const bloc = page.locator('[data-testid="conv-brouillon"]');
+  await page.locator('[data-testid="see-conversation"]').click();
+  const bloc = page.locator('[data-testid="conv-draft"]');
   await expect(bloc).toContainText('Brouillon');
   await expect(bloc).toContainText('Merci pour la v4');
   await expect(bloc).toContainText('Reprendre');
   await bloc.click();
-  await expect(page.locator('[data-testid="composition-objet"]')).toHaveValue(
+  await expect(page.locator('[data-testid="compose-subject"]')).toHaveValue(
     'Re : Relecture du contrat Vantis',
   );
-  await expect(page.locator('[data-testid="composition-corps"]')).toContainText('Merci pour la v4');
+  await expect(page.locator('[data-testid="compose-body"]')).toContainText('Merci pour la v4');
   // Fermer conserve : le bloc reste, la conversation n'a pas bougé.
-  await page.locator('[data-testid="composition-annuler"]').click();
-  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+  await page.locator('[data-testid="compose-cancel"]').click();
+  await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="conversation"]')).toBeVisible();
   await expect(bloc).toBeVisible();
   // Retour boîte : la chaîne sérielle repart de la Réception.
-  await page.locator('[data-testid="retour-boite"]').click();
+  await page.locator('[data-testid="back-to-mailbox"]').click();
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
 });
 
 test("la ligne de progression porte l'attente non fautive de la boîte d'envoi", async () => {
   // L'envoi du parcours P4 attend toujours (compte hors ligne par
   // construction) : attente NON fautive — la ligne, pas la fente.
-  await expect(page.locator('[data-testid="progression"]')).toContainText(
+  await expect(page.locator('[data-testid="progress"]')).toContainText(
     "Boîte d'envoi · 1 envoi en attente",
   );
 });
@@ -841,21 +841,21 @@ test("le bouton Feedback ouvre le formulaire, et le retour part par la boîte d'
   // APRÈS le test « 1 envoi en attente » : le retour envoyé ici en fait
   // un deuxième — l'ordre est l'idiome du fichier (état porté, serial).
   await page.locator('[data-testid="feedback"]').click();
-  const carte = page.locator('[data-testid="retour-carte"]');
+  const carte = page.locator('[data-testid="back-card"]');
   await expect(carte).toBeVisible();
   // « Envoyer » ABSENT tant que le champ est vide — jamais grisé
   // (la règle maison du parcours d'accueil, D4/RETOURS-8).
-  await expect(carte.locator('[data-testid="retour-envoyer"]')).toHaveCount(0);
+  await expect(carte.locator('[data-testid="back-send"]')).toHaveCount(0);
   await carte
-    .locator('[data-testid="retour-texte"]')
+    .locator('[data-testid="back-text"]')
     .fill('La liste défile mal sur mon poste.');
-  await carte.locator('[data-testid="retour-envoyer"]').click();
-  await expect(page.locator('[data-testid="retour-carte"]')).toHaveCount(0);
+  await carte.locator('[data-testid="back-send"]').click();
+  await expect(page.locator('[data-testid="back-card"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="toast"]')).toContainText('Merci');
   // Les comptes du décor n'ont pas de serveur : le retour reste
   // JOURNALISÉ en boîte d'envoi (queue_send, la règle d'or « jamais
   // d'envoi perdu ») — la ligne de progression passe à DEUX envois.
-  await expect(page.locator('[data-testid="progression"]')).toContainText(
+  await expect(page.locator('[data-testid="progress"]')).toContainText(
     "Boîte d'envoi · 2 envois en attente",
   );
 });
@@ -864,14 +864,14 @@ test('les raccourcis servent le clavier (D3)', async () => {
   // c : écrire ; Échap sort d'abord du champ (les lettres y redeviennent
   // des lettres), le second ferme — vide, rien n'est conservé.
   await page.keyboard.press('c');
-  await expect(page.locator('[data-testid="composition-kicker"]')).toHaveText(
+  await expect(page.locator('[data-testid="compose-kicker"]')).toHaveText(
     'Nouveau message',
   );
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
-  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
   // e : archiver la sélection.
-  await page.locator('[data-testid="ligne"]').first().click();
+  await page.locator('[data-testid="row"]').first().click();
   await page.keyboard.press('e');
   await expect(page.locator('[data-testid="toast"]')).toContainText(
     'Conversation archivée.',
@@ -881,23 +881,23 @@ test('les raccourcis servent le clavier (D3)', async () => {
 test("le clavier active ce que le clic active (A8) : nav, rangée, onglet", async () => {
   // Une rangée de nav n'est pas un <button> (géométrie du prototype) :
   // elle doit répondre à Entrée quand même.
-  await page.locator('[data-testid="nav-dossier"][data-categorie="archive"]').focus();
+  await page.locator('[data-testid="nav-folder"][data-category="archive"]').focus();
   await page.keyboard.press('Enter');
-  await expect(page.locator('[data-testid="statut"]')).toContainText('Archives ·');
+  await expect(page.locator('[data-testid="status"]')).toContainText('Archives ·');
   // Une ligne de liste, à Espace.
-  await page.locator('[data-testid="ligne"]').first().focus();
+  await page.locator('[data-testid="row"]').first().focus();
   await page.keyboard.press(' ');
-  await expect(page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]')).not.toBeEmpty();
+  await expect(page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]')).not.toBeEmpty();
   // Retour réception par le clavier.
-  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').focus();
+  await page.locator('[data-testid="nav-folder"][data-category="inbox"]').focus();
   await page.keyboard.press('Enter');
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
 });
 
 test('les réglages appliquent et persistent le thème', async () => {
-  await page.locator('[data-testid="reglages"]').click();
+  await page.locator('[data-testid="settings"]').click();
   // A13 : les thèmes vivent dans leur groupe, choisi au rail.
-  await page.locator('[data-testid="reglages-groupe"][data-groupe="themes"]').click();
+  await page.locator('[data-testid="settings-group"][data-group="themes"]').click();
   // V7 amendée (A94) : quatre fiches — Elements, Elements · nuit,
   // Innamoramento, Innamoramento · nuit (« Mona » renommée, A95).
   await expect(page.locator('[data-testid="theme"]')).toHaveCount(4);
@@ -907,67 +907,67 @@ test('les réglages appliquent et persistent le thème', async () => {
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'innamoramento');
   await page.locator('[data-theme-id="elements-nuit"]').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'elements-nuit');
-  await page.locator('[data-testid="reglages-termine"]').click();
-  await expect(page.locator('[data-testid="reglages-modal"]')).toHaveCount(0);
+  await page.locator('[data-testid="settings-done"]').click();
+  await expect(page.locator('[data-testid="settings-modal"]')).toHaveCount(0);
   // Persistance : le choix survit dans localStorage (rechargé au montage).
   expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('elements-nuit');
   // La coche suit le choix à la réouverture ; retour à `elements` pour
   // ne pas teinter d'autres parcours.
-  await page.locator('[data-testid="reglages"]').click();
-  await page.locator('[data-testid="reglages-groupe"][data-groupe="themes"]').click();
-  await expect(page.locator('[data-theme-id="elements-nuit"] .coche')).toBeVisible();
+  await page.locator('[data-testid="settings"]').click();
+  await page.locator('[data-testid="settings-group"][data-group="themes"]').click();
+  await expect(page.locator('[data-theme-id="elements-nuit"] .check')).toBeVisible();
   await page.locator('[data-theme-id="elements"]').click();
-  await page.locator('[data-testid="reglages-termine"]').click();
+  await page.locator('[data-testid="settings-done"]').click();
 });
 
 test("les réglages en deux volets se parcourent au clic ET au clavier (A13)", async () => {
-  await page.locator('[data-testid="reglages"]').click();
+  await page.locator('[data-testid="settings"]').click();
   // Le rail porte les sept groupes (Signature entrée avec RETOURS-6) ;
   // Comptes est le groupe d'ouverture.
   // RETOURS-13 terrain C4 : le groupe Portier est là quel que soit le
   // mode — 8 groupes.
-  await expect(page.locator('[data-testid="reglages-groupe"]')).toHaveCount(8);
-  await expect(page.locator('[data-testid="reglages-comptes"]')).toBeVisible();
+  await expect(page.locator('[data-testid="settings-group"]')).toHaveCount(8);
+  await expect(page.locator('[data-testid="settings-accounts"]')).toBeVisible();
   // Au clic : Raccourcis — la table D3 en référence, lecture seule.
-  await page.locator('[data-testid="reglages-groupe"][data-groupe="raccourcis"]').click();
-  await expect(page.locator('[data-testid="reglages-raccourcis"]')).toContainText('Suppr');
-  await expect(page.locator('[data-testid="reglages-raccourcis"] kbd')).toHaveCount(7);
+  await page.locator('[data-testid="settings-group"][data-group="raccourcis"]').click();
+  await expect(page.locator('[data-testid="settings-shortcuts"]')).toContainText('Suppr');
+  await expect(page.locator('[data-testid="settings-shortcuts"] kbd')).toHaveCount(7);
   // Au clavier (A8) : Entrée active le groupe comme le clic.
-  await page.locator('[data-testid="reglages-groupe"][data-groupe="apropos"]').focus();
+  await page.locator('[data-testid="settings-group"][data-group="apropos"]').focus();
   await page.keyboard.press('Enter');
   // À propos : la version RÉELLE de l'application, pas un texte posé.
-  await expect(page.locator('[data-testid="apropos-version"]')).toHaveText(/^\d+\.\d+\.\d+/);
-  await expect(page.locator('[data-testid="reglages-apropos"]')).toContainText('Apache 2.0');
+  await expect(page.locator('[data-testid="about-version"]')).toHaveText(/^\d+\.\d+\.\d+/);
+  await expect(page.locator('[data-testid="settings-about"]')).toContainText('Apache 2.0');
   // R2 (PLAN-RETOURS-11, D5) : la mention d'origine — le drapeau UE
   // (SVG dédié, couleurs figées) et « Made in EU » tel quel.
-  await expect(page.locator('[data-testid="apropos-origine"]')).toContainText('Made in EU');
+  await expect(page.locator('[data-testid="about-origin"]')).toContainText('Made in EU');
   await expect(
-    page.locator('[data-testid="apropos-origine"] svg[data-nom="drapeau-ue"]'),
+    page.locator('[data-testid="about-origin"] svg[data-name="drapeau-ue"]'),
   ).toBeVisible();
   // « Vérifier les mises à jour » traverse update_check pour de vrai ;
   // en E2E la commande répond « à jour » (aucun réseau, passation §7.5).
-  await page.locator('[data-testid="apropos-verifier"]').click();
-  await expect(page.locator('[data-testid="reglages-apropos"]')).toContainText(
+  await page.locator('[data-testid="about-check"]').click();
+  await expect(page.locator('[data-testid="settings-about"]')).toContainText(
     'Vous êtes à jour.',
   );
-  await page.locator('[data-testid="reglages-termine"]').click();
-  await expect(page.locator('[data-testid="reglages-modal"]')).toHaveCount(0);
+  await page.locator('[data-testid="settings-done"]').click();
+  await expect(page.locator('[data-testid="settings-modal"]')).toHaveCount(0);
 });
 
 test("la section Comptes liste les comptes réels et ouvre le guichet d'ajout (A11)", async () => {
-  await page.locator('[data-testid="reglages"]').click();
-  const section = page.locator('[data-testid="reglages-comptes"]');
+  await page.locator('[data-testid="settings"]').click();
+  const section = page.locator('[data-testid="settings-accounts"]');
   await expect(section).toContainText('paul.merand@atelier-nord.fr');
   await expect(section).toContainText('paul@merand.fr');
   // « Ajouter un compte » déplie LE guichet de l'écran 01 — même
   // implémentation : adresse, routage par domaine, champs génériques.
-  await page.locator('[data-testid="reglages-ajouter"]').click();
-  await page.locator('[data-testid="onboarding-adresse"]').fill('paul@exemple.fr');
-  await page.locator('[data-testid="onboarding-continuer"]').click();
+  await page.locator('[data-testid="settings-add"]').click();
+  await page.locator('[data-testid="onboarding-address"]').fill('paul@exemple.fr');
+  await page.locator('[data-testid="desk-continue"]').click();
   await expect(page.locator('#ob-imap')).toHaveValue('imap.exemple.fr');
   // Rien n'est parti ; Terminé referme, le guichet se démonte propre.
-  await page.locator('[data-testid="reglages-termine"]').click();
-  await expect(page.locator('[data-testid="reglages-modal"]')).toHaveCount(0);
+  await page.locator('[data-testid="settings-done"]').click();
+  await expect(page.locator('[data-testid="settings-modal"]')).toHaveCount(0);
 });
 
 // ——— E2 des Réglages : les groupes à décision (R-D1, R-D2) —————————————
@@ -975,9 +975,9 @@ test("la section Comptes liste les comptes réels et ouvre le guichet d'ajout (A
 test("Thèmes : le suivi de l'OS sombre suffixe le thème choisi en -nuit (D6, A42/V7, R1 RETOURS-13)", async () => {
   // R1 (PLAN-RETOURS-13) : la bascule vit désormais en TÊTE de la
   // section Thèmes — elle gouverne le thème, pas l'affichage.
-  await page.locator('[data-testid="reglages"]').click();
-  await page.locator('[data-testid="reglages-groupe"][data-groupe="themes"]').click();
-  const bascule = page.locator('[data-testid="affichage-auto"]');
+  await page.locator('[data-testid="settings"]').click();
+  await page.locator('[data-testid="settings-group"][data-group="themes"]').click();
+  const bascule = page.locator('[data-testid="display-auto"]');
   await expect(bascule).toHaveAttribute('aria-checked', 'false');
   await bascule.click();
   // OS sombre : la déclinaison nuit du thème choisi (elements)
@@ -988,7 +988,7 @@ test("Thèmes : le suivi de l'OS sombre suffixe le thème choisi en -nuit (D6, A
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'elements-nuit');
   expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).not.toBe('elements-nuit');
   // Un thème -nuit choisi à la main reste en paix : déjà sombre…
-  await page.locator('[data-testid="reglages-groupe"][data-groupe="themes"]').click();
+  await page.locator('[data-testid="settings-group"][data-group="themes"]').click();
   await page.locator('[data-theme-id="elements-nuit"]').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'elements-nuit');
   expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('elements-nuit');
@@ -1003,20 +1003,20 @@ test("Thèmes : le suivi de l'OS sombre suffixe le thème choisi en -nuit (D6, A
   // permanent.
   await page.locator('[data-theme-id="elements"]').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'elements-nuit');
-  await expect(page.locator('[data-theme-id="elements-nuit"] .coche')).toBeVisible();
+  await expect(page.locator('[data-theme-id="elements-nuit"] .check')).toBeVisible();
   // OS clair : le choix revient tel quel — l'attribut TOMBE (elements),
   // et la coche revient sur la fiche claire. Assertion pleine : pas
   // « autre chose qu'elements-nuit », l'absence d'attribut (revue A42).
   await page.emulateMedia({ colorScheme: 'light' });
   await expect(page.locator('html')).not.toHaveAttribute('data-theme');
-  await expect(page.locator('[data-theme-id="elements"] .coche')).toBeVisible();
+  await expect(page.locator('[data-theme-id="elements"] .check')).toBeVisible();
   // Persistance : le booléen survit comme le thème.
   expect(await page.evaluate(() => localStorage.getItem('wind-theme-auto'))).toBe('1');
   // Le rail est resté sur Thèmes depuis le choix explicite — la
   // bascule est là, en tête de section (R1 RETOURS-13).
   await bascule.click();
   await page.emulateMedia({ colorScheme: null });
-  await page.locator('[data-testid="reglages-termine"]').click();
+  await page.locator('[data-testid="settings-done"]').click();
 });
 
 test("le suivi OS lit l'API Tauri : une vraie bascule Windows suffixe et revient (terrain A42)", async () => {
@@ -1041,9 +1041,9 @@ test("le suivi OS lit l'API Tauri : une vraie bascule Windows suffixe et revient
   mkdirSync(path.dirname(temoin), { recursive: true });
   writeFileSync(temoin, String(initial));
   try {
-    await page.locator('[data-testid="reglages"]').click();
-    await page.locator('[data-testid="reglages-groupe"][data-groupe="themes"]').click();
-    const bascule = page.locator('[data-testid="affichage-auto"]');
+    await page.locator('[data-testid="settings"]').click();
+    await page.locator('[data-testid="settings-group"][data-group="themes"]').click();
+    const bascule = page.locator('[data-testid="display-auto"]');
     await bascule.click();
     await expect(bascule).toHaveAttribute('aria-checked', 'true');
     // OS clair d'abord (l'état de référence), puis sombre : la
@@ -1058,7 +1058,7 @@ test("le suivi OS lit l'API Tauri : une vraie bascule Windows suffixe et revient
     await expect(page.locator('html')).not.toHaveAttribute('data-theme', /nuit/, { timeout: 10_000 });
     await bascule.click();
     await expect(bascule).toHaveAttribute('aria-checked', 'false');
-    await page.locator('[data-testid="reglages-termine"]').click();
+    await page.locator('[data-testid="settings-done"]').click();
   } finally {
     // La machine retrouve son réglage, quoi qu'il arrive au test.
     basculer(initial);
@@ -1072,20 +1072,20 @@ test("les anciens choix migrent : tout -nuit vers elements-nuit, le reste au dé
   // rejoué par V7 sur la table Wada entière).
   await page.evaluate(() => localStorage.setItem('wind-theme', 'nuit'));
   await page.reload();
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'elements-nuit');
   expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('elements-nuit');
   // Un thème Wada -nuit garde sa nuit — le choix de polarité est le
   // seul qui survive à V7, il est ÉCRIT (pas un repli silencieux).
   await page.evaluate(() => localStorage.setItem('wind-theme', 'bruyere-nuit'));
   await page.reload();
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'elements-nuit');
   expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('elements-nuit');
   // Un thème RETIRÉ clair (safran) retombe sur le défaut, silencieusement.
   await page.evaluate(() => localStorage.setItem('wind-theme', 'safran'));
   await page.reload();
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
   await expect(page.locator('html')).not.toHaveAttribute('data-theme');
   // A94 : un choix VALIDE suffixé -nuit n'est PAS une relique — la
   // garde de migration connaît Innamoramento, `innamoramento-nuit`
@@ -1093,7 +1093,7 @@ test("les anciens choix migrent : tout -nuit vers elements-nuit, le reste au dé
   // était réécrit en elements-nuit — prouvé rouge en le retirant).
   await page.evaluate(() => localStorage.setItem('wind-theme', 'innamoramento-nuit'));
   await page.reload();
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'innamoramento-nuit');
   expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('innamoramento-nuit');
   // A95 : le thème « Mona » est RENOMMÉ « Innamoramento » (CE,
@@ -1102,12 +1102,12 @@ test("les anciens choix migrent : tout -nuit vers elements-nuit, le reste au dé
   // migration est ÉCRITE (pas un repli silencieux vers le défaut).
   await page.evaluate(() => localStorage.setItem('wind-theme', 'mona-nuit'));
   await page.reload();
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'innamoramento-nuit');
   expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('innamoramento-nuit');
   await page.evaluate(() => localStorage.setItem('wind-theme', 'mona'));
   await page.reload();
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'innamoramento');
   expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('innamoramento');
   // Retour au défaut pour ne pas teinter d'autres parcours — et un
@@ -1119,30 +1119,30 @@ test("les anciens choix migrent : tout -nuit vers elements-nuit, le reste au dé
 });
 
 test("Notifications : les bulles d'arrivée se coupent et la préférence tient en base (R-D2)", async () => {
-  await page.locator('[data-testid="reglages"]').click();
-  await page.locator('[data-testid="reglages-groupe"][data-groupe="notifications"]').click();
-  const bascule = page.locator('[data-testid="notif-bulles"]');
+  await page.locator('[data-testid="settings"]').click();
+  await page.locator('[data-testid="settings-group"][data-group="notifications"]').click();
+  const bascule = page.locator('[data-testid="notif-bubbles"]');
   // Le défaut protège l'annonce : activées tant que rien n'est posé.
   await expect(bascule).toHaveAttribute('aria-checked', 'true');
   await bascule.click();
   await expect(bascule).toHaveAttribute('aria-checked', 'false');
-  await page.locator('[data-testid="reglages-termine"]').click();
+  await page.locator('[data-testid="settings-done"]').click();
   // L'aller-retour RÉEL : recharger l'application relit la préférence
   // depuis la base — pas depuis un état de composant.
   await page.reload();
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  await page.locator('[data-testid="reglages"]').click();
-  await page.locator('[data-testid="reglages-groupe"][data-groupe="notifications"]').click();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
+  await page.locator('[data-testid="settings"]').click();
+  await page.locator('[data-testid="settings-group"][data-group="notifications"]').click();
   await expect(bascule).toHaveAttribute('aria-checked', 'false');
   // Retour au défaut pour ne pas teinter d'autres parcours.
   await bascule.click();
   await expect(bascule).toHaveAttribute('aria-checked', 'true');
-  await page.locator('[data-testid="reglages-termine"]').click();
+  await page.locator('[data-testid="settings-done"]').click();
 });
 
 // ——— Pièces jointes (PLAN-PIECES-JOINTES E2) ——————————————————————————
 // La boîte de dialogue native n'est pas pilotable : la couture
-// `window.__e2ePieces` (transport.js) injecte les chemins de fixtures —
+// `window.__e2eAttachments` (transport.js) injecte les chemins de fixtures —
 // le sélecteur ne s'ouvre jamais, tout le reste du chemin est le vrai.
 
 const fixtures = path.resolve(import.meta.dirname, '..', '..', 'target', 'e2e', 'fixtures');
@@ -1154,44 +1154,44 @@ test('joindre est réel : puces nom + taille, poids total, retrait par puce', as
   writeFileSync(devis, Buffer.alloc(812 * 1024, 1));
   writeFileSync(photo, Buffer.alloc(2 * 1024 * 1024, 2));
 
-  await page.locator('[data-testid="ecrire"]').click();
+  await page.locator('[data-testid="write"]').click();
   await page.evaluate((chemins) => {
-    window.__e2ePieces = chemins;
+    window.__e2eAttachments = chemins;
   }, [devis, photo]);
-  await page.locator('[data-testid="composition-joindre"]').click();
+  await page.locator('[data-testid="compose-attach"]').click();
 
-  await expect(page.locator('[data-testid="piece-compo"]')).toHaveCount(2);
-  await expect(page.locator('[data-testid="composition-pieces"]')).toContainText('devis.pdf');
-  await expect(page.locator('[data-testid="composition-pieces"]')).toContainText('photo.jpg');
+  await expect(page.locator('[data-testid="attachment-compose"]')).toHaveCount(2);
+  await expect(page.locator('[data-testid="compose-attachments"]')).toContainText('devis.pdf');
+  await expect(page.locator('[data-testid="compose-attachments"]')).toContainText('photo.jpg');
   // 812 Ko + 2 Mo — la même forme que les puces (point décimal du cœur).
-  await expect(page.locator('[data-testid="composition-poids"]')).toContainText('2.8 Mo / 25 Mo');
+  await expect(page.locator('[data-testid="compose-weight"]')).toContainText('2.8 Mo / 25 Mo');
 
-  await page.locator('[data-testid="piece-retrait"]').first().click();
-  await expect(page.locator('[data-testid="piece-compo"]')).toHaveCount(1);
-  await expect(page.locator('[data-testid="composition-poids"]')).toContainText('2.0 Mo / 25 Mo');
+  await page.locator('[data-testid="attachment-remove"]').first().click();
+  await expect(page.locator('[data-testid="attachment-compose"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="compose-weight"]')).toContainText('2.0 Mo / 25 Mo');
 });
 
 test('fermer conserve les pièces, la reprise les restitue (PJ-D1)', async () => {
-  await page.locator('[data-testid="composition-corps"]').fill('Corps avec pièce E2');
-  await page.locator('[data-testid="composition-annuler"]').click();
-  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+  await page.locator('[data-testid="compose-body"]').fill('Corps avec pièce E2');
+  await page.locator('[data-testid="compose-cancel"]').click();
+  await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="toast"]')).toContainText('Brouillon enregistré.');
 
   await dossier('drafts').click();
-  await expect(page.locator('[data-testid="dossier-brouillons"]')).toBeVisible();
+  await expect(page.locator('[data-testid="folder-drafts"]')).toBeVisible();
   await page
-    .locator('[data-testid="ligne-brouillon"]', { hasText: 'Corps avec pièce E2' })
+    .locator('[data-testid="row-draft"]', { hasText: 'Corps avec pièce E2' })
     .click();
-  await expect(page.locator('[data-testid="composition"]')).toBeVisible();
-  await expect(page.locator('[data-testid="piece-compo"]')).toHaveCount(1);
-  await expect(page.locator('[data-testid="composition-pieces"]')).toContainText('photo.jpg');
+  await expect(page.locator('[data-testid="compose"]')).toBeVisible();
+  await expect(page.locator('[data-testid="attachment-compose"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="compose-attachments"]')).toContainText('photo.jpg');
 });
 
 test("envoyer emporte la pièce : le journal la porte (PJ-D2)", async () => {
-  await page.locator('[data-testid="composition-a"]').fill('dest@exemple.fr');
-  await page.locator('[data-testid="composition-objet"]').fill('Envoi avec pièce E2');
-  await page.locator('[data-testid="composition-envoyer"]').click();
-  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+  await page.locator('[data-testid="compose-to"]').fill('dest@exemple.fr');
+  await page.locator('[data-testid="compose-subject"]').fill('Envoi avec pièce E2');
+  await page.locator('[data-testid="compose-send"]').click();
+  await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="toast"]')).toContainText('Message envoyé.');
 
   // Les comptes du décor n'ont pas de serveur : l'envoi reste journalisé
@@ -1206,23 +1206,23 @@ test('au-delà du plafond : le refus est dit, rien ne se joint (PJ-D3)', async (
   const enorme = path.join(fixtures, 'enorme.bin');
   writeFileSync(enorme, Buffer.alloc(26 * 1024 * 1024));
 
-  await page.locator('[data-testid="ecrire"]').click();
+  await page.locator('[data-testid="write"]').click();
   await page.evaluate((chemin) => {
-    window.__e2ePieces = [chemin];
+    window.__e2eAttachments = [chemin];
   }, enorme);
-  await page.locator('[data-testid="composition-joindre"]').click();
+  await page.locator('[data-testid="compose-attach"]').click();
 
-  await expect(page.locator('[data-testid="composition-refus"]')).toContainText('enorme.bin');
-  await expect(page.locator('[data-testid="composition-refus"]')).toContainText(
+  await expect(page.locator('[data-testid="compose-refusal"]')).toContainText('enorme.bin');
+  await expect(page.locator('[data-testid="compose-refusal"]')).toContainText(
     'dépasse la place restante',
   );
-  await expect(page.locator('[data-testid="piece-compo"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="attachment-compose"]')).toHaveCount(0);
 
   await page.evaluate(() => {
-    delete window.__e2ePieces;
+    delete window.__e2eAttachments;
   });
-  await page.locator('[data-testid="composition-annuler"]').click();
-  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+  await page.locator('[data-testid="compose-cancel"]').click();
+  await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
 });
 
 test('le transfert rapatrie pour de vrai — hors ligne : échec dit, « Réessayer », envoi gardé (PJ-D4)', async () => {
@@ -1230,17 +1230,17 @@ test('le transfert rapatrie pour de vrai — hors ligne : échec dit, « Réessa
   // Réception, où la ligne Vantis existe.
   await dossier('inbox').click();
   await page
-    .locator('[data-testid="ligne"]', { hasText: 'Relecture du contrat Vantis' })
+    .locator('[data-testid="row"]', { hasText: 'Relecture du contrat Vantis' })
     .click();
   // R4 : transférer PAR message ; le dernier message du fil Vantis porte
   // l'annexe tarifaire (`.last()`).
-  await page.locator('[data-testid="transferer"]').last().click();
-  await expect(page.locator('[data-testid="composition-kicker"]')).toHaveText('Transférer');
+  await page.locator('[data-testid="forward"]').last().click();
+  await expect(page.locator('[data-testid="compose-kicker"]')).toHaveText('Transférer');
   // Terrain STOP 2 PLAN-AUDIT-V2 (2026-09-02) : « un mot tapé APRÈS le
   // bloc a disparu à l'envoi » — le curseur posé en fin de corps tombait
   // DANS le bloc marqué, que l'envoi remplace. Le mot tapé à la fin vit
   // HORS du bloc (la ligne vide éditable qui le suit).
-  const corps = page.locator('[data-testid="composition-corps"]');
+  const corps = page.locator('[data-testid="compose-body"]');
   await corps.click();
   await page.keyboard.press('Control+End');
   await page.keyboard.type('APRES-LE-BLOC');
@@ -1249,31 +1249,31 @@ test('le transfert rapatrie pour de vrai — hors ligne : échec dit, « Réessa
   // Les comptes du décor n'ont pas de serveur : chaque rapatriement finit
   // en échec — nom en alerte, « Réessayer » — jamais une puce pleine, et
   // jamais une pièce silencieusement absente.
-  await expect(page.locator('[data-testid="piece-echec"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="attachment-failure"]').first()).toBeVisible();
   // Le dernier message du fil Vantis porte l'annexe tarifaire.
-  await expect(page.locator('[data-testid="composition-pieces"]')).toContainText(
+  await expect(page.locator('[data-testid="compose-attachments"]')).toContainText(
     'Annexe_tarifs.xlsx',
   );
-  await expect(page.locator('[data-testid="piece-compo"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="piece-reessayer"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="attachment-compose"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="attachment-retry"]').first()).toBeVisible();
 
   // Envoyer est BLOQUÉ tant que des pièces manquent.
-  await page.locator('[data-testid="composition-a"]').fill('dest@exemple.fr');
-  await page.locator('[data-testid="composition-envoyer"]').click();
+  await page.locator('[data-testid="compose-to"]').fill('dest@exemple.fr');
+  await page.locator('[data-testid="compose-send"]').click();
   await expect(page.locator('[data-testid="toast"]')).toContainText(
     'Des pièces du transfert manquent',
   );
-  await expect(page.locator('[data-testid="composition"]')).toBeVisible();
+  await expect(page.locator('[data-testid="compose"]')).toBeVisible();
 
   // Renoncer (la croix) est le geste EXPLICITE qui libère l'envoi.
-  const echecs = page.locator('[data-testid="piece-echec"]');
+  const echecs = page.locator('[data-testid="attachment-failure"]');
   const restantes = await echecs.count();
   for (let i = 0; i < restantes; i += 1) {
-    await page.locator('[data-testid="piece-renoncer"]').first().click();
+    await page.locator('[data-testid="attachment-give-up"]').first().click();
   }
   await expect(echecs).toHaveCount(0);
-  await page.locator('[data-testid="composition-envoyer"]').click();
-  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+  await page.locator('[data-testid="compose-send"]').click();
+  await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="toast"]')).toContainText('Message envoyé.');
 });
 
@@ -1283,7 +1283,7 @@ test('le transfert rapatrie pour de vrai — hors ligne : échec dit, « Réessa
 // le câblage événement → barre est ce qui compte.
 test("hors ligne : la barre le dit à l'instant, le retour la restaure (P0-bis)", async () => {
   await dossier('inbox').click();
-  const progression = page.locator('[data-testid="progression"]');
+  const progression = page.locator('[data-testid="progress"]');
   await expect(progression).not.toContainText('Hors ligne');
 
   await page.evaluate(() => window.dispatchEvent(new Event('offline')));
@@ -1304,29 +1304,29 @@ test("supprimer se voit en Corbeille à l'instant — hors ligne compris (E3)", 
   await dossier('inbox').click();
 
   await page
-    .locator('[data-testid="ligne"]', { hasText: 'Facture 2026-0841' })
+    .locator('[data-testid="row"]', { hasText: 'Facture 2026-0841' })
     .first()
     .click();
-  await page.locator('[data-testid="supprimer"]').click();
+  await page.locator('[data-testid="delete"]').click();
   await expect(page.locator('[data-testid="toast"]')).toContainText(
     'Conversation supprimée.',
   );
   // Le compteur a quitté la nav (A29, W2-D4) : la Corbeille elle-même
   // dit « 3 + l'écho » — la barre de statut compte ses éléments.
   await dossier('trash').click();
-  await expect(page.locator('[data-testid="statut"]')).toContainText(
+  await expect(page.locator('[data-testid="status"]')).toContainText(
     'Corbeille · 4 éléments',
   );
-  const echo = page.locator('[data-testid="ligne"]', { hasText: 'Facture 2026-0841' });
+  const echo = page.locator('[data-testid="row"]', { hasText: 'Facture 2026-0841' });
   await expect(echo).toBeVisible();
 
   // L'écho s'ouvre en LOCAL (echo_body) — le volet porte le sujet.
   await echo.click();
-  await expect(page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]')).toContainText(
+  await expect(page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]')).toContainText(
     'Facture 2026-0841',
   );
   // Un geste sur l'écho attend la réconciliation — et le dit.
-  await page.locator('[data-testid="supprimer"]').click();
+  await page.locator('[data-testid="delete"]').click();
   await expect(page.locator('[data-testid="toast"]')).toContainText(
     'Copie en cours de synchronisation',
   );
@@ -1342,13 +1342,13 @@ test('le triage clavier avance : e/Suppr sélectionnent la ligne du dessous (A38
   // d'une source fraîche (aller-retour de nav), et parcours sur des
   // lignes SANS rôle dans la suite (« Atelier de septembre », puis la
   // ligne dessous) : le fil Vantis (transfert PJ-D4) reste intact.
-  await page.locator('[data-testid="nav-dossier"][data-categorie="archive"]').click();
-  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
-  const lignes = page.locator('[data-testid="ligne"]');
+  await page.locator('[data-testid="nav-folder"][data-category="archive"]').click();
+  await page.locator('[data-testid="nav-folder"][data-category="inbox"]').click();
+  const lignes = page.locator('[data-testid="row"]');
   await expect(lignes.first()).toBeVisible();
   // La ligne du dessous se capture AVANT le geste — après, elle a
   // glissé d'un rang.
-  let sujets = await lignes.locator('.objet').allTextContents();
+  let sujets = await lignes.locator('.subject').allTextContents();
   const depart = sujets.indexOf('Atelier de septembre');
   expect(depart).toBeGreaterThan(-1);
   const dessous = sujets[depart + 1];
@@ -1371,17 +1371,17 @@ test('le triage clavier avance : e/Suppr sélectionnent la ligne du dessous (A38
   ).toBe(true);
   // La sélection a avancé : la ligne du dessous porte le liseré ET son
   // volet est ouvert (trois volets — comme au clic).
-  const choisie = page.locator('[data-testid="ligne"].choisie');
+  const choisie = page.locator('[data-testid="row"].chosen');
   await expect(choisie).toHaveCount(1);
-  await expect(choisie.locator('.objet')).toHaveText(dessous);
-  await expect(page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]')).toHaveText(dessous);
+  await expect(choisie.locator('.subject')).toHaveText(dessous);
+  await expect(page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]')).toHaveText(dessous);
   // La liste FRAÎCHE d'abord (stale-while-revalidate : les lignes
   // servies restent affichées un instant) — la ligne archivée partie,
   // la capture de la prochaine ligne dessous est sûre.
   await expect(
-    page.locator('[data-testid="ligne"]', { hasText: 'Atelier de septembre' }),
+    page.locator('[data-testid="row"]', { hasText: 'Atelier de septembre' }),
   ).toHaveCount(0);
-  sujets = await lignes.locator('.objet').allTextContents();
+  sujets = await lignes.locator('.subject').allTextContents();
   const suivante = sujets[sujets.indexOf(dessous) + 1];
   // Le geste s'enchaîne sans reprendre la souris : Suppr agit sur la
   // sélection avancée, et avance encore.
@@ -1389,8 +1389,8 @@ test('le triage clavier avance : e/Suppr sélectionnent la ligne du dessous (A38
   await expect(page.locator('[data-testid="toast"]')).toContainText(
     'Conversation supprimée.',
   );
-  await expect(choisie.locator('.objet')).toHaveText(suivante);
-  await expect(page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]')).toHaveText(suivante);
+  await expect(choisie.locator('.subject')).toHaveText(suivante);
+  await expect(page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]')).toHaveText(suivante);
 });
 
 // ——— La course « vider puis fermer » (constat terrain du 2026-08-15) ——
@@ -1401,39 +1401,39 @@ test('le triage clavier avance : e/Suppr sélectionnent la ligne du dessous (A38
 // déterministe : l'écriture est EN VOL quand le geste décide.
 test('vider puis fermer ne ressuscite jamais le brouillon — la sauvegarde en vol se pose avant', async () => {
   await page.keyboard.press('c');
-  await page.locator('[data-testid="composition-objet"]').fill('Course E2E');
-  await page.locator('[data-testid="composition-corps"]').fill('Premier contenu.');
+  await page.locator('[data-testid="compose-subject"]').fill('Course E2E');
+  await page.locator('[data-testid="compose-body"]').fill('Premier contenu.');
   // Première sauvegarde COMPLÈTE : le brouillon a un id.
   await page.waitForTimeout(2600);
   // Deuxième écriture, puis retenue : la sauvegarde part et se BLOQUE.
-  await page.locator('[data-testid="composition-corps"]').fill('Contenu condamné.');
+  await page.locator('[data-testid="compose-body"]').fill('Contenu condamné.');
   await page.evaluate(() => {
-    window.__e2eRetenue = new Promise((liberer) => {
-      window.__e2eLiberer = liberer;
+    window.__e2eHold = new Promise((liberer) => {
+      window.__e2eRelease = liberer;
     });
   });
   await page.waitForTimeout(2300);
   // Le vidage et le geste, pendant le vol. (`fill('')` ne vide pas un
   // contenteditable : Ctrl+A + Suppr, comme l'utilisateur.)
-  await page.locator('[data-testid="composition-objet"]').fill('');
-  await page.locator('[data-testid="composition-corps"]').click();
+  await page.locator('[data-testid="compose-subject"]').fill('');
+  await page.locator('[data-testid="compose-body"]').click();
   await page.keyboard.press('Control+a');
   await page.keyboard.press('Delete');
-  await page.locator('[data-testid="composition-annuler"]').click();
+  await page.locator('[data-testid="compose-cancel"]').click();
   await page.evaluate(() => {
-    window.__e2eLiberer?.();
-    delete window.__e2eRetenue;
-    delete window.__e2eLiberer;
+    window.__e2eRelease?.();
+    delete window.__e2eHold;
+    delete window.__e2eRelease;
   });
   // fermer a attendu le vol, puis supprimé : aucun fantôme.
-  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
-  await page.locator('[data-testid="nav-dossier"][data-categorie="drafts"]').click();
-  await expect(page.locator('[data-testid="dossier-brouillons"]')).toBeVisible();
+  await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
+  await page.locator('[data-testid="nav-folder"][data-category="drafts"]').click();
+  await expect(page.locator('[data-testid="folder-drafts"]')).toBeVisible();
   await expect(
-    page.locator('[data-testid="ligne-brouillon"]', { hasText: 'Course E2E' }),
+    page.locator('[data-testid="row-draft"]', { hasText: 'Course E2E' }),
   ).toHaveCount(0);
-  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await page.locator('[data-testid="nav-folder"][data-category="inbox"]').click();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
 });
 
 // PLAN-RETOURS-5 (terrain 2026-08-21) : pendant la fenêtre de
@@ -1445,19 +1445,19 @@ test('vider puis fermer ne ressuscite jamais le brouillon — la sauvegarde en v
 // cœur par `la_vraie_ligne_tue_l_echo`).
 test("l'écho d'envoi dit ses destinataires et sa pièce — jamais « À : envoyes » (RETOURS-5)", async () => {
   await dossier('sent').click();
-  const ligne = page.locator('[data-testid="ligne"]', { hasText: 'Bordereau signé' });
+  const ligne = page.locator('[data-testid="row"]', { hasText: 'Bordereau signé' });
   await expect(ligne).toBeVisible();
   await expect(ligne).toContainText('c.rousseau@atelier-nord.fr');
   await expect(ligne).not.toContainText('sent');
 
   await ligne.click();
-  const volet = page.locator('[data-testid="volet-lecture"]');
-  await expect(volet.locator('[data-testid="fil-sujet"]')).toContainText('Bordereau signé');
+  const volet = page.locator('[data-testid="reading-pane"]');
+  await expect(volet.locator('[data-testid="thread-subject"]')).toContainText('Bordereau signé');
   // La tête du message déplié : la ligne « À : » (A92) dit le vrai
   // destinataire.
-  await expect(volet.locator('[data-testid="ligne-a"]').first()).toContainText('c.rousseau@atelier-nord.fr');
+  await expect(volet.locator('[data-testid="row-to"]').first()).toContainText('c.rousseau@atelier-nord.fr');
   // La pièce du journal d'envoi : nom + poids dans la puce, inerte.
-  const piece = volet.locator('[data-testid="piece-jointe"]');
+  const piece = volet.locator('[data-testid="attachment"]');
   await expect(piece).toHaveCount(1);
   await expect(piece).toContainText('Bordereau-signe.pdf');
   await expect(piece).toContainText('20 Ko');
@@ -1471,12 +1471,12 @@ test("l'écho d'envoi dit ses destinataires et sa pièce — jamais « À : envo
 // l'adresse NUE. Au clavier (Entrée) comme au clic, dans Cc comme
 // dans À.
 test("l'autocomplétion suggère les adresses connues — nom montré, adresse nue insérée (RETOURS-5)", async () => {
-  await page.locator('[data-testid="ecrire"]').click();
-  const champA = page.locator('[data-testid="composition-a"]');
+  await page.locator('[data-testid="write"]').click();
+  const champA = page.locator('[data-testid="compose-to"]');
   await champA.fill('rousseau');
-  const menu = page.locator('[data-testid="composition-suggestions"]');
+  const menu = page.locator('[data-testid="compose-suggestions"]');
   await expect(menu).toBeVisible();
-  const premiere = page.locator('[data-testid="suggestion-adresse"]').first();
+  const premiere = page.locator('[data-testid="address-suggestion"]').first();
   await expect(premiere).toContainText('Camille Rousseau');
   await expect(premiere).toContainText('c.rousseau@atelier-nord.fr');
   await champA.press('Enter');
@@ -1484,11 +1484,11 @@ test("l'autocomplétion suggère les adresses connues — nom montré, adresse n
   await expect(menu).toHaveCount(0);
 
   // Cc, au CLIC — un destinataire connu par l'adresse.
-  await page.locator('[data-testid="composition-bouton-cc"]').click();
-  const champCc = page.locator('[data-testid="composition-cc"]');
+  await page.locator('[data-testid="compose-cc-button"]').click();
+  const champCc = page.locator('[data-testid="compose-cc"]');
   await champCc.fill('s.nar');
   await expect(menu).toBeVisible();
-  await page.locator('[data-testid="suggestion-adresse"]').first().click();
+  await page.locator('[data-testid="address-suggestion"]').first().click();
   await expect(champCc).toHaveValue('s.nardi@atelier-nord.fr');
   await expect(menu).toHaveCount(0);
 
@@ -1496,8 +1496,8 @@ test("l'autocomplétion suggère les adresses connues — nom montré, adresse n
   // à la fermeture (« un brouillon vidé de son texte est jeté »).
   await champA.fill('');
   await champCc.fill('');
-  await page.locator('[data-testid="composition-annuler"]').click();
-  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+  await page.locator('[data-testid="compose-cancel"]').click();
+  await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
 });
 
 // ——— Revue v3 : exclusivité des cadres (joué en fin de chaîne — il archive) ———
@@ -1507,8 +1507,8 @@ test("archiver au raccourci depuis l'écran 03 ferme le cadre — jamais de plei
   // `visible` armé quand `e` archivait depuis le plein écran — le
   // prochain clic de liste rouvrait l'écran 03 non demandé, avec DEUX
   // Fil montés. Depuis, l'exclusivité vit au store (fil.cadre).
-  await page.locator('[data-testid="ligne"]').first().click();
-  await page.locator('[data-testid="voir-conversation"]').click();
+  await page.locator('[data-testid="row"]').first().click();
+  await page.locator('[data-testid="see-conversation"]').click();
   await expect(page.locator('[data-testid="conversation"]')).toBeVisible();
   await page.keyboard.press('e');
   await expect(page.locator('[data-testid="toast"]')).toContainText('Conversation archivée.');
@@ -1516,13 +1516,13 @@ test("archiver au raccourci depuis l'écran 03 ferme le cadre — jamais de plei
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
   // Le clic suivant ouvre le VOLET, jamais l'écran 03 ressuscité —
   // et l'objet reste unique.
-  await page.locator('[data-testid="ligne"]').first().click();
+  await page.locator('[data-testid="row"]').first().click();
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="fil-sujet"]')).toHaveCount(1);
-  await expect(page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]')).not.toBeEmpty();
+  await expect(page.locator('[data-testid="thread-subject"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]')).not.toBeEmpty();
   // Le triage clavier (A38) est VIVANT après coup : e avance encore.
-  const objet = await page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]').innerText();
+  const objet = await page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]').innerText();
   await page.keyboard.press('e');
   await expect(page.locator('[data-testid="toast"]')).toContainText('Conversation archivée.');
-  await expect(page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]')).not.toHaveText(objet);
+  await expect(page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]')).not.toHaveText(objet);
 });

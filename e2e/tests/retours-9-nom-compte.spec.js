@@ -28,25 +28,25 @@ test.afterAll(async () => {
 });
 
 const boiteNav = (libelle) =>
-  page.locator('[data-testid="nav-boite"]', { hasText: libelle });
+  page.locator('[data-testid="nav-mailbox"]', { hasText: libelle });
 
 test('nommer un compte depuis Réglages : la nav ET le bloc de boîte prennent le nom', async () => {
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
   await expect(boiteNav('un@exemple.fr')).toHaveCount(1);
 
-  await page.locator('[data-testid="reglages"]').click();
-  await page.locator('[data-testid="compte-nommer"]').first().click();
-  await expect(page.locator('[data-testid="reglages-nom"]')).toBeVisible();
-  await page.locator('[data-testid="nom-champ"]').fill('Boulot');
-  await page.locator('[data-testid="nom-enregistrer"]').click();
-  await expect(page.locator('[data-testid="reglages-nom"]')).toHaveCount(0);
+  await page.locator('[data-testid="settings"]').click();
+  await page.locator('[data-testid="account-rename"]').first().click();
+  await expect(page.locator('[data-testid="settings-name"]')).toBeVisible();
+  await page.locator('[data-testid="name-field"]').fill('Boulot');
+  await page.locator('[data-testid="name-save"]').click();
+  await expect(page.locator('[data-testid="settings-name"]')).toHaveCount(0);
 
   // En Réglages, le nom s'affiche AVEC l'adresse (D4) — l'adresse
   // reste la vérité de connexion.
-  const rangee = page.locator('[data-testid="reglages-comptes"] .compte').first();
+  const rangee = page.locator('[data-testid="settings-accounts"] .account').first();
   await expect(rangee).toContainText('Boulot');
   await expect(rangee).toContainText('un@exemple.fr');
-  await page.locator('[data-testid="reglages-termine"]').click();
+  await page.locator('[data-testid="settings-done"]').click();
 
   // La nav : le nom REMPLACE l'adresse ; l'autre compte ne bouge pas.
   await expect(boiteNav('Boulot')).toHaveCount(1);
@@ -57,10 +57,10 @@ test('nommer un compte depuis Réglages : la nav ET le bloc de boîte prennent l
   // personnalisé en est le libellé — c'est la seule branche `noms[…]`
   // de `boiteDe`, celle que le décor sans nom n'atteint jamais.
   const nomme = page
-    .locator('[data-testid="ligne-boite"]', { hasText: 'Boulot' })
+    .locator('[data-testid="row-mailbox"]', { hasText: 'Boulot' })
     .first();
   await expect(nomme).toBeVisible();
-  await expect(nomme.locator('.lib')).toHaveText('Boulot');
+  await expect(nomme.locator('.lbl')).toHaveText('Boulot');
   // L'infobulle garde l'adresse : elle reste la vérité technique (A78).
   // RETOURS-14 R3 (D4) : « Nom (adresse) » — plus de cadratin.
   await expect(nomme).toHaveAttribute('title', 'Boulot (un@exemple.fr)');
@@ -69,32 +69,32 @@ test('nommer un compte depuis Réglages : la nav ET le bloc de boîte prennent l
   // la dit qu'UNE fois : « adresse — adresse » serait un bégaiement
   // (revue du 2026-08-25).
   const anonyme = page
-    .locator('[data-testid="ligne-boite"]', { hasText: 'deux@exemple.fr' })
+    .locator('[data-testid="row-mailbox"]', { hasText: 'deux@exemple.fr' })
     .first();
   await expect(anonyme).toHaveAttribute('title', 'deux@exemple.fr');
 });
 
 test('au composeur, le sélecteur d’expéditeur dit « Nom (adresse) »', async () => {
-  await page.locator('[data-testid="ecrire"]').click();
-  const de = page.locator('select[data-testid="composition-de"]');
+  await page.locator('[data-testid="write"]').click();
+  const de = page.locator('select[data-testid="compose-from"]');
   await expect(de.locator('option').first()).toHaveText('Boulot (un@exemple.fr)');
   await expect(de.locator('option').nth(1)).toHaveText('deux@exemple.fr');
   // Fermer le composeur (vide : rien à conserver) — son voile
   // intercepterait sinon les clics du test suivant.
-  await page.locator('[data-testid="composition"] button[aria-label="Fermer"]').click();
-  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+  await page.locator('[data-testid="compose"] button[aria-label="Fermer"]').click();
+  await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
 });
 
 test('vider le nom rend l’adresse à la nav', async () => {
-  await page.locator('[data-testid="reglages"]').click();
-  await page.locator('[data-testid="compte-nommer"]').first().click();
-  await page.locator('[data-testid="nom-champ"]').fill('');
-  await page.locator('[data-testid="nom-enregistrer"]').click();
+  await page.locator('[data-testid="settings"]').click();
+  await page.locator('[data-testid="account-rename"]').first().click();
+  await page.locator('[data-testid="name-field"]').fill('');
+  await page.locator('[data-testid="name-save"]').click();
   // Attendre la clôture de la carte (l'écriture est passée) avant de
   // fermer la surimpression — sinon un name_set lent meurt en timeout
   // opaque sur la nav.
-  await expect(page.locator('[data-testid="reglages-nom"]')).toHaveCount(0);
-  await page.locator('[data-testid="reglages-termine"]').click();
+  await expect(page.locator('[data-testid="settings-name"]')).toHaveCount(0);
+  await page.locator('[data-testid="settings-done"]').click();
 
   await expect(boiteNav('un@exemple.fr')).toHaveCount(1);
   await expect(boiteNav('Boulot')).toHaveCount(0);

@@ -23,7 +23,7 @@ test.beforeAll(async () => {
   // défaut AVANT toute assertion.
   await purgerLocales(page, ['wind-volets', 'wind-largeurs']);
   await page.reload();
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
 });
 
 test.afterAll(async () => {
@@ -32,65 +32,65 @@ test.afterAll(async () => {
 });
 
 const dossier = (categorie) =>
-  page.locator(`[data-testid="nav-dossier"][data-categorie="${categorie}"]`);
+  page.locator(`[data-testid="nav-folder"][data-category="${categorie}"]`);
 
 test('le défaut est trois volets — le volet de lecture est là, rien à régler', async () => {
-  await expect(page.locator('[data-testid="volet-lecture"]')).toBeVisible();
-  await page.locator('[data-testid="reglages"]').click();
+  await expect(page.locator('[data-testid="reading-pane"]')).toBeVisible();
+  await page.locator('[data-testid="settings"]').click();
   await page
-    .locator('[data-testid="reglages-groupe"][data-groupe="affichage"]')
+    .locator('[data-testid="settings-group"][data-group="affichage"]')
     .click();
-  await expect(page.locator('[data-testid="affichage-volets"]')).toHaveValue('3');
-  await page.locator('[data-testid="reglages-termine"]').click();
+  await expect(page.locator('[data-testid="display-panes"]')).toHaveValue('3');
+  await page.locator('[data-testid="settings-done"]').click();
 });
 
 test('la bascule en deux volets est immédiate — la lecture quitte la grille', async () => {
-  await page.locator('[data-testid="reglages"]').click();
+  await page.locator('[data-testid="settings"]').click();
   await page
-    .locator('[data-testid="reglages-groupe"][data-groupe="affichage"]')
+    .locator('[data-testid="settings-group"][data-group="affichage"]')
     .click();
-  await page.locator('[data-testid="affichage-volets"]').selectOption('2');
+  await page.locator('[data-testid="display-panes"]').selectOption('2');
   // Application immédiate, sans confirmation (le geste du thème) : le
   // volet disparaît PENDANT que la surimpression est encore ouverte.
-  await expect(page.locator('[data-testid="volet-lecture"]')).toHaveCount(0);
-  await page.locator('[data-testid="reglages-termine"]').click();
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="reading-pane"]')).toHaveCount(0);
+  await page.locator('[data-testid="settings-done"]').click();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
 });
 
 test("en deux volets, l'ouverture est l'écran 03 — Échap rend la liste intacte", async () => {
-  const lignes = page.locator('[data-testid="ligne"]');
+  const lignes = page.locator('[data-testid="row"]');
   const avant = await lignes.count();
   await lignes.filter({ hasText: 'Relecture du contrat Vantis' }).first().click();
   // Plein écran : la conversation, PAS le volet.
-  await expect(page.locator('[data-testid="fil-sujet"]')).toContainText(
+  await expect(page.locator('[data-testid="thread-subject"]')).toContainText(
     'Relecture du contrat Vantis',
   );
-  await expect(page.locator('[data-testid="volet-lecture"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="reading-pane"]')).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
   // La liste est INTACTE : mêmes lignes, la sélection tient.
   await expect(lignes).toHaveCount(avant);
   await expect(
     lignes.filter({ hasText: 'Relecture du contrat Vantis' }).first(),
-  ).toHaveClass(/choisie/);
+  ).toHaveClass(/chosen/);
 });
 
 test("un message SANS fil s'ouvre en plein écran — le repli du message seul (V-D2)", async () => {
   // « Compte rendu du 4 août » : message seul du décor (aucune
   // conversation à ouvrir — le test Annexe A l'affirme au volet).
   await page
-    .locator('[data-testid="ligne"]', { hasText: 'Compte rendu du 4 août' })
+    .locator('[data-testid="row"]', { hasText: 'Compte rendu du 4 août' })
     .click();
-  await expect(page.locator('[data-testid="fil-sujet"]')).toContainText(
+  await expect(page.locator('[data-testid="thread-subject"]')).toContainText(
     'Compte rendu du 4 août',
   );
   // Le fil servi est la ligne elle-même : UN message, déplié, avec ses
   // fichiers réels (message_attachments). R2 : nom + poids en une puce.
-  await expect(page.locator('[data-testid="message-deplie"]')).toHaveCount(1);
-  const pieceConv = page.locator('[data-testid="conversation"] [data-testid="piece-jointe"]');
+  await expect(page.locator('[data-testid="message-expanded"]')).toHaveCount(1);
+  const pieceConv = page.locator('[data-testid="conversation"] [data-testid="attachment"]');
   await expect(pieceConv).toContainText('CR_04-08.pdf');
   await expect(pieceConv).toContainText('220 Ko');
-  await page.locator('[data-testid="retour-boite"]').click();
+  await page.locator('[data-testid="back-to-mailbox"]').click();
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
 });
 
@@ -99,21 +99,21 @@ test("un écho local s'ouvre en plein écran — corps local, geste différé di
   // volets : supprimer → écho en Corbeille → l'ouverture passe par
   // l'écran 03 et sert echo_body.
   await page
-    .locator('[data-testid="ligne"]', { hasText: 'Facture 2026-0841' })
+    .locator('[data-testid="row"]', { hasText: 'Facture 2026-0841' })
     .first()
     .click();
-  await page.locator('[data-testid="supprimer"]').click();
+  await page.locator('[data-testid="delete"]').click();
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
   await dossier('trash').click();
-  const echo = page.locator('[data-testid="ligne"]', { hasText: 'Facture 2026-0841' });
+  const echo = page.locator('[data-testid="row"]', { hasText: 'Facture 2026-0841' });
   await echo.click();
-  await expect(page.locator('[data-testid="fil-sujet"]')).toContainText(
+  await expect(page.locator('[data-testid="thread-subject"]')).toContainText(
     'Facture 2026-0841',
   );
-  await expect(page.locator('[data-testid="message-deplie"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="message-expanded"]')).toHaveCount(1);
   // Un geste sur l'écho attend la réconciliation — et le dit, ici
   // aussi ; le retour à la boîte est joué par le câblage existant.
-  await page.locator('[data-testid="supprimer"]').click();
+  await page.locator('[data-testid="delete"]').click();
   await expect(page.locator('[data-testid="toast"]')).toContainText(
     'Copie en cours de synchronisation',
   );
@@ -122,44 +122,44 @@ test("un écho local s'ouvre en plein écran — corps local, geste différé di
 });
 
 test('en un volet, la nav quitte la grille et vit en tiroir (E2)', async () => {
-  await page.locator('[data-testid="reglages"]').click();
+  await page.locator('[data-testid="settings"]').click();
   await page
-    .locator('[data-testid="reglages-groupe"][data-groupe="affichage"]')
+    .locator('[data-testid="settings-group"][data-group="affichage"]')
     .click();
-  await page.locator('[data-testid="affichage-volets"]').selectOption('1');
-  await page.locator('[data-testid="reglages-termine"]').click();
+  await page.locator('[data-testid="display-panes"]').selectOption('1');
+  await page.locator('[data-testid="settings-done"]').click();
   // La nav n'est plus dans la grille ; le bouton du tiroir est là.
   await expect(page.locator('[data-testid="nav"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="btn-tiroir"]')).toBeVisible();
+  await expect(page.locator('[data-testid="btn-drawer"]')).toBeVisible();
   // Ouvrir : la Nav est LA MÊME — dossiers réels, compteurs réels.
-  await page.locator('[data-testid="btn-tiroir"]').click();
-  await expect(page.locator('[data-testid="tiroir"]')).toBeVisible();
+  await page.locator('[data-testid="btn-drawer"]').click();
+  await expect(page.locator('[data-testid="drawer"]')).toBeVisible();
   await expect(dossier('trash')).toBeVisible();
   // Choisir ferme ET filtre — le geste accompli n'a plus besoin du
   // panneau.
   await dossier('trash').click();
-  await expect(page.locator('[data-testid="tiroir"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="statut"]')).toContainText('Corbeille');
+  await expect(page.locator('[data-testid="drawer"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="status"]')).toContainText('Corbeille');
 });
 
 test('Échap ferme le tiroir ; quitter le mode un volet l\'emporte', async () => {
-  await page.locator('[data-testid="btn-tiroir"]').click();
-  await expect(page.locator('[data-testid="tiroir"]')).toBeVisible();
+  await page.locator('[data-testid="btn-drawer"]').click();
+  await expect(page.locator('[data-testid="drawer"]')).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.locator('[data-testid="tiroir"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="drawer"]')).toHaveCount(0);
   // Retour à la réception par le tiroir, puis au mode deux volets —
   // le bouton du tiroir s'efface avec le mode, la nav revient en
   // grille (la suite continue sur le mode 2, que le test de
   // persistance attend).
-  await page.locator('[data-testid="btn-tiroir"]').click();
+  await page.locator('[data-testid="btn-drawer"]').click();
   await dossier('inbox').click();
-  await page.locator('[data-testid="reglages"]').click();
+  await page.locator('[data-testid="settings"]').click();
   await page
-    .locator('[data-testid="reglages-groupe"][data-groupe="affichage"]')
+    .locator('[data-testid="settings-group"][data-group="affichage"]')
     .click();
-  await page.locator('[data-testid="affichage-volets"]').selectOption('2');
-  await page.locator('[data-testid="reglages-termine"]').click();
-  await expect(page.locator('[data-testid="btn-tiroir"]')).toHaveCount(0);
+  await page.locator('[data-testid="display-panes"]').selectOption('2');
+  await page.locator('[data-testid="settings-done"]').click();
+  await expect(page.locator('[data-testid="btn-drawer"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="nav"]')).toBeVisible();
 });
 
@@ -167,23 +167,23 @@ test('la préférence survit au relancement — et le retour à trois volets res
   // Persistance : la page rechargée restaure le mode 2 AVANT le
   // premier rendu (pas de flash de grille).
   await page.reload();
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  await expect(page.locator('[data-testid="volet-lecture"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="reading-pane"]')).toHaveCount(0);
   // Retour à trois volets : le volet revient, la valeur est relue.
-  await page.locator('[data-testid="reglages"]').click();
+  await page.locator('[data-testid="settings"]').click();
   await page
-    .locator('[data-testid="reglages-groupe"][data-groupe="affichage"]')
+    .locator('[data-testid="settings-group"][data-group="affichage"]')
     .click();
-  await expect(page.locator('[data-testid="affichage-volets"]')).toHaveValue('2');
-  await page.locator('[data-testid="affichage-volets"]').selectOption('3');
-  await expect(page.locator('[data-testid="volet-lecture"]')).toBeVisible();
-  await page.locator('[data-testid="reglages-termine"]').click();
+  await expect(page.locator('[data-testid="display-panes"]')).toHaveValue('2');
+  await page.locator('[data-testid="display-panes"]').selectOption('3');
+  await expect(page.locator('[data-testid="reading-pane"]')).toBeVisible();
+  await page.locator('[data-testid="settings-done"]').click();
   // En trois volets, le clic ouvre DANS le volet — pas de plein écran.
   await page
-    .locator('[data-testid="ligne"]', { hasText: 'Relecture du contrat Vantis' })
+    .locator('[data-testid="row"]', { hasText: 'Relecture du contrat Vantis' })
     .first()
     .click();
-  await expect(page.locator('[data-testid="fil-sujet"]')).toContainText(
+  await expect(page.locator('[data-testid="thread-subject"]')).toContainText(
     'Relecture du contrat Vantis',
   );
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
@@ -207,33 +207,33 @@ test('les volets se redimensionnent à la souris — bornes, persistance, double
     await page.mouse.up();
   };
 
-  await expect.poll(() => largeur('liste')).toBe(400);
+  await expect.poll(() => largeur('list')).toBe(400);
   // La nav d'abord, bornée en bas à 180 — elle libère le plafond de la
   // liste (fenêtre 1000 : 1000 - 180 - 120 de réserve du fil = 700).
-  await saisir('poignee-nav', -500);
+  await saisir('handle-nav', -500);
   await expect.poll(() => largeur('nav')).toBe(180);
-  await saisir('poignee-list', 120);
-  await expect.poll(() => largeur('liste')).toBe(520);
+  await saisir('handle-list', 120);
+  await expect.poll(() => largeur('list')).toBe(520);
   // La borne haute retient la poignée : 640, jamais au-delà.
-  await saisir('poignee-list', 500);
-  await expect.poll(() => largeur('liste')).toBe(640);
+  await saisir('handle-list', 500);
+  await expect.poll(() => largeur('list')).toBe(640);
   // Le PLAFOND de la fenêtre retient l'autre frontière (revue
   // 2026-08-16) : nav max 400 écraserait le fil sous sa réserve —
   // 1000 - 640 - 120 = 240, jamais au-delà, la poignée liste reste
   // saisissable à l'écran.
-  await saisir('poignee-nav', 500);
+  await saisir('handle-nav', 500);
   await expect.poll(() => largeur('nav')).toBe(240);
 
   // Persistance : la page rechargée restaure les largeurs AVANT le
   // premier rendu — écrites au RELÂCHEMENT, jamais par pointermove.
   await page.reload();
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  await expect.poll(() => largeur('liste')).toBe(640);
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
+  await expect.poll(() => largeur('list')).toBe(640);
   await expect.poll(() => largeur('nav')).toBe(240);
 
   // Double-clic : chaque frontière rend son défaut.
-  await page.locator('[data-testid="poignee-list"]').dblclick();
-  await expect.poll(() => largeur('liste')).toBe(400);
-  await page.locator('[data-testid="poignee-nav"]').dblclick();
+  await page.locator('[data-testid="handle-list"]').dblclick();
+  await expect.poll(() => largeur('list')).toBe(400);
+  await page.locator('[data-testid="handle-nav"]').dblclick();
   await expect.poll(() => largeur('nav')).toBe(248);
 });

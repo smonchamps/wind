@@ -627,42 +627,42 @@
 </script>
 
 {#if visible}
-  <div class="scrim" data-testid="reglages-modal" bind:this={panel}>
-    <div class="carte" role="dialog" aria-modal="true" aria-label={t('header.settings')}>
-      <div class="tete">
-        <span class="titre">{t('header.settings')}</span>
-        <button type="button" class="fermer" aria-label={t('action.close')} onclick={close}>
+  <div class="scrim" data-testid="settings-modal" bind:this={panel}>
+    <div class="card" role="dialog" aria-modal="true" aria-label={t('header.settings')}>
+      <div class="head">
+        <span class="title">{t('header.settings')}</span>
+        <button type="button" class="close" aria-label={t('action.close')} onclick={close}>
           <Icon name="close" /></button>
       </div>
-      <div class="milieu">
+      <div class="middle">
         <div class="rail" role="group" aria-label={t('settings.groupsAria')}>
           {#each GROUPS as g (g.id)}
-            <div class="rang" class:actif={group === g.id}
-                 data-testid="reglages-groupe" data-groupe={g.id}
+            <div class="rank" class:active={group === g.id}
+                 data-testid="settings-group" data-group={g.id}
                  role="button" tabindex="0" aria-current={group === g.id}
                  onclick={() => chooseGroup(g.id)}
                  onkeydown={activation(() => chooseGroup(g.id))}>
-              <span class="icone" aria-hidden="true"><Icon name={g.icon} /></span>
-              <span class="libelle">{t(g.label)}</span>
+              <span class="icon" aria-hidden="true"><Icon name={g.icon} /></span>
+              <span class="label">{t(g.label)}</span>
             </div>
           {/each}
         </div>
-        <div class="volet" data-testid="reglages-volet">
+        <div class="pane" data-testid="settings-pane">
           {#if group === 'comptes'}
             <p class="section">{t('group.accounts')}</p>
-            <div class="rangees" data-testid="reglages-comptes">
+            <div class="rows" data-testid="settings-accounts">
               {#each accounts as c (c.account_id)}
-                <div class="compte">
+                <div class="account">
                   <!-- A74: the row's icon becomes THE gate to the
                        marker — it shows the persisted state (swatch or
                        neutral `person`) and opens the choice card. -->
-                  <button type="button" class="btn-repere" data-testid="compte-repere"
+                  <button type="button" class="btn-marker" data-testid="account-marker"
                           aria-expanded={markerOpen === c.account_id}
                           aria-label={t('settings.markerAccount', { email: c.email })}
                           onclick={() => openMarker(c.account_id)}>
                     {#if markers[c.account_id]}
-                      <span class="repere p20"
-                            data-teinte={markers[c.account_id].hue}
+                      <span class="marker p20"
+                            data-hue={markers[c.account_id].hue}
                             aria-hidden="true"><Icon name={markers[c.account_id].icon} /></span>
                     {:else}
                       <Icon name="person" />
@@ -672,19 +672,19 @@
                        the custom name — in Settings the name displays
                        WITH the address (it stays the truth of the
                        connection). -->
-                  <button type="button" class="identite" data-testid="compte-nommer"
+                  <button type="button" class="identity" data-testid="account-rename"
                           aria-expanded={nameOpen === c.account_id}
                           aria-label={t('settings.renameAccount', { email: c.email })}
                           onclick={() => openName(c.account_id)}>
                     {#if names[c.account_id]}
-                      <span class="nom-compte" data-testid="compte-nom">{names[c.account_id]}</span>
+                      <span class="name-account" data-testid="account-name">{names[c.account_id]}</span>
                     {/if}
-                    <span class="adresse" class:sous-nom={names[c.account_id]}>{c.email}</span>
+                    <span class="address" class:under-name={names[c.account_id]}>{c.email}</span>
                   </button>
                   <!-- ADR 0029 (D3): the gate to the import horizon —
                        the VALUE is the gate (no new glyph, A3), the
                        card opens under the row. -->
-                  <button type="button" class="btn-horizon" data-testid="compte-horizon"
+                  <button type="button" class="btn-horizon" data-testid="account-horizon"
                           aria-expanded={horizonOpen === c.account_id}
                           aria-label={t('settings.horizonAccount', { email: c.email })}
                           onclick={() => openHorizon(c.account_id)}>
@@ -693,9 +693,9 @@
                     <!-- Dead token: the state is SAID (link_off, the
                          reconnection glyph — same meaning as at the
                          notification slot) and repairs on the spot. -->
-                    <span class="deconnecte" data-testid="compte-deconnecte">
+                    <span class="disconnected" data-testid="account-disconnected">
                       <Icon name="link_off" />{t('settings.disconnected')}</span>
-                    <button type="button" class="reconnecter" data-testid="compte-reconnecter"
+                    <button type="button" class="reconnect" data-testid="account-reconnect"
                             disabled={reconnection === c.account_id}
                             aria-label={t('settings.reconnectAccount', { email: c.email })}
                             onclick={() => reconnect(c)}>
@@ -706,13 +706,13 @@
                   <!-- PLAN-RETOURS-9 (D2): the gesture is SAID — icon +
                        text, in the product's vocabulary ("remove",
                        nothing is deleted from the server). -->
-                  <button type="button" class="retirer" data-testid="compte-retirer"
+                  <button type="button" class="remove" data-testid="account-remove"
                           aria-label={t('settings.removeAccount', { email: c.email })}
                           onclick={() => requestRemoval(c.account_id)}>
                     <Icon name="delete" />{t('settings.remove')}</button>
                 </div>
                 {#if reconnectionError?.id === c.account_id}
-                  <p class="erreur-reconnexion" data-testid="reconnexion-erreur">
+                  <p class="error-reconnection" data-testid="reconnection-error">
                     {reconnectionError.text}</p>
                 {/if}
                 {#if markerOpen === c.account_id}
@@ -720,12 +720,12 @@
                        pattern). Icons then hues; the first choice waits
                        for its twin, then every click applies
                        immediately (the theme's gesture). -->
-                  <div class="carte-repere" data-testid="reglages-repere">
-                    <p class="titre-repere">{t('settings.markerTitle')}</p>
-                    <div class="choix-repere" role="group" aria-label={t('settings.markerIcons')}>
+                  <div class="card-marker" data-testid="settings-marker">
+                    <p class="title-marker">{t('settings.markerTitle')}</p>
+                    <div class="choice-marker" role="group" aria-label={t('settings.markerIcons')}>
                       {#each MARKER_ICONS as ic (ic)}
-                        <button type="button" class="choix" class:choisi={markerChoice.icon === ic}
-                                data-testid="repere-icone" data-icone={ic}
+                        <button type="button" class="choice" class:chosen={markerChoice.icon === ic}
+                                data-testid="marker-icon" data-icon={ic}
                                 aria-pressed={markerChoice.icon === ic}
                                 title={t(`marker.icon.${ic}`)}
                                 aria-label={t(`marker.icon.${ic}`)}
@@ -733,23 +733,23 @@
                           <Icon name={ic} /></button>
                       {/each}
                     </div>
-                    <div class="choix-repere" role="group" aria-label={t('settings.markerHues')}>
+                    <div class="choice-marker" role="group" aria-label={t('settings.markerHues')}>
                       {#each MARKER_HUES as te (te)}
-                        <button type="button" class="choix" class:choisi={markerChoice.hue === te}
-                                data-testid="repere-teinte" data-couleur={te}
+                        <button type="button" class="choice" class:chosen={markerChoice.hue === te}
+                                data-testid="marker-hue" data-color={te}
                                 aria-pressed={markerChoice.hue === te}
                                 title={t(`marker.hue.${te}`)}
                                 aria-label={t(`marker.hue.${te}`)}
                                 onclick={() => chooseMarker(c.account_id, 'hue', te)}>
-                          <span class="repere pastille-teinte" data-teinte={te}
+                          <span class="marker badge-hue" data-hue={te}
                                 aria-hidden="true"></span></button>
                       {/each}
                     </div>
                     {#if markerError}
-                      <p class="erreur-repere" data-testid="repere-erreur">{markerError}</p>
+                      <p class="error-marker" data-testid="marker-error">{markerError}</p>
                     {/if}
                     {#if markers[c.account_id]}
-                      <button type="button" class="ajouter" data-testid="repere-retirer"
+                      <button type="button" class="add" data-testid="marker-remove"
                               onclick={() => removeMarker(c.account_id)}>
                         {t('settings.markerRemove')}</button>
                     {/if}
@@ -759,24 +759,24 @@
                   <!-- The name card, under the row (the removal
                        pattern). Clearing the field removes the name;
                        Enter saves. -->
-                  <div class="carte-nom" data-testid="reglages-nom">
-                    <p class="titre-repere">{t('settings.nameTitle')}</p>
+                  <div class="card-name" data-testid="settings-name">
+                    <p class="title-marker">{t('settings.nameTitle')}</p>
                     <!-- No maxlength: "never silently truncated"
                          (D3 contract) — a name that's too long gets
                          REFUSED with its error, by the shell. -->
-                    <input type="text" class="champ-nom"
-                           data-testid="nom-champ" bind:value={draftName}
+                    <input type="text" class="field-name"
+                           data-testid="name-field" bind:value={draftName}
                            placeholder={c.email}
                            aria-label={t('settings.nameTitle')}
                            onkeydown={(e) => { if (e.key === 'Enter') saveName(c.account_id); }}>
                     {#if nameError}
-                      <p class="erreur-repere" data-testid="nom-erreur">{nameError}</p>
+                      <p class="error-marker" data-testid="name-error">{nameError}</p>
                     {/if}
-                    <div class="boutons-retrait">
-                      <button type="button" class="ajouter" data-testid="nom-enregistrer"
+                    <div class="buttons-removal">
+                      <button type="button" class="add" data-testid="name-save"
                               disabled={nameTaken} onclick={() => saveName(c.account_id)}>
                         {t('action.save')}</button>
-                      <button type="button" class="ajouter" data-testid="nom-annuler"
+                      <button type="button" class="add" data-testid="name-cancel"
                               onclick={() => (nameOpen = null)}>
                         {t('action.cancel')}</button>
                     </div>
@@ -787,8 +787,8 @@
                        pattern). Immediate application — the theme's
                        gesture; the note says what expanding and
                        reducing DO. -->
-                  <div class="carte-nom" data-testid="reglages-horizon">
-                    <p class="titre-repere">{t('settings.horizonTitle')}</p>
+                  <div class="card-name" data-testid="settings-horizon">
+                    <p class="title-marker">{t('settings.horizonTitle')}</p>
                     {#if horizons[c.account_id]}
                       <select class="select-horizon" data-testid="horizon-select"
                               value={horizons[c.account_id]}
@@ -800,7 +800,7 @@
                     {/if}
                     <p class="note-horizon">{t('settings.horizonNote')}</p>
                     {#if horizonError}
-                      <p class="erreur-repere" data-testid="horizon-erreur">{horizonError}</p>
+                      <p class="error-marker" data-testid="horizon-error">{horizonError}</p>
                     {/if}
                   </div>
                 {/if}
@@ -809,16 +809,16 @@
                        signature card: a destructive gesture never fires
                        on the first click, and it says what it erases —
                        and what it doesn't erase (the server). -->
-                  <div class="carte-retrait" data-testid="reglages-retrait">
-                    <p class="avertissement">{t('settings.removeConfirm', { email: c.email })}</p>
+                  <div class="card-removal" data-testid="settings-removal">
+                    <p class="warning">{t('settings.removeConfirm', { email: c.email })}</p>
                     {#if removalError}
-                      <p class="erreur-retrait" data-testid="retrait-erreur">{removalError}</p>
+                      <p class="error-removal" data-testid="removal-error">{removalError}</p>
                     {/if}
-                    <div class="boutons-retrait">
-                      <button type="button" class="danger" data-testid="retrait-confirmer"
+                    <div class="buttons-removal">
+                      <button type="button" class="danger" data-testid="removal-confirm"
                               disabled={removalBusy} onclick={confirmRemoval}>
                         {removalBusy ? t('settings.removalInProgress') : t('action.remove')}</button>
-                      <button type="button" class="ajouter" data-testid="retrait-annuler"
+                      <button type="button" class="add" data-testid="removal-cancel"
                               onclick={() => requestRemoval(c.account_id)}>
                         {t('action.cancel')}</button>
                     </div>
@@ -830,69 +830,69 @@
                      not a floating form (field verdict). Torn down on
                      collapse or on success: it always starts clean
                      again. -->
-                <div class="carte-ajout" data-testid="reglages-guichet">
-                  <div class="tete-ajout">
-                    <span class="titre-ajout">{t('settings.addAccount')}</span>
-                    <button type="button" class="fermer" aria-label={t('action.collapse')}
+                <div class="card-add" data-testid="settings-desk">
+                  <div class="head-add">
+                    <span class="title-add">{t('settings.addAccount')}</span>
+                    <button type="button" class="close" aria-label={t('action.collapse')}
                             onclick={() => (addOpen = false)}>
                       <Icon name="close" /></button>
                   </div>
                   <AccountDesk compact onadd={() => { addOpen = false; onadd(); }} />
                 </div>
               {:else}
-                <button type="button" class="ajouter" data-testid="reglages-ajouter"
+                <button type="button" class="add" data-testid="settings-add"
                         onclick={() => (addOpen = true)}>
                   <Icon name="person_add" />{t('settings.addAccount')}</button>
               {/if}
             </div>
           {:else if group === 'themes'}
             <p class="section">{t('settings.sectionThemes')}</p>
-            <div class="rangees">
+            <div class="rows">
               <!-- R1 (PLAN-RETOURS-13): OS dark tracking lives at the
                    HEAD of Themes — it governs the displayed theme, not
                    the display group. The historical testid stays (two
                    specs and the docs carry it). -->
-              <div class="reglage">
-                <span class="libelles">
-                  <span class="nom">{t('settings.darkAuto')}</span>
+              <div class="setting">
+                <span class="labels">
+                  <span class="name">{t('settings.darkAuto')}</span>
                   <span class="desc">{t('settings.darkAutoDesc')}</span>
                 </span>
-                <button type="button" class="bascule" role="switch"
+                <button type="button" class="toggle" role="switch"
                         aria-checked={auto} aria-label={t('settings.darkAuto')}
-                        data-testid="affichage-auto" onclick={toggleAuto}>
-                  <span class="bille"></span>
+                        data-testid="display-auto" onclick={toggleAuto}>
+                  <span class="dot"></span>
                 </button>
               </div>
               {#each THEME_CARDS as card (card.id)}
-                <div class="rangee" class:active={active === card.id}
+                <div class="row" class:active={active === card.id}
                      data-testid="theme" data-theme-id={card.id}
                      role="button" tabindex="0" aria-pressed={active === card.id}
                      onclick={() => choose(card.id)}
                      onkeydown={activation(() => choose(card.id))}>
-                  <span class="pastilles">
+                  <span class="badges">
                     {#each card.swatches as color (color)}
-                      <span class="pastille" style="background:{color}"></span>
+                      <span class="badge" style="background:{color}"></span>
                     {/each}
                   </span>
-                  <span class="libelles">
-                    <span class="nom">{t(`theme.${card.id}.name`)}</span>
+                  <span class="labels">
+                    <span class="name">{t(`theme.${card.id}.name`)}</span>
                     <span class="desc">{t(`theme.${card.id}.desc`)}</span>
                   </span>
                   {#if active === card.id}
-                    <span class="coche" aria-hidden="true"><Icon name="check_circle" /></span>
+                    <span class="check" aria-hidden="true"><Icon name="check_circle" /></span>
                   {/if}
                 </div>
               {/each}
             </div>
           {:else if group === 'affichage'}
             <p class="section">{t('group.display')}</p>
-            <div class="rangees" data-testid="reglages-affichage">
-              <div class="reglage">
-                <span class="libelles">
-                  <span class="nom">{t('settings.language')}</span>
+            <div class="rows" data-testid="settings-display">
+              <div class="setting">
+                <span class="labels">
+                  <span class="name">{t('settings.language')}</span>
                   <span class="desc">{t('settings.languageDesc')}</span>
                 </span>
-                <select class="langue" data-testid="affichage-langue"
+                <select class="language" data-testid="display-language"
                         aria-label={t('settings.language')} value={language}
                         onchange={(e) => changeLanguage(e.target.value)}>
                   {#each LANGUAGES as code (code)}
@@ -900,12 +900,12 @@
                   {/each}
                 </select>
               </div>
-              <div class="reglage">
-                <span class="libelles">
-                  <span class="nom">{t('settings.panes')}</span>
+              <div class="setting">
+                <span class="labels">
+                  <span class="name">{t('settings.panes')}</span>
                   <span class="desc">{t('settings.panesDesc')}</span>
                 </span>
-                <select class="langue" data-testid="affichage-volets"
+                <select class="language" data-testid="display-panes"
                         aria-label={t('settings.panes')} value={String(panes)}
                         onchange={(e) => changePanes(Number(e.target.value))}>
                   {#each [3, 2, 1] as n (n)}
@@ -916,12 +916,12 @@
               <!-- A83: row spacing, to the EXACT pattern of Layout
                    (A26) — native selector dressed in the row's tokens,
                    no new design (A15: no new group for a single row). -->
-              <div class="reglage">
-                <span class="libelles">
-                  <span class="nom">{t('settings.spacing')}</span>
+              <div class="setting">
+                <span class="labels">
+                  <span class="name">{t('settings.spacing')}</span>
                   <span class="desc">{t('settings.spacingDesc')}</span>
                 </span>
-                <select class="langue" data-testid="affichage-espacement"
+                <select class="language" data-testid="display-spacing"
                         aria-label={t('settings.spacing')} value={spacing}
                         onchange={(e) => changeSpacing(e.target.value)}>
                   {#each LEVELS as n (n)}
@@ -934,17 +934,17 @@
                    a list (A15); nothing displays as long as no rule
                    exists — never an empty section. -->
               {#if imageSenders.length > 0}
-                <div class="reglage">
-                  <span class="libelles">
-                    <span class="nom">{t('settings.imagesSenders')}</span>
+                <div class="setting">
+                  <span class="labels">
+                    <span class="name">{t('settings.imagesSenders')}</span>
                     <span class="desc">{t('settings.imagesSendersDesc')}</span>
                   </span>
                 </div>
                 {#each imageSenders as address (address)}
-                  <div class="regle-images" data-testid="expediteur-images">
-                    <span class="adresse-regle">{address}</span>
-                    <button type="button" class="ajouter"
-                            data-testid="retirer-expediteur-images"
+                  <div class="rule-images" data-testid="sender-images">
+                    <span class="address-rule">{address}</span>
+                    <button type="button" class="add"
+                            data-testid="remove-image-sender"
                             onclick={() => removeImageSender(address)}>
                       {t('settings.removeSender')}</button>
                   </div>
@@ -953,15 +953,15 @@
             </div>
           {:else if group === 'screener'}
             <p class="section">{t('group.screener')}</p>
-            <div class="rangees" data-testid="reglages-portier">
-              <p class="desc-groupe">{t('settings.screenerDesc')}</p>
+            <div class="rows" data-testid="settings-screener">
+              <p class="desc-group">{t('settings.screenerDesc')}</p>
               {#if screenerDefaults}
-              <div class="reglage">
-                <span class="libelles">
-                  <span class="nom">{t('settings.screenerYes')}</span>
+              <div class="setting">
+                <span class="labels">
+                  <span class="name">{t('settings.screenerYes')}</span>
                   <span class="desc">{t('settings.screenerYesDesc')}</span>
                 </span>
-                <select class="langue" data-testid="portier-defaut-oui"
+                <select class="language" data-testid="screener-default-yes"
                         aria-label={t('settings.screenerYes')} value={screenerDefaults.yes}
                         onchange={(e) => changeScreener('yes', e.target.value)}>
                   <option value="inbox">{t('screener.toInbox')}</option>
@@ -969,12 +969,12 @@
                   <option value="paper_trail">{t('screener.toPaperTrail')}</option>
                 </select>
               </div>
-              <div class="reglage">
-                <span class="libelles">
-                  <span class="nom">{t('settings.screenerNo')}</span>
+              <div class="setting">
+                <span class="labels">
+                  <span class="name">{t('settings.screenerNo')}</span>
                   <span class="desc">{t('settings.screenerNoDesc')}</span>
                 </span>
-                <select class="langue" data-testid="portier-defaut-non"
+                <select class="language" data-testid="screener-default-no"
                         aria-label={t('settings.screenerNo')} value={screenerDefaults.no}
                         onchange={(e) => changeScreener('no', e.target.value)}>
                   <option value="trash">{t('screener.ruleTrash')}</option>
@@ -988,15 +988,15 @@
                    client-side search (a list of verdicts, not a
                    corpus — refused per §2.6), the Screener page's
                    "Reinstate" gesture. -->
-              <div class="reglage">
-                <span class="libelles">
-                  <span class="nom">{t('settings.screenerDecisions')}</span>
+              <div class="setting">
+                <span class="labels">
+                  <span class="name">{t('settings.screenerDecisions')}</span>
                   <span class="desc">{t('settings.screenerDecisionsDesc')}</span>
                 </span>
               </div>
               {#if routingsList?.length}
-                <div class="recherche-decisions">
-                  <input type="search" data-testid="portier-recherche"
+                <div class="search-decisions">
+                  <input type="search" data-testid="screener-search"
                          placeholder={t('settings.screenerSearch')}
                          aria-label={t('settings.screenerSearch')}
                          bind:value={routingsFilter} />
@@ -1004,17 +1004,17 @@
               {/if}
               {#if visibleRoutings}
                 {#if routingsList.length === 0}
-                  <p class="decisions-vide" data-testid="portier-decisions-vide">{t('settings.screenerNoDecision')}</p>
+                  <p class="decisions-empty" data-testid="screener-decisions-empty">{t('settings.screenerNoDecision')}</p>
                 {:else if visibleRoutings.length === 0}
-                  <p class="decisions-vide" data-testid="portier-decisions-vide">{t('settings.screenerNoResult')}</p>
+                  <p class="decisions-empty" data-testid="screener-decisions-empty">{t('settings.screenerNoResult')}</p>
                 {:else}
-                  <div class="decisions" data-testid="portier-decisions">
+                  <div class="decisions" data-testid="screener-decisions">
                     {#each visibleRoutings as r (r.address)}
-                      <div class="regle-images decision" data-testid="portier-decision">
-                        <span class="adresse-regle"><b>{r.address}</b>
+                      <div class="rule-images decision" data-testid="screener-decision">
+                        <span class="address-rule"><b>{r.address}</b>
                           <span class="verdict">{routingLabel(r)}</span></span>
-                        <button type="button" class="ajouter"
-                                data-testid="decision-modifier"
+                        <button type="button" class="add"
+                                data-testid="decision-edit"
                                 aria-haspopup="menu"
                                 aria-expanded={decisionMenu?.address === r.address}
                                 onclick={(e) => openEdit(e, r)}>
@@ -1027,92 +1027,92 @@
             </div>
           {:else if group === 'notifications'}
             <p class="section">{t('group.notifications')}</p>
-            <div class="rangees" data-testid="reglages-notifications">
-              <div class="reglage">
-                <span class="libelles">
-                  <span class="nom">{t('settings.bubbles')}</span>
+            <div class="rows" data-testid="settings-notifications">
+              <div class="setting">
+                <span class="labels">
+                  <span class="name">{t('settings.bubbles')}</span>
                   <span class="desc">{t('settings.bubblesDesc')}</span>
                 </span>
-                <button type="button" class="bascule" role="switch"
+                <button type="button" class="toggle" role="switch"
                         aria-checked={bubbles} aria-label={t('settings.bubbles')}
-                        data-testid="notif-bulles" onclick={toggleBubbles}>
-                  <span class="bille"></span>
+                        data-testid="notif-bubbles" onclick={toggleBubbles}>
+                  <span class="dot"></span>
                 </button>
               </div>
             </div>
           {:else if group === 'signature'}
             <p class="section">{t('group.signature')}</p>
-            <div class="rangees" data-testid="reglages-signature">
-              <p class="desc-groupe">{t('settings.signatureDesc')}</p>
+            <div class="rows" data-testid="settings-signature">
+              <p class="desc-group">{t('settings.signatureDesc')}</p>
               {#each accounts as c (c.account_id)}
-                <div class="bloc-signature" data-testid="signature-compte">
+                <div class="block-signature" data-testid="signature-account">
                   <!-- D4 (PLAN-RETOURS-9): in Settings the name
                        displays WITH the address — here too: this is the
                        surface where editing the wrong account costs
                        (content sent). -->
-                  <span class="adresse-signature">
-                    <Icon name="person" />{#if names[c.account_id]}{names[c.account_id]}<span class="adresse-sous">{c.email}</span>{:else}{c.email}{/if}</span>
+                  <span class="address-signature">
+                    <Icon name="person" />{#if names[c.account_id]}{names[c.account_id]}<span class="address-under">{c.email}</span>{:else}{c.email}{/if}</span>
                   <!-- The reduced toolbar (D3): bold/italic/underline —
                        onmousedown neutralized, a format button never
                        steals the editor's selection (idiom A62). -->
-                  <div class="barre-signature">
-                    <button type="button" class="bouton-format" aria-label={t('compose.bold')}
-                            title={t('compose.bold')} data-testid="signature-gras"
+                  <div class="bar-signature">
+                    <button type="button" class="button-format" aria-label={t('compose.bold')}
+                            title={t('compose.bold')} data-testid="signature-bold"
                             onmousedown={(e) => e.preventDefault()}
                             onclick={() => signatureCommand('bold')}>
                       <Icon name="format_bold" /></button>
-                    <button type="button" class="bouton-format" aria-label={t('compose.italic')}
-                            title={t('compose.italic')} data-testid="signature-italique"
+                    <button type="button" class="button-format" aria-label={t('compose.italic')}
+                            title={t('compose.italic')} data-testid="signature-italic"
                             onmousedown={(e) => e.preventDefault()}
                             onclick={() => signatureCommand('italic')}>
                       <Icon name="format_italic" /></button>
-                    <button type="button" class="bouton-format" aria-label={t('compose.underline')}
-                            title={t('compose.underline')} data-testid="signature-souligne"
+                    <button type="button" class="button-format" aria-label={t('compose.underline')}
+                            title={t('compose.underline')} data-testid="signature-underline"
                             onmousedown={(e) => e.preventDefault()}
                             onclick={() => signatureCommand('underline')}>
                       <Icon name="format_underlined" /></button>
                   </div>
-                  <div class="editeur-signature" contenteditable="true" role="textbox"
+                  <div class="editor-signature" contenteditable="true" role="textbox"
                        aria-multiline="true" tabindex="0"
                        data-placeholder={t('settings.signaturePlaceholder')}
                        aria-label={t('settings.signaturePlaceholder')}
-                       data-testid="signature-editeur"
+                       data-testid="signature-editor"
                        bind:this={signatureFields[c.account_id]}
                        oninput={() => {
                          const sig = signatures[c.account_id];
                          if (sig?.state) signatures[c.account_id] = { ...sig, state: null };
                        }}></div>
-                  <div class="reglage">
-                    <span class="libelles">
-                      <span class="nom">{t('settings.signatureReplies')}</span>
+                  <div class="setting">
+                    <span class="labels">
+                      <span class="name">{t('settings.signatureReplies')}</span>
                       <span class="desc">{t('settings.signatureRepliesDesc')}</span>
                     </span>
-                    <button type="button" class="bascule" role="switch"
+                    <button type="button" class="toggle" role="switch"
                             aria-checked={signatures[c.account_id]?.replies ?? false}
                             aria-label={t('settings.signatureReplies')}
-                            data-testid="signature-repliques"
+                            data-testid="signature-replies"
                             onclick={() => toggleReplies(c)}>
-                      <span class="bille"></span>
+                      <span class="dot"></span>
                     </button>
                   </div>
-                  <div class="boutons-signature">
-                    <button type="button" class="ajouter" data-testid="signature-enregistrer"
+                  <div class="buttons-signature">
+                    <button type="button" class="add" data-testid="signature-save"
                             onclick={() => saveSignature(c)}>
                       <Icon name="signature" />{t('action.save')}</button>
-                    <button type="button" class="ajouter" data-testid="signature-effacer"
+                    <button type="button" class="add" data-testid="signature-clear"
                             onclick={() => clearSignature(c)}>{t('action.clear')}</button>
                     {#if accounts.length > 1}
-                      <button type="button" class="ajouter" data-testid="signature-tous"
+                      <button type="button" class="add" data-testid="signature-all"
                               onclick={() => applyToAll(c)}>
                         {t('settings.signatureAll')}</button>
                     {/if}
                   </div>
                   {#if signatures[c.account_id]?.state === 'ok'}
-                    <p class="etat-signature" data-testid="signature-etat">{t('toast.signature')}</p>
+                    <p class="state-signature" data-testid="signature-state">{t('toast.signature')}</p>
                   {:else if signatures[c.account_id]?.state === 'tous'}
-                    <p class="etat-signature" data-testid="signature-etat">{t('toast.signatureAll')}</p>
+                    <p class="state-signature" data-testid="signature-state">{t('toast.signatureAll')}</p>
                   {:else if signatures[c.account_id]?.state?.error}
-                    <p class="erreur-retrait" data-testid="signature-erreur">
+                    <p class="error-removal" data-testid="signature-error">
                       {signatures[c.account_id].state.error}</p>
                   {/if}
                 </div>
@@ -1120,30 +1120,30 @@
             </div>
           {:else if group === 'raccourcis'}
             <p class="section">{t('settings.sectionShortcuts')}</p>
-            <div class="rangees" data-testid="reglages-raccourcis">
+            <div class="rows" data-testid="settings-shortcuts">
               {#each SHORTCUTS as r (r)}
-                <div class="raccourci">
+                <div class="shortcut">
                   <kbd>{t(`shortcut.key.${r}`)}</kbd>
-                  <span class="geste">{t(`shortcut.gesture.${r}`)}</span>
+                  <span class="gesture">{t(`shortcut.gesture.${r}`)}</span>
                 </div>
               {/each}
               <p class="note">{t('settings.noteShortcuts')}</p>
             </div>
           {:else if group === 'apropos'}
             <p class="section">{t('group.about')}</p>
-            <div class="rangees" data-testid="reglages-apropos">
+            <div class="rows" data-testid="settings-about">
               <!-- V11: the brand IN TILE form — "About" is one of the
                    four spots under the frozen regime (W-D3). -->
-              <span class="marque-bande apropos-bande"><Brand tile size={40} /><b>Wind</b></span>
-              <div class="ligne-apropos">
-                <span class="cle">{t('settings.version')}</span>
-                <span class="valeur" data-testid="apropos-version">{version || '…'}</span>
+              <span class="brand-band about-band"><Brand tile size={40} /><b>Wind</b></span>
+              <div class="row-about">
+                <span class="key">{t('settings.version')}</span>
+                <span class="value" data-testid="about-version">{version || '…'}</span>
               </div>
-              <div class="ligne-apropos">
-                <span class="cle">{t('settings.update')}</span>
-                <span class="valeur">
+              <div class="row-about">
+                <span class="key">{t('settings.update')}</span>
+                <span class="value">
                   {#if update === null}
-                    <button type="button" class="ajouter" data-testid="apropos-verifier"
+                    <button type="button" class="add" data-testid="about-check"
                             onclick={checkUpdate}>{t('settings.checkUpdate')}</button>
                   {:else if update === 'controle'}
                     {t('settings.checking')}
@@ -1157,30 +1157,30 @@
                          offered. -->
                     {#if update.error}{t('error.update', { err: update.error })}. {/if}
                     {t('settings.updateAvailable', { version: update.version })}
-                    <button type="button" class="ajouter" onclick={installUpdate}>
+                    <button type="button" class="add" onclick={installUpdate}>
                       {t('action.install')}</button>
                   {:else}
                     {t('settings.updateFailed', { err: update.error })}
                   {/if}
                 </span>
               </div>
-              <div class="ligne-apropos">
-                <span class="cle">{t('settings.icons')}</span>
-                <span class="valeur">{t('settings.iconsValue')}</span>
+              <div class="row-about">
+                <span class="key">{t('settings.icons')}</span>
+                <span class="value">{t('settings.iconsValue')}</span>
               </div>
               <!-- R2 (PLAN-RETOURS-11, CE verdict from the visual
                    STOP): the origin mention is WITHOUT a key — a label
                    set alone,
                    detached from the key/value block that precedes it. -->
-              <div class="origine" data-testid="apropos-origine">
+              <div class="origin" data-testid="about-origin">
                 <EUFlag />{t('settings.originValue')}
               </div>
             </div>
           {/if}
         </div>
       </div>
-      <div class="pied">
-        <button type="button" class="principal" data-testid="reglages-termine" onclick={close}>
+      <div class="foot">
+        <button type="button" class="main" data-testid="settings-done" onclick={close}>
           {t('action.done')}</button>
       </div>
     </div>
@@ -1189,32 +1189,32 @@
 
 <Menu isOpen={decisionMenu !== null} x={decisionMenu?.x ?? 0} y={decisionMenu?.y ?? 0}
       testid="decision-menu" onclose={() => (decisionMenu = null)}>
-    <p class="titre-menu">{t('screener.yesTo')}</p>
-    <button type="button" role="menuitem" data-testid="decision-vers-reception"
+    <p class="title-menu">{t('screener.yesTo')}</p>
+    <button type="button" role="menuitem" data-testid="decision-to-inbox"
             onclick={() => editRouting('inbox')}>
       <Icon name="inbox" />{t('screener.toInbox')}</button>
-    <button type="button" role="menuitem" data-testid="decision-vers-kiosque"
+    <button type="button" role="menuitem" data-testid="decision-to-feed"
             onclick={() => editRouting('feed')}>
       <Icon name="feed" />{t('screener.toFeed')}</button>
-    <button type="button" role="menuitem" data-testid="decision-vers-registre"
+    <button type="button" role="menuitem" data-testid="decision-to-paper-trail"
             onclick={() => editRouting('paper_trail')}>
       <Icon name="paper_trail" />{t('screener.toPaperTrail')}</button>
-    <div class="filet-menu"></div>
-    <p class="titre-menu">{t('screener.noWillBe')}</p>
-    <button type="button" role="menuitem" data-testid="decision-regle-spam"
+    <div class="net-menu"></div>
+    <p class="title-menu">{t('screener.noWillBe')}</p>
+    <button type="button" role="menuitem" data-testid="decision-rule-spam"
             onclick={() => editRouting('screened_out', 'spam')}>
       <Icon name="report" />{t('screener.ruleSpam')}</button>
-    <button type="button" role="menuitem" data-testid="decision-regle-archive"
+    <button type="button" role="menuitem" data-testid="decision-rule-archive"
             onclick={() => editRouting('screened_out', 'archive')}>
       <Icon name="inventory_2" />{t('screener.ruleArchive')}</button>
-    <button type="button" role="menuitem" data-testid="decision-regle-corbeille"
+    <button type="button" role="menuitem" data-testid="decision-rule-trash"
             onclick={() => editRouting('screened_out', 'trash')}>
       <Icon name="delete" />{t('screener.ruleTrash')}</button>
-    <button type="button" role="menuitem" data-testid="decision-regle-ecarte"
+    <button type="button" role="menuitem" data-testid="decision-rule-screened-out"
             onclick={() => editRouting('screened_out')}>
       <Icon name="visibility_off" />{t('screener.ruleScreenedOut')}</button>
-    <div class="filet-menu"></div>
-    <button type="button" role="menuitem" data-testid="decision-renvoyer"
+    <div class="net-menu"></div>
+    <button type="button" role="menuitem" data-testid="decision-resend"
             onclick={sendBackToScreener}>
       <Icon name="screener" />{t('settings.resendScreener')}</button>
   </Menu>
@@ -1227,26 +1227,26 @@
     position:absolute; inset:0; background:var(--scrim); z-index:2;
     display:flex; align-items:center; justify-content:center; padding:36px;
   }
-  .carte {
+  .card {
     width:800px; height:min(640px, 100%); background:var(--surface);
     border:1px solid var(--border);
     border-radius:var(--r-surface); box-shadow:var(--shadow);
     display:flex; flex-direction:column; overflow:hidden;
   }
-  .tete {
+  .head {
     height:48px; flex:none; padding:0 16px 0 22px; display:flex;
     align-items:center; gap:14px; border-bottom:1px solid var(--border);
   }
-  .titre { font-size:15px; font-weight:600; flex:1; color:var(--ink); }
-  .fermer {
+  .title { font-size:15px; font-weight:600; flex:1; color:var(--ink); }
+  .close {
     height:32px; width:32px; padding:0; display:inline-flex;
     align-items:center; justify-content:center; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--r-control); cursor:pointer;
   }
-  .fermer:hover { background:var(--sel); }
+  .close:hover { background:var(--sel); }
 
-  .milieu { flex:1; display:flex; min-height:0; }
+  .middle { flex:1; display:flex; min-height:0; }
 
   /* The rail: its own grammar since A29 (the nav of screen 02 lives
      at the tracks' design) — 36 px rows, icon + label, active in
@@ -1263,26 +1263,26 @@
      a transform, outside geometry. The row keeps its 36 px (the
      rail's grammar, A13/A29): the label carries the baseline to
      center via its line-height, the icon hooks onto it. */
-  .rang {
+  .rank {
     display:flex; align-items:baseline; gap:10px; height:36px; flex:none;
     padding:0 12px; border-radius:var(--r-control); cursor:pointer;
     border:1px solid transparent;
   }
-  .rang:hover { background:var(--sel); border-color:var(--border); }
-  .rang.actif {
+  .rank:hover { background:var(--sel); border-color:var(--border); }
+  .rank.active {
     background:var(--surface); border-color:var(--border);
     box-shadow:var(--shadow);
   }
-  .icone { color:var(--muted); }
-  .icone :global(.ic) { vertical-align:baseline; transform:translateY(2px); }
-  .actif .icone { color:var(--accent); }
-  .libelle {
+  .icon { color:var(--muted); }
+  .icon :global(.ic) { vertical-align:baseline; transform:translateY(2px); }
+  .active .icon { color:var(--accent); }
+  .label {
     font-size:13px; line-height:36px; color:var(--ink2); flex:1;
     min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
-  .actif .libelle { font-weight:600; color:var(--ink); }
+  .active .label { font-weight:600; color:var(--ink); }
 
-  .volet {
+  .pane {
     flex:1; padding:22px; display:flex; flex-direction:column; gap:14px;
     overflow:auto; min-width:0;
   }
@@ -1290,29 +1290,29 @@
     margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase;
     color:var(--muted); font-weight:600;
   }
-  .rangees { display:flex; flex-direction:column; gap:6px; }
-  .rangee {
+  .rows { display:flex; flex-direction:column; gap:6px; }
+  .row {
     display:flex; align-items:center; gap:16px; padding:14px 16px;
     border-radius:var(--r-surface); cursor:pointer; border:1px solid transparent;
   }
-  .rangee:hover { background:var(--sel); }
-  .rangee.active {
+  .row:hover { background:var(--sel); }
+  .row.active {
     background:var(--surface); border:1px solid var(--border);
     box-shadow:var(--shadow);
   }
-  .rangee.active:hover { background:var(--surface); }
-  .pastilles { display:flex; gap:5px; flex:none; }
-  .pastille {
+  .row.active:hover { background:var(--surface); }
+  .badges { display:flex; gap:5px; flex:none; }
+  .badge {
     width:22px; height:22px; border-radius:var(--r-control);
     border:1px solid var(--border);
   }
-  .libelles {
+  .labels {
     display:flex; flex-direction:column; gap:2px; flex:1; min-width:0;
   }
-  .nom { font-size:14px; font-weight:600; color:var(--ink); }
+  .name { font-size:14px; font-weight:600; color:var(--ink); }
   .desc { font-size:12px; line-height:1.4; color:var(--muted); }
-  .coche { color:var(--accent); }
-  .compte {
+  .check { color:var(--accent); }
+  .account {
     display:flex; align-items:center; gap:12px; padding:10px 16px;
     font-size:13px; color:var(--ink2);
   }
@@ -1321,8 +1321,8 @@
      NULL specificity for the exclusion — otherwise the rule would
      take precedence over `.deconnecte :global(.ic)` and would douse
      the link_off alert glyph (review 2026-08-22). */
-  .compte :global(:where(:not(.repere)) > .ic) { color:var(--muted); }
-  .adresse {
+  .account :global(:where(:not(.marker)) > .ic) { color:var(--muted); }
+  .address {
     color:var(--ink); overflow:hidden; text-overflow:ellipsis;
     white-space:nowrap;
   }
@@ -1331,57 +1331,57 @@
      the button shrinks and its text truncates — a long address never
      covers the gestures on the right (the ellipsis the row held
      before, review 2026-08-23). */
-  .identite {
+  .identity {
     display:flex; flex-direction:column; align-items:flex-start; gap:1px;
     min-width:0; overflow:hidden; padding:2px 6px; margin:0 -6px;
     font-size:13px; text-align:left; color:var(--ink);
     background:transparent; border:1px solid transparent;
     border-radius:var(--r-control); cursor:pointer;
   }
-  .identite:hover { background:var(--sel); border-color:var(--border); }
-  .identite .nom-compte, .identite .adresse {
+  .identity:hover { background:var(--sel); border-color:var(--border); }
+  .identity .name-account, .identity .address {
     max-width:100%; overflow:hidden; text-overflow:ellipsis;
     white-space:nowrap;
   }
   /* `.name` belongs to the group cards (14px) — the account name has
      ITS OWN class, never a reuse (collision noted in review). */
-  .nom-compte { color:var(--ink); font-weight:600; }
-  .sous-nom { font-size:12px; color:var(--muted); }
-  .champ-nom {
+  .name-account { color:var(--ink); font-weight:600; }
+  .under-name { font-size:12px; color:var(--muted); }
+  .field-name {
     height:32px; padding:0 10px; font-size:13px; color:var(--ink);
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--r-control);
   }
-  .champ-nom:focus { border-color:var(--accent); outline:none; }
-  .ajouter {
+  .field-name:focus { border-color:var(--accent); outline:none; }
+  .add {
     height:32px; padding:0 16px; align-self:flex-start; display:inline-flex;
     align-items:center; gap:8px; font-size:13px; color:var(--ink);
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--r-control); cursor:pointer;
   }
-  .ajouter:hover { background:var(--sel); }
+  .add:hover { background:var(--sel); }
 
   /* Dead token: the state is said in alert (link_off + "Disconnected"),
      pushed to the right with the repair gesture — a healthy account's
      row, meanwhile, doesn't change. */
-  .deconnecte {
+  .disconnected {
     margin-left:auto; flex:none; display:inline-flex; align-items:center;
     gap:6px; font-size:12.5px; font-weight:600; color:var(--alert);
     white-space:nowrap;
   }
-  .deconnecte :global(.ic) { color:var(--alert); width:15px; height:15px; }
-  .reconnecter {
+  .disconnected :global(.ic) { color:var(--alert); width:15px; height:15px; }
+  .reconnect {
     height:28px; padding:0 12px; flex:none; display:inline-flex;
     align-items:center; font-size:12.5px; font-weight:600;
     color:var(--ink); background:var(--surface);
     border:1px solid var(--border); border-radius:var(--r-control); cursor:pointer;
     white-space:nowrap;
   }
-  .reconnecter:hover:not(:disabled) { background:var(--sel); }
-  .reconnecter:disabled { opacity:.6; cursor:default; }
+  .reconnect:hover:not(:disabled) { background:var(--sel); }
+  .reconnect:disabled { opacity:.6; cursor:default; }
   /* A disconnected account already has its state on the right: the
      removal's trash icon loses its automatic push. */
-  .compte:has(.deconnecte) .retirer, .compte:has(.btn-horizon) .retirer { margin-left:0; }
+  .account:has(.disconnected) .remove, .account:has(.btn-horizon) .remove { margin-left:0; }
   /* The horizon's gate: the value as text, discreet at rest — the
      removal's design, without the alert. */
   .btn-horizon {
@@ -1391,7 +1391,7 @@
     border:1px solid transparent; border-radius:var(--r-control); cursor:pointer;
   }
   .btn-horizon:hover { color:var(--ink); background:var(--sel); border-color:var(--border); }
-  .compte:has(.deconnecte) .btn-horizon { margin-left:0; }
+  .account:has(.disconnected) .btn-horizon { margin-left:0; }
   .select-horizon {
     height:32px; font-size:13px; padding:0 10px; align-self:flex-start;
     min-width:200px; color:var(--ink); background:var(--surface);
@@ -1399,7 +1399,7 @@
     outline:none; cursor:pointer;
   }
   .note-horizon { margin:0; font-size:12px; line-height:1.5; color:var(--muted); }
-  .erreur-reconnexion {
+  .error-reconnection {
     margin:0; padding:0 16px 6px; font-size:12px; line-height:1.4;
     color:var(--alert);
   }
@@ -1407,19 +1407,19 @@
   /* Removal: discreet at rest (the row stays a row), the alert only
      shows on hover — a permanent red would shout on every healthy
      account. */
-  .retirer {
+  .remove {
     height:28px; padding:0 10px; margin-left:auto; flex:none;
     display:inline-flex; align-items:center; justify-content:center;
     gap:6px; font-size:12.5px; white-space:nowrap;
     color:var(--muted); background:transparent;
     border:1px solid transparent; border-radius:var(--r-control); cursor:pointer;
   }
-  .retirer:hover {
+  .remove:hover {
     color:var(--alert); background:var(--sel); border-color:var(--border);
   }
   /* The "card under the row" — ONE rule for removal, marker and
      add (review 2026-08-22: three identical copies were drifting). */
-  .carte-retrait, .carte-repere, .carte-ajout, .carte-nom {
+  .card-removal, .card-marker, .card-add, .card-name {
     border:1px solid var(--border);
     border-radius:var(--r-surface); padding:14px 16px 16px;
     display:flex; flex-direction:column; gap:12px;
@@ -1427,28 +1427,28 @@
   /* A74 — the marker: the gate is the row's icon (a discreet button,
      the removal's design), the choice card follows the removal
      card's pattern — the SAME rule block, not a copy. */
-  .btn-repere {
+  .btn-marker {
     height:28px; width:28px; padding:0; flex:none;
     display:inline-flex; align-items:center; justify-content:center;
     background:transparent; border:1px solid transparent;
     border-radius:var(--r-control); cursor:pointer;
   }
-  .btn-repere:hover { background:var(--sel); border-color:var(--border); }
-  .titre-repere { margin:0; font-size:13px; font-weight:600; color:var(--ink); }
-  .choix-repere { display:flex; flex-wrap:wrap; gap:6px; }
-  .choix {
+  .btn-marker:hover { background:var(--sel); border-color:var(--border); }
+  .title-marker { margin:0; font-size:13px; font-weight:600; color:var(--ink); }
+  .choice-marker { display:flex; flex-wrap:wrap; gap:6px; }
+  .choice {
     height:32px; width:32px; padding:0; display:inline-flex;
     align-items:center; justify-content:center; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--r-control); cursor:pointer;
   }
-  .choix:hover { background:var(--sel); }
-  .choix.choisi { border-color:var(--accent); background:var(--sel); }
-  .pastille-teinte { width:18px; height:18px; }
-  .erreur-repere { margin:0; font-size:12px; line-height:1.4; color:var(--alert); }
-  .avertissement { margin:0; font-size:13px; line-height:1.5; color:var(--ink2); }
-  .erreur-retrait { margin:0; font-size:12px; line-height:1.4; color:var(--alert); }
-  .boutons-retrait { display:flex; align-items:center; gap:10px; }
+  .choice:hover { background:var(--sel); }
+  .choice.chosen { border-color:var(--accent); background:var(--sel); }
+  .badge-hue { width:18px; height:18px; }
+  .error-marker { margin:0; font-size:12px; line-height:1.4; color:var(--alert); }
+  .warning { margin:0; font-size:13px; line-height:1.5; color:var(--ink2); }
+  .error-removal { margin:0; font-size:12px; line-height:1.4; color:var(--alert); }
+  .buttons-removal { display:flex; align-items:center; gap:10px; }
   .danger {
     height:32px; padding:0 16px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; font-weight:600; color:var(--onAccent);
@@ -1456,51 +1456,51 @@
     border-radius:var(--r-control); cursor:pointer;
   }
   .danger:disabled { opacity:.6; cursor:default; }
-  .tete-ajout { display:flex; align-items:center; gap:14px; }
-  .titre-ajout { flex:1; font-size:14px; font-weight:600; color:var(--ink); }
+  .head-add { display:flex; align-items:center; gap:14px; }
+  .title-add { flex:1; font-size:14px; font-weight:600; color:var(--ink); }
 
   /* A setting row: label + description, switch on the right. The
      switch stays on tokens — `--bg` track/rule at rest (V3), accent
      when armed; visible focus inherited (A8). */
-  .reglage {
+  .setting {
     display:flex; align-items:center; gap:16px; padding:14px 16px;
     border-radius:var(--r-surface);
   }
-  .bascule {
+  .toggle {
     width:38px; height:22px; flex:none; padding:2px; cursor:pointer;
     display:inline-flex; align-items:center;
     background:var(--bg); border:1px solid var(--border);
     border-radius:999px; transition:background .12s ease;
   }
-  .bille {
+  .dot {
     width:16px; height:16px; border-radius:50%;
     background:var(--surface); border:1px solid var(--border);
     transition:transform .12s ease;
   }
-  .bascule[aria-checked="true"] {
+  .toggle[aria-checked="true"] {
     background:var(--accent); border-color:var(--accent);
   }
-  .bascule[aria-checked="true"] .bille {
+  .toggle[aria-checked="true"] .dot {
     transform:translateX(16px); border-color:var(--accent);
   }
 
   /* The selectors (Language, Layout): the buttons' grammar
      (32 px, tokens) — a native <select>, keyboard and screen reader
      included. */
-  .langue {
+  .language {
     height:32px; padding:0 10px; flex:none; font:inherit; font-size:13px;
     color:var(--ink); background:var(--surface);
     border:1px solid var(--border); border-radius:var(--r-control); cursor:pointer;
   }
-  .langue option { background:var(--surface); color:var(--ink); }
+  .language option { background:var(--surface); color:var(--ink); }
 
   /* R1 (RETOURS-11, D4): one image rule per row — the address and
      its exit gate, on the card's tokens. */
-  .regle-images {
+  .rule-images {
     display:flex; align-items:center; gap:12px; padding:6px 16px;
     font-size:13px; color:var(--ink);
   }
-  .adresse-regle {
+  .address-rule {
     flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;
     white-space:nowrap;
   }
@@ -1508,23 +1508,23 @@
      of .regle-images, verdict in muted ink behind the address; search
      field on the controls' template (32 px). */
   .decision .verdict { margin-left:8px; color:var(--muted); }
-  .recherche-decisions { padding:2px 16px 8px; }
-  .recherche-decisions input {
+  .search-decisions { padding:2px 16px 8px; }
+  .search-decisions input {
     width:100%; height:32px; padding:0 12px; font-size:13px;
     color:var(--ink); background:var(--surface);
     border:1px solid var(--border); border-radius:var(--r-control);
   }
-  .recherche-decisions input:focus-visible {
+  .search-decisions input:focus-visible {
     outline:2px solid var(--accent); outline-offset:-1px;
   }
-  .decisions-vide {
+  .decisions-empty {
     margin:0; padding:6px 16px 10px; font-size:13px; color:var(--muted);
   }
   /* R10: the "Edit" menu — the product's menu design (D-47 family,
      recorded). Above the Settings overlay (z-index 2). */
 
   /* Shortcuts: read-only reference, on tokens. */
-  .raccourci {
+  .shortcut {
     display:flex; align-items:center; gap:14px; padding:8px 16px;
     font-size:13px; color:var(--ink2);
   }
@@ -1534,22 +1534,22 @@
     background:var(--bg); border:1px solid var(--border);
     border-bottom-width:2px; border-radius:var(--r-control);
   }
-  .geste { color:var(--ink2); }
+  .gesture { color:var(--ink2); }
   .note {
     margin:6px 0 0; padding:0 16px; font-size:12px; line-height:1.4;
     color:var(--muted);
   }
 
   /* About: key / value, no invented form. */
-  /* The shared band (.marque-bande, system.css) — here with its
+  /* The shared band (.brand-band, system.css) — here with its
      own clearance. */
-  .apropos-bande { padding:2px 0 6px; }
-  .ligne-apropos {
+  .about-band { padding:2px 0 6px; }
+  .row-about {
     display:flex; align-items:baseline; gap:14px; padding:10px 16px;
     font-size:13px;
   }
-  .cle { width:110px; flex:none; color:var(--muted); }
-  .valeur {
+  .key { width:110px; flex:none; color:var(--muted); }
+  .value {
     color:var(--ink); display:inline-flex; flex-wrap:wrap;
     align-items:center; gap:10px; min-width:0;
   }
@@ -1557,7 +1557,7 @@
      the key/value block by a top margin, and ALIGNED to the values
      column (CE verdicts from the visual STOP): 16 px from the edge +
      110 px of key + 14 px of gutter = 140 px. */
-  .origine {
+  .origin {
     display:flex; align-items:center; gap:10px; margin-top:18px;
     padding:10px 16px 10px calc(16px + 110px + 14px);
     font-size:13px; color:var(--ink);
@@ -1565,49 +1565,49 @@
 
   /* R1 (PLAN-RETOURS-6): the Signature group — one block per account,
      rich editor reduced to the card's tokens. */
-  .desc-groupe {
+  .desc-group {
     margin:0; padding:0 16px 4px; font-size:12px; line-height:1.5;
     color:var(--muted);
   }
-  .bloc-signature {
+  .block-signature {
     display:flex; flex-direction:column; gap:10px; padding:12px 16px;
     border:1px solid var(--border); border-radius:var(--r-control);
   }
-  .adresse-signature {
+  .address-signature {
     display:flex; align-items:center; gap:8px;
     font-size:13px; font-weight:600; color:var(--ink);
   }
-  .adresse-sous { font-weight:400; color:var(--muted); }
-  .barre-signature { display:flex; align-items:center; gap:6px; }
-  .bouton-format {
+  .address-under { font-weight:400; color:var(--muted); }
+  .bar-signature { display:flex; align-items:center; gap:6px; }
+  .button-format {
     height:32px; min-width:32px; padding:0 6px; display:inline-flex;
     align-items:center; justify-content:center; color:var(--ink2);
     background:var(--surface); cursor:pointer;
     border:1px solid var(--border); border-radius:var(--r-control);
   }
-  .bouton-format:hover { background:var(--sel); color:var(--ink); }
-  .editeur-signature {
+  .button-format:hover { background:var(--sel); color:var(--ink); }
+  .editor-signature {
     min-height:72px; padding:10px 12px; font-size:13px; line-height:1.6;
     color:var(--ink); background:var(--surface);
     border:1px solid var(--border); border-radius:var(--r-control); outline:none;
     overflow-wrap:break-word;
   }
-  .editeur-signature:focus { border-color:var(--accent); }
-  .editeur-signature:empty::before {
+  .editor-signature:focus { border-color:var(--accent); }
+  .editor-signature:empty::before {
     content:attr(data-placeholder); color:var(--muted); pointer-events:none;
   }
-  .boutons-signature { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-  .etat-signature { margin:0; font-size:12px; line-height:1.4; color:var(--accent); }
+  .buttons-signature { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .state-signature { margin:0; font-size:12px; line-height:1.4; color:var(--accent); }
 
-  .pied {
+  .foot {
     flex:none; padding:14px 22px 18px; border-top:1px solid var(--border);
     display:flex; align-items:center;
   }
-  .principal {
+  .main {
     height:32px; padding:0 16px; margin-left:auto; display:inline-flex;
     align-items:center; gap:8px; font-size:13px; font-weight:600;
     color:var(--onAccent); background:var(--accent);
     border:1px solid var(--accent); border-radius:var(--r-control); cursor:pointer;
   }
-  .principal:hover { background:var(--accentH); border-color:var(--accentH); }
+  .main:hover { background:var(--accentH); border-color:var(--accentH); }
 </style>

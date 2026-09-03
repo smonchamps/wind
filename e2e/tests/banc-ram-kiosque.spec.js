@@ -35,19 +35,19 @@ const ram = (etiquette) => {
 
 test('RAM privée : repos, Kiosque page 1, 160 cartes, retour', async () => {
   test.setTimeout(240000);
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
   await page.waitForTimeout(8000);
   ram('repos, mode classique');
-  await page.locator('[data-testid="mode-organise"]').click();
-  await expect(page.locator('[data-testid="mode-organise"]')).toHaveAttribute('aria-checked', 'true');
+  await page.locator('[data-testid="organized-mode"]').click();
+  await expect(page.locator('[data-testid="organized-mode"]')).toHaveAttribute('aria-checked', 'true');
   await page.evaluate(async () => {
     const invoke = window.__TAURI__.core.invoke;
     for (let n = 0; n < 16; n += 1) {
       await invoke('route_sender', { address: `expediteur${n}@exemple.fr`, destination: 'feed', rule: null });
     }
   });
-  await page.locator('[data-testid="nav-dossier"][data-categorie="feed"]').click();
-  const cartes = page.locator('[data-testid="kiosque-carte"]');
+  await page.locator('[data-testid="nav-folder"][data-category="feed"]').click();
+  const cartes = page.locator('[data-testid="feed-card"]');
   await expect(cartes.first()).toBeVisible();
   await page.waitForTimeout(2000);
   ram('kiosque page 1');
@@ -56,11 +56,11 @@ test('RAM privée : repos, Kiosque page 1, 160 cartes, retour', async () => {
     await page.waitForTimeout(1500);
   }
   const n = await cartes.count();
-  const iframes = await page.locator('[data-testid="kiosque-carte"] iframe.corps').count();
+  const iframes = await page.locator('[data-testid="feed-card"] iframe.body').count();
   console.log(`cartes ${n}, iframes vivantes ${iframes}`);
   await page.waitForTimeout(8000);
   ram(`kiosque ${n} cartes défilées`);
-  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
+  await page.locator('[data-testid="nav-folder"][data-category="inbox"]').click();
   await page.waitForTimeout(8000);
   ram('retour Réception');
   await page.waitForTimeout(25000);

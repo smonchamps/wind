@@ -33,25 +33,25 @@ test.afterAll(async () => {
 });
 
 test('un jeton mort se VOIT aux Réglages — le compte sain, lui, ne change pas', async () => {
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  await page.locator('[data-testid="reglages"]').click();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
+  await page.locator('[data-testid="settings"]').click();
 
-  const rangees = page.locator('[data-testid="reglages-comptes"]');
+  const rangees = page.locator('[data-testid="settings-accounts"]');
   await expect(rangees).toContainText('sain@exemple.fr');
   await expect(rangees).toContainText('mort@exemple.fr');
   // UN seul état « Déconnecté », un seul geste « Reconnecter » — sur la
   // bonne rangée.
-  await expect(page.locator('[data-testid="compte-deconnecte"]')).toHaveCount(1);
-  await expect(page.locator('[data-testid="compte-reconnecter"]')).toHaveCount(1);
-  const morte = rangees.locator('div.compte', { hasText: 'mort@exemple.fr' });
-  await expect(morte.locator('[data-testid="compte-deconnecte"]')).toContainText('Déconnecté');
-  const saine = rangees.locator('div.compte', { hasText: 'sain@exemple.fr' });
-  await expect(saine.locator('[data-testid="compte-deconnecte"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="account-disconnected"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="account-reconnect"]')).toHaveCount(1);
+  const morte = rangees.locator('div.account', { hasText: 'mort@exemple.fr' });
+  await expect(morte.locator('[data-testid="account-disconnected"]')).toContainText('Déconnecté');
+  const saine = rangees.locator('div.account', { hasText: 'sain@exemple.fr' });
+  await expect(saine.locator('[data-testid="account-disconnected"]')).toHaveCount(0);
 });
 
 test("l'échec de reconnexion se dit SUR PLACE, et le geste se rejoue", async () => {
-  await page.locator('[data-testid="compte-reconnecter"]').click();
-  await expect(page.locator('[data-testid="reconnexion-erreur"]')).toBeVisible();
+  await page.locator('[data-testid="account-reconnect"]').click();
+  await expect(page.locator('[data-testid="reconnection-error"]')).toBeVisible();
   // Le bouton revient : l'échec n'est pas un cul-de-sac.
-  await expect(page.locator('[data-testid="compte-reconnecter"]')).toBeEnabled();
+  await expect(page.locator('[data-testid="account-reconnect"]')).toBeEnabled();
 });

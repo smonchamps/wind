@@ -48,8 +48,8 @@
   }
 </script>
 
-<main aria-label={t('reading.aria')} data-testid="volet-lecture">
-  {#if thread.frame === 'pane' && thread.line}
+<main aria-label={t('reading.aria')} data-testid="reading-pane">
+  {#if thread.frame === 'pane' && thread.row}
     <Thread {drafts} {markers} {names} {accounts} {mixed} {organized} {onmove} {onsetaside}
          {onresume} {onarchive} {ondelete}
          {onreply} {onreplyall} {onforward}
@@ -57,7 +57,7 @@
          {pinnable} {onpin}
          onenlarge={onconversation} />
   {:else if thread.frame !== 'full'}
-    <p class="vide">{t('reading.empty')}</p>
+    <p class="empty">{t('reading.empty')}</p>
   {/if}
 </main>
 
@@ -78,7 +78,7 @@
        ABOVE the modal veils (Compose/Settings, z-index 2). */
     isolation:isolate;
   }
-  .vide {
+  .empty {
     margin:auto; font-size:13px; line-height:1.5; color:var(--muted);
     text-align:center; padding:40px;
   }

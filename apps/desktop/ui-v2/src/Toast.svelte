@@ -8,8 +8,8 @@
 
 {#if message}
   <div class="toast" data-testid="toast" role="status">
-    <span class="coche" aria-hidden="true"><Icon name="check_circle" /></span>
-    <span class="texte">{message}</span>
+    <span class="check" aria-hidden="true"><Icon name="check_circle" /></span>
+    <span class="text">{message}</span>
   </div>
 {/if}
 
@@ -24,6 +24,6 @@
     box-shadow:var(--shadow); padding:10px 16px;
     display:flex; align-items:center; gap:10px;
   }
-  .coche { color:var(--accent); }
-  .texte { font-size:13px; color:var(--ink); }
+  .check { color:var(--accent); }
+  .text { font-size:13px; color:var(--ink); }
 </style>

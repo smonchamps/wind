@@ -88,7 +88,7 @@
 </script>
 
 {#if isOpen}
-  <div class="menu" class:absolu={absolute} role="menu" data-testid={testid} bind:this={mailbox}
+  <div class="menu" class:absolute={absolute} role="menu" data-testid={testid} bind:this={mailbox}
        style={absolute ? `min-width:${width}px` : `left:${x}px; top:${y}px; min-width:${width}px`}>
     {@render children()}
   </div>
@@ -104,7 +104,7 @@
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--r-control); box-shadow:var(--shadow);
   }
-  .menu.absolu { position:absolute; top:calc(100% + 6px); left:0; }
+  .menu.absolute { position:absolute; top:calc(100% + 6px); left:0; }
   .menu :global(button[role^="menuitem"]) {
     display:flex; align-items:center; gap:10px; width:100%;
     height:32px; padding:0 8px; font-size:13px; color:var(--ink);
@@ -115,8 +115,8 @@
   .menu :global(button[role^="menuitem"]:hover),
   .menu :global(button[role^="menuitem"]:focus-visible) { background:var(--hover); outline:none; }
   .menu :global(button[aria-checked="true"]) { font-weight:600; }
-  .menu :global(.filet-menu), .menu :global(.filet) { height:1px; background:var(--border); margin:4px 0; }
-  .menu :global(.titre-menu) {
+  .menu :global(.net-menu), .menu :global(.net) { height:1px; background:var(--border); margin:4px 0; }
+  .menu :global(.title-menu) {
     margin:4px 8px 2px; font-size:11px; font-weight:600; letter-spacing:.02em;
     text-transform:uppercase; color:var(--muted);
   }

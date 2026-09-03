@@ -6,7 +6,7 @@
 export async function tenirBarre(page, { pas = 60, fraction = 1 / 3, intervalleMs = 16 } = {}) {
   await page.evaluate(
     async ({ pas, fraction, intervalleMs }) => {
-      const cadre = document.querySelector('[data-testid="liste"] .cadre');
+      const cadre = document.querySelector('[data-testid="list"] .frame');
       const cible = cadre.scrollHeight * fraction;
       for (let k = 1; k <= pas; k++) {
         cadre.scrollTop = (cible * k) / pas;

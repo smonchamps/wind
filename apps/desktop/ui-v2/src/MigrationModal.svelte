@@ -74,25 +74,25 @@
 </script>
 
 {#if visible}
-  <div class="scrim" data-testid="migration-modale">
-    <div class="carte" role="dialog" aria-modal="true"
+  <div class="scrim" data-testid="migration-modal">
+    <div class="card" role="dialog" aria-modal="true"
          aria-label={t('migration.aria')}>
       <!-- V11: the brand AS A TILE (fixed outside themes) — the modal
            precedes any theme applied, the tile carries its own ground. -->
-      <span class="marque-bande"><Brand tile size={28} /><b>Wind</b></span>
-      <h3 class="titre">{t('migration.title')}</h3>
+      <span class="brand-band"><Brand tile size={28} /><b>Wind</b></span>
+      <h3 class="title">{t('migration.title')}</h3>
       <p class="note">{note}</p>
       {#if !report}
-        <div class="jauge" class:indeterminee={percent === null}>
-          <div class="remplie" style="width:{percent ?? 0}%"></div>
+        <div class="gauge" class:indeterminate={percent === null}>
+          <div class="filled" style="width:{percent ?? 0}%"></div>
         </div>
-        <p class="etat" data-testid="migration-etat">
+        <p class="state" data-testid="migration-state">
           {percent === null ? t('migration.preparing') : t('migration.percent', { p: percent })}</p>
         <button type="button" disabled={!cancelable} onclick={cancel}>{t('action.cancel')}</button>
       {:else}
-        <p class="etat">{report}</p>
+        <p class="state">{report}</p>
         {#if resume}
-          <button type="button" class="principal"
+          <button type="button" class="main"
                   onclick={() => resolveResume?.()}>{t('action.resume')}</button>
         {/if}
       {/if}
@@ -107,18 +107,18 @@
     position:absolute; inset:0; background:var(--bg); z-index:4;
     display:flex; align-items:center; justify-content:center;
   }
-  .carte { width:520px; display:flex; flex-direction:column; gap:18px; }
-  .titre {
+  .card { width:520px; display:flex; flex-direction:column; gap:18px; }
+  .title {
     margin:0; font-size:32px; line-height:1.15; font-weight:600;
     letter-spacing:-.02em; color:var(--ink);
   }
-  .note, .etat { margin:0; font-size:13px; line-height:1.5; color:var(--muted); }
-  .jauge {
+  .note, .state { margin:0; font-size:13px; line-height:1.5; color:var(--muted); }
+  .gauge {
     height:6px; background:var(--bg); border:1px solid var(--border);
     border-radius:var(--r-control); overflow:hidden;
   }
-  .remplie { height:100%; background:var(--accent); transition:width .3s; }
-  .indeterminee .remplie { width:30%; animation:va-et-vient 1.2s ease-in-out infinite alternate; }
+  .filled { height:100%; background:var(--accent); transition:width .3s; }
+  .indeterminate .filled { width:30%; animation:va-et-vient 1.2s ease-in-out infinite alternate; }
   @keyframes va-et-vient { from { margin-left:0; } to { margin-left:70%; } }
   button {
     height:32px; padding:0 16px; align-self:flex-start; display:inline-flex;
@@ -128,9 +128,9 @@
   }
   button:hover { background:var(--sel); }
   button:disabled { opacity:.6; cursor:default; }
-  .principal {
+  .main {
     font-weight:600; color:var(--onAccent); background:var(--accent);
     border-color:var(--accent);
   }
-  .principal:hover { background:var(--accentH); border-color:var(--accentH); }
+  .main:hover { background:var(--accentH); border-color:var(--accentH); }
 </style>

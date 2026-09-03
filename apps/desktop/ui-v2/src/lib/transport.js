@@ -17,27 +17,27 @@ const brut = invoke
       `transport unavailable: ${command} (outside Tauri, no remote implementation delivered)`);
 
 // e2e seam (PLAN-REACTIVITE E1): a promise set in
-// `window.__e2eRetenue` HOLDS every call to the core until it
+// `window.__e2eHold` HOLDS every call to the core until it
 // resolves — the assertion “a reload never shows the wait” must
 // observe the screen WHILE a re-serve is in flight. Outside e2e the
 // variable does not exist: the path is identical to before.
 //
 // e2e seam (PLAN-DEFILEMENT-PROFOND E1): an array set in
-// `window.__e2eJournal` receives a record {command, start, arrival}
+// `window.__e2eLog` receives a record {command, start, arrival}
 // per call — the assertion “never more than N pages in flight” counts
 // the flights open at each instant. Same rule: outside e2e, nothing.
 // e2e seam (PLAN-RETOURS-12 R1): OAuth consent cannot be driven by
-// Playwright — addresses set in `window.__e2eAjout` make the addition
+// Playwright — addresses set in `window.__e2eAdd` make the addition
 // succeed without a browser, and `connect_accounts`'s report carries
 // them as connected, mirroring the session that the core sets on a
 // real addition (add_oauth_account). Outside e2e the variable does not
-// exist. Returns a LAUNCHER (not a promise): the `__e2eRetenue` hold
+// exist. Returns a LAUNCHER (not a promise): the `__e2eHold` hold
 // also applies to these flights — the seam modulates the transport,
 // never the order of things (review). The returns are minimal: no one
 // reads the addition report, and only `email` is consumed from the
 // connection report — a richer contract would be a test's lie.
 const fakeAdd = (command, args) => {
-  const add = globalThis.window?.__e2eAjout;
+  const add = globalThis.window?.__e2eAdd;
   if (!Array.isArray(add)) return null;
   if (command === 'add_account' || command === 'add_microsoft_account') {
     return () => Promise.resolve();
@@ -52,11 +52,11 @@ const fakeAdd = (command, args) => {
 };
 
 // e2e seam (PLAN-AUDIT-V2 E10): an array of command names set
-// in `window.__e2ePanne` makes the next call of each one FAIL (once)
+// in `window.__e2eFailure` makes the next call of each one FAIL (once)
 // — the only way to play “the core has not answered” on a fixture.
 // Outside e2e the variable does not exist: identical path.
 const fakeFailure = (command) => {
-  const failure = globalThis.window?.__e2ePanne;
+  const failure = globalThis.window?.__e2eFailure;
   if (!Array.isArray(failure)) return null;
   const i = failure.indexOf(command);
   if (i === -1) return null;
@@ -66,9 +66,9 @@ const fakeFailure = (command) => {
 
 export const call = (command, args) => {
   const launch = fakeFailure(command) ?? fakeAdd(command, args) ?? (() => brut(command, args));
-  const hold = globalThis.window?.__e2eRetenue;
+  const hold = globalThis.window?.__e2eHold;
   const flight = hold ? hold.then(launch) : launch();
-  const log = globalThis.window?.__e2eJournal;
+  const log = globalThis.window?.__e2eLog;
   if (log) {
     const poll = { command, start: performance.now(), arrival: null };
     log.push(poll);
@@ -87,10 +87,10 @@ export const call = (command, args) => {
 //
 // e2e seam (PLAN-PIECES-JOINTES §7): the native dialog box
 // cannot be driven by Playwright — the suite drops its fixture
-// paths in `window.__e2ePieces` and the picker never opens;
+// paths in `window.__e2eAttachments` and the picker never opens;
 // the rest of the path (attach_files → chips → send) is the real one.
 export const chooseFiles = async () => {
-  const injectes = globalThis.window?.__e2ePieces;
+  const injectes = globalThis.window?.__e2eAttachments;
   if (injectes !== undefined) return Array.isArray(injectes) ? injectes : [];
   const choice = await call('plugin:dialog|open', { options: { multiple: true } });
   if (!choice) return [];

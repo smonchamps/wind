@@ -642,7 +642,7 @@ rust,veilleur,watcher,1,apps/desktop/src/main.rs
 rust,verrous_releve,poll_locks,1,apps/desktop/src/main.rs
 rust,vers_groupe,to_group,1,crates/mail-core/src/nav.rs
 ui,appel,call,142,apps/desktop/ui-v2/src/App.svelte;apps/desktop/ui-v2/src/Composition.svelte;apps/desktop/ui-v2/src/Fil.svelte;apps/desktop/ui-v2/src/Kiosque.svelte;apps/desktop/ui-v2/src/Liste.svelte;apps/desktop/ui-v2/src/ModaleMigration.svelte;apps/desktop/ui-v2/src/Portier.svelte;apps/desktop/ui-v2/src/Reglages.svelte;apps/desktop/ui-v2/src/Retour.svelte;apps/desktop/ui-v2/src/lib/fil.svelte.js;apps/desktop/ui-v2/src/lib/liens.js;apps/desktop/ui-v2/src/lib/transport.js
-ui,ligne,line,93,apps/desktop/ui-v2/src/App.svelte;apps/desktop/ui-v2/src/lib/fil.svelte.js;apps/desktop/ui-v2/src/lib/invitation.js;apps/desktop/ui-v2/src/main.js
+ui,ligne,row,93,apps/desktop/ui-v2/src/App.svelte;apps/desktop/ui-v2/src/lib/fil.svelte.js;apps/desktop/ui-v2/src/lib/invitation.js;apps/desktop/ui-v2/src/main.js
 ui,nom,name,88,apps/desktop/ui-v2/src/Composition.svelte;apps/desktop/ui-v2/src/Reglages.svelte;apps/desktop/ui-v2/src/lib/theme.js
 ui,fil,thread,79,apps/desktop/ui-v2/src/App.svelte;apps/desktop/ui-v2/src/lib/fil.svelte.js
 ui,carte,card,72,apps/desktop/ui-v2/src/Composition.svelte;apps/desktop/ui-v2/src/Kiosque.svelte;apps/desktop/ui-v2/src/Liste.svelte

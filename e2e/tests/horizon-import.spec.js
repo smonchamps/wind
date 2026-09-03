@@ -23,37 +23,37 @@ test.afterAll(async () => {
 });
 
 test('un compte d’avant le réglage est réputé « tout » (D4)', async () => {
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  await page.locator('[data-testid="reglages"]').click();
-  await expect(page.locator('[data-testid="compte-horizon"]')).toHaveText(
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
+  await page.locator('[data-testid="settings"]').click();
+  await expect(page.locator('[data-testid="account-horizon"]')).toHaveText(
     'Tout depuis le début',
   );
 });
 
 test('réviser l’horizon aux Réglages : la porte suit, et le choix survit à la fermeture', async () => {
-  await page.locator('[data-testid="compte-horizon"]').click();
-  await expect(page.locator('[data-testid="reglages-horizon"]')).toBeVisible();
+  await page.locator('[data-testid="account-horizon"]').click();
+  await expect(page.locator('[data-testid="settings-horizon"]')).toBeVisible();
   await page
     .locator('[data-testid="horizon-select"]')
     .selectOption('6m');
   // La porte de la rangée montre l'état choisi — application immédiate.
-  await expect(page.locator('[data-testid="compte-horizon"]')).toHaveText('6 mois');
+  await expect(page.locator('[data-testid="account-horizon"]')).toHaveText('6 mois');
 
   // La persistance se prouve au RETOUR : fermer la surimpression,
   // la rouvrir — la valeur vient de la BASE, pas d'un état d'écran.
-  await page.locator('[data-testid="reglages-termine"]').click();
-  await page.locator('[data-testid="reglages"]').click();
-  await expect(page.locator('[data-testid="compte-horizon"]')).toHaveText('6 mois');
+  await page.locator('[data-testid="settings-done"]').click();
+  await page.locator('[data-testid="settings"]').click();
+  await expect(page.locator('[data-testid="account-horizon"]')).toHaveText('6 mois');
 });
 
 test('le guichet d’ajout offre le choix, défaut « 1 an » (D2)', async () => {
-  await page.locator('[data-testid="reglages-ajouter"]').click();
-  const select = page.locator('[data-testid="guichet-horizon"]');
+  await page.locator('[data-testid="settings-add"]').click();
+  const select = page.locator('[data-testid="desk-horizon"]');
   await expect(select).toBeVisible();
   // Le défaut est « 1 an » (D2) — jamais « tout » : le choix d'importer
   // moins est le comportement livré, celui d'importer tout un geste.
   await expect(select).toHaveValue('1a');
   await expect(select.locator('option')).toHaveCount(7);
   await expect(select.locator('option').last()).toHaveText('Tout depuis le début');
-  await page.locator('[data-testid="reglages-termine"]').click();
+  await page.locator('[data-testid="settings-done"]').click();
 });

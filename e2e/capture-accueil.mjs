@@ -32,19 +32,19 @@ try {
       localStorage.setItem('wind-accueil-fait', '1');
     }, volets);
     await page.reload();
-    await page.locator('[data-testid="ligne"]').first().waitFor();
+    await page.locator('[data-testid="row"]').first().waitFor();
     if (volets === 3) {
       // Le volet de lecture montre un message ouvert — l'aperçu dit la
       // vraie fenêtre de travail, pas une colonne vide.
-      await page.locator('[data-testid="ligne"]').first().click();
-      await page.locator('[data-testid="volet-lecture"]').waitFor();
+      await page.locator('[data-testid="row"]').first().click();
+      await page.locator('[data-testid="reading-pane"]').waitFor();
     }
     // Peinture posée (polices, hitofude) avant la photo.
     await page.waitForTimeout(500);
     // Recadrée AU-DESSUS de la barre d'état : les comptes factices ne
     // synchronisent pas, et « Synchronisation impossible » n'a rien à
     // faire dans un aperçu d'accueil.
-    const statut = await page.locator('[data-testid="statut"]').boundingBox();
+    const statut = await page.locator('[data-testid="status"]').boundingBox();
     const vue = await page.evaluate(() => ({
       largeur: window.innerWidth,
       hauteur: window.innerHeight,

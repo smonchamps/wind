@@ -66,7 +66,7 @@ try {
     if (!page) await new Promise((resolve) => setTimeout(resolve, 500));
   }
   if (!page) throw new Error('fenêtre Tauri introuvable après 30 s — le processus a-t-il démarré ?');
-  await page.locator('[data-testid="ligne"]').first().waitFor({ timeout: 60000 });
+  await page.locator('[data-testid="row"]').first().waitFor({ timeout: 60000 });
 
   // 1. Étage coeur + IPC : appel BRUT, sans aucun rendu. `elapsed_us`
   //    est mesuré DANS la commande Rust — la différence avec le mur,

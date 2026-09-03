@@ -42,7 +42,7 @@ export const thread = $state({
   // Which frame holds the object: null (none), 'pane', 'full'.
   frame: null,
   // The origin row (list selection) and the per-message state.
-  line: null,
+  row: null,
   ...EMPTY(),
   // The opening stopwatch (P1 bench, e2e): selection → body of the
   // last message set. Attachments stay OUTSIDE the stopwatch, as in
@@ -76,7 +76,7 @@ export async function openThread(newRow, frame = 'pane') {
   const t0 = performance.now();
   const mine = ++token;
   thread.frame = frame;
-  thread.line = newRow;
+  thread.row = newRow;
   Object.assign(thread, EMPTY());
   // R4: the pin state comes from the SERVED row — exact by
   // construction in the Inbox, the only one to offer the gesture
@@ -112,11 +112,11 @@ export async function openThread(newRow, frame = 'pane') {
 
 // The size change (D4): no reload, no token.
 export function enlargeThread() {
-  if (thread.line) thread.frame = 'full';
+  if (thread.row) thread.frame = 'full';
 }
 // The return: to the pane if the mode has one, otherwise closing.
 export function shrinkThread(toPane) {
-  if (toPane && thread.line) thread.frame = 'pane';
+  if (toPane && thread.row) thread.frame = 'pane';
   else closeThread();
 }
 
@@ -141,7 +141,7 @@ export function removeMessage(m) {
 export function closeThread() {
   token += 1;
   thread.frame = null;
-  thread.line = null;
+  thread.row = null;
   Object.assign(thread, EMPTY());
   thread.lastOpenMs = null;
 }

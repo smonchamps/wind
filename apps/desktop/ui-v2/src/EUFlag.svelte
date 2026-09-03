@@ -15,7 +15,7 @@
 </script>
 
 <svg
-  data-nom="drapeau-ue"
+  data-name="drapeau-ue"
   viewBox="0 0 30 20"
   width={(height * 30) / 20}
   height={height}

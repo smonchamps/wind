@@ -84,54 +84,54 @@
 
 <nav aria-label={t('nav.aria')} data-testid="nav">
   {#each folders as d (d.id)}
-    <div class="rang" class:actif={category === d.id}
-         data-testid="nav-dossier" data-categorie={d.id}
+    <div class="rank" class:active={category === d.id}
+         data-testid="nav-folder" data-category={d.id}
          role="button" tabindex="0" aria-current={category === d.id}
          onclick={() => onchoose({ category: d.id })}
          onkeydown={activation(() => onchoose({ category: d.id }))}>
-      <span class="icone" aria-hidden="true"><Icon name={d.icon} /></span>
-      <span class="libelle">{d.label}</span>
+      <span class="icon" aria-hidden="true"><Icon name={d.icon} /></span>
+      <span class="label">{d.label}</span>
       {#if d.unread > 0}
-        <span class="pastille">{d.unread}</span>
+        <span class="badge">{d.unread}</span>
       {/if}
     </div>
     {#if organized && d.id === 'cleanup'}
       <!-- RETOURS-13 R12: the divider between the organized folders
            and the rest — the drawing of `.boites`'s divider. -->
-      <div class="separateur" data-testid="nav-separateur"></div>
+      <div class="separator" data-testid="nav-separator"></div>
     {/if}
   {/each}
 
-  <div class="boites">
-    <p class="titre">{t('nav.mailboxes')}</p>
+  <div class="mailboxes">
+    <p class="title">{t('nav.mailboxes')}</p>
     {#each mailboxes as b (b.id)}
       {#if account === b.id}
         <!-- The current mailbox: the event tile (A29, W2-D5),
              the address alone — no counter (A36). -->
-        <div class="tuile" data-testid="nav-boite"
+        <div class="tile" data-testid="nav-mailbox"
              role="button" tabindex="0" aria-current="true"
              onclick={() => onchoose({ account: b.id })}
              onkeydown={activation(() => onchoose({ account: b.id }))}>
           {#if b.marker}
-            <span class="repere-nu" data-testid="nav-repere"
-                  data-teinte={b.marker.hue} aria-hidden="true"><Icon name={b.marker.icon} size={16} /></span>
+            <span class="bare-marker" data-testid="nav-marker"
+                  data-hue={b.marker.hue} aria-hidden="true"><Icon name={b.marker.icon} size={16} /></span>
           {:else}
-            <span class="icone-tuile" aria-hidden="true"><Icon name={b.icon} /></span>
+            <span class="icon-tile" aria-hidden="true"><Icon name={b.icon} /></span>
           {/if}
-          <span class="titre-tuile">{b.label}</span>
+          <span class="title-tile">{b.label}</span>
         </div>
       {:else}
-        <div class="rang" data-testid="nav-boite"
+        <div class="rank" data-testid="nav-mailbox"
              role="button" tabindex="0" aria-current="false"
              onclick={() => onchoose({ account: b.id })}
              onkeydown={activation(() => onchoose({ account: b.id }))}>
           {#if b.marker}
-            <span class="repere-nu" data-testid="nav-repere"
-                  data-teinte={b.marker.hue} aria-hidden="true"><Icon name={b.marker.icon} size={16} /></span>
+            <span class="bare-marker" data-testid="nav-marker"
+                  data-hue={b.marker.hue} aria-hidden="true"><Icon name={b.marker.icon} size={16} /></span>
           {:else}
-            <span class="icone" aria-hidden="true"><Icon name={b.icon} /></span>
+            <span class="icon" aria-hidden="true"><Icon name={b.icon} /></span>
           {/if}
-          <span class="libelle">{b.label}</span>
+          <span class="label">{b.label}</span>
         </div>
       {/if}
     {/each}
@@ -153,49 +153,49 @@
      default vertical-align (the global `middle` of `.ic`,
      system.css, is overridden below), and the drop is a transform —
      outside the geometry, the rows do not move. */
-  .rang {
+  .rank {
     display:flex; align-items:baseline; gap:10px; flex:none;
     padding:8px 10px; border-radius:var(--r-control); cursor:pointer;
     border:1px solid transparent;
   }
-  .icone :global(.ic), .icone-tuile :global(.ic),
-  .repere-nu :global(.ic) {
+  .icon :global(.ic), .icon-tile :global(.ic),
+  .bare-marker :global(.ic) {
     vertical-align:baseline; transform:translateY(2px);
   }
-  .rang:hover { background:var(--hover); }
-  .rang.actif { background:var(--sel); border-color:var(--accent); }
-  .icone { color:var(--muted); }
-  .actif .icone { color:var(--accent); }
-  .libelle {
+  .rank:hover { background:var(--hover); }
+  .rank.active { background:var(--sel); border-color:var(--accent); }
+  .icon { color:var(--muted); }
+  .active .icon { color:var(--accent); }
+  .label {
     font-size:14px; color:var(--ink2); flex:1; min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
-  .actif .libelle { font-weight:600; color:var(--ink); }
+  .active .label { font-weight:600; color:var(--ink); }
   /* V4 — the solid pill is dead: the counter is a BARE NUMBER,
      tabular digits in accent (accent/bg pair measured as TEXT). */
-  .pastille {
+  .badge {
     flex:none; font-size:12px; font-weight:600; color:var(--accent);
     font-variant-numeric:tabular-nums;
   }
-  .separateur {
+  .separator {
     margin:6px 0; border-top:1px solid var(--border); flex:none;
   }
-  .boites {
+  .mailboxes {
     margin-top:auto; padding-top:16px; border-top:1px solid var(--border);
     display:flex; flex-direction:column; gap:6px;
   }
-  .titre {
+  .title {
     margin:0 0 4px; padding:0 10px; font-size:11px; letter-spacing:.1em;
     text-transform:uppercase; color:var(--muted); font-weight:600;
   }
-  .tuile {
+  .tile {
     display:flex; align-items:baseline; gap:10px; flex:none;
     padding:9px 12px; border-radius:var(--r-control); cursor:pointer;
     background:var(--tile); color:var(--tileInk);
     border:1px solid var(--border);
   }
-  .icone-tuile { color:var(--tileInk); }
-  .titre-tuile {
+  .icon-tile { color:var(--tileInk); }
+  .title-tile {
     font-size:13px; font-weight:600; min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }

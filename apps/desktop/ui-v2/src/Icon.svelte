@@ -6,16 +6,16 @@
   // product's default size; smaller contexts set it in CSS
   // (width/height on .ic), which overrides the attribute. `mirror`:
   // “Forward” carries “Reply”'s arrow in vertical symmetry (A12).
-  // `data-nom` is the seam for the tests and the coherence gate. An
+  // `data-name` is the seam for the tests and the coherence gate. An
   // unknown name renders an empty SVG — visible to the eye and to
-  // data-nom, never a crash.
+  // data-name, never a crash.
   import { SET } from './lib/icons.js';
 
   let { name, size = 16, mirror = false } = $props();
   const g = $derived(SET[name] ?? { d: [] });
 </script>
 
-<svg class="ic" class:miroir={mirror} data-nom={name} viewBox="0 0 24 24"
+<svg class="ic" class:mirror={mirror} data-name={name} viewBox="0 0 24 24"
      width={size} height={size} aria-hidden="true">
   <g fill="none" stroke="currentColor" stroke-width="2"
      stroke-linecap="butt" stroke-linejoin="miter">

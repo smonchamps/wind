@@ -93,46 +93,46 @@
   }
 </script>
 
-<div class="ecran01" data-testid="onboarding">
+<div class="screen01" data-testid="onboarding">
   <!-- The window-preview of step 3: n = drawn layout (the one
        chosen at step 2, finding 6), c = a card's colors. V3:
        header and nav are no longer inset (--panel is dead) — the
        card's STROKE alone draws the separation, as in the product. -->
   {#snippet window(n, c)}
-    <span class="fenetre" aria-hidden="true"
+    <span class="window" aria-hidden="true"
           style="background:{c.bg}; border-color:{c.border}">
-      <span class="f-tete" style="border-color:{c.border}"></span>
-      <span class="f-corps">
+      <span class="f-head" style="border-color:{c.border}"></span>
+      <span class="f-body">
         {#if n !== 1}<span class="f-nav" style="border-right:1px solid {c.border}"></span>{/if}
-        <span class="f-liste">
+        <span class="f-list">
           <span style="background:{c.surface}"></span>
           <span style="background:{c.accent}"></span>
           <span style="background:{c.surface}"></span>
         </span>
-        {#if n === 3}<span class="f-lecture"
+        {#if n === 3}<span class="f-reading"
               style="background:{c.surface}; border-color:{c.border}"></span>{/if}
       </span>
     </span>
   {/snippet}
   {#snippet progress(n)}
     {#if complete}
-      <p class="progression" data-testid="accueil-progression">
+      <p class="progress" data-testid="onboarding-progress">
         {t('onboarding.step', { n, total: STEPS })}</p>
     {/if}
   {/snippet}
-  <div class="colonne" class:large={complete && step !== 1}>
+  <div class="column" class:wide={complete && step !== 1}>
     {#if !complete || step === 1}
       <!-- Finding 1: "Welcome to Wind" — the TILED brand
            (V11: frozen across themes, platform radius) replaces the
            hitofude stroke (V2). The desk block stays ONE (step 1 of
            the journey AND the screen of an onboarded workstation back
            to zero accounts). -->
-      <h3 class="titre display"><Brand tile size={40} />
-        <span>{t('onboarding.welcome')} <span class="marque">Wind</span></span></h3>
+      <h3 class="title display"><Brand tile size={40} />
+        <span>{t('onboarding.welcome')} <span class="brand">Wind</span></span></h3>
       {@render progress(1)}
-      <p class="sous">{t('onboarding.addUnder')}</p>
+      <p class="under">{t('onboarding.addUnder')}</p>
       {#if complete && accounts.length > 0}
-        <ul class="ajoutes" data-testid="accueil-comptes">
+        <ul class="added" data-testid="onboarding-accounts">
           {#each accounts as c (c.account_id)}
             <li><Icon name="check_circle" />{c.email}</li>
           {/each}
@@ -141,32 +141,32 @@
       {#if accounts.length === 0 || addOpen}
         <!-- Finding 1 (2nd pass): as long as Continue is not there
              (no account), "Add" is THE gesture — primary. -->
-        <AccountDesk accueil mainAdd={accounts.length === 0}
+        <AccountDesk onboarding mainAdd={accounts.length === 0}
                        ongeneric={(v) => (genericOpen = v)}
                        onadd={onAdd} />
       {:else}
         <!-- Finding 2: the bar folded behind an explicit door. -->
-        <button type="button" class="secondaire" data-testid="accueil-ajouter-autre"
+        <button type="button" class="secondary" data-testid="onboarding-add-other"
                 onclick={() => (addOpen = true)}>
           {t('onboarding.addOther')}</button>
       {/if}
     {:else if step === 2}
-      <h3 class="titre display">{t('onboarding.panesTitle')}</h3>
+      <h3 class="title display">{t('onboarding.panesTitle')}</h3>
       {@render progress(2)}
-      <p class="sous">{t('onboarding.panesUnder')}</p>
+      <p class="under">{t('onboarding.panesUnder')}</p>
       <!-- Findings 5 (1st pass), 3 (2nd) and 3 (3rd pass): ONE REAL
            screenshot of the application — refreshed on hover (and on
            keyboard focus, A8) of the targeted button, back to the
            choice otherwise —, the image + buttons set together in one
            elevation, buttons centered. -->
-      <div class="cadre-volets">
-        <img class="capture-grande" data-testid="accueil-apercu"
-             data-volets={panesHover ?? panes}
+      <div class="frame-panes">
+        <img class="capture-large" data-testid="onboarding-preview"
+             data-panes={panesHover ?? panes}
              src={PREVIEWS[panesHover ?? panes]} alt="" />
-        <div class="boutons-volets" data-testid="accueil-volets">
+        <div class="buttons-panes" data-testid="onboarding-panes">
           {#each [3, 2, 1] as n (n)}
-            <button type="button" class="choix-volet" class:choisie={panes === n}
-                    data-testid="accueil-volet" data-volets={n}
+            <button type="button" class="choice-pane" class:chosen={panes === n}
+                    data-testid="onboarding-pane" data-panes={n}
                     aria-pressed={panes === n}
                     onclick={() => applyPanes(n)}
                     onmouseenter={() => (panesHover = n)}
@@ -178,21 +178,21 @@
         </div>
       </div>
     {:else if step === 3}
-      <h3 class="titre display">{t('onboarding.themeTitle')}</h3>
+      <h3 class="title display">{t('onboarding.themeTitle')}</h3>
       {@render progress(3)}
-      <p class="sous">{t('onboarding.themeUnder')}</p>
-      <div class="cartes themes" data-testid="accueil-themes">
+      <p class="under">{t('onboarding.themeUnder')}</p>
+      <div class="cards themes" data-testid="onboarding-themes">
         {#each THEME_CARDS as card (card.id)}
           {@const [accent, bg, border, surface] = card.swatches}
-          <button type="button" class="carte" class:choisie={activeTheme === card.id}
-                  data-testid="accueil-theme" data-theme-id={card.id}
+          <button type="button" class="card" class:chosen={activeTheme === card.id}
+                  data-testid="onboarding-theme" data-theme-id={card.id}
                   aria-pressed={activeTheme === card.id}
                   onclick={() => chooseTheme(card.id)}>
             <!-- The window in THE card's colors (CARDS is measured
                  against system.css by the gate), in the chosen
                  layout (finding 6). -->
             {@render window(panes, { accent, bg, border, surface })}
-            <span class="carte-nom">{t(`theme.${card.id}.name`)}</span>
+            <span class="card-name">{t(`theme.${card.id}.name`)}</span>
           </button>
         {/each}
       </div>
@@ -202,62 +202,62 @@
            button — the sample is INERT (aria-hidden on the
            drawing), the real button lives at the top right once the
            journey is done. -->
-      <h3 class="titre display">{t('onboarding.betaTitle')}</h3>
+      <h3 class="title display">{t('onboarding.betaTitle')}</h3>
       {@render progress(4)}
-      <p class="sous">{t('onboarding.betaUnder')}</p>
-      <div class="beta" data-testid="accueil-beta">
-        <span class="echantillon" aria-hidden="true">
+      <p class="under">{t('onboarding.betaUnder')}</p>
+      <div class="beta" data-testid="onboarding-beta">
+        <span class="sample" aria-hidden="true">
           <Icon name="feedback" />{t('header.feedback')}</span>
-        <p class="beta-texte">{t('onboarding.betaButton')}</p>
+        <p class="beta-text">{t('onboarding.betaButton')}</p>
       </div>
     {:else}
-      <h3 class="titre display">{t('onboarding.endTitle')}</h3>
+      <h3 class="title display">{t('onboarding.endTitle')}</h3>
       {@render progress(5)}
-      <p class="sous">{t('onboarding.endText')}</p>
+      <p class="under">{t('onboarding.endText')}</p>
       <!-- Finding 8 (1st pass): each recapped choice is a
            door back to its step; finding 4 (2nd pass): thumbnails
            for Layout and Theme, and on hover as on keyboard
            focus a VEIL covers the row and says "Back to this
            step" — the visual rules of the attachments' veil
            (A70). -->
-      <div class="recap" data-testid="accueil-recap">
-        <button type="button" class="ligne-recap" data-testid="recap-comptes"
+      <div class="recap" data-testid="onboarding-recap">
+        <button type="button" class="row-recap" data-testid="recap-accounts"
                 aria-label="{t('group.accounts')} : {t('onboarding.goBack')}"
                 onclick={() => (step = 1)}>
-          <span class="recap-titre">{t('group.accounts')}</span>
-          <span class="recap-valeur">{accounts.map((c) => c.email).join(' · ')}</span>
-          <span class="voile" aria-hidden="true">
+          <span class="recap-title">{t('group.accounts')}</span>
+          <span class="recap-value">{accounts.map((c) => c.email).join(' · ')}</span>
+          <span class="veil" aria-hidden="true">
             <Icon name="arrow_back" />{t('onboarding.goBack')}</span>
         </button>
-        <button type="button" class="ligne-recap" data-testid="recap-volets"
+        <button type="button" class="row-recap" data-testid="recap-panes"
                 aria-label="{t('settings.panes')} : {t('onboarding.goBack')}"
                 onclick={() => (step = 2)}>
-          <span class="recap-titre">{t('settings.panes')}</span>
+          <span class="recap-title">{t('settings.panes')}</span>
           <!-- 4th field pass: the text ABOVE the image. -->
-          <span class="recap-valeur">{t(`panes.${panes}`)}</span>
+          <span class="recap-value">{t(`panes.${panes}`)}</span>
           <img class="mini" src={PREVIEWS[panes]} alt="" />
-          <span class="voile" aria-hidden="true">
+          <span class="veil" aria-hidden="true">
             <Icon name="arrow_back" />{t('onboarding.goBack')}</span>
         </button>
-        <button type="button" class="ligne-recap" data-testid="recap-theme"
+        <button type="button" class="row-recap" data-testid="recap-theme"
                 aria-label="{t('onboarding.theme')} : {t('onboarding.goBack')}"
                 onclick={() => (step = 3)}>
-          <span class="recap-titre">{t('onboarding.theme')}</span>
+          <span class="recap-title">{t('onboarding.theme')}</span>
           <!-- 4th field pass: the text ABOVE the image. -->
-          <span class="recap-valeur">{t(`theme.${activeTheme}.name`)}</span>
+          <span class="recap-value">{t(`theme.${activeTheme}.name`)}</span>
           {#if activeCard}
             {@const [accent, bg, border, surface] = activeCard.swatches}
             <span class="mini-theme">{@render window(panes, { accent, bg, border, surface })}</span>
           {/if}
-          <span class="voile" aria-hidden="true">
+          <span class="veil" aria-hidden="true">
             <Icon name="arrow_back" />{t('onboarding.goBack')}</span>
         </button>
       </div>
     {/if}
     {#if complete}
-      <div class="marche">
+      <div class="step">
         {#if step > 1}
-          <button type="button" class="secondaire" data-testid="accueil-retour"
+          <button type="button" class="secondary" data-testid="onboarding-back"
                   onclick={back}>{t('onboarding.back')}</button>
         {/if}
         {#if step < STEPS}
@@ -266,11 +266,11 @@
                hidden while the generic desk is revealed
                ("Add" is the primary gesture there). -->
           {#if canContinue && !(step === 1 && genericOpen)}
-            <button type="button" class="principal" data-testid="accueil-continuer"
+            <button type="button" class="main" data-testid="onboarding-continue"
                     onclick={proceed}>{t('onboarding.continue')}</button>
           {/if}
         {:else}
-          <button type="button" class="principal" data-testid="accueil-terminer"
+          <button type="button" class="main" data-testid="onboarding-finish"
                   onclick={finish}>{t('onboarding.finish')}</button>
         {/if}
       </div>
@@ -281,98 +281,98 @@
 <style>
   /* Geometry of the prototype's screen 01 — the column widens at
      steps 2-4, the screen scrolls if the theme grid overflows. */
-  .ecran01 {
+  .screen01 {
     position:absolute; inset:0; display:flex; align-items:safe center;
     justify-content:center; background:var(--bg); z-index:1;
     overflow:auto; padding:32px 0;
   }
-  .colonne { width:520px; display:flex; flex-direction:column; gap:22px; }
-  .colonne.large { width:760px; }
+  .column { width:520px; display:flex; flex-direction:column; gap:22px; }
+  .column.wide { width:760px; }
   /* V6: step titles switch to the display register
      (weight 340, -.03em — global class .display, set on every
      h3); the size does not move. */
-  .titre {
+  .title {
     margin:0; font-size:40px; line-height:1.1; color:var(--ink);
     display:flex; align-items:center; gap:14px;
   }
   /* The brand in the title: "Wind", non-breaking. */
-  .marque { white-space:nowrap; }
-  .progression {
+  .brand { white-space:nowrap; }
+  .progress {
     margin:0; font-size:13px; font-weight:600; color:var(--muted);
     font-variant-numeric:tabular-nums;
   }
-  .sous { margin:0; font-size:15px; line-height:1.5; color:var(--ink2); }
-  .ajoutes {
+  .under { margin:0; font-size:15px; line-height:1.5; color:var(--ink2); }
+  .added {
     margin:0; padding:0; list-style:none; display:flex;
     flex-direction:column; gap:6px;
   }
-  .ajoutes li {
+  .added li {
     display:flex; align-items:center; gap:8px; font-size:14px;
     color:var(--ink);
   }
-  .ajoutes :global(.ic) { color:var(--accent); }
+  .added :global(.ic) { color:var(--accent); }
 
-  .cartes { display:flex; gap:14px; flex-wrap:wrap; }
+  .cards { display:flex; gap:14px; flex-wrap:wrap; }
   /* V7/A94: the living table in two columns (2×2 for four cards —
      four abreast would crush the thumbnails); the 28 grid is
      dead. The screen scrolls if the grid overflows (.ecran01). */
-  .cartes.themes {
+  .cards.themes {
     display:grid; grid-template-columns:repeat(2, 1fr); gap:14px;
   }
-  .carte {
+  .card {
     display:flex; flex-direction:column; gap:8px; padding:10px;
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--r-surface); cursor:pointer; flex:1;
   }
-  .carte:hover { background:var(--sel); }
+  .card:hover { background:var(--sel); }
   /* Findings 5/7: the selection is visible — thickened outline
      (inner trim, no grid shift) + the selection tint of the
      central pane's rows. */
-  .carte.choisie {
+  .card.chosen {
     border-color:var(--accent);
     box-shadow:inset 0 0 0 1px var(--accent);
     background:var(--sel);
   }
-  .carte-nom { font-size:13px; font-weight:600; color:var(--ink); }
+  .card-name { font-size:13px; font-weight:600; color:var(--ink); }
   /* Finding 3 (2nd and 3rd passes): step 2's single preview and its
      row of buttons, in ONE elevation (surface + single shadow),
      buttons centered. */
-  .cadre-volets {
+  .frame-panes {
     display:flex; flex-direction:column; gap:14px; padding:14px;
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--r-surface); box-shadow:var(--shadow);
   }
-  .capture-grande {
+  .capture-large {
     width:100%; height:auto; display:block; border-radius:var(--r-control);
     border:1px solid var(--border);
   }
-  .boutons-volets { display:flex; gap:12px; justify-content:center; }
-  .choix-volet {
+  .buttons-panes { display:flex; gap:12px; justify-content:center; }
+  .choice-pane {
     height:40px; padding:0 18px; font-size:14px; font-weight:600;
     color:var(--ink); background:var(--surface);
     border:1px solid var(--border); border-radius:var(--r-control); cursor:pointer;
   }
-  .choix-volet:hover { background:var(--sel); }
-  .choix-volet.choisie {
+  .choice-pane:hover { background:var(--sel); }
+  .choice-pane.chosen {
     border-color:var(--accent);
     box-shadow:inset 0 0 0 1px var(--accent);
     background:var(--sel);
   }
 
   /* Step 3's preview window, in the card's colors. */
-  .fenetre {
+  .window {
     display:flex; flex-direction:column; height:110px; border-radius:var(--r-control);
     border:1px solid var(--border); overflow:hidden;
   }
-  .f-tete { height:14px; flex:none; border-bottom:1px solid var(--border); }
-  .f-corps { display:flex; flex:1; min-height:0; }
+  .f-head { height:14px; flex:none; border-bottom:1px solid var(--border); }
+  .f-body { display:flex; flex:1; min-height:0; }
   .f-nav { width:22%; flex:none; }
-  .f-liste {
+  .f-list {
     flex:1; display:flex; flex-direction:column; gap:4px; padding:6px;
   }
-  .f-liste span { height:10px; border-radius:var(--r-control); }
-  .f-liste span:nth-child(2) { opacity:.85; }
-  .f-lecture { width:38%; flex:none; border-left:1px solid var(--border); }
+  .f-list span { height:10px; border-radius:var(--r-control); }
+  .f-list span:nth-child(2) { opacity:.85; }
+  .f-reading { width:38%; flex:none; border-left:1px solid var(--border); }
 
   /* Finding 4 (3rd pass): the three recaps side by side, each in a
      column (title, thumbnail, value). */
@@ -383,25 +383,25 @@
     display:flex; align-items:center; gap:18px; text-align:left;
     padding:14px 0;
   }
-  .echantillon {
+  .sample {
     flex:none; display:inline-flex; align-items:center; gap:8px;
     height:32px; padding:0 14px; font-size:13px; color:var(--ink);
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--r-control);
   }
-  .beta-texte {
+  .beta-text {
     margin:0; font-size:13px; line-height:1.5; color:var(--ink2);
   }
 
   .recap { display:flex; gap:12px; align-items:stretch; }
-  .ligne-recap {
+  .row-recap {
     position:relative; flex:1; min-width:0; display:flex;
     flex-direction:column; align-items:flex-start; gap:10px;
     text-align:left; padding:14px 16px; background:var(--surface);
     border:1px solid var(--border); border-radius:var(--r-surface); cursor:pointer;
   }
-  .recap-titre { font-size:13px; font-weight:600; color:var(--ink); }
-  .recap-valeur {
+  .recap-title { font-size:13px; font-weight:600; color:var(--ink); }
+  .recap-value {
     font-size:13px; line-height:1.4; color:var(--ink2); min-width:0;
     overflow:hidden; overflow-wrap:anywhere;
   }
@@ -412,35 +412,35 @@
     border-radius:var(--r-control); border:1px solid var(--border);
   }
   .mini-theme { width:100%; flex:none; display:block; }
-  .mini-theme .fenetre { height:64px; border-radius:var(--r-control); }
-  .mini-theme .f-tete { height:8px; }
-  .mini-theme .f-liste { padding:3px; gap:2px; }
-  .mini-theme .f-liste span { height:5px; border-radius:var(--r-control); }
+  .mini-theme .window { height:64px; border-radius:var(--r-control); }
+  .mini-theme .f-head { height:8px; }
+  .mini-theme .f-list { padding:3px; gap:2px; }
+  .mini-theme .f-list span { height:5px; border-radius:var(--r-control); }
   /* The "Back to this step" veil: the attachments' veil rules
      (A70) — absolute overlay, opaque --sel background,
      shown on hover AND on keyboard focus (A8), stable geometry. */
-  .ligne-recap .voile {
+  .row-recap .veil {
     position:absolute; inset:0; display:none; align-items:center;
     justify-content:center; gap:6px; font-size:13px; font-weight:600;
     color:var(--ink); background:var(--sel); border-radius:var(--r-surface);
     white-space:nowrap; overflow:hidden;
   }
-  .ligne-recap:hover .voile, .ligne-recap:focus-visible .voile {
+  .row-recap:hover .veil, .row-recap:focus-visible .veil {
     display:inline-flex;
   }
 
-  .marche { display:flex; align-items:center; gap:12px; }
-  .principal {
+  .step { display:flex; align-items:center; gap:12px; }
+  .main {
     height:40px; padding:0 22px; font-size:14px; font-weight:600;
     color:var(--onAccent); background:var(--accent); border:none;
     border-radius:var(--r-control); cursor:pointer;
   }
-  .principal:hover { background:var(--accentH); }
-  .principal:disabled { opacity:.5; cursor:default; }
-  .secondaire {
+  .main:hover { background:var(--accentH); }
+  .main:disabled { opacity:.5; cursor:default; }
+  .secondary {
     height:40px; padding:0 18px; font-size:14px; color:var(--ink);
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--r-control); cursor:pointer; align-self:flex-start;
   }
-  .secondaire:hover { background:var(--sel); }
+  .secondary:hover { background:var(--sel); }
 </style>

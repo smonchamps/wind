@@ -24,21 +24,21 @@ test.afterAll(async () => {
 });
 
 const ligneAtelier = () =>
-  page.locator('[data-testid="ligne"]', { hasText: 'Atelier de septembre' }).first();
+  page.locator('[data-testid="row"]', { hasText: 'Atelier de septembre' }).first();
 
 const ouvrirAtelier = async () => {
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
   await ligneAtelier().click();
   await expect(
-    page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]'),
+    page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]'),
   ).toHaveText('Atelier de septembre');
-  return page.locator('[data-testid="volet-lecture"] [data-testid="invitation"]');
+  return page.locator('[data-testid="reading-pane"] [data-testid="invitation"]');
 };
 
 test('la carte d’invitation se montre : titre, horaire local, organisateur, trois gestes', async () => {
   const carte = await ouvrirAtelier();
   await expect(carte).toBeVisible();
-  await expect(carte.locator('[data-testid="invitation-titre"]')).toHaveText(
+  await expect(carte.locator('[data-testid="invitation-title"]')).toHaveText(
     'Atelier de septembre',
   );
   // L'HORAIRE traverse le vrai parseur (ICS en UTC → heure du poste),
@@ -46,11 +46,11 @@ test('la carte d’invitation se montre : titre, horaire local, organisateur, tr
   await expect(carte).toContainText('14:30 – 16:00');
   await expect(carte).toContainText('Grande salle, Atelier Nord');
   await expect(carte).toContainText('Sofia Nardi');
-  await expect(carte.locator('[data-testid="invitation-statut"]')).toHaveText(
+  await expect(carte.locator('[data-testid="invitation-status"]')).toHaveText(
     'Vous n’avez pas répondu',
   );
   // Trois boutons NEUTRES (D4), aucun pressé.
-  for (const geste of ['inv-accepter', 'inv-provisoire', 'inv-refuser']) {
+  for (const geste of ['inv-accept', 'inv-tentative', 'inv-refuse']) {
     await expect(carte.locator(`[data-testid="${geste}"]`)).toHaveAttribute(
       'aria-pressed',
       'false',
@@ -59,7 +59,7 @@ test('la carte d’invitation se montre : titre, horaire local, organisateur, tr
   // La carte PRÉCÈDE le corps dans le contenu (A76 : elle est l'objet
   // du message) — même garantie d'ordre DOM qu'A71.
   const ordre = await page
-    .locator('[data-testid="volet-lecture"] [data-testid="message-deplie"] .contenu > *')
+    .locator('[data-testid="reading-pane"] [data-testid="message-expanded"] .content > *')
     .evaluateAll((noeuds) => noeuds.map((n) => n.dataset.testid ?? n.tagName));
   expect(ordre[0]).toBe('invitation');
 });
@@ -67,31 +67,31 @@ test('la carte d’invitation se montre : titre, horaire local, organisateur, tr
 test('R10 : répondre DEPUIS la liste — le rang porte les gestes, puis la puce', async () => {
   // Quitter le fil de l'atelier : le geste se joue SANS l'ouvrir.
   await page
-    .locator('[data-testid="ligne"]', { hasText: 'Planning de la semaine 33' })
+    .locator('[data-testid="row"]', { hasText: 'Planning de la semaine 33' })
     .first()
     .click();
   // R3'c : les gestes occupent leur RANG à eux (puces-invitation).
-  const gestes = ligneAtelier().locator('[data-testid="puces-invitation"]');
-  await expect(gestes.locator('[data-testid="liste-accepter"]')).toBeVisible();
-  await expect(gestes.locator('[data-testid="liste-refuser"]')).toBeVisible();
+  const gestes = ligneAtelier().locator('[data-testid="chips-invitation"]');
+  await expect(gestes.locator('[data-testid="list-accept"]')).toBeVisible();
+  await expect(gestes.locator('[data-testid="list-refuse"]')).toBeVisible();
 
-  await gestes.locator('[data-testid="liste-provisoire"]').click();
+  await gestes.locator('[data-testid="list-tentative"]').click();
   // La puce remplace les gestes À L'INSTANT (optimiste) — et la ligne
   // n'a PAS été choisie.
   await expect(
-    ligneAtelier().locator('[data-testid="puce-invitation"]'),
+    ligneAtelier().locator('[data-testid="invitation-chip"]'),
   ).toContainText('Provisoire');
   await expect(gestes).toHaveCount(0);
   await expect(
-    page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]'),
+    page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]'),
   ).toHaveText('Planning de la semaine 33');
 
   // La carte relit la même vérité (la base, pas un état d'écran).
   const carte = await ouvrirAtelier();
-  await expect(carte.locator('[data-testid="invitation-statut"]')).toHaveText(
+  await expect(carte.locator('[data-testid="invitation-status"]')).toHaveText(
     'Vous avez répondu provisoirement',
   );
-  await expect(carte.locator('[data-testid="inv-provisoire"]')).toHaveAttribute(
+  await expect(carte.locator('[data-testid="inv-tentative"]')).toHaveAttribute(
     'aria-pressed',
     'true',
   );
@@ -99,15 +99,15 @@ test('R10 : répondre DEPUIS la liste — le rang porte les gestes, puis la puce
 
 test('D6 : changer d’avis depuis la carte — refuser puis accepter', async () => {
   const carte = await ouvrirAtelier();
-  await carte.locator('[data-testid="inv-refuser"]').click();
-  await expect(carte.locator('[data-testid="invitation-statut"]')).toHaveText(
+  await carte.locator('[data-testid="inv-refuse"]').click();
+  await expect(carte.locator('[data-testid="invitation-status"]')).toHaveText(
     'Vous avez refusé',
   );
-  await carte.locator('[data-testid="inv-accepter"]').click();
-  await expect(carte.locator('[data-testid="invitation-statut"]')).toHaveText(
+  await carte.locator('[data-testid="inv-accept"]').click();
+  await expect(carte.locator('[data-testid="invitation-status"]')).toHaveText(
     'Vous avez accepté',
   );
-  await expect(carte.locator('[data-testid="inv-refuser"]')).toHaveAttribute(
+  await expect(carte.locator('[data-testid="inv-refuse"]')).toHaveAttribute(
     'aria-pressed',
     'false',
   );
@@ -116,13 +116,13 @@ test('D6 : changer d’avis depuis la carte — refuser puis accepter', async ()
 test('R11 : la liste rechargée dit la réponse en puce — la réponse survit à la navigation', async () => {
   // Une page fraîche de la Réception (aller-retour de dossier) : le
   // rang vient de l'enrichissement du cœur, pas d'un état local.
-  await page.locator('[data-testid="nav-dossier"][data-categorie="archive"]').click();
-  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
+  await page.locator('[data-testid="nav-folder"][data-category="archive"]').click();
+  await page.locator('[data-testid="nav-folder"][data-category="inbox"]').click();
   await expect(
-    ligneAtelier().locator('[data-testid="puce-invitation"]'),
+    ligneAtelier().locator('[data-testid="invitation-chip"]'),
   ).toContainText('Acceptée');
   const carte = await ouvrirAtelier();
-  await expect(carte.locator('[data-testid="invitation-statut"]')).toHaveText(
+  await expect(carte.locator('[data-testid="invitation-status"]')).toHaveText(
     'Vous avez accepté',
   );
 });

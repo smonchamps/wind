@@ -15,12 +15,12 @@ import { call } from './transport.js';
 
 const SCHEMAS = new Set(['http:', 'https:', 'mailto:']);
 
-// e2e seam (same pattern as __e2ePieces): an array set on
-// `window.__e2eLiens` captures the URLs instead of opening a real
+// e2e seam (same pattern as __e2eAttachments): an array set on
+// `window.__e2eLinks` captures the URLs instead of opening a real
 // browser — the whole upstream path (iframe, interception, filter) is
 // the real one. Outside e2e the variable does not exist.
 function open(url) {
-  const captured = globalThis.window?.__e2eLiens;
+  const captured = globalThis.window?.__e2eLinks;
   if (captured !== undefined) {
     captured.push(url);
     return;

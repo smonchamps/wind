@@ -21,20 +21,20 @@ test.describe.configure({ mode: 'serial' });
 
 test.beforeAll(async () => {
   ({ app, browser, page } = await launchAppV2());
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
 });
 
 test.afterAll(async () => {
   await closeApp({ app, browser });
 });
 
-const lignes = () => page.locator('[data-testid="ligne"]');
-const barre = () => page.locator('[data-testid="barre-selection"]');
+const lignes = () => page.locator('[data-testid="row"]');
+const barre = () => page.locator('[data-testid="bar-selection"]');
 const cochees = () =>
-  page.locator('[data-testid="ligne-case"][aria-checked="true"]');
-const caseDe = (i) => lignes().nth(i).locator('[data-testid="ligne-case"]');
+  page.locator('[data-testid="row-checkbox"][aria-checked="true"]');
+const caseDe = (i) => lignes().nth(i).locator('[data-testid="row-checkbox"]');
 const dossier = (categorie) =>
-  page.locator(`[data-testid="nav-dossier"][data-categorie="${categorie}"]`);
+  page.locator(`[data-testid="nav-folder"][data-category="${categorie}"]`);
 const toast = () => page.locator('[data-testid="toast"]');
 
 // La couleur résolue de --sel, pour comparer des fonds calculés.
@@ -50,7 +50,7 @@ const teinteSel = () =>
 
 test('marquer lu groupé par les cases : la pastille tombe — puis non-lu la relève', async () => {
   // Le décor Clarity porte 4 non-lus en Réception (refonte-ecran02).
-  const pastille = dossier('inbox').locator('.pastille');
+  const pastille = dossier('inbox').locator('.badge');
   await expect(pastille).toHaveText('4');
   // On coche par la CASE (elle ne choisit pas, donc ne marque rien au
   // passage), et par la case non cochée RESTANTE — jamais par index
@@ -58,12 +58,12 @@ test('marquer lu groupé par les cases : la pastille tombe — puis non-lu la re
   // resservie en cours de boucle ferait viser (et DÉ-cocher) une autre
   // rangée — le profil de flake local exact (revue).
   const aCocher = page.locator(
-    '[data-testid="ligne"].nonlu [data-testid="ligne-case"][aria-checked="false"]',
+    '[data-testid="row"].unread [data-testid="row-checkbox"][aria-checked="false"]',
   );
   while ((await aCocher.count()) > 0) {
     await aCocher.first().click();
   }
-  await page.locator('[data-testid="barre-read"]').click();
+  await page.locator('[data-testid="bar-read"]').click();
   await expect(toast()).toContainText('marquées lues');
   // Le geste abouti vide la sélection, et la nav dit le nouveau compte.
   await expect(barre()).toHaveCount(0);
@@ -71,37 +71,37 @@ test('marquer lu groupé par les cases : la pastille tombe — puis non-lu la re
   // Non-lu groupé sur une rangée SANS fil (un fil re-marqué non lu
   // compterait tous ses messages — D6) : la pastille remonte à 1.
   const simple = lignes()
-    .filter({ hasNot: page.locator('.puce', { hasText: /message/ }) })
+    .filter({ hasNot: page.locator('.chip', { hasText: /message/ }) })
     .first();
-  await simple.locator('[data-testid="ligne-case"]').click();
-  await page.locator('[data-testid="barre-unread"]').click();
+  await simple.locator('[data-testid="row-checkbox"]').click();
+  await page.locator('[data-testid="bar-unread"]').click();
   await expect(pastille).toHaveText('1');
 });
 
 test('Ctrl-clic coche ET déplace le focus de lecture (terrain R1-1) ; Annuler vide', async () => {
-  const sujet0 = (await lignes().nth(0).locator('.objet').textContent()).trim();
+  const sujet0 = (await lignes().nth(0).locator('.subject').textContent()).trim();
   await lignes().nth(0).click({ modifiers: ['Control'] });
   // La barre de la liste se transforme (D3) : le compte + les actions.
   await expect(barre()).toBeVisible();
   await expect(barre()).toContainText('1 sélectionné');
   await expect(cochees()).toHaveCount(1);
   // Terrain R1-1 : le liseré ET le volet suivent la rangée Ctrl-cliquée.
-  await expect(lignes().nth(0)).toHaveClass(/choisie/);
+  await expect(lignes().nth(0)).toHaveClass(/chosen/);
   await expect(
-    page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]'),
+    page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]'),
   ).toContainText(sujet0);
   // Ctrl-clic ailleurs ajoute — et le focus suit encore ; sur une
   // cochée, il retire (bascule).
   await lignes().nth(2).click({ modifiers: ['Control'] });
   await expect(barre()).toContainText('2 sélectionnés');
-  await expect(lignes().nth(2)).toHaveClass(/choisie/);
-  await expect(lignes().nth(0)).not.toHaveClass(/choisie/);
+  await expect(lignes().nth(2)).toHaveClass(/chosen/);
+  await expect(lignes().nth(0)).not.toHaveClass(/chosen/);
   await lignes().nth(2).click({ modifiers: ['Control'] });
   await expect(barre()).toContainText('1 sélectionné');
   // Annuler rend la liste au repos : bandeau de titre, zéro case.
-  await page.locator('[data-testid="barre-annuler"]').click();
+  await page.locator('[data-testid="bar-cancel"]').click();
   await expect(barre()).toHaveCount(0);
-  await expect(page.locator('[data-testid="liste-titre"]')).toBeVisible();
+  await expect(page.locator('[data-testid="list-title"]')).toBeVisible();
   await expect(cochees()).toHaveCount(0);
 });
 
@@ -113,7 +113,7 @@ test('Shift-clic étend depuis la rangée sélectionnée (terrain R1-2)', async 
   await lignes().nth(3).click({ modifiers: ['Shift'] });
   await expect(barre()).toContainText('4 sélectionnés');
   await expect(cochees()).toHaveCount(4);
-  await page.locator('[data-testid="barre-annuler"]').click();
+  await page.locator('[data-testid="bar-cancel"]').click();
   await expect(barre()).toHaveCount(0);
 });
 
@@ -132,13 +132,13 @@ test("la case vit au survol, coche sans choisir, et le contenu s'écarte (D4, te
   await caseDe(1).click();
   await expect(barre()).toContainText('1 sélectionné');
   // La case ne choisit pas : le liseré n'a pas bougé sur cette rangée.
-  await expect(lignes().nth(1)).not.toHaveClass(/choisie/);
+  await expect(lignes().nth(1)).not.toHaveClass(/chosen/);
   // Dès qu'une sélection existe, TOUTES les cases se montrent et
   // toutes les rangées s'écartent d'un bloc (D4) — mesuré sur une
   // rangée non survolée ni cochée.
   await expect.poll(() => opacite(caseDe(3))).toBe('1');
   await expect.poll(() => padGauche(3)).toBe('34px');
-  await page.locator('[data-testid="barre-annuler"]').click();
+  await page.locator('[data-testid="bar-cancel"]').click();
 });
 
 test('la sélection se vide au changement de dossier', async () => {
@@ -156,23 +156,23 @@ test('une épinglée cochée se teinte comme les autres (terrain R1-7)', async (
   // dans sa section : son fond doit être LA teinte de sélection — le
   // sol --tile d'A73 cède à la coche (verdict terrain).
   await lignes().nth(0).click();
-  await page.locator('[data-testid="epingler"]').click();
-  const ep = page.locator('[data-testid="epingles"] [data-testid="ligne"]').first();
+  await page.locator('[data-testid="pin"]').click();
+  const ep = page.locator('[data-testid="pins"] [data-testid="row"]').first();
   await expect(ep).toBeVisible();
-  await ep.locator('[data-testid="ligne-case"]').click();
+  await ep.locator('[data-testid="row-checkbox"]').click();
   await expect(barre()).toContainText('1 sélectionné');
   expect(await ep.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
     await teinteSel(),
   );
-  await page.locator('[data-testid="barre-annuler"]').click();
+  await page.locator('[data-testid="bar-cancel"]').click();
   // Remise en état : désépingler (la rangée est encore la sélection de
   // lecture, la barre du fil est ouverte sur elle).
-  await page.locator('[data-testid="epingler"]').click();
-  await expect(page.locator('[data-testid="epingles"]')).toHaveCount(0);
+  await page.locator('[data-testid="pin"]').click();
+  await expect(page.locator('[data-testid="pins"]')).toHaveCount(0);
 });
 
 test("le raccourci « e » archive le LOT coché (terrain R1-8)", async () => {
-  const sujets = await lignes().locator('.objet').allTextContents();
+  const sujets = await lignes().locator('.subject').allTextContents();
   const partants = [sujets[2].trim(), sujets[3].trim()];
   await caseDe(2).click();
   await caseDe(3).click();
@@ -181,7 +181,7 @@ test("le raccourci « e » archive le LOT coché (terrain R1-8)", async () => {
   await expect(barre()).toHaveCount(0);
   await expect
     .poll(async () => {
-      const restants = (await lignes().locator('.objet').allTextContents()).map((s) => s.trim());
+      const restants = (await lignes().locator('.subject').allTextContents()).map((s) => s.trim());
       return partants.filter((s) => restants.includes(s)).length;
     })
     .toBe(0);
@@ -193,20 +193,20 @@ test("le raccourci « e » archive le LOT coché (terrain R1-8)", async () => {
 // amputé d'un message) — le filet est prouvé non-vacant par cette
 // histoire, ne pas le re-filtrer sur des rangées « simples ».
 test('archiver groupé : un seul toast, les fils partent ENTIERS (D6)', async () => {
-  const sujets = await lignes().locator('.objet').allTextContents();
+  const sujets = await lignes().locator('.subject').allTextContents();
   const partants = [sujets[0].trim(), sujets[1].trim()];
   await caseDe(0).click();
   await caseDe(1).click();
   // PLAN-AUDIT-V2 E6 : UN appel au cœur pour le lot — plus N × k
   // commandes unitaires en série (250 + 50 IPC pour 50 conversations).
   await page.evaluate(() => {
-    window.__e2eJournal = [];
+    window.__e2eLog = [];
   });
-  await page.locator('[data-testid="barre-archive"]').click();
+  await page.locator('[data-testid="bar-archive"]').click();
   await expect(toast()).toContainText('2 conversations archivées');
   const gestes = await page.evaluate(() => {
-    const commandes = window.__e2eJournal.map((releve) => releve.command);
-    delete window.__e2eJournal;
+    const commandes = window.__e2eLog.map((releve) => releve.command);
+    delete window.__e2eLog;
     return commandes;
   });
   expect(gestes.filter((c) => c === 'act_on_group')).toHaveLength(1);
@@ -217,7 +217,7 @@ test('archiver groupé : un seul toast, les fils partent ENTIERS (D6)', async ()
   await expect(lignes().first()).toBeVisible();
   await expect
     .poll(async () => {
-      const restants = (await lignes().locator('.objet').allTextContents()).map((s) => s.trim());
+      const restants = (await lignes().locator('.subject').allTextContents()).map((s) => s.trim());
       return partants.filter((s) => restants.includes(s)).length;
     })
     .toBe(0);
@@ -226,7 +226,7 @@ test('archiver groupé : un seul toast, les fils partent ENTIERS (D6)', async ()
   await expect(lignes().first()).toBeVisible();
   await expect
     .poll(async () => {
-      const archives = (await lignes().locator('.objet').allTextContents()).map((s) => s.trim());
+      const archives = (await lignes().locator('.subject').allTextContents()).map((s) => s.trim());
       return partants.filter((s) => archives.includes(s)).length;
     })
     .toBe(2);
@@ -235,14 +235,14 @@ test('archiver groupé : un seul toast, les fils partent ENTIERS (D6)', async ()
 });
 
 test('supprimer groupé : les lignes rejoignent la corbeille', async () => {
-  const sujets = await lignes().locator('.objet').allTextContents();
+  const sujets = await lignes().locator('.subject').allTextContents();
   const partant = sujets[0].trim();
   await caseDe(0).click();
-  await page.locator('[data-testid="barre-delete"]').click();
+  await page.locator('[data-testid="bar-delete"]').click();
   await expect(toast()).toContainText('supprimé');
   await expect
     .poll(async () => {
-      const restants = (await lignes().locator('.objet').allTextContents()).map((s) => s.trim());
+      const restants = (await lignes().locator('.subject').allTextContents()).map((s) => s.trim());
       return restants.includes(partant);
     })
     .toBe(false);
@@ -250,7 +250,7 @@ test('supprimer groupé : les lignes rejoignent la corbeille', async () => {
   await expect(lignes().first()).toBeVisible();
   await expect
     .poll(async () => {
-      const corbeille = (await lignes().locator('.objet').allTextContents()).map((s) => s.trim());
+      const corbeille = (await lignes().locator('.subject').allTextContents()).map((s) => s.trim());
       return corbeille.includes(partant);
     })
     .toBe(true);

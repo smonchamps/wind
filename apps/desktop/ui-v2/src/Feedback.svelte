@@ -84,27 +84,27 @@
        onclick={(e) => { if (e.target === e.currentTarget) close(); }}>
     <!-- tabindex -1: the dialog is programmatically focusable (a11y
          of the role); the real focus goes to the field on opening. -->
-    <div class="carte" role="dialog" aria-modal="true" tabindex="-1"
-         aria-label={t('feedback.title')} data-testid="retour-carte"
+    <div class="card" role="dialog" aria-modal="true" tabindex="-1"
+         aria-label={t('feedback.title')} data-testid="back-card"
          onkeydown={(e) => { if (e.key === 'Escape') close(); }}>
-      <div class="tete">
+      <div class="head">
         <Icon name="feedback" />
-        <span class="titre">{t('feedback.title')}</span>
-        <button type="button" class="fermer" aria-label={t('action.close')}
+        <span class="title">{t('feedback.title')}</span>
+        <button type="button" class="close" aria-label={t('action.close')}
                 onclick={close}><Icon name="close" /></button>
       </div>
-      <p class="sous">{t('feedback.subtitle')}</p>
+      <p class="under">{t('feedback.subtitle')}</p>
       <textarea bind:this={field} bind:value={text} rows="6"
-                data-testid="retour-texte"
+                data-testid="back-text"
                 placeholder={t('feedback.placeholder')}
                 aria-label={t('feedback.title')}></textarea>
-      <div class="pied">
-        <button type="button" class="secondaire" onclick={close}>
+      <div class="foot">
+        <button type="button" class="secondary" onclick={close}>
           {t('action.cancel')}</button>
         <!-- “Send” ABSENT as long as the field is empty — never
              greyed out (the onboarding journey's rule, RETOURS-8 D4). -->
         {#if text.trim() && !sendInProgress}
-          <button type="button" class="principal" data-testid="retour-envoyer"
+          <button type="button" class="main" data-testid="back-send"
                   onclick={send}>{t('action.send')}</button>
         {/if}
       </div>
@@ -118,23 +118,23 @@
     position:absolute; inset:0; background:var(--scrim); z-index:2;
     display:flex; align-items:center; justify-content:center; padding:36px;
   }
-  .carte {
+  .card {
     width:520px; max-width:100%; background:var(--surface);
     border:1px solid var(--border);
     border-radius:var(--r-surface); box-shadow:var(--shadow);
     display:flex; flex-direction:column; gap:10px; padding:18px 22px 16px;
   }
-  .tete { display:flex; align-items:center; gap:10px; color:var(--ink); }
-  .tete :global(.ic) { color:var(--ink2); }
-  .titre { font-size:15px; font-weight:600; flex:1; }
-  .fermer {
+  .head { display:flex; align-items:center; gap:10px; color:var(--ink); }
+  .head :global(.ic) { color:var(--ink2); }
+  .title { font-size:15px; font-weight:600; flex:1; }
+  .close {
     height:32px; width:32px; padding:0; display:inline-flex;
     align-items:center; justify-content:center; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--r-control); cursor:pointer;
   }
-  .fermer:hover { background:var(--sel); }
-  .sous { margin:0; font-size:12px; line-height:1.5; color:var(--muted); }
+  .close:hover { background:var(--sel); }
+  .under { margin:0; font-size:12px; line-height:1.5; color:var(--muted); }
   textarea {
     resize:vertical; min-height:110px; padding:10px 12px;
     font:inherit; font-size:13px; color:var(--ink);
@@ -142,19 +142,19 @@
     border-radius:var(--r-control);
   }
   textarea:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-  .pied { display:flex; justify-content:flex-end; gap:8px; }
-  .secondaire, .principal {
+  .foot { display:flex; justify-content:flex-end; gap:8px; }
+  .secondary, .main {
     height:32px; padding:0 14px; font-size:13px; cursor:pointer;
     border-radius:var(--r-control);
   }
-  .secondaire {
+  .secondary {
     color:var(--ink); background:var(--surface);
     border:1px solid var(--border);
   }
-  .secondaire:hover { background:var(--sel); }
-  .principal {
+  .secondary:hover { background:var(--sel); }
+  .main {
     color:var(--onAccent); background:var(--accent);
     border:1px solid var(--accent); font-weight:600;
   }
-  .principal:hover { background:var(--accentH); border-color:var(--accentH); }
+  .main:hover { background:var(--accentH); border-color:var(--accentH); }
 </style>

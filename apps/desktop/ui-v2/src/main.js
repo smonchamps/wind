@@ -59,13 +59,13 @@ window.__mesure = {
   async open(index) {
     const { list, reading } = app.api();
     await list.goAndServe(index);
-    const line = list.rowAt(index);
-    if (!line) throw new Error(`no row served at index ${index}`);
-    return reading.open(line);
+    const row = list.rowAt(index);
+    if (!row) throw new Error(`no row served at index ${index}`);
+    return reading.open(row);
   },
   // The reload that the cycle and the gestures trigger (PLAN-REACTIVITE
   // E1) — exposed for the assertion “never a wait on rows already
-  // served”, played with the transport on hold (__e2eRetenue).
+  // served”, played with the transport on hold (__e2eHold).
   reload() {
     const { list } = app.api();
     list.reload();

@@ -31,9 +31,9 @@ test("« Toujours afficher les images » lève la garde d'une carte au-delà de 
     nom: 'La Lettre', sujet: 'Edition', n: 25, corps: 'images',
   });
   await page.reload();
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  await page.locator('[data-testid="mode-organise"]').click();
-  await expect(page.locator('[data-testid="mode-organise"]')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
+  await page.locator('[data-testid="organized-mode"]').click();
+  await expect(page.locator('[data-testid="organized-mode"]')).toHaveAttribute('aria-checked', 'true');
   // Router au Kiosque pose la règle d'images (RETOURS-14, « Oui = règle
   // d'images ») : on la RÉVOQUE — le cas du terrain, des lettres routées
   // avant cette règle, ou dont la règle a été retirée aux Réglages.
@@ -46,22 +46,22 @@ test("« Toujours afficher les images » lève la garde d'une carte au-delà de 
     });
     await invoke('revoke_images_sender', { address: 'lettre@exemple.fr' });
   });
-  await page.locator('[data-testid="nav-dossier"][data-categorie="feed"]').click();
-  const cartes = page.locator('[data-testid="kiosque-carte"]');
+  await page.locator('[data-testid="nav-folder"][data-category="feed"]').click();
+  const cartes = page.locator('[data-testid="feed-card"]');
   await expect(cartes).toHaveCount(20);
   // La page 2 se charge en approchant du bas.
   await cartes.last().scrollIntoViewIfNeeded();
   await expect(cartes).toHaveCount(25);
   const derniere = cartes.last();
   await derniere.scrollIntoViewIfNeeded();
-  const garde = derniere.locator('[data-testid="kiosque-garde-images"]');
+  const garde = derniere.locator('[data-testid="feed-images-guard"]');
   await expect(garde).toBeVisible();
   await garde.getByRole('button', { name: 'Toujours afficher les images de cet expéditeur' }).click();
   // Ce que l'utilisateur voit : la garde de CETTE carte s'en va, les
   // images de la lettre sont rendues (l'iframe porte la vraie URL).
   await expect(garde).toHaveCount(0);
-  await expect(derniere.locator('iframe.corps')).toHaveAttribute('srcdoc', /images\.exemple\/lettre-/);
+  await expect(derniere.locator('iframe.body')).toHaveAttribute('srcdoc', /images\.exemple\/lettre-/);
   // Et la règle vaut pour ses sœurs déjà servies : la première carte
   // (page 0) n'a plus de garde non plus.
-  await expect(cartes.first().locator('[data-testid="kiosque-garde-images"]')).toHaveCount(0);
+  await expect(cartes.first().locator('[data-testid="feed-images-guard"]')).toHaveCount(0);
 });

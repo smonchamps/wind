@@ -15,11 +15,11 @@
 </script>
 
 {#if notice}
-  <div class="fente" class:alerte={notice.alert} data-testid="fente-avis">
-    <span class="icone" aria-hidden="true"><Icon name={notice.icon ?? 'info'} /></span>
-    <span class="texte" data-testid="avis-texte">{notice.text}</span>
+  <div class="slot" class:alert={notice.alert} data-testid="slot-notice">
+    <span class="icon" aria-hidden="true"><Icon name={notice.icon ?? 'info'} /></span>
+    <span class="text" data-testid="notice-text">{notice.text}</span>
     {#each notice.actions as action (action.label)}
-      <button type="button" class:principal={action.primary}
+      <button type="button" class:main={action.primary}
               disabled={action.disabled}
               onclick={action.do}>{action.label}</button>
     {/each}
@@ -27,14 +27,14 @@
 {/if}
 
 <style>
-  .fente {
+  .slot {
     flex:none; background:var(--surface);
     border-bottom:1px solid var(--border);
     display:flex; align-items:center; gap:14px; padding:10px 24px;
   }
-  .icone { color:var(--accent); }
-  .alerte .icone { color:var(--alert); }
-  .texte { flex:1; font-size:13px; color:var(--ink); min-width:0; }
+  .icon { color:var(--accent); }
+  .alert .icon { color:var(--alert); }
+  .text { flex:1; font-size:13px; color:var(--ink); min-width:0; }
   button {
     height:32px; padding:0 16px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink); background:var(--surface);
@@ -43,9 +43,9 @@
   }
   button:hover { background:var(--sel); }
   button:disabled { opacity:.6; cursor:default; }
-  .principal {
+  .main {
     font-weight:600; color:var(--onAccent); background:var(--accent);
     border-color:var(--accent);
   }
-  .principal:hover { background:var(--accentH); border-color:var(--accentH); }
+  .main:hover { background:var(--accentH); border-color:var(--accentH); }
 </style>

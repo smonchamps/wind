@@ -20,7 +20,7 @@
 </script>
 
 {#if tile}
-  <span class="marque-tuile" aria-hidden="true"
+  <span class="brand-tile" aria-hidden="true"
         style="width:{size}px; height:{size}px; --r-plateforme:{radius}px">
     <svg viewBox="0 0 24 24" width={size} height={size}>
       <rect width="24" height="24" fill="#F2EDE3" />
@@ -32,7 +32,7 @@
     </svg>
   </span>
 {:else}
-  <svg class="ic" data-nom="marque" viewBox="0 0 24 24"
+  <svg class="ic" data-name="marque" viewBox="0 0 24 24"
        width={size} height={size} aria-hidden="true">
     <g fill="none" stroke="currentColor" stroke-width={BRAND.stroke}
        stroke-linecap="butt" stroke-linejoin="miter">
@@ -43,9 +43,9 @@
 {/if}
 
 <style>
-  .marque-tuile {
+  .brand-tile {
     display:inline-flex; overflow:hidden; flex:none;
     border-radius:var(--r-plateforme);
   }
-  .marque-tuile svg { display:block; }
+  .brand-tile svg { display:block; }
 </style>

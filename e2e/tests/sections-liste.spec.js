@@ -24,10 +24,10 @@ test.afterAll(async () => {
 });
 
 test("la bande « Déjà consulté » est calée sur son vide, au pixel — boîte unifiée, mode organisé", async () => {
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  await page.locator('[data-testid="mode-organise"]').click();
-  await expect(page.locator('[data-testid="mode-organise"]')).toHaveAttribute('aria-checked', 'true');
-  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
+  await page.locator('[data-testid="organized-mode"]').click();
+  await expect(page.locator('[data-testid="organized-mode"]')).toHaveAttribute('aria-checked', 'true');
+  await page.locator('[data-testid="nav-folder"][data-category="inbox"]').click();
   const bande = page.locator('[data-testid="section"]', { hasText: 'Déjà consulté' });
   await expect(bande).toBeVisible();
   // Les sondes se lient par ResizeObserver : on laisse un frame ou deux.
@@ -36,9 +36,9 @@ test("la bande « Déjà consulté » est calée sur son vide, au pixel — boî
   const geo = await page.evaluate(() => {
     const bande = [...document.querySelectorAll('[data-testid="section"]')]
       .find((e) => e.textContent.includes('Déjà consulté'));
-    const vide = document.querySelector('.espace-entete');
-    const lignes = [...document.querySelectorAll('.fenetre [data-testid="ligne"]')];
-    const premiereLue = lignes.find((l) => !l.classList.contains('nonlu'));
+    const vide = document.querySelector('.header-space');
+    const lignes = [...document.querySelectorAll('.window [data-testid="row"]')];
+    const premiereLue = lignes.find((l) => !l.classList.contains('unread'));
     return {
       bande: bande.getBoundingClientRect().top,
       vide: vide?.getBoundingClientRect().top ?? null,

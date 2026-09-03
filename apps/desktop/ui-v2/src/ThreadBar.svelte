@@ -31,28 +31,28 @@
   // stray click would route B.
   let moveMenu = $state(false);
   $effect(() => {
-    void thread.line;
+    void thread.row;
     moveMenu = false;
   });
 </script>
 
-<div class="actions" class:volet={drawing === 'pane'} class:entete={drawing === 'header'}
-     data-testid="barre-fil">
-  <button type="button" data-testid="archiver" onclick={() => onarchive(thread.line)}>
+<div class="actions" class:pane={drawing === 'pane'} class:header={drawing === 'header'}
+     data-testid="bar-thread">
+  <button type="button" data-testid="archive" onclick={() => onarchive(thread.row)}>
     <Icon name="archive" />{t('action.archive')}</button>
   {#if isJunk}
-    <button type="button" data-testid="pas-spam" onclick={() => onnotspam(thread.line)}>
+    <button type="button" data-testid="not-spam" onclick={() => onnotspam(thread.row)}>
       <Icon name="inbox" />{t('action.notSpam')}</button>
   {:else}
-    <button type="button" data-testid="signaler-spam" onclick={() => onspam(thread.line)}>
+    <button type="button" data-testid="report-spam" onclick={() => onspam(thread.row)}>
       <Icon name="report" />{t('action.reportSpam')}</button>
   {/if}
   <!-- R4 (PLAN-RETOURS-7): pinning THE conversation — a toggle
        stated by its label AND aria-pressed; the state comes from the
        core (pin_state) and follows the gesture. Never on an echo. -->
-  {#if pinnable && !isEcho(thread.line)}
-    <button type="button" data-testid="epingler" aria-pressed={thread.pin}
-            onclick={() => onpin(thread.line)}>
+  {#if pinnable && !isEcho(thread.row)}
+    <button type="button" data-testid="pin" aria-pressed={thread.pin}
+            onclick={() => onpin(thread.row)}>
       <Icon name={thread.pin ? 'keep_off' : 'keep'} />
       {thread.pin ? t('action.unpin') : t('action.pin')}</button>
   {/if}
@@ -60,28 +60,28 @@
        one destination. Never on an echo (no envelope). No glyph:
        no existing drawing carries this meaning (A3), the text is
        enough in the bar. -->
-  {#if organized && !isEcho(thread.line)}
+  {#if organized && !isEcho(thread.row)}
     <!-- E5: the pile toggle — the state is SEEDED from the served
          row (the pin's pattern, review 2026-08-21: never a round
          trip per opening) and follows the gesture (App, store
          token); the gesture goes up to the App, which owns the
          command. -->
-    <button type="button" data-testid="mettre-de-cote"
+    <button type="button" data-testid="put-aside"
             aria-pressed={thread.aside}
-            onclick={() => onsetaside(thread.line)}>
+            onclick={() => onsetaside(thread.row)}>
       <Icon name={thread.aside ? 'keep_off' : 'pile'} />
       {thread.aside ? t('pile.resume') : t('pile.put')}</button>
-    <span class="deplacer">
-      <button type="button" data-testid="deplacer-vers"
+    <span class="move">
+      <button type="button" data-testid="move-to"
               aria-haspopup="menu" aria-expanded={moveMenu}
               onclick={() => (moveMenu = !moveMenu)}>
         {t('action.moveTo')}</button>
-      <Menu isOpen={moveMenu} testid="deplacer-menu" width={170} absolute
+      <Menu isOpen={moveMenu} testid="move-menu" width={170} absolute
             onclose={() => (moveMenu = false)}>
           {#each ['inbox', 'feed', 'paper_trail'] as dest (dest)}
             <button type="button" role="menuitem"
-                    data-testid={`deplacer-${dest}`}
-                    onclick={() => { moveMenu = false; onmove(thread.line, dest); }}>
+                    data-testid={`move-${dest}`}
+                    onclick={() => { moveMenu = false; onmove(thread.row, dest); }}>
               {t(`mailbox.${dest}`)}</button>
           {/each}
         </Menu>
@@ -94,17 +94,17 @@
   /* Pane: stuck under the thread's header, flat on the background,
      the divider closes it off; sticky at the top on scroll (R1, D1)
      — z-index above the raised cards. */
-  .actions.volet {
+  .actions.pane {
     flex:none; padding:6px 0 12px; position:sticky; top:0; z-index:4;
     background:var(--bg); border-bottom:1px solid var(--border);
   }
   /* Screen 03's header: inline in the bar, nothing more. */
-  .actions.entete { flex:none; gap:8px; }
+  .actions.header { flex:none; gap:8px; }
   .actions button {
     height:32px; padding:0 16px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink); background:var(--surface);
     border:1px solid var(--border); border-radius:var(--r-control); cursor:pointer;
   }
   .actions button:hover { background:var(--sel); }
-  .deplacer { position:relative; display:inline-flex; }
+  .move { position:relative; display:inline-flex; }
 </style>

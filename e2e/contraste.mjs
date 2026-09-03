@@ -137,13 +137,13 @@ const sombres = lireReperes(css, { nuit: false });
 const claires = lireReperes(css, { nuit: true });
 // Les encres des glyphes se LISENT du CSS expédié, comme les fonds —
 // une copie locale mentirait dès que system.css bouge (revue).
-const encreSombre = css.match(/\.repere\s*\{[^}]*color:(#[0-9a-fA-F]{6})/)?.[1];
+const encreSombre = css.match(/\.marker\s*\{[^}]*color:(#[0-9a-fA-F]{6})/)?.[1];
 const encreClaire = css.match(
-  /\[data-theme\$="-nuit"\] \.repere\s*\{[^}]*color:(#[0-9a-fA-F]{6})/,
+  /\[data-theme\$="-nuit"\] \.marker\s*\{[^}]*color:(#[0-9a-fA-F]{6})/,
 )?.[1];
 if (!encreSombre || !encreClaire) {
   echecs += 1;
-  console.log('ECHEC nuancier des repères : encre de glyphe introuvable dans system.css (.repere { color:… })');
+  console.log('ECHEC nuancier des repères : encre de glyphe introuvable dans system.css (.marker { color:… })');
 }
 for (const [nom, groupe] of [['sombre', sombres], ['claire', claires]]) {
   if (Object.keys(groupe).length !== REPERE_FAMILLES) {

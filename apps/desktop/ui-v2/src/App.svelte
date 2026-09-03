@@ -1120,20 +1120,20 @@
   // RETOURS-14 R6: the Paper trail's grouped view — same reload
   // regime as the Feed.
   let paperTrail = $state(null);
-  async function toggleAside(line, fromThread = false) {
-    if (gestureOnEcho(line)) return;
+  async function toggleAside(row, fromThread = false) {
+    if (gestureOnEcho(row)) return;
     try {
       const aside = await call('toggle_set_aside', {
-        accountId: line.account_id,
-        mailbox: line.mailbox,
-        uid: line.uid,
+        accountId: row.account_id,
+        mailbox: row.mailbox,
+        uid: row.uid,
       });
       flash(t(aside ? 'toast.setAside' : 'toast.resumedPile'));
       // The store's token discipline (pattern of epinglerFil): the
       // bar's button follows the gesture — a "Resume" that didn't
       // change its label would set aside again on the next click (E5
       // review).
-      if (thread.line && msgKey(thread.line) === msgKey(line)) thread.aside = aside;
+      if (thread.row && msgKey(thread.row) === msgKey(row)) thread.aside = aside;
       reloadViews();
       pile?.reload();
       loadNav();
@@ -1170,13 +1170,13 @@
       flash(t('error.preference', { err }));
     }
   }
-  async function moveSender(line, destination) {
-    if (gestureOnEcho(line)) return;
+  async function moveSender(row, destination) {
+    if (gestureOnEcho(row)) return;
     try {
       const address = await call('route_sender_from', {
-        accountId: line.account_id,
-        mailbox: line.mailbox,
-        uid: line.uid,
+        accountId: row.account_id,
+        mailbox: row.mailbox,
+        uid: row.uid,
         destination,
       });
       if (address === null) {
@@ -1186,7 +1186,7 @@
       // E4: "Screen out this sender" — the bare No, from a row's ⋯;
       // the choice replays into the Screener's history.
       if (destination === 'screened_out') {
-        flash(t('toast.screenerNoBare', { who: line.sender }));
+        flash(t('toast.screenerNoBare', { who: row.sender }));
       } else {
         flash(t('toast.senderMoved', { mailbox: t(mailboxLabelKey(destination)) }));
       }
@@ -1303,8 +1303,8 @@
   // on it waits for reconciliation (a window of a few seconds), and
   // the toast says so instead of a silent failure. The row is
   // recognized by its synthetic mailbox.
-  function gestureOnEcho(line) {
-    if (!isEcho(line)) return false;
+  function gestureOnEcho(row) {
+    if (!isEcho(row)) return false;
     flash(t('toast.echoPending'));
     return true;
   }
@@ -1325,10 +1325,10 @@
       .catch((err) => console.error('sync_after_gesture :', err));
   }
 
-  function openConversation(line) {
+  function openConversation(row) {
     // D4 (UI v3): frame exclusivity lives in the store (fil.cadre) —
     // expanding is a size change, never a reload.
-    conversation.open(line);
+    conversation.open(row);
   }
   // R4 (PLAN-RETOURS-7): pin/unpin THE open conversation. The core
   // returns the new state (the thread follows, even if the head has
@@ -1342,19 +1342,19 @@
   // single expression (lib/mailbox.js). The App is the only one holding
   // both halves: the chosen account and the search state.
   const mixedAccounts = $derived(mixedView(account, resultCount !== null));
-  async function pinThread(line) {
-    if (gestureOnEcho(line)) return;
+  async function pinThread(row) {
+    if (gestureOnEcho(row)) return;
     try {
       const state = await call('toggle_pin', {
-        accountId: line.account_id,
-        mailbox: line.mailbox,
-        uid: line.uid,
+        accountId: row.account_id,
+        mailbox: row.mailbox,
+        uid: row.uid,
       });
       // The store's token discipline (review 2026-08-21): the
       // response only dresses the button if the thread STILL shows
       // this conversation — otherwise another row's state would land
       // here.
-      if (thread.line && msgKey(thread.line) === msgKey(line)) thread.pin = state;
+      if (thread.row && msgKey(thread.row) === msgKey(row)) thread.pin = state;
       list?.reload();
     } catch (err) {
       console.error('toggle_pin :', err);
@@ -1374,17 +1374,17 @@
   function write() {
     compose.open('new');
   }
-  function reply(line) {
-    if (gestureOnEcho(line)) return;
-    compose.open('reply', line);
+  function reply(row) {
+    if (gestureOnEcho(row)) return;
+    compose.open('reply', row);
   }
-  function replyAll(line) {
-    if (gestureOnEcho(line)) return;
-    compose.open('reply_all', line);
+  function replyAll(row) {
+    if (gestureOnEcho(row)) return;
+    compose.open('reply_all', row);
   }
-  function forward(line) {
-    if (gestureOnEcho(line)) return;
-    compose.open('forward', line);
+  function forward(row) {
+    if (gestureOnEcho(row)) return;
+    compose.open('forward', row);
   }
   // After a flush: the counters (Sent) may have moved.
   function afterSend() {
@@ -1465,16 +1465,16 @@
     } catch { /* offline or core busy: the next probe will do */ }
   }
 
-  function markSeen(line) {
-    if (!(line.thread_unseen > 0)) return;
+  function markSeen(row) {
+    if (!(row.thread_unseen > 0)) return;
     call('mark_seen', {
-      accountId: line.account_id,
-      mailbox: line.mailbox,
-      uid: line.uid,
+      accountId: row.account_id,
+      mailbox: row.mailbox,
+      uid: row.uid,
       seen: true,
     })
       .then(() => {
-        list?.markRead(line);
+        list?.markRead(row);
         loadNav();
       })
       .catch((err) => console.error('mark_seen :', err));
@@ -1495,31 +1495,31 @@
   const sceneWithoutReading = $derived(
     category === 'screener' || category === 'cleanup' || organizedInbox || feedCards,
   );
-  function onSelection(line) {
-    selectedRow = line;
+  function onSelection(row) {
+    selectedRow = row;
     // V-D2: in two panes, opening IS screen 03 — which knows how to
     // serve a message with no thread (echo included). Read-marking
     // doesn't change: only the destination surface changes.
-    if (panes === 3 && !organizedInbox) reading.open(line);
-    else conversation.open(line);
-    markSeen(line);
+    if (panes === 3 && !organizedInbox) reading.open(row);
+    else conversation.open(row);
+    markSeen(row);
   }
 
   // archive/delete state their success: keyboard triage only advances
   // on a COMPLETED gesture — never on a deferred echo nor a failure.
-  async function archive(line) {
-    if (gestureOnEcho(line)) return false;
+  async function archive(row) {
+    if (gestureOnEcho(row)) return false;
     try {
       await call('archive_message', {
-        accountId: line.account_id,
-        mailbox: line.mailbox,
-        uid: line.uid,
+        accountId: row.account_id,
+        mailbox: row.mailbox,
+        uid: row.uid,
       });
       flash(t('toast.archived'));
       // R1 (RETOURS-10): the row that's gone also leaves the
       // multi-select — the bar never counts a row that no longer
       // exists.
-      list?.uncheck(line);
+      list?.uncheck(row);
       closeThread();
       // The destination echo is ALREADY in the database (same
       // transaction as the gesture, E3): the re-serve shows it in
@@ -1527,7 +1527,7 @@
       // silently.
       reloadViews();
       loadNav();
-      passAfterGesture(line.account_id);
+      passAfterGesture(row.account_id);
       return true;
     } catch (err) {
       console.error('archive_message :', err);
@@ -1558,7 +1558,7 @@
       loadNav();
       passAfterGesture(target.account_id);
       // TRUE = completed gesture (the avancerApres contract) — screen
-      // 03 looks at fil.ligne to know whether the thread has closed.
+      // 03 looks at thread.row to know whether the thread has closed.
       return true;
     } catch (err) {
       console.error('delete_message :', err);
@@ -1569,20 +1569,20 @@
   // mechanics as archive/delete — local disappearance, logged MoveTo
   // action, the server follows. The thread closes, the list and the
   // nav refresh, the pass reconciles behind it.
-  async function reportSpam(line) {
-    if (gestureOnEcho(line)) return false;
+  async function reportSpam(row) {
+    if (gestureOnEcho(row)) return false;
     try {
       await call('report_spam', {
-        accountId: line.account_id,
-        mailbox: line.mailbox,
-        uid: line.uid,
+        accountId: row.account_id,
+        mailbox: row.mailbox,
+        uid: row.uid,
       });
       flash(t('toast.spamReported'));
-      list?.uncheck(line);
+      list?.uncheck(row);
       closeThread();
       reloadViews();
       loadNav();
-      passAfterGesture(line.account_id);
+      passAfterGesture(row.account_id);
       return true;
     } catch (err) {
       // The only expected failure: the account has no junk folder.
@@ -1591,20 +1591,20 @@
       return false;
     }
   }
-  async function markLegitimate(line) {
-    if (gestureOnEcho(line)) return false;
+  async function markLegitimate(row) {
+    if (gestureOnEcho(row)) return false;
     try {
       await call('mark_not_spam', {
-        accountId: line.account_id,
-        mailbox: line.mailbox,
-        uid: line.uid,
+        accountId: row.account_id,
+        mailbox: row.mailbox,
+        uid: row.uid,
       });
       flash(t('toast.notSpam'));
-      list?.uncheck(line);
+      list?.uncheck(row);
       closeThread();
       reloadViews();
       loadNav();
-      passAfterGesture(line.account_id);
+      passAfterGesture(row.account_id);
       return true;
     } catch (err) {
       console.error('mark_not_spam :', err);
@@ -1630,7 +1630,7 @@
   // The target of a per-message command — the fifth site that used
   // to spell out this triple by hand (review).
   const targetFrom = (l) => ({ accountId: l.account_id, mailbox: l.mailbox, uid: l.uid });
-  async function group(action, lines) {
+  async function group(action, rows) {
     const gesture = GROUP_GESTURES[action];
     if (!gesture) {
       console.error(`group: unknown action “${action}”`);
@@ -1640,8 +1640,8 @@
     // gesteSurEcho would flash a toast PER echo, instantly
     // overwritten) and stay in the DENOMINATOR: an amputated batch is
     // stated, never a facade success.
-    const targets = lines.filter((l) => !isEcho(l));
-    const total = lines.length;
+    const targets = rows.filter((l) => !isEcho(l));
+    const total = rows.length;
     if (targets.length === 0) {
       if (total > 0) flash(t('toast.echoPending'));
       return;
@@ -1693,7 +1693,7 @@
   // in 2/1 panes it only lights up — screen 03 never imposes itself
   // on its own. Open conversation: the gesture alone, as before. The
   // mouse gesture (pane buttons) doesn't move the selection.
-  async function advanceAfter(line, gesture) {
+  async function advanceAfter(row, gesture) {
     // Field finding (2026-08-15): the click leaves focus on a row;
     // the key switches the browser into keyboard mode and the
     // :focus-visible ring would pop up on this RECYCLED node (rows
@@ -1701,8 +1701,8 @@
     // meaningless accent strokes. The selection (border) states the
     // position — the shortcut removes focus from the row.
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-    const next = conversation?.isOpen() ? null : (list?.next(line) ?? null);
-    if (!(await gesture(line)) || !next) return;
+    const next = conversation?.isOpen() ? null : (list?.next(row) ?? null);
+    if (!(await gesture(row)) || !next) return;
     list?.select(next);
     selectedRow = next;
     // E5 review: in the ORGANIZED Inbox the pane doesn't exist —
@@ -1739,12 +1739,12 @@
                  }
                }} />
 
-<div class="ecran">
-  <header class="entete" data-testid="entete">
+<div class="screen">
+  <header class="header" data-testid="header">
     {#if panes === 1}
       <!-- One-pane mode (PLAN-VOLETS E2): the nav lives in a drawer,
            the button opens it — 32 px, the header-button grammar. -->
-      <button type="button" class="btn-tiroir" data-testid="btn-tiroir"
+      <button type="button" class="btn-drawer" data-testid="btn-drawer"
               aria-label={t('nav.openDrawer')} aria-expanded={drawerOpen}
               onclick={() => (drawerOpen = true)}>
         <Icon name="menu" /></button>
@@ -1755,15 +1755,15 @@
          contexts, onboarding, migration and "About". 28 px since
          PLAN-RETOURS-12 (D2) — 24 px (RETOURS-10) stayed discreet,
          20 px got lost in the 52 px header. -->
-    <span class="marque" class:marque--libre={panes === 1}><Brand size={28} />Wind</span>
-    <span class="recherche" data-testid="recherche">
+    <span class="brand" class:brand--free={panes === 1}><Brand size={28} />Wind</span>
+    <span class="search" data-testid="search">
       <Icon name="search" />
       <input type="text" bind:this={searchField} bind:value={search}
-             data-testid="champ-recherche" aria-label={t('header.search')}
+             data-testid="search-field" aria-label={t('header.search')}
              placeholder={t('header.searchHint')}>
       {#if search}
         <!-- Field verdict (Annex A): clear the search in ONE click. -->
-        <button type="button" class="vider" data-testid="vider-recherche"
+        <button type="button" class="clear" data-testid="clear-search"
                 aria-label={t('header.clearSearch')}
                 onclick={() => { search = ''; searchField?.focus(); }}>
           <Icon name="close" /></button>
@@ -1771,11 +1771,11 @@
     <!-- PLAN-MODE-ORGANISE E1: the "Organized" toggle, to the right
          of the search (form settled at the prototype) — pill + disc,
          the only two legitimate round shapes (V14). -->
-    <button type="button" class="organise" data-testid="mode-organise"
+    <button type="button" class="organized" data-testid="organized-mode"
             role="switch" aria-checked={organizedMode()}
             onclick={toggleOrganized}>
-      <span class="piste" aria-hidden="true"><span class="disque"></span></span>{t('header.organized')}</button>
-    <button type="button" class="principal" data-testid="ecrire" onclick={write}>
+      <span class="track" aria-hidden="true"><span class="disk"></span></span>{t('header.organized')}</button>
+    <button type="button" class="main" data-testid="write" onclick={write}>
       <Icon name="edit_square" />{t('header.compose')}</button>
     <!-- The beta feedback (RETOURS-11 R3): with no account, no
          button — the message goes out by email from the workstation's
@@ -1784,16 +1784,16 @@
       <button type="button" data-testid="feedback" onclick={() => back.open()}>
         <Icon name="feedback" />{t('header.feedback')}</button>
     {/if}
-    <button type="button" data-testid="reglages" onclick={() => settings.open()}>
+    <button type="button" data-testid="settings" onclick={() => settings.open()}>
       <Icon name="settings" />{t('header.settings')}</button>
   </header>
 
   <NoticeSlot {notice} />
 
   {#if ready}
-    <div class="colonnes" class:colonnes--2={panes === 2}
-         class:colonnes--1={panes === 1}
-         class:colonnes--organise={organizedInbox}
+    <div class="columns" class:columns-2={panes === 2}
+         class:columns-1={panes === 1}
+         class:columns-organized={organizedInbox}
          style="--l-nav:{lNav}px; --l-liste:{listWidth}px">
       {#if panes !== 1}
         <Nav {accounts} {markers} {names} {category} {account}
@@ -1803,7 +1803,7 @@
       {#if category === 'cleanup'}
         <!-- Pane B: the Spring cleaning — same scene regime as the
              Screener (column, no reading pane). -->
-        <div class="cadre-portier">
+        <div class="frame-screener">
           <Cleanup onflash={flash} onchange={loadNav} />
         </div>
       {:else if category === 'screener'}
@@ -1812,13 +1812,13 @@
              the room to the right of the nav (centered column, like
              screen 03) — the reading pane has nothing to read
              there. -->
-        <div class="cadre-portier">
+        <div class="frame-screener">
           <Screener onflash={flash} onchange={loadNav} />
         </div>
       {:else if feedCards}
         <!-- E5bis: the Feed in cards — the letters already opened,
              the whole scene (CE decision of 2026-08-30). -->
-        <div class="cadre-portier">
+        <div class="frame-screener">
           <Feed bind:this={feed} {account}
                    onmove={moveSender} onsetaside={toggleAside}
                    ontotal={(t) => (listTotal = t)} />
@@ -1859,7 +1859,7 @@
            to both boundaries by construction. -->
       {#snippet handle(pane, label, left)}
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
-        <div class="poignee" data-testid="poignee-{pane}" role="separator"
+        <div class="handle" data-testid="handle-{pane}" role="separator"
              aria-orientation="vertical" aria-label={label}
              tabindex="0" aria-valuemin={BOUNDS[pane][0]}
              aria-valuemax={BOUNDS[pane][1]} aria-valuenow={currentWidth(pane)}
@@ -1871,7 +1871,7 @@
              ondblclick={() => defaultWidth(pane)}
              onkeydown={(e) => keyHandle(pane, e)}></div>
       {/snippet}
-      {#if organizedInbox && !(thread.frame === 'full' && thread.line)}
+      {#if organizedInbox && !(thread.frame === 'full' && thread.row)}
         <!-- E5: the pile lives at the bottom right of the Organized
              Inbox (prototype) — fans out on click, full-screen table.
              It hides under screen 03 (E5 review: it used to float
@@ -1887,20 +1887,20 @@
       {/if}
     </div>
 
-    <div class="statut" data-testid="statut">
+    <div class="status" data-testid="status">
       <!-- V2: the disc / ring pair — the 9 px filled --brand disc
            says rest (`line.stroke`), the hollow ring of the same
            diameter says an action is running (`line.thread`). The
            hitofude stroke is dead. A52 holds: the % lives in the
            TEXT. -->
-      <span class="texte">
-        {#if line.alert}<span class="point-alerte" aria-hidden="true"></span>{/if}
+      <span class="text">
+        {#if line.alert}<span class="alert-dot" aria-hidden="true"></span>{/if}
         {#if line.thread}
-          <span class="anneau" aria-hidden="true"></span>
+          <span class="ring" aria-hidden="true"></span>
         {:else if line.stroke}
-          <span class="disque" aria-hidden="true"></span>
+          <span class="disk" aria-hidden="true"></span>
         {/if}
-        <span data-testid="progression">{line.text}</span>
+        <span data-testid="progress">{line.text}</span>
       </span>
       <span id="perf" data-testid="perf" data-startup={startup}>{perf}</span>
       <!-- E3: the gesture lives next to the information it refreshes
@@ -1909,7 +1909,7 @@
            becomes the lever closest to the outage. -->
       <!-- The button keeps its sync glyph, motionless (A36: the
            animation lives in the line's stroke, never here). -->
-      <button type="button" class="btn-statut" data-testid="btn-releve"
+      <button type="button" class="btn-status" data-testid="btn-poll"
               disabled={syncing} onclick={() => poll(true)}>
         <Icon name="sync" />
         {#if syncing}{t('action.syncing')}{:else if syncFailure || syncPartial}{t('action.retry')}{:else}{t('action.sync')}{/if}
@@ -1921,14 +1921,14 @@
            validated at GO — 268 px, 60 px header (brand tile +
            close), the Nav reused AS IS. The scrim is a button: click
            closes it, so does the keyboard (A8). -->
-      <button type="button" class="scrim-tiroir" data-testid="tiroir-scrim"
+      <button type="button" class="scrim-drawer" data-testid="drawer-scrim"
               aria-label={t('nav.closeDrawer')}
               onclick={() => (drawerOpen = false)}></button>
-      <div class="tiroir" data-testid="tiroir" role="dialog" aria-modal="true"
+      <div class="drawer" data-testid="drawer" role="dialog" aria-modal="true"
            aria-label={t('nav.aria')}>
-        <div class="tete-tiroir">
+        <div class="head-drawer">
           <Brand size={28} />Wind
-          <button type="button" class="btn-tiroir fermer-tiroir" data-testid="tiroir-fermer"
+          <button type="button" class="btn-drawer close-drawer" data-testid="drawer-close"
                   aria-label={t('nav.closeDrawer')}
                   onclick={() => (drawerOpen = false)}>
             <Icon name="close" /></button>
@@ -1948,7 +1948,7 @@
                     // mailbox, the old wiring. The thread only stays open
                     // if it still has messages left.
                     const succeeded = await deleteConversation(l);
-                    if (!thread.line || !succeeded) backToMailbox();
+                    if (!thread.row || !succeeded) backToMailbox();
                   }}
                   onreply={reply} onreplyall={replyAll}
                   onforward={forward}
@@ -1989,82 +1989,82 @@
 </div>
 
 <style>
-  .ecran {
+  .screen {
     display:flex; flex-direction:column; height:100vh; position:relative;
     background:var(--bg); overflow:hidden;
   }
   /* A30: the header at the panel token, the search on white. UI v3, E4
      (CE verdict 2026-08-16): the template of the Classic mockup —
      52 px, 14/12 gutters, search capped at 520 px. */
-  .entete {
+  .header {
     height:52px; flex:none; background:var(--bg);
     border-bottom:1px solid var(--border); display:flex;
     align-items:center; gap:12px; padding:0 14px;
   }
-  .marque {
+  .brand {
     font-size:18px; font-weight:600; width:212px; color:var(--ink);
     display:flex; align-items:center; gap:10px;
   }
-  .recherche {
+  .search {
     flex:1; max-width:520px; height:32px; display:flex; align-items:center; gap:10px;
     padding:0 14px; font-size:13px; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--r-control);
   }
-  .recherche :global(.ic) { color:var(--ink2); }
-  .recherche input {
+  .search :global(.ic) { color:var(--ink2); }
+  .search input {
     flex:1; font-size:13px; color:var(--ink); border:none; outline:none;
     background:transparent; min-width:0;
   }
-  .recherche input::placeholder { color:var(--ink2); }
+  .search input::placeholder { color:var(--ink2); }
   /* The search is capped (520 px): the header controls hold the
      right side, as in the mockup template. */
-  .entete [data-testid="ecrire"] { margin-left:auto; }
+  .header [data-testid="write"] { margin-left:auto; }
   /* PLAN-MODE-ORGANISE E1: the toggle — track pill (999px) and disc
      (50 %), the only two legitimate round shapes (V14). Active: the
      track takes the accent, the disc slides to the right. */
-  .organise {
+  .organized {
     display:inline-flex; align-items:center; gap:8px; flex:none;
     font-size:13px; color:var(--ink2); background:transparent;
     border:none; cursor:pointer; padding:6px 8px;
   }
-  .organise[aria-checked="true"] { color:var(--ink); font-weight:600; }
-  .organise .piste {
+  .organized[aria-checked="true"] { color:var(--ink); font-weight:600; }
+  .organized .track {
     width:30px; height:16px; border-radius:999px; flex:none;
     background:var(--bg); border:1px solid var(--border);
     display:inline-flex; align-items:center; padding:0 2px;
     transition:background .12s ease;
   }
-  .organise[aria-checked="true"] .piste {
+  .organized[aria-checked="true"] .track {
     background:var(--accent); border-color:var(--accent);
     justify-content:flex-end;
   }
-  .organise .disque {
+  .organized .disk {
     width:10px; height:10px; border-radius:50%; background:var(--muted);
   }
-  .organise[aria-checked="true"] .disque { background:var(--onAccent); }
-  .vider {
+  .organized[aria-checked="true"] .disk { background:var(--onAccent); }
+  .clear {
     height:22px; width:22px; padding:0; display:inline-flex; flex:none;
     align-items:center; justify-content:center; color:var(--muted);
     background:transparent; border:none; border-radius:var(--r-control); cursor:pointer;
   }
-  .vider:hover { color:var(--ink); background:var(--sel); }
+  .clear:hover { color:var(--ink); background:var(--sel); }
   button {
     height:32px; padding:0 16px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink); background:var(--surface);
     border:1px solid var(--border); border-radius:var(--r-control); cursor:pointer;
   }
   button:hover { background:var(--sel); }
-  .principal {
+  .main {
     font-weight:600; color:var(--onAccent); background:var(--accent);
     border-color:var(--accent);
   }
-  .principal:hover { background:var(--accentH); border-color:var(--accentH); }
+  .main:hover { background:var(--accentH); border-color:var(--accentH); }
 
   /* A29: the nav lane lives at 248 px (236 before v2) — since R3
      (PLAN-RETOURS-V3), 248 and 400 are the DEFAULTS: the widths live
      in variables, set at the handle, capped at the module. */
-  .colonnes {
+  .columns {
     flex:1; display:grid;
     grid-template-columns:var(--l-nav, 248px) var(--l-liste, 400px) minmax(0,1fr);
     min-height:0; position:relative;
@@ -2073,88 +2073,88 @@
      template unchanged (V-D3), the preview breathes. In one pane
      (E2) the list is alone: its right hairline no longer has a
      neighbor. */
-  .colonnes--2 { grid-template-columns:var(--l-nav, 248px) minmax(0,1fr); }
-  .colonnes--1 { grid-template-columns:minmax(0,1fr); }
+  .columns-2 { grid-template-columns:var(--l-nav, 248px) minmax(0,1fr); }
+  .columns-1 { grid-template-columns:minmax(0,1fr); }
   /* E2: the Screener's scene extends from the nav to the right edge
      — the reading pane doesn't exist at the desk. */
-  .cadre-portier {
+  .frame-screener {
     grid-column:2 / -1; display:flex; min-width:0; min-height:0;
     overflow:hidden; background:var(--bg);
   }
-  .colonnes--1 .cadre-portier { grid-column:1 / -1; }
+  .columns-1 .frame-screener { grid-column:1 / -1; }
   /* E4: the Organized Inbox has no reading pane — the list extends
      from the nav to the right edge (centered column inside). */
-  .colonnes--organise > :global([data-testid="liste"]) { grid-column:2 / -1; }
-  .colonnes--1.colonnes--organise > :global([data-testid="liste"]) { grid-column:1 / -1; }
+  .columns-organized > :global([data-testid="list"]) { grid-column:2 / -1; }
+  .columns-1.columns-organized > :global([data-testid="list"]) { grid-column:1 / -1; }
   /* The handle (R3): 7 px straddling the hairline, out of flow; on
      hover, drag and keyboard focus, a 2 px accent stroke states the
      boundary — the grid itself doesn't move a pixel. */
-  .poignee {
+  .handle {
     position:absolute; top:0; bottom:0; width:7px; z-index:1;
     cursor:col-resize; touch-action:none;
   }
-  .poignee::after {
+  .handle::after {
     content:''; position:absolute; top:0; bottom:0; left:2px; width:2px;
     background:transparent;
   }
-  .poignee:hover::after, .poignee:active::after,
-  .poignee:focus-visible::after { background:var(--accent); }
-  .colonnes--1 > :global(.colonne) { border-right:none; }
+  .handle:hover::after, .handle:active::after,
+  .handle:focus-visible::after { background:var(--accent); }
+  .columns-1 > :global(.column) { border-right:none; }
 
   /* The drawer button (E2): 32 px, the header-button grammar; the
      brand loses its column width in one pane. */
-  .btn-tiroir {
+  .btn-drawer {
     width:32px; height:32px; padding:0; flex:none; display:inline-flex;
     align-items:center; justify-content:center; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--r-control); cursor:pointer;
   }
-  .btn-tiroir:hover { background:var(--sel); color:var(--ink); }
-  .marque--libre { width:auto; }
+  .btn-drawer:hover { background:var(--sel); color:var(--ink); }
+  .brand--free { width:auto; }
 
   /* The drawer: a 268 px overlay under a scrim, at overlay level
      (the scrim is a BUTTON — click and keyboard both close it). */
-  .scrim-tiroir {
+  .scrim-drawer {
     position:absolute; inset:0; height:auto; padding:0; z-index:2;
     background:var(--scrim); border:none; cursor:default;
   }
-  .tiroir {
+  .drawer {
     position:absolute; top:0; bottom:0; left:0; width:268px; z-index:2;
     background:var(--bg); border-right:1px solid var(--border);
     box-shadow:var(--shadow); display:flex; flex-direction:column;
   }
-  .tiroir > :global(nav) { flex:1; border-right:none; }
-  .tete-tiroir {
+  .drawer > :global(nav) { flex:1; border-right:none; }
+  .head-drawer {
     height:60px; flex:none; display:flex; align-items:center; gap:10px;
     padding:0 16px 0 20px; border-bottom:1px solid var(--border);
     font-size:18px; font-weight:600; color:var(--ink);
   }
-  .fermer-tiroir { margin-left:auto; }
+  .close-drawer { margin-left:auto; }
 
-  .statut {
+  .status {
     position:relative; height:36px; flex:none; background:var(--bg);
     border-top:1px solid var(--border); display:flex; align-items:center;
     gap:14px; padding:0 24px;
     font-size:12px; color:var(--muted);
   }
   #perf { font-variant-numeric:tabular-nums; flex:none; }
-  .texte { display:flex; align-items:center; gap:8px; min-width:0; flex:1; }
-  .texte span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .text { display:flex; align-items:center; gap:8px; min-width:0; flex:1; }
+  .text span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   /* The poll button (E3, S-D1 variant A): 26 px, it fits within the
      bar's 36 px without forcing them — dimensions from the "Status
      bar and sync" section of the System (the mockup, reverted, is
      dead as of GO — DC-D4). */
-  .btn-statut {
+  .btn-status {
     height:26px; padding:0 12px; display:inline-flex; align-items:center;
     gap:7px; font-size:12px; font-weight:600; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--r-control); cursor:pointer; flex:none;
   }
-  .btn-statut:hover { background:var(--sel); color:var(--ink); }
-  .btn-statut[disabled] { opacity:.55; cursor:default; }
-  .btn-statut[disabled]:hover { background:var(--surface); color:var(--ink2); }
-  .btn-statut :global(.ic) { width:14px; height:14px; }
-  .point-alerte {
+  .btn-status:hover { background:var(--sel); color:var(--ink); }
+  .btn-status[disabled] { opacity:.55; cursor:default; }
+  .btn-status[disabled]:hover { background:var(--surface); color:var(--ink2); }
+  .btn-status :global(.ic) { width:14px; height:14px; }
+  .alert-dot {
     width:7px; height:7px; border-radius:50%; background:var(--alert);
     flex:none;
   }

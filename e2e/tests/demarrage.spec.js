@@ -60,13 +60,13 @@ test('la première page de la liste est demandée avant les sondes du démarrage
   // démarrage serait VIDE de tout ce qu'on veut observer — le test
   // passerait alors à vide. D'où `addInitScript` + `reload`.
   await page.addInitScript(() => {
-    window.__e2eJournal = [];
+    window.__e2eLog = [];
   });
   await page.reload();
-  await page.locator('[data-testid="ligne"]').first().waitFor({ timeout: 30000 });
+  await page.locator('[data-testid="row"]').first().waitFor({ timeout: 30000 });
 
   const journal = await page.evaluate(() =>
-    window.__e2eJournal.map((releve) => releve.command),
+    window.__e2eLog.map((releve) => releve.command),
   );
 
   // --- Gardes anti-vacuité, AVANT toute assertion d'ordre -------------

@@ -498,6 +498,197 @@ Les noms de fichiers sur disque (`wind.log`, `maj.log`,
 >   7 seams renamed in the Svelte (markup, `<style>`, `class:` directives)
 >   and in the specs' selector literals in the same commit, `dom.csv`
 >   as the single table; `.repere-nu` in the two nets follows.
+
+> **E5d — finding (2026-09-03, measured on `29c6a68`).** What the UI
+> actually carries, against what `dom.csv` (E0) knows:
+> - **Test ids**: 319 static `data-testid` values plus 7 prefixes built
+>   at render (`barre-{action}`, `poignee-{pane}`, `gestes-${dest}`,
+>   `kiosque-vers-${dest}`, `registre-vers-${dest}`, `deplacer-${dest}`,
+>   `tri-${choice.id}`) and 8 ids passed as the `testid` prop of `Menu`
+>   (`menu-gestes`, `tri-menu`, `decision-menu`…). `dom.csv` has 301
+>   rows: 23 UI ids have none — 17 are already English (`feed`, `cleanup`,
+>   `screener`, `toast`…), 6 are French (`affiner`, `resultats`,
+>   `message-deplie`, `message-replie`, `signature-editeur`,
+>   `signature-repliques`). The specs carry 257 distinct literal ids
+>   (1 422 `[data-testid="…"]` occurrences, 16 `getByTestId`), 4
+>   template forms and 20 ids built from a value the UI never writes
+>   as a literal (`barre-read`, `poignee-list`, `tri-date-asc`…).
+> - **Two collisions in `dom.csv`**: `composition` (the compose panel)
+>   and `ecrire` (the header button) both → `compose`; `accueil-continuer`
+>   (Onboarding) and `onboarding-continuer` (AccountDesk, rendered
+>   inside Onboarding) both → `onboarding-continue`. Two elements with
+>   one test id in one DOM: Playwright's strict mode fails on both. The
+>   third duplicate (`libelle` and `etiquette` → `label`) is harmless —
+>   two components, scoped styles.
+> - **Classes**: 355 distinct class tokens in the 25 components
+>   (`class="…"`, `class:` directives, `<style>` selectors) — `dom.csv`
+>   knows 230, **124 have no row** (the E5b lesson again: the E0
+>   inventory missed what it did not parse), 44 of them need a word the
+>   glossary does not have (annex below). 12 global classes live in
+>   `system.css` (`.repere`, `.repere-nu`, `.entete-vue`, `.boite`…).
+>   The specs select 30 distinct classes (`.objet` 18 times, `.cadre` 9,
+>   `.tete-message` 5…), 9 of them without a row; `toHaveClass(/choisie/)`
+>   is a regex, 5 times. Two JS string literals build classes
+>   (`'primaire' : 'secondaire'`, `'article.carte'`, `'iframe.corps'`),
+>   one mustache builds a prefix (`ton-{chip.tone}`). One merge to
+>   verify by hand: `actif` → `active` in `Settings.svelte`, which already
+>   has `.rangee.active` — the descendant rules `.actif .icone` /
+>   `.actif .libelle` become `.active .icon` / `.active .label`, and the
+>   `.rangee` markup holds neither (`pastille`, `nom`, `desc`, `coche`):
+>   safe. `choisi`/`choisie` → `chosen` never share a component.
+> - **Attribute names**: 12 French `data-*` names (`data-teinte` 7 uses,
+>   `data-nom` 3, `data-adresse` 3, `data-volets` 2, `data-plage`,
+>   `data-perimetre`, `data-onglet`, `data-icone`, `data-groupe`,
+>   `data-couleur`, `data-cle`, `data-categorie`), `dataset.cle` in the
+>   UI, `dataset.adresse` in a spec, the specs' 77 `data-categorie=` and
+>   24 `data-groupe=` selectors, and the coherence net's two regexes on
+>   `.repere[data-teinte=` / `.repere-nu[data-teinte=`. **Not in
+>   `dom.csv` at all** — no `attr` kind existed.
+> - **Seams**: the 8 of §5.6 are set in `transport.js`, `links.js`,
+>   `onboarding.js` and read by 21 spec sites and `mesure-defilement.mjs`;
+>   `__e2eLiberer` (12 sites) is set and read by one spec alone, the UI
+>   never sees it — it follows the glossary all the same (`__e2eRelease`).
+> - **`line` → `row`** (deferred from E5b): the list row is named `line`
+>   in the UI — 307 occurrences, of which ~200 name the row (List 98,
+>   App ~60, Thread 28, SetAsidePile 28, ThreadBar 9, `thread.line` in
+>   `thread.svelte.js`, Conversation, Reading, Feed, main.js, Onboarding,
+>   Compose, AccountDesk) and the rest are text lines (`invitation.js`,
+>   the status `line` of App, CSS `line-height`). `row` already names:
+>   the `{#snippet row(line)}` of List (the collision E5b saw), the
+>   `c.row` payload of a Feed card, `rowKey`, `rowAt`, `rowClick`,
+>   `orderedRows`, `checkedRows`, `selectedRow`, `newRow`. And `dom.csv`
+>   is split on the word: `ligne` → `line`, `ligne-attente` → `line-pending`
+>   but `ligne-case` → `row-checkbox`, `ligne-a` → `row-to`; classes
+>   `ligne` → `line`, `rangee` → `row`. The glossary (§5.6) rules `row`.
+>
+> **Design.** One table, `dom.csv`, completed (not patched by hand:
+> `tokens.csv` gains the 44 words of the annex, the 87 missing rows are
+> derived from it and appended by `scripts/rename/derive-dom.mjs`),
+> four kinds: `testid`, `class`, `attr` (new), `seam`. One applier,
+> `scripts/rename/apply-dom.mjs` (the tokenizer of `apply-ui.mjs`
+> reused, GLOSSARY §6 amended), one command, `--report` first. What it
+> rewrites, by kind:
+> - `testid`: the exact value of `data-testid="…"` and of the `testid`
+>   prop, the template prefixes (`` `old-${`` and `"old-{`), in the UI;
+>   in `e2e/` (specs and tools): `[data-testid="old"]`, `getByTestId('old')`,
+>   the same prefixes, and the value-built ids by a hand-written list
+>   (`barre-` → `bar-`, `poignee-` → `handle-`, `tri-` → `sort-`…);
+> - `class`: the tokens of `class="…"`, the name of `class:old=` (the
+>   expression untouched) and of a bare `class:old` (rewritten
+>   `class:new={old}`), the `.old` selectors of `<style>` and of
+>   `system.css` (bounded on both sides, `:global(.old)` included), the
+>   JS string literals and mustache prefixes listed above, and in the
+>   specs the `.old` inside selector strings and `toHaveClass(/old/)`;
+> - `attr`: `data-old=` in the UI and the specs, `[data-old` in selectors,
+>   `dataset.old` on both sides, the two regexes of the coherence net;
+> - `seam`: whole identifier `__e2eOld` in the UI, `e2e/` and `scripts/`
+>   (comments included: they name the seam).
+> Then, by hand (no table applies): the two collisions (D19), the
+> identifier `line` → `row` where it names the row (D18 — one agent per
+> file group under the eslint / build / e2e oracles; the snippet
+> `row(line)` becomes `listRow(row)`; the `line` of a text line stays),
+> the `accueil` prop of AccountDesk (`onboarding`, so the bare directive
+> keeps its form), the System (A113: the DOM contract in English,
+> `.bare-marker`, nothing visible changes), `language-gate --update`.
+> **Order**: tokens + dom.csv (annex validated at STOP 1) → applier with
+> its RED test (`e2e/apply-dom.test.mjs`: a Svelte fixture, a spec
+> fixture, expected outputs) → `--report`, review the lists → apply →
+> `line` → `row` → nets, System → build, eslint, nets, **the whole e2e
+> wave on the final tree** (E5b lesson) → fresh-eyes review → full gate
+> → commit → STOP 2. Oracles: the Vite build (zero warnings), eslint
+> `no-undef`, `coherence-systeme`, `contraste`, the language ratchet, the
+> 198 e2e — the DOM contract has no other net: a class missed in a
+> `<style>` block is an unstyled element the field sees, hence the
+> checklist §7 bis below.
+>
+> **Not in E5d**: the spec file names, identifiers and comments (E6);
+> the `localStorage` keys (D-55); the theme ids and the settings group
+> ids (values, D16 spirit — they are not DOM names); `data-theme`,
+> `data-theme-id`, `data-startup`, `data-placeholder` (already English).
+>
+> **Annex — the 44 words the glossary lacked** (proposed, to validate
+> at STOP 1, D20): absolu→absolute, affiner→refine, ajoutes→added,
+> avert→warn, bascule→toggle, bille→dot, choisi(e)→chosen, dedans→inside,
+> deplie→expanded, echantillon→sample, ecran01/03→screen01/03,
+> editeur→editor, empile→stacked, essor→grow (the `flex:1` spacer),
+> eteinte→off, fichiers→files, formulaire→form, grille→grid,
+> identite→identity, indeterminee→indeterminate, inerte→inert,
+> jauge→gauge, lib→lbl, marche→step, miroir→mirror, nb→count,
+> pied→foot, piste→track, prefixe→prefix, primaire→primary,
+> principal→main, qui→who, remplie→filled, replie→collapsed,
+> repliques→replies, resultats→results, secondaire→secondary,
+> separateur→separator, serveurs→servers, ton→tone, tuile→tile,
+> tuilee→tiled, visuel→visual. **Added during the run, after D20, to
+> be validated at STOP 2** (the fresh-eyes review counted them: the
+> annex said 44, the table carries 49): libre→free (`brand--free`),
+> renoncer→give-up (`attachment-give-up`), bande→band (`brand-band`,
+> `about-band` — the E0 rows had kept the French segment), and
+> retrait→removal with the two phrases `retrait moins`/`retrait plus` →
+> `indent_less`/`indent_more` (the E0 word was `indent`, right for the
+> two format buttons and wrong for the account-removal card and the
+> attachment-remove button, which read `settings-indent`,
+> `indent-confirm`, `attachment-indent`: now `settings-removal`,
+> `removal-confirm`, `attachment-remove`). Kept as they are (English, abbreviations
+> or letters the System names): `ic`, `l1`, `l2`, `lab`, `msg`, `pct`,
+> `sep`, `rail`, `port`, `scrim`, `kicker`, `p20`, `e`/`f`/`t`/`n`/`o`/`x`,
+> `recap`, `desc`, `mini`, `display`.
+>
+> **E5d delivered on 2026-09-03.** The DOM contract in English from one
+> table: `dom.csv` completed 539 → 654 rows by `derive-dom.mjs` (113
+> derived rows — 124 classes, 12 `attr`, the ids the `Menu` prop and the
+> specs build from a value — then 3 more after the review), 49 words
+> entered in `tokens.csv` (44 of D20 + 5 of the annex), 22 E0 rows
+> corrected (French left in the English column: `reading-fichiers`,
+> `title-tuile`, `brand-tuile`, `attachment-jointe`, the `ligne` rows
+> unified on `row` per D18, the two collisions split per D19, `retrait`
+> → removal). The applier `apply-dom.mjs` proven RED then GREEN on
+> fixtures (`e2e/apply-dom.test.mjs`, 4 tests, in the test script),
+> applied to 67 files in one run — UI, `system.css`, 30 specs, 5 e2e
+> tools; `line` → `row` by three Sonnet agents (List 70 sites with the
+> snippet `listRow`, App/Thread group 49 with `thread.row`, SetAsidePile
+> 20; text lines kept); the AccountDesk prop `onboarding`; the
+> coherence and contrast nets read `.marker[data-hue=…]`,
+> `.bare-marker[data-hue=…]`; System A113. **Traps the first e2e wave
+> caught (7 reds, all spec-side)**: the selector forms the first pass
+> did not reach — `].nonlu` (a class after a `]`), the bare
+> `'data-teinte'` of `toHaveAttribute`, `classList.contains('nonlu')`,
+> an id compared to a value-built one (`toBe('gestes-paper_trail')`),
+> the CSS hook `[data-testid="ecrire"]` in a `<style>` (an unused
+> selector = a build warning = a red), the UI-side template
+> `data-testid={`gestes-${dest}`}` — each is a rule of the applier now,
+> with a fixture. **Fresh-eyes review (eight angles, Sonnet): ten
+> findings, all fixed** — `.chip.ton-cancelled` unrenamed (the deriver's
+> CSS scan skipped chained selectors: a cancelled invitation's chip
+> would have lost its alert ink — the one field-visible defect),
+> `retrait` mistranslated as `indent` for the account-removal card and
+> the attachment-remove button, `__e2eLiberer` promised and forgotten
+> (`__e2eRelease`), `bande` left French, eleven stale comments, the
+> asymmetric bare-literal rules (one `bareName()` now, prefix rows
+> included), the stale-id report promoted to a permanent net
+> (`e2e/dom-contract.test.mjs`: every id a spec selects is rendered by
+> the UI — it found `settings-panel`, a fallback selector nobody had
+> questioned since a77ab47), the annex/table mismatch (49 words, not
+> 44), invisible control bytes as placeholders (`<!H0!>` now), the
+> double pass of the report. Not done, on purpose: the `walk()`/CSV
+> helpers stay duplicated across the two appliers and the nets (E5b's
+> applier is frozen tooling; a shared `scripts/rename/lib.mjs` is a
+> cleanup for E6 if the e2e layer needs a third applier). Oracles: Vite
+> build zero warnings, eslint, coherence, contrast, links, the two new
+> nets, the e2e wave on the final tree (wave 1: 111 passed / 7 failed /
+> 81 skipped by the serial cascade; the 8 files replayed 96/96; after
+> the review 172/172 on 14 files), full gate green in 150 s (198 e2e,
+> flaky 0). Baseline 87 925 → 87 900 (docs quote French names).
+>
+> **§7 bis — field checklist for E5d** (STOP 2): every screen once,
+> looking for an UNSTYLED element (a class missed): Inbox rows (bare,
+> unread, checked, pinned, tiled), the ⋯ menu, the selection bar, the
+> thread in both frames, the Feed (card, collapsed group, the ⋯),
+> Screener, Paper trail, Cleanup (gauge, ranks), Set aside (pile visual),
+> Settings (every group, the theme rows, the marker palette, the
+> signature editor), Compose (format buttons, the delete warning),
+> Onboarding on an empty database (steps 1-3, the account desk), both
+> themes. A marker's hue and glyph in the list and in the Settings
+> palette (`data-hue`). `e2e/measure-ram.ps1` unchanged.
 >
 > Not in E5: the spec FILE names, identifiers and comments (E6); the
 > French `catalogue.fr.js` values (D3); the `localStorage` keys (D-54);
@@ -609,6 +800,10 @@ corrige ce chiffre au STOP intermédiaire proposé à D10.
 | D15 | The DOM contract (305 test ids, 230 classes, 7 `__e2e*` seams): renamed at **E5d** with the specs' selector literals in the same commit, or kept French until E6 (spec files renamed then)? | E5d now: the Svelte files would otherwise stay half French (a test id is a marker for the ratchet), and the selector literals are exact strings replaced mechanically from `dom.csv` — the same move as the 36 command names at E4 |**2026-09-03: “E5d now”** |
 | D16 | The five VALUE vocabularies that cross the IPC and are persisted (category ids, 12 marker hues, cleanup scopes, invitation replies, sync phases): **(a)** translate at the shell boundary — the database keeps the French value (D3), the wire, the catalogue keys, the CSS selectors and the test ids carry the English one, five small two-way maps in the shell with round-trip tests; **(b)** keep the French value on the wire and downstream (`data-hue="bleu"`, `mailbox.reception`, `--mk-bleu`), amending `keys.csv` and §5.5 accordingly; (c) migrate the values in the database — refused by D3 | (a): D12 already decided `--mk-blue`, and `keys.csv` already decided `mailbox.inbox`; (b) leaves French in the English UI's DOM for good. Cost of (a): ~120 lines of Rust, 5 tests; risk: a value missed in a map, caught by the coherence net and the e2e (`repere-ligne`, `mode-organise`, `nettoyage`, `refonte-invitations`) |**2026-09-03: “(a) Boundary maps”** |
 | D17 | Shell-composed text now that the UI language is known to the shell: the size units `o`/`Ko`/`Mo` of `human_size` (shown in attachments, drafts, the outbox), the two native dialogs, the one asserted error string: **keep French with `lang:fr`** and write debt D-56 (a later small job: send bytes, format in the UI), or fold it into E5a? | Keep and write the debt: it is a behavior change (formatting moves to the UI), §5 refuses embedded behavior changes; an English user sees "Ko" for one more release |**2026-09-03: “Keep, debt D-56”** |
+| D18 | `line` → `row` for the list row in the UI (~200 identifier sites in 13 files, the `{#snippet row}` renamed `listRow`, the text-line `line`s kept) and `dom.csv` unified on `row` (`ligne` → `row`, `ligne-*` → `row-*`, class `ligne` → `row`; `rangee` → `row` stays, no component has both) — at E5d, or the identifier left `line` (debt) with only the DOM names moving? | At E5d: the DOM names and the identifier say the same word or the file reads two vocabularies; the collision is one snippet and eight `row*` helpers, all visible to eslint and the build |**2026-09-03: “At E5d”** |
+| D19 | The two test-id collisions: `ecrire` → `write` (the header button; the glossary carries both `write` and `compose` for it) and `composition` → `compose` (the panel); `onboarding-continuer` (AccountDesk) → `desk-continue` (its siblings are `desk-horizon`, `desk-back`) and `accueil-continuer` → `onboarding-continue`? | Yes: distinct elements keep distinct ids; the specs' 33 + 5 sites follow mechanically |**2026-09-03: “Yes, as proposed”** |
+| D20 | The 44 new words of the annex, entered in `tokens.csv` (they become glossary words for E6-E10 too): validated as they are, or struck? | As they are; `essor` → `grow` and `lib` → `lbl` are the two guesses worth a look |**2026-09-03: “Validated as they are”** |
+| D21 | The 12 `data-*` attribute names and `dataset.*` reads renamed (`data-teinte` → `data-hue`, `data-categorie` → `data-category`…) at E5d as a fourth kind of `dom.csv`, or kept French as values-adjacent (D16)? | Rename: an attribute NAME is DOM contract, its VALUE is already English since E5a — `data-teinte="blue"` is the half-way state E5d exists to end |**2026-09-03: “Rename”** |
 
 ## 7. Checklist terrain (STOP 2) — ce que le CE joue
 

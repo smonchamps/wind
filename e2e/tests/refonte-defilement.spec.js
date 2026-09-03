@@ -32,7 +32,7 @@ test.afterAll(async () => {
 });
 
 const dossier = (categorie) =>
-  page.locator(`[data-testid="nav-dossier"][data-categorie="${categorie}"]`);
+  page.locator(`[data-testid="nav-folder"][data-category="${categorie}"]`);
 
 test("les lignes ne suivent jamais le comptage — page d'abord, total au repos (terrain 2026-08-20)", async () => {
   // Le comptage d'une catégorie (sonde NOT EXISTS par ligne sur une
@@ -41,21 +41,21 @@ test("les lignes ne suivent jamais le comptage — page d'abord, total au repos 
   // quand la pompe de pages est au repos — jamais devant les lignes.
   // Démarrage d'abord retombé (réception, sondes) : le journal ne doit
   // porter que le geste observé.
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
   await new Promise((resolve) => setTimeout(resolve, 1500));
   await page.evaluate(() => {
-    window.__e2eJournal = [];
+    window.__e2eLog = [];
   });
   await dossier('archive').click();
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
   // 6 000 messages : la page 0 est PLEINE, le vrai total ne peut venir
   // que du comptage — et il finit au statut, après les lignes.
-  await expect(page.locator('[data-testid="statut"]')).toContainText('Archives · 6000');
+  await expect(page.locator('[data-testid="status"]')).toContainText('Archives · 6000');
   const ordre = await page.evaluate(() => {
-    const journal = window.__e2eJournal;
+    const journal = window.__e2eLog;
     const page0 = journal.find((a) => a.command === 'list_category');
     const compte = journal.find((a) => a.command === 'category_total');
-    delete window.__e2eJournal;
+    delete window.__e2eLog;
     return {
       page0Arrivee: page0?.arrival ?? null,
       compteDepart: compte?.start ?? null,
@@ -67,25 +67,25 @@ test("les lignes ne suivent jamais le comptage — page d'abord, total au repos 
 });
 
 test('un drag tenu ne garde jamais plus de deux pages en vol (E1)', async () => {
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
   await dossier('archive').click();
-  await expect(page.locator('[data-testid="liste-titre"]')).toHaveText('Archives');
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="list-title"]')).toHaveText('Archives');
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
   // Quiescence prouvée AVANT la retenue : plus une attente à l'écran,
   // donc plus un vol ouvert — sans quoi l'assertion de rafale pourrait
   // passer à vide (deux vols résiduels occuperaient déjà la jauge).
-  await expect(page.locator('[data-testid="ligne-attente"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="row-pending"]')).toHaveCount(0);
 
   // Transport RETENU pendant tout le geste : le coeur ne répond pas —
   // exactement la saturation du terrain, rendue DÉTERMINISTE (sur un
   // petit décor rapide, la file ne se formerait pas ; sur la vraie
-  // base, elle durait des minutes). Le journal (couture __e2eJournal)
+  // base, elle durait des minutes). Le journal (couture __e2eLog)
   // compte ce que la liste DEMANDE pendant ce silence.
   try {
     await page.evaluate(() => {
-      window.__e2eJournal = [];
-      window.__e2eRetenue = new Promise((liberer) => {
-        window.__e2eLiberer = liberer;
+      window.__e2eLog = [];
+      window.__e2eHold = new Promise((liberer) => {
+        window.__e2eRelease = liberer;
       });
     });
     // La barre tenue au clic jusqu'à 1/3 de la liste (une dizaine de
@@ -97,7 +97,7 @@ test('un drag tenu ne garde jamais plus de deux pages en vol (E1)', async () => 
     // ne partent pas ; les suivantes attendront un vol libre, la file
     // du coeur ne grandit pas.
     const demandees = await page.evaluate(
-      () => window.__e2eJournal.filter((a) => a.command === 'list_category').length,
+      () => window.__e2eLog.filter((a) => a.command === 'list_category').length,
     );
     expect(demandees).toBeGreaterThanOrEqual(1);
     expect(demandees).toBeLessThanOrEqual(2);
@@ -107,18 +107,18 @@ test('un drag tenu ne garde jamais plus de deux pages en vol (E1)', async () => 
     // journal qui survivrait enregistrerait chaque appel du reste de
     // la suite.
     await page.evaluate(() => {
-      window.__e2eLiberer?.();
-      delete window.__e2eRetenue;
-      delete window.__e2eLiberer;
-      delete window.__e2eJournal;
+      window.__e2eRelease?.();
+      delete window.__e2eHold;
+      delete window.__e2eRelease;
+      delete window.__e2eLog;
     });
   }
 
   // Le coeur répond : la fenêtre COURANTE se sert en une paire
   // d'allers — lignes visibles, plus d'attente, sans drainer d'abord
   // une file de pages devenues invisibles.
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible({ timeout: 5000 });
-  await expect(page.locator('[data-testid="ligne-attente"]')).toHaveCount(0, { timeout: 5000 });
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible({ timeout: 5000 });
+  await expect(page.locator('[data-testid="row-pending"]')).toHaveCount(0, { timeout: 5000 });
 });
 
 test("l'écran vide ne s'affirme qu'après preuve — jamais « Aucun message ici. » sur une boîte pleine (E2)", async () => {
@@ -126,28 +126,28 @@ test("l'écran vide ne s'affirme qu'après preuve — jamais « Aucun message ic
   // L'écran doit MONTRER l'attente — pas affirmer un vide qu'il n'a pas
   // prouvé (le mensonge du constat terrain : « Aucun message ici. »
   // dans tous les dossiers pendant que la file se drainait).
-  const liste = page.locator('[data-testid="liste"]');
+  const liste = page.locator('[data-testid="list"]');
   try {
     await page.evaluate(() => {
-      window.__e2eRetenue = new Promise((liberer) => {
-        window.__e2eLiberer = liberer;
+      window.__e2eHold = new Promise((liberer) => {
+        window.__e2eRelease = liberer;
       });
     });
     await dossier('inbox').click();
-    await expect(page.locator('[data-testid="liste-titre"]')).toHaveText('Boîte de réception');
+    await expect(page.locator('[data-testid="list-title"]')).toHaveText('Boîte de réception');
     // Pendant le vol : jamais le message de vide, l'attente se montre.
-    await expect(page.locator('[data-testid="ligne-attente"]').first()).toBeVisible();
+    await expect(page.locator('[data-testid="row-pending"]').first()).toBeVisible();
     await expect(liste).not.toContainText('Aucun message ici.');
   } finally {
     // Libérer QUOI QU'IL ARRIVE : la suite est sérielle — une retenue
     // qui survivrait au test gèlerait tous les suivants.
     await page.evaluate(() => {
-      window.__e2eLiberer?.();
-      delete window.__e2eRetenue;
-      delete window.__e2eLiberer;
+      window.__e2eRelease?.();
+      delete window.__e2eHold;
+      delete window.__e2eRelease;
     });
   }
   // La page 0 arrive : les lignes prennent la place de l'attente.
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  await expect(page.locator('[data-testid="ligne-attente"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="row-pending"]')).toHaveCount(0);
 });

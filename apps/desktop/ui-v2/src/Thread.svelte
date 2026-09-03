@@ -113,7 +113,7 @@
       ? null
       : mailboxBlock({
         accountId: m.account_id,
-        address: thread.line?.account_email ?? '',
+        address: thread.row?.account_email ?? '',
         markers,
         names,
         accounts,
@@ -128,8 +128,8 @@
   // counts in ms.
   let screenerPending = $state(new Set());
   $effect(() => {
-    void thread.line;
-    if (!organized || !thread.line) {
+    void thread.row;
+    if (!organized || !thread.row) {
       screenerPending = new Set();
       return;
     }
@@ -153,10 +153,10 @@
 
   // The draft of the open thread — the most recent one (B-D5).
   const threadDraft = $derived.by(() => {
-    if (!thread.line || thread.line.thread_id == null) return null;
+    if (!thread.row || thread.row.thread_id == null) return null;
     let kept = null;
     for (const b of drafts) {
-      if (b.thread_id !== thread.line.thread_id) continue;
+      if (b.thread_id !== thread.row.thread_id) continue;
       if (!kept || b.updated_epoch > kept.updated_epoch) kept = b;
     }
     return kept;
@@ -165,7 +165,7 @@
   // The mockup's inventory chips (field A45): n messages ALWAYS
   // said — "1 message" included —, files SUMMED across the thread
   // (the row only carries the count of ITS OWN message).
-  const messageCount = $derived(thread.messages.length || thread.line?.thread_size || 1);
+  const messageCount = $derived(thread.messages.length || thread.row?.thread_size || 1);
   // The toggle is DERIVED from the real state (field A47): everything
   // expanded → "Collapse all" — a one-message thread thus opens on it.
   const allExpanded = $derived(
@@ -174,10 +174,10 @@
   const attachmentsTotal = $derived(
     thread.messages.length
       ? thread.messages.reduce((n, m) => n + (attachmentCountOf(m) || 0), 0)
-      : (thread.line ? attachmentCountOf(thread.line) : 0),
+      : (thread.row ? attachmentCountOf(thread.row) : 0),
   );
 
-  const own = (m) => thread.line && m.sender_address === thread.line.account_email;
+  const own = (m) => thread.row && m.sender_address === thread.row.account_email;
 
   // R5 (PLAN-RETOURS-12, decision D4): recipient names come from the
   // contacts DIRECTORY — `to_addrs`/`cc_addrs` only store bare
@@ -245,7 +245,7 @@
     // Last fallback: the account's address, bare — the honest fact
     // (the core does not know our name, and the directory is only
     // queried on the thread's To/Cc).
-    return thread.line?.account_email ?? '';
+    return thread.row?.account_email ?? '';
   }
 
   // E5bis: `autoBody` lives in lib/body.js — Feed in cards measures the
@@ -318,43 +318,43 @@
   }
 </script>
 
-{#if thread.line}
+{#if thread.row}
   <!-- BOTH frames are FLAT (field A46, extended to screen 03
        by PLAN-RETOURS-7 R3): no enclosing elevation, no
        nets — only message cards raise, and everything scrolls
        in one flow EXCEPT the thread bar, sticky at the top (RETOURS-14 R1).
        "Screen 03 keeps its full card" (A46) is reversed: the
        full frame is a centered flat column (Conversation.svelte). -->
-  <div class="objet-fil">
-    <div class="tete">
-      <h3 class="titre display" data-testid="fil-sujet">{thread.line.subject}</h3>
+  <div class="thread-subject">
+    <div class="head">
+      <h3 class="title display" data-testid="thread-subject">{thread.row.subject}</h3>
       <!-- The mockup's row (field A45): inventory chips on the
            left, BARE buttons on the right — "Expand all" at the edge. -->
-      <div class="puces" data-testid="fil-puces">
-        <span class="puce"><Icon name="forum" />{t('chip.messages', { n: messageCount })}</span>
+      <div class="chips" data-testid="thread-chips">
+        <span class="chip"><Icon name="forum" />{t('chip.messages', { n: messageCount })}</span>
         {#if attachmentsTotal > 0}
-          <span class="puce"><Icon name="attach_file" />{t('chip.files', { n: attachmentsTotal })}</span>
+          <span class="chip"><Icon name="attach_file" />{t('chip.files', { n: attachmentsTotal })}</span>
         {/if}
-        <span class="essor"></span>
+        <span class="grow"></span>
         {#if onenlarge}
           <!-- V-D2: a SINGLE message has no conversation to open
                — the button stays, inert and says so. "Open" carries
                its own glyph (A46): one icon, one meaning (A3). -->
-          <button type="button" class="nu" data-testid="voir-conversation"
-                  class:inerte={thread.line.thread_id == null}
-                  aria-disabled={thread.line.thread_id == null}
-                  tabindex={thread.line.thread_id != null ? 0 : -1}
-                  onclick={() => thread.line.thread_id != null && onenlarge(thread.line)}>
+          <button type="button" class="bare" data-testid="see-conversation"
+                  class:inert={thread.row.thread_id == null}
+                  aria-disabled={thread.row.thread_id == null}
+                  tabindex={thread.row.thread_id != null ? 0 : -1}
+                  onclick={() => thread.row.thread_id != null && onenlarge(thread.row)}>
             <Icon name="open_in_full" />{t('reading.open')}</button>
         {/if}
         <!-- The toggle (A46, derived from A47): "Collapse all"
              when EVERYTHING is expanded — one-message thread included —,
              otherwise "Expand all"; manual expansions make it follow. -->
         {#if allExpanded}
-          <button type="button" class="nu" data-testid="tout-replier" onclick={allCollapse}>
+          <button type="button" class="bare" data-testid="all-collapse" onclick={allCollapse}>
             <Icon name="unfold_less" />{t('conv.collapse')}</button>
         {:else}
-          <button type="button" class="nu" data-testid="tout-deplier" onclick={allExpand}>
+          <button type="button" class="bare" data-testid="all-expand" onclick={allExpand}>
             <Icon name="unfold_more" />{t('conv.expand')}</button>
         {/if}
       </div>
@@ -375,50 +375,50 @@
                 {onarchive} {onspam} {onnotspam} {onpin} {onmove} {onsetaside} />
     {/if}
 
-    <div class="fil">
+    <div class="thread">
       {#each thread.messages as m (msgKey(m))}
         {@const k = msgKey(m)}
         {@const mailbox = mailboxOf(m)}
         {#if thread.expanded[k]}
-          <article class="deplie" data-testid="message-deplie">
+          <article class="expanded" data-testid="message-expanded">
             <!-- The two-line header (PLAN-RETOURS-12 R5):
                  "Name <address> on Mailbox" then "To: Name <address>, …"
                  (and "Cc: …" if Cc exist, D6) — the From/To/Subject
                  block stays dead, the head says it all (A45). -->
-            <div class="tete-message" role="button" tabindex="0"
+            <div class="message-head" role="button" tabindex="0"
                  aria-expanded="true"
                  onclick={() => toggleMessage(m)} onkeydown={activation(() => toggleMessage(m))}>
               <span class="avatar" aria-hidden="true">{initials(m.sender)}</span>
-              <span class="qui">
+              <span class="who">
                 <!-- A80/D5: the mailbox behind the name — the same block
                      as the list row (system.css). -->
-                <span class="rang-nom">
-                  <span class="auteur">{m.sender}</span>
+                <span class="rank-name">
+                  <span class="author">{m.sender}</span>
                   {#if m.sender_address && m.sender_address !== m.sender}
-                    <span class="adr adr-exp">{`<${m.sender_address}>`}</span>
+                    <span class="addr addr-sender">{`<${m.sender_address}>`}</span>
                   {/if}
                   {#if pending(m)}
-                    <span class="attente-portier" data-testid="attente-portier">{t('thread.screenerPending')}</span>
+                    <span class="screener-pending" data-testid="screener-pending">{t('thread.screenerPending')}</span>
                   {/if}
                   {#if mailbox}
-                    <span class="boite" title={mailbox.title}>
-                      <span class="mot">{t('list.on')}</span>
+                    <span class="mailbox" title={mailbox.title}>
+                      <span class="word">{t('list.on')}</span>
                       {#if mailbox.marker}
-                        <span class="repere-nu" data-teinte={mailbox.marker.hue}
+                        <span class="bare-marker" data-hue={mailbox.marker.hue}
                               aria-hidden="true"><Icon name={mailbox.marker.icon} size={14} /></span>
                       {/if}
-                      <span class="lib">{mailbox.label}</span>
+                      <span class="lbl">{mailbox.label}</span>
                     </span>
                   {/if}
                 </span>
-                <span class="adr" data-testid="ligne-a">{t('conv.toLine', { list: recipients(m) })}</span>
+                <span class="addr" data-testid="row-to">{t('conv.toLine', { list: recipients(m) })}</span>
                 {#if (m.cc_addrs?.length ?? 0) > 0}
-                  <span class="adr" data-testid="ligne-cc">{t('conv.ccLine', { list: m.cc_addrs.map(nameAddr).join(', ') })}</span>
+                  <span class="addr" data-testid="row-cc">{t('conv.ccLine', { list: m.cc_addrs.map(nameAddr).join(', ') })}</span>
                 {/if}
               </span>
-              <span class="quand">{whenLong(m.epoch)}</span>
+              <span class="when">{whenLong(m.epoch)}</span>
             </div>
-            <div class="contenu">
+            <div class="content">
               <!-- The invitation card (PLAN-INVITATIONS, A76): AT THE
                    TOP of the content — it is the object of the message, before
                    the files. Date tile in tuile/tuileInk (the current
@@ -434,32 +434,32 @@
                 {@const orgLocation = organizerLocation(inv)}
                 {@const invAttendee = attendeeLine(inv)}
                 <div class="invitation" data-testid="invitation">
-                  <div class="inv-tete">
-                    <span class="inv-kicker" class:annulee={inv.cancelled}>{invitationKicker(inv)}</span>
+                  <div class="inv-head">
+                    <span class="inv-kicker" class:cancelled={inv.cancelled}>{invitationKicker(inv)}</span>
                     {#if inv.method === 'request'}
-                      <span class="inv-statut" data-testid="invitation-statut">{invitationStatus(inv)}</span>
+                      <span class="inv-status" data-testid="invitation-status">{invitationStatus(inv)}</span>
                     {/if}
                   </div>
-                  <div class="inv-corps">
+                  <div class="inv-body">
                     {#if tile}
-                      <span class="inv-tuile" class:eteinte={inv.cancelled} aria-hidden="true">
-                        <span class="inv-mois">{tile.month}</span>
-                        <span class="inv-jour">{tile.day}</span>
+                      <span class="inv-tile" class:off={inv.cancelled} aria-hidden="true">
+                        <span class="inv-month">{tile.month}</span>
+                        <span class="inv-day">{tile.day}</span>
                       </span>
                     {/if}
                     <div class="inv-details">
-                      <span class="inv-titre" class:barre={inv.cancelled}
-                            data-testid="invitation-titre">{inv.title}</span>
+                      <span class="inv-title" class:bar={inv.cancelled}
+                            data-testid="invitation-title">{inv.title}</span>
                       {#if invWhen}
-                        <span class="inv-quand">{invWhen}</span>
+                        <span class="inv-when">{invWhen}</span>
                       {/if}
                       {#if orgLocation}
-                        <span class="inv-lieu">{orgLocation}</span>
+                        <span class="inv-location">{orgLocation}</span>
                       {/if}
                       {#if inv.cancelled}
-                        <span class="inv-annulee">{t('inv.cancelledText')}</span>
+                        <span class="inv-cancelled">{t('inv.cancelledText')}</span>
                       {:else if invAttendee}
-                        <span class="inv-repondant" data-testid="invitation-repondant">{invAttendee}</span>
+                        <span class="inv-attendee" data-testid="invitation-attendee">{invAttendee}</span>
                       {/if}
                     </div>
                   </div>
@@ -468,17 +468,17 @@
                          reply, the color its meaning (accent / neutral /
                          alert) — the text always doubles it (A8). -->
                     <div class="inv-actions" data-testid="invitation-actions">
-                      <button type="button" class="ton-accepted" data-testid="inv-accepter"
+                      <button type="button" class="tone-accepted" data-testid="inv-accept"
                               aria-pressed={inv.status === 'accepted'}
                               disabled={repliesInFlight[k]}
                               onclick={() => replyInvitation(m, 'accepted')}>
                         <Icon name="check_circle" />{t('action.accept')}</button>
-                      <button type="button" class="ton-tentative" data-testid="inv-provisoire"
+                      <button type="button" class="tone-tentative" data-testid="inv-tentative"
                               aria-pressed={inv.status === 'tentative'}
                               disabled={repliesInFlight[k]}
                               onclick={() => replyInvitation(m, 'tentative')}>
                         <Icon name="question_mark" />{t('action.tentative')}</button>
-                      <button type="button" class="ton-declined" data-testid="inv-refuser"
+                      <button type="button" class="tone-declined" data-testid="inv-refuse"
                               aria-pressed={inv.status === 'declined'}
                               disabled={repliesInFlight[k]}
                               onclick={() => replyInvitation(m, 'declined')}>
@@ -496,8 +496,8 @@
                    if chips exist — never a title with nothing
                    beneath it (PLAN-RETOURS-5). -->
               {#if attachmentCountOf(m) > 0 && (!isEcho(m) || (thread.attachments[k] ?? []).length > 0)}
-                <div class="fichiers" data-testid="lecture-fichiers">
-                  <p class="titre-fichiers">{t('conv.attachedFiles')}</p>
+                <div class="files" data-testid="reading-files">
+                  <p class="title-files">{t('conv.attachedFiles')}</p>
                   <!-- R2 (PLAN-RETOURS-4, D4): name AND weight in the SAME
                        clickable chip — an accepted exception to "1 chip = 1
                        piece of information", a single icon (the same
@@ -508,21 +508,21 @@
                        name and weight show, nothing gets saved
                        during the reconciliation window — and so they
                        carry NO veil (no promise). -->
-                  <div class="puces">
+                  <div class="chips">
                     {#each thread.attachments[k] ?? [] as attachment (attachment.index)}
-                      <button type="button" class="puce bouton" data-testid="piece-jointe"
+                      <button type="button" class="chip button" data-testid="attachment"
                               disabled={isEcho(m) || savesInFlight[`${k}#${attachment.index}`]}
                               onclick={() => !isEcho(m) && save(m, attachment)}
                               title={isEcho(m) ? undefined : t('reading.save')}>
                         <Icon name="description" />
-                        <span class="nom">{attachment.name}</span><span class="taille">{attachment.size}</span>
+                        <span class="name">{attachment.name}</span><span class="size">{attachment.size}</span>
                         <!-- R1 (PLAN-RETOURS-7, D1): on hover as on
                              keyboard focus, a veil covers the chip and SAYS
                              the action — "Save" (the product's
                              vocabulary: the click opens "Save as").
                              Same geometry, the row does not reflow. -->
                         {#if !isEcho(m)}
-                          <span class="voile" aria-hidden="true">
+                          <span class="veil" aria-hidden="true">
                             <Icon name="download" />{t('reading.veilSave')}</span>
                         {/if}
                       </button>
@@ -531,16 +531,16 @@
                 </div>
               {/if}
               {#if (thread.blockedImages[k] ?? 0) > 0}
-                <div class="garde-images" data-testid="garde-images">
+                <div class="images-guard" data-testid="images-guard">
                   <Icon name="visibility_off" />
-                  <span class="garde-texte">{t('reading.blockedImages', { n: thread.blockedImages[k] })}</span>
-                  <button type="button" data-testid="afficher-images"
+                  <span class="guard-text">{t('reading.blockedImages', { n: thread.blockedImages[k] })}</span>
+                  <button type="button" data-testid="show-images"
                           onclick={() => showImages(m)}>
                     {t('reading.showImages')}</button>
                   <!-- D3 (RETOURS-11): the sender rule — never
                        on an echo (ourselves, no third-party sender). -->
                   {#if !isEcho(m)}
-                    <button type="button" data-testid="toujours-afficher-images"
+                    <button type="button" data-testid="always-show-images"
                             onclick={() => alwaysShowImages(m)}>
                       {t('reading.alwaysShowImages')}</button>
                   {/if}
@@ -550,15 +550,15 @@
                 <!-- PLAN-AUDIT-V2 E10: the core did not serve this body —
                      the image guard's grammar, with the gesture that
                      replays (before: an empty frame, final). -->
-                <div class="garde-images" data-testid="corps-echec">
+                <div class="images-guard" data-testid="body-failure">
                   <Icon name="error" />
-                  <span class="garde-texte">{t('reading.bodyFailure')}</span>
-                  <button type="button" data-testid="corps-reessayer"
+                  <span class="guard-text">{t('reading.bodyFailure')}</span>
+                  <button type="button" data-testid="body-retry"
                           onclick={() => retry(m)}>
                     {t('action.retry')}</button>
                 </div>
               {/if}
-              <iframe class="corps" sandbox="allow-same-origin" srcdoc={thread.body[k] ?? ''}
+              <iframe class="body" sandbox="allow-same-origin" srcdoc={thread.body[k] ?? ''}
                       title={t('reading.body')} use:autoBody
                       onload={(ev) => wireLinks(ev.currentTarget)}></iframe>
             </div>
@@ -572,13 +572,13 @@
                  to the original recipients (reply_context/reply_all), never
                  to ourselves. -->
             <div class="actions-message" data-testid="actions-message">
-              <button type="button" class="principal" data-testid="repondre"
+              <button type="button" class="main" data-testid="reply"
                       onclick={() => onreply(m)}>
                 <Icon name="reply" />{t('action.reply')}</button>
-              <button type="button" data-testid="repondre-tous"
+              <button type="button" data-testid="reply-all"
                       onclick={() => onreplyall(m)}>
                 <Icon name="reply_all" />{t('action.replyAll')}</button>
-              <button type="button" data-testid="transferer"
+              <button type="button" data-testid="forward"
                       onclick={() => onforward(m)}>
                 <Icon name="reply" mirror />{t('action.forward')}</button>
               <!-- Field R8' (2026-08-23): "Delete" lives PER
@@ -586,45 +586,45 @@
                    conversation; the thread stays open if it still has
                    messages left (App decides). On an echo, the gesture
                    says the wait for reconciliation, as before. -->
-              <button type="button" data-testid="supprimer"
+              <button type="button" data-testid="delete"
                       onclick={() => ondelete(m)}>
                 <Icon name="delete" />{t('action.delete')}</button>
             </div>
           </article>
         {:else}
-          <div class="replie" data-testid="message-replie"
+          <div class="collapsed" data-testid="message-collapsed"
                role="button" tabindex="0" aria-expanded="false"
                onclick={() => toggleMessage(m)} onkeydown={activation(() => toggleMessage(m))}>
-            <span class="avatar petit" aria-hidden="true">{initials(m.sender)}</span>
-            <span class="auteur">{m.sender}</span>
+            <span class="avatar small" aria-hidden="true">{initials(m.sender)}</span>
+            <span class="author">{m.sender}</span>
             {#if pending(m)}
-              <span class="attente-portier" data-testid="attente-portier">{t('thread.screenerPending')}</span>
+              <span class="screener-pending" data-testid="screener-pending">{t('thread.screenerPending')}</span>
             {/if}
             <!-- A80/D5: the mailbox behind the name, here too. -->
             {#if mailbox}
-              <span class="boite" title={mailbox.title}>
-                <span class="mot">{t('list.on')}</span>
+              <span class="mailbox" title={mailbox.title}>
+                <span class="word">{t('list.on')}</span>
                 {#if mailbox.marker}
-                  <span class="repere-nu" data-teinte={mailbox.marker.hue}
+                  <span class="bare-marker" data-hue={mailbox.marker.hue}
                         aria-hidden="true"><Icon name={mailbox.marker.icon} size={14} /></span>
                 {/if}
-                <span class="lib">{mailbox.label}</span>
+                <span class="lbl">{mailbox.label}</span>
               </span>
             {/if}
-            <span class="apercu">{m.preview ?? ''}</span>
-            <span class="quand">{whenLong(m.epoch)}</span>
+            <span class="preview">{m.preview ?? ''}</span>
+            <span class="when">{whenLong(m.epoch)}</span>
           </div>
         {/if}
       {/each}
       {#if threadDraft}
-        <div class="replie brouillon" data-testid="conv-brouillon"
+        <div class="collapsed draft" data-testid="conv-draft"
              role="button" tabindex="0"
              onclick={() => onresume(threadDraft)}
              onkeydown={activation(() => onresume(threadDraft))}>
           <span class="mention"><Icon name="edit_note" />{t('conv.draft')}</span>
-          <span class="apercu">{threadDraft.body}</span>
-          <span class="quand">{when(Math.floor(threadDraft.updated_epoch / 1000))}</span>
-          <span class="reprendre">{t('action.resume')}</span>
+          <span class="preview">{threadDraft.body}</span>
+          <span class="when">{when(Math.floor(threadDraft.updated_epoch / 1000))}</span>
+          <span class="resume">{t('action.resume')}</span>
         </div>
       {/if}
     </div>
@@ -637,35 +637,35 @@
      scrolls in a single flow within its frame (the pane or the scene of
      screen 03), the nets and the elevation belong only to
      cards; only the available width changes between frames. */
-  .objet-fil { display:flex; flex-direction:column; flex:none; min-height:100%; padding-top:var(--fil-haut, 0); }
-  .tete { display:flex; flex-direction:column; flex:none; }
+  .thread-subject { display:flex; flex-direction:column; flex:none; min-height:100%; padding-top:var(--fil-haut, 0); }
+  .head { display:flex; flex-direction:column; flex:none; }
   /* V6: the title switches to the display register (weight 340,
      -.03em — global class .display); the size stays 24 px. */
-  .titre {
+  .title {
     margin:2px 0 4px; font-size:24px; line-height:1.2;
     color:var(--ink);
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
-  .puces { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 4px; }
-  .puce {
+  .chips { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 4px; }
+  .chip {
     height:32px; padding:0 12px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink2); background:var(--surface);
     border:1px solid var(--border); border-radius:var(--r-control); white-space:nowrap;
   }
-  .puce.bouton { cursor:pointer; }
-  .puce.bouton:hover { background:var(--sel); }
+  .chip.button { cursor:pointer; }
+  .chip.button:hover { background:var(--sel); }
   /* The BARE buttons of the mockup (A45): border and background
      erased, mini 26 px template — "Expand all", "View the conversation". */
-  .essor { flex:1; }
-  .nu {
+  .grow { flex:1; }
+  .bare {
     height:26px; padding:0 9px; display:inline-flex; align-items:center;
     gap:6px; font-size:12px; color:var(--ink2); background:none;
     border:1px solid transparent; border-radius:var(--r-control); cursor:pointer;
     white-space:nowrap;
   }
-  .nu:hover { background:var(--sel); }
-  .nu.inerte { cursor:default; opacity:.55; }
-  .nu.inerte:hover { background:none; }
+  .bare:hover { background:var(--sel); }
+  .bare.inert { cursor:default; opacity:.55; }
+  .bare.inert:hover { background:none; }
   /* The initials avatar of the cards (A45) — the list's drawing
      (E2): 28 px expanded, 26 px collapsed. */
   /* V4 — the square initials tile: ground --tile, ink --tileInk,
@@ -676,34 +676,34 @@
     border:1px solid var(--border); display:grid; place-items:center;
     font-size:11px; font-weight:600; color:var(--tileInk); flex:none;
   }
-  .avatar.petit { width:26px; height:26px; }
-  .fil { flex:none; overflow-y:visible; padding:0; }
-  .replie {
+  .avatar.small { width:26px; height:26px; }
+  .thread { flex:none; overflow-y:visible; padding:0; }
+  .collapsed {
     display:flex; align-items:center; gap:10px; padding:12px 20px;
     margin-top:12px; background:var(--surface);
     border:1px solid var(--border); border-radius:var(--r-surface); cursor:pointer;
     font-size:13px;
   }
-  .replie:hover { background:var(--hover); }
-  .replie .auteur { font-weight:600; color:var(--ink); flex:none; }
-  .replie .apercu {
+  .collapsed:hover { background:var(--hover); }
+  .collapsed .author { font-weight:600; color:var(--ink); flex:none; }
+  .collapsed .preview {
     flex:1; min-width:0; color:var(--muted);
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
-  .quand { margin-left:auto; color:var(--muted); font-size:12px; flex:none; white-space:nowrap; }
-  .replie.brouillon { border:1.5px dashed var(--accent); background:none; }
-  .replie.brouillon .mention {
+  .when { margin-left:auto; color:var(--muted); font-size:12px; flex:none; white-space:nowrap; }
+  .collapsed.draft { border:1.5px dashed var(--accent); background:none; }
+  .collapsed.draft .mention {
     color:var(--alert); font-weight:600; display:inline-flex;
     align-items:center; gap:6px; flex:none;
   }
-  .replie.brouillon .reprendre { color:var(--accent); font-weight:600; flex:none; }
-  .deplie {
+  .collapsed.draft .resume { color:var(--accent); font-weight:600; flex:none; }
+  .expanded {
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--r-surface); box-shadow:var(--shadow); margin-top:12px;
     display:flex; flex-direction:column;
   }
   /* The A92 header: avatar · (name <address> [on mailbox] / To: … / Cc: …) · when. */
-  .tete-message {
+  .message-head {
     display:flex; align-items:center; gap:10px; padding:12px 20px;
     border-bottom:1px solid var(--border); cursor:pointer;
   }
@@ -711,18 +711,18 @@
      third-width cap of .boite resolved against this narrow group —
      the rule written in the System ("never more than a third of the
      ROW") did not describe what the thread rendered (review). */
-  .tete-message .qui { min-width:0; flex:1 1 auto; display:flex; flex-direction:column; }
+  .message-head .who { min-width:0; flex:1 1 auto; display:flex; flex-direction:column; }
   /* A80/D5: name + mailbox block on the same line — the block
      (system.css) keeps its third-width cap and yields first. */
-  .tete-message .rang-nom {
+  .message-head .rank-name {
     display:flex; align-items:baseline; gap:6px; min-width:0;
   }
-  .tete-message .auteur {
+  .message-head .author {
     flex:0 1 auto; min-width:0;
     font-size:15px; font-weight:600; color:var(--ink);
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
-  .tete-message .adr {
+  .message-head .addr {
     font-size:12px; color:var(--muted);
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
@@ -730,40 +730,40 @@
      CARRIES .adr (the same ink as the To/Cc lines, structurally) and
      only adds its yield rule: THREE times faster than the name
      (A80's pattern: identity first, detail yields). */
-  .tete-message .adr-exp { flex:0 3 auto; min-width:0; }
-  .contenu { padding:14px 20px 18px; display:flex; flex-direction:column; gap:12px; }
+  .message-head .addr-sender { flex:0 3 auto; min-width:0; }
+  .content { padding:14px 20px 18px; display:flex; flex-direction:column; gap:12px; }
   /* The invitation card (A76): a card WITHIN the message card —
      10 px surface radius, no elevation (it belongs to the content's
      flow, not the thread). The date tile reuses the current
      mailbox's --tile/--tileInk pair; a cancellation switches the
      tile to dimmed and the title to struck through. */
   .invitation { border:1px solid var(--border); border-radius:var(--r-surface); background:var(--surface); }
-  .inv-tete { display:flex; align-items:center; gap:10px; padding:12px 14px 0; }
+  .inv-head { display:flex; align-items:center; gap:10px; padding:12px 14px 0; }
   .inv-kicker {
     font-size:12px; font-weight:600; letter-spacing:.1em;
     text-transform:uppercase; color:var(--muted); flex:1;
   }
-  .inv-kicker.annulee { color:var(--alert); }
-  .inv-statut { font-size:12px; color:var(--ink2); white-space:nowrap; }
-  .inv-corps { display:flex; gap:14px; padding:12px 14px 14px; align-items:flex-start; }
-  .inv-tuile {
+  .inv-kicker.cancelled { color:var(--alert); }
+  .inv-status { font-size:12px; color:var(--ink2); white-space:nowrap; }
+  .inv-body { display:flex; gap:14px; padding:12px 14px 14px; align-items:flex-start; }
+  .inv-tile {
     width:52px; height:52px; border-radius:var(--r-control); background:var(--tile);
     color:var(--tileInk); display:flex; flex-direction:column;
     align-items:center; justify-content:center; gap:1px; flex:none;
   }
-  .inv-tuile.eteinte { background:var(--bg); color:var(--muted); }
-  .inv-mois {
+  .inv-tile.off { background:var(--bg); color:var(--muted); }
+  .inv-month {
     font-size:10px; font-weight:600; letter-spacing:.08em;
     text-transform:uppercase;
   }
-  .inv-jour { font-size:20px; font-weight:600; line-height:1; }
+  .inv-day { font-size:20px; font-weight:600; line-height:1; }
   .inv-details { display:flex; flex-direction:column; gap:4px; min-width:0; }
-  .inv-titre { font-size:15px; font-weight:600; color:var(--ink); }
-  .inv-titre.barre { color:var(--ink2); text-decoration:line-through; }
-  .inv-quand { font-size:13px; color:var(--ink2); }
-  .inv-lieu { font-size:13px; color:var(--muted); }
-  .inv-annulee { font-size:13px; color:var(--alert); }
-  .inv-repondant { font-size:13px; font-weight:600; color:var(--ink2); }
+  .inv-title { font-size:15px; font-weight:600; color:var(--ink); }
+  .inv-title.bar { color:var(--ink2); text-decoration:line-through; }
+  .inv-when { font-size:13px; color:var(--ink2); }
+  .inv-location { font-size:13px; color:var(--muted); }
+  .inv-cancelled { font-size:13px; color:var(--alert); }
+  .inv-attendee { font-size:13px; font-weight:600; color:var(--ink2); }
   /* Three NEUTRAL buttons (D4) at the message actions' template
      (30 px); the current reply is said by aria-pressed — --sel
      background and accent trim, A75's selection. */
@@ -775,13 +775,13 @@
   /* R9: the color says the meaning — carried by the icon, the text
      doubles it (A8). Gated pairs: accent/surface and alert/surface at
      3:1, muted/surface at 4.5:1, and their counterparts on --sel. */
-  .inv-actions .ton-accepted :global(.ic) { color:var(--accent); }
-  .inv-actions .ton-tentative :global(.ic) { color:var(--muted); }
-  .inv-actions .ton-declined :global(.ic) { color:var(--alert); }
+  .inv-actions .tone-accepted :global(.ic) { color:var(--accent); }
+  .inv-actions .tone-tentative :global(.ic) { color:var(--muted); }
+  .inv-actions .tone-declined :global(.ic) { color:var(--alert); }
   .inv-actions button[aria-pressed='true'] {
     font-weight:600; background:var(--sel); border-color:var(--accent);
   }
-  .garde-images {
+  .images-guard {
     padding:10px 14px; display:flex; align-items:center; gap:10px;
     font-size:13px; color:var(--ink2); background:var(--bg);
     border:1px solid var(--border); border-radius:var(--r-control);
@@ -789,15 +789,15 @@
        wrap to the next line rather than crushing the text. */
     flex-wrap:wrap;
   }
-  .garde-images :global(.ic) { color:var(--muted); }
-  .garde-texte { flex:1; }
-  .garde-images button {
+  .images-guard :global(.ic) { color:var(--muted); }
+  .guard-text { flex:1; }
+  .images-guard button {
     height:26px; padding:0 10px; font-size:12px; color:var(--ink);
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--r-control); cursor:pointer;
   }
-  .garde-images button:hover { background:var(--sel); }
-  .corps {
+  .images-guard button:hover { background:var(--sel); }
+  .body {
     /* Overflows by 12 px: the sanitized document's internal gutter
        (mail-render) brings the text back in line with the card's
        padding. The background at the token — the document bakes the
@@ -806,20 +806,20 @@
     border:none; background:var(--surface); display:block;
     margin-left:-12px; width:calc(100% + 24px); height:0;
   }
-  .titre-fichiers {
+  .title-files {
     margin:0 0 8px; font-size:12px; font-weight:600; letter-spacing:.1em;
     text-transform:uppercase; color:var(--muted);
   }
-  .fichiers .puces { gap:8px; }
-  .fichiers .puce { height:28px; }
+  .files .chips { gap:8px; }
+  .files .chip { height:28px; }
   /* R2: name + weight in the chip (the compose chip's drawing) —
      the name in full ink, the weight dimmed, spacing by gap. */
-  .fichiers .puce .nom { color:var(--ink); }
-  .fichiers .puce .taille { font-size:12px; color:var(--muted); }
+  .files .chip .name { color:var(--ink); }
+  .files .chip .size { font-size:12px; color:var(--muted); }
   /* RETOURS-14 R4 (D5): the "Waiting at the Screener" badge — a
      bare label in dimmed ink, border stroke, never an
      alert: the mail is legitimate, its verdict is just due. */
-  .attente-portier {
+  .screener-pending {
     flex:none; padding:1px 6px; font-size:11px; color:var(--ink2);
     border:1px solid var(--border); border-radius:var(--r-control);
     white-space:nowrap;
@@ -852,11 +852,11 @@
     border:1px solid var(--border); border-radius:var(--r-control); cursor:pointer;
   }
   .actions-message button:hover, .inv-actions button:hover { background:var(--sel); }
-  .actions-message .principal {
+  .actions-message .main {
     font-weight:600; color:var(--onAccent); background:var(--accent);
     border-color:var(--accent);
   }
-  .actions-message .principal:hover { background:var(--accentH); border-color:var(--accentH); }
+  .actions-message .main:hover { background:var(--accentH); border-color:var(--accentH); }
 
   /* R1 (PLAN-RETOURS-7, D1): an attachment chip's veil — same
      geometry as the chip (absolute overlay, stable width, the
@@ -864,13 +864,13 @@
      that of the existing hover), download glyph + "Save".
      Shown on hover AND on keyboard focus (A8); never during an
      in-flight save (:disabled) nor on an echo (not rendered). */
-  .puce.bouton { position:relative; }
-  .puce .voile {
+  .chip.button { position:relative; }
+  .chip .veil {
     position:absolute; inset:0; display:none; align-items:center;
     justify-content:center; gap:6px; font-size:12px; font-weight:600;
     color:var(--ink); background:var(--sel); border-radius:var(--r-control);
     white-space:nowrap; overflow:hidden;
   }
-  .puce.bouton:hover .voile, .puce.bouton:focus-visible .voile { display:inline-flex; }
-  .puce.bouton:disabled .voile { display:none; }
+  .chip.button:hover .veil, .chip.button:focus-visible .veil { display:inline-flex; }
+  .chip.button:disabled .veil { display:none; }
 </style>

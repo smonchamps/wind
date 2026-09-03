@@ -35,7 +35,7 @@ test("à zéro compte, le parcours accueille — étape 1, le guichet", async ()
   await expect(page.locator('[data-testid="onboarding"]')).toContainText(
     'Bienvenue dans Wind',
   );
-  await expect(page.locator('[data-testid="accueil-progression"]')).toHaveText(
+  await expect(page.locator('[data-testid="onboarding-progress"]')).toHaveText(
     'Étape 1/5',
   );
   await expect(page.locator('[data-testid="onboarding"]')).toContainText(
@@ -52,7 +52,7 @@ test("à zéro compte, le parcours accueille — étape 1, le guichet", async ()
 test('sans compte ajouté, Continuer est ABSENT (D4, 3e passe terrain)', async () => {
   // Jamais un bouton grisé : tant qu'aucun compte n'existe, la marche
   // ne montre pas Continuer — « Ajouter » est le geste primaire.
-  await expect(page.locator('[data-testid="accueil-continuer"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="onboarding-continue"]')).toHaveCount(0);
 });
 
 test("au repos, la ligne de progression dit que tout est à jour", async () => {
@@ -60,15 +60,15 @@ test("au repos, la ligne de progression dit que tout est à jour", async () => {
   // ni synchro en échec (comptes factices des autres décors), ni envoi
   // en attente, ni rattrapage. C'est l'état que gardait le test v1
   // « aucun bandeau quand tous les corps sont là ».
-  await expect(page.locator('[data-testid="progression"]')).toHaveText(
+  await expect(page.locator('[data-testid="progress"]')).toHaveText(
     'Tous les messages sont à jour',
   );
 });
 
 test('une saisie invalide est refusée sur place', async () => {
-  await page.locator('[data-testid="onboarding-adresse"]').fill('pas-une-adresse');
-  await page.locator('[data-testid="onboarding-continuer"]').click();
-  await expect(page.locator('[data-testid="onboarding-erreur"]')).toContainText(
+  await page.locator('[data-testid="onboarding-address"]').fill('pas-une-adresse');
+  await page.locator('[data-testid="desk-continue"]').click();
+  await expect(page.locator('[data-testid="onboarding-error"]')).toContainText(
     'adresse e-mail complète',
   );
 });
@@ -76,25 +76,25 @@ test('une saisie invalide est refusée sur place', async () => {
 // AVANT le parcours « domaine inconnu » : le guichet est stateful en
 // mode serial — une fois les champs IMAP révélés, ils le restent.
 test('une adresse Microsoft prend la route OAuth, jamais le guichet IMAP (D4)', async () => {
-  await page.locator('[data-testid="onboarding-adresse"]').fill('paul@outlook.com');
-  await page.locator('[data-testid="onboarding-continuer"]').click();
+  await page.locator('[data-testid="onboarding-address"]').fill('paul@outlook.com');
+  await page.locator('[data-testid="desk-continue"]').click();
   // La route est le test : l'échec vient de la configuration OAuth
   // (MICROSOFT_CLIENT_ID retiré par le harnais — échec rapide, sans
   // navigateur), PAS d'un guichet générique qui se serait révélé.
-  await expect(page.locator('[data-testid="onboarding-erreur"]')).toContainText(
+  await expect(page.locator('[data-testid="onboarding-error"]')).toContainText(
     'Connexion impossible',
   );
   await expect(page.locator('#ob-imap')).toHaveCount(0);
-  await page.locator('[data-testid="onboarding-adresse"]').fill('');
+  await page.locator('[data-testid="onboarding-address"]').fill('');
 });
 
 test('un domaine inconnu révèle le guichet IMAP/SMTP, serveurs proposés', async () => {
-  await page.locator('[data-testid="onboarding-adresse"]').fill('paul@exemple.fr');
-  await page.locator('[data-testid="onboarding-continuer"]').click();
+  await page.locator('[data-testid="onboarding-address"]').fill('paul@exemple.fr');
+  await page.locator('[data-testid="desk-continue"]').click();
   await expect(page.locator('#ob-imap')).toHaveValue('imap.exemple.fr');
   await expect(page.locator('#ob-smtp')).toHaveValue('smtp.exemple.fr');
   // Rien n'est parti : pas d'erreur de connexion, le formulaire attend.
-  await expect(page.locator('[data-testid="onboarding-erreur"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="onboarding-error"]')).toHaveCount(0);
 });
 
 // Porté de compte-generique.spec.js (R2) : le contrat IPC du formulaire
@@ -106,9 +106,9 @@ test("compte générique : le formulaire atteint la connexion (contrat IPC)", as
   await page.locator('#ob-mdp').fill('mot-de-passe-factice');
   await page.locator('#ob-imap').fill('imap.invalide.test');
   await page.locator('#ob-smtp').fill('smtp.invalide.test');
-  await page.locator('[data-testid="onboarding-continuer"]').click();
+  await page.locator('[data-testid="desk-continue"]').click();
 
-  const erreur = page.locator('[data-testid="onboarding-erreur"]');
+  const erreur = page.locator('[data-testid="onboarding-error"]');
   await expect(erreur).toContainText('connexion IMAP impossible', { timeout: 30_000 });
   // La régression d'origine, nommée : elle ne doit jamais revenir.
   await expect(erreur).not.toContainText('invalid args');
@@ -120,9 +120,9 @@ test("compte générique : le formulaire atteint la connexion (contrat IPC)", as
 // reste.
 test('le guichet générique se replie par « Retour »', async () => {
   await expect(page.locator('#ob-imap')).toHaveCount(1);
-  await page.locator('[data-testid="guichet-retour"]').click();
+  await page.locator('[data-testid="desk-back"]').click();
   await expect(page.locator('#ob-imap')).toHaveCount(0);
-  await expect(page.locator('[data-testid="onboarding-adresse"]')).toHaveValue(
+  await expect(page.locator('[data-testid="onboarding-address"]')).toHaveValue(
     'paul@exemple.fr',
   );
 });
@@ -137,6 +137,6 @@ test('déjà accueilli, zéro compte : le guichet seul, sans parcours', async ()
   await expect(page.locator('[data-testid="onboarding"]')).toContainText(
     'Bienvenue dans Wind',
   );
-  await expect(page.locator('[data-testid="accueil-progression"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="accueil-continuer"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="onboarding-progress"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="onboarding-continue"]')).toHaveCount(0);
 });

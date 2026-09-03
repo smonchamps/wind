@@ -43,10 +43,10 @@
 
   export function open(newRow) {
     // The SAME object already held by the pane: a pure size change.
-    if (thread.line && thread.frame === 'pane'
-        && thread.line.account_id === newRow.account_id
-        && thread.line.mailbox === newRow.mailbox
-        && thread.line.uid === newRow.uid) {
+    if (thread.row && thread.frame === 'pane'
+        && thread.row.account_id === newRow.account_id
+        && thread.row.mailbox === newRow.mailbox
+        && thread.row.uid === newRow.uid) {
       enlargeThread();
       return Promise.resolve(thread.lastOpenMs);
     }
@@ -57,19 +57,19 @@
   }
 </script>
 
-{#if thread.frame === 'full' && thread.line}
-  <div class="ecran03" data-testid="conversation">
-    <header class="entete">
-      <button type="button" class="retour" data-testid="retour-boite" onclick={onback}>
+{#if thread.frame === 'full' && thread.row}
+  <div class="screen03" data-testid="conversation">
+    <header class="header">
+      <button type="button" class="back" data-testid="back-to-mailbox" onclick={onback}>
         <Icon name="arrow_back" />{t(mailboxLabelKey('inbox'))}</button>
       <!-- Field pass 2026-09-02 (CE): at screen 03, the thread's triage
            gestures live INSIDE the header bar — one single component
            with the pane (BarreFil), “entete” drawing. -->
-      <div class="tri">
+      <div class="sort">
         <ThreadBar drawing="header" {isJunk} {pinnable} {organized}
                   {onarchive} {onspam} {onnotspam} {onpin} {onmove} {onsetaside} />
       </div>
-      <button type="button" class="principal" onclick={oncompose}>
+      <button type="button" class="main" onclick={oncompose}>
         <Icon name="edit_square" />{t('header.compose')}</button>
     </header>
 
@@ -78,7 +78,7 @@
          one single flow, only the message cards rise. Reading column
          centered and bound (D2: ~960 px). -->
     <div class="scene">
-      <div class="colonne">
+      <div class="column">
         <Thread {drafts} {markers} {names} {accounts} {mixed} {organized} {onmove} {onsetaside}
              {onresume} {onarchive} {ondelete}
              {onreply} {onreplyall} {onforward}
@@ -93,7 +93,7 @@
   /* Screen 03's geometry — the header at 52 px since UI v3 (E4):
      the two frames of the same object share the same chrome, with no
      jump on enlarging (v3 review: 60 px caused an 8 px jump). */
-  .ecran03 {
+  .screen03 {
     position:absolute; inset:0; display:flex; flex-direction:column;
     background:var(--bg); z-index:1;
   }
@@ -102,14 +102,14 @@
      three-track grid whose center track reproduces the scene's
      column (960 px, centered in the same 28 px gutters); back on the
      left, “Compose” on the right, each in its own track. */
-  .entete {
+  .header {
     height:52px; flex:none; background:var(--surface);
     border-bottom:1px solid var(--border); display:grid;
     grid-template-columns:minmax(auto, 1fr) minmax(0, 960px) minmax(auto, 1fr);
     align-items:center; gap:12px; padding:0 28px;
   }
-  .tri { justify-self:start; min-width:0; }
-  .entete > .principal { justify-self:end; }
+  .sort { justify-self:start; min-width:0; }
+  .header > .main { justify-self:end; }
   button {
     height:32px; padding:0 16px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink); background:var(--surface);
@@ -118,12 +118,12 @@
   button:hover { background:var(--sel); }
   /* Pass 5 (2026-09-02): in the grid, a button stretches over its
      track by default — the back button keeps its content width. */
-  .retour { padding:0 14px; justify-self:start; }
-  .principal {
+  .back { padding:0 14px; justify-self:start; }
+  .main {
     font-weight:600; color:var(--onAccent); background:var(--accent);
     border-color:var(--accent);
   }
-  .principal:hover { background:var(--accentH); border-color:var(--accentH); }
+  .main:hover { background:var(--accentH); border-color:var(--accentH); }
 
   /* The scene is THE flow (R3): it alone scrolls — the thread lies
      flat inside it, no enclosing surface, border or shadow. */
@@ -134,5 +134,5 @@
     flex:1; padding:18px 28px 28px; overflow-y:auto; min-height:0;
     scrollbar-gutter:stable both-edges;
   }
-  .colonne { max-width:960px; margin:0 auto; min-height:100%; display:flex; flex-direction:column; }
+  .column { max-width:960px; margin:0 auto; min-height:100%; display:flex; flex-direction:column; }
 </style>

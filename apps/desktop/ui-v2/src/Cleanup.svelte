@@ -172,87 +172,87 @@
 
 
 <div class="scene" data-testid="cleanup">
-  <div class="colonne">
+  <div class="column">
     {#if !session}
-      <h2 class="display entete-vue" data-testid="nettoyage-titre">
-        <span class="glyphe-titre" aria-hidden="true"><Icon name="cleanup" size={26} /></span>{t('mailbox.cleanup')}</h2>
-      <p class="sous-titre-vue">{t('cleanup.subtitle')}</p>
+      <h2 class="display header-view" data-testid="cleanup-title">
+        <span class="glyph-title" aria-hidden="true"><Icon name="cleanup" size={26} /></span>{t('mailbox.cleanup')}</h2>
+      <p class="subtitle-view">{t('cleanup.subtitle')}</p>
 
-      <p class="regle-libelle">{t('cleanup.range')}</p>
-      <div class="choix-plage" role="radiogroup" aria-label={t('cleanup.range')}>
+      <p class="rule-label">{t('cleanup.range')}</p>
+      <div class="choice-range" role="radiogroup" aria-label={t('cleanup.range')}>
         {#each RANGES as p (p)}
-          <button type="button" class="pastille-plage" class:choisie={range === p}
+          <button type="button" class="badge-range" class:chosen={range === p}
                   role="radio" aria-checked={range === p}
-                  data-testid="nettoyage-plage" data-plage={p}
+                  data-testid="cleanup-range" data-range={p}
                   onclick={() => (range = p)}>{t(`horizon.${p}`)}</button>
         {/each}
       </div>
 
-      <p class="regle-libelle">{t('cleanup.scope')}</p>
-      <div class="choix-plage" role="radiogroup" aria-label={t('cleanup.scope')}>
+      <p class="rule-label">{t('cleanup.scope')}</p>
+      <div class="choice-range" role="radiogroup" aria-label={t('cleanup.scope')}>
         {#each SCOPES as pe (pe)}
-          <button type="button" class="pastille-plage" class:choisie={scope === pe}
+          <button type="button" class="badge-range" class:chosen={scope === pe}
                   role="radio" aria-checked={scope === pe}
-                  data-testid="nettoyage-perimetre" data-perimetre={pe}
+                  data-testid="cleanup-scope" data-scope={pe}
                   onclick={() => (scope = pe)}>{t(`cleanup.scope.${pe}`)}</button>
         {/each}
       </div>
 
-      <button type="button" class="demarrer" data-testid="nettoyage-demarrer"
+      <button type="button" class="start" data-testid="cleanup-start"
               onclick={start}>{t('cleanup.start')}</button>
     {:else}
       <!-- The progress bar AT THE TOP (CE statement): % of groups
            processed — the migration gauge's drawing. -->
-      <div class="progression" data-testid="nettoyage-progression"
+      <div class="progress" data-testid="cleanup-progress"
            role="progressbar" aria-valuemin="0" aria-valuemax="100"
            aria-valuenow={percent} aria-label={t('cleanup.progressAria')}>
-        <div class="jauge"><div class="remplie" style="width:{percent}%"></div></div>
+        <div class="gauge"><div class="filled" style="width:{percent}%"></div></div>
         <span class="pct">{t('cleanup.progress', { p: percent })}</span>
       </div>
 
-      <h2 class="display entete-vue">
-        <span class="glyphe-titre" aria-hidden="true"><Icon name="cleanup" size={26} /></span>{t('mailbox.cleanup')}</h2>
+      <h2 class="display header-view">
+        <span class="glyph-title" aria-hidden="true"><Icon name="cleanup" size={26} /></span>{t('mailbox.cleanup')}</h2>
 
-      <div class="ligne-section">
-        <p class="regle-libelle">{t('screener.question')}</p>
+      <div class="row-section">
+        <p class="rule-label">{t('screener.question')}</p>
         {#if groups.length}<SectionSort value={sort} onchange={(v) => (sort = v)} />{/if}
       </div>
       {#if groups.length}
         {#each sortedGroups as g (g.address)}
-          <div class="rang-groupe" data-testid="nettoyage-groupe" data-adresse={g.address}>
+          <div class="rank-group" data-testid="cleanup-group" data-address={g.address}>
             <!-- The row's body is the group's DOOR: you enter to
                  view — the verdict, itself, stays with the buttons. -->
-            <button type="button" class="msg" data-testid="nettoyage-ouvrir"
+            <button type="button" class="msg" data-testid="cleanup-open"
                     aria-expanded={isOpen === g.address}
                     onclick={() => toggleGroup(g.address)}>
               <span class="l1">
-                <span class="exp">{g.who ?? g.address}</span>
-                <span class="adr">&lt;{g.address}&gt;</span>
-                <span class="essor"></span>
-                <span class="heure">{when(g.lastEpoch)}</span>
+                <span class="sender">{g.who ?? g.address}</span>
+                <span class="addr">&lt;{g.address}&gt;</span>
+                <span class="grow"></span>
+                <span class="time">{when(g.lastEpoch)}</span>
               </span>
               <span class="l2">
-                <span class="nombre">{t(g.messages > 1 ? 'cleanup.messages' : 'cleanup.message', { n: g.messages })}</span>
-                {#if g.lastSubject}<span class="objet">{g.lastSubject}</span>{/if}
+                <span class="count">{t(g.messages > 1 ? 'cleanup.messages' : 'cleanup.message', { n: g.messages })}</span>
+                {#if g.lastSubject}<span class="subject">{g.lastSubject}</span>{/if}
               </span>
             </button>
-            <div class="choix">
-              <span class="btn-portier">
-                <button type="button" class="gros" data-testid="nettoyage-oui"
+            <div class="choice">
+              <span class="btn-screener">
+                <button type="button" class="big" data-testid="cleanup-yes"
                         onclick={() => decide(g.address, g.who ?? g.address, defaults.yes)}>
-                  <span class="ic-oui"><Icon name="check_circle" /></span>{t('screener.yes')}</button>
-                <button type="button" class="mini" data-testid="nettoyage-mini-oui"
+                  <span class="ic-yes"><Icon name="check_circle" /></span>{t('screener.yes')}</button>
+                <button type="button" class="mini" data-testid="cleanup-mini-yes"
                         aria-label={t('screener.yesChoice')} aria-haspopup="menu"
                         aria-expanded={menu?.address === g.address && menu?.type === 'yes'}
                         onclick={(e) => openMini(e, g, 'yes')}>
                   <Icon name="more_horiz" size={12} /></button>
               </span>
-              <span class="btn-portier">
-                <button type="button" class="gros" data-testid="nettoyage-non"
+              <span class="btn-screener">
+                <button type="button" class="big" data-testid="cleanup-no"
                         onclick={() => decide(g.address, g.who ?? g.address, 'screened_out',
                           defaults.no === 'screened_out' ? null : defaults.no)}>
-                  <span class="ic-non"><Icon name="cancel" /></span>{t('screener.no')}</button>
-                <button type="button" class="mini" data-testid="nettoyage-mini-non"
+                  <span class="ic-no"><Icon name="cancel" /></span>{t('screener.no')}</button>
+                <button type="button" class="mini" data-testid="cleanup-mini-no"
                         aria-label={t('screener.noChoice')} aria-haspopup="menu"
                         aria-expanded={menu?.address === g.address && menu?.type === 'no'}
                         onclick={(e) => openMini(e, g, 'no')}>
@@ -261,15 +261,15 @@
             </div>
           </div>
           {#if isOpen === g.address}
-            <div class="dedans" data-testid="nettoyage-messages">
+            <div class="inside" data-testid="cleanup-messages">
               <!-- The key carries the ACCOUNT: UIDs restart from 1 per
                    mailbox — "INBOX/42" would exist twice as soon as the
                    same letter touches two accounts (msgKey pattern). -->
               {#each openMessages as m (m.account_id + '/' + m.mailbox + '/' + m.uid)}
-                <div class="rang-message">
-                  <span class="objet-m">{m.subject}</span>
-                  <span class="essor"></span>
-                  <span class="heure">{when(m.epoch)}</span>
+                <div class="rank-message">
+                  <span class="subject-m">{m.subject}</span>
+                  <span class="grow"></span>
+                  <span class="time">{when(m.epoch)}</span>
                 </div>
               {/each}
             </div>
@@ -278,39 +278,39 @@
       {:else}
         <!-- Not a single group left: the cleaning is done — the
              Screener's checkmark, and the exit. -->
-        <div class="vide" data-testid="nettoyage-vide">
-          <span class="ic-oui"><Icon name="check_circle" /></span>{t('cleanup.done')}
+        <div class="empty" data-testid="cleanup-empty">
+          <span class="ic-yes"><Icon name="check_circle" /></span>{t('cleanup.done')}
         </div>
       {/if}
 
-      <button type="button" class="terminer" data-testid="nettoyage-terminer"
+      <button type="button" class="finish" data-testid="cleanup-finish"
               onclick={finish}>{t('cleanup.finish')}</button>
     {/if}
   </div>
 </div>
 
 <Menu isOpen={menu !== null} x={menu?.x ?? 0} y={menu?.y ?? 0}
-      testid="nettoyage-menu" onclose={() => (menu = null)}>
+      testid="cleanup-menu" onclose={() => (menu = null)}>
     {#if menu.type === 'yes'}
-      <p class="titre-menu">{t('screener.yesTo')}</p>
-      <button type="button" role="menuitem" data-testid="nettoyage-vers-reception"
+      <p class="title-menu">{t('screener.yesTo')}</p>
+      <button type="button" role="menuitem" data-testid="cleanup-to-inbox"
               onclick={() => decide(menu.address, menu.who, 'inbox')}>
         <Icon name="inbox" />{t('screener.toInbox')}</button>
-      <button type="button" role="menuitem" data-testid="nettoyage-vers-kiosque"
+      <button type="button" role="menuitem" data-testid="cleanup-to-feed"
               onclick={() => decide(menu.address, menu.who, 'feed')}>
         <Icon name="feed" />{t('screener.toFeed')}</button>
-      <button type="button" role="menuitem" data-testid="nettoyage-vers-registre"
+      <button type="button" role="menuitem" data-testid="cleanup-to-paper-trail"
               onclick={() => decide(menu.address, menu.who, 'paper_trail')}>
         <Icon name="paper_trail" />{t('screener.toPaperTrail')}</button>
     {:else}
-      <p class="titre-menu">{t('screener.noWillBe')}</p>
-      <button type="button" role="menuitem" data-testid="nettoyage-regle-spam"
+      <p class="title-menu">{t('screener.noWillBe')}</p>
+      <button type="button" role="menuitem" data-testid="cleanup-rule-spam"
               onclick={() => decide(menu.address, menu.who, 'screened_out', 'spam')}>
         <Icon name="report" />{t('screener.ruleSpam')}</button>
-      <button type="button" role="menuitem" data-testid="nettoyage-regle-archive"
+      <button type="button" role="menuitem" data-testid="cleanup-rule-archive"
               onclick={() => decide(menu.address, menu.who, 'screened_out', 'archive')}>
         <Icon name="inventory_2" />{t('screener.ruleArchive')}</button>
-      <button type="button" role="menuitem" data-testid="nettoyage-regle-corbeille"
+      <button type="button" role="menuitem" data-testid="cleanup-rule-trash"
               onclick={() => decide(menu.address, menu.who, 'screened_out', 'trash')}>
         <Icon name="delete" />{t('screener.ruleTrash')}</button>
     {/if}
@@ -318,40 +318,40 @@
 
 <style>
   /* R9: the section line carries the sort on the right. */
-  .ligne-section { display:flex; align-items:center; gap:10px; }
-  .ligne-section .regle-libelle { flex:1; min-width:0; }
+  .row-section { display:flex; align-items:center; gap:10px; }
+  .row-section .rule-label { flex:1; min-width:0; }
   .scene { flex:1; overflow:auto; padding:28px 36px 60px; min-width:0; }
-  .colonne { max-width:820px; margin:0 auto; }
+  .column { max-width:820px; margin:0 auto; }
   /* --- Intro --------------------------------------------------------- */
-  .choix-plage { display:flex; flex-wrap:wrap; gap:8px; padding:12px 0 4px; }
-  .pastille-plage {
+  .choice-range { display:flex; flex-wrap:wrap; gap:8px; padding:12px 0 4px; }
+  .badge-range {
     height:32px; padding:0 14px; font-size:13px; color:var(--ink);
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--r-control); cursor:pointer;
   }
-  .pastille-plage:hover { background:var(--sel); }
-  .pastille-plage.choisie {
+  .badge-range:hover { background:var(--sel); }
+  .badge-range.chosen {
     border-color:var(--accent); color:var(--accent); font-weight:600;
     background:var(--sel);
   }
-  .demarrer {
+  .start {
     margin-top:26px; height:40px; padding:0 22px; font-size:14px;
     font-weight:600; color:var(--onAccent); background:var(--accent);
     border:1px solid var(--accent); border-radius:var(--r-control);
     cursor:pointer;
   }
-  .demarrer:hover { background:var(--accentH); border-color:var(--accentH); }
+  .start:hover { background:var(--accentH); border-color:var(--accentH); }
   /* --- Sort ----------------------------------------------------------- */
   /* The gauge: the migration modal's drawing (6 px, filled with
      the accent), the % in the TEXT (A52). */
-  .progression { display:flex; align-items:center; gap:12px; padding:2px 0 18px; }
-  .jauge {
+  .progress { display:flex; align-items:center; gap:12px; padding:2px 0 18px; }
+  .gauge {
     flex:1; height:6px; background:var(--sel);
     border-radius:999px; overflow:hidden;
   }
-  .remplie { height:100%; background:var(--accent); transition:width .25s ease; }
+  .filled { height:100%; background:var(--accent); transition:width .25s ease; }
   .pct { flex:none; font-size:12.5px; color:var(--ink2); }
-  .rang-groupe {
+  .rank-group {
     display:flex; align-items:center; gap:18px; padding:16px 0;
     border-top:1px solid var(--border);
   }
@@ -363,20 +363,20 @@
   }
   .msg:hover { background:var(--sel); border-color:var(--border); }
   .l1, .l2 { display:flex; align-items:baseline; gap:8px; min-width:0; }
-  .exp { font-size:14px; font-weight:600; color:var(--ink); flex:0 1 auto; min-width:0;
+  .sender { font-size:14px; font-weight:600; color:var(--ink); flex:0 1 auto; min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .adr { font-size:13px; color:var(--muted); flex:0 1 auto; min-width:0;
+  .addr { font-size:13px; color:var(--muted); flex:0 1 auto; min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .essor { flex:1; }
-  .heure { font-size:12px; color:var(--muted); flex:none; }
-  .nombre { font-size:12.5px; color:var(--accent); font-weight:600; flex:none; }
-  .objet { font-size:13px; color:var(--ink2); min-width:0;
+  .grow { flex:1; }
+  .time { font-size:12px; color:var(--muted); flex:none; }
+  .count { font-size:12.5px; color:var(--accent); font-weight:600; flex:none; }
+  .subject { font-size:13px; color:var(--ink2); min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .choix { display:flex; gap:12px; flex:none; }
-  .choix .gros { height:44px; padding:0 18px; font-weight:600; }
-  .ic-oui :global(.ic) { color:var(--accent); }
-  .ic-non :global(.ic) { color:var(--alert); }
-  .btn-portier { position:relative; display:inline-flex; }
+  .choice { display:flex; gap:12px; flex:none; }
+  .choice .big { height:44px; padding:0 18px; font-weight:600; }
+  .ic-yes :global(.ic) { color:var(--accent); }
+  .ic-no :global(.ic) { color:var(--alert); }
+  .btn-screener { position:relative; display:inline-flex; }
   .mini {
     position:absolute; top:-8px; right:-8px; width:19px; height:19px; padding:0;
     display:inline-flex; align-items:center; justify-content:center;
@@ -384,27 +384,27 @@
     border-radius:var(--r-control); color:var(--muted); cursor:pointer;
   }
   .mini:hover, .mini[aria-expanded="true"] { background:var(--sel); color:var(--ink); }
-  .dedans {
+  .inside {
     margin:0 0 8px; padding:4px 12px 10px 24px;
     border-left:2px solid var(--border);
   }
-  .rang-message { display:flex; align-items:baseline; gap:8px; padding:5px 0; min-width:0; }
-  .objet-m { font-size:13px; color:var(--ink2); min-width:0;
+  .rank-message { display:flex; align-items:baseline; gap:8px; padding:5px 0; min-width:0; }
+  .subject-m { font-size:13px; color:var(--ink2); min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .vide {
+  .empty {
     display:flex; align-items:center; gap:8px;
     padding:12px 0; font-size:13px; color:var(--ink2);
     border-top:1px solid var(--border);
   }
-  .terminer {
+  .finish {
     margin-top:22px; height:32px; padding:0 16px; font-size:13px;
     color:var(--ink); background:var(--surface);
     border:1px solid var(--border); border-radius:var(--r-control);
     cursor:pointer;
   }
-  .terminer:hover { background:var(--sel); }
+  .finish:hover { background:var(--sel); }
   /* The mini ⋯'s menu — the product's menus drawing (Screener). */
-  .titre-menu {
+  .title-menu {
     margin:4px 8px 6px; font-size:11px; letter-spacing:.06em;
     text-transform:uppercase; color:var(--muted); font-weight:600;
   }

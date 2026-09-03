@@ -31,45 +31,45 @@ test('les catalogues fr et en portent exactement les mêmes clés', () => {
 // (launch.mjs), so the first launch DETECTS French — the default itself is
 // tested by e2e/language.test.mjs.
 test('the pinned French system language is detected at the first launch', async () => {
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  await expect(page.locator('[data-testid="ecrire"]')).toContainText('Écrire');
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="write"]')).toContainText('Écrire');
   await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
 });
 
 test('la bascule en anglais est immédiate, sans redémarrage', async () => {
-  await page.locator('[data-testid="reglages"]').click();
-  await page.locator('[data-testid="reglages-groupe"][data-groupe="affichage"]').click();
-  const choix = page.locator('[data-testid="affichage-langue"]');
+  await page.locator('[data-testid="settings"]').click();
+  await page.locator('[data-testid="settings-group"][data-group="affichage"]').click();
+  const choix = page.locator('[data-testid="display-language"]');
   await expect(choix).toHaveValue('fr');
   await choix.selectOption('en');
   // La surimpression elle-même a déjà basculé…
-  await expect(page.locator('[data-testid="reglages-termine"]')).toHaveText('Done');
-  await page.locator('[data-testid="reglages-termine"]').click();
+  await expect(page.locator('[data-testid="settings-done"]')).toHaveText('Done');
+  await page.locator('[data-testid="settings-done"]').click();
   // …et les écrans majeurs aussi : entête, nav, onglets, volet, langue
   // du document (lecteurs d'écran).
-  await expect(page.locator('[data-testid="ecrire"]')).toContainText('Compose');
-  await expect(page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]')).toContainText('Inbox');
-  await expect(page.locator('[data-testid="nav-dossier"][data-categorie="trash"]')).toContainText('Trash');
-  await expect(page.locator('[data-testid="onglet"][data-onglet="nonlus"]')).toContainText('Unread');
-  await expect(page.locator('[data-testid="volet-lecture"]')).toContainText('Select a message to read it.');
+  await expect(page.locator('[data-testid="write"]')).toContainText('Compose');
+  await expect(page.locator('[data-testid="nav-folder"][data-category="inbox"]')).toContainText('Inbox');
+  await expect(page.locator('[data-testid="nav-folder"][data-category="trash"]')).toContainText('Trash');
+  await expect(page.locator('[data-testid="tab"][data-tab="nonlus"]')).toContainText('Unread');
+  await expect(page.locator('[data-testid="reading-pane"]')).toContainText('Select a message to read it.');
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
 });
 
 test("l'aller-retour est réel : recharger relit la préférence en base", async () => {
   await page.reload();
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  await expect(page.locator('[data-testid="ecrire"]')).toContainText('Compose');
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="write"]')).toContainText('Compose');
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
 });
 
 test('le retour au français rétablit les formes exactes du prototype', async () => {
-  await page.locator('[data-testid="reglages"]').click();
-  await page.locator('[data-testid="reglages-groupe"][data-groupe="affichage"]').click();
-  await page.locator('[data-testid="affichage-langue"]').selectOption('fr');
-  await expect(page.locator('[data-testid="reglages-termine"]')).toHaveText('Terminé');
-  await page.locator('[data-testid="reglages-termine"]').click();
-  await expect(page.locator('[data-testid="ecrire"]')).toContainText('Écrire');
-  await expect(page.locator('[data-testid="volet-lecture"]')).toContainText('Sélectionnez un message pour le lire.');
+  await page.locator('[data-testid="settings"]').click();
+  await page.locator('[data-testid="settings-group"][data-group="affichage"]').click();
+  await page.locator('[data-testid="display-language"]').selectOption('fr');
+  await expect(page.locator('[data-testid="settings-done"]')).toHaveText('Terminé');
+  await page.locator('[data-testid="settings-done"]').click();
+  await expect(page.locator('[data-testid="write"]')).toContainText('Écrire');
+  await expect(page.locator('[data-testid="reading-pane"]')).toContainText('Sélectionnez un message pour le lire.');
   await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
 });
 
@@ -83,6 +83,6 @@ test('a first launch on a non-French system speaks English (D4)', async () => {
   // The suite's WebView2 profile already carries the onboarding-done flag
   // (localStorage), so the empty database opens on the header, not on the
   // onboarding: the header is the witness.
-  await expect(page.locator('[data-testid="champ-recherche"]')).toHaveAttribute('placeholder', 'Search messages, people, files');
+  await expect(page.locator('[data-testid="search-field"]')).toHaveAttribute('placeholder', 'Search messages, people, files');
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
 });

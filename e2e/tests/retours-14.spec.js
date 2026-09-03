@@ -26,19 +26,19 @@ test.afterAll(async () => {
 });
 
 test('volet de lecture : la barre du fil est en tête, avant les messages', async () => {
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  await page.locator('[data-testid="ligne"]').first().click();
-  const volet = page.locator('[data-testid="volet-lecture"]');
-  await expect(volet.locator('[data-testid="archiver"]')).toBeVisible();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
+  await page.locator('[data-testid="row"]').first().click();
+  const volet = page.locator('[data-testid="reading-pane"]');
+  await expect(volet.locator('[data-testid="archive"]')).toBeVisible();
 
   // L'ordre VU : la barre au-dessus du premier message.
-  const barre = await volet.locator('[data-testid="archiver"]').boundingBox();
-  const message = await volet.locator('[data-testid="message-deplie"], [data-testid="message-replie"]').first().boundingBox();
+  const barre = await volet.locator('[data-testid="archive"]').boundingBox();
+  const message = await volet.locator('[data-testid="message-expanded"], [data-testid="message-collapsed"]').first().boundingBox();
   expect(barre.y).toBeLessThan(message.y);
 });
 
 test('volet de lecture : la barre reste visible au fond du fil (collante)', async () => {
-  const volet = page.locator('[data-testid="volet-lecture"]');
+  const volet = page.locator('[data-testid="reading-pane"]');
   // Défiler le CADRE jusqu'au fond — et vérifier qu'il y avait bien de
   // quoi défiler, sinon le test ne prouverait rien.
   const defile = await volet.evaluate((el) => {
@@ -54,7 +54,7 @@ test('volet de lecture : la barre reste visible au fond du fil (collante)', asyn
     .poll(async () => {
       await volet.evaluate((el) => { el.scrollTop = el.scrollHeight; });
       const cadre = await volet.boundingBox();
-      const barre = await volet.locator('[data-testid="archiver"]').boundingBox();
+      const barre = await volet.locator('[data-testid="archive"]').boundingBox();
       if (!barre) return false;
       const offset = barre.y - cadre.y;
       // Bornée des DEUX côtés : sans collant, la barre serait partie
@@ -73,9 +73,9 @@ test("écran 03 : les gestes de tri vivent dans la barre d'entête, au-dessus de
   // Plus bas encore : l'écran 03 d'un fil d'un message est court — il
   // faut assez de défilement pour que la barre ATTEIGNE le haut.
   await page.setViewportSize({ width: 1180, height: 320 });
-  await page.locator('[data-testid="voir-conversation"]').click();
+  await page.locator('[data-testid="see-conversation"]').click();
   const conv = page.locator('[data-testid="conversation"]');
-  await expect(conv.locator('[data-testid="archiver"]')).toBeVisible();
+  await expect(conv.locator('[data-testid="archive"]')).toBeVisible();
 
   const scene = conv.locator('.scene');
   const defile = await scene.evaluate((el) => {
@@ -88,15 +88,15 @@ test("écran 03 : les gestes de tri vivent dans la barre d'entête, au-dessus de
     .poll(async () => {
       await scene.evaluate((el) => { el.scrollTop = el.scrollHeight; });
       const cadre = await scene.boundingBox();
-      const barre = await conv.locator('header [data-testid="archiver"]').boundingBox();
+      const barre = await conv.locator('header [data-testid="archive"]').boundingBox();
       if (!barre) return false;
       // Au-dessus de la scène (dans l'entête), et encore visible.
       return barre.y + barre.height <= cadre.y + 1 && barre.y >= 0;
     })
     .toBe(true);
-  await expect(scene.locator('[data-testid="archiver"]')).toHaveCount(0);
+  await expect(scene.locator('[data-testid="archive"]')).toHaveCount(0);
 
   // Retour à l'écran 02 pour les tests suivants.
-  await page.locator('[data-testid="retour-boite"]').click();
-  await expect(page.locator('[data-testid="volet-lecture"]')).toBeVisible();
+  await page.locator('[data-testid="back-to-mailbox"]').click();
+  await expect(page.locator('[data-testid="reading-pane"]')).toBeVisible();
 });

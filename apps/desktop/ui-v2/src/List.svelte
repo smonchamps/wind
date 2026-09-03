@@ -131,20 +131,20 @@
   // to the window, closed on an outside click and on Escape.
   let gestureMenu = $state(null);
   const rowKey = (l) => `${l.account_id}:${l.mailbox}:${l.uid}`;
-  function openGestures(e, line) {
+  function openGestures(e, row) {
     e.stopPropagation();
     const r = e.currentTarget.getBoundingClientRect();
     gestureMenu = {
-      line,
-      key: rowKey(line),
+      row,
+      key: rowKey(row),
       x: r.left,
       y: r.bottom + 4,
     };
   }
   function gesture(destination) {
-    const { line } = gestureMenu;
+    const { row } = gestureMenu;
     gestureMenu = null;
-    onmove(line, destination);
+    onmove(row, destination);
   }
   const OVER = 8;
 
@@ -153,9 +153,9 @@
   // The column shows the RECIPIENT ("To: X"), taken from `to_addrs`
   // stored at sync time. Failing that (an old send not yet backfilled)
   // the previous sender name is kept — never a silent row.
-  const toSend = (line) => category === 'sent' && (line.to_addrs?.length ?? 0) > 0;
-  const contact = (line) =>
-    toSend(line) ? line.to_addrs.join(', ') : line.sender;
+  const toSend = (row) => category === 'sent' && (row.to_addrs?.length ?? 0) > 0;
+  const contact = (row) =>
+    toSend(row) ? row.to_addrs.join(', ') : row.sender;
 
   // A80: the mailbox block lives where accounts MIX — the unified
   // mailbox (D3 of A74) and search, D7. Unlike the badge, it does NOT
@@ -164,12 +164,12 @@
   // The WHOLE rule lives in lib/mailbox.js — view guard included, since
   // the 2026-08-25 field verdict (point 12): the reading pane applies
   // the same one, and two expressions would diverge.
-  const mailboxOf = (line) =>
+  const mailboxOf = (row) =>
     !mixedView(account, results !== null)
       ? null
       : mailboxBlock({
-        accountId: line.account_id,
-        address: line.account_email,
+        accountId: row.account_id,
+        address: row.account_email,
         markers,
         names,
         accounts,
@@ -244,9 +244,9 @@
   // subject in the product's language, the chip follows locally.
   // stopPropagation: the click does not choose the row.
   let invitationReplies = $state({});
-  async function replyInvitation(e, line, reply) {
+  async function replyInvitation(e, row, reply) {
     e.stopPropagation();
-    const key = `${line.account_id}/${line.invitation.mailbox}/${line.invitation.uid}`;
+    const key = `${row.account_id}/${row.invitation.mailbox}/${row.invitation.uid}`;
     if (invitationReplies[key]) return;
     invitationReplies[key] = true;
     // OPTIMISTIC (field R3'a, fixed on the 3rd pass): the chip
@@ -256,22 +256,22 @@
     // `version` — the homegrown invalidation channel — that redraws
     // the window, otherwise the chip only appeared at the next
     // invalidation coming from elsewhere (the selection, a probe…).
-    const before = line.invitation.reply;
-    line.invitation.reply = reply;
+    const before = row.invitation.reply;
+    row.invitation.reply = reply;
     version += 1;
     try {
-      const subject = t(`inv.subject_${reply}`, { title: line.invitation.title });
+      const subject = t(`inv.subject_${reply}`, { title: row.invitation.title });
       await call('reply_invitation', {
-        accountId: line.account_id,
-        mailbox: line.invitation.mailbox,
-        uid: line.invitation.uid,
+        accountId: row.account_id,
+        mailbox: row.invitation.mailbox,
+        uid: row.invitation.uid,
         reply,
         subject,
         body: subject,
       });
       call('flush_outbox').catch(() => {});
     } catch (err) {
-      line.invitation.reply = before;
+      row.invitation.reply = before;
       version += 1;
       onflash(t('error.invitation', { err }));
     } finally {
@@ -673,7 +673,7 @@
     void rowPad();
     untrack(() => {
       anchorStep = frame
-        ? { line: first, inPins: frame.scrollTop < pinsTop }
+        ? { row: first, inPins: frame.scrollTop < pinsTop }
         : null;
     });
   });
@@ -696,7 +696,7 @@
     if (anchor.inPins) return;
     untrack(() => {
       if (frame && results === null && draftRows === null) {
-        go(anchor.line);
+        go(anchor.row);
       }
     });
   });
@@ -723,7 +723,7 @@
     const arr = [];
     for (let i = start; i < end; i++) {
       const page = pages.get(Math.floor(i / PAGE));
-      arr.push({ i, line: page ? page[i % PAGE] : null });
+      arr.push({ i, row: page ? page[i % PAGE] : null });
     }
     return arr;
   });
@@ -1012,15 +1012,15 @@
   }
   // Keyboard triage (App): the selection is set without going through
   // the click — same key, same outline, no onselect callback.
-  export function select(line) {
-    selection = key(line);
+  export function select(row) {
+    selection = key(row);
   }
   // The row BELOW this one. Active search: the next of the results;
   // otherwise the absolute index in the windowed pages — an
   // unserved neighboring page returns null (rare: the window serves
   // wide).
-  export function next(line) {
-    const id = key(line);
+  export function next(row) {
+    const id = key(row);
     if (results !== null) {
       const i = results.findIndex((l) => key(l) === id);
       return i >= 0 && i + 1 < results.length ? results[i + 1] : null;
@@ -1037,8 +1037,8 @@
     }
     return null;
   }
-  export function markRead(line) {
-    const id = key(line);
+  export function markRead(row) {
+    const id = key(row);
     for (const page of pages.values()) {
       for (const l of page) {
         if (key(l) === id) l.thread_unseen = 0;
@@ -1074,7 +1074,7 @@
 </script>
 
 
-<section class="colonne" class:centre={center} aria-label={t('list.aria')} data-testid="liste">
+<section class="column" class:center={center} aria-label={t('list.aria')} data-testid="list">
   <!-- UI v3, E1 (CE verdict 2026-08-16): the banner of the Classic
        mockup — the current mailbox's name, ALONE ("Mark all as read"
        ruled out). The mailbox.* keys are the nav's own. -->
@@ -1085,10 +1085,10 @@
          header's grammar (32 px), the label lives in aria-label AND
          title. In Junk, "Report as junk" gives way to "Not spam" —
          the mirror of the reading pane. -->
-    <header class="bandeau bandeau-selection" data-testid="barre-selection">
+    <header class="banner banner-selection" data-testid="bar-selection">
       <h1>{t('list.nSelection', { n: checkedRows.size })}</h1>
       {#each BAR_GESTURES as g (g.action)}
-        <button type="button" class="btn-barre" data-testid="barre-{g.action}"
+        <button type="button" class="btn-bar" data-testid="bar-{g.action}"
                 disabled={gestureInProgress}
                 aria-label={t(g.label)} title={t(g.label)}
                 onclick={() => act(g.action)}><Icon name={g.icon} /></button>
@@ -1096,22 +1096,22 @@
       <!-- Cancel also freezes during the batch: a bar that would
            collapse while the commands are still running would read
            as a cancellation (review). -->
-      <button type="button" class="btn-barre" data-testid="barre-annuler"
+      <button type="button" class="btn-bar" data-testid="bar-cancel"
               disabled={gestureInProgress}
               aria-label={t('action.cancelSelection')} title={t('action.cancelSelection')}
               onclick={clearSelection}><Icon name="close" /></button>
     </header>
   {:else if center}
     <!-- RETOURS-14 R2 (D2/D3): the organized Inbox takes the mode's
-         normalized header (shared .entete-vue classes from
+         normalized header (shared .header-view classes from
          system.css, the Feed/Screener pattern R7/R11) — title alone
          (D2), no generic banner nor tabs (D3, further down). -->
-    <header class="tete-organisee" data-testid="liste-titre">
-      <h2 class="display entete-vue" data-testid="reception-titre">
-        <span class="glyphe-titre" aria-hidden="true"><Icon name="inbox" size={26} /></span>{t(mailboxLabelKey('inbox'))}</h2>
+    <header class="head-organized" data-testid="list-title">
+      <h2 class="display header-view" data-testid="inbox-title">
+        <span class="glyph-title" aria-hidden="true"><Icon name="inbox" size={26} /></span>{t(mailboxLabelKey('inbox'))}</h2>
     </header>
   {:else}
-    <header class="bandeau" data-testid="liste-titre">
+    <header class="banner" data-testid="list-title">
       <!-- RETOURS-13 R3: the label comes out of THE shared rule. -->
       <h1>{t(mailboxLabelKey(category))}</h1>
     </header>
@@ -1122,8 +1122,8 @@
        The pattern is that of the pane widths (`--l-nav`); the hyphen
        lets it escape the contract of the 17 theme tokens, and that is
        deliberate: it is a page-layout dimension, not a color. -->
-  <div class="cadre" bind:this={frame} bind:clientHeight={frameHeight}
-       class:selection-en-cours={checkedRows.size > 0}
+  <div class="frame" bind:this={frame} bind:clientHeight={frameHeight}
+       class:selection-in-progress={checkedRows.size > 0}
        onscroll={onScroll}
        style="--rangee-pad:{rowPad()}px">
     <!-- RETOURS-14 R2: the current section, stuck at the top of the
@@ -1131,8 +1131,8 @@
          geometry (decalage/indexPour don't know it — the E4 trap of
          the spacers therefore doesn't concern it). -->
     {#if stuckSection}
-      <div class="section-collee" data-testid="section-collee" aria-hidden="true">
-        <span class="cadre-entete"><span class="lab">{stuckSection.label}</span></span>
+      <div class="stuck-section" data-testid="stuck-section" aria-hidden="true">
+        <span class="header-frame"><span class="lab">{stuckSection.label}</span></span>
       </div>
     {/if}
     <!-- A81: the probes follow the real row — no more tile column; a
@@ -1157,80 +1157,80 @@
          and the organized mode's ⋯ (24 px centered in a 14 px row).
          Without them, 6 px less per row: after twenty rows, the
          "Already seen" band overlapped an entire row. -->
-    <div class="sondes-cage" aria-hidden="true">
-      <div class="sondes">
-        <article class="ligne" bind:offsetHeight={h1}>
+    <div class="probes-cage" aria-hidden="true">
+      <div class="probes">
+        <article class="row" bind:offsetHeight={h1}>
           <div class="l1">
-            <span class="exp">Sonde</span>
+            <span class="sender">Sonde</span>
             {#if mixedView(account, results !== null)}
-              <span class="boite"><span class="mot">{t('list.on')}</span>
-                <span class="repere-nu" aria-hidden="true"><Icon name="work" size={14} /></span>
-                <span class="lib">Sonde</span></span>
+              <span class="mailbox"><span class="word">{t('list.on')}</span>
+                <span class="bare-marker" aria-hidden="true"><Icon name="work" size={14} /></span>
+                <span class="lbl">Sonde</span></span>
             {/if}
-            <span class="essor"></span>
+            <span class="grow"></span>
             {#if organizedGestures}
-              <button type="button" class="gestes" tabindex="-1"><Icon name="more_horiz" size={14} /></button>
+              <button type="button" class="gestures" tabindex="-1"><Icon name="more_horiz" size={14} /></button>
             {/if}
-            <span class="heure">00:00</span>
+            <span class="time">00:00</span>
           </div>
-          <p class="objet">Sonde</p>
-          <p class="apercu">Sonde</p>
+          <p class="subject">Sonde</p>
+          <p class="preview">Sonde</p>
         </article>
-        <article class="ligne" bind:offsetHeight={h2}>
+        <article class="row" bind:offsetHeight={h2}>
           <div class="l1">
-            <span class="exp">Sonde</span>
+            <span class="sender">Sonde</span>
             {#if mixedView(account, results !== null)}
-              <span class="boite"><span class="mot">{t('list.on')}</span>
-                <span class="repere-nu" aria-hidden="true"><Icon name="work" size={14} /></span>
-                <span class="lib">Sonde</span></span>
+              <span class="mailbox"><span class="word">{t('list.on')}</span>
+                <span class="bare-marker" aria-hidden="true"><Icon name="work" size={14} /></span>
+                <span class="lbl">Sonde</span></span>
             {/if}
-            <span class="essor"></span>
+            <span class="grow"></span>
             {#if organizedGestures}
-              <button type="button" class="gestes" tabindex="-1"><Icon name="more_horiz" size={14} /></button>
+              <button type="button" class="gestures" tabindex="-1"><Icon name="more_horiz" size={14} /></button>
             {/if}
-            <span class="heure">00:00</span>
+            <span class="time">00:00</span>
           </div>
-          <p class="objet">Sonde</p>
-          <p class="apercu">Sonde</p>
-          <div class="puces"><span class="puce"><Icon name="forum" />2</span></div>
+          <p class="subject">Sonde</p>
+          <p class="preview">Sonde</p>
+          <div class="chips"><span class="chip"><Icon name="forum" />2</span></div>
         </article>
       </div>
     </div>
     {#snippet waiting()}
-      <article class="ligne attente" data-testid="ligne-attente">
-        <div class="l1"><span class="exp">…</span><span class="essor"></span><span class="heure"></span></div>
-        <p class="objet">…</p>
-        <p class="apercu"></p>
+      <article class="row pending" data-testid="row-pending">
+        <div class="l1"><span class="sender">…</span><span class="grow"></span><span class="time"></span></div>
+        <p class="subject">…</p>
+        <p class="preview"></p>
       </article>
     {/snippet}
-    {#snippet row(line, pinned = false)}
+    {#snippet listRow(row, pinned = false)}
       <!-- A80: the mailbox block lives everywhere accounts MIX — the
            unified mailbox (D3/D7) and search (always multi-account,
            even from a single account's view; review 2026-08-22) — and
            on ALL rows, marker or not (D8). -->
-      {@const mailbox = mailboxOf(line)}
-      {@const checked = isChecked(line)}
+      {@const mailbox = mailboxOf(row)}
+      {@const checked = isChecked(row)}
       <!-- R1: the click lives in three regimes (rowClick) — Ctrl/Cmd
            toggles the checkbox, Shift extends from the anchor, bare =
            choose (A38's note on focus lives in rowClick). The
            mousedown swallows the TEXT selection of a Shift-click —
            never the gesture. -->
-      <div class="ligne"
-           class:nonlu={line.thread_unseen > 0}
-           class:choisie={isChosen(line)}
-           class:cochee={checked}
-           data-testid="ligne"
+      <div class="row"
+           class:unread={row.thread_unseen > 0}
+           class:chosen={isChosen(row)}
+           class:checked={checked}
+           data-testid="row"
            role="button" tabindex="0"
            onmousedown={(e) => { if (e.shiftKey) e.preventDefault(); }}
-           onclick={(e) => rowClick(e, line)}
-           onkeydown={activation(() => choose(line))}>
+           onclick={(e) => rowClick(e, row)}
+           onkeydown={activation(() => choose(row))}>
         <!-- R1/D4: the checkbox — absolute in the left gutter, the
              row's geometry NEVER moves (the h1/h2 probes measure the
              row without it); opacity 0 at rest, revealed on hover and
              as soon as a selection exists (CSS). tabindex -1: the
              keyboard check goes through Enter/Space on the chosen
              row, the checkbox is a pointer affordance. -->
-        <button type="button" class="case" data-testid="ligne-case"
+        <button type="button" class="checkbox" data-testid="row-checkbox"
                 role="checkbox" aria-checked={checked} tabindex="-1"
                 aria-label={t('list.check')}
                 onclick={(e) => {
@@ -1238,7 +1238,7 @@
                   // The A38 guard also applies here: a click doesn't
                   // leave focus on a button of a recycled node.
                   e.currentTarget.blur();
-                  toggle(line);
+                  toggle(row);
                 }}>
           {#if checked}<Icon name="check" size={12} />{/if}
         </button>
@@ -1252,39 +1252,39 @@
           <!-- V4: unread is said by the 9 px dot AND the font weight
                (A8 — never color alone); the pinned row carries the
                keep mark on its --tile ground (A73). -->
-          {#if line.thread_unseen > 0}<span class="disque"></span>{/if}
-          {#if pinned}<span class="marque-epingle" aria-hidden="true"><Icon name="keep" size={14} /></span>{/if}
-          <span class="exp">{#if toSend(line)}{t('list.dest', { a: contact(line) })}{:else}{line.sender}{/if}</span>
+          {#if row.thread_unseen > 0}<span class="disk"></span>{/if}
+          {#if pinned}<span class="brand-pin" aria-hidden="true"><Icon name="keep" size={14} /></span>{/if}
+          <span class="sender">{#if toSend(row)}{t('list.dest', { a: contact(row) })}{:else}{row.sender}{/if}</span>
           {#if mailbox}
-            <span class="boite" data-testid="ligne-boite" title={mailbox.title}>
-              <span class="mot">{t('list.on')}</span>
+            <span class="mailbox" data-testid="row-mailbox" title={mailbox.title}>
+              <span class="word">{t('list.on')}</span>
               {#if mailbox.marker}
-                <span class="repere-nu" data-teinte={mailbox.marker.hue}
+                <span class="bare-marker" data-hue={mailbox.marker.hue}
                       aria-hidden="true"><Icon name={mailbox.marker.icon} size={14} /></span>
               {/if}
-              <span class="lib">{mailbox.label}</span>
+              <span class="lbl">{mailbox.label}</span>
             </span>
           {/if}
-          <span class="essor"></span>
+          <span class="grow"></span>
           {#if organizedGestures}
             <!-- E4: the ⋯ to the LEFT of the time, RESERVED place —
                  opacity only, the geometry never moves. -->
-            <button type="button" class="gestes" data-testid="ligne-gestes"
+            <button type="button" class="gestures" data-testid="row-gestures"
                     aria-label={t('list.gestures')} aria-haspopup="menu"
-                    aria-expanded={gestureMenu?.key === rowKey(line)}
-                    onclick={(e) => openGestures(e, line)}>
+                    aria-expanded={gestureMenu?.key === rowKey(row)}
+                    onclick={(e) => openGestures(e, row)}>
               <Icon name="more_horiz" size={14} /></button>
           {/if}
-          <span class="heure">{when(line.epoch)}</span>
+          <span class="time">{when(row.epoch)}</span>
         </div>
-        <p class="objet">{line.subject}</p>
-        {#if draftOf(line)}
+        <p class="subject">{row.subject}</p>
+        {#if draftOf(row)}
           <!-- Variant B (PLAN-BROUILLONS §3): the preview shows the
                draft — prefix and body; the rest of the row doesn't
                move. -->
-          <p class="apercu"><span class="prefixe" data-testid="mention-brouillon">{t('list.draftPrefix')}</span>{draftOf(line).body}</p>
+          <p class="preview"><span class="prefix" data-testid="mention-draft">{t('list.draftPrefix')}</span>{draftOf(row).body}</p>
         {:else}
-          <p class="apercu">{line.preview ?? ''}</p>
+          <p class="preview">{row.preview ?? ''}</p>
         {/if}
         <!-- PLAN-RETOURS-V3 R1 (CE verdict 2026-08-16, D1/D2): A29's
              "bare row" is reversed — the prototype's chip rank
@@ -1304,60 +1304,60 @@
              occupy a rank of their own — icon said by color AND by
              text (A8), the chip acts at the instant of the click
              (optimistic). -->
-        {#if invitationGestures(line)}
-          <div class="puces" data-testid="puces-invitation">
-            <button type="button" class="puce ton-accepted" data-testid="liste-accepter"
-                    disabled={invitationReplies[`${line.account_id}/${line.invitation.mailbox}/${line.invitation.uid}`]}
-                    onclick={(e) => replyInvitation(e, line, 'accepted')}>
+        {#if invitationGestures(row)}
+          <div class="chips" data-testid="chips-invitation">
+            <button type="button" class="chip tone-accepted" data-testid="list-accept"
+                    disabled={invitationReplies[`${row.account_id}/${row.invitation.mailbox}/${row.invitation.uid}`]}
+                    onclick={(e) => replyInvitation(e, row, 'accepted')}>
               <Icon name="check_circle" />{t('action.accept')}</button>
-            <button type="button" class="puce ton-tentative" data-testid="liste-provisoire"
-                    disabled={invitationReplies[`${line.account_id}/${line.invitation.mailbox}/${line.invitation.uid}`]}
-                    onclick={(e) => replyInvitation(e, line, 'tentative')}>
+            <button type="button" class="chip tone-tentative" data-testid="list-tentative"
+                    disabled={invitationReplies[`${row.account_id}/${row.invitation.mailbox}/${row.invitation.uid}`]}
+                    onclick={(e) => replyInvitation(e, row, 'tentative')}>
               <Icon name="question_mark" />{t('action.tentative')}</button>
-            <button type="button" class="puce ton-declined" data-testid="liste-refuser"
-                    disabled={invitationReplies[`${line.account_id}/${line.invitation.mailbox}/${line.invitation.uid}`]}
-                    onclick={(e) => replyInvitation(e, line, 'declined')}>
+            <button type="button" class="chip tone-declined" data-testid="list-refuse"
+                    disabled={invitationReplies[`${row.account_id}/${row.invitation.mailbox}/${row.invitation.uid}`]}
+                    onclick={(e) => replyInvitation(e, row, 'declined')}>
               <Icon name="cancel" />{t('action.decline')}</button>
           </div>
         {/if}
-        {#if otherChips(line) || (line.invitation && invitationChip(line.invitation))}
-          <div class="puces" data-testid="puces-ligne">
+        {#if otherChips(row) || (row.invitation && invitationChip(row.invitation))}
+          <div class="chips" data-testid="chips-row">
             <!-- R11: the given reply (or the cancellation) joins the
                  common rank — the other chips rise up with it. -->
-            {#if line.invitation && invitationChip(line.invitation)}
-              {@const chip = invitationChip(line.invitation)}
-              <span class="puce ton-{chip.tone}" data-testid="puce-invitation">
+            {#if row.invitation && invitationChip(row.invitation)}
+              {@const chip = invitationChip(row.invitation)}
+              <span class="chip tone-{chip.tone}" data-testid="invitation-chip">
                 {#if chip.icon}<Icon name={chip.icon} />{/if}{chip.text}</span>
             {/if}
-            {#if line.pinned}
-              <span class="puce"><Icon name="keep" />{t('chip.pin')}</span>
+            {#if row.pinned}
+              <span class="chip"><Icon name="keep" />{t('chip.pin')}</span>
             {/if}
-            {#if line.thread_size > 1}
-              <span class="puce"><Icon name="forum" />{t('chip.messages', { n: line.thread_size })}</span>
+            {#if row.thread_size > 1}
+              <span class="chip"><Icon name="forum" />{t('chip.messages', { n: row.thread_size })}</span>
             {/if}
-            {#if line.attachment_count > 0}
-              <span class="puce"><Icon name="attach_file" />{t('chip.files', { n: line.attachment_count })}</span>
+            {#if row.attachment_count > 0}
+              <span class="chip"><Icon name="attach_file" />{t('chip.files', { n: row.attachment_count })}</span>
             {/if}
           </div>
         {/if}
       </div>
     {/snippet}
     {#if results !== null}
-      <div class="fenetre-recherche" data-testid="resultats">
+      <div class="window-search" data-testid="results">
         {#if results.length === 0}
-          <div class="vide-recherche"><p>{t('list.noResult')}</p></div>
+          <div class="empty-search"><p>{t('list.noResult')}</p></div>
         {/if}
-        {#each results as line (`${line.account_id}/${line.mailbox}/${line.uid}`)}
-          {@render row(line)}
+        {#each results as row (`${row.account_id}/${row.mailbox}/${row.uid}`)}
+          {@render listRow(row)}
         {/each}
         {#if results.length > 0 && results.length < resultsTotal}
           {#if results.length < MAX_RESULTS}
-            <button type="button" class="charger-plus" data-testid="charger-plus"
+            <button type="button" class="load-more" data-testid="load-more"
                     disabled={loadingMore} onclick={loadMore}>
               {t('list.loadMore', { n: Math.min(BATCH, resultsTotal - results.length) })}
             </button>
           {:else}
-            <p class="affiner" data-testid="affiner">{t('list.refine')}</p>
+            <p class="refine" data-testid="refine">{t('list.refine')}</p>
           {/if}
         {/if}
       </div>
@@ -1365,31 +1365,31 @@
       <!-- The Drafts folder (B-D1): the local drafts, from most
            recent to oldest. The click RESUMES — never mark_seen,
            there is nothing to read here, only to finish. -->
-      <div class="fenetre-recherche" data-testid="dossier-brouillons">
+      <div class="window-search" data-testid="folder-drafts">
         {#if draftRows.length === 0}
-          <div class="vide-recherche"><p>{t('list.empty')}</p></div>
+          <div class="empty-search"><p>{t('list.empty')}</p></div>
         {/if}
         {#each draftRows as b (b.id)}
           <!-- A81: the Drafts folder KEEPS its tile (D9 — it shows the
                recipient there): the `tuilee` class gives it back the
                head column that the list row lost. -->
-          <div class="ligne tuilee" data-testid="ligne-brouillon"
+          <div class="row tiled" data-testid="row-draft"
                role="button" tabindex="0"
                onclick={() => onresume(b)}
                onkeydown={activation(() => onresume(b))}>
             <span class="avatar" aria-hidden="true">{initials(b.to)}</span>
             <div class="l1">
-              <span class="exp" class:sans={!b.to}>
+              <span class="sender" class:without={!b.to}>
                 {b.to ? t('drafts.to', { a: b.to }) : t('drafts.withoutRecipient')}</span>
               <!-- The spacer pushes the time to the right edge: since
                    A80, .exp no longer grows (flex:0 1 auto), it is
                    the spacer that carries the spring — here as in the
                    stream's row. -->
-              <span class="essor"></span>
-              <span class="heure">{when(Math.floor(b.updated_epoch / 1000))}</span>
+              <span class="grow"></span>
+              <span class="time">{when(Math.floor(b.updated_epoch / 1000))}</span>
             </div>
-            <p class="objet" class:sans={!b.subject}>{b.subject || t('drafts.withoutSubject')}</p>
-            <p class="apercu">{b.body}</p>
+            <p class="subject" class:without={!b.subject}>{b.subject || t('drafts.withoutSubject')}</p>
+            <p class="preview">{b.body}</p>
           </div>
         {/each}
       </div>
@@ -1398,9 +1398,9 @@
            stream in the same scroll; the stream excludes them (D5).
            Its measured height recalibrates the windowing below. -->
       {#if pins.length > 0}
-        <div class="epingles" data-testid="epingles" bind:offsetHeight={pinsTopMeasured}>
-          {#each pins as line (key(line))}
-            {@render row(line, true)}
+        <div class="pins" data-testid="pins" bind:offsetHeight={pinsTopMeasured}>
+          {#each pins as row (key(row))}
+            {@render listRow(row, true)}
           {/each}
         </div>
       {/if}
@@ -1409,18 +1409,18 @@
              counting (a short page states the total on its own).
              All-pinned: the stream is empty but the mailbox isn't —
              the section alone, nothing to assert below it. -->
-        <div class="vide"><p>{t('list.empty')}</p></div>
+        <div class="empty"><p>{t('list.empty')}</p></div>
       {:else if total === 0 && !(sourceAnswered && answeredPins)}
         <!-- The current source hasn't answered yet: the waiting state
              shows, emptiness is never asserted without proof
              (PLAN-DEFILEMENT-PROFOND E2). -->
-        <div class="fenetre-recherche" data-testid="attente-source">
+        <div class="window-search" data-testid="pending-source">
           {#each Array.from({ length: 6 }) as _, i (i)}
             {@render waiting()}
           {/each}
         </div>
       {/if}
-      <div class="espace" style="height:{spaceHeight}px">
+      <div class="space" style="height:{spaceHeight}px">
         {#each headerPositions as e (e.index)}
           <!-- E4: the section header lives OUTSIDE the rows, absolute
                within the space — the rows' geometry stays uniform,
@@ -1428,13 +1428,13 @@
                positions come from a derived value that LISTENS to
                `version` (review E5): an invitation chip that pushes
                the rows recalibrates the header in the same flush. -->
-          <div class="entete-section" data-testid="section"
+          <div class="header-section" data-testid="section"
                style="top:{e.top}px">
-            <span class="cadre-entete"><span class="lab">{e.label}</span></span>
+            <span class="header-frame"><span class="lab">{e.label}</span></span>
           </div>
         {/each}
-        <div class="fenetre" style="transform:translateY({offset(start)}px)">
-          {#each window as { i, line } (i)}
+        <div class="window" style="transform:translateY({offset(start)}px)">
+          {#each window as { i, row } (i)}
             <!-- E4: the header band occupies 34 px REAL in the flow
                  (the rows stack in flex — an offset that would only
                  live in decalage/indexPour would make the header
@@ -1443,10 +1443,10 @@
                  already in the translateY (headersBefore counts
                  e.index <= i). -->
             {#if headers.some((e) => e.index === i && e.index > start)}
-              <div class="espace-entete" aria-hidden="true"></div>
+              <div class="header-space" aria-hidden="true"></div>
             {/if}
-            {#if line}
-              {@render row(line)}
+            {#if row}
+              {@render listRow(row)}
             {:else}
               {@render waiting()}
             {/if}
@@ -1459,10 +1459,10 @@
        tabs (and their All / Unread filter) belong to the classic
        view; Drafts stays accessible from the nav. -->
   {#if !center}
-  <div class="onglets" data-testid="onglets">
+  <div class="tabs" data-testid="tabs">
     {#each TABS as o (o.id)}
-      <span class="onglet" class:actif={tabActive === o.id}
-            data-testid="onglet" data-onglet={o.id}
+      <span class="tab" class:active={tabActive === o.id}
+            data-testid="tab" data-tab={o.id}
             role="button" tabindex="0" aria-pressed={tabActive === o.id}
             onclick={() => ontab(o.id)}
             onkeydown={activation(() => ontab(o.id))}>
@@ -1476,22 +1476,22 @@
 <!-- PLAN-AUDIT-V2 E11: THE product's menu (Menu.svelte) — keyboard,
      focus, closing; the List only supplies its items. -->
 <Menu isOpen={gestureMenu !== null} x={gestureMenu?.x ?? 0} y={gestureMenu?.y ?? 0}
-      testid="menu-gestes" onclose={() => (gestureMenu = null)}>
+      testid="menu-gestures" onclose={() => (gestureMenu = null)}>
     {#each ['inbox', 'feed', 'paper_trail'].filter((d) => d !== category) as dest (dest)}
-      <button type="button" role="menuitem" data-testid={`gestes-${dest}`}
+      <button type="button" role="menuitem" data-testid={`gestures-${dest}`}
               onclick={() => gesture(dest)}>
         <Icon name={dest === 'inbox' ? 'inbox' : dest} />{t('list.moveTo', { mailbox: t(`mailbox.${dest}`) })}</button>
     {/each}
-    <div class="filet-menu"></div>
-    <button type="button" role="menuitem" data-testid="gestes-cote"
+    <div class="net-menu"></div>
+    <button type="button" role="menuitem" data-testid="gestures-aside"
             onclick={() => {
-              const { line } = gestureMenu;
+              const { row } = gestureMenu;
               gestureMenu = null;
-              onsetaside(line);
+              onsetaside(row);
             }}>
       <Icon name="pile" />{t('pile.put')}</button>
-    <div class="filet-menu"></div>
-    <button type="button" role="menuitem" data-testid="gestes-ecarter"
+    <div class="net-menu"></div>
+    <button type="button" role="menuitem" data-testid="gestures-screen-out"
             onclick={() => gesture('screened_out')}>
       <Icon name="visibility_off" />{t('list.screenOut')}</button>
 </Menu>
@@ -1499,7 +1499,7 @@
 <style>
   /* Geometry and states of the track drawing (A29/A30): continuous
      rows separated by a net, no card, no shadow. */
-  .colonne {
+  .column {
     display:flex; flex-direction:column; min-height:0;
     background:var(--bg); border-right:1px solid var(--border);
   }
@@ -1507,12 +1507,12 @@
      visual format as the bottom filter banner — 52 px, --bg
      background (V3: the net alone carries the separation); title
      16 px 600. */
-  .bandeau {
+  .banner {
     flex:none; height:52px; display:flex; align-items:center;
     padding:0 16px; background:var(--bg);
     border-bottom:1px solid var(--border);
   }
-  .bandeau h1 {
+  .banner h1 {
     margin:0; font-size:16px; font-weight:600; line-height:1.3;
     color:var(--ink); flex:1; min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
@@ -1520,20 +1520,20 @@
   /* `isolation` (RETOURS-14 R2, review): the stuck section band
      carries a z-index — confined HERE, otherwise it would pass above
      the modal veils (z-index 2) of the root context. */
-  .cadre { flex:1; overflow:auto; position:relative; isolation:isolate; }
-  .espace { position:relative; }
+  .frame { flex:1; overflow:auto; position:relative; isolation:isolate; }
+  .space { position:relative; }
   /* RETOURS-14 R2: the organized Inbox's normalized header — same
      page geometry as Feed/Screener (24/28 margin), no net: the view
      is a page of the mode, not a tool banner. */
-  .tete-organisee { flex:none; padding:24px 28px 0; }
-  .tete-organisee .entete-vue { max-width:760px; margin-inline:auto; }
+  .head-organized { flex:none; padding:24px 28px 0; }
+  .head-organized .header-view { max-width:760px; margin-inline:auto; }
   /* The stuck current section: NULL height (outside the windowing
      geometry), the label painted over the rows on an opaque
      background — the drawing of the real band (.entete-section). */
-  .section-collee {
+  .stuck-section {
     position:sticky; top:0; z-index:3; height:0; overflow:visible;
   }
-  .section-collee .cadre-entete {
+  .stuck-section .header-frame {
     display:block; background:var(--bg);
     padding:10px 16px 6px; border-bottom:1px solid var(--border);
   }
@@ -1541,15 +1541,15 @@
      rule-label (bare label, uppercase, dimmed ink), anchored to the
      bottom of its 34 px band, the first rank's net acts as a
      separator. */
-  .entete-section {
+  .header-section {
     position:absolute; left:0; right:0; height:52px;
     display:flex; align-items:flex-end; padding:0 16px 6px;
   }
   /* The inner frame carries the centering: the auto-margin of an
      over-constrained absolute is fragile — a block in flow isn't. */
-  .cadre-entete { display:block; width:100%; }
-  .espace-entete { flex:none; height:52px; }
-  .entete-section .lab, .section-collee .lab {
+  .header-frame { display:block; width:100%; }
+  .header-space { flex:none; height:52px; }
+  .header-section .lab, .stuck-section .lab {
     font-size:11px; letter-spacing:.1em; text-transform:uppercase;
     color:var(--muted); font-weight:600; white-space:nowrap;
   }
@@ -1558,25 +1558,25 @@
   /* `width:100%` first: in a flex column, a cross-axis auto-margin
      TURNS OFF the stretch — without it, the row shrinks to its
      content (E4 capture finding). */
-  .centre :global(.ligne) {
+  .center :global(.row) {
     width:100%; max-width:760px; margin-inline:auto; box-sizing:border-box;
   }
-  .centre .cadre-entete { max-width:760px; margin-inline:auto; }
+  .center .header-frame { max-width:760px; margin-inline:auto; }
   /* E4: the ⋯ gesture menu — RESERVED place to the left of the time
      (24 px), opacity only: the row's geometry never moves. */
-  .gestes {
+  .gestures {
     flex:none; width:24px; height:24px; padding:0;
     display:inline-flex; align-items:center; justify-content:center;
     align-self:center; opacity:0; color:var(--muted);
     background:none; border:1px solid transparent;
   }
-  .ligne:hover .gestes, .gestes:focus-visible, .gestes[aria-expanded="true"] {
+  .row:hover .gestures, .gestures:focus-visible, .gestures[aria-expanded="true"] {
     opacity:1;
   }
-  .gestes:hover, .gestes[aria-expanded="true"] {
+  .gestures:hover, .gestures[aria-expanded="true"] {
     background:var(--hover); border-color:var(--border); color:var(--ink);
   }
-  .fenetre {
+  .window {
     position:absolute; top:0; left:0; right:0;
     display:flex; flex-direction:column;
   }
@@ -1587,29 +1587,29 @@
      anchor to `.cadre` (also positioned) and add it up to 85 px of
      phantom scroll on a short window — measured at the bench
      (spikes/espacement/sondes.mjs, variants B and C). */
-  .sondes-cage { position:relative; height:0; overflow:hidden; }
-  .sondes { position:absolute; visibility:hidden; left:0; right:0; }
-  .vide {
+  .probes-cage { position:relative; height:0; overflow:hidden; }
+  .probes { position:absolute; visibility:hidden; left:0; right:0; }
+  .empty {
     position:absolute; inset:0; display:flex; align-items:center;
     justify-content:center; padding:40px; text-align:center;
   }
-  .vide p { margin:0; font-size:13px; line-height:1.5; color:var(--muted); }
-  .fenetre-recherche { display:flex; flex-direction:column; }
-  .vide-recherche { padding:40px; text-align:center; }
-  .vide-recherche p { margin:0; font-size:13px; line-height:1.5; color:var(--muted); }
+  .empty p { margin:0; font-size:13px; line-height:1.5; color:var(--muted); }
+  .window-search { display:flex; flex-direction:column; }
+  .empty-search { padding:40px; text-align:center; }
+  .empty-search p { margin:0; font-size:13px; line-height:1.5; color:var(--muted); }
   /* "Load more": a discreet button centered under the results (pair
      ink/surface, hover ink/sel — validated by the contrast gate).
      Beyond the soft cap, the refine prompt replaces it (dimmed ink,
      like the empty state). */
-  .charger-plus {
+  .load-more {
     align-self:center; margin:12px 0 20px; height:32px; padding:0 18px;
     display:inline-flex; align-items:center; font-size:13px; font-weight:600;
     color:var(--ink); background:var(--surface); border:1px solid var(--border);
     border-radius:var(--r-control); cursor:pointer;
   }
-  .charger-plus:hover { background:var(--sel); }
-  .charger-plus:disabled { opacity:.6; cursor:default; }
-  .affiner {
+  .load-more:hover { background:var(--sel); }
+  .load-more:disabled { opacity:.6; cursor:default; }
+  .refine {
     margin:0; padding:16px 40px 24px; text-align:center;
     font-size:13px; line-height:1.5; color:var(--muted);
   }
@@ -1624,7 +1624,7 @@
      rows; BOTH heights are probed (h1/h2). The Drafts folder keeps
      its tile (D9): the `tuilee` class gives it back the head
      column. */
-  .ligne {
+  .row {
     /* A83: the vertical air comes from the notch (--rangee-pad, set
        on the frame); 13 px stays the default, the existing value to
        the pixel. The fallback covers rows rendered outside the frame,
@@ -1637,7 +1637,7 @@
        the geometry measured by the probes. */
     position:relative;
   }
-  .ligne.tuilee { grid-template-columns:auto 1fr; column-gap:10px; }
+  .row.tiled { grid-template-columns:auto 1fr; column-gap:10px; }
   .avatar {
     grid-row:1 / span 3; width:28px; height:28px;
     border-radius:var(--r-tile);
@@ -1645,36 +1645,36 @@
     display:grid; place-items:center;
     font-size:11px; font-weight:600; color:var(--tileInk);
   }
-  .l1, .objet, .apercu, .puces { grid-column:1; min-width:0; }
-  .tuilee .l1, .tuilee .objet, .tuilee .apercu, .tuilee .puces { grid-column:2; }
+  .l1, .subject, .preview, .chips { grid-column:1; min-width:0; }
+  .tiled .l1, .tiled .subject, .tiled .preview, .tiled .chips { grid-column:2; }
   /* The chip rank (PLAN-RETOURS-V3 R1): the 24 px template of the
      Classic prototype — present only on carrying rows. */
-  .puces {
+  .chips {
     height:24px; display:flex; align-items:center; gap:6px;
     overflow:hidden;
   }
-  .puce {
+  .chip {
     display:inline-flex; align-items:center; gap:5px; height:24px;
     padding:0 9px; font-size:12px; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--r-control); white-space:nowrap;
   }
-  .puce :global(.ic) { width:14px; height:14px; }
+  .chip :global(.ic) { width:14px; height:14px; }
   /* R10: the invitation gestures of the rank — the chip that ACTS. */
-  button.puce { cursor:pointer; }
-  button.puce:hover:not(:disabled) { background:var(--sel); }
-  button.puce:disabled { cursor:default; opacity:.55; }
+  button.chip { cursor:pointer; }
+  button.chip:hover:not(:disabled) { background:var(--sel); }
+  button.chip:disabled { cursor:default; opacity:.55; }
   /* R9: color says the reply's meaning — carried by the ICON (text
      doubles it, A8), using the System's tokens: accept in accent,
      decline in alert, tentative neutral. Pairs already gated
      (accent/surface 3:1, alert/surface 3:1, and their --sel
      counterparts). */
-  .puce.ton-accepted :global(.ic) { color:var(--accent); }
-  .puce.ton-tentative :global(.ic) { color:var(--muted); }
-  .puce.ton-declined :global(.ic) { color:var(--alert); }
-  .puce.ton-cancelled { color:var(--alert); }
-  .ligne:hover { background:var(--hover); }
-  .ligne.choisie {
+  .chip.tone-accepted :global(.ic) { color:var(--accent); }
+  .chip.tone-tentative :global(.ic) { color:var(--muted); }
+  .chip.tone-declined :global(.ic) { color:var(--alert); }
+  .chip.tone-cancelled { color:var(--alert); }
+  .row:hover { background:var(--hover); }
+  .row.chosen {
     background:var(--sel); border-left-color:var(--accent);
   }
   /* R1: the CHECKED row takes the selection tint, without the
@@ -1683,7 +1683,7 @@
      TOO — the checkbox is the only state that displaces A73's --tile
      ground, because it precedes a bulk gesture: what the eye doesn't
      count can leave by surprise. */
-  .ligne.cochee { background:var(--sel); }
+  .row.checked { background:var(--sel); }
   /* R1/D4 — the checkbox: absolute in the left gutter (16 px padding
      + 2 px reserved outline: it doesn't enter the grid, the probed
      h1/h2 templates don't see it). Invisible at rest (opacity only —
@@ -1697,7 +1697,7 @@
      while checking). The shift lives in the padding: the rows'
      height doesn't move, the h1/h2 probes stay accurate. The Drafts
      folder (.tuilee) has no checkbox, it doesn't move out. */
-  .case {
+  .checkbox {
     position:absolute; left:8px; top:calc(var(--rangee-pad, 13px) + 1px);
     width:16px; height:16px; padding:0;
     display:inline-flex; align-items:center; justify-content:center;
@@ -1705,17 +1705,17 @@
     border-radius:var(--r-control); color:var(--accent);
     cursor:pointer; opacity:0;
   }
-  .ligne:hover .case,
-  .selection-en-cours .case,
-  .case[aria-checked="true"] { opacity:1; }
-  .ligne:not(.tuilee):hover,
-  .ligne.cochee,
-  .selection-en-cours .ligne:not(.tuilee) { padding-left:34px; }
+  .row:hover .checkbox,
+  .selection-in-progress .checkbox,
+  .checkbox[aria-checked="true"] { opacity:1; }
+  .row:not(.tiled):hover,
+  .row.checked,
+  .selection-in-progress .row:not(.tiled) { padding-left:34px; }
   /* The transformed bar (D3): same 52 px as the banner, 32 px buttons
      from the header's grammar. */
-  .bandeau-selection { gap:4px; }
-  .bandeau-selection h1 { font-size:14px; }
-  .btn-barre {
+  .banner-selection { gap:4px; }
+  .banner-selection h1 { font-size:14px; }
+  .btn-bar {
     flex:none; width:32px; height:32px; padding:0;
     display:inline-flex; align-items:center; justify-content:center;
     background:none; border:1px solid transparent;
@@ -1723,59 +1723,59 @@
   }
   /* Hover in --sel: the token of the header's grammar (.btn-tiroir,
      .btn-statut) — never a second convention (review). */
-  .btn-barre:hover:not(:disabled) { background:var(--sel); color:var(--ink); }
-  .btn-barre:disabled { opacity:.55; cursor:default; }
+  .btn-bar:hover:not(:disabled) { background:var(--sel); color:var(--ink); }
+  .btn-bar:disabled { opacity:.55; cursor:default; }
   /* A73, field 2026-08-21: the PINNED row takes the drawing of the
      current mailbox's tile (nav, W2-D5) — --tile background,
      --tileInk ink (pair already measured by the gate): it stands out
      from the stream at first glance. The tint holds through hover
      (the tile has no hover state); the selection keeps its accent
      outline. */
-  .epingles .ligne,
-  .epingles .ligne:hover,
-  .epingles .ligne.choisie { background:var(--tile); }
-  .epingles .ligne.choisie { border-left-color:var(--accent); }
+  .pins .row,
+  .pins .row:hover,
+  .pins .row.chosen { background:var(--tile); }
+  .pins .row.chosen { border-left-color:var(--accent); }
   /* Field verdict 2026-08-27 (R1-7): the CHECKBOX displaces the
      --tile ground — declared AFTER the block above to also win on a
      row that is both chosen and checked (same specificity, order
      decides). */
-  .epingles .ligne.cochee { background:var(--sel); }
-  .epingles .ligne .exp,
-  .epingles .ligne .objet,
-  .epingles .ligne .apercu,
-  .epingles .ligne .heure { color:var(--tileInk); }
+  .pins .row.checked { background:var(--sel); }
+  .pins .row .sender,
+  .pins .row .subject,
+  .pins .row .preview,
+  .pins .row .time { color:var(--tileInk); }
   /* A73 holds for the WHOLE row: the mailbox block (A80) takes the
      warm ink like its neighbors — without this rule it kept its two
      cold grays (--ink2/--muted) on the --tile ground, the only cold
      island in the row (review). The drawing, itself, keeps the
      account's hue: that is its identity, and its pair on --tile is
      measured. */
-  .epingles .ligne :global(.boite),
-  .epingles .ligne :global(.boite .mot),
-  .epingles .ligne :global(.boite .lib) { color:var(--tileInk); }
+  .pins .row :global(.mailbox),
+  .pins .row :global(.mailbox .word),
+  .pins .row :global(.mailbox .lbl) { color:var(--tileInk); }
   /* A80 — the header row: gap 6 (the mailbox block adds two gutters;
      at 10 the row lost 12 px for nothing). THE TRUNCATION ORDER IS
      THE DESIGN: the time never gives way (flex:none), the block
      (.boite, system.css) gives way three times faster than the
      sender, the spacer absorbs the slack. */
   .l1 { display:flex; align-items:baseline; gap:6px; }
-  .l1 :global(.disque), .l1 .marque-epingle { align-self:center; }
-  .marque-epingle { color:var(--tileInk); display:inline-flex; }
-  .exp {
+  .l1 :global(.disk), .l1 .brand-pin { align-self:center; }
+  .brand-pin { color:var(--tileInk); display:inline-flex; }
+  .sender {
     font-size:14px; color:var(--ink); flex:0 1 auto; min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
-  .essor { flex:1 1 0; min-width:0; }
-  .nonlu .exp { font-weight:700; }
-  .heure { font-size:12px; color:var(--muted); flex:none; }
-  .objet {
+  .grow { flex:1 1 0; min-width:0; }
+  .unread .sender { font-weight:700; }
+  .time { font-size:12px; color:var(--muted); flex:none; }
+  .subject {
     /* 14 px (A29 — amendment A9): the tracks' template. */
     margin:0; font-size:14px; font-weight:400; line-height:1.3;
     color:var(--ink);
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
-  .nonlu .objet { font-weight:700; }
-  .apercu {
+  .unread .subject { font-weight:700; }
+  .preview {
     margin:0; font-size:13px; line-height:1.45; color:var(--ink2);
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
     min-height:1.45em;
@@ -1783,25 +1783,25 @@
   /* The "Draft: " mention (variant B, PLAN-BROUILLONS §3): the alert
      token in text form — measured by contraste.mjs on the three row
      backgrounds (rest, hover, chosen). */
-  .prefixe { color:var(--alert); font-weight:600; }
+  .prefix { color:var(--alert); font-weight:600; }
   /* Empty fields of the folder: dimmed italics say it, never a blank
      ("(no subject)", "(no recipient)"). */
-  .sans, .objet.sans { font-style:italic; color:var(--muted); font-weight:400; }
-  .attente { color:var(--muted); }
+  .without, .subject.without { font-style:italic; color:var(--muted); font-weight:400; }
+  .pending { color:var(--muted); }
 
-  .onglets {
+  .tabs {
     flex:none; height:52px; padding:0 12px; display:flex;
     align-items:center; gap:10px; border-top:1px solid var(--border);
     background:var(--bg);
   }
-  .onglet {
+  .tab {
     height:32px; padding:0 14px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; border-radius:var(--r-control); cursor:pointer;
     color:var(--ink2); background:var(--surface);
     border:1px solid var(--border);
   }
-  .onglet:hover { background:var(--hover); }
-  .onglet.actif {
+  .tab:hover { background:var(--hover); }
+  .tab.active {
     font-weight:600; color:var(--ink); background:var(--sel);
     border-color:var(--accent);
   }

@@ -22,7 +22,7 @@
   let {
     onadd = () => {},
     compact = false,
-    accueil = false,
+    onboarding = false,
     mainAdd = false,
     // 3rd field pass (finding 2): onboarding hides its “Continue”
     // when the generic desk is revealed — it needs to know this.
@@ -105,16 +105,16 @@
   }
 </script>
 
-<div class="guichet" class:compact class:accueil>
-  <div class="formulaire">
+<div class="desk" class:compact class:onboarding>
+  <div class="form">
     <label for="ob-adresse">{t('desk.address')}</label>
-    <div class="barre">
+    <div class="bar">
       <input id="ob-adresse" type="email" bind:value={address}
-             data-testid="onboarding-adresse"
+             data-testid="onboarding-address"
              onkeydown={(e) => e.key === 'Enter' && !busy && proceed()}>
-      {#if accueil && !generic}
+      {#if onboarding && !generic}
         <button type="button" class={mainAdd ? 'primaire' : 'secondaire'}
-                data-testid="onboarding-continuer"
+                data-testid="desk-continue"
                 disabled={busy} onclick={proceed}>{t('onboarding.add')}</button>
       {/if}
     </div>
@@ -123,7 +123,7 @@
     <div class="horizon">
       <label for="ob-horizon">{t('desk.horizon')}</label>
       <select id="ob-horizon" bind:value={horizon} disabled={busy}
-              data-testid="guichet-horizon">
+              data-testid="desk-horizon">
         {#each HORIZONS as h (h)}
           <option value={h}>{t(`horizon.${h}`)}</option>
         {/each}
@@ -132,7 +132,7 @@
     {#if generic}
       <label for="ob-mdp">{t('desk.password')}</label>
       <input id="ob-mdp" type="password" bind:value={password}>
-      <div class="serveurs">
+      <div class="servers">
         <span>
           <label for="ob-imap">{t('desk.imap')}</label>
           <input id="ob-imap" type="text" bind:value={imapHost}>
@@ -142,7 +142,7 @@
           <input id="ob-imap-port" type="text" bind:value={imapPort}>
         </span>
       </div>
-      <div class="serveurs">
+      <div class="servers">
         <span>
           <label for="ob-smtp">{t('desk.smtp')}</label>
           <input id="ob-smtp" type="text" bind:value={smtpHost}>
@@ -153,8 +153,8 @@
         </span>
       </div>
     {/if}
-    {#if !accueil}
-      <button type="button" class="principal" data-testid="onboarding-continuer"
+    {#if !onboarding}
+      <button type="button" class="main" data-testid="desk-continue"
               disabled={busy} onclick={proceed}>{t('action.continue')}</button>
     {:else if generic}
       <!-- Finding 3: on the revealed generic desk, the action is
@@ -163,17 +163,17 @@
            “Add” is THE gesture — always primary (the walkthrough's
            Continue is hidden meanwhile). -->
       <div class="actions">
-        <button type="button" class="primaire"
-                data-testid="onboarding-continuer"
+        <button type="button" class="primary"
+                data-testid="desk-continue"
                 disabled={busy} onclick={proceed}>{t('onboarding.add')}</button>
-        <button type="button" class="secondaire" data-testid="guichet-retour"
+        <button type="button" class="secondary" data-testid="desk-back"
                 disabled={busy}
                 onclick={() => { generic = false; error = ''; ongeneric(false); }}>{t('onboarding.back')}</button>
       </div>
     {/if}
   </div>
   {#if error}
-    <p class="erreur" data-testid="onboarding-erreur">{error}</p>
+    <p class="error" data-testid="onboarding-error">{error}</p>
   {:else if pending}
     <p class="note">{pending}</p>
   {:else if generic}
@@ -185,8 +185,8 @@
 
 <style>
   /* Tokens of the prototype's screen 01; `compact` for Settings. */
-  .guichet { display:flex; flex-direction:column; gap:14px; }
-  .formulaire { display:flex; flex-direction:column; gap:12px; }
+  .desk { display:flex; flex-direction:column; gap:14px; }
+  .form { display:flex; flex-direction:column; gap:12px; }
   label { font-size:13px; color:var(--ink2); }
   input {
     height:52px; font-size:15px; padding:0 16px; background:var(--surface);
@@ -204,40 +204,40 @@
     min-width:220px; cursor:pointer;
   }
   select:disabled { opacity:.6; cursor:default; }
-  .serveurs { display:flex; gap:12px; }
-  .serveurs span { display:flex; flex-direction:column; gap:12px; flex:1; }
-  .serveurs .port { flex:0 0 110px; }
-  .principal {
+  .servers { display:flex; gap:12px; }
+  .servers span { display:flex; flex-direction:column; gap:12px; flex:1; }
+  .servers .port { flex:0 0 110px; }
+  .main {
     height:32px; padding:0 16px; align-self:flex-start; font-size:13px;
     font-weight:600; color:var(--onAccent); background:var(--accent);
     border:1px solid var(--accent); border-radius:var(--r-control); cursor:pointer;
   }
-  .principal:hover { background:var(--accentH); border-color:var(--accentH); }
-  .principal:disabled { opacity:.6; cursor:default; }
-  /* The bar: the input + its button, on the same row in `accueil` —
+  .main:hover { background:var(--accentH); border-color:var(--accentH); }
+  .main:disabled { opacity:.6; cursor:default; }
+  /* The bar: the input + its button, on the same row in `onboarding` —
      at the SAME height (2nd field pass, finding 2). */
-  .barre { display:flex; gap:12px; }
-  .barre input { flex:1; min-width:0; }
-  .accueil .barre input { height:40px; font-size:14px; }
-  .secondaire, .primaire {
+  .bar { display:flex; gap:12px; }
+  .bar input { flex:1; min-width:0; }
+  .onboarding .bar input { height:40px; font-size:14px; }
+  .secondary, .primary {
     height:40px; padding:0 18px; flex:none; align-self:center;
     font-size:13px; font-weight:600; border-radius:var(--r-control); cursor:pointer;
   }
-  .secondaire {
+  .secondary {
     color:var(--ink); background:var(--surface);
     border:1px solid var(--border);
   }
-  .secondaire:hover { background:var(--sel); }
+  .secondary:hover { background:var(--sel); }
   /* Finding 1 (2nd pass): as long as Continue is greyed out, “Add”
      is THE gesture — it takes the primary drawing. */
-  .primaire {
+  .primary {
     color:var(--onAccent); background:var(--accent);
     border:1px solid var(--accent);
   }
-  .primaire:hover { background:var(--accentH); border-color:var(--accentH); }
-  .secondaire:disabled, .primaire:disabled { opacity:.6; cursor:default; }
+  .primary:hover { background:var(--accentH); border-color:var(--accentH); }
+  .secondary:disabled, .primary:disabled { opacity:.6; cursor:default; }
   .actions { display:flex; gap:12px; }
-  .actions .secondaire, .actions .primaire { align-self:flex-start; }
+  .actions .secondary, .actions .primary { align-self:flex-start; }
   .note { margin:0; font-size:13px; line-height:1.5; color:var(--muted); }
-  .erreur { margin:0; font-size:13px; line-height:1.5; color:var(--alert); }
+  .error { margin:0; font-size:13px; line-height:1.5; color:var(--alert); }
 </style>

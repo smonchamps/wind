@@ -8,7 +8,7 @@
 // sa session vit côté cœur, l'UI ne le sait pas encore.
 //
 // Le consentement OAuth n'est pas pilotable par Playwright : la
-// couture `__e2eAjout` (transport.js, patron __e2ePieces) fait réussir
+// couture `__e2eAdd` (transport.js, patron __e2eAttachments) fait réussir
 // l'ajout sans navigateur et fait porter l'adresse par le bilan de
 // `connect_accounts` — posée APRÈS le démarrage, elle ne touche pas la
 // connexion initiale.
@@ -35,36 +35,36 @@ test.afterAll(async () => {
 });
 
 test("un compte ajouté Wind ouvert est dit connecté aux Réglages, sans redémarrer", async () => {
-  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  await page.locator('[data-testid="reglages"]').click();
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
+  await page.locator('[data-testid="settings"]').click();
 
   // Le décor dit le bug en puissance : la session du compte n'est pas
   // encore connue de l'UI.
-  const rangees = page.locator('[data-testid="reglages-comptes"]');
+  const rangees = page.locator('[data-testid="settings-accounts"]');
   await expect(rangees).toContainText('neuf@gmail.com');
-  await expect(page.locator('[data-testid="compte-deconnecte"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="account-disconnected"]')).toHaveCount(1);
 
   // L'ajout, par le vrai guichet des Réglages — la couture ne remplace
   // que le consentement navigateur. Le journal prouve que l'UI RELIT
   // vraiment le cœur (le bilan est complété par la couture : sans cette
   // preuve, le badge pourrait tomber pour une mauvaise raison).
   await page.evaluate(() => {
-    window.__e2eAjout = ['neuf@gmail.com'];
-    window.__e2eJournal = [];
+    window.__e2eAdd = ['neuf@gmail.com'];
+    window.__e2eLog = [];
   });
-  await page.locator('[data-testid="reglages-ajouter"]').click();
-  await page.locator('[data-testid="onboarding-adresse"]').fill('neuf@gmail.com');
-  await page.locator('[data-testid="reglages-guichet"] [data-testid="onboarding-continuer"]').click();
+  await page.locator('[data-testid="settings-add"]').click();
+  await page.locator('[data-testid="onboarding-address"]').fill('neuf@gmail.com');
+  await page.locator('[data-testid="settings-desk"] [data-testid="desk-continue"]').click();
 
   // Ce que l'utilisateur DOIT voir : plus aucun « Déconnecté » — le
   // compte vient d'être connecté.
-  await expect(page.locator('[data-testid="compte-deconnecte"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="account-disconnected"]')).toHaveCount(0);
   const relectures = await page.evaluate(() => {
-    const n = window.__e2eJournal.filter((r) => r.command === 'connect_accounts').length;
+    const n = window.__e2eLog.filter((r) => r.command === 'connect_accounts').length;
     // La couture ne survit pas au test : les cycles suivants du décor
     // repassent par le vrai chemin.
-    delete window.__e2eAjout;
-    delete window.__e2eJournal;
+    delete window.__e2eAdd;
+    delete window.__e2eLog;
     return n;
   });
   expect(relectures).toBeGreaterThanOrEqual(1);

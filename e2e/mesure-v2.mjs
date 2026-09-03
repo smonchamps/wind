@@ -122,7 +122,7 @@ try {
     if (!page) await new Promise((resolve) => setTimeout(resolve, 100));
   }
   if (!page) throw new Error('fenêtre Tauri introuvable après 30 s — le processus a-t-il démarré ?');
-  await page.locator('[data-testid="ligne"]').first().waitFor({ timeout: 60000 });
+  await page.locator('[data-testid="row"]').first().waitFor({ timeout: 60000 });
   const demarrage = performance.now() - t0;
   await page.waitForFunction(() => document.getElementById('perf').dataset.startup);
   console.log(`démarrage  : ${demarrage.toFixed(0)} ms (spawn -> première ligne, horloge murale)`);
