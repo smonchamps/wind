@@ -1,254 +1,263 @@
-# Plan Chef Ingénieur — Client email simple et performant (Windows + Web)
+# Chief Engineer Plan — A simple, high-performance email client (Windows + Web)
 
-> Rédigé dans l'esprit du *shusa* Toyota : un Chef Ingénieur qui porte la vision produit,
-> fige tôt les points durs, explore les alternatives en parallèle (set-based engineering),
-> et construit la qualité dans le processus (jidoka) plutôt qu'en fin de chaîne.
+> Written in the spirit of the Toyota *shusa*: a Chief Engineer who carries the product
+> vision, freezes the hard points early, explores alternatives in parallel (set-based
+> engineering), and builds quality into the process (jidoka) rather than at the end of
+> the line.
 
 ---
 
-## 1. Le concept paper (la vision du CE)
+## 1. The concept paper (the CE's vision)
 
-**Promesse produit :** *« Vos mails, instantanément. »* Un client email qui démarre en
-moins d'une seconde, où chaque action (ouvrir, archiver, chercher) répond en moins de
-100 ms, et qui fonctionne hors-ligne comme en ligne.
+**Product promise:** *"Your mail, instantly."* An email client that starts in under
+one second, where every action (open, archive, search) responds in under 100 ms, and
+that works offline as well as online.
 
-**Client cible :** le professionnel ou particulier exigeant, 1 à 4 comptes (Gmail,
-Outlook/Microsoft 365, IMAP générique), lassé de la lourdeur d'Outlook et du web-mail.
+**Target user:** the demanding professional or individual, 1 to 4 accounts (Gmail,
+Outlook/Microsoft 365, generic IMAP), tired of the heaviness of Outlook and webmail.
 
-**Ce que le produit EST :**
-- Rapide : la performance est LA fonctionnalité, pas une optimisation.
-- Simple : lire, trier, chercher, écrire. Rien d'autre au lancement.
-- Fiable : jamais de perte de mail, jamais d'envoi fantôme, offline-first.
-- Sûr : credentials dans le coffre de l'OS, HTML assaini, images distantes bloquées par défaut.
+**What the product IS:**
+- Fast: performance IS the feature, not an optimization.
+- Simple: read, sort, search, write. Nothing else at launch.
+- Reliable: never lose mail, never send a phantom message, offline-first.
+- Secure: credentials in the OS vault, sanitized HTML, remote images blocked by default.
 
-**Ce que le produit N'EST PAS (v1) :** pas de calendrier, pas de chat, pas d'IA intégrée,
-pas de plugins, pas de mobile. Le CE refuse toute dérive de périmètre : chaque ajout se
-paie en vitesse et en fiabilité.
+**What the product IS NOT (v1):** no calendar, no chat, no built-in AI, no plugins,
+no mobile. The CE refuses any scope creep: every addition is paid for in speed and
+reliability.
 
-**Objectifs chiffrés (équivalent du « target costing » Toyota) :**
+**Numeric targets (the equivalent of Toyota's "target costing"):**
 
-| Métrique | Cible | Mesurée dès |
+| Metric | Target | Measured from |
 |---|---|---|
-| Démarrage à froid (fenêtre utilisable) | < 1 s | Phase 1 |
-| Ouverture d'un message | < 50 ms | Phase 1 |
-| Recherche sur 100 000 messages | < 100 ms | Phase 3 |
-| RAM en usage courant | < 200 Mo | Phase 1 |
-| Base locale (3 comptes, corps rattrapés) | < 1 Go | Phase 3 ([ADR 0007](adr/0007-rattrapage-des-corps.md)) |
-| Défilement de la liste | 60 fps | Phase 1 |
-| Taille de l'installeur Windows | < 15 Mo | **mesuré : 4,75 Mo** (NSIS, 2026-07-21) |
-| Perte de données | 0, prouvé par tests de crash-récupération | Phase 2 |
+| Cold start (usable window) | < 1 s | Phase 1 |
+| Opening a message | < 50 ms | Phase 1 |
+| Search over 100 000 messages | < 100 ms | Phase 3 |
+| RAM in everyday use | < 200 MB | Phase 1 |
+| Local database (3 accounts, bodies backfilled) | < 1 GB | Phase 3 ([ADR 0007](adr/0007-rattrapage-des-corps.md)) |
+| List scrolling | 60 fps | Phase 1 |
+| Windows installer size | < 15 MB | **measured: 4,75 MB** (NSIS, 2026-07-21) |
+| Data loss | 0, proven by crash-recovery tests | Phase 2 |
 
-Ces budgets sont des **gates bloquants** : une phase ne se termine pas si un budget est
-dépassé (andon — on arrête la ligne).
+These budgets are **blocking gates**: a phase does not end if a budget is exceeded
+(andon — stop the line).
 
 ---
 
-## 2. Phase 0 — Kentou : étude et front-loading (2 à 3 semaines)
+## 2. Phase 0 — Kentou: study and front-loading (2 to 3 weeks)
 
-Chez Toyota, les problèmes durs se résolvent AVANT le développement, pas pendant.
+At Toyota, hard problems get solved BEFORE development, not during it.
 
-### 2.1 Genchi genbutsu — aller voir sur le terrain
-- Décortiquer 5 clients existants : Outlook (lourdeur), Thunderbird (architecture),
-  Superhuman (vitesse perçue, raccourcis), Mailspring (moteur C++ mailsync + UI JS),
-  Hey (opinions produit). Noter ce qui rend chacun lent ou rapide.
-- Interroger 8 à 10 utilisateurs réels : quel est le moment le plus frustrant de leur
-  journée email ? (Hypothèse à valider : le tri du matin et la recherche.)
+### 2.1 Genchi genbutsu — go see for yourself in the field
+- Take apart 5 existing clients: Outlook (heaviness), Thunderbird (architecture),
+  Superhuman (perceived speed, shortcuts), Mailspring (C++ mailsync engine + JS UI),
+  Hey (product opinions). Note what makes each one slow or fast.
+- Interview 8 to 10 real users: what is the most frustrating moment of their email
+  day? (Hypothesis to validate: the morning sort and search.)
 
-### 2.2 Recherche & réutilisation (obligatoire avant d'écrire du code)
-Ne pas réécrire ce qui existe et fonctionne :
-- **Pimalaya `email-lib`** (Rust) : abstraction IMAP/SMTP/Maildir éprouvée (base du CLI Himalaya).
-- **Crates Stalwart** : `mail-parser`, `mail-send`, `mail-builder`, `imap-codec` — parsing/envoi MIME de qualité production.
-- **Delta Chat `core`** (Rust) : meilleur moteur de synchro IMAP open-source en Rust ; à étudier pour les patterns de sync, pas forcément à intégrer.
-- Crates candidates : `async-imap`, `oauth2`, `keyring` (Windows Credential Manager), `rusqlite`/`sqlx` + FTS5, `tantivy` (alternative recherche), `ammonia` (sanitisation HTML), `lettre`.
+### 2.2 Research & reuse (mandatory before writing code)
+Do not rewrite what already exists and works:
+- **Pimalaya `email-lib`** (Rust): a proven IMAP/SMTP/Maildir abstraction (base of the Himalaya CLI).
+- **Stalwart crates**: `mail-parser`, `mail-send`, `mail-builder`, `imap-codec` — production-quality MIME parsing/sending.
+- **Delta Chat `core`** (Rust): the best open-source IMAP sync engine in Rust; to study for sync patterns, not necessarily to integrate.
+- Candidate crates: `async-imap`, `oauth2`, `keyring` (Windows Credential Manager), `rusqlite`/`sqlx` + FTS5, `tantivy` (search alternative), `ammonia` (HTML sanitization), `lettre`.
 
-### 2.3 Les 4 problèmes durs à résoudre par spike (prototype jetable, 2-4 jours chacun)
-1. **Moteur de synchro** : IMAP incrémental (CONDSTORE/QRESYNC quand dispo), réconciliation
-   locale/serveur, file d'actions offline rejouable. C'est le cœur du produit.
-2. **Le pont web** : un navigateur ne peut PAS parler IMAP (pas de socket TCP brut).
-   Le client web exige donc un service backend de synchro. Décision structurante à figer ici.
-3. **Rendu HTML des emails** : assainissement (XSS), blocage des images distantes,
-   isolation (iframe sandbox / webview CSP), sans casser la mise en page des newsletters.
-4. **OAuth2 Gmail/Microsoft** : flux desktop (loopback PKCE), stockage des tokens,
-   et surtout le processus de **vérification Google des scopes restreints (audit CASA)** —
-   long, coûteux, à démarrer très tôt.
+### 2.3 The 4 hard problems to solve by spike (throw-away prototype, 2-4 days each)
+1. **Sync engine**: incremental IMAP (CONDSTORE/QRESYNC when available), local/server
+   reconciliation, replayable offline action queue. This is the core of the product.
+2. **The web bridge**: a browser CANNOT speak IMAP (no raw TCP socket). The web
+   client therefore requires a sync backend service. A structuring decision to
+   freeze here.
+3. **HTML rendering of emails**: sanitization (XSS), blocking remote images,
+   isolation (iframe sandbox / webview CSP), without breaking newsletter layout.
+4. **OAuth2 Gmail/Microsoft**: desktop flow (loopback PKCE), token storage, and
+   above all the **Google restricted-scopes verification process (CASA audit)** —
+   long, costly, to start very early.
 
-### 2.4 Set-based concurrent engineering — explorer, puis éliminer
-Explorer en parallèle, converger par élimination sur critères mesurés (pas d'avis, des chiffres) :
+### 2.4 Set-based concurrent engineering — explore, then eliminate
+Explore in parallel, converge by elimination on measured criteria (no opinions,
+figures):
 
-| Décision | Option A | Option B | Option C | Critère d'élimination |
+| Decision | Option A | Option B | Option C | Elimination criterion |
 |---|---|---|---|---|
-| Shell Windows | **Tauri 2 (WebView2)** | Slint/egui natif | Electron | RAM, taille, vitesse de dev, réutilisation web |
-| UI partagée | **TS/React partagé desktop+web** | UI natives séparées | — | coût de double maintenance |
-| Stockage local | **SQLite + FTS5** | SQLite + Tantivy | fichiers Maildir | perf recherche 100k msgs |
-| Accès Microsoft | **IMAP+OAuth** ✅ tranché | ~~Graph API~~ (plan B) | les deux | fiabilité, quotas, effort |
-| Web | Backend de synchro mutualisé | Cœur Rust en WASM + proxy WebSocket | — | coût d'infra, confidentialité |
+| Windows shell | **Tauri 2 (WebView2)** | Slint/egui native | Electron | RAM, size, dev speed, web reuse |
+| Shared UI | **Shared TS/React desktop+web** | Separate native UIs | — | double-maintenance cost |
+| Local storage | **SQLite + FTS5** | SQLite + Tantivy | Maildir files | search perf on 100k msgs |
+| Microsoft access | **IMAP+OAuth** ✅ settled | ~~Graph API~~ (plan B) | both | reliability, quotas, effort |
+| Web | Shared sync backend | Rust core in WASM + WebSocket proxy | — | infra cost, privacy |
 
-Les options en gras sont les hypothèses de départ du CE ; les spikes les
-confirment ou les tuent. **L'accès Microsoft a été tranché contre
-l'hypothèse initiale** : le spike a réfuté l'argument décisif de Graph
-(« IMAP est condamné ») et mesuré une asymétrie d'effort écrasante —
-voir [ADR 0006](adr/0006-microsoft-imap-oauth2.md). Graph reste le plan B,
-chiffré, avec ses trois signaux de bascule.
+The options in bold are the CE's starting hypotheses; the spikes confirm or kill
+them. **Microsoft access was settled against the initial hypothesis**: the spike
+refuted Graph's decisive argument ("IMAP is doomed") and measured an overwhelming
+asymmetry of effort — see [ADR 0006](adr/0006-microsoft-imap-oauth2.md). Graph
+remains plan B, costed, with its three switch-over signals.
 
-**Livrable de Phase 0 :** concept paper finalisé + décisions gelées + budgets de perf
-validés sur prototypes. **Gate :** revue de conception ; on ne code la v1 qu'après.
+**Phase 0 deliverable:** finalized concept paper + frozen decisions + perf budgets
+validated on prototypes. **Gate:** design review; v1 is coded only after.
 
 ---
 
-## 3. Architecture cible (hypothèse à valider en Phase 0)
+## 3. Target architecture (hypothesis to validate in Phase 0)
 
 ```
 ┌────────────────────────┐   ┌────────────────────────┐
 │   Desktop Windows      │   │        Web             │
-│   Tauri 2 + WebView2   │   │   SPA (même UI TS)     │
+│   Tauri 2 + WebView2   │   │   SPA (same TS UI)     │
 │   UI TypeScript        │   │                        │
 └───────────┬────────────┘   └───────────┬────────────┘
             │ IPC Tauri                  │ HTTPS/WebSocket
 ┌───────────▼────────────┐   ┌───────────▼────────────┐
 │      mail-core (Rust)  │   │  sync-server (Rust)    │
-│  ─ domaine (Message,   │   │  = même mail-core,     │
-│    Thread, Folder…)    │   │  hébergé, multi-tenant │
-│  ─ moteur de synchro   │   └───────────┬────────────┘
-│  ─ file d'actions      │               │
+│  ─ domain (Message,    │   │  = same mail-core,     │
+│    Thread, Folder…)    │   │  hosted, multi-tenant  │
+│  ─ sync engine         │   └───────────┬────────────┘
+│  ─ action queue        │               │
 │  ─ SQLite + FTS5       │        IMAP / SMTP / Graph
 │  ─ IMAP/SMTP/OAuth     │
 └───────────┬────────────┘
      IMAP / SMTP / Graph
 ```
 
-**Principe clé : un seul cerveau.** `mail-core` (crate Rust) contient 100 % de la logique
-métier, de la synchro et du stockage. Le desktop l'embarque en local ; le web l'exécute
-côté serveur. L'UI (TypeScript) est partagée entre les deux cibles et reste « bête » :
-elle affiche l'état et émet des intentions.
+**Key principle: one brain only.** `mail-core` (Rust crate) holds 100% of the
+business logic, sync, and storage. The desktop embeds it locally; the web runs it
+server-side. The UI (TypeScript) is shared between both targets and stays "dumb":
+it displays state and emits intents.
 
-**Organisation du workspace Cargo :**
+**Cargo workspace layout:**
 
 ```
 wind/
 ├── crates/
-│   ├── mail-core/        # domaine + synchro + stockage (zéro dépendance UI)
-│   ├── mail-protocols/   # IMAP, SMTP, Graph, OAuth (derrière des traits)
-│   └── sync-server/      # exposition HTTP/WS de mail-core (phase 4)
+│   ├── mail-core/        # domain + sync + storage (zero UI dependency)
+│   ├── mail-protocols/   # IMAP, SMTP, Graph, OAuth (behind traits)
+│   └── sync-server/      # HTTP/WS exposure of mail-core (phase 4)
 ├── apps/
 │   ├── desktop/          # Tauri 2
 │   └── web/              # SPA (phase 4)
-└── docs/                 # ce plan, ADRs, budgets de perf
+└── docs/                 # this plan, ADRs, perf budgets
 ```
 
-**Modèle de données (inspiré du modèle JMAP, plus sain que le modèle IMAP) :**
-`Account`, `Mailbox`, `Email` (enveloppe séparée du corps), `Thread`, `PendingAction`.
-Synchro « enveloppes d'abord » : la liste est utilisable immédiatement, les corps sont
-chargés à la demande et mis en cache.
+**Data model (inspired by the JMAP model, saner than the IMAP model):**
+`Account`, `Mailbox`, `Email` (envelope separate from body), `Thread`,
+`PendingAction`. "Envelopes-first" sync: the list is usable immediately, bodies
+are loaded on demand and cached.
 
-**Sécurité (points non négociables) :**
-- Jamais de credential en dur ni en clair : tokens OAuth dans le Credential Manager
-  Windows via `keyring` ; mots de passe IMAP chiffrés au repos.
-- TLS partout (`rustls`), pas de fallback non chiffré.
-- HTML assaini par `ammonia` + iframe sandboxée + CSP stricte ; images distantes
-  bloquées par défaut ; pas d'exécution de JS des mails, jamais.
-- `cargo audit` + `cargo deny` en CI.
-
----
-
-## 4. Plan de développement par phases (flux tiré, gates qualité)
-
-Chaque phase livre un produit **utilisable et testé**, pas un empilement de couches.
-Règle jidoka : tout défaut de perte de données ou de sécurité arrête la ligne.
-
-### Phase 1 — Squelette marchant : « je lis mes mails » (4-5 semaines)
-- Un compte Gmail via OAuth PKCE ; synchro des enveloppes INBOX vers SQLite.
-- Shell Tauri : liste virtualisée + lecture d'un message (HTML assaini).
-- CI complète dès le jour 1 : fmt, clippy `-D warnings`, tests, couverture ≥ 80 %,
-  `cargo audit`, benchmarks de budgets de perf automatisés.
-- **Gate 1 :** démarrage < 1 s, RAM < 200 Mo, liste 60 fps sur 50 000 messages réels.
-
-### Phase 2 — Triage et écriture : « je travaille dans mes mails » (4-5 semaines)
-- Actions : lu/non-lu, archiver, supprimer, déplacer, marquer — optimistes en UI,
-  file d'actions offline rejouable avec réconciliation.
-- Composer, répondre, transférer ; envoi SMTP avec file « boîte d'envoi » (jamais
-  d'envoi perdu) ; brouillons synchronisés.
-- Raccourcis clavier complets (l'arme de Superhuman).
-- **Gate 2 :** zéro perte d'action prouvée par tests de coupure réseau/crash ; E2E des
-  parcours critiques (lire, trier, répondre) verts.
-
-### Phase 3 — Recherche, multi-comptes, échelle (4 semaines)
-- Recherche plein-texte FTS5 (< 100 ms sur 100k messages), filtres from/to/date/pièce jointe.
-- Multi-comptes (Gmail + Microsoft + IMAP générique), boîte unifiée.
-- Pièces jointes, notifications Windows, threading des conversations.
-- **Gate 3 :** budgets tenus avec 3 comptes / 200 000 messages cumulés.
-
-### Phase 4 — Web (5-6 semaines)
-- `sync-server` : le même `mail-core` exposé en HTTP/WebSocket, multi-tenant,
-  chiffrement au repos, sessions.
-- La même UI TypeScript déployée en SPA ; parité fonctionnelle lecture/triage/écriture.
-- **Gate 4 :** revue de sécurité complète du serveur (c'est lui qui détient les tokens
-  des utilisateurs — surface critique) ; pentest avant toute ouverture.
-
-### Phase 5 — Durcissement et bêta (3-4 semaines)
-- Installeur MSIX + mise à jour automatique signée ; télémétrie de crash opt-in.
-- Bêta fermée 20-50 utilisateurs ; le CE dépouille chaque retour (genchi genbutsu).
-- Kaizen : une itération hebdomadaire sur les frictions observées, pas imaginées.
-- **Gate 5 :** 2 semaines sans défaut critique → lancement.
-
-**Jalon de démarrage anticipé (dès Phase 0) :** dossier de vérification Google
-(scopes restreints Gmail) et enregistrement app Azure AD — les délais d'audit
-(plusieurs mois pour Google/CASA) sont sur le chemin critique du lancement public.
+**Security (non-negotiable points):**
+- Never a hardcoded or plaintext credential: OAuth tokens in the Windows
+  Credential Manager via `keyring`; IMAP passwords encrypted at rest.
+- TLS everywhere (`rustls`), no unencrypted fallback.
+- HTML sanitized by `ammonia` + sandboxed iframe + strict CSP; remote images
+  blocked by default; no execution of JS from mail, ever.
+- `cargo audit` + `cargo deny` in CI.
 
 ---
 
-## 5. Qualité intégrée (jidoka) — règles permanentes
+## 4. Phased development plan (pulled flow, quality gates)
 
-1. TDD systématique : le moteur de synchro se développe contre un **serveur IMAP simulé**
-   (fixtures des bizarreries réelles : Gmail, Outlook, Dovecot, OVH…).
-2. Couverture ≥ 80 % sur `mail-core` ; les E2E (Playwright sur l'UI) couvrent les
-   parcours critiques ; tests de propriété (`proptest`) sur le parsing et la réconciliation.
-3. Budgets de perf en CI : un benchmark qui régresse au-delà du budget = build rouge.
-4. Zéro `unwrap()` en production, erreurs typées (`thiserror`) dans les crates,
-   contexte (`anyhow`) dans les apps.
-5. Revue de code sur tout, revue sécurité sur : auth, parsing de contenu externe,
-   stockage, rendu HTML.
+Each phase delivers a product that is **usable and tested**, not a stack of
+layers. Jidoka rule: any data-loss or security defect stops the line.
+
+### Phase 1 — Walking skeleton: "I read my mail" (4-5 weeks)
+- One Gmail account via OAuth PKCE; INBOX envelope sync to SQLite.
+- Tauri shell: virtualized list + reading a message (sanitized HTML).
+- Full CI from day 1: fmt, clippy `-D warnings`, tests, coverage ≥ 80%,
+  `cargo audit`, automated perf-budget benchmarks.
+- **Gate 1:** startup < 1 s, RAM < 200 MB, list at 60 fps on 50 000 real messages.
+
+### Phase 2 — Triage and writing: "I work in my mail" (4-5 weeks)
+- Actions: read/unread, archive, delete, move, flag — optimistic in the UI,
+  replayable offline action queue with reconciliation.
+- Compose, reply, forward; SMTP sending with an "outbox" queue (never a lost
+  send); synced drafts.
+- Full keyboard shortcuts (Superhuman's weapon).
+- **Gate 2:** zero action loss proven by network-outage/crash tests; E2E of
+  critical journeys (read, sort, reply) green.
+
+### Phase 3 — Search, multi-account, scale (4 weeks)
+- Full-text FTS5 search (< 100 ms on 100k messages), from/to/date/attachment
+  filters.
+- Multi-account (Gmail + Microsoft + generic IMAP), unified inbox.
+- Attachments, Windows notifications, conversation threading.
+- **Gate 3:** budgets held with 3 accounts / 200 000 combined messages.
+
+### Phase 4 — Web (5-6 weeks)
+- `sync-server`: the same `mail-core` exposed over HTTP/WebSocket, multi-tenant,
+  encryption at rest, sessions.
+- The same TypeScript UI deployed as an SPA; functional parity for
+  reading/triage/writing.
+- **Gate 4:** full security review of the server (it holds users' tokens —
+  critical surface); pentest before any opening.
+
+### Phase 5 — Hardening and beta (3-4 weeks)
+- MSIX installer + signed auto-update; opt-in crash telemetry.
+- Closed beta, 20-50 users; the CE goes through every piece of feedback
+  (genchi genbutsu).
+- Kaizen: a weekly iteration on observed frictions, not imagined ones.
+- **Gate 5:** 2 weeks without a critical defect → launch.
+
+**Early-start milestone (from Phase 0):** the Google verification file (Gmail
+restricted scopes) and Azure AD app registration — the audit timelines (several
+months for Google/CASA) are on the critical path to public launch.
 
 ---
 
-## 6. Organisation et cadence (obeya)
+## 5. Built-in quality (jidoka) — standing rules
 
-- **Le Chef Ingénieur** possède le concept paper, arbitre chaque compromis contre le
-  client cible, et a le dernier mot sur le périmètre. Réflexe par défaut : dire non.
-- Équipe cible : 1 CE, 2 dev Rust (core/protocoles), 1-2 dev TypeScript (UI),
-  soutien ponctuel design + sécurité. (Solo ? Le plan tient, les phases s'allongent ~×2.)
-- **Obeya hebdomadaire** : budgets de perf affichés, avancement par phase, top 3 risques,
-  décisions à prendre. Tout écart au budget se traite la semaine même.
-- Toute décision structurante = un ADR court dans `docs/adr/`.
+1. Systematic TDD: the sync engine is developed against a **simulated IMAP
+   server** (fixtures of real-world quirks: Gmail, Outlook, Dovecot, OVH…).
+2. Coverage ≥ 80% on `mail-core`; E2E (Playwright on the UI) covers critical
+   journeys; property tests (`proptest`) on parsing and reconciliation.
+3. Perf budgets in CI: a benchmark that regresses past budget = red build.
+4. Zero `unwrap()` in production, typed errors (`thiserror`) in the crates,
+   context (`anyhow`) in the apps.
+5. Code review on everything, security review on: auth, external content
+   parsing, storage, HTML rendering.
 
 ---
 
-## 7. Risques majeurs et contre-mesures
+## 6. Organization and cadence (obeya)
 
-| Risque | Impact | Contre-mesure |
+- **The Chief Engineer** owns the concept paper, arbitrates every trade-off
+  against the target user, and has the final word on scope. Default reflex:
+  say no.
+- Target team: 1 CE, 2 Rust devs (core/protocols), 1-2 TypeScript devs (UI),
+  occasional design + security support. (Solo? The plan holds, phases stretch
+  ~×2.)
+- **Weekly obeya**: perf budgets displayed, progress by phase, top 3 risks,
+  decisions to make. Any budget deviation is handled the same week.
+- Every structuring decision = a short ADR in `docs/adr/`.
+
+---
+
+## 7. Major risks and countermeasures
+
+| Risk | Impact | Countermeasure |
 |---|---|---|
-| Audit Google scopes restreints (CASA) : long, coûteux | Bloque le lancement public Gmail | Démarrer le dossier en Phase 0 ; bêta limitée à 100 utilisateurs en attendant |
-| Bizarreries des serveurs IMAP réels | Bugs de synchro sans fin | Suite de fixtures par fournisseur ; matrice de serveurs testés ; QRESYNC optionnel |
-| Rendu HTML : sécurité vs fidélité | XSS ou newsletters cassées | Spike Phase 0 ; corpus de 500 vrais emails comme jeu de test de rendu |
-| Le web double la surface (infra, sécu, coût) | Retard, risque sécurité | Web en Phase 4 seulement, après un desktop solide ; revue sécu dédiée |
-| Dérive de périmètre | Produit lent et tardif | Le concept paper liste les NON explicites ; le CE arbitre |
-| WebView2 absent/cassé sur certaines machines | Crash au démarrage | Runtime evergreen + détection/installation au premier lancement |
+| Google restricted-scopes audit (CASA): long, costly | Blocks public Gmail launch | Start the file in Phase 0; beta limited to 100 users in the meantime |
+| Real-world IMAP server quirks | Endless sync bugs | Fixture suite per provider; matrix of tested servers; QRESYNC optional |
+| HTML rendering: security vs fidelity | XSS or broken newsletters | Phase 0 spike; corpus of 500 real emails as the rendering test set |
+| The web doubles the surface (infra, security, cost) | Delay, security risk | Web in Phase 4 only, after a solid desktop; dedicated security review |
+| Scope creep | Slow, late product | The concept paper lists the explicit NOs; the CE arbitrates |
+| WebView2 missing/broken on some machines | Crash at startup | Evergreen runtime + detection/installation on first launch |
 
 ---
 
-## 8. Mesure du succès
+## 8. Measuring success
 
-- **Produit :** budgets de perf tenus en continu (§1) ; crash-free sessions > 99,5 %.
-- **Usage bêta :** ≥ 60 % des testeurs l'utilisent encore comme client principal après
-  30 jours ; temps de triage matinal réduit (mesuré, pas déclaré).
-- **Ingénierie :** lead time d'une correction < 48 h ; zéro défaut critique ouvert > 7 jours.
+- **Product:** perf budgets held continuously (§1); crash-free sessions > 99,5 %.
+- **Beta usage:** ≥ 60% of testers still use it as their main client after
+  30 days; reduced morning triage time (measured, not self-reported).
+- **Engineering:** lead time for a fix < 48 h; zero critical defect open > 7 days.
 
 ---
 
-## 9. Prochaines actions immédiates
+## 9. Immediate next actions
 
-1. Restructurer le dépôt en workspace Cargo (`crates/mail-core`, `apps/desktop`) —
-   l'actuel `src/main.rs` (mot de passe en dur) est remplacé par le spike OAuth.
-2. Lancer les 4 spikes de Phase 0 (§2.3) et la grille set-based (§2.4).
-3. Créer le projet Google Cloud + app Azure AD ; ouvrir le dossier de vérification Google.
-4. Planifier les entretiens utilisateurs (genchi genbutsu).
-5. Mettre en place la CI (fmt, clippy, tests, couverture, audit, bench).
+1. Restructure the repo into a Cargo workspace (`crates/mail-core`,
+   `apps/desktop`) — the current `src/main.rs` (hardcoded password) is
+   replaced by the OAuth spike.
+2. Launch the 4 Phase 0 spikes (§2.3) and the set-based grid (§2.4).
+3. Create the Google Cloud project + Azure AD app; open the Google
+   verification file.
+4. Schedule the user interviews (genchi genbutsu).
+5. Set up CI (fmt, clippy, tests, coverage, audit, bench).
