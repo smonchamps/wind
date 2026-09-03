@@ -1,108 +1,106 @@
-# Standard — le standard de travail de Wind
+# Standard — Wind's working standard
 
-> **Ce document est l'instruction permanente du projet** : méthode
-> (§2), produit (§3), architecture (§4), décisions gelées (§5),
-> invariants (§6), environnement (§7), enseignements (§9). Il
-> s'**amende par kaizen** — un constat, un amendement — et ne se
-> réécrit pas. **L'état courant** (version livrée, prochain chantier,
-> chiffres du terrain) vit dans [ETAT.md](ETAT.md), l'instantané de
-> relève.
+> **This document is the project's permanent instruction**: method
+> (§2), product (§3), architecture (§4), frozen decisions (§5),
+> invariants (§6), environment (§7), lessons (§9). It is **amended by
+> kaizen** — one finding, one amendment — and is not rewritten. **The
+> current state** (shipped version, next job, field figures) lives in
+> [ETAT.md](ETAT.md), the handover snapshot.
 >
-> Né de la scission de PASSATION.md le 2026-08-19
-> (PLAN-DOCUMENTATION, décisions CE D1-D2). **La numérotation §2-§10
-> est figée** : toute référence externe (« §2.9 », « §7.1 ») reste
-> vraie.
+> Born from the split of PASSATION.md on 2026-08-19
+> (PLAN-DOCUMENTATION, CE decisions D1-D2). **The numbering §2-§10 is
+> frozen**: any external reference (« §2.9 », « §7.1 ») stays true.
 ---
 
-## 0. Comment ouvrir la conversation
+## 0. How to open the conversation
 
-Depuis le 2026-08-15, `CLAUDE.md` (racine) charge le rôle et le renvoi
-vers ce document à chaque session : **plus rien à coller**. Les
-workflows standardisés vivent dans `.claude/skills/` (commitées,
-décision CE du même jour) : `/job` déroule un bug ou une feature
-de bout en bout avec ses deux validations manuelles (plan, terrain),
-`/field` traite un constat terrain le jour même, `/gate` rejoue la
-gate complète, `/close` clôt un chantier. L'agent `spike`
-(`.claude/agents/`) porte l'exploration set-based en worktree isolé.
-Le mode d'emploi complet : [WORKFLOW.md](WORKFLOW.md).
+Since 2026-08-15, `CLAUDE.md` (root) loads the role and the pointer
+to this document at every session: **nothing left to paste**. The
+standardized workflows live in `.claude/skills/` (committed,
+CE decision the same day): `/job` runs a bug or a feature
+end to end with its two manual validations (plan, field),
+`/field` handles a field finding the same day, `/gate` replays the
+full gate, `/close` closes a job. The `spike` agent
+(`.claude/agents/`) carries the set-based exploration in an isolated
+worktree. The full user guide: [WORKFLOW.md](WORKFLOW.md).
 
-Si le contexte est perdu malgré tout, l'ancien rituel reste valable :
+If context is lost anyway, the old ritual still holds:
 
-> Reprends le développement de Wind. Tu es le Chef Ingénieur du
-> projet et tu appliques la méthode décrite dans `docs/STANDARD.md` §2 —
-> c'est une instruction permanente, elle prime sur tout. Lis d'abord ce
-> document en entier, puis lis `docs/ETAT.md`.
+> Resume Wind's development. You are the Chief Engineer of the
+> project and you apply the method described in `docs/STANDARD.md` §2 —
+> it is a permanent instruction, it takes precedence over everything. Read
+> this document in full first, then read `docs/ETAT.md`.
 
-Ordre de lecture, une fois :
+Reading order, once:
 
-1. **ce document** — méthode, invariants, pièges ;
-2. [`docs/ETAT.md`](ETAT.md) — où on en est, quoi faire en premier ;
-3. [`docs/PLAN.md`](PLAN.md) — le concept paper, source de vérité produit ;
-4. les ADRs dans [`docs/adr/`](adr/) — **décisions gelées**, à ne pas
-   rouvrir sans mesure contraire.
+1. **this document** — method, invariants, traps;
+2. [`docs/ETAT.md`](ETAT.md) — where things stand, what to do first;
+3. [`docs/PLAN.md`](PLAN.md) — the concept paper, product source of truth;
+4. the ADRs in [`docs/adr/`](adr/) — **frozen decisions**, not to be
+   reopened without a measurement to the contrary.
 
-Ne lis pas le code avant. Il est volumineux et abondamment commenté ; les
-commentaires expliquent *pourquoi*, et supposent le contexte ci-dessous.
-
----
-
-## 1. Où on en est → [ETAT.md](ETAT.md)
-
-L'état courant — version livrée, prochain chantier, chiffres du
-terrain, arbitrages ouverts — vit dans [ETAT.md](ETAT.md),
-l'instantané de relève, réécrit à chaque chantier : c'est sa
-fonction.
+Do not read the code beforehand. It is large and heavily commented; the
+comments explain *why*, and assume the context below.
 
 ---
 
-## 2. La méthode — instruction permanente
+## 1. Where things stand → [ETAT.md](ETAT.md)
 
-Le développement suit la discipline du *shusa* (Chef Ingénieur) de Toyota.
-**Elle prime sur tout le reste**, y compris sur l'envie d'avancer vite.
+The current state — shipped version, next job, field
+figures, open trade-offs — lives in [ETAT.md](ETAT.md),
+the handover snapshot, rewritten at every job: that is its
+function.
 
-### 2.1 L'utilisateur est le Chef Ingénieur, pas un client
-Il tranche les décisions produit et **valide chaque incrément sur ses
-vrais comptes**. Tu proposes, tu mesures, tu recommandes ; il arbitre.
-Ne prends jamais une décision de périmètre à sa place.
+---
 
-### 2.2 Front-loading — les points durs se règlent AVANT de coder
-Par un **spike jetable et mesuré**, hors du workspace de production. Fait
-pour : moteur de synchro, pont web, rendu HTML, OAuth, moteur de recherche.
+## 2. The method — permanent instruction
 
-### 2.3 Set-based — explorer, puis éliminer sur des chiffres
-On compare plusieurs options et on tranche **sur des mesures, pas des
-avis**. Règle de départage : l'alternative doit battre l'hypothèse
-*nettement* pour la déloger. Modèle à imiter : [ADR 0004](adr/0004-moteur-de-recherche-fts5.md).
+Development follows Toyota's *shusa* (Chief Engineer) discipline.
+**It takes precedence over everything else**, including the urge to move fast.
 
-### 2.4 Jidoka — la qualité dans le processus
-- **TDD** : le test échoue (RED) avant l'implémentation (GREEN). Quand un
-  RED ne peut rien apprendre (fonction pure triviale), le dire, pas le
-  simuler.
-- **Gate obligatoire avant tout commit** — et un hook `pre-push` le rejoue
-  (§7.4). Un warning clippy = build rouge.
-- **Boucle intérieure ciblée** : pendant l'implémentation, on ne joue que
-  les spec(s) impactée(s), en fichier entier (jamais `-g` sur un e2e),
-  runs groupés par vague (RED groupé, GREEN groupé) ; la gate complète se
-  joue UNE fois avant le commit — pas à chaque incrément (kaizen
-  2026-08-23 : jusqu'à 10+ gates par chantier mesurées, ~100 min).
-- Zéro `unwrap()`/`expect()` en production. Erreurs typées (`thiserror`)
-  dans les crates, `anyhow` dans les apps.
+### 2.1 The user is the Chief Engineer, not a customer
+He decides the product decisions and **validates every increment on his
+real accounts**. You propose, you measure, you recommend; he arbitrates.
+Never make a scope decision in his place.
 
-### 2.5 Genchi genbutsu — aller voir sur le terrain
-**C'est là que les défauts se trouvent.** Voir §9. Un incrément non validé
-sur un vrai compte n'est pas livré. Les retours se corrigent **le jour
-même** — le WAL (ADR 0011) en est le dernier exemple : défaut au premier
-essai terrain, corrigé et commité dans la journée.
+### 2.2 Front-loading — hard points get settled BEFORE coding
+Through a **throw-away, measured spike**, outside the production workspace. Done
+for: the sync engine, the web bridge, HTML rendering, OAuth, the search engine.
 
-### 2.6 Refus de périmètre explicites
-Quand une fonctionnalité serait un fantôme (résultat invisible, brique
-absente), on la **reporte et on écrit pourquoi**. Dire non est le
-comportement par défaut : chaque ajout se paie en vitesse et en fiabilité.
+### 2.3 Set-based — explore, then eliminate on figures
+Several options are compared and decided **on measurements, not
+opinions**. Tie-breaking rule: the alternative must beat the hypothesis
+*clearly* to unseat it. Model to imitate: [ADR 0004](adr/0004-moteur-de-recherche-fts5.md).
 
-### 2.7 Traçabilité
-- Décision structurante = **un ADR court** dans `docs/adr/`.
-- Fin de phase = **une revue de clôture** `docs/PHASEn.md` : livré contre
-  le plan, budgets re-mesurés, enseignements, reports assumés, GO/NO-GO.
+### 2.4 Jidoka — quality built into the process
+- **TDD**: the test fails (RED) before the implementation (GREEN). When a
+  RED can teach nothing (a trivial pure function), say so, don't
+  fake it.
+- **Gate mandatory before every commit** — and a `pre-push` hook
+  replays it (§7.4). One clippy warning = red build.
+- **Targeted inner loop**: during implementation, only the impacted
+  spec(s) are run, whole file (never `-g` on an e2e),
+  runs grouped by wave (grouped RED, grouped GREEN); the full gate is
+  run ONCE before the commit — not at every increment (kaizen
+  2026-08-23: up to 10+ gates per job measured, ~100 min).
+- Zero `unwrap()`/`expect()` in production. Typed errors (`thiserror`)
+  in the crates, `anyhow` in the apps.
+
+### 2.5 Genchi genbutsu — go see in the field
+**That is where the defects are found.** See §9. An increment not validated
+on a real account is not delivered. Feedback is fixed **the same
+day** — the WAL (ADR 0011) is the latest example of it: a defect on the first
+field trial, fixed and committed within the day.
+
+### 2.6 Explicit scope refusals
+When a feature would be a phantom (invisible result, missing
+brick), it gets **deferred, and why is written down**. Saying no is the
+default behavior: every addition is paid for in speed and reliability.
+
+### 2.7 Traceability
+- A structuring decision = **a short ADR** in `docs/adr/`.
+- End of phase = **a closing review** `docs/PHASEn.md`: delivered against
+  the plan, budgets re-measured, lessons, deferrals owned, GO/NO-GO.
 
 ### 2.8 Language and commits
 
@@ -121,884 +119,883 @@ Commits: `type: description` (`feat`, `fix`, `refactor`, `docs`, `test`,
 reasoning. **Never a `Co-Authored-By`.** The old "no accents" rule of
 the commit messages is void with the language.
 
-### 2.9 Numérotation des versions
+### 2.9 Version numbering
 
-**Wind suit un format `x.y.z`, où `x` = MAJEUR, `y` = MINEUR, `z` =
-CORRECTIF.** Wind n'expose aucune API publique : le « contrat » dont la
-rupture vaut MAJEUR est redéfini sur les **deux seules choses que
-l'utilisateur ne peut pas réparer seul** — la chaîne d'auto-update et la
-survie de sa boîte.
+**Wind follows an `x.y.z` format, where `x` = MAJOR, `y` = MINOR, `z` =
+PATCH.** Wind exposes no public API: the "contract" whose breakage counts
+as MAJOR is redefined on the **only two things the user cannot
+fix on their own** — the auto-update chain and their inbox's survival.
 
-On descend, on s'arrête au premier « oui » :
+We go down the list, stopping at the first "yes":
 
-1. **MAJEUR** (`x`+1, puis `y` et `z` → 0) — si **l'un** est vrai :
-   - la version **ne s'atteint pas par auto-update** depuis la précédente
-     (réinstallation manuelle : rotation de clé de signature, changement
-     d'installeur/format — **c'est arrivé en 0.1.3**). Depuis le retour
-     du canal x64 (PLAN-RETOURS-8, ADR 0023), il y a **deux chaînes
-     d'auto-update** (arm64 et x64) : le critère s'évalue **par
-     canal**, et une rupture sur UN seul canal suffit à déclencher
-     MAJEUR. Ajouter un canal ne casse rien (l'updater de chaque poste
-     ne lit que sa clé `{os}-{arch}`) — retirer ou casser un canal, si ;
-   - elle embarque une **migration de données non rembobinable** (contraire
-     à l'[ADR 0012](adr/0012-migration-visible-interruptible.md)) ;
-   - \+ le passage **unique** `0.x → 1.0.0` au jalon « hors développement
-     initial » (sortie de bêta) — décision produit du shusa.
-2. **MINEUR** (`y`+1, puis `z` → 0) — si la release **ajoute au moins une
-   capacité nouvelle** visible par l'utilisateur.
-3. **CORRECTIF** (`z`+1) — si la release n'inclut que des corrections,
-   ajustements de l'existant, perf, allègements internes, nettoyages.
+1. **MAJOR** (`x`+1, then `y` and `z` → 0) — if **any** of these is true:
+   - the version **cannot be reached by auto-update** from the previous one
+     (manual reinstall: signing-key rotation, installer/format
+     change — **it happened in 0.1.3**). Since the return
+     of the x64 channel (PLAN-RETOURS-8, ADR 0023), there are **two
+     auto-update chains** (arm64 and x64): the criterion is evaluated
+     **per channel**, and a break on just ONE channel is enough to trigger
+     MAJOR. Adding a channel breaks nothing (each workstation's updater
+     only reads its own `{os}-{arch}` key) — removing or breaking a channel does;
+   - it carries a **non-reversible data migration** (contrary
+     to [ADR 0012](adr/0012-migration-visible-interruptible.md));
+   - \+ the **single** `0.x → 1.0.0` transition at the "past initial
+     development" milestone (leaving beta) — a shusa product decision.
+2. **MINOR** (`y`+1, then `z` → 0) — if the release **adds at least one
+   new capability** visible to the user.
+3. **PATCH** (`z`+1) — if the release includes only fixes,
+   adjustments to existing behavior, perf, internal streamlining, cleanups.
 
-La release se publie par `scripts/make-release.ps1 <version>`
-([ADR 0013](adr/0013-installeur-nsis-maj-signee.md), bi-arch depuis
-[ADR 0023](adr/0023-retour-canal-x64.md) : deux builds `--target`,
-arm64 natif + x64 en cross-build local, **tout-ou-rien** — un build en
-échec bloque toute la release, jamais un canal décalé) ; le tag GitHub
-reste la **version nue**.
+The release is published via `scripts/make-release.ps1 <version>`
+([ADR 0013](adr/0013-installeur-nsis-maj-signee.md), bi-arch since
+[ADR 0023](adr/0023-retour-canal-x64.md): two `--target` builds,
+native arm64 + local x64 cross-build, **all-or-nothing** — a failed
+build blocks the whole release, never a channel left behind); the GitHub
+tag stays the **bare version**.
 
-⚠️ **Les notes utilisateur D'ABORD, systématiquement** : écrire (et
-committer) l'entrée `## [<version>]` de `CHANGELOG.md` **avant** de
-lancer le script — il refuse net sans elle (« CHANGELOG.md n'a pas
-d'entree… »), c'est son premier contrôle. Oubli commis **au moins trois
-fois** en session (dernière : 0.2.1, 2026-08-20) : le réflexe fait
-partie de la préparation de release, pas de l'après-coup.
+⚠️ **User-facing notes FIRST, systematically**: write (and
+commit) the `## [<version>]` entry of `CHANGELOG.md` **before**
+launching the script — it flatly refuses without it ("CHANGELOG.md has
+no '## [x.y.z]' entry…"), that's its first check. Missed **at least three
+times** during a session (last: 0.2.1, 2026-08-20): the reflex is
+part of release prep, not an afterthought.
 
-### 2.10 Vérifier une release publiée
+### 2.10 Verifying a published release
 
-Depuis la 0.1.10 (2026-08-18), `scripts/make-release.ps1 <v>` fait
-**toute** la release (validé au terrain) — à condition que l'entrée
-`## [<v>]` du CHANGELOG existe déjà (§2.9, son premier contrôle) :
-bump de la seule ligne
-`version` de `apps/desktop/tauri.conf.json`, **deux builds signés**
-(arm64 natif + x64 cross, bi-arch depuis PLAN-RETOURS-8/ADR 0023 ;
-clé au **chemin** `C:\Keys\wind.key` — `TAURI_SIGNING_PRIVATE_KEY`
-accepte un chemin ; mot de passe saisi une fois), `latest.json` sans
-BOM à **deux clés de plateforme**, puis — après confirmation `OUI` —
-commit `release: version <v>`, push (gate rejouée), tag NU + Release
-GitHub `--latest` à **cinq assets**, notes tirées du CHANGELOG.
+Since 0.1.10 (2026-08-18), `scripts/make-release.ps1 <v>` does
+**the entire** release (field-validated) — provided the
+`## [<v>]` CHANGELOG entry already exists (§2.9, its first check):
+bump of the sole
+`version` line of `apps/desktop/tauri.conf.json`, **two signed builds**
+(native arm64 + x64 cross, bi-arch since PLAN-RETOURS-8/ADR 0023;
+key at the **path** `C:\Keys\wind.key` — `TAURI_SIGNING_PRIVATE_KEY`
+accepts a path; password entered once), `latest.json` with no
+BOM at **two platform keys**, then — after `OUI` confirmation —
+commit `release: version <v>`, push (gate replayed), BARE tag + GitHub
+Release `--latest` with **five assets**, notes pulled from the CHANGELOG.
 
-Contrôle **a posteriori**, avant d'annoncer verte :
-**`scripts/verify-release.ps1 <v>` joue tous les contrôles de forme**
-(la friction est encodée une fois — avec deux plateformes, les
-contrôles manuels doublaient). Ce qu'il vérifie, et qui reste la norme
-si on contrôle à la main :
+Control **after the fact**, before announcing it green:
+**`scripts/verify-release.ps1 <v>` runs every form check**
+(the friction is encoded once — with two platforms, the
+manual checks were doubling). What it verifies, and which stays the
+norm when checking by hand:
 
-- **La Release est « Latest »** — l'endpoint updater est
-  `…/releases/latest/download/latest.json` :
+- **The Release is "Latest"** — the updater endpoint is
+  `…/releases/latest/download/latest.json`:
   `gh api repos/smonchamps/wind/releases/latest --jq '.tag_name'`
-  doit rendre la nouvelle version.
-- **Cinq assets au tag NU** (jamais `v<x>`), nommés exactement :
-  `Wind_<v>_arm64-setup.exe` + son `.sig`, `Wind_<v>_x64-setup.exe` +
-  son `.sig`, `latest.json`. (« Cinq » ne suffit pas : deux exe de la
-  même architecture passeraient un simple comptage.)
-- **`latest.json` sans BOM** (premiers octets `7b` = `{`, pas
-  `ef bb bf` — serde_json le refuse en silence).
-- **Les DEUX clés de plateforme présentes** (`windows-aarch64` ET
-  `windows-x86_64`) : une clé manquante est une **panne silencieuse**
-  — l'updater du canal muet conclut « pas de mise à jour », sans
-  erreur. Même famille que le BOM et le tag `v` (ADR 0013).
-- **Par plateforme** : signature du manifeste == fichier `.sig` de la
-  MÊME architecture ; URL au tag NU (`/releases/download/<v>/…` — le
-  piège du 404) vers l'exe de la MÊME architecture ; l'URL résout
-  (302 puis 200, `Content-Length` = taille de l'asset).
-- **Signatures arm64 et x64 DISTINCTES** (garde anti-croisement) :
-  une signature copiée sous la mauvaise clé passe tous les contrôles
-  de forme et ne casse que chez l'utilisateur.
-- **La crypto minisign n'est PAS vérifiable localement** (pas de
-  `minisign` sur ce poste ; `tauri signer` n'a pas de `verify`). Ne
-  jamais forger un PASS : la preuve définitive est l'**auto-update
-  `<n-1> → <n>` constaté au terrain, PAR CANAL** — arm64 sur ce
-  poste ; x64 sur le second poste x64 (décision CE D5,
-  PLAN-RETOURS-8). Le premier auto-update x64 n'est constatable qu'à
-  la release SUIVANT la première release bi-arch (aucun n-1 x64
-  n'existe avant elle) ; l'install x64, elle, se constate dès la
-  première.
-- `CHANGELOG.md` (racine) porte l'entrée `## [<v>] - <date>` et le
-  lien vers la Release en pied.
+  must return the new version.
+- **Five assets at the BARE tag** (never `v<x>`), named exactly:
+  `Wind_<v>_arm64-setup.exe` + its `.sig`, `Wind_<v>_x64-setup.exe` +
+  its `.sig`, `latest.json`. ("Five" is not enough by itself: two exes of the
+  same architecture would pass a simple count.)
+- **`latest.json` with no BOM** (first bytes `7b` = `{`, not
+  `ef bb bf` — serde_json silently rejects it).
+- **BOTH platform keys present** (`windows-aarch64` AND
+  `windows-x86_64`): a missing key is a **silent failure**
+  — the mute channel's updater concludes "no update available",
+  without error. Same family as the BOM and the `v` tag (ADR 0013).
+- **Per platform**: manifest signature == `.sig` file of the
+  SAME architecture; URL at the BARE tag (`/releases/download/<v>/…` — the
+  404 trap) toward the exe of the SAME architecture; the URL resolves
+  (302 then 200, `Content-Length` = asset size).
+- **DISTINCT arm64 and x64 signatures** (anti-cross-wiring guard):
+  a signature copied under the wrong key passes every form
+  check and only breaks at the user's end.
+- **minisign crypto is NOT locally verifiable** (no
+  `minisign` on this workstation; `tauri signer` has no `verify`). Never
+  fake a PASS: the definitive proof is the **`<n-1> → <n>` auto-update
+  observed in the field, PER CHANNEL** — arm64 on this
+  workstation; x64 on the second x64 workstation (CE decision D5,
+  PLAN-RETOURS-8). The first x64 auto-update can only be observed at
+  the release FOLLOWING the first bi-arch release (no n-1 x64
+  exists before it); the x64 install itself is observable from the
+  first one.
+- `CHANGELOG.md` (root) carries the `## [<v>] - <date>` entry and the
+  link to the Release at the bottom.
 
 ---
+## 3. The product
 
-## 3. Le produit
+**Promise:** *"Your mail, instantly."* An email client that
+starts in under a second, where every action responds in under
+100 ms, and that works offline as well as online.
 
-**Promesse :** *« Vos mails, instantanément. »* Un client email qui démarre
-en moins d'une seconde, où chaque action répond en moins de 100 ms, et qui
-fonctionne hors-ligne comme en ligne.
+**Target:** demanding professional or individual, 1 to 4 accounts
+(Gmail, Microsoft 365, generic IMAP — all three shipped and
+validated).
 
-**Cible :** professionnel ou particulier exigeant, 1 à 4 comptes (Gmail,
-Microsoft 365, IMAP générique — les trois sont livrés et validés).
+**What it IS:** fast (performance is THE feature), simple (read,
+sort, search, write — nothing else), reliable (never a loss, never
+a phantom send), safe (credentials in the OS vault, HTML sanitized,
+remote images blocked). Since ADR 0010: **complete** — the whole
+mailbox is local and searchable, spam and trash included.
 
-**Ce qu'il EST :** rapide (la performance est LA fonctionnalité), simple
-(lire, trier, chercher, écrire — rien d'autre), fiable (jamais de perte,
-jamais d'envoi fantôme), sûr (credentials dans le coffre de l'OS, HTML
-assaini, images distantes bloquées). Depuis l'ADR 0010 : **complet** —
-toute la boîte est locale et cherchable, spam et corbeille compris.
+**What it is NOT (v1):** no calendar, no chat, no built-in AI, no
+plugins, no mobile.
 
-**Ce qu'il N'EST PAS (v1) :** pas de calendrier, pas de chat, pas d'IA
-intégrée, pas de plugins, pas de mobile.
+### Budgets — these are BLOCKING gates
 
-### Budgets — ce sont des gates BLOQUANTS
+Re-measured on 2026-07-26 after ADR 0010, on the gate 3 fixtures (3
+accounts, 200,000 messages):
 
-Re-mesurés le 2026-07-26 après l'ADR 0010, sur les bases du gate 3
-(3 comptes, 200 000 messages) :
-
-| Métrique | Cible | Dernière mesure |
+| Metric | Target | Last measured |
 |---|---|---|
-| Démarrage à froid | < 1 s | 337 ms sur le décor du gate 3 ✅ — et **384,6 ms sur la base RÉELLE** (12,84 Go, 251 524 enveloppes, 64 boîtes), premier lancement après redémarrage machine, 2026-08-26 : la première mesure honnêtement froide du projet ✅ |
-| Ouverture d'un message | < 50 ms | 1–3 ms ✅ |
-| Page de liste | < 100 ms | 0,58 ms ✅ |
-| RAM (working set **privé**) | < 200 Mo | 95,5 Mo · 7 processus ✅ |
-| Taille de la base | **levé** (ADR 0010 §2) | garde d'espace disque à ~50 ko/message |
-| Perte de données | 0, prouvé par crash-récup | ✅ |
-| **Gel de la pompe de messages** | aucun gel > 150 ms (fenêtre toujours déplaçable) | 0 gel sur 40 s, décor 251 k enveloppes (PLAN-GELS, `e2e/freeze-probe.py`) ✅ |
-| **Recherche** | < 100 ms | **~66 ms ✅** (terrain, vraie base 251 k / 7 Go, pire cas préfixe 3 car. 36 k corr. ; tenu par la **soupape tri-date** au-delà de 10 k corr., le plancher BM25 dépassant sinon — `WIDE_QUERY_THRESHOLD`, A50/PLAN-RECHERCHE) |
-| **Adoption d'une base héritée** | < 1 s | **3,66 s — assumé** (ADR 0012 : une seule fois, visible, annulable, rembobinable) |
-| **Reconstruction de l'index de recherche** | pas de gel muet | **~4 min à froid sur 7 Go — assumé** (ADR 0012 : une seule fois à la MAJ, visible, annulable, rembobinable ; PLAN-RECHERCHE E3) |
-| **Reconstruction de l'index de date des enveloppes** | pas de gel muet > 2 s | **1,77 s à froid — assumé SANS écran** (PLAN-DEMARRAGE, décision CE D9 : une seule fois à la MAJ, et elle ne lit que `envelopes` — 47 Mo — jamais les corps. Un écran qui s'affiche et disparaît en 1,8 s est plus pénible que l'attente) |
+| Cold start | < 1 s | 337 ms on the gate 3 fixture ✅ — and **384.6 ms on the REAL database** (12.84 GB, 251,524 envelopes, 64 mailboxes), first launch after a machine restart, 2026-08-26: the project's first honestly cold measurement ✅ |
+| Opening a message | < 50 ms | 1–3 ms ✅ |
+| List page | < 100 ms | 0.58 ms ✅ |
+| RAM (**private** working set) | < 200 MB | 95.5 MB · 7 processes ✅ |
+| Database size | **lifted** (ADR 0010 §2) | disk-space guard at ~50 KB/message |
+| Data loss | 0, proven by crash recovery | ✅ |
+| **Mail pump freeze** | no freeze > 150 ms (window always movable) | 0 freezes over 40 s, fixture 251k envelopes (PLAN-GELS, `e2e/freeze-probe.py`) ✅ |
+| **Search** | < 100 ms | **~66 ms ✅** (field, real database 251k / 7 GB, worst case 3-char prefix, 36k matches; held by the **sort-by-date relief valve** past 10k matches, since the BM25 floor is exceeded otherwise — `WIDE_QUERY_THRESHOLD`, A50/PLAN-RECHERCHE) |
+| **Adopting a legacy database** | < 1 s | **3.66 s — accepted** (ADR 0012: once only, visible, cancelable, reversible) |
+| **Rebuilding the search index** | no silent freeze | **~4 min cold on 7 GB — accepted** (ADR 0012: once only at update time, visible, cancelable, reversible; PLAN-RECHERCHE E3) |
+| **Rebuilding the envelope date index** | no silent freeze > 2 s | **1.77 s cold — accepted WITHOUT a screen** (PLAN-DEMARRAGE, CE decision D9: once only at update time, and it only reads `envelopes` — 47 MB — never the bodies. A screen that appears and disappears in 1.8 s is more annoying than the wait) |
 
-Un budget dépassé = **on arrête la ligne** (andon). Le gate « base
-< 1 Go » n'est pas un oubli : il est **levé explicitement** par
-l'ADR 0010 §2, remplacé par la garde d'espace disque.
+An exceeded budget = **we stop the line** (andon). The "database
+< 1 GB" gate is not an oversight: it is **explicitly lifted** by
+ADR 0010 §2, replaced by the disk-space guard.
 
-⚠️ **Les outils de mesure se vérifient comme le reste.** Trois d'entre eux
-mentaient au gate 3 (RAM sommée sur toutes les instances, profil WebView2
-non isolé, décor qui n'exerçait pas l'index partiel). Corrigés — mais le
-réflexe reste à avoir.
+⚠️ **Measurement tools are checked like everything else.** Three of
+them lied at gate 3 (RAM summed across every instance, a
+non-isolated WebView2 profile, a fixture that did not exercise the
+partial index). Fixed — but the reflex still has to be there.
 
 ---
 
-## 4. Architecture — « un seul cerveau »
+## 4. Architecture — "a single brain"
 
-`mail-core` contient **100 % de la logique métier**, de la synchro et du
-stockage. Le desktop l'embarque en processus ; le web (Phase 4) l'exécutera
-côté serveur. L'UI est « bête » : elle affiche un état, elle émet des
-intentions.
+`mail-core` contains **100% of the business logic**, the sync, and
+the storage. The desktop app embeds it as a process; the web app
+(Phase 4) will run it server-side. The UI is "dumb": it displays a
+state, it emits intents.
 
 ```
 wind/
 ├── crates/
-│   ├── mail-core/     # domaine + synchro + stockage + recherche + fils
-│   │                  # (ZÉRO dépendance UI ou réseau)
-│   ├── mail-imap/     # adaptateur IMAP (implémente MailServer)
-│   ├── mail-auth/     # OAuth2 PKCE loopback + coffre Windows (keyring)
-│   ├── mail-ical/     # invitations iCalendar/iTIP (calcard), PURE (ADR 0024)
-│   ├── mail-render/   # assainissement HTML (ammonia) + texte + CSP
-│   └── mail-smtp/     # adaptateur SMTP (lettre, XOAUTH2)
-├── apps/desktop/      # Tauri 2 : commands.rs (IPC) + main.rs + ui/ (JS vanilla)
-├── e2e/               # Playwright pilotant la VRAIE fenêtre via CDP WebView2
-├── spikes/            # prototypes jetables, hors workspace de prod
-└── docs/              # PLAN, revues de phase, ADRs, ce document
+│   ├── mail-core/     # domain + sync + storage + search + threads
+│   │                  # (ZERO UI or network dependency)
+│   ├── mail-imap/     # IMAP adapter (implements MailServer)
+│   ├── mail-auth/     # OAuth2 PKCE loopback + Windows vault (keyring)
+│   ├── mail-ical/     # iCalendar/iTIP invitations (calcard), PURE (ADR 0024)
+│   ├── mail-render/   # HTML sanitization (ammonia) + text + CSP
+│   └── mail-smtp/     # SMTP adapter (lettre, XOAUTH2)
+├── apps/desktop/      # Tauri 2: commands.rs (IPC) + main.rs + ui/ (vanilla JS)
+├── e2e/               # Playwright driving the REAL window via CDP WebView2
+├── spikes/            # throw-away prototypes, outside the prod workspace
+└── docs/              # PLAN, phase reviews, ADRs, this document
 ```
 
-**La seule frontière abstraite** est le trait `MailServer` (lecture) et le
-port `MailTransport` (envoi). **SQLite n'est PAS derrière un trait** :
-décision gelée ; `Store` est une struct concrète, les tests utilisent une
-base en mémoire, et le journal est en **WAL** sur fichier (ADR 0011).
+**The only abstract boundary** is the `MailServer` trait (read) and
+the `MailTransport` port (send). **SQLite is NOT behind a trait**:
+frozen decision; `Store` is a concrete struct, tests use an
+in-memory database, and the journal is **WAL** on file (ADR 0011).
 
-**Un motif récurrent, à imiter.** La décision est **pure et testable**,
-l'exécution (I/O) est ailleurs : `thread::plan` (conversations),
-`plan_draft_pull` (brouillons), `convert::sent_folder` (dossier des
-envois), `notify::arrivals_to_notify` (bulles), et depuis l'ADR 0010 :
-`sync_order` (ordre des boîtes), `sync_percent` (avancement),
-`disk_shortfall` (garde d'espace). C'est ce qui permet de tester les
-scénarios du terrain sans réseau.
+**A recurring pattern, worth imitating.** The decision is **pure and
+testable**, the execution (I/O) is elsewhere: `thread::plan`
+(conversations), `plan_draft_pull` (drafts), `convert::sent_folder`
+(sent folder), `notify::arrivals_to_notify` (bubbles), and since ADR
+0010: `sync_order` (mailbox order), `sync_percent` (progress),
+`disk_shortfall` (disk-space guard). This is what makes it possible
+to test field scenarios without a network.
 
 ---
 
-## 5. Décisions gelées — ne pas rouvrir sans mesure
+## 5. Frozen decisions — do not reopen without measurement
 
-| ADR | Décision | À retenir |
+| ADR | Decision | Takeaway |
 |---|---|---|
-| [0001](adr/0001-structure-workspace.md) | Workspace Cargo multi-crates | `mail-core` sans dépendance UI/réseau |
-| [0002](adr/0002-shell-desktop-tauri.md) | Shell desktop = Tauri 2 (WebView2) | La RAM qui fait foi = working set **privé** |
-| [0003](adr/0003-boite-envoi-smtp.md) | Boîte d'envoi SMTP + règles d'or | Journal AVANT réseau ; quarantaine anti-fantôme |
-| [0004](adr/0004-moteur-de-recherche-fts5.md) | Recherche = SQLite **FTS5** | L'index vit DANS la base (transactionnel) |
-| [0005](adr/0005-gate-e2e-hors-ci-hebergee.md) | E2E hors CI hébergée | Un runner GitHub ne peut pas ouvrir WebView2 — d'où le hook `pre-push` |
-| [0006](adr/0006-microsoft-imap-oauth2.md) | Microsoft via IMAP+OAuth2, pas Graph | Graph reste le plan B chiffré |
-| [0007](adr/0007-rattrapage-des-corps.md) | Rattrapage des corps borné, reprenable, groupé | **Horizon levé par l'ADR 0010** ; la forme (bornée/reprenable/groupée) demeure |
-| [0008](adr/0008-regroupement-en-conversations.md) | Conversations = union-find sur en-têtes RFC 5322 | **Jamais de repli par sujet** ; agrégat recalculé ; un identifiant exige une arobase |
-| [0009](adr/0009-portee-des-fils-au-compte.md) | Portée d'un fil = le **compte** | « Envoyés » synchronisé ; **index partiel** sinon le gate 3 est perdu |
-| [0010](adr/0010-synchronisation-integrale.md) | **Synchronisation intégrale** — tout, sans horizon ni quota | Gate < 1 Go **levé** ; **stocker ≠ regrouper** (portée = INBOX + Envoyés) ; garde d'espace disque ; avancement en % |
-| [0011](adr/0011-journal-wal.md) | Journal SQLite en **WAL** | Une lecture ne bloque plus une synchro longue ; persistant, bases héritées converties |
-| [0012](adr/0012-migration-visible-interruptible.md) | Migration **visible et interruptible** | L'adoption est UNE transaction rembobinable — annuler laisse `user_version` inchangé, jamais d'adoption partielle ; sonde `pending_adoption` en lecture seule, qui annonce la **portée** |
-| [0013](adr/0013-installeur-nsis-maj-signee.md) | Installeur **NSIS** + mise à jour signée | **Pas MSIX** (virtualiserait `%APPDATA%`, orphelinerait la base) ; updater signé minisign, piloté depuis Rust ; signature Windows reportée ; tag GitHub = **version nue**, `latest.json` sans BOM (`scripts/make-release.ps1`) |
-| [0014](adr/0014-telemetrie-de-crash-locale.md) | Télémétrie de crash **locale, opt-in** | Fichier local seul (aucun réseau/tiers) ; panics seuls ; **message du panic supprimé** (seul vecteur de PII) ; hook qui ne touche jamais la base ; un crash thread principal fait un **double panic** (compteur `SEQ` + filtre `cannot unwind`) |
-| [0015](adr/0015-socle-ui-v2-svelte.md) | **Socle UI v2 = Svelte**, front web unique porté partout (Tauri 2 desktop+mobile + navigateur) | Départage set-based (vanilla / Svelte / WASM) **sur mesure** : liste 256 k + bascule de thème, deux moteurs (Blink desktop, Android-classe CPU ×6) — rendu neutralisé par fenêtrage + thème CSS. **Système écrit une fois** (Stratégie A) ; WASM écarté, vanilla en repli ; **iOS/WKWebView : validation terrain due** ; frontière UI↔cœur = port de transport ; `mail-core` intouché (ADR 0001) |
-| [0019](adr/0019-commandes-hors-du-thread-principal.md) | **Commandes bloquantes hors du thread principal**, une à la fois (`hors_pompe` = spawn_blocking + verrou global) | La pompe ne fait que pomper (gel mesuré : 25,2 s/40 s → 0) ; la sérialisation d'avant est CONSERVÉE ; gate `main-thread-guard.mjs` + budget « aucun gel > 150 ms » (`freeze-probe.py`) |
-| [0024](adr/0024-parseur-icalendar-calcard.md) | Invitations iCalendar = **calcard** dans `mail-ical` pure | Départagé par spikes (corpus commun) sur le **coût de possession** ; TZID Windows natifs ; ⚠️ `resolve()` jamais `resolve_or_default` — un TZID inconnu rend une heure FLOTTANTE dite telle quelle (garde D1), jamais convertie à faux |
+| [0001](adr/0001-structure-workspace.md) | Multi-crate Cargo workspace | `mail-core` with no UI/network dependency |
+| [0002](adr/0002-shell-desktop-tauri.md) | Desktop shell = Tauri 2 (WebView2) | The RAM that counts = **private** working set |
+| [0003](adr/0003-boite-envoi-smtp.md) | SMTP outbox + golden rules | Journal BEFORE network; anti-phantom quarantine |
+| [0004](adr/0004-moteur-de-recherche-fts5.md) | Search = SQLite **FTS5** | The index lives INSIDE the database (transactional) |
+| [0005](adr/0005-gate-e2e-hors-ci-hebergee.md) | E2E outside hosted CI | A GitHub runner cannot open WebView2 — hence the `pre-push` hook |
+| [0006](adr/0006-microsoft-imap-oauth2.md) | Microsoft via IMAP+OAuth2, not Graph | Graph remains the encrypted plan B |
+| [0007](adr/0007-rattrapage-des-corps.md) | Bounded, resumable, grouped body backfill | **Horizon lifted by ADR 0010**; the shape (bounded/resumable/grouped) remains |
+| [0008](adr/0008-regroupement-en-conversations.md) | Conversations = union-find on RFC 5322 headers | **Never a subject-line fallback**; recomputed aggregate; an identifier requires an at sign |
+| [0009](adr/0009-portee-des-fils-au-compte.md) | Thread scope = the **account** | "Sent" synced; **partial index** or gate 3 is lost |
+| [0010](adr/0010-synchronisation-integrale.md) | **Full synchronization** — everything, no horizon or quota | Gate < 1 GB **lifted**; **storing ≠ grouping** (scope = INBOX + Sent); disk-space guard; progress in % |
+| [0011](adr/0011-journal-wal.md) | SQLite journal in **WAL** | A read no longer blocks a long sync; persistent, legacy databases converted |
+| [0012](adr/0012-migration-visible-interruptible.md) | **Visible and interruptible** migration | Adoption is ONE reversible transaction — canceling leaves `user_version` unchanged, never a partial adoption; read-only `pending_adoption` probe, which announces the **scope** |
+| [0013](adr/0013-installeur-nsis-maj-signee.md) | **NSIS** installer + signed update | **Not MSIX** (would virtualize `%APPDATA%`, orphan the database); minisign-signed updater, driven from Rust; Windows signature deferred; GitHub tag = **bare version**, `latest.json` without BOM (`scripts/make-release.ps1`) |
+| [0014](adr/0014-telemetrie-de-crash-locale.md) | **Local, opt-in** crash telemetry | Local file only (no network/third party); panics only; **panic message dropped** (the only PII vector); a hook that never touches the database; a main-thread crash does a **double panic** (`SEQ` counter + `cannot unwind` filter) |
+| [0015](adr/0015-socle-ui-v2-svelte.md) | **UI v2 foundation = Svelte**, single web frontend carried everywhere (Tauri 2 desktop+mobile + browser) | Set-based decision (vanilla / Svelte / WASM) **on measurement**: 256k list + theme toggle, two engines (desktop Blink, Android-class CPU ×6) — rendering neutralized by windowing + CSS theme. **System written once** (Strategy A); WASM ruled out, vanilla as fallback; **iOS/WKWebView: field validation still due**; UI↔core boundary = transport port; `mail-core` untouched (ADR 0001) |
+| [0019](adr/0019-commandes-hors-du-thread-principal.md) | **Blocking commands off the main thread**, one at a time (`off_pump` = spawn_blocking + global lock) | The pump only pumps (measured freeze: 25.2 s/40 s → 0); the previous serialization is KEPT; `main-thread-guard.mjs` gate + "no freeze > 150 ms" budget (`freeze-probe.py`) |
+| [0024](adr/0024-parseur-icalendar-calcard.md) | iCalendar invitations = **calcard** in pure `mail-ical` | Decided by spikes (shared corpus) on **cost of ownership**; native Windows TZIDs; ⚠️ `resolve()` never `resolve_or_default` — an unknown TZID renders a FLOATING time stated as such (guard D1), never wrongly converted |
 
-Décisions Phase 0 ([PHASE0.md](archives/PHASE0.md) §2) : SQLite local ; CONDSTORE ;
-parsing MIME par `mail-parser` ; OAuth2 PKCE loopback + coffre OS ; rendu
-HTML en défense en profondeur.
-
----
-
-## 6. Invariants non négociables
-
-Faciles à casser **en silence**. À vérifier à chaque revue.
-
-1. **Boîte d'envoi — les deux règles d'or** (ADR 0003) : jamais d'envoi
-   perdu (l'intention est journalisée AVANT tout réseau) ; jamais d'envoi
-   fantôme (quarantaine, jamais de renvoi automatique). *« Le doublon est
-   pire que le retard. »*
-2. **Identité message = `(account_id, boîte, uid)`** partout, jusque dans
-   la sélection de l'UI. Les UID sont attribués par boîte et repartent de
-   1 — et depuis l'ADR 0010, un compte porte des DIZAINES de boîtes. Le
-   compilateur ne protège pas cet invariant ; un test le tient
-   (`chaque_ligne_dit_dans_quelle_boite_elle_habite`).
-3. **Les index et agrégats vivent DANS la base**, entretenus dans la MÊME
-   transaction que le message : index FTS5, table `threads`.
-4. **Sécurité du rendu** : HTML assaini par `ammonia`, images distantes
-   bloquées, iframe sandboxée + CSP, `textContent` jamais `innerHTML`.
-   **Exception unique, bornée (A62)** : l'éditeur riche du composeur
-   pose par `innerHTML` — c'est sa fonction — mais n'accepte QUE du
-   HTML passé par la frontière ammonia côté Rust (`frontiere_corps`,
-   citations comprises). Les images distantes s'y décident PAR GESTE
-   (verdict terrain D5, 2026-08-20) : une RÉPONSE cite au pixel neutre —
-   la revue du 2026-08-20 a montré le piège exact, une citation assainie
-   en `AllowRemote` chargeait les pixels espions du message cité au
-   simple clic « Répondre » (la CSP du document principal laisse
-   `img-src https:`) ; un TRANSFERT, lui, CONSERVE les images — le
-   destinataire reçoit le message entier, et composer le transfert vaut
-   « afficher les images » implicite, c'est le geste qui le dit.
-5. **Credentials jamais en clair** : Credential Manager Windows via
-   `keyring`.
-6. **UIDVALIDITY** : si elle change, la boîte repart de zéro et **tout le
-   compte** refait ses fils (`thread::rebuild_account`). Brouillons :
-   *« un doublon est acceptable, supprimer le mauvais UID jamais »*.
-7. **Une fonctionnalité neuve doit ADOPTER les données anciennes** — le
-   piège s'est présenté quatre fois (§9). Migration écrite en même temps
-   que la fonctionnalité, prouvée par un test qui rembobine une vraie
-   base de fichier.
-8. **Les diagnostics ne divulguent rien** : ni sujet, ni expéditeur, ni
-   contenu ; identifiants **masqués** (forme seule).
-9. **On stocke tout, on ne regroupe que la portée** (ADR 0010 §3). Un
-   message hors de INBOX + Envoyés garde `thread_id = NULL` pour
-   toujours : sans cela, un spam accroché à un fil le ferait remonter en
-   tête de liste (`size`, `unseen`, `last_epoch` corrompus). Porté par
-   `mailboxes.threaded` + `accounts.sent_mailbox`, tenu par
-   `un_message_hors_portee_ne_rejoint_pas_le_fil`. **La portée se déclare
-   sur le compte AVANT que les boîtes existent** — la boucle de synchro
-   les crée (`une_portee_declaree_avant_la_creation_de_la_boite_vaut_quand_meme`).
-10. **Rien ne touche la base avant `migration_check`** (ADR 0012, A41).
-    Toute commande jouée avant la modale de migration doit être une
-    sonde qui n'adopte pas (`Store::pending_adoption`,
-    `Store::text_pref_readonly`) ; une écriture différée ne part que si
-    la sonde de migration a répondu, et un échec de lecture vaut repli
-    de session — jamais une écriture. Tenu par
-    `la_langue_se_lit_sans_adopter_la_base` (base de fichier
-    rembobinée) ; l'ordre côté UI (`main.js` → `assurer()` →
-    `poserLangueDetectee()`) n'a pas de garde structurelle — à vérifier
-    à chaque commande de démarrage ajoutée.
+Phase 0 decisions ([PHASE0.md](archives/PHASE0.md) §2): local SQLite;
+CONDSTORE; MIME parsing by `mail-parser`; OAuth2 PKCE loopback + OS
+vault; defense-in-depth HTML rendering.
 
 ---
 
-## 7. Environnement & commandes
+## 6. Non-negotiable invariants
 
-Windows 11. Deux shells : **PowerShell 5.1** (principal) et **Bash** (Git
-Bash). Syntaxes différentes.
+Easy to break **silently**. Checked at every review.
 
-### 7.1 Pièges qui coûtent cher
+1. **Outbox — the two golden rules** (ADR 0003): never a lost send
+   (the intent is journaled BEFORE any network); never a phantom
+   send (quarantine, never an automatic resend). *"A duplicate is
+   worse than a delay."*
+2. **Message identity = `(account_id, mailbox, uid)`** everywhere,
+   down to the UI selection. UIDs are assigned per mailbox and
+   restart at 1 — and since ADR 0010, an account carries DOZENS of
+   mailboxes. The compiler does not protect this invariant; a test
+   holds it (`chaque_ligne_dit_dans_quelle_boite_elle_habite`).
+3. **Indexes and aggregates live INSIDE the database**, maintained
+   in the SAME transaction as the message: FTS5 index, `threads`
+   table.
+4. **Rendering security**: HTML sanitized by `ammonia`, remote
+   images blocked, sandboxed iframe + CSP, `textContent` never
+   `innerHTML`. **Single, bounded exception (A62)**: the composer's
+   rich editor sets via `innerHTML` — that is its job — but accepts
+   ONLY HTML that has passed the ammonia boundary on the Rust side
+   (`frontiere_corps`, quotes included). Remote images there are
+   decided BY GESTURE (field verdict D5, 2026-08-20): a REPLY quotes
+   at neutral pixel — the 2026-08-20 review showed the exact trap, a
+   quote sanitized in `AllowRemote` loaded the spy pixels of the
+   quoted message on a plain "Reply" click (the main document's CSP
+   allows `img-src https:`); a FORWARD, however, KEEPS the images —
+   the recipient receives the whole message, and composing the
+   forward implicitly means "show images," it is the gesture that
+   says so.
+5. **Credentials never in plain text**: Windows Credential Manager
+   via `keyring`.
+6. **UIDVALIDITY**: if it changes, the mailbox restarts from zero
+   and **the whole account** rebuilds its threads
+   (`thread::rebuild_account`). Drafts: *"a duplicate is acceptable,
+   deleting the wrong UID never."*
+7. **A new feature must ADOPT the old data** — the trap has shown up
+   four times (§9). Migration written at the same time as the
+   feature, proven by a test that rewinds a real file database.
+8. **Diagnostics disclose nothing**: no subject, no sender, no
+   content; **masked** identifiers (shape only).
+9. **We store everything, we group only the scope** (ADR 0010 §3).
+   A message outside INBOX + Sent keeps `thread_id = NULL` forever:
+   without that, spam attached to a thread would bump it to the top
+   of the list (corrupting `size`, `unseen`, `last_epoch`). Carried
+   by `mailboxes.threaded` + `accounts.sent_mailbox`, held by
+   `un_message_hors_portee_ne_rejoint_pas_le_fil`. **The scope is
+   declared on the account BEFORE the mailboxes exist** — the sync
+   loop creates them
+   (`une_portee_declaree_avant_la_creation_de_la_boite_vaut_quand_meme`).
+10. **Nothing touches the database before `migration_check`** (ADR
+    0012, A41). Any command played before the migration modal must
+    be a probe that does not adopt (`Store::pending_adoption`,
+    `Store::text_pref_readonly`); a deferred write only fires once
+    the migration probe has answered, and a read failure means a
+    session fallback — never a write. Held by
+    `la_langue_se_lit_sans_adopter_la_base` (rewound file
+    database); the UI-side order (`main.js` → `assurer()` →
+    `poserLangueDetectee()`) has no structural guard — to be
+    checked at every startup command added.
 
-- **PowerShell 5.1 n'a pas `&&`.** Deux lignes, ou Bash.
-- **Ne JAMAIS utiliser `Get-Content`/`Set-Content` sur les sources** :
-  réencodage UTF-16 BOM, accents corrompus. Éditer via l'outil `Edit`,
-  Python, ou Bash. Tout est en **UTF-8**.
-- Pour un affichage non-ASCII depuis Python : `PYTHONIOENCODING=utf-8`.
-- **L'assistant ne voit PAS la vraie base.** L'application Claude est
-  empaquetée MSIX : son shell lit un `%APPDATA%` **redirigé**, et
-  `wind.db` y résout vers une copie privée périmée. **Les
-  diagnostics du §9 sont lancés par l'utilisateur**, qui colle la sortie.
-  Corollaire : annoncer d'abord ce qu'on s'attend à y lire, pour que
-  l'aller-retour soit une mesure et non une collecte — et transmettre
-  chaque chiffre **avec sa définition exacte** (un « ~1 650 restants » lu
-  comme un reliquat alors que c'était un total a coûté une prédiction
-  fausse).
-- **Depuis l'ADR 0011, la base a deux compagnons** : `wind.db-wal`
-  et `-shm`. Une copie à chaud doit prendre les trois.
-- **L'app en `--release` est MUETTE en console** (`main.rs` :
-  `#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]`) :
-  sous-système *windows*, aucune console attachée, `eprintln` (la trace
-  `run_sync`) n'a nulle part où s'écrire. Pour lire une trace au terrain :
-  soit **débogage** (`cargo run -p wind-desktop`, console attachée, mais
-  durées CPU gonflées), soit **rediriger via un lanceur qui ATTEND**
-  (`cargo run … --release 2> fichier` — cargo, appli console, tient le
-  handle jusqu'au bout ; timing release exact). ⚠️ **Lancer l'exe NU ne
-  trace RIEN** (`& …\wind-desktop.exe 2> fichier` depuis PowerShell) :
-  PowerShell n'attend pas un exécutable fenêtré et cesse de lire son
-  stderr aussitôt l'invite rendue — fichier créé, vide À JAMAIS, même
-  quand les traces partent bel et bien. Payé deux fois : PLAN-RETOURS-2
-  (un « pas de trace » pris pour « pas de synchro »), PLAN-RETOURS-5
-  (deux passes terrain brûlées sur un fichier vide, 2026-08-21).
-- **Un commit ne peut pas être chaîné avec `git --no-pager …`** : le hook
-  `block-no-verify` bloque le préfixe `--no-`. Séparer les commandes.
-- **`prefers-color-scheme` est MORT dans le WebView2 de Tauri** : jamais
-  sombre, zéro événement, même sous une vraie bascule Windows (mesuré
-  aux sondes, terrain A42 du 2026-08-16). L'écoute du thème OS passe
-  par l'API fenêtre Tauri (`theme()` + `onThemeChanged`) ; `matchMedia`
-  n'est que le repli hors Tauri et la poignée du banc (emulateMedia).
-  Corollaires : `Set-ItemProperty` sur `AppsUseLightTheme` ne prévient
-  PERSONNE (pas de `WM_SETTINGCHANGE`) — une vérification terrain passe
-  par les Paramètres Windows ou `e2e/dark-toggle.ps1` ; et le profil
-  WebView2 de la suite (`target/e2e/webview2`) PERSISTE entre les runs —
-  un test mort après avoir armé un réglage localStorage empoisonne les
-  relances locales (remède : purger le dossier ; la CI, elle, part
-  toujours propre).
-- **Le fil de lecture est UN objet, DEUX cadres** (UI v3, A43,
-  2026-08-16) : `Fil.svelte` + état module `lib/fil.svelte.js`, et
-  l'exclusivité des cadres vit au store (`fil.cadre` :
-  null/volet/plein) — jamais de booléen local de visibilité dans un
-  cadre (trois booléens réconciliés à la main se sont désynchronisés
-  au premier chemin oublié, revue v3). Corollaires : toute purge passe
-  par `fermerFil()` (importable partout — `lecture?.fermer()` était un
-  no-op en 1-2 volets) ; chaque `ouvrirFil` RECHARGE (la mémoïsation
-  cachait la propre réponse envoyée) ; le chrono P1 « ouverture »
-  mesure désormais sélection → fil affiché (thread_messages compris,
-  pièces exclues) — série d'avant v3 non comparable. Leçon de banc :
-  un `sed` de testids peut DÉSARMER des assertions discriminantes —
-  re-scoper au cadre (`[data-testid="volet-lecture"] …`) et asserter
-  l'unicité (`toHaveCount(1)`).
-- **Les barres de défilement sont NATIVES en surimpression** (A44,
-  2026-08-16) : trait Chromium `OverlayScrollbar`, posé par
-  `additionalBrowserArgs` de tauri.conf.json — ce champ s'épelle SANS
-  « uments », et sa pose REMPLACE les `--disable-features` par défaut
-  de wry (repris dans la valeur). Trois pièges mesurés : la variable
-  `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` ÉCRASE la conf au niveau du
-  loader — tout lanceur qui la pose doit reprendre les args de prod
-  (`e2e/browser-args.mjs`, source unique : launch, measure-v2,
-  diag-v2) ; un `--enable-features` RÉPÉTÉ n'est pas fusionné, le
-  dernier gagne ; `scrollbar-width:auto` ne désarme PAS des règles
-  webkit (valeur par défaut — il faut une valeur non-défaut pour
-  sonder le chemin natif). UNE règle `::-webkit-scrollbar` /
-  `scrollbar-width` / `scrollbar-color` quelque part fait retomber
-  l'élément au chemin classique (~15 px de gouttière) — la garde n°5
-  de `system-coherence.mjs` le bloque ; le `color-scheme` (poignée
-  claire en -nuit) vit en CSS à côté des jetons ET baké dans l'iframe
-  du corps (mail-render, luminance du fond).
-- **La liste est à DEUX gabarits depuis A44** (terrain 2026-08-16 :
-  hauteur au contenu — le rang de puces n'existe que sur les lignes
-  porteuses) : la mécanique de fenêtrage d'avant A29 est de retour
-  (h1/h2 sondés, `chipsParPage`, `chipsAvant`, index itératif, ancrage
-  au delta d'une page resservie). Toute variante de rangée neuve doit
-  entrer dans les DEUX sondes, et le banc P1 se lit avec h1 ET h2
-  (D-14 : re-base).
-- **Une commande Tauri sans `async` s'exécute sur le THREAD PRINCIPAL**
-  — celui de la pompe de messages : la fenêtre gèle pour toute sa durée
-  (constat 2026-08-15, gels de 2 à 4,6 s au démarrage). Toute commande
-  qui ouvre la base, touche un fichier ou le keyring est `async fn` ;
-  la gate `e2e/main-thread-guard.mjs` le tient (exemption nommée
-  pour les pures d'état). Mesure du symptôme :
-  `python e2e/freeze-probe.py <base.db>` (base HORS dépôt).
+---
+## 7. Environment & commands
 
-- **Le SQLite embarqué (3.50) n'a pas le planificateur de l'outil qui
-  a servi à mesurer.** Une requête à 0,2 ms sous python coûtait 116 ms
-  dans Wind : l'index de date choisi à la place de celui de
-  l'expéditeur. `INDEXED BY` sur les requêtes du Nettoyage, et un test
-  de PLAN d'exécution qui le garde (PLAN-AUDIT-V2 E4).
-- **Pendant qu'une gate tourne en arrière-plan, on ne touche PAS aux
-  sources.** L'e2e recompile `ui-v2` et les exemples quand ils changent
-  — une édition en plein vol donne un verdict sur un état qui n'existe
-  plus. Lire, écrire des docs : oui ; Rust, Svelte, scripts : après le
-  verdict (PLAN-AUDIT-V2).
-- **Un cadre `sandbox="allow-same-origin"` SANS `allow-scripts` (S1)
-  n'est pas évaluable par Playwright** — `click`, `dispatchEvent`,
-  `evaluate` y pendent jusqu'au timeout (3 min payées). Pour frapper
-  une touche « dans le corps » : focaliser l'iframe depuis le parent
-  (`locator('iframe').focus()`) puis `keyboard.press` — la vraie
-  touche, livrée au document du cadre.
-- **Remplacer par sous-chaîne, c'est attraper tout ce qui la contient.**
-  `reply_to: None,` vit DANS `in_reply_to: None,` ; `Nom {` attrape le
-  `-> Nom {` d'une signature. Un script d'édition se guide sur des
-  repères de POSITION (début/fin de bloc, accolades appariées) et se
-  vérifie au compilateur (E0063 rend la liste exacte des littéraux
-  incomplets). Et `python -` sous PowerShell décode l'entrée en cp1252 :
-  `python -X utf8`, ou le script dans un fichier — un `assert old in s`
-  qui ment sans raison, c'est souvent l'encodage ou un `
-` mêlé
-  (PLAN-AUDIT-V2, six passes de réparation payées).
+Windows 11. Two shells: **PowerShell 5.1** (primary) and **Bash** (Git
+Bash). Different syntaxes.
 
-- **Un `.ps1` sans BOM ne doit contenir que de l'ASCII dans ses
-  chaînes.** PowerShell 5.1 (celui de `powershell -File`, au terrain)
-  lit un fichier sans BOM en ANSI : un tiret cadratin « — » devient
-  `â€”`, et ce `”` est un guillemet fermant pour son analyseur — la
-  chaîne se ferme, le script ne parse plus (`verify-release.ps1`,
-  2026-09-02, une release vérifiée à la main). Un `.ps1` qui porte du
-  non-ASCII porte un BOM UTF-8 (`make-release.ps1`) ; la gate
-  (étape 6) parse chaque `.ps1` avec l'analyseur de ce PowerShell.
+### 7.1 Traps that cost dearly
 
-### 7.2 Les notifications exigent l'application INSTALLÉE
+- **PowerShell 5.1 has no `&&`.** Two lines, or Bash.
+- **NEVER use `Get-Content`/`Set-Content` on the sources**:
+  UTF-16 BOM re-encoding, corrupted accents. Edit via the `Edit` tool,
+  Python, or Bash. Everything is **UTF-8**.
+- For non-ASCII output from Python: `PYTHONIOENCODING=utf-8`.
+- **The assistant does NOT see the real database.** The Claude
+  application is packaged as MSIX: its shell reads a **redirected**
+  `%APPDATA%`, and `wind.db` resolves there to a stale private copy.
+  **The §9 diagnostics are run by the user**, who pastes the output.
+  Corollary: announce first what one expects to read there, so the
+  round trip is a measurement and not a collection — and pass on
+  each figure **with its exact definition** (a "~1,650 remaining"
+  read as a leftover when it was actually a total cost a false
+  prediction).
+- **Since ADR 0011, the database has two companions**: `wind.db-wal`
+  and `-shm`. A hot copy must take all three.
+- **The app in `--release` is SILENT on console** (`main.rs`:
+  `#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]`):
+  *windows* subsystem, no console attached, `eprintln` (the
+  `run_sync` trace) has nowhere to write to. To read a trace in the
+  field: either **debug** (`cargo run -p wind-desktop`, console
+  attached, but inflated CPU durations), or **redirect via a launcher
+  that WAITS** (`cargo run … --release 2> file` — cargo, a console
+  app, holds the handle to the end; exact release timing). ⚠️
+  **Launching the BARE exe traces NOTHING** (`& …\wind-desktop.exe 2>
+  file` from PowerShell): PowerShell does not wait for a windowed
+  executable and stops reading its stderr as soon as the prompt
+  renders — file created, empty FOREVER, even when the traces do get
+  written. Paid twice: PLAN-RETOURS-2 (a "no trace" taken for "no
+  sync"), PLAN-RETOURS-5 (two field passes burned on an empty file,
+  2026-08-21).
+- **A commit cannot be chained with `git --no-pager …`**: the
+  `block-no-verify` hook blocks the `--no-` prefix. Separate the
+  commands.
+- **`prefers-color-scheme` is DEAD in Tauri's WebView2**: never
+  dark, zero event, even under a real Windows toggle (measured at
+  the probes, field A42 of 2026-08-16). Listening to the OS theme
+  goes through the Tauri window API (`theme()` + `onThemeChanged`);
+  `matchMedia` is only the fallback outside Tauri and the bench's
+  handle (emulateMedia). Corollaries: `Set-ItemProperty` on
+  `AppsUseLightTheme` notifies NO ONE (no `WM_SETTINGCHANGE`) — a
+  field check goes through Windows Settings or
+  `e2e/dark-toggle.ps1`; and the suite's WebView2 profile
+  (`target/e2e/webview2`) PERSISTS between runs — a test that dies
+  after arming a localStorage setting poisons local reruns (fix:
+  purge the folder; CI, for its part, always starts clean).
+- **The reading thread is ONE object, TWO frames** (UI v3, A43,
+  2026-08-16): `Fil.svelte` + module state `lib/fil.svelte.js`, and
+  frame exclusivity lives in the store (`fil.cadre`:
+  null/pane/full) — never a local visibility boolean in a frame
+  (three booleans reconciled by hand went out of sync on the first
+  forgotten path, v3 review). Corollaries: every purge goes through
+  `fermerFil()` (importable everywhere — `lecture?.fermer()` was a
+  no-op in 1-2 panes); every `ouvrirFil` RELOADS (memoization was
+  hiding its own sent response); the P1 "opening" stopwatch now
+  measures selection → thread displayed (thread_messages included,
+  attachments excluded) — the pre-v3 series is not comparable. Bench
+  lesson: a testid `sed` can DISARM discriminating assertions —
+  re-scope to the frame (`[data-testid="volet-lecture"] …`) and
+  assert uniqueness (`toHaveCount(1)`).
+- **Scrollbars are NATIVE overlays** (A44, 2026-08-16): Chromium
+  trait `OverlayScrollbar`, set by tauri.conf.json's
+  `additionalBrowserArgs` — this field is spelled WITHOUT
+  "uments", and setting it REPLACES wry's default
+  `--disable-features` (carried over into the value). Three traps
+  measured: the `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` variable
+  OVERWRITES the conf at the loader level — any launcher that sets it
+  must reuse the prod args (`e2e/browser-args.mjs`, single source:
+  launch, measure-v2, diag-v2); a REPEATED `--enable-features` is not
+  merged, the last one wins; `scrollbar-width:auto` does NOT disarm
+  webkit rules (the default value — a non-default value is needed to
+  probe the native path). ONE `::-webkit-scrollbar` /
+  `scrollbar-width` / `scrollbar-color` rule anywhere falls the
+  element back to the classic path (~15 px gutter) — guard #5 of
+  `system-coherence.mjs` blocks it; the `color-scheme` (light handle
+  in night mode) lives in CSS next to the tokens AND baked into the
+  body's iframe (mail-render, background luminance).
+- **The list has had TWO templates since A44** (field 2026-08-16:
+  content-fit height — the chip row only exists on carrier rows): the
+  pre-A29 windowing mechanics is back (h1/h2 probed, `chipsParPage`,
+  `chipsAvant`, iterative index, anchoring on the delta of a
+  resupplied page). Every new row variant must enter BOTH probes, and
+  the P1 bench is read with h1 AND h2 (D-14: re-base).
+- **A Tauri command without `async` runs on the MAIN THREAD** — the
+  one of the message pump: the window freezes for its whole duration
+  (finding 2026-08-15, freezes of 2 to 4.6 s at startup). Every
+  command that opens the database, touches a file or the keyring is
+  `async fn`; the `e2e/main-thread-guard.mjs` gate holds it (named
+  exemption for pure state reads). Measuring the symptom:
+  `python e2e/freeze-probe.py <base.db>` (database OUTSIDE the repo).
 
-`tauri-winrt-notification` exige une identité applicative
-(AppUserModelID), portée par un raccourci du menu Démarrer. Donc :
-`cargo tauri build`, installer, lancer depuis le menu Démarrer ;
-`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID` définis
-au niveau utilisateur. ⚠️ Windows n'inscrit l'application dans
-Paramètres → Notifications qu'APRÈS sa première notification réussie.
+- **The embedded SQLite (3.50) does not have the planner of the tool
+  used to measure.** A query costing 0.2 ms under python cost 116 ms
+  in Wind: the date index chosen instead of the sender's.
+  `INDEXED BY` on the Cleanup queries, and an execution PLAN test
+  that guards it (PLAN-AUDIT-V2 E4).
+- **While a gate is running in the background, the sources are NOT
+  touched.** The e2e recompiles `ui-v2` and the examples when they
+  change — an edit mid-flight gives a verdict on a state that no
+  longer exists. Reading, writing docs: yes; Rust, Svelte, scripts:
+  after the verdict (PLAN-AUDIT-V2).
+- **A frame `sandbox="allow-same-origin"` WITHOUT `allow-scripts`
+  (S1) is not evaluable by Playwright** — `click`, `dispatchEvent`,
+  `evaluate` hang there until timeout (3 min paid). To strike a key
+  "inside the body": focus the iframe from the parent
+  (`locator('iframe').focus()`) then `keyboard.press` — the real key,
+  delivered to the frame's document.
+- **Replacing by substring means catching everything that contains
+  it.** `reply_to: None,` lives INSIDE `in_reply_to: None,`; `Nom {`
+  catches the `-> Nom {` of a signature. An editing script steers by
+  POSITION landmarks (block start/end, matched braces) and checks
+  itself against the compiler (E0063 gives the exact list of
+  incomplete literals). And `python -` under PowerShell decodes the
+  input as cp1252: `python -X utf8`, or the script in a file — an
+  `assert old in s` that lies for no reason is often the encoding or
+  a stray `\r` mixed in (PLAN-AUDIT-V2, six repair passes paid).
 
-### 7.3 Commandes
+- **A `.ps1` without a BOM must contain only ASCII in its strings.**
+  PowerShell 5.1 (the one from `powershell -File`, in the field)
+  reads a file without a BOM as ANSI: an em dash "—" becomes
+  `â€”`, and that `”` is a closing quote for its parser — the string
+  closes, the script no longer parses (`verify-release.ps1`,
+  2026-09-02, a release verified by hand). A `.ps1` carrying
+  non-ASCII carries a UTF-8 BOM (`make-release.ps1`); the gate
+  (step 6) parses every `.ps1` with that PowerShell's parser.
+
+### 7.2 Notifications require the INSTALLED application
+
+`tauri-winrt-notification` requires an application identity
+(AppUserModelID), carried by a Start menu shortcut. So:
+`cargo tauri build`, install, launch from the Start menu;
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID` set
+at the user level. ⚠️ Windows only registers the application in
+Settings → Notifications AFTER its first successful notification.
+
+### 7.3 Commands
 
 ```bash
-cargo test --workspace --all-targets           # tout, EXEMPLES COMPRIS
-cargo test --workspace --doc                   # les doc-tests, exclus ci-dessus
-cargo build -p wind-desktop --release     # binaire
-cargo run -p wind-desktop --release       # lancer (sans notifications)
+cargo test --workspace --all-targets           # everything, EXAMPLES INCLUDED
+cargo test --workspace --doc                   # the doc-tests, excluded above
+cargo build -p wind-desktop --release     # binary
+cargo run -p wind-desktop --release       # launch (without notifications)
 
 cargo fmt
 cargo clippy --all-targets -- -D warnings
 
 cd e2e
-npm test                                       # PowerShell : deux lignes
+npm test                                       # PowerShell: two lines
 
-# Jeu d'essai — <db> <nombre> <email> [corps] [ko/corps] [boîte] [expéditeurs]
+# Test set — <db> <count> <email> [body] [kb/body] [mailbox] [senders]
 cargo run -p mail-core --example seed_inbox --release -- <db> 33000 un@exemple.fr 0 0 INBOX
-# Bancs (PLAN-AUDIT-V2) : diagnostic_ouverture, banc_recherche, banc_indexation,
-# banc_nettoyage (MUTE la base : décor seulement), sur C:/mesure/banc200k.db et
-# banc5000.db (200 k enveloppes ; 8 ou 5 000 expéditeurs)
+# Benches (PLAN-AUDIT-V2): diag_opening, bench_search, bench_indexing,
+# bench_cleanup (MUTES the database: fixture only), on C:/mesure/banc200k.db and
+# banc5000.db (200k envelopes; 8 or 5,000 senders)
 
-# Installateur (nécessaire pour les notifications)
+# Installer (needed for notifications)
 cd apps/desktop
 cargo tauri build
 ```
 
-Mesures : `node e2e/measure-v2.mjs` (démarrage, page, RAM — `MEASURE_DB`,
-`MEASURE_ACCOUNTS`, `MEASURE_REUSE`), `e2e/measure-ram.ps1`, et
-`python e2e/freeze-probe.py <base.db>` (gel de la pompe de messages,
-budget « aucun gel > 150 ms », PLAN-GELS — exige Python 3, seul outil
-du dépôt à le demander).
+Measurements: `node e2e/measure-v2.mjs` (startup, page, RAM —
+`MEASURE_DB`, `MEASURE_ACCOUNTS`, `MEASURE_REUSE`),
+`e2e/measure-ram.ps1`, and `python e2e/freeze-probe.py <base.db>`
+(message pump freeze, budget "no freeze > 150 ms", PLAN-GELS —
+requires Python 3, the only tool in the repo that does).
 
-⚠️ **La base de mesure se place HORS du dépôt** (OneDrive perturberait la
-mesure). Les trois bases du gate 3 (`gate3.db`, `gate3-corps.db`,
-`gate3-envoyes.db`) sont **conservées** dans un scratchpad temporaire de
-session et ont été **migrées au schéma ADR 0010** le 2026-07-26 — elles
-restent valides et comparables. C'est un dossier Temp : vérifier leur
-existence avant usage, regénérer par `seed_inbox` sinon (plusieurs
-minutes ; ne pas le faire « pour être sûr »).
+⚠️ **The measurement database goes OUTSIDE the repo** (OneDrive
+would disturb the measurement). The three gate-3 databases
+(`gate3.db`, `gate3-corps.db`, `gate3-envoyes.db`) are **kept** in a
+session's temporary scratchpad and were **migrated to the ADR 0010
+schema** on 2026-07-26 — they remain valid and comparable. It is a
+Temp folder: check they exist before use, regenerate with
+`seed_inbox` otherwise (several minutes; do not do it "just to be
+safe").
 
-### 7.4 Le gate pré-push
+### 7.4 The pre-push gate
 
-`.githooks/pre-push` DÉLÈGUE à `scripts/gate.ps1` (PLAN-AUDIT-V2 E9,
-D-32 soldée : une seule gate, plus de commandes recopiées). Dix
-étapes : `fmt` → build ui-v2 → contrastes → cohérence du Système →
-garde du thread principal → `node --check` des scripts → `clippy -D
+`.githooks/pre-push` DELEGATES to `scripts/gate.ps1` (PLAN-AUDIT-V2
+E9, debt D-32 closed: a single gate, no more copied-out commands).
+Ten steps: `fmt` → build ui-v2 → contrasts → System coherence →
+main-thread guard → `node --check` on the scripts → `clippy -D
 warnings` → `cargo test --workspace --all-targets` → `--doc` → `npm
-test` (e2e) ; au verdict, « flaky : N » avec les noms (rapport JSON
-Playwright, `e2e/flaky.mjs` — D4 : un flaky se compte, il ne rougit
-pas). **Chemin rapide documentaire** (PLAN-KAIZEN-CLAUDE, E4 ;
-`gate.ps1 -DocsSeulement`) : si tout ce qui part est ⊆ `docs/**` +
-`*.md` — en excluant `docs/design/**`, le Système est du normatif
-outillé — les étapes lentes (clippy, tests Rust, e2e) sont sautées,
-les six étapes en secondes restent ; ref neuve ou suppression de ref ⇒
-gate entière. La CI reste le filet complet — ses actions sont
-épinglées par SHA (Dependabot les fait suivre).
+test` (e2e); at the verdict, "flaky: N" with the names (Playwright
+JSON report, `e2e/flaky.mjs` — D4: a flaky is counted, it does not
+turn the gate red). **Fast documentary path** (PLAN-KAIZEN-CLAUDE,
+E4; `gate.ps1 -DocsOnly`): if everything going out is ⊆
+`docs/**` + `*.md` — excluding `docs/design/**`, the System is
+tooled normative material — the slow steps (clippy, Rust tests, e2e)
+are skipped, the six steps that take seconds remain; a new ref or a
+removed ref ⇒ full gate. CI remains the complete net — its actions
+are pinned by SHA (Dependabot keeps them up to date).
 
-**`--all-targets` n'est pas décoratif** : sans lui, cargo ignore les tests
-des EXEMPLES — les diagnostics du terrain vivent là et portent leurs tests.
-`--no-verify` existe ; s'en servir est une décision, pas un raccourci.
+**`--all-targets` is not decorative**: without it, cargo ignores the
+EXAMPLES' tests — the field diagnostics live there and carry their
+tests. `--no-verify` exists; using it is a decision, not a shortcut.
 
-**Deux gates peuvent jouer en même temps** (deux worktrees, deux push) :
-depuis PLAN-ISOLATION-E2E (2026-08-15), chaque suite e2e reçoit un port
-CDP libre choisi par l'OS (`e2e/port-cdp.mjs`, un port par suite — les
-arguments navigateur d'un même profil WebView2 doivent rester
-identiques), et le balayage de zombies de `rebuild-v2.mjs` est borné au
-`target/` du worktree courant. Avant : port 9222 partagé + balayage
-global = applications abattues en `0xFFFFFFFF` sans sortie et suites qui
-se pilotaient l'une l'autre (`connectOverCDP` reconnaît sa fenêtre au
-seul critère `tauri.localhost`). Terrain : 73 + 73 verts simultanés.
+**Two gates can run at the same time** (two worktrees, two pushes):
+since PLAN-ISOLATION-E2E (2026-08-15), each e2e suite gets a free
+CDP port chosen by the OS (`e2e/port-cdp.mjs`, one port per suite —
+the browser arguments of the same WebView2 profile must stay
+identical), and the zombie sweep of `rebuild-v2.mjs` is bounded to
+the current worktree's `target/`. Before: a shared port 9222 + a
+global sweep = applications struck down with `0xFFFFFFFF` and no
+output, and suites steering one another (`connectOverCDP` recognizes
+its window on the sole criterion `tauri.localhost`). Field: 73 + 73
+green simultaneously.
 
-**Le gate ne reflète la CI que sur la MÊME toolchain.** La version de Rust
-est **épinglée** dans [`rust-toolchain.toml`](../rust-toolchain.toml)
-(source unique : local + hook + CI). Le job CI, lui, ne lit pas ce
-fichier : sa ref d'action est épinglée à la main dans
-[`ci.yml`](../.github/workflows/ci.yml) — **monter de version se fait aux
-DEUX endroits**, puis on rejoue clippy (un lint neuf peut apparaître).
-Enseignement payé : la CI suivait « le dernier stable » et le hook
-tournait sur une toolchain locale en retard (1.94 vs 1.97) ; un lint
-clippy neuf a cassé la CI sans que le gate local le voie.
+**The gate only reflects CI on the SAME toolchain.** The Rust
+version is **pinned** in [`rust-toolchain.toml`](../rust-toolchain.toml)
+(single source: local + hook + CI). The CI job, for its part, does
+not read this file: its action ref is pinned by hand in
+[`ci.yml`](../.github/workflows/ci.yml) — **bumping the version is
+done in BOTH places**, then clippy is replayed (a new lint can
+appear). Lesson paid: CI was tracking "the latest stable" and the
+hook was running on a local toolchain that lagged behind (1.94 vs
+1.97); a new clippy lint broke CI without the local gate seeing it.
 
-### 7.5 Déterminisme des E2E
+### 7.5 E2E determinism
 
-Étanches par construction : base jetable (`WIND_DB_PATH`), comptes
-factices (`WIND_E2E_ACCOUNT`), `GOOGLE_CLIENT_ID`/`SECRET` retirés,
-profil WebView2 dédié. **Les E2E ne parlent à aucun serveur** : tout le
-chemin réseau réel (OAuth, dossiers, passes de fond, STATUS) n'est couvert
-que par des tests unitaires sur la partie pure et ne se prouve que sur le
-terrain.
+Watertight by construction: a throwaway database (`WIND_DB_PATH`),
+fake accounts (`WIND_E2E_ACCOUNT`), `GOOGLE_CLIENT_ID`/`SECRET`
+removed, a dedicated WebView2 profile. **The E2Es talk to no
+server**: the whole real network path (OAuth, folders, background
+passes, STATUS) is covered only by unit tests on the pure part and
+is proven only in the field.
+
+---
+## 8. What remains → [ETAT.md](ETAT.md)
+
+Recent jobs, the long tail, and deliberate deferrals live in
+[ETAT.md](ETAT.md); the detailed debt, in [DETTE.md](DETTE.md).
 
 ---
 
-## 8. Ce qui reste → [ETAT.md](ETAT.md)
+## 9. Lessons — read before resuming
 
-Chantiers récents, longue traîne et reports assumés vivent dans
-[ETAT.md](ETAT.md) ; la dette détaillée, dans [DETTE.md](DETTE.md).
+They cost dearly. Ignoring them will make them cost again.
 
----
+### Defects are found in the field, not in tests
 
-## 9. Enseignements — à lire avant de reprendre
+Never logic errors: always **false assumptions about the environment
+or usage**. A test suite shares the assumption. Latest example:
+"database is locked" on the first trial of full sync (ADR 0011).
 
-Ils ont coûté cher. Les ignorer les fera repayer.
+### A periodic reader alongside long writes requires WAL
 
-### Les défauts se trouvent sur le terrain, pas dans les tests
+Rollback mode held up as long as writes took seconds. Full sync
+stretched them into minutes, and the progress poll (800 ms) expired
+writers' `busy_timeout` on the very first trial. **The risk had been
+named in review; it should have been addressed then.** When adding a
+periodic reader, check the journal mode.
 
-Jamais des erreurs de logique : toujours des **hypothèses fausses sur
-l'environnement ou l'usage**. Une suite de tests partage l'hypothèse.
-Dernier exemple : « database is locked » au premier essai de la
-synchronisation intégrale (ADR 0011).
+### An inherited bound is not a decided bound
 
-### Un lecteur périodique à côté d'écritures longues exige le WAL
+The header pass borrowed the 12-month horizon of the body backfill —
+a bound that existed for the **disk budget**, whereas a header block
+weighs ~3 KB and does not strain the disk. Reused because the
+function had the same *shape*, not the same *reason*. The diagnostic
+showed it converged at 1 656/1 656 with 78 % of the database
+permanently out of reach. **When inheriting a parameter, re-examine
+its reason for being.**
 
-Le mode rollback a tenu tant que les écritures duraient des secondes. La
-synchronisation intégrale les a étirées en minutes, et le sondage
-d'avancement (800 ms) a fait expirer le `busy_timeout` des écrivains dès
-le premier essai. **Le risque avait été nommé en revue ; il fallait le
-traiter à ce moment-là.** Quand on ajoute un lecteur périodique, vérifier
-le mode de journal.
+### A scope declared before its object is created is stored on the parent
 
-### Une borne héritée n'est pas une borne décidée
+The sync loop **creates** the "Sent" mailbox: at the moment the
+grouping scope is declared, there is no row to update, and the
+mailbox would be born out of scope — threadless messages until the
+next startup, with no signal. Hence `accounts.sent_mailbox`, read by
+`create_mailbox`. **A declaration that precedes its object is carried
+by the parent, not by call order.**
 
-La passe d'en-têtes empruntait l'horizon de 12 mois du rattrapage des
-corps — une borne qui existait pour le **budget disque**, alors qu'un
-bloc d'en-têtes pèse ~3 ko et ne se range pas sur le disque. Reprise
-parce que la fonction avait la même *forme*, pas la même *raison*. Le
-diagnostic l'a montrée convergée à 1 656/1 656 avec 78 % de la base
-définitivement hors de portée. **Quand on hérite d'un paramètre,
-réexaminer sa raison d'être.**
+### A diagnostic written for one scenery is re-read in the next scenery
 
-### Une portée déclarée avant la création de son objet se mémorise sur le parent
+On the full database, "never read: 250 864" mixed real backlog with
+the deliberately-ignored out-of-scope — a figure that no longer
+points to anything makes the diagnostic get rerun for nothing. Broken
+down by scope the same day. **When the scenery changes (ADR), re-read
+every diagnostic through the eyes of the new scenery.**
 
-La boucle de synchronisation **crée** la boîte « Envoyés » : au moment de
-déclarer la portée du regroupement, il n'y a aucune ligne à mettre à
-jour, et la boîte naîtrait hors portée — messages sans fil jusqu'au
-prochain démarrage, sans signal. D'où `accounts.sent_mailbox`, consulté
-par `create_mailbox`. **Une déclaration qui précède son objet se porte
-par le parent, pas par l'ordre des appels.**
+### A new feature must ADOPT old data
 
-### Un diagnostic écrit pour un décor se relit dans le décor suivant
+The trap showed up **four times**: attachments, conversations, thread
+headers, schema. `CREATE TABLE IF NOT EXISTS` does not touch an
+existing table, but a new partial index fails on a missing column —
+and the app stopped starting. **Write the migration together with the
+feature, prove it with a test that rewinds a real file database.**
+(The ADR 0010 migrations — three columns — followed this rule and
+passed silently on both the real database AND the gate 3 databases.)
 
-Sur la base intégrale, « jamais lus : 250 864 » mélangeait l'attente
-réelle et le hors-portée délibérément ignoré — un chiffre qui ne désigne
-plus rien fait relancer le diagnostic pour rien. Ventilé par portée le
-jour même. **Quand le décor change (ADR), relire chaque diagnostic avec
-les yeux du nouveau décor.**
+**Recurrence (2026-09-02, PLAN-AUDIT-V2 STOP 2)**: the `reply_to`
+column placed in the `CREATE TABLE` without its line in
+`add_missing_columns` — six green gates, the e2e scenery freshly
+seeded, and on the real database every watcher pass failing. Rule:
+**one new column = three lines** — the `CREATE TABLE`, the list of
+migrated columns, and a REOPEN test on a file database that has had
+the column removed (`une_base_d_avant_la_vague_2_…`).
 
-### Une fonctionnalité neuve doit ADOPTER les données anciennes
+### Measure before fixing — including your own assumptions
 
-Le piège s'est présenté **quatre fois** : pièces jointes, conversations,
-en-têtes de fil, schéma. `CREATE TABLE IF NOT EXISTS` ne touche pas une
-table existante, mais un index partiel neuf échoue sur une colonne
-absente — et l'application ne démarrait plus. **Écrire la migration avec
-la fonctionnalité, la prouver par un test qui rembobine une vraie base de
-fichier.** (Les migrations de l'ADR 0010 — trois colonnes — ont suivi
-cette règle et sont passées sans bruit sur la base réelle ET sur les
-bases du gate 3.)
+On the false grouping, three assumptions were wrong; the diagnostic
+pointed to the cause in one command. On adoption, the announced
+"dominant" cause accounted for only a quarter of the cost. Seven
+tools exist, same model — read-only, **no content disclosed**:
 
-**Récidive (2026-09-02, PLAN-AUDIT-V2 STOP 2)** : la colonne
-`reply_to` posée dans le `CREATE TABLE` sans sa ligne dans
-`add_missing_columns` — six gates vertes, les décors e2e semés à neuf,
-et sur la vraie base chaque passe du veilleur en échec. Règle : **une
-colonne neuve = trois lignes** — le `CREATE TABLE`, la liste des
-colonnes migrées, et un test de RÉOUVERTURE d'une base fichier à
-laquelle on a retiré la colonne (`une_base_d_avant_la_vague_2_…`).
-
-### Mesurer avant de corriger — y compris ses propres hypothèses
-
-Sur le faux regroupement, trois hypothèses étaient fausses ; le
-diagnostic a désigné la cause en une commande. Sur l'adoption, la cause
-« dominante » annoncée ne valait qu'un quart du coût. Sept outils
-existent, même modèle — lecture seule, **aucun contenu divulgué** :
-
-| Outil | Répond à |
+| Tool | Answers |
 |---|---|
-| `diagnostic_index` | les messages sont-ils dans l'index de recherche ? |
-| `diagnostic_fils` | quel identifiant réunit un fil ? (ventilé par portée depuis l'ADR 0010) |
-| `diagnostic_brouillons` | le tirage des brouillons fait-il son travail ? |
-| `banc_page_liste` | le coût d'une page dépend-il de la taille de la boîte ? |
-| `banc_migration_fils` | que coûte l'adoption d'une base héritée ? (copie `VACUUM INTO`, ne mute pas la base visée) |
-| `banc_recherche` | recherche et ouverture tiennent-elles leurs budgets ? |
-| `seed_inbox` | fabriquer un décor (les 500 plus récents reçoivent un corps) |
+| `diag_index` | are messages in the search index? |
+| `diag_threads` | what identifier joins a thread? (broken down by scope since ADR 0010) |
+| `diag_drafts` | does the draft pull do its job? |
+| `bench_list_page` | does a page's cost depend on mailbox size? |
+| `bench_thread_migration` | what does adopting a legacy database cost? (copies via `VACUUM INTO`, does not mutate the target database) |
+| `bench_search` | do search and opening hold their budgets? |
+| `seed_inbox` | build a scenery (the 500 most recent get a body) |
 
-En écrire un nouveau coûte 40 lignes et fait gagner un aller-retour.
+Writing a new one costs 40 lines and saves a round trip.
 
-### Un test vert peut encoder un modèle FAUX de l'autre écrivain
+### A green test can encode a FALSE model of the other writer
 
-La détection de conflit des brouillons simulait le tirage par une
-réécriture en place ; le vrai tirage **remplace**. **Simuler l'autre
-écrivain en appelant SON VRAI CHEMIN.** Même famille : un faux serveur
-doit annoncer exactement ce qu'il sert (`FakeServer::exists` et
-`message_count` renvoient le décor réel, jamais une constante).
+Draft conflict detection simulated the pull with an in-place
+rewrite; the real pull **replaces**. **Simulate the other writer by
+calling ITS REAL PATH.** Same family: a fake server must report
+exactly what it serves (`FakeServer::exists` and `message_count`
+return the real scenery, never a constant).
 
-### Une promesse d'index ne vaut que pour la requête qu'on avait en tête
+### An index's promise holds only for the query you had in mind
 
-L'ADR 0008 §4 raisonnait sur une boîte ; le produit interroge la boîte
-unifiée — 987 ms de tri matérialisé, invisibles à l'échelle du terrain.
-**Un test de PLAN D'EXÉCUTION attrape cette classe de régression.**
+ADR 0008 §4 reasoned about one mailbox; the product queries the
+unified mailbox — 987 ms of materialized sort, invisible at field
+scale. **A QUERY PLAN test catches this class of regression.**
 
-### Un décor de mesure peut ne jamais exercer ce qu'on croit valider
+### A measurement scenery can never exercise what you think it validates
 
-L'index partiel a vécu plusieurs jours sans qu'un fil soit jamais écarté :
-le décor n'avait qu'une boîte par compte. **Vérifier que le décor produit
-la condition que le code prétend traiter.** Corollaire vécu à l'ADR 0011 :
-tester le WAL sur une base MÉMOIRE aurait validé un modèle faux — elle
-répond « memory ».
+The partial index lived for several days without a single thread
+ever being excluded: the scenery had only one mailbox per account.
+**Check that the scenery produces the condition the code claims to
+handle.** Corollary from ADR 0011: testing WAL on an IN-MEMORY
+database would have validated a false model — it answers "memory".
 
-### Un test qui ne tourne pas n'est pas un test
+### A test that does not run is not a test
 
-`cargo test --workspace` ignore les tests des exemples — d'où
-`--all-targets` dans le gate (§7.4).
+`cargo test --workspace` ignores example tests — hence
+`--all-targets` in the gate (§7.4).
 
-### Le compilateur ne protège pas une identité faite de chaînes
+### The compiler does not protect an identity made of strings
 
-`account_id` et `mailbox_id` sont des `i64`, une boîte est une `String`.
-Après un changement de signature, le code compilait en visant le mauvais
-message. Tenir l'invariant par un test.
+`account_id` and `mailbox_id` are `i64`, a mailbox is a `String`.
+After a signature change, the code compiled while targeting the
+wrong message. Hold the invariant with a test.
 
-### Un signal demandé doit être OBSERVABLE
+### A requested signal must be OBSERVABLE
 
-Vérifier dans le code que chaque signal demandé en validation est
-réellement affiché — et pas écrasé une ligne plus loin. Cas d'école : une
-barre d'avancement ne doit jamais dire « 0 % » quand elle ne sait pas, ni
-« 100 % » tant que ce n'est pas fini (`sync_percent`, cas dégénérés
-testés).
+Check in the code that every signal requested during validation is
+actually displayed — and not overwritten one line later. Textbook
+case: a progress bar must never say "0%" when it does not know, nor
+"100%" until it is actually done (`sync_percent`, degenerate cases
+tested).
 
-### Un statut posé sans regarder en efface un autre
+### A status set without looking erases another
 
-Trois fois. Quand une fonction pose un message d'état, l'appelant décide
-du sien à partir de son bilan. (C'est pourquoi l'avancement de la synchro
-a son bandeau, séparé de la ligne de statut.)
+Three times. When a function sets a status message, the caller
+decides its own from its own outcome. (That's why sync progress has
+its own banner, separate from the status line.)
 
-### Ne jamais avaler une erreur
+### Never swallow an error
 
-`let _ = …show()` a détruit la preuve d'un défaut de notifications. Les
-échecs non bloquants remontent dans le bilan de synchro — la
-synchronisation intégrale consigne l'échec de CHAQUE dossier sans jamais
-bloquer les autres, et la garde d'espace disque **dit combien** il manque
-plutôt que « espace insuffisant ».
+`let _ = …show()` destroyed the proof of a notification defect.
+Non-blocking failures surface in the sync outcome — full sync logs
+the failure of EACH folder without ever blocking the others, and the
+disk-space guard **says how much** is missing rather than
+"insufficient space".
 
-### Un outil de mesure se vérifie comme le reste
+### A measurement tool is checked like everything else
 
-`measure-ram.ps1` sommait toutes les instances ; `measure-v2.mjs` n'isolait pas
-son profil ; un diagnostic divulguait des identifiants en découpant un
-en-tête entier sur son premier `@`. Corrigés — le réflexe reste.
+`measure-ram.ps1` summed every instance; `measure-v2.mjs` did not
+isolate its profile; a diagnostic disclosed identifiers by splitting
+a whole header on its first `@`. Fixed — the reflex remains.
 
-### Un élément « caché » peut rester rendu — et voler le focus
+### A "hidden" element can stay rendered — and steal focus
 
-`#detail { display: flex }` écrasait le `[hidden]` du navigateur
-(spécificité d'un ID contre la feuille par défaut) : le panneau de
-lecture était rendu en permanence, son iframe sandboxée couvrait la
-moitié de la fenêtre, et le premier clic y perdait le clavier — les
-raccourcis morts tant qu'on ne cliquait pas ailleurs. **Invisible aux
-E2E**, qui injectent leurs touches par CDP sans passer par le focus de
-la fenêtre Windows ; trouvé par le Chef Ingénieur pendant la validation
-terrain d'un AUTRE chantier (ADR 0012). Deux leçons : toute règle d'ID
-posant un `display` exige son garde-fou `#id[hidden]` (la classe entière
-a été passée au crible) ; et les premiers gestes d'une session — cliquer
-n'importe où, `/` d'emblée — sont un parcours terrain à part entière.
+`#detail { display: flex }` overrode the browser's `[hidden]` (an
+ID's specificity beats the default stylesheet): the reading pane
+stayed rendered at all times, its sandboxed iframe covered half the
+window, and the first click into it lost the keyboard — shortcuts
+dead until you clicked elsewhere. **Invisible to E2E**, which injects
+its keystrokes over CDP without going through the Windows window's
+focus; found by the Chief Engineer during the field validation of
+ANOTHER job (ADR 0012). Two lessons: every ID rule that sets a
+`display` needs its `#id[hidden]` safeguard (the whole class was
+combed through); and a session's first gestures — clicking anywhere,
+`/` right away — are a field pass of their own.
 
-### Valider un écran rapide exige le décor qui le ralentit
+### Validating a fast screen requires the scenery that slows it down
 
-Sur la boîte réelle, l'écran de migration vit moins d'une seconde : la
-portée à adopter (~7 500 messages) est 30× plus petite que le décor du
-gate 3. L'annulation en pleine passe ne s'exerce que sur `gate3.db`
-rembobinée (`user_version = 0`), où la barre monte ~4 s. **Choisir le
-décor pour la propriété qu'on valide, pas pour son réalisme.**
+On the real mailbox, the migration screen lasts under a second: the
+scope to adopt (~7 500 messages) is 30× smaller than the gate 3
+scenery. Cancelling mid-pass is only exercised on a rewound
+`gate3.db` (`user_version = 0`), where the bar takes ~4 s to climb.
+**Choose the scenery for the property you are validating, not for its
+realism.**
 
-### La chaîne de publication a ses propres hypothèses fausses
+### The release chain has its own false assumptions
 
-La validation de l'updater (ADR 0013) a payé deux pièges, aucun dans le
-code Rust — tous dans l'**outillage de publication**. Un `latest.json`
-écrit à la main s'est corrompu (collage PowerShell multi-ligne, puis
-risque de BOM que `serde_json` refuse). Et l'URL du paquet pointait
-`releases/download/v0.1.2/…` alors que le tag GitHub est la **version
-nue** (`0.1.2`) : le bandeau apparaissait — la détection marchait — mais
-l'installation renvoyait 404. **Le chemin entre `cargo tauri build` et
-l'app de l'utilisateur est du terrain lui aussi ; il se diagnostique en
-regardant les vrais assets publiés (API GitHub), pas en supposant.** Les
-deux sont désormais tenus par `scripts/make-release.ps1`.
+Updater validation (ADR 0013) paid for two traps, neither in the
+Rust code — both in the **release tooling**. A hand-written
+`latest.json` got corrupted (multi-line PowerShell paste, then a BOM
+risk that `serde_json` rejects). And the package URL pointed to
+`releases/download/v0.1.2/…` while the GitHub tag is the **bare
+version** (`0.1.2`): the banner appeared — detection worked — but the
+install returned 404. **The path between `cargo tauri build` and the
+user's app is field territory too; it is diagnosed by looking at the
+actually published assets (GitHub API), not by assuming.** Both are
+now held by `scripts/make-release.ps1`.
 
-Un troisième piège, même famille (constat CE du 2026-08-22) : les **notes
-de release sont parties en mojibake** (« Ã© » pour « é ») sur neuf
-versions (0.1.10 à 0.6.0). Racine : le script lisait le CHANGELOG UTF-8
-par `Get-Content -Raw` **sans `-Encoding UTF8`** ; invoqué par
-`powershell` (Windows PowerShell 5.1, encodage par défaut cp1252), il
-décodait l'UTF-8 en Latin-1, puis `WriteAllText` le ré-encodait en
-UTF-8 — double encodage. Le code Rust est hors de cause, encore : le
-corps de l'app était propre, seules les notes de la Release GitHub
-étaient touchées — invisibles à la gate, visibles au terrain (ici sur
-la page des Releases). Remède à la racine : `-Encoding UTF8` sur les
-trois lectures de fichiers UTF-8 du script (dont `tauri.conf.json`,
-même piège latent dès qu'un accent y entrerait) ; les neuf Releases
-réparées à la main depuis les sections propres du CHANGELOG, via
-`gh release edit --notes-file` par un chemin qui ne ré-encode pas.
-**Un script de publication qui lit de l'UTF-8 sous PowerShell 5.1 doit
-le dire — le défaut de la coquille n'est pas l'UTF-8.**
+A third trap, same family (CE finding on 2026-08-22): the **release
+notes came out as mojibake** ("Ã©" for "é") on nine versions (0.1.10
+to 0.6.0). Root cause: the script read the UTF-8 CHANGELOG with
+`Get-Content -Raw` **without `-Encoding UTF8`**; invoked by
+`powershell` (Windows PowerShell 5.1, default encoding cp1252), it
+decoded the UTF-8 as Latin-1, then `WriteAllText` re-encoded it as
+UTF-8 — double encoding. The Rust code is off the hook, again: the
+app's body was clean, only the GitHub Release notes were affected —
+invisible to the gate, visible in the field (here on the Releases
+page). Root fix: `-Encoding UTF8` on the script's three UTF-8 file
+reads (including `tauri.conf.json`, the same latent trap the moment
+an accent enters it); the nine Releases repaired by hand from the
+clean sections of the CHANGELOG, via `gh release edit --notes-file`
+through a path that does not re-encode. **A publishing script that
+reads UTF-8 under PowerShell 5.1 must say so — the shell's default is
+not UTF-8.**
 
-### Le thread d'une commande est une décision, pas un détail
+### A command's thread is a decision, not a detail
 
-Dans Tauri 2, une commande sans `async` s'exécute sur le thread
-principal — la pompe de messages. Trente-quatre commandes ouvraient la
-base depuis ce thread ; tout allait bien tant qu'elles restaient sous
-~100 ms, puis un lot de rattrapage de 130 Mo a gelé la fenêtre 4,6 s
-d'un tenant (constat CE du 2026-08-15 : « la fenêtre ne peut pas être
-déplacée »). Le coût des requêtes n'était pas la racine — leur PLACE
-l'était : 865 ms sont acceptables sur un thread de fond, inacceptables
-sur la pompe. Remède à la racine : toute commande bloquante est
-`async`, une gate le tient (exemption nommée et justifiée pour les
-pures d'état), et le symptôme a son instrument — `freeze-probe.py` mesure
-la pompe comme Windows la juge (`SendMessageTimeout`). Avant/après sur
-le même décor : 25,2 s de gels cumulés → zéro.
+In Tauri 2, a command without `async` runs on the main thread — the
+message pump. Thirty-four commands opened the database from this
+thread; all was fine as long as they stayed under ~100 ms, then a
+130 MB backfill batch froze the window for 4,6 s straight (CE finding
+on 2026-08-15: "the window cannot be moved"). The cost of the queries
+was not the root cause — their PLACE was: 865 ms is acceptable on a
+background thread, unacceptable on the pump. Root fix: every blocking
+command is `async`, a gate holds it (a named and justified exemption
+for pure state reads), and the symptom has its own instrument —
+`freeze-probe.py` measures the pump the way Windows judges it
+(`SendMessageTimeout`). Before/after on the same scenery: 25,2 s of
+cumulative freezes → zero.
 
-### Un panic sur le thread principal fait DEUX panics
+### A panic on the main thread makes TWO panics
 
-La capture de crash (ADR 0014) s'est prouvée juste en test, mais le
-terrain a montré un comportement qu'aucun test unitaire ne voyait : un
-panic sur le thread principal tente de se dérouler, traverse la frontière
-FFI de WebView2 (nounwind), et déclenche un SECOND panic `cannot unwind`
-qui aborte. Le hook s'exécute pour les deux, dans la même seconde — le
-second écrasait le premier (le seul utile). Corrigé par un compteur dans
-le nom de fichier et un filtre du panic secondaire. **Le comportement de
-l'environnement au moment d'un crash ne se voit qu'en crashant pour de
-vrai.**
+Crash capture (ADR 0014) proved itself right in tests, but the field
+showed a behavior no unit test could see: a panic on the main thread
+tries to unwind, crosses the WebView2 FFI boundary (nounwind), and
+triggers a SECOND panic `cannot unwind` that aborts. The hook runs
+for both, in the same second — the second overwrote the first (the
+only useful one). Fixed with a counter in the filename and a filter
+on the secondary panic. **The environment's behavior at the moment of
+a crash is only seen by actually crashing.**
 
-### Une bibliothèque tierce livre ce qu'elle livre, pas ce qu'on suppose
+### A third-party library delivers what it delivers, not what you assume
 
-PLAN-RETOURS-MAIL a payé deux hypothèses fausses sur des bibliothèques,
-et une capture terrain a tranché la troisième. `imap-proto` retire les
-guillemets d'une `quoted-string` IMAP mais **laisse les backslash-escapes
-dans le contenu** (`\"`, `\\`) — prouvé par ses propres tests ; nos
-objets à guillemets s'affichaient parasités. `ammonia`, lui, retire une
-balise interdite mais **déballe son texte** par défaut (hors
-`clean_content_tags`) : le `<head><title>` d'une infolettre fuyait en
-tête de corps. Aucune des deux ne se devine — elles se **lisent dans la
-source de la crate** (ou son comportement mesuré). Et sur le doublon
-d'objet, mes deux premières hypothèses (le `<h1>` du corps, le préheader
-démasqué) étaient fausses : c'est la **capture Gmail-vs-Wind du CE** qui
-a désigné le vrai coupable, le `<title>`. **Quand un rendu diffère d'un
-client de référence, la capture comparée vaut dix hypothèses.**
+PLAN-RETOURS-MAIL paid for two false assumptions about libraries, and
+a field capture settled the third. `imap-proto` strips the quotes
+from an IMAP `quoted-string` but **leaves the backslash escapes in
+the content** (`\"`, `\\`) — proven by its own tests; our quoted
+subjects showed up polluted. `ammonia`, for its part, strips a
+forbidden tag but **unwraps its text** by default (outside
+`clean_content_tags`): a newsletter's `<head><title>` leaked at the
+top of the body. Neither is guessable — you **read them in the
+crate's source** (or its measured behavior). And on the duplicate-
+subject case, my first two hypotheses (the body's `<h1>`, the
+unmasked preheader) were wrong: it was the **CE's Gmail-vs-Wind
+capture** that named the real culprit, the `<title>`. **When a render
+differs from a reference client, a side-by-side capture is worth ten
+hypotheses.**
 
-### Un correctif de décodage ne répare pas les données déjà décodées
+### A decoding fix does not repair data already decoded
 
-Le dé-échappement neuf ne nettoyait que les enveloppes NEUVES ; les
-objets déjà en base gardaient leurs escapes (la synchro incrémentale ne
-relit pas l'existant). Comme pour les aperçus (D-5) et les fils, **un
-changement de décodage exige une passe sur l'existant** — ici une
-migration qui dé-échappe la valeur stockée (équivalente au nouveau
-décodage : le contenu est déjà RFC 2047-décodé, seule reste la couche
-d'escape IMAP). Le réflexe des quatre pièges d'adoption (§6.7), sous une
-autre forme.
+The new unescaping only cleaned NEW envelopes; subjects already in
+the database kept their escapes (incremental sync does not re-read
+existing rows). As with previews (D-5) and threads, **a decoding
+change requires a pass over what already exists** — here a migration
+that unescapes the stored value (equivalent to the new decoding: the
+content is already RFC 2047-decoded, only the IMAP escape layer
+remains). The reflex of the four adoption traps (§6.7), in another
+form.
 
+### A disk I/O measurement is only valid cold
 
-### Une mesure d'I/O disque ne vaut qu'à froid
+Measuring a disk-bound reconstruction or migration on a freshly
+written copy (`Copy-Item`) is a lie: the copy leaves its pages in the
+RAM cache, so the re-read is served from memory. Measured fact
+(PLAN-RECHERCHE, 2026-08-17): FTS5 rebuild on 7 Go / 130 k bodies —
+**0,7 s** on a fresh copy, **~4 min** cold in the field, a **×340**
+gap (announced as "×5-10 at worst"). The dominant cost is not the
+computation but **re-reading the bodies** from disk — invisible on a
+warm cache. Product corollary: any FTS5 schema change forces a
+rebuild that re-reads the bodies; on a supplied database, take it out
+of the startup path (ADR 0012 modal, detected by `pending_adoption`).
+**Never conclude "budget held" from a lab measurement when the real
+path is disk-bound.**
 
-Mesurer une reconstruction ou une migration **liée au disque** sur une
-copie fraîchement écrite (`Copy-Item`) est un mensonge : la copie
-laisse ses pages en cache RAM, la relecture est servie par la mémoire.
-Fait mesuré (PLAN-RECHERCHE, 2026-08-17) : reconstruction FTS5 sur
-7 Go / 130 k corps — **0,7 s** sur copie fraîche, **~4 min** à froid au
-terrain, écart **×340** (annoncé « ×5-10 au pire »). Le coût dominant
-n'est pas le calcul mais la **relecture des corps** depuis le disque —
-invisible sur cache chaud. Corollaire produit : tout changement de
-schéma FTS5 force une reconstruction qui relit les corps ; sur une
-base fournie, la sortir du chemin de démarrage (modale ADR 0012,
-`pending_adoption` la détecte). **Ne jamais conclure « budget tenu »
-sur une mesure de labo quand le chemin réel est lié au disque.**
+### A contenteditable is neither an input nor a textarea — three traps paid for
 
-### Un contenteditable n'est ni un input ni un textarea — trois pièges payés
+Paid for the same day (PLAN-COMPOSITION-HTML, e2e on 2026-08-20):
 
-Payés le même jour (PLAN-COMPOSITION-HTML, e2e du 2026-08-20) :
-
-1. **Playwright `fill('')` est un no-op** dessus — `insertText` d'une
-   chaîne vide ne supprime pas la sélection dans Chromium. Vider comme
-   l'utilisateur : Ctrl+A puis Suppr. Et `fill(texte)` écrit dans
-   l'élément **focalisé** au moment de l'insertion (pas atomique comme
-   sur un input) : toute pré-mise au point programmée du focus peut
-   détourner la frappe vers un autre champ — la garde « un focus déjà
-   posé prime » est produit, pas test.
-2. **Les routeurs clavier ne le voient pas** : un garde
-   `instanceof HTMLInputElement || HTMLTextAreaElement` laisse ses
-   touches fuir vers les raccourcis globaux (Suppr supprimait la
-   conversation pendant la frappe). Ajouter `isContentEditable` à toute
-   détection de saisie.
-3. **Sa re-sérialisation n'est jamais fidèle** : relire `innerHTML`
-   d'un contenu qu'on vient d'y poser rend des styles et entités
-   normalisés — toute détection « contenu identique » qui compare au
-   stocké se déclenche à tort (churn). Sans frappe de l'utilisateur,
-   ré-émettre les valeurs stockées, jamais le DOM.
+1. **Playwright's `fill('')` is a no-op** on it — an empty-string
+   `insertText` does not clear the selection in Chromium. Clear it
+   the way a user would: Ctrl+A then Delete. And `fill(text)` writes
+   into whichever element is **focused** at the moment of insertion
+   (not atomic like on an input): any programmed focus
+   pre-positioning can hijack the keystrokes into another field — the
+   guard "a focus already set wins" is product, not test.
+2. **Keyboard routers do not see it**: a guard of `instanceof
+   HTMLInputElement || HTMLTextAreaElement` lets its keystrokes leak
+   into global shortcuts (Delete deleted the conversation while
+   typing). Add `isContentEditable` to every input-detection check.
+3. **Its re-serialization is never faithful**: reading back the
+   `innerHTML` of content you just placed there returns normalized
+   styles and entities — any "identical content" check that compares
+   against the stored value fires wrongly (churn). Absent user
+   keystrokes, re-emit the stored values, never the DOM.
 
 ---
 
-### Un remède de l'audit entre sur une mesure, pas sur son évidence
+### An audit remedy is admitted on a measurement, not on its apparent obviousness
 
-Deux remèdes de l'audit du 2026-09-01 semblaient évidents et ont été
-REFUSÉS une fois mesurés : le « COUNT par frappe » de la recherche
-valait 1,5 ms sur 57 (le coût est la page triée par date — la borne
-proposée gagnait 1 ms), et `withGlobalTauri: false` ne protégeait rien
-(`__TAURI_INTERNALS__.invoke` reste injecté dans toute fenêtre — la CSP
-est la frontière). À l'inverse, la variance d'un verdict du Nettoyage
-(35 à 580 ms pour les mêmes 40 messages) n'était pas un scan à indexer
-mais la fusion de segments FTS5 à la suppression. **Chaque lot porte sa
-mesure avant/après ; une mesure qui ne bouge pas retire le remède**
-(PLAN-AUDIT-V2 E2, E4, E8).
+Two remedies from the 2026-09-01 audit seemed obvious and were
+REJECTED once measured: search's "COUNT per keystroke" was worth
+1,5 ms out of 57 (the cost is the date-sorted page — the proposed
+bound saved 1 ms), and `withGlobalTauri: false` protected nothing
+(`__TAURI_INTERNALS__.invoke` is still injected into every window —
+the CSP is the boundary). Conversely, the variance of a Cleanup
+verdict (35 to 580 ms for the same 40 messages) was not a scan
+needing an index but FTS5 segment merging on delete. **Every batch
+carries its own before/after measurement; a measurement that does not
+move withdraws the remedy** (PLAN-AUDIT-V2 E2, E4, E8).
 
-### Un clic d'ouverture atteint l'écouteur que son propre effet vient de poser
+### An opening click reaches the listener its own effect just set
 
-Un menu qui pose un écouteur `click` sur la fenêtre dans un `$effect`
-le pose PENDANT la propagation du clic qui l'a ouvert (l'effet court à
-la micro-tâche, avant que le clic n'atteigne `window`) : le menu se
-ferme à l'instant. Le `stopPropagation` de la Liste le masquait, le
-Kiosque et le fil ne l'avaient pas. Différer l'armement d'une
-macro-tâche fait rater la frappe suivante (race avec Playwright) ;
-la règle qui tient : **un clic sur le déclencheur n'est jamais
-« dehors »** (PLAN-AUDIT-V2 E11, `Menu.svelte`).
+A menu that sets a `click` listener on the window inside a `$effect`
+sets it WHILE the click that opened it is still propagating (the
+effect runs at microtask time, before the click reaches `window`):
+the menu closes instantly. The List's `stopPropagation` masked it;
+the Feed and the thread did not have one. Deferring the arming to a
+macrotask misses the next keystroke (a race with Playwright); the
+rule that holds: **a click on the trigger is never "outside"**
+(PLAN-AUDIT-V2 E11, `Menu.svelte`).
 
-### Une correction de revue est un incrément comme un autre
+### A review fix is an increment like any other
 
-À PLAN-AUDIT-V2, la revue à regard neuf a remplacé une recherche de
-`</div>` par un comptage des blocs imbriqués — validé par un test
-unitaire en ASCII et par les seules specs « flaky » rejouées. La
-gate finale est sortie rouge : le corps réel disait « transféré », la
-boucle avançait octet par octet avec `str[i..]`, l'index tombait dans
-un « é » et la fonction PANIQUAIT. Deux règles en une :
+At PLAN-AUDIT-V2, the fresh-eyes review replaced a `</div>` search
+with a count of nested blocks — validated by an ASCII unit test and
+by only the "flaky" specs replayed. The final gate came back red: the
+real body said "transféré", the loop advanced byte by byte with
+`str[i..]`, the index landed inside an "é", and the function
+PANICKED. Two rules in one:
 
-- **On avance sur des octets (`as_bytes()`), jamais sur une `str`
-  indexée octet par octet** — `body.rs` avance par caractère, c'est la
-  seule autre forme admise. Un test de chaîne sans accent ne prouve
-  rien sur un chemin qui verra du français.
-- **Une décision pure appelée depuis une commande async tourne sous
-  `hors_pompe`** : `spawn_blocking` rapporte une panique comme une
-  erreur dite ; nue dans la tâche, elle laisse l'invoke sans réponse et
-  l'UI figée sans un mot — ni toast, ni trace, ni test qui le nomme.
+- **Advance over bytes (`as_bytes()`), never over a `str` indexed
+  byte by byte** — `body.rs` advances by character, which is the only
+  other admitted form. A test string with no accents proves nothing
+  about a path that will see French.
+- **A pure decision called from an async command runs under
+  `hors_pompe`**: `spawn_blocking` reports a panic as a stated error;
+  bare in the task, it leaves the invoke without a response and the
+  UI frozen without a word — no toast, no trace, no test that names
+  it.
 
-Et la règle de méthode : une correction de revue rejoue la spec du
-chemin qu'elle touche, pas seulement les specs qu'on surveillait.
+And the method rule: a review fix replays the spec of the path it
+touches, not just the specs being watched.
 
-## 10. Carte des fichiers
+## 10. File map
 
-| Fichier | Rôle |
+| File | Role |
 |---|---|
-| [`docs/ETAT.md`](ETAT.md) | L'instantané de relève — état courant, réécrit à chaque chantier |
-| [`docs/PLAN.md`](PLAN.md) | Concept paper — source de vérité produit |
-| [`docs/adr/`](adr/) | Les 15 décisions gelées |
-| [`docs/archives/`](archives/) | Plans soldés et revues de clôture des phases |
-| [`crates/mail-core/src/store.rs`](../crates/mail-core/src/store.rs) | Stockage SQLite (WAL), schéma, migrations, boîte unifiée, portée du regroupement |
-| [`crates/mail-core/src/sync.rs`](../crates/mail-core/src/sync.rs) | Moteur de synchro + `sync_order`, `sync_percent`, `disk_shortfall` |
-| [`crates/mail-core/src/thread.rs`](../crates/mail-core/src/thread.rs) | Conversations : union-find pur + persistance, portée compte |
-| [`crates/mail-core/src/drafts.rs`](../crates/mail-core/src/drafts.rs) | Brouillons : poussée, tirage, conflit d'édition |
-| [`crates/mail-core/src/outbox.rs`](../crates/mail-core/src/outbox.rs) | Boîte d'envoi + règles d'or |
-| [`crates/mail-core/src/search.rs`](../crates/mail-core/src/search.rs) | Index FTS5 contentless, transactionnel |
-| [`crates/mail-core/src/backfill.rs`](../crates/mail-core/src/backfill.rs) | Rattrapage des corps ET passe d'en-têtes — `NO_HORIZON` depuis l'ADR 0010 |
-| [`crates/mail-core/src/test_support.rs`](../crates/mail-core/src/test_support.rs) | `FakeServer` — rejoue les bizarreries du terrain |
-| [`crates/mail-core/examples/`](../crates/mail-core/examples/) | 3 diagnostics + 3 bancs + `seed_inbox` |
-| [`crates/mail-imap/src/convert.rs`](../crates/mail-imap/src/convert.rs) | Traduction IMAP → domaine ; découverte archive et envois ; extraction calendrier (`extract_ics`) |
-| [`crates/mail-ical/src/lib.rs`](../crates/mail-ical/src/lib.rs) | Invitations iCalendar/iTIP : parseur + générateur REPLY, pur (ADR 0024) — corpus des spikes en tests |
-| [`crates/mail-auth/src/provider.rs`](../crates/mail-auth/src/provider.rs) | Fournisseurs OAuth décrits **en données** |
-| [`apps/desktop/src/commands.rs`](../apps/desktop/src/commands.rs) | Commandes Tauri (IPC), boucle toutes-boîtes, garde disque, avancement |
-| [`apps/desktop/ui-v2/src/App.svelte`](../apps/desktop/ui-v2/src/App.svelte) | L'UI (Svelte 5, seule depuis B2/PLAN-RETRAIT-V1) : écrans 01-04, fente d'avis, cycle de synchro automatique |
-| [`e2e/README.md`](../e2e/README.md) | Harnais E2E déterministe (CDP) |
-| [`scripts/make-release.ps1`](../scripts/make-release.ps1) | **Toute** la release (ADR 0013, bi-arch ADR 0023) : bump, deux builds signés arm64 + x64 (tout-ou-rien), `latest.json` deux plateformes sans BOM, commit + push + Release Latest au tag nu |
-| [`scripts/verify-release.ps1`](../scripts/verify-release.ps1) | La vérification §2.10 scriptée — 5 assets nommés, BOM, deux clés de plateforme, signatures == `.sig` et distinctes, URL qui résolvent |
-| [`crates/mail-core/src/crash.rs`](../crates/mail-core/src/crash.rs) | Rédaction PURE d'un rapport de crash — écarte le message (PII) (ADR 0014) |
-| [`apps/desktop/src/telemetry.rs`](../apps/desktop/src/telemetry.rs) | Panic hook, consentement en fichier, écriture locale du rapport (ADR 0014) |
-| [`spikes/ui-socle-v2/`](../spikes/ui-socle-v2/RAPPORT.md) | Spike de départage du socle UI v2 — preuve de l'ADR 0015, **jetable** |
+| [`docs/ETAT.md`](ETAT.md) | The handoff snapshot — current state, rewritten with every job |
+| [`docs/PLAN.md`](PLAN.md) | Concept paper — product source of truth |
+| [`docs/adr/`](adr/) | The 15 frozen decisions |
+| [`docs/archives/`](archives/) | Closed-out plans and phase closing reviews |
+| [`crates/mail-core/src/store.rs`](../crates/mail-core/src/store.rs) | SQLite storage (WAL), schema, migrations, unified mailbox, grouping scope |
+| [`crates/mail-core/src/sync.rs`](../crates/mail-core/src/sync.rs) | Sync engine + `sync_order`, `sync_percent`, `disk_shortfall` |
+| [`crates/mail-core/src/thread.rs`](../crates/mail-core/src/thread.rs) | Conversations: pure union-find + persistence, account scope |
+| [`crates/mail-core/src/drafts.rs`](../crates/mail-core/src/drafts.rs) | Drafts: push, pull, edit conflict |
+| [`crates/mail-core/src/outbox.rs`](../crates/mail-core/src/outbox.rs) | Outbox + golden rules |
+| [`crates/mail-core/src/search.rs`](../crates/mail-core/src/search.rs) | Contentless, transactional FTS5 index |
+| [`crates/mail-core/src/backfill.rs`](../crates/mail-core/src/backfill.rs) | Body backfill AND header pass — `NO_HORIZON` since ADR 0010 |
+| [`crates/mail-core/src/test_support.rs`](../crates/mail-core/src/test_support.rs) | `FakeServer` — replays field oddities |
+| [`crates/mail-core/examples/`](../crates/mail-core/examples/) | 3 diagnostics + 3 benchmarks + `seed_inbox` |
+| [`crates/mail-imap/src/convert.rs`](../crates/mail-imap/src/convert.rs) | IMAP → domain translation; archive and sent discovery; calendar extraction (`extract_ics`) |
+| [`crates/mail-ical/src/lib.rs`](../crates/mail-ical/src/lib.rs) | iCalendar/iTIP invitations: parser + REPLY generator, pure (ADR 0024) — spike corpus as tests |
+| [`crates/mail-auth/src/provider.rs`](../crates/mail-auth/src/provider.rs) | OAuth providers described **as data** |
+| [`apps/desktop/src/commands.rs`](../apps/desktop/src/commands.rs) | Tauri commands (IPC), all-mailboxes loop, disk guard, progress |
+| [`apps/desktop/ui-v2/src/App.svelte`](../apps/desktop/ui-v2/src/App.svelte) | The UI (Svelte 5, sole framework since B2/PLAN-RETRAIT-V1): screens 01-04, notice slot, automatic sync cycle |
+| [`e2e/README.md`](../e2e/README.md) | Deterministic E2E harness (CDP) |
+| [`scripts/make-release.ps1`](../scripts/make-release.ps1) | **All** of the release (ADR 0013, dual-arch ADR 0023): bump, two signed builds arm64 + x64 (all-or-nothing), two-platform BOM-free `latest.json`, commit + push + Latest Release at the bare tag |
+| [`scripts/verify-release.ps1`](../scripts/verify-release.ps1) | The §2.10 verification, scripted — 5 named assets, BOM, two platform keys, signatures == `.sig` and distinct, URLs that resolve |
+| [`crates/mail-core/src/crash.rs`](../crates/mail-core/src/crash.rs) | PURE redaction of a crash report — discards the message (PII) (ADR 0014) |
+| [`apps/desktop/src/telemetry.rs`](../apps/desktop/src/telemetry.rs) | Panic hook, file-based consent, local report write (ADR 0014) |
+| [`spikes/ui-socle-v2/`](../spikes/ui-socle-v2/RAPPORT.md) | Tie-breaking spike for the UI v2 foundation — evidence for ADR 0015, **throwaway** |
 
 ---
 
-*Vos mails, instantanément. La performance et la fiabilité ne sont pas des
-options — ce sont les fonctionnalités.*
+*Your mail, instantly. Performance and reliability are not options —
+they are the features.*
