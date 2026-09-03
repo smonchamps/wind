@@ -141,7 +141,7 @@ try {
   console.log(`bruit de fond : ${bruitParSeconde.toFixed(1)} appel(s)/s hors défilement`);
 
   // --- Archives, puis le drag ----------------------------------------
-  await page.locator('[data-testid="nav-dossier"][data-categorie="archives"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="archive"]').click();
   await page.locator('[data-testid="ligne"]').first().waitFor({ timeout: 30000 });
   // Le total est asynchrone (les lignes d'abord, le comptage au repos) :
   // le drag vise 1/3 de la VRAIE hauteur, pas du plancher provisoire.
@@ -171,11 +171,11 @@ try {
     if (!bascule && Date.now() - finDrag > 5000) {
       bascule = true;
       console.log('--- bascule Réception ---');
-      await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+      await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
       await new Promise((resolve) => setTimeout(resolve, 1500));
       console.log('réception  :', JSON.stringify(await etatEcran()));
       console.log('--- retour Archives ---');
-      await page.locator('[data-testid="nav-dossier"][data-categorie="archives"]').click();
+      await page.locator('[data-testid="nav-dossier"][data-categorie="archive"]').click();
       await new Promise((resolve) => setTimeout(resolve, 1500));
       console.log('archives   :', JSON.stringify(await etatEcran()));
     }

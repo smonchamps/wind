@@ -179,7 +179,7 @@ test("R3 : « Important » se marque, suit le brouillon repris, et part au journ
   // La reprise restitue le marquage — l'état vit au brouillon. (Le
   // dossier Brouillons a SON testid : `ligne-brouillon`, pas `ligne`.)
   await page
-    .locator('[data-testid="nav-dossier"][data-categorie="brouillons"]')
+    .locator('[data-testid="nav-dossier"][data-categorie="drafts"]')
     .click();
   await page
     .locator('[data-testid="ligne-brouillon"]', { hasText: 'Marqué important' })

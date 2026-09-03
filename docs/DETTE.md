@@ -977,3 +977,14 @@ motivée.)
   par surface — un chantier, pas une retouche.
 - **Rouvre si** : un constat terrain « la liste ne bouge pas » sur un
   geste hors-Liste, ou au chantier multi-fenêtres/second poste.
+
+### D-56 · Shell-composed text stays French while the UI may be English
+
+Opened on 2026-09-03 (PLAN-BASCULE-ANGLAIS E5, CE decision D17). The size
+units of `human_size` (`o`, `Ko`, `Mo` — attachments, drafts, the outbox),
+the two native dialogs of `main.rs` (second instance, failed relocation)
+and the one shell error string a spec asserts are composed by the shell in
+French, marked `lang:fr`, whatever the UI language. The clean fix is a
+behavior change the switch refuses to embed (§5): send bytes on the wire
+and format in the UI per language; give the dialogs an English text when
+`prefs.lang` is `en`. A small dedicated job once the switch is closed.

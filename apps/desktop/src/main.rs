@@ -19,6 +19,7 @@ mod relocation;
 mod telemetry;
 mod trace;
 mod watcher;
+mod wire;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64};
@@ -44,18 +45,18 @@ pub(crate) struct MigrationShared {
 #[derive(Default)]
 pub(crate) struct SyncShared {
     pub in_progress: AtomicBool,
-    pub fait: AtomicU64,
+    pub done: AtomicU64,
     pub total: AtomicU64,
-    pub compte: Mutex<String>,
+    pub account: Mutex<String>,
     /// The mailbox currently being polled WITHIN the account — field
     /// finding of 2026-08-13: "2/2 · account" frozen for 7 minutes
     /// during the folder sweep, with no information at all. Empty
     /// between two mailboxes.
-    pub boite: Mutex<String>,
+    pub mailbox: Mutex<String>,
     /// The step with no mailbox (catalogue key on the UI side:
-    /// `inventaire`, `fils`, `brouillons`) — second field finding of
+    /// `inventory`, `threads`, `drafts`) — second field finding of
     /// 2026-08-13: "INBOX" covered four distinct phases, observation
-    /// was blind. Exclusive with `boite`; empty otherwise.
+    /// was blind. Exclusive with `mailbox`; empty otherwise.
     pub phase: Mutex<String>,
     /// INBOX mail already visible in the database WITHIN the current
     /// cycle (arrivals + removals, cumulated account after account) —
@@ -63,7 +64,7 @@ pub(crate) struct SyncShared {
     /// soon as an account's INBOX poll is settled, without waiting for
     /// the cycle to end. A polled counter, not a channel: the UI port
     /// stays R0-S5.
-    pub courrier: AtomicU64,
+    pub mail: AtomicU64,
     /// Mail generation, MONOTONIC and never reset (E4): bumped on
     /// every INBOX poll that brought in or removed mail — cycle,
     /// button, IDLE watcher alike. The UI reads it at the
@@ -125,7 +126,7 @@ pub(crate) struct AppState {
     pub watchers: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
     /// The network state reported by the UI (P0-bis): offline, the
     /// watchers sleep instead of reconnecting in a loop.
-    pub en_ligne: Arc<AtomicBool>,
+    pub online: Arc<AtomicBool>,
     /// Post-gesture passes in flight, per account (E3): one flight at
     /// a time, requests during the flight coalesce.
     pub gesture_passes: Arc<Mutex<HashMap<String, PassFlight>>>,
@@ -266,7 +267,7 @@ fn main() {
         // Online by default: the UI reports the real state on its
         // first render (P0-bis) — until then, better to try than to
         // sleep.
-        en_ligne: Arc::new(AtomicBool::new(true)),
+        online: Arc::new(AtomicBool::new(true)),
         gesture_passes: Arc::new(Mutex::new(HashMap::new())),
         commands: Arc::new(Mutex::new(())),
     };

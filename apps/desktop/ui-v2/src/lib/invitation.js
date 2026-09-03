@@ -25,7 +25,7 @@ function composantes(inv, quel) {
       flottante: false,
     };
   }
-  const texte = inv[`${quel}_texte`];
+  const texte = inv[`${quel}_text`];
   if (!texte) return null;
   const [date, heure] = texte.split('T');
   const [annee, mois, jour] = date.split('-').map(Number);
@@ -35,7 +35,7 @@ function composantes(inv, quel) {
 // La tuile de date : mois abrégé + quantième — le repère visuel de la
 // carte, dessiné en --tuile/--tuileInk (la paire de la boîte en cours).
 export function tuileInvitation(inv) {
-  const debut = composantes(inv, 'debut');
+  const debut = composantes(inv, 'start');
   if (!debut) return null;
   return { mois: t('quand.mois')[debut.mois], jour: String(debut.jour) };
 }
@@ -50,11 +50,11 @@ const memeJour = (a, b) =>
   b && a.annee === b.annee && a.mois === b.mois && a.jour === b.jour;
 
 export function quandInvitation(inv) {
-  const debut = composantes(inv, 'debut');
+  const debut = composantes(inv, 'start');
   if (!debut) return '';
-  const fin = composantes(inv, 'fin');
+  const fin = composantes(inv, 'end');
   let ligne;
-  if (inv.journee_entiere || !debut.heure) {
+  if (inv.all_day || !debut.heure) {
     ligne = dateLongue(debut);
   } else if (fin?.heure && memeJour(debut, fin) && debut.flottante === fin.flottante) {
     // La plage compacte exige des extrémités de MÊME résolution : mêler
@@ -74,8 +74,8 @@ export function quandInvitation(inv) {
 export function kickerInvitation(inv) {
   // L'annulation prime (lien croisé R6) : le REQUEST d'une réunion
   // annulée dit « Invitation annulée » comme le CANCEL lui-même.
-  if (inv.annulee) return t('inv.kickerAnnulee');
-  if (inv.methode === 'reply') return t('inv.kickerReponse');
+  if (inv.cancelled) return t('inv.kickerAnnulee');
+  if (inv.method === 'reply') return t('inv.kickerReponse');
   return t('inv.kicker');
 }
 
@@ -85,22 +85,22 @@ export function kickerInvitation(inv) {
 // porte la couleur (accent / neutre / alerte) — le texte double
 // toujours l'icône (A8).
 export const ICONES_REPONSE = {
-  accepte: 'check_circle',
-  provisoire: 'question_mark',
-  refuse: 'cancel',
+  accepted: 'check_circle',
+  tentative: 'question_mark',
+  declined: 'cancel',
 };
 
 // La puce du rang de liste (R11) : l'annulation prime, sinon la
 // réponse donnée. `null` = rien à dire (les gestes prennent la place).
 export function puceInvitation(badge) {
-  if (badge.annulee) {
-    return { texte: t('inv.puce_annulee'), icone: null, ton: 'annulee' };
+  if (badge.cancelled) {
+    return { texte: t('inv.puce_annulee'), icon: null, ton: 'annulee' };
   }
-  if (ICONES_REPONSE[badge.reponse]) {
+  if (ICONES_REPONSE[badge.reply]) {
     return {
-      texte: t(`inv.puce_${badge.reponse}`),
-      icone: ICONES_REPONSE[badge.reponse],
-      ton: badge.reponse,
+      texte: t(`inv.puce_${badge.reply}`),
+      icon: ICONES_REPONSE[badge.reply],
+      ton: badge.reply,
     };
   }
   return null;
@@ -109,26 +109,26 @@ export function puceInvitation(badge) {
 // Le statut d'une invitation à répondre — D6 : la vue porte déjà la
 // DERNIÈRE réponse partie de Wind, sinon le PARTSTAT lu du message.
 export function statutInvitation(inv) {
-  if (inv.methode !== 'request') return '';
-  return inv.statut && inv.statut !== 'sans_reponse'
-    ? t(`inv.vous_${inv.statut}`)
+  if (inv.method !== 'request') return '';
+  return inv.status && inv.status !== 'no_reply'
+    ? t(`inv.vous_${inv.status}`)
     : t('inv.sansReponse');
 }
 
 // « Sofia Nardi a accepté » — le REPLY reçu quand nous organisons.
 export function ligneRepondant(inv) {
-  if (inv.methode !== 'reply' || !inv.repondant) return '';
-  const statut = ['accepte', 'provisoire', 'refuse'].includes(inv.repondant_statut)
-    ? inv.repondant_statut
-    : 'sans_reponse';
-  return t(`inv.repondant_${statut}`, { qui: inv.repondant });
+  if (inv.method !== 'reply' || !inv.attendee) return '';
+  const status = ['accepted', 'tentative', 'declined'].includes(inv.attendee_status)
+    ? inv.attendee_status
+    : 'no_reply';
+  return t(`inv.repondant_${status}`, { qui: inv.attendee });
 }
 
 export function lieuOrganisateur(inv) {
-  if (inv.lieu && inv.organisateur) {
-    return t('inv.lieuOrganisateur', { lieu: inv.lieu, qui: inv.organisateur });
+  if (inv.location && inv.organizer) {
+    return t('inv.lieuOrganisateur', { location: inv.location, qui: inv.organizer });
   }
-  if (inv.lieu) return inv.lieu;
-  if (inv.organisateur) return t('inv.organisePar', { qui: inv.organisateur });
+  if (inv.location) return inv.location;
+  if (inv.organizer) return t('inv.organisePar', { qui: inv.organizer });
   return '';
 }

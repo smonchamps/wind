@@ -102,7 +102,7 @@ test('le dossier Brouillons garde sa tuile (D9) et son heure au bord droit', asy
   // Brouillons elle dit le destinataire, et la rangee garde donc sa
   // colonne de tete (classe `tuilee`). Rien ne le tenait avant cette
   // garde — supprimer la tuile laissait toute la gate verte.
-  await page.locator('[data-testid="nav-dossier"][data-categorie="brouillons"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="drafts"]').click();
   const rangee = page.locator('[data-testid="ligne-brouillon"]').first();
   await expect(rangee).toBeVisible();
   await expect(rangee.locator('.avatar')).toBeVisible();
@@ -117,7 +117,7 @@ test('le dossier Brouillons garde sa tuile (D9) et son heure au bord droit', asy
   const heure = await rangee.locator('.heure').boundingBox();
   expect(cadre.x + cadre.width - (heure.x + heure.width)).toBeLessThan(24);
 
-  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
 });
 
@@ -170,13 +170,13 @@ test('la troncature protège l’heure et le nom à la borne basse (D4, 300 px)'
   // trace (tous deux flex:none) debordaient d'un bloc ecrase a 0 px et
   // recouvraient l'heure. Le dossier Envoyes est le pire cas du decor —
   // sa colonne dit « A : <adresse> », bien plus long qu'un nom.
-  await page.locator('[data-testid="nav-dossier"][data-categorie="envoyes"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="sent"]').click();
   const envoi = page.locator('[data-testid="ligne"]').first();
   await expect(envoi).toBeVisible();
   const blocEnvoi = await envoi.locator('[data-testid="ligne-boite"]').boundingBox();
   const heureEnvoi = await envoi.locator('.heure').boundingBox();
   expect(blocEnvoi.x + blocEnvoi.width).toBeLessThanOrEqual(heureEnvoi.x + 1);
-  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   // Retour au défaut pour les suites suivantes.
   await purgerLocales(page, ['wind-largeurs']);

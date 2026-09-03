@@ -40,9 +40,9 @@ export const THEMES = FICHES.map((f) => f.id);
 // anciennes clés sont donc bien là au premier lancement Wind.
 try {
   for (const [ancienne, neuve] of [['discovery-theme', CLE], ['discovery-theme-auto', CLE_AUTO]]) {
-    const valeur = localStorage.getItem(ancienne);
-    if (valeur !== null) {
-      if (localStorage.getItem(neuve) === null) localStorage.setItem(neuve, valeur);
+    const value = localStorage.getItem(ancienne);
+    if (value !== null) {
+      if (localStorage.getItem(neuve) === null) localStorage.setItem(neuve, value);
       localStorage.removeItem(ancienne);
     }
   }
@@ -77,9 +77,9 @@ try {
 } catch { /* stockage indisponible : rien à migrer */ }
 
 export function themeActuel() {
-  let nom = 'elements';
-  try { nom = localStorage.getItem(CLE) || 'elements'; } catch { /* stockage indisponible : défaut */ }
-  return THEMES.includes(nom) ? nom : 'elements';
+  let name = 'elements';
+  try { name = localStorage.getItem(CLE) || 'elements'; } catch { /* stockage indisponible : défaut */ }
+  return THEMES.includes(name) ? name : 'elements';
 }
 
 // Constat terrain A42 (2026-08-16, sondes au banc) : dans le WebView2
@@ -99,9 +99,9 @@ function osSombre() {
     ?? (globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false);
 }
 
-function poser(nom) {
-  if (nom === 'elements') delete document.documentElement.dataset.theme;
-  else document.documentElement.dataset.theme = nom;
+function poser(name) {
+  if (name === 'elements') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = name;
   // A44 : le `color-scheme` des barres natives ne se pose PAS ici —
   // il vit en CSS, à côté des jetons (`:root[data-theme$="-nuit"]`,
   // systeme.css) : tout chemin qui pose data-theme l'obtient, sans JS.
@@ -140,14 +140,14 @@ export function suiviOs() {
   try { return localStorage.getItem(CLE_AUTO) === '1'; } catch { return false; }
 }
 
-export function appliquerSuiviOs(actif) {
-  try { localStorage.setItem(CLE_AUTO, actif ? '1' : '0'); } catch { /* le choix ne survivra pas, rien d'autre à faire */ }
+export function appliquerSuiviOs(active) {
+  try { localStorage.setItem(CLE_AUTO, active ? '1' : '0'); } catch { /* le choix ne survivra pas, rien d'autre à faire */ }
   refleter();
 }
 
-export function appliquerTheme(nom) {
-  if (!THEMES.includes(nom)) return;
-  try { localStorage.setItem(CLE, nom); } catch { /* stockage indisponible : le choix ne survivra pas, rien d'autre à faire */ }
+export function appliquerTheme(name) {
+  if (!THEMES.includes(name)) return;
+  try { localStorage.setItem(CLE, name); } catch { /* stockage indisponible : le choix ne survivra pas, rien d'autre à faire */ }
   refleter();
 }
 

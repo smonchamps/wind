@@ -52,7 +52,7 @@
 
   let {
     comptes = [],
-    compte = null,
+    account = null,
     // PLAN-RETOURS-9 (D4) : au composeur le sélecteur dit
     // « Nom — adresse » — l'adresse reste la donnée fonctionnelle
     // d'envoi (value inchangée), le nom n'est qu'un libellé.
@@ -106,7 +106,7 @@
   let corpsAuto = false;
   // Les pièces RÉELLES du brouillon (métadonnées) — ce que le composeur
   // montre est ce que le message emporte, sans exception (PJ-D4).
-  let pieces = $state([]);
+  let attachments = $state([]);
   // Le rapatriement des pièces d'origine d'un transfert : une entrée
   // par pièce pas encore acquise — { index, name, statut } avec statut
   // 'encours' | 'echec'. Une entrée qui aboutit devient une pièce.
@@ -166,7 +166,7 @@
   let jetonSuggere = 0;
   let minuterieSuggere = null;
 
-  const segmentCourant = (valeur) => valeur.split(',').pop().trim();
+  const segmentCourant = (value) => value.split(',').pop().trim();
 
   function fermerSuggestions() {
     jetonSuggere += 1;
@@ -176,18 +176,18 @@
     choixSuggere = 0;
   }
 
-  function surFrappeAdresse(champ, valeur) {
+  function surFrappeAdresse(champ, value) {
     programmerSauvegarde();
-    const prefixe = segmentCourant(valeur);
+    const prefix = segmentCourant(value);
     clearTimeout(minuterieSuggere);
-    if (prefixe.length < 2) {
+    if (prefix.length < 2) {
       fermerSuggestions();
       return;
     }
     minuterieSuggere = setTimeout(async () => {
       const mien = ++jetonSuggere;
       try {
-        const trouvees = await appel('complete_addresses', { prefixe, limite: 8 });
+        const trouvees = await appel('complete_addresses', { prefix, limit: 8 });
         if (mien !== jetonSuggere || !visible) return;
         suggestions = trouvees;
         champSuggere = trouvees.length > 0 ? champ : null;
@@ -247,8 +247,8 @@
   // Formes du prototype, à la lettre — le cœur produit « Re: » / « Fwd: »,
   // la surface parle la langue de l'interface (« Re : » / « Tr : » en
   // français, "Re:" / "Fwd:" en anglais — A15, décision L-4).
-  const sujetRe = (s) => (/^re\s*:/i.test(s ?? '') ? s : t('compo.re', { sujet: s ?? '' }));
-  const sujetTr = (s) => (/^(tr|fwd|fw)\s*:/i.test(s ?? '') ? s : t('compo.tr', { sujet: s ?? '' }));
+  const sujetRe = (s) => (/^re\s*:/i.test(s ?? '') ? s : t('compo.re', { subject: s ?? '' }));
+  const sujetTr = (s) => (/^(tr|fwd|fw)\s*:/i.test(s ?? '') ? s : t('compo.tr', { subject: s ?? '' }));
 
   // Miroir de `texte_en_html` du cœur : échappé, retours préservés — la
   // reprise d'un brouillon TEXTE (et lui seul) passe par là.
@@ -351,7 +351,7 @@
     montrerCc = false;
     montrerCci = false;
     objet = '';
-    pieces = [];
+    attachments = [];
     rapatriements = [];
     refus = null;
     sourceTransfert = null;
@@ -377,7 +377,7 @@
     selectionCorps = null;
     expediteur = source
       ? compteDe(source.account_id)
-      : compteDe(compte) ?? (comptes.length > 0 ? compteDe(comptes[0].account_id) : null);
+      : compteDe(account) ?? (comptes.length > 0 ? compteDe(comptes[0].account_id) : null);
     fermerSuggestions();
     visible = true;
     await poserCorps('');
@@ -507,10 +507,10 @@
             mailbox: source.mailbox,
             uid: source.uid,
           };
-          rapatriements = lues.map((piece) => ({
-            index: piece.index,
-            name: piece.name,
-            statut: 'encours',
+          rapatriements = lues.map((attachment) => ({
+            index: attachment.index,
+            name: attachment.name,
+            status: 'encours',
           }));
           // Sans await : la frappe n'attend pas le réseau — les puces
           // changent d'état à l'arrivée de chaque pièce.
@@ -574,7 +574,7 @@
       texteInitial: brouillon.body,
       htmlInitial: brouillon.body_html ?? null,
     });
-    pieces = [];
+    attachments = [];
     rapatriements = [];
     refus = null;
     sourceTransfert = null;
@@ -582,7 +582,7 @@
     // au brouillon, pas dans la session du composeur.
     appel('draft_attachments', { draftId: brouillon.id })
       .then((lues) => {
-        if (mien === jeton) pieces = lues;
+        if (mien === jeton) attachments = lues;
       })
       .catch((err) => console.error('draft_attachments :', err));
     // La boîte revient AVEC l'UID : la chaîne réponse → brouillon →
@@ -632,7 +632,7 @@
       !cci.trim() &&
       !objet.trim() &&
       corpsVide &&
-      pieces.length === 0
+      attachments.length === 0
     );
   }
 
@@ -844,7 +844,7 @@
       envoiEnCours = false;
     }
     // L'envoi est journalisé : le brouillon a rempli son office.
-    const regle = brouillonId;
+    const rule = brouillonId;
     clearTimeout(minuterie);
     visible = false;
     // R2 : le toast d'un envoi programmé dit l'ÉCHÉANCE, jamais
@@ -854,8 +854,8 @@
         ? t('toast.programme', { quand: quandLong(echeance) })
         : t('toast.envoye'),
     );
-    if (regle !== null) {
-      await appel('delete_draft', { id: regle })
+    if (rule !== null) {
+      await appel('delete_draft', { id: rule })
         .catch((err) => console.error('delete_draft (après envoi) :', err));
       onbrouillon();
     }
@@ -892,8 +892,8 @@
               for (const incident of releve.errors) {
                 console.error('sync_after_gesture :', incident);
               }
-              if (releve.fetched > 0 || releve.deleted > 0 || releve.reconcilies > 0
-                  || releve.balayes > 0) {
+              if (releve.fetched > 0 || releve.deleted > 0 || releve.reconciled > 0
+                  || releve.swept > 0) {
                 oncourrier();
               }
             })
@@ -914,7 +914,7 @@
     if (octets < MO) return `${Math.round(octets / KO)} Ko`;
     return `${(octets / MO).toFixed(1)} Mo`;
   }
-  const poidsTotal = $derived(pieces.reduce((somme, piece) => somme + piece.size, 0));
+  const poidsTotal = $derived(attachments.reduce((somme, attachment) => somme + attachment.size, 0));
 
   async function joindre() {
     if (!expediteur) {
@@ -936,11 +936,11 @@
       brouillonId = bilan.draft_id ?? brouillonId;
       // L'epoch du geste, sinon l'autosave verrait un conflit fantôme.
       if (bilan.updated_epoch != null) brouillonEpoch = bilan.updated_epoch;
-      pieces = bilan.pieces;
+      attachments = bilan.attachments;
       refus =
         bilan.refused.length > 0
           ? t('compo.pieceRefusee', {
-              nom: bilan.refused[0].name,
+              name: bilan.refused[0].name,
               reste: bilan.refused[0].remaining,
             })
           : null;
@@ -952,17 +952,17 @@
       if (brouillonId !== null) {
         appel('draft_attachments', { draftId: brouillonId })
           .then((lues) => {
-            pieces = lues;
+            attachments = lues;
           })
           .catch(() => {});
       }
     }
   }
 
-  async function retirer(piece) {
+  async function retirer(attachment) {
     try {
-      const epoch = await appel('detach_file', { attachmentId: piece.id });
-      pieces = pieces.filter((p) => p.id !== piece.id);
+      const epoch = await appel('detach_file', { attachmentId: attachment.id });
+      attachments = attachments.filter((p) => p.id !== attachment.id);
       if (epoch != null) brouillonEpoch = epoch;
       refus = null;
       onbrouillon();
@@ -987,14 +987,14 @@
       if (mien !== jeton) return;
       brouillonId = bilan.draft_id ?? brouillonId;
       if (bilan.updated_epoch != null) brouillonEpoch = bilan.updated_epoch;
-      if (bilan.piece) {
-        pieces = [...pieces, bilan.piece];
+      if (bilan.attachment) {
+        attachments = [...attachments, bilan.attachment];
         rapatriements = rapatriements.filter((r) => r.index !== entree.index);
         onbrouillon();
       } else if (bilan.refused) {
         rapatriements = rapatriements.filter((r) => r.index !== entree.index);
         refus = t('compo.pieceRefusee', {
-          nom: bilan.refused.name,
+          name: bilan.refused.name,
           reste: bilan.refused.remaining,
         });
       }
@@ -1002,7 +1002,7 @@
       if (mien !== jeton) return;
       console.error('fetch_source_attachment :', err);
       rapatriements = rapatriements.map((r) =>
-        r.index === entree.index ? { ...r, statut: 'echec' } : r,
+        r.index === entree.index ? { ...r, status: 'echec' } : r,
       );
     }
   }
@@ -1018,9 +1018,9 @@
 
   function reessayer(entree) {
     rapatriements = rapatriements.map((r) =>
-      r.index === entree.index ? { ...r, statut: 'encours' } : r,
+      r.index === entree.index ? { ...r, status: 'encours' } : r,
     );
-    rapatrierUne({ ...entree, statut: 'encours' }, jeton);
+    rapatrierUne({ ...entree, status: 'encours' }, jeton);
   }
 
   // Renoncer à une pièce en échec — le geste EXPLICITE qui autorise un
@@ -1078,7 +1078,7 @@
     };
   }
 
-  function commande(nom, valeur = null) {
+  function commande(name, value = null) {
     if (!champCorps) return;
     champCorps.focus();
     if (selectionCorps) {
@@ -1087,7 +1087,7 @@
       selection.addRange(selectionCorps);
     }
     document.execCommand('styleWithCSS', false, false);
-    document.execCommand(nom, false, valeur);
+    document.execCommand(name, false, value);
     corpsModifie = true;
     montrerCouleurs = false;
     majActifs();
@@ -1097,10 +1097,10 @@
   // Les <select> reviennent à leur étiquette après le geste : ce sont
   // des COMMANDES (appliquer une police à la sélection), pas des états —
   // une sélection mêlée n'a pas UNE police à montrer.
-  function commandeSelect(evenement, nom) {
-    const valeur = evenement.target.value;
+  function commandeSelect(evenement, name) {
+    const value = evenement.target.value;
     evenement.target.value = '';
-    if (valeur) commande(nom, valeur);
+    if (value) commande(name, value);
   }
 </script>
 
@@ -1108,7 +1108,7 @@
 
 <!-- Le menu de suggestions (PLAN-RETOURS-5) : nom d'affichage montré,
      adresse NUE insérée (D3). Un seul menu à la fois, sous le champ
-     actif ; `onmousedown` neutralisé pour que le clic n'emporte pas le
+     active ; `onmousedown` neutralisé pour que le clic n'emporte pas le
      focus (le blur fermerait le menu avant le clic). -->
 {#snippet menuSuggestions()}
   <ul class="suggestions" role="listbox" aria-label={t('compo.suggestions')}
@@ -1136,7 +1136,7 @@
         <span class="kicker" data-testid="composition-kicker">{t(KICKERS[mode])}</span>
         <span class="essor"></span>
         <button type="button" class="fermer" aria-label={t('action.fermer')} onclick={fermer}>
-          <Icone nom="close" /></button>
+          <Icone name="close" /></button>
       </div>
       <div class="champs">
         <div class="rang">
@@ -1167,12 +1167,12 @@
           {#if !montrerCc}
             <button type="button" class="puce" data-testid="composition-bouton-cc"
                     onclick={() => { montrerCc = true; setTimeout(() => champCc?.focus(), 0); }}>
-              <Icone nom="group_add" />{t('compo.cc')}</button>
+              <Icone name="group_add" />{t('compo.cc')}</button>
           {/if}
           {#if !montrerCci}
             <button type="button" class="puce" data-testid="composition-bouton-cci"
                     onclick={() => { montrerCci = true; setTimeout(() => champCci?.focus(), 0); }}>
-              <Icone nom="visibility_off" />{t('compo.cci')}</button>
+              <Icone name="visibility_off" />{t('compo.cci')}</button>
           {/if}
         </div>
         {#if montrerCc}
@@ -1203,7 +1203,7 @@
       </div>
       <div class="zone-corps" bind:this={zoneCorps}>
         <!-- L'éditeur riche (R4) : contenteditable, contenu posé par
-             `poserCorps`, lu par `chargeCorps` — jamais de bind. Le
+             `poserCorps`, read par `chargeCorps` — jamais de bind. Le
              placeholder vit en CSS (:empty::before). La sélection est
              suivie par le seul `selectionchange` du document (il couvre
              clavier ET souris — pas de doublon onkeyup/onmouseup). -->
@@ -1214,37 +1214,37 @@
              aria-label={t('compo.corpsPlaceholder')}
              data-testid="composition-corps"></div>
       </div>
-      {#if pieces.length > 0 || rapatriements.length > 0}
+      {#if attachments.length > 0 || rapatriements.length > 0}
         <div class="fichiers" data-testid="composition-pieces">
-          {#each pieces as piece (piece.id)}
+          {#each attachments as attachment (attachment.id)}
             <span class="piece" data-testid="piece-compo">
-              <Icone nom="description" />
-              <span class="nom">{piece.name}</span><span class="taille">{piece.human}</span>
+              <Icone name="description" />
+              <span class="nom">{attachment.name}</span><span class="taille">{attachment.human}</span>
               <button type="button" class="retrait" data-testid="piece-retrait"
-                      aria-label={t('compo.retirerPiece', { nom: piece.name })}
-                      onclick={() => retirer(piece)}>
-                <Icone nom="close" /></button>
+                      aria-label={t('compo.retirerPiece', { name: attachment.name })}
+                      onclick={() => retirer(attachment)}>
+                <Icone name="close" /></button>
             </span>
           {/each}
           {#each rapatriements as entree (entree.index)}
-            {#if entree.statut === 'encours'}
+            {#if entree.status === 'encours'}
               <span class="piece attente" data-testid="piece-rapatriement">
-                <Icone nom="hourglass_empty" />
-                {t('compo.rapatriement', { nom: entree.name })}</span>
+                <Icone name="hourglass_empty" />
+                {t('compo.rapatriement', { name: entree.name })}</span>
             {:else}
               <span class="piece echec" data-testid="piece-echec">
-                <Icone nom="description" />
+                <Icone name="description" />
                 <span class="nom">{entree.name}</span>
                 <button type="button" class="reessayer" data-testid="piece-reessayer"
                         onclick={() => reessayer(entree)}>{t('action.reessayer')}</button>
                 <button type="button" class="retrait" data-testid="piece-renoncer"
-                        aria-label={t('compo.retirerPiece', { nom: entree.name })}
+                        aria-label={t('compo.retirerPiece', { name: entree.name })}
                         onclick={() => renoncer(entree)}>
-                  <Icone nom="close" /></button>
+                  <Icone name="close" /></button>
               </span>
             {/if}
           {/each}
-          {#if pieces.length > 0}
+          {#if attachments.length > 0}
             <span class="poids" data-testid="composition-poids">
               {t('compo.poidsTotal', { poids: poidsHumain(poidsTotal) })}</span>
           {/if}
@@ -1252,12 +1252,12 @@
       {/if}
       {#if refus}
         <div class="refus" data-testid="composition-refus">
-          <Icone nom="warning" />{refus}
+          <Icone name="warning" />{refus}
         </div>
       {/if}
       <!-- La barre RÉELLE (R4, D1 : exactement les boutons demandés —
            Lien et Citation retirés). `onmousedown` neutralisé partout :
-           un bouton de format ne vole jamais la sélection du corps. -->
+           un bouton de format ne vole jamais la sélection du body. -->
       <div class="format" data-testid="composition-format">
         <select class="select-format" aria-label={t('compo.police')} title={t('compo.police')}
                 data-testid="composition-format-police"
@@ -1281,29 +1281,29 @@
                 aria-label={t('compo.gras')} title={t('compo.gras')} aria-pressed={actifs.gras}
                 data-testid="composition-format-gras"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('bold')}>
-          <Icone nom="format_bold" /></button>
+          <Icone name="format_bold" /></button>
         <button type="button" class="bouton-format" class:actif={actifs.italique}
                 aria-label={t('compo.italique')} title={t('compo.italique')} aria-pressed={actifs.italique}
                 data-testid="composition-format-italique"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('italic')}>
-          <Icone nom="format_italic" /></button>
+          <Icone name="format_italic" /></button>
         <button type="button" class="bouton-format" class:actif={actifs.souligne}
                 aria-label={t('compo.souligne')} title={t('compo.souligne')} aria-pressed={actifs.souligne}
                 data-testid="composition-format-souligne"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('underline')}>
-          <Icone nom="format_underlined" /></button>
+          <Icone name="format_underlined" /></button>
         <button type="button" class="bouton-format" class:actif={actifs.barre}
                 aria-label={t('compo.barre')} title={t('compo.barre')} aria-pressed={actifs.barre}
                 data-testid="composition-format-barre"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('strikeThrough')}>
-          <Icone nom="strikethrough_s" /></button>
+          <Icone name="strikethrough_s" /></button>
         <span class="groupe-couleur">
           <button type="button" class="bouton-format"
                   aria-label={t('compo.couleur')} title={t('compo.couleur')}
                   data-testid="composition-format-couleur"
                   onmousedown={(e) => e.preventDefault()}
                   onclick={() => (montrerCouleurs = !montrerCouleurs)}>
-            <Icone nom="format_color_text" /></button>
+            <Icone name="format_color_text" /></button>
           {#if montrerCouleurs}
             <div class="palette" data-testid="composition-palette">
               {#each COULEURS as couleur (couleur)}
@@ -1320,44 +1320,44 @@
                 aria-label={t('compo.alignerGauche')} title={t('compo.alignerGauche')}
                 data-testid="composition-format-gauche"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('justifyLeft')}>
-          <Icone nom="format_align_left" /></button>
+          <Icone name="format_align_left" /></button>
         <button type="button" class="bouton-format"
                 aria-label={t('compo.alignerCentre')} title={t('compo.alignerCentre')}
                 data-testid="composition-format-centre"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('justifyCenter')}>
-          <Icone nom="format_align_center" /></button>
+          <Icone name="format_align_center" /></button>
         <button type="button" class="bouton-format"
                 aria-label={t('compo.alignerDroite')} title={t('compo.alignerDroite')}
                 data-testid="composition-format-droite"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('justifyRight')}>
-          <Icone nom="format_align_right" /></button>
+          <Icone name="format_align_right" /></button>
         <span class="sep" aria-hidden="true"></span>
         <button type="button" class="bouton-format" class:actif={actifs.puces}
                 aria-label={t('compo.listePuces')} title={t('compo.listePuces')} aria-pressed={actifs.puces}
                 data-testid="composition-format-puces"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('insertUnorderedList')}>
-          <Icone nom="format_list_bulleted" /></button>
+          <Icone name="format_list_bulleted" /></button>
         <button type="button" class="bouton-format" class:actif={actifs.numerotee}
                 aria-label={t('compo.listeNumerotee')} title={t('compo.listeNumerotee')} aria-pressed={actifs.numerotee}
                 data-testid="composition-format-numerotee"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('insertOrderedList')}>
-          <Icone nom="format_list_numbered" /></button>
+          <Icone name="format_list_numbered" /></button>
         <button type="button" class="bouton-format"
                 aria-label={t('compo.retraitMoins')} title={t('compo.retraitMoins')}
                 data-testid="composition-format-retrait-moins"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('outdent')}>
-          <Icone nom="format_indent_decrease" /></button>
+          <Icone name="format_indent_decrease" /></button>
         <button type="button" class="bouton-format"
                 aria-label={t('compo.retraitPlus')} title={t('compo.retraitPlus')}
                 data-testid="composition-format-retrait-plus"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('indent')}>
-          <Icone nom="format_indent_increase" /></button>
+          <Icone name="format_indent_increase" /></button>
         <span class="sep" aria-hidden="true"></span>
         <button type="button" class="bouton-format"
                 aria-label={t('compo.effacerFormat')} title={t('compo.effacerFormat')}
                 data-testid="composition-format-effacer"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('removeFormat')}>
-          <Icone nom="format_clear" /></button>
+          <Icone name="format_clear" /></button>
         <span class="sep" aria-hidden="true"></span>
         <!-- R3 (terrain 2026-08-21) : « Important » vit DANS la barre de
              mise en forme, au format de ses voisins (icône seule) — une
@@ -1367,18 +1367,18 @@
                 aria-pressed={important} data-testid="composition-important"
                 onmousedown={(e) => e.preventDefault()}
                 onclick={() => { important = !important; programmerSauvegarde(); }}>
-          <Icone nom="priority_high" /></button>
+          <Icone name="priority_high" /></button>
       </div>
       {#if demandeSuppr}
         <!-- R3/D3 : la confirmation vit DANS le pied, à la place des
              boutons — un brouillon jeté ne revient pas, le geste dit ce
-             qu'il fait avant de le faire. -->
+             qu'il done avant de le faire. -->
         <div class="pied confirmation" data-testid="composition-suppr-carte">
           <span class="avert-suppr">{t('compo.supprConfirme')}</span>
           <span class="essor"></span>
           <button type="button" class="danger" data-testid="composition-suppr-confirmer"
                   onclick={supprimerBrouillon}>
-            <Icone nom="delete" />{t('action.supprimer')}</button>
+            <Icone name="delete" />{t('action.supprimer')}</button>
           <button type="button" class="annuler" data-testid="composition-suppr-annuler"
                   onclick={() => (demandeSuppr = false)}>{t('action.annuler')}</button>
         </div>
@@ -1386,14 +1386,14 @@
         <div class="pied">
           <button type="button" class="principal" data-testid="composition-envoyer"
                   disabled={envoiEnCours} onclick={envoyer}>
-            <Icone nom="send" />{t('action.envoyer')}</button>
+            <Icone name="send" />{t('action.envoyer')}</button>
           <!-- R2 : « Envoyer plus tard » — la carte s'ouvre au-dessus du
                pied (même idiome que le nuancier), échéance préréglée à
                +1 h, contrôle natif date+heure. -->
           <span class="groupe-differe">
             <button type="button" data-testid="composition-plus-tard"
                     disabled={envoiEnCours} onclick={ouvrirDiffere}>
-              <Icone nom="schedule_send" />{t('compo.plusTard')}</button>
+              <Icone name="schedule_send" />{t('compo.plusTard')}</button>
             {#if montrerDiffere}
               <div class="differe" data-testid="composition-differe">
                 <label class="differe-label">{t('compo.differeQuand')}
@@ -1406,7 +1406,7 @@
                 <div class="differe-actions">
                   <button type="button" class="principal" data-testid="composition-differe-confirmer"
                           onclick={programmerEnvoi}>
-                    <Icone nom="schedule_send" />{t('compo.programmer')}</button>
+                    <Icone name="schedule_send" />{t('compo.programmer')}</button>
                   <button type="button" class="annuler" data-testid="composition-differe-annuler"
                           onclick={() => (montrerDiffere = false)}>{t('action.annuler')}</button>
                 </div>
@@ -1414,16 +1414,16 @@
             {/if}
           </span>
           <button type="button" onclick={joindre} data-testid="composition-joindre">
-            <Icone nom="attach_file" />{t('compo.joindre')}</button>
+            <Icone name="attach_file" />{t('compo.joindre')}</button>
           <button type="button" onclick={enregistrerBrouillon} data-testid="composition-brouillon">
-            <Icone nom="drafts" />{t('compo.enregistrerBrouillon')}</button>
+            <Icone name="drafts" />{t('compo.enregistrerBrouillon')}</button>
           <span class="essor"></span>
           {#if peutSupprimer}
             <!-- Le geste destructif à DROITE, détaché du cluster d'envoi
                  (moins de mégarde), avant « Annuler » qui, lui, conserve. -->
             <button type="button" class="supprimer" data-testid="composition-supprimer"
                     onclick={() => (demandeSuppr = true)}>
-              <Icone nom="delete" />{t('compo.supprimerBrouillon')}</button>
+              <Icone name="delete" />{t('compo.supprimerBrouillon')}</button>
           {/if}
           <button type="button" class="annuler" data-testid="composition-annuler"
                   onclick={fermer}>{t('action.annuler')}</button>

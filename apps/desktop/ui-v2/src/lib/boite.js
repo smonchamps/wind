@@ -25,7 +25,7 @@
 // LA MÊME règle que la liste. D5 disait « le même schéma au volet », et
 // le terrain a montré l'asymétrie : la liste se taisait, le volet
 // parlait encore. Une seule règle, deux appelants.
-export const vueMelange = (compte, enRecherche) => compte === null || enRecherche;
+export const vueMelange = (account, enRecherche) => account === null || enRecherche;
 
 export function blocBoite({ accountId, adresse, reperes = {}, noms = {}, comptes = [] }) {
   if (comptes.length < 2) return null;
@@ -38,6 +38,6 @@ export function blocBoite({ accountId, adresse, reperes = {}, noms = {}, comptes
     // L'adresse reste la vérité technique de l'infobulle — mais sans
     // nom personnalisé les deux chaînes sont identiques, et « adresse
     // — adresse » serait un bégaiement.
-    titre: libelle === adresse ? libelle : `${libelle} (${adresse})`,
+    title: libelle === adresse ? libelle : `${libelle} (${adresse})`,
   };
 }

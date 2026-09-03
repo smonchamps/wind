@@ -58,12 +58,12 @@ export function defautLargeur(volet) {
 // Restaure AVANT le premier rendu (pas de flash de grille) ; toute
 // valeur absente, non numérique ou hors bornes retombe sur le défaut.
 export function restaurerLargeurs() {
-  let lu = {};
+  let read = {};
   try {
-    lu = JSON.parse(localStorage.getItem(CLE) ?? '{}') ?? {};
+    read = JSON.parse(localStorage.getItem(CLE) ?? '{}') ?? {};
   } catch { /* stockage ou JSON illisible : défauts */ }
   for (const volet of Object.keys(DEFAUTS)) {
-    const px = lu[volet];
+    const px = read[volet];
     etat[volet] =
       Number.isFinite(px) && px === bornee(volet, px, Infinity)
         ? px

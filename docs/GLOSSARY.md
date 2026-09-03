@@ -65,6 +65,7 @@
 | Mis de côté, la pile | Set aside, the pile | `set_aside`, `pile` | `PileMisDeCote.svelte` → `SetAsidePile.svelte` |
 | Repère (de compte) | Marker | `marker` | icon + hue of an account |
 | teinte (du repère) | color | `hue` | `--rep-bleu` → `--mk-blue` |
+| les 12 teintes : rouge, orange, ocre, olive, vert, sapin, bleu, indigo, violet, magenta, rose, brun | red, orange, ochre, olive, green, pine, blue, indigo, violet, magenta, pink, brown | the wire value, `--mk-<hue>`, `data-hue`, `marker.hue.<hue>` | the database keeps the French value (D3); the shell maps at the boundary (E5, decision D16) — same rule for the category ids (`reception` → `inbox`, `envoyes` → `sent`, `brouillons` → `drafts`, `indesirables` → `junk`, `archives` → `archive`, `corbeille` → `trash`, `kiosque` → `feed`, `registre` → `paper_trail`, `portier` → `screener`, `ecarte` → `screened_out`, `tout` → `all`), the cleanup scopes (`dossiers` → `folders`, `dossiersArchives` → `foldersArchive`), the invitation replies (`accepte` → `accepted`, `provisoire` → `tentative`, `refuse` → `declined`, `sans_reponse` → `no_reply`) and the sync phases (`inventaire` → `inventory`, `fils` → `threads`) |
 | Fil | Thread | `thread` | screen 03; `Fil.svelte` → `Thread.svelte` — see §4 |
 | Conversation | Conversation | `conversation` | unchanged |
 | Fente d'avis | Notice slot | `notice`, `NoticeSlot.svelte` | the banner area under the header |

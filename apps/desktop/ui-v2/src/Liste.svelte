@@ -27,8 +27,8 @@
   import { cleLibelleBoite } from './lib/organise.svelte.js';
 
   let {
-    categorie = 'reception',
-    compte = null,
+    categorie = 'inbox',
+    account = null,
     // A80/D7 : le bloc de boîte ne se dit que si les comptes se
     // mélangent VRAIMENT — il faut donc savoir combien il y en a.
     comptes = [],
@@ -74,17 +74,17 @@
   // géométrie du fenêtrage gagne un décrochement, patron des puces
   // d'invitation) — jamais une rangée à hauteur d'exception.
   const sections = $derived(
-    organise && categorie === 'reception' && onglet === 'tous'
+    organise && categorie === 'inbox' && onglet === 'tous'
       && resultats === null && lignesBrouillons === null,
   );
   // La colonne centrée de la Réception organisée (~760 px, prototype).
   const centre = $derived(
-    organise && categorie === 'reception'
+    organise && categorie === 'inbox'
       && resultats === null && lignesBrouillons === null,
   );
   // Le ⋯ de gestes par rangée — les vues organisées seulement.
   const gestesOrganise = $derived(
-    organise && ['reception', 'kiosque', 'registre'].includes(categorie)
+    organise && ['inbox', 'feed', 'paper_trail'].includes(categorie)
       && resultats === null && lignesBrouillons === null,
   );
   let couture = $state(0);
@@ -152,7 +152,7 @@
   // dit le DESTINATAIRE (« À : X »), tiré de `to_addrs` stocké à la
   // synchro. À défaut (ancien envoi non encore rattrapé) on garde le nom
   // d'expéditeur d'avant — jamais de ligne muette.
-  const versEnvoi = (ligne) => categorie === 'envoyes' && (ligne.to_addrs?.length ?? 0) > 0;
+  const versEnvoi = (ligne) => categorie === 'sent' && (ligne.to_addrs?.length ?? 0) > 0;
   const correspondant = (ligne) =>
     versEnvoi(ligne) ? ligne.to_addrs.join(', ') : ligne.sender;
 
@@ -164,7 +164,7 @@
   // depuis le verdict terrain du 2026-08-25 (point 12) : le volet de
   // lecture applique la même, et deux expressions divergeraient.
   const boiteDe = (ligne) =>
-    !vueMelange(compte, resultats !== null)
+    !vueMelange(account, resultats !== null)
       ? null
       : blocBoite({
         accountId: ligne.account_id,
@@ -232,7 +232,7 @@
   // d'A44 se généralise, toujours pas de gabarit mesuré en plus.
   const autresPuces = (l) => l.thread_size > 1 || l.attachment_count > 0 || l.pinned;
   const gestesInvitation = (l) =>
-    l.invitation != null && !puceInvitation(l.invitation) && l.invitation.peut_repondre;
+    l.invitation != null && !puceInvitation(l.invitation) && l.invitation.can_reply;
   const rangsPuces = (l) =>
     (gestesInvitation(l) ? 1 : 0) +
     (autresPuces(l) || (l.invitation != null && puceInvitation(l.invitation) != null) ? 1 : 0);
@@ -243,7 +243,7 @@
   // transaction), le sujet dans la langue du produit, la puce suit
   // localement. stopPropagation : le clic ne choisit pas la ligne.
   let reponsesInvitation = $state({});
-  async function repondreInvitation(e, ligne, reponse) {
+  async function repondreInvitation(e, ligne, reply) {
     e.stopPropagation();
     const cle = `${ligne.account_id}/${ligne.invitation.mailbox}/${ligne.invitation.uid}`;
     if (reponsesInvitation[cle]) return;
@@ -255,22 +255,22 @@
     // d'invalidation maison — qui redessine la fenêtre, sinon la puce
     // n'apparaissait qu'à la prochaine invalidation venue d'ailleurs
     // (la sélection, une sonde…).
-    const avant = ligne.invitation.reponse;
-    ligne.invitation.reponse = reponse;
+    const avant = ligne.invitation.reply;
+    ligne.invitation.reply = reply;
     version += 1;
     try {
-      const sujet = t(`inv.sujet_${reponse}`, { titre: ligne.invitation.titre });
+      const subject = t(`inv.sujet_${reply}`, { title: ligne.invitation.title });
       await appel('reply_invitation', {
         accountId: ligne.account_id,
         mailbox: ligne.invitation.mailbox,
         uid: ligne.invitation.uid,
-        reponse,
-        sujet,
-        corps: sujet,
+        reply,
+        subject,
+        body: subject,
       });
       appel('flush_outbox').catch(() => {});
     } catch (err) {
-      ligne.invitation.reponse = avant;
+      ligne.invitation.reply = avant;
       version += 1;
       onflash(t('erreur.invitation', { err }));
     } finally {
@@ -295,13 +295,13 @@
   // (revue 2026-08-21).
   let epinglesRepondues = $state(false);
   function lancerEpingles() {
-    if (categorie !== 'reception') {
+    if (categorie !== 'inbox') {
       epingles = [];
       epinglesRepondues = true;
       return;
     }
     const neeSource = source;
-    appel('pinned_rows', { accountId: compte, nonLus: onglet === 'nonlus' })
+    appel('pinned_rows', { accountId: account, unread: onglet === 'nonlus' })
       .then((rows) => {
         if (neeSource === source) epingles = rows;
       })
@@ -395,7 +395,7 @@
   }
 
   function pomper() {
-    if (categorie === 'brouillons') return;
+    if (categorie === 'drafts') return;
     // La page 0 d'une source qui n'a pas encore répondu passe DEVANT la
     // jauge (revue 2026-08-20) : une bascule de dossier part tout de
     // suite, même si une page profonde de l'ancienne source vole
@@ -440,8 +440,8 @@
     totalEnVol = true;
     appel('category_total', {
       category: categorie,
-      accountId: compte,
-      nonLus: onglet === 'nonlus',
+      accountId: account,
+      unread: onglet === 'nonlus',
     })
       .then((n) => {
         if (neeSource !== source) return;
@@ -471,8 +471,8 @@
     coutureEnVol = true;
     appel('category_total', {
       category: categorie,
-      accountId: compte,
-      nonLus: true,
+      accountId: account,
+      unread: true,
     })
       .then((n) => {
         if (neeSource !== source) return;
@@ -504,8 +504,8 @@
     let echoue = false;
     const promesse = appel('list_category', {
       category: categorie,
-      accountId: compte,
-      nonLus: onglet === 'nonlus',
+      accountId: account,
+      unread: onglet === 'nonlus',
       offset: p * PAGE,
       limit: PAGE,
     })
@@ -568,7 +568,7 @@
     // Conservée pour `allerEtServir` (banc P1, e2e) : un saut délibéré
     // vise exactement ses pages — il sert sans attendre la jauge (le
     // débord d'un saut est assumé, une fenêtre au plus).
-    if (categorie === 'brouillons') return Promise.resolve();
+    if (categorie === 'drafts') return Promise.resolve();
     if (servieA.get(p) === generation) return Promise.resolve();
     // La clé qualifiée ne voit que la source courante : jamais une
     // promesse d'une autre source, qui se réglerait sans rien écrire.
@@ -580,7 +580,7 @@
   // sans quoi l'effet dépendrait de ce qu'il modifie (boucle).
   $effect(() => {
     void categorie;
-    void compte;
+    void account;
     void onglet;
     untrack(() => {
       source += 1;
@@ -937,15 +937,15 @@
     return carte;
   });
   const brouillonDe = (l) =>
-    categorie === 'reception' && resultats === null
+    categorie === 'inbox' && resultats === null
       ? (brouillonsParFil.get(l.thread_id) ?? null)
       : null;
   // Le dossier : les brouillons du compte borné par la nav, déjà du
   // plus récent au plus ancien (`list_drafts`). Peu nombreux par
   // construction : le chemin non fenêtré des résultats suffit.
   const lignesBrouillons = $derived(
-    categorie === 'brouillons'
-      ? brouillons.filter((b) => compte === null || b.account_id === compte)
+    categorie === 'drafts'
+      ? brouillons.filter((b) => account === null || b.account_id === account)
       : null,
   );
 
@@ -953,21 +953,21 @@
   // table, comme ONGLETS ; en Indésirables, « Signaler » cède à « Ce
   // n'est pas un spam », le miroir du volet de lecture.
   const GESTES_BARRE = $derived([
-    { action: 'lu', icone: 'drafts', libelle: 'action.marquerLu' },
-    { action: 'nonlu', icone: 'mark_email_unread', libelle: 'action.marquerNonLu' },
-    { action: 'archiver', icone: 'archive', libelle: 'action.archiver' },
-    categorie === 'indesirables'
-      ? { action: 'nonspam', icone: 'report', libelle: 'action.pasSpam' }
-      : { action: 'spam', icone: 'report', libelle: 'action.signalerSpam' },
-    { action: 'supprimer', icone: 'delete', libelle: 'action.supprimer' },
+    { action: 'read', icon: 'drafts', libelle: 'action.marquerLu' },
+    { action: 'unread', icon: 'mark_email_unread', libelle: 'action.marquerNonLu' },
+    { action: 'archive', icon: 'archive', libelle: 'action.archiver' },
+    categorie === 'junk'
+      ? { action: 'not_spam', icon: 'report', libelle: 'action.pasSpam' }
+      : { action: 'spam', icon: 'report', libelle: 'action.signalerSpam' },
+    { action: 'delete', icon: 'delete', libelle: 'action.supprimer' },
   ]);
 
   const ONGLETS = [
-    { id: 'tous', icone: 'inbox', libelle: 'onglet.tous' },
-    { id: 'nonlus', icone: 'mark_email_unread', libelle: 'onglet.nonlus' },
-    { id: 'brouillons', icone: 'edit_note', libelle: 'boite.brouillons' },
+    { id: 'tous', icon: 'inbox', libelle: 'onglet.tous' },
+    { id: 'nonlus', icon: 'mark_email_unread', libelle: 'onglet.nonlus' },
+    { id: 'drafts', icon: 'edit_note', libelle: 'boite.drafts' },
   ];
-  const ongletActif = $derived(categorie === 'brouillons' ? 'brouillons' : onglet);
+  const ongletActif = $derived(categorie === 'drafts' ? 'drafts' : onglet);
 
   // --- API (App, banc P1, e2e) ---------------------------------------
   export function aller(index) {
@@ -1061,11 +1061,11 @@
 
 <section class="colonne" class:centre aria-label={t('liste.aria')} data-testid="liste">
   <!-- UI v3, E1 (verdict CE 2026-08-16) : le bandeau de la maquette
-       Classique — le nom de la boîte courante, SEUL (« Tout marquer
-       lu » écarté). Les clés boite.* sont celles de la nav. -->
+       Classique — le name de la boîte courante, SEUL (« Tout marquer
+       read » écarté). Les clés mailbox.* sont celles de la nav. -->
   {#if cochees.size > 0}
     <!-- R1/D3 : la barre de la liste SE TRANSFORME tant que la
-         sélection est non vide — le compte, les quatre gestes de masse
+         sélection est no vide — le account, les quatre gestes de masse
          (D1), Annuler. Aucune surface neuve : mêmes 52 px, même filet.
          Boutons-icônes à la grammaire de l'entête (32 px), le libellé
          vit dans aria-label ET title. En Indésirables, « Signaler
@@ -1077,7 +1077,7 @@
         <button type="button" class="btn-barre" data-testid="barre-{g.action}"
                 disabled={gesteEnCours}
                 aria-label={t(g.libelle)} title={t(g.libelle)}
-                onclick={() => agir(g.action)}><Icone nom={g.icone} /></button>
+                onclick={() => agir(g.action)}><Icone name={g.icon} /></button>
       {/each}
       <!-- Annuler gèle aussi pendant le lot : la barre qui se replierait
            pendant que les commandes continuent se lirait comme une
@@ -1085,16 +1085,16 @@
       <button type="button" class="btn-barre" data-testid="barre-annuler"
               disabled={gesteEnCours}
               aria-label={t('action.annulerSelection')} title={t('action.annulerSelection')}
-              onclick={viderSelection}><Icone nom="close" /></button>
+              onclick={viderSelection}><Icone name="close" /></button>
     </header>
   {:else if centre}
     <!-- RETOURS-14 R2 (D2/D3) : la Réception organisée prend l'entête
          normalisé des vues du mode (classes partagées .entete-vue de
-         systeme.css, patron Kiosque/Portier R7/R11) — titre seul (D2),
+         systeme.css, patron Kiosque/Portier R7/R11) — title seul (D2),
          ni bandeau générique ni onglets (D3, plus bas). -->
     <header class="tete-organisee" data-testid="liste-titre">
       <h2 class="display entete-vue" data-testid="reception-titre">
-        <span class="glyphe-titre" aria-hidden="true"><Icone nom="inbox" taille={26} /></span>{t(cleLibelleBoite('reception'))}</h2>
+        <span class="glyphe-titre" aria-hidden="true"><Icone name="inbox" taille={26} /></span>{t(cleLibelleBoite('inbox'))}</h2>
     </header>
   {:else}
     <header class="bandeau" data-testid="liste-titre">
@@ -1106,7 +1106,7 @@
        cinq poses de `.ligne` (sondes, attente, flot, épinglées,
        brouillons) sont dessous et le prennent d'un coup, sondes
        comprises. Le patron est celui des largeurs de volets
-       (`--l-nav`) ; le trait d'union le fait échapper au contrat des
+       (`--l-nav`) ; le trait d'union le done échapper au contrat des
        17 jetons de thème, et c'est voulu : c'est une dimension de mise
        en page, pas une couleur. -->
   <div class="cadre" bind:this={cadre} bind:clientHeight={hCadre}
@@ -1150,14 +1150,14 @@
         <article class="ligne" bind:offsetHeight={h1}>
           <div class="l1">
             <span class="exp">Sonde</span>
-            {#if vueMelange(compte, resultats !== null)}
+            {#if vueMelange(account, resultats !== null)}
               <span class="boite"><span class="mot">{t('liste.sur')}</span>
-                <span class="repere-nu" aria-hidden="true"><Icone nom="work" taille={14} /></span>
+                <span class="repere-nu" aria-hidden="true"><Icone name="work" taille={14} /></span>
                 <span class="lib">Sonde</span></span>
             {/if}
             <span class="essor"></span>
             {#if gestesOrganise}
-              <button type="button" class="gestes" tabindex="-1"><Icone nom="more_horiz" taille={14} /></button>
+              <button type="button" class="gestes" tabindex="-1"><Icone name="more_horiz" taille={14} /></button>
             {/if}
             <span class="heure">00:00</span>
           </div>
@@ -1167,20 +1167,20 @@
         <article class="ligne" bind:offsetHeight={h2}>
           <div class="l1">
             <span class="exp">Sonde</span>
-            {#if vueMelange(compte, resultats !== null)}
+            {#if vueMelange(account, resultats !== null)}
               <span class="boite"><span class="mot">{t('liste.sur')}</span>
-                <span class="repere-nu" aria-hidden="true"><Icone nom="work" taille={14} /></span>
+                <span class="repere-nu" aria-hidden="true"><Icone name="work" taille={14} /></span>
                 <span class="lib">Sonde</span></span>
             {/if}
             <span class="essor"></span>
             {#if gestesOrganise}
-              <button type="button" class="gestes" tabindex="-1"><Icone nom="more_horiz" taille={14} /></button>
+              <button type="button" class="gestes" tabindex="-1"><Icone name="more_horiz" taille={14} /></button>
             {/if}
             <span class="heure">00:00</span>
           </div>
           <p class="objet">Sonde</p>
           <p class="apercu">Sonde</p>
-          <div class="puces"><span class="puce"><Icone nom="forum" />2</span></div>
+          <div class="puces"><span class="puce"><Icone name="forum" />2</span></div>
         </article>
       </div>
     </div>
@@ -1194,9 +1194,9 @@
     {#snippet rangee(ligne, epinglee = false)}
       <!-- A80 : le bloc de boîte vit partout où les comptes se
            MÉLANGENT — boîte unifiée (D3/D7) et recherche (toujours
-           multi-comptes, même depuis la vue d'un seul compte ; revue
-           2026-08-22) — et sur TOUTES les rangées, repère ou non (D8). -->
-      {@const boite = boiteDe(ligne)}
+           multi-comptes, même depuis la vue d'un seul account ; revue
+           2026-08-22) — et sur TOUTES les rangées, repère ou no (D8). -->
+      {@const mailbox = boiteDe(ligne)}
       {@const cochee = estCochee(ligne)}
       <!-- R1 : le clic vit en trois régimes (clicRangee) — Ctrl/Cmd
            bascule la coche, Shift étend depuis l'ancre, nu = choisir
@@ -1228,7 +1228,7 @@
                   e.currentTarget.blur();
                   basculer(ligne);
                 }}>
-          {#if cochee}<Icone nom="check" taille={12} />{/if}
+          {#if cochee}<Icone name="check" taille={12} />{/if}
         </button>
         <!-- A81 : la tuile aux initiales a quitté la liste — le nom en
              toutes lettres disait déjà ce qu'elle disait. A80 : la
@@ -1241,16 +1241,16 @@
                (A8 — jamais la couleur seule) ; l'épinglée porte la
                marque keep sur son sol --tuile (A73). -->
           {#if ligne.thread_unseen > 0}<span class="disque"></span>{/if}
-          {#if epinglee}<span class="marque-epingle" aria-hidden="true"><Icone nom="keep" taille={14} /></span>{/if}
+          {#if epinglee}<span class="marque-epingle" aria-hidden="true"><Icone name="keep" taille={14} /></span>{/if}
           <span class="exp">{#if versEnvoi(ligne)}{t('liste.dest', { a: correspondant(ligne) })}{:else}{ligne.sender}{/if}</span>
-          {#if boite}
-            <span class="boite" data-testid="ligne-boite" title={boite.titre}>
+          {#if mailbox}
+            <span class="boite" data-testid="ligne-boite" title={mailbox.title}>
               <span class="mot">{t('liste.sur')}</span>
-              {#if boite.repere}
-                <span class="repere-nu" data-teinte={boite.repere.teinte}
-                      aria-hidden="true"><Icone nom={boite.repere.icone} taille={14} /></span>
+              {#if mailbox.repere}
+                <span class="repere-nu" data-teinte={mailbox.repere.hue}
+                      aria-hidden="true"><Icone name={mailbox.repere.icon} taille={14} /></span>
               {/if}
-              <span class="lib">{boite.libelle}</span>
+              <span class="lib">{mailbox.libelle}</span>
             </span>
           {/if}
           <span class="essor"></span>
@@ -1261,14 +1261,14 @@
                     aria-label={t('liste.gestes')} aria-haspopup="menu"
                     aria-expanded={menuGestes?.cle === cleLigne(ligne)}
                     onclick={(e) => ouvrirGestes(e, ligne)}>
-              <Icone nom="more_horiz" taille={14} /></button>
+              <Icone name="more_horiz" taille={14} /></button>
           {/if}
           <span class="heure">{quand(ligne.epoch)}</span>
         </div>
         <p class="objet">{ligne.subject}</p>
         {#if brouillonDe(ligne)}
           <!-- Variante B (PLAN-BROUILLONS §3) : l'aperçu dit le
-               brouillon — préfixe et corps ; le reste de la ligne ne
+               brouillon — préfixe et body ; le reste de la ligne ne
                bouge pas. -->
           <p class="apercu"><span class="prefixe" data-testid="mention-brouillon">{t('liste.prefixeBrouillon')}</span>{brouillonDe(ligne).body}</p>
         {:else}
@@ -1284,9 +1284,9 @@
              par chipsAvant. En
              RECHERCHE, un résultat est un message, pas une conversation
              (le coeur sert thread_size=1 sans joindre threads) : la
-             puce de fil n'y figure pas, par construction. Le compte de
-             pièces est celui d'AVANT lecture du corps : 0 tant que le
-             corps n'est pas rapatrié — la puce apparaît au fil du
+             puce de fil n'y figure pas, par construction. Le account de
+             pièces est celui d'AVANT lecture du body : 0 tant que le
+             body n'est pas rapatrié — la puce apparaît au fil du
              rattrapage, jamais à tort. -->
         <!-- R10/R3'c (terrain 2026-08-23) : les GESTES d'une invitation
              occupent un rang à eux — icône dite par couleur ET par le
@@ -1295,16 +1295,16 @@
           <div class="puces" data-testid="puces-invitation">
             <button type="button" class="puce ton-accepte" data-testid="liste-accepter"
                     disabled={reponsesInvitation[`${ligne.account_id}/${ligne.invitation.mailbox}/${ligne.invitation.uid}`]}
-                    onclick={(e) => repondreInvitation(e, ligne, 'accepte')}>
-              <Icone nom="check_circle" />{t('action.accepter')}</button>
+                    onclick={(e) => repondreInvitation(e, ligne, 'accepted')}>
+              <Icone name="check_circle" />{t('action.accepter')}</button>
             <button type="button" class="puce ton-provisoire" data-testid="liste-provisoire"
                     disabled={reponsesInvitation[`${ligne.account_id}/${ligne.invitation.mailbox}/${ligne.invitation.uid}`]}
-                    onclick={(e) => repondreInvitation(e, ligne, 'provisoire')}>
-              <Icone nom="question_mark" />{t('action.provisoire')}</button>
+                    onclick={(e) => repondreInvitation(e, ligne, 'tentative')}>
+              <Icone name="question_mark" />{t('action.provisoire')}</button>
             <button type="button" class="puce ton-refuse" data-testid="liste-refuser"
                     disabled={reponsesInvitation[`${ligne.account_id}/${ligne.invitation.mailbox}/${ligne.invitation.uid}`]}
-                    onclick={(e) => repondreInvitation(e, ligne, 'refuse')}>
-              <Icone nom="cancel" />{t('action.refuser')}</button>
+                    onclick={(e) => repondreInvitation(e, ligne, 'declined')}>
+              <Icone name="cancel" />{t('action.refuser')}</button>
           </div>
         {/if}
         {#if autresPuces(ligne) || (ligne.invitation && puceInvitation(ligne.invitation))}
@@ -1314,16 +1314,16 @@
             {#if ligne.invitation && puceInvitation(ligne.invitation)}
               {@const puce = puceInvitation(ligne.invitation)}
               <span class="puce ton-{puce.ton}" data-testid="puce-invitation">
-                {#if puce.icone}<Icone nom={puce.icone} />{/if}{puce.texte}</span>
+                {#if puce.icon}<Icone name={puce.icon} />{/if}{puce.texte}</span>
             {/if}
             {#if ligne.pinned}
-              <span class="puce"><Icone nom="keep" />{t('puce.epingle')}</span>
+              <span class="puce"><Icone name="keep" />{t('puce.epingle')}</span>
             {/if}
             {#if ligne.thread_size > 1}
-              <span class="puce"><Icone nom="forum" />{t('puce.messages', { n: ligne.thread_size })}</span>
+              <span class="puce"><Icone name="forum" />{t('puce.messages', { n: ligne.thread_size })}</span>
             {/if}
             {#if ligne.attachment_count > 0}
-              <span class="puce"><Icone nom="attach_file" />{t('puce.fichiers', { n: ligne.attachment_count })}</span>
+              <span class="puce"><Icone name="attach_file" />{t('puce.fichiers', { n: ligne.attachment_count })}</span>
             {/if}
           </div>
         {/if}
@@ -1426,7 +1426,7 @@
                  ne vivrait que dans decalage/indexPour ferait chevaucher
                  l'entête et dériver la fenêtre, constat de capture).
                  Quand la fenêtre COMMENCE à la borne, la bande est déjà
-                 dans le translateY (entetesAvant compte e.index <= i). -->
+                 dans le translateY (entetesAvant account e.index <= i). -->
             {#if entetes.some((e) => e.index === i && e.index > debut)}
               <div class="espace-entete" aria-hidden="true"></div>
             {/if}
@@ -1451,7 +1451,7 @@
             role="button" tabindex="0" aria-pressed={ongletActif === o.id}
             onclick={() => ononglet(o.id)}
             onkeydown={activation(() => ononglet(o.id))}>
-        <Icone nom={o.icone} />{t(o.libelle)}
+        <Icone name={o.icon} />{t(o.libelle)}
       </span>
     {/each}
   </div>
@@ -1462,10 +1462,10 @@
      focus, fermeture ; la Liste ne fournit que ses items. -->
 <Menu ouvert={menuGestes !== null} x={menuGestes?.x ?? 0} y={menuGestes?.y ?? 0}
       testid="menu-gestes" onfermer={() => (menuGestes = null)}>
-    {#each ['reception', 'kiosque', 'registre'].filter((d) => d !== categorie) as dest (dest)}
+    {#each ['inbox', 'feed', 'paper_trail'].filter((d) => d !== categorie) as dest (dest)}
       <button type="button" role="menuitem" data-testid={`gestes-${dest}`}
               onclick={() => geste(dest)}>
-        <Icone nom={dest === 'reception' ? 'inbox' : dest} />{t('liste.deplacerVers', { boite: t(`boite.${dest}`) })}</button>
+        <Icone name={dest === 'inbox' ? 'inbox' : dest} />{t('liste.deplacerVers', { mailbox: t(`boite.${dest}`) })}</button>
     {/each}
     <div class="filet-menu"></div>
     <button type="button" role="menuitem" data-testid="gestes-cote"
@@ -1474,11 +1474,11 @@
               menuGestes = null;
               oncote(ligne);
             }}>
-      <Icone nom="pile" />{t('pile.mettre')}</button>
+      <Icone name="pile" />{t('pile.mettre')}</button>
     <div class="filet-menu"></div>
     <button type="button" role="menuitem" data-testid="gestes-ecarter"
-            onclick={() => geste('ecarte')}>
-      <Icone nom="visibility_off" />{t('liste.ecarter')}</button>
+            onclick={() => geste('screened_out')}>
+      <Icone name="visibility_off" />{t('liste.ecarter')}</button>
 </Menu>
 
 <style>

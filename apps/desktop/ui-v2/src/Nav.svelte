@@ -28,7 +28,7 @@
   // attente au guichet — le dessin du prototype. Mode classique :
   // zéro diff.
   let {
-    comptes = [], reperes = {}, noms = {}, categorie, compte,
+    comptes = [], reperes = {}, noms = {}, categorie, account,
     organise = false, portier = 0,
     // RETOURS-14 R7 : les pastilles du Kiosque (cartes jamais
     // ouvertes, D8) et du Registre (non-lu IMAP), patron `portier`.
@@ -41,7 +41,7 @@
   // Le filtre de compte borne les compteurs des dossiers, comme au
   // prototype où changer de Boîte re-filtre la liste.
   const vue = $derived(
-    compte === null ? null : comptes.find((c) => c.account_id === compte),
+    account === null ? null : comptes.find((c) => c.account_id === account),
   );
   const de = (champ) => (vue ? vue[champ] : somme(champ));
 
@@ -49,35 +49,35 @@
     {
       // RETOURS-13 R3 : le libellé sort de LA règle partagée — en mode
       // organisé « Réception », au classique le libellé long.
-      id: 'reception', icone: 'inbox',
-      libelle: t(cleLibelleBoite('reception')),
-      nonLus: de('reception_non_lues'),
+      id: 'inbox', icon: 'inbox',
+      libelle: t(cleLibelleBoite('inbox')),
+      unread: de('inbox_unread'),
     },
     ...(organise
       ? [
-          { id: 'kiosque', icone: 'kiosque', libelle: t('boite.kiosque'), nonLus: kiosque },
-          { id: 'registre', icone: 'registre', libelle: t('boite.registre'), nonLus: registre },
-          { id: 'portier', icone: 'portier', libelle: t('boite.portier'), nonLus: portier },
+          { id: 'feed', icon: 'feed', libelle: t('boite.feed'), unread: kiosque },
+          { id: 'paper_trail', icon: 'paper_trail', libelle: t('boite.paper_trail'), unread: registre },
+          { id: 'screener', icon: 'screener', libelle: t('boite.screener'), unread: portier },
           // Volet B (PLAN-HORIZON-NETTOYAGE) : la 5e section du mode.
-          { id: 'nettoyage', icone: 'nettoyage', libelle: t('boite.nettoyage') },
+          { id: 'cleanup', icon: 'cleanup', libelle: t('boite.cleanup') },
         ]
       : []),
-    { id: 'envoyes', icone: 'send', libelle: t('boite.envoyes') },
-    { id: 'brouillons', icone: 'edit_note', libelle: t('boite.brouillons') },
+    { id: 'sent', icon: 'send', libelle: t('boite.sent') },
+    { id: 'drafts', icon: 'edit_note', libelle: t('boite.drafts') },
     {
-      id: 'indesirables', icone: 'report', libelle: t('boite.indesirables'),
-      nonLus: de('indesirables_non_lus'),
+      id: 'junk', icon: 'report', libelle: t('boite.junk'),
+      unread: de('junk_unread'),
     },
-    { id: 'archives', icone: 'inventory_2', libelle: t('boite.archives') },
-    { id: 'corbeille', icone: 'delete', libelle: t('boite.corbeille') },
+    { id: 'archive', icon: 'inventory_2', libelle: t('boite.archive') },
+    { id: 'trash', icon: 'delete', libelle: t('boite.trash') },
   ]);
 
   // La tuile ne compte rien (A36, terrain E3) : la pastille de la
   // Réception dit déjà le non-lu — la tuile ne porte que l'identité.
   const boites = $derived([
-    { id: null, icone: 'all_inbox', libelle: t('nav.toutes') },
+    { id: null, icon: 'all_inbox', libelle: t('nav.toutes') },
     ...comptes.map((c) => ({
-      id: c.account_id, icone: 'person', libelle: noms[c.account_id] ?? c.email,
+      id: c.account_id, icon: 'person', libelle: noms[c.account_id] ?? c.email,
       repere: reperes[c.account_id] ?? null,
     })),
   ]);
@@ -90,13 +90,13 @@
          role="button" tabindex="0" aria-current={categorie === d.id}
          onclick={() => onchoisir({ categorie: d.id })}
          onkeydown={activation(() => onchoisir({ categorie: d.id }))}>
-      <span class="icone" aria-hidden="true"><Icone nom={d.icone} /></span>
+      <span class="icone" aria-hidden="true"><Icone name={d.icon} /></span>
       <span class="libelle">{d.libelle}</span>
-      {#if d.nonLus > 0}
-        <span class="pastille">{d.nonLus}</span>
+      {#if d.unread > 0}
+        <span class="pastille">{d.unread}</span>
       {/if}
     </div>
-    {#if organise && d.id === 'nettoyage'}
+    {#if organise && d.id === 'cleanup'}
       <!-- RETOURS-13 R12 : le filet entre les dossiers organisés et
            le reste — le dessin du filet de `.boites`. -->
       <div class="separateur" data-testid="nav-separateur"></div>
@@ -106,31 +106,31 @@
   <div class="boites">
     <p class="titre">{t('nav.boites')}</p>
     {#each boites as b (b.id)}
-      {#if compte === b.id}
+      {#if account === b.id}
         <!-- La boîte en cours : la tuile d'événement (A29, W2-D5),
              l'adresse seule — sans compteur (A36). -->
         <div class="tuile" data-testid="nav-boite"
              role="button" tabindex="0" aria-current="true"
-             onclick={() => onchoisir({ compte: b.id })}
-             onkeydown={activation(() => onchoisir({ compte: b.id }))}>
+             onclick={() => onchoisir({ account: b.id })}
+             onkeydown={activation(() => onchoisir({ account: b.id }))}>
           {#if b.repere}
             <span class="repere-nu" data-testid="nav-repere"
-                  data-teinte={b.repere.teinte} aria-hidden="true"><Icone nom={b.repere.icone} taille={16} /></span>
+                  data-teinte={b.repere.hue} aria-hidden="true"><Icone name={b.repere.icon} taille={16} /></span>
           {:else}
-            <span class="icone-tuile" aria-hidden="true"><Icone nom={b.icone} /></span>
+            <span class="icone-tuile" aria-hidden="true"><Icone name={b.icon} /></span>
           {/if}
           <span class="titre-tuile">{b.libelle}</span>
         </div>
       {:else}
         <div class="rang" data-testid="nav-boite"
              role="button" tabindex="0" aria-current="false"
-             onclick={() => onchoisir({ compte: b.id })}
-             onkeydown={activation(() => onchoisir({ compte: b.id }))}>
+             onclick={() => onchoisir({ account: b.id })}
+             onkeydown={activation(() => onchoisir({ account: b.id }))}>
           {#if b.repere}
             <span class="repere-nu" data-testid="nav-repere"
-                  data-teinte={b.repere.teinte} aria-hidden="true"><Icone nom={b.repere.icone} taille={16} /></span>
+                  data-teinte={b.repere.hue} aria-hidden="true"><Icone name={b.repere.icon} taille={16} /></span>
           {:else}
-            <span class="icone" aria-hidden="true"><Icone nom={b.icone} /></span>
+            <span class="icone" aria-hidden="true"><Icone name={b.icon} /></span>
           {/if}
           <span class="libelle">{b.libelle}</span>
         </div>

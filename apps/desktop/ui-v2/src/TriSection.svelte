@@ -11,15 +11,15 @@
   import Menu from './Menu.svelte';
   import { t } from './lib/texte.svelte.js';
 
-  let { valeur = 'date-desc', onchanger = () => {} } = $props();
+  let { value = 'date-desc', onchanger = () => {} } = $props();
 
   const TRIS = [
-    { id: 'date-desc', libelle: 'tri.dateDesc', icone: 'tri_recent' },
-    { id: 'date-asc', libelle: 'tri.dateAsc', icone: 'tri_ancien' },
-    { id: 'alpha-az', libelle: 'tri.alphaAZ', icone: 'tri_az' },
-    { id: 'alpha-za', libelle: 'tri.alphaZA', icone: 'tri_za' },
+    { id: 'date-desc', libelle: 'tri.dateDesc', icon: 'tri_recent' },
+    { id: 'date-asc', libelle: 'tri.dateAsc', icon: 'tri_ancien' },
+    { id: 'alpha-az', libelle: 'tri.alphaAZ', icon: 'tri_az' },
+    { id: 'alpha-za', libelle: 'tri.alphaZA', icon: 'tri_za' },
   ];
-  const courant = $derived(TRIS.find((x) => x.id === valeur) ?? TRIS[0]);
+  const courant = $derived(TRIS.find((x) => x.id === value) ?? TRIS[0]);
 
   let ouvert = $state(false);
   let x = $state(0);
@@ -45,15 +45,15 @@
         title={t('tri.aria')} aria-label={t('tri.aria')}
         aria-haspopup="menu" aria-expanded={ouvert}
         onclick={basculer}>
-  <Icone nom={courant.icone} />{t(courant.libelle)}</button>
+  <Icone name={courant.icon} />{t(courant.libelle)}</button>
 
 <Menu ouvert={ouvert} x={x} y={y} testid="tri-menu" largeur={220}
       onfermer={() => (ouvert = false)}>
     {#each TRIS as choix (choix.id)}
       <button type="button" role="menuitemradio" data-testid={`tri-${choix.id}`}
-              aria-checked={choix.id === valeur}
+              aria-checked={choix.id === value}
               onclick={() => choisir(choix.id)}>
-        <Icone nom={choix.icone} />{t(choix.libelle)}</button>
+        <Icone name={choix.icon} />{t(choix.libelle)}</button>
     {/each}
   </Menu>
 

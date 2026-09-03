@@ -126,7 +126,7 @@
            (V11 : figée hors thèmes, rayon de plateforme) remplace le
            trait hitofude (V2). Le bloc du guichet reste UN (étape 1 du
            parcours ET écran d'un poste accueilli revenu à zéro
-           compte). -->
+           account). -->
       <h3 class="titre display"><Marque tuile taille={40} />
         <span>{t('accueil.bienvenue')} <span class="marque">Wind</span></span></h3>
       {@render progression(1)}
@@ -134,13 +134,13 @@
       {#if complet && comptes.length > 0}
         <ul class="ajoutes" data-testid="accueil-comptes">
           {#each comptes as c (c.account_id)}
-            <li><Icone nom="check_circle" />{c.email}</li>
+            <li><Icone name="check_circle" />{c.email}</li>
           {/each}
         </ul>
       {/if}
       {#if comptes.length === 0 || ajoutOuvert}
         <!-- Constat 1 (2e passe) : tant que Continuer n'est pas là
-             (aucun compte), « Ajouter » est LE geste — primaire. -->
+             (aucun account), « Ajouter » est LE geste — primaire. -->
         <GuichetCompte accueil ajoutPrincipal={comptes.length === 0}
                        ongenerique={(v) => (generiqueOuvert = v)}
                        onajoute={surAjout} />
@@ -207,7 +207,7 @@
       <p class="sous">{t('accueil.betaSous')}</p>
       <div class="beta" data-testid="accueil-beta">
         <span class="echantillon" aria-hidden="true">
-          <Icone nom="feedback" />{t('entete.feedback')}</span>
+          <Icone name="feedback" />{t('entete.feedback')}</span>
         <p class="beta-texte">{t('accueil.betaBouton')}</p>
       </div>
     {:else}
@@ -227,7 +227,7 @@
           <span class="recap-titre">{t('groupe.comptes')}</span>
           <span class="recap-valeur">{comptes.map((c) => c.email).join(' · ')}</span>
           <span class="voile" aria-hidden="true">
-            <Icone nom="arrow_back" />{t('accueil.revenir')}</span>
+            <Icone name="arrow_back" />{t('accueil.revenir')}</span>
         </button>
         <button type="button" class="ligne-recap" data-testid="recap-volets"
                 aria-label="{t('reglages.volets')} : {t('accueil.revenir')}"
@@ -237,7 +237,7 @@
           <span class="recap-valeur">{t(`volets.${volets}`)}</span>
           <img class="mini" src={APERCUS[volets]} alt="" />
           <span class="voile" aria-hidden="true">
-            <Icone nom="arrow_back" />{t('accueil.revenir')}</span>
+            <Icone name="arrow_back" />{t('accueil.revenir')}</span>
         </button>
         <button type="button" class="ligne-recap" data-testid="recap-theme"
                 aria-label="{t('accueil.theme')} : {t('accueil.revenir')}"
@@ -250,7 +250,7 @@
             <span class="mini-theme">{@render fenetre(volets, { accent, bg, border, surface })}</span>
           {/if}
           <span class="voile" aria-hidden="true">
-            <Icone nom="arrow_back" />{t('accueil.revenir')}</span>
+            <Icone name="arrow_back" />{t('accueil.revenir')}</span>
         </button>
       </div>
     {/if}

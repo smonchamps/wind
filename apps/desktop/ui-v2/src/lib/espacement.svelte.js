@@ -60,9 +60,9 @@ export function appliquerEspacement(niveau) {
 // Restaure AVANT le premier rendu (pas de saut de géométrie, et
 // surtout : la PREMIÈRE sonde mesure déjà le bon cran).
 export function restaurerEspacement() {
-  let lu = null;
+  let read = null;
   try {
-    lu = localStorage.getItem(CLE);
+    read = localStorage.getItem(CLE);
   } catch { /* stockage illisible : défaut */ }
-  etat.niveau = NIVEAUX.includes(lu) ? lu : DEFAUT;
+  etat.niveau = NIVEAUX.includes(read) ? read : DEFAUT;
 }

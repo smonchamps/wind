@@ -16,7 +16,7 @@
   import { activation } from './lib/clavier.js';
 
   let {
-    compte = null,
+    account = null,
     onouvrir = () => {},
     ontotal = () => {},
     // Revue : les gestes d'expéditeur ne meurent pas avec la vue plate
@@ -45,17 +45,17 @@
   let tri = $state('date-desc');
   let jeton = 0;
   const groupesTries = $derived(
-    [...groupes].sort(comparateurTri(tri, (g) => g.dernierEpoch, (g) => g.qui ?? g.address)),
+    [...groupes].sort(comparateurTri(tri, (g) => g.lastEpoch, (g) => g.qui ?? g.address)),
   );
 
   async function charger() {
     const j = (jeton += 1);
     try {
-      const g = await appel('paper_trail_groups', { accountId: compte });
+      const g = await appel('paper_trail_groups', { accountId: account });
       if (j !== jeton) return;
       groupes = g;
       servi = true;
-      ontotal(g.reduce((n, x) => n + x.fils, 0));
+      ontotal(g.reduce((n, x) => n + x.threads, 0));
       // Le groupe déplié a pu disparaître (verdict retiré ailleurs).
       if (ouvert && !g.some((x) => x.address === ouvert)) {
         ouvert = null;
@@ -71,7 +71,7 @@
   }
 
   $effect(() => {
-    void compte;
+    void account;
     servi = false;
     ouvert = null;
     messagesOuverts = [];
@@ -90,7 +90,7 @@
     plusPossible = false;
     try {
       const rows = await appel('paper_trail_group_page', {
-        address, accountId: compte, offset: 0, limit: PAGE,
+        address, accountId: account, offset: 0, limit: PAGE,
       });
       if (ouvert === address) {
         messagesOuverts = rows;
@@ -106,7 +106,7 @@
     const address = ouvert;
     try {
       const rows = await appel('paper_trail_group_page', {
-        address, accountId: compte, offset: messagesOuverts.length, limit: PAGE,
+        address, accountId: account, offset: messagesOuverts.length, limit: PAGE,
       });
       if (ouvert === address) {
         messagesOuverts = [...messagesOuverts, ...rows];
@@ -134,14 +134,14 @@
   }
 </script>
 
-<div class="scene" data-testid="registre">
+<div class="scene" data-testid="paper-trail">
   <div class="colonne">
     <!-- R2/R11 : l'entête normalisé des vues du mode — glyphe + titre,
          classes partagées de systeme.css. Titre seul (patron D2). -->
     <h2 class="display entete-vue" data-testid="registre-titre">
-      <span class="glyphe-titre" aria-hidden="true"><Icone nom="registre" taille={26} /></span>{t('boite.registre')}
+      <span class="glyphe-titre" aria-hidden="true"><Icone name="paper_trail" taille={26} /></span>{t('boite.paper_trail')}
       <span class="essor-titre"></span>
-      <TriSection valeur={tri} onchanger={(v) => (tri = v)} /></h2>
+      <TriSection value={tri} onchanger={(v) => (tri = v)} /></h2>
     {#if groupes.length}
       {#each groupesTries as g (g.address)}
         <!-- Le rang est un div-bouton (patron .ligne de la Liste) : le
@@ -156,11 +156,11 @@
             <span class="l1">
               <span class="exp">{g.qui ?? g.address}</span>
               <span class="essor"></span>
-              <span class="heure">{quand(g.dernierEpoch)}</span>
+              <span class="heure">{quand(g.lastEpoch)}</span>
             </span>
             <span class="l2">
-              <span class="nombre">{t(g.fils > 1 ? 'registre.fils' : 'registre.fil', { n: g.fils })}</span>
-              {#if g.dernierObjet}<span class="objet">{g.dernierObjet}</span>{/if}
+              <span class="nombre">{t(g.threads > 1 ? 'registre.fils' : 'registre.fil', { n: g.threads })}</span>
+              {#if g.lastSubject}<span class="objet">{g.lastSubject}</span>{/if}
             </span>
           </span>
           <span class="gestes" role="button" tabindex="0"
@@ -169,7 +169,7 @@
                 aria-label={t('liste.gestes')}
                 onclick={(e) => ouvrirMenu(e, g)}
                 onkeydown={(e) => e.key === 'Enter' && ouvrirMenu(e, g)}>
-            <Icone nom="more_horiz" taille={16} /></span>
+            <Icone name="more_horiz" taille={16} /></span>
         </div>
         {#if ouvert === g.address}
           <div class="dedans" data-testid="registre-messages">
@@ -198,15 +198,15 @@
 
 <Menu ouvert={menu !== null} x={menu?.x ?? 0} y={menu?.y ?? 0}
       testid="registre-menu" largeur={220} onfermer={() => (menu = null)}>
-    {#each ['reception', 'kiosque'] as dest (dest)}
+    {#each ['inbox', 'feed'] as dest (dest)}
       <button type="button" role="menuitem" data-testid={`registre-vers-${dest}`}
               onclick={() => geste(dest)}>
-        <Icone nom={dest === 'reception' ? 'inbox' : 'kiosque'} />{t('liste.deplacerVers', { boite: t(`boite.${dest}`) })}</button>
+        <Icone name={dest === 'inbox' ? 'inbox' : 'feed'} />{t('liste.deplacerVers', { mailbox: t(`boite.${dest}`) })}</button>
     {/each}
     <div class="filet"></div>
     <button type="button" role="menuitem" data-testid="registre-ecarter"
-            onclick={() => geste('ecarte')}>
-      <Icone nom="visibility_off" />{t('liste.ecarter')}</button>
+            onclick={() => geste('screened_out')}>
+      <Icone name="visibility_off" />{t('liste.ecarter')}</button>
   </Menu>
 
 <style>

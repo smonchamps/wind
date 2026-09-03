@@ -20,16 +20,16 @@ export const REPERE_ICONES = [
 ];
 
 export const REPERE_TEINTES = [
-  'rouge',
+  'red',
   'orange',
-  'ocre',
+  'ochre',
   'olive',
-  'vert',
-  'sapin',
-  'bleu',
+  'green',
+  'pine',
+  'blue',
   'indigo',
   'violet',
   'magenta',
-  'rose',
-  'brun',
+  'pink',
+  'brown',
 ];

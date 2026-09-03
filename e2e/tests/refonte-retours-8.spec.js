@@ -64,11 +64,11 @@ test('poser un repère depuis Réglages > Comptes le montre dans la nav', async 
 
   // Un repère n'existe qu'ENTIER : l'icône seule ne pose rien.
   await page.locator('[data-testid="repere-icone"][data-icone="home"]').click();
-  await page.locator('[data-testid="repere-teinte"][data-couleur="bleu"]').click();
+  await page.locator('[data-testid="repere-teinte"][data-couleur="blue"]').click();
   // La rangée reflète l'état persisté (la pastille remplace `person`).
   await expect(
     page.locator('[data-testid="compte-repere"] .repere').first(),
-  ).toHaveAttribute('data-teinte', 'bleu');
+  ).toHaveAttribute('data-teinte', 'blue');
   await page.locator('[data-testid="reglages-termine"]').click();
 
   // La nav : la boîte du compte porte le TRACÉ du repère (A82 — glyphe
@@ -78,7 +78,7 @@ test('poser un repère depuis Réglages > Comptes le montre dans la nav', async 
   await expect(page.locator('[data-testid="nav-repere"]')).toHaveClass(/repere-nu/);
   await expect(page.locator('[data-testid="nav-repere"]')).toHaveAttribute(
     'data-teinte',
-    'bleu',
+    'blue',
   );
   await expect(page.locator('[data-testid="nav-repere"] .ic')).toHaveAttribute('data-nom', 'home');
 });
@@ -92,7 +92,7 @@ test('le bloc de boîte ne vit qu’en boîte unifiée (D3/D7) — et sur TOUTES
   const nLignes = await page.locator('[data-testid="ligne"]').count();
   await expect(blocs).toHaveCount(nLignes);
   const traces = page.locator('[data-testid="ligne-boite"] .repere-nu');
-  await expect(traces.first()).toHaveAttribute('data-teinte', 'bleu');
+  await expect(traces.first()).toHaveAttribute('data-teinte', 'blue');
   const nTraces = await traces.count();
   expect(nTraces).toBeGreaterThan(0);
   expect(nTraces).toBeLessThan(nLignes);
@@ -109,7 +109,7 @@ test('le bloc de boîte ne vit qu’en boîte unifiée (D3/D7) — et sur TOUTES
   await expect(volet.locator('.boite .repere-nu').first()).toBeVisible();
   await expect(volet.locator('.boite .repere-nu').first()).toHaveAttribute(
     'data-teinte',
-    'bleu',
+    'blue',
   );
 
   // Vue d'un seul compte : le bloc n'a plus rien à dire — aucun (D7).

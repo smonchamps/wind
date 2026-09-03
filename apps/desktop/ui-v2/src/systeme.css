@@ -138,10 +138,10 @@ html {
    polarité -nuit (glyphe #1c1b1b — sélecteur $="-nuit" depuis A94).
    Depuis A82 chaque hex sert DEUX
    fois — en background (pastille des Réglages) et en color (tracé) :
-   les 24 hex vivent en JETONS --rep-<teinte>, une table par polarité,
+   les 24 hex vivent en JETONS --mk-<hue>, une table par polarité,
    jamais recopiés.
    ATTENTION (piège du parseur) : jetons.mjs (lireThemes) capture
-   --([a-zA-Z][a-zA-Z0-9]*) — le trait d'union des --rep-* les fait
+   --([a-zA-Z][a-zA-Z0-9]*) — le trait d'union des --mk-* les fait
    échapper au contrat des 17 jetons de thème, et c'est VOULU (le
    nuancier est du contenu, pas un jeton de thème). « Corriger » cette
    classe en [a-zA-Z0-9-] ferait tomber le contrôle 1 de
@@ -150,49 +150,49 @@ html {
    >= 3:1 sur bg/sel/hover/surface/tuile de leur polarité — Réglages
    (pastille), nav et ligne (tracé) —, glyphe de pastille >= 4,5:1. */
 :root {
-  --rep-rouge:#a93226; --rep-orange:#9c4a06; --rep-ocre:#7a5c00;
-  --rep-olive:#556000; --rep-vert:#186a2b; --rep-sapin:#0b635d;
-  --rep-bleu:#0a5a8f; --rep-indigo:#3f4dbb; --rep-violet:#712cb0;
-  --rep-magenta:#991d7c; --rep-rose:#ad204c; --rep-brun:#7a4a1b;
+  --mk-red:#a93226; --mk-orange:#9c4a06; --mk-ochre:#7a5c00;
+  --mk-olive:#556000; --mk-green:#186a2b; --mk-pine:#0b635d;
+  --mk-blue:#0a5a8f; --mk-indigo:#3f4dbb; --mk-violet:#712cb0;
+  --mk-magenta:#991d7c; --mk-pink:#ad204c; --mk-brown:#7a4a1b;
 }
 /* A94 : la table claire sert TOUTE polarité -nuit (le sélecteur du
    color-scheme, plus bas, fait pareil depuis A44) — un thème sombre de
    plus n'a pas à recopier 12 hex. */
 :root[data-theme$="-nuit"] {
-  --rep-rouge:#f1998e; --rep-orange:#f2a76c; --rep-ocre:#e5c04b;
-  --rep-olive:#c3cc4e; --rep-vert:#7fd18c; --rep-sapin:#5ecec4;
-  --rep-bleu:#72bdf0; --rep-indigo:#aab4fa; --rep-violet:#cba4f5;
-  --rep-magenta:#f095d8; --rep-rose:#f79ab4; --rep-brun:#dcab7c;
+  --mk-red:#f1998e; --mk-orange:#f2a76c; --mk-ochre:#e5c04b;
+  --mk-olive:#c3cc4e; --mk-green:#7fd18c; --mk-pine:#5ecec4;
+  --mk-blue:#72bdf0; --mk-indigo:#aab4fa; --mk-violet:#cba4f5;
+  --mk-magenta:#f095d8; --mk-pink:#f79ab4; --mk-brown:#dcab7c;
 }
 .repere {
   display:inline-flex; align-items:center; justify-content:center;
   border-radius:50%; flex:none; color:#ffffff;
 }
 [data-theme$="-nuit"] .repere { color:#1c1b1b; }
-.repere[data-teinte="rouge"]   { background:var(--rep-rouge); }
-.repere[data-teinte="orange"]  { background:var(--rep-orange); }
-.repere[data-teinte="ocre"]    { background:var(--rep-ocre); }
-.repere[data-teinte="olive"]   { background:var(--rep-olive); }
-.repere[data-teinte="vert"]    { background:var(--rep-vert); }
-.repere[data-teinte="sapin"]   { background:var(--rep-sapin); }
-.repere[data-teinte="bleu"]    { background:var(--rep-bleu); }
-.repere[data-teinte="indigo"]  { background:var(--rep-indigo); }
-.repere[data-teinte="violet"]  { background:var(--rep-violet); }
-.repere[data-teinte="magenta"] { background:var(--rep-magenta); }
-.repere[data-teinte="rose"]    { background:var(--rep-rose); }
-.repere[data-teinte="brun"]    { background:var(--rep-brun); }
-.repere-nu[data-teinte="rouge"]   { color:var(--rep-rouge); }
-.repere-nu[data-teinte="orange"]  { color:var(--rep-orange); }
-.repere-nu[data-teinte="ocre"]    { color:var(--rep-ocre); }
-.repere-nu[data-teinte="olive"]   { color:var(--rep-olive); }
-.repere-nu[data-teinte="vert"]    { color:var(--rep-vert); }
-.repere-nu[data-teinte="sapin"]   { color:var(--rep-sapin); }
-.repere-nu[data-teinte="bleu"]    { color:var(--rep-bleu); }
-.repere-nu[data-teinte="indigo"]  { color:var(--rep-indigo); }
-.repere-nu[data-teinte="violet"]  { color:var(--rep-violet); }
-.repere-nu[data-teinte="magenta"] { color:var(--rep-magenta); }
-.repere-nu[data-teinte="rose"]    { color:var(--rep-rose); }
-.repere-nu[data-teinte="brun"]    { color:var(--rep-brun); }
+.repere[data-teinte="red"]   { background:var(--mk-red); }
+.repere[data-teinte="orange"]  { background:var(--mk-orange); }
+.repere[data-teinte="ochre"]    { background:var(--mk-ochre); }
+.repere[data-teinte="olive"]   { background:var(--mk-olive); }
+.repere[data-teinte="green"]    { background:var(--mk-green); }
+.repere[data-teinte="pine"]   { background:var(--mk-pine); }
+.repere[data-teinte="blue"]    { background:var(--mk-blue); }
+.repere[data-teinte="indigo"]  { background:var(--mk-indigo); }
+.repere[data-teinte="violet"]  { background:var(--mk-violet); }
+.repere[data-teinte="magenta"] { background:var(--mk-magenta); }
+.repere[data-teinte="pink"]    { background:var(--mk-pink); }
+.repere[data-teinte="brown"]    { background:var(--mk-brown); }
+.repere-nu[data-teinte="red"]   { color:var(--mk-red); }
+.repere-nu[data-teinte="orange"]  { color:var(--mk-orange); }
+.repere-nu[data-teinte="ochre"]    { color:var(--mk-ochre); }
+.repere-nu[data-teinte="olive"]   { color:var(--mk-olive); }
+.repere-nu[data-teinte="green"]    { color:var(--mk-green); }
+.repere-nu[data-teinte="pine"]   { color:var(--mk-pine); }
+.repere-nu[data-teinte="blue"]    { color:var(--mk-blue); }
+.repere-nu[data-teinte="indigo"]  { color:var(--mk-indigo); }
+.repere-nu[data-teinte="violet"]  { color:var(--mk-violet); }
+.repere-nu[data-teinte="magenta"] { color:var(--mk-magenta); }
+.repere-nu[data-teinte="pink"]    { color:var(--mk-pink); }
+.repere-nu[data-teinte="brown"]    { color:var(--mk-brown); }
 
 /* A80 — le bloc de boîte : « sur <tracé> Libellé ». Partagé par la
    liste et le fil (trois poses), donc ici et pas dans un composant.

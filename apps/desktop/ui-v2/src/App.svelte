@@ -90,14 +90,14 @@
   // les pose. Un compte absent de la table n'a pas de repère.
   let reperes = $state({});
   let noms = $state({});
-  let categorie = $state('reception');
-  let compte = $state(null);
+  let categorie = $state('inbox');
+  let account = $state(null);
   let onglet = $state('tous');
   let recherche = $state('');
   let nResultats = $state(null);
   let nTotal = $state(null);
   let totalListe = $state(0);
-  let synchro = $state(null);
+  let sync = $state(null);
   // Le cycle en cours, vu par la sonde d'activité (E1) : null au repos.
   let activite = $state(null);
   // L'heure qui fait vieillir « il y a N minutes » : re-cadencée toutes
@@ -229,7 +229,7 @@
   // pour comprendre qu'on est hors ligne. `navigator.onLine` peut mentir
   // (Wi-Fi sans internet), mais le terrain a montré le cas qui compte :
   // câble/Wi-Fi coupé, où il bascule juste.
-  let enLigne = $state(navigator.onLine);
+  let online = $state(navigator.onLine);
   // Le verdict d'un bilan de relève (cycle complet OU passe légère) :
   // panne totale, panne partielle, ou rien — une seule écriture, les
   // deux états ne peuvent pas diverger.
@@ -261,7 +261,7 @@
           : t('statut.recherche', { n: nResultats });
       return { texte, fil: null, alerte: false };
     }
-    if (categorie !== 'reception') {
+    if (categorie !== 'inbox') {
       // Un compte non PROUVÉ (null : la source n'a pas encore répondu,
       // PLAN-DEFILEMENT-PROFOND E2) ne s'affiche pas — le nom de la
       // boîte seul, jamais un « 0 éléments » d'attente.
@@ -269,7 +269,7 @@
         texte:
           totalListe === null
             ? t(cleLibelleBoite(categorie))
-            : t('statut.categorie', { boite: t(cleLibelleBoite(categorie)), n: totalListe }),
+            : t('statut.categorie', { mailbox: t(cleLibelleBoite(categorie)), n: totalListe }),
         fil: null,
         alerte: false,
       };
@@ -277,11 +277,11 @@
     // P0-bis : hors ligne, on le DIT — et tout de suite. Prime sur le
     // bloc synchro : un « Synchronisation… » ou un « à jour » serait
     // faux sans réseau. On vit sur le stock, et on dit depuis quand.
-    if (!enLigne) {
-      const derniere = synchro?.derniere ?? null;
+    if (!online) {
+      const last = sync?.last ?? null;
       return {
-        texte: derniere
-          ? t('statut.horsLigneDepuis', { depuis: depuis(derniere, maintenant) })
+        texte: last
+          ? t('statut.horsLigneDepuis', { depuis: depuis(last, maintenant) })
           : t('statut.horsLigne'),
         fil: null,
         alerte: false,
@@ -296,17 +296,17 @@
     // %, balayage sinon.
     if (enSynchro) {
       const pct =
-        synchro && synchro.percent !== null && synchro.percent < 100 ? synchro.percent : null;
+        sync && sync.percent !== null && sync.percent < 100 ? sync.percent : null;
       const parts = [t('statut.cyclePrefixe')];
       if (activite) {
         if (activite.total > 1) {
-          parts.push(`${Math.min(activite.fait + 1, activite.total)}/${activite.total}`);
+          parts.push(`${Math.min(activite.done + 1, activite.total)}/${activite.total}`);
         }
-        if (activite.compte) parts.push(activite.compte);
+        if (activite.account) parts.push(activite.account);
         // La boîte en clair, ou l'étape traduite (le shell n'envoie
         // qu'une clé — A15) : l'observation terrain doit pouvoir NOMMER
         // ce qui est long.
-        if (activite.boite) parts.push(activite.boite);
+        if (activite.mailbox) parts.push(activite.mailbox);
         else if (activite.phase) parts.push(t(`statut.phase.${activite.phase}`));
       }
       let texte = `${parts.join(' · ')}…`;
@@ -315,9 +315,9 @@
       if (pct !== null) texte += ` · ${t('statut.pourcent', { p: pct })}`;
       return { texte, fil: true, alerte: false };
     }
-    if (synchro && synchro.percent !== null && synchro.percent < 100) {
+    if (sync && sync.percent !== null && sync.percent < 100) {
       return {
-        texte: t('statut.synchro', { p: synchro.percent }),
+        texte: t('statut.synchro', { p: sync.percent }),
         fil: true,
         alerte: false,
       };
@@ -356,11 +356,11 @@
     }
     // L'horodatage du prototype, enfin : « dernière synchronisation il
     // y a N minutes » — et sur échec, depuis quand on vit sur le stock.
-    const derniere = synchro?.derniere ?? null;
+    const last = sync?.last ?? null;
     if (synchroEchec) {
       return {
-        texte: derniere
-          ? t('statut.synchroImpossibleDepuis', { depuis: depuis(derniere, maintenant) })
+        texte: last
+          ? t('statut.synchroImpossibleDepuis', { depuis: depuis(last, maintenant) })
           : t('statut.synchroImpossible'),
         fil: null,
         alerte: true,
@@ -378,8 +378,8 @@
     // V2 : aux états « À jour », le disque plein précède le texte —
     // immobile (l'anneau ne tourne que pendant un cycle).
     return {
-      texte: derniere
-        ? t('statut.ajourDepuis', { depuis: depuis(derniere, maintenant) })
+      texte: last
+        ? t('statut.ajourDepuis', { depuis: depuis(last, maintenant) })
         : t('statut.ajour'),
       fil: null,
       alerte: false,
@@ -441,7 +441,7 @@
             if (jeton === jetonNav) kiosqueTotal = n;
           })
           .catch(() => {});
-        appel('category_total', { category: 'registre', accountId: null, nonLus: true })
+        appel('category_total', { category: 'paper_trail', accountId: null, unread: true })
           .then((n) => {
             if (jeton === jetonNav) registreTotal = n;
           })
@@ -474,7 +474,7 @@
     try {
       const lignes = await appel('markers_get');
       const map = {};
-      for (const l of lignes) map[l.account_id] = { icone: l.icone, teinte: l.teinte };
+      for (const l of lignes) map[l.account_id] = { icon: l.icon, hue: l.hue };
       reperes = map;
     } catch (err) {
       console.error('markers_get :', err);
@@ -493,15 +493,15 @@
     try {
       const lignes = await appel('names_get');
       const map = {};
-      for (const l of lignes) map[l.account_id] = l.nom;
+      for (const l of lignes) map[l.account_id] = l.name;
       noms = map;
     } catch (err) {
       console.error('names_get :', err);
     }
   }
-  function patcherNom(id, nom) {
+  function patcherNom(id, name) {
     const map = { ...noms };
-    if (nom) map[id] = nom;
+    if (name) map[id] = name;
     else delete map[id];
     noms = map;
   }
@@ -541,8 +541,8 @@
   let generationVue = null;
   async function sonderSynchro(synchroFournie = null) {
     try {
-      synchro = synchroFournie ?? (await appel('sync_progress'));
-      const generation = synchro?.generation ?? null;
+      sync = synchroFournie ?? (await appel('sync_progress'));
+      const generation = sync?.generation ?? null;
       if (generation !== null) {
         if (generationVue !== null && generation !== generationVue) {
           // E5bis (revue) : les scènes suivent les relèves — sans
@@ -558,7 +558,7 @@
         }
         generationVue = generation;
       }
-    } catch { /* hors ligne ou coeur occupé : le statut garde sa dernière valeur */ }
+    } catch { /* hors ligne ou coeur occupé : le status garde sa dernière value */ }
   }
 
   // Rattrapage des corps (v1 l'avait en bandeau ; ici la ligne de
@@ -633,7 +633,7 @@
       const etat = etatFourni ?? (await appel('outbox_status'));
       const refusees = etat.actions_refusees ?? 0;
       avisRefus = refusees > 0
-        ? { alerte: true, icone: 'error', texte: t('avis.actionsRefusees', { n: refusees }), actions: [] }
+        ? { alerte: true, icon: 'error', texte: t('avis.actionsRefusees', { n: refusees }), actions: [] }
         : null;
       envoisEnAttente = etat.queued;
       envoisProgrammes = etat.scheduled ?? 0;
@@ -644,9 +644,9 @@
       const programme = etat.entries.find((e) => e.send_at_epoch != null);
       avisProgramme = programme
         ? {
-            icone: 'schedule_send',
+            icon: 'schedule_send',
             texte: t('avis.programme', {
-              sujet: programme.subject,
+              subject: programme.subject,
               quand: quandLong(programme.send_at_epoch),
             }),
             actions: [
@@ -673,9 +673,9 @@
       const sort = probleme.state === 'rejected' ? 'avis.envoiRefuse' : 'avis.envoiInterrompu';
       avisEnvoi = {
         alerte: true,
-        icone: 'error',
+        icon: 'error',
         texte: t(sort, {
-          sujet: probleme.subject,
+          subject: probleme.subject,
           erreur: probleme.error ? ` : ${probleme.error}` : '',
         }),
         actions: [
@@ -708,7 +708,7 @@
   // « Installation… » figé sans aucun bouton (revue PLAN-SIGNATURE).
   function proposerMaj(maj) {
     avisMaj = {
-      icone: 'system_update_alt',
+      icon: 'system_update_alt',
       texte: t('avis.maj', { version: maj.version }),
       actions: [
         { libelle: t('action.installer'), principale: true, faire: async () => {
@@ -736,7 +736,7 @@
       const rapports = await appel('telemetry_pending');
       if (rapports > 0) {
         avisCrash = {
-          icone: 'report',
+          icon: 'report',
           texte: t('avis.crash', { n: rapports }),
           actions: [
             { libelle: t('action.ouvrirRapports'), principale: true, faire: async () => {
@@ -754,7 +754,7 @@
             .catch((err) => flash(t('erreur.preference', { err })));
         };
         avisTelemetrie = {
-          icone: 'volunteer_activism',
+          icon: 'volunteer_activism',
           texte: t('avis.telemetrie'),
           actions: [
             { libelle: t('action.activer'), principale: true, faire: () => trancher(true) },
@@ -804,7 +804,7 @@
         // explication laisse l'utilisateur démuni (leçon v1).
         avisConnexion = {
           alerte: true,
-          icone: 'link_off',
+          icon: 'link_off',
           texte: t('avis.connexion', { details: bilan.problems.join(' ; ') }),
           actions: [
             // Terrain 2026-08-20 : « Réessayer » rejouait la connexion
@@ -860,7 +860,7 @@
     // caller sur les timeouts — la barre dit déjà « hors ligne », et le
     // retour du réseau relèvera. Le geste manuel, lui, force (voir
     // `relever`) : le clic est un ordre.
-    if (!enLigne) return;
+    if (!online) return;
     enSynchro = true;
     const jeton = ++jetonCycle;
     sonderActivite();
@@ -877,12 +877,12 @@
     let courrierVu = 0;
     const surveiller = async () => {
       await sonderActivite();
-      if (activite && activite.courrier > courrierVu) {
-        courrierVu = activite.courrier;
+      if (activite && activite.mail > courrierVu) {
+        courrierVu = activite.mail;
         liste?.recharger();
         chargerNav();
       }
-      const trace = JSON.stringify([activite, synchro?.local]);
+      const trace = JSON.stringify([activite, sync?.local]);
       if (trace !== signature) {
         signature = trace;
         dernierMouvement = Date.now();
@@ -939,7 +939,7 @@
     if (enSynchro) return; // le cycle travaille déjà — bouton inhibé
     // Hors ligne, seul le geste manuel (clic, `force`) tente encore —
     // le réveil de veille et le retour réseau attendent d'être en ligne.
-    if (!force && !enLigne) return;
+    if (!force && !online) return;
     enSynchro = true;
     const jeton = ++jetonCycle;
     sonderActivite();
@@ -1058,16 +1058,16 @@
     // arrive au retour, comme le fait Thunderbird. Événement, pas
     // sondage : c'est le seul moyen d'être aussi prompt que l'OS.
     window.addEventListener('offline', () => {
-      enLigne = false;
+      online = false;
       // E4 : les veilleurs IDLE dorment hors ligne — reconnecter en
       // boucle sans réseau ne servirait à rien.
-      appel('network_state', { enLigne: false }).catch(() => {});
+      appel('network_state', { online: false }).catch(() => {});
     });
     window.addEventListener('online', () => {
-      enLigne = true;
+      online = true;
       // Le retour du réseau efface les reculs (côté shell) et réveille
       // les veilleurs ; la relève immédiate couvre le courrier retenu.
-      appel('network_state', { enLigne: true }).catch(() => {});
+      appel('network_state', { online: true }).catch(() => {});
       relever(false);
       // R-D3 (E3) : les gestes joués hors ligne attendent — la passe
       // d'après-geste rejoue leurs actions et réconcilie leurs échos.
@@ -1076,7 +1076,7 @@
     });
     // L'état initial : si l'app démarre hors ligne, les veilleurs le
     // savent tout de suite.
-    appel('network_state', { enLigne: navigator.onLine }).catch(() => {});
+    appel('network_state', { online: navigator.onLine }).catch(() => {});
   });
 
   function choisir(quoi) {
@@ -1088,14 +1088,14 @@
       // périmé de la vue précédente. Même règle au Kiosque en cartes,
       // le temps que sa propre sonde réponde.
       if (
-        quoi.categorie === 'portier'
-        || quoi.categorie === 'kiosque'
-        || quoi.categorie === 'nettoyage'
+        quoi.categorie === 'screener'
+        || quoi.categorie === 'feed'
+        || quoi.categorie === 'cleanup'
         // RETOURS-14 R6 : le Registre groupé émet son propre total.
-        || quoi.categorie === 'registre'
+        || quoi.categorie === 'paper_trail'
       ) totalListe = null;
     }
-    if ('compte' in quoi) compte = quoi.compte;
+    if ('account' in quoi) account = quoi.account;
     recherche = '';
     selectionnee = null;
     fermerFil();
@@ -1111,17 +1111,17 @@
   async function basculerCote(ligne, depuisFil = false) {
     if (gesteSurEcho(ligne)) return;
     try {
-      const cote = await appel('toggle_set_aside', {
+      const aside = await appel('toggle_set_aside', {
         accountId: ligne.account_id,
         mailbox: ligne.mailbox,
         uid: ligne.uid,
       });
-      flash(t(cote ? 'toast.misDeCote' : 'toast.reprisPile'));
+      flash(t(aside ? 'toast.misDeCote' : 'toast.reprisPile'));
       // La discipline de jeton du store (patron d'epinglerFil) : le
       // bouton de la barre suit le geste — un « Reprendre » qui ne
       // changerait pas d'étiquette re-mettrait de côté au clic suivant
       // (revue E5).
-      if (fil.ligne && cleMsg(fil.ligne) === cleMsg(ligne)) fil.cote = cote;
+      if (fil.ligne && cleMsg(fil.ligne) === cleMsg(ligne)) fil.aside = aside;
       rechargerVues();
       pile?.recharger();
       chargerNav();
@@ -1129,7 +1129,7 @@
       // quitter sa vue — l'écran 03 retourne à la boîte, le volet
       // (Kiosque/Registre) se ferme (revue E5 : il montrait un fil
       // parti, bouton menteur compris).
-      if (depuisFil && cote) {
+      if (depuisFil && aside) {
         if (fil.cadre === 'plein') retourBoite();
         else fermerFil();
       }
@@ -1146,11 +1146,11 @@
   // porte (route_sender), mêmes toasts, même resservie.
   async function routerAdresse(address, qui, destination) {
     try {
-      await appel('route_sender', { address, destination, regle: null });
-      if (destination === 'ecarte') {
+      await appel('route_sender', { address, destination, rule: null });
+      if (destination === 'screened_out') {
         flash(t('toast.portierNonNu', { qui }));
       } else {
-        flash(t('toast.expediteurDeplace', { boite: t(cleLibelleBoite(destination)) }));
+        flash(t('toast.expediteurDeplace', { mailbox: t(cleLibelleBoite(destination)) }));
       }
       rechargerVues();
       chargerNav();
@@ -1173,10 +1173,10 @@
       }
       // E4 : « Écarter cet expéditeur » — le Non nu, depuis le ⋯
       // d'une rangée ; le choix se rejoue à l'historique du Portier.
-      if (destination === 'ecarte') {
+      if (destination === 'screened_out') {
         flash(t('toast.portierNonNu', { qui: ligne.sender }));
       } else {
-        flash(t('toast.expediteurDeplace', { boite: t(cleLibelleBoite(destination)) }));
+        flash(t('toast.expediteurDeplace', { mailbox: t(cleLibelleBoite(destination)) }));
       }
       rechargerVues();
       chargerNav();
@@ -1189,18 +1189,18 @@
   // orpheline que la nav classique ne sait plus dire.
   async function basculerOrganise() {
     try {
-      const actif = await basculerModeOrganise();
+      const active = await basculerModeOrganise();
       if (
-        !actif
-        && (categorie === 'kiosque' || categorie === 'registre'
-          || categorie === 'portier' || categorie === 'nettoyage')
+        !active
+        && (categorie === 'feed' || categorie === 'paper_trail'
+          || categorie === 'screener' || categorie === 'cleanup')
       ) {
-        choisir({ categorie: 'reception' });
+        choisir({ categorie: 'inbox' });
       } else {
         // RETOURS-14 R2 (D3) : la Réception organisée n'a plus
         // d'onglets — un filtre « Non lus » hérité du classique y
         // resterait posé sans porte de sortie.
-        if (actif) onglet = 'tous';
+        if (active) onglet = 'tous';
         // La Réception affichée change de CONTENU avec le mode (E2 :
         // rétention et routage) — la liste se ressert, comme après un
         // « Déplacer vers… » ; sans quoi l'écran garde la page de
@@ -1213,15 +1213,15 @@
     }
   }
   function surOnglet(id) {
-    if (id === 'brouillons') {
-      categorie = 'brouillons';
+    if (id === 'drafts') {
+      categorie = 'drafts';
       return;
     }
-    if (categorie === 'brouillons') categorie = 'reception';
+    if (categorie === 'drafts') categorie = 'inbox';
     // RETOURS-14 R2 (D3, revue) : la Réception organisée n'a pas
     // d'onglets — un « Non lus » posé depuis Brouillons (ou pendant
     // une recherche) y resterait sans porte de sortie.
-    onglet = modeOrganise() && categorie === 'reception' ? 'tous' : id;
+    onglet = modeOrganise() && categorie === 'inbox' ? 'tous' : id;
     selectionnee = null;
     fermerFil();
   }
@@ -1261,11 +1261,11 @@
       // agissent sur LE LOT (le même chemin que la barre — agir gèle la
       // barre et vide la sélection) ; sans lot, le triage unitaire A38.
       case 'e':
-        if (liste?.enSelection()) liste.agir('archiver');
+        if (liste?.enSelection()) liste.agir('archive');
         else if (selectionnee) avancerApres(selectionnee, archiver);
         break;
       case 'Delete':
-        if (liste?.enSelection()) liste.agir('supprimer');
+        if (liste?.enSelection()) liste.agir('delete');
         else if (selectionnee) avancerApres(selectionnee, supprimer);
         break;
       case '/':
@@ -1303,7 +1303,7 @@
     appel('sync_after_gesture', { accountId })
       .then((bilan) => {
         for (const incident of bilan.errors) console.error('sync_after_gesture :', incident);
-        if (bilan.fetched > 0 || bilan.deleted > 0 || bilan.reconcilies > 0 || bilan.balayes > 0) {
+        if (bilan.fetched > 0 || bilan.deleted > 0 || bilan.reconciled > 0 || bilan.swept > 0) {
           chargerNav();
           liste?.recharger();
         }
@@ -1322,12 +1322,12 @@
   // ensemble (D5 : jamais deux fois la même ligne). Le geste n'est
   // offert qu'en Réception (D4) et JAMAIS sur une recherche : un
   // résultat peut vivre hors Réception — l'épingle serait invisible.
-  const epinglable = $derived(categorie === 'reception' && nResultats === null);
+  const epinglable = $derived(categorie === 'inbox' && nResultats === null);
   // A80/D7, verdict terrain du 2026-08-25 (point 12) : le volet de
   // lecture ne dit la boîte que là où la LISTE la dit — même règle,
   // une seule expression (lib/boite.js). L'App est la seule à tenir les
   // deux moitiés : le compte choisi et l'état de la recherche.
-  const melangeComptes = $derived(vueMelange(compte, nResultats !== null));
+  const melangeComptes = $derived(vueMelange(account, nResultats !== null));
   async function epinglerFil(ligne) {
     if (gesteSurEcho(ligne)) return;
     try {
@@ -1408,7 +1408,7 @@
     // la pastille (revue 2026-08-22).
     patcherRepere(id, null);
     patcherNom(id, null);
-    if (compte === id) compte = null;
+    if (account === id) account = null;
     selectionnee = null;
     fermerFil();
     chargerNav();
@@ -1442,8 +1442,8 @@
     try {
       const etat = await appel('ui_state');
       chargerNav(etat.nav);
-      sonderSynchro(etat.synchro);
-      sonderEnvois(etat.envois);
+      sonderSynchro(etat.sync);
+      sonderEnvois(etat.outbox);
     } catch { /* hors ligne ou coeur occupé : la prochaine sonde suffira */ }
   }
 
@@ -1464,18 +1464,18 @@
   // E4 : la Réception ORGANISÉE n'a pas de volet de lecture — un clic
   // ouvre l'écran 03 (la surimpression existante), quel que soit le
   // réglage de volets.
-  const receptionOrganisee = $derived(modeOrganise() && categorie === 'reception');
+  const receptionOrganisee = $derived(modeOrganise() && categorie === 'inbox');
   // E5bis : le Kiosque en CARTES — une scène de lecture, pas une
   // liste ; comme le Portier et la Réception organisée, pas de volet.
-  const kiosqueCartes = $derived(modeOrganise() && categorie === 'kiosque');
+  const kiosqueCartes = $derived(modeOrganise() && categorie === 'feed');
   // RETOURS-14 R6 (D7) : le Registre groupé par expéditeur — la vue
   // organisée seule ; le volet de lecture RESTE le lecteur.
-  const registreGroupe = $derived(modeOrganise() && categorie === 'registre');
+  const registreGroupe = $derived(modeOrganise() && categorie === 'paper_trail');
   // LES scènes sans volet de lecture — UN prédicat (revue 2026-08-30 :
   // l'énumération vivait copiée aux deux gardes Lecture/poignée ; la
   // prochaine section pleine scène s'ajoute ICI, pas dans N sites).
   const sceneSansLecture = $derived(
-    categorie === 'portier' || categorie === 'nettoyage' || receptionOrganisee || kiosqueCartes,
+    categorie === 'screener' || categorie === 'cleanup' || receptionOrganisee || kiosqueCartes,
   );
   function surSelection(ligne) {
     selectionnee = ligne;
@@ -1599,12 +1599,12 @@
   // Le fil ENTIER d'une rangée part (D6 de RETOURS-10) : le cœur le
   // développe lui-même, `thread_messages` n'est plus demandé.
   const GESTES_GROUPE = {
-    archiver: { toast: 'toast.groupeArchivees', ferme: true },
-    supprimer: { toast: 'toast.groupeSupprimees', ferme: true },
+    archive: { toast: 'toast.groupeArchivees', ferme: true },
+    delete: { toast: 'toast.groupeSupprimees', ferme: true },
     spam: { toast: 'toast.groupeSpam', ferme: true },
-    nonspam: { toast: 'toast.groupePasSpam', ferme: true },
-    lu: { toast: 'toast.groupeLues' },
-    nonlu: { toast: 'toast.groupeNonLues' },
+    not_spam: { toast: 'toast.groupePasSpam', ferme: true },
+    read: { toast: 'toast.groupeLues' },
+    unread: { toast: 'toast.groupeNonLues' },
   };
   // La cible d'une commande par message — le cinquième site qui épelait
   // ce triple à la main (revue).
@@ -1618,22 +1618,22 @@
     // Les échos s'écartent par le prédicat PUR (estEcho — gesteSurEcho
     // flasherait un toast PAR écho, aussitôt écrasés) et restent au
     // DÉNOMINATEUR : un lot amputé se dit, jamais un succès de façade.
-    const cibles = lignes.filter((l) => !estEcho(l));
+    const targets = lignes.filter((l) => !estEcho(l));
     const total = lignes.length;
-    if (cibles.length === 0) {
+    if (targets.length === 0) {
       if (total > 0) flash(t('toast.echoAttente'));
       return;
     }
-    let faits = 0;
+    let done = 0;
     let reussies = [];
     let spamRefuse = false;
     try {
       const bilan = await appel('act_on_group', {
-        cibles: cibles.map((l) => ({ ...cibleDe(l), threadId: l.thread_id ?? null })),
+        targets: targets.map((l) => ({ ...cibleDe(l), threadId: l.thread_id ?? null })),
         action,
       });
-      faits = bilan.faits;
-      reussies = cibles;
+      done = bilan.done;
+      reussies = targets;
     } catch (err) {
       // Tout ou rien (D6) : un refus laisse le lot intact — le seul
       // échec ATTENDU est l'absence de dossier indésirable.
@@ -1641,15 +1641,15 @@
       console.error('act_on_group :', err);
     }
     flash(
-      faits === total
-        ? t(geste.toast, { n: faits })
-        : action === 'spam' && faits === 0 && spamRefuse
+      done === total
+        ? t(geste.toast, { n: done })
+        : action === 'spam' && done === 0 && spamRefuse
           ? t('erreur.spamImpossible')
-          : t('erreur.groupePartiel', { faits, total }),
+          : t('erreur.groupePartiel', { done, total }),
     );
     // L'écho local du marquage lu, comme au chemin unitaire (marquerVue) :
     // la graisse tombe à l'instant, la resservie dit la vérité derrière.
-    if (action === 'lu') for (const l of reussies) liste?.marquerLue(l);
+    if (action === 'read') for (const l of reussies) liste?.marquerLue(l);
     // Le fil ouvert ne se ferme que si SON geste a RÉUSSI — un échec le
     // laisse en place, comme au chemin unitaire.
     if (geste.ferme && selectionnee
@@ -1723,7 +1723,7 @@
       <button type="button" class="btn-tiroir" data-testid="btn-tiroir"
               aria-label={t('nav.ouvrirTiroir')} aria-expanded={tiroirOuvert}
               onclick={() => (tiroirOuvert = true)}>
-        <Icone nom="menu" /></button>
+        <Icone name="menu" /></button>
     {/if}
     <!-- V1/V11 : la marque EN GLYPHE — l'enveloppe à l'encre courante,
          rabat --marque, devant le mot « Wind » (18 px). Le trait
@@ -1733,7 +1733,7 @@
          se perdait dans l'entête de 52. -->
     <span class="marque" class:marque--libre={volets === 1}><Marque taille={28} />Wind</span>
     <span class="recherche" data-testid="recherche">
-      <Icone nom="search" />
+      <Icone name="search" />
       <input type="text" bind:this={champRecherche} bind:value={recherche}
              data-testid="champ-recherche" aria-label={t('entete.recherche')}
              placeholder={t('entete.chercher')}>
@@ -1742,7 +1742,7 @@
         <button type="button" class="vider" data-testid="vider-recherche"
                 aria-label={t('entete.effacerRecherche')}
                 onclick={() => { recherche = ''; champRecherche?.focus(); }}>
-          <Icone nom="close" /></button>
+          <Icone name="close" /></button>
       {/if}</span>
     <!-- PLAN-MODE-ORGANISE E1 : le va-et-vient « Organisé », à droite
          de la recherche (forme arrêtée au prototype) — pilule + disque,
@@ -1752,15 +1752,15 @@
             onclick={basculerOrganise}>
       <span class="piste" aria-hidden="true"><span class="disque"></span></span>{t('entete.organise')}</button>
     <button type="button" class="principal" data-testid="ecrire" onclick={ecrire}>
-      <Icone nom="edit_square" />{t('entete.ecrire')}</button>
+      <Icone name="edit_square" />{t('entete.ecrire')}</button>
     <!-- Le retour bêta (RETOURS-11 R3) : sans compte, pas de bouton —
-         le message part par email depuis le premier compte du poste. -->
+         le message part par email depuis le premier account du poste. -->
     {#if comptes.length > 0}
       <button type="button" data-testid="feedback" onclick={() => retour.ouvrir()}>
-        <Icone nom="feedback" />{t('entete.feedback')}</button>
+        <Icone name="feedback" />{t('entete.feedback')}</button>
     {/if}
     <button type="button" data-testid="reglages" onclick={() => reglages.ouvrir()}>
-      <Icone nom="settings" />{t('entete.reglages')}</button>
+      <Icone name="settings" />{t('entete.reglages')}</button>
   </header>
 
   <FenteAvis {avis} />
@@ -1771,19 +1771,19 @@
          class:colonnes--organise={receptionOrganisee}
          style="--l-nav:{lNav}px; --l-liste:{lListe}px">
       {#if volets !== 1}
-        <Nav {comptes} {reperes} {noms} {categorie} {compte}
+        <Nav {comptes} {reperes} {noms} {categorie} {account}
              organise={modeOrganise()} portier={portierTotal}
              kiosque={kiosqueTotal} registre={registreTotal} onchoisir={choisir} />
       {/if}
-      {#if categorie === 'nettoyage'}
+      {#if categorie === 'cleanup'}
         <!-- Volet B : le Nettoyage de printemps — même régime de scène
              que le Portier (colonne, pas de volet de lecture). -->
         <div class="cadre-portier">
           <Nettoyage onflash={flash} onchange={chargerNav} />
         </div>
-      {:else if categorie === 'portier'}
+      {:else if categorie === 'screener'}
         <!-- E2 : le Portier n'est pas une liste — un rang par
-             EXPÉDITEUR en attente, un oui/non et rien d'autre. Sa
+             EXPÉDITEUR en attente, un yes/no et rien d'autre. Sa
              scène prend TOUTE la place à droite de la nav (colonne
              centrée, comme l'écran 03) — le volet de lecture n'a
              rien à y lire. -->
@@ -1794,7 +1794,7 @@
         <!-- E5bis : le Kiosque en cartes — les lettres déjà ouvertes,
              la scène entière (décision CE du 2026-08-30). -->
         <div class="cadre-portier">
-          <Kiosque bind:this={kiosque} {compte}
+          <Kiosque bind:this={kiosque} {account}
                    ondeplacer={deplacerExpediteur} oncote={basculerCote}
                    ontotal={(t) => (totalListe = t)} />
         </div>
@@ -1802,11 +1802,11 @@
         <!-- R6 : le Registre groupé prend la colonne de la liste — le
              volet de lecture reste à droite, ouvrir passe par le
              chemin de la liste (surSelection). -->
-        <Registre bind:this={registre} {compte}
+        <Registre bind:this={registre} {account}
                   onouvrir={surSelection} onrouter={routerAdresse}
                   ontotal={(t) => (totalListe = t)} />
       {:else}
-        <Liste bind:this={liste} {categorie} {compte} {comptes} {reperes} {noms} {onglet} {recherche}
+        <Liste bind:this={liste} {categorie} {account} {comptes} {reperes} {noms} {onglet} {recherche}
                {brouillons} onreprendre={reprendreBrouillon}
                onselect={surSelection} ononglet={surOnglet} ongroupe={groupe}
                ontotal={(t) => (totalListe = t)}
@@ -1821,7 +1821,7 @@
                  onrepondre={repondre} onrepondretous={repondreTous}
                  ontransferer={transferer}
                  onspam={signalerSpam} onnonspam={marquerLegitime}
-                 estIndesirable={categorie === 'indesirables'} onflash={flash}
+                 estIndesirable={categorie === 'junk'} onflash={flash}
                  organise={modeOrganise()} ondeplacer={deplacerExpediteur}
                  oncote={(l) => basculerCote(l, true)}
                  {epinglable} onepingler={epinglerFil} />
@@ -1885,7 +1885,7 @@
            vit dans le trait de la ligne, jamais ici). -->
       <button type="button" class="btn-statut" data-testid="btn-releve"
               disabled={enSynchro} onclick={() => relever(true)}>
-        <Icone nom="sync" />
+        <Icone name="sync" />
         {#if enSynchro}{t('action.synchronisation')}{:else if synchroEchec || synchroPartiel}{t('action.reessayer')}{:else}{t('action.synchroniser')}{/if}
       </button>
     </div>
@@ -1905,9 +1905,9 @@
           <button type="button" class="btn-tiroir fermer-tiroir" data-testid="tiroir-fermer"
                   aria-label={t('nav.fermerTiroir')}
                   onclick={() => (tiroirOuvert = false)}>
-            <Icone nom="close" /></button>
+            <Icone name="close" /></button>
         </div>
-        <Nav {comptes} {reperes} {noms} {categorie} {compte}
+        <Nav {comptes} {reperes} {noms} {categorie} {account}
              organise={modeOrganise()} portier={portierTotal}
              kiosque={kiosqueTotal} registre={registreTotal} onchoisir={choisirDuTiroir} />
       </div>
@@ -1928,7 +1928,7 @@
                   ontransferer={transferer}
                   onspam={async (l) => { await signalerSpam(l); retourBoite(); }}
                   onnonspam={async (l) => { await marquerLegitime(l); retourBoite(); }}
-                  estIndesirable={categorie === 'indesirables'}
+                  estIndesirable={categorie === 'junk'}
                   onecrire={ecrire}
                   onflash={flash}
                   organise={modeOrganise()} ondeplacer={deplacerExpediteur}
@@ -1937,14 +1937,14 @@
 
     <!-- R2 (A75) : le parcours complet (`accueilAJouer`, première
          installation — il TIENT à travers ses quatre étapes, comptes
-         ajoutés ou non) ; sinon le guichet seul d'origine, à zéro
-         compte, qui s'efface au premier ajout. -->
+         ajoutés ou no) ; sinon le guichet seul d'origine, à zéro
+         account, qui s'efface au premier ajout. -->
     {#if navPrete && (accueilAJouer || comptes.length === 0)}
       <Onboarding complet={accueilAJouer} {comptes} onajoute={compteAjoute}
                   onfini={() => (accueilAJouer = false)} />
     {/if}
 
-    <Composition bind:this={composition} {comptes} {compte} {noms}
+    <Composition bind:this={composition} {comptes} {account} {noms}
                  onflash={flash} onenvoye={apresEnvoi}
                  oncourrier={apresCourrierEnvoye}
                  onbrouillon={sonderBrouillons} />

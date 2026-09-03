@@ -6,7 +6,7 @@
 // Rust dans le même geste — jamais ici.
 import { appel } from './transport.js';
 
-const etat = $state({ actif: false });
+const etat = $state({ active: false });
 
 // Revue E1 : la restauration part sans await (leçon PLAN-DEMARRAGE —
 // rien ne précède la première page de la liste) ; si l'utilisateur
@@ -16,7 +16,7 @@ let bascule = false;
 let enVol = false;
 
 export function modeOrganise() {
-  return etat.actif;
+  return etat.active;
 }
 
 // RETOURS-13 R3 : LA règle du libellé de boîte — en mode organisé la
@@ -25,7 +25,7 @@ export function modeOrganise() {
 // entête de liste, retour du fil, statut, toasts) ; la revue a compté
 // quatre copies qui divergeaient déjà de forme.
 export function cleLibelleBoite(id) {
-  return id === 'reception' && etat.actif
+  return id === 'inbox' && etat.active
     ? 'boite.receptionOrganisee'
     : `boite.${id}`;
 }
@@ -35,12 +35,12 @@ export function cleLibelleBoite(id) {
 // mode éteint : le classique est le défaut.
 export async function restaurerModeOrganise() {
   try {
-    const lu = Boolean(await appel('organized_mode_get'));
-    if (!bascule) etat.actif = lu;
+    const read = Boolean(await appel('organized_mode_get'));
+    if (!bascule) etat.active = read;
   } catch {
     /* le classique est le défaut, rien à refléter */
   }
-  return etat.actif;
+  return etat.active;
 }
 
 // La bascule ÉCRIT d'abord, reflète ensuite — un échec de commande ne
@@ -48,13 +48,13 @@ export async function restaurerModeOrganise() {
 // pendant le vol est ignoré (sinon les deux calculent la même cible
 // et la bascule « colle »).
 export async function basculerModeOrganise() {
-  if (enVol) return etat.actif;
+  if (enVol) return etat.active;
   enVol = true;
   bascule = true;
   try {
-    const cible = !etat.actif;
-    await appel('organized_mode_set', { actif: cible });
-    etat.actif = cible;
+    const cible = !etat.active;
+    await appel('organized_mode_set', { active: cible });
+    etat.active = cible;
     return cible;
   } finally {
     enVol = false;

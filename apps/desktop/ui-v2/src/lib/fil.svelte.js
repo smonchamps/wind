@@ -14,12 +14,12 @@ import { appel } from './transport.js';
 const VIDE = () => ({
   messages: [],
   deplies: {},
-  corps: {},
+  body: {},
   // PLAN-AUDIT-V2 E10 : un corps que le coeur n'a pas servi — la garde
   // `corps[k] === undefined` refusait tout rechargement : corps vide a
   // vie jusqu'a la fermeture du fil.
   erreurs: {},
-  pieces: {},
+  attachments: {},
   // Le compte de pièces d'APRÈS-SCAN par message (vue.attachment_count
   // de message_body) : la ligne de liste porte celui d'AVANT
   // l'ouverture — s'y fier ouvrait les pièces fraîchement reçues sur
@@ -89,7 +89,7 @@ export async function ouvrirFil(nouvelle, cadre = 'volet') {
   // E5 : même règle pour la pile — une ligne d'une vue organisée n'est
   // JAMAIS mise de côté (le cœur l'exclut), une carte de la pile l'est
   // toujours (elle porte `cote`). Jamais un aller-retour à l'ouverture.
-  fil.cote = nouvelle.cote ?? false;
+  fil.aside = nouvelle.aside ?? false;
   // V-D2 : sans fil — écho compris — le MESSAGE SEUL est le fil.
   if (nouvelle.thread_id == null) {
     fil.messages = [nouvelle];
@@ -129,8 +129,8 @@ export function retirerMessage(m) {
   if (!fil.messages.some((x) => cleMsg(x) === k)) return -1;
   fil.messages = fil.messages.filter((x) => cleMsg(x) !== k);
   delete fil.deplies[k];
-  delete fil.corps[k];
-  delete fil.pieces[k];
+  delete fil.body[k];
+  delete fil.attachments[k];
   delete fil.nbPieces[k];
   delete fil.imagesBloquees[k];
   delete fil.invitations[k];
@@ -148,8 +148,8 @@ export function fermerFil() {
 async function chargerMessage(m, avecImages = false) {
   const k = cleMsg(m);
   const mien = jeton;
-  if (fil.corps[k] === undefined || avecImages) {
-    if (fil.corps[k] === undefined) fil.corps[k] = '';
+  if (fil.body[k] === undefined || avecImages) {
+    if (fil.body[k] === undefined) fil.body[k] = '';
     try {
       const vue = estEcho(m)
         ? await appel('echo_body', {
@@ -167,7 +167,7 @@ async function chargerMessage(m, avecImages = false) {
       // jamais l'état d'un fil plus récent.
       if (mien !== jeton) return;
       delete fil.erreurs[k];
-      fil.corps[k] = vue.document;
+      fil.body[k] = vue.document;
       fil.imagesBloquees[k] = avecImages ? 0 : vue.remote_images_blocked;
       fil.nbPieces[k] = vue.attachment_count;
       // La carte d'invitation voyage avec le corps — même fraîcheur que
@@ -177,8 +177,8 @@ async function chargerMessage(m, avecImages = false) {
       console.error('message_body :', err);
       // Rechargeable : la marque `''` posee avant l'appel tombe, l'erreur
       // se dit dans le cadre (« Reessayer »).
-      if (mien === jeton && fil.corps[k] === '') {
-        delete fil.corps[k];
+      if (mien === jeton && fil.body[k] === '') {
+        delete fil.body[k];
         fil.erreurs[k] = true;
       }
     }
@@ -189,8 +189,8 @@ async function chargerMessage(m, avecImages = false) {
   // taille seuls, les octets sont purgés) : jamais un titre « Fichiers
   // joints » sans rien dessous (PLAN-RETOURS-5, D2).
   const nb = fil.nbPieces[k] ?? m.attachment_count;
-  if (nb > 0 && fil.pieces[k] === undefined) {
-    fil.pieces[k] = [];
+  if (nb > 0 && fil.attachments[k] === undefined) {
+    fil.attachments[k] = [];
     const lecture = estEcho(m)
       ? appel('echo_attachments', { id: Number(m.mailbox.slice(5)) })
       : appel('message_attachments', {
@@ -200,7 +200,7 @@ async function chargerMessage(m, avecImages = false) {
         });
     lecture
       .then((lues) => {
-        if (mien === jeton) fil.pieces[k] = lues;
+        if (mien === jeton) fil.attachments[k] = lues;
       })
       .catch((err) => console.error('message_attachments :', err));
   }
@@ -211,9 +211,9 @@ export function reessayer(m) {
   return chargerMessage(m);
 }
 
-export function basculerMessage(m, valeur = null) {
+export function basculerMessage(m, value = null) {
   const k = cleMsg(m);
-  const nouveau = valeur ?? !fil.deplies[k];
+  const nouveau = value ?? !fil.deplies[k];
   fil.deplies[k] = nouveau;
   return nouveau ? chargerMessage(m) : Promise.resolve();
 }
@@ -283,7 +283,7 @@ export function toujoursAfficherImages(m) {
       for (const autre of fil.messages) {
         const ka = cleMsg(autre);
         if (ka !== cleMsg(m) && (fil.imagesBloquees[ka] ?? 0) > 0) {
-          delete fil.corps[ka];
+          delete fil.body[ka];
           chargerMessage(autre);
         }
       }

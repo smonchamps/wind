@@ -116,8 +116,8 @@ test('D6 : changer d’avis depuis la carte — refuser puis accepter', async ()
 test('R11 : la liste rechargée dit la réponse en puce — la réponse survit à la navigation', async () => {
   // Une page fraîche de la Réception (aller-retour de dossier) : le
   // rang vient de l'enrichissement du cœur, pas d'un état local.
-  await page.locator('[data-testid="nav-dossier"][data-categorie="archives"]').click();
-  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="archive"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
   await expect(
     ligneAtelier().locator('[data-testid="puce-invitation"]'),
   ).toContainText('Acceptée');

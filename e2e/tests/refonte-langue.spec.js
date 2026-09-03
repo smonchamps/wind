@@ -45,8 +45,8 @@ test('la bascule en anglais est immédiate, sans redémarrage', async () => {
   // …et les écrans majeurs aussi : entête, nav, onglets, volet, langue
   // du document (lecteurs d'écran).
   await expect(page.locator('[data-testid="ecrire"]')).toContainText('Compose');
-  await expect(page.locator('[data-testid="nav-dossier"][data-categorie="reception"]')).toContainText('Inbox');
-  await expect(page.locator('[data-testid="nav-dossier"][data-categorie="corbeille"]')).toContainText('Trash');
+  await expect(page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]')).toContainText('Inbox');
+  await expect(page.locator('[data-testid="nav-dossier"][data-categorie="trash"]')).toContainText('Trash');
   await expect(page.locator('[data-testid="onglet"][data-onglet="nonlus"]')).toContainText('Unread');
   await expect(page.locator('[data-testid="volet-lecture"]')).toContainText('Select a message to read it.');
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');

@@ -31,7 +31,7 @@
   // RETOURS-13 R5/R9 : les actions par défaut du clic nu — lues du
   // cœur (Réglages > Portier les règle) ; les défauts livrés tiennent
   // tant que la base n'a pas répondu.
-  let defauts = $state({ oui: 'reception', non: 'corbeille' });
+  let defauts = $state({ yes: 'inbox', no: 'trash' });
   // Le mini ⋯ ouvert : { address, qui, type: 'oui'|'non', x, y }.
   let menu = $state(null);
   // R9 : le tri de l'historique — plus récents d'abord par défaut
@@ -50,7 +50,7 @@
       rangs = attente;
       // L'historique du guichet ne montre que les ÉCARTÉS (prototype) :
       // un Oui se voit dans sa vue, un Non ne se voit qu'ici.
-      ecartes = historique.filter((r) => r.destination === 'ecarte');
+      ecartes = historique.filter((r) => r.destination === 'screened_out');
     } catch (err) {
       console.error('portier :', err);
     }
@@ -74,26 +74,26 @@
   const TOAST_NON = {
     spam: 'toast.portierNonSpam',
     archive: 'toast.portierNonArchive',
-    corbeille: 'toast.portierNonCorbeille',
+    trash: 'toast.portierNonCorbeille',
   };
   const BOITE_DE = {
-    reception: 'portier.laReception',
-    kiosque: 'portier.leKiosque',
-    registre: 'portier.leRegistre',
+    inbox: 'portier.laReception',
+    feed: 'portier.leKiosque',
+    paper_trail: 'portier.leRegistre',
   };
 
   // Le verdict — la commande E1, LA porte unique du routage. `qui` :
   // le nom d'affichage du rang, pour le toast.
-  async function decider(address, qui, destination, regle = null) {
+  async function decider(address, qui, destination, rule = null) {
     menu = null;
     try {
-      await appel('route_sender', { address, destination, regle });
-      if (destination === 'ecarte') {
-        onflash(t(regle ? TOAST_NON[regle] : 'toast.portierNonNu', { qui }));
-      } else if (destination === 'reception') {
+      await appel('route_sender', { address, destination, rule });
+      if (destination === 'screened_out') {
+        onflash(t(rule ? TOAST_NON[rule] : 'toast.portierNonNu', { qui }));
+      } else if (destination === 'inbox') {
         onflash(t('toast.portierOuiNu', { qui }));
       } else {
-        onflash(t('toast.portierOuiVers', { qui, boite: t(BOITE_DE[destination]) }));
+        onflash(t('toast.portierOuiVers', { qui, mailbox: t(BOITE_DE[destination]) }));
       }
       await recharger();
       onchange();
@@ -129,13 +129,13 @@
 </script>
 
 
-<div class="scene" data-testid="portier">
+<div class="scene" data-testid="screener">
   <div class="colonne">
     <!-- RETOURS-13 R4/R7 : le glyphe portier coiffe le titre ; glyphe,
-         titre et sous-titre (trois phrases CE) se justifient à GAUCHE
+         title et sous-title (trois phrases CE) se justifient à GAUCHE
          sur la colonne des rangs — l'entête centrée est morte. -->
     <h2 class="display entete-vue" data-testid="portier-titre">
-      <span class="glyphe-titre" aria-hidden="true"><Icone nom="portier" taille={26} /></span>{t('boite.portier')}</h2>
+      <span class="glyphe-titre" aria-hidden="true"><Icone name="screener" taille={26} /></span>{t('boite.screener')}</h2>
     <p class="sous-titre-vue">{t('portier.sousTitre1')}<br />{t('portier.sousTitre2')}<br />{t('portier.sousTitre3')}</p>
 
     <!-- Terrain RETOURS-13 (C2) : le titre de section reste visible
@@ -158,44 +158,44 @@
           <div class="choix">
             <span class="btn-portier">
               <button type="button" class="gros" data-testid="portier-oui"
-                      onclick={() => decider(rang.address, rang.row.sender, defauts.oui)}>
-                <span class="ic-oui"><Icone nom="check_circle" /></span>{t('portier.oui')}</button>
+                      onclick={() => decider(rang.address, rang.row.sender, defauts.yes)}>
+                <span class="ic-oui"><Icone name="check_circle" /></span>{t('portier.oui')}</button>
               <button type="button" class="mini" data-testid="portier-mini-oui"
                       aria-label={t('portier.ouiChoix')} aria-haspopup="menu"
                       aria-expanded={menu?.address === rang.address && menu?.type === 'oui'}
                       onclick={(e) => ouvrirMini(e, rang, 'oui')}>
-                <Icone nom="more_horiz" taille={12} /></button>
+                <Icone name="more_horiz" taille={12} /></button>
             </span>
             <span class="btn-portier">
               <button type="button" class="gros" data-testid="portier-non"
-                      onclick={() => decider(rang.address, rang.row.sender, 'ecarte',
-                        defauts.non === 'ecarte' ? null : defauts.non)}>
-                <span class="ic-non"><Icone nom="cancel" /></span>{t('portier.non')}</button>
+                      onclick={() => decider(rang.address, rang.row.sender, 'screened_out',
+                        defauts.no === 'screened_out' ? null : defauts.no)}>
+                <span class="ic-non"><Icone name="cancel" /></span>{t('portier.non')}</button>
               <button type="button" class="mini" data-testid="portier-mini-non"
                       aria-label={t('portier.nonChoix')} aria-haspopup="menu"
                       aria-expanded={menu?.address === rang.address && menu?.type === 'non'}
                       onclick={(e) => ouvrirMini(e, rang, 'non')}>
-                <Icone nom="more_horiz" taille={12} /></button>
+                <Icone name="more_horiz" taille={12} /></button>
             </span>
           </div>
         </div>
       {/each}
     {:else}
       <div class="vide" data-testid="portier-vide">
-        <span class="ic-oui"><Icone nom="check_circle" /></span>{t('portier.vide')}
+        <span class="ic-oui"><Icone name="check_circle" /></span>{t('portier.vide')}
       </div>
     {/if}
 
     <!-- R9 : le tri, à droite sur la ligne du titre de section. -->
     <div class="ligne-section historique">
       <p class="regle-libelle">{t('portier.historique')}</p>
-      {#if ecartes.length}<TriSection valeur={triHistorique} onchanger={(v) => (triHistorique = v)} />{/if}
+      {#if ecartes.length}<TriSection value={triHistorique} onchanger={(v) => (triHistorique = v)} />{/if}
     </div>
     {#if ecartes.length}
       {#each ecartesTries as routage (routage.address)}
         <div class="rang-historique" data-testid="portier-historique">
-          <span class="ic-hist" aria-hidden="true"><Icone nom="visibility_off" /></span>
-          <span class="qui"><b>{routage.address}</b> : {t(LIBELLE_ECARTE[routage.regle] ?? 'portier.ecarte')}</span>
+          <span class="ic-hist" aria-hidden="true"><Icone name="visibility_off" /></span>
+          <span class="qui"><b>{routage.address}</b> : {t(LIBELLE_ECARTE[routage.rule] ?? 'portier.ecarte')}</span>
           <button type="button" data-testid="portier-reintegrer"
                   onclick={() => reintegrer(routage)}>{t('portier.reintegrer')}</button>
         </div>
@@ -211,25 +211,25 @@
     {#if menu.type === 'oui'}
       <p class="titre-menu">{t('portier.ouiVers')}</p>
       <button type="button" role="menuitem" data-testid="portier-vers-reception"
-              onclick={() => decider(menu.address, menu.qui, 'reception')}>
-        <Icone nom="inbox" />{t('portier.versReception')}</button>
+              onclick={() => decider(menu.address, menu.qui, 'inbox')}>
+        <Icone name="inbox" />{t('portier.versReception')}</button>
       <button type="button" role="menuitem" data-testid="portier-vers-kiosque"
-              onclick={() => decider(menu.address, menu.qui, 'kiosque')}>
-        <Icone nom="kiosque" />{t('portier.versKiosque')}</button>
+              onclick={() => decider(menu.address, menu.qui, 'feed')}>
+        <Icone name="feed" />{t('portier.versKiosque')}</button>
       <button type="button" role="menuitem" data-testid="portier-vers-registre"
-              onclick={() => decider(menu.address, menu.qui, 'registre')}>
-        <Icone nom="registre" />{t('portier.versRegistre')}</button>
+              onclick={() => decider(menu.address, menu.qui, 'paper_trail')}>
+        <Icone name="paper_trail" />{t('portier.versRegistre')}</button>
     {:else}
       <p class="titre-menu">{t('portier.nonSeront')}</p>
       <button type="button" role="menuitem" data-testid="portier-regle-spam"
-              onclick={() => decider(menu.address, menu.qui, 'ecarte', 'spam')}>
-        <Icone nom="report" />{t('portier.regleSpam')}</button>
+              onclick={() => decider(menu.address, menu.qui, 'screened_out', 'spam')}>
+        <Icone name="report" />{t('portier.regleSpam')}</button>
       <button type="button" role="menuitem" data-testid="portier-regle-archive"
-              onclick={() => decider(menu.address, menu.qui, 'ecarte', 'archive')}>
-        <Icone nom="inventory_2" />{t('portier.regleArchive')}</button>
+              onclick={() => decider(menu.address, menu.qui, 'screened_out', 'archive')}>
+        <Icone name="inventory_2" />{t('portier.regleArchive')}</button>
       <button type="button" role="menuitem" data-testid="portier-regle-corbeille"
-              onclick={() => decider(menu.address, menu.qui, 'ecarte', 'corbeille')}>
-        <Icone nom="delete" />{t('portier.regleCorbeille')}</button>
+              onclick={() => decider(menu.address, menu.qui, 'screened_out', 'trash')}>
+        <Icone name="delete" />{t('portier.regleCorbeille')}</button>
     {/if}
   </Menu>
 

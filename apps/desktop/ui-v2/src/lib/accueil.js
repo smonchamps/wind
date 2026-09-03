@@ -34,7 +34,7 @@ export function marquerAccueilFait() {
   if (forceE2e()) return;
   try {
     localStorage.setItem(CLE_FAIT, '1');
-  } catch { /* stockage indisponible : accueilFait() répond déjà « fait » */ }
+  } catch { /* stockage indisponible : accueilFait() répond déjà « done » */ }
 }
 
 export function accueilCommence() {

@@ -19,9 +19,9 @@
     children,
   } = $props();
 
-  let boite = $state(null);
+  let mailbox = $state(null);
   const items = () =>
-    boite ? [...boite.querySelectorAll('[role^="menuitem"]:not([disabled])')] : [];
+    mailbox ? [...mailbox.querySelectorAll('[role^="menuitem"]:not([disabled])')] : [];
 
   $effect(() => {
     if (!ouvert) return;
@@ -30,10 +30,10 @@
     // pas une constante recopiée sept fois — revue), puis le premier
     // item prend le focus.
     queueMicrotask(() => {
-      if (boite && !absolu) {
-        const r = boite.getBoundingClientRect();
-        if (r.right > window.innerWidth - 8) boite.style.left = `${Math.max(8, window.innerWidth - r.width - 8)}px`;
-        if (r.bottom > window.innerHeight - 8) boite.style.top = `${Math.max(8, window.innerHeight - r.height - 8)}px`;
+      if (mailbox && !absolu) {
+        const r = mailbox.getBoundingClientRect();
+        if (r.right > window.innerWidth - 8) mailbox.style.left = `${Math.max(8, window.innerWidth - r.width - 8)}px`;
+        if (r.bottom > window.innerHeight - 8) mailbox.style.top = `${Math.max(8, window.innerHeight - r.height - 8)}px`;
       }
       items()[0]?.focus();
     });
@@ -42,7 +42,7 @@
       // propagation) : un clic sur le déclencheur n'est jamais « dehors »
       // — le parent décide de sa bascule.
       if (declencheur?.contains?.(e.target)) return;
-      if (boite && !boite.contains(e.target)) onfermer();
+      if (mailbox && !mailbox.contains(e.target)) onfermer();
     };
     const touche = (e) => {
       const liste = items();
@@ -87,7 +87,7 @@
 </script>
 
 {#if ouvert}
-  <div class="menu" class:absolu role="menu" data-testid={testid} bind:this={boite}
+  <div class="menu" class:absolu role="menu" data-testid={testid} bind:this={mailbox}
        style={absolu ? `min-width:${largeur}px` : `left:${x}px; top:${y}px; min-width:${largeur}px`}>
     {@render children()}
   </div>

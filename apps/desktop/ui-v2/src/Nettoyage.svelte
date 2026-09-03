@@ -25,8 +25,8 @@
 
   let { onchange = () => {}, onflash = () => {} } = $props();
 
-  let plage = $state('1a');
-  let perimetre = $state('reception');
+  let range = $state('1a');
+  let scope = $state('inbox');
   // null = intro ; sinon { plage, perimetre, total, traites }.
   let session = $state(null);
   let groupes = $state([]);
@@ -34,9 +34,9 @@
   // défaut (l'ordre servi), le bouton cycle ; présentation seule.
   let tri = $state('date-desc');
   const groupesTries = $derived(
-    [...groupes].sort(comparateurTri(tri, (g) => g.dernierEpoch, (g) => g.qui ?? g.address)),
+    [...groupes].sort(comparateurTri(tri, (g) => g.lastEpoch, (g) => g.qui ?? g.address)),
   );
-  let defauts = $state({ oui: 'reception', non: 'corbeille' });
+  let defauts = $state({ yes: 'inbox', no: 'trash' });
   // Le groupe déplié (address) et ses messages — VOIR, rien d'autre.
   let ouvert = $state(null);
   let messagesOuverts = $state([]);
@@ -71,7 +71,7 @@
 
   async function demarrer() {
     try {
-      session = await appel('cleanup_start', { plage, perimetre });
+      session = await appel('cleanup_start', { range, scope });
       ouvert = null;
       await chargerGroupes();
     } catch (err) {
@@ -91,30 +91,30 @@
   }
 
   const BOITE_DE = {
-    reception: 'portier.laReception',
-    kiosque: 'portier.leKiosque',
-    registre: 'portier.leRegistre',
+    inbox: 'portier.laReception',
+    feed: 'portier.leKiosque',
+    paper_trail: 'portier.leRegistre',
   };
   const TOAST_NON = {
     spam: 'toast.portierNonSpam',
     archive: 'toast.portierNonArchive',
-    corbeille: 'toast.portierNonCorbeille',
+    trash: 'toast.portierNonCorbeille',
   };
 
   // Le verdict de GROUPE — même vocabulaire que le Portier, la porte
   // `cleanup_verdict` applique aussi la règle au stock de la plage.
-  async function decider(address, qui, destination, regle = null) {
+  async function decider(address, qui, destination, rule = null) {
     if (occupe) return;
     occupe = true;
     menu = null;
     try {
-      session = await appel('cleanup_verdict', { address, destination, regle });
-      if (destination === 'ecarte') {
-        onflash(t(regle ? TOAST_NON[regle] : 'toast.portierNonNu', { qui }));
-      } else if (destination === 'reception') {
+      session = await appel('cleanup_verdict', { address, destination, rule });
+      if (destination === 'screened_out') {
+        onflash(t(rule ? TOAST_NON[rule] : 'toast.portierNonNu', { qui }));
+      } else if (destination === 'inbox') {
         onflash(t('toast.portierOuiNu', { qui }));
       } else {
-        onflash(t('toast.portierOuiVers', { qui, boite: t(BOITE_DE[destination]) }));
+        onflash(t('toast.portierOuiVers', { qui, mailbox: t(BOITE_DE[destination]) }));
       }
       if (ouvert === address) ouvert = null;
       // Le groupe décidé quitte la liste SUR PLACE (revue 2026-08-30 :
@@ -170,30 +170,30 @@
 </script>
 
 
-<div class="scene" data-testid="nettoyage">
+<div class="scene" data-testid="cleanup">
   <div class="colonne">
     {#if !session}
       <h2 class="display entete-vue" data-testid="nettoyage-titre">
-        <span class="glyphe-titre" aria-hidden="true"><Icone nom="nettoyage" taille={26} /></span>{t('boite.nettoyage')}</h2>
+        <span class="glyphe-titre" aria-hidden="true"><Icone name="cleanup" taille={26} /></span>{t('boite.cleanup')}</h2>
       <p class="sous-titre-vue">{t('nettoyage.sousTitre')}</p>
 
       <p class="regle-libelle">{t('nettoyage.plage')}</p>
       <div class="choix-plage" role="radiogroup" aria-label={t('nettoyage.plage')}>
         {#each PLAGES as p (p)}
-          <button type="button" class="pastille-plage" class:choisie={plage === p}
-                  role="radio" aria-checked={plage === p}
+          <button type="button" class="pastille-plage" class:choisie={range === p}
+                  role="radio" aria-checked={range === p}
                   data-testid="nettoyage-plage" data-plage={p}
-                  onclick={() => (plage = p)}>{t(`horizon.${p}`)}</button>
+                  onclick={() => (range = p)}>{t(`horizon.${p}`)}</button>
         {/each}
       </div>
 
       <p class="regle-libelle">{t('nettoyage.perimetre')}</p>
       <div class="choix-plage" role="radiogroup" aria-label={t('nettoyage.perimetre')}>
         {#each PERIMETRES as pe (pe)}
-          <button type="button" class="pastille-plage" class:choisie={perimetre === pe}
-                  role="radio" aria-checked={perimetre === pe}
+          <button type="button" class="pastille-plage" class:choisie={scope === pe}
+                  role="radio" aria-checked={scope === pe}
                   data-testid="nettoyage-perimetre" data-perimetre={pe}
-                  onclick={() => (perimetre = pe)}>{t(`nettoyage.perimetre.${pe}`)}</button>
+                  onclick={() => (scope = pe)}>{t(`nettoyage.perimetre.${pe}`)}</button>
         {/each}
       </div>
 
@@ -210,11 +210,11 @@
       </div>
 
       <h2 class="display entete-vue">
-        <span class="glyphe-titre" aria-hidden="true"><Icone nom="nettoyage" taille={26} /></span>{t('boite.nettoyage')}</h2>
+        <span class="glyphe-titre" aria-hidden="true"><Icone name="cleanup" taille={26} /></span>{t('boite.cleanup')}</h2>
 
       <div class="ligne-section">
         <p class="regle-libelle">{t('portier.question')}</p>
-        {#if groupes.length}<TriSection valeur={tri} onchanger={(v) => (tri = v)} />{/if}
+        {#if groupes.length}<TriSection value={tri} onchanger={(v) => (tri = v)} />{/if}
       </div>
       {#if groupes.length}
         {#each groupesTries as g (g.address)}
@@ -228,34 +228,34 @@
                 <span class="exp">{g.qui ?? g.address}</span>
                 <span class="adr">&lt;{g.address}&gt;</span>
                 <span class="essor"></span>
-                <span class="heure">{quand(g.dernierEpoch)}</span>
+                <span class="heure">{quand(g.lastEpoch)}</span>
               </span>
               <span class="l2">
                 <span class="nombre">{t(g.messages > 1 ? 'nettoyage.messages' : 'nettoyage.message', { n: g.messages })}</span>
-                {#if g.dernierObjet}<span class="objet">{g.dernierObjet}</span>{/if}
+                {#if g.lastSubject}<span class="objet">{g.lastSubject}</span>{/if}
               </span>
             </button>
             <div class="choix">
               <span class="btn-portier">
                 <button type="button" class="gros" data-testid="nettoyage-oui"
-                        onclick={() => decider(g.address, g.qui ?? g.address, defauts.oui)}>
-                  <span class="ic-oui"><Icone nom="check_circle" /></span>{t('portier.oui')}</button>
+                        onclick={() => decider(g.address, g.qui ?? g.address, defauts.yes)}>
+                  <span class="ic-oui"><Icone name="check_circle" /></span>{t('portier.oui')}</button>
                 <button type="button" class="mini" data-testid="nettoyage-mini-oui"
                         aria-label={t('portier.ouiChoix')} aria-haspopup="menu"
                         aria-expanded={menu?.address === g.address && menu?.type === 'oui'}
                         onclick={(e) => ouvrirMini(e, g, 'oui')}>
-                  <Icone nom="more_horiz" taille={12} /></button>
+                  <Icone name="more_horiz" taille={12} /></button>
               </span>
               <span class="btn-portier">
                 <button type="button" class="gros" data-testid="nettoyage-non"
-                        onclick={() => decider(g.address, g.qui ?? g.address, 'ecarte',
-                          defauts.non === 'ecarte' ? null : defauts.non)}>
-                  <span class="ic-non"><Icone nom="cancel" /></span>{t('portier.non')}</button>
+                        onclick={() => decider(g.address, g.qui ?? g.address, 'screened_out',
+                          defauts.no === 'screened_out' ? null : defauts.no)}>
+                  <span class="ic-non"><Icone name="cancel" /></span>{t('portier.non')}</button>
                 <button type="button" class="mini" data-testid="nettoyage-mini-non"
                         aria-label={t('portier.nonChoix')} aria-haspopup="menu"
                         aria-expanded={menu?.address === g.address && menu?.type === 'non'}
                         onclick={(e) => ouvrirMini(e, g, 'non')}>
-                  <Icone nom="more_horiz" taille={12} /></button>
+                  <Icone name="more_horiz" taille={12} /></button>
               </span>
             </div>
           </div>
@@ -278,7 +278,7 @@
         <!-- Plus un groupe : le nettoyage est fait — la coche du
              Portier, et la sortie. -->
         <div class="vide" data-testid="nettoyage-vide">
-          <span class="ic-oui"><Icone nom="check_circle" /></span>{t('nettoyage.fini')}
+          <span class="ic-oui"><Icone name="check_circle" /></span>{t('nettoyage.fini')}
         </div>
       {/if}
 
@@ -293,25 +293,25 @@
     {#if menu.type === 'oui'}
       <p class="titre-menu">{t('portier.ouiVers')}</p>
       <button type="button" role="menuitem" data-testid="nettoyage-vers-reception"
-              onclick={() => decider(menu.address, menu.qui, 'reception')}>
-        <Icone nom="inbox" />{t('portier.versReception')}</button>
+              onclick={() => decider(menu.address, menu.qui, 'inbox')}>
+        <Icone name="inbox" />{t('portier.versReception')}</button>
       <button type="button" role="menuitem" data-testid="nettoyage-vers-kiosque"
-              onclick={() => decider(menu.address, menu.qui, 'kiosque')}>
-        <Icone nom="kiosque" />{t('portier.versKiosque')}</button>
+              onclick={() => decider(menu.address, menu.qui, 'feed')}>
+        <Icone name="feed" />{t('portier.versKiosque')}</button>
       <button type="button" role="menuitem" data-testid="nettoyage-vers-registre"
-              onclick={() => decider(menu.address, menu.qui, 'registre')}>
-        <Icone nom="registre" />{t('portier.versRegistre')}</button>
+              onclick={() => decider(menu.address, menu.qui, 'paper_trail')}>
+        <Icone name="paper_trail" />{t('portier.versRegistre')}</button>
     {:else}
       <p class="titre-menu">{t('portier.nonSeront')}</p>
       <button type="button" role="menuitem" data-testid="nettoyage-regle-spam"
-              onclick={() => decider(menu.address, menu.qui, 'ecarte', 'spam')}>
-        <Icone nom="report" />{t('portier.regleSpam')}</button>
+              onclick={() => decider(menu.address, menu.qui, 'screened_out', 'spam')}>
+        <Icone name="report" />{t('portier.regleSpam')}</button>
       <button type="button" role="menuitem" data-testid="nettoyage-regle-archive"
-              onclick={() => decider(menu.address, menu.qui, 'ecarte', 'archive')}>
-        <Icone nom="inventory_2" />{t('portier.regleArchive')}</button>
+              onclick={() => decider(menu.address, menu.qui, 'screened_out', 'archive')}>
+        <Icone name="inventory_2" />{t('portier.regleArchive')}</button>
       <button type="button" role="menuitem" data-testid="nettoyage-regle-corbeille"
-              onclick={() => decider(menu.address, menu.qui, 'ecarte', 'corbeille')}>
-        <Icone nom="delete" />{t('portier.regleCorbeille')}</button>
+              onclick={() => decider(menu.address, menu.qui, 'screened_out', 'trash')}>
+        <Icone name="delete" />{t('portier.regleCorbeille')}</button>
     {/if}
   </Menu>
 

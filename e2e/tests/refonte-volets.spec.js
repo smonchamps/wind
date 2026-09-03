@@ -104,7 +104,7 @@ test("un écho local s'ouvre en plein écran — corps local, geste différé di
     .click();
   await page.locator('[data-testid="supprimer"]').click();
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
-  await dossier('corbeille').click();
+  await dossier('trash').click();
   const echo = page.locator('[data-testid="ligne"]', { hasText: 'Facture 2026-0841' });
   await echo.click();
   await expect(page.locator('[data-testid="fil-sujet"]')).toContainText(
@@ -118,7 +118,7 @@ test("un écho local s'ouvre en plein écran — corps local, geste différé di
     'Copie en cours de synchronisation',
   );
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
-  await dossier('reception').click();
+  await dossier('inbox').click();
 });
 
 test('en un volet, la nav quitte la grille et vit en tiroir (E2)', async () => {
@@ -134,10 +134,10 @@ test('en un volet, la nav quitte la grille et vit en tiroir (E2)', async () => {
   // Ouvrir : la Nav est LA MÊME — dossiers réels, compteurs réels.
   await page.locator('[data-testid="btn-tiroir"]').click();
   await expect(page.locator('[data-testid="tiroir"]')).toBeVisible();
-  await expect(dossier('corbeille')).toBeVisible();
+  await expect(dossier('trash')).toBeVisible();
   // Choisir ferme ET filtre — le geste accompli n'a plus besoin du
   // panneau.
-  await dossier('corbeille').click();
+  await dossier('trash').click();
   await expect(page.locator('[data-testid="tiroir"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="statut"]')).toContainText('Corbeille');
 });
@@ -152,7 +152,7 @@ test('Échap ferme le tiroir ; quitter le mode un volet l\'emporte', async () =>
   // grille (la suite continue sur le mode 2, que le test de
   // persistance attend).
   await page.locator('[data-testid="btn-tiroir"]').click();
-  await dossier('reception').click();
+  await dossier('inbox').click();
   await page.locator('[data-testid="reglages"]').click();
   await page
     .locator('[data-testid="reglages-groupe"][data-groupe="affichage"]')

@@ -120,7 +120,7 @@ for (const [nom, t] of Object.entries(themes)) {
 // (sombre pour les thèmes clairs, claire pour les -nuit — V5 : le
 // nuancier SUIT la polarité). Depuis A82 chaque hex sert deux fois
 // (pastille des Réglages en background, tracé en color) : les hex
-// EXPÉDIÉS vivent en jetons --rep-<teinte> dans les blocs :root de
+// EXPÉDIÉS vivent en jetons --mk-<hue> dans les blocs :root de
 // systeme.css — on lit CES jetons, jamais une copie. Chaque
 // déclinaison doit tenir 3:1 (composant) sur les fonds où le repère se
 // pose, et porter son glyphe de pastille à 4,5:1.
@@ -129,10 +129,10 @@ const REPERE_FAMILLES = 12;
 // COURS se pose sur la tuile de nav — l'oublier laissait ce fond-là,
 // précisément, sans mesure. `panel` est mort (V3).
 const FONDS_REPERE = ['bg', 'sel', 'hover', 'surface', 'tuile'];
-// Le parseur des blocs --rep-* est PARTAGÉ avec la gate de cohérence
+// Le parseur des blocs --mk-* est PARTAGÉ avec la gate de cohérence
 // (jetons.mjs, A94 — lireThemes ne peut pas servir : sa classe de nom
 // [a-zA-Z0-9] laisse volontairement passer le trait d'union des
-// --rep-*, voir le commentaire du nuancier dans systeme.css).
+// --mk-*, voir le commentaire du nuancier dans systeme.css).
 const sombres = lireReperes(css, { nuit: false });
 const claires = lireReperes(css, { nuit: true });
 // Les encres des glyphes se LISENT du CSS expédié, comme les fonds —

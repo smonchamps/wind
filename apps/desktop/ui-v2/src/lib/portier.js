@@ -7,11 +7,11 @@
 export const LIBELLE_ECARTE = {
   spam: 'portier.ecarteSpam',
   archive: 'portier.ecarteArchive',
-  corbeille: 'portier.ecarteCorbeille',
+  trash: 'portier.ecarteCorbeille',
 };
 
 export const LIBELLE_DESTINATION = {
-  reception: 'portier.versReception',
-  kiosque: 'portier.versKiosque',
-  registre: 'portier.versRegistre',
+  inbox: 'portier.versReception',
+  feed: 'portier.versKiosque',
+  paper_trail: 'portier.versRegistre',
 };

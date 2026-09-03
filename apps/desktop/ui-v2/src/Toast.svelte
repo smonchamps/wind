@@ -7,7 +7,7 @@
 
 {#if message}
   <div class="toast" data-testid="toast" role="status">
-    <span class="coche" aria-hidden="true"><Icone nom="check_circle" /></span>
+    <span class="coche" aria-hidden="true"><Icone name="check_circle" /></span>
     <span class="texte">{message}</span>
   </div>
 {/if}

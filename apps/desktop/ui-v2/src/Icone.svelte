@@ -11,11 +11,11 @@
   // à l'œil et au data-nom, jamais un crash.
   import { JEU } from './lib/icones.js';
 
-  let { nom, taille = 16, miroir = false } = $props();
-  const g = $derived(JEU[nom] ?? { d: [] });
+  let { name, taille = 16, miroir = false } = $props();
+  const g = $derived(JEU[name] ?? { d: [] });
 </script>
 
-<svg class="ic" class:miroir data-nom={nom} viewBox="0 0 24 24"
+<svg class="ic" class:miroir data-nom={name} viewBox="0 0 24 24"
      width={taille} height={taille} aria-hidden="true">
   <g fill="none" stroke="currentColor" stroke-width="2"
      stroke-linecap="butt" stroke-linejoin="miter">

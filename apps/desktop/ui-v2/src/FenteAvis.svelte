@@ -14,7 +14,7 @@
 
 {#if avis}
   <div class="fente" class:alerte={avis.alerte} data-testid="fente-avis">
-    <span class="icone" aria-hidden="true"><Icone nom={avis.icone ?? 'info'} /></span>
+    <span class="icone" aria-hidden="true"><Icone name={avis.icon ?? 'info'} /></span>
     <span class="texte" data-testid="avis-texte">{avis.texte}</span>
     {#each avis.actions as action (action.libelle)}
       <button type="button" class:principal={action.principale}

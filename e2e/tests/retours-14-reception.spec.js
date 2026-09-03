@@ -40,10 +40,10 @@ test("la Réception organisée : entête normalisé, ni bandeau générique ni o
 
   // Les autres vues gardent leur forme : les Archives restent au
   // bandeau classique avec onglets.
-  await page.locator('[data-testid="nav-dossier"][data-categorie="archives"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="archive"]').click();
   await expect(page.locator('[data-testid="onglets"]')).toBeVisible();
   await expect(page.locator('[data-testid="reception-titre"]')).toHaveCount(0);
-  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
 });
 
 test('le nom de la section reste visible au défilement, et repart en tête', async () => {
@@ -80,24 +80,24 @@ test('les pastilles nav du Kiosque et du Registre disent le travail restant', as
     const invoke = window.__TAURI__.core.invoke;
     for (let n = 0; n < 4; n += 1) {
       await invoke('route_sender', {
-        address: `expediteur${n}@exemple.fr`, destination: 'kiosque', regle: null,
+        address: `expediteur${n}@exemple.fr`, destination: 'feed', rule: null,
       });
     }
     for (let n = 4; n < 10; n += 1) {
       await invoke('route_sender', {
-        address: `expediteur${n}@exemple.fr`, destination: 'registre', regle: null,
+        address: `expediteur${n}@exemple.fr`, destination: 'paper_trail', rule: null,
       });
     }
   });
   await page.reload();
   const pastille = (cat) =>
     page.locator(`[data-testid="nav-dossier"][data-categorie="${cat}"] .pastille`);
-  await expect(pastille('kiosque')).toBeVisible();
-  await expect(pastille('kiosque')).toHaveText(/^[1-9]\d*$/);
-  await expect(pastille('registre')).toBeVisible();
-  await expect(pastille('registre')).toHaveText(/^[1-9]\d*$/);
+  await expect(pastille('feed')).toBeVisible();
+  await expect(pastille('feed')).toHaveText(/^[1-9]\d*$/);
+  await expect(pastille('paper_trail')).toBeVisible();
+  await expect(pastille('paper_trail')).toHaveText(/^[1-9]\d*$/);
   // Le Portier garde la sienne (préexistante) — rien n'a été cassé.
-  await expect(page.locator('[data-testid="nav-dossier"][data-categorie="portier"]')).toBeVisible();
+  await expect(page.locator('[data-testid="nav-dossier"][data-categorie="screener"]')).toBeVisible();
 });
 
 // RETOURS-14 R5 (D6) : Réglages > Portier — la liste EXHAUSTIVE des
@@ -106,11 +106,11 @@ test('les pastilles nav du Kiosque et du Registre disent le travail restant', as
 test('Réglages > Portier : toutes les décisions, à l’alphabet, recherche et réintégration', async () => {
   await page.evaluate(async () => {
     await window.__TAURI__.core.invoke('route_sender', {
-      address: 'zeta@exemple.fr', destination: 'ecarte', regle: 'spam',
+      address: 'zeta@exemple.fr', destination: 'screened_out', rule: 'spam',
     });
   });
   await page.locator('[data-testid="reglages"]').click();
-  await page.locator('[data-testid="reglages-groupe"][data-groupe="portier"]').click();
+  await page.locator('[data-testid="reglages-groupe"][data-groupe="screener"]').click();
 
   const lignes = page.locator('[data-testid="portier-decision"]');
   // 4 Kiosque + 6 Registre (test précédent) + 1 écarté = 11, TOUTES
@@ -151,7 +151,7 @@ test('Réglages > Portier : toutes les décisions, à l’alphabet, recherche et
 // `le_registre_se_groupe_par_expediteur_a_la_recence`). Ici : la vue,
 // le dépli, l'ouverture du fil.
 test('le Registre groupé : un rang par expéditeur, le fil s’ouvre depuis le groupe', async () => {
-  await page.locator('[data-testid="nav-dossier"][data-categorie="registre"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="paper_trail"]').click();
   await expect(page.locator('[data-testid="registre-titre"]')).toContainText('Registre');
   const groupes = page.locator('[data-testid="registre-groupe"]');
   // Six adresses routées au Registre (test des pastilles) mais le jeu
@@ -177,7 +177,7 @@ test('le Registre groupé : un rang par expéditeur, le fil s’ouvre depuis le 
 
   // R9 (terrain, 2e passe) : le bouton ouvre un MENU des quatre tris,
   // chaque entrée avec son glyphe ; l'ordre des rangs suit le choix.
-  const tri = page.locator('[data-testid="registre"] [data-testid="tri-section"]');
+  const tri = page.locator('[data-testid="paper-trail"] [data-testid="tri-section"]');
   await expect(tri).toContainText('Plus récents');
   const parDate = await groupes.evaluateAll((els) => els.map((e) => e.dataset.adresse));
   await tri.click();
@@ -215,7 +215,7 @@ test('le Registre groupé : un rang par expéditeur, le fil s’ouvre depuis le 
   await expect(page.locator('[data-testid="registre-menu"]')).toBeVisible();
   await expect(page.locator('[data-testid="registre-ecarter"]')).toBeVisible();
   const adresse = await groupes.first().getAttribute('data-adresse');
-  await page.locator('[data-testid="registre-vers-reception"]').click();
+  await page.locator('[data-testid="registre-vers-inbox"]').click();
   await expect(page.locator('[data-testid="toast"]')).toContainText('Expéditeur déplacé');
   // Le verdict est POSÉ (la porte du cœur) — le nombre de rangs, lui,
   // peut ne pas bouger : un fil mêlé routé par un AUTRE expéditeur
@@ -225,7 +225,7 @@ test('le Registre groupé : un rang par expéditeur, le fil s’ouvre depuis le 
       const routings = await window.__TAURI__.core.invoke('routings');
       return routings.find((r) => r.address === a)?.destination;
     }, adresse))
-    .toBe('reception');
+    .toBe('inbox');
 });
 
 // RETOURS-14 R4 (D5) : le « fil mêlé » — un INCONNU répond dans le fil
@@ -233,7 +233,7 @@ test('le Registre groupé : un rang par expéditeur, le fil s’ouvre depuis le 
 // perdre de courrier) ; l'inconnu attend au Portier pendant que son
 // message se lit — et le fil le DIT (badge « En attente au Portier »).
 test('fil mêlé : l’inconnu qui répond dans un fil connu est signalé, et attend au Portier', async () => {
-  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
   // Le jeu d'essai n'a que 8 expéditeurs et les tests précédents les
   // ont TOUS routés — on en réintègre un : expediteur0 redevient un
   // connu NON routé, son fil vit en Réception.
@@ -261,10 +261,10 @@ test('fil mêlé : l’inconnu qui répond dans un fil connu est signalé, et at
   await page.locator('[data-testid="retour-boite"]').click();
 
   // Et l'intrus attend RÉELLEMENT au guichet.
-  await page.locator('[data-testid="nav-dossier"][data-categorie="portier"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="screener"]').click();
   await expect(page.locator('[data-testid="portier-rang"]', { hasText: 'intrus@exemple.fr' }))
     .toBeVisible();
-  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
 });
 
 // RETOURS-14 R8 (terrain 2026-08-31) : un OUI au Portier vaut
@@ -274,7 +274,7 @@ test('fil mêlé : l’inconnu qui répond dans un fil connu est signalé, et at
 // `un_oui_au_portier_autorise_les_images_de_l_expediteur`.)
 test('valider un expéditeur au Portier autorise ses images — règle visible et révocable', async () => {
   // L'intrus du test précédent attend au guichet : Oui.
-  await page.locator('[data-testid="nav-dossier"][data-categorie="portier"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="screener"]').click();
   await page.locator('[data-testid="portier-rang"]', { hasText: 'intrus@exemple.fr' })
     .locator('[data-testid="portier-oui"]').click();
   await expect(page.locator('[data-testid="toast"]')).toContainText('peut vous écrire');

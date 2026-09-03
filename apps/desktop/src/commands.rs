@@ -121,7 +121,7 @@ pub struct MessageRow {
     /// knows (the pile): a row from an organized view is NEVER set
     /// aside (the core excludes it), a pile card always is. Same rule
     /// as `pinned` (2026-08-21 review: never a round trip on open).
-    pub cote: bool,
+    pub aside: bool,
     /// The thread's invitation (field R10/R11, PLAN-INVITATIONS): the
     /// chip row states it (reply given, cancellation) and carries the
     /// three gestures — reply without opening. `None` = ordinary row.
@@ -136,11 +136,11 @@ pub struct InvitationRowPayload {
     pub uid: u32,
     /// The meeting title — the reply's subject is built from it, never
     /// from the head's subject (“Re: …”).
-    pub titre: String,
-    /// `accepte` | `provisoire` | `refuse` — the row's chip.
-    pub reponse: Option<String>,
-    pub annulee: bool,
-    pub peut_repondre: bool,
+    pub title: String,
+    /// `accepted` | `tentative` | `declined` (wire words) — the row's chip.
+    pub reply: Option<String>,
+    pub cancelled: bool,
+    pub can_reply: bool,
 }
 
 /// Outcome of a reconnection: what came back, and WHY the rest didn't.
@@ -457,7 +457,8 @@ pub struct GenericAccountInput {
 /// The command-side mirror of `Store::set_horizon_import`: reject a
 /// value outside the vocabulary BEFORE any work (connection, consent).
 fn validate_horizon(horizon: Option<&str>) -> Result<(), String> {
-    match horizon {
+    let horizon = horizon.map(crate::wire::category_from_wire);
+    match horizon.as_deref() {
         Some(h) if !mail_core::HORIZONS_IMPORT.contains(&h) => {
             Err(format!("unknown horizon: {h:?}"))
         }
@@ -482,7 +483,7 @@ fn write_horizon_on_first_add(
         .is_some();
     if !already {
         store
-            .set_horizon_import(account_id, h)
+            .set_horizon_import(account_id, &crate::wire::category_from_wire(h))
             .map_err(|err| err.to_string())?;
     }
     Ok(())
@@ -620,7 +621,7 @@ fn build_generic_session(
 /// movement the field called for (“2/2 frozen for 7 minutes”). Empty
 /// string between two mailboxes.
 fn set_mailbox(cycle: &crate::SyncShared, name: &str) {
-    if let Ok(mut mailbox) = cycle.boite.lock() {
+    if let Ok(mut mailbox) = cycle.mailbox.lock() {
         mailbox.clear();
         mailbox.push_str(name);
     }
@@ -637,7 +638,7 @@ fn set_phase(cycle: &crate::SyncShared, name: &str) {
         phase.clear();
         phase.push_str(name);
     }
-    if let Ok(mut mailbox) = cycle.boite.lock() {
+    if let Ok(mut mailbox) = cycle.mailbox.lock() {
         mailbox.clear();
     }
 }
@@ -793,7 +794,7 @@ fn poll_inbox(
     // passes: the mail is there, an announcement that fails is logged.
     if report.fetched > 0 || report.deleted > 0 {
         cycle
-            .courrier
+            .mail
             .fetch_add((report.fetched + report.deleted) as u64, Ordering::Relaxed);
         // E4: the MONOTONIC generation — the UI polls it via
         // `sync_progress` and reloads the list when it moves. It's the
@@ -996,9 +997,9 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
             // matter what happens. An empty cycle (no account connected)
             // announces nothing.
             let _end = CycleEnd(cycle.clone());
-            cycle.fait.store(0, Ordering::Relaxed);
+            cycle.done.store(0, Ordering::Relaxed);
             cycle.total.store(jobs.len() as u64, Ordering::Relaxed);
-            cycle.courrier.store(0, Ordering::Relaxed);
+            cycle.mail.store(0, Ordering::Relaxed);
             cycle.in_progress.store(!jobs.is_empty(), Ordering::Relaxed);
             let mut accounts = 0;
             let mut accounts_failed = 0;
@@ -1020,7 +1021,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
                         "{email}: backing off after repeated failures; retrying in {} min",
                         remaining.as_secs().div_ceil(60).max(1)
                     ));
-                    cycle.fait.fetch_add(1, Ordering::Relaxed);
+                    cycle.done.fetch_add(1, Ordering::Relaxed);
                     continue;
                 }
                 // E4: one account at a time — an IDLE watcher may be in
@@ -1028,7 +1029,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
                 // moment.
                 let lock = account_lock(&locks, &email);
                 let _poll = lock.lock();
-                if let Ok(mut account) = cycle.compte.lock() {
+                if let Ok(mut account) = cycle.account.lock() {
                     account.clone_from(&email);
                 }
                 set_mailbox(&cycle, "");
@@ -1052,7 +1053,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
                         errors.push(format!("{email}: {err}"));
                     }
                 }
-                cycle.fait.fetch_add(1, Ordering::Relaxed);
+                cycle.done.fetch_add(1, Ordering::Relaxed);
             }
             (
                 accounts,
@@ -1107,9 +1108,9 @@ pub async fn sync_inbox_light(
             // the pass's story while it runs, the button runs with it
             // (reentrancy guarded on the UI side).
             let _end = CycleEnd(cycle.clone());
-            cycle.fait.store(0, Ordering::Relaxed);
+            cycle.done.store(0, Ordering::Relaxed);
             cycle.total.store(jobs.len() as u64, Ordering::Relaxed);
-            cycle.courrier.store(0, Ordering::Relaxed);
+            cycle.mail.store(0, Ordering::Relaxed);
             cycle.in_progress.store(!jobs.is_empty(), Ordering::Relaxed);
             let mut accounts = 0;
             let mut accounts_failed = 0;
@@ -1129,7 +1130,7 @@ pub async fn sync_inbox_light(
                         "{email}: backing off after repeated failures; retrying in {} min",
                         remaining.as_secs().div_ceil(60).max(1)
                     ));
-                    cycle.fait.fetch_add(1, Ordering::Relaxed);
+                    cycle.done.fetch_add(1, Ordering::Relaxed);
                     continue;
                 }
                 // E4: one account at a time — an IDLE watcher may be in
@@ -1137,7 +1138,7 @@ pub async fn sync_inbox_light(
                 // moment.
                 let lock = account_lock(&locks, &email);
                 let _poll = lock.lock();
-                if let Ok(mut account) = cycle.compte.lock() {
+                if let Ok(mut account) = cycle.account.lock() {
                     account.clone_from(&email);
                 }
                 set_mailbox(&cycle, "");
@@ -1176,7 +1177,7 @@ pub async fn sync_inbox_light(
                         errors.push(format!("{email}: {err}"));
                     }
                 }
-                cycle.fait.fetch_add(1, Ordering::Relaxed);
+                cycle.done.fetch_add(1, Ordering::Relaxed);
             }
             (
                 accounts, accounts_failed, fetched, deleted, replayed, errors, refreshed,
@@ -1257,7 +1258,7 @@ fn run_sync(
     // The inventory: sent folder, scope, folder list, space guard
     // (STATUS on each folder) — four tasks that used to live under the
     // “INBOX” label, wrongly.
-    set_phase(cycle, "inventaire");
+    set_phase(cycle, "inventory");
     let stopwatch = Instant::now();
 
     // “Sent”: without it, a thread only carries the received half of
@@ -1425,7 +1426,7 @@ fn run_sync(
     }
     let folders_duration = stopwatch.elapsed();
     // The header pass isn't a mailbox: the step is named.
-    set_phase(cycle, "fils");
+    set_phase(cycle, "threads");
     let stopwatch = Instant::now();
 
     // The header pass benefits from the connection already open: that's
@@ -1505,7 +1506,7 @@ fn run_sync(
     // live in the push cycle: that one stops early when there's nothing
     // to push — rightly so, otherwise every keystroke would open a
     // connection. A draft started elsewhere would then never arrive.
-    set_phase(cycle, "brouillons");
+    set_phase(cycle, "drafts");
     let stopwatch = Instant::now();
     if let Err(reason) = pull_drafts(&mut server, &store, account_id) {
         problems.push(format!("remote drafts: {reason}"));
@@ -1729,14 +1730,14 @@ fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
         thread_size: row.thread_size,
         thread_unseen: row.thread_unseen,
         pinned: false,
-        cote: false,
+        aside: false,
         invitation: row.invitation.map(|rang| InvitationRowPayload {
             mailbox: rang.mailbox,
             uid: rang.uid,
-            titre: rang.title,
-            reponse: rang.reply,
-            annulee: rang.cancelled,
-            peut_repondre: rang.can_reply,
+            title: rang.title,
+            reply: rang.reply.as_deref().map(crate::wire::reply_to_wire),
+            cancelled: rang.cancelled,
+            can_reply: rang.can_reply,
         }),
     }
 }
@@ -1753,8 +1754,8 @@ pub struct NavAccount {
     // whose total for an integral folder probes at ~240 ms) is no
     // longer recomputed on the heartbeat (field finding 2026-08-20,
     // PLAN-DEFILEMENT-PROFOND).
-    pub reception_non_lues: u64,
-    pub indesirables_non_lus: u64,
+    pub inbox_unread: u64,
+    pub junk_unread: u64,
 }
 
 /// The full nav state in ONE call: accounts and counters per category.
@@ -1769,14 +1770,14 @@ fn read_nav(store: &Store) -> Result<Vec<NavAccount>, String> {
         let folders = store
             .canonical_folders(account.id)
             .map_err(|err| err.to_string())?;
-        let (reception_non_lues, indesirables_non_lus) = store
+        let (inbox_unread, junk_unread) = store
             .nav_unread_counts(account.id, &folders, organized)
             .map_err(|err| err.to_string())?;
         result.push(NavAccount {
             account_id: account.id,
             email: account.email,
-            reception_non_lues,
-            indesirables_non_lus,
+            inbox_unread,
+            junk_unread,
         });
     }
     Ok(result)
@@ -1799,11 +1800,12 @@ pub async fn list_category(
     app: AppHandle,
     category: String,
     account_id: Option<i64>,
-    non_lus: bool,
+    unread: bool,
     offset: usize,
     limit: usize,
 ) -> Result<MessagePage, String> {
     off_pump(app, move |app| {
+        let category = crate::wire::category_from_wire(&category);
         let timer = Instant::now();
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let limit = limit.min(LIST_LIMIT_MAX);
@@ -1816,11 +1818,11 @@ pub async fn list_category(
             let organized = store.organized_mode().map_err(|err| err.to_string())?;
             let mut rows = if organized {
                 store
-                    .organized_inbox_scoped(account_id, non_lus, offset, limit)
+                    .organized_inbox_scoped(account_id, unread, offset, limit)
                     .map_err(|err| err.to_string())?
             } else {
                 store
-                    .unified_recent_scoped(account_id, non_lus, offset, limit)
+                    .unified_recent_scoped(account_id, unread, offset, limit)
                     .map_err(|err| err.to_string())?
             };
             // Field finding R10-R12: attachments summed per thread,
@@ -1841,7 +1843,7 @@ pub async fn list_category(
         // canonical mailboxes.
         if category == "kiosque" || category == "registre" {
             let mut rows = store
-                .routing_unified_scoped(&category, account_id, non_lus, offset, limit)
+                .routing_unified_scoped(&category, account_id, unread, offset, limit)
                 .map_err(|err| err.to_string())?;
             store
                 .enrich_rows(&mut rows)
@@ -1863,7 +1865,7 @@ pub async fn list_category(
         let mut rows = store
             .category_page(
                 &scope.mailboxes,
-                non_lus,
+                unread,
                 &scope.excluded,
                 echoes,
                 offset,
@@ -1947,9 +1949,10 @@ pub async fn category_total(
     app: AppHandle,
     category: String,
     account_id: Option<i64>,
-    non_lus: bool,
+    unread: bool,
 ) -> Result<u64, String> {
     off_pump(app, move |app| {
+        let category = crate::wire::category_from_wire(&category);
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         if category == "reception" {
             // E2: the total follows the flow — exclusion SHARED with
@@ -1958,17 +1961,17 @@ pub async fn category_total(
             let organized = store.organized_mode().map_err(|err| err.to_string())?;
             return if organized {
                 store
-                    .organized_inbox_count_scoped(account_id, non_lus)
+                    .organized_inbox_count_scoped(account_id, unread)
                     .map_err(|err| err.to_string())
             } else {
                 store
-                    .unified_count_scoped(account_id, non_lus)
+                    .unified_count_scoped(account_id, unread)
                     .map_err(|err| err.to_string())
             };
         }
         if category == "kiosque" || category == "registre" {
             return store
-                .routing_count_scoped(&category, account_id, non_lus)
+                .routing_count_scoped(&category, account_id, unread)
                 .map_err(|err| err.to_string());
         }
         let scope = resolve_category(&store, &category, account_id)?;
@@ -1978,7 +1981,7 @@ pub async fn category_total(
         let (all, unread_only) = store
             .category_totals(&scope.mailboxes, &scope.excluded, echoes)
             .map_err(|err| err.to_string())?;
-        Ok(if non_lus { unread_only } else { all })
+        Ok(if unread { unread_only } else { all })
     })
     .await
 }
@@ -2241,70 +2244,76 @@ pub async fn message_attachments(
 
 /// A message's invitation card, as the UI presents it (PLAN-INVITATIONS).
 /// Times are UTC epochs when resolved; otherwise the TEXT form is
-/// authoritative (`journee_entiere` or `heure_flottante` — the UI
+/// authoritative (`all_day` or `floating_time` — the UI
 /// displays the latter as-is, with the note "the organizer's local
 /// time", D1 guard).
 #[derive(Serialize)]
 pub struct InvitationView {
     /// `request` | `cancel` | `reply`.
-    pub methode: String,
-    pub titre: String,
-    pub lieu: Option<String>,
+    pub method: String,
+    pub title: String,
+    pub location: Option<String>,
     /// The organizer's display name, otherwise their address.
-    pub organisateur: Option<String>,
-    pub debut_epoch: Option<i64>,
-    pub fin_epoch: Option<i64>,
-    pub debut_texte: Option<String>,
-    pub fin_texte: Option<String>,
-    pub journee_entiere: bool,
-    pub heure_flottante: bool,
+    pub organizer: Option<String>,
+    pub start_epoch: Option<i64>,
+    pub end_epoch: Option<i64>,
+    pub start_text: Option<String>,
+    pub end_text: Option<String>,
+    pub all_day: bool,
+    pub floating_time: bool,
     pub recurrent: bool,
-    /// Our last reply sent from Wind (`accepte` | `provisoire` |
-    /// `refuse`), otherwise the PARTSTAT read from the message.
-    pub statut: Option<String>,
+    /// Our last reply sent from Wind (`accepted` | `tentative` |
+    /// `declined`, wire words), otherwise the PARTSTAT read from the message.
+    pub status: Option<String>,
     /// The replier of a received REPLY (name, otherwise address) and
     /// their status.
-    pub repondant: Option<String>,
-    pub repondant_statut: Option<String>,
+    pub attendee: Option<String>,
+    pub attendee_status: Option<String>,
     /// The meeting is cancelled: true on the CANCEL itself AND on the
     /// REQUEST of the same meeting (cross-link, field finding R6) — the
     /// original card says the cancellation, wherever the user looks.
-    pub annulee: bool,
+    pub cancelled: bool,
     /// The three gestures are possible: REQUEST with an organizer, not
     /// cancelled. Being in the ATTENDEE list is NOT required (field
     /// finding R8, CE verdict: a forwarded invitation IS an invitation —
     /// whoever forwards it takes responsibility for it).
-    pub peut_repondre: bool,
+    pub can_reply: bool,
 }
 
 fn invitation_view(stored: mail_core::StoredInvitation) -> InvitationView {
     let row = stored.row;
-    let annulee = row.method == "cancel" || row.cancelled;
-    let peut_repondre =
-        row.method == "request" && row.organizer_address.is_some() && !row.cancelled;
+    let cancelled = row.method == "cancel" || row.cancelled;
+    let can_reply = row.method == "request" && row.organizer_address.is_some() && !row.cancelled;
     InvitationView {
-        annulee,
+        cancelled,
         // The D1 guard by ENDPOINT: an end with an unresolved TZID is
         // enough to say "the organizer's local time" (review — a
         // resolved-start/floating-end pair used to display a misleading
         // range).
-        heure_flottante: (row.start_text.is_some() || row.end_text.is_some()) && !row.all_day,
-        organisateur: row.organizer_name.or(row.organizer_address),
+        floating_time: (row.start_text.is_some() || row.end_text.is_some()) && !row.all_day,
+        organizer: row.organizer_name.or(row.organizer_address),
         // D6: the displayed status follows the LAST reply sent from
         // Wind; the message's PARTSTAT is only the starting state.
-        statut: stored.reply.or(row.partstat),
-        repondant: row.attendee_name.or(row.attendee_address),
-        repondant_statut: row.attendee_status,
-        methode: row.method,
-        titre: row.title,
-        lieu: row.location,
-        debut_epoch: row.start_epoch,
-        fin_epoch: row.end_epoch,
-        debut_texte: row.start_text,
-        fin_texte: row.end_text,
-        journee_entiere: row.all_day,
+        status: stored
+            .reply
+            .or(row.partstat)
+            .as_deref()
+            .map(crate::wire::reply_to_wire),
+        attendee: row.attendee_name.or(row.attendee_address),
+        attendee_status: row
+            .attendee_status
+            .as_deref()
+            .map(crate::wire::reply_to_wire),
+        method: row.method,
+        title: row.title,
+        location: row.location,
+        start_epoch: row.start_epoch,
+        end_epoch: row.end_epoch,
+        start_text: row.start_text,
+        end_text: row.end_text,
+        all_day: row.all_day,
         recurrent: row.recurrent,
-        peut_repondre,
+        can_reply,
     }
 }
 
@@ -2319,21 +2328,24 @@ pub async fn reply_invitation(
     account_id: i64,
     mailbox: String,
     uid: u32,
-    reponse: String,
-    sujet: String,
-    corps: String,
+    reply: String,
+    subject: String,
+    body: String,
 ) -> Result<Option<InvitationView>, String> {
     off_pump(app, move |app| {
-        let participation = mail_core::participation_de_stable(&reponse)
+        // The UI speaks the wire word (`accepted`); the core and the
+        // database keep the French stable string (D16).
+        let reply = crate::wire::reply_from_wire(&reply);
+        let participation = mail_core::participation_de_stable(&reply)
             .filter(|p| !matches!(p, mail_ical::Participation::NeedsAction))
-            .ok_or_else(|| format!("unknown reply: {reponse}"))?;
+            .ok_or_else(|| format!("unknown reply: {reply}"))?;
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let stored = store
             .invitation(account_id, &mailbox, uid)
             .map_err(|err| err.to_string())?
             .ok_or_else(|| "no invitation on this message".to_string())?;
         if stored.row.method != "request" || stored.row.cancelled {
-            // Same rule as `peut_repondre` — R8: a forwarded `.ics` IS
+            // Same rule as `can_reply` — R8: a forwarded `.ics` IS
             // an invitation (CE verdict); a cancelled meeting can no
             // longer be replied to.
             return Err("this message is not an invitation to reply to".to_string());
@@ -2354,8 +2366,8 @@ pub async fn reply_invitation(
             &organizer,
             "",
             "",
-            &sujet,
-            &corps,
+            &subject,
+            &body,
             in_reply_to.as_deref(),
         )
         .map_err(|err| err.to_string())?;
@@ -2381,7 +2393,7 @@ pub async fn reply_invitation(
                 &draft,
                 &mailbox,
                 uid,
-                &reponse,
+                &reply,
                 chrono::Utc::now().timestamp(),
             )
             .map_err(|err| err.to_string())?;
@@ -2408,13 +2420,13 @@ pub struct ContactRow {
 #[tauri::command]
 pub async fn complete_addresses(
     app: AppHandle,
-    prefixe: String,
-    limite: usize,
+    prefix: String,
+    limit: usize,
 ) -> Result<Vec<ContactRow>, String> {
     off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let found = store
-            .complete_addresses(&prefixe, limite.min(16))
+            .complete_addresses(&prefix, limit.min(16))
             .map_err(|err| err.to_string())?;
         Ok(found
             .into_iter()
@@ -2592,8 +2604,8 @@ pub async fn archive_message(
 #[derive(Serialize)]
 pub struct UiState {
     pub nav: Vec<NavAccount>,
-    pub synchro: SyncProgress,
-    pub envois: OutboxStatus,
+    pub sync: SyncProgress,
+    pub outbox: OutboxStatus,
 }
 
 #[tauri::command]
@@ -2603,8 +2615,8 @@ pub async fn ui_state(app: AppHandle, state: State<'_, AppState>) -> Result<UiSt
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         Ok(UiState {
             nav: read_nav(&store)?,
-            synchro: read_sync(&store, generation)?,
-            envois: read_sends(&store)?,
+            sync: read_sync(&store, generation)?,
+            outbox: read_sends(&store)?,
         })
     })
     .await
@@ -2622,7 +2634,7 @@ pub struct TargetArg {
 
 #[derive(Serialize)]
 pub struct GroupOutcome {
-    pub faits: usize,
+    pub done: usize,
     pub total: usize,
 }
 
@@ -2645,22 +2657,22 @@ fn without_condstore_first_time(account_id: i64) -> bool {
 #[tauri::command]
 pub async fn act_on_group(
     app: AppHandle,
-    cibles: Vec<TargetArg>,
+    targets: Vec<TargetArg>,
     action: String,
 ) -> Result<GroupOutcome, String> {
     let gesture = match action.as_str() {
-        "archiver" => mail_core::GroupGesture::Archive,
-        "supprimer" => mail_core::GroupGesture::Delete,
+        "archive" => mail_core::GroupGesture::Archive,
+        "delete" => mail_core::GroupGesture::Delete,
         "spam" => mail_core::GroupGesture::Spam,
-        "nonspam" => mail_core::GroupGesture::NotSpam,
-        "lu" => mail_core::GroupGesture::Seen(true),
-        "nonlu" => mail_core::GroupGesture::Seen(false),
+        "not_spam" => mail_core::GroupGesture::NotSpam,
+        "read" => mail_core::GroupGesture::Seen(true),
+        "unread" => mail_core::GroupGesture::Seen(false),
         other => return Err(format!("unknown bulk gesture: {other}")),
     };
-    let total = cibles.len();
+    let total = targets.len();
     off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        let cibles: Vec<mail_core::GestureTarget> = cibles
+        let targets: Vec<mail_core::GestureTarget> = targets
             .into_iter()
             .map(|cible| mail_core::GestureTarget {
                 account_id: cible.account_id,
@@ -2669,10 +2681,10 @@ pub async fn act_on_group(
                 thread_id: cible.thread_id,
             })
             .collect();
-        let faits = store
-            .act_on_group(&cibles, &gesture)
+        let done = store
+            .act_on_group(&targets, &gesture)
             .map_err(|err| err.to_string())?;
-        Ok(GroupOutcome { faits, total })
+        Ok(GroupOutcome { done, total })
     })
     .await
 }
@@ -3107,11 +3119,11 @@ pub async fn organized_mode_get(app: AppHandle) -> Result<bool, String> {
 /// Toggles organized mode. The first-activation bound is written on the
 /// core side, in the same gesture — the UI never carries the epoch.
 #[tauri::command]
-pub async fn organized_mode_set(app: AppHandle, actif: bool) -> Result<(), String> {
+pub async fn organized_mode_set(app: AppHandle, active: bool) -> Result<(), String> {
     off_pump(app, move |app| {
         let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
-            .set_organized_mode(actif, epoch_now())
+            .set_organized_mode(active, epoch_now())
             .map_err(|err| err.to_string())
     })
     .await
@@ -3125,6 +3137,7 @@ pub async fn horizon_import_get(app: AppHandle, account_id: i64) -> Result<Strin
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
             .horizon_import(account_id)
+            .map(|h| crate::wire::category_to_wire(&h))
             .map_err(|err| err.to_string())
     })
     .await
@@ -3137,12 +3150,12 @@ pub async fn horizon_import_get(app: AppHandle, account_id: i64) -> Result<Strin
 pub async fn horizon_import_set(
     app: AppHandle,
     account_id: i64,
-    valeur: String,
+    value: String,
 ) -> Result<(), String> {
     off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
-            .set_horizon_import(account_id, &valeur)
+            .set_horizon_import(account_id, &crate::wire::category_from_wire(&value))
             .map_err(|err| err.to_string())
     })
     .await
@@ -3152,16 +3165,19 @@ pub async fn horizon_import_set(
 /// buttons (shipped: Inbox / Trash), adjustable in Settings.
 #[derive(serde::Serialize)]
 pub struct ScreenerDefaults {
-    pub oui: String,
-    pub non: String,
+    pub yes: String,
+    pub no: String,
 }
 
 #[tauri::command]
 pub async fn screener_defaults_get(app: AppHandle) -> Result<ScreenerDefaults, String> {
     off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        let (oui, non) = store.screener_defaults().map_err(|err| err.to_string())?;
-        Ok(ScreenerDefaults { oui, non })
+        let (yes, no) = store.screener_defaults().map_err(|err| err.to_string())?;
+        Ok(ScreenerDefaults {
+            yes: crate::wire::category_to_wire(&yes),
+            no: crate::wire::no_default_to_wire(&no),
+        })
     })
     .await
 }
@@ -3169,11 +3185,14 @@ pub async fn screener_defaults_get(app: AppHandle) -> Result<ScreenerDefaults, S
 /// The vocabulary is closed and rejected on the core side — the UI
 /// cannot write a broken default.
 #[tauri::command]
-pub async fn screener_defaults_set(app: AppHandle, oui: String, non: String) -> Result<(), String> {
+pub async fn screener_defaults_set(app: AppHandle, yes: String, no: String) -> Result<(), String> {
     off_pump(app, move |app| {
         let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
-            .set_screener_defaults(&oui, &non)
+            .set_screener_defaults(
+                &crate::wire::category_from_wire(&yes),
+                &crate::wire::no_default_from_wire(&no),
+            )
             .map_err(|err| err.to_string())
     })
     .await
@@ -3185,7 +3204,7 @@ pub async fn screener_defaults_set(app: AppHandle, oui: String, non: String) -> 
 pub struct RoutingPayload {
     pub address: String,
     pub destination: String,
-    pub regle: Option<String>,
+    pub rule: Option<String>,
     pub epoch: i64,
 }
 
@@ -3197,12 +3216,14 @@ pub async fn route_sender(
     app: AppHandle,
     address: String,
     destination: String,
-    regle: Option<String>,
+    rule: Option<String>,
 ) -> Result<(), String> {
     off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let (destination, rule) =
+            crate::wire::destination_rule_from_wire(&destination, rule.as_deref());
         store
-            .route_sender(&address, &destination, regle.as_deref(), epoch_now())
+            .route_sender(&address, &destination, rule.as_deref(), epoch_now())
             .map_err(|err| err.to_string())
     })
     .await
@@ -3220,7 +3241,7 @@ pub async fn route_sender_from(
     mailbox: String,
     uid: u32,
     destination: String,
-    regle: Option<String>,
+    rule: Option<String>,
 ) -> Result<Option<String>, String> {
     off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
@@ -3230,12 +3251,14 @@ pub async fn route_sender_from(
         else {
             return Err(format!("unknown mailbox: {mailbox}"));
         };
+        let (destination, rule) =
+            crate::wire::destination_rule_from_wire(&destination, rule.as_deref());
         store
             .route_sender_of(
                 state.mailbox_id,
                 uid,
                 &destination,
-                regle.as_deref(),
+                rule.as_deref(),
                 epoch_now(),
             )
             .map_err(|err| err.to_string())
@@ -3266,8 +3289,8 @@ pub async fn routings(app: AppHandle) -> Result<Vec<RoutingPayload>, String> {
             .into_iter()
             .map(|r| RoutingPayload {
                 address: r.address,
-                destination: r.destination,
-                regle: r.rule,
+                destination: crate::wire::category_to_wire(&r.destination),
+                rule: r.rule.as_deref().map(crate::wire::rule_to_wire),
                 epoch: r.epoch,
             })
             .collect())
@@ -3346,19 +3369,19 @@ pub async fn feed_unopened(app: AppHandle) -> Result<u64, String> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CleanupSessionPayload {
-    pub plage: String,
-    pub perimetre: String,
+    pub range: String,
+    pub scope: String,
     pub total: u64,
-    pub traites: u64,
+    pub processed: u64,
 }
 
 impl From<mail_core::CleanupSession> for CleanupSessionPayload {
     fn from(s: mail_core::CleanupSession) -> Self {
         CleanupSessionPayload {
-            plage: s.range,
-            perimetre: s.scope,
+            range: crate::wire::category_to_wire(&s.range),
+            scope: crate::wire::scope_to_wire(&s.scope),
             total: s.total,
-            traites: s.handled,
+            processed: s.handled,
         }
     }
 }
@@ -3369,8 +3392,8 @@ pub struct CleanupGroupPayload {
     pub address: String,
     pub qui: Option<String>,
     pub messages: u64,
-    pub dernier_epoch: i64,
-    pub dernier_objet: Option<String>,
+    pub last_epoch: i64,
+    pub last_subject: Option<String>,
 }
 
 impl From<mail_core::CleanupGroup> for CleanupGroupPayload {
@@ -3379,8 +3402,8 @@ impl From<mail_core::CleanupGroup> for CleanupGroupPayload {
             address: g.address,
             qui: g.who,
             messages: g.messages,
-            dernier_epoch: g.last_epoch,
-            dernier_objet: g.last_subject,
+            last_epoch: g.last_epoch,
+            last_subject: g.last_subject,
         }
     }
 }
@@ -3392,9 +3415,9 @@ impl From<mail_core::CleanupGroup> for CleanupGroupPayload {
 pub struct PaperTrailGroupPayload {
     pub address: String,
     pub qui: Option<String>,
-    pub fils: u64,
-    pub dernier_epoch: i64,
-    pub dernier_objet: Option<String>,
+    pub threads: u64,
+    pub last_epoch: i64,
+    pub last_subject: Option<String>,
 }
 
 impl From<mail_core::PaperTrailGroup> for PaperTrailGroupPayload {
@@ -3402,9 +3425,9 @@ impl From<mail_core::PaperTrailGroup> for PaperTrailGroupPayload {
         PaperTrailGroupPayload {
             address: g.address,
             qui: g.who,
-            fils: g.threads,
-            dernier_epoch: g.last_epoch,
-            dernier_objet: g.last_subject,
+            threads: g.threads,
+            last_epoch: g.last_epoch,
+            last_subject: g.last_subject,
         }
     }
 }
@@ -3469,13 +3492,17 @@ pub async fn cleanup_state(app: AppHandle) -> Result<Option<CleanupSessionPayloa
 #[tauri::command]
 pub async fn cleanup_start(
     app: AppHandle,
-    plage: String,
-    perimetre: String,
+    range: String,
+    scope: String,
 ) -> Result<CleanupSessionPayload, String> {
     off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
-            .cleanup_start(&plage, &perimetre, epoch_now())
+            .cleanup_start(
+                &crate::wire::category_from_wire(&range),
+                &crate::wire::scope_from_wire(&scope),
+                epoch_now(),
+            )
             .map(Into::into)
             .map_err(|err| err.to_string())
     })
@@ -3526,12 +3553,14 @@ pub async fn cleanup_verdict(
     app: AppHandle,
     address: String,
     destination: String,
-    regle: Option<String>,
+    rule: Option<String>,
 ) -> Result<Option<CleanupSessionPayload>, String> {
     off_pump(app, move |app| {
         let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let (destination, rule) =
+            crate::wire::destination_rule_from_wire(&destination, rule.as_deref());
         store
-            .cleanup_verdict(&address, &destination, regle.as_deref(), epoch_now())
+            .cleanup_verdict(&address, &destination, rule.as_deref(), epoch_now())
             .map_err(|err| err.to_string())?;
         Ok(store
             .cleanup_state()
@@ -3589,7 +3618,7 @@ pub async fn set_aside_pile(app: AppHandle) -> Result<Vec<MessageRow>, String> {
             .into_iter()
             .map(to_message_row)
             .map(|mut row| {
-                row.cote = true;
+                row.aside = true;
                 row
             })
             .collect())
@@ -3611,7 +3640,7 @@ pub struct FeedCard {
     /// RETOURS-13 R10: the card has already been read to the bottom —
     /// the "Previously read" section uses it when the page is SERVED
     /// (never in flight: a card doesn't jump while being read).
-    pub lu: bool,
+    pub read: bool,
 }
 
 /// The Feed page as CARDS (E5bis, D5/S3): the rows of the routed view
@@ -3657,7 +3686,7 @@ pub async fn feed_cards(
                 }
             };
             // R10: the "read" flag of the card — a PK probe, one per card.
-            let lu = mailbox_id
+            let read = mailbox_id
                 .map(|id| store.feed_read(id, row.uid))
                 .transpose()
                 .map_err(|err| err.to_string())?
@@ -3694,7 +3723,7 @@ pub async fn feed_cards(
                 row,
                 document,
                 remote_images_blocked,
-                lu,
+                read,
             });
         }
         Ok(cards)
@@ -3733,7 +3762,7 @@ pub async fn feed_mark_read(
 pub async fn pinned_rows(
     app: AppHandle,
     account_id: Option<i64>,
-    non_lus: bool,
+    unread: bool,
 ) -> Result<Vec<MessageRow>, String> {
     off_pump(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
@@ -3741,7 +3770,7 @@ pub async fn pinned_rows(
         // organized Inbox — a routed pinned item lives in its own view.
         let organized = store.organized_mode().map_err(|err| err.to_string())?;
         let mut rows = store
-            .pinned_unified_scoped(account_id, non_lus, organized)
+            .pinned_unified_scoped(account_id, unread, organized)
             .map_err(|err| err.to_string())?;
         store
             .enrich_rows(&mut rows)
@@ -3811,7 +3840,7 @@ pub struct OutboxEntry {
     /// How many attachments the log carries for this send (PJ-D2) —
     /// quarantine and refusal must be able to say what would go out
     /// again.
-    pub pieces: usize,
+    pub attachments: usize,
     /// R2: the due time of a scheduled send (epoch seconds) — `None`
     /// for an ordinary send. The UI derives "scheduled for {h}" and the
     /// cancel gesture from it.
@@ -4309,14 +4338,14 @@ fn body_on_arrival(arrivals: usize) -> usize {
 /// The outcome of the after-gesture pass — no more silence: incidents
 /// surface to the UI like those of the cycle (field finding 0.1.5: the
 /// investigation was blind, everything went into `eprintln` and the
-/// `.catch(() => {})` swallowed the rest). `reconcilies`: echoes
-/// replaced by their real row; `balayes`: echoes the server denied.
+/// `.catch(() => {})` swallowed the rest). `reconciled`: echoes
+/// replaced by their real row; `swept`: echoes the server denied.
 #[derive(Default, Serialize)]
 pub struct PassReport {
     pub fetched: usize,
     pub deleted: usize,
-    pub reconcilies: usize,
-    pub balayes: usize,
+    pub reconciled: usize,
+    pub swept: usize,
     pub errors: Vec<String>,
 }
 
@@ -4410,8 +4439,8 @@ pub async fn sync_after_gesture(
                 Ok((outcome, refreshed)) => {
                     report.fetched += outcome.fetched;
                     report.deleted += outcome.deleted;
-                    report.reconcilies += outcome.reconcilies;
-                    report.balayes += outcome.balayes;
+                    report.reconciled += outcome.reconciled;
+                    report.swept += outcome.swept;
                     report.errors.extend(outcome.errors);
                     reset_sessions(&state, refreshed)?;
                 }
@@ -4624,7 +4653,7 @@ fn pass_after_gesture_account(
             let reconciled = store
                 .reconcile_echos(account_id)
                 .map_err(|err| err.to_string())?;
-            report.reconcilies += reconciled;
+            report.reconciled += reconciled;
             mail_this_attempt += reconciled;
             server.logout();
             // The trace that will inform D-7 (§6.8: durations and counts
@@ -4637,7 +4666,7 @@ fn pass_after_gesture_account(
             ));
             if mail_this_attempt > 0 {
                 cycle
-                    .courrier
+                    .mail
                     .fetch_add(mail_this_attempt as u64, Ordering::Relaxed);
                 cycle.generation.fetch_add(1, Ordering::Relaxed);
             }
@@ -4663,7 +4692,7 @@ fn pass_after_gesture_account(
             .sweep_echos(account_id)
             .map_err(|err| err.to_string())?;
         if !incidents.is_empty() {
-            report.balayes += incidents.len();
+            report.swept += incidents.len();
             report.errors.extend(incidents);
             // Rows just disappeared: the list is served again.
             cycle.generation.fetch_add(1, Ordering::Relaxed);
@@ -4826,7 +4855,7 @@ fn read_sends(store: &Store) -> Result<OutboxStatus, String> {
             state: message.state.as_str().to_string(),
             attempts: message.attempts,
             error: message.last_error,
-            pieces: message.attachments.len(),
+            attachments: message.attachments.len(),
             send_at_epoch: message.send_at_epoch.filter(|epoch| *epoch > now),
         });
     }
@@ -4969,7 +4998,7 @@ const MARKER_ICONS: [&str; 12] = [
 /// The measured swatch table (D1): 12 families, whose TWO variants
 /// (light / night) live in `systeme.css` — here only the family name is
 /// stored, never a hex value.
-const MARKER_HUES: [&str; 12] = [
+pub(crate) const MARKER_HUES: [&str; 12] = [
     "rouge", "orange", "ocre", "olive", "vert", "sapin", "bleu", "indigo", "violet", "magenta",
     "rose", "brun",
 ];
@@ -4978,8 +5007,8 @@ const MARKER_HUES: [&str; 12] = [
 /// (dedicated set × swatch table). Everything else — a product glyph,
 /// an unknown hue, an empty string — is refused, both on input and on
 /// readback.
-pub(crate) fn valid_marker(icone: &str, teinte: &str) -> bool {
-    MARKER_ICONS.contains(&icone) && MARKER_HUES.contains(&teinte)
+pub(crate) fn valid_marker(icon: &str, hue: &str) -> bool {
+    MARKER_ICONS.contains(&icon) && MARKER_HUES.contains(&hue)
 }
 
 /// Rereads an account's marker; a value outside the allowlist
@@ -4988,9 +5017,9 @@ pub(crate) fn marker_of(
     store: &Store,
     account_id: i64,
 ) -> Result<Option<(String, String)>, mail_core::Error> {
-    let icone = store.text_pref(&format!("repere_icone.{account_id}"))?;
-    let teinte = store.text_pref(&format!("repere_teinte.{account_id}"))?;
-    Ok(match (icone, teinte) {
+    let icon = store.text_pref(&format!("repere_icone.{account_id}"))?;
+    let hue = store.text_pref(&format!("repere_teinte.{account_id}"))?;
+    Ok(match (icon, hue) {
         (Some(i), Some(t)) if valid_marker(&i, &t) => Some((i, t)),
         _ => None,
     })
@@ -5005,17 +5034,17 @@ pub(crate) fn set_marker(
     account_id: i64,
     marker: Option<(&str, &str)>,
 ) -> Result<(), mail_core::Error> {
-    let (icone, teinte) = marker.unwrap_or(("", ""));
+    let (icon, hue) = marker.unwrap_or(("", ""));
     let icon_key = format!("repere_icone.{account_id}");
     let hue_key = format!("repere_teinte.{account_id}");
-    store.set_text_prefs(&[(icon_key.as_str(), icone), (hue_key.as_str(), teinte)])
+    store.set_text_prefs(&[(icon_key.as_str(), icon), (hue_key.as_str(), hue)])
 }
 
 #[derive(Serialize)]
 pub struct MarkerRow {
     pub account_id: i64,
-    pub icone: String,
-    pub teinte: String,
+    pub icon: String,
+    pub hue: String,
 }
 
 /// All the set markers — the UI loads them ONCE (nav + list) and
@@ -5027,13 +5056,13 @@ pub async fn markers_get(app: AppHandle) -> Result<Vec<MarkerRow>, String> {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let mut rows = Vec::new();
         for account in store.accounts().map_err(|err| err.to_string())? {
-            if let Some((icone, teinte)) =
+            if let Some((icon, hue)) =
                 marker_of(&store, account.id).map_err(|err| err.to_string())?
             {
                 rows.push(MarkerRow {
                     account_id: account.id,
-                    icone,
-                    teinte,
+                    icon,
+                    hue: crate::wire::hue_to_wire(&hue),
                 });
             }
         }
@@ -5049,11 +5078,20 @@ pub async fn markers_get(app: AppHandle) -> Result<Vec<MarkerRow>, String> {
 pub async fn marker_set(
     app: AppHandle,
     account_id: i64,
-    icone: Option<String>,
-    teinte: Option<String>,
+    icon: Option<String>,
+    hue: Option<String>,
 ) -> Result<(), String> {
     off_pump(app, move |app| {
-        let marker = match (icone.as_deref(), teinte.as_deref()) {
+        // The UI speaks the wire hue (`blue`); the allowlist and the
+        // database keep the French family name (D16).
+        if hue
+            .as_deref()
+            .is_some_and(|h| !crate::wire::WIRE_HUES.contains(&h))
+        {
+            return Err("marker outside the dedicated set".to_string());
+        }
+        let hue = hue.map(|h| crate::wire::hue_from_wire(&h));
+        let marker = match (icon.as_deref(), hue.as_deref()) {
             (None, None) => None,
             (Some(i), Some(t)) if valid_marker(i, t) => Some((i, t)),
             (Some(_), Some(_)) => return Err("marker outside the dedicated set".to_string()),
@@ -5102,7 +5140,7 @@ pub(crate) fn set_name(
 #[derive(Serialize)]
 pub struct NameRow {
     pub account_id: i64,
-    pub nom: String,
+    pub name: String,
 }
 
 /// All the set names — the UI loads them ONCE (nav + settings +
@@ -5113,10 +5151,10 @@ pub async fn names_get(app: AppHandle) -> Result<Vec<NameRow>, String> {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let mut rows = Vec::new();
         for account in store.accounts().map_err(|err| err.to_string())? {
-            if let Some(nom) = name_of(&store, account.id).map_err(|err| err.to_string())? {
+            if let Some(name) = name_of(&store, account.id).map_err(|err| err.to_string())? {
                 rows.push(NameRow {
                     account_id: account.id,
-                    nom,
+                    name,
                 });
             }
         }
@@ -5131,10 +5169,10 @@ pub async fn names_get(app: AppHandle) -> Result<Vec<NameRow>, String> {
 pub async fn name_set(
     app: AppHandle,
     account_id: i64,
-    nom: Option<String>,
+    name: Option<String>,
 ) -> Result<Option<String>, String> {
     off_pump(app, move |app| {
-        let normalized = normalized_name(nom.as_deref().unwrap_or(""))?;
+        let normalized = normalized_name(name.as_deref().unwrap_or(""))?;
         let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         set_name(&mut store, account_id, normalized.as_deref()).map_err(|err| err.to_string())?;
         Ok(normalized)
@@ -5360,7 +5398,7 @@ pub struct AttachReport {
     /// move, the editor keeps its marker.
     pub updated_epoch: Option<i64>,
     /// ALL of the draft's attachments after the gesture, in order.
-    pub pieces: Vec<DraftAttachmentRow>,
+    pub attachments: Vec<DraftAttachmentRow>,
     pub refused: Vec<RefusedAttachment>,
 }
 
@@ -5485,14 +5523,14 @@ pub async fn attach_files(
             return Ok(AttachReport {
                 draft_id: None,
                 updated_epoch: None,
-                pieces: Vec::new(),
+                attachments: Vec::new(),
                 refused,
             });
         }
         Ok(AttachReport {
             draft_id: Some(draft_id),
             updated_epoch,
-            pieces: store
+            attachments: store
                 .draft_attachments_meta(draft_id)
                 .map_err(|err| err.to_string())?
                 .into_iter()
@@ -5515,7 +5553,7 @@ pub struct FetchAttachmentReport {
     pub draft_id: Option<i64>,
     pub updated_epoch: Option<i64>,
     /// The attachment added to the draft, if the repatriation succeeded.
-    pub piece: Option<DraftAttachmentRow>,
+    pub attachment: Option<DraftAttachmentRow>,
     /// The refusal at the cap (PJ-D3) — final, no “Retry”.
     pub refused: Option<RefusedAttachment>,
 }
@@ -5594,7 +5632,7 @@ pub async fn fetch_source_attachment(
             Ok(saved) => Ok(FetchAttachmentReport {
                 draft_id: Some(draft_id),
                 updated_epoch: Some(saved.updated_epoch),
-                piece: Some(attachment_row(saved.attachment)),
+                attachment: Some(attachment_row(saved.attachment)),
                 refused: None,
             }),
             Err(mail_core::Error::AttachmentOverBudget {
@@ -5613,7 +5651,7 @@ pub async fn fetch_source_attachment(
                 Ok(FetchAttachmentReport {
                     draft_id,
                     updated_epoch: None,
-                    piece: None,
+                    attachment: None,
                     refused: Some(RefusedAttachment {
                         name,
                         remaining: mail_core::human_size(remaining),
@@ -5758,7 +5796,7 @@ fn run_draft_sync_all(
         {
             // Attachments follow the text (PJ-D6): the remote mirror
             // shows the whole draft.
-            let pieces = store
+            let attachments = store
                 .draft_attachments_full(draft.id)
                 .map_err(|err| err.to_string())?;
             let bytes = match mail_smtp::draft_bytes(
@@ -5769,7 +5807,7 @@ fn run_draft_sync_all(
                 &draft.subject,
                 &draft.body,
                 draft.body_html.as_deref(),
-                &pieces,
+                &attachments,
             ) {
                 Ok(bytes) => bytes,
                 // Not pushable as it stands: the local copy stays the
@@ -6103,7 +6141,7 @@ pub struct SyncProgress {
     /// Epoch (seconds) of the last successful poll — `None` as long as
     /// no cycle has completed: the interface doesn't invent a
     /// timestamp (PLAN-SYNCHRO E1).
-    pub derniere: Option<i64>,
+    pub last: Option<i64>,
     /// Mail generation, monotonic (E4): the UI reloads the list when it
     /// moves — that's how mail polled by an IDLE watcher shows up at
     /// rest, via polling (R0-S5).
@@ -6119,7 +6157,7 @@ fn read_sync(store: &Store, generation: u64) -> Result<SyncProgress, String> {
     // An unreadable timestamp (corrupted pref) counts as "never": the
     // status bar falls back to the dateless text rather than showing
     // garbage.
-    let derniere = store
+    let last = store
         .text_pref(PREF_LAST_SYNC)
         .map_err(|err| err.to_string())?
         .and_then(|value| value.parse::<i64>().ok());
@@ -6127,7 +6165,7 @@ fn read_sync(store: &Store, generation: u64) -> Result<SyncProgress, String> {
         local,
         remote,
         percent: mail_core::sync_percent(local, remote),
-        derniere,
+        last,
         generation,
     })
 }
@@ -6153,9 +6191,9 @@ pub async fn sync_progress(
 /// cleared — the network is fresh, yesterday's failure was the outage,
 /// not the server — and the watchers resume on their own.
 #[tauri::command]
-pub fn network_state(state: State<'_, AppState>, en_ligne: bool) -> Result<(), String> {
-    state.en_ligne.store(en_ligne, Ordering::Relaxed);
-    if en_ligne && let Ok(mut reculs) = state.sync_backoffs.lock() {
+pub fn network_state(state: State<'_, AppState>, online: bool) -> Result<(), String> {
+    state.online.store(online, Ordering::Relaxed);
+    if online && let Ok(mut reculs) = state.sync_backoffs.lock() {
         reculs.clear();
     }
     Ok(())
@@ -6164,14 +6202,14 @@ pub fn network_state(state: State<'_, AppState>, en_ligne: bool) -> Result<(), S
 #[derive(Serialize)]
 pub struct SyncActivity {
     /// Accounts already settled in the current cycle.
-    pub fait: u64,
+    pub done: u64,
     pub total: u64,
     /// Address of the account currently being polled.
-    pub compte: String,
+    pub account: String,
     /// Mailbox currently being processed WITHIN the account — empty
     /// between two mailboxes.
-    pub boite: String,
-    /// Step without a mailbox (`inventaire`, `fils`, `brouillons`) —
+    pub mailbox: String,
+    /// Step without a mailbox (`inventory`, `threads`, `drafts`) —
     /// catalog key, translated by the UI. Empty when a mailbox is
     /// named.
     pub phase: String,
@@ -6179,7 +6217,7 @@ pub struct SyncActivity {
     /// removals, accumulated account after account) — P1: the probe
     /// reloads the list as soon as this counter moves, without waiting
     /// for the cycle to end.
-    pub courrier: u64,
+    pub mail: u64,
 }
 
 /// The cycle in progress, for the status bar (PLAN-SYNCHRO E1).
@@ -6193,13 +6231,13 @@ pub fn sync_activity(state: State<'_, AppState>) -> Option<SyncActivity> {
     if !cycle.in_progress.load(Ordering::Relaxed) {
         return None;
     }
-    let compte = cycle
-        .compte
+    let account = cycle
+        .account
         .lock()
         .map(|name| name.clone())
         .unwrap_or_default();
-    let boite = cycle
-        .boite
+    let mailbox = cycle
+        .mailbox
         .lock()
         .map(|name| name.clone())
         .unwrap_or_default();
@@ -6209,12 +6247,12 @@ pub fn sync_activity(state: State<'_, AppState>) -> Option<SyncActivity> {
         .map(|name| name.clone())
         .unwrap_or_default();
     Some(SyncActivity {
-        fait: cycle.fait.load(Ordering::Relaxed),
+        done: cycle.done.load(Ordering::Relaxed),
         total: cycle.total.load(Ordering::Relaxed),
-        compte,
-        boite,
+        account,
+        mailbox,
         phase,
-        courrier: cycle.courrier.load(Ordering::Relaxed),
+        mail: cycle.mail.load(Ordering::Relaxed),
     })
 }
 

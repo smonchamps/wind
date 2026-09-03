@@ -32,17 +32,17 @@ test('la nav porte les pastilles de non-lus du décor Clarity (A29, W2-D4)', asy
   // On vise l'élément pastille — le compteur seul, jamais la rangée
   // entière (V8 : les icônes sont des SVG, plus aucune ligature).
   const pastille = (categorie) => dossier(categorie).locator('.pastille');
-  await expect(pastille('reception')).toHaveText('4');
-  await expect(dossier('reception')).not.toContainText('/');
-  await expect(pastille('envoyes')).toHaveCount(0);
-  await expect(pastille('brouillons')).toHaveCount(0);
-  await expect(pastille('indesirables')).toHaveText('2');
-  await expect(pastille('archives')).toHaveCount(0);
-  await expect(pastille('corbeille')).toHaveCount(0);
+  await expect(pastille('inbox')).toHaveText('4');
+  await expect(dossier('inbox')).not.toContainText('/');
+  await expect(pastille('sent')).toHaveCount(0);
+  await expect(pastille('drafts')).toHaveCount(0);
+  await expect(pastille('junk')).toHaveText('2');
+  await expect(pastille('archive')).toHaveCount(0);
+  await expect(pastille('trash')).toHaveCount(0);
   // V4 : le compteur de la nav est un NOMBRE nu en chiffres tabulaires
   // à l'accent — la pilule pleine est morte (fond transparent), et le
   // non-lu d'une rangée de liste porte son disque de 9 px --marque.
-  const fondPastille = await pastille('reception').evaluate(
+  const fondPastille = await pastille('inbox').evaluate(
     (el) => getComputedStyle(el).backgroundColor,
   );
   expect(['rgba(0, 0, 0, 0)', 'transparent']).toContain(fondPastille);
@@ -80,8 +80,8 @@ test('les glyphes de la nav tiennent le calage optique C — baseline + 2 px (RE
     });
   // Les trois porteurs : rangée de dossier, rangée de boîte, tuile de
   // la boîte en cours (« Toutes les boîtes » au démarrage).
-  expect(Math.abs((await ecart(dossier('reception'))) - 2)).toBeLessThanOrEqual(0.5);
-  expect(Math.abs((await ecart(dossier('corbeille'))) - 2)).toBeLessThanOrEqual(0.5);
+  expect(Math.abs((await ecart(dossier('inbox'))) - 2)).toBeLessThanOrEqual(0.5);
+  expect(Math.abs((await ecart(dossier('trash'))) - 2)).toBeLessThanOrEqual(0.5);
   expect(
     Math.abs((await ecart(page.locator('[data-testid="nav-boite"]').first())) - 2),
   ).toBeLessThanOrEqual(0.5);
@@ -116,10 +116,10 @@ test('le volet liste porte son bandeau de titre — le nom de la boîte, sans bo
   );
   expect(filet).toBeGreaterThan(0);
   // Le bandeau suit la boîte courante.
-  await dossier('archives').click();
+  await dossier('archive').click();
   await expect(titre).toHaveText('Archives');
   // Retour à l'état de départ : la suite est sérielle.
-  await dossier('reception').click();
+  await dossier('inbox').click();
   await expect(titre).toHaveText('Boîte de réception');
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
 });
@@ -224,7 +224,7 @@ test('sélectionner ouvre le volet, lit le corps, et le non-lu tombe', async () 
     page.frameLocator('[data-testid="volet-lecture"] iframe').locator('body'),
   ).toContainText('Bonjour Paul');
   // mark_seen est RÉEL : le héros de la réception retombe.
-  await expect(dossier('reception')).toContainText('3');
+  await expect(dossier('inbox')).toContainText('3');
 });
 
 test('un lien du corps part au navigateur système — le corps ne bouge pas', async () => {
@@ -261,16 +261,16 @@ test("l'onglet Non lus filtre côté coeur", async () => {
 });
 
 test('les dossiers canoniques servent leurs listes', async () => {
-  await dossier('archives').click();
+  await dossier('archive').click();
   await expect(page.locator('[data-testid="statut"]')).toContainText(
     'Archives · 64 éléments',
   );
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  await dossier('corbeille').click();
+  await dossier('trash').click();
   await expect(page.locator('[data-testid="statut"]')).toContainText(
     'Corbeille · 3 éléments',
   );
-  await dossier('reception').click();
+  await dossier('inbox').click();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
 });
 
@@ -291,9 +291,9 @@ test('archiver agit sur le coeur et confirme par le toast', async () => {
   );
   // Le total a quitté la nav (A29, W2-D4) : la preuve du coeur se lit
   // au dossier Archives — la barre de statut compte ses éléments.
-  await dossier('archives').click();
+  await dossier('archive').click();
   await expect(page.locator('[data-testid="statut"]')).toContainText('Archives · 65');
-  await dossier('reception').click();
+  await dossier('inbox').click();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
 });
 
@@ -363,7 +363,7 @@ test('le fil au dessin exact de la maquette — avatars, entête deux lignes, he
 test('le fil au message seul dit « 1 message » — et s\'ouvre sur « Tout replier » (terrains A45/A47)', async () => {
   // La seconde capture CE : un fil d'un message garde le rang complet.
   // Le test « archiver » a rangé Planning aux Archives — on l'y suit.
-  await dossier('archives').click();
+  await dossier('archive').click();
   await page
     .locator('[data-testid="ligne"]', { hasText: 'Planning de la semaine 33' })
     .first()
@@ -384,7 +384,7 @@ test('le fil au message seul dit « 1 message » — et s\'ouvre sur « Tout rep
     'À : paul.merand@atelier-nord.fr',
   );
   await expect(deplie.locator('.tete-message .quand')).toHaveText(/^Aujourd'hui, 08:40$/);
-  await dossier('reception').click();
+  await dossier('inbox').click();
   await page.locator('[data-testid="ligne"]').first().click();
 });
 
@@ -764,7 +764,7 @@ test('le brouillon vit en liste : mention sur le fil, reprise au dossier, fente 
   // Le dossier : les brouillons LOCAUX (2 du décor + celui de P4), du
   // plus récent au plus ancien ; la barre de statut compte comme les
   // autres catégories ; le clic REPREND — jamais une lecture.
-  await dossier('brouillons').click();
+  await dossier('drafts').click();
   await expect(page.locator('[data-testid="dossier-brouillons"]')).toBeVisible();
   await expect(page.locator('[data-testid="ligne-brouillon"]')).toHaveCount(3);
   await expect(page.locator('[data-testid="progression"]')).toContainText(
@@ -793,7 +793,7 @@ test('le brouillon vit en liste : mention sur le fil, reprise au dossier, fente 
 
   // Retour en Réception : le fil Vantis garde sa mention — le brouillon
   // du DÉCOR le vise aussi, et c'est son corps qui reprend l'aperçu.
-  await dossier('reception').click();
+  await dossier('inbox').click();
   const encore = page
     .locator('[data-testid="ligne"]', { hasText: 'Relecture du contrat Vantis' })
     .first();
@@ -881,7 +881,7 @@ test('les raccourcis servent le clavier (D3)', async () => {
 test("le clavier active ce que le clic active (A8) : nav, rangée, onglet", async () => {
   // Une rangée de nav n'est pas un <button> (géométrie du prototype) :
   // elle doit répondre à Entrée quand même.
-  await page.locator('[data-testid="nav-dossier"][data-categorie="archives"]').focus();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="archive"]').focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-testid="statut"]')).toContainText('Archives ·');
   // Une ligne de liste, à Espace.
@@ -889,7 +889,7 @@ test("le clavier active ce que le clic active (A8) : nav, rangée, onglet", asyn
   await page.keyboard.press(' ');
   await expect(page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]')).not.toBeEmpty();
   // Retour réception par le clavier.
-  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').focus();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
 });
@@ -1177,7 +1177,7 @@ test('fermer conserve les pièces, la reprise les restitue (PJ-D1)', async () =>
   await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="toast"]')).toContainText('Brouillon enregistré.');
 
-  await dossier('brouillons').click();
+  await dossier('drafts').click();
   await expect(page.locator('[data-testid="dossier-brouillons"]')).toBeVisible();
   await page
     .locator('[data-testid="ligne-brouillon"]', { hasText: 'Corps avec pièce E2' })
@@ -1199,7 +1199,7 @@ test("envoyer emporte la pièce : le journal la porte (PJ-D2)", async () => {
   const statut = await page.evaluate(() => window.__TAURI__.core.invoke('outbox_status'));
   const entree = statut.entries.find((e) => e.subject === 'Envoi avec pièce E2');
   expect(entree).toBeTruthy();
-  expect(entree.pieces).toBe(1);
+  expect(entree.attachments).toBe(1);
 });
 
 test('au-delà du plafond : le refus est dit, rien ne se joint (PJ-D3)', async () => {
@@ -1228,7 +1228,7 @@ test('au-delà du plafond : le refus est dit, rien ne se joint (PJ-D3)', async (
 test('le transfert rapatrie pour de vrai — hors ligne : échec dit, « Réessayer », envoi gardé (PJ-D4)', async () => {
   // Le parcours précédent vivait au dossier Brouillons : retour en
   // Réception, où la ligne Vantis existe.
-  await dossier('reception').click();
+  await dossier('inbox').click();
   await page
     .locator('[data-testid="ligne"]', { hasText: 'Relecture du contrat Vantis' })
     .click();
@@ -1282,7 +1282,7 @@ test('le transfert rapatrie pour de vrai — hors ligne : échec dit, « Réessa
 // que l'OS émettrait (navigator.onLine lui-même n'est pas scriptable) :
 // le câblage événement → barre est ce qui compte.
 test("hors ligne : la barre le dit à l'instant, le retour la restaure (P0-bis)", async () => {
-  await dossier('reception').click();
+  await dossier('inbox').click();
   const progression = page.locator('[data-testid="progression"]');
   await expect(progression).not.toContainText('Hors ligne');
 
@@ -1301,7 +1301,7 @@ test("hors ligne : la barre le dit à l'instant, le retour la restaure (P0-bis)"
 // écho est différé et LE DIT ; l'écho survit (l'action attend encore —
 // le balayage ne retire jamais une intention en attente).
 test("supprimer se voit en Corbeille à l'instant — hors ligne compris (E3)", async () => {
-  await dossier('reception').click();
+  await dossier('inbox').click();
 
   await page
     .locator('[data-testid="ligne"]', { hasText: 'Facture 2026-0841' })
@@ -1313,7 +1313,7 @@ test("supprimer se voit en Corbeille à l'instant — hors ligne compris (E3)", 
   );
   // Le compteur a quitté la nav (A29, W2-D4) : la Corbeille elle-même
   // dit « 3 + l'écho » — la barre de statut compte ses éléments.
-  await dossier('corbeille').click();
+  await dossier('trash').click();
   await expect(page.locator('[data-testid="statut"]')).toContainText(
     'Corbeille · 4 éléments',
   );
@@ -1333,7 +1333,7 @@ test("supprimer se voit en Corbeille à l'instant — hors ligne compris (E3)", 
   // L'écho vit toujours : son intention (l'action journalisée) attend
   // le serveur — hors ligne, rien ne le balaie.
   await expect(echo).toBeVisible();
-  await dossier('reception').click();
+  await dossier('inbox').click();
 });
 
 test('le triage clavier avance : e/Suppr sélectionnent la ligne du dessous (A38)', async () => {
@@ -1342,8 +1342,8 @@ test('le triage clavier avance : e/Suppr sélectionnent la ligne du dessous (A38
   // d'une source fraîche (aller-retour de nav), et parcours sur des
   // lignes SANS rôle dans la suite (« Atelier de septembre », puis la
   // ligne dessous) : le fil Vantis (transfert PJ-D4) reste intact.
-  await page.locator('[data-testid="nav-dossier"][data-categorie="archives"]').click();
-  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="archive"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
   const lignes = page.locator('[data-testid="ligne"]');
   await expect(lignes.first()).toBeVisible();
   // La ligne du dessous se capture AVANT le geste — après, elle a
@@ -1427,12 +1427,12 @@ test('vider puis fermer ne ressuscite jamais le brouillon — la sauvegarde en v
   });
   // fermer a attendu le vol, puis supprimé : aucun fantôme.
   await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
-  await page.locator('[data-testid="nav-dossier"][data-categorie="brouillons"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="drafts"]').click();
   await expect(page.locator('[data-testid="dossier-brouillons"]')).toBeVisible();
   await expect(
     page.locator('[data-testid="ligne-brouillon"]', { hasText: 'Course E2E' }),
   ).toHaveCount(0);
-  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
 });
 
@@ -1444,11 +1444,11 @@ test('vider puis fermer ne ressuscite jamais le brouillon — la sauvegarde en v
 // n'est pas arrivée (D2 — l'écho meurt à la réconciliation, prouvé au
 // cœur par `la_vraie_ligne_tue_l_echo`).
 test("l'écho d'envoi dit ses destinataires et sa pièce — jamais « À : envoyes » (RETOURS-5)", async () => {
-  await dossier('envoyes').click();
+  await dossier('sent').click();
   const ligne = page.locator('[data-testid="ligne"]', { hasText: 'Bordereau signé' });
   await expect(ligne).toBeVisible();
   await expect(ligne).toContainText('c.rousseau@atelier-nord.fr');
-  await expect(ligne).not.toContainText('envoyes');
+  await expect(ligne).not.toContainText('sent');
 
   await ligne.click();
   const volet = page.locator('[data-testid="volet-lecture"]');
@@ -1462,7 +1462,7 @@ test("l'écho d'envoi dit ses destinataires et sa pièce — jamais « À : envo
   await expect(piece).toContainText('Bordereau-signe.pdf');
   await expect(piece).toContainText('20 Ko');
   await expect(piece).toBeDisabled();
-  await dossier('reception').click();
+  await dossier('inbox').click();
 });
 
 // PLAN-RETOURS-5 (D3-D4) : l'autocomplétion des adresses — l'annuaire

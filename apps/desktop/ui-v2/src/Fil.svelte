@@ -219,12 +219,12 @@
   });
   // LA forme « Nom <adresse> » — une seule règle pour les trois lignes
   // de l'entête : nom absent, vide ou égal à l'adresse → adresse nue.
-  const etiquette = (nom, adresse) =>
-    (nom && nom !== adresse ? `${nom} <${adresse}>` : adresse);
+  const etiquette = (name, adresse) =>
+    (name && name !== adresse ? `${name} <${adresse}>` : adresse);
   // Le nom vient de l'annuaire (clé en minuscules, sa forme).
   const nomAdr = (adresse) => etiquette(annuaire[adresse.trim().toLowerCase()], adresse);
   // Le nom est déjà PORTÉ (l'expéditeur d'une copie du fil).
-  const nomAdrPorte = (nom, adresse) => (adresse ? etiquette(nom, adresse) : (nom ?? ''));
+  const nomAdrPorte = (name, adresse) => (adresse ? etiquette(name, adresse) : (name ?? ''));
   // R4 (PLAN-RETOURS-MAIL) : les destinataires stockés (`to_addrs`,
   // tirés de la même ENVELOPE à la synchro) disent à qui le message est
   // parti. Repli des messages d'avant leur stockage : l'heuristique du
@@ -253,28 +253,28 @@
   // puis une vidange lancée — hors ligne, il part au prochain lancement
   // (la sémantique dite de PLAN-RETOURS-6).
   let reponsesEnVol = $state({});
-  async function repondreInvitation(m, reponse) {
+  async function repondreInvitation(m, reply) {
     const k = cleMsg(m);
     if (reponsesEnVol[k]) return;
     reponsesEnVol[k] = true;
     // OPTIMISTE (terrain R3'a) : le bouton se marque à l'instant du
     // clic — le journal suit ; un échec rend l'état d'avant et le dit.
-    const avant = fil.invitations[k].statut;
-    fil.invitations[k].statut = reponse;
+    const avant = fil.invitations[k].status;
+    fil.invitations[k].status = reply;
     try {
-      const sujet = t(`inv.sujet_${reponse}`, { titre: fil.invitations[k].titre });
+      const subject = t(`inv.sujet_${reply}`, { title: fil.invitations[k].title });
       const vue = await appel('reply_invitation', {
         accountId: m.account_id,
         mailbox: m.mailbox,
         uid: m.uid,
-        reponse,
-        sujet,
-        corps: sujet,
+        reply,
+        subject,
+        body: subject,
       });
       if (vue) fil.invitations[k] = vue;
       appel('flush_outbox').catch(() => {});
     } catch (err) {
-      fil.invitations[k].statut = avant;
+      fil.invitations[k].status = avant;
       onflash(t('erreur.invitation', { err }));
     } finally {
       reponsesEnVol[k] = false;
@@ -284,8 +284,8 @@
   // En-vol transitoire : local au composant, rien à partager entre
   // cadres (revue v3 — le store ne porte que l'état du fil).
   let enregistrements = $state({});
-  async function enregistrer(m, piece) {
-    const k = `${cleMsg(m)}#${piece.index}`;
+  async function enregistrer(m, attachment) {
+    const k = `${cleMsg(m)}#${attachment.index}`;
     if (enregistrements[k]) return;
     enregistrements[k] = true;
     try {
@@ -294,14 +294,14 @@
       // — l'utilisateur choisit dossier ET nom. Annuler = rien, ni
       // toast ni erreur ; le rapatriement des octets n'a lieu qu'après
       // le choix (jamais de fetch inutile si l'on renonce).
-      const defaut = await appel('suggested_save_path', { name: piece.name });
+      const defaut = await appel('suggested_save_path', { name: attachment.name });
       const dest = await choisirDestination(defaut);
       if (!dest) return;
       const chemin = await appel('save_attachment', {
         accountId: m.account_id,
         mailbox: m.mailbox,
         uid: m.uid,
-        index: piece.index,
+        index: attachment.index,
         dest,
       });
       onflash(t('toast.pieceEnregistree', { chemin }));
@@ -326,9 +326,9 @@
       <!-- Le rang de la maquette (terrain A45) : puces d'inventaire à
            gauche, boutons NUS à droite — « Tout déplier » au bord. -->
       <div class="puces" data-testid="fil-puces">
-        <span class="puce"><Icone nom="forum" />{t('puce.messages', { n: nbMessages })}</span>
+        <span class="puce"><Icone name="forum" />{t('puce.messages', { n: nbMessages })}</span>
         {#if totalPieces > 0}
-          <span class="puce"><Icone nom="attach_file" />{t('puce.fichiers', { n: totalPieces })}</span>
+          <span class="puce"><Icone name="attach_file" />{t('puce.fichiers', { n: totalPieces })}</span>
         {/if}
         <span class="essor"></span>
         {#if onagrandir}
@@ -340,17 +340,17 @@
                   aria-disabled={fil.ligne.thread_id == null}
                   tabindex={fil.ligne.thread_id != null ? 0 : -1}
                   onclick={() => fil.ligne.thread_id != null && onagrandir(fil.ligne)}>
-            <Icone nom="open_in_full" />{t('lecture.ouvrir')}</button>
+            <Icone name="open_in_full" />{t('lecture.ouvrir')}</button>
         {/if}
         <!-- La bascule (A46, dérivée depuis A47) : « Tout replier »
              quand TOUT est déplié — fil d'un message compris —, sinon
              « Tout déplier » ; les dépliages manuels la font suivre. -->
         {#if tousDeplies}
           <button type="button" class="nu" data-testid="tout-replier" onclick={toutReplier}>
-            <Icone nom="unfold_less" />{t('conv.replier')}</button>
+            <Icone name="unfold_less" />{t('conv.replier')}</button>
         {:else}
           <button type="button" class="nu" data-testid="tout-deplier" onclick={toutDeplier}>
-            <Icone nom="unfold_more" />{t('conv.deplier')}</button>
+            <Icone name="unfold_more" />{t('conv.deplier')}</button>
         {/if}
       </div>
     </div>
@@ -373,7 +373,7 @@
     <div class="fil">
       {#each fil.messages as m (cleMsg(m))}
         {@const k = cleMsg(m)}
-        {@const boite = boiteDe(m)}
+        {@const mailbox = boiteDe(m)}
         {#if fil.deplies[k]}
           <article class="deplie" data-testid="message-deplie">
             <!-- L'en-tête en deux lignes (PLAN-RETOURS-12 R5) :
@@ -395,14 +395,14 @@
                   {#if enAttente(m)}
                     <span class="attente-portier" data-testid="attente-portier">{t('fil.attentePortier')}</span>
                   {/if}
-                  {#if boite}
-                    <span class="boite" title={boite.titre}>
+                  {#if mailbox}
+                    <span class="boite" title={mailbox.title}>
                       <span class="mot">{t('liste.sur')}</span>
-                      {#if boite.repere}
-                        <span class="repere-nu" data-teinte={boite.repere.teinte}
-                              aria-hidden="true"><Icone nom={boite.repere.icone} taille={14} /></span>
+                      {#if mailbox.repere}
+                        <span class="repere-nu" data-teinte={mailbox.repere.hue}
+                              aria-hidden="true"><Icone name={mailbox.repere.icon} taille={14} /></span>
                       {/if}
-                      <span class="lib">{boite.libelle}</span>
+                      <span class="lib">{mailbox.libelle}</span>
                     </span>
                   {/if}
                 </span>
@@ -430,67 +430,67 @@
                 {@const repondantInv = ligneRepondant(inv)}
                 <div class="invitation" data-testid="invitation">
                   <div class="inv-tete">
-                    <span class="inv-kicker" class:annulee={inv.annulee}>{kickerInvitation(inv)}</span>
-                    {#if inv.methode === 'request'}
+                    <span class="inv-kicker" class:annulee={inv.cancelled}>{kickerInvitation(inv)}</span>
+                    {#if inv.method === 'request'}
                       <span class="inv-statut" data-testid="invitation-statut">{statutInvitation(inv)}</span>
                     {/if}
                   </div>
                   <div class="inv-corps">
                     {#if tuile}
-                      <span class="inv-tuile" class:eteinte={inv.annulee} aria-hidden="true">
+                      <span class="inv-tuile" class:eteinte={inv.cancelled} aria-hidden="true">
                         <span class="inv-mois">{tuile.mois}</span>
                         <span class="inv-jour">{tuile.jour}</span>
                       </span>
                     {/if}
                     <div class="inv-details">
-                      <span class="inv-titre" class:barre={inv.annulee}
-                            data-testid="invitation-titre">{inv.titre}</span>
+                      <span class="inv-titre" class:barre={inv.cancelled}
+                            data-testid="invitation-titre">{inv.title}</span>
                       {#if quandInv}
                         <span class="inv-quand">{quandInv}</span>
                       {/if}
                       {#if lieuOrg}
                         <span class="inv-lieu">{lieuOrg}</span>
                       {/if}
-                      {#if inv.annulee}
+                      {#if inv.cancelled}
                         <span class="inv-annulee">{t('inv.annuleeTexte')}</span>
                       {:else if repondantInv}
                         <span class="inv-repondant" data-testid="invitation-repondant">{repondantInv}</span>
                       {/if}
                     </div>
                   </div>
-                  {#if inv.peut_repondre}
+                  {#if inv.can_reply}
                     <!-- R7/R9 (terrain 2026-08-23) : l'icône dit la
                          réponse, la couleur son sens (accent / neutre /
                          alerte) — le texte double toujours (A8). -->
                     <div class="inv-actions" data-testid="invitation-actions">
                       <button type="button" class="ton-accepte" data-testid="inv-accepter"
-                              aria-pressed={inv.statut === 'accepte'}
+                              aria-pressed={inv.status === 'accepted'}
                               disabled={reponsesEnVol[k]}
-                              onclick={() => repondreInvitation(m, 'accepte')}>
-                        <Icone nom="check_circle" />{t('action.accepter')}</button>
+                              onclick={() => repondreInvitation(m, 'accepted')}>
+                        <Icone name="check_circle" />{t('action.accepter')}</button>
                       <button type="button" class="ton-provisoire" data-testid="inv-provisoire"
-                              aria-pressed={inv.statut === 'provisoire'}
+                              aria-pressed={inv.status === 'tentative'}
                               disabled={reponsesEnVol[k]}
-                              onclick={() => repondreInvitation(m, 'provisoire')}>
-                        <Icone nom="question_mark" />{t('action.provisoire')}</button>
+                              onclick={() => repondreInvitation(m, 'tentative')}>
+                        <Icone name="question_mark" />{t('action.provisoire')}</button>
                       <button type="button" class="ton-refuse" data-testid="inv-refuser"
-                              aria-pressed={inv.statut === 'refuse'}
+                              aria-pressed={inv.status === 'declined'}
                               disabled={reponsesEnVol[k]}
-                              onclick={() => repondreInvitation(m, 'refuse')}>
-                        <Icone nom="cancel" />{t('action.refuser')}</button>
+                              onclick={() => repondreInvitation(m, 'declined')}>
+                        <Icone name="cancel" />{t('action.refuser')}</button>
                     </div>
                   {/if}
                 </div>
               {/if}
               <!-- R2 (PLAN-RETOURS-7) : les fichiers joints AVANT le
-                   corps — sous la tête du message, où l'œil les attend
+                   body — sous la tête du message, où l'œil les attend
                    sans dérouler le mail ; la garde d'images reste collée
-                   au corps qu'elle concerne. -->
+                   au body qu'elle concerne. -->
               <!-- Un écho de GESTE n'a pas de métadonnées par pièce
                    (elles meurent avec la source) : la section ne se
-                   montre que si des puces existent — jamais un titre
+                   montre que si des puces existent — jamais un title
                    sans rien dessous (PLAN-RETOURS-5). -->
-              {#if nbPiecesDe(m) > 0 && (!estEcho(m) || (fil.pieces[k] ?? []).length > 0)}
+              {#if nbPiecesDe(m) > 0 && (!estEcho(m) || (fil.attachments[k] ?? []).length > 0)}
                 <div class="fichiers" data-testid="lecture-fichiers">
                   <p class="titre-fichiers">{t('conv.fichiersJoints')}</p>
                   <!-- R2 (PLAN-RETOURS-4, D4) : nom ET poids dans la MÊME
@@ -499,17 +499,17 @@
                        que la puce du composeur, pas deux lectures). -->
                   <!-- Les puces d'un écho sont INERTES (PLAN-RETOURS-5,
                        D2) : les octets ont quitté le journal à l'envoi —
-                       nom et poids se montrent, rien ne s'enregistre
+                       name et poids se montrent, rien ne s'enregistre
                        pendant la fenêtre de réconciliation — et ne
                        portent donc AUCUN voile (aucune promesse). -->
                   <div class="puces">
-                    {#each fil.pieces[k] ?? [] as piece (piece.index)}
+                    {#each fil.attachments[k] ?? [] as attachment (attachment.index)}
                       <button type="button" class="puce bouton" data-testid="piece-jointe"
-                              disabled={estEcho(m) || enregistrements[`${k}#${piece.index}`]}
-                              onclick={() => !estEcho(m) && enregistrer(m, piece)}
+                              disabled={estEcho(m) || enregistrements[`${k}#${attachment.index}`]}
+                              onclick={() => !estEcho(m) && enregistrer(m, attachment)}
                               title={estEcho(m) ? undefined : t('lecture.enregistrer')}>
-                        <Icone nom="description" />
-                        <span class="nom">{piece.name}</span><span class="taille">{piece.size}</span>
+                        <Icone name="description" />
+                        <span class="nom">{attachment.name}</span><span class="taille">{attachment.size}</span>
                         <!-- R1 (PLAN-RETOURS-7, D1) : au survol comme au
                              focus clavier, un voile couvre la puce et DIT
                              l'action — « Enregistrer » (le vocabulaire du
@@ -517,7 +517,7 @@
                              Même géométrie, la rangée ne reflue pas. -->
                         {#if !estEcho(m)}
                           <span class="voile" aria-hidden="true">
-                            <Icone nom="download" />{t('lecture.voileEnregistrer')}</span>
+                            <Icone name="download" />{t('lecture.voileEnregistrer')}</span>
                         {/if}
                       </button>
                     {/each}
@@ -526,7 +526,7 @@
               {/if}
               {#if (fil.imagesBloquees[k] ?? 0) > 0}
                 <div class="garde-images" data-testid="garde-images">
-                  <Icone nom="visibility_off" />
+                  <Icone name="visibility_off" />
                   <span class="garde-texte">{t('lecture.imagesBloquees', { n: fil.imagesBloquees[k] })}</span>
                   <button type="button" data-testid="afficher-images"
                           onclick={() => afficherImages(m)}>
@@ -545,14 +545,14 @@
                      la grammaire de la garde d'images, avec le geste qui
                      rejoue (avant : un cadre vide, definitif). -->
                 <div class="garde-images" data-testid="corps-echec">
-                  <Icone nom="error" />
+                  <Icone name="error" />
                   <span class="garde-texte">{t('lecture.corpsEchec')}</span>
                   <button type="button" data-testid="corps-reessayer"
                           onclick={() => reessayer(m)}>
                     {t('action.reessayer')}</button>
                 </div>
               {/if}
-              <iframe class="corps" sandbox="allow-same-origin" srcdoc={fil.corps[k] ?? ''}
+              <iframe class="corps" sandbox="allow-same-origin" srcdoc={fil.body[k] ?? ''}
                       title={t('lecture.corps')} use:corpsAuto
                       onload={(ev) => brancherLiens(ev.currentTarget)}></iframe>
             </div>
@@ -568,13 +568,13 @@
             <div class="actions-message" data-testid="actions-message">
               <button type="button" class="principal" data-testid="repondre"
                       onclick={() => onrepondre(m)}>
-                <Icone nom="reply" />{t('action.repondre')}</button>
+                <Icone name="reply" />{t('action.repondre')}</button>
               <button type="button" data-testid="repondre-tous"
                       onclick={() => onrepondretous(m)}>
-                <Icone nom="reply_all" />{t('action.repondreTous')}</button>
+                <Icone name="reply_all" />{t('action.repondreTous')}</button>
               <button type="button" data-testid="transferer"
                       onclick={() => ontransferer(m)}>
-                <Icone nom="reply" miroir />{t('action.transferer')}</button>
+                <Icone name="reply" miroir />{t('action.transferer')}</button>
               <!-- Terrain R8' (2026-08-23) : « Supprimer » vit PAR
                    message — on supprime CE message, pas la
                    conversation ; le fil reste ouvert s'il lui reste
@@ -582,7 +582,7 @@
                    dit l'attente de réconciliation, comme avant. -->
               <button type="button" data-testid="supprimer"
                       onclick={() => onsupprimer(m)}>
-                <Icone nom="delete" />{t('action.supprimer')}</button>
+                <Icone name="delete" />{t('action.supprimer')}</button>
             </div>
           </article>
         {:else}
@@ -595,14 +595,14 @@
               <span class="attente-portier" data-testid="attente-portier">{t('fil.attentePortier')}</span>
             {/if}
             <!-- A80/D5 : la boîte derrière le nom, ici aussi. -->
-            {#if boite}
-              <span class="boite" title={boite.titre}>
+            {#if mailbox}
+              <span class="boite" title={mailbox.title}>
                 <span class="mot">{t('liste.sur')}</span>
-                {#if boite.repere}
-                  <span class="repere-nu" data-teinte={boite.repere.teinte}
-                        aria-hidden="true"><Icone nom={boite.repere.icone} taille={14} /></span>
+                {#if mailbox.repere}
+                  <span class="repere-nu" data-teinte={mailbox.repere.hue}
+                        aria-hidden="true"><Icone name={mailbox.repere.icon} taille={14} /></span>
                 {/if}
-                <span class="lib">{boite.libelle}</span>
+                <span class="lib">{mailbox.libelle}</span>
               </span>
             {/if}
             <span class="apercu">{m.preview ?? ''}</span>
@@ -615,7 +615,7 @@
              role="button" tabindex="0"
              onclick={() => onreprendre(brouillonDuFil)}
              onkeydown={activation(() => onreprendre(brouillonDuFil))}>
-          <span class="mention"><Icone nom="edit_note" />{t('conv.brouillon')}</span>
+          <span class="mention"><Icone name="edit_note" />{t('conv.brouillon')}</span>
           <span class="apercu">{brouillonDuFil.body}</span>
           <span class="quand">{quand(Math.floor(brouillonDuFil.updated_epoch / 1000))}</span>
           <span class="reprendre">{t('action.reprendre')}</span>

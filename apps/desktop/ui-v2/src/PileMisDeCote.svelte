@@ -78,7 +78,7 @@
         <div class="pied-e">
           <button type="button" data-testid="pile-voir-tableau"
                   onclick={() => { eventail = false; tableau = true; }}>
-            <Icone nom="pile" />{t('pile.voirTableau')}</button>
+            <Icone name="pile" />{t('pile.voirTableau')}</button>
         </div>
       </div>
     {/if}
@@ -93,17 +93,17 @@
 
 {#if tableau}
   <!-- L'écran du tableau : les aperçus en grille, plein écran — la
-       surimpression du prototype (retour, titre, note, cartes). -->
+       surimpression du prototype (retour, title, note, cartes). -->
   <div class="tableau" data-testid="pile-tableau">
     <div class="tableau-int">
       <div class="tete-t">
         <button type="button" class="retour-t" data-testid="pile-tableau-retour"
                 aria-label={t('action.fermer')}
                 onclick={() => (tableau = false)}>
-          <Icone nom="arrow_back" /></button>
+          <Icone name="arrow_back" /></button>
         <h2 class="display">{t('pile.tableauTitre')}</h2>
       </div>
-      <p class="note-t"><Icone nom="info" />{t('pile.tableauNote')}</p>
+      <p class="note-t"><Icone name="info" />{t('pile.tableauNote')}</p>
       <div class="grille">
         {#each cartes as ligne (`${ligne.account_id}:${ligne.mailbox}:${ligne.uid}`)}
           <div class="carte-t" data-testid="pile-tableau-carte">
@@ -114,7 +114,7 @@
               <button type="button" onclick={() => ouvrir(ligne)}>{t('pile.ouvrir')}</button>
               <button type="button" data-testid="pile-terminer"
                       onclick={() => terminer(ligne)}>
-                <Icone nom="check" />{t('action.termine')}</button>
+                <Icone name="check" />{t('action.termine')}</button>
             </div>
           </div>
         {/each}

@@ -106,13 +106,13 @@ export const JEU = {
   volunteer_activism: { d:['M12 9S9 6 7 6a3 3 0 0 0 0 6l5 4','M12 9s3-3 5-3a3 3 0 0 1 0 6l-5 4','M3 14v7h4l6 2 8-4v-2h-8'] },
   // Le Mode organisé (PLAN-MODE-ORGANISE, décision D9) : les dessins
   // du prototype entrent tels quels — planche spikes/mode-organise/.
-  portier: { d:['M12 4a3 3 0 1 0 0 6 3 3 0 1 0 0-6','M5 20v-1a7 7 0 0 1 14 0v1','M9.5 13.5v3l2.5-1.5z','M14.5 13.5v3l-2.5-1.5z'] },
+  screener: { d:['M12 4a3 3 0 1 0 0 6 3 3 0 1 0 0-6','M5 20v-1a7 7 0 0 1 14 0v1','M9.5 13.5v3l2.5-1.5z','M14.5 13.5v3l-2.5-1.5z'] },
   // RETOURS-13 terrain : le kiosque devient un kiosque À JOURNAUX —
   // auvent festonné (arches), guérite, comptoir. Verdict CE devant la
   // planche de 7 (variante B), remplace le dessin du prototype.
-  kiosque: { d:['M3 6h18','M3 6v1.5a1.5 1.5 0 0 0 3 0','M6 7.5a1.5 1.5 0 0 0 3 0','M9 7.5a1.5 1.5 0 0 0 3 0','M12 7.5a1.5 1.5 0 0 0 3 0','M15 7.5a1.5 1.5 0 0 0 3 0','M18 7.5a1.5 1.5 0 0 0 3 0','M21 6v1.5','M5 10v10','M19 10v10','M4 20h16','M5 15h14'] },
-  registre: { d:['M6 3h12v18l-3-2-3 2-3-2-3 2z','M9 8h6','M9 12h4'] },
-  nettoyage: { d:['M3 8h11a3 3 0 1 0-3-4','M3 12h15a3 3 0 1 1-3 4','M3 16h7a2 2 0 1 1-2 3'] },
+  feed: { d:['M3 6h18','M3 6v1.5a1.5 1.5 0 0 0 3 0','M6 7.5a1.5 1.5 0 0 0 3 0','M9 7.5a1.5 1.5 0 0 0 3 0','M12 7.5a1.5 1.5 0 0 0 3 0','M15 7.5a1.5 1.5 0 0 0 3 0','M18 7.5a1.5 1.5 0 0 0 3 0','M21 6v1.5','M5 10v10','M19 10v10','M4 20h16','M5 15h14'] },
+  paper_trail: { d:['M6 3h12v18l-3-2-3 2-3-2-3 2z','M9 8h6','M9 12h4'] },
+  cleanup: { d:['M3 8h11a3 3 0 1 0-3-4','M3 12h15a3 3 0 1 1-3 4','M3 16h7a2 2 0 1 1-2 3'] },
   pile: { d:['M4 16l8 4 8-4','M4 12l8 4 8-4','M4 8l8-4 8 4-8 4z'] },
   groupe: { d:['M4 10h16v9H4z','M4 14h5l2 2h2l2-2h5','M7 6h10'] },
   // E2 : les points de suspension des minis ⋯ du Portier — trois

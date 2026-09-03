@@ -59,19 +59,19 @@
   } = $props();
 
   const GROUPES = [
-    { id: 'comptes', icone: 'person', libelle: 'groupe.comptes' },
-    { id: 'themes', icone: 'bookmark', libelle: 'groupe.themes' },
-    { id: 'affichage', icone: 'display_settings', libelle: 'groupe.affichage' },
-    { id: 'notifications', icone: 'notifications', libelle: 'groupe.notifications' },
+    { id: 'comptes', icon: 'person', libelle: 'groupe.comptes' },
+    { id: 'themes', icon: 'bookmark', libelle: 'groupe.themes' },
+    { id: 'affichage', icon: 'display_settings', libelle: 'groupe.affichage' },
+    { id: 'notifications', icon: 'notifications', libelle: 'groupe.notifications' },
     // RETOURS-13 R9, terrain C4 : les défauts du Portier — le groupe
     // reste visible QUEL QUE SOIT le mode (verdict CE du terrain, qui
     // renverse le choix « organisé seul » de la première passe).
-    { id: 'portier', icone: 'portier', libelle: 'groupe.portier' },
+    { id: 'screener', icon: 'screener', libelle: 'groupe.portier' },
     // R1 (PLAN-RETOURS-6) : le gestionnaire de signature — du contenu
     // réel (un éditeur par compte), la règle des groupes est tenue.
-    { id: 'signature', icone: 'signature', libelle: 'groupe.signature' },
-    { id: 'raccourcis', icone: 'keyboard', libelle: 'groupe.raccourcis' },
-    { id: 'apropos', icone: 'info', libelle: 'groupe.apropos' },
+    { id: 'signature', icon: 'signature', libelle: 'groupe.signature' },
+    { id: 'raccourcis', icon: 'keyboard', libelle: 'groupe.raccourcis' },
+    { id: 'apropos', icon: 'info', libelle: 'groupe.apropos' },
   ];
 
   // La table D3, en RÉFÉRENCE seulement — pas de re-mappage. Touches et
@@ -90,11 +90,11 @@
   // et s'enferme dans le sombre permanent. Le signal
   // `wind:theme-affiche` la garde alignée, y compris quand l'OS
   // bascule pendant que le dialogue est ouvert.
-  let actif = $state(themeAffiche());
+  let active = $state(themeAffiche());
   let ajoutOuvert = $state(false);
   $effect(() => {
     if (!visible) return;
-    const suivre = () => (actif = themeAffiche());
+    const suivre = () => (active = themeAffiche());
     document.addEventListener('wind:theme-affiche', suivre);
     return () => document.removeEventListener('wind:theme-affiche', suivre);
   });
@@ -146,7 +146,7 @@
   let routagesListe = $state(null);
   let filtreRoutages = $state('');
   $effect(() => {
-    if (visible && groupe === 'portier') {
+    if (visible && groupe === 'screener') {
       appel('screener_defaults_get')
         .then((d) => (portierDefauts = d))
         .catch((err) => console.error('screener_defaults_get :', err));
@@ -167,8 +167,8 @@
   // Le vocabulaire des verdicts : UNE copie (lib/portier.js, partagée
   // avec la page Portier), jamais des textes recopiés.
   const libelleRoutage = (r) =>
-    r.destination === 'ecarte'
-      ? t(LIBELLE_ECARTE[r.regle] ?? 'portier.ecarte')
+    r.destination === 'screened_out'
+      ? t(LIBELLE_ECARTE[r.rule] ?? 'portier.ecarte')
       : t(LIBELLE_DESTINATION[r.destination] ?? r.destination);
   // RETOURS-14 R10 (terrain 2026-08-31) : « Réintégrer » devient
   // « Modifier » — le menu repropose TOUTES les règles du Portier
@@ -189,26 +189,26 @@
   const TOAST_NON = {
     spam: 'toast.portierNonSpam',
     archive: 'toast.portierNonArchive',
-    corbeille: 'toast.portierNonCorbeille',
+    trash: 'toast.portierNonCorbeille',
   };
   const BOITE_DE = {
-    reception: 'portier.laReception',
-    kiosque: 'portier.leKiosque',
-    registre: 'portier.leRegistre',
+    inbox: 'portier.laReception',
+    feed: 'portier.leKiosque',
+    paper_trail: 'portier.leRegistre',
   };
-  async function modifierRoutage(destination, regle = null) {
+  async function modifierRoutage(destination, rule = null) {
     const { address } = menuDecision;
     menuDecision = null;
     try {
-      await appel('route_sender', { address, destination, regle });
+      await appel('route_sender', { address, destination, rule });
       routagesListe = routagesListe.map((r) =>
-        r.address === address ? { ...r, destination, regle } : r);
-      if (destination === 'ecarte') {
-        onflash(t(regle ? TOAST_NON[regle] : 'toast.portierNonNu', { qui: address }));
-      } else if (destination === 'reception') {
+        r.address === address ? { ...r, destination, rule } : r);
+      if (destination === 'screened_out') {
+        onflash(t(rule ? TOAST_NON[rule] : 'toast.portierNonNu', { qui: address }));
+      } else if (destination === 'inbox') {
         onflash(t('toast.portierOuiNu', { qui: address }));
       } else {
-        onflash(t('toast.portierOuiVers', { qui: address, boite: t(BOITE_DE[destination]) }));
+        onflash(t('toast.portierOuiVers', { qui: address, mailbox: t(BOITE_DE[destination]) }));
       }
       onroutage();
     } catch (err) {
@@ -227,13 +227,13 @@
       onflash(t('erreur.preference', { err }));
     }
   }
-  function changerPortier(champ, valeur) {
+  function changerPortier(champ, value) {
     if (!portierDefauts) return;
     const avant = { ...portierDefauts };
-    portierDefauts = { ...portierDefauts, [champ]: valeur };
+    portierDefauts = { ...portierDefauts, [champ]: value };
     appel('screener_defaults_set', {
-      oui: portierDefauts.oui,
-      non: portierDefauts.non,
+      yes: portierDefauts.yes,
+      no: portierDefauts.no,
     }).catch(() => {
       portierDefauts = avant;
     });
@@ -261,11 +261,11 @@
     fermerCartes();
     if (rouvre) horizonOuvert = id;
   }
-  function changerHorizon(id, valeur) {
+  function changerHorizon(id, value) {
     const avant = horizons[id];
-    horizons[id] = valeur;
+    horizons[id] = value;
     horizonErreur = null;
-    appel('horizon_import_set', { accountId: id, valeur }).catch((err) => {
+    appel('horizon_import_set', { accountId: id, value }).catch((err) => {
       horizons[id] = avant;
       horizonErreur = t('reglages.horizonImpossible', { err });
     });
@@ -286,7 +286,7 @@
   }
 
   export function ouvrir() {
-    actif = themeAffiche();
+    active = themeAffiche();
     auto = suiviOs();
     langue = langueActuelle();
     volets = voletsActuels();
@@ -354,7 +354,7 @@
   // l'allowlist Rust fait foi) : le premier choix attend son jumeau,
   // ensuite chaque clic applique immédiatement — le geste du thème.
   let repereOuvert = $state(null);
-  let repereChoix = $state({ icone: null, teinte: null });
+  let repereChoix = $state({ icon: null, hue: null });
   let repereErreur = $state(null);
   function ouvrirRepere(id) {
     const rouvre = repereOuvert !== id;
@@ -362,19 +362,19 @@
     if (!rouvre) return;
     repereOuvert = id;
     const r = reperes[id];
-    repereChoix = { icone: r?.icone ?? null, teinte: r?.teinte ?? null };
+    repereChoix = { icon: r?.icon ?? null, hue: r?.hue ?? null };
   }
-  async function choisirRepere(id, champ, valeur) {
-    repereChoix = { ...repereChoix, [champ]: valeur };
-    if (!repereChoix.icone || !repereChoix.teinte) return;
+  async function choisirRepere(id, champ, value) {
+    repereChoix = { ...repereChoix, [champ]: value };
+    if (!repereChoix.icon || !repereChoix.hue) return;
     repereErreur = null;
     try {
       await appel('marker_set', {
         accountId: id,
-        icone: repereChoix.icone,
-        teinte: repereChoix.teinte,
+        icon: repereChoix.icon,
+        hue: repereChoix.hue,
       });
-      onrepere(id, { icone: repereChoix.icone, teinte: repereChoix.teinte });
+      onrepere(id, { icon: repereChoix.icon, hue: repereChoix.hue });
     } catch (err) {
       // La base n'a pas pris le choix : l'erreur se dit sur place et le
       // geste se rejoue — la pastille de la rangée, elle, ne ment pas
@@ -385,8 +385,8 @@
   async function retirerRepere(id) {
     repereErreur = null;
     try {
-      await appel('marker_set', { accountId: id, icone: null, teinte: null });
-      repereChoix = { icone: null, teinte: null };
+      await appel('marker_set', { accountId: id, icon: null, hue: null });
+      repereChoix = { icon: null, hue: null };
       onrepere(id, null);
     } catch (err) {
       repereErreur = t('reglages.repereImpossible', { err });
@@ -415,8 +415,8 @@
     nomOccupe = true;
     nomErreur = null;
     try {
-      const nom = await appel('name_set', { accountId: id, nom: nomBrouillon });
-      onnom(id, nom ?? null);
+      const name = await appel('name_set', { accountId: id, name: nomBrouillon });
+      onnom(id, name ?? null);
       // Ne fermer QUE sa propre carte : une réponse tardive ne doit
       // jamais claquer celle qu'un autre compte vient d'ouvrir.
       if (nomOuvert === id) nomOuvert = null;
@@ -468,7 +468,7 @@
     // Jamais `actif = id` : appliquerTheme refuse en silence un id
     // inconnu, et sous suivi OS le thème posé peut être `id-nuit` —
     // la fiche affichée fait foi dans les deux cas.
-    actif = themeAffiche();
+    active = themeAffiche();
   }
   function basculerAuto() {
     auto = !auto;
@@ -532,9 +532,9 @@
   });
   // `styleWithCSS` éteint, comme au composeur : la sortie reste le
   // vocabulaire exact de l'allowlist (b/i/u), jamais du style généré.
-  function commandeSignature(nom) {
+  function commandeSignature(name) {
     document.execCommand('styleWithCSS', false, false);
-    document.execCommand(nom, false, null);
+    document.execCommand(name, false, null);
   }
   async function enregistrerSignature(c, { replies = null, etat = 'ok' } = {}) {
     const sig = signatures[c.account_id] ?? { replies: false };
@@ -628,7 +628,7 @@
       <div class="tete">
         <span class="titre">{t('entete.reglages')}</span>
         <button type="button" class="fermer" aria-label={t('action.fermer')} onclick={fermer}>
-          <Icone nom="close" /></button>
+          <Icone name="close" /></button>
       </div>
       <div class="milieu">
         <div class="rail" role="group" aria-label={t('reglages.groupesAria')}>
@@ -638,7 +638,7 @@
                  role="button" tabindex="0" aria-current={groupe === g.id}
                  onclick={() => choisirGroupe(g.id)}
                  onkeydown={activation(() => choisirGroupe(g.id))}>
-              <span class="icone" aria-hidden="true"><Icone nom={g.icone} /></span>
+              <span class="icone" aria-hidden="true"><Icone name={g.icon} /></span>
               <span class="libelle">{t(g.libelle)}</span>
             </div>
           {/each}
@@ -658,14 +658,14 @@
                           onclick={() => ouvrirRepere(c.account_id)}>
                     {#if reperes[c.account_id]}
                       <span class="repere p20"
-                            data-teinte={reperes[c.account_id].teinte}
-                            aria-hidden="true"><Icone nom={reperes[c.account_id].icone} /></span>
+                            data-teinte={reperes[c.account_id].hue}
+                            aria-hidden="true"><Icone name={reperes[c.account_id].icon} /></span>
                     {:else}
-                      <Icone nom="person" />
+                      <Icone name="person" />
                     {/if}
                   </button>
                   <!-- PLAN-RETOURS-9 (D3/D4) : le libellé est la PORTE
-                       du nom personnalisé — en Réglages le nom s'affiche
+                       du name personnalisé — en Réglages le name s'affiche
                        AVEC l'adresse (elle reste la vérité de connexion). -->
                   <button type="button" class="identite" data-testid="compte-nommer"
                           aria-expanded={nomOuvert === c.account_id}
@@ -689,7 +689,7 @@
                          la reconnexion — même sens qu'à la fente d'avis)
                          et se répare sur place. -->
                     <span class="deconnecte" data-testid="compte-deconnecte">
-                      <Icone nom="link_off" />{t('reglages.deconnecte')}</span>
+                      <Icone name="link_off" />{t('reglages.deconnecte')}</span>
                     <button type="button" class="reconnecter" data-testid="compte-reconnecter"
                             disabled={reconnexion === c.account_id}
                             aria-label={t('reglages.reconnecterCompte', { email: c.email })}
@@ -704,7 +704,7 @@
                   <button type="button" class="retirer" data-testid="compte-retirer"
                           aria-label={t('reglages.retirerCompte', { email: c.email })}
                           onclick={() => demanderRetrait(c.account_id)}>
-                    <Icone nom="delete" />{t('reglages.retirer')}</button>
+                    <Icone name="delete" />{t('reglages.retirer')}</button>
                 </div>
                 {#if reconnexionErreur?.id === c.account_id}
                   <p class="erreur-reconnexion" data-testid="reconnexion-erreur">
@@ -719,23 +719,23 @@
                     <p class="titre-repere">{t('reglages.repereTitre')}</p>
                     <div class="choix-repere" role="group" aria-label={t('reglages.repereIcones')}>
                       {#each REPERE_ICONES as ic (ic)}
-                        <button type="button" class="choix" class:choisi={repereChoix.icone === ic}
+                        <button type="button" class="choix" class:choisi={repereChoix.icon === ic}
                                 data-testid="repere-icone" data-icone={ic}
-                                aria-pressed={repereChoix.icone === ic}
+                                aria-pressed={repereChoix.icon === ic}
                                 title={t(`repere.icone.${ic}`)}
                                 aria-label={t(`repere.icone.${ic}`)}
-                                onclick={() => choisirRepere(c.account_id, 'icone', ic)}>
-                          <Icone nom={ic} /></button>
+                                onclick={() => choisirRepere(c.account_id, 'icon', ic)}>
+                          <Icone name={ic} /></button>
                       {/each}
                     </div>
                     <div class="choix-repere" role="group" aria-label={t('reglages.repereTeintes')}>
                       {#each REPERE_TEINTES as te (te)}
-                        <button type="button" class="choix" class:choisi={repereChoix.teinte === te}
+                        <button type="button" class="choix" class:choisi={repereChoix.hue === te}
                                 data-testid="repere-teinte" data-couleur={te}
-                                aria-pressed={repereChoix.teinte === te}
+                                aria-pressed={repereChoix.hue === te}
                                 title={t(`repere.teinte.${te}`)}
                                 aria-label={t(`repere.teinte.${te}`)}
-                                onclick={() => choisirRepere(c.account_id, 'teinte', te)}>
+                                onclick={() => choisirRepere(c.account_id, 'hue', te)}>
                           <span class="repere pastille-teinte" data-teinte={te}
                                 aria-hidden="true"></span></button>
                       {/each}
@@ -752,12 +752,12 @@
                 {/if}
                 {#if nomOuvert === c.account_id}
                   <!-- La carte du nom, sous la rangée (le patron du
-                       retrait). Vider le champ retire le nom ; Entrée
+                       retrait). Vider le champ retire le name ; Entrée
                        enregistre. -->
                   <div class="carte-nom" data-testid="reglages-nom">
                     <p class="titre-repere">{t('reglages.nomTitre')}</p>
                     <!-- Pas de maxlength : « jamais tronqué en silence »
-                         (contrat D3) — un nom trop long se REFUSE avec
+                         (contrat D3) — un name trop long se REFUSE avec
                          son erreur, par le shell. -->
                     <input type="text" class="champ-nom"
                            data-testid="nom-champ" bind:value={nomBrouillon}
@@ -779,7 +779,7 @@
                 {/if}
                 {#if horizonOuvert === c.account_id}
                   <!-- La carte de l'horizon, sous la rangée (patron du
-                       nom). Application immédiate — le geste du thème ;
+                       name). Application immédiate — le geste du thème ;
                        la note dit ce qu'étendre et réduire FONT. -->
                   <div class="carte-nom" data-testid="reglages-horizon">
                     <p class="titre-repere">{t('reglages.horizonTitre')}</p>
@@ -828,14 +828,14 @@
                     <span class="titre-ajout">{t('reglages.ajouterCompte')}</span>
                     <button type="button" class="fermer" aria-label={t('action.replier')}
                             onclick={() => (ajoutOuvert = false)}>
-                      <Icone nom="close" /></button>
+                      <Icone name="close" /></button>
                   </div>
                   <GuichetCompte compact onajoute={() => { ajoutOuvert = false; onajoute(); }} />
                 </div>
               {:else}
                 <button type="button" class="ajouter" data-testid="reglages-ajouter"
                         onclick={() => (ajoutOuvert = true)}>
-                  <Icone nom="person_add" />{t('reglages.ajouterCompte')}</button>
+                  <Icone name="person_add" />{t('reglages.ajouterCompte')}</button>
               {/if}
             </div>
           {:else if groupe === 'themes'}
@@ -857,9 +857,9 @@
                 </button>
               </div>
               {#each FICHES as fiche (fiche.id)}
-                <div class="rangee" class:active={actif === fiche.id}
+                <div class="rangee" class:active={active === fiche.id}
                      data-testid="theme" data-theme-id={fiche.id}
-                     role="button" tabindex="0" aria-pressed={actif === fiche.id}
+                     role="button" tabindex="0" aria-pressed={active === fiche.id}
                      onclick={() => choisir(fiche.id)}
                      onkeydown={activation(() => choisir(fiche.id))}>
                   <span class="pastilles">
@@ -871,8 +871,8 @@
                     <span class="nom">{t(`theme.${fiche.id}.nom`)}</span>
                     <span class="desc">{t(`theme.${fiche.id}.desc`)}</span>
                   </span>
-                  {#if actif === fiche.id}
-                    <span class="coche" aria-hidden="true"><Icone nom="check_circle" /></span>
+                  {#if active === fiche.id}
+                    <span class="coche" aria-hidden="true"><Icone name="check_circle" /></span>
                   {/if}
                 </div>
               {/each}
@@ -946,7 +946,7 @@
                 {/each}
               {/if}
             </div>
-          {:else if groupe === 'portier'}
+          {:else if groupe === 'screener'}
             <p class="section">{t('groupe.portier')}</p>
             <div class="rangees" data-testid="reglages-portier">
               <p class="desc-groupe">{t('reglages.portierDesc')}</p>
@@ -957,11 +957,11 @@
                   <span class="desc">{t('reglages.portierOuiDesc')}</span>
                 </span>
                 <select class="langue" data-testid="portier-defaut-oui"
-                        aria-label={t('reglages.portierOui')} value={portierDefauts.oui}
-                        onchange={(e) => changerPortier('oui', e.target.value)}>
-                  <option value="reception">{t('portier.versReception')}</option>
-                  <option value="kiosque">{t('portier.versKiosque')}</option>
-                  <option value="registre">{t('portier.versRegistre')}</option>
+                        aria-label={t('reglages.portierOui')} value={portierDefauts.yes}
+                        onchange={(e) => changerPortier('yes', e.target.value)}>
+                  <option value="inbox">{t('portier.versReception')}</option>
+                  <option value="feed">{t('portier.versKiosque')}</option>
+                  <option value="paper_trail">{t('portier.versRegistre')}</option>
                 </select>
               </div>
               <div class="reglage">
@@ -970,12 +970,12 @@
                   <span class="desc">{t('reglages.portierNonDesc')}</span>
                 </span>
                 <select class="langue" data-testid="portier-defaut-non"
-                        aria-label={t('reglages.portierNon')} value={portierDefauts.non}
-                        onchange={(e) => changerPortier('non', e.target.value)}>
-                  <option value="corbeille">{t('portier.regleCorbeille')}</option>
+                        aria-label={t('reglages.portierNon')} value={portierDefauts.no}
+                        onchange={(e) => changerPortier('no', e.target.value)}>
+                  <option value="trash">{t('portier.regleCorbeille')}</option>
                   <option value="archive">{t('portier.regleArchive')}</option>
                   <option value="spam">{t('portier.regleSpam')}</option>
-                  <option value="ecarte">{t('portier.regleEcarte')}</option>
+                  <option value="screened_out">{t('portier.regleEcarte')}</option>
                 </select>
               </div>
               {/if}
@@ -1043,9 +1043,9 @@
                 <div class="bloc-signature" data-testid="signature-compte">
                   <!-- D4 (PLAN-RETOURS-9) : en Réglages le nom s'affiche
                        AVEC l'adresse — ici aussi : c'est la surface où
-                       éditer le mauvais compte coûte (contenu envoyé). -->
+                       éditer le mauvais account coûte (contenu envoyé). -->
                   <span class="adresse-signature">
-                    <Icone nom="person" />{#if noms[c.account_id]}{noms[c.account_id]}<span class="adresse-sous">{c.email}</span>{:else}{c.email}{/if}</span>
+                    <Icone name="person" />{#if noms[c.account_id]}{noms[c.account_id]}<span class="adresse-sous">{c.email}</span>{:else}{c.email}{/if}</span>
                   <!-- La barre réduite (D3) : gras/italique/souligné —
                        onmousedown neutralisé, un bouton de format ne vole
                        jamais la sélection de l'éditeur (idiome A62). -->
@@ -1054,17 +1054,17 @@
                             title={t('compo.gras')} data-testid="signature-gras"
                             onmousedown={(e) => e.preventDefault()}
                             onclick={() => commandeSignature('bold')}>
-                      <Icone nom="format_bold" /></button>
+                      <Icone name="format_bold" /></button>
                     <button type="button" class="bouton-format" aria-label={t('compo.italique')}
                             title={t('compo.italique')} data-testid="signature-italique"
                             onmousedown={(e) => e.preventDefault()}
                             onclick={() => commandeSignature('italic')}>
-                      <Icone nom="format_italic" /></button>
+                      <Icone name="format_italic" /></button>
                     <button type="button" class="bouton-format" aria-label={t('compo.souligne')}
                             title={t('compo.souligne')} data-testid="signature-souligne"
                             onmousedown={(e) => e.preventDefault()}
                             onclick={() => commandeSignature('underline')}>
-                      <Icone nom="format_underlined" /></button>
+                      <Icone name="format_underlined" /></button>
                   </div>
                   <div class="editeur-signature" contenteditable="true" role="textbox"
                        aria-multiline="true" tabindex="0"
@@ -1092,7 +1092,7 @@
                   <div class="boutons-signature">
                     <button type="button" class="ajouter" data-testid="signature-enregistrer"
                             onclick={() => enregistrerSignature(c)}>
-                      <Icone nom="signature" />{t('action.enregistrer')}</button>
+                      <Icone name="signature" />{t('action.enregistrer')}</button>
                     <button type="button" class="ajouter" data-testid="signature-effacer"
                             onclick={() => effacerSignature(c)}>{t('action.effacer')}</button>
                     {#if comptes.length > 1}
@@ -1163,7 +1163,7 @@
               </div>
               <!-- R2 (PLAN-RETOURS-11, verdict CE du STOP visuel) : la
                    mention d'origine est SANS clé — un label posé seul,
-                   dégagé du bloc clé/valeur qui la précède. -->
+                   dégagé du bloc clé/value qui la précède. -->
               <div class="origine" data-testid="apropos-origine">
                 <DrapeauUE />{t('reglages.origineValeur')}
               </div>
@@ -1183,32 +1183,32 @@
       testid="decision-menu" onfermer={() => (menuDecision = null)}>
     <p class="titre-menu">{t('portier.ouiVers')}</p>
     <button type="button" role="menuitem" data-testid="decision-vers-reception"
-            onclick={() => modifierRoutage('reception')}>
-      <Icone nom="inbox" />{t('portier.versReception')}</button>
+            onclick={() => modifierRoutage('inbox')}>
+      <Icone name="inbox" />{t('portier.versReception')}</button>
     <button type="button" role="menuitem" data-testid="decision-vers-kiosque"
-            onclick={() => modifierRoutage('kiosque')}>
-      <Icone nom="kiosque" />{t('portier.versKiosque')}</button>
+            onclick={() => modifierRoutage('feed')}>
+      <Icone name="feed" />{t('portier.versKiosque')}</button>
     <button type="button" role="menuitem" data-testid="decision-vers-registre"
-            onclick={() => modifierRoutage('registre')}>
-      <Icone nom="registre" />{t('portier.versRegistre')}</button>
+            onclick={() => modifierRoutage('paper_trail')}>
+      <Icone name="paper_trail" />{t('portier.versRegistre')}</button>
     <div class="filet-menu"></div>
     <p class="titre-menu">{t('portier.nonSeront')}</p>
     <button type="button" role="menuitem" data-testid="decision-regle-spam"
-            onclick={() => modifierRoutage('ecarte', 'spam')}>
-      <Icone nom="report" />{t('portier.regleSpam')}</button>
+            onclick={() => modifierRoutage('screened_out', 'spam')}>
+      <Icone name="report" />{t('portier.regleSpam')}</button>
     <button type="button" role="menuitem" data-testid="decision-regle-archive"
-            onclick={() => modifierRoutage('ecarte', 'archive')}>
-      <Icone nom="inventory_2" />{t('portier.regleArchive')}</button>
+            onclick={() => modifierRoutage('screened_out', 'archive')}>
+      <Icone name="inventory_2" />{t('portier.regleArchive')}</button>
     <button type="button" role="menuitem" data-testid="decision-regle-corbeille"
-            onclick={() => modifierRoutage('ecarte', 'corbeille')}>
-      <Icone nom="delete" />{t('portier.regleCorbeille')}</button>
+            onclick={() => modifierRoutage('screened_out', 'trash')}>
+      <Icone name="delete" />{t('portier.regleCorbeille')}</button>
     <button type="button" role="menuitem" data-testid="decision-regle-ecarte"
-            onclick={() => modifierRoutage('ecarte')}>
-      <Icone nom="visibility_off" />{t('portier.regleEcarte')}</button>
+            onclick={() => modifierRoutage('screened_out')}>
+      <Icone name="visibility_off" />{t('portier.regleEcarte')}</button>
     <div class="filet-menu"></div>
     <button type="button" role="menuitem" data-testid="decision-renvoyer"
             onclick={renvoyerAuPortier}>
-      <Icone nom="portier" />{t('reglages.renvoyerPortier')}</button>
+      <Icone name="screener" />{t('reglages.renvoyerPortier')}</button>
   </Menu>
 
 <style>

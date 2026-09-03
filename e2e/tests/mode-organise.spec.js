@@ -37,9 +37,9 @@ test('le mode classique est intact : va-et-vient éteint, nav aux six dossiers',
   // La garde « classique inchangé » : exactement les six dossiers
   // canoniques, ni Kiosque ni Registre.
   await expect(page.locator('[data-testid="nav-dossier"]')).toHaveCount(6);
-  await expect(page.locator('[data-testid="nav-dossier"][data-categorie="kiosque"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="nav-dossier"][data-categorie="feed"]')).toHaveCount(0);
   // R3/R12 (RETOURS-13) : au classique, le libellé long et pas de filet.
-  await expect(page.locator('[data-testid="nav-dossier"][data-categorie="reception"]'))
+  await expect(page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]'))
     .toContainText('Boîte de réception');
   await expect(page.locator('[data-testid="nav-separateur"]')).toHaveCount(0);
 });
@@ -50,7 +50,7 @@ test('la bascule recompose la nav, le Kiosque sert les expéditeurs routés, et 
   await expect(page.locator('[data-testid="nav-dossier"]')).toHaveCount(10);
   // R3/R12 (RETOURS-13) : en mode organisé la Réception se dit
   // « Réception », et un filet sépare les 5 dossiers organisés du reste.
-  const rangReception = page.locator('[data-testid="nav-dossier"][data-categorie="reception"]');
+  const rangReception = page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]');
   await expect(rangReception).toContainText('Réception');
   await expect(rangReception).not.toContainText('Boîte de réception');
   await expect(page.locator('[data-testid="nav-separateur"]')).toHaveCount(1);
@@ -58,7 +58,7 @@ test('la bascule recompose la nav, le Kiosque sert les expéditeurs routés, et 
   // Le Kiosque avant tout routage : rien — le filtre est réel, pas un
   // décor (le Registre le reprouve plus bas après routage). E5bis :
   // le Kiosque est une scène de CARTES, plus une liste.
-  await page.locator('[data-testid="nav-dossier"][data-categorie="kiosque"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="feed"]').click();
   await expect(page.locator('[data-testid="kiosque-vide"]')).toBeVisible();
   await expect(page.locator('[data-testid="kiosque-carte"]')).toHaveCount(0);
 
@@ -70,8 +70,8 @@ test('la bascule recompose la nav, le Kiosque sert les expéditeurs routés, et 
     for (let n = 0; n < 12; n += 1) {
       await invoke('route_sender', {
         address: `expediteur${n}@exemple.fr`,
-        destination: 'kiosque',
-        regle: null,
+        destination: 'feed',
+        rule: null,
       });
     }
   });
@@ -85,14 +85,14 @@ test('la bascule recompose la nav, le Kiosque sert les expéditeurs routés, et 
   // Le Kiosque montre désormais le courrier des expéditeurs routés,
   // en cartes DÉJÀ OUVERTES : le corps se lit sans un clic (E5bis —
   // la preuve du préchargement D5/S3, dans l'iframe assainie S1).
-  await page.locator('[data-testid="nav-dossier"][data-categorie="kiosque"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="feed"]').click();
   await expect(page.locator('[data-testid="kiosque-carte"]').first()).toBeVisible();
   // R11 (RETOURS-13) : l'entête au format du Portier — glyphe + titre
   // + deux phrases CE, à gauche ; tout est neuf : la section « Non lus ».
   await expect(page.locator('[data-testid="kiosque-titre"] svg')).toHaveCount(1);
-  await expect(page.locator('[data-testid="kiosque"]'))
+  await expect(page.locator('[data-testid="feed"]'))
     .toContainText("Tous vos emails d'information sont regroupés ici.");
-  await expect(page.locator('[data-testid="kiosque"]'))
+  await expect(page.locator('[data-testid="feed"]'))
     .toContainText('Il vous suffit de les faire défiler pour les lire.');
   await expect(page.locator('[data-testid="kiosque-section-nonlus"]')).toBeVisible();
   await expect(
@@ -106,13 +106,13 @@ test('la bascule recompose la nav, le Kiosque sert les expéditeurs routés, et 
   await premiere.locator('[data-testid="kiosque-pli"]').click();
   await expect(premiere.locator('iframe')).toHaveCount(1);
   // …le Registre reste vide (la destination filtre vraiment)…
-  await page.locator('[data-testid="nav-dossier"][data-categorie="registre"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="paper_trail"]').click();
   await expect(page.locator('[data-testid="statut"]')).toContainText('Registre');
   await expect(page.locator('[data-testid="ligne"]')).toHaveCount(0);
   // …et la Réception ORGANISÉE ne les montre plus (E2 : un fil routé
   // ailleurs vit dans SA vue — l'exclusion partagée du flot ; tout est
   // au Kiosque ici, la Réception organisée est donc vide).
-  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
   // Le vide est AFFIRMÉ (« Aucun message ici. ») — jamais un décompte
   // à zéro pendant que la page charge encore.
   await expect(page.locator('[data-testid="liste"]')).toContainText('Aucun message ici.');
@@ -123,16 +123,16 @@ test("« Déplacer vers… » route l'expéditeur ENTIER — le ⋯ des cartes e
   // Tout est au Kiosque (test précédent) ; le ⋯ d'une carte envoie
   // son expéditeur au Registre — ce que l'utilisateur VOIT : le menu,
   // le toast, puis le courrier au Registre (une liste, elle).
-  await page.locator('[data-testid="nav-dossier"][data-categorie="kiosque"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="feed"]').click();
   // RETOURS-13 R10 : des cartes déjà lues peuvent s'être groupées par
   // expéditeur — on déplie tout pour attraper la première carte.
   for (const g of await page.locator('[data-testid="kiosque-groupe"]').all()) await g.click();
   const carte = page.locator('[data-testid="kiosque-carte"]').first();
   await carte.hover();
   await carte.locator('[data-testid="kiosque-gestes"]').click();
-  await page.locator('[data-testid="kiosque-vers-registre"]').click();
+  await page.locator('[data-testid="kiosque-vers-paper_trail"]').click();
   await expect(page.locator('[data-testid="toast"]')).toContainText('Registre');
-  await page.locator('[data-testid="nav-dossier"][data-categorie="registre"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="paper_trail"]').click();
   // RETOURS-14 R6 (D7) : le Registre est GROUPÉ par expéditeur — le
   // groupe se déplie, le fil s'ouvre depuis ses rangées.
   await expect(page.locator('[data-testid="registre-groupe"]').first()).toBeVisible();
@@ -141,7 +141,7 @@ test("« Déplacer vers… » route l'expéditeur ENTIER — le ⋯ des cartes e
   // La barre du fil, depuis le Registre : le menu Déplacer vers…
   await page.locator('[data-testid="registre-message"]').first().click();
   await page.locator('[data-testid="deplacer-vers"]').click();
-  await expect(page.locator('[data-testid="deplacer-kiosque"]')).toBeVisible();
+  await expect(page.locator('[data-testid="deplacer-feed"]')).toBeVisible();
   await page.keyboard.press('Escape');
   // Le geste n'existe qu'en mode organisé : la garde du classique.
   await page.locator('[data-testid="mode-organise"]').click();
@@ -152,8 +152,8 @@ test("« Déplacer vers… » route l'expéditeur ENTIER — le ⋯ des cartes e
 
 // ------- RETOURS-13 R10 — le Kiosque en sections Non lus / Lus -------
 test('les cartes lues jusqu’en bas se groupent par expéditeur — « Lus précédemment »', async () => {
-  await page.locator('[data-testid="nav-dossier"][data-categorie="kiosque"]').click();
-  const scene = page.locator('[data-testid="kiosque"]');
+  await page.locator('[data-testid="nav-dossier"][data-categorie="feed"]').click();
+  const scene = page.locator('[data-testid="feed"]');
   // Déplier les groupes déjà lus, puis parcourir TOUTE la scène : le
   // bas de chaque élévation passe à l'écran — la définition du « lu ».
   for (const g of await page.locator('[data-testid="kiosque-groupe"]').all()) await g.click();
@@ -167,8 +167,8 @@ test('les cartes lues jusqu’en bas se groupent par expéditeur — « Lus pré
   await page.waitForTimeout(600);
   // Le sectionnement se fait AU SERVICE de la page (une carte ne saute
   // jamais en pleine lecture) : aller-retour de dossier.
-  await page.locator('[data-testid="nav-dossier"][data-categorie="registre"]').click();
-  await page.locator('[data-testid="nav-dossier"][data-categorie="kiosque"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="paper_trail"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="feed"]').click();
   await expect(page.locator('[data-testid="kiosque-section-lus"]')).toBeVisible();
   // Terrain C5 : le titre « Non lus » RESTE, la coche dit tout lu.
   await expect(page.locator('[data-testid="kiosque-section-nonlus"]')).toBeVisible();
@@ -221,18 +221,18 @@ test("un inconnu qui écrit attend au Portier — la Réception organisée ne le
   await expect(page.locator('[data-testid="ligne"]', { hasText: 'Suite du dossier' })).toHaveCount(1);
   await expect(page.locator('[data-testid="ligne"]', { hasText: 'Premiere fois' })).toHaveCount(0);
   // La pastille du Portier compte SON message.
-  const rangPortier = page.locator('[data-testid="nav-dossier"][data-categorie="portier"]');
+  const rangPortier = page.locator('[data-testid="nav-dossier"][data-categorie="screener"]');
   await expect(rangPortier).toContainText('Portier');
   await expect(rangPortier).toContainText('1');
   // Le guichet : un rang au format des rangées, l'adresse en clair.
   await rangPortier.click();
-  await expect(page.locator('[data-testid="portier"]')).toContainText('Voulez-vous recevoir leurs messages ?');
+  await expect(page.locator('[data-testid="screener"]')).toContainText('Voulez-vous recevoir leurs messages ?');
   // R4/R7 (RETOURS-13) : le glyphe portier coiffe le titre, le
   // sous-titre porte les trois phrases CE mot pour mot.
   await expect(page.locator('[data-testid="portier-titre"] svg')).toHaveCount(1);
-  await expect(page.locator('[data-testid="portier"]'))
+  await expect(page.locator('[data-testid="screener"]'))
     .toContainText('Les autorisez-vous à vous contacter ?');
-  await expect(page.locator('[data-testid="portier"]'))
+  await expect(page.locator('[data-testid="screener"]'))
     .toContainText('Les expéditeurs ne seront jamais informés de votre décision.');
   const rang = page.locator('[data-testid="portier-rang"]');
   await expect(rang).toHaveCount(1);
@@ -246,9 +246,9 @@ test("le Oui nu rend l'expéditeur à la Réception, le guichet se vide", async 
   await expect(page.locator('[data-testid="toast"]')).toContainText('peut vous écrire');
   await expect(page.locator('[data-testid="portier-vide"]')).toBeVisible();
   // R6 (RETOURS-13) : l'historique vide, le texte CE mot pour mot.
-  await expect(page.locator('[data-testid="portier"]'))
+  await expect(page.locator('[data-testid="screener"]'))
     .toContainText("Vous n'avez écarté aucun expéditeur pour le moment.");
-  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
   await expect(page.locator('[data-testid="ligne"]', { hasText: 'Premiere fois' })).toHaveCount(1);
 });
 
@@ -259,7 +259,7 @@ test("le Non avec règle écarte, l'historique le dit, « Réintégrer » rend a
   });
   await page.reload();
   await expect(page.locator('[data-testid="ligne"]', { hasText: 'Offre eclair' })).toHaveCount(0);
-  await page.locator('[data-testid="nav-dossier"][data-categorie="portier"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="screener"]').click();
   await expect(page.locator('[data-testid="portier-rang"]')).toHaveCount(1);
   // Le mini ⋯ du Non pose la règle — « Archivés automatiquement ».
   await page.locator('[data-testid="portier-mini-non"]').click();
@@ -296,7 +296,7 @@ test('le mode classique montre TOUJOURS tout — la rétention est une affaire d
 test("la règle du Non s'exécute à l'arrivée — et ne touche jamais l'antérieur au verdict", async () => {
   // promo@ re-attend au guichet (test précédent) : le Non avec règle
   // « Déplacés automatiquement dans la corbeille » (corbeille au cœur, D4).
-  await page.locator('[data-testid="nav-dossier"][data-categorie="portier"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="screener"]').click();
   await page.locator('[data-testid="portier-mini-non"]').click();
   await page.locator('[data-testid="portier-regle-corbeille"]').click();
   await expect(page.locator('[data-testid="toast"]')).toContainText('iront à la Corbeille');
@@ -321,9 +321,9 @@ test("la règle du Non s'exécute à l'arrivée — et ne touche jamais l'antér
   });
   await page.reload();
   await expect(page.locator('[data-testid="mode-organise"]')).toHaveAttribute('aria-checked', 'true');
-  await page.locator('[data-testid="nav-dossier"][data-categorie="portier"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="screener"]').click();
   await expect(page.locator('[data-testid="portier-rang"]')).toContainText('temoin@exemple.fr');
-  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
   await expect(page.locator('[data-testid="ligne"]', { hasText: 'Relance finale' })).toHaveCount(0);
   await page.locator('[data-testid="mode-organise"]').click();
   await expect(page.locator('[data-testid="mode-organise"]')).toHaveAttribute('aria-checked', 'false');
@@ -337,7 +337,7 @@ test("la règle du Non s'exécute à l'arrivée — et ne touche jamais l'antér
 // ---------- RETOURS-13 R5/R9 — les défauts des boutons du Portier ----------
 test("le Non nu envoie à la Corbeille — le défaut livré, dit par le toast et l'historique", async () => {
   // temoin@ attend au Portier (fin du test E3).
-  await page.locator('[data-testid="nav-dossier"][data-categorie="portier"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="screener"]').click();
   await expect(page.locator('[data-testid="portier-rang"]')).toContainText('temoin@exemple.fr');
   await page.locator('[data-testid="portier-non"]').click();
   await expect(page.locator('[data-testid="toast"]')).toContainText('iront à la Corbeille');
@@ -347,38 +347,38 @@ test("le Non nu envoie à la Corbeille — le défaut livré, dit par le toast e
   await page.locator('[data-testid="portier-historique"]', { hasText: 'temoin@exemple.fr' })
     .locator('[data-testid="portier-reintegrer"]').click();
   await expect(page.locator('[data-testid="portier-rang"]')).toContainText('temoin@exemple.fr');
-  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
 });
 
 test('Réglages > Portier règle les défauts — le clic nu obéit, la persistance est en base', async () => {
   await page.locator('[data-testid="reglages"]').click();
-  await page.locator('[data-testid="reglages-groupe"][data-groupe="portier"]').click();
+  await page.locator('[data-testid="reglages-groupe"][data-groupe="screener"]').click();
   const oui = page.locator('[data-testid="portier-defaut-oui"]');
   const non = page.locator('[data-testid="portier-defaut-non"]');
-  await expect(oui).toHaveValue('reception');
-  await expect(non).toHaveValue('corbeille');
-  await oui.selectOption('kiosque');
+  await expect(oui).toHaveValue('inbox');
+  await expect(non).toHaveValue('trash');
+  await oui.selectOption('feed');
   await non.selectOption('archive');
   await page.locator('[data-testid="reglages-termine"]').click();
   // Le clic nu Oui suit le défaut réglé : temoin part au Kiosque.
-  await page.locator('[data-testid="nav-dossier"][data-categorie="portier"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="screener"]').click();
   await page.locator('[data-testid="portier-oui"]').click();
   await expect(page.locator('[data-testid="toast"]')).toContainText('vont vers le Kiosque');
   // La persistance est en BASE : un rechargement complet relit les
   // défauts du cœur.
   await page.reload();
   await page.locator('[data-testid="reglages"]').click();
-  await page.locator('[data-testid="reglages-groupe"][data-groupe="portier"]').click();
-  await expect(page.locator('[data-testid="portier-defaut-oui"]')).toHaveValue('kiosque');
+  await page.locator('[data-testid="reglages-groupe"][data-groupe="screener"]').click();
+  await expect(page.locator('[data-testid="portier-defaut-oui"]')).toHaveValue('feed');
   await expect(page.locator('[data-testid="portier-defaut-non"]')).toHaveValue('archive');
   // Retour aux défauts livrés, temoin re-attend : l'état est rendu.
-  await page.locator('[data-testid="portier-defaut-oui"]').selectOption('reception');
-  await page.locator('[data-testid="portier-defaut-non"]').selectOption('corbeille');
+  await page.locator('[data-testid="portier-defaut-oui"]').selectOption('inbox');
+  await page.locator('[data-testid="portier-defaut-non"]').selectOption('trash');
   await page.locator('[data-testid="reglages-termine"]').click();
   await page.evaluate(async () => {
     await window.__TAURI__.core.invoke('remove_routing', { address: 'temoin@exemple.fr' });
   });
-  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
 });
 
 // ---------------- E4 — la Réception organisée (sections) ----------------
@@ -409,12 +409,12 @@ test("le ⋯ d'une rangée déplace l'expéditeur — à gauche de l'heure, sans
   const rang = page.locator('[data-testid="ligne"]', { hasText: 'Suite du dossier' });
   await expect(rang).toHaveCount(1);
   await rang.locator('[data-testid="ligne-gestes"]').click();
-  await page.locator('[data-testid="gestes-kiosque"]').click();
+  await page.locator('[data-testid="gestes-feed"]').click();
   await expect(page.locator('[data-testid="toast"]')).toContainText('Kiosque');
   await expect(page.locator('[data-testid="ligne"]', { hasText: 'Suite du dossier' })).toHaveCount(0);
-  await page.locator('[data-testid="nav-dossier"][data-categorie="kiosque"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="feed"]').click();
   await expect(page.locator('[data-testid="kiosque-carte"]', { hasText: 'Suite du dossier' })).toHaveCount(1);
-  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
   // Décor rendu (revue E5) : le verdict posé par CE test se retire —
   // les tests suivants héritent d'une Réception complète, jamais d'un
   // Kiosque peuplé par accident.
@@ -425,8 +425,8 @@ test("le ⋯ d'une rangée déplace l'expéditeur — à gauche de l'heure, sans
   // qu'au battement d'une génération de relève) : on la ressert par le
   // geste produit — l'aller-retour de dossier. Avant RETOURS-13 ce pas
   // passait par une recharge FORTUITE de la sonde (filet chanceux).
-  await page.locator('[data-testid="nav-dossier"][data-categorie="kiosque"]').click();
-  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="feed"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
   await expect(page.locator('[data-testid="ligne"]', { hasText: 'Suite du dossier' })).toHaveCount(1);
 });
 
@@ -478,7 +478,7 @@ test("la barre du fil bascule « Mettre de côté » / « Reprendre »", async (
 });
 
 test('quitter le mode depuis une vue organisée rend la Réception et la nav classique', async () => {
-  await page.locator('[data-testid="nav-dossier"][data-categorie="kiosque"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="feed"]').click();
   await page.locator('[data-testid="mode-organise"]').click();
   await expect(page.locator('[data-testid="mode-organise"]')).toHaveAttribute('aria-checked', 'false');
   await expect(page.locator('[data-testid="nav-dossier"]')).toHaveCount(6);

@@ -41,12 +41,12 @@ test("« Toujours afficher les images » lève la garde d'une carte au-delà de 
     const invoke = window.__TAURI__.core.invoke;
     await invoke('route_sender', {
       address: 'lettre@exemple.fr',
-      destination: 'kiosque',
-      regle: null,
+      destination: 'feed',
+      rule: null,
     });
     await invoke('revoke_images_sender', { address: 'lettre@exemple.fr' });
   });
-  await page.locator('[data-testid="nav-dossier"][data-categorie="kiosque"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="feed"]').click();
   const cartes = page.locator('[data-testid="kiosque-carte"]');
   await expect(cartes).toHaveCount(20);
   // La page 2 se charge en approchant du bas.

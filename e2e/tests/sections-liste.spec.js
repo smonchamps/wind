@@ -27,7 +27,7 @@ test("la bande « Déjà consulté » est calée sur son vide, au pixel — boî
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   await page.locator('[data-testid="mode-organise"]').click();
   await expect(page.locator('[data-testid="mode-organise"]')).toHaveAttribute('aria-checked', 'true');
-  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
   const bande = page.locator('[data-testid="section"]', { hasText: 'Déjà consulté' });
   await expect(bande).toBeVisible();
   // Les sondes se lient par ResizeObserver : on laisse un frame ou deux.

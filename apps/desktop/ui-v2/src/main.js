@@ -50,9 +50,9 @@ window.__mesure = {
     const { liste } = app.api();
     return liste.allerEtServir(index);
   },
-  theme(nom) {
+  theme(name) {
     const t0 = performance.now();
-    appliquerTheme(nom);
+    appliquerTheme(name);
     void document.body.offsetHeight;
     return performance.now() - t0;
   },

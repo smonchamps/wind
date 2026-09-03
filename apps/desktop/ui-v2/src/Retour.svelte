@@ -36,8 +36,8 @@
   });
 
   async function envoyer() {
-    const compte = comptes[0];
-    if (envoiEnCours || !texte.trim() || !compte) return;
+    const account = comptes[0];
+    if (envoiEnCours || !texte.trim() || !account) return;
     envoiEnCours = true;
     try {
       // La version voyage dans le SUJET — le dépouillement des retours
@@ -50,7 +50,7 @@
         version = '';
       }
       await appel('queue_send', {
-        accountId: compte.account_id,
+        accountId: account.account_id,
         to: ADRESSE_RETOURS,
         cc: '',
         bcc: '',
@@ -88,10 +88,10 @@
          aria-label={t('retour.titre')} data-testid="retour-carte"
          onkeydown={(e) => { if (e.key === 'Escape') fermer(); }}>
       <div class="tete">
-        <Icone nom="feedback" />
+        <Icone name="feedback" />
         <span class="titre">{t('retour.titre')}</span>
         <button type="button" class="fermer" aria-label={t('action.fermer')}
-                onclick={fermer}><Icone nom="close" /></button>
+                onclick={fermer}><Icone name="close" /></button>
       </div>
       <p class="sous">{t('retour.sous')}</p>
       <textarea bind:this={champ} bind:value={texte} rows="6"

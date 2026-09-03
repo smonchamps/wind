@@ -419,29 +419,88 @@ Les noms de fichiers sur disque (`wind.log`, `maj.log`,
 
 ### E5 — L'UI (G)
 
-- 25 composants renommés (`Reglages` → `Settings`, `Nettoyage` →
-  `Cleanup`, `Kiosque` → `Feed`, `Portier` → `Screener`, `Registre` →
-  `PaperTrail`, `PileMisDeCote` → `SetAsidePile`, `GuichetCompte` →
-  `AccountDesk`, `FenteAvis` → `NoticeSlot`, `Fil` → `Thread`,
-  `BarreFil` → `ThreadBar`, `Liste` → `List`, `Lecture` → `Reading`,
-  `Retour` → `Back`, `Marque` → `Brand`, `DrapeauUE` → `EUFlag`,
-  `Icone` → `Icon`, `TriSection` → `SectionSort`, `ModaleMigration` →
-  `MigrationModal`, `Conversation`, `Menu`, `Nav`, `Toast`, `Onboarding`,
-  `Composition` → `Compose`, `App`) et les 24 modules `lib/`. Sur NTFS
-  un renommage **par la casse seule** exige deux `git mv` — inventorier
-  avant.
-- Identifiants (455 définitions), commentaires (~34 000 mots).
-- **Clés des catalogues** renommées dans `catalogue.fr.js`,
-  `catalogue.en.js` et les 569 `t()` — `refonte-langue.spec.js` (clés
-  identiques) est l'oracle. L'anglais devient la **référence et le
-  repli** (`texte.svelte.js`, ADR 0016 amendé) ; la langue par défaut
-  suit D4 ; `Lang::from_pref` (`notify.rs`) suit.
-- Les 15 jetons CSS : renommés dans `systeme.css` + `theme.js` +
-  `systeme.dc.html` au même commit (DC-D2, gate `coherence-systeme`) —
-  ou laissés tels quels si le CE juge `--marque`/`--rep-bleu` tolérables
-  (à trancher à E0, ligne du glossaire).
-- Aucun libellé fr visible ne change : la table `FR` est le prototype,
-  mot pour mot (PLAN-LANGUES) — seules ses **clés** bougent.
+> **Investigated on 2026-09-03 (Phase 0, on the evidence).** The UI is
+> 14 915 lines: 25 components, 24 `lib/` modules, `main.js`,
+> `systeme.css` (300 lines). No case-only rename on NTFS (every renamed
+> file changes letters, the six unchanged keep their name). 465 keys in
+> `catalogue.fr.js`, 480 rows in `keys.csv`; every key used by the code
+> exists in the catalogue; 24 `t()` calls build their key dynamically
+> from a VALUE that crosses the IPC (`boite.${dest}`,
+> `statut.phase.${phase}`, `inv.puce_${reponse}`, `horizon.${h}`,
+> `volets.${n}`, `theme.${id}.nom`). Six test ids are dynamic the same
+> way (`kiosque-vers-${dest}`, `tri-${choix.id}`…). CSS tokens:
+> `--r-controle` 144 uses in 21 files, `--marque` 61, `--tuile` 54,
+> `--r-tuile` 44, `--rep-*` 16 (all in `systeme.css`, read by name by
+> `jetons.mjs`, `coherence-systeme.mjs`, `contraste.mjs`). DOM contract:
+> 305 test ids, 230 classes, 7 seams; the specs hold 62 class locators
+> and hundreds of `[data-testid="…"]` literals. E4 leftovers in
+> `commands.rs`: **17 French command parameters** (`cibles`, `non_lus`,
+> `perimetre`, `plage`, `regle`, `limite`, `valeur`, `icone`, `teinte`,
+> `nom`, `en_ligne`, `actif`, `corps`, `reponse`, `sujet`, `oui`, `non`)
+> and **~45 French serialized fields** across 20 payload structs
+> (`titre` read 23 times by the UI, `icone` 36, `teinte` 17, `statut`
+> 11…); the specs read four of them (`nom`, `boite`, `compte`, `icone`).
+>
+> **The hard point the handover did not name: the VALUE vocabularies.**
+> Five enum-like vocabularies cross the IPC as French strings, are
+> persisted in the database (D3), and feed catalogue keys, CSS
+> selectors and test ids downstream:
+> - the **category ids** `reception`, `envoyes`, `brouillons`,
+>   `indesirables`, `archives`, `corbeille`, `kiosque`, `registre`,
+>   `portier` (the `list_category` parameter, `NavAccount`, the routing
+>   `destination` column) — `keys.csv` already maps `boite.reception` →
+>   `mailbox.inbox`, so the dynamic key `boite.${dest}` only resolves if `dest` is
+>   `inbox` on the wire;
+> - the **12 marker hues** `rouge`… `brun` (`prefs.repere_teinte.N`,
+>   `MARKER_HUES`, `data-teinte="bleu"`, `--rep-bleu`, `repere.teinte.bleu`)
+>   — D12 already decided `--mk-blue`;
+> - the **cleanup scopes** `reception|dossiers|dossiersArchives|archives`
+>   (`CLEANUP_SCOPES`, the cleanup session row);
+> - the **invitation replies** `accepte|refuse|provisoire` (+
+>   `sans_reponse`; `attendee_status` column, `Participation` enum);
+> - the **sync phases** `inventaire|fils|brouillons` (transient, not
+>   persisted).
+> Decision D16 below (**STOP 1 for E5 played on 2026-09-03: D15 “E5d now”, D16 “(a) Boundary maps”, D17 “Keep, debt D-56” — GO**). Because the hue VALUES name the `--rep-<hue>` tokens, the CSS selectors and the System's table, the whole `--rep-*` → `--mk-*` family moves at E5a (A110), E5c keeps the four other tokens. Set-based is not needed: the options differ in
+> principle (where the French stops), not on a figure.
+>
+> **Delivery in four commits, each under the full gate**, the language
+> baseline lowered after each (`--update`); one field pass at the end:
+>
+> - **E5a — the IPC keys and vocabularies** (M): the 17 parameters and
+>   ~45 fields renamed in `commands.rs` together with every Svelte/JS
+>   read and every `appel('…', {…})` argument object, and the specs'
+>   `invoke()` objects (`regle: null`, `destination: 'kiosque'`). The
+>   vocabularies per D16. The IPC net does not see keys — the whole e2e
+>   wave is the oracle, played before the commit.
+> **E5a delivered on 2026-09-03.** `wire.rs` (four two-way tables, category / hue / scope / reply, 4 tests; the sync phases and the six bulk-gesture words are transient and renamed in place); 18 command parameters and ~45 payload fields of `commands.rs` renamed with every Svelte/JS read, every `appel()` argument object and the specs' `invoke()` objects; the value-derived catalogue keys in both catalogues and the `t()` calls (`boite.inbox`, `statut.phase.inventory`, `inv.puce_accepted`, `repere.teinte.blue`, `nettoyage.perimetre.folders`, `horizon.all`) and the value-keyed object literals (`icones.js`, `invitation.js`, `portier.js`, three components); `--rep-*` → `--mk-*` for the twelve hues in `systeme.css`, the System (A110, four glyph captions renamed) and the three nets that parse them; the coherence net reads `WIRE_HUES` from `wire.rs`. Trap caught by the gate (step 2, zero warnings): the whole-identifier pass had renamed CSS selectors inside the Svelte `<style>` blocks and the `class:` directives — restored from HEAD, the DOM contract is E5d's. Traps caught by the fresh-eyes review (ten findings, all fixed): the same pass had rewritten template literals (`status.phase.`, `mailbox.${dest}`, `repere.icon.`, the localStorage key `wind-accueil-fait`), attribute names (`data-teinte`, `data-nom`), and prose comments word by word; two string-literal field reads (`'compte' in quoi`, `de('reception_non_lues')`) had kept the old key; `reply_invitation` wrote the wire word into the database. The e2e wave then caught what no textual net sees: the specs' inline attribute selectors (`data-categorie="reception"`, `data-couleur="bleu"`, `data-groupe="portier"`), the test ids built from a value (`barre-lu`, `gestes-registre`), the object literals keyed by an old value (`GESTES_GROUPE.archiver`, `choisirRepere(…, 'teinte')`), four view test ids equal to a category word swept by the value pass (`kiosque`, `nettoyage`, `portier`, `registre` — their dom.csv rows are done early), and one vocabulary conflated in the shell: the routing RULE `archive` mapped through the category table became `archives` and the core refused the verdict — a fifth table, `RULES`, with its own test. Lesson for E5b: a whole-identifier pass must skip template literals, attribute names, comments and string literals alike; every string-literal key read, every object literal keyed by a value and every selector literal in the specs must be listed by hand; the whole e2e wave before the gate, never after. Oracles: build, clippy, 36 shell tests, the four textual nets, full gate green in 157 s (second pass; the first e2e wave was red on the traps above). Dictionary amended, never patched: `tokens.csv` (+12 rows), `keys.csv` (value segments), GLOSSARY §2 (the hue table and the boundary rule).
+>
+> - **E5b — the UI itself** (G): 43 files renamed per §5.1 (`git mv`,
+>   imports rewritten), identifiers (568 dictionary rows), comments
+>   (~34 000 words) — one Sonnet agent per component on a scratchpad
+>   copy against the fixed table, then a string-literal-aware
+>   whole-identifier pass on the dependents; the **catalogue keys**
+>   renamed in both catalogues and the 569 `t()` calls per `keys.csv`
+>   (`refonte-langue.spec.js` and the dynamic keys are the oracle);
+>   **D4 applied**: `catalog.en.js` becomes the reference and the
+>   fallback of `text.svelte.js`, the first-launch default is `en` when
+>   the system language is neither, `Lang::from_pref` defaults to `En`,
+>   ADR 0016 amended in place, the language spec's default-language test
+>   inverted. Oracles: Vite build, eslint `no-undef`, `catalogues.test`,
+>   `coherence-systeme`, the e2e.
+> - **E5c — the CSS tokens** (P, D12): `systeme.css` → `system.css`,
+>   the tokens of §5.5 (the `--rep-*` family becoming `--mk-*` for all
+>   12 hues under D16 (a)) in the CSS, every `var(--…)` of the
+>   components, `theme.js`, `systeme.dc.html` (A110, DC-D2), and the
+>   three nets that parse them by name — one commit.
+> - **E5d — the DOM contract** (M, D15): 305 test ids, 230 classes,
+>   7 seams renamed in the Svelte (markup, `<style>`, `class:` directives)
+>   and in the specs' selector literals in the same commit, `dom.csv`
+>   as the single table; `.repere-nu` in the two nets follows.
+>
+> Not in E5: the spec FILE names, identifiers and comments (E6); the
+> French `catalogue.fr.js` values (D3); the `localStorage` keys (D-54);
+> the Material icon names (already English); the `inv.*` keys built from
+> a reply value follow D16.
 
 ### E6 — e2e et scripts (M)
 
@@ -545,6 +604,9 @@ corrige ce chiffre au STOP intermédiaire proposé à D10.
 | D12 | Jetons CSS français (`--marque`, `--r-controle`, `--rep-*`) : renommer (trois fichiers, gate DC-D6) ou tolérer ? | Renommer à E5, en un commit dédié — le Système est la référence de l'UI, il ne peut pas rester mixte |**2026-09-02 : « Oui, en bloc »** |
 | D13 | `CHANGELOG.md` : traduire tout (758 l., public, lu par la release) ou l'en-tête + entrées à venir ? | Tout : un journal public bilingue est illisible ; les Releases déjà publiées gardent leurs notes |**2026-09-02 : « Oui, en bloc »** |
 | D14 | Le glossaire E0 : relu et **validé CE avant E2** (c'est la conception du chantier) ? | Oui : STOP 1 bis, une heure, sur le tableau des mots |**2026-09-02 : « Oui, je valide le glossaire »** — STOP 1 bis joué le 2026-09-02 : « Validé tel quel » |
+| D15 | The DOM contract (305 test ids, 230 classes, 7 `__e2e*` seams): renamed at **E5d** with the specs' selector literals in the same commit, or kept French until E6 (spec files renamed then)? | E5d now: the Svelte files would otherwise stay half French (a test id is a marker for the ratchet), and the selector literals are exact strings replaced mechanically from `dom.csv` — the same move as the 36 command names at E4 |**2026-09-03: “E5d now”** |
+| D16 | The five VALUE vocabularies that cross the IPC and are persisted (category ids, 12 marker hues, cleanup scopes, invitation replies, sync phases): **(a)** translate at the shell boundary — the database keeps the French value (D3), the wire, the catalogue keys, the CSS selectors and the test ids carry the English one, five small two-way maps in the shell with round-trip tests; **(b)** keep the French value on the wire and downstream (`data-hue="bleu"`, `mailbox.reception`, `--mk-bleu`), amending `keys.csv` and §5.5 accordingly; (c) migrate the values in the database — refused by D3 | (a): D12 already decided `--mk-blue`, and `keys.csv` already decided `mailbox.inbox`; (b) leaves French in the English UI's DOM for good. Cost of (a): ~120 lines of Rust, 5 tests; risk: a value missed in a map, caught by the coherence net and the e2e (`repere-ligne`, `mode-organise`, `nettoyage`, `refonte-invitations`) |**2026-09-03: “(a) Boundary maps”** |
+| D17 | Shell-composed text now that the UI language is known to the shell: the size units `o`/`Ko`/`Mo` of `human_size` (shown in attachments, drafts, the outbox), the two native dialogs, the one asserted error string: **keep French with `lang:fr`** and write debt D-56 (a later small job: send bytes, format in the UI), or fold it into E5a? | Keep and write the debt: it is a behavior change (formatting moves to the UI), §5 refuses embedded behavior changes; an English user sees "Ko" for one more release |**2026-09-03: “Keep, debt D-56”** |
 
 ## 7. Checklist terrain (STOP 2) — ce que le CE joue
 

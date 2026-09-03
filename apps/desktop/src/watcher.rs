@@ -90,7 +90,7 @@ fn run_loop(app: tauri::AppHandle, email: String, alive: Arc<AtomicBool>) {
         {
             let state = app.state::<AppState>();
             // Offline (P0-bis): sleep, do not hammer.
-            if !state.en_ligne.load(Ordering::Relaxed) {
+            if !state.online.load(Ordering::Relaxed) {
                 std::thread::sleep(SLEEP);
                 continue;
             }
@@ -165,7 +165,7 @@ fn watch_session(
         }
         {
             let state = app.state::<AppState>();
-            if !state.en_ligne.load(Ordering::Relaxed) {
+            if !state.online.load(Ordering::Relaxed) {
                 // The OS said "offline" (P0-bis): give back the
                 // connection — it is probably already dead — and the
                 // loop will sleep until it returns.

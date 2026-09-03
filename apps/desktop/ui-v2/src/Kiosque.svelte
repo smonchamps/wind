@@ -23,7 +23,7 @@
   import { t } from './lib/texte.svelte.js';
 
   let {
-    compte = null,
+    account = null,
     ondeplacer = () => {},
     oncote = () => {},
     ontotal = () => {},
@@ -46,7 +46,7 @@
     enVol = true;
     try {
       const page = await appel('feed_cards', {
-        accountId: compte,
+        accountId: account,
         offset: depuis,
         limit: PAGE,
       });
@@ -60,7 +60,7 @@
         const anciennes = new Map(cartes.map((c) => [cleCarte(c.row), c]));
         const fraiches = page.map((c) => {
           const ancienne = anciennes.get(cleCarte(c.row));
-          return ancienne ? { ...c, lu: ancienne.lu } : c;
+          return ancienne ? { ...c, read: ancienne.read } : c;
         });
         const vues = new Set(fraiches.map((c) => cleCarte(c.row)));
         cartes = [...fraiches, ...cartes.slice(PAGE).filter((c) => !vues.has(cleCarte(c.row)))];
@@ -76,7 +76,7 @@
       // Le total suit chaque recharge (revue E5bis : un ⋯ qui draine
       // des cartes laissait la barre de statut au compte d'avant).
       if (depuis === 0) {
-        appel('category_total', { category: 'kiosque', accountId: compte, nonLus: false })
+        appel('category_total', { category: 'feed', accountId: account, unread: false })
           .then((n) => {
             if (nee === generation) ontotal(n);
           })
@@ -95,7 +95,7 @@
 
   // Nouvelle portée (compte) → repartir du haut.
   $effect(() => {
-    void compte;
+    void account;
     charger(0);
   });
 
@@ -126,8 +126,8 @@
       const neuves = { ...hauteurs };
       articles.forEach((article, i) => {
         if (Math.abs(i - premiere) > FENETRE) {
-          const corps = article.querySelector('iframe.corps');
-          if (corps) neuves[article.dataset.cle] = corps.offsetHeight;
+          const body = article.querySelector('iframe.corps');
+          if (body) neuves[article.dataset.cle] = body.offsetHeight;
         }
       });
       hauteurs = neuves;
@@ -161,8 +161,8 @@
         mailbox: carte.row.mailbox,
         uid: carte.row.uid,
       });
-      const cibles = toujours ? cartes.filter((c) => c.remote_images_blocked > 0) : [carte];
-      await Promise.all(cibles.map(resservir));
+      const targets = toujours ? cartes.filter((c) => c.remote_images_blocked > 0) : [carte];
+      await Promise.all(targets.map(resservir));
     } catch (err) {
       console.error('images kiosque :', err);
     }
@@ -187,7 +187,7 @@
   // lecture. R10 : une carte NON LUE arrive dépliée, une carte LUE
   // (dans son groupe) arrive repliée sur la ligne de l'objet.
   let replies = $state({});
-  const estRepliee = (carte) => replies[cleCarte(carte.row)] ?? carte.lu;
+  const estRepliee = (carte) => replies[cleCarte(carte.row)] ?? carte.read;
   function basculerPli(carte) {
     replies[cleCarte(carte.row)] = !estRepliee(carte);
   }
@@ -202,13 +202,13 @@
   let triLus = $state('alpha-az');
   const nonLues = $derived(
     cartes
-      .filter((c) => !c.lu)
+      .filter((c) => !c.read)
       .sort(comparateurTri(triNonLus, (c) => c.row.epoch, (c) => c.row.sender ?? '')),
   );
   const groupes = $derived.by(() => {
     const parQui = new Map();
     for (const c of cartes) {
-      if (!c.lu) continue;
+      if (!c.read) continue;
       const qui = c.row.sender ?? '';
       if (!parQui.has(qui)) parQui.set(qui, []);
       parQui.get(qui).push(c);
@@ -312,7 +312,7 @@
               aria-label={t('liste.gestes')} aria-haspopup="menu"
               aria-expanded={menu?.cle === cleCarte(carte.row)}
               onclick={(e) => ouvrirMenu(e, carte)}>
-        <Icone nom="more_horiz" taille={14} /></button>
+        <Icone name="more_horiz" taille={14} /></button>
       <span class="heure">{quand(carte.row.epoch)}</span>
     </div>
     <!-- Le pli (constat CE, 3 passes) : le bouton exact du volet
@@ -323,7 +323,7 @@
       <button type="button" class="nu" data-testid="kiosque-pli"
               aria-expanded={!estRepliee(carte)}
               onclick={() => basculerPli(carte)}>
-        <Icone nom={estRepliee(carte) ? 'unfold_more' : 'unfold_less'} />
+        <Icone name={estRepliee(carte) ? 'unfold_more' : 'unfold_less'} />
         {estRepliee(carte) ? t('action.deplier') : t('action.replier')}</button>
     </div>
     {#if estRepliee(carte)}
@@ -353,7 +353,7 @@
            rattrapage normal remplira la carte. -->
       <p class="apercu">{carte.row.preview ?? ''}</p>
     {/if}
-    {#if !carte.lu && !estRepliee(carte)}
+    {#if !carte.read && !estRepliee(carte)}
       <!-- R10 : le témoin de lecture — le PIED de l'élévation ; le
            voir passer, c'est avoir lu la carte jusqu'en bas. -->
       <div class="temoin-lu" use:temoinLu={carte} aria-hidden="true"></div>
@@ -361,19 +361,19 @@
   </article>
 {/snippet}
 
-<div class="scene" data-testid="kiosque" onscroll={surDefilement} bind:this={scene}>
+<div class="scene" data-testid="feed" onscroll={surDefilement} bind:this={scene}>
   <div class="colonne">
     <!-- R11 (RETOURS-13) : l'entête au format du Portier — glyphe +
-         titre + deux phrases CE, justifiés à gauche sur la colonne. -->
+         title + deux phrases CE, justifiés à gauche sur la colonne. -->
     <h2 class="display entete-vue" data-testid="kiosque-titre">
-      <span class="glyphe-titre" aria-hidden="true"><Icone nom="kiosque" taille={26} /></span>{t('boite.kiosque')}</h2>
+      <span class="glyphe-titre" aria-hidden="true"><Icone name="feed" taille={26} /></span>{t('boite.feed')}</h2>
     <p class="sous-titre-vue">{t('kiosque.sousTitre1')}<br />{t('kiosque.sousTitre2')}</p>
     {#if cartes.length}
       <!-- Terrain RETOURS-13 (C5) : le titre de section reste visible
-           quand tout est lu — la coche du Portier dit le travail fait. -->
+           quand tout est read — la coche du Portier dit le travail done. -->
       <div class="ligne-section">
         <p class="regle-libelle" data-testid="kiosque-section-nonlus">{t('kiosque.sectionNonLus')}</p>
-        {#if nonLues.length}<TriSection valeur={triNonLus} onchanger={(v) => (triNonLus = v)} />{/if}
+        {#if nonLues.length}<TriSection value={triNonLus} onchanger={(v) => (triNonLus = v)} />{/if}
       </div>
       {#if nonLues.length}
         {#each nonLues as carte (cleCarte(carte.row))}
@@ -381,14 +381,14 @@
         {/each}
       {:else}
         <div class="tout-lu" data-testid="kiosque-tout-lu">
-          <span class="ic-oui" aria-hidden="true"><Icone nom="check_circle" /></span>{t('kiosque.toutLu')}
+          <span class="ic-oui" aria-hidden="true"><Icone name="check_circle" /></span>{t('kiosque.toutLu')}
         </div>
       {/if}
     {/if}
     {#if groupes.length}
       <div class="ligne-section">
         <p class="regle-libelle" data-testid="kiosque-section-lus">{t('kiosque.sectionLus')}</p>
-        <TriSection valeur={triLus} onchanger={(v) => (triLus = v)} />
+        <TriSection value={triLus} onchanger={(v) => (triLus = v)} />
       </div>
       {#each groupes as g (g.qui)}
         <!-- D5 : la rangée d'un groupe replié montre une PILE
@@ -416,19 +416,19 @@
 
 <Menu ouvert={menu !== null} x={menu?.x ?? 0} y={menu?.y ?? 0}
       testid="kiosque-menu" onfermer={() => (menu = null)}>
-    {#each ['reception', 'registre'] as dest (dest)}
+    {#each ['inbox', 'paper_trail'] as dest (dest)}
       <button type="button" role="menuitem" data-testid={`kiosque-vers-${dest}`}
               onclick={() => geste(ondeplacer, dest)}>
-        <Icone nom={dest === 'reception' ? 'inbox' : 'registre'} />{t('liste.deplacerVers', { boite: t(`boite.${dest}`) })}</button>
+        <Icone name={dest === 'inbox' ? 'inbox' : 'paper_trail'} />{t('liste.deplacerVers', { mailbox: t(`boite.${dest}`) })}</button>
     {/each}
     <div class="filet"></div>
     <button type="button" role="menuitem" data-testid="kiosque-cote"
             onclick={() => geste(oncote)}>
-      <Icone nom="pile" />{t('pile.mettre')}</button>
+      <Icone name="pile" />{t('pile.mettre')}</button>
     <div class="filet"></div>
     <button type="button" role="menuitem" data-testid="kiosque-ecarter"
-            onclick={() => geste(ondeplacer, 'ecarte')}>
-      <Icone nom="visibility_off" />{t('liste.ecarter')}</button>
+            onclick={() => geste(ondeplacer, 'screened_out')}>
+      <Icone name="visibility_off" />{t('liste.ecarter')}</button>
   </Menu>
 
 <style>

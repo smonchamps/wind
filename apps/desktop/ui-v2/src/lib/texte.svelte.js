@@ -85,19 +85,19 @@ export function poserLangueDetectee() {
 // quelles.
 export function t(cle, params) {
   const catalogue = CATALOGUES[etat.langue] ?? FR;
-  let valeur = catalogue[cle];
-  if (valeur === undefined) {
+  let value = catalogue[cle];
+  if (value === undefined) {
     if (import.meta.env?.DEV) {
       console.warn(`clé absente du catalogue ${etat.langue} : ${cle}`);
     }
-    valeur = FR[cle];
+    value = FR[cle];
   }
-  if (valeur === undefined) return cle;
-  if (typeof valeur !== 'string') return valeur;
-  if (valeur.includes('|') && params && typeof params.n === 'number') {
-    const [singulier, pluriel] = valeur.split('|');
-    valeur = PLURIEL[etat.langue]?.(params.n) ? pluriel : singulier;
+  if (value === undefined) return cle;
+  if (typeof value !== 'string') return value;
+  if (value.includes('|') && params && typeof params.n === 'number') {
+    const [singulier, pluriel] = value.split('|');
+    value = PLURIEL[etat.langue]?.(params.n) ? pluriel : singulier;
   }
-  if (!params) return valeur;
-  return valeur.replace(/\{(\w+)\}/g, (_, nom) => String(params[nom] ?? ''));
+  if (!params) return value;
+  return value.replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? ''));
 }

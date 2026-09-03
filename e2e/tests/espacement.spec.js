@@ -237,7 +237,7 @@ test('fenêtre COURTE : les sondes ne laissent aucune barre fantôme', async () 
   // invisible, et retirer `position:relative` de la cage passerait.
   // On rétrécit donc le cadre au-dessous de la pile, dans un dossier
   // vide où tout excédent est forcément fantôme.
-  await page.locator('[data-testid="nav-dossier"][data-categorie="brouillons"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="drafts"]').click();
   await expect(page.locator('[data-testid="dossier-brouillons"]')).toBeVisible();
   // `.cadre` est en `flex:1` dans une colonne : poser `height` ne le
   // contraint pas, il faut lui retirer sa croissance.
@@ -252,7 +252,7 @@ test('fenêtre COURTE : les sondes ne laissent aucune barre fantôme', async () 
   });
   expect(mesure.clientHeight).toBeLessThanOrEqual(160);
   expect(mesure.scrollHeight).toBeLessThanOrEqual(mesure.clientHeight);
-  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
 });
 

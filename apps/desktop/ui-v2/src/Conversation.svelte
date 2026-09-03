@@ -60,7 +60,7 @@
   <div class="ecran03" data-testid="conversation">
     <header class="entete">
       <button type="button" class="retour" data-testid="retour-boite" onclick={onretour}>
-        <Icone nom="arrow_back" />{t(cleLibelleBoite('reception'))}</button>
+        <Icone name="arrow_back" />{t(cleLibelleBoite('inbox'))}</button>
       <!-- Terrain 2026-09-02 (CE) : à l'écran 03, les gestes de tri du
            fil vivent DANS la barre d'entête — un seul composant avec
            le volet (BarreFil), dessin « entete ». -->
@@ -69,7 +69,7 @@
                   {onarchiver} {onspam} {onnonspam} {onepingler} {ondeplacer} {oncote} />
       </div>
       <button type="button" class="principal" onclick={onecrire}>
-        <Icone nom="edit_square" />{t('entete.ecrire')}</button>
+        <Icone name="edit_square" />{t('entete.ecrire')}</button>
     </header>
 
     <!-- R3 (PLAN-RETOURS-7) : l'écran 03 est À PLAT, comme le volet

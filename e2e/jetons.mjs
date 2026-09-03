@@ -33,7 +33,7 @@ export function lireThemes(css, { motifValeur = /[^;]+/ } = {}) {
 }
 
 // A94 (revue PLAN-MONA) — le second motif partagé : les blocs
-// --rep-<teinte> par polarité. La table claire des repères vit sous
+// --mk-<hue> par polarité. La table claire des repères vit sous
 // `:root[data-theme$="-nuit"]` (servie à TOUT thème sombre, comme le
 // color-scheme d'A44), la sombre sous les :root nus. Chaque gate
 // portait sa copie de cette regex et le diff A94 a dû les éditer en
@@ -48,7 +48,7 @@ export function lireReperes(css, { nuit }) {
   )) {
     if (Boolean(theme) !== nuit) continue;
     for (const [, teinte, hex] of corps.matchAll(
-      /--rep-([a-z]+)\s*:\s*(#[0-9a-fA-F]{6})/g,
+      /--mk-([a-z]+)\s*:\s*(#[0-9a-fA-F]{6})/g,
     )) {
       reperes[teinte] = hex;
     }

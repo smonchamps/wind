@@ -177,14 +177,16 @@ const commandsRs = readFileSync(
   path.join(root, 'apps', 'desktop', 'src', 'commands.rs'),
   'utf8',
 );
+const wireRs = readFileSync(path.join(root, 'apps', 'desktop', 'src', 'wire.rs'), 'utf8');
 const reperesJs = readFileSync(
   path.join(root, 'apps', 'desktop', 'ui-v2', 'src', 'lib', 'reperes.js'),
   'utf8',
 );
-const listeRust = (nom) => [
-  ...(commandsRs.match(new RegExp(`const ${nom}[^=]*= \\[([^;]*)\\];`))?.[1] ?? '')
+const listeRustDans = (src, nom) => [
+  ...(src.match(new RegExp(`const ${nom}[^=]*= \\[([^;]*)\\];`))?.[1] ?? '')
     .matchAll(/"([a-z_]+)"/g),
 ].map(([, v]) => v);
+const listeRust = (nom) => listeRustDans(commandsRs, nom);
 const listeJs = (nom) => [
   ...(reperesJs.match(new RegExp(`export const ${nom} = \\[([^\\]]*)\\]`))?.[1] ?? '')
     .matchAll(/'([a-z_]+)'/g),
@@ -199,13 +201,15 @@ const compareListes = (quoi, a, aNom, b, bNom) => {
   }
 };
 const iconesRust = listeRust('MARKER_ICONS');
-const teintesRust = listeRust('MARKER_HUES');
+// E5a (D16): the wire hues live in wire.rs (WIRE_HUES) — the French
+// MARKER_HUES of commands.rs is the database allowlist, never seen by the UI.
+const teintesRust = listeRustDans(wireRs, 'WIRE_HUES');
 compareListes('icône', iconesRust, 'commands.rs', listeJs('REPERE_ICONES'), 'lib/reperes.js');
-compareListes('teinte', teintesRust, 'commands.rs', listeJs('REPERE_TEINTES'), 'lib/reperes.js');
+compareListes('teinte', teintesRust, 'wire.rs', listeJs('REPERE_TEINTES'), 'lib/reperes.js');
 const teintesCss = [
   ...new Set([...css.matchAll(/\.repere\[data-teinte="([a-z]+)"\]/g)].map(([, v]) => v)),
 ];
-compareListes('teinte', teintesRust, 'commands.rs', teintesCss, 'systeme.css');
+compareListes('teinte', teintesRust, 'wire.rs', teintesCss, 'systeme.css');
 // A82 : le repère se dessine désormais de DEUX façons — la pastille des
 // Réglages (background) et le TRACÉ de la nav et de la ligne (color).
 // Contrôler la seule table de pastilles laisserait une teinte oubliée du
@@ -216,9 +220,9 @@ compareListes('teinte', teintesRust, 'commands.rs', teintesCss, 'systeme.css');
 const teintesTrace = [
   ...new Set([...css.matchAll(/\.repere-nu\[data-teinte="([a-z]+)"\]/g)].map(([, v]) => v)),
 ];
-compareListes('teinte du tracé', teintesRust, 'commands.rs', teintesTrace, 'systeme.css (.repere-nu)');
-// Et les jetons eux-mêmes : depuis A82 les 24 hex vivent en --rep-<teinte>,
-// une table par polarité. Un jeton manquant rendrait `color:var(--rep-x)`
+compareListes('teinte du tracé', teintesRust, 'wire.rs', teintesTrace, 'systeme.css (.repere-nu)');
+// Et les jetons eux-mêmes : depuis A82 les 24 hex vivent en --mk-<hue>,
+// une table par polarité. Un jeton manquant rendrait `color:var(--mk-x)`
 // sans valeur — le glyphe retomberait sur l'encre courante, en silence.
 // A94 : la table nuit vit sous `$="-nuit"` — une table par polarité,
 // servie à TOUT thème sombre (innamoramento-nuit compris), jamais recopiée. Le
@@ -228,7 +232,7 @@ for (const [polarite, nuit] of [['clair', false], ['nuit', true]]) {
   const jetons = new Set(Object.keys(lireReperes(css, { nuit })));
   for (const teinte of teintesRust) {
     if (!jetons.has(teinte)) {
-      echec(`systeme.css : le jeton --rep-${teinte} manque en polarité ${polarite} (A82) — le tracé de ce repère n'aurait pas de couleur`);
+      echec(`systeme.css : le jeton --mk-${teinte} manque en polarité ${polarite} (A82) — le tracé de ce repère n'aurait pas de couleur`);
     }
   }
 }

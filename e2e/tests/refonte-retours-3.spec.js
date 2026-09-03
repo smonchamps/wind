@@ -85,7 +85,7 @@ test('R4/D4 : répondre vise le message CHOISI du fil, pas le dernier', async ()
 });
 
 test('R2/D2 : signaler un courrier comme indésirable le sort de la Réception', async () => {
-  await dossier('reception').click();
+  await dossier('inbox').click();
   // « Atelier de septembre » (Sofia, compte travail — qui a un dossier
   // Spam) : un message autonome, cas simple.
   const ligne = page.locator('[data-testid="ligne"]', { hasText: 'Atelier de septembre' });
@@ -107,7 +107,7 @@ test('R2/D2 : signaler un courrier comme indésirable le sort de la Réception',
 });
 
 test('R2/D2 : « Ce n’est pas un spam » ramène un message en Réception', async () => {
-  await dossier('indesirables').click();
+  await dossier('junk').click();
   const ligne = page.locator('[data-testid="ligne"]', { hasText: 'Vous avez gagné' });
   await expect(ligne.first()).toBeVisible();
   await ligne.first().click();

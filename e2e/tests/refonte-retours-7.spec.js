@@ -167,7 +167,7 @@ test('épingler met la conversation en tête de la Réception — une seule lign
 
 test('hors Réception, la barre du fil n’offre pas l’épingle (R4, D4)', async () => {
   await page
-    .locator('[data-testid="nav-dossier"][data-categorie="archives"]')
+    .locator('[data-testid="nav-dossier"][data-categorie="archive"]')
     .click();
   await page.locator('[data-testid="ligne"]').first().click();
   await expect(

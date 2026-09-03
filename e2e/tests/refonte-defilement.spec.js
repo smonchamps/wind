@@ -46,7 +46,7 @@ test("les lignes ne suivent jamais le comptage — page d'abord, total au repos 
   await page.evaluate(() => {
     window.__e2eJournal = [];
   });
-  await dossier('archives').click();
+  await dossier('archive').click();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   // 6 000 messages : la page 0 est PLEINE, le vrai total ne peut venir
   // que du comptage — et il finit au statut, après les lignes.
@@ -68,7 +68,7 @@ test("les lignes ne suivent jamais le comptage — page d'abord, total au repos 
 
 test('un drag tenu ne garde jamais plus de deux pages en vol (E1)', async () => {
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  await dossier('archives').click();
+  await dossier('archive').click();
   await expect(page.locator('[data-testid="liste-titre"]')).toHaveText('Archives');
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   // Quiescence prouvée AVANT la retenue : plus une attente à l'écran,
@@ -133,7 +133,7 @@ test("l'écran vide ne s'affirme qu'après preuve — jamais « Aucun message ic
         window.__e2eLiberer = liberer;
       });
     });
-    await dossier('reception').click();
+    await dossier('inbox').click();
     await expect(page.locator('[data-testid="liste-titre"]')).toHaveText('Boîte de réception');
     // Pendant le vol : jamais le message de vide, l'attente se montre.
     await expect(page.locator('[data-testid="ligne-attente"]').first()).toBeVisible();

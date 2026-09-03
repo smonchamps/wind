@@ -96,7 +96,7 @@ test.describe('décor v1 : un compte, 200 messages', () => {
     // Plus de fente (PLAN-BROUILLONS) : le brouillon vit AU DOSSIER —
     // sans destinataire, l'atténué le dit — et le clic le rouvre INTACT.
     await expect(page.locator('[data-testid="fente-avis"]')).toHaveCount(0);
-    await page.locator('[data-testid="nav-dossier"][data-categorie="brouillons"]').click();
+    await page.locator('[data-testid="nav-dossier"][data-categorie="drafts"]').click();
     const ligne = page.locator('[data-testid="ligne-brouillon"]', { hasText: 'Brouillon E2E' });
     await expect(ligne).toContainText('(sans destinataire)');
     await ligne.click();
@@ -115,7 +115,7 @@ test.describe('décor v1 : un compte, 200 messages', () => {
     await expect(page.locator('[data-testid="ligne-brouillon"]')).toHaveCount(0);
     // Retour en Réception : la suite de la chaîne sérielle joue sur la
     // boîte.
-    await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+    await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
     await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   });
 
@@ -144,7 +144,7 @@ test.describe('décor v1 : un compte, 200 messages', () => {
     await page.keyboard.press('Escape'); // …fermer : conserver
     await expect(page.locator('[data-testid="toast"]')).toContainText('Brouillon enregistré.');
 
-    await page.locator('[data-testid="nav-dossier"][data-categorie="brouillons"]').click();
+    await page.locator('[data-testid="nav-dossier"][data-categorie="drafts"]').click();
     const ligne = page.locator('[data-testid="ligne-brouillon"]', {
       hasText: 'Brouillon riche E2E',
     });
@@ -163,7 +163,7 @@ test.describe('décor v1 : un compte, 200 messages', () => {
     await page.keyboard.press('Delete');
     await page.locator('[data-testid="composition-annuler"]').click();
     await expect(page.locator('[data-testid="ligne-brouillon"]')).toHaveCount(0);
-    await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+    await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
     await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   });
 
@@ -252,7 +252,7 @@ test.describe('décor v1 : un compte, 200 messages', () => {
     await page.keyboard.press('Escape'); // …fermer : conserve
     await expect(page.locator('[data-testid="toast"]')).toContainText('Brouillon enregistré.');
 
-    await page.locator('[data-testid="nav-dossier"][data-categorie="brouillons"]').click();
+    await page.locator('[data-testid="nav-dossier"][data-categorie="drafts"]').click();
     const ligne = page.locator('[data-testid="ligne-brouillon"]', { hasText: 'Brouillon a jeter' });
     await expect(ligne).toBeVisible();
     await ligne.click();
@@ -277,7 +277,7 @@ test.describe('décor v1 : un compte, 200 messages', () => {
     ).toHaveCount(0);
 
     // Retour en Réception pour la suite de la chaîne sérielle.
-    await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+    await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
     await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   });
 });

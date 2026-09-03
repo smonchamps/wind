@@ -39,13 +39,13 @@
 <div class="actions" class:volet={dessin === 'volet'} class:entete={dessin === 'entete'}
      data-testid="barre-fil">
   <button type="button" data-testid="archiver" onclick={() => onarchiver(fil.ligne)}>
-    <Icone nom="archive" />{t('action.archiver')}</button>
+    <Icone name="archive" />{t('action.archiver')}</button>
   {#if estIndesirable}
     <button type="button" data-testid="pas-spam" onclick={() => onnonspam(fil.ligne)}>
-      <Icone nom="inbox" />{t('action.pasSpam')}</button>
+      <Icone name="inbox" />{t('action.pasSpam')}</button>
   {:else}
     <button type="button" data-testid="signaler-spam" onclick={() => onspam(fil.ligne)}>
-      <Icone nom="report" />{t('action.signalerSpam')}</button>
+      <Icone name="report" />{t('action.signalerSpam')}</button>
   {/if}
   <!-- R4 (PLAN-RETOURS-7) : épingler LA conversation — bascule
        dite par son libellé ET aria-pressed ; l'état vient du cœur
@@ -53,7 +53,7 @@
   {#if epinglable && !estEcho(fil.ligne)}
     <button type="button" data-testid="epingler" aria-pressed={fil.epingle}
             onclick={() => onepingler(fil.ligne)}>
-      <Icone nom={fil.epingle ? 'keep_off' : 'keep'} />
+      <Icone name={fil.epingle ? 'keep_off' : 'keep'} />
       {fil.epingle ? t('action.desepingler') : t('action.epingler')}</button>
   {/if}
   <!-- PLAN-MODE-ORGANISE E1 : le routage manuel — un expéditeur,
@@ -67,10 +67,10 @@
          du store) ; le geste remonte à l'App, qui possède la
          commande. -->
     <button type="button" data-testid="mettre-de-cote"
-            aria-pressed={fil.cote}
+            aria-pressed={fil.aside}
             onclick={() => oncote(fil.ligne)}>
-      <Icone nom={fil.cote ? 'keep_off' : 'pile'} />
-      {fil.cote ? t('pile.reprendre') : t('pile.mettre')}</button>
+      <Icone name={fil.aside ? 'keep_off' : 'pile'} />
+      {fil.aside ? t('pile.reprendre') : t('pile.mettre')}</button>
     <span class="deplacer">
       <button type="button" data-testid="deplacer-vers"
               aria-haspopup="menu" aria-expanded={menuDeplacer}
@@ -78,7 +78,7 @@
         {t('action.deplacerVers')}</button>
       <Menu ouvert={menuDeplacer} testid="deplacer-menu" largeur={170} absolu
             onfermer={() => (menuDeplacer = false)}>
-          {#each ['reception', 'kiosque', 'registre'] as dest (dest)}
+          {#each ['inbox', 'feed', 'paper_trail'] as dest (dest)}
             <button type="button" role="menuitem"
                     data-testid={`deplacer-${dest}`}
                     onclick={() => { menuDeplacer = false; ondeplacer(fil.ligne, dest); }}>

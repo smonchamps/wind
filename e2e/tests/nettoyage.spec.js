@@ -28,18 +28,18 @@ test('la 5e section n’existe qu’en mode organisé, et son intro dit le texte
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   // Au classique : pas de Nettoyage.
   await expect(
-    page.locator('[data-testid="nav-dossier"][data-categorie="nettoyage"]'),
+    page.locator('[data-testid="nav-dossier"][data-categorie="cleanup"]'),
   ).toHaveCount(0);
 
   await page.locator('[data-testid="mode-organise"]').click();
-  const rang = page.locator('[data-testid="nav-dossier"][data-categorie="nettoyage"]');
+  const rang = page.locator('[data-testid="nav-dossier"][data-categorie="cleanup"]');
   await expect(rang).toContainText('Nettoyage de printemps');
   await rang.click();
 
   // L'intro : titre avec glyphe, sous-texte CE mot pour mot, plage
   // (défaut 1 an), périmètre (défaut Réception seule), Démarrer.
   await expect(page.locator('[data-testid="nettoyage-titre"] svg')).toHaveCount(1);
-  await expect(page.locator('[data-testid="nettoyage"]')).toContainText(
+  await expect(page.locator('[data-testid="cleanup"]')).toContainText(
     'En lançant un nettoyage de printemps, vous allez pouvoir trier vos archives',
   );
   await expect(page.locator('[data-testid="nettoyage-plage"]')).toHaveCount(6);
@@ -48,7 +48,7 @@ test('la 5e section n’existe qu’en mode organisé, et son intro dit le texte
   ).toHaveAttribute('aria-checked', 'true');
   await expect(page.locator('[data-testid="nettoyage-perimetre"]')).toHaveCount(4);
   await expect(
-    page.locator('[data-testid="nettoyage-perimetre"][data-perimetre="reception"]'),
+    page.locator('[data-testid="nettoyage-perimetre"][data-perimetre="inbox"]'),
   ).toHaveAttribute('aria-checked', 'true');
   await expect(page.locator('[data-testid="nettoyage-demarrer"]')).toBeVisible();
 });
@@ -56,7 +56,7 @@ test('la 5e section n’existe qu’en mode organisé, et son intro dit le texte
 test('démarrer ouvre le tri : groupes par expéditeur, progression à 0 %, navigation dans un groupe', async () => {
   // Le décor semé date de 2020 (gabarit) : la plage « tout » couvre —
   // et prouve au passage que le choix de plage est bien envoyé.
-  await page.locator('[data-testid="nettoyage-plage"][data-plage="tout"]').click();
+  await page.locator('[data-testid="nettoyage-plage"][data-plage="all"]').click();
   await page.locator('[data-testid="nettoyage-demarrer"]').click();
   await expect(page.locator('[data-testid="nettoyage-groupe"]').first()).toBeVisible();
   await expect(page.locator('[data-testid="nettoyage-progression"]')).toContainText('0 %');
@@ -83,7 +83,7 @@ test('le Oui traite le groupe entier ; le Non fait quitter la Réception à son 
   const nomNon = await groupes.first().locator('.exp').innerText();
   await page.locator('[data-testid="nettoyage-non"]').first().click();
   await expect(groupes).toHaveCount(avant - 2);
-  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="inbox"]').click();
   await expect(page.locator('[data-testid="liste"]')).not.toContainText(nomNon);
 });
 
@@ -93,7 +93,7 @@ test('la session PERSISTE (D8) : un rechargement reprend le tri où il en était
     'aria-checked',
     'true',
   );
-  await page.locator('[data-testid="nav-dossier"][data-categorie="nettoyage"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="cleanup"]').click();
   // Pas l'intro : le tri, avec sa progression déjà entamée.
   await expect(page.locator('[data-testid="nettoyage-demarrer"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="nettoyage-progression"]')).not.toContainText('0 %');
@@ -106,6 +106,6 @@ test('terminer rend l’intro ; quitter le mode rend la nav classique', async ()
   await page.locator('[data-testid="mode-organise"]').click();
   await expect(page.locator('[data-testid="nav-dossier"]')).toHaveCount(6);
   await expect(
-    page.locator('[data-testid="nav-dossier"][data-categorie="nettoyage"]'),
+    page.locator('[data-testid="nav-dossier"][data-categorie="cleanup"]'),
   ).toHaveCount(0);
 });

@@ -33,13 +33,13 @@ test('le menu des gestes se parcourt aux flèches et Échap rend le focus au dé
   const menu = page.locator('[data-testid="menu-gestes"]');
   await expect(menu).toBeVisible();
   // Le focus se pose sur le premier item, sans geste de plus.
-  await expect.poll(actif).toBe('gestes-kiosque');
+  await expect.poll(actif).toBe('gestes-feed');
   await page.keyboard.press('ArrowDown');
-  await expect.poll(actif).toBe('gestes-registre');
+  await expect.poll(actif).toBe('gestes-paper_trail');
   await page.keyboard.press('End');
   await expect.poll(actif).toBe('gestes-ecarter');
   await page.keyboard.press('ArrowDown');
-  await expect.poll(actif).toBe('gestes-kiosque');
+  await expect.poll(actif).toBe('gestes-feed');
   // Une touche quelconque ne ferme PAS (avant : tout keydown fermait).
   await page.keyboard.press('Shift');
   await expect(menu).toBeVisible();
@@ -69,7 +69,7 @@ test('Entrée sur un item joue le geste comme un clic', async () => {
   const sujet = (await rangee.locator('.objet').textContent()).trim();
   await rangee.hover();
   await rangee.locator('[data-testid="ligne-gestes"]').click();
-  await expect.poll(actif).toBe('gestes-kiosque');
+  await expect.poll(actif).toBe('gestes-feed');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-testid="menu-gestes"]')).toHaveCount(0);
   // La rangée est partie au Kiosque : elle quitte la Réception.

@@ -50,7 +50,7 @@ const teinteSel = () =>
 
 test('marquer lu groupé par les cases : la pastille tombe — puis non-lu la relève', async () => {
   // Le décor Clarity porte 4 non-lus en Réception (refonte-ecran02).
-  const pastille = dossier('reception').locator('.pastille');
+  const pastille = dossier('inbox').locator('.pastille');
   await expect(pastille).toHaveText('4');
   // On coche par la CASE (elle ne choisit pas, donc ne marque rien au
   // passage), et par la case non cochée RESTANTE — jamais par index
@@ -63,7 +63,7 @@ test('marquer lu groupé par les cases : la pastille tombe — puis non-lu la re
   while ((await aCocher.count()) > 0) {
     await aCocher.first().click();
   }
-  await page.locator('[data-testid="barre-lu"]').click();
+  await page.locator('[data-testid="barre-read"]').click();
   await expect(toast()).toContainText('marquées lues');
   // Le geste abouti vide la sélection, et la nav dit le nouveau compte.
   await expect(barre()).toHaveCount(0);
@@ -74,7 +74,7 @@ test('marquer lu groupé par les cases : la pastille tombe — puis non-lu la re
     .filter({ hasNot: page.locator('.puce', { hasText: /message/ }) })
     .first();
   await simple.locator('[data-testid="ligne-case"]').click();
-  await page.locator('[data-testid="barre-nonlu"]').click();
+  await page.locator('[data-testid="barre-unread"]').click();
   await expect(pastille).toHaveText('1');
 });
 
@@ -144,9 +144,9 @@ test("la case vit au survol, coche sans choisir, et le contenu s'écarte (D4, te
 test('la sélection se vide au changement de dossier', async () => {
   await caseDe(0).click();
   await expect(barre()).toBeVisible();
-  await dossier('archives').click();
+  await dossier('archive').click();
   await expect(barre()).toHaveCount(0);
-  await dossier('reception').click();
+  await dossier('inbox').click();
   await expect(lignes().first()).toBeVisible();
   await expect(barre()).toHaveCount(0);
 });
@@ -202,7 +202,7 @@ test('archiver groupé : un seul toast, les fils partent ENTIERS (D6)', async ()
   await page.evaluate(() => {
     window.__e2eJournal = [];
   });
-  await page.locator('[data-testid="barre-archiver"]').click();
+  await page.locator('[data-testid="barre-archive"]').click();
   await expect(toast()).toContainText('2 conversations archivées');
   const gestes = await page.evaluate(() => {
     const commandes = window.__e2eJournal.map((releve) => releve.commande);
@@ -222,7 +222,7 @@ test('archiver groupé : un seul toast, les fils partent ENTIERS (D6)', async ()
     })
     .toBe(0);
   // …et se retrouvent en Archives.
-  await dossier('archives').click();
+  await dossier('archive').click();
   await expect(lignes().first()).toBeVisible();
   await expect
     .poll(async () => {
@@ -230,7 +230,7 @@ test('archiver groupé : un seul toast, les fils partent ENTIERS (D6)', async ()
       return partants.filter((s) => archives.includes(s)).length;
     })
     .toBe(2);
-  await dossier('reception').click();
+  await dossier('inbox').click();
   await expect(lignes().first()).toBeVisible();
 });
 
@@ -238,7 +238,7 @@ test('supprimer groupé : les lignes rejoignent la corbeille', async () => {
   const sujets = await lignes().locator('.objet').allTextContents();
   const partant = sujets[0].trim();
   await caseDe(0).click();
-  await page.locator('[data-testid="barre-supprimer"]').click();
+  await page.locator('[data-testid="barre-delete"]').click();
   await expect(toast()).toContainText('supprimé');
   await expect
     .poll(async () => {
@@ -246,7 +246,7 @@ test('supprimer groupé : les lignes rejoignent la corbeille', async () => {
       return restants.includes(partant);
     })
     .toBe(false);
-  await dossier('corbeille').click();
+  await dossier('trash').click();
   await expect(lignes().first()).toBeVisible();
   await expect
     .poll(async () => {

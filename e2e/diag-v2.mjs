@@ -81,7 +81,7 @@ try {
         // Le chemin que l'UI emprunte VRAIMENT (list_messages, v1, est
         // retiré à B2) : la réception unifiée par catégorie.
         const p = await appel('list_category', {
-          category: 'reception', accountId: null, nonLus: false, offset, limit: 200,
+          category: 'inbox', accountId: null, unread: false, offset, limit: 200,
         });
         reps.push({ mur: performance.now() - t0, coeur: p.elapsed_us / 1000 });
       }
