@@ -94,6 +94,7 @@
   "docs/PLAN-SIGNATURE.md": 605,
   "docs/PLAN.md": 594,
   "docs/STANDARD.md": 17,
+  "docs/STATE.md": 216,
   "docs/WORKFLOW.md": 8,
   "docs/adr/0001-structure-workspace.md": 64,
   "docs/adr/0002-shell-desktop-tauri.md": 164,

@@ -77,7 +77,7 @@ Surfaces de **contrat** (un nom des deux côtés d'une frontière) :
 
 | Corpus | Volume | Statut |
 |---|---|---|
-| `docs/*.md` vivants : ETAT 1 459 l., STANDARD 987, DETTE 964, PLAN.md 254, WORKFLOW 141, BETA 141, AUDIT 843, PASSATION 10 | ~4 800 lignes | normatif ou volatile, relu à chaque session |
+| `docs/*.md` vivants : STATE 1 459 l., STANDARD 987, DETTE 964, PLAN.md 254, WORKFLOW 141, BETA 141, AUDIT 843, PASSATION 10 | ~4 800 lignes | normatif ou volatile, relu à chaque session |
 | 30 `PLAN-*.md` non archivés | 9 537 lignes | mélange : PLAN-AUDIT-V2 en cours, les autres soldés mais pas encore déplacés |
 | 31 ADR | 2 916 lignes | **décisions gelées**, vivantes ; noms de fichiers français (`0008-regroupement-en-conversations.md`) |
 | 29 archives (`docs/archives/`) | 6 804 lignes | clos ; PHASE0-3, plans soldés |
@@ -745,7 +745,7 @@ libellés français restent (ils testent le fr, qui reste livré) ; le
 > systeme.mjs`, `jetons.mjs`, `capture-accueil.mjs`, `mesure-v2.mjs`),
 > and the path pointers of the living docs: STANDARD (17 lines — one
 > already stale, `e2e/mesure.mjs` does not exist), the System (15),
-> AUDIT (13), DETTE (5), ETAT (5), GLOSSARY (4), the architecture map
+> AUDIT (13), DETTE (5), STATE (5), GLOSSARY (4), the architecture map
 > (1), and six memory files. **Order of play**: the specs' comment
 > says `refonte-ecran02` is named to run AFTER the v1 journeys
 > (alphabetical order, one asset rebuild per gate) — the rebuild lives
@@ -920,7 +920,7 @@ libellés français restent (ils testent le fr, qui reste livré) ; le
 
 Dans cet ordre, chacun son commit, E1d vert : `README.md` ;
 `STANDARD.md` (structure §0-§10 **intacte**, numérotation figée) ;
-`WORKFLOW.md` ; `ETAT.md` (réécrit de toute façon au solde — traduire
+`WORKFLOW.md` ; `STATE.md` (réécrit de toute façon au solde — traduire
 la version d'alors) ; `DETTE.md` (D-1…D-53, numéros intacts) ;
 `PLAN.md` ; `BETA.md` (D11) ; `AUDIT-2026-09-01.md` ; `PASSATION.md` ;
 `CHANGELOG.md` (D13 — l'en-tête et `## [0.17.0]` au minimum ;
@@ -950,7 +950,7 @@ traduction complète (6 804 lignes + les PLAN soldés déplacés à E7).
 ### E10 — Mémoire, solde (P)
 
 17 fichiers de mémoire et `MEMORY.md` traduits, pointeurs vers les
-scripts renommés corrigés ; `/close` : ETAT, DETTE (ce qui reste
+scripts renommés corrigés ; `/close` : STATE, DETTE (ce qui reste
 français par décision — D3 — entre au registre comme dette **assumée**,
 avec ce qui la rouvrirait), chiffres kaizen (T1, W3, KO du STOP 2).
 
@@ -996,7 +996,7 @@ corrige ce chiffre au STOP intermédiaire proposé à D10.
 
 | # | Question | Recommandation | Décision CE (mot pour mot, datée) |
 |---|---|---|---|
-| D1 | Archives (`docs/archives/`, 29 fichiers, 6 804 l.) et PLAN soldés : **geler** avec bandeau anglais, ou **traduire** ? | Geler : clos, jamais relus par la méthode (§0 : on lit STANDARD, ETAT, PLAN, ADR) ; ~40 % du volume doc pour zéro valeur vivante |**2026-09-02 : « Geler avec bandeau »** — dette D-55 à l'ouverture |
+| D1 | Archives (`docs/archives/`, 29 fichiers, 6 804 l.) et PLAN soldés : **geler** avec bandeau anglais, ou **traduire** ? | Geler : clos, jamais relus par la méthode (§0 : on lit STANDARD, STATE, PLAN, ADR) ; ~40 % du volume doc pour zéro valeur vivante |**2026-09-02 : « Geler avec bandeau »** — dette D-55 à l'ouverture |
 | D2 | Commits : anglais dès le premier commit du chantier (E2 amende §2.8) ; le corps porte toujours chiffres et raisonnement | Oui ; convention « sans accents » abolie au même amendement |**2026-09-02 : « Oui, en bloc »** (recommandation prise telle quelle) |
 | D3 | Identifiants persistés (schéma SQLite, clés `prefs`, fichiers disque) : **garder** le français derrière des API anglaises, ou migrer ? | Garder ; dette D-54 « SQL français » avec clause de réouverture (« si une migration de schéma s'ouvre pour une autre raison, y adosser les renommages ») |**2026-09-02 : « Garder, dette D-54 »** |
 | D4 | Langue par défaut de l'UI : aujourd'hui « système si couvert, sinon fr ». Passer à « système si couvert, sinon **en** », l'anglais devenant référence/repli des catalogues ? | Oui : c'est la conséquence logique ; effet visible uniquement sur un système ni fr ni en ⇒ MINEURE (§2.9) ; fr reste livré mot pour mot |**2026-09-02 : « Oui, en par défaut »** — la prochaine release est MINEURE |
@@ -1020,7 +1020,7 @@ corrige ce chiffre au STOP intermédiaire proposé à D10.
 | D22 | The language the suite runs in: (a) keep French — `launchAppV2()` stays `lang = 'fr'`, the 225 anchors keep the French catalogue values, one `lang:fr` marker each; or (b) switch to English — the D4 default, the anchors rewritten from `catalog.en.js`, the French round trip kept in `redesign-language.spec.js`, the fixture anchors marked? | (b): the suite must prove what a new user sees since D4; (a) leaves the default language to one test and 225 permanent exemptions | |
 | D23 | The 201 test titles translated (they are the names the flaky report, the CI log and the docs quote — `selection-multiple:174` is quoted by LINE in D-54, so no pointer breaks)? | Translate: a title is an identifier of the suite, STANDARD §2.8 | |
 | D24 | `e2e/README.md`: translated as it is, or rewritten short and true — its selector contract (`#compose`, `#detail`, `#rows`, `app.js`, the four v1 journeys) describes the v1 UI, gone since the redesign; the gate is `scripts/gate.ps1` since AUDIT-V2 E9? | Rewrite: the isolation contract, the launch, the nets and benches, the DOM contract pointer to `dom.csv` and `dom-contract.test.mjs` — a translated stale page is still stale | |
-| D25 | The path pointers of the living docs updated in the E6a commit — file NAMES only, in STANDARD (17 lines, `e2e/mesure.mjs` already stale), the System (A114), AUDIT, DETTE, ETAT, GLOSSARY, the architecture map, WORKFLOW, the six memory files — the closed `PLAN-*.md` and the ADR bodies untouched (history: E7 moves them, D1 freezes them)? | Yes: a normative doc that names a file that no longer exists is a broken pointer the markdown-links net does not see (it checks links, not backticks) | |
+| D25 | The path pointers of the living docs updated in the E6a commit — file NAMES only, in STANDARD (17 lines, `e2e/mesure.mjs` already stale), the System (A114), AUDIT, DETTE, STATE, GLOSSARY, the architecture map, WORKFLOW, the six memory files — the closed `PLAN-*.md` and the ADR bodies untouched (history: E7 moves them, D1 freezes them)? | Yes: a normative doc that names a file that no longer exists is a broken pointer the markdown-links net does not see (it checks links, not backticks) | |
 | D26 | The names the glossary lacks: `barres-fil` → `thread-bars`, `retours-12` → `feedback-12`, `retours-14` → `feedback-14`, `horizon-import` unchanged, `test-results/rapport.json` → `report.json`; and the dictionary rows `ligne`/`lignes`/`nLignes` reviewed site by site per D18 (`row` for a list row, `line` for a text line)? | As proposed | |
 | D27 | The bench environment variables `MESURE_DB`, `MESURE_COMPTES`, `MESURE_REUTILISER`, `MESURE_SANS_ACTIVITE` (read by `measure-v2.mjs`, `measure-scroll.mjs`, `diag-v2.mjs`, named in STANDARD §9 and the e2e README): renamed `MEASURE_DB`, `MEASURE_ACCOUNTS`, `MEASURE_REUSE`, `MEASURE_NO_ACTIVITY`, or kept as the bench contract? | Rename at E6b (the benches are played by hand, the docs that name them are E7) — but they are the Chief Engineer's own invocations | **2026-09-03: “Rename”** — applied the same day: `MEASURE_DB`, `MEASURE_ACCOUNTS`, `MEASURE_REUSE`, `MEASURE_NO_ACTIVITY` in the three benches, the e2e README and STANDARD §9 |
 | D28 | Since the suite runs in English (D22), the French forms proven by no spec: the onboarding step counter, the relative date form, the cleanup title and intro, the thread bar labels — extend `redesign-language.spec.js` with a French sweep of those screens (one more launch, ~10 s), or accept the gap (the French catalogue is delivered, D3, and its keys are audited)? And the onboarding illustrations (`assets/accueil/*.png`, French screenshots): regenerated in English by `capture-onboarding.mjs`, or kept French? | Extend the sweep (a catalogue regression on a French form would otherwise ship blind); regenerate the illustrations in English at the next onboarding job — the default UI is English, a French screenshot inside it is a seam the field sees | **2026-09-03: “Extend the French sweep. Regenerate in English at the next onboarding job. All screenshots must be in the language chosen by the user.”** — the sweep applied the same day (three tests in `redesign-language.spec.js`: the French relative date, the cleanup title, a fresh French first launch on the onboarding steps); the illustration rule enters the debt as D-57 |

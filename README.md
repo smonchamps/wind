@@ -9,7 +9,7 @@ x64** (bi-arch release, ADR 0023), NSIS installer, automatic signed
 update (minisign, ADR 0013).
 
 The last shipped version and the current state live in
-[docs/ETAT.md](docs/ETAT.md). Preparing for the closed beta.
+[docs/STATE.md](docs/STATE.md). Preparing for the closed beta.
 
 ## Changelog
 
@@ -21,7 +21,7 @@ Versions and their changes are recorded in
 
 - [docs/STANDARD.md](docs/STANDARD.md) — the method (standing
   instruction), the frozen decisions and the invariants.
-- [docs/ETAT.md](docs/ETAT.md) — the current state: shipped version,
+- [docs/STATE.md](docs/STATE.md) — the current state: shipped version,
   next job, field figures.
 - [docs/WORKFLOW.md](docs/WORKFLOW.md) — the standardized workflows
   (`/job`, `/field`, `/gate`, `/close`).

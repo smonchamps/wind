@@ -1,6 +1,6 @@
 ---
 name: close
-description: Close a Wind job — verify the field validation and the green CI, mark the PLAN closed, amend ETAT, record the debt, update the persistent memory.
+description: Close a Wind job — verify the field validation and the green CI, mark the PLAN closed, amend STATE, record the debt, update the persistent memory.
 ---
 
 # /close — the standardized close-out of a job
@@ -20,7 +20,7 @@ facts only; verify every condition before writing anything.
 1. **`docs/PLAN-XXX.md`**: header "**JOB CLOSED on YYYY-MM-DD — full
    field validation**", with the commits, the date of the CE GO, the
    field touch-ups if any and their A-n (model: PLAN-WADA).
-2. **`docs/ETAT.md`**: the state reflects the delivered job; budgets
+2. **`docs/STATE.md`**: the state reflects the delivered job; budgets
    re-measured if touched; lessons learnt added where they live.
 3. **Debt**: what is deferred goes to `docs/DETTE.md`, named, with the
    reason for the deferral (§2.6 — a deferral is written down).
@@ -40,7 +40,7 @@ facts only; verify every condition before writing anything.
 2. Then **close this session** — a closed job does not stay in context:
    billing it again at every turn of the next job is the first waste the
    kaizen measured. The next subject opens in a fresh session, on the
-   reading of ETAT.md.
+   reading of STATE.md.
 
 ## End of a phase
 

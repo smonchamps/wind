@@ -5,7 +5,7 @@
 > invariants (§6), environment (§7), lessons (§9). It is **amended by
 > kaizen** — one finding, one amendment — and is not rewritten. **The
 > current state** (shipped version, next job, field figures) lives in
-> [ETAT.md](ETAT.md), the handover snapshot.
+> [STATE.md](STATE.md), the handover snapshot.
 >
 > Born from the split of PASSATION.md on 2026-08-19
 > (PLAN-DOCUMENTATION, CE decisions D1-D2). **The numbering §2-§10 is
@@ -29,12 +29,12 @@ If context is lost anyway, the old ritual still holds:
 > Resume Wind's development. You are the Chief Engineer of the
 > project and you apply the method described in `docs/STANDARD.md` §2 —
 > it is a permanent instruction, it takes precedence over everything. Read
-> this document in full first, then read `docs/ETAT.md`.
+> this document in full first, then read `docs/STATE.md`.
 
 Reading order, once:
 
 1. **this document** — method, invariants, traps;
-2. [`docs/ETAT.md`](ETAT.md) — where things stand, what to do first;
+2. [`docs/STATE.md`](STATE.md) — where things stand, what to do first;
 3. [`docs/PLAN.md`](PLAN.md) — the concept paper, product source of truth;
 4. the ADRs in [`docs/adr/`](adr/) — **frozen decisions**, not to be
    reopened without a measurement to the contrary.
@@ -44,10 +44,10 @@ comments explain *why*, and assume the context below.
 
 ---
 
-## 1. Where things stand → [ETAT.md](ETAT.md)
+## 1. Where things stand → [STATE.md](STATE.md)
 
 The current state — shipped version, next job, field
-figures, open trade-offs — lives in [ETAT.md](ETAT.md),
+figures, open trade-offs — lives in [STATE.md](STATE.md),
 the handover snapshot, rewritten at every job: that is its
 function.
 
@@ -625,10 +625,10 @@ passes, STATUS) is covered only by unit tests on the pure part and
 is proven only in the field.
 
 ---
-## 8. What remains → [ETAT.md](ETAT.md)
+## 8. What remains → [STATE.md](STATE.md)
 
 Recent jobs, the long tail, and deliberate deferrals live in
-[ETAT.md](ETAT.md); the detailed debt, in [DETTE.md](DETTE.md).
+[STATE.md](STATE.md); the detailed debt, in [DETTE.md](DETTE.md).
 
 ---
 
@@ -970,7 +970,7 @@ touches, not just the specs being watched.
 
 | File | Role |
 |---|---|
-| [`docs/ETAT.md`](ETAT.md) | The handoff snapshot — current state, rewritten with every job |
+| [`docs/STATE.md`](STATE.md) | The handoff snapshot — current state, rewritten with every job |
 | [`docs/PLAN.md`](PLAN.md) | Concept paper — product source of truth |
 | [`docs/adr/`](adr/) | The 15 frozen decisions |
 | [`docs/archives/`](archives/) | Closed-out plans and phase closing reviews |

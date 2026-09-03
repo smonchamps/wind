@@ -3,7 +3,7 @@
 > **CHANTIER SOLDÉ le 2026-08-23 — terrain complet** (6/6, zéro KO au
 > STOP 2). GO CE (D1-D5) le 2026-08-23 ; commit `19e39cf` (+ reliquat
 > kaizen `fcfaf09`), A77-A78, ADR 0025, CI verte run 32647649916.
-> Reste UNE preuve différée, consignée à l'ETAT : à la release 0.8.0,
+> Reste UNE preuve différée, consignée à l'STATE : à la release 0.8.0,
 > connexion d'un compte sur le second poste SANS `setx` — elle ferme
 > l'arbitrage OAuth par canal.
 >
@@ -14,7 +14,7 @@
 > 0 KO au STOP 2 (garde-fou qualité : tenu).
 >
 > Ouvert le 2026-08-23. Trois sujets du Chef Ingénieur, dont le
-> premier solde l'arbitrage ouvert de [ETAT.md](ETAT.md) (« un
+> premier solde l'arbitrage ouvert de [STATE.md](STATE.md) (« un
 > bêta-testeur ne fera jamais de `setx` »).
 
 ## Constat (instruction sur pièces, 2026-08-23)
@@ -131,7 +131,7 @@ remède dit ne parle plus de terminal — livré, revue du 2026-08-23).
   précoce dès le premier rendu. DC-D2 : journal **A78**.
 
 Puis Phase 3 (revue à regard neuf + `/gate`), STOP 2 terrain,
-Phase 4 (docs, ETAT, mémoire), Phase 5 (commit, push + CI en fond).
+Phase 4 (docs, STATE, mémoire), Phase 5 (commit, push + CI en fond).
 
 ## Livraison (2026-08-23)
 

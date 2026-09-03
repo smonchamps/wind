@@ -21,7 +21,7 @@
 > (`cargo run … --release 2> fichier`).
 >
 > Chantier ouvert le 2026-08-21 (`/job`), sur trois retours CE :
-> (1) ETAT périmé — les chantiers perf-lecture et envoi de pièces
+> (1) STATE périmé — les chantiers perf-lecture et envoi de pièces
 > jointes sont réalisés ; (2) bug — une entrée anormale apparaît dans
 > « Envoyés » à l'envoi d'une pièce jointe (capture fournie), la vraie
 > ligne n'arrivant que quelques minutes plus tard ; (3) demande —
@@ -32,10 +32,10 @@
 
 ## Constat — faits vérifiés sur pièces (2026-08-21)
 
-### 1. ETAT porte deux lignes périmées
+### 1. STATE porte deux lignes périmées
 
 - **« Envoi de pièces jointes (lecture seule en v1) »** figure encore
-  aux reports assumés d'[ETAT.md](ETAT.md). Faux depuis longtemps :
+  aux reports assumés d'[STATE.md](STATE.md). Faux depuis longtemps :
   PLAN-PIECES-JOINTES est **soldé et archivé** (E1 `38cd812` : octets
   au brouillon, journal d'envoi, multipart/mixed SMTP ; E3 `27ed056` :
   transfert réel, plan soldé). La capture du CE montre d'ailleurs un
@@ -98,7 +98,7 @@ décor.
 
 ## Périmètre
 
-**Dans ce chantier** : ETAT remis d'équerre ; l'écho d'envoi qui dit
+**Dans ce chantier** : STATE remis d'équerre ; l'écho d'envoi qui dit
 ses vrais destinataires et ses pièces (cœur + nav + front, migration
 additive) ; l'autocomplétion À/Cc/Cci (requête cœur + menu clavier au
 composeur) selon les décisions D3-D5 ; e2e des deux comportements ;
@@ -156,7 +156,7 @@ Mesure avant livraison : la requête sous ~50 ms sur décor 200 k
 
 ## Étapes
 
-- **E1 — ETAT d'équerre** (docs seuls) : report « envoi de pièces
+- **E1 — STATE d'équerre** (docs seuls) : report « envoi de pièces
   jointes » retiré (renvoi à PLAN-PIECES-JOINTES archivé) ;
   perf-lecture retiré selon D1 ; « prochain chantier » remis sur la
   bêta fermée (ou ce que D1 en dit). Gate : relecture, cohérence avec
@@ -178,14 +178,14 @@ Mesure avant livraison : la requête sous ~50 ms sur décor 200 k
   selon D3, Système amendé au même commit (DC-D2), e2e du parcours
   (taper 3 lettres → choisir → l'adresse au champ, Cc et Cci compris).
 - **E6 — qualité et sortie** : revue à regard neuf (`/code-review
-  high`), gate complète, **terrain (STOP 2)**, docs (A-n, ETAT,
+  high`), gate complète, **terrain (STOP 2)**, docs (A-n, STATE,
   DETTE si report), version selon §2.9 : correctif seul → **0.2.2**
   (CORRECTIF) ; avec l'autocomplétion → **0.3.0** (MINEUR, capacité
   nouvelle).
 
 ## § Réalisation (2026-08-21)
 
-- **E1** : ETAT amendé — perf-lecture éteint (D1), report « envoi de
+- **E1** : STATE amendé — perf-lecture éteint (D1), report « envoi de
   pièces jointes » retiré (livré depuis PLAN-PIECES-JOINTES), chantier
   en cours consigné.
 - **E2/E3 (l'écho dit vrai)** : colonne `echos.to_addrs` (migration
@@ -251,10 +251,10 @@ Checklist en cinq points, verdicts CE :
 
 ## § Décisions CE — tranchées le 2026-08-21
 
-- **D1 — perf-lecture à ETAT** : sur quel fondement le marquer
+- **D1 — perf-lecture à STATE** : sur quel fondement le marquer
   réalisé ? — *Réponse CE (2026-08-21) : « Éteint par la 0.2.1 »* —
   le symptôme (~7 s au lancement) est mort au terrain depuis la
-  0.2.1 ; le chantier est retiré d'ETAT, à rouvrir si le terrain le
+  0.2.1 ; le chantier est retiré d'STATE, à rouvrir si le terrain le
   redit.
 - **D2 — pièces de l'écho** : servir nom + taille (puces inertes) ou
   masquer la section ? Le CE a d'abord proposé un dossier « Boîte

@@ -138,13 +138,13 @@ de ~13 Go).
 
 | # | Contre-mesure | Fichier(s) | Indicateurs servis |
 |---|---|---|---|
-| 1 | `/close` : dernière étape « écrire l'entrée CHANGELOG (si release à venir), puis **clore cette session** ; le sujet suivant s'ouvre sur ETAT.md » | `.claude/skills/close/SKILL.md` | T1 T2 T3 |
+| 1 | `/close` : dernière étape « écrire l'entrée CHANGELOG (si release à venir), puis **clore cette session** ; le sujet suivant s'ouvre sur STATE.md » | `.claude/skills/close/SKILL.md` | T1 T2 T3 |
 | 2 | `/job` et `/field` : boucle intérieure ciblée — spec(s) impactée(s) **en fichier entier** (jamais `-g`), 2 runs groupés par vague (RED groupé, GREEN groupé) ; gate complète UNE fois avant commit | `chantier/SKILL.md`, `terrain/SKILL.md`, phrase au STANDARD §2.4 | W3 W4 T4 |
 | 3 | `/gate` : re-gate partielle après un rouge corrigé (étape rouge + ce que la correction peut impacter, amont compris si Rust) ; gate complète finale avant commit inchangée | `gate/SKILL.md`, `chantier/SKILL.md` | W3 W4 |
 | 4 | `/gate` et `/job` Phase 5 : push + `gh run watch` **en arrière-plan**, verdict annoncé par la session ; jamais d'attente CI au premier plan | `gate/SKILL.md`, `chantier/SKILL.md` | P1 |
 | 5 | `/job` : STOP visuel précoce (UI : verdict d'apparence après le premier incrément TDD minimal) ; STOP mesuré précoce (perf : mesure avant/après au premier incrément, arbitrage CE) | `chantier/SKILL.md` | T1 P3 |
 | 6 | Discipline CE (sans commit) : énoncé complet en argument de `/job` ; pièce à conviction au premier énoncé ; non-conformité signalée plutôt que redemandée ; une seule session écrivante à la fois | — | P3 T4 |
-| 7 | Politique de modèles dans WORKFLOW.md : **chantier = Fable 5** (invariant) ; **session mécanique** (docs/ETAT/CHANGELOG, Notion, veille CI, release scriptée, consolidation mémoire) **= Sonnet 5** ; préserve aussi le quota Fable pour les chantiers | `docs/WORKFLOW.md` | M1 |
+| 7 | Politique de modèles dans WORKFLOW.md : **chantier = Fable 5** (invariant) ; **session mécanique** (docs/STATE/CHANGELOG, Notion, veille CI, release scriptée, consolidation mémoire) **= Sonnet 5** ; préserve aussi le quota Fable pour les chantiers | `docs/WORKFLOW.md` | M1 |
 | 8 | Agents d'exploration/recherche abaissés (Sonnet 5, Haiku pour du pur balayage) ; agents de vérification, de revue et `spike` inchangés (haut de gamme / modèle de session) | `.claude/agents/`, WORKFLOW.md | M1 |
 
 ### Vague 2 — petits chantiers techniques (semaine 1, ordre de rentabilité)

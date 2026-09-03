@@ -27,7 +27,7 @@ dead at the two places where the decision is theirs.
    ├─ ⛔ STOP 2  The CE validates in the field, on a figured checklist
    │             (a finding → fix the same day, re-gate, re-field)
    │
-   ├─ Phase 4  Documentation — journal A-n, PLAN, ADR, ETAT, memory
+   ├─ Phase 4  Documentation — journal A-n, PLAN, ADR, STATE, memory
    └─ Phase 5  Commit → push + CI watch in the background
                → CI verdict announced by the session
 ```
@@ -97,7 +97,7 @@ needs it.
 - **Job = Fable 5, invariant.** Design, tracing to the root, TDD,
   review: never hard design on a lesser model (perf-lecture precedent,
   not proven but suspect).
-- **Mechanical session = Sonnet 5.** Docs/ETAT/CHANGELOG, Notion, CI
+- **Mechanical session = Sonnet 5.** Docs/STATE/CHANGELOG, Notion, CI
   watch, scripted release, memory consolidation: the CE opens these
   sessions on Sonnet 5 (the app's model selector). Measured baseline:
   the mechanical work ran 100 % at the top rate (M1, target ≤ 5 % of the

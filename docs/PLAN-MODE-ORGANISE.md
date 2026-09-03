@@ -154,7 +154,7 @@
 > six passes de retours le jour même
 > (`spikes/mode-organise/index.html`, artifact
 > <https://claude.ai/code/artifact/914fd918-b122-4b42-b5c7-b4df8f64e4d2>).
-> Le prochain sujet inscrit à [ETAT.md](ETAT.md) reste **la première
+> Le prochain sujet inscrit à [STATE.md](STATE.md) reste **la première
 > vague bêta** (PLAN-BETA, bloquant CE) — ce chantier vient APRÈS,
 > sauf décision contraire du CE.
 >
@@ -485,7 +485,7 @@ Le texte d'instruction d'origine des décisions :
 - **D7 — l'ordre de livraison** : E1-E3 en première release MINEUR,
   E4-E6 en seconde — ou un autre découpage ?
 - **D8 — la place du chantier** : après la première vague bêta
-  (PLAN-BETA reste bloquant à ETAT), ou avant ?
+  (PLAN-BETA reste bloquant à STATE), ou avant ?
 - **D9 — les cinq glyphes** entrent au catalogue et au Système
   (relevé + gate) — valider les dessins du spike, dont le majordome.
 
@@ -549,7 +549,7 @@ Journal A-n par étape livrée ; **un ADR « routage local par
 expéditeur »** (D1, structurant) ; relevé Système : 5 glyphes + les
 patrons de vue neufs (règle-libellé, rangs du Portier, pile) ;
 CHANGELOG par release (AVANT `make-release.ps1`, §2.9 —
-`gh release list` d'abord) ; ETAT réécrit ; mémoire mise à jour ;
+`gh release list` d'abord) ; STATE réécrit ; mémoire mise à jour ;
 `spikes/mode-organise/` conservé tel quel (jetable, référence de
 forme).
 

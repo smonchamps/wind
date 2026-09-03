@@ -102,7 +102,7 @@ new field pass.
 - System journal: an A-n for every notable fact (DC-D2).
 - PLAN-XXX updated (delivered steps, commits, verdicts).
 - **ADR** if a structuring decision (`docs/adr/`, short, model 0004).
-- ETAT amended (the state of the project, budgets re-measured);
+- STATE amended (the state of the project, budgets re-measured);
   STANDARD amended if a new trap or lesson (§7, §9).
 - Persistent memory updated (state of the job, absolute dates).
 

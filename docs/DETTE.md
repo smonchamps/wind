@@ -506,7 +506,7 @@ motivée.)
 
 - **Fait (PLAN-DOCUMENTATION, 2026-08-19, décision CE D3)** :
   PASSATION.md est scindée en STANDARD.md (le standard de travail) et
-  ETAT.md (l'instantané de relève) ; un stub de quelques lignes reste
+  STATE.md (l'instantané de relève) ; un stub de quelques lignes reste
   au chemin historique — poka-yoke pour les vieilles mémoires et
   l'ancien rituel de reprise.
 - **Condition de retrait** : deux reprises à froid consécutives sans
