@@ -61,7 +61,7 @@
   "crates/mail-imap/src/mutf7.rs": 9,
   "crates/mail-render/src/sanitize.rs": 1,
   "crates/mail-smtp/src/lib.rs": 5,
-  "docs/AUDIT-2026-09-01.md": 1864,
+  "docs/AUDIT-2026-09-01.md": 14,
   "docs/DEBT.md": 93,
   "docs/GLOSSARY.md": 104,
   "docs/PASSATION.md": 18,
