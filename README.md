@@ -1,36 +1,36 @@
 # Wind
 
-**Wind** — le client courrier de la suite **Elements**
-(« ce que le vent porte, le rythme des jours »).
+**Wind** — the mail client of the **Elements** suite
+("what the wind carries, the rhythm of the days").
 
-Application de bureau : cœur Rust (IMAP, SMTP, OAuth, rendu des messages)
-et interface Svelte, empaquetée par Tauri. Cible Windows **arm64 et
-x64** (release bi-arch, ADR 0023), installeur NSIS, mise à jour
-automatique et signée (minisign, ADR 0013).
+Desktop application: Rust core (IMAP, SMTP, OAuth, message rendering)
+and Svelte interface, packaged by Tauri. Target: Windows **arm64 and
+x64** (bi-arch release, ADR 0023), NSIS installer, automatic signed
+update (minisign, ADR 0013).
 
-La dernière version livrée et l'état courant vivent dans
-[docs/ETAT.md](docs/ETAT.md). En préparation de bêta fermée.
+The last shipped version and the current state live in
+[docs/ETAT.md](docs/ETAT.md). Preparing for the closed beta.
 
-## Journal des versions
+## Changelog
 
-Les versions et leurs changements sont consignés dans
-[CHANGELOG.md](CHANGELOG.md). Les paquets signés vivent dans les
-[Releases GitHub](https://github.com/smonchamps/wind/releases).
+Versions and their changes are recorded in
+[CHANGELOG.md](CHANGELOG.md). The signed packages live in the
+[GitHub Releases](https://github.com/smonchamps/wind/releases).
 
 ## Documentation
 
-- [docs/STANDARD.md](docs/STANDARD.md) — la méthode (instruction
-  permanente), les décisions gelées et les invariants.
-- [docs/ETAT.md](docs/ETAT.md) — l'état courant : version livrée,
-  prochain chantier, chiffres du terrain.
-- [docs/WORKFLOW.md](docs/WORKFLOW.md) — les workflows standardisés
+- [docs/STANDARD.md](docs/STANDARD.md) — the method (standing
+  instruction), the frozen decisions and the invariants.
+- [docs/ETAT.md](docs/ETAT.md) — the current state: shipped version,
+  next job, field figures.
+- [docs/WORKFLOW.md](docs/WORKFLOW.md) — the standardized workflows
   (`/job`, `/field`, `/gate`, `/close`).
-- [CHANGELOG.md](CHANGELOG.md) — le journal des versions.
+- [CHANGELOG.md](CHANGELOG.md) — the changelog.
 
-## Construire et vérifier
+## Build and verify
 
-Les commandes (jeu d'essai, build de l'installeur, e2e) sont décrites au
-§7.3 de [docs/STANDARD.md](docs/STANDARD.md). La gate complète — format,
-build UI, contrastes, cohérence du Système, clippy, tests Rust et e2e
-réels — est rejouée au pré-push (`.githooks/pre-push`) : rien ne quitte la
-machine sans elle.
+The commands (test set, installer build, e2e) are described in §7.3 of
+[docs/STANDARD.md](docs/STANDARD.md). The full gate — format, UI build,
+contrasts, System coherence, clippy, Rust tests and real e2e — is
+replayed at pre-push (`.githooks/pre-push`): nothing leaves the machine
+without it.

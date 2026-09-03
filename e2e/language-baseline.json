@@ -5,7 +5,6 @@
   ".claude/skills/job/SKILL.md": 9,
   "CHANGELOG.md": 2257,
   "Cargo.toml": 38,
-  "README.md": 65,
   "apps/desktop/Cargo.toml": 116,
   "apps/desktop/capabilities/default.json": 14,
   "apps/desktop/src/commands.rs": 15,
