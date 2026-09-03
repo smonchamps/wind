@@ -106,7 +106,7 @@ default behavior: every addition is paid for in speed and reliability.
 
 **Everything is in English** — code, identifiers, comments, commits,
 documentation, the System. Amended on 2026-09-02 by
-[PLAN-BASCULE-ANGLAIS](PLAN-BASCULE-ANGLAIS.md) (CE decision D2): until
+[PLAN-ENGLISH-SWITCH](PLAN-ENGLISH-SWITCH.md) (CE decision D2): until
 then everything was in French, and the switch is carried by the
 language ratchet (`e2e/language-gate.mjs`, gate step 7) — the French
 markers of every file can only go down. What stays French, by decision,

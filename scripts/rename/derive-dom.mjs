@@ -1,4 +1,4 @@
-// PLAN-BASCULE-ANGLAIS E5d — completes `dom.csv` from what the UI and the
+// PLAN-ENGLISH-SWITCH E5d — completes `dom.csv` from what the UI and the
 // specs ACTUALLY carry (the E5b lesson: the E0 inventory missed what it
 // did not parse — 124 classes, the `data-*` attribute names, the ids the
 // `Menu` prop and the specs build from a value). Every name found is

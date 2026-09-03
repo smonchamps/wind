@@ -75,7 +75,7 @@ jobs:
         run: node e2e/system-coherence.mjs
       - name: Main-thread guard (PLAN-GELS)
         run: node e2e/main-thread-guard.mjs
-      # PLAN-BASCULE-ANGLAIS E1: the four nets of the switch, same scripts
+      # PLAN-ENGLISH-SWITCH E1: the four nets of the switch, same scripts
       # as gate.ps1 (steps 2 and 7-9).
       - name: Lint ui-v2 (eslint no-undef)
         run: npm run lint

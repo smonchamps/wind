@@ -64,7 +64,7 @@ Step 2 "build ui-v2" {
             Write-Host "vite-plugin-svelte warning = red (zero warnings required)" -ForegroundColor Red
             $global:LASTEXITCODE = 1
         }
-        # PLAN-BASCULE-ANGLAIS E1c (measured 2026-09-02): eslint no-undef,
+        # PLAN-ENGLISH-SWITCH E1c (measured 2026-09-02): eslint no-undef,
         # 3 s, 0 pre-existing errors, catches a missed rename in .svelte and
         # .js alike; svelte-check rejected (1 059 pre-existing errors).
         if ($LASTEXITCODE -eq 0) { & npm run lint }
@@ -102,7 +102,7 @@ Step 6 "script syntax (node --check, PowerShell parser)" {
     }
 }
 
-# PLAN-BASCULE-ANGLAIS E1: three textual nets, in seconds, played on the
+# PLAN-ENGLISH-SWITCH E1: three textual nets, in seconds, played on the
 # docs-only path too. The language ratchet refuses any RISE of French per
 # file (e2e/language-baseline.json, lowered at each step with --update);
 # the IPC contract compares generate_handler!, the #[tauri::command] fns

@@ -6,7 +6,7 @@
 // the notifications — localStorage would be invisible to it.
 //
 // Fallback: any key missing from the active catalogue falls back to
-// English (the reference since D4, PLAN-BASCULE-ANGLAIS) — never a hole
+// English (the reference since D4, PLAN-ENGLISH-SWITCH) — never a hole
 // on screen; the e2e audit guarantees that the key sets are identical.
 import { call } from './transport.js';
 import { FR } from './catalog.fr.js';

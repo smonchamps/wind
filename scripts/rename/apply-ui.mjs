@@ -1,4 +1,4 @@
-// The UI applier of PLAN-BASCULE-ANGLAIS (E5b) — the applier GLOSSARY §6
+// The UI applier of PLAN-ENGLISH-SWITCH (E5b) — the applier GLOSSARY §6
 // promised. It renames WHOLE identifiers only, and never inside string
 // literals, template-literal text, comments, regex literals, `<style>`
 // blocks, HTML attribute names or markup text (the E5a lesson: a bare

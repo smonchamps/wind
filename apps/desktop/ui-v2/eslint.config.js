@@ -1,4 +1,4 @@
-// E1c candidate (PLAN-BASCULE-ANGLAIS): the one rule the switch needs —
+// E1c candidate (PLAN-ENGLISH-SWITCH): the one rule the switch needs —
 // an identifier used but defined nowhere. JS has no compiler; a renamed
 // function whose caller was missed only fails at run time, on the screen
 // the e2e happen to open. `no-undef` finds it in seconds.

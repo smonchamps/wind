@@ -1,4 +1,4 @@
-// The scanner the appliers of PLAN-BASCULE-ANGLAIS share (E6a, the
+// The scanner the appliers of PLAN-ENGLISH-SWITCH share (E6a, the
 // cleanup E5d deferred): the JS tokenizer E5b proved on the UI
 // (`apply-ui.mjs`), the CSV reader and the tree walker. It renames WHOLE
 // identifiers only, and never inside string literals, template-literal

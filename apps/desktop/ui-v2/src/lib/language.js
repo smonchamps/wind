@@ -1,4 +1,4 @@
-// The language decision (PLAN-BASCULE-ANGLAIS E5b, CE decision D4 of
+// The language decision (PLAN-ENGLISH-SWITCH E5b, CE decision D4 of
 // 2026-09-02; ADR 0016 amended): English is the reference language of
 // the interface. Pure, no WebView — `e2e/language.test.mjs` is its net;
 // `text.svelte.js` holds the reactive state and the catalogues.

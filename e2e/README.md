@@ -1,6 +1,6 @@
 # E2E — the journeys, the nets and the benches
 
-Rewritten at PLAN-BASCULE-ANGLAIS E6a (2026-09-03, Chief Engineer
+Rewritten at PLAN-ENGLISH-SWITCH E6a (2026-09-03, Chief Engineer
 decision D24): the page it replaces described the v1 selector contract
 and the v1 journeys, gone since the redesign.
 
@@ -78,7 +78,7 @@ decision.
 | [contrast.mjs](contrast.mjs) | a WCAG pair under threshold in any theme (System A8) |
 | [system-coherence.mjs](system-coherence.mjs) | a token, theme or glyph the System says and the code does not ship, or the reverse (DC-D6) |
 | [main-thread-guard.mjs](main-thread-guard.mjs) | a blocking Tauri command on the message pump (PLAN-GELS) |
-| [language-gate.mjs](language-gate.mjs) | any RISE of French markers per file against `language-baseline.json` (PLAN-BASCULE-ANGLAIS E1a) |
+| [language-gate.mjs](language-gate.mjs) | any RISE of French markers per file against `language-baseline.json` (PLAN-ENGLISH-SWITCH E1a) |
 | [ipc-contract.mjs](ipc-contract.mjs) | a Tauri command registered, defined and called by name out of step |
 | [docs-links.mjs](docs-links.mjs) | a dead relative markdown link |
 | [dom-contract.test.mjs](dom-contract.test.mjs) | a test id a spec selects that no component renders |

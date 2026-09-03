@@ -995,7 +995,7 @@ deferral = one justified line.)
 
 ### D-55 · The database, the disk files, the `prefs` keys and the localStorage keys stay French
 
-- **Finding** (PLAN-BASCULE-ANGLAIS, Chief Engineer decision D3 of 2026-09-02;
+- **Finding** (PLAN-ENGLISH-SWITCH, Chief Engineer decision D3 of 2026-09-02;
   GLOSSARY §1.6): the SQLite schema (26 tables, ~30 French columns),
   the six `prefs` keys, the files on disk (`wind.db`, `wind.log`,
   `maj.log`, `telemetry.json`, `discovery.db`) and the browser
@@ -1018,7 +1018,7 @@ deferral = one justified line.)
 
 ### D-56 · Shell-composed text stays French while the UI may be English
 
-Opened on 2026-09-03 (PLAN-BASCULE-ANGLAIS E5, CE decision D17). The size
+Opened on 2026-09-03 (PLAN-ENGLISH-SWITCH E5, CE decision D17). The size
 units of `human_size` (`o`, `Ko`, `Mo` — attachments, drafts, the outbox),
 the two native dialogs of `main.rs` (second instance, failed relocation)
 and the one shell error string a spec asserts are composed by the shell in
@@ -1034,7 +1034,7 @@ asserts it as shipped (`redesign-screen02.spec.js`).
 
 ### D-57 · The onboarding illustrations are French screenshots inside an English default UI
 
-Opened on 2026-09-03 (PLAN-BASCULE-ANGLAIS E6b, Chief Engineer decision
+Opened on 2026-09-03 (PLAN-ENGLISH-SWITCH E6b, Chief Engineer decision
 D28). `assets/accueil/disposition-{1,2,3}.png` are screenshots of the
 French interface, captured by `e2e/capture-onboarding.mjs` (pinned to
 `lang: 'fr'` so a replay does not change a visible asset without a

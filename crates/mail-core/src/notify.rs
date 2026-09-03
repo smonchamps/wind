@@ -31,7 +31,7 @@ pub enum Lang {
 
 impl Lang {
     /// The code set by the UI (`prefs.lang`). Absent or unknown = English
-    /// — the same fallback as the interface (PLAN-BASCULE-ANGLAIS D4).
+    /// — the same fallback as the interface (PLAN-ENGLISH-SWITCH D4).
     pub fn from_pref(code: Option<&str>) -> Self {
         match code {
             Some("fr") => Self::Fr,
@@ -250,7 +250,7 @@ mod tests {
     }
 
     /// `prefs.lang` absent or unknown = English — the UI's reference and
-    /// fallback (PLAN-BASCULE-ANGLAIS D4, ADR 0016 amended).
+    /// fallback (PLAN-ENGLISH-SWITCH D4, ADR 0016 amended).
     #[test]
     fn the_lang_pref_falls_back_to_english() {
         assert_eq!(Lang::from_pref(None), Lang::En);

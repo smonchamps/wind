@@ -1,4 +1,4 @@
-//! The wire vocabularies (PLAN-BASCULE-ANGLAIS E5a, decision D16).
+//! The wire vocabularies (PLAN-ENGLISH-SWITCH E5a, decision D16).
 //!
 //! Four closed vocabularies cross the IPC as strings and are persisted
 //! in the database: the category ids (with the routing destinations and

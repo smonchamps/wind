@@ -1,4 +1,4 @@
-// The e2e/scripts applier of PLAN-BASCULE-ANGLAIS (E6a). Three passes,
+// The e2e/scripts applier of PLAN-ENGLISH-SWITCH (E6a). Three passes,
 // one command, on the scanner of `lib.mjs` (the one E5b proved):
 //
 //   node scripts/rename/apply-e2e.mjs --report   -> the hand-review lists, no write

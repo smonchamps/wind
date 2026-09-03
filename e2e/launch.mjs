@@ -224,7 +224,7 @@ async function attach(db, emails, lang = 'en') {
     // `--lang=<lang>`: language detection on first launch
     // (navigator.language, PLAN-LANGUES) reads the WebView locale — without
     // this pin, the suite would depend on the machine's language. English
-    // is the language of the journeys since PLAN-BASCULE-ANGLAIS E6b (the
+    // is the language of the journeys since PLAN-ENGLISH-SWITCH E6b (the
     // product's default, D4 — Chief Engineer decision D22 of 2026-09-03);
     // redesign-language.spec.js pins `fr` for the French round trip, and
     // a non-French locale proves the D4 default.

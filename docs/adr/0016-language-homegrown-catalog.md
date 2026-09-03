@@ -1,6 +1,6 @@
 # ADR 0016 — Interface language: homegrown flat catalogs, no i18n library
 
-Date: 2026-08-12 · Status: accepted (PLAN-LANGUES, decision L-2) · **amended on 2026-09-03 (PLAN-BASCULE-ANGLAIS, decision D4 — see the end of the page)**.
+Date: 2026-08-12 · Status: accepted (PLAN-LANGUES, decision L-2) · **amended on 2026-09-03 (PLAN-ENGLISH-SWITCH, decision D4 — see the end of the page)**.
 
 ## Context
 
@@ -40,7 +40,7 @@ first launch: the system language if covered, else `fr`.
   testable, exact — `Intl` produces neither a contextual "Yesterday"
   nor "1st".
 
-## Amendment of 2026-09-03 — English is the reference (PLAN-BASCULE-ANGLAIS, D4)
+## Amendment of 2026-09-03 — English is the reference (PLAN-ENGLISH-SWITCH, D4)
 
 Decision D4 of the switch to English (Chief Engineer, 2026-09-02),
 applied at step E5b: **English is the reference language of the

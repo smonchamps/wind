@@ -1,4 +1,4 @@
-// The DOM-contract applier of PLAN-BASCULE-ANGLAIS (E5d, CE decisions
+// The DOM-contract applier of PLAN-ENGLISH-SWITCH (E5d, CE decisions
 // D15, D18-D21 of 2026-09-03). `dom.csv` is the single table — four
 // kinds: `testid`, `class`, `attr` (a `data-*` attribute NAME), `seam`
 // (a `window.__e2e*` hook). One command, the specs and the UI in the

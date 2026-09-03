@@ -1,252 +1,251 @@
-**2026-09-03: “As proposed”** |**2026-09-03: “Yes, names only”** |**2026-09-03: “Rewrite short and true”** |**2026-09-03: “Translate”** |**2026-09-03: “(b) Switch to English”** |# PLAN-BASCULE-ANGLAIS — tout le dépôt du français vers l'anglais
+# PLAN-ENGLISH-SWITCH — the whole repository from French to English
 
-> **CHANTIER OUVERT le 2026-09-02** (GO CE après 0.16.0, 0.17.0 et le solde
-> de PLAN-AUDIT-V2 ; quatorze décisions tranchées, §6).
+> **JOB OPENED on 2026-09-02** (CE go-ahead after 0.16.0, 0.17.0 and the
+> close-out of PLAN-AUDIT-V2; fourteen decisions settled, §6).
 >
-> Rédigé le 2026-09-02 sur commande du CE (« basculer l'ensemble du
-> code et de la documentation du français vers l'anglais »). **Aucun
-> code n'est écrit avant le GO du STOP 1** (décisions D1-D14 ci-dessous).
-> Ce plan est lui-même en français : il se traduit à son étape (E7),
-> comme les autres documents vivants. La règle STANDARD §2.8 (« tout
-> est en français ») s'amende au **premier commit** du chantier ; à
-> partir de là, les commits sont en anglais.
+> Written on 2026-09-02 on the CE's order ("switch the whole
+> codebase and documentation from French to English"). **No
+> code is written before the GO of STOP 1** (decisions D1-D14 below).
+> This plan is itself in French: it translates itself at its own step
+> (E7), like the other living documents. The STANDARD §2.8 rule
+> ("everything is in French") is amended at the job's **first commit**;
+> from there on, commits are in English.
 >
-> Principe directeur : **un chantier de renommage n'est pas un chantier
-> de comportement.** Chaque commit laisse un produit strictement
-> identique pour l'utilisateur (hors D4), une gate verte et un état
-> bisectable. Le compilateur Rust, le build Vite, les e2e et trois
-> filets neufs (E1) sont les oracles — jamais l'œil seul.
+> Guiding principle: **a rename job is not a behavior job.** Every
+> commit leaves a product strictly identical for the user (except D4),
+> a green gate and a bisectable state. The Rust compiler, the Vite
+> build, the e2e suite and three new nets (E1) are the oracles — never
+> the eye alone.
 
-## 1. Constat — où vit le français (mesuré le 2026-09-02, `0a3fb7d`)
+## 1. Findings — where the French lives (measured on 2026-09-02, `0a3fb7d`)
 
-Toutes les mesures excluent `target/`, `node_modules/`, `dist/`,
-`spikes/` et `.claude/worktrees/`. « Français-ish » = identifiant dont
-au moins un segment est un mot français d'une liste de ~300 (heuristique,
-sous-estime plutôt qu'elle ne surestime).
+All measurements exclude `target/`, `node_modules/`, `dist/`,
+`spikes/` and `.claude/worktrees/`. "French-ish" = an identifier where
+at least one segment is a French word from a list of ~300 (heuristic,
+underestimates rather than overestimates).
 
-### 1.1 Le code
+### 1.1 The code
 
-| Couche | Fichiers | Lignes | Mots de commentaires | Définitions françaises | Identifiants français | Notes |
+| Layer | Files | Lines | Comment words | French definitions | French identifiers | Notes |
 |---|---|---|---|---|---|---|
-| Rust, 6 crates | 54 `.rs` | ~36 800 | ~60 500 | — | — | `store.rs` seul : 10 504 lignes |
-| Rust, shell `apps/desktop/src` | 7 `.rs` | ~7 200 | ~18 300 | — | — | `commands.rs` 7 146 lignes |
-| Rust, total | 61 | 43 988 | ~78 800 | **613 / 1 851 (33 %)** | 873 / 3 757 | 664 `#[test]` aux noms français (`une_base_neuve_n_a_aucune_colonne_fantome`) ; 20 messages `#[error]` français ; ~62 000 mots dans des littéraux (SQL, traces, erreurs, jeu d'essai) |
-| UI Svelte + JS (`ui-v2/src`) | 25 composants + 24 modules `lib/` | 11 693 + ~2 800 | ~33 800 | **455 / 844 (54 %)** | 587 / 1 691 | tous les noms de composants sont français (`Reglages`, `Nettoyage`, `Kiosque`, `PileMisDeCote`, `GuichetCompte`, `FenteAvis`…) |
-| e2e + scripts | 29 specs, ~20 outils `.mjs`, 9 `.ps1`, 1 `.py` | ~9 300 | ~22 300 | 140 / 420 | 313 / 1 677 | **2** ancrages seulement sur un libellé français (`getByRole … name: 'Annuler l'envoi'`) : les parcours s'ancrent sur la structure, pas sur les mots |
-| Outillage méta | `CLAUDE.md`, 4 skills (275 l.), agent `spike`, `gate.ps1`, hook `pre-push`, `ci.yml`, `launch.json` | ~700 | — | — | — | noms de scripts français (`make-release.ps1`, `verify-release.ps1`, `run-wind.ps1`, `install-workstation.ps1`, `build-wind.mjs`, `measure-sessions.mjs`) |
+| Rust, 6 crates | 54 `.rs` | ~36 800 | ~60 500 | — | — | `store.rs` alone: 10 504 lines |
+| Rust, shell `apps/desktop/src` | 7 `.rs` | ~7 200 | ~18 300 | — | — | `commands.rs` 7 146 lines |
+| Rust, total | 61 | 43 988 | ~78 800 | **613 / 1 851 (33 %)** | 873 / 3 757 | 664 `#[test]` with French names (`une_base_neuve_n_a_aucune_colonne_fantome`); 20 French `#[error]` messages; ~62 000 words in literals (SQL, traces, errors, test set) |
+| UI Svelte + JS (`ui-v2/src`) | 25 components + 24 `lib/` modules | 11 693 + ~2 800 | ~33 800 | **455 / 844 (54 %)** | 587 / 1 691 | all component names are French (`Reglages`, `Nettoyage`, `Kiosque`, `PileMisDeCote`, `GuichetCompte`, `FenteAvis`…) |
+| e2e + scripts | 29 specs, ~20 `.mjs` tools, 9 `.ps1`, 1 `.py` | ~9 300 | ~22 300 | 140 / 420 | 313 / 1 677 | only **2** anchors on a French label (`getByRole … name: 'Annuler l'envoi'`): the journeys anchor on structure, not words |
+| Meta tooling | `CLAUDE.md`, 4 skills (275 l.), `spike` agent, `gate.ps1`, `pre-push` hook, `ci.yml`, `launch.json` | ~700 | — | — | — | French script names (`make-release.ps1`, `verify-release.ps1`, `run-wind.ps1`, `install-workstation.ps1`, `build-wind.mjs`, `measure-sessions.mjs`) |
 
-Surfaces de **contrat** (un nom des deux côtés d'une frontière) :
+**Contract** surfaces (one name on both sides of a boundary):
 
-- **IPC Tauri** : 110 commandes `#[tauri::command]`, ~45 françaises
+- **Tauri IPC**: 110 `#[tauri::command]` commands, ~45 French
   (`agir_groupe`, `nettoyage_*` ×6, `kiosque_*` ×3, `portier_*` ×5,
   `registre_*` ×2, `repere_*` ×2, `pile_mis_de_cote`, `router_expediteur*`,
   `retirer_routage`, `completer_adresses`, `chemin_enregistrement_suggere`,
   `sync_apres_geste`, `reseau_etat`, `etat_ui`, `nom_set`/`noms_get`…).
-  Appelées depuis l'UI par `appel('nom')` (`lib/transport.js`) : **le
-  compilateur ne voit pas cette frontière** — un nom raté = un rejet à
-  l'exécution, découvert par un e2e ou au terrain.
-- **Schéma SQLite** (`store.rs:26-460`) : 26 tables dont **9 françaises**
-  (`correspondants`, `echos`, `mis_de_cote`, `kiosque_lus`,
+  Called from the UI by `appel('name')` (`lib/transport.js`): **the
+  compiler does not see this boundary** — a missed name means a
+  runtime rejection, discovered by an e2e test or in the field.
+- **SQLite schema** (`store.rs:26-460`): 26 tables of which **9 are
+  French** (`correspondants`, `echos`, `mis_de_cote`, `kiosque_lus`,
   `images_expediteurs`, `routage_expediteurs`, `portier_attente`,
-  `nettoyage_session`, `reparations`) et ~30 colonnes françaises
+  `nettoyage_session`, `reparations`) and ~30 French columns
   (`annule`, `borne_epoch`, `debut_epoch`, `journee_entiere`, `lieu`,
   `methode`, `organisateur_*`, `perimetre`, `plage`, `refusee`, `regle`,
   `relevee_epoch`, `repondant_*`, `reponse`, `titre`, `traites`,
-  `initialisee`…). Six clés `prefs` (`lang`, `mode_organise`,
+  `initialisee`…). Six `prefs` keys (`lang`, `mode_organise`,
   `mode_organise_epoch`, `horizon_import`, `nom_compte`, `notif_pref`).
-  Fichiers sur disque : `wind.db`, `discovery.db`, `wind.log`, `maj.log`,
-  `telemetry.json`. **Tout cela vit sur les postes des testeurs.**
-- **Catalogues de langue** (ADR 0016) : `catalogue.fr.js` 645 l.,
-  `catalogue.en.js` 616 l., **clés françaises** (`'boite.kiosque'`,
-  `'portier.oui'`…), 569 appels `t()`. Le français est la référence et
-  le repli ; `refonte-langue.spec.js` affirme « le français du prototype
-  est la langue par défaut » ; `Lang::from_pref` (`notify.rs:35`) rend
-  `Fr` par défaut. **L'anglais produit existe déjà, validé CE** :
-  Kiosque → *Feed*, Portier → *Screener*, Registre → *Paper trail*,
-  Mis de côté → *Set aside*, Repère → *Marker*, Nettoyage → *Clean*.
-- **Jetons CSS** : 15 propriétés `--*` dans `systeme.css`, mixtes
-  (`--ink`, `--bg`, `--border` anglais ; `--marque`, `--r-controle`,
-  `--r-tuile`, `--rep-bleu`… français), tenues valeur pour valeur par la
-  gate `coherence-systeme.mjs` contre `systeme.dc.html` et `theme.js`
-  (DC-D6) : renommer un jeton = trois fichiers au même commit.
-- **Traces `wind.log`** : 15 sites `trace::trace(…)`, lignes françaises ;
-  aucun script du dépôt ne les relit (grep `wind.log|maj.log` dans
-  `scripts/`, `e2e/`, skills : 0) — le CE les lit à l'œil au terrain.
+  Files on disk: `wind.db`, `discovery.db`, `wind.log`, `maj.log`,
+  `telemetry.json`. **All of this lives on the testers' machines.**
+- **Language catalogues** (ADR 0016): `catalogue.fr.js` 645 l.,
+  `catalogue.en.js` 616 l., **French keys** (`'boite.kiosque'`,
+  `'portier.oui'`…), 569 `t()` calls. French is the reference and the
+  fallback; `refonte-langue.spec.js` asserts "the prototype's French is
+  the default language"; `Lang::from_pref` (`notify.rs:35`) returns
+  `Fr` by default. **The English product wording already exists,
+  CE-validated**: Kiosque → *Feed*, Portier → *Screener*, Registre →
+  *Paper trail*, Mis de côté → *Set aside*, Repère → *Marker*,
+  Nettoyage → *Clean*.
+- **CSS tokens**: 15 `--*` properties in `systeme.css`, mixed (`--ink`,
+  `--bg`, `--border` English; `--marque`, `--r-controle`, `--r-tuile`,
+  `--rep-bleu`… French), held value for value by the
+  `coherence-systeme.mjs` gate against `systeme.dc.html` and `theme.js`
+  (DC-D6): renaming a token means three files in the same commit.
+- **`wind.log` traces**: 15 `trace::trace(…)` sites, French lines; no
+  script in the repository reads them back (grep `wind.log|maj.log` in
+  `scripts/`, `e2e/`, skills: 0) — the CE reads them by eye in the
+  field.
 
-### 1.2 La documentation
+### 1.2 The documentation
 
-| Corpus | Volume | Statut |
+| Corpus | Volume | Status |
 |---|---|---|
-| `docs/*.md` vivants : STATE 1 459 l., STANDARD 987, DEBT 964, PLAN.md 254, WORKFLOW 141, BETA 141, AUDIT 843, PASSATION 10 | ~4 800 lignes | normatif ou volatile, relu à chaque session |
-| 30 `PLAN-*.md` non archivés | 9 537 lignes | mélange : PLAN-AUDIT-V2 en cours, les autres soldés mais pas encore déplacés |
-| 31 ADR | 2 916 lignes | **décisions gelées**, vivantes ; noms de fichiers français (`0008-regroupement-en-conversations.md`) |
-| 29 archives (`docs/archives/`) | 6 804 lignes | clos ; PHASE0-3, plans soldés |
-| `CHANGELOG.md` | 758 lignes | public ; **lu par `make-release.ps1`** pour les notes de Release (`## [x.y.z]` obligatoire) ; 5 Releases publiées 0.11→0.15 avec notes françaises |
-| `README.md`, `e2e/README.md`, `assets/icones/README.md`, `ANNOTATIONS-V3.md` | 36 + 100 + 18 + 65 l. | vivants |
-| **`docs/design/systeme.dc.html`** | 570 Ko, **~37 000 mots**, 109 amendements A-n | **seul normatif de l'UI** (A18), outillé par la gate ; le journal A-n est cité 3 978 fois (docs + code) |
-| `docs/architecture/index.html` | ~4 300 mots | vivant |
-| Skills, agent, `CLAUDE.md`, mémoire persistante (17 fichiers hors dépôt) | ~600 l. | instruction permanente de la session |
-| **Total markdown** | 104 fichiers, 25 346 lignes, **~200 000 mots** | |
+| living `docs/*.md`: ETAT 1 459 l., STANDARD 987, DETTE 964, PLAN.md 254, WORKFLOW 141, BETA 141, AUDIT 843, PASSATION 10 | ~4 800 lines | normative or volatile, re-read every session |
+| 30 un-archived `PLAN-*.md` | 9 537 lines | mixed: PLAN-AUDIT-V2 in progress, the others closed but not yet moved |
+| 31 ADR | 2 916 lines | **frozen decisions**, living; French file names (`0008-regroupement-en-conversations.md`) |
+| 29 archives (`docs/archives/`) | 6 804 lines | closed; PHASE0-3, closed plans |
+| `CHANGELOG.md` | 758 lines | public; **read by `make-release.ps1`** for Release notes (`## [x.y.z]` mandatory); 5 Releases published 0.11→0.15 with French notes |
+| `README.md`, `e2e/README.md`, `assets/icones/README.md`, `ANNOTATIONS-V3.md` | 36 + 100 + 18 + 65 l. | living |
+| **`docs/design/systeme.dc.html`** | 570 KB, **~37 000 words**, 109 A-n amendments | **the only normative document for the UI** (A18), tooled by the gate; the A-n log is cited 3 978 times (docs + code) |
+| `docs/architecture/index.html` | ~4 300 words | living |
+| Skills, agent, `CLAUDE.md`, persistent memory (17 files outside the repository) | ~600 l. | permanent session instruction |
+| **Total markdown** | 104 files, 25 346 lines, **~200 000 words** | |
 
-Renvois qui cassent à un renommage de fichier : **71 liens markdown**
-vers `adr/`, `PLAN-*.md`, `archives/` ; 592 mentions « ADR nnnn »
-(numéro, pas chemin — survivent) ; 43 noms de PLAN cités dans le code ;
-9 chemins `docs/adr/…` cités dans des commentaires Rust. Aucun
-vérificateur de liens n'existe au dépôt.
+Cross-references that break on a file rename: **71 markdown links** to
+`adr/`, `PLAN-*.md`, `archives/`; 592 "ADR nnnn" mentions (number, not
+path — survive); 43 PLAN names cited in the code; 9 `docs/adr/…` paths
+cited in Rust comments. No link checker exists in the repository.
 
-### 1.3 Ce qui ne bouge pas, par nature
+### 1.3 What does not move, by nature
 
-- **L'historique git** : 488 commits français, sans accents. Il vient
-  d'être réécrit une fois (2026-09-01, `filter-repo`, pour des PII) et
-  le ticket support GitHub est encore dû : **on ne le réécrit pas pour
-  une langue** (refus §5).
-- **Les Releases publiées** (0.11 → 0.15) et leurs notes.
-- **Les bases et fichiers sur les postes** (D3).
+- **The git history**: 488 French commits, without accents. It was
+  just rewritten once (2026-09-01, `filter-repo`, for PII) and the
+  GitHub support ticket is still open: **it is not rewritten for a
+  language** (refusal §5).
+- **The published Releases** (0.11 → 0.15) and their notes.
+- **The databases and files on the machines** (D3).
 
-### 1.4 Ordre de grandeur
+### 1.4 Order of magnitude
 
-~135 000 mots de commentaires de code + ~200 000 mots de markdown +
-~41 000 mots de HTML normatif = **~375 000 mots de prose**, plus
-**~1 200 définitions** à renommer, plus ~115 fichiers à renommer
-(25 composants, 31 ADR, 30 PLAN, 29 specs/outils, 9 scripts). La
-traduction de prose est assistée par modèle et relue (D9) ; le
-renommage est mécanique et vérifié par les oracles. **Le premier crate
-livré (E3a) donne le débit réel** ; l'estimation totale (§4) se
-re-mesure à ce moment-là, pas avant.
+~135 000 words of code comments + ~200 000 words of markdown + ~41 000
+words of normative HTML = **~375 000 words of prose**, plus **~1 200
+definitions** to rename, plus ~115 files to rename (25 components, 31
+ADR, 30 PLAN, 29 specs/tools, 9 scripts). Prose translation is
+model-assisted and reviewed (D9); the renaming is mechanical and
+checked by the oracles. **The first crate delivered (E3a) gives the
+real throughput**; the total estimate (§4) is re-measured at that
+point, not before.
 
-## 2. Périmètre
+## 2. Scope
 
-**Dedans** : identifiants, commentaires, chaînes techniques, noms de
-fichiers et de modules du code Rust, Svelte, JS, PowerShell, Python ;
-contrat IPC ; clés des catalogues ; noms de tests et de specs ; scripts,
-gate, hook, CI ; tous les documents vivants (§1.2) ; le Système et la
-carte d'architecture ; skills, agent, `CLAUDE.md`, mémoire ;
-STANDARD §2.8 (la règle elle-même) ; la convention de commit.
+**In scope**: identifiers, comments, technical strings, file and
+module names of Rust, Svelte, JS, PowerShell, Python code; IPC
+contract; catalogue keys; test and spec names; scripts, gate, hook,
+CI; all living documents (§1.2); the System and the architecture map;
+skills, agent, `CLAUDE.md`, memory; STANDARD §2.8 (the rule itself);
+the commit convention.
 
-**Dehors, par refus explicite (§5)** : l'historique git ; les
-identifiants **persistés** (schéma SQLite, clés `prefs`, fichiers sur
-disque) sauf décision D3 contraire ; `spikes/` (jetables, hors
-workspace — 1,1 Go, 20 dossiers) ; tout changement de comportement ;
-toute langue d'interface au-delà de fr/en.
+**Out of scope, by explicit refusal (§5)**: the git history; the
+**persisted** identifiers (SQLite schema, `prefs` keys, files on disk)
+unless decision D3 says otherwise; `spikes/` (throw-away, outside the
+workspace — 1,1 GB, 20 folders); any behavior change; any interface
+language beyond fr/en.
 
-**À la décision du CE** : les archives (D1), la langue par défaut (D4),
-les documents des testeurs (D11), le CHANGELOG passé (D13).
+**At the CE's decision**: the archives (D1), the default language
+(D4), the testers' documents (D11), the past CHANGELOG (D13).
 
-## 3. Options — départagées sur des faits
+## 3. Options — settled on facts
 
-### 3.1 Ordre d'attaque
+### 3.1 Order of attack
 
-| Option | Fait qui tranche | Verdict |
+| Option | Deciding fact | Verdict |
 |---|---|---|
-| A. Docs d'abord, code ensuite | les docs citent ~1 200 identifiants et 43 PLAN par leur nom : traduire la prose AVANT de renommer produit des noms pendants qu'il faudra re-corriger | rejetée |
-| B. Big bang, un commit | gate complète ~4-10 min mais revue impossible, bisect mort, un rouge e2e flaky (mémoire : la suite flake ici) bloque tout | rejetée |
-| **C. Par couche, du bas vers le haut, un commit par couche, gate à chaque** | chaque couche a son oracle (crate : `cargo build` ; shell+UI : build Vite + e2e ; docs : liens + filet de langue) ; un commit = un état livrable | **retenue** |
+| A. Docs first, code after | the docs cite ~1 200 identifiers and 43 PLANs by name: translating the prose BEFORE renaming produces dangling names that would need re-fixing | rejected |
+| B. Big bang, one commit | full gate ~4-10 min but review impossible, bisect dead, one flaky e2e red (memory: the suite flakes here) blocks everything | rejected |
+| **C. By layer, bottom-up, one commit per layer, gate at each** | every layer has its own oracle (crate: `cargo build`; shell+UI: Vite build + e2e; docs: links + language net); one commit = one deliverable state | **adopted** |
 
-Ordre C : glossaire (E0) → filets (E1) → outillage méta (E2) →
-crates feuilles puis `mail-core` (E3) → shell + UI **au même commit
-pour l'IPC** (E4) → UI seule (E5) → e2e/scripts (E6) → docs vivantes
-(E7) → Système (E8) → archives selon D1 (E9) → mémoire et solde (E10).
+Order C: glossary (E0) → nets (E1) → meta tooling (E2) → leaf crates
+then `mail-core` (E3) → shell + UI **in the same commit for the IPC**
+(E4) → UI alone (E5) → e2e/scripts (E6) → living docs (E7) → System
+(E8) → archives per D1 (E9) → memory and close-out (E10).
 
-### 3.2 Mécanique du renommage
+### 3.2 Rename mechanics
 
-| Option | Fait qui tranche | Verdict |
+| Option | Deciding fact | Verdict |
 |---|---|---|
-| `sed` global sur le texte | `fil` est un sous-mot de `filtre`, `profil`, `fil_route` ; `nom` de `nombre` : collisions garanties sur 44 000 lignes | rejetée |
-| rust-analyzer « rename symbol » | pas de pilotage en ligne de commande dans l'outillage du dépôt ; ne couvre ni Svelte ni les chaînes IPC | rejetée comme outil principal |
-| **Dictionnaire `ancien → nouveau` appliqué par un script sur les identifiants entiers (`\b`), hors littéraux et hors commentaires, puis compilation** | le compilateur Rust attrape toute référence ratée ; côté JS il n'y a pas de compilateur → filet `no-undef` à mesurer (E1c) ; `cargo fmt` rejoué après (mémoire : fmt après tout remplacement mécanique) | **retenue** |
+| global `sed` on the text | `fil` is a substring of `filtre`, `profil`, `fil_route`; `nom` of `nombre`: collisions guaranteed over 44 000 lines | rejected |
+| rust-analyzer "rename symbol" | no command-line driving in the repository's tooling; covers neither Svelte nor the IPC strings | rejected as the main tool |
+| **`old → new` dictionary applied by a script on whole identifiers (`\b`), outside literals and comments, then compilation** | the Rust compiler catches every missed reference; on the JS side there is no compiler → `no-undef` net to be measured (E1c); `cargo fmt` replayed after (memory: fmt after every mechanical replacement) | **adopted** |
 
-Le dictionnaire est **le** livrable de conception (E0) : chaque nom
-tranché une fois, appliqué partout. Les collisions connues à instruire
-au glossaire : `fil` → *thread* alors que `mail-core::thread` (union-find
-des conversations) et `std::thread` existent déjà ; `releve` (la passe
-de synchro) ; `geste` (action utilisateur vs `Action` de
-`pending_actions`) ; `boite` (mailbox vs inbox) ; `corps` (body) ;
-`pièce` (attachment).
+The dictionary is **the** design deliverable (E0): every name settled
+once, applied everywhere. Known collisions to rule on in the glossary:
+`fil` → *thread* while `mail-core::thread` (union-find of
+conversations) and `std::thread` already exist; `releve` (the sync
+pass); `geste` (user action vs `Action` of `pending_actions`); `boite`
+(mailbox vs inbox); `corps` (body); `pièce` (attachment).
 
-### 3.3 La preuve « tout est en anglais »
+### 3.3 The proof that "everything is in English"
 
-| Option | Fait qui tranche | Verdict |
+| Option | Deciding fact | Verdict |
 |---|---|---|
-| Compter les accents | après la bascule, un « é » oublié se voit, mais « le fichier est ouvert » n'a pas d'accent ; 0 accent ≠ 0 français | insuffisant seul |
-| **Filet de mots-outils français** (`le la les des une est pas pour dans avec sur qui que ne cette sont été était jamais toujours…`) par fichier, avec **cliquet** : une base de référence commitée, la gate refuse toute hausse, chaque étape abaisse la base, à la fin la base est 0 et le filet devient absolu | mesure ce qu'un lecteur voit ; exclut par liste les corpus légitimement français (`catalogue.fr.js`, `BETA.fr.md` si D11, archives si D1-gel) | **retenue** (E1a) |
+| Counting accents | after the switch, a forgotten "é" is visible, but "le fichier est ouvert" has no accent; 0 accents ≠ 0 French | insufficient alone |
+| **French stop-word net** (`le la les des une est pas pour dans avec sur qui que ne cette sont été était jamais toujours…`) per file, with a **ratchet**: a committed reference baseline, the gate refuses any rise, each step lowers the baseline, at the end the baseline is 0 and the net becomes absolute | measures what a reader sees; excludes by list the corpora legitimately French (`catalogue.fr.js`, `BETA.fr.md` if D11, archives if D1-freeze) | **adopted** (E1a) |
 
-Le filet se prouve **en le cassant** (mémoire : trois tests sur cinq
-étaient décoratifs à PLAN-ESPACEMENT) : un commentaire français glissé
-dans un fichier « propre » doit rougir la gate avant que le filet ne
-soit déclaré livré.
+The net proves itself **by being broken** (memory: three tests out of
+five were decorative at PLAN-ESPACEMENT): a French comment slipped
+into a "clean" file must redden the gate before the net is declared
+delivered.
 
-## 4. Étapes
+## 4. Steps
 
-Tailles : P < ½ jour, M = 1 jour, G = 2-3 jours. Chaque étape = un ou
-plusieurs commits, gate complète avant chacun (les étapes docs
-empruntent le chemin rapide documentaire du hook, étapes 1-6).
+Sizes: P < ½ day, M = 1 day, G = 2-3 days. Each step = one or more
+commits, full gate before each (doc steps take the hook's fast
+documentary path, steps 1-6).
 
-### E0 — Glossaire et dictionnaire (M)
+### E0 — Glossary and dictionary (M)
 
-> **Livré le 2026-09-02, STOP 1 bis joué le jour même : « Validé tel quel » (CE)** — [GLOSSARY.md](GLOSSARY.md)
-> (en anglais — le premier document du dépôt à l'être, à dessein) et
-> `scripts/rename/` : `tokens.csv` (1 588 segments et locutions),
-> `dictionary.csv` (1 210 identifiants dérivés), `keys.csv` (480 clés de
-> catalogue sur 496), `dom.csv` (542 test ids, classes CSS et coutures
-> e2e sur 652), `test-names.txt` (227 phrases de test, à la main à E3),
-> `collisions.txt` (360 homonymes, presque tous hors de toute portée
-> commune). Inventaire réel : 1 580 définitions françaises (Rust 777,
-> UI 595, e2e/scripts 208) — l'estimation de §1.4 (~1 200) était basse
-> de 30 %. Rulings de collision au §4 du glossaire (fil/thread,
-> geste/action, ligne row/line, compte account/count…).
+> **Delivered on 2026-09-02, STOP 1 bis played the same day: "Validated as is" (CE)** — [GLOSSARY.md](GLOSSARY.md)
+> (in English — the first document of the repository to be, on purpose) and
+> `scripts/rename/`: `tokens.csv` (1 588 segments and phrases),
+> `dictionary.csv` (1 210 derived identifiers), `keys.csv` (480 catalogue
+> keys out of 496), `dom.csv` (542 test ids, CSS classes and e2e seams
+> out of 652), `test-names.txt` (227 test sentences, by hand at E3),
+> `collisions.txt` (360 homonyms, almost all outside any common scope).
+> Real inventory: 1 580 French definitions (Rust 777, UI 595,
+> e2e/scripts 208) — the §1.4 estimate (~1 200) was low by 30 %.
+> Collision rulings in §4 of the glossary (fil/thread, geste/action,
+> ligne row/line, compte account/count…).
 
-- `docs/GLOSSARY.md` : le vocabulaire **produit** (repris de
-  `catalogue.en.js`, déjà tranché CE à PLAN-LANGUES et
-  PLAN-MODE-ORGANISE : Feed, Screener, Paper trail, Set aside, Marker,
-  Clean…) et le vocabulaire **technique** (relève → *sweep* ou *poll*,
+- `docs/GLOSSARY.md`: the **product** vocabulary (taken from
+  `catalogue.en.js`, already settled by the CE at PLAN-LANGUES and
+  PLAN-MODE-ORGANISE: Feed, Screener, Paper trail, Set aside, Marker,
+  Clean…) and the **technical** vocabulary (relève → *sweep* or *poll*,
   veilleur → *watcher*, déménagement → *relocation*, geste → *action*,
-  fente d'avis → *notice slot*, guichet → *account desk*, rangée → *row*,
-  volet → *pane*, repère → *marker*, horizon → *horizon*…). Une entrée
-  par mot, tranchée une fois (D6).
-- `scripts/rename-dictionary.csv` : identifiant → identifiant, dérivé
-  du glossaire, **complet avant le premier renommage** (les ~1 200
-  définitions de §1.1, extraites par le script de mesure de ce plan).
-- Inventaire des cas à décision unitaire : collisions §3.2, les 15
-  jetons CSS, les clés des catalogues.
+  fente d'avis → *notice slot*, guichet → *account desk*, rangée →
+  *row*, volet → *pane*, repère → *marker*, horizon → *horizon*…). One
+  entry per word, settled once (D6).
+- `scripts/rename-dictionary.csv`: identifier → identifier, derived
+  from the glossary, **complete before the first rename** (the ~1 200
+  definitions of §1.1, extracted by this plan's measurement script).
+- Inventory of cases needing a per-case decision: collisions §3.2, the
+  15 CSS tokens, the catalogue keys.
 
-### E1 — Trois filets, prouvés en les cassant (M)
+### E1 — Three nets, proven by breaking them (M)
 
-> **Livré le 2026-09-02.** `e2e/language-gate.mjs` (cliquet : 275 fichiers
-> suivis, 260 avec du français, **142 113 marqueurs** à la base de
-> référence `e2e/language-baseline.json` ; `spikes/`, `docs/archives/`,
-> `catalogue.fr.js`, `BETA.fr.md`, `scripts/rename/` exemptés ; une
-> ligne portant `lang:fr` est exemptée), `e2e/ipc-contract.mjs`
-> (110 commandes définies, 111 enregistrées, 104 appelées par nom ;
-> **`queue_send` n'était vu par personne** — un commentaire entre les
-> attributs), `e2e/docs-links.mjs` (77 fichiers, 207 liens relatifs, 0
-> mort ; 3 morts trouvés dans `spikes/`, hors périmètre). **Chacun prouvé
-> en le cassant** : un mot français ajouté à `dependabot.yml` (11 → 16,
-> rouge), un `appel('nope_cmd')` (rouge), un lien mort dans GLOSSARY.md
-> (rouge), puis vert une fois rétabli. **E1c set-based, mesuré** : eslint
-> `no-undef` (flat config, plugin Svelte, runes en globals) attrape la
-> casse en 3-5 s dans `.svelte` ET `.js`, 0 erreur préexistante ;
-> `svelte-check --threshold error` l'attrape aussi (8,5 s) mais sur
-> **1 059 erreurs préexistantes** (`checkJs`) — rejeté, désinstallé.
-> Gate : 13 étapes (7-9 neuves, jouées aussi sur le chemin documentaire),
-> `npm run lint` dans l'étape 2 ; CI : quatre pas neufs au job `ui-v2`.
-> Les ajouts de ce commit sont écrits en anglais : le cliquet interdit
-> déjà toute hausse.
+> **Delivered on 2026-09-02.** `e2e/language-gate.mjs` (ratchet: 275
+> tracked files, 260 with French, **142 113 markers** at the reference
+> baseline `e2e/language-baseline.json`; `spikes/`, `docs/archives/`,
+> `catalogue.fr.js`, `BETA.fr.md`, `scripts/rename/` exempted; a line
+> carrying `lang:fr` is exempted), `e2e/ipc-contract.mjs` (110 commands
+> defined, 111 registered, 104 called by name; **`queue_send` was seen
+> by no one** — a comment between the attributes), `e2e/docs-links.mjs`
+> (77 files, 207 relative links, 0 dead; 3 dead found in `spikes/`, out
+> of scope). **Each proven by breaking it**: a French word added to
+> `dependabot.yml` (11 → 16, red), an `appel('nope_cmd')` (red), a dead
+> link in GLOSSARY.md (red), then green once restored. **E1c
+> set-based, measured**: eslint `no-undef` (flat config, Svelte plugin,
+> runes as globals) catches the breakage in 3-5 s in `.svelte` AND
+> `.js`, 0 preexisting errors; `svelte-check --threshold error` also
+> catches it (8,5 s) but on **1 059 preexisting errors** (`checkJs`) —
+> rejected, uninstalled. Gate: 13 steps (7-9 new, also played on the
+> documentary path), `npm run lint` in step 2; CI: four new steps in
+> the `ui-v2` job. This commit's additions are written in English: the
+> ratchet already forbids any rise.
 
-- **E1a `e2e/language-gate.mjs`** : le cliquet de §3.3, ajouté à
-  `gate.ps1` (étape textuelle, secondes) et à `ci.yml` job `ui-v2`.
-- **E1b `e2e/ipc-contract.mjs`** : chaque `appel('x')` de `ui-v2/src`
-  doit exister dans `generate_handler![…]` de `main.rs`, et
-  réciproquement toute commande enregistrée a un appelant ou une raison
-  écrite. Ce filet n'existe pas aujourd'hui ; il survit au chantier.
-- **E1c** filet JS `no-undef` : set-based à deux options mesurées sur
-  UN renommage volontairement cassé — (i) `eslint` avec la seule règle
-  `no-undef` + plugin Svelte, (ii) `svelte-check` seul. On garde ce qui
-  attrape la casse en moins de 10 s ; si aucun n'attrape, les e2e
-  restent l'oracle et on le dit.
-- **E1d `e2e/docs-links.mjs`** : tout lien markdown relatif résout
-  (71 liens à risque, 592 mentions d'ADR). Chemin rapide documentaire.
+- **E1a `e2e/language-gate.mjs`**: the §3.3 ratchet, added to
+  `gate.ps1` (text step, seconds) and to `ci.yml` job `ui-v2`.
+- **E1b `e2e/ipc-contract.mjs`**: every `appel('x')` in `ui-v2/src`
+  must exist in `main.rs`'s `generate_handler![…]`, and conversely
+  every registered command has a caller or a written reason. This net
+  does not exist today; it survives the job.
+- **E1c** JS `no-undef` net: set-based with two options measured on
+  ONE deliberately broken rename — (i) `eslint` with the sole
+  `no-undef` rule + Svelte plugin, (ii) `svelte-check` alone. We keep
+  whichever catches the breakage in under 10 s; if neither catches it,
+  the e2e suite stays the oracle and we say so.
+- **E1d `e2e/docs-links.mjs`**: every relative markdown link resolves
+  (71 links at risk, 592 ADR mentions). Documentary fast path.
 
-### E2 — Outillage méta (P)
+### E2 — Meta tooling (P)
 
 > **Delivered on 2026-09-02** (this note, and every new paragraph from
 > here on, is written in English — D2; the ratchet forbids any rise).
@@ -263,18 +262,18 @@ empruntent le chemin rapide documentaire du hook, étapes 1-6).
 > (living docs, Rust and TOML comments, memory) — the mapping tables of
 > GLOSSARY.md, the archives, `spikes/` and the design HTML left alone.
 
-`CLAUDE.md`, les 4 skills, l'agent `spike`, `WORKFLOW.md`, `gate.ps1`,
-`.githooks/pre-push`, `ci.yml`, `launch.json`, `dependabot.yml`, les 9
-scripts renommés (`make-release.ps1`, `verify-release.ps1`,
+`CLAUDE.md`, the 4 skills, the `spike` agent, `WORKFLOW.md`, `gate.ps1`,
+`.githooks/pre-push`, `ci.yml`, `launch.json`, `dependabot.yml`, the 9
+renamed scripts (`make-release.ps1`, `verify-release.ps1`,
 `run-wind.ps1`, `install-workstation.ps1`, `build-wind.mjs`,
-`measure-sessions.mjs`, `field.ps1`, `make-icon.ps1`) — et **STANDARD
-§2.8 amendé au même commit** : *everything is in English ; commits
-`type: description` in English*. La convention « sans accents » devient
-sans objet et s'efface. Mémoire : les pointeurs vers les scripts
+`measure-sessions.mjs`, `field.ps1`, `make-icon.ps1`) — and **STANDARD
+§2.8 amended in the same commit**: *everything is in English; commits
+`type: description` in English*. The "no accents" convention becomes
+moot and is dropped. Memory: the pointers to the scripts
 (`gate-complete-avant-commit`, `numerotation-versions-semver`,
-`verifier-release-wind`) suivent à E10.
+`verifier-release-wind`) follow at E10.
 
-### E3 — Les crates, du bord vers le cœur (G, en plusieurs commits)
+### E3 — The crates, from the edge to the core (G, several commits)
 
 > **E3a delivered on 2026-09-02** — `mail-ical`, `mail-render`, `mail-smtp`,
 > `mail-auth` (3 476 lines) rewritten in English: identifiers by the
@@ -358,29 +357,31 @@ sans objet et s'efface. Mémoire : les pointeurs vers les scripts
 > their French fixture DATA: they are the e2e decor and the specs assert those
 > subjects (`Vantis` 47 times) — a first full translation of them turned
 > the e2e wave red (86 passed, 100 did not run) and was reverted; only
+</content>
+</invoke>
 > their API calls changed. Their prose goes English at E6 with the specs.
 > `mail-core` now carries 124 French markers, all deliberate. Oracles: build,
 > clippy, 451 mail-core tests, full gate green. Baseline 119 883 → ~110 100.
 
-Ordre par dépendances : `mail-ical` (345 l.) → `mail-render` →
-`mail-smtp` (978 l.) → `mail-auth` → `mail-imap` (2 800 l., dont
-`faux_serveur.rs`, `tests_e3.rs`) → **`mail-core`** (~24 000 l., dont
-`store.rs` 10 504). Par crate, trois passes dans le même commit :
+Order by dependencies: `mail-ical` (345 lines) → `mail-render` →
+`mail-smtp` (978 lines) → `mail-auth` → `mail-imap` (2 800 lines, including
+`faux_serveur.rs`, `tests_e3.rs`) → **`mail-core`** (~24 000 lines, including
+`store.rs` 10 504). Per crate, three passes in the same commit:
 
-1. identifiants par le dictionnaire, `cargo build` puis `cargo clippy
-   -D warnings` comme oracle, `cargo fmt` ;
-2. commentaires et doc-comments traduits (assistés, relus — D9) ; les
-   renvois « ADR nnnn », « A-n », « D-n », « PLAN-XXX », « §2.9 »
-   restent **tels quels** (numérotation figée, STANDARD en-tête) ;
-3. littéraux : messages `#[error]` (D5), traces, textes de diagnostics
-   et bancs (`examples/` renommés : `bench_indexing.rs`,
-   `diag_opening.rs`, `seed_inbox.rs`…) ; **le SQL ne bouge pas** (D3).
+1. identifiers via the dictionary, `cargo build` then `cargo clippy
+   -D warnings` as the oracle, `cargo fmt`;
+2. comments and doc-comments translated (assisted, reviewed — D9); the
+   cross-references "ADR nnnn", "A-n", "D-n", "PLAN-XXX", "§2.9"
+   stay **as they are** (numbering frozen, STANDARD header);
+3. literals: `#[error]` messages (D5), traces, diagnostic and bench
+   texts (`examples/` renamed: `bench_indexing.rs`,
+   `diag_opening.rs`, `seed_inbox.rs`…); **SQL does not move** (D3).
 
-Noms des 664 tests traduits (ce sont des phrases : « a new database has
-no phantom column »). `mail-core` seul : 2 à 3 commits (store ; sync +
-thread + search ; le reste).
+Names of the 664 tests translated (they are sentences: « a new database has
+no phantom column »). `mail-core` alone: 2 to 3 commits (store; sync +
+thread + search; the rest).
 
-### E4 — Shell + IPC, un seul commit (M)
+### E4 — Shell + IPC, one commit (M)
 
 > **E4 delivered on 2026-09-03** — `apps/desktop/src` (8 552 lines): `commands.rs`
 > split in four chunks at struct boundaries, six Sonnet agents in parallel on
@@ -410,14 +411,14 @@ thread + search ; le reste).
 > One shell error string a spec asserts (“connexion IMAP impossible”, the
 > onboarding contract test) stays French, `lang:fr`, until E5/E6. **Field (STOP 2) on 2026-09-03: E3c and E4 validated by the CE, no finding** — release launched with trace, both accounts polled, cleanup groups 99 ms cold / 16 ms warm, every screen of the checklist OK.
 
-`commands.rs` (110 commandes, ~45 renommées), `veilleur.rs` →
+`commands.rs` (110 commands, ~45 renamed), `veilleur.rs` →
 `watcher.rs`, `demenagement.rs` → `relocation.rs`, `instance.rs`,
-`trace.rs`, `telemetry.rs`, `main.rs` (`generate_handler!`) **et** les
-appels `appel('…')` de l'UI **au même commit** — E1b vert, e2e vertes.
-Les noms de fichiers sur disque (`wind.log`, `maj.log`,
-`telemetry.json`, `discovery.db`) ne changent pas (D3).
+`trace.rs`, `telemetry.rs`, `main.rs` (`generate_handler!`) **and** the UI's
+`appel('…')` calls **in the same commit** — E1b green, e2e green.
+The file names on disk (`wind.log`, `maj.log`,
+`telemetry.json`, `discovery.db`) do not change (D3).
 
-### E5 — L'UI (G)
+### E5 — The UI (G)
 
 > **Investigated on 2026-09-03 (Phase 0, on the evidence).** The UI is
 > 14 915 lines: 25 components, 24 `lib/` modules, `main.js`,
@@ -700,13 +701,13 @@ Les noms de fichiers sur disque (`wind.log`, `maj.log`,
 > the Material icon names (already English); the `inv.*` keys built from
 > a reply value follow D16.
 
-### E6 — e2e et scripts (M)
+### E6 — e2e and scripts (M)
 
-29 specs renommées (`refonte-ecran02.spec.js` → `redesign-screen02.spec.js`…),
-outils `.mjs`, `sonde-gel.py` → `freeze-probe.py`, `mesure-ram.ps1`,
-`bascule-sombre.ps1` ; identifiants, commentaires ; les 2 ancrages sur
-libellés français restent (ils testent le fr, qui reste livré) ; le
-`README.md` d'e2e. `playwright.config.js`, `launch.mjs`, `flaky.mjs`.
+29 specs renamed (`refonte-ecran02.spec.js` → `redesign-screen02.spec.js`…),
+`.mjs` tools, `sonde-gel.py` → `freeze-probe.py`, `mesure-ram.ps1`,
+`bascule-sombre.ps1`; identifiers, comments; the 2 anchors on
+French labels stay (they test the fr, which stays delivered); the
+e2e `README.md`. `playwright.config.js`, `launch.mjs`, `flaky.mjs`.
 
 > **Investigated on 2026-09-03 (Phase 0, on the evidence).** The layer
 > is 10 186 lines: 30 specs (6 052 lines, `refonte-ecran02` alone 1 528),
@@ -724,8 +725,8 @@ libellés français restent (ils testent le fr, qui reste livré) ; le
 > `launchAppV2()` still launches in French (`lang = 'fr'`, 14 of 16
 > calls take the default) while **D4 made English the product's
 > default** — today the default language is exercised by ONE test
-> (`refonte-langue` “a first launch on a non-French system speaks
-> English”); (3) the 191 dictionary rows `layer=e2e-scripts` (`dossier`
+> (`refonte-langue` "a first launch on a non-French system speaks
+> English"); (3) the 191 dictionary rows `layer=e2e-scripts` (`dossier`
 > → `folder` 55 sites, `volet` → `pane` 49, `cadre` → `frame`,
 > `injecterArrivee` → `injectArrival` 11, the exported API of
 > `launch.mjs`/`isolation.mjs`/`jetons.mjs`/`rebuild-v2.mjs`:
@@ -745,7 +746,7 @@ libellés français restent (ils testent le fr, qui reste livré) ; le
 > systeme.mjs`, `jetons.mjs`, `capture-accueil.mjs`, `mesure-v2.mjs`),
 > and the path pointers of the living docs: STANDARD (17 lines — one
 > already stale, `e2e/mesure.mjs` does not exist), the System (15),
-> AUDIT (13), DEBT (5), STATE (5), GLOSSARY (4), the architecture map
+> AUDIT (13), DETTE (5), ETAT (5), GLOSSARY (4), the architecture map
 > (1), and six memory files. **Order of play**: the specs' comment
 > says `refonte-ecran02` is named to run AFTER the v1 journeys
 > (alphabetical order, one asset rebuild per gate) — the rebuild lives
@@ -759,7 +760,7 @@ libellés français restent (ils testent le fr, qui reste livré) ; le
 > `flaky.mjs` and named in `playwright.config.js`) is a French name on
 > the machine.
 >
-> **STOP 1 for E6 played on 2026-09-03: D22 “(b) Switch to English”, D23 “Translate”, D24 “Rewrite short and true”, D25 “Yes, names only”, D26 “As proposed” — GO.**
+> **STOP 1 for E6 played on 2026-09-03: D22 "(b) Switch to English", D23 "Translate", D24 "Rewrite short and true", D25 "Yes, names only", D26 "As proposed" — GO.**
 >
 > **The hard point: the language the specs run in (D22).** Two
 > options, no figure to measure — they differ in what the suite proves:
@@ -916,159 +917,158 @@ libellés français restent (ils testent le fr, qui reste livré) ; le
 > applied the same day** (the bench variables renamed; the French sweep —
 > three more tests; the illustration rule → D-57).
 
-### E7 — Documents vivants (G)
+### E7 — Living documents (G)
 
-Dans cet ordre, chacun son commit, E1d vert : `README.md` ;
-`STANDARD.md` (structure §0-§10 **intacte**, numérotation figée) ;
-`WORKFLOW.md` ; `STATE.md` (réécrit de toute façon au solde — traduire
-la version d'alors) ; `DEBT.md` (D-1…D-53, numéros intacts) ;
-`PLAN.md` ; `BETA.md` (D11) ; `AUDIT-2026-09-01.md` ; `PASSATION.md` ;
-`CHANGELOG.md` (D13 — l'en-tête et `## [0.17.0]` au minimum ;
-`make-release.ps1` continue de lire `## [x.y.z]`) ; **31 ADR** traduits
-et renommés (`0008-conversation-grouping.md`), liens corrigés ; les 30
-`PLAN-*.md` non archivés : les soldés partent en `archives/` d'abord
-(c'est leur place, PLAN-DOCUMENTATION), puis D1 s'applique ; le présent
-plan et PLAN-AUDIT-V2 (en cours) traduits. `ANNOTATIONS-V3.md`,
+In this order, each its own commit, E1d green: `README.md`;
+`STANDARD.md` (structure §0-§10 **intact**, numbering frozen);
+`WORKFLOW.md`; `ETAT.md` (rewritten at close-out anyway — translate
+the then-current version); `DETTE.md` (D-1…D-53, numbers intact);
+`PLAN.md`; `BETA.md` (D11); `AUDIT-2026-09-01.md`; `PASSATION.md`;
+`CHANGELOG.md` (D13 — the header and `## [0.17.0]` at minimum;
+`make-release.ps1` keeps reading `## [x.y.z]`); **31 ADRs** translated
+and renamed (`0008-conversation-grouping.md`), links fixed; the 30
+non-archived `PLAN-*.md`: the closed ones go to `archives/` first
+(that is their place, PLAN-DOCUMENTATION), then D1 applies; the present
+plan and PLAN-AUDIT-V2 (in progress) translated. `ANNOTATIONS-V3.md`,
 `assets/icones/README.md`.
 
-### E8 — Le Système et la carte d'architecture (G)
+### E8 — The System and the architecture map (G)
 
-`systeme.dc.html` (~37 000 mots) : traduire la prose **en place**, le
-journal A1-A109 gardant ses numéros et ses dates, la table des jetons
-gardant ses valeurs (gate `coherence-systeme`) ; revue visuelle CE par
-`launch.json` `maquettes-design`. Nouvel amendement **A110** au journal :
-« le Système est rédigé en anglais depuis le … ». `architecture/index.html`
-(~4 300 mots). D8 tranche s'il faut une version V-n neuve ou la même
-en place.
+`systeme.dc.html` (~37,000 words): translate the prose **in place**, the
+A1-A109 log keeping its numbers and dates, the token table keeping its
+values (gate `coherence-systeme`); CE visual review through
+`launch.json` `maquettes-design`. New amendment **A110** to the log:
+"the System has been written in English since …". `architecture/index.html`
+(~4,300 words). D8 decides whether a new V-n version is needed or the
+same one in place.
 
-### E9 — Archives (selon D1)
+### E9 — Archives (per D1)
 
-Gel : un bandeau anglais en tête de chaque fichier (« Historical
-record, French, closed on … ») et exclusion du filet E1a ; ou
-traduction complète (6 804 lignes + les PLAN soldés déplacés à E7).
+Freeze: an English banner at the head of each file ("Historical
+record, French, closed on …") and exclusion from the E1a net; or
+full translation (6,804 lines + the closed PLANs moved in E7).
 
-### E10 — Mémoire, solde (P)
+### E10 — Memory, close-out (P)
 
-17 fichiers de mémoire et `MEMORY.md` traduits, pointeurs vers les
-scripts renommés corrigés ; `/close` : STATE, DEBT (ce qui reste
-français par décision — D3 — entre au registre comme dette **assumée**,
-avec ce qui la rouvrirait), chiffres kaizen (T1, W3, KO du STOP 2).
+17 memory files and `MEMORY.md` translated, pointers to the renamed
+scripts fixed; `/close`: ETAT, DETTE (whatever stays French by decision
+— D3 — enters the register as **assumed** debt, with what would
+reopen it), kaizen figures (T1, W3, STOP 2 findings).
 
-### Estimation, à re-mesurer après E3a
+### Estimate, to be re-measured after E3a
 
 E0 M + E1 M + E2 P + E3 G×2 + E4 M + E5 G + E6 M + E7 G + E8 G + E9
-(0 ou G) + E10 P ≈ **12 à 16 jours de chantier**, sur des commits
-indépendants : le chantier **s'interrompt sans dommage** à chaque
-frontière (un retour bêta, une release). Le débit réel du premier crate
-corrige ce chiffre au STOP intermédiaire proposé à D10.
+(0 or G) + E10 P ≈ **12 to 16 days of work**, on independent commits:
+the job **stops without harm** at every boundary (a beta return, a
+release). The real throughput of the first crate corrects this figure
+at the intermediate STOP proposed at D10.
 
-## 5. Refus explicites (§2.6)
+## 5. Explicit refusals (§2.6)
 
-- **Pas de réécriture de l'historique git.** 488 commits restent
-  français ; une seconde réécriture en deux jours, pour une langue,
-  n'apporte rien à l'utilisateur et rouvre le ticket support.
-- **Pas de migration de schéma dans ce chantier** (sauf D3 contraire) :
-  renommer 9 tables et ~30 colonnes sur les bases des testeurs est une
-  migration rembobinable à écrire, tester, jouer au terrain (ADR 0012) —
-  un chantier à part entière, sans gain visible. Le SQL reste français
-  derrière des fonctions Rust anglaises ; la dette s'écrit.
-- **Pas de changement de comportement** embarqué : un commit de
-  renommage ne corrige pas un bug qu'il croise — il l'écrit à DEBT.
-- **Pas de bibliothèque i18n**, pas de troisième langue (ADR 0016 tient).
-- **Pas de release dédiée** : la bascule part avec la prochaine
-  MINEURE ; aucune n'est déclenchée pour elle (sauf D4 ⇒ MINEURE de toute
-  façon, §2.9).
-- **`spikes/` intouchés** : jetables, hors workspace ; seul
-  `spikes/ui-socle-v2/RAPPORT.md` est cité (STANDARD §10) — le lien
-  reste, le rapport reste français.
-- **Pas de renommage des fichiers sur disque** (`wind.db`, `wind.log`,
-  `maj.log`, `telemetry.json`) : ils sont documentés aux testeurs
-  (BETA.md) et lus au terrain.
+- **No rewrite of git history.** 488 commits stay French; a second
+  rewrite in two days, for one language, brings the user nothing and
+  reopens the support ticket.
+- **No schema migration in this job** (unless D3 says otherwise):
+  renaming 9 tables and ~30 columns on testers' databases is a
+  reversible migration to write, test, and run in the field (ADR 0012)
+  — a job of its own, with no visible gain. The SQL stays French behind
+  English Rust functions; the debt is written.
+- **No embedded behavior change**: a rename commit does not fix a bug
+  it crosses — it is written to DETTE.
+- **No i18n library**, no third language (ADR 0016 holds).
+- **No dedicated release**: the switch ships with the next MINOR; none
+  is triggered for it (except D4 ⇒ MINOR anyway, §2.9).
+- **`spikes/` untouched**: disposable, outside the workspace; only
+  `spikes/ui-socle-v2/RAPPORT.md` is cited (STANDARD §10) — the link
+  stays, the report stays French.
+- **No renaming of the files on disk** (`wind.db`, `wind.log`,
+  `maj.log`, `telemetry.json`): they are documented to testers
+  (BETA.md) and read in the field.
 
-## 6. Décisions CE — à trancher une à une au STOP 1
+## 6. CE decisions — to be settled one by one at STOP 1
 
-> **STOP 1 joué le 2026-09-02 en deux temps** : quatre décisions le
-> matin (D1, D3, D4, D10), les dix autres le jour même après la
-> publication de 0.16.0 et 0.17.0 et le solde de PLAN-AUDIT-V2 —
-> **GO CE le 2026-09-02** (« Tu peux lancer les travaux
-> d'implémentation »). Toutes consignées mot pour mot ci-dessous.
-> Prochain arrêt : **STOP 1 bis**, validation du glossaire (D14).
+> **STOP 1 played on 2026-09-02 in two rounds**: four decisions in the
+> morning (D1, D3, D4, D10), the other ten the same day after the
+> publication of 0.16.0 and 0.17.0 and the close-out of PLAN-AUDIT-V2 —
+> **GO from the CE on 2026-09-02** ("You can start the implementation
+> work"). All recorded word for word below.
+> Next stop: **STOP 1 bis**, glossary validation (D14).
 
-| # | Question | Recommandation | Décision CE (mot pour mot, datée) |
+| # | Question | Recommendation | CE decision (word for word, dated) |
 |---|---|---|---|
-| D1 | Archives (`docs/archives/`, 29 fichiers, 6 804 l.) et PLAN soldés : **geler** avec bandeau anglais, ou **traduire** ? | Geler : clos, jamais relus par la méthode (§0 : on lit STANDARD, STATE, PLAN, ADR) ; ~40 % du volume doc pour zéro valeur vivante |**2026-09-02 : « Geler avec bandeau »** — dette D-55 à l'ouverture |
-| D2 | Commits : anglais dès le premier commit du chantier (E2 amende §2.8) ; le corps porte toujours chiffres et raisonnement | Oui ; convention « sans accents » abolie au même amendement |**2026-09-02 : « Oui, en bloc »** (recommandation prise telle quelle) |
-| D3 | Identifiants persistés (schéma SQLite, clés `prefs`, fichiers disque) : **garder** le français derrière des API anglaises, ou migrer ? | Garder ; dette D-54 « SQL français » avec clause de réouverture (« si une migration de schéma s'ouvre pour une autre raison, y adosser les renommages ») |**2026-09-02 : « Garder, dette D-54 »** |
-| D4 | Langue par défaut de l'UI : aujourd'hui « système si couvert, sinon fr ». Passer à « système si couvert, sinon **en** », l'anglais devenant référence/repli des catalogues ? | Oui : c'est la conséquence logique ; effet visible uniquement sur un système ni fr ni en ⇒ MINEURE (§2.9) ; fr reste livré mot pour mot |**2026-09-02 : « Oui, en par défaut »** — la prochaine release est MINEURE |
-| D5 | Messages techniques (`#[error]`, traces `wind.log`, diagnostics) : anglais seul, l'enveloppe UI restant traduite (L-3 de PLAN-LANGUES) ? | Oui ; un utilisateur fr verra un détail technique anglais après « Transfert impossible : … » — comme aujourd'hui les erreurs serveur |**2026-09-02 : « Oui, en bloc »** |
-| D6 | Vocabulaire produit dans le code : les mots de `catalogue.en.js` (Feed, Screener, Paper trail, Set aside, Marker, Clean) plutôt que le littéral (Kiosk, Doorman, Register) ? | Les mots du catalogue : déjà tranchés CE, un seul vocabulaire des deux côtés de l'écran |**2026-09-02 : « Oui, en bloc »** |
-| D7 | Noms de fichiers ADR / PLAN / specs : renommer en anglais (liens corrigés par E1d) ou garder les noms français ? | Renommer ; les numéros (`0008-`, `A-n`, `D-n`) sont l'identité, pas le slug |**2026-09-02 : « Oui, en bloc »** |
-| D8 | Système : traduction en place (A110) ou nouvelle version V-n ? | En place : une version neuve implique un contrat de jetons neuf, ce n'est pas le cas |**2026-09-02 : « Oui, en bloc »** |
-| D9 | Relecture : les normatifs (STANDARD, WORKFLOW, ADR, Système, skills) relus **intégralement** par le CE ; commentaires de code et plans relus par échantillon (10 %) et par les oracles ? | Oui ; la dérive de sens d'un normatif est le seul risque que les oracles ne voient pas |**2026-09-02 : « Normatifs en entier »** |
-| D10 | Séquencement : après la publication 0.16.0 et le solde de PLAN-AUDIT-V2, avant la vague 3 de l'audit ; sur `main`, un commit par couche ; **STOP intermédiaire** après E3a (premier crate) pour re-mesurer le débit ? | Oui ; un chantier qui touche chaque fichier ne cohabite avec aucun autre |**2026-09-02 : « Après 0.16.0 et le solde d'AUDIT-V2 »** — rien ne commence avant, E0-E1 compris |
-| D11 | Documents des testeurs (`BETA.md`, mot d'invitation, guide) : conserver une copie française `docs/BETA.fr.md` tant que la vague 1 (T1-T5) court ? | Oui si les cinq testeurs lisent le français (fait connu du CE seul, mémoire « identités hors dépôt ») |**2026-09-02 : « Oui, BETA.fr.md conservé »** |
-| D12 | Jetons CSS français (`--marque`, `--r-controle`, `--rep-*`) : renommer (trois fichiers, gate DC-D6) ou tolérer ? | Renommer à E5, en un commit dédié — le Système est la référence de l'UI, il ne peut pas rester mixte |**2026-09-02 : « Oui, en bloc »** |
-| D13 | `CHANGELOG.md` : traduire tout (758 l., public, lu par la release) ou l'en-tête + entrées à venir ? | Tout : un journal public bilingue est illisible ; les Releases déjà publiées gardent leurs notes |**2026-09-02 : « Oui, en bloc »** |
-| D14 | Le glossaire E0 : relu et **validé CE avant E2** (c'est la conception du chantier) ? | Oui : STOP 1 bis, une heure, sur le tableau des mots |**2026-09-02 : « Oui, je valide le glossaire »** — STOP 1 bis joué le 2026-09-02 : « Validé tel quel » |
-| D15 | The DOM contract (305 test ids, 230 classes, 7 `__e2e*` seams): renamed at **E5d** with the specs' selector literals in the same commit, or kept French until E6 (spec files renamed then)? | E5d now: the Svelte files would otherwise stay half French (a test id is a marker for the ratchet), and the selector literals are exact strings replaced mechanically from `dom.csv` — the same move as the 36 command names at E4 |**2026-09-03: “E5d now”** |
-| D16 | The five VALUE vocabularies that cross the IPC and are persisted (category ids, 12 marker hues, cleanup scopes, invitation replies, sync phases): **(a)** translate at the shell boundary — the database keeps the French value (D3), the wire, the catalogue keys, the CSS selectors and the test ids carry the English one, five small two-way maps in the shell with round-trip tests; **(b)** keep the French value on the wire and downstream (`data-hue="bleu"`, `mailbox.reception`, `--mk-bleu`), amending `keys.csv` and §5.5 accordingly; (c) migrate the values in the database — refused by D3 | (a): D12 already decided `--mk-blue`, and `keys.csv` already decided `mailbox.inbox`; (b) leaves French in the English UI's DOM for good. Cost of (a): ~120 lines of Rust, 5 tests; risk: a value missed in a map, caught by the coherence net and the e2e (`repere-ligne`, `mode-organise`, `nettoyage`, `refonte-invitations`) |**2026-09-03: “(a) Boundary maps”** |
-| D17 | Shell-composed text now that the UI language is known to the shell: the size units `o`/`Ko`/`Mo` of `human_size` (shown in attachments, drafts, the outbox), the two native dialogs, the one asserted error string: **keep French with `lang:fr`** and write debt D-56 (a later small job: send bytes, format in the UI), or fold it into E5a? | Keep and write the debt: it is a behavior change (formatting moves to the UI), §5 refuses embedded behavior changes; an English user sees "Ko" for one more release |**2026-09-03: “Keep, debt D-56”** |
-| D18 | `line` → `row` for the list row in the UI (~200 identifier sites in 13 files, the `{#snippet row}` renamed `listRow`, the text-line `line`s kept) and `dom.csv` unified on `row` (`ligne` → `row`, `ligne-*` → `row-*`, class `ligne` → `row`; `rangee` → `row` stays, no component has both) — at E5d, or the identifier left `line` (debt) with only the DOM names moving? | At E5d: the DOM names and the identifier say the same word or the file reads two vocabularies; the collision is one snippet and eight `row*` helpers, all visible to eslint and the build |**2026-09-03: “At E5d”** |
-| D19 | The two test-id collisions: `ecrire` → `write` (the header button; the glossary carries both `write` and `compose` for it) and `composition` → `compose` (the panel); `onboarding-continuer` (AccountDesk) → `desk-continue` (its siblings are `desk-horizon`, `desk-back`) and `accueil-continuer` → `onboarding-continue`? | Yes: distinct elements keep distinct ids; the specs' 33 + 5 sites follow mechanically |**2026-09-03: “Yes, as proposed”** |
-| D20 | The 44 new words of the annex, entered in `tokens.csv` (they become glossary words for E6-E10 too): validated as they are, or struck? | As they are; `essor` → `grow` and `lib` → `lbl` are the two guesses worth a look |**2026-09-03: “Validated as they are”** |
-| D21 | The 12 `data-*` attribute names and `dataset.*` reads renamed (`data-teinte` → `data-hue`, `data-categorie` → `data-category`…) at E5d as a fourth kind of `dom.csv`, or kept French as values-adjacent (D16)? | Rename: an attribute NAME is DOM contract, its VALUE is already English since E5a — `data-teinte="blue"` is the half-way state E5d exists to end |**2026-09-03: “Rename”** |
-| D22 | The language the suite runs in: (a) keep French — `launchAppV2()` stays `lang = 'fr'`, the 225 anchors keep the French catalogue values, one `lang:fr` marker each; or (b) switch to English — the D4 default, the anchors rewritten from `catalog.en.js`, the French round trip kept in `redesign-language.spec.js`, the fixture anchors marked? | (b): the suite must prove what a new user sees since D4; (a) leaves the default language to one test and 225 permanent exemptions | |
-| D23 | The 201 test titles translated (they are the names the flaky report, the CI log and the docs quote — `selection-multiple:174` is quoted by LINE in D-54, so no pointer breaks)? | Translate: a title is an identifier of the suite, STANDARD §2.8 | |
-| D24 | `e2e/README.md`: translated as it is, or rewritten short and true — its selector contract (`#compose`, `#detail`, `#rows`, `app.js`, the four v1 journeys) describes the v1 UI, gone since the redesign; the gate is `scripts/gate.ps1` since AUDIT-V2 E9? | Rewrite: the isolation contract, the launch, the nets and benches, the DOM contract pointer to `dom.csv` and `dom-contract.test.mjs` — a translated stale page is still stale | |
-| D25 | The path pointers of the living docs updated in the E6a commit — file NAMES only, in STANDARD (17 lines, `e2e/mesure.mjs` already stale), the System (A114), AUDIT, DEBT, STATE, GLOSSARY, the architecture map, WORKFLOW, the six memory files — the closed `PLAN-*.md` and the ADR bodies untouched (history: E7 moves them, D1 freezes them)? | Yes: a normative doc that names a file that no longer exists is a broken pointer the markdown-links net does not see (it checks links, not backticks) | |
-| D26 | The names the glossary lacks: `barres-fil` → `thread-bars`, `retours-12` → `feedback-12`, `retours-14` → `feedback-14`, `horizon-import` unchanged, `test-results/rapport.json` → `report.json`; and the dictionary rows `ligne`/`lignes`/`nLignes` reviewed site by site per D18 (`row` for a list row, `line` for a text line)? | As proposed | |
-| D27 | The bench environment variables `MESURE_DB`, `MESURE_COMPTES`, `MESURE_REUTILISER`, `MESURE_SANS_ACTIVITE` (read by `measure-v2.mjs`, `measure-scroll.mjs`, `diag-v2.mjs`, named in STANDARD §9 and the e2e README): renamed `MEASURE_DB`, `MEASURE_ACCOUNTS`, `MEASURE_REUSE`, `MEASURE_NO_ACTIVITY`, or kept as the bench contract? | Rename at E6b (the benches are played by hand, the docs that name them are E7) — but they are the Chief Engineer's own invocations | **2026-09-03: “Rename”** — applied the same day: `MEASURE_DB`, `MEASURE_ACCOUNTS`, `MEASURE_REUSE`, `MEASURE_NO_ACTIVITY` in the three benches, the e2e README and STANDARD §9 |
-| D28 | Since the suite runs in English (D22), the French forms proven by no spec: the onboarding step counter, the relative date form, the cleanup title and intro, the thread bar labels — extend `redesign-language.spec.js` with a French sweep of those screens (one more launch, ~10 s), or accept the gap (the French catalogue is delivered, D3, and its keys are audited)? And the onboarding illustrations (`assets/accueil/*.png`, French screenshots): regenerated in English by `capture-onboarding.mjs`, or kept French? | Extend the sweep (a catalogue regression on a French form would otherwise ship blind); regenerate the illustrations in English at the next onboarding job — the default UI is English, a French screenshot inside it is a seam the field sees | **2026-09-03: “Extend the French sweep. Regenerate in English at the next onboarding job. All screenshots must be in the language chosen by the user.”** — the sweep applied the same day (three tests in `redesign-language.spec.js`: the French relative date, the cleanup title, a fresh French first launch on the onboarding steps); the illustration rule enters the debt as D-57 |
+| D1 | Archives (`docs/archives/`, 29 files, 6,804 l.) and closed PLANs: **freeze** with an English banner, or **translate**? | Freeze: closed, never reread by the method (§0: STANDARD, ETAT, PLAN, ADR are read) ; ~40% of the doc volume for zero live value |**2026-09-02: "Freeze with a banner"** — debt D-55 opened |
+| D2 | Commits: English from the job's very first commit (E2 amends §2.8); the body always carries figures and reasoning | Yes; the "no accents" convention abolished in the same amendment |**2026-09-02: "Yes, across the board"** (recommendation taken as is) |
+| D3 | Persisted identifiers (SQLite schema, `prefs` keys, files on disk): **keep** French behind English APIs, or migrate? | Keep; debt D-54 "French SQL" with a reopening clause ("if a schema migration opens for another reason, hang the renames on it") |**2026-09-02: "Keep, debt D-54"** |
+| D4 | UI default language: today "system if covered, else fr". Switch to "system if covered, else **en**", English becoming the catalogues' reference/fallback? | Yes: it is the logical consequence; the effect is visible only on a system that is neither fr nor en ⇒ MINOR (§2.9); fr still ships word for word |**2026-09-02: "Yes, en by default"** — the next release is MINOR |
+| D5 | Technical messages (`#[error]`, `wind.log` traces, diagnostics): English only, the UI envelope staying translated (L-3 of PLAN-LANGUES)? | Yes; a French user will see an English technical detail after "Transfer failed: …" — as server errors already do today |**2026-09-02: "Yes, across the board"** |
+| D6 | Product vocabulary in the code: the words of `catalogue.en.js` (Feed, Screener, Paper trail, Set aside, Marker, Clean) rather than the literal (Kiosk, Doorman, Register)? | The catalogue's words: already decided by the CE, one single vocabulary on both sides of the screen |**2026-09-02: "Yes, across the board"** |
+| D7 | ADR / PLAN / spec file names: rename to English (links fixed by E1d) or keep the French names? | Rename; the numbers (`0008-`, `A-n`, `D-n`) are the identity, not the slug |**2026-09-02: "Yes, across the board"** |
+| D8 | System: translation in place (A110) or a new V-n version? | In place: a new version implies a new token contract, which is not the case here |**2026-09-02: "Yes, across the board"** |
+| D9 | Review: the normative docs (STANDARD, WORKFLOW, ADR, System, skills) reread **in full** by the CE; code comments and plans reread by sample (10%) and by the oracles? | Yes; a normative doc's drift of meaning is the only risk the oracles cannot see |**2026-09-02: "Normative docs in full"** |
+| D10 | Sequencing: after the 0.16.0 publication and the close-out of PLAN-AUDIT-V2, before wave 3 of the audit; on `main`, one commit per layer; an **intermediate STOP** after E3a (first crate) to re-measure throughput? | Yes; a job that touches every file cannot cohabit with any other |**2026-09-02: "After 0.16.0 and AUDIT-V2's close-out"** — nothing starts before then, E0-E1 included |
+| D11 | Testers' documents (`BETA.md`, invitation wording, guide): keep a French copy `docs/BETA.fr.md` as long as wave 1 (T1-T5) is running? | Yes if the five testers read French (a fact known only to the CE, memory "identities outside the repo") |**2026-09-02: "Yes, BETA.fr.md kept"** |
+| D12 | French CSS tokens (`--marque`, `--r-controle`, `--rep-*`): rename (three files, gate DC-D6) or tolerate? | Rename at E5, in one dedicated commit — the System is the UI's reference, it cannot stay mixed |**2026-09-02: "Yes, across the board"** |
+| D13 | `CHANGELOG.md`: translate all of it (758 l., public, read by the release) or just the header + upcoming entries? | All of it: a public bilingual log is unreadable; already-published Releases keep their notes |**2026-09-02: "Yes, across the board"** |
+| D14 | The E0 glossary: reread and **CE-validated before E2** (that is the job's design)? | Yes: STOP 1 bis, one hour, over the word table |**2026-09-02: "Yes, I validate the glossary"** — STOP 1 bis played on 2026-09-02: "Validated as is" |
+| D15 | The DOM contract (305 test ids, 230 classes, 7 `__e2e*` seams): renamed at **E5d** with the specs' selector literals in the same commit, or kept French until E6 (spec files renamed then)? | E5d now: the Svelte files would otherwise stay half French (a test id is a marker for the ratchet), and the selector literals are exact strings replaced mechanically from `dom.csv` — the same move as the 36 command names at E4 |**2026-09-03: "E5d now"** |
+| D16 | The five VALUE vocabularies that cross the IPC and are persisted (category ids, 12 marker hues, cleanup scopes, invitation replies, sync phases): **(a)** translate at the shell boundary — the database keeps the French value (D3), the wire, the catalogue keys, the CSS selectors and the test ids carry the English one, five small two-way maps in the shell with round-trip tests; **(b)** keep the French value on the wire and downstream (`data-hue="bleu"`, `mailbox.reception`, `--mk-bleu`), amending `keys.csv` and §5.5 accordingly; (c) migrate the values in the database — refused by D3 | (a): D12 already decided `--mk-blue`, and `keys.csv` already decided `mailbox.inbox`; (b) leaves French in the English UI's DOM for good. Cost of (a): ~120 lines of Rust, 5 tests; risk: a value missed in a map, caught by the coherence net and the e2e (`repere-ligne`, `mode-organise`, `nettoyage`, `refonte-invitations`) |**2026-09-03: "(a) Boundary maps"** |
+| D17 | Shell-composed text now that the UI language is known to the shell: the size units `o`/`Ko`/`Mo` of `human_size` (shown in attachments, drafts, the outbox), the two native dialogs, the one asserted error string: **keep French with `lang:fr`** and write debt D-56 (a later small job: send bytes, format in the UI), or fold it into E5a? | Keep and write the debt: it is a behavior change (formatting moves to the UI), §5 refuses embedded behavior changes; an English user sees "Ko" for one more release |**2026-09-03: "Keep, debt D-56"** |
+| D18 | `line` → `row` for the list row in the UI (~200 identifier sites in 13 files, the `{#snippet row}` renamed `listRow`, the text-line `line`s kept) and `dom.csv` unified on `row` (`ligne` → `row`, `ligne-*` → `row-*`, class `ligne` → `row`; `rangee` → `row` stays, no component has both) — at E5d, or the identifier left `line` (debt) with only the DOM names moving? | At E5d: the DOM names and the identifier say the same word or the file reads two vocabularies; the collision is one snippet and eight `row*` helpers, all visible to eslint and the build |**2026-09-03: "At E5d"** |
+| D19 | The two test-id collisions: `ecrire` → `write` (the header button; the glossary carries both `write` and `compose` for it) and `composition` → `compose` (the panel); `onboarding-continuer` (AccountDesk) → `desk-continue` (its siblings are `desk-horizon`, `desk-back`) and `accueil-continuer` → `onboarding-continue`? | Yes: distinct elements keep distinct ids; the specs' 33 + 5 sites follow mechanically |**2026-09-03: "Yes, as proposed"** |
+| D20 | The 44 new words of the annex, entered in `tokens.csv` (they become glossary words for E6-E10 too): validated as they are, or struck? | As they are; `essor` → `grow` and `lib` → `lbl` are the two guesses worth a look |**2026-09-03: "Validated as they are"** |
+| D21 | The 12 `data-*` attribute names and `dataset.*` reads renamed (`data-teinte` → `data-hue`, `data-categorie` → `data-category`…) at E5d as a fourth kind of `dom.csv`, or kept French as values-adjacent (D16)? | Rename: an attribute NAME is DOM contract, its VALUE is already English since E5a — `data-teinte="blue"` is the half-way state E5d exists to end |**2026-09-03: "Rename"** |
+| D22 | The language the suite runs in: (a) keep French — `launchAppV2()` stays `lang = 'fr'`, the 225 anchors keep the French catalogue values, one `lang:fr` marker each; or (b) switch to English — the D4 default, the anchors rewritten from `catalog.en.js`, the French round trip kept in `redesign-language.spec.js`, the fixture anchors marked? | (b): the suite must prove what a new user sees since D4; (a) leaves the default language to one test and 225 permanent exemptions | **2026-09-03: "(b) Switch to English"** |
+| D23 | The 201 test titles translated (they are the names the flaky report, the CI log and the docs quote — `selection-multiple:174` is quoted by LINE in D-54, so no pointer breaks)? | Translate: a title is an identifier of the suite, STANDARD §2.8 | **2026-09-03: "Translate"** |
+| D24 | `e2e/README.md`: translated as it is, or rewritten short and true — its selector contract (`#compose`, `#detail`, `#rows`, `app.js`, the four v1 journeys) describes the v1 UI, gone since the redesign; the gate is `scripts/gate.ps1` since AUDIT-V2 E9? | Rewrite: the isolation contract, the launch, the nets and benches, the DOM contract pointer to `dom.csv` and `dom-contract.test.mjs` — a translated stale page is still stale | **2026-09-03: "Rewrite short and true"** |
+| D25 | The path pointers of the living docs updated in the E6a commit — file NAMES only, in STANDARD (17 lines, `e2e/mesure.mjs` already stale), the System (A114), AUDIT, DETTE, ETAT, GLOSSARY, the architecture map, WORKFLOW, the six memory files — the closed `PLAN-*.md` and the ADR bodies untouched (history: E7 moves them, D1 freezes them)? | Yes: a normative doc that names a file that no longer exists is a broken pointer the markdown-links net does not see (it checks links, not backticks) | **2026-09-03: "Yes, names only"** |
+| D26 | The names the glossary lacks: `barres-fil` → `thread-bars`, `retours-12` → `feedback-12`, `retours-14` → `feedback-14`, `horizon-import` unchanged, `test-results/rapport.json` → `report.json`; and the dictionary rows `ligne`/`lignes`/`nLignes` reviewed site by site per D18 (`row` for a list row, `line` for a text line)? | As proposed | **2026-09-03: "As proposed"** |
+| D27 | The bench environment variables `MESURE_DB`, `MESURE_COMPTES`, `MESURE_REUTILISER`, `MESURE_SANS_ACTIVITE` (read by `measure-v2.mjs`, `measure-scroll.mjs`, `diag-v2.mjs`, named in STANDARD §9 and the e2e README): renamed `MEASURE_DB`, `MEASURE_ACCOUNTS`, `MEASURE_REUSE`, `MEASURE_NO_ACTIVITY`, or kept as the bench contract? | Rename at E6b (the benches are played by hand, the docs that name them are E7) — but they are the Chief Engineer's own invocations | **2026-09-03: "Rename"** — applied the same day: `MEASURE_DB`, `MEASURE_ACCOUNTS`, `MEASURE_REUSE`, `MEASURE_NO_ACTIVITY` in the three benches, the e2e README and STANDARD §9 |
+| D28 | Since the suite runs in English (D22), the French forms proven by no spec: the onboarding step counter, the relative date form, the cleanup title and intro, the thread bar labels — extend `redesign-language.spec.js` with a French sweep of those screens (one more launch, ~10 s), or accept the gap (the French catalogue is delivered, D3, and its keys are audited)? And the onboarding illustrations (`assets/accueil/*.png`, French screenshots): regenerated in English by `capture-onboarding.mjs`, or kept French? | Extend the sweep (a catalogue regression on a French form would otherwise ship blind); regenerate the illustrations in English at the next onboarding job — the default UI is English, a French screenshot inside it is a seam the field sees | **2026-09-03: "Extend the French sweep. Regenerate in English at the next onboarding job. All screenshots must be in the language chosen by the user."** — the sweep applied the same day (three tests in `redesign-language.spec.js`: the French relative date, the cleanup title, a fresh French first launch on the onboarding steps); the illustration rule enters the debt as D-57 |
 
-## 7. Checklist terrain (STOP 2) — ce que le CE joue
+## 7. Field checklist (STOP 2) — what the CE plays
 
-Sur ses vrais comptes, sur la base **existante** (aucune migration
-attendue — c'est le premier contrôle) :
+On their real accounts, on the **existing** database (no migration
+expected — that is the first check):
 
-| # | Geste | Attendu |
+| # | Action | Expected |
 |---|---|---|
-| T1 | Lancer Wind après la bascule sur `wind.db` réel | pas de modale de migration ; `migration_check` inchangé ; ouverture < 1 s |
-| T2 | Réglages > Affichage : fr, puis en, puis fr | chaque écran majeur dans la langue ; aucune clé brute `xxx.yyy` visible (clés renommées, catalogues alignés) |
-| T3 | Portier, Kiosque, Registre, Nettoyage, Mis de côté, Repères : un geste chacun | comportement identique à 0.17.0 ; `wind.log` porte une ligne par geste, en anglais, sans PII (§6.8) |
-| T4 | Notification d'arrivée en fr et en en | texte de la langue courante ; défaut selon D4 |
-| T5 | Un envoi, une réponse à invitation, une pièce jointe enregistrée | identiques ; erreur provoquée (SMTP coupé) : enveloppe fr + détail anglais (D5) |
-| T6 | `scripts\make-release.ps1` en **dry-run** (branche ≠ main pour qu'il refuse) | refuse en anglais ; lit `## [x.y.z]` du CHANGELOG traduit |
-| T7 | `git push` d'un commit docs seul | hook : chemin rapide documentaire, E1a et E1d joués |
-| T8 | Casser volontairement un `appel('…')`, un lien md, un commentaire français | E1b, E1d, E1a rouges — puis rétablir |
-| T9 | RAM et démarrage (`e2e/measure-ram.ps1`, banc de démarrage) | dans les budgets §3 ; un renommage ne bouge pas un chiffre |
+| T1 | Launch Wind after the switch on the real `wind.db` | no migration modal; `migration_check` unchanged; opens in < 1 s |
+| T2 | Settings > Display: fr, then en, then fr | every major screen in that language; no raw `xxx.yyy` key visible (keys renamed, catalogues aligned) |
+| T3 | Screener, Feed, Paper trail, Cleanup, Set aside, Markers: one action each | behavior identical to 0.17.0; `wind.log` carries one line per action, in English, no PII (§6.8) |
+| T4 | Arrival notification in fr and in en | text in the current language; default per D4 |
+| T5 | A send, a reply to an invitation, a saved attachment | identical; a provoked error (SMTP cut) : French envelope + English detail (D5) |
+| T6 | `scripts\make-release.ps1` in **dry-run** (branch ≠ main so it refuses) | refuses in English; reads `## [x.y.z]` from the translated CHANGELOG |
+| T7 | `git push` of a docs-only commit | hook: fast documentary path, E1a and E1d played |
+| T8 | Deliberately break a `call('…')`, an md link, a French comment | E1b, E1d, E1a red — then restore |
+| T9 | RAM and startup (`e2e/measure-ram.ps1`, startup bench) | within the §3 budgets; a rename does not move a figure |
 
-Un constat KO ⇒ correction le jour même, re-gate, re-terrain (§2.5).
+A KO finding ⇒ fixed the same day, re-gate, re-field (§2.5).
 
-## 8. Risques nommés
+## 8. Named risks
 
-- **Dérive de sens dans un normatif** (STANDARD, ADR, Système) — D9.
-- **Collision d'identifiants** au renommage mécanique (`fil`/`thread`,
-  `nom`/`nombre`) — dictionnaire sur identifiants entiers, compilateur.
-- **JS sans compilateur** : un renommage raté ne se voit qu'à
-  l'exécution — E1c mesuré, e2e complètes, E1b pour l'IPC.
-- **E2E flaky en local** (mémoire) : un rouge local se contre-vérifie
-  par `gh run list` avant de suspecter le renommage.
-- **Liens cassés** dans 104 fichiers markdown — E1d.
-- **NTFS et la casse** : `git mv` en deux temps pour tout renommage par
-  la casse seule ; OneDrive peut retenir un handle sur un fichier
-  renommé — jouer les renommages en masse dans un lot, vérifier
-  `git status` propre.
-- **Un chantier long qui traverse la bêta** : chaque commit est
-  livrable ; un retour testeur passe devant, en `/field`, sur `main`.
-- **Le glossaire figé trop tôt** : un mot mal choisi coûte un second
-  passage sur toutes les couches — D14, STOP 1 bis.
+- **Drift of meaning in a normative doc** (STANDARD, ADR, System) — D9.
+- **Identifier collision** in the mechanical rename (`fil`/`thread`,
+  `nom`/`nombre`) — dictionary on whole identifiers, the compiler.
+- **JS with no compiler**: a failed rename is only seen at
+  runtime — E1c measured, full e2e, E1b for the IPC.
+- **Flaky e2e locally** (memory): a local red is cross-checked
+  against `gh run list` before suspecting the rename.
+- **Broken links** across 104 markdown files — E1d.
+- **NTFS and case**: `git mv` in two steps for any case-only rename;
+  OneDrive can hold a handle on a renamed file — play mass renames in
+  one batch, verify a clean `git status`.
+- **A long job that spans the beta**: every commit is shippable; a
+  tester return jumps the queue, via `/field`, on `main`.
+- **The glossary frozen too early**: a badly chosen word costs a
+  second pass over every layer — D14, STOP 1 bis.
 
-## 9. Dette prévue
+## 9. Expected debt
 
-- **D-54** (si D3 = garder) : schéma SQLite, clés `prefs`, fichiers
-  disque en français derrière des API anglaises ; rouvre si une
-  migration de schéma s'ouvre pour une autre raison.
-- **D-55** (si D1 = geler) : archives françaises, bandeau en tête ;
-  rouvre si un lecteur anglophone en a besoin (bêta ouverte, contributeur).
-- Les Releases 0.11-0.15 gardent des notes françaises — pas une dette,
-  un fait historique.
+- **D-54** (if D3 = keep): SQLite schema, `prefs` keys, files on disk
+  in French behind English APIs; reopens if a schema migration opens
+  for another reason.
+- **D-55** (if D1 = freeze): French archives, banner at the head;
+  reopens if an English-speaking reader needs them (open beta,
+  contributor).
+- Releases 0.11-0.15 keep French notes — not a debt, a historical
+  fact.

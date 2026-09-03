@@ -1,4 +1,4 @@
-// PLAN-BASCULE-ANGLAIS E5d (2026-09-03): the DOM-contract applier
+// PLAN-ENGLISH-SWITCH E5d (2026-09-03): the DOM-contract applier
 // (`scripts/rename/apply-dom.mjs`) rewrites test ids, classes, `data-*`
 // attribute names and the `__e2e*` seams from `dom.csv` — in the Svelte
 // markup, the `<style>` blocks, `system.css`, and the specs' selector

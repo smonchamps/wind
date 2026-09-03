@@ -1,4 +1,4 @@
-// Markdown link net (PLAN-BASCULE-ANGLAIS E1d): the switch renames some
+// Markdown link net (PLAN-ENGLISH-SWITCH E1d): the switch renames some
 // 115 files — ADR slugs, plans, scripts, specs — and 71 relative links
 // plus every `[…](path)` in the skills point at them. No link checker
 // existed; a dead link in STANDARD or WORKFLOW is a session that starts

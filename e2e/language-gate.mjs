@@ -1,4 +1,4 @@
-// Language gate (PLAN-BASCULE-ANGLAIS E1a): the repository is moving from
+// Language gate (PLAN-ENGLISH-SWITCH E1a): the repository is moving from
 // French to English, and this net is the ratchet that makes the move
 // one-way. It counts French markers per tracked text file — unambiguous
 // French function words and accented letters — and compares them with
@@ -10,7 +10,7 @@
 //   node e2e/language-gate.mjs            -> verdict, exit 1 on any rise
 //   node e2e/language-gate.mjs --update   -> rewrite the baseline
 //
-// Exempt by decision (PLAN-BASCULE-ANGLAIS D1, D3, D11 and §2): the French
+// Exempt by decision (PLAN-ENGLISH-SWITCH D1, D3, D11 and §2): the French
 // catalogue, BETA.fr.md, docs/archives/, the rename toolkit, lock files,
 // and any line carrying the marker `lang:fr` (a deliberately French
 // string, such as a French notification text or a French UI label a
@@ -26,7 +26,7 @@ const update = process.argv.includes('--update');
 const TEXT = /\.(rs|js|mjs|svelte|css|ps1|py|md|html|yml|yaml|toml|sh|json|txt)$/i;
 const EXEMPT = [
   /^docs\/archives\//,
-  /^spikes\//, // throw-away, outside the switch (PLAN-BASCULE-ANGLAIS §5)
+  /^spikes\//, // throw-away, outside the switch (PLAN-ENGLISH-SWITCH §5)
   /^scripts\/rename\//,
   /(^|\/)catalogue?\.fr\.js$/,
   /(^|\/)catalog\.fr\.js$/,

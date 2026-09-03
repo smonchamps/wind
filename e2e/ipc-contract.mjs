@@ -1,4 +1,4 @@
-// IPC contract net (PLAN-BASCULE-ANGLAIS E1b): the Tauri commands are a
+// IPC contract net (PLAN-ENGLISH-SWITCH E1b): the Tauri commands are a
 // string boundary the compiler cannot see. The shell registers them in
 // `generate_handler![…]` (apps/desktop/src/main.rs); the UI calls them by
 // name through `appel('…')` (lib/transport.js); the specs call a few by

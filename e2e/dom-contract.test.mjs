@@ -1,4 +1,4 @@
-// PLAN-BASCULE-ANGLAIS E5d (2026-09-03): the two sides of the DOM
+// PLAN-ENGLISH-SWITCH E5d (2026-09-03): the two sides of the DOM
 // contract. Every test id a spec or an e2e tool selects must be rendered
 // by the UI — a static `data-testid`, the `testid` prop of `Menu`, or an
 // id built on a rendered prefix (`bar-{g.action}`). A spec id the UI

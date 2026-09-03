@@ -1,4 +1,4 @@
-// PLAN-BASCULE-ANGLAIS E5b, decision D4 (2026-09-02): English is the
+// PLAN-ENGLISH-SWITCH E5b, decision D4 (2026-09-02): English is the
 // reference language of the interface — the first launch speaks English
 // unless the system language is French, and a key missing from the
 // active catalogue falls back to the English text. The decision is a

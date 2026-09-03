@@ -1,4 +1,4 @@
-// PLAN-BASCULE-ANGLAIS E5b (2026-09-03): the `{placeholders}` of the
+// PLAN-ENGLISH-SWITCH E5b (2026-09-03): the `{placeholders}` of the
 // catalogue VALUES are a bridge with the `t(key, { param })` keys of the
 // UI — `t()` substitutes an empty string for an unmatched placeholder,
 // silently, in both languages. Nine e2e specs caught it the day the

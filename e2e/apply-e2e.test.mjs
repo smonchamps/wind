@@ -1,4 +1,4 @@
-// PLAN-BASCULE-ANGLAIS E6a (2026-09-03): the e2e/scripts applier
+// PLAN-ENGLISH-SWITCH E6a (2026-09-03): the e2e/scripts applier
 // (`scripts/rename/apply-e2e.mjs`) renames the layer's identifiers from
 // `dictionary.csv` rows `layer=e2e-scripts`, renames the spec and tool
 // files per GLOSSARY §5.1 + D26, follows the import paths, and rewrites

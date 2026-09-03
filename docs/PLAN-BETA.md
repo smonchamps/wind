@@ -1,93 +1,94 @@
-# PLAN-BETA — la bêta fermée (Phase 5, PLAN §4)
+# PLAN-BETA — the closed beta (Phase 5, PLAN §4)
 
-> Ouvert le 2026-08-27 (PLAN-RETOURS-11 R3, décisions D7-D9). But :
-> 20-50 utilisateurs réels, chaque retour dépouillé par le CE (genchi
-> genbutsu), kaizen hebdomadaire sur les frictions **observées**.
-> Gate 5 : deux semaines sans défaut critique → lancement.
+> Opened on 2026-08-27 (PLAN-RETOURS-11 R3, decisions D7-D9). Goal:
+> 20-50 real users, every piece of feedback read by the CE (genchi
+> genbutsu), weekly kaizen on **observed** friction. Gate 5: two weeks
+> without a critical defect → launch.
 
-## 1. Ce qui est prêt (constaté le 2026-08-27)
+## 1. What is ready (found on 2026-08-27)
 
-- **Chaîne de livraison prouvée** : dépôt public, releases bi-arch
-  signées minisign, auto-update prouvé aux deux postes sur trois
-  versions consécutives (0.9.0 → 0.11.0), vérification scriptée
+- **Delivery chain proven**: public repository, dual-arch releases
+  signed with minisign, auto-update proven on both workstations across
+  three consecutive versions (0.9.0 → 0.11.0), scripted verification
   18/18 (`scripts/verify-release.ps1`).
-- **Parcours de premier démarrage** (PLAN-RETOURS-8) : un testeur
-  neuf est guidé en quatre étapes.
-- **OAuth compilé dans la release** (ADR 0025, prouvé sans `setx`).
-- **Échec de mise à jour VISIBLE** (PLAN-SIGNATURE) : plus de
-  fermeture silencieuse.
-- **Guide du testeur** : [BETA.md](BETA.md) — installation,
-  SmartScreen, Smart App Control, écran Google « non validée »,
-  comment donner un retour (la forme en trois lignes).
+- **First-launch journey** (PLAN-RETOURS-8): a fresh tester is guided
+  in four steps.
+- **OAuth compiled into the release** (ADR 0025, proven without
+  `setx`).
+- **Update failure VISIBLE** (PLAN-SIGNATURE): no more silent closing.
+- **Tester guide**: [BETA.md](BETA.md) — installation, SmartScreen,
+  Smart App Control, the Google "unverified" screen, how to give
+  feedback (the three-line form).
 
-## 2. Les deux risques assumés, et leur traitement
+## 2. The two accepted risks, and how they are handled
 
-- **D-39 — installeur non signé Authenticode** : sur poste Smart App
-  Control `On`, l'installation est une loterie par binaire (prouvé
-  les 26-27/08). Traitement : le guide le DIT, chaque refus est un
-  retour attendu et compté ; la première MAJ refusée sur poste SAC
-  prouvera le filet de PLAN-SIGNATURE (preuve encore due). Le levier
-  de fond (signature) reste gelé — validation fermée hors USA/Canada.
-- **App Google en production NON VÉRIFIÉE** (constat CE, D8 du
-  2026-08-27) : pas d'inscription préalable des testeurs, mais un
-  écran dissuasif au premier login Gmail. Traitement : le guide
-  l'explique et donne le chemin (« Paramètres avancés »). Le dossier
-  CASA reste le chemin critique du PUBLIC, hors bêta — détaillé au §4.
+- **D-39 — installer not Authenticode-signed**: on a workstation with
+  Smart App Control `On`, installation is a per-binary lottery (proven
+  on 08-26/27). Handling: the guide SAYS so, every refusal is expected
+  feedback and is counted; the first MAJ refused on a SAC workstation
+  will prove the net of PLAN-SIGNATURE (proof still owed). The
+  underlying lever (signing) stays frozen — closed validation outside
+  the USA/Canada.
+- **Google app in production NOT VERIFIED** (CE finding, D8 of
+  2026-08-27): no prior registration of testers, but a deterrent screen
+  at the first Gmail login. Handling: the guide explains it and gives
+  the path ("Advanced settings"). The CASA file stays the critical path
+  of the PUBLIC launch, outside the beta — detailed in §4.
 
-## 3. Les actions
+## 3. The actions
 
-Cochées au fil de l'eau ; les actions CE sont marquées **[CE]**.
+Checked as they happen; CE actions are marked **[CE]**.
 
-- [x] Guide du testeur versé au dépôt (BETA.md) — 2026-08-27.
-- [x] **[CE]** L'adresse des retours (D7) : **feedback-wind@fcts.io**
-  — tranchée au terrain du 2026-08-28. Le canal principal est
-  désormais DANS l'app : le bouton **Feedback** de l'entête (A91)
-  envoie par email depuis le compte du testeur ; l'adresse reste au
-  guide comme repli (Wind bloqué à l'installation).
-- [x] **[CE]** L'adresse `feedback-wind@fcts.io` **reçoit** —
-  constat CE du 2026-08-29 : les mails du 28 sont bien arrivés, le
-  défaut était un délai de propagation de la configuration DNS, pas
-  une panne d'alias. Le bloquant du 2026-08-28 est levé ; la voie des
-  invitations est ouverte.
-- [x] **[CE]** Première vague (D9) : 5-10 proches — les inviter par
-  email personnel avec le lien du guide
-  (https://github.com/smonchamps/wind/blob/main/docs/BETA.md).
-  Viser au moins UN poste Smart App Control `On` et UN compte
-  Gmail : les deux risques du §2 doivent être éprouvés tôt.
-  **Vague ouverte le 2026-08-31** : registre nominatif au **§3 bis**,
-  mot d'invitation modèle au **§3 ter**, guide relu et corrigé le
-  jour même (parcours à cinq étapes, § « Organisé »). **Les cinq
-  invitations sont parties le 2026-08-31** ; reste à remplir le
-  registre au fil des réponses.
-- [ ] **[CE]** Dépouiller chaque retour ; les frictions confirmées
-  entrent au dépôt par `/job` ou `/field` (le kaizen
-  hebdomadaire du PLAN §4 — la mécanique existe déjà, rien de neuf).
-- [ ] Élargir vers 20-50 quand la première vague tourne (installation
-  éprouvée, retours qui arrivent, pas de défaut critique ouvert).
-- [ ] Compter les refus SAC (D-39) : si un testeur est bloqué à
-  l'installation, consigner poste/version/date au registre de dette
-  D-39 — c'est la mesure qui rouvrira le chantier signature.
-- [ ] Gate 5 : deux semaines sans défaut critique → préparer le
-  lancement (avec, sur son chemin : CASA, signature).
+- [x] Tester guide committed to the repository (BETA.md) — 2026-08-27.
+- [x] **[CE]** The feedback address (D7): **feedback-wind@fcts.io** —
+  settled in the field on 2026-08-28. The main channel is now INSIDE
+  the app: the **Feedback** button in the header (A91) sends by email
+  from the tester's own account; the address stays in the guide as a
+  fallback (Wind blocked at install).
+- [x] **[CE]** The address `feedback-wind@fcts.io` **receives** — CE
+  finding of 2026-08-29: the mail sent on the 28th did arrive, the
+  defect was a DNS configuration propagation delay, not an alias
+  outage. The blocker of 2026-08-28 is lifted; the invitation track is
+  open.
+- [x] **[CE]** First wave (D9): 5-10 close contacts — invite them by
+  personal email with the link to the guide
+  (https://github.com/smonchamps/wind/blob/main/docs/BETA.md). Aim for
+  at least ONE Smart App Control `On` workstation and ONE Gmail
+  account: both risks of §2 must be tested early. **Wave opened on
+  2026-08-31**: named register in **§3 bis**, sample invitation
+  message in **§3 ter**, guide re-read and corrected the same day
+  (five-step journey, "Organized" section). **The five invitations
+  went out on 2026-08-31**; the register still needs filling in as
+  replies come.
+- [ ] **[CE]** Read every piece of feedback; confirmed friction enters
+  the repository through `/job` or `/field` (the weekly kaizen of PLAN
+  §4 — the mechanics already exist, nothing new).
+- [ ] Widen to 20-50 once the first wave is running (installation
+  proven, feedback coming in, no open critical defect).
+- [ ] Count SAC refusals (D-39): if a tester is blocked at install,
+  log workstation/version/date in the D-39 debt register — that is the
+  measurement that will reopen the signing job.
+- [ ] Gate 5: two weeks without a critical defect → prepare the launch
+  (with, on its path: CASA, signing).
 
-## 3 bis. Vague 1 (D9) — le registre des cinq
+## 3 bis. Wave 1 (D9) — the register of the five
 
-> Ouvert le 2026-08-31. Cinq proches, pas plus : la vague se dépouille
-> à la main. Deux postures sont OBLIGATOIRES dans le lot (§2) — au
-> moins **un poste Smart App Control `On`** et **au moins un compte
-> Gmail**. Sans elles, la vague n'éprouve aucun des deux risques.
+> Opened on 2026-08-31. Five close contacts, no more: the wave is read
+> by hand. Two postures are MANDATORY in the batch (§2) — at least
+> **one Smart App Control `On` workstation** and **at least one Gmail
+> account**. Without them, the wave tests neither risk.
 
-Release en vigueur au lancement de la vague : **0.15.0** (publiée le
-2026-08-30, x64 + arm64, `latest.json` en place).
+Release in force at the wave's launch: **0.15.0** (published on
+2026-08-30, x64 + arm64, `latest.json` in place).
 
-**Le registre est ANONYME, et c'est une règle, pas une pudeur**
-(décision CE du 2026-08-31) : le dépôt est PUBLIC. Les noms et les
-adresses des cinq restent chez le CE, hors du dépôt ; ici ne vivent
-que le pseudonyme de rang, la posture du poste et les faits. Aucun
-retour recopié au dépôt ne porte de nom, d'adresse ni de contenu de
-message — le fait, la version, la date.
+**The register is ANONYMOUS, and that is a rule, not modesty**
+(CE decision of 2026-08-31): the repository is PUBLIC. The names and
+addresses of the five stay with the CE, outside the repository; here
+live only the rank pseudonym, the workstation's posture and the facts.
+No feedback copied into the repository carries a name, an address or
+message content — only the fact, the version, the date.
 
-| # | Poste (arch. / SAC) | Compte visé | Invité le | Installé le | Retours |
+| # | Workstation (arch. / SAC) | Account targeted | Invited on | Installed on | Feedback |
 |---|---------------------|-------------|-----------|-------------|---------|
 | T1 | x64 / **SAC `On`** | **Gmail** | 2026-08-31 | **2026-08-31** | — |
 | T2 | — | — | **2026-08-31** | — | — |
@@ -95,146 +96,146 @@ message — le fait, la version, la date.
 | T4 | — | — | **2026-08-31** | — | — |
 | T5 | — | — | **2026-08-31** | — | — |
 
-**Les cinq invitations sont PARTIES le 2026-08-31** (constat CE du
-jour). **Les deux postures obligatoires du §2 sont couvertes dès T1**
-(x64, Smart App Control `On`, compte Gmail, installé le jour même) :
-la vague éprouve bien les deux risques assumés. Deux faits neufs en
-découlent, et ils ne sont pas du même poids :
+**The five invitations WENT OUT on 2026-08-31** (CE finding of the
+day). **The two mandatory postures of §2 are covered as of T1** (x64,
+Smart App Control `On`, Gmail account, installed the same day): the
+wave does test both accepted risks. Two new facts follow from this,
+and they do not carry the same weight:
 
-- **D-39 — la 0.15.0 x64 PASSE sur un poste SAC `On` qui n'est pas
-  celui du CE.** Premier verdict favorable relevé hors du poste de
-  développement. Il ne referme rien : le verdict est rendu **par
-  binaire** (par hash), donc il ne dit RIEN de la prochaine version —
-  c'est précisément la loterie. Ce qu'il ouvre, en revanche : ce poste
-  est le banc dont on manquait pour la **mesure due du filet
-  PLAN-SIGNATURE** (échec de MAJ visible en condition de refus SAC
-  réel). À guetter à la première MAJ que ce poste refusera.
-- **L'écran Google « application non validée » est éprouvé** : T1 a
-  connecté un Gmail et l'installation a abouti le jour même. Reste à
-  savoir si l'écran l'a fait hésiter — c'est une question à poser, le
-  guide (§2) ne prouve pas qu'il a été lu.
+- **D-39 — 0.15.0 x64 PASSES on a SAC `On` workstation that is not the
+  CE's.** First favorable verdict recorded off the development
+  workstation. It closes nothing: the verdict is rendered **per
+  binary** (by hash), so it says NOTHING about the next version — that
+  is exactly the lottery. What it does open, on the other hand: this
+  workstation is the bench that was missing for the **measurement owed
+  by the PLAN-SIGNATURE net** (visible update failure under a real SAC
+  refusal condition). To watch for at the first MAJ this workstation
+  refuses.
+- **The Google "app not verified" screen is tested**: T1 connected a
+  Gmail account and the install succeeded the same day. Still to know
+  is whether the screen made them hesitate — that is a question to
+  ask, the guide (§2) does not prove it was read.
 
-Prochaine échéance : **relance des silencieux le 2026-09-03** (règle
-des trois jours ci-dessous).
+Next deadline: **follow-up with the silent ones on 2026-09-03** (the
+three-day rule below).
 
-Règles de tenue du registre :
+Rules for keeping the register:
 
-- **La correspondance reste chez le CE.** Le rapprochement T1-T5 ↔
-  personnes ne s'écrit nulle part dans le dépôt.
-- **Invité le** : la date d'envoi du mot d'invitation (§3 ter).
-- **Installé le** : la date où le testeur DIT que Wind s'est lancé —
-  pas une supposition. Un silence de plus de trois jours se relance
-  une fois, puis se consigne comme tel.
-- **Refus d'installation** : ligne au registre de dette **D-39**
-  (poste, version, date) — c'est la mesure qui rouvrira le chantier
-  signature, elle ne vaut que si elle est écrite.
-- **Retours** : chaque retour instruit entre au dépôt par `/field`
-  (constat du jour) ou `/job` (friction de fond) ; la case porte
-  le numéro du PLAN qui l'a traité.
+- **The correspondence stays with the CE.** The T1-T5 ↔ person mapping
+  is written nowhere in the repository.
+- **Invited on**: the date the invitation message (§3 ter) was sent.
+- **Installed on**: the date the tester SAYS Wind launched — not an
+  assumption. A silence of more than three days gets one follow-up,
+  then is logged as such.
+- **Installation refusal**: a line in the **D-39** debt register
+  (workstation, version, date) — that is the measurement that will
+  reopen the signing job, and it only counts if it is written down.
+- **Feedback**: every piece of feedback that is acted on enters the
+  repository through `/field` (same-day finding) or `/job` (underlying
+  friction); the checkbox carries the number of the PLAN that handled
+  it.
 
-## 3 ter. Le mot d'invitation (modèle)
+## 3 ter. The invitation message (template)
 
-> Envoyé personnellement, un destinataire par mail — jamais en copie
-> cachée collective : un testeur invité en lot répond en lot,
-> c'est-à-dire jamais.
+> Sent personally, one recipient per email — never as a collective
+> blind copy: a tester invited in a batch replies in a batch, meaning
+> never.
 
-**Objet** : Wind — tu veux bien l'essayer ?
+**Subject**: Wind — want to give it a try?
 
 ```
-Bonjour <prénom>,
+Hi <first name>,
 
-Je te sollicite comme cobaye. Wind est le client email Windows sur
-lequel je travaille : rapide, sobre, local — tes messages restent sur
-ta machine, aucune télémétrie. Il est en bêta fermée, vous êtes cinq.
+I'm asking you to be a guinea pig. Wind is the Windows email client
+I'm working on: fast, plain, local — your messages stay on your
+machine, no telemetry. It is in closed beta, there are five of you.
 
-Le guide d'installation (5 minutes, tout est dedans) :
+The install guide (5 minutes, everything is in it):
 https://github.com/smonchamps/wind/blob/main/docs/BETA.md
 
-Deux avertissements t'attendent, et ils sont normaux — le guide les
-explique : Windows peut afficher « Windows a protégé votre
-ordinateur » (l'installeur n'est pas encore signé), et Google un
-écran « application non validée » si tu connectes un Gmail (l'audit
-est en cours). Sur certains PC récents, l'installation peut être
-refusée SANS recours : si ça t'arrive, dis-le-moi — c'est un retour
-précieux, pas une fausse manœuvre, et surtout ne désactive rien.
+Two warnings await you, and they are normal — the guide explains them:
+Windows may show "Windows protected your PC" (the installer is not
+signed yet), and Google an "app not verified" screen if you connect a
+Gmail account (the audit is under way). On some recent PCs, the
+install may be refused with NO way around it: if that happens to you,
+tell me — it's valuable feedback, not a mistake on your part, and
+above all don't disable anything.
 
-Il y a dans l'entête une bascule « Organisé » : c'est la nouveauté de
-cette version — elle ouvre trois destinations (Réception, Kiosque,
-Registre) et un Portier où TU décides, expéditeur par expéditeur.
-Lis le §3 du guide avant de t'en servir : les trois destinations ne
-déplacent rien chez ton fournisseur, mais le « Non » du Portier, lui,
-agit sur ta vraie boîte (par défaut : la corbeille, sur les messages
-qui arrivent ensuite). C'est là-dessus que ton avis m'intéresse le
-plus.
+There is a toggle in the header called "Organized": it's the new
+thing in this version — it opens three destinations (Inbox, Feed,
+Paper trail) and a Screener where YOU decide, sender by sender. Read
+§3 of the guide before you use it: the three destinations move
+nothing at your provider, but the Screener's "No" does act on your
+real mailbox (by default: the trash, for messages that arrive
+afterward). That's what I'm most interested in your opinion on.
 
-Ce que j'attends de toi : que tu t'en serves pour de vrai, quelques
-jours, et que tu me dises ce qui cloche. Le bouton « Feedback » en
-haut à droite envoie directement. Le retour le plus utile tient en
-trois lignes : ce que tu faisais, ce que tu attendais, ce qui s'est
-passé. Un texte pas clair ou un geste qui te manque comptent autant
-qu'un bug.
+What I expect from you: use it for real, for a few days, and tell me
+what's wrong. The "Feedback" button top right sends it directly. The
+most useful feedback fits in three lines: what you were doing, what
+you expected, what happened. Unclear text or a missing gesture count
+just as much as a bug.
 
-Merci,
+Thanks,
 <signature>
 ```
 
-## 4. Le dossier de vérification Google (chemin du lancement PUBLIC)
+## 4. The Google verification file (path to the PUBLIC launch)
 
-> Ajouté le 2026-08-28 sur décision CE. **Rien ici ne bloque la bêta** :
-> les 5-10 proches passent par l'app publiée non vérifiée (§2). Ce
-> dossier est le chemin du lancement PUBLIC — il entre au PLAN-BETA
-> parce que ses délais sont longs et que son premier jalon (un
-> domaine) n'est pas posé.
+> Added on 2026-08-28 on CE decision. **Nothing here blocks the beta**:
+> the 5-10 close contacts go through the unverified published app
+> (§2). This file is the path to the PUBLIC launch — it enters
+> PLAN-BETA because its timelines are long and its first milestone (a
+> domain) is not yet in place.
 
-Le formulaire est refusé d'entrée sans **domaine** : le dépôt GitHub ne
-peut pas tenir lieu de page d'accueil (Google exclut explicitement les
-liens de plateforme). C'est la brique manquante, et tout le reste en
-dépend.
+The form is refused outright without a **domain**: the GitHub
+repository cannot stand in for a homepage (Google explicitly excludes
+platform links). That is the missing brick, and everything else
+depends on it.
 
-- [ ] **[CE]** **Le domaine**, et sa propriété prouvée dans la Google
-  Search Console (vérification de marque : 2-3 jours ouvrés annoncés).
-  Piste : `fcts.io`, déjà retenu pour l'adresse des retours (§3).
-- [ ] **[CE]** **Page d'accueil publique** sur ce domaine : accessible
-  sans connexion, manifestement liée à Wind.
-- [ ] **Politique de confidentialité** sur le MÊME domaine : comment
-  Wind accède, utilise, stocke et partage les données Google, et
-  conformité **Limited Use** (pas de publicité, pas de revente, pas
-  d'entraînement de modèles, pas de lecture humaine). Wind est en
-  position forte — rien ne quitte le poste, aucune télémétrie réseau
-  (ADR 0014) — mais la position doit être ÉCRITE, pas déduite.
-- [ ] **Écran de consentement exact** : nom, logo, email de support,
-  liens — tous cohérents avec le domaine.
-- [ ] **Justification scope par scope**, au moindre privilège. Le point
-  dur attendu : `https://mail.google.com/` est le scope le plus large,
-  et le réviseur demandera pourquoi pas `gmail.readonly` +
-  `gmail.send`. La réponse est vérifiable — **XOAUTH2 sur IMAP/SMTP
-  n'accepte que celui-là** — mais elle doit figurer au dossier.
-- [ ] **Vidéo de démonstration** : YouTube non répertoriée, en anglais,
-  montrant le parcours OAuth complet, le nom de l'app à l'écran de
-  consentement, le **`client_id` lisible dans la barre d'adresse**, et
-  chaque scope restreint à l'œuvre.
+- [ ] **[CE]** **The domain**, and its ownership proven in Google
+  Search Console (brand verification: 2-3 business days announced).
+  Lead: `fcts.io`, already chosen for the feedback address (§3).
+- [ ] **[CE]** **Public homepage** on that domain: accessible without
+  logging in, clearly linked to Wind.
+- [ ] **Privacy policy** on the SAME domain: how Wind accesses, uses,
+  stores and shares Google data, and **Limited Use** compliance (no
+  advertising, no resale, no model training, no human reading). Wind
+  is in a strong position — nothing leaves the workstation, no network
+  telemetry (ADR 0014) — but the position must be WRITTEN, not
+  inferred.
+- [ ] **Exact consent screen**: name, logo, support email, links — all
+  consistent with the domain.
+- [ ] **Scope-by-scope justification**, at least privilege. The
+  expected sticking point: `https://mail.google.com/` is the broadest
+  scope, and the reviewer will ask why not `gmail.readonly` +
+  `gmail.send`. The answer is verifiable — **XOAUTH2 over IMAP/SMTP
+  accepts only that one** — but it must be in the file.
+- [ ] **Demo video**: unlisted YouTube, in English, showing the full
+  OAuth journey, the app name on the consent screen, the **`client_id`
+  readable in the address bar**, and each restricted scope at work.
 
-**Question ouverte, en amont de tout coût.** L'évaluation de sécurité
-CASA (Tier 2, labo agréé App Defense Alliance, ~540 $ relevés pour le
-scan DAST, **à refaire tous les 12 mois**) est conditionnée par Google
-à un critère précis : elle est due si l'app « accède ou a la capacité
-d'accéder aux données utilisateur Google **depuis ou via un serveur** ».
-**Wind n'a aucun serveur** — jetons au coffre de l'OS, IMAP/SMTP en
-direct poste ↔ Google, aucun backend qui voie passer un message. Si
-l'exemption couvre cette architecture, il ne reste que la liste
-ci-dessus. La documentation publique ne tranche pas (la page CASA ne
-détaille pas ses exceptions ; des sources tierces affirment l'inverse
-sans distinguer les clients purs). Le formulaire de vérification pose
-la question du serveur, le labo aussi. **À faire trancher AVANT de
-payer ou de planifier quoi que ce soit** : c'est ce qui rouvrirait
-l'affirmation « long, coûteux » de [PLAN.md](PLAN.md) §2.3 — posée en
-Phase 0, jamais vérifiée depuis.
+**Open question, ahead of any cost.** The CASA security assessment
+(Tier 2, an App Defense Alliance-approved lab, ~$540 recorded for the
+DAST scan, **to redo every 12 months**) is conditioned by Google on a
+precise criterion: it is owed if the app "accesses or has the
+capability to access Google user data **from or through a server**."
+**Wind has no server** — tokens in the OS vault, IMAP/SMTP direct
+workstation ↔ Google, no backend that sees a message pass through. If
+the exemption covers this architecture, only the list above remains.
+Public documentation does not settle it (the CASA page does not detail
+its exceptions; third-party sources claim the opposite without
+distinguishing pure clients). The verification form asks the server
+question, so does the lab. **To be settled BEFORE paying for or
+planning anything**: this is what would reopen the "long, costly"
+claim of [PLAN.md](PLAN.md) §2.3 — made in Phase 0, never verified
+since.
 
-## 5. Ce que la bêta ne fait pas (refus §2.6)
+## 5. What the beta does not do (refusal §2.6)
 
-- Pas de télémétrie réseau ni de crash reporting distant (ADR 0014
-  tient : local et opt-in). Les retours passent par l'email D7.
-- Pas de canal GitHub Issues imposé aux testeurs (D7) — le dépôt
-  public reste ouvert à qui préfère, sans en faire une exigence.
-- Pas de build « bêta » séparé : les testeurs installent LA release
-  courante et vivent l'auto-update réel — c'est lui qu'on éprouve.
+- No network telemetry nor remote crash reporting (ADR 0014 holds:
+  local and opt-in). Feedback goes through the D7 email.
+- No GitHub Issues channel imposed on testers (D7) — the public
+  repository stays open to whoever prefers it, without making it a
+  requirement.
+- No separate "beta" build: testers install the CURRENT release and
+  live the real auto-update — that is what is being tested.

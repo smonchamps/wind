@@ -12,7 +12,7 @@
 
 ## Where things stand, and what to do first
 
-🔧 **Job in progress: [PLAN-BASCULE-ANGLAIS](PLAN-BASCULE-ANGLAIS.md)** — switch all the code and all the documentation from French to English (CE command). Plan written and measured on 2026-09-02 (~375 000 words of prose, ~1 200 definitions, ~115 files to rename; layer by layer, one commit per layer, three new nets). **STOP 1 played on 2026-09-02, fourteen decisions settled** (D1 archives frozen, D3 French SQL kept → debt D-54, D4 English by default → next release MINOR, D9 normative documents read in full by the CE, D11 `BETA.fr.md` kept, D14 glossary validated by the CE), **GO from the CE on 2026-09-02** after the publication of 0.16.0 and 0.17.0 and the close-out of AUDIT-V2. **E0 delivered and validated on 2026-09-02** ([GLOSSARY.md](GLOSSARY.md) « Validé tel quel », `scripts/rename/`: 1 210 identifiers, 480 keys, 542 DOM ids derived from `tokens.csv`). **E1 delivered on 2026-09-02**: four nets proven by breaking them — the language ratchet (142 113 French markers at baseline, `e2e/language-baseline.json`, any rise = red), the IPC contract (`queue_send` invisible until then), markdown links, eslint `no-undef` (set-based: svelte-check rejected at 1 059 pre-existing errors); a 13-step gate. **E2 delivered on 2026-09-02**: scripts renamed and rewritten in English (`make-release.ps1`, `verify-release.ps1`, `run-wind.ps1`, `install-workstation.ps1`, `build-wind.mjs`, `measure-sessions.mjs`, `field.ps1`, `make-icon.ps1`), skills `/job` `/field` `/close` `/gate`, agent, CLAUDE.md, WORKFLOW.md, gate.ps1, hook, CI; STANDARD §2.8 amended — everything new is written in English from here on. **E3a delivered on 2026-09-02**: `mail-ical`, `mail-render`, `mail-smtp`, `mail-auth` in English (3 476 lines, 96 tests green, mail-ical public API renamed with its two dependents). **E3b delivered on 2026-09-02**: `mail-imap` in English (3 398 lines, 79 tests green, `Veille`/`veiller` → `Watch`/`watch` with the shell's watcher updated). **E3c delivered on 2026-09-02, in three commits**: `store.rs` (10 504 lines, 140 tests — split in seven chunks translated in parallel by Sonnet agents against a fixed rename table, reassembled, dependents updated by a string-literal-aware whole-identifier pass), then `sync`/`thread`/`search`/`backfill` (4 822 lines, 120 tests), then the rest of the crate and its 13 examples renamed (`correspondants.rs` → `contacts.rs`, `bench_*`, `diag_*`, `seed_arrival`). Every Rust crate is now in English; `mail-core` keeps 124 French markers, all deliberate (`lang:fr`: notification texts, quoting and forward labels composed into bodies, the size units `o`/`Ko`/`Mo` the e2e specs assert, the French fixtures that ARE the test). Baseline 134 436 → ~110 100. Two traps caught by the nets and fixed the same hour: the mechanical rename reached the shell — 14 Tauri command names (IPC contract) and the serialized `dernier_epoch`/`dernier_objet` payload fields the UI sorts on (e2e `feedback-14`) — both reverted, they belong to E4. **E4 delivered on 2026-09-03**: the shell (`apps/desktop/src`, 8 552 lines) in English — the 36 command names of GLOSSARY §5.3 renamed together with the UI `appel()` calls, the specs' `invoke()` calls and the two e2e tools that name commands; `veilleur.rs` → `watcher.rs`, `demenagement.rs` → `relocation.rs`; `hors_pompe` → `off_pump` with the main-thread guard's literal. Kept for E5 on purpose, because they are the IPC contract with the UI: the command PARAMETER names (JSON keys) and the serialized payload FIELDS; the two native dialogs stay French (`lang:fr`). Shell: 33 French markers, all deliberate. Baseline → 102 688. **Field validated on 2026-09-03 (E3c + E4, no finding).** **E5 STOP 1 played on 2026-09-03** (D15 DOM contract at E5d, D16 value vocabularies mapped at the shell boundary in `wire.rs` — the database keeps the French value, the wire carries the English one —, D17 shell-composed text kept French, debt D-56). **E5a delivered on 2026-09-03**: the IPC keys (18 parameters, ~45 fields) and the five value vocabularies in English on the wire, `--rep-*` → `--mk-*` (A110); `d384724`, CI green 33742728494, **field validated on 2026-09-03, no finding**. **E5b delivered on 2026-09-03**: the UI in English — 38 files renamed, ~850 identifiers (the E0 dictionary plus 282 definitions it had missed, found by seven read-only Sonnet agents), the 518 catalogue keys and the `{placeholders}` of the catalogue values, ~1 000 comment blocks translated by eight Sonnet agents under a mechanical oracle (files stripped of comments byte-identical to the snapshot: 0 code difference); **D4 applied** (English is the reference: `lib/language.js`, `text.svelte.js` falls back to EN, `Lang::from_pref` defaults to `En`, ADR 0016 amended, A111 — **the next release is MINOR**); two persisted UI preferences migrate at read without a reset (`wind-largeurs` key `liste` → `list`, `wind-espacement` `faible|moyen|eleve` → `low|medium|high`); the applier is committed (`scripts/rename/apply-ui.mjs`, a tokenizer with a `--report` mode, GLOSSARY §6). Baseline 102 638 → 87 926; the UI keeps 96 markers, all deliberate. Fresh-eyes review: ten findings, eight fixed (a legacy map the applier had rewritten, a duplicate catalogue key, two nets that matched nothing since E5a, the chip tone classes, D4 now proven in a real launch, a placeholders net), two deferred to E5d (`line` → `row`, the handle test id). Lesson: the catalogue-value `{placeholders}` are a bridge too (a param key renamed on one side rendered empty names, organizers and dates — nine specs caught it); an e2e wave played while passes are still running is worth nothing. Full gate green in 167 s (198 e2e, flaky 0); commit `59c6ee1`, CI green 33759685493; **field validated on 2026-09-03, no finding** (ten steps OK, trace clean). **E5c delivered on 2026-09-03**: `--brand`, `--r-control`, `--r-tile`, `--tile`/`--tileInk` in the components, `system.css` (renamed), the System (A112, contract table cells included) and the three nets; the four sort glyphs renamed `sort_*`; nothing visible changes; full gate green in 145 s (198 e2e, flaky 0); commit `29c6a68`, CI green 33765915506, **field validated on 2026-09-03, no finding**. **E5d delivered on 2026-09-03**: the DOM contract in English from one table — `dom.csv` completed 539 → 654 rows by `scripts/rename/derive-dom.mjs` (the E0 inventory had missed 124 classes and the `data-*` attribute names), 49 words entered in `tokens.csv` (D20 + five listed in the plan's annex for STOP 2), 22 E0 rows corrected; the applier `scripts/rename/apply-dom.mjs` (RED then GREEN on fixtures, `e2e/apply-dom.test.mjs`) applied to 67 files in one run — the components, `system.css`, 30 specs, 5 e2e tools; `line` → `row` for the list row (D18, `listRow` snippet, `thread.row`); the two test-id collisions split (D19: `write`/`compose`, `desk-continue`/`onboarding-continue`); the 12 `data-*` names (D21: `data-hue`, `data-category`…); the eight seams (`__e2eHold`, `__e2eLog`, `__e2eRelease`…); System A113. Seven spec-side reds on the first e2e wave (selector forms the pass did not reach — each a rule now), ten review findings fixed (one field-visible: the cancelled-invitation chip's alert ink), a permanent net added (`e2e/dom-contract.test.mjs`: every id a spec selects is rendered by the UI). Full gate green in 150 s (198 e2e, flaky 0); baseline 87 925 → 87 900; commit `2c30cea`, CI green 33781288186, **field validated on 2026-09-03, no finding** (ten screens, both themes; the five words added after D20 validated). **E6 STOP 1 played on 2026-09-03** (D22 the suite runs in English — the D4 default, D23 the 201 titles translated, D24 the e2e README rewritten, D25 the living docs' path pointers updated names-only, D26 the four names the glossary lacked). **E6a delivered on 2026-09-03**: the 30 specs and 13 tools renamed (`redesign-screen02.spec.js`, `contrast.mjs`, `system-coherence.mjs`, `main-thread-guard.mjs`, `tokens.mjs`, `freeze-probe.py`, `measure-*`…), identifiers, comments and titles in English (the applier `scripts/rename/apply-e2e.mjs` on the shared scanner `scripts/rename/lib.mjs`, ten Sonnet agents under a token-level oracle), the 21 dependents and living docs re-pointed, System A114; baseline 87 900 → 77 283 (the layer 10 981 → 364, all E6b anchors); gate green 209 s (196 e2e, 2 flaky), review twelve candidates / ten fixed (three `file:line` pointers had drifted by one line — a comment pass moves lines). **E6b delivered on 2026-09-03**: the suite launches in English by default (D22), ~200 anchors rewritten from the catalogues, 95 fixture lines `lang:fr`, two French-only tests added to `redesign-language.spec.js` (the R3 short name, the plural), `capture-onboarding.mjs` pinned French; the e2e layer at **0 French markers**, baseline → 76 919; one field-visible symptom found by the wave: the compose weight reads `2.8 Mo / 25 MB` (shell unit vs catalogue limit, debt D-56). **Field (STOP 2) on 2026-09-03: E6 validated by the Chief Engineer, no finding** (benches under their new names, `freeze-probe` 0 freeze > 150 ms, `measure-v2` page p50 15.1 ms, gate green 157 s); **D27 applied** (`MEASURE_DB`, `MEASURE_ACCOUNTS`, `MEASURE_REUSE`, `MEASURE_NO_ACTIVITY`), **D28 applied** (the French sweep: three more tests in `redesign-language.spec.js`; rule: every screenshot in the language the user chose → debt D-57, the onboarding illustrations at the next onboarding job). CI green 33802706071 (E6a) and 33806065399 (E6b). **Next: E7** (the living documents, in this order, one commit each: README, STANDARD, WORKFLOW, STATE, DEBT, PLAN, BETA, AUDIT, PASSATION, CHANGELOG, the 31 ADR, the PLAN-*.md — the closed ones to `archives/` first). **E5, the UI** (`apps/desktop/ui-v2/src`: 25 components and 24 `lib/` modules renamed per GLOSSARY §5.1 — on NTFS a case-only rename needs two `git mv`; identifiers, comments; the catalogue KEYS in `catalogue.fr.js`, `catalogue.en.js` and the 569 `t()` calls per §5.4 with `redesign-language.spec.js` as the oracle; English becomes the reference and the fallback (D4, ADR 0016 amended, `Lang::from_pref` in `notify.rs` follows); the 15 CSS tokens of §5.5 in `systeme.css` + `theme.js` + `systeme.dc.html` in the same commit (DC-D2)). Handover, in order: (1) read this paragraph, GLOSSARY §2, §4, §5.1, §5.4–§5.6 and `scripts/rename/dictionary.csv` rows `layer=ui`, `keys.csv`, `dom.csv` — the words are decided; (2) the E4 leftovers come first, in ONE commit with their UI side: the shell's command parameter names and payload field names (`#[derive(Serialize)]` structs of `commands.rs`, some `rename_all = "camelCase"`) change with every Svelte/JS read and every `appel('…', { … })` argument object — the IPC contract net does not see keys, only the e2e and the field do, so play the whole e2e wave before the commit; (3) the DOM contract (`data-testid`, CSS classes, `__e2e*` seams, §5.6) changes with the specs — either at E5 with E6 in the same commit, or kept French until E6: decide at the start and write it in the PLAN; (4) the French UI text (`catalogue.fr.js` VALUES) does not change, only the keys (D3/§1.6); the browser `localStorage` keys stay (D-54); (5) method: copies in the scratchpad, one agent per component, a fixed table for keys/ids/seams, `apply-renames` passes; the Vite build, `eslint no-undef`, `catalogs.test.mjs`, `system-coherence` and the e2e are the oracles; (6) open CE points: the language of shell-composed text (`human_size` units, the two native dialogs) once the UI language is known to the shell; (7) after the commit: `node e2e/language-gate.mjs --update`, full gate, commit in English, push and CI watch as a background tool call. Then E6 (e2e/scripts), E7-E10 (docs, System, archives, memory).
+🔧 **Job in progress: [PLAN-ENGLISH-SWITCH](PLAN-ENGLISH-SWITCH.md)** — switch all the code and all the documentation from French to English (CE command). Plan written and measured on 2026-09-02 (~375 000 words of prose, ~1 200 definitions, ~115 files to rename; layer by layer, one commit per layer, three new nets). **STOP 1 played on 2026-09-02, fourteen decisions settled** (D1 archives frozen, D3 French SQL kept → debt D-54, D4 English by default → next release MINOR, D9 normative documents read in full by the CE, D11 `BETA.fr.md` kept, D14 glossary validated by the CE), **GO from the CE on 2026-09-02** after the publication of 0.16.0 and 0.17.0 and the close-out of AUDIT-V2. **E0 delivered and validated on 2026-09-02** ([GLOSSARY.md](GLOSSARY.md) « Validé tel quel », `scripts/rename/`: 1 210 identifiers, 480 keys, 542 DOM ids derived from `tokens.csv`). **E1 delivered on 2026-09-02**: four nets proven by breaking them — the language ratchet (142 113 French markers at baseline, `e2e/language-baseline.json`, any rise = red), the IPC contract (`queue_send` invisible until then), markdown links, eslint `no-undef` (set-based: svelte-check rejected at 1 059 pre-existing errors); a 13-step gate. **E2 delivered on 2026-09-02**: scripts renamed and rewritten in English (`make-release.ps1`, `verify-release.ps1`, `run-wind.ps1`, `install-workstation.ps1`, `build-wind.mjs`, `measure-sessions.mjs`, `field.ps1`, `make-icon.ps1`), skills `/job` `/field` `/close` `/gate`, agent, CLAUDE.md, WORKFLOW.md, gate.ps1, hook, CI; STANDARD §2.8 amended — everything new is written in English from here on. **E3a delivered on 2026-09-02**: `mail-ical`, `mail-render`, `mail-smtp`, `mail-auth` in English (3 476 lines, 96 tests green, mail-ical public API renamed with its two dependents). **E3b delivered on 2026-09-02**: `mail-imap` in English (3 398 lines, 79 tests green, `Veille`/`veiller` → `Watch`/`watch` with the shell's watcher updated). **E3c delivered on 2026-09-02, in three commits**: `store.rs` (10 504 lines, 140 tests — split in seven chunks translated in parallel by Sonnet agents against a fixed rename table, reassembled, dependents updated by a string-literal-aware whole-identifier pass), then `sync`/`thread`/`search`/`backfill` (4 822 lines, 120 tests), then the rest of the crate and its 13 examples renamed (`correspondants.rs` → `contacts.rs`, `bench_*`, `diag_*`, `seed_arrival`). Every Rust crate is now in English; `mail-core` keeps 124 French markers, all deliberate (`lang:fr`: notification texts, quoting and forward labels composed into bodies, the size units `o`/`Ko`/`Mo` the e2e specs assert, the French fixtures that ARE the test). Baseline 134 436 → ~110 100. Two traps caught by the nets and fixed the same hour: the mechanical rename reached the shell — 14 Tauri command names (IPC contract) and the serialized `dernier_epoch`/`dernier_objet` payload fields the UI sorts on (e2e `feedback-14`) — both reverted, they belong to E4. **E4 delivered on 2026-09-03**: the shell (`apps/desktop/src`, 8 552 lines) in English — the 36 command names of GLOSSARY §5.3 renamed together with the UI `appel()` calls, the specs' `invoke()` calls and the two e2e tools that name commands; `veilleur.rs` → `watcher.rs`, `demenagement.rs` → `relocation.rs`; `hors_pompe` → `off_pump` with the main-thread guard's literal. Kept for E5 on purpose, because they are the IPC contract with the UI: the command PARAMETER names (JSON keys) and the serialized payload FIELDS; the two native dialogs stay French (`lang:fr`). Shell: 33 French markers, all deliberate. Baseline → 102 688. **Field validated on 2026-09-03 (E3c + E4, no finding).** **E5 STOP 1 played on 2026-09-03** (D15 DOM contract at E5d, D16 value vocabularies mapped at the shell boundary in `wire.rs` — the database keeps the French value, the wire carries the English one —, D17 shell-composed text kept French, debt D-56). **E5a delivered on 2026-09-03**: the IPC keys (18 parameters, ~45 fields) and the five value vocabularies in English on the wire, `--rep-*` → `--mk-*` (A110); `d384724`, CI green 33742728494, **field validated on 2026-09-03, no finding**. **E5b delivered on 2026-09-03**: the UI in English — 38 files renamed, ~850 identifiers (the E0 dictionary plus 282 definitions it had missed, found by seven read-only Sonnet agents), the 518 catalogue keys and the `{placeholders}` of the catalogue values, ~1 000 comment blocks translated by eight Sonnet agents under a mechanical oracle (files stripped of comments byte-identical to the snapshot: 0 code difference); **D4 applied** (English is the reference: `lib/language.js`, `text.svelte.js` falls back to EN, `Lang::from_pref` defaults to `En`, ADR 0016 amended, A111 — **the next release is MINOR**); two persisted UI preferences migrate at read without a reset (`wind-largeurs` key `liste` → `list`, `wind-espacement` `faible|moyen|eleve` → `low|medium|high`); the applier is committed (`scripts/rename/apply-ui.mjs`, a tokenizer with a `--report` mode, GLOSSARY §6). Baseline 102 638 → 87 926; the UI keeps 96 markers, all deliberate. Fresh-eyes review: ten findings, eight fixed (a legacy map the applier had rewritten, a duplicate catalogue key, two nets that matched nothing since E5a, the chip tone classes, D4 now proven in a real launch, a placeholders net), two deferred to E5d (`line` → `row`, the handle test id). Lesson: the catalogue-value `{placeholders}` are a bridge too (a param key renamed on one side rendered empty names, organizers and dates — nine specs caught it); an e2e wave played while passes are still running is worth nothing. Full gate green in 167 s (198 e2e, flaky 0); commit `59c6ee1`, CI green 33759685493; **field validated on 2026-09-03, no finding** (ten steps OK, trace clean). **E5c delivered on 2026-09-03**: `--brand`, `--r-control`, `--r-tile`, `--tile`/`--tileInk` in the components, `system.css` (renamed), the System (A112, contract table cells included) and the three nets; the four sort glyphs renamed `sort_*`; nothing visible changes; full gate green in 145 s (198 e2e, flaky 0); commit `29c6a68`, CI green 33765915506, **field validated on 2026-09-03, no finding**. **E5d delivered on 2026-09-03**: the DOM contract in English from one table — `dom.csv` completed 539 → 654 rows by `scripts/rename/derive-dom.mjs` (the E0 inventory had missed 124 classes and the `data-*` attribute names), 49 words entered in `tokens.csv` (D20 + five listed in the plan's annex for STOP 2), 22 E0 rows corrected; the applier `scripts/rename/apply-dom.mjs` (RED then GREEN on fixtures, `e2e/apply-dom.test.mjs`) applied to 67 files in one run — the components, `system.css`, 30 specs, 5 e2e tools; `line` → `row` for the list row (D18, `listRow` snippet, `thread.row`); the two test-id collisions split (D19: `write`/`compose`, `desk-continue`/`onboarding-continue`); the 12 `data-*` names (D21: `data-hue`, `data-category`…); the eight seams (`__e2eHold`, `__e2eLog`, `__e2eRelease`…); System A113. Seven spec-side reds on the first e2e wave (selector forms the pass did not reach — each a rule now), ten review findings fixed (one field-visible: the cancelled-invitation chip's alert ink), a permanent net added (`e2e/dom-contract.test.mjs`: every id a spec selects is rendered by the UI). Full gate green in 150 s (198 e2e, flaky 0); baseline 87 925 → 87 900; commit `2c30cea`, CI green 33781288186, **field validated on 2026-09-03, no finding** (ten screens, both themes; the five words added after D20 validated). **E6 STOP 1 played on 2026-09-03** (D22 the suite runs in English — the D4 default, D23 the 201 titles translated, D24 the e2e README rewritten, D25 the living docs' path pointers updated names-only, D26 the four names the glossary lacked). **E6a delivered on 2026-09-03**: the 30 specs and 13 tools renamed (`redesign-screen02.spec.js`, `contrast.mjs`, `system-coherence.mjs`, `main-thread-guard.mjs`, `tokens.mjs`, `freeze-probe.py`, `measure-*`…), identifiers, comments and titles in English (the applier `scripts/rename/apply-e2e.mjs` on the shared scanner `scripts/rename/lib.mjs`, ten Sonnet agents under a token-level oracle), the 21 dependents and living docs re-pointed, System A114; baseline 87 900 → 77 283 (the layer 10 981 → 364, all E6b anchors); gate green 209 s (196 e2e, 2 flaky), review twelve candidates / ten fixed (three `file:line` pointers had drifted by one line — a comment pass moves lines). **E6b delivered on 2026-09-03**: the suite launches in English by default (D22), ~200 anchors rewritten from the catalogues, 95 fixture lines `lang:fr`, two French-only tests added to `redesign-language.spec.js` (the R3 short name, the plural), `capture-onboarding.mjs` pinned French; the e2e layer at **0 French markers**, baseline → 76 919; one field-visible symptom found by the wave: the compose weight reads `2.8 Mo / 25 MB` (shell unit vs catalogue limit, debt D-56). **Field (STOP 2) on 2026-09-03: E6 validated by the Chief Engineer, no finding** (benches under their new names, `freeze-probe` 0 freeze > 150 ms, `measure-v2` page p50 15.1 ms, gate green 157 s); **D27 applied** (`MEASURE_DB`, `MEASURE_ACCOUNTS`, `MEASURE_REUSE`, `MEASURE_NO_ACTIVITY`), **D28 applied** (the French sweep: three more tests in `redesign-language.spec.js`; rule: every screenshot in the language the user chose → debt D-57, the onboarding illustrations at the next onboarding job). CI green 33802706071 (E6a) and 33806065399 (E6b). **Next: E7** (the living documents, in this order, one commit each: README, STANDARD, WORKFLOW, STATE, DEBT, PLAN, BETA, AUDIT, PASSATION, CHANGELOG, the 31 ADR, the PLAN-*.md — the closed ones to `archives/` first). **E5, the UI** (`apps/desktop/ui-v2/src`: 25 components and 24 `lib/` modules renamed per GLOSSARY §5.1 — on NTFS a case-only rename needs two `git mv`; identifiers, comments; the catalogue KEYS in `catalogue.fr.js`, `catalogue.en.js` and the 569 `t()` calls per §5.4 with `redesign-language.spec.js` as the oracle; English becomes the reference and the fallback (D4, ADR 0016 amended, `Lang::from_pref` in `notify.rs` follows); the 15 CSS tokens of §5.5 in `systeme.css` + `theme.js` + `systeme.dc.html` in the same commit (DC-D2)). Handover, in order: (1) read this paragraph, GLOSSARY §2, §4, §5.1, §5.4–§5.6 and `scripts/rename/dictionary.csv` rows `layer=ui`, `keys.csv`, `dom.csv` — the words are decided; (2) the E4 leftovers come first, in ONE commit with their UI side: the shell's command parameter names and payload field names (`#[derive(Serialize)]` structs of `commands.rs`, some `rename_all = "camelCase"`) change with every Svelte/JS read and every `appel('…', { … })` argument object — the IPC contract net does not see keys, only the e2e and the field do, so play the whole e2e wave before the commit; (3) the DOM contract (`data-testid`, CSS classes, `__e2e*` seams, §5.6) changes with the specs — either at E5 with E6 in the same commit, or kept French until E6: decide at the start and write it in the PLAN; (4) the French UI text (`catalogue.fr.js` VALUES) does not change, only the keys (D3/§1.6); the browser `localStorage` keys stay (D-54); (5) method: copies in the scratchpad, one agent per component, a fixed table for keys/ids/seams, `apply-renames` passes; the Vite build, `eslint no-undef`, `catalogs.test.mjs`, `system-coherence` and the e2e are the oracles; (6) open CE points: the language of shell-composed text (`human_size` units, the two native dialogs) once the UI language is known to the shell; (7) after the commit: `node e2e/language-gate.mjs --update`, full gate, commit in English, push and CI watch as a background tool call. Then E6 (e2e/scripts), E7-E10 (docs, System, archives, memory).
 
 🔎 **Full code audit on 2026-09-01** —
 **[AUDIT-2026-09-01.md](AUDIT-2026-09-01.md)**: six auditors per
@@ -59,7 +59,7 @@ a second instance starts; (2) **no 0.15.1** — wave 0 ships with wave
 on link click or an HTTP pixel reported by a tester ⇒ 0.15.1 the same
 day.
 
-**Last job closed: [PLAN-AUDIT-V2](PLAN-AUDIT-V2.md)**
+**Last job closed: [PLAN-AUDIT-V2](archives/PLAN-AUDIT-V2.md)**
 (2026-09-02, full field validation in six passes, CI green run
 33642403656, **ADR 0031**, journal A107-A109) — audit wave 2 (ten
 measurable S2 batches + the front end, D1: « tout en un chantier »),
@@ -103,7 +103,7 @@ personal data) was **sent on 2026-09-02** — response pending, proof:
 `gh api repos/smonchamps/wind/commits/051bb01…` ⇒ 404.
 
 Last closed before it:
-**[PLAN-AUDIT-V1](PLAN-AUDIT-V1.md)** (2026-09-02, CE field verdict
+**[PLAN-AUDIT-V1](archives/PLAN-AUDIT-V1.md)** (2026-09-02, CE field verdict
 « ok », 0 findings, CI green run 33568895402, **ADR 0030**) — audit
 wave 1 (the core and shell S1s), opened on the evening of
 2026-09-01, GO from the CE at STOP 1 (D1-D4 settled), **nine steps
@@ -136,7 +136,7 @@ response pending; verify
 `gh api repos/smonchamps/wind/commits/051bb01…` ⇒ 404.
 
 Previous job:
-**[PLAN-RETOURS-14](PLAN-RETOURS-14.md)** (2026-08-31, opened and
+**[PLAN-RETOURS-14](archives/PLAN-RETOURS-14.md)** (2026-08-31, opened and
 CLOSED the same day, commit `18a9e61`, CI green run 33408211506, CE
 field validation in THREE passes the same day — 1-7 OK, R8-R10
 requested and delivered in session, final verdict « ok », **0 KO
@@ -239,7 +239,7 @@ envelopes): 159 groups in 86 ms cold, 17 ms warm (`wind.log`, STOP 2
 of PLAN-AUDIT-V2), the 200 ms budget held.
 
 Last closed:
-**[PLAN-HORIZON-NETTOYAGE](PLAN-HORIZON-NETTOYAGE.md)** (2026-08-30,
+**[PLAN-HORIZON-NETTOYAGE](archives/PLAN-HORIZON-NETTOYAGE.md)** (2026-08-30,
 opened and CLOSED the same day, commit `f66d1e6`, CI green run
 33333151630, CE field validation **12/12 « Tout OK »**, zero
 findings). Two tracks, D1-D12 settled at STOP 1:
@@ -278,7 +278,7 @@ fixture dates frozen in 2020). Tests mail-core 412 → **419**, e2e
 exhaustiveness net `horizon_epoch` × vocabularies.
 
 The job closed before it:
-**[PLAN-RETOURS-13](PLAN-RETOURS-13.md)** (2026-08-30, opened and
+**[PLAN-RETOURS-13](archives/PLAN-RETOURS-13.md)** (2026-08-30, opened and
 CLOSED the same day, commit `5ab1f15`, CI green run 33323808766, CE
 field validation in two passes — 5 findings fixed the same day,
 verdict « tout ok »). **Twelve CE findings on the Organized mode**
@@ -307,7 +307,7 @@ external write — the lucky e2e net made honest). Tests mail-core
 target the product gesture.
 
 The job closed before it:
-**[PLAN-MODE-ORGANISE](PLAN-MODE-ORGANISE.md)** (2026-08-29 → 30,
+**[PLAN-MODE-ORGANISE](archives/PLAN-MODE-ORGANISE.md)** (2026-08-29 → 30,
 **CLOSED on 2026-08-30 — full field validation, E1-E5bis DELIVERED
 and PUBLISHED in 0.14.0**; E6 — Groups — deferred, a future job).
 **Organized mode** — the second sort mode inspired by HEY, D1-D9
@@ -362,7 +362,7 @@ That same 2026-08-29/30, two CE findings settled outside a job:
 receiving — DNS propagation delay).
 
 The job closed before it:
-**[PLAN-MONA](PLAN-MONA.md)****[PLAN-MONA](PLAN-MONA.md)** (2026-08-29, opened and closed the same
+**[PLAN-MONA](archives/PLAN-MONA.md)****[PLAN-MONA](archives/PLAN-MONA.md)** (2026-08-29, opened and closed the same
 day, commit `409c8ae`, CI green run 33270609284, CE field verdict
 « Terrain OK sur les deux thèmes, GO » — zero findings). **Two new
 themes, "Mona" and "Mona · nuit"** — **renamed "Innamoramento" /
@@ -397,7 +397,7 @@ PLAN-BETA.
 ---
 
 The previous closed job:
-**[PLAN-RETOURS-12](PLAN-RETOURS-12.md)** (2026-08-28 → 29, commits
+**[PLAN-RETOURS-12](archives/PLAN-RETOURS-12.md)** (2026-08-28 → 29, commits
 `60225b0`/`331832d`, CI green run 33216010954, field CE **4/4 on
 2026-08-29, zero finding**). Five feedback items: (1) **an account added
 while Wind is open reads as connected** — `compteAjoute()` calls
@@ -457,7 +457,7 @@ rewritten.
 ---
 
 The previous closed job:
-**[PLAN-RETOURS-11](PLAN-RETOURS-11.md)** (2026-08-27 → 28, commits
+**[PLAN-RETOURS-11](archives/PLAN-RETOURS-11.md)** (2026-08-27 → 28, commits
 `a562fdd`/`a9f93e0`, CI green runs 33127472066/33127940550, **DELIVERED
 in 0.12.0 PUBLISHED on 2026-08-28, verified 18/18 and auto-update proven
 on BOTH workstations the same day** — CE GO: "Release ok, auto update ok
@@ -488,7 +488,7 @@ any client ; then invite 5-10 close contacts, D9).
 ---
 
 The previous closed job:
-**[PLAN-RETOURS-10](PLAN-RETOURS-10.md)** (2026-08-27, opened and closed
+**[PLAN-RETOURS-10](archives/PLAN-RETOURS-10.md)** (2026-08-27, opened and closed
 the same day, commit `a72f341`, CI green run 33111561147) — four
 CE feedback items: **multi-select** (Ctrl-click which checks AND moves the
 reading focus, Shift-click from the anchor or the selection, checkbox on
@@ -526,7 +526,7 @@ tauri-plugin-updater issue, CE GO pending).
 
 ---
 
-✅ **[PLAN-SIGNATURE](PLAN-SIGNATURE.md)** (2026-08-26 → 27, CLOSED) :
+✅ **[PLAN-SIGNATURE](archives/PLAN-SIGNATURE.md)** (2026-08-26 → 27, CLOSED) :
 an update installation failure now **is visible** (banner
 that rearms, Settings with no dead end, 10 min timeout, announced
 version = installed version, marker in a new directory, e2e guard,
@@ -544,7 +544,7 @@ updater plugin exited via `exit(0)` without reading the return of
 
 ---
 
-✅ **[PLAN-DEMARRAGE](PLAN-DEMARRAGE.md)** (2026-08-26, CLOSED on the 27th) :
+✅ **[PLAN-DEMARRAGE](archives/PLAN-DEMARRAGE.md)** (2026-08-26, CLOSED on the 27th) :
 delivered, field 6/6, commits `b94d63b`/`385ee64`, CI green, **0.10.1
 published** (18/18) ; the x64 auto-update proof (D5) landed on the 27th
 (0.10.0 → 0.10.1 applied, after an initial SAC refusal).
@@ -596,9 +596,9 @@ that's the same variable** ; a `-N 3` ran for ~550 rounds. This is
 also what explains the "19 launches" of the 26/08 campaign.
 
 **Remaining:** GitHub's answer to the ticket (check the 404 on
-`051bb01`) ; PLAN-BASCULE-ANGLAIS in progress in another session.
+`051bb01`) ; PLAN-ENGLISH-SWITCH in progress in another session.
 
-**Last closed job: [PLAN-ESPACEMENT](PLAN-ESPACEMENT.md)**
+**Last closed job: [PLAN-ESPACEMENT](archives/PLAN-ESPACEMENT.md)**
 (2026-08-25, field CE **7/7 zero finding**, gate green 2 min, e2e
 129 → **137**) — **three air steps between messages** (A83):
 "Low" (the existing pixel-for-pixel, 13 px padding, row 88),
@@ -624,7 +624,7 @@ tests in the first net could not fail; the net was rewritten (8 tests) to
 read what the user SEES and was **proven not vacant** by deliberately
 breaking the code. **Delivered in 0.10.0** (published on 2026-08-25).
 
-**The previous closed job: [PLAN-REPERE-LIGNE](PLAN-REPERE-LIGNE.md)**
+**The previous closed job: [PLAN-REPERE-LIGNE](archives/PLAN-REPERE-LIGNE.md)**
 (2026-08-25, field CE **15/15**, gate green, e2e 124 → **129**) — **the
 mailbox is spelled out in full, on the sender's line**
 (A80-A82). The marker badge under the avatar is replaced by a **text
@@ -652,7 +652,7 @@ and a D7 rule that gave a chorus to single-account workstations).
 One field finding (point 12: the pane spoke when the list
 stayed silent) fixed the same day. **Delivered in 0.10.0** (published on 2026-08-25).
 
-**The previous closed job: [PLAN-ELEMENTS](PLAN-ELEMENTS.md)**
+**The previous closed job: [PLAN-ELEMENTS](archives/PLAN-ELEMENTS.md)**
 (2026-08-24, `fb32238` → `0de3689`, field CE **8/8 zero KO** the same
 day, CI green run 32752449754) — the "Elements" System became
 THE reference System
@@ -715,7 +715,7 @@ symptom (on-demand body throttled to ~7 s at launch, field finding of
 left the display path (A64). To be reopened only if the field says
 so again ; the WIP from back then was removed (CE decision of
 2026-08-20), its material stays in the review section of
-[PLAN-COMPOSITION-HTML](PLAN-COMPOSITION-HTML.md).
+[PLAN-COMPOSITION-HTML](archives/PLAN-COMPOSITION-HTML.md).
 
 **Last delivered version: 0.15.0** (published **2026-08-30**, bare tag
 on `52db74f`, marked Latest, CI green run 33334129022, **verified**
@@ -830,7 +830,7 @@ signature == `.sig`, exe resolves 200 / 5 066 813 bytes; **auto-update 0.4.0 →
 confirmed in the field**). 0.5.0 carries the four feedback items from
 PLAN-RETOURS-7 (MINOR, D6).
 
-**The previously closed job: [PLAN-RETOURS-9](PLAN-RETOURS-9.md)**
+**The previously closed job: [PLAN-RETOURS-9](archives/PLAN-RETOURS-9.md)**
 (2026-08-23, `19e39cf`, A77-A78 + **ADR 0025**, CE field **6/6** the
 same day — zero KO —, CI green run 32647649916, **to ship in 0.8.0**
 MINOR, decision D5). Three subjects: (1) **OAuth credentials compiled
@@ -868,7 +868,7 @@ andon); docs-only fast path of the pre-push; `scripts/field.ps1` +
 encodings), **D-33** (stale dist held in JS only, not in build.rs).
 Rest of the kaizen: wave 3 out of window, PDCA review on 2026-09-06 (D4).
 
-**The previously closed job: [PLAN-INVITATIONS](PLAN-INVITATIONS.md)**
+**The previously closed job: [PLAN-INVITATIONS](archives/PLAN-INVITATIONS.md)**
 (2026-08-23, `1c159bc`, A76 + **ADR 0024**, **field complete in
 FOUR passes on 2026-08-22/23** — each finding fixed in the
 session —, CI green run 32605745661, **shipped in 0.7.0** — published on
@@ -917,7 +917,7 @@ part), **D-30** (legacy invitation without an attachment row), **D-31**
 workspace tests: **547** (new `mail-ical` crate, 16 corpus tests on
 real Google/Outlook fixtures).
 
-**The previously closed job: [PLAN-RETOURS-8](PLAN-RETOURS-8.md)**
+**The previously closed job: [PLAN-RETOURS-8](archives/PLAN-RETOURS-8.md)**
 (2026-08-22, `cbf795a`, A74-A75 + **ADR 0023**, **field complete in
 FIVE passes the same day** — 16 R2 findings, each fixed in the
 session —, CI green run 32576771340, **shipped in 0.6.0** — the first
@@ -963,7 +963,7 @@ reopened-reclosed without settlement (A41 order verified on record,
 the `prefs.lang` assertion still to write). e2e: 108 → **117**; Rust
 tests: mail-core 357 → **358**, wind-desktop 18 → **20**.
 
-**The previously closed job: [PLAN-RETOURS-7](PLAN-RETOURS-7.md)**
+**The previously closed job: [PLAN-RETOURS-7](archives/PLAN-RETOURS-7.md)**
 (2026-08-22, `2cb9460`, A70-A73, **field complete in two passes on
 2026-08-21** — the visual finding fixed in the session —, CI green,
 **shipped in 0.5.0**). (1) **Descriptive hover on attachments**:
@@ -992,7 +992,7 @@ empty list requires both sources to answer (flow + pins).
 **D-28** (orphan pin if the key message leaves its mailbox — accepted edge
 case). e2e: 103 → **108**; Rust tests 355 → **357**.
 
-**The previously closed job: [PLAN-RETOURS-6](PLAN-RETOURS-6.md)**
+**The previously closed job: [PLAN-RETOURS-6](archives/PLAN-RETOURS-6.md)**
 (2026-08-21, `13d4bed`, A66-A69, **field complete in three passes the
 same day** — each finding fixed in the session —, CI green,
 **shipped in 0.4.0**). (1) **Signature per account** (Settings >
@@ -1021,7 +1021,7 @@ on `--panel` (Wind's footer). 3 new glyphs
 (58 → 61, `?v=61`, proof 62/62). Report: display of RECEIVED
 important messages (§ reports). e2e: 99 → **103**.
 
-**The previously closed job: [PLAN-RETOURS-5](PLAN-RETOURS-5.md)**
+**The previously closed job: [PLAN-RETOURS-5](archives/PLAN-RETOURS-5.md)**
 (2026-08-21, `6f94922`, A65, field complete — five points, point 2
 investigated then replayed —, CI green, **shipped in 0.3.0**). (1) **The
 temporary Sent entry tells the truth**: the local echo of a send

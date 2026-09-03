@@ -26,7 +26,7 @@ mkdirSync(folder, { recursive: true });
 
 // The shipped illustrations are FRENCH screenshots (assets/accueil): the
 // suite launches English since E6b (D22), this script pins French until the
-// Chief Engineer decides their language (PLAN-BASCULE-ANGLAIS D28).
+// Chief Engineer decides their language (PLAN-ENGLISH-SWITCH D28).
 const { app, browser, page } = await launchAppV2({ lang: 'fr' });
 try {
   for (const panes of [3, 2, 1]) {

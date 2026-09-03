@@ -1,6 +1,6 @@
 # Glossary — the English vocabulary of Wind
 
-> Written on 2026-09-02 for [PLAN-BASCULE-ANGLAIS](PLAN-BASCULE-ANGLAIS.md)
+> Written on 2026-09-02 for [PLAN-ENGLISH-SWITCH](PLAN-ENGLISH-SWITCH.md)
 > step E0, validated by the Chief Engineer at STOP 1 bis (decision D14).
 > This is the design deliverable of the switch: **every French word of
 > the code and the documentation is translated once, here, and applied
@@ -212,7 +212,7 @@
 | e2e specs | `banc-ram-kiosque` → `bench-ram-feed`, `demarrage` → `startup`, `espacement` → `spacing`, `kiosque-images` → `feed-images`, `menu-clavier` → `keyboard-menu`, `mode-organise` → `organized-mode`, `nettoyage` → `cleanup`, `refonte-*` → `redesign-*` (`defilement` → `scroll`, `ecran02` → `screen02`, `langue` → `language`, `parcours-portes` → `gated-journeys`, `reconnexion` → `reconnect`, `retours-n` → `feedback-n`, `retrait-compte` → `account-removal`, `volets` → `panes`), `repere-ligne` → `row-marker`, `retours-12-entete` → `feedback-12-header`, `retours-14-reception` → `feedback-14-inbox`, `retours-9-nom-compte` → `feedback-9-account-name`, `sections-liste` → `list-sections`, `selection-multiple` → `multi-select`; amended at E6a (D26, 2026-09-03): `barres-fil` → `thread-bars`, `retours-12` → `feedback-12`, `retours-14` → `feedback-14`, `horizon-import` unchanged, the Playwright report `test-results/rapport.json` → `report.json` |
 | Scripts | `faire-release` → `make-release`, `verifier-release` → `verify-release`, `lancer-wind` → `run-wind`, `installer-poste` → `install-workstation`, `construire-wind.mjs` → `build-wind.mjs`, `mesurer-sessions.mjs` → `measure-sessions.mjs`, `terrain.ps1` → `field.ps1`, `faire-icone` → `make-icon` (`gate.ps1` unchanged) |
 | Skills | `chantier` → `job`, `terrain` → `field`, `solde` → `close` (`gate` unchanged); agent `spike` unchanged |
-| Docs | `ETAT` → `STATE`, `DETTE` → `DEBT`, `PASSATION` → `HANDOVER`, `PLAN-BASCULE-ANGLAIS` → `PLAN-ENGLISH-SWITCH`; `design/systeme.dc.html` → `design/system.dc.html`; `ANNOTATIONS-V3` unchanged |
+| Docs | `ETAT` → `STATE`, `DETTE` → `DEBT`, `PASSATION` → `HANDOVER`, `PLAN-ENGLISH-SWITCH` → `PLAN-ENGLISH-SWITCH`; `design/systeme.dc.html` → `design/system.dc.html`; `ANNOTATIONS-V3` unchanged |
 
 ### 5.2 ADR slugs (numbers unchanged)
 
@@ -360,7 +360,7 @@ dictionary rows tagged `leftover-E6a` (`allouerPortCdp` →
   `queueMicrotask`) and had missed ~280 definitions (props, params,
   destructured locals); those rows were corrected or added in
   `dictionary.csv` and `keys.csv` by hand, tagged `leftover-E5b` /
-  `inventory-E5b` — listed in PLAN-BASCULE-ANGLAIS E5b.
+  `inventory-E5b` — listed in PLAN-ENGLISH-SWITCH E5b.
 - The DOM layer (E5d) has its own pair. `scripts/rename/derive-dom.mjs`
   reads what the UI and the specs ACTUALLY carry — every
   `data-testid`, the `testid` prop of `Menu`, the prefixes of the ids
