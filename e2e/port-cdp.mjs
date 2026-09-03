@@ -1,25 +1,25 @@
-// Allocation d'un port CDP libre (PLAN-ISOLATION-E2E).
+// Allocation of a free CDP port (PLAN-ISOLATION-E2E).
 //
-// Le port 9222 codé en dur était le SEUL état partagé entre deux suites
-// e2e jouées en même temps depuis deux worktrees (constat 2026-08-15 :
-// applications mortes au démarrage, échecs croisés — `connectOverCDP`
-// reconnaît « sa » fenêtre au seul critère `tauri.localhost`, vrai pour
-// n'importe quelle fenêtre Wind). Remède à la racine : plus de port
-// partagé du tout — l'OS choisit un port libre à chaque lancement.
+// The hardcoded port 9222 was the ONLY state shared between two e2e
+// suites played at the same time from two worktrees (finding 2026-08-15:
+// applications dead on startup, cross failures — `connectOverCDP`
+// recognizes "its" window by the sole criterion `tauri.localhost`, true for
+// any Wind window). Root-cause remedy: no more shared
+// port at all — the OS picks a free port on every launch.
 //
-// Fenêtre TOCTOU assumée : entre la fermeture de la sonde et le bind de
-// WebView2, un tiers peut prendre le port. L'échec est alors bruyant
-// (CDP injoignable, journal recraché) et la relance choisit un autre
-// port — c'est un flake théorique, pas un état stable.
+// TOCTOU window accepted: between the probe closing and WebView2's
+// bind, a third party can take the port. The failure is then loud
+// (CDP unreachable, log spat back out) and the retry picks another
+// port — that's a theoretical flake, not a stable state.
 import { createServer } from 'node:net';
 
-export function allouerPortCdp() {
+export function allocateCdpPort() {
   return new Promise((resolve, reject) => {
-    const sonde = createServer();
-    sonde.once('error', reject);
-    sonde.listen(0, '127.0.0.1', () => {
-      const { port } = sonde.address();
-      sonde.close((erreur) => (erreur ? reject(erreur) : resolve(port)));
+    const probe = createServer();
+    probe.once('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+      const { port } = probe.address();
+      probe.close((error) => (error ? reject(error) : resolve(port)));
     });
   });
 }

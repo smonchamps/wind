@@ -11,7 +11,7 @@
   // at the first account — the prior behavior, unchanged).
   //
   // Step 2 shows REAL SCREENSHOTS of the application (Clarity
-  // fixture, e2e/capture-accueil.mjs — finding 5); step 3 draws
+  // fixture, e2e/capture-onboarding.mjs — finding 5); step 3 draws
   // its windows in the colors of CARDS AND in the layout chosen
   // at step 2 (finding 6). Step 5 recaps the three choices —
   // each is a door back to its step (finding 8). Steps

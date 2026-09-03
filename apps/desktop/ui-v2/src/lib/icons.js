@@ -5,7 +5,7 @@
 // miter joints. This catalogue IS the shipped set; the System
 // (docs/design/systeme.dc.html, Icons section) carries the record — one
 // glyph, one meaning, one use — and the drawing notes. The
-// coherence-systeme.mjs gate keeps the two equal, both ways, and
+// system-coherence.mjs gate keeps the two equal, both ways, and
 // checks every path (A18: one assertion, plus one promise).
 //
 //   d        stroked paths (stroke currentColor)

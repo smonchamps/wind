@@ -1,7 +1,7 @@
 // v2 mount — theme AND language restored BEFORE the first render (no
 // flash; the language is a read-only PROBE, sub-millisecond: before
 // the migration modal, nothing must open the database — ADR 0012),
-// measurement hooks exposed for the P1 bench (mesure-v2.mjs) and the e2e.
+// measurement hooks exposed for the P1 bench (measure-v2.mjs) and the e2e.
 import './system.css';
 import { mount } from 'svelte';
 import { applyTheme, restoreTheme, THEMES } from './lib/theme.js';

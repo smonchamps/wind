@@ -76,7 +76,7 @@ Every skill carries the rules paid for over the project:
 - **DC-D2** — every UI commit amends `docs/design/systeme.dc.html` in
   the same commit (journal A-n).
 - **Full gate, never the tests alone** — the thirteen steps of
-  [/gate](../.claude/skills/gate/SKILL.md), `coherence-systeme`
+  [/gate](../.claude/skills/gate/SKILL.md), `system-coherence`
   included, played in one call by `scripts/gate.ps1`; fmt replayed
   after any mechanical replacement.
 - **E2E flaky locally** — a local red is cross-checked (`gh run list`)

@@ -71,11 +71,11 @@ Step 2 "build ui-v2" {
     } finally { Pop-Location }
 }
 
-Step 3 "WCAG contrasts (A8)" { node e2e/contraste.mjs }
+Step 3 "WCAG contrasts (A8)" { node e2e/contrast.mjs }
 
-Step 4 "System coherence (DC-D6)" { node e2e/coherence-systeme.mjs }
+Step 4 "System coherence (DC-D6)" { node e2e/system-coherence.mjs }
 
-Step 5 "main-thread guard" { node e2e/garde-thread-principal.mjs }
+Step 5 "main-thread guard" { node e2e/main-thread-guard.mjs }
 
 # PLAN-AUDIT-V2 E9: no JS lint guarded the tooling scripts -- a syntax
 # error in a textual gate was discovered by playing it. `node --check`
@@ -88,7 +88,7 @@ Step 6 "script syntax (node --check, PowerShell parser)" {
     }
     # Field 2026-09-02: verify-release.ps1 no longer parsed under Windows
     # PowerShell 5.1 -- an em dash in a string of a file WITHOUT BOM, read
-    # as ANSI, became a closing quote. THIS PowerShell's parser (the CE's)
+    # as ANSI, became a closing quote. THIS PowerShell's parser (the Chief Engineer's)
     # reads every .ps1 the way it will read it in the field; a non-ASCII
     # .ps1 carries a UTF-8 BOM or does not pass.
     $ps1 = @(Get-ChildItem scripts -Filter *.ps1) + @(Get-ChildItem e2e -Filter *.ps1)

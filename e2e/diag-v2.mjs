@@ -1,41 +1,41 @@
-// Diagnostic andon P1 : décomposer le budget « page de liste » en ses
-// trois étages — requête coeur (elapsed_us de MessagePage), transport
-// IPC, rendu Svelte — pour que l'arbitrage se fasse sur les chiffres du
-// bon étage. Réutilise le binaire et la base du banc (aucun build,
-// aucun seed) : lancer APRÈS mesure-v2.mjs.
+// Andon P1 diagnostic: break down the "list page" budget into its
+// three stages — core query (elapsed_us of MessagePage), IPC
+// transport, Svelte render — so the arbitration happens on the
+// figures for the right stage. Reuses the bench's binary and database
+// (no build, no seed): run AFTER measure-v2.mjs.
 //
 //   node diag-v2.mjs
 import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
-import { purgerOAuth } from './isolation.mjs';
-import { allouerPortCdp } from './port-cdp.mjs';
-import { argsNavigateur } from './args-navigateur.mjs';
+import { purgeOAuth } from './isolation.mjs';
+import { allocateCdpPort } from './port-cdp.mjs';
+import { browserArgs } from './browser-args.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
-const db = process.env.MESURE_DB || path.join(root, 'target', 'e2e', 'mesure-v2.db');
+const db = process.env.MESURE_DB || path.join(root, 'target', 'e2e', 'measure-v2.db');
 const profile = path.join(root, 'target', 'e2e', 'webview2-mesure-v2');
 mkdirSync(profile, { recursive: true });
-for (const dossier of ['Cache', 'Code Cache']) {
-  rmSync(path.join(profile, 'EBWebView', 'Default', dossier), { recursive: true, force: true });
+for (const folder of ['Cache', 'Code Cache']) {
+  rmSync(path.join(profile, 'EBWebView', 'Default', folder), { recursive: true, force: true });
 }
 
-// Port CDP libre à chaque lancement (PLAN-ISOLATION-E2E, D2).
-const port = await allouerPortCdp();
+// Free CDP port on every launch (PLAN-ISOLATION-E2E, D2).
+const port = await allocateCdpPort();
 
 const env = {
   ...process.env,
   WIND_DB_PATH: db,
   WIND_E2E_ACCOUNT: 'mesure@exemple.fr',
-  // Les arguments de PRODUCTION + le port CDP (revue 2026-08-16) :
-  // la variable écrase la conf Tauri au niveau du loader WebView2 —
-  // sans reprise, le banc mesurerait une géométrie à barre classique
-  // (~15 px réservés) que l'utilisateur ne voit pas (overlay A44).
-  WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: argsNavigateur(root, port),
+  // The PRODUCTION arguments + the CDP port (2026-08-16 review): the
+  // variable overrides the Tauri config at the WebView2 loader level —
+  // without this override, the bench would measure a classic-scrollbar
+  // geometry (~15 px reserved) that the user never sees (overlay A44).
+  WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: browserArgs(root, port),
   WEBVIEW2_USER_DATA_FOLDER: profile,
 };
-purgerOAuth(env);
+purgeOAuth(env);
 
 const app = spawn(path.join(root, 'target', 'release', 'wind-desktop.exe'), [], {
   env,
@@ -52,11 +52,11 @@ for (let attempt = 0; attempt < 60 && !browser; attempt++) {
 }
 if (!browser) {
   app.kill();
-  throw new Error(`CDP injoignable sur le port ${port}.`);
+  throw new Error(`CDP unreachable on port ${port}.`);
 }
 
 try {
-  // On attend la PAGE, pas le port (leçon de launch.mjs).
+  // We wait for the PAGE, not the port (lesson from launch.mjs).
   let page = null;
   for (let attempt = 0; attempt < 60 && !page; attempt++) {
     page = browser
@@ -65,60 +65,60 @@ try {
       .find((candidate) => candidate.url().includes('tauri.localhost'));
     if (!page) await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  if (!page) throw new Error('fenêtre Tauri introuvable après 30 s — le processus a-t-il démarré ?');
+  if (!page) throw new Error('Tauri window not found after 30 s — did the process start?');
   await page.locator('[data-testid="row"]').first().waitFor({ timeout: 60000 });
 
-  // 1. Étage coeur + IPC : appel BRUT, sans aucun rendu. `elapsed_us`
-  //    est mesuré DANS la commande Rust — la différence avec le mur,
-  //    c'est l'IPC (sérialisation comprise).
-  const brut = await page.evaluate(async () => {
-    const appel = window.__TAURI__.core.invoke;
-    const sortie = [];
+  // 1. Core + IPC stage: RAW call, with no render at all. `elapsed_us`
+  //    is measured INSIDE the Rust command — the difference with the
+  //    wall clock is the IPC (serialization included).
+  const raw = await page.evaluate(async () => {
+    const call = window.__TAURI__.core.invoke;
+    const output = [];
     for (const offset of [0, 1000, 10000, 50000, 100000, 200000]) {
       const reps = [];
       for (let n = 0; n < 5; n++) {
         const t0 = performance.now();
-        // Le chemin que l'UI emprunte VRAIMENT (list_messages, v1, est
-        // retiré à B2) : la réception unifiée par catégorie.
-        const p = await appel('list_category', {
+        // The path the UI REALLY takes (list_messages, v1, is removed
+        // at B2): the unified per-category inbox.
+        const p = await call('list_category', {
           category: 'inbox', accountId: null, unread: false, offset, limit: 200,
         });
-        reps.push({ mur: performance.now() - t0, coeur: p.elapsed_us / 1000 });
+        reps.push({ wall: performance.now() - t0, core: p.elapsed_us / 1000 });
       }
-      reps.sort((x, y) => x.mur - y.mur);
+      reps.sort((x, y) => x.wall - y.wall);
       const med = reps[2];
-      sortie.push(`offset ${String(offset).padStart(6)} : coeur ${med.coeur.toFixed(1)} ms · mur ${med.mur.toFixed(1)} ms (méd. de 5)`);
+      output.push(`offset ${String(offset).padStart(6)} : core ${med.core.toFixed(1)} ms · wall ${med.wall.toFixed(1)} ms (median of 5)`);
     }
-    return sortie;
+    return output;
   });
-  for (const ligne of brut) console.log(ligne);
+  for (const line of raw) console.log(line);
 
-  // 2. Étage rendu : saut vers des pages DÉJÀ servies -> le service est
-  //    un no-op, il ne reste que Svelte + reflow.
-  const rendu = await page.evaluate(async () => {
-    await window.__mesure.page(100000); // chauffe : pages servies
+  // 2. Render stage: jump to pages ALREADY served -> the service is a
+  //    no-op, all that's left is Svelte + reflow.
+  const render = await page.evaluate(async () => {
+    await window.__mesure.page(100000); // warm-up: served pages
     const reps = [];
     for (let n = 0; n < 20; n++) {
-      reps.push(await window.__mesure.page(100000 + (n % 2) * 5)); // même fenêtre
+      reps.push(await window.__mesure.page(100000 + (n % 2) * 5)); // same window
     }
     reps.sort((a, b) => a - b);
-    return `rendu seul (pages servies) : méd. ${reps[10].toFixed(1)} ms · max ${reps[19].toFixed(1)} ms`;
+    return `render only (served pages): median ${reps[10].toFixed(1)} ms · max ${reps[19].toFixed(1)} ms`;
   });
-  console.log(rendu);
+  console.log(render);
 
-  // 3. Défilement de PROXIMITÉ (le geste réel) : sauts de ± une fenêtre
-  //    autour d'une position, pages voisines fraîches.
-  const proche = await page.evaluate(async () => {
+  // 3. PROXIMITY scrolling (the real gesture): jumps of ± one window
+  //    around a position, fresh neighboring pages.
+  const nearby = await page.evaluate(async () => {
     const base = 150000;
     await window.__mesure.page(base);
     const reps = [];
     for (let n = 1; n <= 20; n++) {
-      reps.push(await window.__mesure.page(base + n * 12)); // ~une fenêtre
+      reps.push(await window.__mesure.page(base + n * 12)); // ~one window
     }
     reps.sort((a, b) => a - b);
-    return `défilement proche (fenêtre à fenêtre) : méd. ${reps[10].toFixed(1)} ms · p95 ${reps[18].toFixed(1)} ms`;
+    return `nearby scrolling (window to window): median ${reps[10].toFixed(1)} ms · p95 ${reps[18].toFixed(1)} ms`;
   });
-  console.log(proche);
+  console.log(nearby);
 } finally {
   if (browser) await browser.close();
   app.kill();

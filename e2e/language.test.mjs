@@ -3,7 +3,7 @@
 // unless the system language is French, and a key missing from the
 // active catalogue falls back to the English text. The decision is a
 // pure function (`lib/language.js`), tested here without a WebView; the
-// e2e spec `refonte-langue` plays the real first launch pinned to `fr`.
+// e2e spec `redesign-language` plays the real first launch pinned to `fr`.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { detectLanguage, LANGUAGES, DEFAULT_LANGUAGE } from '../apps/desktop/ui-v2/src/lib/language.js';

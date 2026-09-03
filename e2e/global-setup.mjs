@@ -1,6 +1,6 @@
-// Compile UNE fois les exemples de mail-core (les seeders des decors)
-// avant toute spec — hors du timeout de spec (PLAN-AUDIT-V2 E9 : le
-// `cargo build` vivait dans le premier `beforeAll`, sous les 180 s).
+// Builds the mail-core examples (the decor seeders) ONCE
+// before any spec — outside the spec timeout (PLAN-AUDIT-V2 E9: the
+// `cargo build` used to live in the first `beforeAll`, under the 180 s).
 import { execSync } from 'node:child_process';
 import path from 'node:path';
 

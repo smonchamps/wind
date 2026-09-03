@@ -249,7 +249,7 @@ Re-mesurés le 2026-07-26 après l'ADR 0010, sur les bases du gate 3
 | RAM (working set **privé**) | < 200 Mo | 95,5 Mo · 7 processus ✅ |
 | Taille de la base | **levé** (ADR 0010 §2) | garde d'espace disque à ~50 ko/message |
 | Perte de données | 0, prouvé par crash-récup | ✅ |
-| **Gel de la pompe de messages** | aucun gel > 150 ms (fenêtre toujours déplaçable) | 0 gel sur 40 s, décor 251 k enveloppes (PLAN-GELS, `e2e/sonde-gel.py`) ✅ |
+| **Gel de la pompe de messages** | aucun gel > 150 ms (fenêtre toujours déplaçable) | 0 gel sur 40 s, décor 251 k enveloppes (PLAN-GELS, `e2e/freeze-probe.py`) ✅ |
 | **Recherche** | < 100 ms | **~66 ms ✅** (terrain, vraie base 251 k / 7 Go, pire cas préfixe 3 car. 36 k corr. ; tenu par la **soupape tri-date** au-delà de 10 k corr., le plancher BM25 dépassant sinon — `WIDE_QUERY_THRESHOLD`, A50/PLAN-RECHERCHE) |
 | **Adoption d'une base héritée** | < 1 s | **3,66 s — assumé** (ADR 0012 : une seule fois, visible, annulable, rembobinable) |
 | **Reconstruction de l'index de recherche** | pas de gel muet | **~4 min à froid sur 7 Go — assumé** (ADR 0012 : une seule fois à la MAJ, visible, annulable, rembobinable ; PLAN-RECHERCHE E3) |
@@ -323,7 +323,7 @@ scénarios du terrain sans réseau.
 | [0013](adr/0013-installeur-nsis-maj-signee.md) | Installeur **NSIS** + mise à jour signée | **Pas MSIX** (virtualiserait `%APPDATA%`, orphelinerait la base) ; updater signé minisign, piloté depuis Rust ; signature Windows reportée ; tag GitHub = **version nue**, `latest.json` sans BOM (`scripts/make-release.ps1`) |
 | [0014](adr/0014-telemetrie-de-crash-locale.md) | Télémétrie de crash **locale, opt-in** | Fichier local seul (aucun réseau/tiers) ; panics seuls ; **message du panic supprimé** (seul vecteur de PII) ; hook qui ne touche jamais la base ; un crash thread principal fait un **double panic** (compteur `SEQ` + filtre `cannot unwind`) |
 | [0015](adr/0015-socle-ui-v2-svelte.md) | **Socle UI v2 = Svelte**, front web unique porté partout (Tauri 2 desktop+mobile + navigateur) | Départage set-based (vanilla / Svelte / WASM) **sur mesure** : liste 256 k + bascule de thème, deux moteurs (Blink desktop, Android-classe CPU ×6) — rendu neutralisé par fenêtrage + thème CSS. **Système écrit une fois** (Stratégie A) ; WASM écarté, vanilla en repli ; **iOS/WKWebView : validation terrain due** ; frontière UI↔cœur = port de transport ; `mail-core` intouché (ADR 0001) |
-| [0019](adr/0019-commandes-hors-du-thread-principal.md) | **Commandes bloquantes hors du thread principal**, une à la fois (`hors_pompe` = spawn_blocking + verrou global) | La pompe ne fait que pomper (gel mesuré : 25,2 s/40 s → 0) ; la sérialisation d'avant est CONSERVÉE ; gate `garde-thread-principal.mjs` + budget « aucun gel > 150 ms » (`sonde-gel.py`) |
+| [0019](adr/0019-commandes-hors-du-thread-principal.md) | **Commandes bloquantes hors du thread principal**, une à la fois (`hors_pompe` = spawn_blocking + verrou global) | La pompe ne fait que pomper (gel mesuré : 25,2 s/40 s → 0) ; la sérialisation d'avant est CONSERVÉE ; gate `main-thread-guard.mjs` + budget « aucun gel > 150 ms » (`freeze-probe.py`) |
 | [0024](adr/0024-parseur-icalendar-calcard.md) | Invitations iCalendar = **calcard** dans `mail-ical` pure | Départagé par spikes (corpus commun) sur le **coût de possession** ; TZID Windows natifs ; ⚠️ `resolve()` jamais `resolve_or_default` — un TZID inconnu rend une heure FLOTTANTE dite telle quelle (garde D1), jamais convertie à faux |
 
 Décisions Phase 0 ([PHASE0.md](archives/PHASE0.md) §2) : SQLite local ; CONDSTORE ;
@@ -438,7 +438,7 @@ Bash). Syntaxes différentes.
   n'est que le repli hors Tauri et la poignée du banc (emulateMedia).
   Corollaires : `Set-ItemProperty` sur `AppsUseLightTheme` ne prévient
   PERSONNE (pas de `WM_SETTINGCHANGE`) — une vérification terrain passe
-  par les Paramètres Windows ou `e2e/bascule-sombre.ps1` ; et le profil
+  par les Paramètres Windows ou `e2e/dark-toggle.ps1` ; et le profil
   WebView2 de la suite (`target/e2e/webview2`) PERSISTE entre les runs —
   un test mort après avoir armé un réglage localStorage empoisonne les
   relances locales (remède : purger le dossier ; la CI, elle, part
@@ -464,14 +464,14 @@ Bash). Syntaxes différentes.
   de wry (repris dans la valeur). Trois pièges mesurés : la variable
   `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` ÉCRASE la conf au niveau du
   loader — tout lanceur qui la pose doit reprendre les args de prod
-  (`e2e/args-navigateur.mjs`, source unique : launch, mesure-v2,
+  (`e2e/browser-args.mjs`, source unique : launch, measure-v2,
   diag-v2) ; un `--enable-features` RÉPÉTÉ n'est pas fusionné, le
   dernier gagne ; `scrollbar-width:auto` ne désarme PAS des règles
   webkit (valeur par défaut — il faut une valeur non-défaut pour
   sonder le chemin natif). UNE règle `::-webkit-scrollbar` /
   `scrollbar-width` / `scrollbar-color` quelque part fait retomber
   l'élément au chemin classique (~15 px de gouttière) — la garde n°5
-  de `coherence-systeme.mjs` le bloque ; le `color-scheme` (poignée
+  de `system-coherence.mjs` le bloque ; le `color-scheme` (poignée
   claire en -nuit) vit en CSS à côté des jetons ET baké dans l'iframe
   du corps (mail-render, luminance du fond).
 - **La liste est à DEUX gabarits depuis A44** (terrain 2026-08-16 :
@@ -485,9 +485,9 @@ Bash). Syntaxes différentes.
   — celui de la pompe de messages : la fenêtre gèle pour toute sa durée
   (constat 2026-08-15, gels de 2 à 4,6 s au démarrage). Toute commande
   qui ouvre la base, touche un fichier ou le keyring est `async fn` ;
-  la gate `e2e/garde-thread-principal.mjs` le tient (exemption nommée
+  la gate `e2e/main-thread-guard.mjs` le tient (exemption nommée
   pour les pures d'état). Mesure du symptôme :
-  `python e2e/sonde-gel.py <base.db>` (base HORS dépôt).
+  `python e2e/freeze-probe.py <base.db>` (base HORS dépôt).
 
 - **Le SQLite embarqué (3.50) n'a pas le planificateur de l'outil qui
   a servi à mesurer.** Une requête à 0,2 ms sous python coûtait 116 ms
@@ -559,9 +559,9 @@ cd apps/desktop
 cargo tauri build
 ```
 
-Mesures : `node e2e/mesure.mjs` (démarrage, page, RAM — `MESURE_DB`,
-`MESURE_COMPTES`, `MESURE_REUTILISER`), `e2e/mesure-ram.ps1`, et
-`python e2e/sonde-gel.py <base.db>` (gel de la pompe de messages,
+Mesures : `node e2e/measure-v2.mjs` (démarrage, page, RAM — `MESURE_DB`,
+`MESURE_COMPTES`, `MESURE_REUTILISER`), `e2e/measure-ram.ps1`, et
+`python e2e/freeze-probe.py <base.db>` (gel de la pompe de messages,
 budget « aucun gel > 150 ms », PLAN-GELS — exige Python 3, seul outil
 du dépôt à le demander).
 
@@ -774,7 +774,7 @@ plutôt que « espace insuffisant ».
 
 ### Un outil de mesure se vérifie comme le reste
 
-`mesure-ram.ps1` sommait toutes les instances ; `mesure.mjs` n'isolait pas
+`measure-ram.ps1` sommait toutes les instances ; `measure-v2.mjs` n'isolait pas
 son profil ; un diagnostic divulguait des identifiants en découpant un
 en-tête entier sur son premier `@`. Corrigés — le réflexe reste.
 
@@ -841,7 +841,7 @@ déplacée »). Le coût des requêtes n'était pas la racine — leur PLACE
 l'était : 865 ms sont acceptables sur un thread de fond, inacceptables
 sur la pompe. Remède à la racine : toute commande bloquante est
 `async`, une gate le tient (exemption nommée et justifiée pour les
-pures d'état), et le symptôme a son instrument — `sonde-gel.py` mesure
+pures d'état), et le symptôme a son instrument — `freeze-probe.py` mesure
 la pompe comme Windows la juge (`SendMessageTimeout`). Avant/après sur
 le même décor : 25,2 s de gels cumulés → zéro.
 

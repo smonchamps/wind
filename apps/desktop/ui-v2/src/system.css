@@ -6,7 +6,7 @@
    renamed A95; CE accent #AD204C, tile derived from #A0868F).
    --panel is dead (V3): the
    background is the SOLE ground, the 1 px net alone carries the
-   separation — its pairs are MEASURED (e2e/contraste.mjs, threshold =
+   separation — its pairs are MEASURED (e2e/contrast.mjs, threshold =
    the net that Clarity shipped). --brand is the EXACT teal of the
    icon set (V1): COMPONENT only (3:1), never text — the ink that
    reads is --accent, same hue, minimum lightness (remedy A8).
@@ -141,14 +141,14 @@ html {
    — as background (Settings badge) and as color (outline):
    the 24 hex values live as --mk-<hue> TOKENS, one table per polarity,
    never copied.
-   WARNING (parser trap): jetons.mjs (lireThemes) captures
+   WARNING (parser trap): tokens.mjs (readThemes) captures
    --([a-zA-Z][a-zA-Z0-9]*) — the hyphen in --mk-* makes them
    escape the 17-theme-token contract, and this is INTENTIONAL (the
    swatch picker is content, not a theme token). “Fixing” this
    class to [a-zA-Z0-9-] would trip check 1 of
-   coherence-systeme.mjs on 12 tokens “shipped but absent from the
+   system-coherence.mjs on 12 tokens “shipped but absent from the
    doc”.
-   The 24 hex values are measured by e2e/contraste.mjs (REPERES
+   The 24 hex values are measured by e2e/contrast.mjs (MARKERS
    section): >= 3:1 on bg/sel/hover/surface/tuile of their polarity —
    Settings (badge), nav and row (outline) —, badge glyph >= 4.5:1. */
 :root {

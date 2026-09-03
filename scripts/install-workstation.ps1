@@ -94,7 +94,7 @@ Ensure-Winget "Git.Git"
 Ensure-Winget "Rustlang.Rustup"
 Ensure-Winget "Microsoft.EdgeWebView2Runtime"   # the app's webview + the window driven by the e2e
 Ensure-Winget "OpenJS.NodeJS.LTS"               # CI pins Node 24 (LTS)
-Ensure-Winget "Python.Python.3.13"              # e2e/sonde-gel.py
+Ensure-Winget "Python.Python.3.13"              # e2e/freeze-probe.py
 Ensure-Winget "GitHub.cli"                      # gh run list / gh release
 
 Section "Visual Studio Build Tools (C++ x64 + cross arm64)"

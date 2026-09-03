@@ -87,7 +87,7 @@ motivée.)
 - **Fait (revue 2026-08-15)** : la moitié Rust d'A41 est tenue par un
   test qui rembobine une vraie base ; l'ordre côté UI (`assurer()`
   avant `poserLangueDetectee()`, pose seulement si la sonde a
-  répondu) n'est asserté par aucun e2e — `refonte-langue.spec.js` ne
+  répondu) n'est asserté par aucun e2e — `redesign-language.spec.js` ne
   joue jamais le premier lancement sur base vierge.
 - **Piste** : spec e2e `vierge: true` qui asserte `prefs.lang` posée
   après démarrage, et absente si `migration_check` échoue.
@@ -103,7 +103,7 @@ motivée.)
 
 ### D-11 · Le banc de bascule de thème est resté calibré à 7 thèmes
 
-- **Fait (revue 2026-08-16, PLAN-WADA-ELARGI)** : `e2e/mesure-v2.mjs`
+- **Fait (revue 2026-08-16, PLAN-WADA-ELARGI)** : `e2e/measure-v2.mjs`
   garde 60 itérations et des commentaires « les 7 thèmes » alors
   qu'A42 en livre 28 — l'échantillon par thème tombe de ~8 à ~2, le
   chiffre « coût de bascule par thème » n'est plus comparable à la
@@ -345,7 +345,7 @@ motivée.)
 - **Constat** (terrain STOP 2 PLAN-AUDIT-V2, 2026-09-02) : 249 Mo de
   working set privé sur 6 processus WebView2 après dix pages de Kiosque
   sur le poste du CE — budget STANDARD §3 « < 200 Mo » (repos 95,5 Mo).
-  Banc `e2e/tests/banc-ram-kiosque.spec.js` (200 lettres de 100 Ko,
+  Banc `e2e/tests/bench-ram-feed.spec.js` (200 lettres de 100 Ko,
   build debug) : fenêtre 12 → +136 Mo à la première page, +217 à
   160 cartes, +167 RETENUS au retour en Réception ; fenêtre 1 → +70,
   +96, +94, stables à +25 s. La largeur de fenêtre (E10) borne, elle ne
@@ -370,7 +370,7 @@ motivée.)
 - **Rouvre si** : le budget précisé est dépassé sur le poste du CE après
   D9, ou un gel apparaît au défilement du Kiosque.
 
-### D-54 · `selection-multiple:174` (« le raccourci e archive le LOT coché ») flake une gate sur trois
+### D-54 · `multi-select:173` (« le raccourci e archive le LOT coché ») flake une gate sur trois
 
 - **Constat** (2026-09-02, gates de PLAN-AUDIT-V2) : passé au second
   essai dans trois gates sur six (D4 : compté, jamais rouge). Le geste
@@ -457,7 +457,7 @@ motivée.)
   comparable.
 - **Report assumé** : paralléliser le corps de la ligne de tête avec la
   liste du fil (un fetch perdu dans le cas rare d'une tête plus
-  fraîche), et re-baser le banc `mesure-v2` sur la nouvelle définition.
+  fraîche), et re-baser le banc `measure-v2` sur la nouvelle définition.
   Reporté pour garder le commit v3 sur les verdicts CE ; à instruire
   avec D-7/D-11 (famille bancs).
 
@@ -480,12 +480,12 @@ motivée.)
   webkit), et la liste est à deux gabarits (h1 nue / h2 porteuse,
   ~+27 px par ligne à puces) : `visibles`, le nombre de lignes rendues
   par saut et le coût d'un reflow ont bougé. Les percentiles « page »
-  du banc `mesure-v2` ne sont plus comparables à la série d'avant A44.
+  du banc `measure-v2` ne sont plus comparables à la série d'avant A44.
 - **Report assumé** : re-mesurer et re-baser les budgets P1 sur la
   géométrie livrée, en une passe dédiée — à instruire avec la famille
   des bancs (D-7/D-11/D-12), pour ne pas mélanger une re-base de
   budgets avec un chantier de features. Les bancs mesurent DÉJÀ la
-  bonne géométrie (args-navigateur.mjs) ; seule la série de référence
+  bonne géométrie (browser-args.mjs) ; seule la série de référence
   date.
 
 ### D-23 · Téléchargement d'une pièce : chemin réseau non couvert en e2e
@@ -880,7 +880,7 @@ motivée.)
   thème vit en quatre copies — `systeme.css`, `FICHES` (theme.js), la
   table de contrat du Système et ses vignettes visuelles. Les trois
   premières sont tenues entre elles par les gates (contrôles 1 et 3 de
-  `coherence-systeme.mjs`) ; les vignettes ne le sont PAS : le
+  `system-coherence.mjs`) ; les vignettes ne le sont PAS : le
   contrôle 1 ne lit que les cellules `data-theme`/`data-jeton`, jamais
   les `style="background:#…"` ni les `title="--bg #…"` des swatches.
   Un jeton retouché après un constat terrain laisserait la vignette à
@@ -893,7 +893,7 @@ motivée.)
   thème.
 - **Rouvre si** : une retouche de jeton au terrain (le cas qui
   matérialise la dérive), ou au prochain chantier qui touche
-  `coherence-systeme.mjs`.
+  `system-coherence.mjs`.
 
 ### D-46 · L'anatomie de rangée du Portier est une copie main de celle de la Liste
 
@@ -967,7 +967,7 @@ motivée.)
   propres handlers de gestes. Un `retirer_routage` (ou toute écriture
   hors des chemins de la Liste — second poste, rejeu, commande e2e)
   laisse la liste périmée jusqu'à une navigation manuelle. Le pas e2e
-  de `mode-organise.spec.js` qui « passait » vivait d'une recharge
+  de `organized-mode.spec.js` qui « passait » vivait d'une recharge
   FORTUITE de la sonde — il ressert désormais par l'aller-retour de
   dossier, honnêtement. Même famille que D-44 (`connectes` sans cycle
   de rafraîchissement).

@@ -1,111 +1,111 @@
-// Lanceur E2E : construit l'application, seed une base ISOLÉE, démarre la
-// fenêtre Tauri avec les crochets de test, s'y attache via CDP.
+// E2E launcher: builds the application, seeds an ISOLATED database, starts
+// the Tauri window with the test hooks, attaches to it via CDP.
 //
-// Déterminisme par construction :
-// - base de test jetable (WIND_DB_PATH) — jamais la vraie ;
-// - compte factice au jeton invalide (WIND_E2E_ACCOUNT) — hors ligne
-//   garanti, la boîte d'envoi journalise sans jamais rien envoyer ;
-// - configuration OAuth retirée de l'environnement — aucun test ne peut
-//   toucher au vrai compte, même par accident.
+// Determinism by construction:
+// - disposable test database (WIND_DB_PATH) — never the real one;
+// - dummy account with an invalid token (WIND_E2E_ACCOUNT) — offline
+//   guaranteed, the outbox logs without ever sending anything;
+// - OAuth configuration stripped from the environment — no test can
+//   touch the real account, even by accident.
 //
-// Deux leçons du premier passage en CI :
-// - **diagnosticabilité** : la sortie de l'application est CAPTURÉE et
-//   recrachée en cas d'échec. Sans cela, une panique au démarrage ou un
-//   WebView2 absent se présentent comme un timeout muet, indiagnosticable
-//   à distance ;
-// - **on attend la PAGE, pas le port** : le CDP répond avant que la fenêtre
-//   n'ait créé son document. Se contenter du port ouvert crée une course
-//   qui se voit dès que le démarrage est froid.
+// Two lessons from the first CI run:
+// - **diagnosability**: the application's output is CAPTURED and
+//   spat back out on failure. Without that, a startup panic or a missing
+//   WebView2 look like a silent timeout, undiagnosable
+//   remotely;
+// - **wait for the PAGE, not the port**: CDP answers before the window
+//   has created its document. Settling for the open port creates a race
+//   that shows up as soon as the startup is cold.
 import { spawn, execSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
-import { balayerZombies, construireV2, purgerCacheHttp } from './rebuild-v2.mjs';
-import { purgerOAuth } from './isolation.mjs';
-import { allouerPortCdp } from './port-cdp.mjs';
-import { argsNavigateur } from './args-navigateur.mjs';
+import { sweepZombies, buildV2, purgeHttpCache } from './rebuild-v2.mjs';
+import { purgeOAuth } from './isolation.mjs';
+import { allocateCdpPort } from './port-cdp.mjs';
+import { browserArgs } from './browser-args.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
-// Un premier démarrage WebView2 sur machine froide (CI : pas de cache,
-// antivirus actif) dépasse largement les 30 s d'origine.
+// A first WebView2 startup on a cold machine (CI: no cache,
+// antivirus active) largely exceeds the original 30 s.
 const READY_TIMEOUT_MS = 90_000;
 const POLL_MS = 500;
-// Mémo du port de la suite (alloué au premier lancement, voir attacher).
-let portSuite = null;
+// Memo of the suite's port (allocated on first launch, see attach).
+let suitePort = null;
 
-// L'app embarque ui-v2 (la seule interface depuis B2, PLAN-RETRAIT-V1) ;
-// le décor par défaut est le jeu d'essai Clarity (seed_clarity). Les
-// pièges du rebuild (dist périmé, zombie, cache) vivent dans
-// `rebuild-v2.mjs`, une fois.
-// Graines par GABARIT (PLAN-KAIZEN-CLAUDE vague 2, E6) : la même
-// recette de seed était rejouée par `cargo run --example` à CHAQUE spec
-// (~14 exécutions par suite). Le gabarit se construit une fois — clé =
-// recette + empreinte de l'exe du seeder (un seeder modifié invalide) —
-// puis chaque spec reçoit une COPIE de fichier (la base reste jetable
-// et isolée, STANDARD §7.1 tenu). Les exemples sont compilés une fois
-// par processus de suite ; on exécute ensuite l'exe directement.
-let exemplesConstruits = false;
+// The app embeds ui-v2 (the only UI since B2, PLAN-RETRAIT-V1);
+// the default decor is the Clarity test data (seed_clarity). The
+// rebuild pitfalls (stale dist, zombie, cache) live in
+// `rebuild-v2.mjs`, in one place.
+// Seeds by TEMPLATE (PLAN-KAIZEN-CLAUDE wave 2, E6): the same
+// seed recipe used to be replayed via `cargo run --example` on EVERY spec
+// (~14 runs per suite). The template is built once — key =
+// recipe + fingerprint of the seeder's exe (a modified seeder invalidates
+// it) — then each spec receives a file COPY (the database stays disposable
+// and isolated, STANDARD §7.1 upheld). The examples are compiled once
+// per suite process; the exe is then run directly.
+let examplesBuilt = false;
 
-function seeder(db, etapes) {
-  if (!exemplesConstruits) {
+function seed(db, steps) {
+  if (!examplesBuilt) {
     execSync('cargo build -p mail-core --examples', { cwd: root, stdio: 'inherit' });
-    exemplesConstruits = true;
+    examplesBuilt = true;
   }
-  const exe = (exemple) => path.join(root, 'target', 'debug', 'examples', `${exemple}.exe`);
+  const exe = (example) => path.join(root, 'target', 'debug', 'examples', `${example}.exe`);
   const hash = createHash('sha1');
-  for (const nom of [...new Set(etapes.map((etape) => etape.exemple))].sort()) {
-    const stat = statSync(exe(nom));
-    hash.update(`${nom}|${stat.size}|${stat.mtimeMs}\0`);
+  for (const name of [...new Set(steps.map((step) => step.example))].sort()) {
+    const stat = statSync(exe(name));
+    hash.update(`${name}|${stat.size}|${stat.mtimeMs}\0`);
   }
-  hash.update(JSON.stringify(etapes));
-  const gabarit = path.join(root, 'target', 'e2e', 'gabarits', `${hash.digest('hex')}.db`);
-  // Les seeders figent l'horloge À LA CONSTRUCTION — les jours relatifs
-  // (« aujourd'hui », « hier ») mais aussi `derniere_synchro` posée « il
-  // y a 2 min » : un gabarit d'il y a une heure fait dire « il y a
-  // 1 heure » à la barre d'état (rouge PAYÉ à la gate du push,
-  // 2026-08-23 — une clé à la journée ne suffisait pas). Fraîcheur par
-  // TTL : au-delà de 30 min, on reconstruit (~1-4 s), le décor reste
-  // dans la minute de son vocabulaire. ET par jour calendaire (rouge
-  // payé au pre-push du 2026-08-28→29) : un gabarit bâti à 23 h 50
-  // reste « frais » à 00 h 15, mais son « Aujourd'hui, 09:12 » est
-  // devenu « Hier » — minuit périme, quel que soit le TTL.
-  let frais = false;
+  hash.update(JSON.stringify(steps));
+  const template = path.join(root, 'target', 'e2e', 'gabarits', `${hash.digest('hex')}.db`);
+  // The seeders freeze the clock AT BUILD TIME — relative days
+  // ("today", "yesterday") but also `derniere_synchro` set to "2 min
+  // ago": a template from an hour ago would make the status bar say
+  // "1 hour ago" (PAID red on the push gate,
+  // 2026-08-23 — a day-granularity key wasn't enough). Freshness by
+  // TTL: past 30 min, we rebuild (~1-4 s), the decor stays
+  // within the minute of its wording. AND by calendar day (PAID
+  // red on the 2026-08-28→29 pre-push): a template built at 11:50 PM
+  // stays "fresh" at 00:15, but its "Today, 09:12" has
+  // become "Yesterday" — midnight expires it regardless of the TTL.
+  let fresh = false;
   try {
-    const bati = statSync(gabarit).mtimeMs;
-    frais = Date.now() - bati < 30 * 60 * 1000
-      && new Date(bati).toDateString() === new Date().toDateString();
+    const built = statSync(template).mtimeMs;
+    fresh = Date.now() - built < 30 * 60 * 1000
+      && new Date(built).toDateString() === new Date().toDateString();
   } catch {
-    /* pas de gabarit : à construire */
+    /* no template: needs building */
   }
-  if (!frais) {
-    mkdirSync(path.dirname(gabarit), { recursive: true });
-    // Construction à côté puis rename : un seed interrompu ne laisse
-    // jamais un gabarit à moitié plein sous la clé finale — et ses
-    // sidecars WAL non plus (des frames orphelines rejouées sur la base
-    // reconstruite empoisonneraient le cache sans changer la clé).
-    const chantier = `${gabarit}.chantier`;
-    for (const suffixe of ['', '-wal', '-shm']) rmSync(`${chantier}${suffixe}`, { force: true });
-    for (const etape of etapes) {
-      execSync(`"${exe(etape.exemple)}" "${chantier}" ${etape.args}`.trim(), {
+  if (!fresh) {
+    mkdirSync(path.dirname(template), { recursive: true });
+    // Build alongside then rename: an interrupted seed never leaves
+    // a half-full template under the final key — nor its WAL
+    // sidecars (orphan frames replayed onto the rebuilt database
+    // would poison the cache without changing the key).
+    const job = `${template}.chantier`;
+    for (const suffix of ['', '-wal', '-shm']) rmSync(`${job}${suffix}`, { force: true });
+    for (const step of steps) {
+      execSync(`"${exe(step.example)}" "${job}" ${step.args}`.trim(), {
         cwd: root,
         stdio: 'inherit',
       });
     }
-    renameSync(chantier, gabarit);
+    renameSync(job, template);
   }
-  copyFileSync(gabarit, db);
+  copyFileSync(template, db);
 }
 
-// `vierge: true` : base NEUVE et aucun compte factice — l'état « zéro
-// compte » qui doit montrer l'écran 01 (onboarding).
-// `comptes: [{email, messages}]` : le décor seed_inbox — les parcours
-// portés de v1 (R2) rejouent les graines EXACTES des specs d'origine.
-// Les clés locales que les suites touchent — le profil WebView2 est
-// PARTAGÉ entre suites, un run interrompu laisse son état : on purge
-// avant ET après (PLAN-AUDIT-V2 E9 : cinq specs recopiaient chacune sa
-// liste). Une fenêtre déjà morte n'est pas une erreur.
-export const CLES_LOCALES = [
+// `fresh: true`: NEW database and no dummy account — the "zero
+// account" state that must show screen 01 (onboarding).
+// `accounts: [{email, messages}]`: the seed_inbox decor — the journeys
+// carried over from v1 (R2) replay the EXACT seeds of the original specs.
+// The local keys the suites touch — the WebView2 profile is
+// SHARED between suites, an interrupted run leaves its state behind: we purge
+// BEFORE AND AFTER (PLAN-AUDIT-V2 E9: five specs were each copying their own
+// list). An already-dead window is not an error.
+export const LOCAL_KEYS = [
   'wind-accueil-fait',
   'wind-accueil-commence',
   'wind-volets',
@@ -115,125 +115,125 @@ export const CLES_LOCALES = [
   'wind-espacement',
 ];
 
-export async function purgerLocales(page, cles = CLES_LOCALES) {
+export async function purgeLocals(page, keys = LOCAL_KEYS) {
   await page
-    .evaluate((liste) => {
-      for (const cle of liste) localStorage.removeItem(cle);
-    }, cles)
-    .catch(() => { /* fenêtre déjà morte */ });
+    .evaluate((list) => {
+      for (const key of list) localStorage.removeItem(key);
+    }, keys)
+    .catch(() => { /* window already dead */ });
 }
 
-export async function launchAppV2({ vierge = false, comptes = null, lang = 'fr' } = {}) {
-  construireV2(root, { release: false });
+export async function launchAppV2({ fresh = false, accounts = null, lang = 'fr' } = {}) {
+  buildV2(root, { release: false });
 
   const db = path.join(
     root,
     'target',
     'e2e',
-    vierge ? 'parcours-v2-vierge.db' : comptes ? 'parcours-v2-inbox.db' : 'parcours-v2.db',
+    fresh ? 'parcours-v2-vierge.db' : accounts ? 'parcours-v2-inbox.db' : 'parcours-v2.db',
   );
-  // Un zombie d'une spec précédente qui tiendrait encore cette base
-  // ferait un EBUSY illisible au rmSync — depuis que le build (et son
-  // balayage) est mémoïsé, le lanceur balaie lui-même.
-  balayerZombies(root);
-  // La base ET ses sidecars : un -wal orphelin d'un run précédent collé
-  // à une base fraîchement copiée serait un mensonge d'état.
-  for (const suffixe of ['', '-wal', '-shm']) rmSync(`${db}${suffixe}`, { force: true });
+  // A zombie from a previous spec still holding this database
+  // would cause an unreadable EBUSY on rmSync — since the build (and its
+  // sweep) is memoized, the launcher sweeps itself.
+  sweepZombies(root);
+  // The database AND its sidecars: a -wal orphaned from a previous run stuck
+  // to a freshly copied database would be a lie about the state.
+  for (const suffix of ['', '-wal', '-shm']) rmSync(`${db}${suffix}`, { force: true });
   mkdirSync(path.dirname(db), { recursive: true });
-  if (vierge) {
-    return attacher(db, [], lang);
+  if (fresh) {
+    return attach(db, [], lang);
   }
-  if (comptes) {
-    const etapes = [];
-    for (const compte of comptes) {
-      // `ko: N` : chaque message porte un corps synthétique de N Ko —
-      // le décor des mesures de RAM du Kiosque (terrain STOP 2
-      // PLAN-AUDIT-V2 : 249 Mo après dix pages de vraies lettres).
-      const lourd = compte.ko ? ` ${compte.messages} ${compte.ko}` : '';
-      etapes.push({ exemple: 'seed_inbox', args: `${compte.messages} ${compte.email}${lourd}` });
-      // `archives: N` : une boîte Archives de N messages, sans corps —
-      // le décor du défilement profond (PLAN-DEFILEMENT-PROFOND). Le
-      // seeder inscrit la boîte au cache `folders` (la canonique
-      // archives résout), les dossiers Archivés/Factures des autres
-      // comptes restent intacts.
-      if (compte.archives) {
-        etapes.push({ exemple: 'seed_inbox', args: `${compte.archives} ${compte.email} 0 0 Archives` });
+  if (accounts) {
+    const steps = [];
+    for (const account of accounts) {
+      // `ko: N`: each message carries a synthetic body of N KB —
+      // the decor for the Feed's RAM measurements (STOP 2 field test,
+      // PLAN-AUDIT-V2: 249 MB after ten pages of real letters).
+      const heavy = account.ko ? ` ${account.messages} ${account.ko}` : '';
+      steps.push({ example: 'seed_inbox', args: `${account.messages} ${account.email}${heavy}` });
+      // `archives: N`: an Archives mailbox of N messages, without a body —
+      // the decor for deep scrolling (PLAN-DEFILEMENT-PROFOND). The
+      // seeder registers the mailbox in the `folders` cache (the canonical
+      // archives resolves), the other accounts' Archived/Invoices folders
+      // stay intact.
+      if (account.archives) {
+        steps.push({ example: 'seed_inbox', args: `${account.archives} ${account.email} 0 0 Archives` });
       }
     }
-    seeder(db, etapes);
-    // `deconnecte: true` : le compte vit au REGISTRE (seedé ci-dessus)
-    // mais ne reçoit pas de session — l'état « jeton mort » du réel,
-    // celui que Réglages sait désormais réparer (terrain 2026-08-20).
-    return attacher(
+    seed(db, steps);
+    // `disconnected: true`: the account lives in the REGISTRY (seeded above)
+    // but does not receive a session — the "dead token" state of the real
+    // thing, the one Settings can now repair (field test 2026-08-20).
+    return attach(
       db,
-      comptes.filter((compte) => !compte.deconnecte).map((compte) => compte.email),
+      accounts.filter((account) => !account.disconnected).map((account) => account.email),
       lang,
     );
   }
-  seeder(db, [{ exemple: 'seed_clarity', args: '' }]);
-  return attacher(db, ['paul.merand@atelier-nord.fr', 'paul@merand.fr'], lang);
+  seed(db, [{ example: 'seed_clarity', args: '' }]);
+  return attach(db, ['paul.merand@atelier-nord.fr', 'paul@merand.fr'], lang);
 }
 
-// L'ARRIVÉE de courrier en cours de spec (PLAN-MODE-ORGANISE E2) : des
-// enveloppes datées de MAINTENANT entrent par le chemin de production
-// (`upsert_envelopes` — la décision d'arrivée du Portier y vit), dans
-// la base VIVANTE de la spec (WAL : l'app tourne, comme une synchro).
-// Les exemples sont déjà compilés par `seeder` ; l'appelant recharge la
-// page pour voir l'état neuf.
-// ⚠️ `db` par défaut = la base du décor `comptes` (parcours-v2-inbox) —
-// une spec lancée sous un AUTRE décor (Clarity, vierge) doit passer sa
-// base, sinon l'arrivée part dans un fichier que l'app ne lit pas (le
-// seeder sortirait vert, l'assertion rougirait sans indice).
-export function injecterArrivee({ email, expediteur, n = 1, nom = null, sujet = null, reponseA = null, corps = null, db = null }) {
+// Mail ARRIVING mid-spec (PLAN-MODE-ORGANISE E2): envelopes dated NOW
+// enter through the production path
+// (`upsert_envelopes` — the Screener's arrival decision lives there), into
+// the LIVE database of the spec (WAL: the app is running, like a sync).
+// The examples are already compiled by `seed`; the caller reloads the
+// page to see the new state.
+// ⚠️ default `db` = the database of the `accounts` decor (parcours-v2-inbox) —
+// a spec launched under ANOTHER decor (Clarity, blank) must pass its own
+// database, otherwise the arrival lands in a file the app doesn't read (the
+// seeder would come back green, the assertion would go red with no clue).
+export function injectArrival({ email, sender, n = 1, name = null, subject = null, replyTo = null, body = null, db = null }) {
   db ??= path.join(root, 'target', 'e2e', 'parcours-v2-inbox.db');
-  statSync(db); // la base doit EXISTER — jamais une arrivée dans le vide
+  statSync(db); // the database MUST EXIST — never an arrival into the void
   const exe = path.join(root, 'target', 'debug', 'examples', 'seed_arrival.exe');
-  const args = [`"${db}"`, email, expediteur, String(n)];
-  // Les arguments sont POSITIONNELS : `reponseA` (RETOURS-14 R4, le
-  // décor du fil mêlé) exige nom et sujet devant lui.
-  if (nom || sujet || reponseA) args.push(`"${nom ?? expediteur}"`);
-  if (sujet || reponseA) args.push(`"${sujet ?? 'Premier contact'}"`);
-  if (reponseA || corps) args.push(`"${reponseA ?? '-'}"`);
-  // `corps: 'images'` (terrain STOP 2 PLAN-AUDIT-V2) : un corps à image
-  // distante par arrivée — le décor de la garde d'images du Kiosque.
-  if (corps) args.push(corps);
+  const args = [`"${db}"`, email, sender, String(n)];
+  // The arguments are POSITIONAL: `reponseA` (RETOURS-14 R4, the
+  // decor for the interleaved thread) requires name and subject ahead of it.
+  if (name || subject || replyTo) args.push(`"${name ?? sender}"`);
+  if (subject || replyTo) args.push(`"${subject ?? 'Premier contact'}"`);
+  if (replyTo || body) args.push(`"${replyTo ?? '-'}"`);
+  // `corps: 'images'` (STOP 2 PLAN-AUDIT-V2 field test): a remote-image body
+  // per arrival — the decor for the Feed's image guard.
+  if (body) args.push(body);
   execSync(`"${exe}" ${args.join(' ')}`, { cwd: root, stdio: 'inherit' });
 }
 
-async function attacher(db, emails, lang = 'fr') {
-  // Profil WebView2 explicite et inscriptible : sur un runner CI,
-  // l'emplacement par défaut peut être refusé. Stable d'un lancement à
-  // l'autre — un profil neuf à chaque fois rendrait chaque démarrage
-  // froid, donc lent, pour rien.
+async function attach(db, emails, lang = 'fr') {
+  // Explicit, writable WebView2 profile: on a CI runner,
+  // the default location can be refused. Stable from one launch to
+  // the next — a fresh profile every time would make every startup
+  // cold, hence slow, for nothing.
   const profile = path.join(root, 'target', 'e2e', 'webview2');
   mkdirSync(profile, { recursive: true });
-  purgerCacheHttp(profile);
+  purgeHttpCache(profile);
 
-  // Port CDP libre, choisi par l'OS — un port par SUITE, pas par
-  // lancement : WebView2 partage son processus navigateur par profil, et
-  // deux lancements de la même gate (même profil) doivent porter des
-  // arguments navigateur IDENTIQUES — un processus attardé aux options
-  // différentes ferait échouer la création d'environnement. Entre
-  // worktrees, chaque suite est un processus Node distinct : ports
-  // distincts, plus aucun état partagé (constat 2026-08-15, port-cdp.mjs).
-  const port = (portSuite ??= await allouerPortCdp());
+  // Free CDP port, chosen by the OS — one port per SUITE, not per
+  // launch: WebView2 shares its browser process per profile, and
+  // two launches of the same gate (same profile) must carry IDENTICAL
+  // browser arguments — a lingering process with different options
+  // would make the environment creation fail. Across
+  // worktrees, each suite is a separate Node process: separate
+  // ports, no shared state at all (finding 2026-08-15, port-cdp.mjs).
+  const port = (suitePort ??= await allocateCdpPort());
 
   const env = {
     ...process.env,
     WIND_DB_PATH: db,
-    // `--lang=fr` : la détection de langue au premier lancement
-    // (navigator.language, PLAN-LANGUES) lit la locale du WebView — sans
-    // cette épingle, la suite dépendrait de la langue de la machine.
-    // Le français reste la langue canonique des parcours (L-6). `lang`
+    // `--lang=fr`: language detection on first launch
+    // (navigator.language, PLAN-LANGUES) reads the WebView locale — without
+    // this pin, the suite would depend on the machine's language.
+    // French remains the canonical language of the journeys (L-6). `lang`
     // exists for one spec only: the English default of a first launch (D4).
-    // Les arguments de PRODUCTION (tauri.conf.json) + le port CDP + la
-    // langue épinglée, composés par args-navigateur.mjs — la variable
-    // ÉCRASE la conf au niveau du loader WebView2, elle doit donc la
-    // reprendre pour que l'e2e voie le navigateur livré (revue
-    // 2026-08-16). WIND_E2E_ARGS_EXTRA : passe-plat des bancs de mesure
-    // (E4, mesure-scrollbar.mjs) — un flag posé dans l'environnement du
-    // parent n'atteindrait jamais le WebView2 sans lui.
-    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: argsNavigateur(
+    // The PRODUCTION arguments (tauri.conf.json) + the CDP port + the
+    // pinned language, composed by browser-args.mjs — the variable
+    // OVERRIDES the config at the WebView2 loader level, so it must
+    // carry it forward for e2e to see the shipped browser (review
+    // 2026-08-16). WIND_E2E_ARGS_EXTRA: pass-through for the measurement
+    // benches (E4, measure-scrollbar.mjs) — a flag set in the
+    // parent's environment would never reach WebView2 without it.
+    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: browserArgs(
       root,
       port,
       process.env.WIND_E2E_ARGS_EXTRA ?? '',
@@ -243,15 +243,15 @@ async function attacher(db, emails, lang = 'fr') {
   };
   if (emails.length > 0) env.WIND_E2E_ACCOUNT = emails.join(',');
   else delete env.WIND_E2E_ACCOUNT;
-  purgerOAuth(env);
+  purgeOAuth(env);
 
   const app = spawn(path.join(root, 'target', 'debug', 'wind-desktop.exe'), [], {
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
-  // Le journal de l'application est notre seule fenêtre sur un échec de
-  // démarrage : on le collecte dès la première ligne.
+  // The application's log is our only window into a startup
+  // failure: we collect it from the very first line.
   let log = '';
   app.stdout.on('data', (chunk) => {
     log += chunk;
@@ -264,8 +264,8 @@ async function attacher(db, emails, lang = 'fr') {
     exited = { code, signal };
   });
 
-  // On attend que la PAGE de l'application soit là. On s'arrête net si le
-  // processus meurt : inutile d'attendre 90 s un CDP qui ne viendra jamais.
+  // We wait for the application's PAGE to be there. We stop dead if the
+  // process dies: no point waiting 90 s for a CDP that will never come.
   let browser = null;
   let page = null;
   const deadline = Date.now() + READY_TIMEOUT_MS;
@@ -278,7 +278,7 @@ async function attacher(db, emails, lang = 'fr') {
           .flatMap((context) => context.pages())
           .find((candidate) => candidate.url().includes('tauri.localhost')) ?? null;
     } catch {
-      // Ni le port ni la page ne sont prêts : on repasse.
+      // Neither the port nor the page is ready: we go around again.
     }
     if (!page) await new Promise((resolve) => setTimeout(resolve, POLL_MS));
   }
@@ -291,36 +291,36 @@ async function attacher(db, emails, lang = 'fr') {
   return { app, browser, page };
 }
 
-/// Message d'échec qui DIT pourquoi : processus mort (avec son code), port
-/// muet, ou page jamais créée — et dans tous les cas la sortie réelle de
-/// l'application.
+/// Failure message that SAYS why: dead process (with its code), silent
+/// port, or page never created — and in every case the application's
+/// actual output.
 function startupFailure(exited, connected, log, port) {
   let cause;
   if (exited) {
-    cause = `l'application s'est arrêtée au démarrage (code ${exited.code}, signal ${exited.signal})`;
+    cause = `the application stopped at startup (code ${exited.code}, signal ${exited.signal})`;
   } else if (connected) {
-    cause = `CDP joignable sur le port ${port}, mais aucune page « tauri.localhost » après ${READY_TIMEOUT_MS / 1000} s`;
+    cause = `CDP reachable on port ${port}, but no "tauri.localhost" page after ${READY_TIMEOUT_MS / 1000} s`;
   } else {
-    cause = `CDP injoignable sur le port ${port} après ${READY_TIMEOUT_MS / 1000} s`;
+    cause = `CDP unreachable on port ${port} after ${READY_TIMEOUT_MS / 1000} s`;
   }
   const output = log.trim();
   return output
-    ? `${cause}\n--- sortie de l'application ---\n${output}\n--- fin ---`
-    : `${cause}\n(l'application n'a rien écrit sur sa sortie)`;
+    ? `${cause}\n--- application output ---\n${output}\n--- end ---`
+    : `${cause}\n(the application wrote nothing to its output)`;
 }
 
 export async function closeApp({ app, browser }) {
   if (browser) await browser.close().catch(() => {});
   if (app) {
-    // Attendre la sortie RÉELLE : un second lancement dans la même gate
-    // (écran 01 sur base vierge) réutilise le port de la suite et le
-    // profil WebView2 — les reprendre à un processus encore vivant est
-    // une course.
-    const fini = new Promise((resolve) => {
+    // Wait for the ACTUAL exit: a second launch in the same gate
+    // (screen 01 on a blank database) reuses the suite's port and the
+    // WebView2 profile — reclaiming them from a still-live process is
+    // a race.
+    const finished = new Promise((resolve) => {
       if (app.exitCode !== null) resolve();
       else app.once('exit', resolve);
     });
     app.kill();
-    await fini;
+    await finished;
   }
 }

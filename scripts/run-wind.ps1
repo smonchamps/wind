@@ -45,7 +45,7 @@ $profile = if ($DebugBuild) { "debug" } else { "release" }
 
 # Build BEFORE launching, through the single home of the rebuild traps
 # (e2e/rebuild-v2.mjs): without it, `generate_context!` does not re-embed
-# a changed ui-v2 dist and the CE would validate a stale UI in the field
+# a changed ui-v2 dist and the Chief Engineer would validate a stale UI in the field
 # (STANDARD section 9 trap, release side).
 Write-Host "Building ($profile): ui-v2 + dist re-embedded if changed ..."
 if ($DebugBuild) { node (Join-Path $root "scripts\build-wind.mjs") --debug }

@@ -70,11 +70,11 @@ jobs:
         run: npm run build
         working-directory: apps/desktop/ui-v2
       - name: WCAG contrasts (A8)
-        run: node e2e/contraste.mjs
+        run: node e2e/contrast.mjs
       - name: System coherence (DC-D6)
-        run: node e2e/coherence-systeme.mjs
+        run: node e2e/system-coherence.mjs
       - name: Main-thread guard (PLAN-GELS)
-        run: node e2e/garde-thread-principal.mjs
+        run: node e2e/main-thread-guard.mjs
       # PLAN-BASCULE-ANGLAIS E1: the four nets of the switch, same scripts
       # as gate.ps1 (steps 2 and 7-9).
       - name: Lint ui-v2 (eslint no-undef)

@@ -6,7 +6,7 @@
 //
 // Usage: node scripts/build-wind.mjs [--debug]
 import path from 'node:path';
-import { construireV2 } from '../e2e/rebuild-v2.mjs';
+import { buildV2 } from '../e2e/rebuild-v2.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
-construireV2(root, { release: !process.argv.includes('--debug') });
+buildV2(root, { release: !process.argv.includes('--debug') });

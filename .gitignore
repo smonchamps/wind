@@ -17,3 +17,4 @@ e2e/playwright-report/
 # spikes/ (audit 2026-09-01, S1-1): global pattern, plus target/ under
 # any spike.
 *.log
+__pycache__/

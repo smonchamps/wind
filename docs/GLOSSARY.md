@@ -209,7 +209,7 @@
 | Svelte components | `BarreFil` → `ThreadBar`, `Composition` → `Compose`, `DrapeauUE` → `EUFlag`, `FenteAvis` → `NoticeSlot`, `Fil` → `Thread`, `GuichetCompte` → `AccountDesk`, `Icone` → `Icon`, `Kiosque` → `Feed`, `Lecture` → `Reading`, `Liste` → `List`, `Marque` → `Brand`, `ModaleMigration` → `MigrationModal`, `Nettoyage` → `Cleanup`, `PileMisDeCote` → `SetAsidePile`, `Portier` → `Screener`, `Registre` → `PaperTrail`, `Reglages` → `Settings`, `Retour` → `Feedback`, `TriSection` → `SectionSort` (`App`, `Conversation`, `Menu`, `Nav`, `Onboarding`, `Toast` unchanged) |
 | UI `lib/` | `accueil` → `onboarding`, `boite` → `mailbox`, `clavier` → `keyboard`, `corps` → `body`, `icones` → `icons`, `liens` → `links`, `portier` → `screener`, `quand` → `when`, `reperes` → `markers`, `tri` → `sort`, `vocabulaires` → `vocabularies`, `espacement.svelte` → `spacing.svelte`, `fil.svelte` → `thread.svelte`, `largeurs.svelte` → `widths.svelte`, `organise.svelte` → `organized.svelte`, `texte.svelte` → `text.svelte`, `volets.svelte` → `panes.svelte`, `catalogue.fr/en` → `catalog.fr/en`, `systeme.css` → `system.css` |
 | e2e tools | `args-navigateur` → `browser-args`, `bascule-sombre.ps1` → `dark-toggle.ps1`, `capture-accueil` → `capture-onboarding`, `catalogues.test` → `catalogs.test`, `coherence-systeme` → `system-coherence`, `contraste` → `contrast`, `garde-thread-principal` → `main-thread-guard`, `geste-defilement` → `scroll-gesture`, `jetons` → `tokens`, `mesure-defilement` → `measure-scroll`, `mesure-ram.ps1` → `measure-ram.ps1`, `mesure-scrollbar` → `measure-scrollbar`, `mesure-v2` → `measure-v2`, `sonde-gel.py` → `freeze-probe.py` |
-| e2e specs | `banc-ram-kiosque` → `bench-ram-feed`, `demarrage` → `startup`, `espacement` → `spacing`, `kiosque-images` → `feed-images`, `menu-clavier` → `keyboard-menu`, `mode-organise` → `organized-mode`, `nettoyage` → `cleanup`, `refonte-*` → `redesign-*` (`defilement` → `scroll`, `ecran02` → `screen02`, `langue` → `language`, `parcours-portes` → `gated-journeys`, `reconnexion` → `reconnect`, `retours-n` → `feedback-n`, `retrait-compte` → `account-removal`, `volets` → `panes`), `repere-ligne` → `row-marker`, `retours-12-entete` → `feedback-12-header`, `retours-14-reception` → `feedback-14-inbox`, `retours-9-nom-compte` → `feedback-9-account-name`, `sections-liste` → `list-sections`, `selection-multiple` → `multi-select` |
+| e2e specs | `banc-ram-kiosque` → `bench-ram-feed`, `demarrage` → `startup`, `espacement` → `spacing`, `kiosque-images` → `feed-images`, `menu-clavier` → `keyboard-menu`, `mode-organise` → `organized-mode`, `nettoyage` → `cleanup`, `refonte-*` → `redesign-*` (`defilement` → `scroll`, `ecran02` → `screen02`, `langue` → `language`, `parcours-portes` → `gated-journeys`, `reconnexion` → `reconnect`, `retours-n` → `feedback-n`, `retrait-compte` → `account-removal`, `volets` → `panes`), `repere-ligne` → `row-marker`, `retours-12-entete` → `feedback-12-header`, `retours-14-reception` → `feedback-14-inbox`, `retours-9-nom-compte` → `feedback-9-account-name`, `sections-liste` → `list-sections`, `selection-multiple` → `multi-select`; amended at E6a (D26, 2026-09-03): `barres-fil` → `thread-bars`, `retours-12` → `feedback-12`, `retours-14` → `feedback-14`, `horizon-import` unchanged, the Playwright report `test-results/rapport.json` → `report.json` |
 | Scripts | `faire-release` → `make-release`, `verifier-release` → `verify-release`, `lancer-wind` → `run-wind`, `installer-poste` → `install-workstation`, `construire-wind.mjs` → `build-wind.mjs`, `mesurer-sessions.mjs` → `measure-sessions.mjs`, `terrain.ps1` → `field.ps1`, `faire-icone` → `make-icon` (`gate.ps1` unchanged) |
 | Skills | `chantier` → `job`, `terrain` → `field`, `solde` → `close` (`gate` unchanged); agent `spike` unchanged |
 | Docs | `ETAT` → `STATE`, `DETTE` → `DEBT`, `PASSATION` → `HANDOVER`, `PLAN-BASCULE-ANGLAIS` → `PLAN-ENGLISH-SWITCH`; `design/systeme.dc.html` → `design/system.dc.html`; `ANNOTATIONS-V3` unchanged |
@@ -305,6 +305,19 @@ kept as they are because English, abbreviations or letters the System
 names: `ic`, `l1`, `l2`, `lab`, `msg`, `pct`, `sep`, `rail`, `port`,
 `scrim`, `kicker`, `p20`, `e`/`f`/`t`/`n`/`o`/`x`, `recap`, `desc`,
 `mini`, `display`.
+
+Amended at E6a (Chief Engineer decisions D22-D26 of 2026-09-03): the
+suite runs in English by default (D22 — `launchAppV2()` launches with
+`lang = 'en'`, the D4 default; the anchors on UI text assert the English
+catalogue, `redesign-language.spec.js` keeps the French round trip, the
+anchors on French fixture text carry `lang:fr`); the 201 test titles are
+English (D23); the e2e exports the E0 inventory had missed follow the
+dictionary rows tagged `leftover-E6a` (`allouerPortCdp` →
+`allocateCdpPort`, `argsNavigateur` → `browserArgs`, `construireV2` →
+`buildV2`, `balayerZombies` → `sweepZombies`, `empreinteDist` →
+`distFingerprint`, `VARIABLES_OAUTH` → `OAUTH_VARIABLES`); the applier is
+`scripts/rename/apply-e2e.mjs` on the scanner shared with `apply-ui.mjs`
+(`scripts/rename/lib.mjs`).
 
 ## 6. How the dictionary is built and applied
 

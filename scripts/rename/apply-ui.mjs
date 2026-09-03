@@ -24,9 +24,10 @@
 // a renamed object key — `etat['liste']`), a `new` name already declared
 // in a file that also declares `old` (a silent shadowing risk), and
 // identifiers read after `dataset.` (an attribute name, not renamed).
-import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import { scanJs, csvRows, walk, rewriteImportPaths, findShadowing, relTo } from './lib.mjs';
 
 const root = path.resolve(import.meta.dirname, '..', '..');
 const UI = path.join(root, 'apps', 'desktop', 'ui-v2', 'src');
@@ -75,18 +76,15 @@ const FILES = {
 };
 
 // --- the dictionary ------------------------------------------------------
-const csv = (f) => readFileSync(path.join(root, 'scripts', 'rename', f), 'utf8').split(/\r?\n/).filter(Boolean);
 const dict = new Map();
-for (const line of csv('dictionary.csv').slice(1)) {
-  const [layer, old, nw] = line.split(',');
+for (const [layer, old, nw] of csvRows(root, 'dictionary.csv').slice(1)) {
   if (layer === 'ui' && old && nw && old !== nw) dict.set(old, nw);
 }
 for (const [from, to] of Object.entries(FILES)) {
   if (from.endsWith('.svelte')) dict.set(from.replace('.svelte', ''), to.replace('.svelte', ''));
 }
 const keys = new Map();
-for (const line of csv('keys.csv').slice(1)) {
-  const [old, nw] = line.split(',');
+for (const [old, nw] of csvRows(root, 'keys.csv').slice(1)) {
   if (old && nw && old !== nw) keys.set(old, nw);
 }
 // Template prefixes: an old namespace that maps to one new namespace
@@ -104,76 +102,13 @@ for (const [k, v] of [...prefixes]) if (v === null || v === k) prefixes.delete(k
 // longest prefix first: `nettoyage.perimetre.` must win over `nettoyage.`
 const PREFIXES = [...prefixes].sort((x, y) => y[0].length - x[0].length);
 
-// --- the JS tokenizer ----------------------------------------------------
-const ID_START = /[A-Za-z_$]/, ID = /[\w$]/;
+// --- the JS tokenizer (shared with apply-e2e.mjs since E6a: lib.mjs) ----
 const found = { strings: [], dataset: [] };
-
-// Renames identifiers in a JS source; `stop` (a char) ends the scan at
-// depth 0 (the closing brace of a mustache). Returns [output, index].
-function js(src, i, stop, file) {
-  let out = '';
-  let depth = 0;
-  let prev = ''; // last significant char, for the regex-literal heuristic
-  const N = src.length;
-  while (i < N) {
-    const c = src[i];
-    if (stop && c === stop && depth === 0) return [out, i];
-    // `{/if}`, `{/each}`: a block close, not a regex literal
-    if (c === '/' && out === '' && stop === '}') { out += c; i++; continue; }
-    if (c === '/' && src[i + 1] === '/') { const e = src.indexOf('\n', i); const j = e < 0 ? N : e; out += src.slice(i, j); i = j; continue; }
-    if (c === '/' && src[i + 1] === '*') { const e = src.indexOf('*/', i + 2); const j = e < 0 ? N : e + 2; out += src.slice(i, j); i = j; continue; }
-    if (c === "'" || c === '"') {
-      let j = i + 1;
-      while (j < N && src[j] !== c) { if (src[j] === '\\') j++; j++; }
-      const lit = src.slice(i + 1, j);
-      if (dict.has(lit)) found.strings.push(`${file}: '${lit}' (→ ${dict.get(lit)})  …${src.slice(Math.max(0, i - 45), j + 12).replace(/\s+/g, ' ')}…`);
-      out += c + (keys.get(lit) ?? lit) + c;
-      i = j + 1; prev = c; continue;
-    }
-    if (c === '`') {
-      out += c; i++;
-      let text = '';
-      const flush = () => {
-        // the head of the template may be a catalogue-key prefix
-        if (out.endsWith('`')) for (const [o, n] of PREFIXES) if (text.startsWith(o)) { text = n + text.slice(o.length); break; }
-        out += text; text = '';
-      };
-      while (i < N && src[i] !== '`') {
-        if (src[i] === '\\') { text += src[i] + src[i + 1]; i += 2; continue; }
-        if (src[i] === '$' && src[i + 1] === '{') {
-          flush(); out += '${';
-          const [inner, j] = js(src, i + 2, '}', file);
-          out += inner + '}'; i = j + 1; continue;
-        }
-        text += src[i++];
-      }
-      flush(); out += '`'; i++; prev = '`'; continue;
-    }
-    if (c === '/' && !/[\w$)\]]/.test(prev)) { // regex literal
-      let j = i + 1, cls = false;
-      while (j < N && (cls || src[j] !== '/')) { if (src[j] === '\\') j++; else if (src[j] === '[') cls = true; else if (src[j] === ']') cls = false; j++; }
-      while (ID.test(src[j + 1] ?? '')) j++;
-      out += src.slice(i, j + 1); i = j + 1; prev = '/'; continue;
-    }
-    if (ID_START.test(c)) {
-      let j = i + 1;
-      while (j < N && ID.test(src[j])) j++;
-      const word = src.slice(i, j);
-      const afterDataset = out.endsWith('dataset.');
-      // the glyph ids of icons.js are the System's contract (figcaptions,
-      // DC-D2) — they move with the System, not with the dictionary
-      if (file.endsWith('lib/icons.js') && /(^|\n) {2}$/.test(out) && src[j] === ':') { out += word; i = j; prev = word[word.length - 1]; continue; }
-      if (afterDataset && dict.has(word)) found.dataset.push(`${file}: dataset.${word}`);
-      out += !afterDataset && dict.has(word) ? dict.get(word) : word;
-      i = j; prev = word[word.length - 1]; continue;
-    }
-    if (c === '{') depth++;
-    else if (c === '}') depth--;
-    if (!/\s/.test(c)) prev = c;
-    out += c; i++;
-  }
-  return [out, i];
-}
+// the glyph ids of icons.js are the System's contract (figcaptions,
+// DC-D2) — they move with the System, not with the dictionary
+const keep = (file, out, src, j) => file.endsWith('lib/icons.js') && /(^|\n) {2}$/.test(out) && src[j] === ':';
+const ctx = { dict, keys, prefixes: PREFIXES, found, keep };
+const js = (src, i, stop, file) => scanJs(src, i, stop, file, ctx);
 
 // --- the Svelte walker ---------------------------------------------------
 function svelte(src, file) {
@@ -247,54 +182,40 @@ function svelte(src, file) {
 }
 
 // --- import paths --------------------------------------------------------
-function paths(src) {
-  for (const [from, to] of Object.entries(FILES)) {
-    const base = path.basename(from), nb = path.basename(to);
-    src = src.replace(new RegExp(`(['"\`][^'"\`]*/)${base.replace(/\./g, '\\.')}(['"\`])`, 'g'), `$1${nb}$2`);
-  }
-  return src;
-}
+const paths = (src) => rewriteImportPaths(src, FILES);
 
 // --- run -----------------------------------------------------------------
-function walk(d, out = []) { for (const f of readdirSync(d)) { const p = path.join(d, f); if (statSync(p).isDirectory()) walk(p, out); else if (/\.(js|svelte)$/.test(f)) out.push(p); } return out; }
+const UI_FILES = () => walk(UI, /\.(js|svelte)$/);
+const rel = relTo(root);
 const changed = [];
-for (const f of walk(UI)) {
-  const rel = path.relative(root, f).replace(/\\/g, '/');
+for (const f of UI_FILES()) {
   const src = readFileSync(f, 'utf8');
   const isCatalog = /catalogue\.(fr|en)\.js$/.test(f);
   let out;
   if (isCatalog) {
     // keys only — the values are the delivered text (D3)
     out = src.replace(/^(\s+)'([^']+)':/gm, (m, ws, k) => `${ws}'${keys.get(k) ?? k}':`);
-  } else if (f.endsWith('.svelte')) out = svelte(src, rel);
-  else [out] = js(src, 0, null, rel);
+  } else if (f.endsWith('.svelte')) out = svelte(src, rel(f));
+  else [out] = js(src, 0, null, rel(f));
   out = paths(out);
-  if (out !== src) { changed.push(rel); if (!report) writeFileSync(f, out); }
+  if (out !== src) { changed.push(rel(f)); if (!report) writeFileSync(f, out); }
 }
 
 // e2e nets and specs that import a renamed UI file by path
-for (const rel of ['e2e/catalogues.test.mjs', 'e2e/tests/refonte-langue.spec.js', 'e2e/coherence-systeme.mjs']) {
-  const f = path.join(root, rel);
+// (their E6a names — the files were renamed by apply-e2e.mjs)
+for (const p of ['e2e/catalogs.test.mjs', 'e2e/tests/redesign-language.spec.js', 'e2e/system-coherence.mjs']) {
+  const f = path.join(root, p);
   const src = readFileSync(f, 'utf8');
   const out = paths(src)
     .replace(/catalogue\.\$\{langue\}\.js/g, 'catalog.${langue}.js')
     .replace(/'reperes\.js'/g, "'markers.js'")
     .replace(/'icones\.js'/g, "'icons.js'")
     .replace(/lib\$\{path\.sep\}icones\.js/g, 'lib${path.sep}icons.js');
-  if (out !== src) { changed.push(rel); if (!report) writeFileSync(f, out); }
+  if (out !== src) { changed.push(p); if (!report) writeFileSync(f, out); }
 }
 
 // shadowing risk: `new` already declared in a file that declares `old`
-const shadow = [];
-for (const f of walk(UI)) {
-  const rel = path.relative(root, f).replace(/\\/g, '/');
-  const src = readFileSync(f, 'utf8');
-  for (const [old, nw] of dict) {
-    if (!/^[a-z]/.test(old)) continue;
-    const decl = (w) => new RegExp(`\\b(let|const|var|function|import)\\s+(\\{[^}]*\\b)?${w}\\b|\\(([^)]*,\\s*)?${w}\\s*[,)=]`).test(src);
-    if (decl(old) && decl(nw)) shadow.push(`${rel}: ${old} → ${nw}, and ${nw} is already declared`);
-  }
-}
+const shadow = findShadowing(UI_FILES(), dict, rel);
 
 if (report) {
   console.log(`== would change ${changed.length} files ==\n${changed.join('\n')}`);

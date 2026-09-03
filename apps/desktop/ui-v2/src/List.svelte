@@ -1781,7 +1781,7 @@
     min-height:1.45em;
   }
   /* The "Draft: " mention (variant B, PLAN-BROUILLONS §3): the alert
-     token in text form — measured by contraste.mjs on the three row
+     token in text form — measured by contrast.mjs on the three row
      backgrounds (rest, hover, chosen). */
   .prefix { color:var(--alert); font-weight:600; }
   /* Empty fields of the folder: dimmed italics say it, never a blank

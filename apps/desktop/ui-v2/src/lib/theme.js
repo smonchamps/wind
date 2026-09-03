@@ -17,7 +17,7 @@ const AUTO_KEY = 'wind-theme-auto';
 // V3 it is THE one that draws the separation, the thumbnails show it).
 // The same values live as tokens in system.css: the swatches must
 // show each theme WITHOUT applying it, hence the hex values repeated
-// here — the coherence-systeme.mjs gate keeps them equal to the
+// here — the system-coherence.mjs gate keeps them equal to the
 // shipped tokens. Labels and descriptions live in the catalogue
 // (`theme.<id>.nom` / `theme.<id>.desc` — PLAN-LANGUES, A15).
 // Declared BEFORE the migration below: the guard derives from it.
@@ -30,7 +30,7 @@ export const THEME_CARDS = [
 
 // The list of ids is DERIVED from the cards: a single table to
 // maintain — a card without a theme (or the reverse) is impossible
-// by construction, and the coherence-systeme.mjs gate keeps the
+// by construction, and the system-coherence.mjs gate keeps the
 // swatches equal to the shipped tokens.
 export const THEMES = THEME_CARDS.map((f) => f.id);
 

@@ -1,10 +1,9 @@
-// Reconstruire l'application — le point UNIQUE qui connaît les trois
-// pièges MESURÉS du banc de la refonte. Chaque piège a coûté une
-// session de fantômes ; ils vivent ici, une fois.
+// Rebuild the application — the SINGLE spot that knows the three
+// MEASURED traps of the redesign bench. Each trap cost a session of
+// ghosts; they live here, once.
 //
-// Depuis B2 (PLAN-RETRAIT-V1), ui-v2 est la SEULE interface : plus
-// aucun échange de dist — il ne reste que la taille de fenêtre du banc
-// de parité.
+// Since B2 (PLAN-RETRAIT-V1), ui-v2 is the ONLY interface: no more
+// dist swapping — all that remains is the parity bench's window size.
 import { execSync } from 'node:child_process';
 import {
   mkdirSync,
@@ -17,18 +16,18 @@ import {
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 
-// Empreinte du dist embarqué + de la conf Tauri : chemins relatifs ET
-// contenus (les assets de Vite sont hashés dans leur NOM — un rename
-// seul doit suffire à invalider). Déterministe : parcours trié.
-export function empreinteDist(distDir, conf) {
+// Fingerprint of the embedded dist + the Tauri config: relative paths
+// AND contents (Vite assets are hashed into their NAME — a rename
+// alone must be enough to invalidate). Deterministic: sorted walk.
+export function distFingerprint(distDir, conf) {
   const hash = createHash('sha1');
-  const marcher = (dir) => {
-    for (const entree of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
       a.name.localeCompare(b.name),
     )) {
-      const abs = path.join(dir, entree.name);
-      if (entree.isDirectory()) {
-        marcher(abs);
+      const abs = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(abs);
       } else {
         hash.update(path.relative(distDir, abs).replaceAll('\\', '/'));
         hash.update('\0');
@@ -37,114 +36,114 @@ export function empreinteDist(distDir, conf) {
       }
     }
   };
-  marcher(distDir);
+  walk(distDir);
   hash.update(conf);
   return hash.digest('hex');
 }
 
-// Tuer les instances de banc survivantes — QUE celles issues de CE
-// target/ : jamais l'application installée de l'utilisateur, et jamais
-// la suite d'un AUTRE worktree (le motif '*\target\*' d'origine
-// abattait l'application de l'autre suite en plein vol — Stop-Process
-// -Force = code 0xFFFFFFFF sans sortie, constat du 2026-08-15,
-// PLAN-ISOLATION-E2E). Exporté : depuis que le build est mémoïsé, le
-// lanceur doit balayer lui-même avant de reprendre la base d'une spec
-// précédente — un zombie qui tient wind.db ferait un EBUSY illisible
-// à la place d'un flake propre.
-export function balayerZombies(root) {
-  const balayage =
+// Kill the surviving bench instances — ONLY the ones spawned from THIS
+// target/: never the user's installed application, and never the
+// suite of ANOTHER worktree (the original '*\target\*' pattern shot
+// down the other suite's application mid-flight — Stop-Process -Force
+// = code 0xFFFFFFFF with no output, finding of 2026-08-15,
+// PLAN-ISOLATION-E2E). Exported: now that the build is memoized, the
+// launcher must sweep itself before resuming a previous spec's
+// database — a zombie holding wind.db would produce an unreadable
+// EBUSY instead of a clean flake.
+export function sweepZombies(root) {
+  const sweep =
     'Get-Process wind-desktop -ErrorAction SilentlyContinue | '
     + `Where-Object { $_.Path -like '${path.join(root, 'target')}\\*' } | Stop-Process -Force`;
   try {
-    execSync(`powershell -NoProfile -Command "${balayage}"`, { stdio: 'ignore' });
+    execSync(`powershell -NoProfile -Command "${sweep}"`, { stdio: 'ignore' });
   } catch {
-    /* rien à tuer */
+    /* nothing to kill */
   }
 }
 
-function construire(root, { release, fenetre }) {
-  // 1. `generate_context!` n'embarque le dist qu'à la COMPILATION de
-  //    main.rs : un changement d'assets SEULS ne recompile rien, et le
-  //    binaire garderait un dist périmé (constaté : règle CSS présente
-  //    sur disque, absente des feuilles chargées). Le bump de mtime
-  //    force la ré-expansion — mais seulement si le dist ou la conf ont
-  //    RÉELLEMENT changé depuis le dernier build : bumper à chaque
-  //    lancement payait un link complet par spec, même à vide
-  //    (PLAN-KAIZEN-CLAUDE vague 2, E1 — ~74 s la spec, dominés par le
-  //    rebuild).
-  const empreinte = empreinteDist(
+function construire(root, { release, windowOverride }) {
+  // 1. `generate_context!` only embeds the dist when main.rs is
+  //    COMPILED: a change to assets ALONE recompiles nothing, and the
+  //    binary would keep a stale dist (observed: CSS rule present on
+  //    disk, absent from the loaded stylesheets). The mtime bump
+  //    forces re-expansion — but only if the dist or the config have
+  //    REALLY changed since the last build: bumping on every launch
+  //    used to pay for a full link per spec, even when nothing changed
+  //    (PLAN-KAIZEN-CLAUDE wave 2, E1 — ~74 s per spec, dominated by
+  //    the rebuild).
+  const fingerprint = distFingerprint(
     path.join(root, 'apps', 'desktop', 'ui-v2', 'dist'),
     readFileSync(path.join(root, 'apps', 'desktop', 'tauri.conf.json'), 'utf8') +
-      JSON.stringify(fenetre),
+      JSON.stringify(windowOverride),
   );
-  const memoire = path.join(
+  const storedFile = path.join(
     root,
     'target',
     'e2e',
     `empreinte-rebuild-${release ? 'release' : 'debug'}.txt`,
   );
-  let stockee = null;
+  let stored = null;
   try {
-    stockee = readFileSync(memoire, 'utf8');
+    stored = readFileSync(storedFile, 'utf8');
   } catch {
-    /* premier build : pas d'empreinte */
+    /* first build: no fingerprint yet */
   }
-  if (stockee !== empreinte) {
+  if (stored !== fingerprint) {
     utimesSync(path.join(root, 'apps', 'desktop', 'src', 'main.rs'), new Date(), new Date());
   }
-  // 2. Un zombie de banc verrouille l'exe : le LINK échoue (« accès
-  //    refusé ») et le vieux binaire serait rejoué en silence
-  //    (constaté).
-  balayerZombies(root);
-  // 3. Échange de conf éventuel (taille de fenêtre du banc de parité) :
-  //    RESTAURÉ même sur échec — le dépôt ne reste jamais sale.
+  // 2. A zombie bench locks the exe: the LINK fails ("access denied")
+  //    and the old binary would silently be replayed (observed).
+  sweepZombies(root);
+  // 3. Any config swap (parity-bench window size): RESTORED even on
+  //    failure — the repository is never left dirty.
   const conf = path.join(root, 'apps', 'desktop', 'tauri.conf.json');
-  const commande = `cargo build -p wind-desktop${release ? ' --release' : ''}`;
-  if (!fenetre) {
-    execSync(commande, { cwd: root, stdio: 'inherit' });
+  const command = `cargo build -p wind-desktop${release ? ' --release' : ''}`;
+  if (!windowOverride) {
+    execSync(command, { cwd: root, stdio: 'inherit' });
   } else {
-    const origine = readFileSync(conf, 'utf8');
-    const modifiee = JSON.parse(origine);
-    Object.assign(modifiee.app.windows[0], fenetre);
+    const original = readFileSync(conf, 'utf8');
+    const modified = JSON.parse(original);
+    Object.assign(modified.app.windows[0], windowOverride);
     try {
-      writeFileSync(conf, JSON.stringify(modifiee, null, 2));
-      execSync(commande, { cwd: root, stdio: 'inherit' });
+      writeFileSync(conf, JSON.stringify(modified, null, 2));
+      execSync(command, { cwd: root, stdio: 'inherit' });
     } finally {
-      writeFileSync(conf, origine);
+      writeFileSync(conf, original);
     }
   }
-  // L'empreinte ne s'écrit qu'APRÈS un build réussi : un build interrompu
-  // ne doit pas faire croire au prochain lancement que le binaire est bon.
-  mkdirSync(path.dirname(memoire), { recursive: true });
-  writeFileSync(memoire, empreinte);
+  // The fingerprint is only written AFTER a successful build: an
+  // interrupted build must not make the next launch believe the
+  // binary is good.
+  mkdirSync(path.dirname(storedFile), { recursive: true });
+  writeFileSync(storedFile, fingerprint);
 }
 
-// Mémo par PROCESSUS de suite : Playwright réutilise son worker d'un
-// fichier de spec à l'autre (workers: 1) — la première spec paie le
-// build, les suivantes ne paient rien du tout, pas même le `npm run
-// build` de Vite (~3 s) ni le no-op cargo. Un worker relancé (après un
-// échec) repasse ici : le build Vite se rejoue, et l'empreinte sur
-// disque évite alors le bump — cargo ne fait que vérifier.
-const dejaConstruits = new Set();
+// Memoized per suite PROCESS: Playwright reuses its worker from one
+// spec file to the next (workers: 1) — the first spec pays for the
+// build, the following ones pay nothing at all, not even Vite's `npm
+// run build` (~3 s) nor the cargo no-op. A worker restarted (after a
+// failure) comes back through here: the Vite build replays, and the
+// on-disk fingerprint then avoids the bump — cargo only checks.
+const alreadyBuilt = new Set();
 
-export function construireV2(root, { release = true, fenetre = null } = {}) {
-  const cle = `${root}|${release}|${JSON.stringify(fenetre)}`;
-  if (dejaConstruits.has(cle)) return;
+export function buildV2(root, { release = true, windowOverride = null } = {}) {
+  const key = `${root}|${release}|${JSON.stringify(windowOverride)}`;
+  if (alreadyBuilt.has(key)) return;
   execSync('npm run build', {
     cwd: path.join(root, 'apps', 'desktop', 'ui-v2'),
     stdio: 'inherit',
   });
-  construire(root, { release, fenetre });
-  dejaConstruits.add(cle);
+  construire(root, { release, windowOverride });
+  alreadyBuilt.add(key);
 }
 
-// Le cache HTTP du profil WebView2 survit aux rebuilds et peut servir un
-// index.html périmé avec ses vieux assets hashés — styles fantômes, CSP
-// d'une autre époque (constaté). On purge le CACHE, pas le profil : le
-// cache GPU qui rend les démarrages tièdes reste.
-export function purgerCacheHttp(profile) {
-  for (const dossier of ['Cache', 'Code Cache']) {
-    rmSync(path.join(profile, 'EBWebView', 'Default', dossier), {
+// The WebView2 profile's HTTP cache survives rebuilds and can serve a
+// stale index.html with its old hashed assets — ghost styles, CSP from
+// another era (observed). We purge the CACHE, not the profile: the GPU
+// cache that makes startups warm stays.
+export function purgeHttpCache(profile) {
+  for (const folder of ['Cache', 'Code Cache']) {
+    rmSync(path.join(profile, 'EBWebView', 'Default', folder), {
       recursive: true,
       force: true,
     });

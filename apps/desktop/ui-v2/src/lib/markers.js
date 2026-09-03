@@ -2,7 +2,7 @@
 // set (D2, reserved for accounts — A3 “one icon, one meaning” held by
 // reservation) and the families of the measured swatch picker (D1).
 // The hex values live in system.css (.marker[data-hue]) and are
-// measured by e2e/contraste.mjs; here, only the NAMES — the twin
+// measured by e2e/contrast.mjs; here, only the NAMES — the twin
 // allowlist lives on the Rust side (commands.rs, repere_normalise) and
 // is authoritative on write.
 export const MARKER_ICONS = [

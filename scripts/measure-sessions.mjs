@@ -4,7 +4,7 @@
 // Reads the local transcripts under ~/.claude/projects/<project key>/ (a
 // machine-specific path, like install-workstation.ps1) and prints, per
 // session and in aggregate: tokens (input equivalents: cacheRead ×0.1,
-// cacheCreate ×1.25, output ×5), CE prompts, assistant turns, average
+// cacheCreate ×1.25, output ×5), Chief Engineer prompts, assistant turns, average
 // context re-read per turn, wall hours, commands > 30 s per category
 // (duration = timestamp of the result − timestamp of the turn that
 // launches the tool; background commands return immediately and are
@@ -88,7 +88,7 @@ async function readFile(path, s, sidechain) {
       const text = typeof c === "string" ? c
         : Array.isArray(c) && !c.some(b => b.type === "tool_result")
           ? (c.find(b => b.type === "text")?.text ?? null) : null;
-      // A CE prompt is a text message that is neither meta nor a machine
+      // A Chief Engineer prompt is a text message that is neither meta nor a machine
       // message (command invocation, local output: content in a <tag>).
       if (text !== null && !e.isMeta && !text.trimStart().startsWith("<")) s.prompts++;
       const id = Array.isArray(c) ? c.find(b => b.type === "tool_result")?.tool_use_id : null;
@@ -168,7 +168,7 @@ const ctxGlobal = totCtx.length ? totCtx.reduce((a, b) => a + b, 0) / totCtx.len
 const marathons = sessions.filter(s => s.end - s.start > 24 * 3600_000);
 const fmtModels = o => Object.entries(o).sort((a, b) => b[1] - a[1]).map(([m, n]) => `${m}: ${n}`).join(", ") || "—";
 console.log(`\n## Aggregate`);
-console.log(`- Sessions / CE prompts / turns: ${sessions.length} / ${tot.prompts} / ${tot.turns} (${tot.prompts ? (tot.turns / tot.prompts).toFixed(1) : "—"} turns/prompt — target T4 ≤ 25)`);
+console.log(`- Sessions / Chief Engineer prompts / turns: ${sessions.length} / ${tot.prompts} / ${tot.turns} (${tot.prompts ? (tot.turns / tot.prompts).toFixed(1) : "—"} turns/prompt — target T4 ≤ 25)`);
 console.log(`- Input equiv., main thread: ${fmtM(totEquiv)}; agents: ${tot.nAgents} transcripts, ${fmtM(tot.agentEquiv)} (${((tot.agentEquiv / (totEquiv + tot.agentEquiv)) * 100 || 0).toFixed(1)} %)`);
 console.log(`- Average context re-read per turn: ${fmtK(ctxGlobal)} (target T2 ≤ 200 k)`);
 console.log(`- Sessions > 24 h of wall: ${marathons.length}${marathons.length ? " (" + marathons.map(s => s.id.slice(0, 8)).join(", ") + ")" : ""} (target T3: 0)`);

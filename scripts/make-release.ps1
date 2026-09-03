@@ -225,7 +225,7 @@ Write-Host "latest.json written without BOM ($($targets.Count) platforms): $out"
 
 # (4) Publication. OUTBOUND and irreversible: once the Release is marked
 # Latest with its latest.json, the installed apps auto-update. Hence the
-# explicit confirmation (CE decision), AFTER the builds -- never before.
+# explicit confirmation (Chief Engineer decision), AFTER the builds -- never before.
 Write-Host ""
 Write-Host "Ready to publish $Version : release commit + push (gate) + BARE tag + GitHub Release Latest (5 assets: 2 exe, 2 sig, latest.json)."
 $answer = Read-Host "Publish now? Type YES in capitals to continue"

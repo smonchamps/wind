@@ -1,32 +1,47 @@
-# E2E — parcours critiques (gate 2)
+# E2E — the journeys, the nets and the benches
 
-Pilote la **vraie fenêtre Tauri** via CDP (WebView2), sans `tauri-driver`
-ni `msedgedriver` : l'application est lancée avec
-`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=<port>` et
-Playwright s'y attache par `connectOverCDP` (spike validé le 2026-07-17 —
-aucune danse de versions de driver). Le port est **libre et choisi par
-l'OS à chaque lancement** ([port-cdp.mjs](port-cdp.mjs)) : deux suites
-jouées en même temps depuis deux worktrees ne partagent aucun état
-(PLAN-ISOLATION-E2E, constat 2026-08-15 — un port fixe faisait piloter
-la fenêtre d'une suite par l'autre).
+Rewritten at PLAN-BASCULE-ANGLAIS E6a (2026-09-03, Chief Engineer
+decision D24): the page it replaces described the v1 selector contract
+and the v1 journeys, gone since the redesign.
 
-Déterminisme par construction ([launch.mjs](launch.mjs)) :
+## What drives what
 
-- base seedée **jetable** (`WIND_DB_PATH`) — jamais celle de
-  l'utilisateur ;
-- compte factice au **jeton invalide** (`WIND_E2E_ACCOUNT`) — hors
-  ligne garanti : la boîte d'envoi journalise sans jamais rien envoyer ;
-- configuration OAuth retirée de l'environnement du processus testé —
-  aucun test ne peut toucher au vrai compte, même par accident. La liste
-  des variables vit dans [isolation-oauth.json](isolation-oauth.json)
-  (contrat unique, appliqué par [isolation.mjs](isolation.mjs)) : tout
-  lanceur — suite, banc de mesure, diagnostic, sonde — la purge en
-  entier.
+The specs drive the **real Tauri window** through CDP (WebView2), with
+no `tauri-driver` and no `msedgedriver`: the application is launched
+with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=<port>`
+and Playwright attaches with `connectOverCDP`. The port is **free and
+chosen by the OS at each launch** ([port-cdp.mjs](port-cdp.mjs)): two
+suites played at the same time from two worktrees share no state
+(PLAN-ISOLATION-E2E — a fixed port once let one suite drive the other's
+window).
 
-## Lancer
+Determinism by construction ([launch.mjs](launch.mjs)):
 
-Prérequis : Node ≥ 20, Rust, WebView2 (présent sur Windows 11).
-La sonde de gel (`sonde-gel.py`, PLAN-GELS) exige en plus Python 3.
+- a **throw-away seeded database** (`WIND_DB_PATH`) — never the user's;
+- a fake account with an **invalid token** (`WIND_E2E_ACCOUNT`) —
+  offline by construction: the outbox journals and never sends;
+- the OAuth configuration **removed from the environment** of the process
+  under test — no test can reach a real account, even by accident. The
+  variable list lives in [isolation-oauth.json](isolation-oauth.json),
+  one contract applied by [isolation.mjs](isolation.mjs) to every
+  launcher — suite, benches, diagnostics, probe.
+
+The debug build of the app and the seeders (the Rust examples of
+`mail-core`) are compiled once per run by [global-setup.mjs](global-setup.mjs)
+through [rebuild-v2.mjs](rebuild-v2.mjs), outside any spec's timeout;
+[global-teardown.mjs](global-teardown.mjs) gives the machine its theme
+back if the "follow the OS" test was killed mid-flight.
+
+The suite launches the app **in English by default** (D22 — the
+product's default since D4); [redesign-language.spec.js](tests/redesign-language.spec.js)
+plays the French round trip (detection, switch, reload, exact French
+forms). Anchors on French *fixture* text (the seeded decor) carry the
+`lang:fr` marker for the language ratchet.
+
+## Running
+
+Prerequisites: Node 20+, Rust, WebView2 (present on Windows 11); Python 3
+for the freeze probe only.
 
 ```powershell
 cd e2e
@@ -34,67 +49,72 @@ npm install
 npm test
 ```
 
-La suite construit l'application (debug), seed 200 messages avec corps,
-ouvre la fenêtre et déroule les parcours en ~10 s.
+`npm test` plays the node nets first (`*.test.mjs`), then the Playwright
+specs (`tests/*.spec.js`, one worker, serial inside a file, one retry —
+a flaky test is counted, never red: [flaky.mjs](flaky.mjs) reads
+`test-results/report.json` and `scripts/gate.ps1` prints `flaky: N`).
+Never play a single test with `-g`: a spec is a serial journey, it is
+played as a whole file.
 
-## Le gate : hook pré-push (à armer sur chaque machine)
+## The gate
 
-Ces parcours **ne tournent pas dans la CI hébergée** : un runner GitHub
-n'ouvre pas de fenêtre WebView2 (mesuré — [ADR 0005](../docs/adr/0005-gate-e2e-hors-ci-hebergee.md)).
-Ils sont donc joués par un hook `pre-push` versionné. Sur un dépôt
-fraîchement cloné, l'armer une fois :
+The specs **do not run in the hosted CI**: a GitHub runner cannot open a
+WebView2 window (measured — [ADR 0005](../docs/adr/0005-gate-e2e-hors-ci-hebergee.md)).
+They are played by the versioned `pre-push` hook, armed once per clone:
 
 ```powershell
 git config core.hooksPath .githooks
 ```
 
-Le hook ([.githooks/pre-push](../.githooks/pre-push)) enchaîne `cargo fmt
---check`, `cargo clippy -D warnings`, `cargo test --workspace`, puis ces
-E2E. S'il passe, la CI est verte par construction.
+The hook runs ONE gate, [`scripts/gate.ps1`](../scripts/gate.ps1)
+(fmt, ui-v2 build and lint, the textual nets below, clippy, the Rust
+tests, then this suite). Never `--no-verify` without a Chief Engineer
+decision.
 
-En cas d'urgence : `git push --no-verify` — en connaissance de cause.
+## The nets (seconds, played on the docs-only path too)
 
-## Parcours couverts
-
-| Parcours | Vérifié |
+| Net | What it refuses |
 |---|---|
-| Lire | liste virtualisée, plus récent d'abord, corps affiché dans l'iframe sandbox |
-| Trier | `e` archive, décompte mis à jour, auto-avance au message suivant |
-| Répondre | À / « Re: » / citation pré-remplis ; envoi hors ligne → **journalisé, « 1 en attente »** (la règle d'or, visible à l'écran) |
-| Brouillon | Échap conserve le texte, Reprendre le restitue intact |
+| [contrast.mjs](contrast.mjs) | a WCAG pair under threshold in any theme (System A8) |
+| [system-coherence.mjs](system-coherence.mjs) | a token, theme or glyph the System says and the code does not ship, or the reverse (DC-D6) |
+| [main-thread-guard.mjs](main-thread-guard.mjs) | a blocking Tauri command on the message pump (PLAN-GELS) |
+| [language-gate.mjs](language-gate.mjs) | any RISE of French markers per file against `language-baseline.json` (PLAN-BASCULE-ANGLAIS E1a) |
+| [ipc-contract.mjs](ipc-contract.mjs) | a Tauri command registered, defined and called by name out of step |
+| [docs-links.mjs](docs-links.mjs) | a dead relative markdown link |
+| [dom-contract.test.mjs](dom-contract.test.mjs) | a test id a spec selects that no component renders |
+| [catalogs.test.mjs](catalogs.test.mjs), [placeholders.test.mjs](placeholders.test.mjs), [language.test.mjs](language.test.mjs) | the two catalogues out of step, a `{placeholder}` without its parameter, the language detection |
+| [port-cdp.test.mjs](port-cdp.test.mjs), [rebuild-v2.test.mjs](rebuild-v2.test.mjs), [apply-dom.test.mjs](apply-dom.test.mjs), [apply-e2e.test.mjs](apply-e2e.test.mjs) | the tooling itself |
 
-## Contrat de sélecteurs de test (R0-S6)
+## The DOM contract
 
-Le gate sélectionne l'UI par trois moyens **stables**, pour survivre à la
-refonte v2 sans réécrire les tests (*lockstep*). **v2 doit honorer ce
-contrat — toute modification ici est une modification du gate, à traiter
-comme une API.**
+A spec selects the UI by `data-testid`, by a few state classes and by
+accessible name, never by layout. The names are one table,
+[`scripts/rename/dom.csv`](../scripts/rename/dom.csv) (test ids,
+classes, `data-*` attribute names, `window.__e2e*` seams), and
+`dom-contract.test.mjs` asserts that every id a spec selects is rendered
+by a component. Changing a name here is changing the gate: the component
+and the specs move in the same commit.
 
-1. **`data-testid` sur le markup généré** (`app.js` le pose ; les composants
-   v2 portent les mêmes valeurs) :
-   `message-row`, `search-result`, `thread-item`, `attachment`, `subject`,
-   `thread-count`, `clip`, `account-dot`, `account-chip`, `move-target`,
-   `draft-row`.
-2. **IDs sémantiques préservés** pour les structures de haut niveau — v2
-   porte les mêmes `id` :
-   - composeur : `#compose` `#compose-title` `#compose-to` `#compose-subject`
-     `#compose-body` `#compose-send` `#compose-from` `#compose-from-row`
-   - lecture : `#detail` `#detail-subject` `#detail-frame` `#attachments`
-     `#star` `#move`
-   - liste / recherche : `#rows` `#scroll-space` `#perf` `#search`
-     `#search-results` `#status`
-   - ajout de compte : `#connect` `#add-menu` `#add-gmail` `#add-microsoft`
-     `#add-imap` `#ms-dialog` `#ms-email` `#imap-dialog` `#imap-email`
-     `#imap-host` `#imap-password` `#smtp-host` `#imap-form`
-   - dialogues / bandeaux : `#move-dialog` `#outbox-bar` `#outbox-summary`
-     `#drafts-bar` `#drafts-summary` `#drafts-list` `#update-bar`
-     `#telemetry-optin-bar` `#crash-report-bar` `#backfill-bar`
-3. **Classes d'état conservées** : `flagged` (sur `message-row`), `current`
-   (sur `thread-item`).
-4. **Nom accessible** : le bouton « Reprendre » (sélectionné par rôle).
+## Benches, probes and tools (never during a gate)
 
-**Décision (GO S6).** On désolidarise ce qui *bouge* — le markup généré,
-passé en `data-testid`. Ce qui est *déjà stable* — IDs sémantiques et
-classes d'état — reste sélectionné directement, comme contrat explicite
-plutôt que churn sans gain. Départage assumé : « la justesse par la
-retenue » vaut aussi pour le testing.
+- [measure-v2.mjs](measure-v2.mjs) — startup, first page, RAM
+  (`MESURE_DB`, `MESURE_COMPTES`, `MESURE_REUTILISER`); STANDARD §9: a
+  warm cache lies, measure cold.
+- [measure-scroll.mjs](measure-scroll.mjs), [measure-scrollbar.mjs](measure-scrollbar.mjs),
+  [scroll-gesture.mjs](scroll-gesture.mjs) — the deep-scroll figures
+  (PLAN-DEFILEMENT-PROFOND).
+- [measure-ram.ps1](measure-ram.ps1) — RAM of ONE running instance: the
+  private working sets of `wind-desktop.exe` and its WebView2 processes,
+  summed (`-AppPid`, `-Profil`).
+- [freeze-probe.py](freeze-probe.py) — freezes of the message pump
+  (`python e2e/freeze-probe.py <base.db>`, a database OUTSIDE the
+  repository). Never during a gate: the e2e launcher kills every
+  `wind-desktop` under `target\` (a false crash, code -1).
+- [capture-onboarding.mjs](capture-onboarding.mjs) — the onboarding
+  fixture screenshots; [diag-v2.mjs](diag-v2.mjs) — the list-page budget
+  split into its three floors (core query, IPC, Svelte render), played
+  AFTER `measure-v2.mjs` on its binary and database;
+  [dark-toggle.ps1](dark-toggle.ps1) — toggles the Windows theme for the
+  "follow the OS" test; [browser-args.mjs](browser-args.mjs) — the single
+  source of the WebView2 arguments (launch, benches, probe);
+  [tokens.mjs](tokens.mjs) — the parser of `system.css` the nets share.

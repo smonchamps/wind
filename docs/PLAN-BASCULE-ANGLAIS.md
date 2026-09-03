@@ -1,4 +1,4 @@
-# PLAN-BASCULE-ANGLAIS — tout le dépôt du français vers l'anglais
+**2026-09-03: “As proposed”** |**2026-09-03: “Yes, names only”** |**2026-09-03: “Rewrite short and true”** |**2026-09-03: “Translate”** |**2026-09-03: “(b) Switch to English”** |# PLAN-BASCULE-ANGLAIS — tout le dépôt du français vers l'anglais
 
 > **CHANTIER OUVERT le 2026-09-02** (GO CE après 0.16.0, 0.17.0 et le solde
 > de PLAN-AUDIT-V2 ; quatorze décisions tranchées, §6).
@@ -708,6 +708,174 @@ outils `.mjs`, `sonde-gel.py` → `freeze-probe.py`, `mesure-ram.ps1`,
 libellés français restent (ils testent le fr, qui reste livré) ; le
 `README.md` d'e2e. `playwright.config.js`, `launch.mjs`, `flaky.mjs`.
 
+> **Investigated on 2026-09-03 (Phase 0, on the evidence).** The layer
+> is 10 186 lines: 30 specs (6 052 lines, `refonte-ecran02` alone 1 528),
+> 21 `.mjs` tools and nets, 3 `.ps1`, `sonde-gel.py`, `e2e/README.md`,
+> and `scripts/` (8 files, already English since E2 — 6 markers left).
+> **French markers: 10 981 in 62 files**, 12.5 % of the whole baseline
+> (87 900); the e2e layer is now the largest French block outside the
+> docs. Where they are: (1) **the 201 test titles, all French** (the
+> names the flaky report, the CI log and the docs quote — `test(` and
+> `test.describe(`); (2) **225 anchor lines on French UI text** (the
+> plan said “2”: the inventory counted the two `lang:fr` markers, not
+> the anchors) — `getByText`, `getByRole({ name })`, `toHaveText`,
+> `toContainText` on the French catalogue values (the inbox title, the
+> archived toast, the onboarding step counter, the selection count), because
+> `launchAppV2()` still launches in French (`lang = 'fr'`, 14 of 16
+> calls take the default) while **D4 made English the product's
+> default** — today the default language is exercised by ONE test
+> (`refonte-langue` “a first launch on a non-French system speaks
+> English”); (3) the 191 dictionary rows `layer=e2e-scripts` (`dossier`
+> → `folder` 55 sites, `volet` → `pane` 49, `cadre` → `frame`,
+> `injecterArrivee` → `injectArrival` 11, the exported API of
+> `launch.mjs`/`isolation.mjs`/`jetons.mjs`/`rebuild-v2.mjs`:
+> `purgerLocales`, `purgerOAuth`, `allouerPortCdp`, `argsNavigateur`,
+> `tenirBarre`, `lireThemes`, `lireReperes`, `construireV2`,
+> `balayerZombies`, `purgerCacheHttp`, `empreinteDist`, `CLES_LOCALES`,
+> `VARIABLES_OAUTH`, `NOMBRE_ATTENDU`); (4) the comment blocks (the
+> `refonte-ecran02` header alone is four French lines); (5) the file
+> names — GLOSSARY §5.1 decides 26 of the 30 specs and 14 tools; it
+> lacks `barres-fil`, `horizon-import`, `retours-12`, `retours-14`
+> (D26). **Dependents outside the layer** (a rename breaks them the
+> same minute): `scripts/gate.ps1` (steps 3-5, `flaky.mjs`),
+> `.github/workflows/ci.yml` (6 `node e2e/…`), `.claude/skills/gate/
+> SKILL.md`, `scripts/build-wind.mjs` (imports `construireV2` from
+> `rebuild-v2.mjs`), `scripts/run-wind.ps1`, `scripts/install-workstation.ps1`
+> (`sonde-gel.py`), eight UI comments (`contraste.mjs`, `coherence-
+> systeme.mjs`, `jetons.mjs`, `capture-accueil.mjs`, `mesure-v2.mjs`),
+> and the path pointers of the living docs: STANDARD (17 lines — one
+> already stale, `e2e/mesure.mjs` does not exist), the System (15),
+> AUDIT (13), DETTE (5), ETAT (5), GLOSSARY (4), the architecture map
+> (1), and six memory files. **Order of play**: the specs' comment
+> says `refonte-ecran02` is named to run AFTER the v1 journeys
+> (alphabetical order, one asset rebuild per gate) — the rebuild lives
+> in `global-setup.mjs` since AUDIT-V2 E9 and every spec launches its
+> own app, so the order carries nothing any more; the e2e wave on the
+> renamed tree is the proof. Two dictionary traps seen at the desk:
+> the rows `ligne` → `line` (29), `Ligne` → `Line`, `lignes` → `lines`,
+> `nLignes` → `lineCount` predate D18 — a spec identifier that names
+> a LIST row is `row` (D18), a text line stays `line`, reviewed site by
+> site (D26); and `e2e/test-results/rapport.json` (gitignored, read by
+> `flaky.mjs` and named in `playwright.config.js`) is a French name on
+> the machine.
+>
+> **STOP 1 for E6 played on 2026-09-03: D22 “(b) Switch to English”, D23 “Translate”, D24 “Rewrite short and true”, D25 “Yes, names only”, D26 “As proposed” — GO.**
+>
+> **The hard point: the language the specs run in (D22).** Two
+> options, no figure to measure — they differ in what the suite proves:
+> - **(a) keep French**: `launchAppV2()` stays `lang = 'fr'`, the 225
+>   anchors keep the French catalogue values and take a `lang:fr`
+>   marker each (the ratchet exempts the line). Cheap (one marker per
+>   line, the applier writes them), the suite keeps proving the French
+>   catalogue, which is delivered (D3). It proves the product's DEFAULT
+>   language nowhere but in one test.
+> - **(b) switch the suite to English** (recommended): `launchAppV2()`
+>   defaults to `lang = 'en'` (with `argsNavigateur`), the 225 anchors
+>   are rewritten against `catalog.en.js` — the oracle is the
+>   catalogue key each French value maps to, then the e2e wave —,
+>   `redesign-language.spec.js` keeps the full French round trip
+>   (detection, switch, reload, exact French forms), the anchors on
+>   FIXTURE text (the Clarity decor: the Vantis contract subject, the
+>   greeting and signature bodies, the `atelier-nord.fr`
+>   addresses — French data, seeded by the Rust examples, `lang:fr`)
+>   keep their marker. The suite then proves what a new user sees
+>   (D4), and the e2e layer reaches ~0 markers instead of carrying 225
+>   permanent exemptions. Cost: ~225 hand edits proven only by the
+>   wave — the largest spec churn of the job, hence its own commit.
+>
+> **Delivery in two commits, each under the full gate, the baseline
+> lowered after each; one field pass at the end:**
+> - **E6a — names, identifiers, comments, titles, pointers** (M): the
+>   files renamed per §5.1 + D26 (`git mv`, imports and every dependent
+>   listed above, the docs' path pointers per D25 — names only, not the
+>   prose, which is E7/E8), `rapport.json` → `report.json`; the 191
+>   identifiers by a third applier `scripts/rename/apply-e2e.mjs` on the
+>   tokenizer of `apply-ui.mjs`, extracted to `scripts/rename/lib.mjs`
+>   (`walk`, the CSV readers, `js()`) so the two appliers share one
+>   scanner (the cleanup E5d deferred), `--report` for the bridges (a
+>   string literal equal to a dictionary word, `dataset.*`); the
+>   PowerShell and Python identifiers by hand; the comment blocks and
+>   the 201 titles by Sonnet agents under a mechanical oracle (the file
+>   stripped of comments and of `test(...)` title strings is
+>   byte-identical to the snapshot; the count of `test(` per file is
+>   unchanged); `e2e/README.md` per D24; System A114 (the nets and
+>   benches it names). Oracles: the seven node nets (`npm test` first
+>   half), eslint, the language ratchet, the IPC and DOM contract nets,
+>   `gate.ps1` end to end (it names the renamed nets), then **the whole
+>   e2e wave on the final tree** (E5b lesson). Expected baseline
+>   87 900 → ~77 200 (the anchors still French, marked or not per D22).
+> - **E6b — the suite in English** (M, if D22 = b): the default
+>   language of `launchAppV2`/`argsNavigateur`, the 225 anchors
+>   rewritten from the catalogue, the fixture anchors marked `lang:fr`;
+>   `redesign-language.spec.js` amended to launch French explicitly;
+>   `capture-onboarding.mjs` (the onboarding fixture screenshots) and
+>   the benches follow. Oracle: the wave, spec by spec as whole files
+>   (never `-g`), then the full gate. Expected baseline → ~76 900; the
+>   e2e layer keeps only its fixture anchors.
+>
+> **Not in E6**: the French fixture data (Rust seeders, `lang:fr`,
+> D3); the prose of the docs that name the files (E7, E8); the
+> `spikes/` (§5); the `localStorage` keys (D-55); the `.test.mjs` nets
+> (English names already: `port-cdp`, `rebuild-v2`, `placeholders`,
+> `apply-dom`, `dom-contract`, `language`); `catalogues.test.mjs` →
+> `catalogs.test.mjs` per §5.1 is in.
+>
+> **E6a delivered on 2026-09-03.** The applier `scripts/rename/apply-e2e.mjs`
+> (RED then GREEN on fixtures, `e2e/apply-e2e.test.mjs`, five tests in the
+> test script) on the scanner extracted to `scripts/rename/lib.mjs`
+> (`scanJs`, `csvRows`, `walk`, `rewriteImportPaths`, `findShadowing`,
+> `relTo` — `apply-ui.mjs` imports them too, its three e2e paths updated,
+> both appliers idempotent: `--report` says "would change 0 files");
+> applied in one run: 43 files renamed (30 specs, 13 tools — the
+> `.test.mjs` nets were English already), 71 files rewritten, then 24 more
+> for the 16 exports the E0 inventory had missed (`leftover-E6a` rows:
+> `allouerPortCdp` → `allocateCdpPort`, `argsNavigateur` → `browserArgs`,
+> `construireV2` → `buildV2`, `balayerZombies` → `sweepZombies`,
+> `empreinteDist` → `distFingerprint`, `VARIABLES_OAUTH` → `OAUTH_VARIABLES`,
+> the option keys `vierge` → `fresh`, `expediteur` → `sender`, `deconnecte`
+> → `disconnected`, the two scroll-gesture options → `step` and `intervalMs`,
+> `motifValeur` → `valuePattern`); the pointer pass over 21 dependents
+> (gate, CI, gate skill, three scripts, seven UI comments, seven living
+> docs — the GLOSSARY excluded after its own from → to table got
+> rewritten on the "from" side); `test-results/rapport.json` →
+> `report.json`. The comments, the 201 titles and the file-local
+> identifiers by ten Sonnet agents in parallel under a token-level oracle
+> (code stripped of comments and string contents, token for token, only
+> identifier → identifier substitutions consistent per file; quote-style
+> changes on titles normalized; one deliberate two-way rename accepted in
+> `spacing.spec.js`); the `.py`/`.ps1` by hand (the probe's identifiers,
+> the PowerShell parameters kept where another script names them). The
+> README rewritten (D24), System A114, GLOSSARY §5.1 amended (D26), the
+> memory pointers, the stale `e2e/mesure.mjs` pointer of STANDARD.
+> Baseline 87 900 → 77 283; the layer 10 981 → 364 markers, all UI-text
+> anchors and fixture text (E6b). Full gate green in 209 s (196 e2e
+> passed, 2 flaky: the D-54 batch archive and one EPERM on the WebView2
+> cache purge — a machine flake). **Fresh-eyes review (eight angles,
+> Sonnet): twelve candidates, ten fixed** — the UI applier crashed
+> (ENOENT) on three e2e paths it still named; three line pointers drifted
+> by one line when a comment block shrank or grew (`multi-select:174` →
+> `:173` in D-54, `main-thread-guard.mjs:70` → `:71` and `garde:47` in the
+> audit — the D23 premise "no pointer breaks" held for names, not for
+> lines); the shorthand `demarrage.spec` (no hyphen, no extension) that
+> matched neither pointer form; two `system.css` comments naming
+> `lireThemes` and the `REPERES` section; the bare stem `ecran02` in two
+> comments; a Rust test cited under its E3c name; the import-path
+> rewriter and the shadowing check duplicated between the two appliers;
+> a dictionary row documenting a name the hand pass never used. Not
+> applied: folding the report-file pointer into the rename table (the
+> file exists on disk, gitignored, and would be `git mv`'d); the
+> efficiency angle found nothing material (one-shot tooling). **Deferred
+> to STOP 2**: the bench environment variables `MESURE_DB`,
+> `MESURE_COMPTES`, `MESURE_REUTILISER`, `MESURE_SANS_ACTIVITE` stay
+> French — they are the Chief Engineer's bench contract (STANDARD §9), a
+> rename is their call (D27 below). Lessons: a comment translation moves
+> LINE numbers, so a doc that cites `file:line` must be re-read after any
+> comment pass (three drifts here, invisible to every net); a pointer
+> table must carry every shorthand a doc uses (`garde:47`,
+> `demarrage.spec`) or the bare-word guard hides them; an untracked file
+> is absent from the ratchet's baseline until staged — stage before
+> `--update`.
+
 ### E7 — Documents vivants (G)
 
 Dans cet ordre, chacun son commit, E1d vert : `README.md` ;
@@ -809,6 +977,12 @@ corrige ce chiffre au STOP intermédiaire proposé à D10.
 | D19 | The two test-id collisions: `ecrire` → `write` (the header button; the glossary carries both `write` and `compose` for it) and `composition` → `compose` (the panel); `onboarding-continuer` (AccountDesk) → `desk-continue` (its siblings are `desk-horizon`, `desk-back`) and `accueil-continuer` → `onboarding-continue`? | Yes: distinct elements keep distinct ids; the specs' 33 + 5 sites follow mechanically |**2026-09-03: “Yes, as proposed”** |
 | D20 | The 44 new words of the annex, entered in `tokens.csv` (they become glossary words for E6-E10 too): validated as they are, or struck? | As they are; `essor` → `grow` and `lib` → `lbl` are the two guesses worth a look |**2026-09-03: “Validated as they are”** |
 | D21 | The 12 `data-*` attribute names and `dataset.*` reads renamed (`data-teinte` → `data-hue`, `data-categorie` → `data-category`…) at E5d as a fourth kind of `dom.csv`, or kept French as values-adjacent (D16)? | Rename: an attribute NAME is DOM contract, its VALUE is already English since E5a — `data-teinte="blue"` is the half-way state E5d exists to end |**2026-09-03: “Rename”** |
+| D22 | The language the suite runs in: (a) keep French — `launchAppV2()` stays `lang = 'fr'`, the 225 anchors keep the French catalogue values, one `lang:fr` marker each; or (b) switch to English — the D4 default, the anchors rewritten from `catalog.en.js`, the French round trip kept in `redesign-language.spec.js`, the fixture anchors marked? | (b): the suite must prove what a new user sees since D4; (a) leaves the default language to one test and 225 permanent exemptions | |
+| D23 | The 201 test titles translated (they are the names the flaky report, the CI log and the docs quote — `selection-multiple:174` is quoted by LINE in D-54, so no pointer breaks)? | Translate: a title is an identifier of the suite, STANDARD §2.8 | |
+| D24 | `e2e/README.md`: translated as it is, or rewritten short and true — its selector contract (`#compose`, `#detail`, `#rows`, `app.js`, the four v1 journeys) describes the v1 UI, gone since the redesign; the gate is `scripts/gate.ps1` since AUDIT-V2 E9? | Rewrite: the isolation contract, the launch, the nets and benches, the DOM contract pointer to `dom.csv` and `dom-contract.test.mjs` — a translated stale page is still stale | |
+| D25 | The path pointers of the living docs updated in the E6a commit — file NAMES only, in STANDARD (17 lines, `e2e/mesure.mjs` already stale), the System (A114), AUDIT, DETTE, ETAT, GLOSSARY, the architecture map, WORKFLOW, the six memory files — the closed `PLAN-*.md` and the ADR bodies untouched (history: E7 moves them, D1 freezes them)? | Yes: a normative doc that names a file that no longer exists is a broken pointer the markdown-links net does not see (it checks links, not backticks) | |
+| D26 | The names the glossary lacks: `barres-fil` → `thread-bars`, `retours-12` → `feedback-12`, `retours-14` → `feedback-14`, `horizon-import` unchanged, `test-results/rapport.json` → `report.json`; and the dictionary rows `ligne`/`lignes`/`nLignes` reviewed site by site per D18 (`row` for a list row, `line` for a text line)? | As proposed | |
+| D27 | The bench environment variables `MESURE_DB`, `MESURE_COMPTES`, `MESURE_REUTILISER`, `MESURE_SANS_ACTIVITE` (read by `measure-v2.mjs`, `measure-scroll.mjs`, `diag-v2.mjs`, named in STANDARD §9 and the e2e README): renamed `MEASURE_DB`, `MEASURE_ACCOUNTS`, `MEASURE_REUSE`, `MEASURE_NO_ACTIVITY`, or kept as the bench contract? | Rename at E6b (the benches are played by hand, the docs that name them are E7) — but they are the Chief Engineer's own invocations | |
 
 ## 7. Checklist terrain (STOP 2) — ce que le CE joue
 

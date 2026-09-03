@@ -22,9 +22,9 @@ one, only the steps concerned):
 ```
 cargo fmt --all -- --check
 (cd apps/desktop/ui-v2 && npm run build && npm run lint)   # zero warnings; eslint no-undef
-node e2e/contraste.mjs                          # WCAG pairs (A8)
-node e2e/coherence-systeme.mjs                  # System ↔ system.css, value for value
-node e2e/garde-thread-principal.mjs             # no blocking command on the pump (PLAN-GELS)
+node e2e/contrast.mjs                          # WCAG pairs (A8)
+node e2e/system-coherence.mjs                  # System ↔ system.css, value for value
+node e2e/main-thread-guard.mjs             # no blocking command on the pump (PLAN-GELS)
 node --check e2e/*.mjs scripts/*.mjs            # + the PowerShell parser on every .ps1
 node e2e/language-gate.mjs                      # French ratchet: no rise per file
 node e2e/ipc-contract.mjs                       # generate_handler! == #[tauri::command] == appel('…')

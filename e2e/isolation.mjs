@@ -1,19 +1,19 @@
-// Contrat d'isolation OAuth des bancs et suites e2e — la LISTE vit dans
-// `isolation-oauth.json`, source unique partagée avec les outils Python
-// (sonde-gel.py la lit telle quelle) : un fournisseur ajouté à un seul
-// endroit couvre tous les lanceurs.
+// OAuth isolation contract for the benches and e2e suites — the LIST lives in
+// `isolation-oauth.json`, a single source shared with the Python
+// tools (freeze-probe.py reads it as-is): a provider added in a single
+// place covers every launcher.
 //
-// Pourquoi purger : avec un client OAuth posé dans l'environnement, un
-// test qui touche la route OAuth ouvrirait le VRAI consentement
-// navigateur — et resterait suspendu dessus. Sans ces variables, aucun
-// test ne peut toucher au vrai compte, même par accident.
+// Why purge: with an OAuth client set in the environment, a
+// test that touches the OAuth route would open the REAL browser
+// consent — and stay stuck on it. Without these variables, no
+// test can touch the real account, even by accident.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
-export const VARIABLES_OAUTH = JSON.parse(
+export const OAUTH_VARIABLES = JSON.parse(
   readFileSync(path.join(import.meta.dirname, 'isolation-oauth.json'), 'utf8'),
 );
 
-export function purgerOAuth(env) {
-  for (const variable of VARIABLES_OAUTH) delete env[variable];
+export function purgeOAuth(env) {
+  for (const variable of OAUTH_VARIABLES) delete env[variable];
 }
