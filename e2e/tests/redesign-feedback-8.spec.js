@@ -119,7 +119,7 @@ test('the mailbox block only lives in the unified mailbox (D3/D7) — and on ALL
   await expect(page.locator('[data-testid="row-mailbox"]')).toHaveCount(0);
 
   // Back to the unified mailbox for the rest.
-  await navMailbox('Toutes les boîtes').click();
+  await navMailbox('All inboxes').click();
   await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
 });
 
@@ -158,13 +158,13 @@ test('the first-run onboarding journey: five steps, including back', async () =>
   const onboarding = page.locator('[data-testid="onboarding"]');
   await expect(onboarding).toBeVisible();
   await expect(page.locator('[data-testid="onboarding-progress"]')).toHaveText(
-    'Étape 1/5',
+    'Step 1/5',
   );
   await expect(page.locator('[data-testid="onboarding-accounts"]')).toContainText(
     'un@exemple.fr',
   );
   // Finding 2 (field visit 2026-08-22): addresses already exist — the
-  // add bar is collapsed behind "Ajouter une autre adresse email",
+  // add bar is collapsed behind "Add another email address",
   // and clicking it reopens it.
   await expect(page.locator('[data-testid="onboarding-address"]')).toHaveCount(0);
   await page.locator('[data-testid="onboarding-add-other"]').click();
@@ -174,18 +174,18 @@ test('the first-run onboarding journey: five steps, including back', async () =>
   // Step 2: the three pane previews. Back first: step 1
   // returns, accounts still there — progress is not lost.
   await expect(page.locator('[data-testid="onboarding-progress"]')).toHaveText(
-    'Étape 2/5',
+    'Step 2/5',
   );
   await page.locator('[data-testid="onboarding-back"]').click();
   await expect(page.locator('[data-testid="onboarding-progress"]')).toHaveText(
-    'Étape 1/5',
+    'Step 1/5',
   );
   await expect(page.locator('[data-testid="onboarding-accounts"]')).toContainText(
     'deux@exemple.fr',
   );
   await page.locator('[data-testid="onboarding-continue"]').click();
 
-  // Choosing "deux volets" applies immediately (appliquerVolets)
+  // Choosing "two panes" applies immediately (appliquerVolets)
   // and the SINGLE preview (2nd pass, finding 3) follows the choice.
   await expect(page.locator('[data-testid="onboarding-pane"]')).toHaveCount(3);
   await page.locator('[data-testid="onboarding-pane"][data-panes="2"]').click();
@@ -199,10 +199,10 @@ test('the first-run onboarding journey: five steps, including back', async () =>
   await page.locator('[data-testid="onboarding-continue"]').click();
 
   // Step 3: the four preview cards (V7 amended, A94); choosing
-  // "Elements · nuit" sets the theme instantly (data-theme on the
+  // "Elements · night" sets the theme instantly (data-theme on the
   // root).
   await expect(page.locator('[data-testid="onboarding-progress"]')).toHaveText(
-    'Étape 3/5',
+    'Step 3/5',
   );
   await expect(page.locator('[data-testid="onboarding-theme"]')).toHaveCount(4);
   await page.locator('[data-testid="onboarding-theme"][data-theme-id="elements-nuit"]').click();
@@ -212,34 +212,34 @@ test('the first-run onboarding journey: five steps, including back', async () =>
   // Step 4 (RETOURS-11, beta field test): Wind is in beta — the step
   // presents the header's Feedback button and what it does.
   await expect(page.locator('[data-testid="onboarding-progress"]')).toHaveText(
-    'Étape 4/5',
+    'Step 4/5',
   );
   await expect(page.locator('[data-testid="onboarding-beta"]')).toContainText('Feedback');
   await page.locator('[data-testid="onboarding-continue"]').click();
 
   // Step 5: the recap (finding 8) — the three choices, each
-  // links back to its step. Clicking "Disposition" GOES BACK there, then
+  // links back to its step. Clicking "Layout" GOES BACK there, then
   // the journey resumes.
   await expect(page.locator('[data-testid="onboarding-progress"]')).toHaveText(
-    'Étape 5/5',
+    'Step 5/5',
   );
   const recap = page.locator('[data-testid="onboarding-recap"]');
   await expect(recap).toContainText('un@exemple.fr');
   await expect(page.locator('[data-testid="recap-panes"]')).toContainText(
-    'Deux volets',
+    'Two panes',
   );
   await expect(page.locator('[data-testid="recap-theme"]')).toContainText(
-    'Elements · nuit',
+    'Elements · night',
   );
   await page.locator('[data-testid="recap-panes"]').click();
   await expect(page.locator('[data-testid="onboarding-progress"]')).toHaveText(
-    'Étape 2/5',
+    'Step 2/5',
   );
   await page.locator('[data-testid="onboarding-continue"]').click();
   await page.locator('[data-testid="onboarding-continue"]').click();
   await page.locator('[data-testid="onboarding-continue"]').click();
   await expect(page.locator('[data-testid="onboarding-progress"]')).toHaveText(
-    'Étape 5/5',
+    'Step 5/5',
   );
   // Finish opens the standard window — in TWO panes (the step 2
   // choice held): no reading pane in the grid. Under the
@@ -269,7 +269,7 @@ test('a journey abandoned midway RESUMES — never deemed onboarded', async () =
   await page.reload();
   await expect(page.locator('[data-testid="onboarding"]')).toBeVisible();
   await expect(page.locator('[data-testid="onboarding-progress"]')).toHaveText(
-    'Étape 1/5',
+    'Step 1/5',
   );
   // Finish cleanly: the key gets set (the REAL write path),
   // the app returns for the following suites.

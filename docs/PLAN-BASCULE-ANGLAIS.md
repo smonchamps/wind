@@ -875,6 +875,34 @@ libellés français restent (ils testent le fr, qui reste livré) ; le
 > `demarrage.spec`) or the bare-word guard hides them; an untracked file
 > is absent from the ratchet's baseline until staged — stage before
 > `--update`.
+>
+> **E6b delivered on 2026-09-03.** `launchAppV2()` and `browserArgs()`
+> default to `lang = 'en'`; the anchors on interface text rewritten from
+> a key/fr/en table derived from the two catalogues (516 keys) by five
+> Sonnet agents (~200 anchors: nav labels, toasts, folder counts, the
+> outbox bar, the selection count, the onboarding steps, the Screener
+> questions, the pile actions…), the anchors on fixture text kept French
+> with `lang:fr` (95 lines after a script stripped 79 markers that marked
+> nothing — an address is not French); `redesign-language.spec.js` launches
+> French explicitly and gains two tests only French can prove (the R3
+> short name of the organized Inbox — both English values read "Inbox" —
+> and the plural of the selection count); `capture-onboarding.mjs` pinned
+> to French (the shipped illustrations are French screenshots, D28). The
+> e2e wave, first pass on 173 played: two reds — the cleanup progress
+> (`0 %` → `0% done`, a regex so `10%` does not match) and the SEEDED
+> draft's subject (`Re : …` is fixture text from `seed_clarity.rs`, the
+> in-test draft is the app's `Re: …`); then one more the serial cascade
+> had hidden: **the compose weight reads `2.8 Mo / 25 MB`** — the total is
+> composed by the shell in French (D17), the limit by the English
+> catalogue: a field-visible symptom of debt D-56, asserted as it ships.
+> Two non-catalogue anchors traced: an IMAP error composed by the shell
+> (`lang:fr`) and a note asserted ABSENT from the onboarding screen. The
+> layer reaches **0 French markers** (one tab id value kept French,
+> D-55); baseline 77 283 → 76 919. Two-angle review (Sonnet): seven
+> findings, five fixed, one asserted as shipped (D-56), one put to the
+> Chief Engineer: the French onboarding steps, the French relative date
+> form and the French cleanup title are proven by no spec since
+> the suite runs in English (D28).
 
 ### E7 — Documents vivants (G)
 
@@ -983,6 +1011,7 @@ corrige ce chiffre au STOP intermédiaire proposé à D10.
 | D25 | The path pointers of the living docs updated in the E6a commit — file NAMES only, in STANDARD (17 lines, `e2e/mesure.mjs` already stale), the System (A114), AUDIT, DETTE, ETAT, GLOSSARY, the architecture map, WORKFLOW, the six memory files — the closed `PLAN-*.md` and the ADR bodies untouched (history: E7 moves them, D1 freezes them)? | Yes: a normative doc that names a file that no longer exists is a broken pointer the markdown-links net does not see (it checks links, not backticks) | |
 | D26 | The names the glossary lacks: `barres-fil` → `thread-bars`, `retours-12` → `feedback-12`, `retours-14` → `feedback-14`, `horizon-import` unchanged, `test-results/rapport.json` → `report.json`; and the dictionary rows `ligne`/`lignes`/`nLignes` reviewed site by site per D18 (`row` for a list row, `line` for a text line)? | As proposed | |
 | D27 | The bench environment variables `MESURE_DB`, `MESURE_COMPTES`, `MESURE_REUTILISER`, `MESURE_SANS_ACTIVITE` (read by `measure-v2.mjs`, `measure-scroll.mjs`, `diag-v2.mjs`, named in STANDARD §9 and the e2e README): renamed `MEASURE_DB`, `MEASURE_ACCOUNTS`, `MEASURE_REUSE`, `MEASURE_NO_ACTIVITY`, or kept as the bench contract? | Rename at E6b (the benches are played by hand, the docs that name them are E7) — but they are the Chief Engineer's own invocations | |
+| D28 | Since the suite runs in English (D22), the French forms proven by no spec: the onboarding step counter, the relative date form, the cleanup title and intro, the thread bar labels — extend `redesign-language.spec.js` with a French sweep of those screens (one more launch, ~10 s), or accept the gap (the French catalogue is delivered, D3, and its keys are audited)? And the onboarding illustrations (`assets/accueil/*.png`, French screenshots): regenerated in English by `capture-onboarding.mjs`, or kept French? | Extend the sweep (a catalogue regression on a French form would otherwise ship blind); regenerate the illustrations in English at the next onboarding job — the default UI is English, a French screenshot inside it is a seam the field sees | |
 
 ## 7. Checklist terrain (STOP 2) — ce que le CE joue
 

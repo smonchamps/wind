@@ -44,7 +44,7 @@ test('a dead token is SEEN in Settings — the healthy account, meanwhile, does 
   await expect(page.locator('[data-testid="account-disconnected"]')).toHaveCount(1);
   await expect(page.locator('[data-testid="account-reconnect"]')).toHaveCount(1);
   const dead = rows.locator('div.account', { hasText: 'mort@exemple.fr' });
-  await expect(dead.locator('[data-testid="account-disconnected"]')).toContainText('Déconnecté');
+  await expect(dead.locator('[data-testid="account-disconnected"]')).toContainText('Disconnected');
   const healthy = rows.locator('div.account', { hasText: 'sain@exemple.fr' });
   await expect(healthy.locator('[data-testid="account-disconnected"]')).toHaveCount(0);
 });

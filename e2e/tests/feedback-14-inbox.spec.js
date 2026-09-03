@@ -30,11 +30,11 @@ test("the organized Inbox: normalized header, neither generic banner nor tabs", 
   await page.locator('[data-testid="organized-mode"]').click();
   await expect(page.locator('[data-testid="organized-mode"]')).toHaveAttribute('aria-checked', 'true');
 
-  // The header at the mode views' format: glyph + "Réception" in
+  // The header at the mode views' format: glyph + "Inbox" in
   // display, NOT the banner's h1; the footer disappears (D3).
   const title = page.locator('[data-testid="inbox-title"]');
   await expect(title).toBeVisible();
-  await expect(title).toContainText('Réception');
+  await expect(title).toContainText('Inbox');
   await expect(title.locator('svg')).toHaveCount(1);
   await expect(page.locator('[data-testid="tabs"]')).toHaveCount(0);
 
@@ -58,7 +58,7 @@ test('the section name stays visible while scrolling, and leaves again at the to
   await frame.evaluate((el) => { el.scrollTop = 800; });
   const label = page.locator('[data-testid="stuck-section"] .header-frame');
   await expect(label).toBeVisible();
-  await expect(label).toContainText('Nouveau pour vous');
+  await expect(label).toContainText('New for you');
 
   // And it really sticks: at the top of the frame, down to the
   // geometry.
@@ -119,9 +119,9 @@ test('Settings > Screener: all decisions, alphabetical, search and reinstatement
   await expect(rows).toHaveCount(11);
   // Alphabetical, not chronological: expediteur0 first, zeta last.
   await expect(rows.first()).toContainText('expediteur0@exemple.fr');
-  await expect(rows.first()).toContainText('Le Kiosque');
+  await expect(rows.first()).toContainText('The Feed');
   await expect(rows.last()).toContainText('zeta@exemple.fr');
-  await expect(rows.last()).toContainText('signalé indésirable');
+  await expect(rows.last()).toContainText('marked as junk');
 
   // The search filters, and the "nothing" is said.
   await page.locator('[data-testid="screener-search"]').fill('zeta');
@@ -136,8 +136,8 @@ test('Settings > Screener: all decisions, alphabetical, search and reinstatement
   await page.locator('[data-testid="decision-edit"]').click();
   await expect(page.locator('[data-testid="decision-menu"]')).toBeVisible();
   await page.locator('[data-testid="decision-to-feed"]').click();
-  await expect(page.locator('[data-testid="toast"]')).toContainText('vont vers le Kiosque');
-  await expect(rows.first()).toContainText('Le Kiosque');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('go to the Feed');
+  await expect(rows.first()).toContainText('The Feed');
   // "Send back to screener" — the former Reinstate: the verdict dies.
   await page.locator('[data-testid="decision-edit"]').click();
   await page.locator('[data-testid="decision-resend"]').click();
@@ -153,7 +153,7 @@ test('Settings > Screener: all decisions, alphabetical, search and reinstatement
 // the unfold, the thread opening.
 test('the grouped Paper trail: one rank per sender, the thread opens from the group', async () => {
   await page.locator('[data-testid="nav-folder"][data-category="paper_trail"]').click();
-  await expect(page.locator('[data-testid="paper-trail-title"]')).toContainText('Registre');
+  await expect(page.locator('[data-testid="paper-trail-title"]')).toContainText('Paper trail');
   const groups = page.locator('[data-testid="paper-trail-group"]');
   // Six addresses routed to the Paper trail (badges test) but the
   // test set only has 8 senders (4 to 7 actually here), and the
@@ -179,7 +179,7 @@ test('the grouped Paper trail: one rank per sender, the thread opens from the gr
   // R9 (field, 2nd pass): the button opens a MENU of the four sorts,
   // each entry with its glyph; the ranks' order follows the choice.
   const sort = page.locator('[data-testid="paper-trail"] [data-testid="sort-section"]');
-  await expect(sort).toContainText('Plus récents');
+  await expect(sort).toContainText('Newest');
   const byDate = await groups.evaluateAll((els) => els.map((e) => e.dataset.address));
   await sort.click();
   const sortMenu = page.locator('[data-testid="sort-menu"]');
@@ -188,7 +188,7 @@ test('the grouped Paper trail: one rank per sender, the thread opens from the gr
   await expect(sortMenu.locator('[role="menuitemradio"]')).toHaveCount(4);
   await expect(sortMenu.locator('svg[data-name^="sort_"]')).toHaveCount(4);
   await sortMenu.locator('[data-testid="sort-date-asc"]').click();
-  await expect(sort).toContainText('Plus anciens');
+  await expect(sort).toContainText('Oldest');
   await expect
     .poll(async () => groups.evaluateAll((els) => els.map((e) => e.dataset.address)))
     .toEqual([...byDate].reverse());
@@ -207,7 +207,7 @@ test('the grouped Paper trail: one rank per sender, the thread opens from the gr
     .toEqual([...names].reverse());
   await sort.click();
   await page.locator('[data-testid="sort-date-desc"]').click();
-  await expect(sort).toContainText('Plus récents');
+  await expect(sort).toContainText('Newest');
 
   // Review: the sender gestures survive the grouped view — the ⋯ of
   // a group routes the WHOLE sender (Move to…, Screen out).
@@ -217,7 +217,7 @@ test('the grouped Paper trail: one rank per sender, the thread opens from the gr
   await expect(page.locator('[data-testid="paper-trail-screen-out"]')).toBeVisible();
   const address = await groups.first().getAttribute('data-address');
   await page.locator('[data-testid="paper-trail-to-inbox"]').click();
-  await expect(page.locator('[data-testid="toast"]')).toContainText('Expéditeur déplacé');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Sender moved');
   // The verdict is SET (the core's door) — the rank count, itself,
   // may not move: a mixed thread routed by ANOTHER sender stays in
   // the Paper trail with the same head (golden rule).
@@ -233,7 +233,7 @@ test('the grouped Paper trail: one rank per sender, the thread opens from the gr
 // in a known sender's thread. The golden rule leaves the whole
 // thread in the Inbox (never lose mail); the unknown sender waits at
 // the Screener while their message is read — and the thread SAYS SO
-// (badge "En attente au Portier").
+// (badge "Awaiting the Screener").
 test('mixed thread: the unknown sender who replies in a known thread is flagged, and waits at the Screener', async () => {
   await page.locator('[data-testid="nav-folder"][data-category="inbox"]').click();
   // The test set only has 8 senders and the previous tests have
@@ -247,20 +247,20 @@ test('mixed thread: the unknown sender who replies in a known thread is flagged,
   // (upsert_envelopes).
   injectArrival({
     email: 'principal@exemple.fr', sender: 'intrus@exemple.fr', n: 1,
-    name: 'Un Intrus', subject: 'Je rejoins le fil',
+    name: 'Un Intrus', subject: 'Je rejoins le fil', // lang:fr
     replyTo: '<seed-INBOX-16@exemple.fr>',
   });
   await page.reload();
 
   // The mixed thread STAYS in the Inbox, headed by the intruder's message.
-  const row = page.locator('[data-testid="row"]', { hasText: 'Je rejoins le fil' }).first();
+  const row = page.locator('[data-testid="row"]', { hasText: 'Je rejoins le fil' }).first(); // lang:fr
   await expect(row).toBeVisible();
   await row.click();
 
   // The organized Inbox is a scene without a pane: the thread opens
   // at screen 03. The badge says the wait — on the intruder's message.
   await expect(page.locator('[data-testid="conversation"] [data-testid="screener-pending"]').first())
-    .toContainText('En attente au Portier');
+    .toContainText('Awaiting the Screener');
   await page.locator('[data-testid="back-to-mailbox"]').click();
 
   // And the intruder REALLY waits at the desk.
@@ -280,7 +280,7 @@ test("approving a sender at the Screener allows their images — a visible, revo
   await page.locator('[data-testid="nav-folder"][data-category="screener"]').click();
   await page.locator('[data-testid="screener-rank"]', { hasText: 'intrus@exemple.fr' })
     .locator('[data-testid="screener-yes"]').click();
-  await expect(page.locator('[data-testid="toast"]')).toContainText('peut vous écrire');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('can write to you');
 
   // The image rule is set — Settings > Display shows it, and its
   // existing exit door removes it.

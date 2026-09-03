@@ -59,10 +59,10 @@ test('switching to two panes is immediate — reading leaves the grid', async ()
 test("in two panes, opening is screen 03 — Escape leaves the list intact", async () => {
   const rows = page.locator('[data-testid="row"]');
   const before = await rows.count();
-  await rows.filter({ hasText: 'Relecture du contrat Vantis' }).first().click();
+  await rows.filter({ hasText: 'Relecture du contrat Vantis' }).first().click(); // lang:fr
   // Full screen: the conversation, NOT the pane.
   await expect(page.locator('[data-testid="thread-subject"]')).toContainText(
-    'Relecture du contrat Vantis',
+    'Relecture du contrat Vantis', // lang:fr
   );
   await expect(page.locator('[data-testid="reading-pane"]')).toHaveCount(0);
   await page.keyboard.press('Escape');
@@ -70,18 +70,18 @@ test("in two panes, opening is screen 03 — Escape leaves the list intact", asy
   // The list is INTACT: same rows, the selection holds.
   await expect(rows).toHaveCount(before);
   await expect(
-    rows.filter({ hasText: 'Relecture du contrat Vantis' }).first(),
+    rows.filter({ hasText: 'Relecture du contrat Vantis' }).first(), // lang:fr
   ).toHaveClass(/chosen/);
 });
 
 test("a message WITHOUT a thread opens full screen — the single-message fallback (V-D2)", async () => {
-  // "Compte rendu du 4 août": a standalone message from the decor (no
+  // "Compte rendu du 4 août": a standalone message from the decor (no // lang:fr
   // conversation to open — Annex A's test asserts it at the pane).
   await page
-    .locator('[data-testid="row"]', { hasText: 'Compte rendu du 4 août' })
+    .locator('[data-testid="row"]', { hasText: 'Compte rendu du 4 août' }) // lang:fr
     .click();
   await expect(page.locator('[data-testid="thread-subject"]')).toContainText(
-    'Compte rendu du 4 août',
+    'Compte rendu du 4 août', // lang:fr
   );
   // The thread served is the row itself: ONE message, expanded, with
   // its real files (message_attachments). R2: name + size in one chip.
@@ -114,7 +114,7 @@ test("a local echo opens full screen — local body, deferred gesture stated (V-
   // too; the return to the mailbox is played by the existing wiring.
   await page.locator('[data-testid="delete"]').click();
   await expect(page.locator('[data-testid="toast"]')).toContainText(
-    'Copie en cours de synchronisation',
+    'Copy still syncing',
   );
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
   await folder('inbox').click();
@@ -138,7 +138,7 @@ test('in one pane, the nav leaves the grid and lives in a drawer (E2)', async ()
   // needs the panel.
   await folder('trash').click();
   await expect(page.locator('[data-testid="drawer"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="status"]')).toContainText('Corbeille');
+  await expect(page.locator('[data-testid="status"]')).toContainText('Trash');
 });
 
 test("Escape closes the drawer; leaving one-pane mode carries it away", async () => {
@@ -178,11 +178,11 @@ test('the preference survives a relaunch — and returning to three panes restor
   await page.locator('[data-testid="settings-done"]').click();
   // In three panes, the click opens IN the pane — no full screen.
   await page
-    .locator('[data-testid="row"]', { hasText: 'Relecture du contrat Vantis' })
+    .locator('[data-testid="row"]', { hasText: 'Relecture du contrat Vantis' }) // lang:fr
     .first()
     .click();
   await expect(page.locator('[data-testid="thread-subject"]')).toContainText(
-    'Relecture du contrat Vantis',
+    'Relecture du contrat Vantis', // lang:fr
   );
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
 });

@@ -81,7 +81,7 @@ test('in the composer, the sender selector says "Name (address)"', async () => {
   await expect(from.locator('option').nth(1)).toHaveText('deux@exemple.fr');
   // Close the composer (empty: nothing to keep) — its overlay
   // would otherwise intercept the next test's clicks.
-  await page.locator('[data-testid="compose"] button[aria-label="Fermer"]').click();
+  await page.locator('[data-testid="compose"] button[aria-label="Close"]').click();
   await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
 });
 

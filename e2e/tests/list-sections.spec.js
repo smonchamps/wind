@@ -28,14 +28,14 @@ test('the "Already read" band is set on its gap, to the pixel — unified mailbo
   await page.locator('[data-testid="organized-mode"]').click();
   await expect(page.locator('[data-testid="organized-mode"]')).toHaveAttribute('aria-checked', 'true');
   await page.locator('[data-testid="nav-folder"][data-category="inbox"]').click();
-  const band = page.locator('[data-testid="section"]', { hasText: 'Déjà consulté' });
+  const band = page.locator('[data-testid="section"]', { hasText: 'Previously seen' });
   await expect(band).toBeVisible();
   // The probes bind via ResizeObserver: we leave a frame or two.
   // 2 px tolerance: the gap falls on a sub-pixel (480.83 px measured).
   await page.waitForTimeout(500);
   const geo = await page.evaluate(() => {
     const band = [...document.querySelectorAll('[data-testid="section"]')]
-      .find((e) => e.textContent.includes('Déjà consulté'));
+      .find((e) => e.textContent.includes('Previously seen'));
     const empty = document.querySelector('.header-space');
     const rows = [...document.querySelectorAll('.window [data-testid="row"]')];
     const firstRead = rows.find((l) => !l.classList.contains('unread'));

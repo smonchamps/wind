@@ -33,14 +33,14 @@ test('the 5th section only exists in Organized mode, and its intro says the Chie
 
   await page.locator('[data-testid="organized-mode"]').click();
   const rank = page.locator('[data-testid="nav-folder"][data-category="cleanup"]');
-  await expect(rank).toContainText('Nettoyage de printemps');
+  await expect(rank).toContainText('Spring cleaning');
   await rank.click();
 
   // The intro: title with glyph, subtext the Chief Engineer's exact
   // wording, range (default 1 year), scope (default Inbox only), Start.
   await expect(page.locator('[data-testid="cleanup-title"] svg')).toHaveCount(1);
   await expect(page.locator('[data-testid="cleanup"]')).toContainText(
-    'En lançant un nettoyage de printemps, vous allez pouvoir trier vos archives',
+    'By starting a spring cleaning, you can sort your archives',
   );
   await expect(page.locator('[data-testid="cleanup-range"]')).toHaveCount(6);
   await expect(
@@ -60,7 +60,7 @@ test('starting opens the sort: groups by sender, progress at 0%, navigation insi
   await page.locator('[data-testid="cleanup-range"][data-range="all"]').click();
   await page.locator('[data-testid="cleanup-start"]').click();
   await expect(page.locator('[data-testid="cleanup-group"]').first()).toBeVisible();
-  await expect(page.locator('[data-testid="cleanup-progress"]')).toContainText('0 %');
+  await expect(page.locator('[data-testid="cleanup-progress"]')).toContainText(/\b0% done/);
 
   // Navigate inside a group: its messages show — and collapse.
   await page.locator('[data-testid="cleanup-open"]').first().click();
@@ -77,7 +77,7 @@ test('Yes processes the whole group; No makes its mail leave the Inbox (D5)', as
   // Group Yes: it leaves the list, the progress advances.
   await page.locator('[data-testid="cleanup-yes"]').first().click();
   await expect(groups).toHaveCount(before - 1);
-  await expect(page.locator('[data-testid="cleanup-progress"]')).not.toContainText('0 %');
+  await expect(page.locator('[data-testid="cleanup-progress"]')).not.toContainText(/\b0% done/);
 
   // No (shipped default: Trash): the group leaves, and its STOCK from
   // the range leaves the local mailbox — the Inbox no longer shows it.
@@ -97,7 +97,7 @@ test('the session PERSISTS (D8): a reload resumes the sort where it left off', a
   await page.locator('[data-testid="nav-folder"][data-category="cleanup"]').click();
   // Not the intro: the sort, with its progress already under way.
   await expect(page.locator('[data-testid="cleanup-start"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="cleanup-progress"]')).not.toContainText('0 %');
+  await expect(page.locator('[data-testid="cleanup-progress"]')).not.toContainText(/\b0% done/);
 });
 
 test('finishing gives back the intro; leaving the mode gives back the classic nav', async () => {

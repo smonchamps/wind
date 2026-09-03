@@ -49,12 +49,12 @@ test.describe('v1 decor: one account, 200 messages', () => {
     await expect(page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]')).toContainText('n°200');
     await expect(
       page.frameLocator('[data-testid="reading-pane"] iframe').locator('body'),
-    ).toContainText('Corps du message n°200');
+    ).toContainText('Corps du message n°200'); // lang:fr
   });
 
   test('sort: "e" archives the selection, the list follows', async () => {
     await page.keyboard.press('e');
-    await expect(page.locator('[data-testid="toast"]')).toContainText('Conversation archivée.');
+    await expect(page.locator('[data-testid="toast"]')).toContainText('Conversation archived.');
     // #200 was replying to #199: the head of the thread becomes #199.
     await expect(page.locator('[data-testid="row"]').first()).toContainText('n°199');
   });
@@ -62,47 +62,47 @@ test.describe('v1 decor: one account, 200 messages', () => {
   test('reply: real prefills, offline send LOGGED, never lost', async () => {
     await page.locator('[data-testid="row"]').first().click();
     await page.keyboard.press('r');
-    await expect(page.locator('[data-testid="compose-kicker"]')).toHaveText('Répondre');
+    await expect(page.locator('[data-testid="compose-kicker"]')).toHaveText('Reply');
     await expect(page.locator('[data-testid="compose-to"]')).toHaveValue(/@exemple\.fr$/);
     // Form from the prototype ("Re: "), real quote from the core.
-    await expect(page.locator('[data-testid="compose-subject"]')).toHaveValue(/^Re : /);
+    await expect(page.locator('[data-testid="compose-subject"]')).toHaveValue(/^Re: /);
     // The editor is rich (PLAN-COMPOSITION-HTML): the quote lives in
     // a blockquote, no longer in "> " prefixes — the text is read at the node.
     const body = page.locator('[data-testid="compose-body"]');
-    await expect(body).toContainText('a écrit :');
-    await expect(body).toContainText('Corps du message n°199');
-    await expect(body.locator('blockquote')).toContainText('Corps du message n°199');
+    await expect(body).toContainText('a écrit :'); // lang:fr
+    await expect(body).toContainText('Corps du message n°199'); // lang:fr
+    await expect(body.locator('blockquote')).toContainText('Corps du message n°199'); // lang:fr
 
     const cite = await body.innerText();
-    await body.fill(`Réponse E2E.\n${cite}`);
+    await body.fill(`Réponse E2E.\n${cite}`); // lang:fr
     await page.locator('[data-testid="compose-send"]').click();
     await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
-    await expect(page.locator('[data-testid="toast"]')).toContainText('Message envoyé.');
+    await expect(page.locator('[data-testid="toast"]')).toContainText('Message sent.');
     // Offline by construction: the golden rule, VISIBLE — the
     // blameless wait lives on the progress line (10 s probe).
     await expect(page.locator('[data-testid="progress"]')).toContainText(
-      "Boîte d'envoi · 1 envoi en attente",
+      'Outbox · 1 message waiting',
     );
   });
 
   test('draft: Escape keeps it, the Drafts folder restores it intact', async () => {
     await page.keyboard.press('c');
     await page.locator('[data-testid="compose-subject"]').fill('Brouillon E2E');
-    await page.locator('[data-testid="compose-body"]').fill('Texte précieux.');
+    await page.locator('[data-testid="compose-body"]').fill('Texte précieux.'); // lang:fr
     await page.keyboard.press('Escape'); // leave the field…
     await page.keyboard.press('Escape'); // …close: keep, never discard
     await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
-    await expect(page.locator('[data-testid="toast"]')).toContainText('Brouillon enregistré.');
+    await expect(page.locator('[data-testid="toast"]')).toContainText('Draft saved.');
 
     // No more slot (PLAN-BROUILLONS): the draft lives IN THE FOLDER —
     // without a recipient, the dimmed text says so — and the click reopens it INTACT.
     await expect(page.locator('[data-testid="slot-notice"]')).toHaveCount(0);
     await page.locator('[data-testid="nav-folder"][data-category="drafts"]').click();
     const draftRow = page.locator('[data-testid="row-draft"]', { hasText: 'Brouillon E2E' });
-    await expect(draftRow).toContainText('(sans destinataire)');
+    await expect(draftRow).toContainText('(no recipient)');
     await draftRow.click();
     await expect(page.locator('[data-testid="compose-subject"]')).toHaveValue('Brouillon E2E');
-    await expect(page.locator('[data-testid="compose-body"]')).toHaveText('Texte précieux.');
+    await expect(page.locator('[data-testid="compose-body"]')).toHaveText('Texte précieux.'); // lang:fr
     // Empty then close: the only case where closing deletes — the row
     // leaves the folder without waiting for the probe.
     await page.locator('[data-testid="compose-subject"]').fill('');
@@ -143,7 +143,7 @@ test.describe('v1 decor: one account, 200 messages', () => {
     await page.locator('[data-testid="compose-format-bold"]').click();
     await page.keyboard.press('Escape'); // leave the field…
     await page.keyboard.press('Escape'); // …close: keep
-    await expect(page.locator('[data-testid="toast"]')).toContainText('Brouillon enregistré.');
+    await expect(page.locator('[data-testid="toast"]')).toContainText('Draft saved.');
 
     await page.locator('[data-testid="nav-folder"][data-category="drafts"]').click();
     const draftRow = page.locator('[data-testid="row-draft"]', {
@@ -178,7 +178,7 @@ test.describe('v1 decor: one account, 200 messages', () => {
     // enlarges their row.
     const carrier = page.locator('[data-testid="row"]', { hasText: 'n°190' }).first();
     await expect(carrier.locator('[data-testid="chips-row"]')).toContainText('2 messages');
-    await expect(carrier.locator('[data-testid="chips-row"]')).toContainText('1 fichier');
+    await expect(carrier.locator('[data-testid="chips-row"]')).toContainText('1 file');
     // A row WITHOUT chips has no rank at all — it is
     // shorter: two templates, the windowing mechanics from before A29.
     const bare = page.locator('[data-testid="row"]', { hasText: 'n°198' }).first();
@@ -193,7 +193,7 @@ test.describe('v1 decor: one account, 200 messages', () => {
     // mockup's template ("2 messages" · "1 file"), no longer the old
     // composed chip.
     await expect(page.locator('[data-testid="reading-pane"]')).toContainText('2 messages');
-    await expect(page.locator('[data-testid="reading-pane"]')).toContainText('1 fichier');
+    await expect(page.locator('[data-testid="reading-pane"]')).toContainText('1 file');
   });
 
   test('conversations: one row per thread, counter, full-screen navigable exchange', async () => {
@@ -232,7 +232,7 @@ test.describe('v1 decor: one account, 200 messages', () => {
     // Archive the first result WITHOUT leaving search.
     await results.first().click();
     await page.keyboard.press('e');
-    await expect(page.locator('[data-testid="toast"]')).toContainText('Conversation archivée.');
+    await expect(page.locator('[data-testid="toast"]')).toContainText('Conversation archived.');
     await expect(results).toHaveCount(before - 1);
     await expect(page.locator('[data-testid="results"]')).not.toContainText(archive);
 
@@ -252,7 +252,7 @@ test.describe('v1 decor: one account, 200 messages', () => {
     await page.locator('[data-testid="compose-body"]').fill('Contenu jetable.');
     await page.keyboard.press('Escape'); // leave the field…
     await page.keyboard.press('Escape'); // …close: keeps
-    await expect(page.locator('[data-testid="toast"]')).toContainText('Brouillon enregistré.');
+    await expect(page.locator('[data-testid="toast"]')).toContainText('Draft saved.');
 
     await page.locator('[data-testid="nav-folder"][data-category="drafts"]').click();
     const draftRow = page.locator('[data-testid="row-draft"]', { hasText: 'Brouillon a jeter' });
@@ -273,7 +273,7 @@ test.describe('v1 decor: one account, 200 messages', () => {
     await page.locator('[data-testid="compose-delete"]').click();
     await page.locator('[data-testid="compose-delete-confirm"]').click();
     await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
-    await expect(page.locator('[data-testid="toast"]')).toContainText('Brouillon supprimé.');
+    await expect(page.locator('[data-testid="toast"]')).toContainText('Draft deleted.');
     await expect(
       page.locator('[data-testid="row-draft"]', { hasText: 'Brouillon a jeter' }),
     ).toHaveCount(0);

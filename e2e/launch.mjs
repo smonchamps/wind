@@ -123,7 +123,7 @@ export async function purgeLocals(page, keys = LOCAL_KEYS) {
     .catch(() => { /* window already dead */ });
 }
 
-export async function launchAppV2({ fresh = false, accounts = null, lang = 'fr' } = {}) {
+export async function launchAppV2({ fresh = false, accounts = null, lang = 'en' } = {}) {
   buildV2(root, { release: false });
 
   const db = path.join(
@@ -200,7 +200,7 @@ export function injectArrival({ email, sender, n = 1, name = null, subject = nul
   execSync(`"${exe}" ${args.join(' ')}`, { cwd: root, stdio: 'inherit' });
 }
 
-async function attach(db, emails, lang = 'fr') {
+async function attach(db, emails, lang = 'en') {
   // Explicit, writable WebView2 profile: on a CI runner,
   // the default location can be refused. Stable from one launch to
   // the next — a fresh profile every time would make every startup
@@ -221,11 +221,13 @@ async function attach(db, emails, lang = 'fr') {
   const env = {
     ...process.env,
     WIND_DB_PATH: db,
-    // `--lang=fr`: language detection on first launch
+    // `--lang=<lang>`: language detection on first launch
     // (navigator.language, PLAN-LANGUES) reads the WebView locale — without
-    // this pin, the suite would depend on the machine's language.
-    // French remains the canonical language of the journeys (L-6). `lang`
-    // exists for one spec only: the English default of a first launch (D4).
+    // this pin, the suite would depend on the machine's language. English
+    // is the language of the journeys since PLAN-BASCULE-ANGLAIS E6b (the
+    // product's default, D4 — Chief Engineer decision D22 of 2026-09-03);
+    // redesign-language.spec.js pins `fr` for the French round trip, and
+    // a non-French locale proves the D4 default.
     // The PRODUCTION arguments (tauri.conf.json) + the CDP port + the
     // pinned language, composed by browser-args.mjs — the variable
     // OVERRIDES the config at the WebView2 loader level, so it must

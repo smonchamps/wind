@@ -30,22 +30,22 @@ test.afterAll(async () => {
 
 test('at zero accounts, the onboarding flow welcomes — step 1, the desk', async () => {
   await expect(page.locator('[data-testid="onboarding"]')).toBeVisible();
-  // Field 2026-08-22 (finding 1): "Bienvenue dans Wind", then
-  // "Étape 1/5", then the add prompt.
+  // Field 2026-08-22 (finding 1): "Welcome to Wind", then
+  // "Step 1/5", then the add prompt.
   await expect(page.locator('[data-testid="onboarding"]')).toContainText(
-    'Bienvenue dans Wind',
+    'Welcome to Wind',
   );
   await expect(page.locator('[data-testid="onboarding-progress"]')).toHaveText(
-    'Étape 1/5',
+    'Step 1/5',
   );
   await expect(page.locator('[data-testid="onboarding"]')).toContainText(
-    'Pour commencer, ajoutez une adresse email.',
+    'To begin, add an email address.',
   );
   // 2nd field pass (finding 2): the "server detected" note has left
-  // the onboarding screen; (finding 1): with no account, "Ajouter"
+  // the onboarding screen; (finding 1): with no account, "Add"
   // is THE gesture — primary.
   await expect(page.locator('[data-testid="onboarding"]')).not.toContainText(
-    'Le serveur est détecté automatiquement.',
+    'Le serveur est détecté automatiquement.', // lang:fr — a note removed from the screen, asserted absent
   );
 });
 
@@ -61,7 +61,7 @@ test('at rest, the progress line says everything is up to date', async () => {
   // pending send, no catch-up. This is the state the v1 test kept —
   // "no banner when every body is there".
   await expect(page.locator('[data-testid="progress"]')).toHaveText(
-    'Tous les messages sont à jour',
+    'All messages are up to date',
   );
 });
 
@@ -69,7 +69,7 @@ test('an invalid entry is rejected on the spot', async () => {
   await page.locator('[data-testid="onboarding-address"]').fill('pas-une-adresse');
   await page.locator('[data-testid="desk-continue"]').click();
   await expect(page.locator('[data-testid="onboarding-error"]')).toContainText(
-    'adresse e-mail complète',
+    'full email address',
   );
 });
 
@@ -83,7 +83,7 @@ test('a Microsoft address takes the OAuth route, never the IMAP desk (D4)', asyn
   // failure, no browser), NOT from a generic desk that would have
   // revealed itself.
   await expect(page.locator('[data-testid="onboarding-error"]')).toContainText(
-    'Connexion impossible',
+    'Could not connect',
   );
   await expect(page.locator('#ob-imap')).toHaveCount(0);
   await page.locator('[data-testid="onboarding-address"]').fill('');
@@ -138,7 +138,7 @@ test('already onboarded, zero accounts: the desk alone, no flow', async () => {
   await page.reload();
   await expect(page.locator('[data-testid="onboarding"]')).toBeVisible();
   await expect(page.locator('[data-testid="onboarding"]')).toContainText(
-    'Bienvenue dans Wind',
+    'Welcome to Wind',
   );
   await expect(page.locator('[data-testid="onboarding-progress"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="onboarding-continue"]')).toHaveCount(0);

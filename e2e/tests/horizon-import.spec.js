@@ -26,7 +26,7 @@ test('an account from before the setting is deemed "everything" (D4)', async () 
   await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
   await page.locator('[data-testid="settings"]').click();
   await expect(page.locator('[data-testid="account-horizon"]')).toHaveText(
-    'Tout depuis le début',
+    'Everything from the beginning',
   );
 });
 
@@ -37,13 +37,13 @@ test('revising the horizon in Settings: the door follows, and the choice survive
     .locator('[data-testid="horizon-select"]')
     .selectOption('6m');
   // The row's door shows the chosen state — immediate application.
-  await expect(page.locator('[data-testid="account-horizon"]')).toHaveText('6 mois');
+  await expect(page.locator('[data-testid="account-horizon"]')).toHaveText('6 months');
 
   // Persistence is proven on the RETURN: close the overlay,
   // reopen it — the value comes from the DATABASE, not a screen state.
   await page.locator('[data-testid="settings-done"]').click();
   await page.locator('[data-testid="settings"]').click();
-  await expect(page.locator('[data-testid="account-horizon"]')).toHaveText('6 mois');
+  await expect(page.locator('[data-testid="account-horizon"]')).toHaveText('6 months');
 });
 
 test('the add desk offers the choice, default "1 year" (D2)', async () => {
@@ -54,6 +54,6 @@ test('the add desk offers the choice, default "1 year" (D2)', async () => {
   // less is the shipped behavior, importing everything is a deliberate action.
   await expect(select).toHaveValue('1a');
   await expect(select.locator('option')).toHaveCount(7);
-  await expect(select.locator('option').last()).toHaveText('Tout depuis le début');
+  await expect(select.locator('option').last()).toHaveText('Everything from the beginning');
   await page.locator('[data-testid="settings-done"]').click();
 });

@@ -56,7 +56,7 @@ test('"Always show images" lifts the guard of a card past page 0', async () => {
   await last.scrollIntoViewIfNeeded();
   const guard = last.locator('[data-testid="feed-images-guard"]');
   await expect(guard).toBeVisible();
-  await guard.getByRole('button', { name: 'Toujours afficher les images de cet expéditeur' }).click();
+  await guard.getByRole('button', { name: 'Always show images from this sender' }).click();
   // What the user sees: THIS card's guard goes away, the
   // letter's images render (the iframe carries the real URL).
   await expect(guard).toHaveCount(0);

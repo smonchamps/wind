@@ -52,8 +52,8 @@ test('the nav carries the unread badges of the Clarity decor (A29, W2-D4)', asyn
   // mailbox (All, at startup) is the tile — identity alone, no
   // counter (A36, field E3).
   await expect(page.locator('[data-testid="nav-mailbox"]')).toHaveCount(3);
-  await expect(page.locator('[data-testid="nav-mailbox"]').first()).toContainText('Toutes les boîtes');
-  await expect(page.locator('[data-testid="nav-mailbox"]').first()).not.toContainText('non lus');
+  await expect(page.locator('[data-testid="nav-mailbox"]').first()).toContainText('All inboxes');
+  await expect(page.locator('[data-testid="nav-mailbox"]').first()).not.toContainText('unread');
 });
 
 // PLAN-RETOURS-10 R4: the nav glyph aligns on the label's baseline
@@ -95,7 +95,7 @@ test('the list pane carries its title banner — the mailbox name, no button (UI
   // banner of the Classic mockup enters, WITHOUT "Mark all read" — the
   // title alone.
   const title = page.locator('[data-testid="list-title"]');
-  await expect(title).toHaveText('Boîte de réception');
+  await expect(title).toHaveText('Inbox');
   await expect(title.locator('button')).toHaveCount(0);
   // PLAN-RETOURS-V3 R2: the top banner in the SAME visual format as
   // the bottom filter banner — same height (52 px), same background
@@ -121,7 +121,7 @@ test('the list pane carries its title banner — the mailbox name, no button (UI
   await expect(title).toHaveText('Archives');
   // Back to the starting state: the suite is serial.
   await folder('inbox').click();
-  await expect(title).toHaveText('Boîte de réception');
+  await expect(title).toHaveText('Inbox');
   await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
 });
 
@@ -176,7 +176,7 @@ test("the status bar dates the last poll — even on failure", async () => {
   // rest state "All messages are up to date" stays covered by the
   // onboarding spec, without a timestamp: mailbox never polled.)
   await expect(page.locator('[data-testid="progress"]')).toContainText(
-    /Synchronisation impossible · nouvelle tentative automatique · dernière synchronisation il y a \d+ minutes?/,
+    /Sync failed · will retry automatically · last synced \d+ minutes? ago/,
   );
 });
 
@@ -189,10 +189,10 @@ test('the poll button lives in the bar — "Retry" on failure (E3)', async () =>
   const button = page.locator('[data-testid="btn-poll"]');
   await expect(button).toBeVisible();
   await expect(button).toBeEnabled();
-  await expect(button).toContainText('Réessayer');
+  await expect(button).toContainText('Try again');
   await button.click();
   await expect(page.locator('[data-testid="progress"]')).toContainText(
-    /Synchronisation impossible/,
+    /Sync failed/,
   );
   await expect(button).toBeEnabled();
 });
@@ -219,7 +219,7 @@ test("during a cycle, the ring replaces the status bar's disk (V2)", async () =>
 test('selecting opens the pane, reads the body, and the unread mark falls', async () => {
   await page.locator('[data-testid="row"]').first().click();
   await expect(page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]')).toHaveText(
-    'Relecture du contrat Vantis',
+    'Relecture du contrat Vantis', // lang:fr
   );
   // The body lives in the sandbox iframe — invariant S1.
   await expect(
@@ -258,19 +258,19 @@ test('a link in the body opens in the system browser — the body does not move'
 test('the Unread tab filters on the core side', async () => {
   await page.locator('[data-tab="nonlus"]').click();
   await expect(page.locator('[data-testid="row"]')).toHaveCount(3);
-  await page.locator('[data-tab="tous"]').click();
+  await page.locator('[data-tab="tous"]').click(); // lang:fr — the tab id is a VALUE the UI still names in French (D16 leftovers, D-55)
   await expect(page.locator('[data-testid="row"]').nth(4)).toBeVisible();
 });
 
 test('the canonical folders serve their lists', async () => {
   await folder('archive').click();
   await expect(page.locator('[data-testid="status"]')).toContainText(
-    'Archives · 64 éléments',
+    'Archives · 64 items',
   );
   await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
   await folder('trash').click();
   await expect(page.locator('[data-testid="status"]')).toContainText(
-    'Corbeille · 3 éléments',
+    'Trash · 3 items',
   );
   await folder('inbox').click();
   await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
@@ -289,7 +289,7 @@ test('archiving acts on the core and confirms via the toast', async () => {
   await page.locator('[data-testid="row"]').nth(1).click();
   await page.locator('[data-testid="archive"]').click();
   await expect(page.locator('[data-testid="toast"]')).toContainText(
-    'Conversation archivée.',
+    'Conversation archived.',
   );
   // The total left the nav (A29, W2-D4): the core's proof reads at
   // the Archive folder — the status bar counts its elements.
@@ -307,7 +307,7 @@ test('the reading pane shows the THREAD as cards — old ones collapsed, last on
   await page.locator('[data-testid="row"]').first().click();
   const pane = page.locator('[data-testid="reading-pane"]');
   await expect(pane.locator('[data-testid="thread-subject"]')).toHaveText(
-    'Relecture du contrat Vantis',
+    'Relecture du contrat Vantis', // lang:fr
   );
   await expect(pane.locator('[data-testid="message-collapsed"]')).toHaveCount(2);
   await expect(pane.locator('[data-testid="message-expanded"]')).toHaveCount(1);
@@ -336,7 +336,7 @@ test('the thread matches the mockup exactly — avatars, two-line header, long t
   // the post-scan count of the last message (2, not 1): asserting 2
   // used to catch the pre-scan value, by race.
   await expect(chips).toContainText('3 messages');
-  await expect(chips).toContainText('3 fichiers');
+  await expect(chips).toContainText('3 files');
   // The right-hand buttons are BARE (button, no border or background).
   for (const testid of ['see-conversation', 'all-expand']) {
     const button = pane.locator(`[data-testid="${testid}"]`);
@@ -354,9 +354,9 @@ test('the thread matches the mockup exactly — avatars, two-line header, long t
   // (Sent) — and the long time.
   await expect(expanded.locator('.addr-sender')).toHaveText('<c.rousseau@atelier-nord.fr>');
   await expect(expanded.locator('[data-testid="row-to"]')).toHaveText(
-    'À : Paul Mérand <paul.merand@atelier-nord.fr>',
+    'To: Paul Mérand <paul.merand@atelier-nord.fr>', // lang:fr
   );
-  await expect(expanded.locator('.message-head .when')).toHaveText(/^Aujourd'hui, 09:12$/);
+  await expect(expanded.locator('.message-head .when')).toHaveText(/^Today, 09:12$/);
   await expect(replies.nth(0).locator('.when')).toHaveText(/, 18:20$/);
   await expect(replies.nth(1).locator('.when')).toHaveText(/, 11:05$/);
   // The From/To/Subject block no longer exists (the header says it all).
@@ -369,13 +369,13 @@ test('a single-message thread says "1 message" — and opens on "Collapse all" (
   // we follow it there.
   await folder('archive').click();
   await page
-    .locator('[data-testid="row"]', { hasText: 'Planning de la semaine 33' })
+    .locator('[data-testid="row"]', { hasText: 'Planning de la semaine 33' }) // lang:fr
     .first()
     .click();
   const pane = page.locator('[data-testid="reading-pane"]');
   const chips = pane.locator('[data-testid="thread-chips"]');
   await expect(chips).toContainText('1 message');
-  await expect(chips).not.toContainText('fichier');
+  await expect(chips).not.toContainText('file');
   // A47: a lone message opens EXPANDED — the toggle, derived from the
   // state, therefore says "Collapse all" right from opening.
   await expect(pane.locator('[data-testid="all-collapse"]')).toBeVisible();
@@ -385,9 +385,9 @@ test('a single-message thread says "1 message" — and opens on "Collapse all" (
   // account address — the honest fact, the core does not know our name.
   await expect(expanded.locator('.addr-sender')).toHaveText('<y.belkacem@atelier-nord.fr>');
   await expect(expanded.locator('[data-testid="row-to"]')).toHaveText(
-    'À : paul.merand@atelier-nord.fr',
+    'To: paul.merand@atelier-nord.fr',
   );
-  await expect(expanded.locator('.message-head .when')).toHaveText(/^Aujourd'hui, 08:40$/);
+  await expect(expanded.locator('.message-head .when')).toHaveText(/^Today, 08:40$/);
   await folder('inbox').click();
   await page.locator('[data-testid="row"]').first().click();
 });
@@ -402,10 +402,10 @@ test('the pane is flat, "Open" and "Expand" get their own glyph (field A46)', as
   await page.locator('[data-testid="row"]').first().click();
   const pane = page.locator('[data-testid="reading-pane"]');
   const openButton = pane.locator('[data-testid="see-conversation"]');
-  await expect(openButton).toContainText('Ouvrir');
+  await expect(openButton).toContainText('Open');
   await expect(openButton.locator('.ic')).toHaveAttribute('data-name', 'open_in_full');
   const expandButton = pane.locator('[data-testid="all-expand"]');
-  await expect(expandButton).toContainText('Tout déplier');
+  await expect(expandButton).toContainText('Expand all');
   await expect(expandButton.locator('.ic')).toHaveAttribute('data-name', 'unfold_more');
   // Flat: the pane itself scrolls, the head carries no rule at all.
   expect(await pane.evaluate((el) => getComputedStyle(el).overflowY)).toBe('auto');
@@ -420,7 +420,7 @@ test('the "Expand all"/"Collapse all" toggle FOLLOWS the real expand state (fiel
   await expect(pane.locator('[data-testid="message-expanded"]')).toHaveCount(3);
   await expect(pane.locator('[data-testid="all-expand"]')).toHaveCount(0);
   const collapseButton = pane.locator('[data-testid="all-collapse"]');
-  await expect(collapseButton).toContainText('Tout replier');
+  await expect(collapseButton).toContainText('Collapse all');
   await expect(collapseButton.locator('.ic')).toHaveAttribute('data-name', 'unfold_less');
   // Derived from the state (A47, reverses the "lone gesture" of A46):
   // collapsing a message by HAND falls back to "Expand all"…
@@ -478,7 +478,7 @@ test('the compose header no longer repeats the subject, "From" hugs the header (
   await expect(compose.locator('[data-testid="compose-kicker"]')).toBeVisible();
   // The draft's subject only lives in ITS field (input value, outside
   // textContent) — no text reminder anywhere in the window.
-  await expect(compose).not.toContainText('Relecture du contrat Vantis');
+  await expect(compose).not.toContainText('Relecture du contrat Vantis'); // lang:fr
   expect(
     await compose
       .locator('[data-testid="compose-from"]')
@@ -494,7 +494,7 @@ test('seeing the conversation opens the thread full screen, last message expande
   await page.locator('[data-testid="row"]').first().click();
   await page.locator('[data-testid="see-conversation"]').click();
   await expect(page.locator('[data-testid="conversation"] [data-testid="thread-subject"]')).toHaveText(
-    'Relecture du contrat Vantis',
+    'Relecture du contrat Vantis', // lang:fr
   );
   // Frame exclusivity (D4, v3 review): a SINGLE Thread mounted.
   await expect(page.locator('[data-testid="thread-subject"]')).toHaveCount(1);
@@ -522,7 +522,7 @@ test('going back leaves the mailbox intact, selection included', async () => {
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
   await expect(page.locator('[data-testid="thread-subject"]')).toHaveText(
-    'Relecture du contrat Vantis',
+    'Relecture du contrat Vantis', // lang:fr
   );
 });
 
@@ -531,7 +531,7 @@ test('going back leaves the mailbox intact, selection included', async () => {
 test('writing opens the composer; cancelling an empty one leaves nothing', async () => {
   await page.locator('[data-testid="write"]').click();
   await expect(page.locator('[data-testid="compose-kicker"]')).toHaveText(
-    'Nouveau message',
+    'New message',
   );
   // The sending account IS CHOSEN (A10): two accounts on the decor,
   // the first by default, the other selectable.
@@ -577,7 +577,7 @@ test('"Reply all" sits between Reply and Forward, per message (A14, R4/D4)', asy
 
   await page.locator('[data-testid="back-to-mailbox"]').click();
   await expect(page.locator('[data-testid="thread-subject"]')).toHaveText(
-    'Relecture du contrat Vantis',
+    'Relecture du contrat Vantis', // lang:fr
   );
 });
 
@@ -585,19 +585,19 @@ test('replying prefills from the core: address, Re:, lead-in, quote — without 
   // R4: reply is PER message; the last expanded message of the Vantis
   // thread is Camille Rousseau's (`.last()`).
   await page.locator('[data-testid="reply"]').last().click();
-  await expect(page.locator('[data-testid="compose-kicker"]')).toHaveText('Répondre');
+  await expect(page.locator('[data-testid="compose-kicker"]')).toHaveText('Reply');
   await expect(page.locator('[data-testid="compose-to"]')).toHaveValue(
     'c.rousseau@atelier-nord.fr',
   );
   await expect(page.locator('[data-testid="compose-subject"]')).toHaveValue(
-    'Re : Relecture du contrat Vantis',
+    'Re: Relecture du contrat Vantis', // lang:fr
   );
   const body = await page.locator('[data-testid="compose-body"]').innerText();
   // The GAP lead-in → quote is part of the contract (one blank line,
   // not four): the assertion measures both line breaks, not just the
   // lead-in.
-  expect(body.startsWith('Bonjour Camille,\n\n')).toBe(true);
-  expect(body).toContain('a écrit :');
+  expect(body.startsWith('Hello Camille,\n\n')).toBe(true);
+  expect(body).toContain('a écrit :'); // lang:fr
   // E3 (PJ-D4): a reply does NOT carry the original attachments — the
   // prototype's chip promised a send that never existed, it fell with
   // the fiction.
@@ -611,7 +611,7 @@ test('saving the draft keeps it and confirms', async () => {
   await page.locator('[data-testid="compose-draft"]').click();
   await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="toast"]')).toContainText(
-    'Brouillon enregistré.',
+    'Draft saved.',
   );
 });
 
@@ -624,7 +624,7 @@ test('sending logs into the outbox and confirms', async () => {
   );
   await page.locator('[data-testid="compose-send"]').click();
   await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="toast"]')).toContainText('Message envoyé.');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Message sent.');
 });
 
 // ——— P5: search, image guard, feedback slot, progress ———————
@@ -636,9 +636,9 @@ test('search serves its results in the prototype rows (D1)', async () => {
   // messages (inbox, sent…) — we require its presence, not its rank.
   await expect(
     page.locator('[data-testid="results"] [data-testid="row"]',
-      { hasText: 'Relecture du contrat Vantis' }).first(),
+      { hasText: 'Relecture du contrat Vantis' }).first(), // lang:fr
   ).toBeVisible();
-  await expect(page.locator('[data-testid="progress"]')).toContainText('Recherche ·');
+  await expect(page.locator('[data-testid="progress"]')).toContainText('Search ·');
   // Escape in the field: the mailbox comes back as it was.
   await page.locator('[data-testid="search-field"]').press('Escape');
   await expect(page.locator('[data-testid="results"]')).toHaveCount(0);
@@ -648,14 +648,14 @@ test('search serves its results in the prototype rows (D1)', async () => {
 test('the preview decodes HTML entities — never an &eacute; residue', async () => {
   // The decor's body carries &eacute; and &nbsp;: the visible text
   // must be the prototype's, without a single ampersand entity.
-  const row = page.locator('[data-testid="row"]', { hasText: 'renouvellement du domaine' });
-  await expect(row).toContainText('pour éviter toute interruption de service.');
+  const row = page.locator('[data-testid="row"]', { hasText: 'renouvellement du domaine' }); // lang:fr
+  await expect(row).toContainText('pour éviter toute interruption de service.'); // lang:fr
   await expect(row).not.toContainText('&');
 });
 
 test('attachments are taken from the PANE — a lone message has no conversation (Annex A)', async () => {
-  // "Compte rendu du 4 août": SOLE message, one attachment.
-  await page.locator('[data-testid="row"]', { hasText: 'Compte rendu du 4 août' }).click();
+  // "Compte rendu du 4 août": SOLE message, one attachment. // lang:fr
+  await page.locator('[data-testid="row"]', { hasText: 'Compte rendu du 4 août' }).click(); // lang:fr
   // R2 (PLAN-RETOURS-4, D4): name AND weight in the SAME clickable
   // chip — a single chip per attachment, carrying both pieces of
   // information.
@@ -687,7 +687,7 @@ test('R3: the body stays on a light slate even under a dark theme (PLAN-RETOURS-
   // the visible guard, so a message nothing is yet written to the
   // database for.
   await page.evaluate(() => { document.documentElement.dataset.theme = 'elements-nuit'; });
-  await page.locator('[data-testid="row"]', { hasText: 'renouvellement du domaine' }).click();
+  await page.locator('[data-testid="row"]', { hasText: 'renouvellement du domaine' }).click(); // lang:fr
   await expect(page.locator('[data-testid="images-guard"]')).toBeVisible();
   const srcdoc = await page.locator('iframe.body').first().getAttribute('srcdoc');
   expect(srcdoc).toContain('background:#ffffff');
@@ -697,9 +697,9 @@ test('R3: the body stays on a light slate even under a dark theme (PLAN-RETOURS-
 });
 
 test('remote images stay blocked; "Show images" SURVIVES the selection (RETOURS-11, D1-D2)', async () => {
-  await page.locator('[data-testid="row"]', { hasText: 'renouvellement du domaine' }).click();
+  await page.locator('[data-testid="row"]', { hasText: 'renouvellement du domaine' }).click(); // lang:fr
   await expect(page.locator('[data-testid="images-guard"]')).toContainText(
-    '1 image distante bloquée',
+    '1 remote image blocked',
   );
   await page.locator('[data-testid="show-images"]').click();
   await expect(page.locator('[data-testid="images-guard"]')).toHaveCount(0);
@@ -710,7 +710,7 @@ test('remote images stay blocked; "Show images" SURVIVES the selection (RETOURS-
   // (blocked means the neutral pixel) — never a count at 0 read
   // before the paint.
   await page.locator('[data-testid="row"]').first().click();
-  await page.locator('[data-testid="row"]', { hasText: 'renouvellement du domaine' }).click();
+  await page.locator('[data-testid="row"]', { hasText: 'renouvellement du domaine' }).click(); // lang:fr
   await expect(page.locator('iframe.body').first()).toHaveAttribute(
     'srcdoc',
     /registrar\.exemple\/logo\.png/,
@@ -726,7 +726,7 @@ test('"Always show": the sender rule is set from the banner and revoked in Setti
   // not necessarily materialize its row (depending on window height)
   // — the 3-row mailbox, though, always shows it.
   await page.locator('[data-testid="nav-mailbox"]').nth(2).click();
-  await page.locator('[data-testid="row"]', { hasText: 'domaine renouvelé' }).click();
+  await page.locator('[data-testid="row"]', { hasText: 'domaine renouvelé' }).click(); // lang:fr
   await expect(page.locator('[data-testid="images-guard"]')).toBeVisible();
   await page.locator('[data-testid="always-show-images"]').click();
   await expect(page.locator('iframe.body').first()).toHaveAttribute(
@@ -748,7 +748,7 @@ test('"Always show": the sender rule is set from the banner and revoked in Setti
   // grant came from the sender rule ALONE ("Always" does not write a
   // per-message choice) — the net is non-vacuous by construction.
   await page.locator('[data-testid="row"]').first().click();
-  await page.locator('[data-testid="row"]', { hasText: 'domaine renouvelé' }).click();
+  await page.locator('[data-testid="row"]', { hasText: 'domaine renouvelé' }).click(); // lang:fr
   await expect(page.locator('[data-testid="images-guard"]')).toBeVisible();
   // Give the Inbox back to the following tests.
   await page.locator('[data-testid="nav-mailbox"]').first().click();
@@ -762,10 +762,10 @@ test('the draft lives in the list: a mention on the thread, resumed in the folde
   // recent item, its body takes the preview.
   await expect(page.locator('[data-testid="slot-notice"]')).toHaveCount(0);
   const thread = page
-    .locator('[data-testid="row"]', { hasText: 'Relecture du contrat Vantis' })
+    .locator('[data-testid="row"]', { hasText: 'Relecture du contrat Vantis' }) // lang:fr
     .first();
-  await expect(thread.locator('[data-testid="mention-draft"]')).toHaveText('Brouillon : ');
-  await expect(thread).toContainText('Bonjour Camille,');
+  await expect(thread.locator('[data-testid="mention-draft"]')).toHaveText('Draft: ');
+  await expect(thread).toContainText('Hello Camille,');
 
   // The folder: the LOCAL drafts (2 from the decor + the P4 one),
   // most recent to oldest; the status bar counts like the other
@@ -774,11 +774,11 @@ test('the draft lives in the list: a mention on the thread, resumed in the folde
   await expect(page.locator('[data-testid="folder-drafts"]')).toBeVisible();
   await expect(page.locator('[data-testid="row-draft"]')).toHaveCount(3);
   await expect(page.locator('[data-testid="progress"]')).toContainText(
-    'Brouillons · 3 éléments',
+    'Drafts · 3 items',
   );
   await page.locator('[data-testid="row-draft"]').first().click();
   await expect(page.locator('[data-testid="compose-subject"]')).toHaveValue(
-    'Re : Relecture du contrat Vantis',
+    'Re: Relecture du contrat Vantis', // lang:fr — the English `Re:` of the app before the French fixture subject
   );
   await expect(page.locator('[data-testid="compose-to"]')).toHaveValue(
     'c.rousseau@atelier-nord.fr',
@@ -802,10 +802,10 @@ test('the draft lives in the list: a mention on the thread, resumed in the folde
   // preview.
   await folder('inbox').click();
   const still = page
-    .locator('[data-testid="row"]', { hasText: 'Relecture du contrat Vantis' })
+    .locator('[data-testid="row"]', { hasText: 'Relecture du contrat Vantis' }) // lang:fr
     .first();
   await expect(still.locator('[data-testid="mention-draft"]')).toBeVisible();
-  await expect(still).toContainText('Merci pour la v4');
+  await expect(still).toContainText('Merci pour la v4'); // lang:fr
 });
 
 test('the conversation carries the draft in last position, the click resumes it (E3)', async () => {
@@ -813,19 +813,19 @@ test('the conversation carries the draft in last position, the click resumes it 
   // dotted block at the end of the thread, draft body, click =
   // resume, the conversation stays mounted under the composer.
   await page
-    .locator('[data-testid="row"]', { hasText: 'Relecture du contrat Vantis' })
+    .locator('[data-testid="row"]', { hasText: 'Relecture du contrat Vantis' }) // lang:fr
     .first()
     .click();
   await page.locator('[data-testid="see-conversation"]').click();
   const block = page.locator('[data-testid="conv-draft"]');
-  await expect(block).toContainText('Brouillon');
-  await expect(block).toContainText('Merci pour la v4');
-  await expect(block).toContainText('Reprendre');
+  await expect(block).toContainText('Draft');
+  await expect(block).toContainText('Merci pour la v4'); // lang:fr
+  await expect(block).toContainText('Resume');
   await block.click();
   await expect(page.locator('[data-testid="compose-subject"]')).toHaveValue(
-    'Re : Relecture du contrat Vantis',
+    'Re : Relecture du contrat Vantis', // lang:fr — the SEEDED draft's subject (seed_clarity.rs), fixture
   );
-  await expect(page.locator('[data-testid="compose-body"]')).toContainText('Merci pour la v4');
+  await expect(page.locator('[data-testid="compose-body"]')).toContainText('Merci pour la v4'); // lang:fr
   // Closing keeps it: the block remains, the conversation has not moved.
   await page.locator('[data-testid="compose-cancel"]').click();
   await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
@@ -840,7 +840,7 @@ test("the progress line carries the outbox's non-faulty wait", async () => {
   // The P4 journey's send is still pending (account offline by
   // construction): a NON-faulty wait — the line, not the slot.
   await expect(page.locator('[data-testid="progress"]')).toContainText(
-    "Boîte d'envoi · 1 envoi en attente",
+    "Outbox · 1 message waiting",
   );
 });
 
@@ -855,15 +855,15 @@ test('the Feedback button opens the form, and the reply goes through the outbox 
   await expect(card.locator('[data-testid="back-send"]')).toHaveCount(0);
   await card
     .locator('[data-testid="back-text"]')
-    .fill('La liste défile mal sur mon poste.');
+    .fill('La liste défile mal sur mon poste.'); // lang:fr
   await card.locator('[data-testid="back-send"]').click();
   await expect(page.locator('[data-testid="back-card"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="toast"]')).toContainText('Merci');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Thank you');
   // The decor accounts have no server: the reply stays LOGGED in the
   // outbox (queue_send, the golden rule "never a lost send") — the
   // progress line moves to TWO sends.
   await expect(page.locator('[data-testid="progress"]')).toContainText(
-    "Boîte d'envoi · 2 envois en attente",
+    "Outbox · 2 messages waiting",
   );
 });
 
@@ -872,7 +872,7 @@ test('the shortcuts serve the keyboard (D3)', async () => {
   // letters again there), the second one closes — empty, nothing is kept.
   await page.keyboard.press('c');
   await expect(page.locator('[data-testid="compose-kicker"]')).toHaveText(
-    'Nouveau message',
+    'New message',
   );
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
@@ -881,7 +881,7 @@ test('the shortcuts serve the keyboard (D3)', async () => {
   await page.locator('[data-testid="row"]').first().click();
   await page.keyboard.press('e');
   await expect(page.locator('[data-testid="toast"]')).toContainText(
-    'Conversation archivée.',
+    'Conversation archived.',
   );
 });
 
@@ -937,7 +937,7 @@ test('the two-pane settings navigate by click AND by keyboard (A13)', async () =
   await expect(page.locator('[data-testid="settings-accounts"]')).toBeVisible();
   // By click: Shortcuts — the D3 table as reference, read-only.
   await page.locator('[data-testid="settings-group"][data-group="raccourcis"]').click();
-  await expect(page.locator('[data-testid="settings-shortcuts"]')).toContainText('Suppr');
+  await expect(page.locator('[data-testid="settings-shortcuts"]')).toContainText('Del');
   await expect(page.locator('[data-testid="settings-shortcuts"] kbd')).toHaveCount(7);
   // By keyboard (A8): Enter activates the group like the click.
   await page.locator('[data-testid="settings-group"][data-group="apropos"]').focus();
@@ -955,7 +955,7 @@ test('the two-pane settings navigate by click AND by keyboard (A13)', async () =
   // the command replies "up to date" (no network, handover §7.5).
   await page.locator('[data-testid="about-check"]').click();
   await expect(page.locator('[data-testid="settings-about"]')).toContainText(
-    'Vous êtes à jour.',
+    'You are up to date.',
   );
   await page.locator('[data-testid="settings-done"]').click();
   await expect(page.locator('[data-testid="settings-modal"]')).toHaveCount(0);
@@ -1173,23 +1173,23 @@ test('attaching is real: name + size chips, total weight, removal per chip', asy
   await expect(page.locator('[data-testid="compose-attachments"]')).toContainText('devis.pdf');
   await expect(page.locator('[data-testid="compose-attachments"]')).toContainText('photo.jpg');
   // 812 Ko + 2 Mo — the same shape as the chips (the core's decimal point).
-  await expect(page.locator('[data-testid="compose-weight"]')).toContainText('2.8 Mo / 25 Mo');
+  await expect(page.locator('[data-testid="compose-weight"]')).toContainText('2.8 Mo / 25 MB'); // the total is composed by the shell in French (D17, debt D-56), the limit by the English catalogue
 
   await page.locator('[data-testid="attachment-remove"]').first().click();
   await expect(page.locator('[data-testid="attachment-compose"]')).toHaveCount(1);
-  await expect(page.locator('[data-testid="compose-weight"]')).toContainText('2.0 Mo / 25 Mo');
+  await expect(page.locator('[data-testid="compose-weight"]')).toContainText('2.0 Mo / 25 MB'); // idem D-56
 });
 
 test('closing keeps the attachments, resuming restores them (PJ-D1)', async () => {
-  await page.locator('[data-testid="compose-body"]').fill('Corps avec pièce E2');
+  await page.locator('[data-testid="compose-body"]').fill('Corps avec pièce E2'); // lang:fr
   await page.locator('[data-testid="compose-cancel"]').click();
   await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="toast"]')).toContainText('Brouillon enregistré.');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Draft saved.');
 
   await folder('drafts').click();
   await expect(page.locator('[data-testid="folder-drafts"]')).toBeVisible();
   await page
-    .locator('[data-testid="row-draft"]', { hasText: 'Corps avec pièce E2' })
+    .locator('[data-testid="row-draft"]', { hasText: 'Corps avec pièce E2' }) // lang:fr
     .click();
   await expect(page.locator('[data-testid="compose"]')).toBeVisible();
   await expect(page.locator('[data-testid="attachment-compose"]')).toHaveCount(1);
@@ -1198,15 +1198,15 @@ test('closing keeps the attachments, resuming restores them (PJ-D1)', async () =
 
 test('sending carries the attachment: the log holds it (PJ-D2)', async () => {
   await page.locator('[data-testid="compose-to"]').fill('dest@exemple.fr');
-  await page.locator('[data-testid="compose-subject"]').fill('Envoi avec pièce E2');
+  await page.locator('[data-testid="compose-subject"]').fill('Envoi avec pièce E2'); // lang:fr
   await page.locator('[data-testid="compose-send"]').click();
   await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="toast"]')).toContainText('Message envoyé.');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Message sent.');
 
   // The decor accounts have no server: the send stays logged in the
   // queue — and the log must carry the attachment (assertion PJ-D2).
   const status = await page.evaluate(() => window.__TAURI__.core.invoke('outbox_status'));
-  const entry = status.entries.find((e) => e.subject === 'Envoi avec pièce E2');
+  const entry = status.entries.find((e) => e.subject === 'Envoi avec pièce E2'); // lang:fr
   expect(entry).toBeTruthy();
   expect(entry.attachments).toBe(1);
 });
@@ -1223,7 +1223,7 @@ test('past the cap: the refusal is said, nothing gets attached (PJ-D3)', async (
 
   await expect(page.locator('[data-testid="compose-refusal"]')).toContainText('enorme.bin');
   await expect(page.locator('[data-testid="compose-refusal"]')).toContainText(
-    'dépasse la place restante',
+    'exceeds the remaining space',
   );
   await expect(page.locator('[data-testid="attachment-compose"]')).toHaveCount(0);
 
@@ -1239,12 +1239,12 @@ test('forwarding fetches for real — offline: failure said, "Retry", send held 
   // Inbox, where the Vantis row exists.
   await folder('inbox').click();
   await page
-    .locator('[data-testid="row"]', { hasText: 'Relecture du contrat Vantis' })
+    .locator('[data-testid="row"]', { hasText: 'Relecture du contrat Vantis' }) // lang:fr
     .click();
   // R4: forward PER message; the last message of the Vantis thread
   // carries the pricing annex (`.last()`).
   await page.locator('[data-testid="forward"]').last().click();
-  await expect(page.locator('[data-testid="compose-kicker"]')).toHaveText('Transférer');
+  await expect(page.locator('[data-testid="compose-kicker"]')).toHaveText('Forward');
   // Field finding STOP 2 PLAN-AUDIT-V2 (2026-09-02): "a word typed
   // AFTER the block vanished on send" — the cursor placed at the end
   // of the body was landing INSIDE the marked block, which the send
@@ -1271,7 +1271,7 @@ test('forwarding fetches for real — offline: failure said, "Retry", send held 
   await page.locator('[data-testid="compose-to"]').fill('dest@exemple.fr');
   await page.locator('[data-testid="compose-send"]').click();
   await expect(page.locator('[data-testid="toast"]')).toContainText(
-    'Des pièces du transfert manquent',
+    'Some forwarded files are still missing',
   );
   await expect(page.locator('[data-testid="compose"]')).toBeVisible();
 
@@ -1284,7 +1284,7 @@ test('forwarding fetches for real — offline: failure said, "Retry", send held 
   await expect(failures).toHaveCount(0);
   await page.locator('[data-testid="compose-send"]').click();
   await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="toast"]')).toContainText('Message envoyé.');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Message sent.');
 });
 
 // P0-bis (PLAN-SYNCHRO): a network drop is SAID instantly, without
@@ -1294,13 +1294,13 @@ test('forwarding fetches for real — offline: failure said, "Retry", send held 
 test('offline: the bar says it instantly, coming back restores it (P0-bis)', async () => {
   await folder('inbox').click();
   const progress = page.locator('[data-testid="progress"]');
-  await expect(progress).not.toContainText('Hors ligne');
+  await expect(progress).not.toContainText('Offline');
 
   await page.evaluate(() => window.dispatchEvent(new Event('offline')));
-  await expect(progress).toContainText('Hors ligne');
+  await expect(progress).toContainText('Offline');
 
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await expect(progress).not.toContainText('Hors ligne');
+  await expect(progress).not.toContainText('Offline');
 });
 
 // E3 (PLAN-REACTIVITE, R-D1 "< 1 s"): a gesture's outcome shows from
@@ -1319,13 +1319,13 @@ test("deleting shows in Trash instantly — offline included (E3)", async () => 
     .click();
   await page.locator('[data-testid="delete"]').click();
   await expect(page.locator('[data-testid="toast"]')).toContainText(
-    'Conversation supprimée.',
+    'Conversation deleted.',
   );
   // The counter left the nav (A29, W2-D4): Trash itself says
   // "3 + the echo" — the status bar counts its elements.
   await folder('trash').click();
   await expect(page.locator('[data-testid="status"]')).toContainText(
-    'Corbeille · 4 éléments',
+    'Trash · 4 items',
   );
   const echo = page.locator('[data-testid="row"]', { hasText: 'Facture 2026-0841' });
   await expect(echo).toBeVisible();
@@ -1338,7 +1338,7 @@ test("deleting shows in Trash instantly — offline included (E3)", async () => 
   // A gesture on the echo waits for reconciliation — and says so.
   await page.locator('[data-testid="delete"]').click();
   await expect(page.locator('[data-testid="toast"]')).toContainText(
-    'Copie en cours de synchronisation',
+    'Copy still syncing',
   );
   // The echo still lives: its intention (the logged action) is
   // waiting on the server — offline, nothing sweeps it away.
@@ -1372,7 +1372,7 @@ test('keyboard triage advances: e/Delete select the row below (A38)', async () =
   ).toBe(true);
   await page.keyboard.press('e');
   await expect(page.locator('[data-testid="toast"]')).toContainText(
-    'Conversation archivée.',
+    'Conversation archived.',
   );
   // The shortcut removes focus from the clicked row: the
   // :focus-visible ring never appears on a recycled node (rows are
@@ -1398,7 +1398,7 @@ test('keyboard triage advances: e/Delete select the row below (A38)', async () =
   // on the advanced selection, and advances further.
   await page.keyboard.press('Delete');
   await expect(page.locator('[data-testid="toast"]')).toContainText(
-    'Conversation supprimée.',
+    'Conversation deleted.',
   );
   await expect(selected.locator('.subject')).toHaveText(next);
   await expect(page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]')).toHaveText(next);
@@ -1417,7 +1417,7 @@ test('emptying then closing never resurrects the draft — the in-flight save la
   // First COMPLETE save: the draft has an id.
   await page.waitForTimeout(2600);
   // Second write, then hold: the save starts and gets BLOCKED.
-  await page.locator('[data-testid="compose-body"]').fill('Contenu condamné.');
+  await page.locator('[data-testid="compose-body"]').fill('Contenu condamné.'); // lang:fr
   await page.evaluate(() => {
     window.__e2eHold = new Promise((release) => {
       window.__e2eRelease = release;
@@ -1455,14 +1455,14 @@ test('emptying then closing never resurrects the draft — the in-flight save la
 // reconciliation, proven at the core by `the_real_row_kills_the_echo`).
 test('the send echo says its recipients and its attachment — never "To: sent" (RETOURS-5)', async () => {
   await folder('sent').click();
-  const row = page.locator('[data-testid="row"]', { hasText: 'Bordereau signé' });
+  const row = page.locator('[data-testid="row"]', { hasText: 'Bordereau signé' }); // lang:fr
   await expect(row).toBeVisible();
   await expect(row).toContainText('c.rousseau@atelier-nord.fr');
   await expect(row).not.toContainText('sent');
 
   await row.click();
   const pane = page.locator('[data-testid="reading-pane"]');
-  await expect(pane.locator('[data-testid="thread-subject"]')).toContainText('Bordereau signé');
+  await expect(pane.locator('[data-testid="thread-subject"]')).toContainText('Bordereau signé'); // lang:fr
   // The expanded message's head: the "To:" line (A92) says the real
   // recipient.
   await expect(pane.locator('[data-testid="row-to"]').first()).toContainText('c.rousseau@atelier-nord.fr');
@@ -1520,7 +1520,7 @@ test('archiving via the shortcut from screen 03 closes the frame — never a gho
   await page.locator('[data-testid="see-conversation"]').click();
   await expect(page.locator('[data-testid="conversation"]')).toBeVisible();
   await page.keyboard.press('e');
-  await expect(page.locator('[data-testid="toast"]')).toContainText('Conversation archivée.');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Conversation archived.');
   // The full-screen frame fell with the thread.
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
   // The next click opens the PANE, never a resurrected screen 03 —
@@ -1532,6 +1532,6 @@ test('archiving via the shortcut from screen 03 closes the frame — never a gho
   // Keyboard triage (A38) is ALIVE afterwards: e advances further.
   const subject = await page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]').innerText();
   await page.keyboard.press('e');
-  await expect(page.locator('[data-testid="toast"]')).toContainText('Conversation archivée.');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Conversation archived.');
   await expect(page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]')).not.toHaveText(subject);
 });

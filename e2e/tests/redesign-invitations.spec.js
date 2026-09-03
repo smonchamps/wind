@@ -48,7 +48,7 @@ test('the invitation card shows itself: title, local time, organizer, three gest
   await expect(card).toContainText('Grande salle, Atelier Nord');
   await expect(card).toContainText('Sofia Nardi');
   await expect(card.locator('[data-testid="invitation-status"]')).toHaveText(
-    'Vous n’avez pas répondu',
+    'You have not replied',
   );
   // Three NEUTRAL buttons (D4), none pressed.
   for (const gesture of ['inv-accept', 'inv-tentative', 'inv-refuse']) {
@@ -68,7 +68,7 @@ test('the invitation card shows itself: title, local time, organizer, three gest
 test('R10: replying FROM the list — the row carries the gestures, then the chip', async () => {
   // Leave the workshop thread: the gesture plays WITHOUT opening it.
   await page
-    .locator('[data-testid="row"]', { hasText: 'Planning de la semaine 33' })
+    .locator('[data-testid="row"]', { hasText: 'Planning de la semaine 33' }) // lang:fr
     .first()
     .click();
   // R3'c: the gestures occupy their OWN row (chips-invitation).
@@ -81,16 +81,16 @@ test('R10: replying FROM the list — the row carries the gestures, then the chi
   // row was NOT selected.
   await expect(
     workshopRow().locator('[data-testid="invitation-chip"]'),
-  ).toContainText('Provisoire');
+  ).toContainText('Tentative');
   await expect(gestures).toHaveCount(0);
   await expect(
     page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]'),
-  ).toHaveText('Planning de la semaine 33');
+  ).toHaveText('Planning de la semaine 33'); // lang:fr
 
   // The card reads back the same truth (the database, not a screen state).
   const card = await openWorkshop();
   await expect(card.locator('[data-testid="invitation-status"]')).toHaveText(
-    'Vous avez répondu provisoirement',
+    'You tentatively accepted',
   );
   await expect(card.locator('[data-testid="inv-tentative"]')).toHaveAttribute(
     'aria-pressed',
@@ -102,11 +102,11 @@ test('D6: changing one’s mind from the card — refuse then accept', async () 
   const card = await openWorkshop();
   await card.locator('[data-testid="inv-refuse"]').click();
   await expect(card.locator('[data-testid="invitation-status"]')).toHaveText(
-    'Vous avez refusé',
+    'You declined',
   );
   await card.locator('[data-testid="inv-accept"]').click();
   await expect(card.locator('[data-testid="invitation-status"]')).toHaveText(
-    'Vous avez accepté',
+    'You accepted',
   );
   await expect(card.locator('[data-testid="inv-refuse"]')).toHaveAttribute(
     'aria-pressed',
@@ -121,9 +121,9 @@ test('R11: the reloaded list says the reply as a chip — the reply survives nav
   await page.locator('[data-testid="nav-folder"][data-category="inbox"]').click();
   await expect(
     workshopRow().locator('[data-testid="invitation-chip"]'),
-  ).toContainText('Acceptée');
+  ).toContainText('Accepted');
   const card = await openWorkshop();
   await expect(card.locator('[data-testid="invitation-status"]')).toHaveText(
-    'Vous avez accepté',
+    'You accepted',
   );
 });

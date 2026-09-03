@@ -45,7 +45,7 @@ test('removal confirms — and cancelling touches nothing', async () => {
   // in the product's vocabulary ("remove", nothing is deleted
   // from the server).
   await expect(page.locator('[data-testid="account-remove"]').first()).toContainText(
-    'Retirer le compte',
+    'Remove account',
   );
 
   // First click: the confirmation card, not the removal.
@@ -55,7 +55,7 @@ test('removal confirms — and cancelling touches nothing', async () => {
     'un@exemple.fr',
   );
   await expect(page.locator('[data-testid="settings-removal"]')).toContainText(
-    'Rien n’est supprimé sur le serveur',
+    'Nothing is deleted on the server',
   );
 
   // Cancel: the card collapses, both accounts are still there.
@@ -75,7 +75,7 @@ test('confirmed: the account leaves Settings, the nav and the list', async () =>
   );
   await page.locator('[data-testid="removal-confirm"]').click();
 
-  await expect(page.locator('[data-testid="toast"]')).toContainText('Compte retiré.');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Account removed.');
   await expect(page.locator('[data-testid="account-remove"]')).toHaveCount(1);
   await expect(page.locator('[data-testid="settings-accounts"]')).not.toContainText(
     'deux@exemple.fr',

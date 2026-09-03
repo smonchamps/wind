@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
-export function browserArgs(root, port, extra = '', lang = 'fr') {
+export function browserArgs(root, port, extra = '', lang = 'en') {
   const conf = JSON.parse(
     readFileSync(path.join(root, 'apps', 'desktop', 'tauri.conf.json'), 'utf8'),
   );

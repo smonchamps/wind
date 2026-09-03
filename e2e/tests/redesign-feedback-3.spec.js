@@ -31,12 +31,12 @@ test('R4/D4: replying targets the CHOSEN message of the thread, not the last', a
   // for.
   await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
   await page
-    .locator('[data-testid="row"]', { hasText: 'Relecture du contrat Vantis' })
+    .locator('[data-testid="row"]', { hasText: 'Relecture du contrat Vantis' }) // lang:fr
     .first()
     .click();
   await expect(
     page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]'),
-  ).toHaveText('Relecture du contrat Vantis');
+  ).toHaveText('Relecture du contrat Vantis'); // lang:fr
 
   // Expand everything: the three messages, each with its own reply
   // bar AT THE BOTTOM.
@@ -49,7 +49,7 @@ test('R4/D4: replying targets the CHOSEN message of the thread, not the last', a
   // Reply TO Sofia's message (the middle one) — her bar, not the last
   // one's.
   await messages.nth(1).locator('[data-testid="reply"]').click();
-  await expect(page.locator('[data-testid="compose-kicker"]')).toHaveText('Répondre');
+  await expect(page.locator('[data-testid="compose-kicker"]')).toHaveText('Reply');
   await expect(page.locator('[data-testid="compose-to"]')).toHaveValue(
     's.nardi@atelier-nord.fr',
   );
@@ -59,7 +59,7 @@ test('R4/D4: replying targets the CHOSEN message of the thread, not the last', a
   // Field finding (2026-08-18): OUR OWN message (m1, Paul, first)
   // ALSO carries the three gestures, and replying to it targets the
   // original recipients (Camille in To), never oneself (Paul).
-  await expect(messages.nth(0)).toContainText('Paul Mérand');
+  await expect(messages.nth(0)).toContainText('Paul Mérand'); // lang:fr
   await expect(
     messages.nth(0).locator('[data-testid="reply"]'),
   ).toBeVisible();
@@ -67,7 +67,7 @@ test('R4/D4: replying targets the CHOSEN message of the thread, not the last', a
     messages.nth(0).locator('[data-testid="reply-all"]'),
   ).toBeVisible();
   await messages.nth(0).locator('[data-testid="reply"]').click();
-  await expect(page.locator('[data-testid="compose-kicker"]')).toHaveText('Répondre');
+  await expect(page.locator('[data-testid="compose-kicker"]')).toHaveText('Reply');
   await expect(page.locator('[data-testid="compose-to"]')).toHaveValue(
     'c.rousseau@atelier-nord.fr',
   );
@@ -98,10 +98,10 @@ test('R2/D2: reporting a message as junk removes it from the Inbox', async () =>
     page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]'),
   ).toHaveText('Atelier de septembre');
 
-  // The thread bar carries "Signaler comme spam" (Inbox view).
+  // The thread bar carries "Report as spam" (Inbox view).
   await page.locator('[data-testid="reading-pane"] [data-testid="report-spam"]').click();
   await expect(page.locator('[data-testid="toast"]')).toContainText(
-    'signalé comme indésirable',
+    'Reported as spam',
   );
   // Optimistic disappearance: the Inbox no longer carries a trace of it.
   await expect(
@@ -109,23 +109,23 @@ test('R2/D2: reporting a message as junk removes it from the Inbox', async () =>
   ).toHaveCount(0);
 });
 
-test('R2/D2: « Ce n’est pas un spam » brings a message back to the Inbox', async () => {
+test('R2/D2: "Not spam" brings a message back to the Inbox', async () => {
   await folder('junk').click();
-  const row = page.locator('[data-testid="row"]', { hasText: 'Vous avez gagné' });
+  const row = page.locator('[data-testid="row"]', { hasText: 'Vous avez gagné' }); // lang:fr
   await expect(row.first()).toBeVisible();
   await row.first().click();
   await expect(
     page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]'),
-  ).toHaveText('Vous avez gagné');
+  ).toHaveText('Vous avez gagné'); // lang:fr
 
-  // In the Junk view, the bar switches to "Ce n'est pas un spam" —
-  // and "Signaler comme spam" is no longer there.
+  // In the Junk view, the bar switches to "Not spam" —
+  // and "Report as spam" is no longer there.
   await expect(
     page.locator('[data-testid="reading-pane"] [data-testid="report-spam"]'),
   ).toHaveCount(0);
   await page.locator('[data-testid="reading-pane"] [data-testid="not-spam"]').click();
-  await expect(page.locator('[data-testid="toast"]')).toContainText('remis en réception');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Moved back to Inbox');
   await expect(
-    page.locator('[data-testid="row"]', { hasText: 'Vous avez gagné' }),
+    page.locator('[data-testid="row"]', { hasText: 'Vous avez gagné' }), // lang:fr
   ).toHaveCount(0);
 });

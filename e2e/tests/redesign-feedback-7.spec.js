@@ -46,7 +46,7 @@ test('attached files live BEFORE the message body (R2)', async () => {
 // redesign-screen02.)
 test('a body the core does not serve states itself and replays (PLAN-AUDIT-V2 E10)', async () => {
   // The next `message_body` fails (__e2eFailure seam): the frame
-  // states the failure and offers "Réessayer" — before, an empty
+  // states the failure and offers "Try again" — before, an empty
   // frame forever.
   await page.evaluate(() => {
     window.__e2eFailure = ['message_body'];
@@ -63,7 +63,7 @@ test('a body the core does not serve states itself and replays (PLAN-AUDIT-V2 E1
   await expect(page.locator('[data-testid="reading-pane"] [data-testid="reading-files"]')).toBeVisible();
 });
 
-test('hovering an attachment states "Enregistrer" (R1, D1)', async () => {
+test('hovering an attachment states "Save" (R1, D1)', async () => {
   const attachment = page
     .locator('[data-testid="reading-files"] [data-testid="attachment"]')
     .first();
@@ -71,15 +71,15 @@ test('hovering an attachment states "Enregistrer" (R1, D1)', async () => {
   // At rest: the chip states the file, the veil does not exist to the eye.
   await expect.poll(() => veil.evaluate((el) => getComputedStyle(el).display)).toBe('none');
   // On hover: the veil COVERS the chip — a download glyph + the
-  // product's word (D1: "Enregistrer", the click opens "Enregistrer
-  // sous") — without changing its geometry (the row does not reflow).
+  // product's word (D1: "Save", the click opens "Save
+  // as") — without changing its geometry (the row does not reflow).
   const widthBefore = await attachment.evaluate((el) => el.offsetWidth);
   await attachment.hover();
   // (`inline-flex` set is computed as `flex`: the absolute
   // blockifies — we assert presence, not the value.)
   // PLAN-AUDIT-V2 E9: retried — the veil follows the hover, not the instant.
   await expect.poll(() => veil.evaluate((el) => getComputedStyle(el).display)).not.toBe('none');
-  await expect(veil).toContainText('Enregistrer');
+  await expect(veil).toContainText('Save');
   await expect(veil.locator('.ic')).toHaveAttribute('data-name', 'download');
   await expect.poll(() => attachment.evaluate((el) => el.offsetWidth)).toBe(widthBefore);
   // Leaving: the veil retreats.
@@ -91,7 +91,7 @@ test('screen 03 is FLAT: each message in its own elevation, the conversation wit
   await page.locator('[data-testid="see-conversation"]').click();
   const conv = page.locator('[data-testid="conversation"]');
   await expect(conv.locator('[data-testid="thread-subject"]')).toHaveText(
-    'Relecture du contrat Vantis',
+    'Relecture du contrat Vantis', // lang:fr
   );
   // No elevation or enclosing surface between the screen's root and
   // the thread object — "screen 03 keeps its full card" (A46) is
@@ -136,18 +136,18 @@ test('pinning puts the conversation at the top of the Inbox — one row, reversi
   const subject = (await row.locator('.subject').innerText()).trim();
   await row.click();
   const pin = page.locator('[data-testid="reading-pane"] [data-testid="pin"]');
-  await expect(pin).toContainText('Épingler');
+  await expect(pin).toContainText('Pin');
   await expect(pin).toHaveAttribute('aria-pressed', 'false');
   await pin.click();
   // The button toggles, the pinned section opens at the top with ITS
-  // row — marked "Épinglé" — and the flow no longer shows it (D5:
+  // row — marked "Pinned" — and the flow no longer shows it (D5:
   // never the same conversation twice).
-  await expect(pin).toContainText('Désépingler');
+  await expect(pin).toContainText('Unpin');
   await expect(pin).toHaveAttribute('aria-pressed', 'true');
   const section = page.locator('[data-testid="pins"]');
   await expect(section.locator('[data-testid="row"]')).toHaveCount(1);
   await expect(section).toContainText(subject);
-  await expect(section.locator('[data-testid="chips-row"]')).toContainText('Épinglé');
+  await expect(section.locator('[data-testid="chips-row"]')).toContainText('Pinned');
   // Field finding (2026-08-21): the pinned row carries the SAME
   // DRAWING as the current mailbox's tile (nav, W2-D5) — same computed
   // background.
@@ -160,7 +160,7 @@ test('pinning puts the conversation at the top of the Inbox — one row, reversi
   ).toHaveCount(1);
   // Unpinning: the section closes, the row resumes its date slot in the flow.
   await pin.click();
-  await expect(pin).toContainText('Épingler');
+  await expect(pin).toContainText('Pin');
   await expect(section).toHaveCount(0);
   await expect(
     page.locator('[data-testid="row"]', { hasText: subject }),

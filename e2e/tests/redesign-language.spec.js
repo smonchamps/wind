@@ -16,7 +16,7 @@ let page;
 test.describe.configure({ mode: 'serial' });
 
 test.beforeAll(async () => {
-  ({ app, browser, page } = await launchAppV2());
+  ({ app, browser, page } = await launchAppV2({ lang: 'fr' }));
 });
 
 test.afterAll(async () => {
@@ -32,7 +32,7 @@ test('the fr and en catalogs carry exactly the same keys', () => {
 // tested by e2e/language.test.mjs.
 test('the pinned French system language is detected at the first launch', async () => {
   await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
-  await expect(page.locator('[data-testid="write"]')).toContainText('Écrire');
+  await expect(page.locator('[data-testid="write"]')).toContainText('Écrire'); // lang:fr
   await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
 });
 
@@ -66,11 +66,37 @@ test('reverting to French restores the exact forms of the prototype', async () =
   await page.locator('[data-testid="settings"]').click();
   await page.locator('[data-testid="settings-group"][data-group="affichage"]').click();
   await page.locator('[data-testid="display-language"]').selectOption('fr');
-  await expect(page.locator('[data-testid="settings-done"]')).toHaveText('Terminé');
+  await expect(page.locator('[data-testid="settings-done"]')).toHaveText('Terminé'); // lang:fr
   await page.locator('[data-testid="settings-done"]').click();
-  await expect(page.locator('[data-testid="write"]')).toContainText('Écrire');
-  await expect(page.locator('[data-testid="reading-pane"]')).toContainText('Sélectionnez un message pour le lire.');
+  await expect(page.locator('[data-testid="write"]')).toContainText('Écrire'); // lang:fr
+  await expect(page.locator('[data-testid="reading-pane"]')).toContainText('Sélectionnez un message pour le lire.'); // lang:fr
   await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
+});
+
+// R3 (RETOURS-13): the organized Inbox keeps the SHORT name. Only the
+// French catalogue can prove it — both English values read "Inbox", so
+// organized-mode.spec.js cannot (E6b, Chief Engineer decision D22).
+test('in French, the organized Inbox is named by its short form (R3)', async () => {
+  await page.locator('[data-testid="organized-mode"]').click();
+  await expect(page.locator('[data-testid="organized-mode"]')).toHaveAttribute('aria-checked', 'true');
+  const inbox = page.locator('[data-testid="nav-folder"][data-category="inbox"]');
+  await expect(inbox).toContainText('Réception'); // lang:fr
+  await expect(inbox).not.toContainText('Boîte de réception'); // lang:fr
+  await page.locator('[data-testid="organized-mode"]').click();
+});
+
+// The French plural of the catalogue (`list.nSelection`, two forms):
+// the English value has one form, so multi-select.spec.js cannot prove the
+// French one any more (E6b review).
+test('in French, the selection count agrees in number', async () => {
+  const checkbox = (i) => page.locator('[data-testid="row"]').nth(i).locator('[data-testid="row-checkbox"]');
+  await checkbox(0).click();
+  await expect(page.locator('[data-testid="bar-selection"]')).toContainText('1 sélectionné'); // lang:fr
+  await checkbox(1).click();
+  await expect(page.locator('[data-testid="bar-selection"]')).toContainText('2 sélectionnés'); // lang:fr
+  await checkbox(1).click();
+  await checkbox(0).click();
+  await expect(page.locator('[data-testid="bar-selection"]')).toHaveCount(0);
 });
 
 // D4 (E5b, 2026-09-03): English is the default of a REAL first launch —

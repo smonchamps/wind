@@ -64,7 +64,7 @@ test('grouped read marking via checkboxes: the badge drops — then unread raise
     await toCheck.first().click();
   }
   await page.locator('[data-testid="bar-read"]').click();
-  await expect(toast()).toContainText('marquées lues');
+  await expect(toast()).toContainText('marked as read');
   // The completed gesture clears the selection, and the nav states the new count.
   await expect(bar()).toHaveCount(0);
   await expect(badge).toHaveCount(0);
@@ -83,7 +83,7 @@ test('Ctrl-click checks AND moves the reading focus (field finding R1-1); Cancel
   await rows().nth(0).click({ modifiers: ['Control'] });
   // The list bar transforms (D3): the count + the actions.
   await expect(bar()).toBeVisible();
-  await expect(bar()).toContainText('1 sélectionné');
+  await expect(bar()).toContainText('1 selected');
   await expect(checked()).toHaveCount(1);
   // Field finding R1-1: the border AND the pane follow the Ctrl-clicked row.
   await expect(rows().nth(0)).toHaveClass(/chosen/);
@@ -93,11 +93,11 @@ test('Ctrl-click checks AND moves the reading focus (field finding R1-1); Cancel
   // Ctrl-click elsewhere adds — and the focus still follows; on a
   // checked one, it removes (toggle).
   await rows().nth(2).click({ modifiers: ['Control'] });
-  await expect(bar()).toContainText('2 sélectionnés');
+  await expect(bar()).toContainText('2 selected');
   await expect(rows().nth(2)).toHaveClass(/chosen/);
   await expect(rows().nth(0)).not.toHaveClass(/chosen/);
   await rows().nth(2).click({ modifiers: ['Control'] });
-  await expect(bar()).toContainText('1 sélectionné');
+  await expect(bar()).toContainText('1 selected');
   // Cancel returns the list to rest: title bar, zero boxes.
   await page.locator('[data-testid="bar-cancel"]').click();
   await expect(bar()).toHaveCount(0);
@@ -111,7 +111,7 @@ test('Shift-click extends from the selected row (field finding R1-2)', async () 
   // default, then Shift-click further down → the whole range checks).
   await rows().nth(0).click();
   await rows().nth(3).click({ modifiers: ['Shift'] });
-  await expect(bar()).toContainText('4 sélectionnés');
+  await expect(bar()).toContainText('4 selected');
   await expect(checked()).toHaveCount(4);
   await page.locator('[data-testid="bar-cancel"]').click();
   await expect(bar()).toHaveCount(0);
@@ -130,7 +130,7 @@ test("the checkbox lives on hover, checks without selecting, and the content mov
   await expect.poll(async () => opacity(checkboxOf(1))).toBe('1');
   await expect.poll(() => leftPad(1)).toBe('34px');
   await checkboxOf(1).click();
-  await expect(bar()).toContainText('1 sélectionné');
+  await expect(bar()).toContainText('1 selected');
   // The checkbox does not select: the border has not moved on this row.
   await expect(rows().nth(1)).not.toHaveClass(/chosen/);
   // As soon as a selection exists, ALL checkboxes show and ALL rows
@@ -159,7 +159,7 @@ test('a checked pinned row tints like the others (field finding R1-7)', async ()
   const pinned = page.locator('[data-testid="pins"] [data-testid="row"]').first();
   await expect(pinned).toBeVisible();
   await pinned.locator('[data-testid="row-checkbox"]').click();
-  await expect(bar()).toContainText('1 sélectionné');
+  await expect(bar()).toContainText('1 selected');
   expect(await pinned.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
     await selHue(),
   );
@@ -176,7 +176,7 @@ test('the "e" shortcut archives the checked BATCH (field finding R1-8)', async (
   await checkboxOf(2).click();
   await checkboxOf(3).click();
   await page.keyboard.press('e');
-  await expect(toast()).toContainText('2 conversations archivées');
+  await expect(toast()).toContainText('2 conversations archived');
   await expect(bar()).toHaveCount(0);
   await expect
     .poll(async () => {
@@ -202,7 +202,7 @@ test('grouped archive: one toast, threads leave WHOLE (D6)', async () => {
     window.__e2eLog = [];
   });
   await page.locator('[data-testid="bar-archive"]').click();
-  await expect(toast()).toContainText('2 conversations archivées');
+  await expect(toast()).toContainText('2 conversations archived');
   const gestures = await page.evaluate(() => {
     const commands = window.__e2eLog.map((entry) => entry.command);
     delete window.__e2eLog;
@@ -238,7 +238,7 @@ test('grouped delete: the rows join the trash', async () => {
   const departing = subjects[0].trim();
   await checkboxOf(0).click();
   await page.locator('[data-testid="bar-delete"]').click();
-  await expect(toast()).toContainText('supprimé');
+  await expect(toast()).toContainText('deleted');
   await expect
     .poll(async () => {
       const remaining = (await rows().locator('.subject').allTextContents()).map((s) => s.trim());

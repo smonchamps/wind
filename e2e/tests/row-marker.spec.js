@@ -41,7 +41,7 @@ test('the row spells out the mailbox in full — on every row (A80, D8)', async 
   await expect(blocks.first()).toBeVisible();
   const nRows = await page.locator('[data-testid="row"]').count();
   await expect(blocks).toHaveCount(nRows);
-  await expect(blocks.first().locator('.word')).toHaveText('sur');
+  await expect(blocks.first().locator('.word')).toHaveText('in');
   await expect(blocks.first().locator('.lbl')).toContainText('@');
   // D8: account without a marker — the block is there, the marker isn't.
   await expect(page.locator('[data-testid="row-mailbox"] .bare-marker')).toHaveCount(0);
@@ -69,7 +69,7 @@ test('the single-account view says nothing (D7) — list AND reading pane', asyn
   await expect(pane.locator('.mailbox')).toHaveCount(0);
 
   // Back to the unified mailbox for the rest of the suite.
-  await navMailbox('Toutes les boîtes').click();
+  await navMailbox('All inboxes').click();
   await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
 });
 
@@ -93,7 +93,7 @@ test('search says the mailbox even from a single-account view (D7 exception)', a
   // Back to the starting state: the suite is serial.
   await page.locator('[data-testid="search-field"]').press('Escape');
   await expect(page.locator('[data-testid="results"]')).toHaveCount(0);
-  await navMailbox('Toutes les boîtes').click();
+  await navMailbox('All inboxes').click();
   await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
 });
 
@@ -127,7 +127,7 @@ test('the reading pane says the mailbox, expanded card and collapsed row (D5)', 
   const pane = page.locator('[data-testid="reading-pane"]');
   const expanded = pane.locator('[data-testid="message-expanded"] .mailbox');
   await expect(expanded).toBeVisible();
-  await expect(expanded.locator('.word')).toHaveText('sur');
+  await expect(expanded.locator('.word')).toHaveText('in');
   await expect(expanded.locator('.lbl')).toHaveText('paul.merand@atelier-nord.fr');
   // The collapsed rows say it too — behind the name.
   await expect(pane.locator('[data-testid="message-collapsed"] .mailbox')).toHaveCount(2);
@@ -166,7 +166,7 @@ test('truncation protects the time and the name at the lower bound (D4, 300 px)'
   expect(block.width).toBeLessThanOrEqual(l1.width / 3 + 1);
 
   // AND nothing paints OVER the time. This is the guard for the bug
-  // found in review: with a min-width:0 on the block, "sur" and the
+  // found in review: with a min-width:0 on the block, the "in" word and the
   // marker (both flex:none) overflowed a block crushed to 0 px and
   // covered the time. The Sent folder is the worst case in the decor —
   // its column says "To: <address>", much longer than a name.

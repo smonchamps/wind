@@ -85,8 +85,8 @@ for (const name of Object.keys(docThemes)) {
 }
 
 // --- 2. The amendments log is present -----------------------
-if (!doc.includes('Journal des amendements')) {
-  failure('the "Journal des amendements" section is not found');
+if (!doc.includes('Journal des amendements')) { // lang:fr — the System's heading, English at E8
+  failure('the "Journal des amendements" section is not found'); // lang:fr
 }
 
 // --- 3. The CARDS' swatches say the shipped tokens -------------

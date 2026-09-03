@@ -122,10 +122,10 @@ test('a held drag never keeps more than two pages in flight (E1)', async () => {
   await expect(page.locator('[data-testid="row-pending"]')).toHaveCount(0, { timeout: 5000 });
 });
 
-test('the empty screen only asserts itself after proof — never "Aucun message ici." on a full mailbox (E2)', async () => {
+test('the empty screen only asserts itself after proof — never "No messages here." on a full mailbox (E2)', async () => {
   // Transport HELD: page 0 of the folder being opened does not
   // answer. The screen must SHOW the wait — not assert an emptiness
-  // it has not proven (the field bug's lie: "Aucun message ici." in
+  // it has not proven (the field bug's lie: "No messages here." in
   // every folder while the queue drained).
   const list = page.locator('[data-testid="list"]');
   try {
@@ -135,10 +135,10 @@ test('the empty screen only asserts itself after proof — never "Aucun message 
       });
     });
     await folder('inbox').click();
-    await expect(page.locator('[data-testid="list-title"]')).toHaveText('Boîte de réception');
+    await expect(page.locator('[data-testid="list-title"]')).toHaveText('Inbox');
     // During the flight: never the empty message, the wait shows.
     await expect(page.locator('[data-testid="row-pending"]').first()).toBeVisible();
-    await expect(list).not.toContainText('Aucun message ici.');
+    await expect(list).not.toContainText('No messages here.');
   } finally {
     // Release NO MATTER WHAT: the suite is serial — a hold that
     // survived the test would freeze every following one.

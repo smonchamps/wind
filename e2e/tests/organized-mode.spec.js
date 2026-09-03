@@ -39,7 +39,7 @@ test('classic mode is intact: toggle off, nav at the six folders', async () => {
   await expect(page.locator('[data-testid="nav-folder"][data-category="feed"]')).toHaveCount(0);
   // R3/R12 (RETOURS-13): in classic, the long label and no net.
   await expect(page.locator('[data-testid="nav-folder"][data-category="inbox"]'))
-    .toContainText('Boîte de réception');
+    .toContainText('Inbox');
   await expect(page.locator('[data-testid="nav-separator"]')).toHaveCount(0);
 });
 
@@ -48,10 +48,9 @@ test('the toggle recomposes the nav, the Feed serves the routed senders, and the
   await expect(page.locator('[data-testid="organized-mode"]')).toHaveAttribute('aria-checked', 'true');
   await expect(page.locator('[data-testid="nav-folder"]')).toHaveCount(10);
   // R3/R12 (RETOURS-13): in organized mode the Inbox is called
-  // "Réception", and a net separates the 5 organized folders from the rest.
+  // "Inbox" (the English catalogue names both the same; the French short form R3 is proven by redesign-language.spec.js), and a net separates the 5 organized folders from the rest.
   const inboxRank = page.locator('[data-testid="nav-folder"][data-category="inbox"]');
-  await expect(inboxRank).toContainText('Réception');
-  await expect(inboxRank).not.toContainText('Boîte de réception');
+  await expect(inboxRank).toContainText('Inbox');
   await expect(page.locator('[data-testid="nav-separator"]')).toHaveCount(1);
 
   // The Feed before any routing: nothing — the filter is real, not a
@@ -91,13 +90,13 @@ test('the toggle recomposes the nav, the Feed serves the routed senders, and the
   // "Unread" section.
   await expect(page.locator('[data-testid="feed-title"] svg')).toHaveCount(1);
   await expect(page.locator('[data-testid="feed"]'))
-    .toContainText("Tous vos emails d'information sont regroupés ici.");
+    .toContainText('All your informational emails are gathered here.');
   await expect(page.locator('[data-testid="feed"]'))
-    .toContainText('Il vous suffit de les faire défiler pour les lire.');
+    .toContainText('Just scroll through them to read.');
   await expect(page.locator('[data-testid="feed-section-unread"]')).toBeVisible();
   await expect(
     page.frameLocator('[data-testid="feed-card"] iframe').first().locator('body'),
-  ).toContainText('contenu de démonstration');
+  ).toContainText('contenu de démonstration'); // lang:fr
   // The fold (Chief Engineer finding): folding replaces the body with
   // the preview, unfolding renders it again.
   const first = page.locator('[data-testid="feed-card"]').first();
@@ -107,7 +106,7 @@ test('the toggle recomposes the nav, the Feed serves the routed senders, and the
   await expect(first.locator('iframe')).toHaveCount(1);
   // …the Paper trail stays empty (the destination really filters)…
   await page.locator('[data-testid="nav-folder"][data-category="paper_trail"]').click();
-  await expect(page.locator('[data-testid="status"]')).toContainText('Registre');
+  await expect(page.locator('[data-testid="status"]')).toContainText('Paper trail');
   await expect(page.locator('[data-testid="row"]')).toHaveCount(0);
   // …and the ORGANIZED Inbox no longer shows them (E2: a thread
   // routed elsewhere lives in ITS OWN view — the shared exclusion of
@@ -116,7 +115,7 @@ test('the toggle recomposes the nav, the Feed serves the routed senders, and the
   await page.locator('[data-testid="nav-folder"][data-category="inbox"]').click();
   // The empty state is ASSERTED ("Aucun message ici.") — never a
   // zero count while the page is still loading.
-  await expect(page.locator('[data-testid="list"]')).toContainText('Aucun message ici.');
+  await expect(page.locator('[data-testid="list"]')).toContainText('No messages here.');
   await expect(page.locator('[data-testid="row"]')).toHaveCount(0);
 });
 
@@ -132,7 +131,7 @@ test('"Move to…" routes the WHOLE sender — the ⋯ of the cards and the thre
   await card.hover();
   await card.locator('[data-testid="feed-gestures"]').click();
   await page.locator('[data-testid="feed-to-paper_trail"]').click();
-  await expect(page.locator('[data-testid="toast"]')).toContainText('Registre');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Paper trail');
   await page.locator('[data-testid="nav-folder"][data-category="paper_trail"]').click();
   // RETOURS-14 R6 (D7): the Paper trail is GROUPED by sender — the
   // group unfolds, the thread opens from its rows.
@@ -174,7 +173,7 @@ test('cards read down to the bottom group by sender — "Read previously"', asyn
   // Field finding C5: the "Unread" title STAYS, the check mark says all read.
   await expect(page.locator('[data-testid="feed-section-unread"]')).toBeVisible();
   await expect(page.locator('[data-testid="feed-all-read"]'))
-    .toContainText('Vous avez lu toutes les nouvelles actualités de votre Kiosque.');
+    .toContainText('You have read all the new stories in your Feed.');
   // Folded by default: no card on screen, groups by sender sorted
   // alphabetically.
   await expect(page.locator('[data-testid="feed-card"]')).toHaveCount(0);
@@ -214,27 +213,27 @@ test("an unknown who writes waits at the Screener — the organized Inbox doesn'
   });
   injectArrival({
     email: 'principal@exemple.fr', sender: 'expediteur2@exemple.fr',
-    name: 'Alice Martin', subject: 'Suite du dossier',
+    name: 'Alice Martin', subject: 'Suite du dossier', // lang:fr
   });
   await page.reload();
   await expect(page.locator('[data-testid="organized-mode"]')).toHaveAttribute('aria-checked', 'true');
   // The known sender arrives in the Inbox; the unknown one is NOT there.
-  await expect(page.locator('[data-testid="row"]', { hasText: 'Suite du dossier' })).toHaveCount(1);
+  await expect(page.locator('[data-testid="row"]', { hasText: 'Suite du dossier' })).toHaveCount(1); // lang:fr
   await expect(page.locator('[data-testid="row"]', { hasText: 'Premiere fois' })).toHaveCount(0);
   // The Screener's badge counts ITS message.
   const screenerRank = page.locator('[data-testid="nav-folder"][data-category="screener"]');
-  await expect(screenerRank).toContainText('Portier');
+  await expect(screenerRank).toContainText('Screener');
   await expect(screenerRank).toContainText('1');
   // The desk: a rank at the rows' format, the address in plain text.
   await screenerRank.click();
-  await expect(page.locator('[data-testid="screener"]')).toContainText('Voulez-vous recevoir leurs messages ?');
+  await expect(page.locator('[data-testid="screener"]')).toContainText('Do you want to receive their messages?');
   // R4/R7 (RETOURS-13): the screener glyph tops the title, the
   // subtitle carries the three Chief Engineer sentences word for word.
   await expect(page.locator('[data-testid="screener-title"] svg')).toHaveCount(1);
   await expect(page.locator('[data-testid="screener"]'))
-    .toContainText('Les autorisez-vous à vous contacter ?');
+    .toContainText('Do you allow them to contact you?');
   await expect(page.locator('[data-testid="screener"]'))
-    .toContainText('Les expéditeurs ne seront jamais informés de votre décision.');
+    .toContainText('Senders will never be told of your decision.');
   const rank = page.locator('[data-testid="screener-rank"]');
   await expect(rank).toHaveCount(1);
   await expect(rank).toContainText('Nouvelle Venue');
@@ -244,11 +243,11 @@ test("an unknown who writes waits at the Screener — the organized Inbox doesn'
 
 test("the bare Yes returns the sender to the Inbox, the desk empties", async () => {
   await page.locator('[data-testid="screener-yes"]').click();
-  await expect(page.locator('[data-testid="toast"]')).toContainText('peut vous écrire');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('can write to you');
   await expect(page.locator('[data-testid="screener-empty"]')).toBeVisible();
   // R6 (RETOURS-13): the empty history, the Chief Engineer text word for word.
   await expect(page.locator('[data-testid="screener"]'))
-    .toContainText("Vous n'avez écarté aucun expéditeur pour le moment.");
+    .toContainText('You have not screened out any senders yet.');
   await page.locator('[data-testid="nav-folder"][data-category="inbox"]').click();
   await expect(page.locator('[data-testid="row"]', { hasText: 'Premiere fois' })).toHaveCount(1);
 });
@@ -265,15 +264,15 @@ test('the No with a rule screens out, the history says so, "Reinstate" returns t
   // The No's mini ⋯ sets the rule — "Archived automatically".
   await page.locator('[data-testid="screener-mini-no"]').click();
   await page.locator('[data-testid="screener-rule-archive"]').click();
-  await expect(page.locator('[data-testid="toast"]')).toContainText('archiveront automatiquement');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('will be archived automatically');
   await expect(page.locator('[data-testid="screener-empty"]')).toBeVisible();
   const history = page.locator('[data-testid="screener-history"]');
   await expect(history).toHaveCount(1);
   await expect(history).toContainText('promo@exemple.fr');
-  await expect(history).toContainText('archivage automatique');
+  await expect(history).toContainText('archived automatically');
   // "Reinstate" undoes the verdict: the unknown sender RE-waits at the desk.
   await page.locator('[data-testid="screener-reinstate"]').click();
-  await expect(page.locator('[data-testid="toast"]')).toContainText('réintégré');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('reinstated');
   await expect(page.locator('[data-testid="screener-rank"]')).toHaveCount(1);
   await expect(page.locator('[data-testid="screener-rank"]')).toContainText('promo@exemple.fr');
 });
@@ -300,7 +299,7 @@ test("the No rule runs on arrival — and never touches mail earlier than the ve
   await page.locator('[data-testid="nav-folder"][data-category="screener"]').click();
   await page.locator('[data-testid="screener-mini-no"]').click();
   await page.locator('[data-testid="screener-rule-trash"]').click();
-  await expect(page.locator('[data-testid="toast"]')).toContainText('iront à la Corbeille');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('will go to the Trash');
   // The verdict is timestamped to the SECOND: an arrival within the
   // same second counts as earlier ("> verdict", an accepted limit) —
   // we let the boundary pass before injecting.
@@ -341,9 +340,9 @@ test("the bare No sends to the Trash — the shipped default, said by the toast 
   await page.locator('[data-testid="nav-folder"][data-category="screener"]').click();
   await expect(page.locator('[data-testid="screener-rank"]')).toContainText('temoin@exemple.fr');
   await page.locator('[data-testid="screener-no"]').click();
-  await expect(page.locator('[data-testid="toast"]')).toContainText('iront à la Corbeille');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('will go to the Trash');
   await expect(page.locator('[data-testid="screener-history"]', { hasText: 'temoin@exemple.fr' }))
-    .toContainText('suppression automatique');
+    .toContainText('deleted automatically');
   // We undo it: temoin re-waits, the serial chain's state is restored.
   await page.locator('[data-testid="screener-history"]', { hasText: 'temoin@exemple.fr' })
     .locator('[data-testid="screener-reinstate"]').click();
@@ -364,7 +363,7 @@ test('Settings > Screener sets the defaults — the bare click obeys, persistenc
   // The bare Yes click follows the set default: temoin goes to the Feed.
   await page.locator('[data-testid="nav-folder"][data-category="screener"]').click();
   await page.locator('[data-testid="screener-yes"]').click();
-  await expect(page.locator('[data-testid="toast"]')).toContainText('vont vers le Kiosque');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('go to the Feed');
   // Persistence is in the DATABASE: a full reload re-reads the
   // defaults from the core.
   await page.reload();
@@ -389,8 +388,8 @@ test('the organized Inbox has its sections, opens at screen 03, and a read threa
   // and the reading pane does not exist here.
   const sections = page.locator('[data-testid="section"]');
   await expect(sections).toHaveCount(2);
-  await expect(sections.first()).toContainText('Nouveau pour vous ·');
-  await expect(sections.last()).toContainText('Déjà consulté');
+  await expect(sections.first()).toContainText('New for you ·');
+  await expect(sections.last()).toContainText('Previously seen');
   // `reading-pane`: the REAL testid of the pane (E5 review — "lecture"
   // does not exist, the assertion was vacant by construction).
   await expect(page.locator('[data-testid="reading-pane"]')).toHaveCount(0);
@@ -403,18 +402,18 @@ test('the organized Inbox has its sections, opens at screen 03, and a read threa
   await expect(page.locator('[data-testid="conversation"]')).toBeVisible();
   await page.locator('[data-testid="back-to-mailbox"]').click();
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
-  await expect(sections.first()).toContainText(`Nouveau pour vous · ${n - 1}`);
+  await expect(sections.first()).toContainText(`New for you · ${n - 1}`);
 });
 
 test("a row's ⋯ moves the sender — left of the time, without shifting the geometry", async () => {
-  const rank = page.locator('[data-testid="row"]', { hasText: 'Suite du dossier' });
+  const rank = page.locator('[data-testid="row"]', { hasText: 'Suite du dossier' }); // lang:fr
   await expect(rank).toHaveCount(1);
   await rank.locator('[data-testid="row-gestures"]').click();
   await page.locator('[data-testid="gestures-feed"]').click();
-  await expect(page.locator('[data-testid="toast"]')).toContainText('Kiosque');
-  await expect(page.locator('[data-testid="row"]', { hasText: 'Suite du dossier' })).toHaveCount(0);
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Feed');
+  await expect(page.locator('[data-testid="row"]', { hasText: 'Suite du dossier' })).toHaveCount(0); // lang:fr
   await page.locator('[data-testid="nav-folder"][data-category="feed"]').click();
-  await expect(page.locator('[data-testid="feed-card"]', { hasText: 'Suite du dossier' })).toHaveCount(1);
+  await expect(page.locator('[data-testid="feed-card"]', { hasText: 'Suite du dossier' })).toHaveCount(1); // lang:fr
   await page.locator('[data-testid="nav-folder"][data-category="inbox"]').click();
   // Fixture restored (E5 review): the verdict set by THIS test is
   // cleared — the following tests inherit a full Inbox, never a Feed
@@ -428,7 +427,7 @@ test("a row's ⋯ moves the sender — left of the time, without shifting the ge
   // through a LUCKY reload of the probe (a lucky net).
   await page.locator('[data-testid="nav-folder"][data-category="feed"]').click();
   await page.locator('[data-testid="nav-folder"][data-category="inbox"]').click();
-  await expect(page.locator('[data-testid="row"]', { hasText: 'Suite du dossier' })).toHaveCount(1);
+  await expect(page.locator('[data-testid="row"]', { hasText: 'Suite du dossier' })).toHaveCount(1); // lang:fr
 });
 
 // ------------------------- E5 — Set aside -------------------------
@@ -437,7 +436,7 @@ test('set aside: the thread leaves the list, lives in the pile, and "Done" retur
   await expect(rank).toHaveCount(1);
   await rank.locator('[data-testid="row-gestures"]').click();
   await page.locator('[data-testid="gestures-aside"]').click();
-  await expect(page.locator('[data-testid="toast"]')).toContainText('Mis de côté');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Set aside');
   await expect(page.locator('[data-testid="row"]', { hasText: 'Premiere fois' })).toHaveCount(0);
   // The pile, at the bottom right: the count, the fan, the board.
   const pile = page.locator('[data-testid="pile-button"]');
@@ -451,7 +450,7 @@ test('set aside: the thread leaves the list, lives in the pile, and "Done" retur
   await expect(page.locator('[data-testid="pile-board-card"]')).toContainText('Premiere fois');
   // "Done" sends the message back where it came from — the pile empties.
   await page.locator('[data-testid="pile-finish"]').click();
-  await expect(page.locator('[data-testid="toast"]')).toContainText('Repris');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Brought back');
   await expect(page.locator('[data-testid="pile-board"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="row"]', { hasText: 'Premiere fois' })).toHaveCount(1);
   await expect(page.locator('[data-testid="pile-button"]')).toHaveCount(0);
@@ -461,19 +460,19 @@ test('the thread bar toggles "Set aside" / "Resume"', async () => {
   await page.locator('[data-testid="row"]', { hasText: 'Premiere fois' }).click();
   await expect(page.locator('[data-testid="conversation"]')).toBeVisible();
   const toggle = page.locator('[data-testid="put-aside"]');
-  await expect(toggle).toContainText('Mettre de côté');
+  await expect(toggle).toContainText('Set aside');
   await toggle.click();
   // The thread has just left its view: the screen goes back to the mailbox.
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="row"]', { hasText: 'Premiere fois' })).toHaveCount(0);
   // Resuming from the fan: the card opens screen 03, the bar says
-  // "Resume", the gesture returns the thread to the Inbox.
+  // "Bring back", the gesture returns the thread to the Inbox.
   await page.locator('[data-testid="pile-button"]').click();
   await page.locator('[data-testid="pile-card"]').click();
   await expect(page.locator('[data-testid="conversation"]')).toBeVisible();
-  await expect(page.locator('[data-testid="put-aside"]')).toContainText('Reprendre');
+  await expect(page.locator('[data-testid="put-aside"]')).toContainText('Bring back');
   await page.locator('[data-testid="put-aside"]').click();
-  await expect(page.locator('[data-testid="toast"]')).toContainText('Repris');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Brought back');
   await page.locator('[data-testid="back-to-mailbox"]').click();
   await expect(page.locator('[data-testid="row"]', { hasText: 'Premiere fois' })).toHaveCount(1);
 });

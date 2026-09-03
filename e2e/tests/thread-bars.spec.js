@@ -23,7 +23,7 @@ test.afterAll(async () => {
 });
 
 test('pane: the sort bar is stuck under the header, the reply bar floats at the bottom of the message', async () => {
-  await page.locator('[data-testid="row"]', { hasText: 'Relecture du contrat Vantis' }).click();
+  await page.locator('[data-testid="row"]', { hasText: 'Relecture du contrat Vantis' }).click(); // lang:fr
   const bar = page.locator('[data-testid="bar-thread"]');
   await expect(bar).toBeVisible();
   // The last message's card renders AFTER the bar (body served):
