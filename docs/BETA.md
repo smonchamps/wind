@@ -1,141 +1,134 @@
-# Wind — guide du bêta-testeur
+# Wind — beta tester guide
 
-Merci de tester Wind. Ce guide couvre l'installation, les deux
-avertissements que vous pouvez rencontrer (ils sont attendus, et
-expliqués honnêtement), et la façon de donner un retour.
+Thank you for testing Wind. This guide covers installation, the two
+warnings you may run into (they are expected, and honestly explained),
+and how to give feedback.
 
-Wind est un client email Windows : rapide, sobre, local. Vos messages
-restent sur votre machine ; l'application ne contacte que vos
-fournisseurs de messagerie et la page des mises à jour. Aucune
-télémétrie réseau.
+Wind is a Windows email client: fast, sober, local. Your messages stay
+on your machine; the application only contacts your email providers
+and the update page. No network telemetry.
 
-## 1. Installer
+## 1. Install
 
-1. Ouvrez la page des versions :
+1. Open the releases page:
    <https://github.com/smonchamps/wind/releases/latest>
-2. Téléchargez l'installeur qui correspond à votre machine :
-   - `Wind_<version>_x64-setup.exe` — PC Intel/AMD (le cas le plus
-     courant) ;
-   - `Wind_<version>_arm64-setup.exe` — PC ARM (Surface Pro X,
-     Copilot+ à puce Snapdragon…).
-   En cas de doute : Paramètres Windows > Système > Informations
-   système, ligne « Type du système ».
-3. Lancez l'installeur et suivez-le.
+2. Download the installer that matches your machine:
+   - `Wind_<version>_x64-setup.exe` — Intel/AMD PC (the most common
+     case);
+   - `Wind_<version>_arm64-setup.exe` — ARM PC (Surface Pro X,
+     Snapdragon-based Copilot+ PCs…).
+   If in doubt: Windows Settings > System > About, "System type" line.
+3. Run the installer and follow it.
 
-### Si Windows affiche « Windows a protégé votre ordinateur »
+### If Windows shows "Windows protected your PC"
 
-C'est SmartScreen : Wind n'est pas encore signé par un certificat
-commercial (la validation de l'émetteur est en cours — elle est
-fermée hors USA/Canada à ce jour, nous attendons son ouverture).
-Cliquez « Informations complémentaires » puis « Exécuter quand même ».
+This is SmartScreen: Wind isn't signed by a commercial certificate yet
+(publisher validation is under way — it's currently closed outside
+the USA/Canada, and we're waiting for it to open). Click "More info"
+then "Run anyway".
 
-### Si l'installation est refusée sans recours
+### If the installation is refused with no way around it
 
-Sur certains PC récents, **Smart App Control** (Paramètres > Sécurité
-Windows > Contrôle des applications et du navigateur) bloque les
-programmes non signés **sans proposer de passer outre** — et son
-verdict peut varier d'une version de Wind à l'autre. C'est la
-limitation connue n° 1 de cette bêta. Si cela vous arrive :
-**dites-le-nous** (voir §5) — c'est un retour précieux, pas une
-fausse manœuvre de votre part. Nous ne vous demanderons jamais de
-désactiver Smart App Control (sa désactivation est définitive et
-c'est une protection réelle).
+On some recent PCs, **Smart App Control** (Windows Security Settings >
+App & browser control) blocks unsigned programs **without offering a
+way to override it** — and its verdict can vary from one Wind version
+to another. This is known limitation #1 of this beta. If this happens
+to you: **tell us** (see §5) — it's valuable feedback, not a mistake
+on your part. We will never ask you to disable Smart App Control (it
+can't be turned back on once disabled, and it's a real protection).
 
-## 2. Connecter votre boîte
+## 2. Connect your mailbox
 
-Au premier lancement, Wind vous guide en cinq étapes : compte,
-disposition, thème, un mot sur la bêta (et le bouton « Feedback » de
-l'entête), récapitulatif.
+On first launch, Wind guides you through five steps: account, layout,
+theme, a word about the beta (and the "Feedback" button in the
+header), summary.
 
-### Gmail : l'écran « Google n'a pas validé cette application »
+### Gmail: the "Google hasn't verified this app" screen
 
-La vérification de Wind par Google est un audit long (plusieurs
-mois), en cours. D'ici là, Google affiche un écran d'avertissement au
-moment de connecter un compte Gmail. Pour continuer : « Paramètres
-avancés » puis « Accéder à Wind (non sécurisé) ». Ce que Wind fait de
-cet accès : lire et envoyer VOS emails depuis VOTRE machine, rien
-d'autre — aucun serveur tiers ne voit vos identifiants ni vos
-messages ; le jeton d'accès reste chiffré sur votre poste.
+Google's verification of Wind is a lengthy audit (several months),
+currently under way. Until it's done, Google shows a warning screen
+when you connect a Gmail account. To continue: "Advanced" then "Go to
+Wind (unsafe)". What Wind does with this access: read and send YOUR
+emails from YOUR machine, nothing else — no third-party server ever
+sees your credentials or your messages; the access token stays
+encrypted on your machine.
 
-Outlook/Hotmail et les comptes IMAP classiques se connectent sans cet
-écran.
+Outlook/Hotmail and standard IMAP accounts connect without this
+screen.
 
-## 3. Le mode « Organisé » — ce qu'on aimerait que vous essayiez
+## 3. The "Organized" mode — what we'd like you to try
 
-En haut de la fenêtre, à droite de la recherche, une bascule
-**« Organisé »**. C'est la nouveauté de cette bêta, et le point sur
-lequel votre retour nous intéresse le plus.
+At the top of the window, to the right of the search box, an
+**"Organized"** toggle. This is the novelty of this beta, and the
+point we're most interested in your feedback on.
 
-Activée, elle ouvre trois destinations au lieu d'une, et un endroit
-où vous décidez :
+Turned on, it opens three destinations instead of one, and a place
+where you decide:
 
-- **Réception** — ce qui vous est écrit personnellement, et rien
-  d'autre ;
-- **Kiosque** — ce que vous y envoyez : infolettres et courrier
-  d'information, en cartes qu'on fait défiler ;
-- **Registre** — les envois qui se consultent plutôt qu'ils ne se
-  lisent (reçus, alertes, confirmations), groupés par expéditeur ;
-- **Portier** — les expéditeurs qui vous écrivent pour la première
-  fois. Ils ne sont jamais informés de votre décision.
+- **Inbox** — what's written to you personally, and nothing else;
+- **Feed** — what you subscribed to: newsletters and informational
+  mail, in cards you scroll through;
+- **Paper trail** — sends that are meant to be checked rather than
+  read (receipts, alerts, confirmations), grouped by sender;
+- **Screener** — senders writing to you for the first time. They are
+  never told about your decision.
 
-Ce n'est pas un tri automatique : **c'est vous qui rangez**, un
-expéditeur à la fois, une seule fois — Wind applique ensuite votre
-décision à tout ce qu'il envoie. Trois choses à savoir avant
-d'essayer :
+This isn't an automatic sort: **you're the one who sorts**, one
+sender at a time, once — Wind then applies your decision to
+everything they send afterward. Three things to know before you try
+it:
 
-1. **Le « Non » du Portier agit chez votre fournisseur.** Par défaut,
-   les messages qui arrivent ENSUITE de cet expéditeur partent **à la
-   corbeille de votre boîte** (jamais une suppression définitive ; ce
-   qui est déjà arrivé n'est pas touché).
-   Vous pouvez choisir une autre règle au moment de décider
-   (indésirable, archivage, ou « Écartés sans déplacer », qui ne
-   touche à rien), et changer le défaut dans Réglages > Portier. Le
-   « Oui » et les trois destinations, eux, ne déplacent rien : ce sont
-   des vues de Wind, vos dossiers Gmail ou Outlook restent intacts.
-2. **Le Portier ne regarde que les arrivées.** Il ne juge pas votre
-   boîte d'hier : seuls les nouveaux expéditeurs, à partir du moment
-   où vous activez le mode, passent devant lui.
-3. **Tant que vous n'avez pas tranché**, le courrier en attente reste
-   visible dans votre fil, marqué « En attente au Portier » — rien ne
-   disparaît sans votre décision.
+1. **The Screener's "No" acts at your provider.** By default, messages
+   arriving from that sender AFTERWARD go **to your mailbox's trash**
+   (never a permanent deletion; what already arrived is untouched).
+   You can choose a different rule at the moment you decide (junk,
+   archiving, or "Screened out without moving", which touches
+   nothing), and change the default in Settings > Screener. "Yes" and
+   the three destinations, on the other hand, move nothing: they are
+   views within Wind, your Gmail or Outlook folders stay untouched.
+2. **The Screener only looks at new arrivals.** It doesn't judge your
+   mailbox's past: only new senders, from the moment you turn the mode
+   on, go through it.
+3. **Until you've decided**, pending mail stays visible in your
+   thread, marked "Awaiting the Screener" — nothing disappears
+   without your decision.
 
-La bascule se rend dans l'autre sens à tout moment, et vos décisions
-sont conservées (Réglages > Portier les liste, et permet de les
-changer). Dites-nous ce qui vous a manqué, ce qui a été mal rangé, et
-si vous avez gardé le mode allumé — ce dernier point est celui qui
-nous apprend le plus.
+The toggle can be switched back at any time, and your decisions are
+kept (Settings > Screener lists them, and lets you change them). Tell
+us what you missed, what was sorted wrong, and whether you kept the
+mode on — that last point is what teaches us the most.
 
-## 4. Les mises à jour
+## 4. Updates
 
-Automatiques et signées : Wind vérifie au lancement, installe sur
-votre accord, redémarre. Vous pouvez vérifier à la main dans
-Réglages > À propos. Si une mise à jour échoue (Smart App Control,
-encore lui), Wind vous le dit et vous laisse réessayer — signalez-le.
+Automatic and signed: Wind checks on launch, installs with your
+consent, restarts. You can check manually in Settings > About. If an
+update fails (Smart App Control, again), Wind tells you and lets you
+retry — please report it.
 
-## 5. Donner un retour
+## 5. Giving feedback
 
-**Cliquez le bouton « Feedback », en haut à droite de la fenêtre** :
-écrivez votre message, il part par email depuis votre compte, avec la
-version de Wind. (Si Wind lui-même est bloqué — installation refusée,
-par exemple — écrivez directement à <feedback-wind@fcts.io>.)
+**Click the "Feedback" button, at the top right of the window**: write
+your message, it's sent by email from your account, along with Wind's
+version. (If Wind itself is blocked — installation refused, for
+example — write directly to <feedback-wind@fcts.io>.)
 
-Tout compte : un bug, une lenteur, un texte pas clair, un geste qui
-vous manque, une habitude de votre client actuel que Wind casse.
-Chaque retour est lu et instruit.
+Everything counts: a bug, slowness, unclear text, a gesture you miss,
+a habit from your current client that Wind breaks. Every piece of
+feedback is read and acted on.
 
-Le retour le plus utile tient en trois lignes :
+The most useful feedback fits in three lines:
 
-1. **Ce que vous faisiez** (le geste, l'écran).
-2. **Ce que vous attendiez.**
-3. **Ce qui s'est passé** (avec l'heure, si c'est une lenteur).
+1. **What you were doing** (the gesture, the screen).
+2. **What you expected.**
+3. **What happened** (with the time, if it's about slowness).
 
-La version installée se lit dans Réglages > À propos — mentionnez-la.
+The installed version is shown in Settings > About — mention it.
 
-## 6. Ce que la bêta n'est pas encore
+## 6. What the beta isn't yet
 
-- Pas de signature commerciale de l'installeur (les avertissements du
-  §1 — en attente de l'ouverture de la validation d'émetteur).
-- Windows seulement, pas de version web ni mobile.
-- Le rattrapage complet d'une très grosse boîte (des centaines de
-  milliers de messages) s'étale sur les premières heures d'usage — la
-  recherche gagne en profondeur à mesure.
+- No commercial signature on the installer (the warnings of §1 —
+  pending the opening of publisher validation).
+- Windows only, no web or mobile version.
+- Fully catching up a very large mailbox (hundreds of thousands of
+  messages) spreads over the first hours of use — search gets deeper
+  as it goes.
