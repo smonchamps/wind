@@ -9,7 +9,7 @@
 // checks every path (A18: one assertion, plus one promise).
 //
 //   d        stroked paths (stroke currentColor)
-//   disque   [cx, cy, r] — the state disc (--marque), UNIQUE to the set
+//   disque   [cx, cy, r] — the state disc (--brand), UNIQUE to the set
 //            (mark_email_unread: that is its function)
 //   barre    the only legitimate colored element (format_color_text)
 //   pleins   [cx, cy, r] solid discs in ink (currentColor)
@@ -45,10 +45,10 @@ export const SET = {
   unfold_less: { d:['M7 5l5 5 5-5','M7 19l5-5 5 5'] },
   download: { d:['M12 4v10','M8 11l4 4 4-4','M4 19h16'] },
   system_update_alt: { d:['M4 4h16v3H4z','M12 9v8','M8 14l4 4 4-4','M4 21h16'] },
-  tri_ancien: { d:['M4 6h10','M4 11h7','M4 16h4','M18 19V6','M15 9l3-3 3 3'] },
-  tri_az: { d:['M4 10l3-6 3 6','M5 8h4','M4 14h6l-6 6h6','M18 5v13','M15 15l3 3 3-3'] },
-  tri_recent: { d:['M4 6h10','M4 11h7','M4 16h4','M18 5v13','M15 15l3 3 3-3'] },
-  tri_za: { d:['M4 4h6l-6 6h6','M4 20l3-6 3 6','M5 18h4','M18 5v13','M15 15l3 3 3-3'] },
+  sort_oldest: { d:['M4 6h10','M4 11h7','M4 16h4','M18 19V6','M15 9l3-3 3 3'] },
+  sort_az: { d:['M4 10l3-6 3 6','M5 8h4','M4 14h6l-6 6h6','M18 5v13','M15 15l3 3 3-3'] },
+  sort_newest: { d:['M4 6h10','M4 11h7','M4 16h4','M18 5v13','M15 15l3 3 3-3'] },
+  sort_za: { d:['M4 4h6l-6 6h6','M4 20l3-6 3 6','M5 18h4','M18 5v13','M15 15l3 3 3-3'] },
   visibility_off: { d:['M3 12l4-4h10l4 4-4 4H7z','M4 4l16 16'] },
   arrow_back: { d:['M20 12H4','M10 6l-6 6 6 6'] },
   close: { d:['M5 5l14 14','M19 5L5 19'] },

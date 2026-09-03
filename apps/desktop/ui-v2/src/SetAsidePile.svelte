@@ -138,7 +138,7 @@
   .pile-visuel { position:relative; width:52px; height:38px; }
   .pile-visuel span {
     position:absolute; left:0; right:0; height:30px;
-    background:var(--tuile); border:1px solid var(--border);
+    background:var(--tile); border:1px solid var(--border);
   }
   .pile-visuel span:nth-child(1) { top:8px; transform:rotate(-3deg); }
   .pile-visuel span:nth-child(2) { top:4px; transform:rotate(2deg); }
@@ -159,7 +159,7 @@
   .carte-e {
     display:flex; flex-direction:column; gap:2px; padding:10px 14px;
     border:none; border-top:1px solid var(--border); cursor:pointer;
-    text-align:left; background:var(--tuile); color:var(--tuileInk);
+    text-align:left; background:var(--tile); color:var(--tileInk);
   }
   .carte-e:hover { filter:brightness(0.97); }
   .carte-e .o {

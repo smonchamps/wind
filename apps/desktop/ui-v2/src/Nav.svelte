@@ -7,7 +7,7 @@
   // folders, then “Mailboxes”: All mailboxes + one row per REAL
   // account — the “Work / Personal” fiction does not exist; `person`
   // icon (decision D7), label = address. The CURRENT mailbox takes
-  // the event tile's drawing (--tuile/--tuileInk, W2-D5).
+  // the event tile's drawing (--tile/--tileInk, W2-D5).
   import Icon from './Icon.svelte';
   import { activation } from './lib/keyboard.js';
   import { mailboxLabelKey } from './lib/organized.svelte.js';
@@ -151,11 +151,11 @@
      (too low), the pure baseline made it look too high. The
      mechanics: align-items:baseline requires the SVG to keep its
      default vertical-align (the global `middle` of `.ic`,
-     systeme.css, is overridden below), and the drop is a transform —
+     system.css, is overridden below), and the drop is a transform —
      outside the geometry, the rows do not move. */
   .rang {
     display:flex; align-items:baseline; gap:10px; flex:none;
-    padding:8px 10px; border-radius:var(--r-controle); cursor:pointer;
+    padding:8px 10px; border-radius:var(--r-control); cursor:pointer;
     border:1px solid transparent;
   }
   .icone :global(.ic), .icone-tuile :global(.ic),
@@ -190,11 +190,11 @@
   }
   .tuile {
     display:flex; align-items:baseline; gap:10px; flex:none;
-    padding:9px 12px; border-radius:var(--r-controle); cursor:pointer;
-    background:var(--tuile); color:var(--tuileInk);
+    padding:9px 12px; border-radius:var(--r-control); cursor:pointer;
+    background:var(--tile); color:var(--tileInk);
     border:1px solid var(--border);
   }
-  .icone-tuile { color:var(--tuileInk); }
+  .icone-tuile { color:var(--tileInk); }
   .titre-tuile {
     font-size:13px; font-weight:600; min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;

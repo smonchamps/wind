@@ -1,12 +1,12 @@
 // Gate de cohérence du Système (PLAN-DC E3, décision DC-D6) : le
 // document normatif (docs/design/systeme.dc.html) ne doit jamais
-// dériver des valeurs livrées (apps/desktop/ui-v2/src/systeme.css).
+// dériver des valeurs livrées (apps/desktop/ui-v2/src/system.css).
 //
 //   node coherence-systeme.mjs   -> écarts nommés + verdict
 //
 // Vérifications :
 //   1. La table du contrat des jetons (cellules data-theme/data-jeton)
-//      égale les :root de systeme.css, VALEUR POUR VALEUR, dans les
+//      égale les :root de system.css, VALEUR POUR VALEUR, dans les
 //      deux sens — un jeton du CSS absent du doc est un échec autant
 //      qu'une valeur fausse, et une cellule orpheline (jeton mort au
 //      CSS) autant qu'une cellule manquante.
@@ -28,7 +28,7 @@ import { lireThemes, lireReperes, NOMBRE_ATTENDU } from './jetons.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const css = readFileSync(
-  path.join(root, 'apps', 'desktop', 'ui-v2', 'src', 'systeme.css'),
+  path.join(root, 'apps', 'desktop', 'ui-v2', 'src', 'system.css'),
   'utf8',
 );
 const doc = readFileSync(
@@ -42,13 +42,13 @@ const echec = (message) => {
   console.log(`ECHEC ${message}`);
 };
 
-// --- 1. Les jetons : systeme.css d'un côté… --------------------------
+// --- 1. Les jetons : system.css d'un côté… --------------------------
 // Le parseur partagé des deux gates (jetons.mjs — né à la revue d'A42,
 // après deux corrections du même bogue en deux exemplaires) ; le
 // plancher NOMBRE_ATTENDU ferme le silence d'un bloc non reconnu.
 const themesCss = lireThemes(css);
 if (Object.keys(themesCss).length !== NOMBRE_ATTENDU) {
-  echec(`${Object.keys(themesCss).length} thème(s) extraits de systeme.css — ${NOMBRE_ATTENDU} attendus (jetons.mjs) : un bloc échappe au motif, ou la table a changé sans amender le plancher`);
+  echec(`${Object.keys(themesCss).length} thème(s) extraits de system.css — ${NOMBRE_ATTENDU} attendus (jetons.mjs) : un bloc échappe au motif, ou la table a changé sans amender le plancher`);
 }
 
 // --- …la table du contrat du doc de l'autre --------------------------
@@ -74,13 +74,13 @@ for (const [nom, jetonsCss] of Object.entries(themesCss)) {
   }
   for (const jeton of Object.keys(jetonsDoc)) {
     if (!(jeton in jetonsCss)) {
-      echec(`${nom} · --${jeton} : au doc mais mort dans systeme.css`);
+      echec(`${nom} · --${jeton} : au doc mais mort dans system.css`);
     }
   }
 }
 for (const nom of Object.keys(themesDoc)) {
   if (!(nom in themesCss)) {
-    echec(`thème « ${nom} » : au doc mais absent de systeme.css (thème fantôme — DC-D5)`);
+    echec(`thème « ${nom} » : au doc mais absent de system.css (thème fantôme — DC-D5)`);
   }
 }
 
@@ -103,7 +103,7 @@ for (const [, id, brut] of fiches) {
   const pastilles = [...brut.matchAll(/'([^']+)'/g)].map(([, v]) => v);
   const jetons = themesCss[id];
   if (!jetons) {
-    echec(`fiche « ${id} » : au sélecteur mais absente de systeme.css`);
+    echec(`fiche « ${id} » : au sélecteur mais absente de system.css`);
     continue;
   }
   ROLES_PASTILLES.forEach((role, i) => {
@@ -132,7 +132,7 @@ for (const langue of ['fr', 'en']) {
   }
   for (const id of ids) {
     if (!themesCss[id]) {
-      echec(`catalogue.${langue} : theme.${id}.nom sans thème livré dans systeme.css`);
+      echec(`catalogue.${langue} : theme.${id}.nom sans thème livré dans system.css`);
     }
   }
 }
@@ -144,7 +144,7 @@ for (const langue of ['fr', 'en']) {
 // `scrollbar-color` fait retomber l'élément sur le chemin classique et
 // lui rend ~15 px de gouttière — la régression est silencieuse à
 // l'œil des tests. Les commentaires sont retirés avant l'examen (le
-// commentaire d'A44 dans systeme.css nomme précisément ces règles).
+// commentaire d'A44 dans system.css nomme précisément ces règles).
 const srcUi = path.join(root, 'apps', 'desktop', 'ui-v2', 'src');
 const fichiersUi = (dossier) =>
   readdirSync(dossier, { withFileTypes: true }).flatMap((e) =>
@@ -170,7 +170,7 @@ for (const fichier of fichiersUi(srcUi)) {
 // --- 6. Le jeu dédié des repères : UNE liste, quatre porteurs --------
 // (PLAN-RETOURS-8, revue 2026-08-22) : l'allowlist Rust (commands.rs,
 // elle fait foi à l'écriture), lib/reperes.js (ce que l'UI propose),
-// les teintes de systeme.css (ce qui se dessine) et les catalogues
+// les teintes de system.css (ce qui se dessine) et les catalogues
 // (libellés). Une dérive = un repère proposé mais refusé, ou stocké
 // mais rendu sans couleur — toujours en silence.
 const commandsRs = readFileSync(
@@ -209,7 +209,7 @@ compareListes('teinte', teintesRust, 'wire.rs', listeJs('MARKER_HUES'), 'lib/mar
 const teintesCss = [
   ...new Set([...css.matchAll(/\.repere\[data-teinte="([a-z]+)"\]/g)].map(([, v]) => v)),
 ];
-compareListes('teinte', teintesRust, 'wire.rs', teintesCss, 'systeme.css');
+compareListes('teinte', teintesRust, 'wire.rs', teintesCss, 'system.css');
 // A82 : le repère se dessine désormais de DEUX façons — la pastille des
 // Réglages (background) et le TRACÉ de la nav et de la ligne (color).
 // Contrôler la seule table de pastilles laisserait une teinte oubliée du
@@ -220,7 +220,7 @@ compareListes('teinte', teintesRust, 'wire.rs', teintesCss, 'systeme.css');
 const teintesTrace = [
   ...new Set([...css.matchAll(/\.repere-nu\[data-teinte="([a-z]+)"\]/g)].map(([, v]) => v)),
 ];
-compareListes('teinte du tracé', teintesRust, 'wire.rs', teintesTrace, 'systeme.css (.repere-nu)');
+compareListes('teinte du tracé', teintesRust, 'wire.rs', teintesTrace, 'system.css (.repere-nu)');
 // Et les jetons eux-mêmes : depuis A82 les 24 hex vivent en --mk-<hue>,
 // une table par polarité. Un jeton manquant rendrait `color:var(--mk-x)`
 // sans valeur — le glyphe retomberait sur l'encre courante, en silence.
@@ -232,7 +232,7 @@ for (const [polarite, nuit] of [['clair', false], ['nuit', true]]) {
   const jetons = new Set(Object.keys(lireReperes(css, { nuit })));
   for (const teinte of teintesRust) {
     if (!jetons.has(teinte)) {
-      echec(`systeme.css : le jeton --mk-${teinte} manque en polarité ${polarite} (A82) — le tracé de ce repère n'aurait pas de couleur`);
+      echec(`system.css : le jeton --mk-${teinte} manque en polarité ${polarite} (A82) — le tracé de ce repère n'aurait pas de couleur`);
     }
   }
 }
@@ -321,23 +321,23 @@ for (const fichier of srcJsUi(srcUi)) {
 // Les drapeaux `repere:true` du catalogue sont la CINQUIÈME liste du
 // jeu dédié (revue PLAN-ELEMENTS) : sans cette comparaison, un glyphe
 // qui entre ou sort du jeu au catalogue sans les quatre autres
-// porteurs (commands.rs, lib/reperes.js, systeme.css, catalogues)
+// porteurs (commands.rs, lib/reperes.js, system.css, catalogues)
 // dériverait en silence.
 const reperesCatalogue = [...iconesJs.matchAll(/^ {2}([a-z_0-9]+): *\{[^\n]*\bmarker:true/gm)]
   .map(([, n]) => n);
 compareListes('icône', iconesRust, 'commands.rs', reperesCatalogue, 'lib/icons.js (marker:true)');
 
 // --- 8. Zéro rayon : plus un littéral de border-radius (V14) ---------
-// Les trois jetons de forme (--r-surface, --r-controle, --r-tuile)
+// Les trois jetons de forme (--r-surface, --r-control, --r-tile)
 // valent 0 et vivent sur `html` (pas :root — le contrat des jetons de
 // couleur ne s'en gonfle pas). Restent DEUX formes rondes qui disent
 // quelque chose : le disque (50 % — l'état, l'identité, la poignée
 // d'interrupteur) et la pilule de la piste d'interrupteur (999px).
 // Tout autre littéral est un écart — le rembobinage de V14 tient en
 // une ligne PARCE QUE tout passe par les jetons.
-for (const jeton of ['--r-surface', '--r-controle', '--r-tuile']) {
+for (const jeton of ['--r-surface', '--r-control', '--r-tile']) {
   if (!new RegExp(`html\\s*\\{[^}]*${jeton}:0`).test(css)) {
-    echec(`systeme.css : le jeton de forme ${jeton}:0 manque sur html (V14)`);
+    echec(`system.css : le jeton de forme ${jeton}:0 manque sur html (V14)`);
   }
 }
 for (const fichier of fichiersUi(srcUi)) {
@@ -347,7 +347,7 @@ for (const fichier of fichiersUi(srcUi)) {
     .replace(/^\s*\/\/.*$/gm, '');
   for (const [brut, valeur] of source.matchAll(/border-radius:\s*([^;}]+)/g)) {
     const v = valeur.trim();
-    if (v === 'var(--r-surface)' || v === 'var(--r-controle)' || v === 'var(--r-tuile)'
+    if (v === 'var(--r-surface)' || v === 'var(--r-control)' || v === 'var(--r-tile)'
       || v === '50%' || v === '999px'
       // L'exception déclarée et permanente (V14) : la marque en tuile
       // garde son rayon de PLATEFORME (15/64) — c'est l'OS qui le dicte.

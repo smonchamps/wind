@@ -504,7 +504,7 @@
   .nu {
     height:26px; padding:0 9px; display:inline-flex; align-items:center;
     gap:6px; font-size:12px; color:var(--ink2); background:none;
-    border:1px solid transparent; border-radius:var(--r-controle); cursor:pointer;
+    border:1px solid transparent; border-radius:var(--r-control); cursor:pointer;
     white-space:nowrap;
   }
   .nu:hover { background:var(--sel); }

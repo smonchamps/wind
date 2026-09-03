@@ -1242,7 +1242,7 @@
     height:32px; width:32px; padding:0; display:inline-flex;
     align-items:center; justify-content:center; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); cursor:pointer;
+    border-radius:var(--r-control); cursor:pointer;
   }
   .fermer:hover { background:var(--sel); }
 
@@ -1265,7 +1265,7 @@
      center via its line-height, the icon hooks onto it. */
   .rang {
     display:flex; align-items:baseline; gap:10px; height:36px; flex:none;
-    padding:0 12px; border-radius:var(--r-controle); cursor:pointer;
+    padding:0 12px; border-radius:var(--r-control); cursor:pointer;
     border:1px solid transparent;
   }
   .rang:hover { background:var(--sel); border-color:var(--border); }
@@ -1303,7 +1303,7 @@
   .rangee.active:hover { background:var(--surface); }
   .pastilles { display:flex; gap:5px; flex:none; }
   .pastille {
-    width:22px; height:22px; border-radius:var(--r-controle);
+    width:22px; height:22px; border-radius:var(--r-control);
     border:1px solid var(--border);
   }
   .libelles {
@@ -1336,7 +1336,7 @@
     min-width:0; overflow:hidden; padding:2px 6px; margin:0 -6px;
     font-size:13px; text-align:left; color:var(--ink);
     background:transparent; border:1px solid transparent;
-    border-radius:var(--r-controle); cursor:pointer;
+    border-radius:var(--r-control); cursor:pointer;
   }
   .identite:hover { background:var(--sel); border-color:var(--border); }
   .identite .nom-compte, .identite .adresse {
@@ -1350,14 +1350,14 @@
   .champ-nom {
     height:32px; padding:0 10px; font-size:13px; color:var(--ink);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle);
+    border-radius:var(--r-control);
   }
   .champ-nom:focus { border-color:var(--accent); outline:none; }
   .ajouter {
     height:32px; padding:0 16px; align-self:flex-start; display:inline-flex;
     align-items:center; gap:8px; font-size:13px; color:var(--ink);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); cursor:pointer;
+    border-radius:var(--r-control); cursor:pointer;
   }
   .ajouter:hover { background:var(--sel); }
 
@@ -1374,7 +1374,7 @@
     height:28px; padding:0 12px; flex:none; display:inline-flex;
     align-items:center; font-size:12.5px; font-weight:600;
     color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:var(--r-controle); cursor:pointer;
+    border:1px solid var(--border); border-radius:var(--r-control); cursor:pointer;
     white-space:nowrap;
   }
   .reconnecter:hover:not(:disabled) { background:var(--sel); }
@@ -1388,14 +1388,14 @@
     height:28px; padding:0 10px; margin-left:auto; flex:none;
     display:inline-flex; align-items:center; font-size:12.5px;
     white-space:nowrap; color:var(--muted); background:transparent;
-    border:1px solid transparent; border-radius:var(--r-controle); cursor:pointer;
+    border:1px solid transparent; border-radius:var(--r-control); cursor:pointer;
   }
   .btn-horizon:hover { color:var(--ink); background:var(--sel); border-color:var(--border); }
   .compte:has(.deconnecte) .btn-horizon { margin-left:0; }
   .select-horizon {
     height:32px; font-size:13px; padding:0 10px; align-self:flex-start;
     min-width:200px; color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:var(--r-controle);
+    border:1px solid var(--border); border-radius:var(--r-control);
     outline:none; cursor:pointer;
   }
   .note-horizon { margin:0; font-size:12px; line-height:1.5; color:var(--muted); }
@@ -1412,7 +1412,7 @@
     display:inline-flex; align-items:center; justify-content:center;
     gap:6px; font-size:12.5px; white-space:nowrap;
     color:var(--muted); background:transparent;
-    border:1px solid transparent; border-radius:var(--r-controle); cursor:pointer;
+    border:1px solid transparent; border-radius:var(--r-control); cursor:pointer;
   }
   .retirer:hover {
     color:var(--alert); background:var(--sel); border-color:var(--border);
@@ -1431,7 +1431,7 @@
     height:28px; width:28px; padding:0; flex:none;
     display:inline-flex; align-items:center; justify-content:center;
     background:transparent; border:1px solid transparent;
-    border-radius:var(--r-controle); cursor:pointer;
+    border-radius:var(--r-control); cursor:pointer;
   }
   .btn-repere:hover { background:var(--sel); border-color:var(--border); }
   .titre-repere { margin:0; font-size:13px; font-weight:600; color:var(--ink); }
@@ -1440,7 +1440,7 @@
     height:32px; width:32px; padding:0; display:inline-flex;
     align-items:center; justify-content:center; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); cursor:pointer;
+    border-radius:var(--r-control); cursor:pointer;
   }
   .choix:hover { background:var(--sel); }
   .choix.choisi { border-color:var(--accent); background:var(--sel); }
@@ -1453,7 +1453,7 @@
     height:32px; padding:0 16px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; font-weight:600; color:var(--onAccent);
     background:var(--alert); border:1px solid var(--alert);
-    border-radius:var(--r-controle); cursor:pointer;
+    border-radius:var(--r-control); cursor:pointer;
   }
   .danger:disabled { opacity:.6; cursor:default; }
   .tete-ajout { display:flex; align-items:center; gap:14px; }
@@ -1490,7 +1490,7 @@
   .langue {
     height:32px; padding:0 10px; flex:none; font:inherit; font-size:13px;
     color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:var(--r-controle); cursor:pointer;
+    border:1px solid var(--border); border-radius:var(--r-control); cursor:pointer;
   }
   .langue option { background:var(--surface); color:var(--ink); }
 
@@ -1512,7 +1512,7 @@
   .recherche-decisions input {
     width:100%; height:32px; padding:0 12px; font-size:13px;
     color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:var(--r-controle);
+    border:1px solid var(--border); border-radius:var(--r-control);
   }
   .recherche-decisions input:focus-visible {
     outline:2px solid var(--accent); outline-offset:-1px;
@@ -1532,7 +1532,7 @@
     min-width:44px; padding:3px 8px; text-align:center; flex:none;
     font-family:inherit; font-size:12px; font-weight:600; color:var(--ink);
     background:var(--bg); border:1px solid var(--border);
-    border-bottom-width:2px; border-radius:var(--r-controle);
+    border-bottom-width:2px; border-radius:var(--r-control);
   }
   .geste { color:var(--ink2); }
   .note {
@@ -1541,7 +1541,7 @@
   }
 
   /* About: key / value, no invented form. */
-  /* The shared band (.marque-bande, systeme.css) — here with its
+  /* The shared band (.marque-bande, system.css) — here with its
      own clearance. */
   .apropos-bande { padding:2px 0 6px; }
   .ligne-apropos {
@@ -1571,7 +1571,7 @@
   }
   .bloc-signature {
     display:flex; flex-direction:column; gap:10px; padding:12px 16px;
-    border:1px solid var(--border); border-radius:var(--r-controle);
+    border:1px solid var(--border); border-radius:var(--r-control);
   }
   .adresse-signature {
     display:flex; align-items:center; gap:8px;
@@ -1583,13 +1583,13 @@
     height:32px; min-width:32px; padding:0 6px; display:inline-flex;
     align-items:center; justify-content:center; color:var(--ink2);
     background:var(--surface); cursor:pointer;
-    border:1px solid var(--border); border-radius:var(--r-controle);
+    border:1px solid var(--border); border-radius:var(--r-control);
   }
   .bouton-format:hover { background:var(--sel); color:var(--ink); }
   .editeur-signature {
     min-height:72px; padding:10px 12px; font-size:13px; line-height:1.6;
     color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:var(--r-controle); outline:none;
+    border:1px solid var(--border); border-radius:var(--r-control); outline:none;
     overflow-wrap:break-word;
   }
   .editeur-signature:focus { border-color:var(--accent); }
@@ -1607,7 +1607,7 @@
     height:32px; padding:0 16px; margin-left:auto; display:inline-flex;
     align-items:center; gap:8px; font-size:13px; font-weight:600;
     color:var(--onAccent); background:var(--accent);
-    border:1px solid var(--accent); border-radius:var(--r-controle); cursor:pointer;
+    border:1px solid var(--accent); border-radius:var(--r-control); cursor:pointer;
   }
   .principal:hover { background:var(--accentH); border-color:var(--accentH); }
 </style>

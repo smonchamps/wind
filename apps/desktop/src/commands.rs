@@ -4996,7 +4996,7 @@ const MARKER_ICONS: [&str; 12] = [
 ];
 
 /// The measured swatch table (D1): 12 families, whose TWO variants
-/// (light / night) live in `systeme.css` — here only the family name is
+/// (light / night) live in `system.css` — here only the family name is
 /// stored, never a hex value.
 pub(crate) const MARKER_HUES: [&str; 12] = [
     "rouge", "orange", "ocre", "olive", "vert", "sapin", "bleu", "indigo", "violet", "magenta",

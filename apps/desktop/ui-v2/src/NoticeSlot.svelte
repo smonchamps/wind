@@ -38,7 +38,7 @@
   button {
     height:32px; padding:0 16px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:var(--r-controle); cursor:pointer;
+    border:1px solid var(--border); border-radius:var(--r-control); cursor:pointer;
     flex:none;
   }
   button:hover { background:var(--sel); }

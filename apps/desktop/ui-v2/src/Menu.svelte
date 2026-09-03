@@ -102,14 +102,14 @@
   .menu {
     position:fixed; z-index:30; padding:6px; display:flex; flex-direction:column;
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); box-shadow:var(--shadow);
+    border-radius:var(--r-control); box-shadow:var(--shadow);
   }
   .menu.absolu { position:absolute; top:calc(100% + 6px); left:0; }
   .menu :global(button[role^="menuitem"]) {
     display:flex; align-items:center; gap:10px; width:100%;
     height:32px; padding:0 8px; font-size:13px; color:var(--ink);
     background:none; border:1px solid transparent;
-    border-radius:var(--r-controle); cursor:pointer; text-align:left;
+    border-radius:var(--r-control); cursor:pointer; text-align:left;
     white-space:nowrap;
   }
   .menu :global(button[role^="menuitem"]:hover),

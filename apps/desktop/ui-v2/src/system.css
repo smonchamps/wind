@@ -7,7 +7,7 @@
    --panel is dead (V3): the
    background is the SOLE ground, the 1 px net alone carries the
    separation — its pairs are MEASURED (e2e/contraste.mjs, threshold =
-   the net that Clarity shipped). --marque is the EXACT teal of the
+   the net that Clarity shipped). --brand is the EXACT teal of the
    icon set (V1): COMPONENT only (3:1), never text — the ink that
    reads is --accent, same hue, minimum lightness (remedy A8).
    BRAND colors frozen OUTSIDE the themes and outside the table (W-D3,
@@ -27,8 +27,8 @@
    Rewinding V14 fits in one line: put back 10px / 6px / 2px. */
 html {
   --r-surface:0;
-  --r-controle:0;
-  --r-tuile:0;
+  --r-control:0;
+  --r-tile:0;
 }
 
 :root {
@@ -36,8 +36,8 @@ html {
   --bg:#F3F2EE; --surface:#FFFFFF;
   --ink:#191D1E; --ink2:#565C5E; --muted:#606668;
   --border:#CBC8BB; --accent:#1A7A7A; --accentH:#14625E;
-  --marque:#1F8A8A; --sel:#DDE9E6; --hover:#EAE8E1;
-  --tuile:#F2EDE3; --tuileInk:#4A4436;
+  --brand:#1F8A8A; --sel:#DDE9E6; --hover:#EAE8E1;
+  --tile:#F2EDE3; --tileInk:#4A4436;
   --alert:#C42D24; --onAccent:#FFFFFF;
   --shadow:0 2px 8px rgba(25,29,30,0.08); --scrim:rgba(25,29,30,0.28);
 }
@@ -46,8 +46,8 @@ html {
   --bg:#0D100F; --surface:#171B1A;
   --ink:#ECEDEA; --ink2:#B4BAB8; --muted:#98A0A1;
   --border:#333B3A; --accent:#3FA39C; --accentH:#55B7B0;
-  --marque:#3FA39C; --sel:#1E322F; --hover:#141817;
-  --tuile:#241F17; --tuileInk:#DFCFAE;
+  --brand:#3FA39C; --sel:#1E322F; --hover:#141817;
+  --tile:#241F17; --tileInk:#DFCFAE;
   --alert:#EA9A90; --onAccent:#06211F;
   --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
 }
@@ -62,8 +62,8 @@ html {
   --bg:#F4F0F1; --surface:#FFFFFF;
   --ink:#1D181A; --ink2:#59484E; --muted:#5F4C53;
   --border:#CDBFC4; --accent:#AD204C; --accentH:#8E1A3E;
-  --marque:#AD204C; --sel:#F4DCE4; --hover:#ECE3E5;
-  --tuile:#EFDFE4; --tuileInk:#54333F;
+  --brand:#AD204C; --sel:#F4DCE4; --hover:#ECE3E5;
+  --tile:#EFDFE4; --tileInk:#54333F;
   --alert:#B02A21; --onAccent:#FFFFFF;
   --shadow:0 2px 8px rgba(29,24,26,0.08); --scrim:rgba(29,24,26,0.28);
 }
@@ -74,8 +74,8 @@ html {
   --bg:#151012; --surface:#1E171A;
   --ink:#EEEAEC; --ink2:#BCB1B6; --muted:#A2969C;
   --border:#3E3339; --accent:#E58BA4; --accentH:#EFA5B9;
-  --marque:#E58BA4; --sel:#3A2029; --hover:#191316;
-  --tuile:#2C2126; --tuileInk:#DFC9D1;
+  --brand:#E58BA4; --sel:#3A2029; --hover:#191316;
+  --tile:#2C2126; --tileInk:#DFC9D1;
   --alert:#EF9C93; --onAccent:#33101B;
   --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
 }
@@ -84,7 +84,7 @@ html {
    and served as inline SVG (Icon.svelte, lib/icons.js) — Material
    Symbols and its vendored subset are dead, and with them the
    product's last font dependency. The ink is currentColor;
-   the state disc and the brand flap take --marque. The
+   the state disc and the brand flap take --brand. The
    size is set by the attribute (16 by default); a smaller context
    fixes it in CSS (width/height on .ic), which takes precedence. */
 .ic { flex:none; vertical-align:middle; }
@@ -92,18 +92,18 @@ html {
    (field verdict): the `reply` glyph, flipped. */
 .ic.miroir { transform:scaleX(-1); }
 
-/* V2/V4 — the disc / ring pair: the 9 px solid --marque disc
+/* V2/V4 — the disc / ring pair: the 9 px solid --brand disc
    says the state (unread row, status bar at rest); the HOLLOW ring
    of the same diameter (2 px wall, open top quarter) says an
    action is spinning. It is not one more shape: it is the same object.
    A52 holds: the percentage lives in the TEXT, never here. */
 .disque {
   width:9px; height:9px; border-radius:50%;
-  background:var(--marque); flex:none;
+  background:var(--brand); flex:none;
 }
 .anneau {
   width:9px; height:9px; border-radius:50%; flex:none;
-  border:2px solid var(--marque); border-top-color:transparent;
+  border:2px solid var(--brand); border-top-color:transparent;
   animation:tourne 1s linear infinite;
 }
 @keyframes tourne { to { transform:rotate(360deg); } }

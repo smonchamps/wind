@@ -1104,7 +1104,7 @@
   {:else if center}
     <!-- RETOURS-14 R2 (D2/D3): the organized Inbox takes the mode's
          normalized header (shared .entete-vue classes from
-         systeme.css, the Feed/Screener pattern R7/R11) — title alone
+         system.css, the Feed/Screener pattern R7/R11) — title alone
          (D2), no generic banner nor tabs (D3, further down). -->
     <header class="tete-organisee" data-testid="liste-titre">
       <h2 class="display entete-vue" data-testid="reception-titre">
@@ -1251,7 +1251,7 @@
         <div class="l1">
           <!-- V4: unread is said by the 9 px dot AND the font weight
                (A8 — never color alone); the pinned row carries the
-               keep mark on its --tuile ground (A73). -->
+               keep mark on its --tile ground (A73). -->
           {#if line.thread_unseen > 0}<span class="disque"></span>{/if}
           {#if pinned}<span class="marque-epingle" aria-hidden="true"><Icon name="keep" size={14} /></span>{/if}
           <span class="exp">{#if toSend(line)}{t('list.dest', { a: contact(line) })}{:else}{line.sender}{/if}</span>
@@ -1605,7 +1605,7 @@
     align-self:center; margin:12px 0 20px; height:32px; padding:0 18px;
     display:inline-flex; align-items:center; font-size:13px; font-weight:600;
     color:var(--ink); background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); cursor:pointer;
+    border-radius:var(--r-control); cursor:pointer;
   }
   .charger-plus:hover { background:var(--sel); }
   .charger-plus:disabled { opacity:.6; cursor:default; }
@@ -1640,10 +1640,10 @@
   .ligne.tuilee { grid-template-columns:auto 1fr; column-gap:10px; }
   .avatar {
     grid-row:1 / span 3; width:28px; height:28px;
-    border-radius:var(--r-tuile);
-    background:var(--tuile); border:1px solid var(--border);
+    border-radius:var(--r-tile);
+    background:var(--tile); border:1px solid var(--border);
     display:grid; place-items:center;
-    font-size:11px; font-weight:600; color:var(--tuileInk);
+    font-size:11px; font-weight:600; color:var(--tileInk);
   }
   .l1, .objet, .apercu, .puces { grid-column:1; min-width:0; }
   .tuilee .l1, .tuilee .objet, .tuilee .apercu, .tuilee .puces { grid-column:2; }
@@ -1657,7 +1657,7 @@
     display:inline-flex; align-items:center; gap:5px; height:24px;
     padding:0 9px; font-size:12px; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); white-space:nowrap;
+    border-radius:var(--r-control); white-space:nowrap;
   }
   .puce :global(.ic) { width:14px; height:14px; }
   /* R10: the invitation gestures of the rank — the chip that ACTS. */
@@ -1680,7 +1680,7 @@
   /* R1: the CHECKED row takes the selection tint, without the
      outline (the outline stays the reading position — two ideas, two
      drawings). Field verdict 2026-08-27 (R1-7): PINNED rows take it
-     TOO — the checkbox is the only state that displaces A73's --tuile
+     TOO — the checkbox is the only state that displaces A73's --tile
      ground, because it precedes a bulk gesture: what the eye doesn't
      count can leave by surprise. */
   .ligne.cochee { background:var(--sel); }
@@ -1702,7 +1702,7 @@
     width:16px; height:16px; padding:0;
     display:inline-flex; align-items:center; justify-content:center;
     background:var(--bg); border:1px solid var(--border);
-    border-radius:var(--r-controle); color:var(--accent);
+    border-radius:var(--r-control); color:var(--accent);
     cursor:pointer; opacity:0;
   }
   .ligne:hover .case,
@@ -1719,48 +1719,48 @@
     flex:none; width:32px; height:32px; padding:0;
     display:inline-flex; align-items:center; justify-content:center;
     background:none; border:1px solid transparent;
-    border-radius:var(--r-controle); color:var(--ink2); cursor:pointer;
+    border-radius:var(--r-control); color:var(--ink2); cursor:pointer;
   }
   /* Hover in --sel: the token of the header's grammar (.btn-tiroir,
      .btn-statut) — never a second convention (review). */
   .btn-barre:hover:not(:disabled) { background:var(--sel); color:var(--ink); }
   .btn-barre:disabled { opacity:.55; cursor:default; }
   /* A73, field 2026-08-21: the PINNED row takes the drawing of the
-     current mailbox's tile (nav, W2-D5) — --tuile background,
-     --tuileInk ink (pair already measured by the gate): it stands out
+     current mailbox's tile (nav, W2-D5) — --tile background,
+     --tileInk ink (pair already measured by the gate): it stands out
      from the stream at first glance. The tint holds through hover
      (the tile has no hover state); the selection keeps its accent
      outline. */
   .epingles .ligne,
   .epingles .ligne:hover,
-  .epingles .ligne.choisie { background:var(--tuile); }
+  .epingles .ligne.choisie { background:var(--tile); }
   .epingles .ligne.choisie { border-left-color:var(--accent); }
   /* Field verdict 2026-08-27 (R1-7): the CHECKBOX displaces the
-     --tuile ground — declared AFTER the block above to also win on a
+     --tile ground — declared AFTER the block above to also win on a
      row that is both chosen and checked (same specificity, order
      decides). */
   .epingles .ligne.cochee { background:var(--sel); }
   .epingles .ligne .exp,
   .epingles .ligne .objet,
   .epingles .ligne .apercu,
-  .epingles .ligne .heure { color:var(--tuileInk); }
+  .epingles .ligne .heure { color:var(--tileInk); }
   /* A73 holds for the WHOLE row: the mailbox block (A80) takes the
      warm ink like its neighbors — without this rule it kept its two
-     cold grays (--ink2/--muted) on the --tuile ground, the only cold
+     cold grays (--ink2/--muted) on the --tile ground, the only cold
      island in the row (review). The drawing, itself, keeps the
-     account's hue: that is its identity, and its pair on --tuile is
+     account's hue: that is its identity, and its pair on --tile is
      measured. */
   .epingles .ligne :global(.boite),
   .epingles .ligne :global(.boite .mot),
-  .epingles .ligne :global(.boite .lib) { color:var(--tuileInk); }
+  .epingles .ligne :global(.boite .lib) { color:var(--tileInk); }
   /* A80 — the header row: gap 6 (the mailbox block adds two gutters;
      at 10 the row lost 12 px for nothing). THE TRUNCATION ORDER IS
      THE DESIGN: the time never gives way (flex:none), the block
-     (.boite, systeme.css) gives way three times faster than the
+     (.boite, system.css) gives way three times faster than the
      sender, the spacer absorbs the slack. */
   .l1 { display:flex; align-items:baseline; gap:6px; }
   .l1 :global(.disque), .l1 .marque-epingle { align-self:center; }
-  .marque-epingle { color:var(--tuileInk); display:inline-flex; }
+  .marque-epingle { color:var(--tileInk); display:inline-flex; }
   .exp {
     font-size:14px; color:var(--ink); flex:0 1 auto; min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
@@ -1796,7 +1796,7 @@
   }
   .onglet {
     height:32px; padding:0 14px; display:inline-flex; align-items:center;
-    gap:8px; font-size:13px; border-radius:var(--r-controle); cursor:pointer;
+    gap:8px; font-size:13px; border-radius:var(--r-control); cursor:pointer;
     color:var(--ink2); background:var(--surface);
     border:1px solid var(--border);
   }

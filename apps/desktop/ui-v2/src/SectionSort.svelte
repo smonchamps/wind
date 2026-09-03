@@ -14,10 +14,10 @@
   let { value = 'date-desc', onchange = () => {} } = $props();
 
   const SORTS = [
-    { id: 'date-desc', label: 'sort.dateDesc', icon: 'tri_recent' },
-    { id: 'date-asc', label: 'sort.dateAsc', icon: 'tri_ancien' },
-    { id: 'alpha-az', label: 'sort.alphaAz', icon: 'tri_az' },
-    { id: 'alpha-za', label: 'sort.alphaZa', icon: 'tri_za' },
+    { id: 'date-desc', label: 'sort.dateDesc', icon: 'sort_newest' },
+    { id: 'date-asc', label: 'sort.dateAsc', icon: 'sort_oldest' },
+    { id: 'alpha-az', label: 'sort.alphaAz', icon: 'sort_az' },
+    { id: 'alpha-za', label: 'sort.alphaZa', icon: 'sort_za' },
   ];
   const current = $derived(SORTS.find((x) => x.id === value) ?? SORTS[0]);
 
@@ -60,11 +60,11 @@
 <style>
   /* The exact drawing of the thread's bare button (“Expand all”) —
      copied here for lack of a global class; if a third copy appears,
-     promote it to systeme.css (.entete-vue pattern). */
+     promote it to system.css (.entete-vue pattern). */
   .nu {
     height:26px; padding:0 9px; display:inline-flex; align-items:center;
     gap:6px; font-size:12px; color:var(--ink2); background:none;
-    border:1px solid transparent; border-radius:var(--r-controle); cursor:pointer;
+    border:1px solid transparent; border-radius:var(--r-control); cursor:pointer;
     white-space:nowrap; flex:none;
   }
   .nu:hover, .nu[aria-expanded="true"] { background:var(--sel); }

@@ -33,7 +33,7 @@ function components(inv, which) {
 }
 
 // The date tile: abbreviated month + day number — the card's visual
-// marker, drawn in --tuile/--tuileInk (the current mailbox's pair).
+// marker, drawn in --tile/--tileInk (the current mailbox's pair).
 export function invitationTile(inv) {
   const start = components(inv, 'start');
   if (!start) return null;

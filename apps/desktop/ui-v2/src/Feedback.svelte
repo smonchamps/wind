@@ -131,7 +131,7 @@
     height:32px; width:32px; padding:0; display:inline-flex;
     align-items:center; justify-content:center; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); cursor:pointer;
+    border-radius:var(--r-control); cursor:pointer;
   }
   .fermer:hover { background:var(--sel); }
   .sous { margin:0; font-size:12px; line-height:1.5; color:var(--muted); }
@@ -139,13 +139,13 @@
     resize:vertical; min-height:110px; padding:10px 12px;
     font:inherit; font-size:13px; color:var(--ink);
     background:var(--bg); border:1px solid var(--border);
-    border-radius:var(--r-controle);
+    border-radius:var(--r-control);
   }
   textarea:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   .pied { display:flex; justify-content:flex-end; gap:8px; }
   .secondaire, .principal {
     height:32px; padding:0 14px; font-size:13px; cursor:pointer;
-    border-radius:var(--r-controle);
+    border-radius:var(--r-control);
   }
   .secondaire {
     color:var(--ink); background:var(--surface);

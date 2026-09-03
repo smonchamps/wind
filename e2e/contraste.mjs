@@ -1,4 +1,4 @@
-// Banc de contraste WCAG des jetons de thème (systeme.css) : chaque
+// Banc de contraste WCAG des jetons de thème (system.css) : chaque
 // paire (encre, fond) réellement posée par ui-v2, dans TOUS les thèmes
 // de la table (V7 amendée A94 — 4 thèmes, NOMBRE_ATTENDU fait foi).
 // Seuils : 4,5:1 pour le texte courant, 3:1 pour le grand texte
@@ -9,7 +9,7 @@
 //
 //   node contraste.mjs        -> tableau complet + verdict
 //
-// La source est systeme.css (les jetons expédiés), pas le prototype :
+// La source est system.css (les jetons expédiés), pas le prototype :
 // c'est ce que l'utilisateur voit qui se mesure.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -17,7 +17,7 @@ import { lireThemes, lireReperes, NOMBRE_ATTENDU } from './jetons.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const css = readFileSync(
-  path.join(root, 'apps', 'desktop', 'ui-v2', 'src', 'systeme.css'),
+  path.join(root, 'apps', 'desktop', 'ui-v2', 'src', 'system.css'),
   'utf8',
 );
 
@@ -47,40 +47,40 @@ const PAIRES = [
   ['ink', 'surface', 4.5, 'cartes de message, champs'],
   ['ink', 'sel', 4.5, 'rangée sélectionnée, dossier ouvert'],
   ['ink', 'hover', 4.5, 'rangée survolée'],
-  ['ink', 'tuile', 4.5, "objet d'une rangée épinglée"],
+  ['ink', 'tile', 4.5, "objet d'une rangée épinglée"],
   ['ink2', 'bg', 4.5, 'expéditeurs, corps de texte'],
   ['ink2', 'surface', 4.5, 'puces, boutons secondaires'],
   ['ink2', 'sel', 4.5, 'aperçus (rangée sélectionnée)'],
   ['ink2', 'hover', 4.5, 'aperçus (rangée survolée)'],
-  ['ink2', 'tuile', 4.5, "aperçu d'une rangée épinglée"],
+  ['ink2', 'tile', 4.5, "aperçu d'une rangée épinglée"],
   ['muted', 'bg', 4.5, "heures, sourcils, barre d'état"],
   ['muted', 'surface', 4.5, 'descriptions, texte de substitution'],
   ['muted', 'sel', 4.5, 'heures (rangée sélectionnée)'],
   ['muted', 'hover', 4.5, 'heures (rangée survolée)'],
-  ['muted', 'tuile', 4.5, 'heures (rangée épinglée)'],
+  ['muted', 'tile', 4.5, 'heures (rangée épinglée)'],
   ['onAccent', 'accent', 4.5, "libellé du bouton primaire, poignée de l'interrupteur armé"],
   ['onAccent', 'accentH', 4.5, 'libellé du bouton primaire (survol)'],
   ['alert', 'bg', 4.5, "texte d'erreur, mention Brouillon"],
   ['alert', 'sel', 4.5, 'mention Brouillon (rangée choisie)'],
   ['alert', 'hover', 4.5, 'mention Brouillon (rangée survolée)'],
-  ['alert', 'tuile', 4.5, 'mention Brouillon (rangée épinglée)'],
+  ['alert', 'tile', 4.5, 'mention Brouillon (rangée épinglée)'],
   ['alert', 'surface', 4.5, 'mention Brouillon (cartes), Supprimer le brouillon'],
   ['alert', 'surface', 3, "icône d'alerte, point d'anomalie, glyphe « Refuser »"],
   ['accent', 'surface', 3, 'icônes, coche, anneau de focus, glyphe « Accepter »'],
   ['accent', 'bg', 3, 'anneau de focus, liseré, poignée de volet'],
   ['accent', 'sel', 3, 'liseré de la ligne choisie, contour de la réponse en cours'],
-  ['accent', 'tuile', 3, "liseré et anneau de focus sur une rangée épinglée — COMPOSANT seulement : sous le seuil du texte en clair, aucun libellé d'accent ne se pose sur la tuile"],
+  ['accent', 'tile', 3, "liseré et anneau de focus sur une rangée épinglée — COMPOSANT seulement : sous le seuil du texte en clair, aucun libellé d'accent ne se pose sur la tuile"],
   ['accent', 'surface', 4.5, 'compteur de non-lus, liens, libellés en accent (TEXTE)'],
   ['accent', 'bg', 4.5, 'compteur de non-lus de la nav (TEXTE, V4)'],
-  ['tuileInk', 'tuile', 4.5, "tuile d'initiales, boîte en cours, rangée épinglée, tuile de date"],
-  ['marque', 'bg', 3, 'DISQUE de non-lu et anneau de cycle sur le fond'],
-  ['marque', 'surface', 3, 'DISQUE sur une carte'],
-  ['marque', 'sel', 3, 'DISQUE sur la rangée choisie'],
-  ['marque', 'hover', 3, 'DISQUE sur la rangée survolée'],
-  ['marque', 'tuile', 3, 'DISQUE sur la rangée épinglée'],
+  ['tileInk', 'tile', 4.5, "tuile d'initiales, boîte en cours, rangée épinglée, tuile de date"],
+  ['brand', 'bg', 3, 'DISQUE de non-lu et anneau de cycle sur le fond'],
+  ['brand', 'surface', 3, 'DISQUE sur une carte'],
+  ['brand', 'sel', 3, 'DISQUE sur la rangée choisie'],
+  ['brand', 'hover', 3, 'DISQUE sur la rangée survolée'],
+  ['brand', 'tile', 3, 'DISQUE sur la rangée épinglée'],
   ['border', 'bg', 1.49, 'filet sur le fond — seuil = le filet EXPÉDIÉ par Clarity'],
   ['border', 'surface', 1.26, 'filet sur une carte — seuil = le filet EXPÉDIÉ par Clarity'],
-  ['border', 'tuile', 1.26, "filet de la tuile d'initiales — la tuile ne vaut que 1,04:1 sur le fond clair, le filet la fait exister"],
+  ['border', 'tile', 1.26, "filet de la tuile d'initiales — la tuile ne vaut que 1,04:1 sur le fond clair, le filet la fait exister"],
 ];
 
 let echecs = 0;
@@ -89,7 +89,7 @@ let echecs = 0;
 // production — le trou exact des 14 -nuit invisibles à [a-z]+ (A42).
 if (Object.keys(themes).length !== NOMBRE_ATTENDU) {
   echecs += 1;
-  console.log(`ECHEC ${Object.keys(themes).length} thème(s) extraits de systeme.css — ${NOMBRE_ATTENDU} attendus (jetons.mjs) : un bloc échappe au motif, ou la table a changé sans amender le plancher`);
+  console.log(`ECHEC ${Object.keys(themes).length} thème(s) extraits de system.css — ${NOMBRE_ATTENDU} attendus (jetons.mjs) : un bloc échappe au motif, ou la table a changé sans amender le plancher`);
 }
 // Seuls les ÉCARTS s'impriment (revue A42) : 28 × 25 lignes « ok »
 // noyaient les échecs — le verdict final porte les comptes, un rouge
@@ -101,7 +101,7 @@ for (const [nom, t] of Object.entries(themes)) {
       // Un jeton introuvable n'est pas une paire à sauter : c'est le
       // banc qui ment. Bruyant, comme tout échec.
       echecs += 1;
-      console.log(`ECHEC ${nom} · ${encre} sur ${fond} : jeton introuvable dans systeme.css  ${ou}`);
+      console.log(`ECHEC ${nom} · ${encre} sur ${fond} : jeton introuvable dans system.css  ${ou}`);
       continue;
     }
     mesures += 1;
@@ -121,34 +121,34 @@ for (const [nom, t] of Object.entries(themes)) {
 // nuancier SUIT la polarité). Depuis A82 chaque hex sert deux fois
 // (pastille des Réglages en background, tracé en color) : les hex
 // EXPÉDIÉS vivent en jetons --mk-<hue> dans les blocs :root de
-// systeme.css — on lit CES jetons, jamais une copie. Chaque
+// system.css — on lit CES jetons, jamais une copie. Chaque
 // déclinaison doit tenir 3:1 (composant) sur les fonds où le repère se
 // pose, et porter son glyphe de pastille à 4,5:1.
 const REPERE_FAMILLES = 12;
 // `tuile` en fait partie (revue 2026-08-22) : le repère du compte EN
 // COURS se pose sur la tuile de nav — l'oublier laissait ce fond-là,
 // précisément, sans mesure. `panel` est mort (V3).
-const FONDS_REPERE = ['bg', 'sel', 'hover', 'surface', 'tuile'];
+const FONDS_REPERE = ['bg', 'sel', 'hover', 'surface', 'tile'];
 // Le parseur des blocs --mk-* est PARTAGÉ avec la gate de cohérence
 // (jetons.mjs, A94 — lireThemes ne peut pas servir : sa classe de nom
 // [a-zA-Z0-9] laisse volontairement passer le trait d'union des
-// --mk-*, voir le commentaire du nuancier dans systeme.css).
+// --mk-*, voir le commentaire du nuancier dans system.css).
 const sombres = lireReperes(css, { nuit: false });
 const claires = lireReperes(css, { nuit: true });
 // Les encres des glyphes se LISENT du CSS expédié, comme les fonds —
-// une copie locale mentirait dès que systeme.css bouge (revue).
+// une copie locale mentirait dès que system.css bouge (revue).
 const encreSombre = css.match(/\.repere\s*\{[^}]*color:(#[0-9a-fA-F]{6})/)?.[1];
 const encreClaire = css.match(
   /\[data-theme\$="-nuit"\] \.repere\s*\{[^}]*color:(#[0-9a-fA-F]{6})/,
 )?.[1];
 if (!encreSombre || !encreClaire) {
   echecs += 1;
-  console.log('ECHEC nuancier des repères : encre de glyphe introuvable dans systeme.css (.repere { color:… })');
+  console.log('ECHEC nuancier des repères : encre de glyphe introuvable dans system.css (.repere { color:… })');
 }
 for (const [nom, groupe] of [['sombre', sombres], ['claire', claires]]) {
   if (Object.keys(groupe).length !== REPERE_FAMILLES) {
     echecs += 1;
-    console.log(`ECHEC nuancier des repères : ${Object.keys(groupe).length} déclinaison(s) ${nom}(s) extraite(s) de systeme.css — ${REPERE_FAMILLES} attendues`);
+    console.log(`ECHEC nuancier des repères : ${Object.keys(groupe).length} déclinaison(s) ${nom}(s) extraite(s) de system.css — ${REPERE_FAMILLES} attendues`);
   }
 }
 for (const [nom, t] of Object.entries(themes)) {

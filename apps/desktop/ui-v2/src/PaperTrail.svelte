@@ -137,7 +137,7 @@
 <div class="scene" data-testid="paper-trail">
   <div class="colonne">
     <!-- R2/R11: the mode's normalized view header — glyph + title,
-         classes shared from systeme.css. Title alone (D2 pattern). -->
+         classes shared from system.css. Title alone (D2 pattern). -->
     <h2 class="display entete-vue" data-testid="registre-titre">
       <span class="glyphe-titre" aria-hidden="true"><Icon name="paper_trail" size={26} /></span>{t('mailbox.paper_trail')}
       <span class="essor-titre"></span>
@@ -275,7 +275,7 @@
     margin:6px 0 10px 42px; height:30px; padding:0 14px;
     display:inline-flex; align-items:center; font-size:13px;
     color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:var(--r-controle);
+    border:1px solid var(--border); border-radius:var(--r-control);
     cursor:pointer;
   }
   .voir-plus:hover { background:var(--sel); }

@@ -2,7 +2,7 @@
 // flash; the language is a read-only PROBE, sub-millisecond: before
 // the migration modal, nothing must open the database — ADR 0012),
 // measurement hooks exposed for the P1 bench (mesure-v2.mjs) and the e2e.
-import './systeme.css';
+import './system.css';
 import { mount } from 'svelte';
 import { applyTheme, restoreTheme, THEMES } from './lib/theme.js';
 import { restoreLanguage } from './lib/text.svelte.js';

@@ -1486,3 +1486,7 @@ ui,disque,dot,0,inventory-E5b
 ui,pleins,dots,0,inventory-E5b
 ui,remplis,filled,0,inventory-E5b
 ui,desactivee,disabled,0,inventory-E5b
+ui,tri_ancien,sort_oldest,1,glyph-E5c
+ui,tri_az,sort_az,1,glyph-E5c
+ui,tri_recent,sort_newest,1,glyph-E5c
+ui,tri_za,sort_za,1,glyph-E5c

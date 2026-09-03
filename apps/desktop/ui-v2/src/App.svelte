@@ -1750,7 +1750,7 @@
         <Icon name="menu" /></button>
     {/if}
     <!-- V1/V11: the brand AS A GLYPH — the envelope in the current
-         ink, --marque flap, in front of the word "Wind" (18 px). The
+         ink, --brand flap, in front of the word "Wind" (18 px). The
          hitofude stroke is dead (V2); the frozen tile stays for OS
          contexts, onboarding, migration and "About". 28 px since
          PLAN-RETOURS-12 (D2) — 24 px (RETOURS-10) stayed discreet,
@@ -1888,7 +1888,7 @@
     </div>
 
     <div class="statut" data-testid="statut">
-      <!-- V2: the disc / ring pair — the 9 px filled --marque disc
+      <!-- V2: the disc / ring pair — the 9 px filled --brand disc
            says rest (`line.stroke`), the hollow ring of the same
            diameter says an action is running (`line.thread`). The
            hitofude stroke is dead. A52 holds: the % lives in the
@@ -2009,7 +2009,7 @@
     flex:1; max-width:520px; height:32px; display:flex; align-items:center; gap:10px;
     padding:0 14px; font-size:13px; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle);
+    border-radius:var(--r-control);
   }
   .recherche :global(.ic) { color:var(--ink2); }
   .recherche input {
@@ -2046,13 +2046,13 @@
   .vider {
     height:22px; width:22px; padding:0; display:inline-flex; flex:none;
     align-items:center; justify-content:center; color:var(--muted);
-    background:transparent; border:none; border-radius:var(--r-controle); cursor:pointer;
+    background:transparent; border:none; border-radius:var(--r-control); cursor:pointer;
   }
   .vider:hover { color:var(--ink); background:var(--sel); }
   button {
     height:32px; padding:0 16px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:var(--r-controle); cursor:pointer;
+    border:1px solid var(--border); border-radius:var(--r-control); cursor:pointer;
   }
   button:hover { background:var(--sel); }
   .principal {
@@ -2107,7 +2107,7 @@
     width:32px; height:32px; padding:0; flex:none; display:inline-flex;
     align-items:center; justify-content:center; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); cursor:pointer;
+    border-radius:var(--r-control); cursor:pointer;
   }
   .btn-tiroir:hover { background:var(--sel); color:var(--ink); }
   .marque--libre { width:auto; }
@@ -2148,7 +2148,7 @@
     height:26px; padding:0 12px; display:inline-flex; align-items:center;
     gap:7px; font-size:12px; font-weight:600; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); cursor:pointer; flex:none;
+    border-radius:var(--r-control); cursor:pointer; flex:none;
   }
   .btn-statut:hover { background:var(--sel); color:var(--ink); }
   .btn-statut[disabled] { opacity:.55; cursor:default; }

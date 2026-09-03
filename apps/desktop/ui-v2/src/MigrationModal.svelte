@@ -115,7 +115,7 @@
   .note, .etat { margin:0; font-size:13px; line-height:1.5; color:var(--muted); }
   .jauge {
     height:6px; background:var(--bg); border:1px solid var(--border);
-    border-radius:var(--r-controle); overflow:hidden;
+    border-radius:var(--r-control); overflow:hidden;
   }
   .remplie { height:100%; background:var(--accent); transition:width .3s; }
   .indeterminee .remplie { width:30%; animation:va-et-vient 1.2s ease-in-out infinite alternate; }
@@ -124,7 +124,7 @@
     height:32px; padding:0 16px; align-self:flex-start; display:inline-flex;
     align-items:center; gap:8px; font-size:13px; color:var(--ink);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); cursor:pointer;
+    border-radius:var(--r-control); cursor:pointer;
   }
   button:hover { background:var(--sel); }
   button:disabled { opacity:.6; cursor:default; }

@@ -236,7 +236,7 @@
 <style>
   .scene { flex:1; overflow:auto; padding:28px 36px 60px; min-width:0; }
   .colonne { max-width:820px; margin:0 auto; }
-  /* The header and the rule-label live in ONE copy in systeme.css
+  /* The header and the rule-label live in ONE copy in system.css
      (.entete-vue / .sous-titre-vue / .regle-libelle — RETOURS-13,
      shared with the Feed); only the local variant stays here. */
   /* R9: the section row carries the sort on the right; the history's
@@ -278,7 +278,7 @@
     position:absolute; top:-8px; right:-8px; width:19px; height:19px; padding:0;
     display:inline-flex; align-items:center; justify-content:center;
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); color:var(--muted); cursor:pointer;
+    border-radius:var(--r-control); color:var(--muted); cursor:pointer;
   }
   .mini:hover, .mini[aria-expanded="true"] { background:var(--sel); color:var(--ink); }
   /* RETOURS-13 R8: the empty state left-aligns, like the header. */

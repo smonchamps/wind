@@ -41,7 +41,7 @@ test('la nav porte les pastilles de non-lus du décor Clarity (A29, W2-D4)', asy
   await expect(pastille('trash')).toHaveCount(0);
   // V4 : le compteur de la nav est un NOMBRE nu en chiffres tabulaires
   // à l'accent — la pilule pleine est morte (fond transparent), et le
-  // non-lu d'une rangée de liste porte son disque de 9 px --marque.
+  // non-lu d'une rangée de liste porte son disque de 9 px --brand.
   const fondPastille = await pastille('inbox').evaluate(
     (el) => getComputedStyle(el).backgroundColor,
   );
@@ -197,7 +197,7 @@ test('le bouton de relève vit dans la barre — « Réessayer » sur échec (E3
 
 test("pendant un cycle, l'anneau remplace le disque de la barre d'état (V2)", async () => {
   // V2 (PLAN-ELEMENTS) : le trait hitofude est MORT — la paire
-  // disque / anneau le remplace. Le disque plein --marque de 9 px dit
+  // disque / anneau le remplace. Le disque plein --brand de 9 px dit
   // le repos ; l'anneau évidé du même diamètre (2 px de paroi, quart
   // haut ouvert, rotation CSS — plus aucun SMIL ni <mask>, la leçon
   // A40 n'a plus d'objet) dit qu'une action tourne. A52 tient et se

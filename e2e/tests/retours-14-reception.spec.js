@@ -183,9 +183,9 @@ test('le Registre groupé : un rang par expéditeur, le fil s’ouvre depuis le 
   await tri.click();
   const menuTri = page.locator('[data-testid="tri-menu"]');
   await expect(menuTri).toBeVisible();
-  // Quatre entrées, chacune son glyphe (tri_*, A104).
+  // Quatre entrées, chacune son glyphe (sort_*, A104, A112).
   await expect(menuTri.locator('[role="menuitemradio"]')).toHaveCount(4);
-  await expect(menuTri.locator('svg[data-nom^="tri_"]')).toHaveCount(4);
+  await expect(menuTri.locator('svg[data-nom^="sort_"]')).toHaveCount(4);
   await menuTri.locator('[data-testid="tri-date-asc"]').click();
   await expect(tri).toContainText('Plus anciens');
   await expect

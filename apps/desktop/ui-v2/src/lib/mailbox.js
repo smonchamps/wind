@@ -2,7 +2,7 @@
 // ONE place. Born from the 2026-08-25 review: it lived in two
 // copies — List.svelte and Thread.svelte — and the title rule had
 // already drifted apart in the space of one increment. The CSS is
-// shared (systeme.css, .boite); the DECISION is here.
+// shared (system.css, .boite); the DECISION is here.
 //
 // Pure function, no I/O or state: the decision here, the display at
 // the caller's (STANDARD §4 pattern). The markup stays laid out by

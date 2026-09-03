@@ -23,11 +23,11 @@
   --border:#CBC8BB;
   --accent:#1A7A7A;
   --accentH:#14625E;
-  --marque:#1F8A8A;
+  --brand:#1F8A8A;
   --sel:#DDE9E6;
   --hover:#EAE8E1;
-  --tuile:#F2EDE3;
-  --tuileInk:#4A4436;
+  --tile:#F2EDE3;
+  --tileInk:#4A4436;
   --alert:#C42D24;
   --onAccent:#FFFFFF;
   --shadow:0 2px 8px rgba(25,29,30,0.08);
@@ -43,11 +43,11 @@
   --border:#333B3A;
   --accent:#3FA39C;
   --accentH:#55B7B0;
-  --marque:#3FA39C;
+  --brand:#3FA39C;
   --sel:#1E322F;
   --hover:#141817;
-  --tuile:#241F17;
-  --tuileInk:#DFCFAE;
+  --tile:#241F17;
+  --tileInk:#DFCFAE;
   --alert:#EA9A90;
   --onAccent:#06211F;
   --shadow:0 2px 12px rgba(0,0,0,0.40);
@@ -66,7 +66,7 @@
        et non sur :root : ils ne dépendent pas de la polarité, et le
        contrat des jetons de couleur ne doit pas s'en trouver gonflé.
        Rembobiner tient en une ligne — remettre 10 / 6 / 2 ici. --- */
-html{--r-surface:0;--r-controle:0;--r-tuile:0}
+html{--r-surface:0;--r-control:0;--r-tile:0}
 
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -79,7 +79,7 @@ b{font-weight:600}
 
 /* --- A8 : le focus est VISIBLE, partout, au clavier — anneau d'accent
        de 2 px décalé de 2 px. Le document s'applique sa propre règle. --- */
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-tuile)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-tile)}
 
 /* --- A8 : le mouvement respecte la préférence de l'utilisateur. --- */
 @media (prefers-reduced-motion:reduce){
@@ -121,10 +121,10 @@ section{display:flex;flex-direction:column;gap:22px;scroll-margin-top:124px}
 .sommaire{position:sticky;top:0;z-index:40;display:flex;flex-wrap:wrap;gap:6px;
   background:var(--bg);border-bottom:1px solid var(--border);margin:0 -32px;padding:10px 32px}
 .sommaire a{font-size:11.5px;line-height:1;color:var(--ink2);text-decoration:none;padding:7px 11px;
-  border:1px solid var(--border);border-radius:var(--r-controle);background:var(--surface);white-space:nowrap}
+  border:1px solid var(--border);border-radius:var(--r-control);background:var(--surface);white-space:nowrap}
 .sommaire a:hover{background:var(--hover);color:var(--ink)}
 .haut{align-self:flex-start;font-size:11.5px;color:var(--muted);text-decoration:none;
-  border:1px solid var(--border);border-radius:var(--r-controle);background:var(--surface);padding:6px 10px}
+  border:1px solid var(--border);border-radius:var(--r-control);background:var(--surface);padding:6px 10px}
 .haut:hover{background:var(--hover);color:var(--ink)}
 
 /* --- La pilule de thème : HORS produit, c'est l'outil du document. --- */
@@ -132,7 +132,7 @@ section{display:flex;flex-direction:column;gap:22px;scroll-margin-top:124px}
 .pilule{display:flex;gap:6px;padding:6px;
   background:var(--surface);border:1px solid var(--border);border-radius:var(--r-surface);box-shadow:var(--shadow)}
 .pilule button{height:28px;padding:0 15px;font:inherit;font-size:12px;font-weight:600;letter-spacing:.04em;
-  border:0;border-radius:var(--r-controle);background:transparent;color:var(--muted);cursor:pointer}
+  border:0;border-radius:var(--r-control);background:transparent;color:var(--muted);cursor:pointer}
 .pilule button[aria-pressed="true"]{background:var(--sel);color:var(--ink)}
 
 /* --- Fiches et tables du document --- */
@@ -153,10 +153,10 @@ section{display:flex;flex-direction:column;gap:22px;scroll-margin-top:124px}
 .tbl td.nw{white-space:nowrap}
 .tbl tr.ok td.num{color:var(--ink2)}
 .tbl tr.ko td.num{color:var(--alert);font-weight:600}
-.swatch{width:26px;height:26px;border-radius:var(--r-controle);border:1px solid var(--border);display:inline-block;vertical-align:middle}
+.swatch{width:26px;height:26px;border-radius:var(--r-control);border:1px solid var(--border);display:inline-block;vertical-align:middle}
 .verdict{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink2);
-  border:1px solid var(--border);border-radius:var(--r-controle);padding:7px 12px;background:var(--surface)}
-.verdict .d{width:9px;height:9px;border-radius:50%;background:var(--marque)}
+  border:1px solid var(--border);border-radius:var(--r-control);padding:7px 12px;background:var(--surface)}
+.verdict .d{width:9px;height:9px;border-radius:50%;background:var(--brand)}
 
 /* --- Le jeu d'icônes --- */
 .grille{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:1px;
@@ -166,13 +166,13 @@ section{display:flex;flex-direction:column;gap:22px;scroll-margin-top:124px}
 .cell .gl{color:var(--ink);display:grid;place-items:center;height:24px}
 .cell figcaption{font-size:10px;line-height:1.35;color:var(--muted);text-align:center;word-break:break-word}
 .cell.c-arbitrage figcaption{text-decoration:underline dotted;text-underline-offset:3px}
-.cell.c-dur{background:var(--tuile)}
-.cell.c-dur figcaption{color:var(--tuileInk)}
-.cell.c-dur .gl{color:var(--tuileInk)}
+.cell.c-dur{background:var(--tile)}
+.cell.c-dur figcaption{color:var(--tileInk)}
+.cell.c-dur .gl{color:var(--tileInk)}
 .cell.reserve{opacity:.45}
 .legende{display:flex;gap:22px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
 .legende span{display:inline-flex;align-items:center;gap:8px}
-.cle{width:12px;height:12px;border-radius:var(--r-tuile);border:1px solid var(--border);display:inline-block}
+.cle{width:12px;height:12px;border-radius:var(--r-tile);border:1px solid var(--border);display:inline-block}
 .echelle{border-collapse:collapse;border:1px solid var(--border);border-radius:var(--r-surface);overflow:hidden;background:var(--surface)}
 .echelle th,.echelle td{border:1px solid var(--border);padding:12px 14px;text-align:center;vertical-align:middle}
 .echelle thead th{font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);font-weight:600}
@@ -201,7 +201,7 @@ svg.g{flex:none}
   border-bottom:1px solid var(--border)}
 .app-marque{display:flex;align-items:center;gap:9px;width:212px;flex:none;color:var(--ink)}
 .app-marque b{font-size:18px;font-weight:600;letter-spacing:-.012em}
-.recherche{flex:1;max-width:520px;height:32px;border:1px solid var(--border);border-radius:var(--r-controle);
+.recherche{flex:1;max-width:520px;height:32px;border:1px solid var(--border);border-radius:var(--r-control);
   background:var(--surface);display:flex;align-items:center;gap:9px;padding:0 12px;color:var(--muted);font-size:13px}
 .recherche.active{color:var(--ink);border-color:var(--accent)}
 .gestes{margin-left:auto;display:flex;align-items:center;gap:8px}
@@ -215,15 +215,15 @@ svg.g{flex:none}
 .nav{border-right:1px solid var(--border);padding:10px 8px;display:flex;flex-direction:column;gap:2px;min-width:0}
 .nav-titre{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);font-weight:600;
   margin:18px 0 6px;padding:0 10px}
-.rang{height:36px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:var(--r-controle);
+.rang{height:36px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:var(--r-control);
   color:var(--ink2);min-width:0}
 .rang span.l{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rang .n{margin-left:auto;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--accent)}
 .rang.actif{background:var(--sel);color:var(--ink);font-weight:600}
 .rang.actif .g{color:var(--accent)}
 .rang.survol{background:var(--hover)}
-.rang.boite{background:var(--tuile);color:var(--tuileInk)}
-.rang.boite .g{color:var(--tuileInk)}
+.rang.boite{background:var(--tile);color:var(--tileInk)}
+.rang.boite .g{color:var(--tileInk)}
 
 /* Liste */
 .liste{border-right:1px solid var(--border);display:flex;flex-direction:column;min-width:0}
@@ -244,7 +244,7 @@ svg.g{flex:none}
 .rangee.sel{background:var(--sel)}
 .rangee.sel::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--accent)}
 .rangee.survol{background:var(--hover)}
-.rangee.epingle{background:var(--tuile)}
+.rangee.epingle{background:var(--tile)}
 .rangee .col{display:flex;flex-direction:column;align-items:center;gap:4px;flex:none}
 .rangee .txt{min-width:0;flex:1;display:flex;flex-direction:column;gap:3px}
 .l1{display:flex;align-items:center;gap:8px;min-width:0}
@@ -255,13 +255,13 @@ svg.g{flex:none}
 .rangee.nonlu .exp{font-weight:600;color:var(--ink)}
 .rangee.nonlu .obj{font-weight:700}
 .brouillon{color:var(--alert);font-weight:600}
-.surligne{background:var(--sel);border-radius:var(--r-tuile);padding:0 2px}
+.surligne{background:var(--sel);border-radius:var(--r-tile);padding:0 2px}
 
 /* La TUILE d'initiales — un CARRÉ NET (V4, porté à zéro par V14) : le
    rond est rendu au disque.
    Elle porte le FILET : mesurée, la tuile ne vaut que 1,04:1 sur le fond
    clair — sans filet elle n'existe pas. Le filet la borde à 1,44:1. */
-.tuileini{width:28px;height:28px;border-radius:var(--r-tuile);background:var(--tuile);color:var(--tuileInk);
+.tuileini{width:28px;height:28px;border-radius:var(--r-tile);background:var(--tile);color:var(--tileInk);
   border:1px solid var(--border);
   display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex:none;
   letter-spacing:.02em}
@@ -270,9 +270,9 @@ svg.g{flex:none}
 /* Le DISQUE — un seul emploi dans tout le système : l'état. Ø 9.
    L'ANNEAU — le MÊME disque, Ø 9 lui aussi, évidé, pendant qu'une
    action tourne. Le vide du haut rend la rotation lisible. */
-.disque{width:9px;height:9px;border-radius:50%;background:var(--marque);flex:none}
+.disque{width:9px;height:9px;border-radius:50%;background:var(--brand);flex:none}
 .anneau{width:9px;height:9px;border-radius:50%;flex:none;
-  border:2px solid var(--marque);border-top-color:transparent;animation:tourne 1s linear infinite}
+  border:2px solid var(--brand);border-top-color:transparent;animation:tourne 1s linear infinite}
 @keyframes tourne{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.anneau{animation:none}}
 
@@ -311,7 +311,7 @@ svg.g{flex:none}
 [data-theme="elements-nuit"] .rep-nu[data-teinte="pink"]{color:#f79ab4}
 [data-theme="elements-nuit"] .rep-nu[data-teinte="brown"]{color:#dcab7c}
 /* A80 — le bloc de boîte : « sur <tracé> Libellé », partagé par la
-   ligne d'entête et le fil (D5), comme au produit (systeme.css).
+   ligne d'entête et le fil (D5), comme au produit (system.css).
    Plafond au tiers (mesuré), l'heure ne cède jamais, ellipse partout.
    QUALIFIÉ par son contexte : ce document a déjà une classe `.boite`
    (la rangée de compte de la nav, `.rang.boite` plus haut) — une règle
@@ -356,7 +356,7 @@ svg.g{flex:none}
 
 /* Le rang de puces (A44) */
 .puces{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.puce{height:24px;display:inline-flex;align-items:center;gap:6px;padding:0 12px;border-radius:var(--r-controle);
+.puce{height:24px;display:inline-flex;align-items:center;gap:6px;padding:0 12px;border-radius:var(--r-control);
   border:1px solid var(--border);background:var(--surface);font-size:12px;color:var(--ink2);white-space:nowrap}
 .puce .poids{color:var(--muted)}
 .puce.h32{height:32px;font-size:13px}
@@ -364,12 +364,12 @@ svg.g{flex:none}
 /* A70 — le voile d'une pièce jointe : RECOUVREMENT ABSOLU, géométrie
    stable, fond --sel. Ce n'est jamais une puce de plus. */
 .pj{position:relative;display:inline-flex}
-.pj .voile-pj{position:absolute;inset:0;border-radius:var(--r-controle);background:var(--sel);
+.pj .voile-pj{position:absolute;inset:0;border-radius:var(--r-control);background:var(--sel);
   box-shadow:inset 0 0 0 1px var(--accent);display:flex;align-items:center;justify-content:center;gap:6px;
   font-size:12px;font-weight:600;color:var(--ink)}
 
 /* Boutons, onglets — même rayon 6, même filet, même hauteur 32. */
-.btn{height:32px;display:inline-flex;align-items:center;gap:8px;padding:0 14px;border-radius:var(--r-controle);
+.btn{height:32px;display:inline-flex;align-items:center;gap:8px;padding:0 14px;border-radius:var(--r-control);
   border:1px solid var(--border);background:var(--surface);color:var(--ink2);font-size:13px;
   font-family:inherit;white-space:nowrap}
 .btn.primaire{background:var(--accent);border-color:var(--accent);color:var(--onAccent);font-weight:600}
@@ -382,7 +382,7 @@ svg.g{flex:none}
 .btn.icone{width:32px;padding:0;justify-content:center}
 .btn.actif{background:var(--sel);border-color:var(--accent);color:var(--ink);font-weight:600}
 .btn.h30{height:30px}
-.onglet{height:32px;display:inline-flex;align-items:center;gap:8px;padding:0 14px;border-radius:var(--r-controle);
+.onglet{height:32px;display:inline-flex;align-items:center;gap:8px;padding:0 14px;border-radius:var(--r-control);
   border:1px solid var(--border);background:var(--surface);color:var(--ink2);font-size:13px;white-space:nowrap}
 .onglet.actif{background:var(--sel);color:var(--ink);font-weight:600}
 .onglet.actif .g{color:var(--accent)}
@@ -407,13 +407,13 @@ svg.g{flex:none}
    fond #ffffff (crates/mail-render/src/lib.rs, Palette::default), dans
    TOUS les thèmes (A61). Wind ne pose QUE ces deux valeurs : le lien
    garde ce que le message, ou le navigateur, lui donne. */
-.corps-mail{background:#ffffff;color:#222222;border-radius:var(--r-controle);padding:14px 16px;font-size:15px;
+.corps-mail{background:#ffffff;color:#222222;border-radius:var(--r-control);padding:14px 16px;font-size:15px;
   line-height:1.65;border:1px solid var(--border)}
 .corps-mail p{margin:0 0 12px}
 .corps-mail p:last-child{margin-bottom:0}
 .corps-mail a{color:LinkText}
 .garde-images{padding:10px 14px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink2);
-  background:var(--bg);border:1px solid var(--border);border-radius:var(--r-controle)}
+  background:var(--bg);border:1px solid var(--border);border-radius:var(--r-control)}
 .barre-msg{display:flex;gap:8px;padding-top:2px}
 .barre-fil{display:flex;gap:8px;flex-wrap:wrap;padding:4px 0 10px;position:sticky;top:0;background:var(--bg);z-index:2}
 .joints{display:flex;flex-direction:column;gap:8px}
@@ -426,7 +426,7 @@ svg.g{flex:none}
 .inv-kicker.annulee{color:var(--alert)}
 .inv-statut{font-size:12px;color:var(--ink2);white-space:nowrap}
 .inv-corps{display:flex;gap:14px;padding:12px 14px 14px;align-items:flex-start}
-.inv-tuile{width:52px;height:52px;border-radius:var(--r-tuile);background:var(--tuile);color:var(--tuileInk);
+.inv-tuile{width:52px;height:52px;border-radius:var(--r-tile);background:var(--tile);color:var(--tileInk);
   border:1px solid var(--border);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;flex:none}
 .inv-tuile.eteinte{background:var(--bg);color:var(--muted)}
@@ -453,7 +453,7 @@ svg.g{flex:none}
 
 /* Champs et formulaires */
 .champ{height:40px;display:flex;align-items:center;padding:0 12px;border:1px solid var(--border);
-  border-radius:var(--r-controle);background:var(--surface);color:var(--muted);font-size:13px;min-width:0}
+  border-radius:var(--r-control);background:var(--surface);color:var(--muted);font-size:13px;min-width:0}
 .champ.h32{height:32px}
 .champ.plein{color:var(--ink)}
 .champ.zone{height:auto;min-height:78px;align-items:flex-start;padding:10px 12px;line-height:1.6}
@@ -481,7 +481,7 @@ svg.g{flex:none}
 .colonne{width:520px;max-width:100%;display:flex;flex-direction:column;gap:18px}
 .colonne.large{width:760px}
 .jauge{height:6px;background:var(--hover);overflow:hidden}
-.jauge i{display:block;height:100%;background:var(--marque)}
+.jauge i{display:block;height:100%;background:var(--brand)}
 .jauge.indet i{width:38%;animation:glisse 1.6s ease-in-out infinite}
 @keyframes glisse{0%{margin-left:0}50%{margin-left:62%}100%{margin-left:0}}
 @media (prefers-reduced-motion:reduce){.jauge.indet i{animation:none;width:100%;opacity:.45}}
@@ -493,14 +493,14 @@ svg.g{flex:none}
 .porte.choisi{background:var(--sel);box-shadow:inset 0 0 0 2px var(--accent)}
 .porte .vl{position:absolute;inset:0;background:var(--sel);display:flex;align-items:center;justify-content:center;
   gap:8px;font-size:13px;font-weight:600;color:var(--ink)}
-.mini{height:64px;border:1px solid var(--border);border-radius:var(--r-controle);display:flex;overflow:hidden}
+.mini{height:64px;border:1px solid var(--border);border-radius:var(--r-control);display:flex;overflow:hidden}
 .mini i{display:block;height:100%}
 .mini.h96{height:96px}
 
 /* Fente d'avis et toast */
 .avis{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-surface);box-shadow:var(--shadow);
   padding:12px 14px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink2)}
-.toast{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-controle);box-shadow:var(--shadow);
+.toast{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-control);box-shadow:var(--shadow);
   padding:10px 14px;display:inline-flex;align-items:center;gap:10px;font-size:13px;color:var(--ink2)}
 
 /* Le rail des Réglages */
@@ -513,7 +513,7 @@ svg.g{flex:none}
 .reglage .d b{font-size:13px;font-weight:600;color:var(--ink)}
 .reglage .d span{font-size:12.5px;line-height:1.55;color:var(--muted)}
 .touche{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:24px;padding:0 7px;
-  border:1px solid var(--border);border-radius:var(--r-controle);background:var(--bg);font-size:12px;font-weight:600;
+  border:1px solid var(--border);border-radius:var(--r-control);background:var(--bg);font-size:12px;font-weight:600;
   color:var(--ink);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 
 /* La barre de mise en forme du composeur, et son nuancier */
@@ -522,12 +522,12 @@ svg.g{flex:none}
 .sep{width:1px;height:20px;background:var(--border);margin:0 4px}
 .nuancier{display:grid;grid-template-columns:repeat(6,26px);gap:6px;padding:12px;background:var(--surface);
   border:1px solid var(--border);border-radius:var(--r-surface);box-shadow:var(--shadow);width:fit-content}
-.nuancier i{width:26px;height:26px;border-radius:var(--r-controle);border:1px solid var(--border);display:block}
+.nuancier i{width:26px;height:26px;border-radius:var(--r-control);border:1px solid var(--border);display:block}
 
 /* Les schémas de disposition */
 .schemas{display:flex;gap:16px;flex-wrap:wrap}
 .schema{width:196px;display:flex;flex-direction:column;gap:7px}
-.schema .cadre{height:106px;border:1px solid var(--border);border-radius:var(--r-controle);display:flex;overflow:hidden;
+.schema .cadre{height:106px;border:1px solid var(--border);border-radius:var(--r-control);display:flex;overflow:hidden;
   background:var(--bg)}
 .schema .cadre i{display:block;height:100%;border-right:1px solid var(--border)}
 .schema .cadre i:last-child{border-right:0}
@@ -670,14 +670,14 @@ svg.g{flex:none}
         <h3 class="sourcil">Deux régimes, un seul énoncé (V11)</h3>
         <div class="bande">
           <span class="marque-tuile" style="width:48px;height:48px;border-radius:11px"><svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><rect width="24" height="24" fill="#F2EDE3"/><g fill="none" stroke="#141414" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="#1F8A8A"/></svg></span>
-          <span class="app-entete" style="border:1px solid var(--border);border-radius:var(--r-controle);flex:1;min-width:220px">
-            <span class="app-marque" style="width:auto"><svg class="g marque" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--marque)"/></svg><b>Wind</b></span>
+          <span class="app-entete" style="border:1px solid var(--border);border-radius:var(--r-control);flex:1;min-width:220px">
+            <span class="app-marque" style="width:auto"><svg class="g marque" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--brand)"/></svg><b>Wind</b></span>
           </span>
         </div>
         <p><b>En tuile</b> — icône d'application, écran d'accueil, modale de migration — la marque est
         <b>figée</b> : structure <code>#141414</code>, tuile <code>#F2EDE3</code>, teal
         <code>#1F8A8A</code>, identiques dans les deux polarités. <b>En glyphe</b> — l'entête, le
-        tiroir — elle suit l'encre courante et <code>--marque</code>. Ce n'est pas une entorse à
+        tiroir — elle suit l'encre courante et <code>--brand</code>. Ce n'est pas une entorse à
         W-D3, c'est sa borne : la tuile porte son propre sol, un glyphe nu n'en a pas, et un
         <code>#141414</code> figé posé sur le fond nuit serait <b>invisible</b>
         (1.04:1). La règle s'énonce donc en deux temps, et le
@@ -695,7 +695,7 @@ svg.g{flex:none}
         <b>mort</b> (A28, A36 et A40 tombent — la découverte du SMIL dans le masque avec). Il est
         remplacé par la <b>paire disque / anneau</b>, qui est déjà la grammaire du jeu : le disque
         plein désigne un objectif atteint, l'anneau évidé le même disque en train de se faire.
-        <b>Même diamètre, Ø 9 px</b>, même jeton <code>--marque</code> ; l'anneau n'est pas une forme
+        <b>Même diamètre, Ø 9 px</b>, même jeton <code>--brand</code> ; l'anneau n'est pas une forme
         de plus, c'est le disque avec 2 px de paroi et son quart haut ouvert — sans ce vide, la
         rotation ne se verrait pas. Deux emplacements : à gauche de la barre d'état, et en tête de la
         modale de migration. Avec <code>prefers-reduced-motion</code>, l'anneau s'arrête et reste
@@ -715,7 +715,7 @@ svg.g{flex:none}
     <h2>Couleurs</h2>
     <p class="sub"><b>Dix-sept rôles</b>, comme au Système livré — mais ce ne sont plus tout à fait
     les mêmes : <code>--panel</code> est <b>mort</b> (V3, le fond unique et le filet font tout) et
-    <code>--marque</code> est <b>né</b> (V1, le teal exact du jeu d'icônes, composant et jamais
+    <code>--brand</code> est <b>né</b> (V1, le teal exact du jeu d'icônes, composant et jamais
     texte). Toute couleur passe par un jeton ; aucun hex n'est écrit ailleurs que dans cette table —
     à trois exceptions <b>nommées</b> : les deux couleurs figées de la marque en tuile (V1/V11), les
     vingt-quatre teintes du nuancier des repères (A74), et les deux valeurs que
@@ -785,7 +785,7 @@ svg.g{flex:none}
         <tr>
           <td><span class="swatch" style="background:#1F8A8A"></span></td>
           <th scope="row">Marque (composant)</th>
-          <td class="mono">--marque</td>
+          <td class="mono">--brand</td>
           <td class="mono">#1F8A8A</td>
           <td class="mono">#3FA39C</td>
           <td>Le teal EXACT du jeu d'icônes. Le disque d'état, le rabat de l'enveloppe, l'anneau de cycle, la jauge de migration. JAMAIS du texte (3,70:1 sur le fond clair)</td></tr>
@@ -806,14 +806,14 @@ svg.g{flex:none}
         <tr>
           <td><span class="swatch" style="background:#F2EDE3"></span></td>
           <th scope="row">Tuile</th>
-          <td class="mono">--tuile</td>
+          <td class="mono">--tile</td>
           <td class="mono">#F2EDE3</td>
           <td class="mono">#241F17</td>
           <td>Le sol des objets Wind : boîte en cours, rangée épinglée, tuile d'initiales (V4), tuile de date d'invitation (A76)</td></tr>
         <tr>
           <td><span class="swatch" style="background:#4A4436"></span></td>
           <th scope="row">Encre de tuile</th>
-          <td class="mono">--tuileInk</td>
+          <td class="mono">--tileInk</td>
           <td class="mono">#4A4436</td>
           <td class="mono">#DFCFAE</td>
           <td>Texte et glyphe posés sur la tuile</td></tr>
@@ -850,7 +850,7 @@ svg.g{flex:none}
     <p class="note"><b>Pourquoi deux teals.</b> Le <code>#1F8A8A</code> du jeu d'icônes vaut
     <b>3.70:1</b> sur le fond clair : conforme pour un disque, un
     filet ou un anneau de focus (seuil 3), <b>non conforme pour du texte</b> (seuil 4,5). Il est donc
-    gardé <b>exact</b> comme <code>--marque</code> et dédoublé d'une encre <code>--accent</code>
+    gardé <b>exact</b> comme <code>--brand</code> et dédoublé d'une encre <code>--accent</code>
     <code>#1A7A7A</code> — même teinte, luminosité minimale, le remède A8 — qui tient
     <b>5.11:1</b> sur la surface. La marque ne porte jamais un
     mot ; l'accent ne porte jamais un disque.</p>
@@ -877,8 +877,8 @@ svg.g{flex:none}
     sombre d'identifiant suffixé
     <code>-nuit</code>. Les quatorze combinaisons Wada et leurs quatorze nuits restent
     <b>retirées</b> (V7). Elements sort des couleurs posées autour de l'icône Wind — la tuile
-    <code>#F2EDE3</code> devient <code>--tuile</code>, le teal <code>#1F8A8A</code> devient
-    <code>--marque</code>, et le reste est composé autour d'eux. Innamoramento sort de deux couleurs CE —
+    <code>#F2EDE3</code> devient <code>--tile</code>, le teal <code>#1F8A8A</code> devient
+    <code>--brand</code>, et le reste est composé autour d'eux. Innamoramento sort de deux couleurs CE —
     l'accent <code>#AD204C</code>, la teinte de tuile <code>#A0868F</code> déclinée par polarité
     (A94). Le réglage « Sombre automatique » affiche la déclinaison <code>-nuit</code> du thème
     choisi quand le réglage sombre du système est actif ; le thème de base est la seule valeur
@@ -888,108 +888,108 @@ svg.g{flex:none}
     <div class="fiches duo">
       <div class="fiche" style="background:#F3F2EE;border-color:#CBC8BB;color:#191D1E">
         <h3 class="sourcil" style="color:#606668">Elements — clair · défaut</h3>
-        <div style="display:flex;height:132px;border:1px solid #CBC8BB;border-radius:var(--r-controle);overflow:hidden">
+        <div style="display:flex;height:132px;border:1px solid #CBC8BB;border-radius:var(--r-control);overflow:hidden">
           <div style="width:60px;background:#F3F2EE;border-right:1px solid #CBC8BB;padding:8px 6px;
             display:flex;flex-direction:column;gap:5px">
-            <span style="height:14px;border-radius:var(--r-tuile);background:#DDE9E6"></span>
-            <span style="height:14px;border-radius:var(--r-tuile);background:#F2EDE3"></span>
-            <span style="height:14px;border-radius:var(--r-tuile);background:#EAE8E1"></span>
+            <span style="height:14px;border-radius:var(--r-tile);background:#DDE9E6"></span>
+            <span style="height:14px;border-radius:var(--r-tile);background:#F2EDE3"></span>
+            <span style="height:14px;border-radius:var(--r-tile);background:#EAE8E1"></span>
           </div>
           <div style="width:96px;background:#F3F2EE;border-right:1px solid #CBC8BB;padding:8px 6px;
             display:flex;flex-direction:column;gap:6px">
-            <span style="height:10px;border-radius:var(--r-tuile);background:#191D1E;opacity:.85"></span>
-            <span style="height:8px;border-radius:var(--r-tuile);background:#565C5E;opacity:.5"></span>
-            <span style="height:10px;border-radius:var(--r-tuile);background:#DDE9E6"></span>
-            <span style="height:8px;border-radius:var(--r-tuile);background:#565C5E;opacity:.5"></span>
+            <span style="height:10px;border-radius:var(--r-tile);background:#191D1E;opacity:.85"></span>
+            <span style="height:8px;border-radius:var(--r-tile);background:#565C5E;opacity:.5"></span>
+            <span style="height:10px;border-radius:var(--r-tile);background:#DDE9E6"></span>
+            <span style="height:8px;border-radius:var(--r-tile);background:#565C5E;opacity:.5"></span>
           </div>
           <div style="flex:1;background:#F3F2EE;padding:8px;display:flex;flex-direction:column;gap:6px">
-            <span style="height:34px;border-radius:var(--r-controle);background:#FFFFFF;border:1px solid #CBC8BB"></span>
-            <span style="height:34px;border-radius:var(--r-controle);background:#FFFFFF;border:1px solid #CBC8BB"></span>
-            <span style="width:64px;height:18px;border-radius:var(--r-controle);background:#1A7A7A"></span>
+            <span style="height:34px;border-radius:var(--r-control);background:#FFFFFF;border:1px solid #CBC8BB"></span>
+            <span style="height:34px;border-radius:var(--r-control);background:#FFFFFF;border:1px solid #CBC8BB"></span>
+            <span style="width:64px;height:18px;border-radius:var(--r-control);background:#1A7A7A"></span>
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <span class="swatch" title="--bg #F3F2EE" style="background:#F3F2EE;border-color:#CBC8BB"></span><span class="swatch" title="--surface #FFFFFF" style="background:#FFFFFF;border-color:#CBC8BB"></span><span class="swatch" title="--tuile #F2EDE3" style="background:#F2EDE3;border-color:#CBC8BB"></span><span class="swatch" title="--sel #DDE9E6" style="background:#DDE9E6;border-color:#CBC8BB"></span><span class="swatch" title="--hover #EAE8E1" style="background:#EAE8E1;border-color:#CBC8BB"></span><span class="swatch" title="--accent #1A7A7A" style="background:#1A7A7A;border-color:#CBC8BB"></span><span class="swatch" title="--marque #1F8A8A" style="background:#1F8A8A;border-color:#CBC8BB"></span><span class="swatch" title="--alert #C42D24" style="background:#C42D24;border-color:#CBC8BB"></span>
+          <span class="swatch" title="--bg #F3F2EE" style="background:#F3F2EE;border-color:#CBC8BB"></span><span class="swatch" title="--surface #FFFFFF" style="background:#FFFFFF;border-color:#CBC8BB"></span><span class="swatch" title="--tile #F2EDE3" style="background:#F2EDE3;border-color:#CBC8BB"></span><span class="swatch" title="--sel #DDE9E6" style="background:#DDE9E6;border-color:#CBC8BB"></span><span class="swatch" title="--hover #EAE8E1" style="background:#EAE8E1;border-color:#CBC8BB"></span><span class="swatch" title="--accent #1A7A7A" style="background:#1A7A7A;border-color:#CBC8BB"></span><span class="swatch" title="--brand #1F8A8A" style="background:#1F8A8A;border-color:#CBC8BB"></span><span class="swatch" title="--alert #C42D24" style="background:#C42D24;border-color:#CBC8BB"></span>
         </div>
       </div>
       <div class="fiche" style="background:#0D100F;border-color:#333B3A;color:#ECEDEA">
         <h3 class="sourcil" style="color:#98A0A1">Elements — nuit</h3>
-        <div style="display:flex;height:132px;border:1px solid #333B3A;border-radius:var(--r-controle);overflow:hidden">
+        <div style="display:flex;height:132px;border:1px solid #333B3A;border-radius:var(--r-control);overflow:hidden">
           <div style="width:60px;background:#0D100F;border-right:1px solid #333B3A;padding:8px 6px;
             display:flex;flex-direction:column;gap:5px">
-            <span style="height:14px;border-radius:var(--r-tuile);background:#1E322F"></span>
-            <span style="height:14px;border-radius:var(--r-tuile);background:#241F17"></span>
-            <span style="height:14px;border-radius:var(--r-tuile);background:#141817"></span>
+            <span style="height:14px;border-radius:var(--r-tile);background:#1E322F"></span>
+            <span style="height:14px;border-radius:var(--r-tile);background:#241F17"></span>
+            <span style="height:14px;border-radius:var(--r-tile);background:#141817"></span>
           </div>
           <div style="width:96px;background:#0D100F;border-right:1px solid #333B3A;padding:8px 6px;
             display:flex;flex-direction:column;gap:6px">
-            <span style="height:10px;border-radius:var(--r-tuile);background:#ECEDEA;opacity:.85"></span>
-            <span style="height:8px;border-radius:var(--r-tuile);background:#B4BAB8;opacity:.5"></span>
-            <span style="height:10px;border-radius:var(--r-tuile);background:#1E322F"></span>
-            <span style="height:8px;border-radius:var(--r-tuile);background:#B4BAB8;opacity:.5"></span>
+            <span style="height:10px;border-radius:var(--r-tile);background:#ECEDEA;opacity:.85"></span>
+            <span style="height:8px;border-radius:var(--r-tile);background:#B4BAB8;opacity:.5"></span>
+            <span style="height:10px;border-radius:var(--r-tile);background:#1E322F"></span>
+            <span style="height:8px;border-radius:var(--r-tile);background:#B4BAB8;opacity:.5"></span>
           </div>
           <div style="flex:1;background:#0D100F;padding:8px;display:flex;flex-direction:column;gap:6px">
-            <span style="height:34px;border-radius:var(--r-controle);background:#171B1A;border:1px solid #333B3A"></span>
-            <span style="height:34px;border-radius:var(--r-controle);background:#171B1A;border:1px solid #333B3A"></span>
-            <span style="width:64px;height:18px;border-radius:var(--r-controle);background:#3FA39C"></span>
+            <span style="height:34px;border-radius:var(--r-control);background:#171B1A;border:1px solid #333B3A"></span>
+            <span style="height:34px;border-radius:var(--r-control);background:#171B1A;border:1px solid #333B3A"></span>
+            <span style="width:64px;height:18px;border-radius:var(--r-control);background:#3FA39C"></span>
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <span class="swatch" title="--bg #0D100F" style="background:#0D100F;border-color:#333B3A"></span><span class="swatch" title="--surface #171B1A" style="background:#171B1A;border-color:#333B3A"></span><span class="swatch" title="--tuile #241F17" style="background:#241F17;border-color:#333B3A"></span><span class="swatch" title="--sel #1E322F" style="background:#1E322F;border-color:#333B3A"></span><span class="swatch" title="--hover #141817" style="background:#141817;border-color:#333B3A"></span><span class="swatch" title="--accent #3FA39C" style="background:#3FA39C;border-color:#333B3A"></span><span class="swatch" title="--marque #3FA39C" style="background:#3FA39C;border-color:#333B3A"></span><span class="swatch" title="--alert #EA9A90" style="background:#EA9A90;border-color:#333B3A"></span>
+          <span class="swatch" title="--bg #0D100F" style="background:#0D100F;border-color:#333B3A"></span><span class="swatch" title="--surface #171B1A" style="background:#171B1A;border-color:#333B3A"></span><span class="swatch" title="--tile #241F17" style="background:#241F17;border-color:#333B3A"></span><span class="swatch" title="--sel #1E322F" style="background:#1E322F;border-color:#333B3A"></span><span class="swatch" title="--hover #141817" style="background:#141817;border-color:#333B3A"></span><span class="swatch" title="--accent #3FA39C" style="background:#3FA39C;border-color:#333B3A"></span><span class="swatch" title="--brand #3FA39C" style="background:#3FA39C;border-color:#333B3A"></span><span class="swatch" title="--alert #EA9A90" style="background:#EA9A90;border-color:#333B3A"></span>
         </div>
       </div>
     </div>
     <div class="fiches duo">
       <div class="fiche" style="background:#F4F0F1;border-color:#CDBFC4;color:#1D181A">
         <h3 class="sourcil" style="color:#5F4C53">Innamoramento — clair</h3>
-        <div style="display:flex;height:132px;border:1px solid #CDBFC4;border-radius:var(--r-controle);overflow:hidden">
+        <div style="display:flex;height:132px;border:1px solid #CDBFC4;border-radius:var(--r-control);overflow:hidden">
           <div style="width:60px;background:#F4F0F1;border-right:1px solid #CDBFC4;padding:8px 6px;
             display:flex;flex-direction:column;gap:5px">
-            <span style="height:14px;border-radius:var(--r-tuile);background:#F4DCE4"></span>
-            <span style="height:14px;border-radius:var(--r-tuile);background:#EFDFE4"></span>
-            <span style="height:14px;border-radius:var(--r-tuile);background:#ECE3E5"></span>
+            <span style="height:14px;border-radius:var(--r-tile);background:#F4DCE4"></span>
+            <span style="height:14px;border-radius:var(--r-tile);background:#EFDFE4"></span>
+            <span style="height:14px;border-radius:var(--r-tile);background:#ECE3E5"></span>
           </div>
           <div style="width:96px;background:#F4F0F1;border-right:1px solid #CDBFC4;padding:8px 6px;
             display:flex;flex-direction:column;gap:6px">
-            <span style="height:10px;border-radius:var(--r-tuile);background:#1D181A;opacity:.85"></span>
-            <span style="height:8px;border-radius:var(--r-tuile);background:#59484E;opacity:.5"></span>
-            <span style="height:10px;border-radius:var(--r-tuile);background:#F4DCE4"></span>
-            <span style="height:8px;border-radius:var(--r-tuile);background:#59484E;opacity:.5"></span>
+            <span style="height:10px;border-radius:var(--r-tile);background:#1D181A;opacity:.85"></span>
+            <span style="height:8px;border-radius:var(--r-tile);background:#59484E;opacity:.5"></span>
+            <span style="height:10px;border-radius:var(--r-tile);background:#F4DCE4"></span>
+            <span style="height:8px;border-radius:var(--r-tile);background:#59484E;opacity:.5"></span>
           </div>
           <div style="flex:1;background:#F4F0F1;padding:8px;display:flex;flex-direction:column;gap:6px">
-            <span style="height:34px;border-radius:var(--r-controle);background:#FFFFFF;border:1px solid #CDBFC4"></span>
-            <span style="height:34px;border-radius:var(--r-controle);background:#FFFFFF;border:1px solid #CDBFC4"></span>
-            <span style="width:64px;height:18px;border-radius:var(--r-controle);background:#AD204C"></span>
+            <span style="height:34px;border-radius:var(--r-control);background:#FFFFFF;border:1px solid #CDBFC4"></span>
+            <span style="height:34px;border-radius:var(--r-control);background:#FFFFFF;border:1px solid #CDBFC4"></span>
+            <span style="width:64px;height:18px;border-radius:var(--r-control);background:#AD204C"></span>
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <span class="swatch" title="--bg #F4F0F1" style="background:#F4F0F1;border-color:#CDBFC4"></span><span class="swatch" title="--surface #FFFFFF" style="background:#FFFFFF;border-color:#CDBFC4"></span><span class="swatch" title="--tuile #EFDFE4" style="background:#EFDFE4;border-color:#CDBFC4"></span><span class="swatch" title="--sel #F4DCE4" style="background:#F4DCE4;border-color:#CDBFC4"></span><span class="swatch" title="--hover #ECE3E5" style="background:#ECE3E5;border-color:#CDBFC4"></span><span class="swatch" title="--accent #AD204C" style="background:#AD204C;border-color:#CDBFC4"></span><span class="swatch" title="--marque #AD204C" style="background:#AD204C;border-color:#CDBFC4"></span><span class="swatch" title="--alert #B02A21" style="background:#B02A21;border-color:#CDBFC4"></span>
+          <span class="swatch" title="--bg #F4F0F1" style="background:#F4F0F1;border-color:#CDBFC4"></span><span class="swatch" title="--surface #FFFFFF" style="background:#FFFFFF;border-color:#CDBFC4"></span><span class="swatch" title="--tile #EFDFE4" style="background:#EFDFE4;border-color:#CDBFC4"></span><span class="swatch" title="--sel #F4DCE4" style="background:#F4DCE4;border-color:#CDBFC4"></span><span class="swatch" title="--hover #ECE3E5" style="background:#ECE3E5;border-color:#CDBFC4"></span><span class="swatch" title="--accent #AD204C" style="background:#AD204C;border-color:#CDBFC4"></span><span class="swatch" title="--brand #AD204C" style="background:#AD204C;border-color:#CDBFC4"></span><span class="swatch" title="--alert #B02A21" style="background:#B02A21;border-color:#CDBFC4"></span>
         </div>
       </div>
       <div class="fiche" style="background:#151012;border-color:#3E3339;color:#EEEAEC">
         <h3 class="sourcil" style="color:#A2969C">Innamoramento — nuit</h3>
-        <div style="display:flex;height:132px;border:1px solid #3E3339;border-radius:var(--r-controle);overflow:hidden">
+        <div style="display:flex;height:132px;border:1px solid #3E3339;border-radius:var(--r-control);overflow:hidden">
           <div style="width:60px;background:#151012;border-right:1px solid #3E3339;padding:8px 6px;
             display:flex;flex-direction:column;gap:5px">
-            <span style="height:14px;border-radius:var(--r-tuile);background:#3A2029"></span>
-            <span style="height:14px;border-radius:var(--r-tuile);background:#2C2126"></span>
-            <span style="height:14px;border-radius:var(--r-tuile);background:#191316"></span>
+            <span style="height:14px;border-radius:var(--r-tile);background:#3A2029"></span>
+            <span style="height:14px;border-radius:var(--r-tile);background:#2C2126"></span>
+            <span style="height:14px;border-radius:var(--r-tile);background:#191316"></span>
           </div>
           <div style="width:96px;background:#151012;border-right:1px solid #3E3339;padding:8px 6px;
             display:flex;flex-direction:column;gap:6px">
-            <span style="height:10px;border-radius:var(--r-tuile);background:#EEEAEC;opacity:.85"></span>
-            <span style="height:8px;border-radius:var(--r-tuile);background:#BCB1B6;opacity:.5"></span>
-            <span style="height:10px;border-radius:var(--r-tuile);background:#3A2029"></span>
-            <span style="height:8px;border-radius:var(--r-tuile);background:#BCB1B6;opacity:.5"></span>
+            <span style="height:10px;border-radius:var(--r-tile);background:#EEEAEC;opacity:.85"></span>
+            <span style="height:8px;border-radius:var(--r-tile);background:#BCB1B6;opacity:.5"></span>
+            <span style="height:10px;border-radius:var(--r-tile);background:#3A2029"></span>
+            <span style="height:8px;border-radius:var(--r-tile);background:#BCB1B6;opacity:.5"></span>
           </div>
           <div style="flex:1;background:#151012;padding:8px;display:flex;flex-direction:column;gap:6px">
-            <span style="height:34px;border-radius:var(--r-controle);background:#1E171A;border:1px solid #3E3339"></span>
-            <span style="height:34px;border-radius:var(--r-controle);background:#1E171A;border:1px solid #3E3339"></span>
-            <span style="width:64px;height:18px;border-radius:var(--r-controle);background:#E58BA4"></span>
+            <span style="height:34px;border-radius:var(--r-control);background:#1E171A;border:1px solid #3E3339"></span>
+            <span style="height:34px;border-radius:var(--r-control);background:#1E171A;border:1px solid #3E3339"></span>
+            <span style="width:64px;height:18px;border-radius:var(--r-control);background:#E58BA4"></span>
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <span class="swatch" title="--bg #151012" style="background:#151012;border-color:#3E3339"></span><span class="swatch" title="--surface #1E171A" style="background:#1E171A;border-color:#3E3339"></span><span class="swatch" title="--tuile #2C2126" style="background:#2C2126;border-color:#3E3339"></span><span class="swatch" title="--sel #3A2029" style="background:#3A2029;border-color:#3E3339"></span><span class="swatch" title="--hover #191316" style="background:#191316;border-color:#3E3339"></span><span class="swatch" title="--accent #E58BA4" style="background:#E58BA4;border-color:#3E3339"></span><span class="swatch" title="--marque #E58BA4" style="background:#E58BA4;border-color:#3E3339"></span><span class="swatch" title="--alert #EF9C93" style="background:#EF9C93;border-color:#3E3339"></span>
+          <span class="swatch" title="--bg #151012" style="background:#151012;border-color:#3E3339"></span><span class="swatch" title="--surface #1E171A" style="background:#1E171A;border-color:#3E3339"></span><span class="swatch" title="--tile #2C2126" style="background:#2C2126;border-color:#3E3339"></span><span class="swatch" title="--sel #3A2029" style="background:#3A2029;border-color:#3E3339"></span><span class="swatch" title="--hover #191316" style="background:#191316;border-color:#3E3339"></span><span class="swatch" title="--accent #E58BA4" style="background:#E58BA4;border-color:#3E3339"></span><span class="swatch" title="--brand #E58BA4" style="background:#E58BA4;border-color:#3E3339"></span><span class="swatch" title="--alert #EF9C93" style="background:#EF9C93;border-color:#3E3339"></span>
         </div>
       </div>
     </div>
@@ -1024,8 +1024,8 @@ svg.g{flex:none}
         <tr><th scope="row" class="mono" style="font-weight:400">--accentH</th>
           <td data-theme="elements" data-jeton="accentH" class="mono">#14625E</td><td data-theme="elements-nuit" data-jeton="accentH" class="mono">#55B7B0</td>
         </tr>
-        <tr><th scope="row" class="mono" style="font-weight:400">--marque</th>
-          <td data-theme="elements" data-jeton="marque" class="mono">#1F8A8A</td><td data-theme="elements-nuit" data-jeton="marque" class="mono">#3FA39C</td>
+        <tr><th scope="row" class="mono" style="font-weight:400">--brand</th>
+          <td data-theme="elements" data-jeton="brand" class="mono">#1F8A8A</td><td data-theme="elements-nuit" data-jeton="brand" class="mono">#3FA39C</td>
         </tr>
         <tr><th scope="row" class="mono" style="font-weight:400">--sel</th>
           <td data-theme="elements" data-jeton="sel" class="mono">#DDE9E6</td><td data-theme="elements-nuit" data-jeton="sel" class="mono">#1E322F</td>
@@ -1033,11 +1033,11 @@ svg.g{flex:none}
         <tr><th scope="row" class="mono" style="font-weight:400">--hover</th>
           <td data-theme="elements" data-jeton="hover" class="mono">#EAE8E1</td><td data-theme="elements-nuit" data-jeton="hover" class="mono">#141817</td>
         </tr>
-        <tr><th scope="row" class="mono" style="font-weight:400">--tuile</th>
-          <td data-theme="elements" data-jeton="tuile" class="mono">#F2EDE3</td><td data-theme="elements-nuit" data-jeton="tuile" class="mono">#241F17</td>
+        <tr><th scope="row" class="mono" style="font-weight:400">--tile</th>
+          <td data-theme="elements" data-jeton="tile" class="mono">#F2EDE3</td><td data-theme="elements-nuit" data-jeton="tile" class="mono">#241F17</td>
         </tr>
-        <tr><th scope="row" class="mono" style="font-weight:400">--tuileInk</th>
-          <td data-theme="elements" data-jeton="tuileInk" class="mono">#4A4436</td><td data-theme="elements-nuit" data-jeton="tuileInk" class="mono">#DFCFAE</td>
+        <tr><th scope="row" class="mono" style="font-weight:400">--tileInk</th>
+          <td data-theme="elements" data-jeton="tileInk" class="mono">#4A4436</td><td data-theme="elements-nuit" data-jeton="tileInk" class="mono">#DFCFAE</td>
         </tr>
         <tr><th scope="row" class="mono" style="font-weight:400">--alert</th>
           <td data-theme="elements" data-jeton="alert" class="mono">#C42D24</td><td data-theme="elements-nuit" data-jeton="alert" class="mono">#EA9A90</td>
@@ -1082,8 +1082,8 @@ svg.g{flex:none}
         <tr><th scope="row" class="mono" style="font-weight:400">--accentH</th>
           <td data-theme="innamoramento" data-jeton="accentH" class="mono">#8E1A3E</td><td data-theme="innamoramento-nuit" data-jeton="accentH" class="mono">#EFA5B9</td>
         </tr>
-        <tr><th scope="row" class="mono" style="font-weight:400">--marque</th>
-          <td data-theme="innamoramento" data-jeton="marque" class="mono">#AD204C</td><td data-theme="innamoramento-nuit" data-jeton="marque" class="mono">#E58BA4</td>
+        <tr><th scope="row" class="mono" style="font-weight:400">--brand</th>
+          <td data-theme="innamoramento" data-jeton="brand" class="mono">#AD204C</td><td data-theme="innamoramento-nuit" data-jeton="brand" class="mono">#E58BA4</td>
         </tr>
         <tr><th scope="row" class="mono" style="font-weight:400">--sel</th>
           <td data-theme="innamoramento" data-jeton="sel" class="mono">#F4DCE4</td><td data-theme="innamoramento-nuit" data-jeton="sel" class="mono">#3A2029</td>
@@ -1091,11 +1091,11 @@ svg.g{flex:none}
         <tr><th scope="row" class="mono" style="font-weight:400">--hover</th>
           <td data-theme="innamoramento" data-jeton="hover" class="mono">#ECE3E5</td><td data-theme="innamoramento-nuit" data-jeton="hover" class="mono">#191316</td>
         </tr>
-        <tr><th scope="row" class="mono" style="font-weight:400">--tuile</th>
-          <td data-theme="innamoramento" data-jeton="tuile" class="mono">#EFDFE4</td><td data-theme="innamoramento-nuit" data-jeton="tuile" class="mono">#2C2126</td>
+        <tr><th scope="row" class="mono" style="font-weight:400">--tile</th>
+          <td data-theme="innamoramento" data-jeton="tile" class="mono">#EFDFE4</td><td data-theme="innamoramento-nuit" data-jeton="tile" class="mono">#2C2126</td>
         </tr>
-        <tr><th scope="row" class="mono" style="font-weight:400">--tuileInk</th>
-          <td data-theme="innamoramento" data-jeton="tuileInk" class="mono">#54333F</td><td data-theme="innamoramento-nuit" data-jeton="tuileInk" class="mono">#DFC9D1</td>
+        <tr><th scope="row" class="mono" style="font-weight:400">--tileInk</th>
+          <td data-theme="innamoramento" data-jeton="tileInk" class="mono">#54333F</td><td data-theme="innamoramento-nuit" data-jeton="tileInk" class="mono">#DFC9D1</td>
         </tr>
         <tr><th scope="row" class="mono" style="font-weight:400">--alert</th>
           <td data-theme="innamoramento" data-jeton="alert" class="mono">#B02A21</td><td data-theme="innamoramento-nuit" data-jeton="alert" class="mono">#EF9C93</td>
@@ -1142,7 +1142,7 @@ svg.g{flex:none}
           <code>FICHES</code> change avec.</td></tr>
         <tr><th scope="row"><code>e2e/contraste.mjs</code></th><td>La table de paires perd
           <code>--panel</code> et gagne les cinq paires de la rangée épinglée et les rôles neufs
-          (<code>--marque</code>).</td></tr>
+          (<code>--brand</code>).</td></tr>
         <tr><th scope="row"><code>e2e/tests/refonte-ecran02.spec.js</code></th><td>Il nomme des thèmes de
           la table Wada.</td></tr>
         <tr><th scope="row"><b>16 emplois de <code>var(--panel)</code></b> dans 7 composants</th>
@@ -1195,7 +1195,7 @@ svg.g{flex:none}
               <td class="num">15.24:1</td>
               <td>rangée survolée</td></tr>
         <tr class="ok">
-              <th scope="row" class="mono" style="font-weight:400">--ink / --tuile</th>
+              <th scope="row" class="mono" style="font-weight:400">--ink / --tile</th>
               <td class="num">4.5</td>
               <td class="num">14.56:1</td>
               <td class="num">13.92:1</td>
@@ -1225,7 +1225,7 @@ svg.g{flex:none}
               <td class="num">9.09:1</td>
               <td>aperçus (rangée survolée)</td></tr>
         <tr class="ok">
-              <th scope="row" class="mono" style="font-weight:400">--ink2 / --tuile</th>
+              <th scope="row" class="mono" style="font-weight:400">--ink2 / --tile</th>
               <td class="num">4.5</td>
               <td class="num">5.83:1</td>
               <td class="num">8.30:1</td>
@@ -1255,7 +1255,7 @@ svg.g{flex:none}
               <td class="num">6.72:1</td>
               <td>heures (rangée survolée)</td></tr>
         <tr class="ok">
-              <th scope="row" class="mono" style="font-weight:400">--muted / --tuile</th>
+              <th scope="row" class="mono" style="font-weight:400">--muted / --tile</th>
               <td class="num">4.5</td>
               <td class="num">5.00:1</td>
               <td class="num">6.14:1</td>
@@ -1291,7 +1291,7 @@ svg.g{flex:none}
               <td class="num">8.12:1</td>
               <td>mention Brouillon (rangée survolée)</td></tr>
         <tr class="ok">
-              <th scope="row" class="mono" style="font-weight:400">--alert / --tuile</th>
+              <th scope="row" class="mono" style="font-weight:400">--alert / --tile</th>
               <td class="num">4.5</td>
               <td class="num">4.80:1</td>
               <td class="num">7.42:1</td>
@@ -1327,7 +1327,7 @@ svg.g{flex:none}
               <td class="num">4.46:1</td>
               <td>liseré de la ligne choisie, contour de la réponse en cours</td></tr>
         <tr class="ok">
-              <th scope="row" class="mono" style="font-weight:400">--accent / --tuile</th>
+              <th scope="row" class="mono" style="font-weight:400">--accent / --tile</th>
               <td class="num">3</td>
               <td class="num">4.38:1</td>
               <td class="num">5.40:1</td>
@@ -1345,37 +1345,37 @@ svg.g{flex:none}
               <td class="num">6.31:1</td>
               <td>compteur de non-lus de la nav (TEXTE, V4)</td></tr>
         <tr class="ok">
-              <th scope="row" class="mono" style="font-weight:400">--tuileInk / --tuile</th>
+              <th scope="row" class="mono" style="font-weight:400">--tileInk / --tile</th>
               <td class="num">4.5</td>
               <td class="num">8.29:1</td>
               <td class="num">10.65:1</td>
               <td>tuile d'initiales, boîte en cours, rangée épinglée, tuile de date</td></tr>
         <tr class="ok">
-              <th scope="row" class="mono" style="font-weight:400">--marque / --bg</th>
+              <th scope="row" class="mono" style="font-weight:400">--brand / --bg</th>
               <td class="num">3</td>
               <td class="num">3.70:1</td>
               <td class="num">6.31:1</td>
               <td>DISQUE de non-lu et anneau de cycle sur le fond</td></tr>
         <tr class="ok">
-              <th scope="row" class="mono" style="font-weight:400">--marque / --surface</th>
+              <th scope="row" class="mono" style="font-weight:400">--brand / --surface</th>
               <td class="num">3</td>
               <td class="num">4.15:1</td>
               <td class="num">5.74:1</td>
               <td>DISQUE sur une carte</td></tr>
         <tr class="ok">
-              <th scope="row" class="mono" style="font-weight:400">--marque / --sel</th>
+              <th scope="row" class="mono" style="font-weight:400">--brand / --sel</th>
               <td class="num">3</td>
               <td class="num">3.33:1</td>
               <td class="num">4.46:1</td>
               <td>DISQUE sur la rangée choisie</td></tr>
         <tr class="ok">
-              <th scope="row" class="mono" style="font-weight:400">--marque / --hover</th>
+              <th scope="row" class="mono" style="font-weight:400">--brand / --hover</th>
               <td class="num">3</td>
               <td class="num">3.38:1</td>
               <td class="num">5.91:1</td>
               <td>DISQUE sur la rangée survolée</td></tr>
         <tr class="ok">
-              <th scope="row" class="mono" style="font-weight:400">--marque / --tuile</th>
+              <th scope="row" class="mono" style="font-weight:400">--brand / --tile</th>
               <td class="num">3</td>
               <td class="num">3.56:1</td>
               <td class="num">5.40:1</td>
@@ -1393,14 +1393,14 @@ svg.g{flex:none}
               <td class="num">1.51:1</td>
               <td>filet sur une carte — seuil = le filet EXPÉDIÉ par Clarity</td></tr>
         <tr class="ok">
-              <th scope="row" class="mono" style="font-weight:400">--border / --tuile</th>
+              <th scope="row" class="mono" style="font-weight:400">--border / --tile</th>
               <td class="num">1.26</td>
               <td class="num">1.44:1</td>
               <td class="num">1.42:1</td>
               <td>filet de la tuile d'initiales — la tuile ne vaut que 1,04:1 sur le fond clair, le filet la fait exister</td></tr>
       </tbody>
     </table>
-    <p class="note"><b>Une règle est sortie de ce banc.</b> La rangée épinglée a <code>--tuile</code>
+    <p class="note"><b>Une règle est sortie de ce banc.</b> La rangée épinglée a <code>--tile</code>
     pour sol, et l'accent n'y vaut que
     <b>4.38:1</b> en clair — au-dessus du seuil d'un composant
     (3), <b>sous celui d'un texte</b> (4,5). D'où l'interdit, écrit et mesuré : sur la tuile, l'accent
@@ -1413,7 +1413,7 @@ svg.g{flex:none}
     unique ne tient 3:1 sur le fond clair <b>et</b> sur le fond nuit — chaque famille vit donc en deux
     déclinaisons, la sombre servie au thème clair (glyphe blanc), la claire au thème nuit (glyphe
     <code>#1c1b1b</code>), par <code>.rep[data-teinte]</code> exactement comme
-    <code>systeme.css</code> — où les 24 hex vivent en jetons <code>--mk-&lt;hue&gt;</code>
+    <code>system.css</code> — où les 24 hex vivent en jetons <code>--mk-&lt;hue&gt;</code>
     depuis A82, car chaque hex sert deux fois. <b>Deux emplois</b> : la <b>pastille</b>, 20 px,
     <b>aux Réglages seulement</b> (rangée de compte et nuancier de choix — le fond porte la teinte,
     le glyphe la traverse), et le <b>tracé</b> — la teinte en <code>color</code> du glyphe nu —
@@ -1606,7 +1606,7 @@ svg.g{flex:none}
     alignement régulier ; le titre complet reste lisible dans le volet de lecture.</p>
     <div class="fiches duo">
       <div class="fiche"><h3 class="sourcil">Appliqué</h3>
-    <div class="rangee" style="border:1px solid var(--border);border-radius:var(--r-controle);background:var(--surface)">
+    <div class="rangee" style="border:1px solid var(--border);border-radius:var(--r-control);background:var(--surface)">
       <span class="txt">
         <span class="l1"><span class="exp">Camille Rousseau</span><span class="h">09:12</span></span>
         <span class="obj">Relecture du contrat Vantis et de ses annexes tarifaires du second semestre</span>
@@ -1616,7 +1616,7 @@ svg.g{flex:none}
         <p>Une seule ligne, ellipse en fin. La ligne conserve sa hauteur ; l'objet et l'aperçu se
         coupent de la même façon.</p></div>
       <div class="fiche"><h3 class="sourcil">À éviter</h3>
-    <div class="rangee" style="border:1px solid var(--border);border-radius:var(--r-controle);background:var(--surface)">
+    <div class="rangee" style="border:1px solid var(--border);border-radius:var(--r-control);background:var(--surface)">
       <span class="txt">
         <span class="l1"><span class="exp">Camille Rousseau</span><span class="h">09:12</span></span>
         <span class="obj" style="white-space:normal;overflow:visible">Relecture du contrat Vantis et de ses annexes tarifaires du second semestre</span>
@@ -1641,7 +1641,7 @@ svg.g{flex:none}
         <h3 class="sourcil">Zéro rayon — et deux formes qui n'en sont pas</h3>
         <div style="display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap">
           <span style="width:72px;height:52px;border:1px solid var(--border);border-radius:var(--r-surface);background:var(--surface)"></span>
-          <span style="width:52px;height:32px;border:1px solid var(--border);border-radius:var(--r-controle);background:var(--surface)"></span>
+          <span style="width:52px;height:32px;border:1px solid var(--border);border-radius:var(--r-control);background:var(--surface)"></span>
           <span class="tuileini">CR</span>
           <span class="inter arme"><i></i></span>
           <span class="disque"></span>
@@ -1657,7 +1657,7 @@ svg.g{flex:none}
         le rond au disque à moitié, V14 va jusqu'au bout.</p>
         <p>Une exception, déclarée et permanente : le rayon de l'<b>icône d'application</b> (15/64)
         est une cote de <b>plateforme</b>, hors système — c'est l'OS qui la dicte. Les trois jetons
-        <code>--r-surface</code> / <code>--r-controle</code> / <code>--r-tuile</code> restent : ils
+        <code>--r-surface</code> / <code>--r-control</code> / <code>--r-tile</code> restent : ils
         tiennent la règle à la place de l'œil, il n'y a plus un seul littéral de rayon à écrire.</p>
       </div>
       <div class="fiche">
@@ -1677,7 +1677,7 @@ svg.g{flex:none}
           <span style="display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)"><span class="tuileini">PM</span> identité</span>
           <span style="display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)"><b style="color:var(--accent);font-variant-numeric:tabular-nums">4</b> compte</span>
         </div>
-        <p>Ø <b>9 px</b>, en <code>--marque</code>, deux emplois : le non-lu d'une rangée et
+        <p>Ø <b>9 px</b>, en <code>--brand</code>, deux emplois : le non-lu d'une rangée et
         l'indicateur de la barre d'état. Pour lui rendre son unicité, deux ronds sont retirés :
         l'<b>avatar d'initiales devient un carré</b> (tuile, coin vif depuis V14) et la <b>pastille pleine de
         non-lus de la navigation devient un nombre</b> en chiffres tabulaires, à l'accent. Depuis
@@ -1803,7 +1803,7 @@ svg.g{flex:none}
       <div class="fiche">
         <h3 class="sourcil">Écarté — 10 / 6 / 2</h3>
         
-  <div style="--r-surface:10px;--r-controle:6px;--r-tuile:2px;display:flex;flex-direction:column;gap:14px">
+  <div style="--r-surface:10px;--r-control:6px;--r-tile:2px;display:flex;flex-direction:column;gap:14px">
     <div class="carte" style="gap:10px">
       <div class="msg-tete"><span class="tuileini">CR</span>
         <span><span class="nom">Camille Rousseau</span><br>
@@ -1835,7 +1835,7 @@ svg.g{flex:none}
       <div class="fiche">
         <h3 class="sourcil">Retenu — zéro rayon</h3>
         
-  <div style="--r-surface:0;--r-controle:0;--r-tuile:0;display:flex;flex-direction:column;gap:14px">
+  <div style="--r-surface:0;--r-control:0;--r-tile:0;display:flex;flex-direction:column;gap:14px">
     <div class="carte" style="gap:10px">
       <div class="msg-tete"><span class="tuileini">CR</span>
         <span><span class="nom">Camille Rousseau</span><br>
@@ -1873,7 +1873,7 @@ svg.g{flex:none}
 
     <p class="etiq">5 · Comment la règle se tient</p>
     <p class="sub">Par trois <b>jetons de forme</b> — <code>--r-surface</code>,
-    <code>--r-controle</code>, <code>--r-tuile</code> — déclarés sur <code>html</code> et non sur
+    <code>--r-control</code>, <code>--r-tile</code> — déclarés sur <code>html</code> et non sur
     <code>:root</code> : ils ne dépendent pas de la polarité, et le contrat des jetons de couleur ne
     doit pas s'en trouver gonflé. <b>Il n'y a plus un seul littéral de rayon à écrire</b> dans tout le
     système : « aucune autre valeur » cesse d'être une règle qu'on obéit à la main pour devenir une
@@ -1911,7 +1911,7 @@ svg.g{flex:none}
         <h3 class="sourcil">Onglets de filtre : actif, repos</h3>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <span class="onglet actif"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg>Tous</span>
-          <span class="onglet"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h14v10H3z"/><path d="M3 8l7 5 7-5"/></g><circle cx="19" cy="6" r="3.4" fill="var(--marque)"/></svg>Non lus</span>
+          <span class="onglet"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h14v10H3z"/><path d="M3 8l7 5 7-5"/></g><circle cx="19" cy="6" r="3.4" fill="var(--brand)"/></svg>Non lus</span>
           <span class="onglet"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h10"/><path d="M4 11h7"/><path d="M11 19l1-3 6-6 2 2-6 6z"/></g></svg>Brouillons</span>
         </div>
         <p>L'onglet actif prend la teinte de sélection et passe son glyphe à l'accent. Le glyphe
@@ -2007,7 +2007,7 @@ svg.g{flex:none}
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16"/><path d="M10 10h10"/><path d="M4 14h16"/><path d="M10 18h10"/></g></svg></span><figcaption>format_align_right</figcaption></figure><figure class="cell c-direct">
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M8 4v16"/><path d="M8 4h6l3 4-3 4H8"/><path d="M8 12h7l3 4-3 4H8"/></g></svg></span><figcaption>format_bold</figcaption></figure><figure class="cell c-arbitrage">
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 5h12v5H3z"/><path d="M15 7h4v6h-7v8"/><path d="M2 2l20 20"/></g></svg></span><figcaption>format_clear</figcaption></figure><figure class="cell c-arbitrage">
-      <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 15l6-11 6 11"/><path d="M9 11h6"/></g><path d="M4 19h16" fill="none" stroke="var(--marque)" stroke-width="2" stroke-linecap="butt"/></svg></span><figcaption>format_color_text</figcaption></figure><figure class="cell c-arbitrage">
+      <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 15l6-11 6 11"/><path d="M9 11h6"/></g><path d="M4 19h16" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linecap="butt"/></svg></span><figcaption>format_color_text</figcaption></figure><figure class="cell c-arbitrage">
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16"/><path d="M11 10h9"/><path d="M11 14h9"/><path d="M4 18h16"/><path d="M8 10l-3 2 3 2"/></g></svg></span><figcaption>format_indent_decrease</figcaption></figure><figure class="cell c-arbitrage">
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16"/><path d="M11 10h9"/><path d="M11 14h9"/><path d="M4 18h16"/><path d="M5 10l3 2-3 2"/></g></svg></span><figcaption>format_indent_increase</figcaption></figure><figure class="cell c-direct">
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 4h8"/><path d="M6 20h8"/><path d="M14 4l-4 16"/></g></svg></span><figcaption>format_italic</figcaption></figure><figure class="cell c-direct">
@@ -2029,7 +2029,7 @@ svg.g{flex:none}
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 6h18"/><path d="M3 6v1.5a1.5 1.5 0 0 0 3 0"/><path d="M6 7.5a1.5 1.5 0 0 0 3 0"/><path d="M9 7.5a1.5 1.5 0 0 0 3 0"/><path d="M12 7.5a1.5 1.5 0 0 0 3 0"/><path d="M15 7.5a1.5 1.5 0 0 0 3 0"/><path d="M18 7.5a1.5 1.5 0 0 0 3 0"/><path d="M21 6v1.5"/><path d="M5 10v10"/><path d="M19 10v10"/><path d="M4 20h16"/><path d="M5 15h14"/></g></svg></span><figcaption>feed</figcaption></figure><figure class="cell c-arbitrage reserve">
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 8H8a4 4 0 0 0 0 8h2"/><path d="M14 8h2a4 4 0 0 1 0 8h-2"/><path d="M9 12h6"/></g></svg></span><figcaption>link</figcaption></figure><figure class="cell c-arbitrage">
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 8H8a4 4 0 0 0 0 8h2"/><path d="M14 8h2a4 4 0 0 1 0 8h-2"/><path d="M4 4l16 16"/></g></svg></span><figcaption>link_off</figcaption></figure><figure class="cell c-direct">
-      <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h14v10H3z"/><path d="M3 8l7 5 7-5"/></g><circle cx="19" cy="6" r="3.4" fill="var(--marque)"/></svg></span><figcaption>mark_email_unread</figcaption></figure><figure class="cell c-direct">
+      <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h14v10H3z"/><path d="M3 8l7 5 7-5"/></g><circle cx="19" cy="6" r="3.4" fill="var(--brand)"/></svg></span><figcaption>mark_email_unread</figcaption></figure><figure class="cell c-direct">
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></g></svg></span><figcaption>menu</figcaption></figure><figure class="cell c-arbitrage">
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="5" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="19" cy="12" r="2" fill="currentColor"/></svg></span><figcaption>more_horiz</figcaption></figure><figure class="cell c-direct">
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 18V6"/><path d="M11 6l5 3"/></g><circle cx="8" cy="18" r="3" fill="currentColor"/></svg></span><figcaption>music_note</figcaption></figure><figure class="cell c-arbitrage">
@@ -2062,10 +2062,10 @@ svg.g{flex:none}
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M16 7h-6l-2 3 8 4-2 3H8"/><path d="M4 12h16"/></g></svg></span><figcaption>strikethrough_s</figcaption></figure><figure class="cell c-arbitrage">
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></g></svg></span><figcaption>sync</figcaption></figure><figure class="cell c-direct">
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 4h16v3H4z"/><path d="M12 9v8"/><path d="M8 14l4 4 4-4"/><path d="M4 21h16"/></g></svg></span><figcaption>system_update_alt</figcaption></figure><figure class="cell c-direct">
-      <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h10"/><path d="M4 11h7"/><path d="M4 16h4"/><path d="M18 19V6"/><path d="M15 9l3-3 3 3"/></g></svg></span><figcaption>tri_ancien</figcaption></figure><figure class="cell c-direct">
-      <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 10l3-6 3 6"/><path d="M5 8h4"/><path d="M4 14h6l-6 6h6"/><path d="M18 5v13"/><path d="M15 15l3 3 3-3"/></g></svg></span><figcaption>tri_az</figcaption></figure><figure class="cell c-direct">
-      <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h10"/><path d="M4 11h7"/><path d="M4 16h4"/><path d="M18 5v13"/><path d="M15 15l3 3 3-3"/></g></svg></span><figcaption>tri_recent</figcaption></figure><figure class="cell c-direct">
-      <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 4h6l-6 6h6"/><path d="M4 20l3-6 3 6"/><path d="M5 18h4"/><path d="M18 5v13"/><path d="M15 15l3 3 3-3"/></g></svg></span><figcaption>tri_za</figcaption></figure><figure class="cell c-direct">
+      <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h10"/><path d="M4 11h7"/><path d="M4 16h4"/><path d="M18 19V6"/><path d="M15 9l3-3 3 3"/></g></svg></span><figcaption>sort_oldest</figcaption></figure><figure class="cell c-direct">
+      <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 10l3-6 3 6"/><path d="M5 8h4"/><path d="M4 14h6l-6 6h6"/><path d="M18 5v13"/><path d="M15 15l3 3 3-3"/></g></svg></span><figcaption>sort_az</figcaption></figure><figure class="cell c-direct">
+      <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h10"/><path d="M4 11h7"/><path d="M4 16h4"/><path d="M18 5v13"/><path d="M15 15l3 3 3-3"/></g></svg></span><figcaption>sort_newest</figcaption></figure><figure class="cell c-direct">
+      <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 4h6l-6 6h6"/><path d="M4 20l3-6 3 6"/><path d="M5 18h4"/><path d="M18 5v13"/><path d="M15 15l3 3 3-3"/></g></svg></span><figcaption>sort_za</figcaption></figure><figure class="cell c-direct">
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M7 5l5 5 5-5"/><path d="M7 19l5-5 5 5"/></g></svg></span><figcaption>unfold_less</figcaption></figure><figure class="cell c-direct">
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M7 10l5-5 5 5"/><path d="M7 14l5 5 5-5"/></g></svg></span><figcaption>unfold_more</figcaption></figure><figure class="cell c-arbitrage">
       <span class="gl"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 12l4-4h10l4 4-4 4H7z"/><path d="M4 4l16 16"/></g></svg></span><figcaption>visibility_off</figcaption></figure><figure class="cell c-dur">
@@ -2080,7 +2080,7 @@ svg.g{flex:none}
         <b><span style="text-decoration:underline dotted;text-underline-offset:3px">arbitrage</span></b>
         — nom souligné de pointillé : il a fallu décider une courbe, une diagonale, une réduction
         (27)</span>
-      <span><i class="cle" style="background:var(--tuile)"></i>
+      <span><i class="cle" style="background:var(--tile)"></i>
         <b>dur</b> — fond de tuile : la grammaire ne le porte pas à 16 px ; dessiné quand même, c'est
         un report (14)</span>
       <span style="opacity:.55"><i class="cle" style="background:var(--surface)"></i>
@@ -2295,7 +2295,7 @@ svg.g{flex:none}
           <td class="mono">music_note</td>
           <td>Musique</td><td>Repère de compte (A74)</td></tr>
         <tr>
-          <td style="color:var(--ink)"><svg class="g" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h14v10H3z"/><path d="M3 8l7 5 7-5"/></g><circle cx="19" cy="6" r="3.4" fill="var(--marque)"/></svg></td>
+          <td style="color:var(--ink)"><svg class="g" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h14v10H3z"/><path d="M3 8l7 5 7-5"/></g><circle cx="19" cy="6" r="3.4" fill="var(--brand)"/></svg></td>
           <td class="mono">mark_email_unread</td>
           <td>Non lus</td><td>Onglet de filtre, pied de liste — le seul glyphe du jeu qui porte un disque teal</td></tr>
         <tr>
@@ -2467,7 +2467,7 @@ svg.g{flex:none}
           <td class="mono">strikethrough_s</td>
           <td>Barré</td><td>Mise en forme du corps (composition, A62)</td></tr>
         <tr>
-          <td style="color:var(--ink)"><svg class="g" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 15l6-11 6 11"/><path d="M9 11h6"/></g><path d="M4 19h16" fill="none" stroke="var(--marque)" stroke-width="2" stroke-linecap="butt"/></svg></td>
+          <td style="color:var(--ink)"><svg class="g" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 15l6-11 6 11"/><path d="M9 11h6"/></g><path d="M4 19h16" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linecap="butt"/></svg></td>
           <td class="mono">format_color_text</td>
           <td>Couleur du texte</td><td>Ouvre le nuancier fixe de 12 teintes (A62-D3) — sa barre basse est le SEUL élément coloré du jeu</td></tr>
         <tr>
@@ -2704,7 +2704,7 @@ svg.g{flex:none}
       
   <div class="app-entete">
     
-    <span class="app-marque"><svg class="g marque" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--marque)"/></svg><b>Wind</b></span>
+    <span class="app-marque"><svg class="g marque" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--brand)"/></svg><b>Wind</b></span>
     <span class="recherche"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 1 0 0-14"/><path d="M16 16l4 4"/></g></svg>Chercher un message, une personne, un fichier
       </span>
     <span class="gestes">
@@ -2772,7 +2772,7 @@ svg.g{flex:none}
     <span class="txt">
       <span class="l1">
 
-        <span style="color:var(--tuileInk);display:inline-flex"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 3h4v7l2 4H8l2-4z"/><path d="M12 14v7"/></g></svg></span>
+        <span style="color:var(--tileInk);display:inline-flex"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 3h4v7l2 4H8l2-4z"/><path d="M12 14v7"/></g></svg></span>
         <span class="exp">Sofia Nardi</span><span class="h">4 août</span>
       </span>
       <span class="obj">Atelier de septembre</span>
@@ -2837,7 +2837,7 @@ svg.g{flex:none}
           
   <div class="bandeau bas">
     <span class="onglet actif"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg>Tous</span>
-    <span class="onglet "><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h14v10H3z"/><path d="M3 8l7 5 7-5"/></g><circle cx="19" cy="6" r="3.4" fill="var(--marque)"/></svg>Non lus</span>
+    <span class="onglet "><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h14v10H3z"/><path d="M3 8l7 5 7-5"/></g><circle cx="19" cy="6" r="3.4" fill="var(--brand)"/></svg>Non lus</span>
     <span class="onglet "><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h10"/><path d="M4 11h7"/><path d="M11 19l1-3 6-6 2 2-6 6z"/></g></svg>Brouillons</span>
     <span class="compte"><b>4</b><span>/ 18</span></span>
   </div>
@@ -2911,7 +2911,7 @@ svg.g{flex:none}
     <div class="fiches duo">
       <div class="fiche">
         <h3 class="sourcil">Le dossier Brouillons : reprise au clic</h3>
-        <div style="border:1px solid var(--border);border-radius:var(--r-controle);overflow:hidden">
+        <div style="border:1px solid var(--border);border-radius:var(--r-control);overflow:hidden">
           
   <div class="rangee  ">
     <span class="col"><span class="tuileini">C</span></span>
@@ -2963,7 +2963,7 @@ svg.g{flex:none}
       </div>
       <div class="fiche">
         <h3 class="sourcil">Le bloc de boîte, en boîte unifiée seulement (A80)</h3>
-        <div style="border:1px solid var(--border);border-radius:var(--r-controle);overflow:hidden">
+        <div style="border:1px solid var(--border);border-radius:var(--r-control);overflow:hidden">
 
   <div class="rangee  nonlu">
     <span class="txt">
@@ -3009,7 +3009,7 @@ svg.g{flex:none}
       
   <div class="app-entete">
     
-    <span class="app-marque"><svg class="g marque" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--marque)"/></svg><b>Wind</b></span>
+    <span class="app-marque"><svg class="g marque" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--brand)"/></svg><b>Wind</b></span>
     <span class="recherche active"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 1 0 0-14"/><path d="M16 16l4 4"/></g></svg>contrat vantis
       <span style="margin-left:auto;color:var(--muted)"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 5l14 14"/><path d="M19 5L5 19"/></g></svg></span></span>
     <span class="gestes">
@@ -3214,12 +3214,12 @@ svg.g{flex:none}
     <div class="fiches duo">
       <div class="fiche">
         <h3 class="sourcil">Le tiroir de navigation (un volet)</h3>
-        <div style="position:relative;height:150px;border:1px solid var(--border);border-radius:var(--r-controle);overflow:hidden;background:var(--bg)">
+        <div style="position:relative;height:150px;border:1px solid var(--border);border-radius:var(--r-control);overflow:hidden;background:var(--bg)">
           <div style="position:absolute;inset:0;background:var(--scrim)"></div>
           <div style="position:absolute;left:0;top:0;bottom:0;width:220px;background:var(--bg);
             border-right:1px solid var(--border);padding:10px 8px">
             <div style="height:44px;display:flex;align-items:center;gap:9px;padding:0 8px;color:var(--ink)">
-              <svg class="g marque" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--marque)"/></svg><b style="font-size:15px">Wind</b>
+              <svg class="g marque" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 8h16v9H4z"/></g><path d="M8.75 9.15A3.25 3.25 0 0 0 15.25 9.15Z" fill="var(--brand)"/></svg><b style="font-size:15px">Wind</b>
               <span style="margin-left:auto;color:var(--muted)"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M5 5l14 14"/><path d="M19 5L5 19"/></g></svg></span></div>
             <div class="rang actif"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 2h2l2-2h5"/></g></svg><span class="l">Boîte de réception</span><span class="n">4</span></div>
             <div class="rang"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h10"/><path d="M4 11h7"/><path d="M11 19l1-3 6-6 2 2-6 6z"/></g></svg><span class="l">Brouillons</span><span class="n">3</span></div>
@@ -3539,7 +3539,7 @@ svg.g{flex:none}
           </div>
         </div>
         <p>Elle vit <b>en tête du contenu</b>, avant les fichiers : c'est l'objet du message. Tuile de
-        date à la paire <code>--tuile</code> / <code>--tuileInk</code> — le sol des objets Wind, coin
+        date à la paire <code>--tile</code> / <code>--tileInk</code> — le sol des objets Wind, coin
         vif, filet de 1 px, comme la tuile d'initiales. <b>Trois boutons neutres</b> (A14 intact : la
         carte ne hiérarchise pas la réponse) ; <b>la couleur est portée par l'icône</b>, accent /
         neutre / alerte, et <b>le texte double toujours</b> (A8). Coin vif, <b>sans élévation</b> :
@@ -3644,7 +3644,7 @@ svg.g{flex:none}
           <span class="btn" style="height:28px;padding:0 10px">Taille ▾</span>
           <span class="sep"></span>
           <span class="btn icone actif" style="height:32px"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M8 4v16"/><path d="M8 4h6l3 4-3 4H8"/><path d="M8 12h7l3 4-3 4H8"/></g></svg></span><span class="btn icone" style="height:32px"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 4h8"/><path d="M6 20h8"/><path d="M14 4l-4 16"/></g></svg></span><span class="btn icone" style="height:32px"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M7 4v8l5 5 5-5V4"/><path d="M5 20h14"/></g></svg></span><span class="btn icone" style="height:32px"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M16 7h-6l-2 3 8 4-2 3H8"/><path d="M4 12h16"/></g></svg></span>
-          <span class="btn icone" style="height:32px"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 15l6-11 6 11"/><path d="M9 11h6"/></g><path d="M4 19h16" fill="none" stroke="var(--marque)" stroke-width="2" stroke-linecap="butt"/></svg></span>
+          <span class="btn icone" style="height:32px"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M6 15l6-11 6 11"/><path d="M9 11h6"/></g><path d="M4 19h16" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linecap="butt"/></svg></span>
           <span class="sep"></span>
           <span class="btn icone actif" style="height:32px"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16"/><path d="M4 10h10"/><path d="M4 14h16"/><path d="M4 18h10"/></g></svg></span><span class="btn icone" style="height:32px"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16"/><path d="M7 10h10"/><path d="M4 14h16"/><path d="M7 18h10"/></g></svg></span><span class="btn icone" style="height:32px"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 6h16"/><path d="M10 10h10"/><path d="M4 14h16"/><path d="M10 18h10"/></g></svg></span>
           <span class="sep"></span>
@@ -3817,7 +3817,7 @@ svg.g{flex:none}
     <div class="fiches duo">
       <div class="fiche">
         <h3 class="sourcil">Comptes — la rangée est la porte du repère et du nom</h3>
-        <div style="border:1px solid var(--border);border-radius:var(--r-controle);overflow:hidden">
+        <div style="border:1px solid var(--border);border-radius:var(--r-control);overflow:hidden">
           <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border)">
             <span class="rep p24" data-teinte="blue" title="marie@atelier-brindille.fr"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 8h18v11H3z"/><path d="M9 8V5h6v3"/></g></svg></span>
             <span style="flex:1;min-width:0"><b style="font-size:13px">Atelier Brindille</b><br>
@@ -3852,13 +3852,13 @@ svg.g{flex:none}
         (V7/A94 ; les deux d'Elements en vignette)</h3>
         <div style="display:flex;gap:12px">
           <span style="flex:1;display:flex;flex-direction:column;gap:7px">
-            <span style="display:flex;height:70px;border:1px solid #CBC8BB;border-radius:var(--r-controle);overflow:hidden;
+            <span style="display:flex;height:70px;border:1px solid #CBC8BB;border-radius:var(--r-control);overflow:hidden;
               box-shadow:inset 0 0 0 2px #1A7A7A">
               <i style="width:22%;background:#F3F2EE;border-right:1px solid #CBC8BB"></i>
               <i style="width:32%;background:#F3F2EE;border-right:1px solid #CBC8BB"></i>
               <i style="flex:1;background:#FFFFFF"></i></span>
             <span style="font-size:12px;color:var(--ink2)">Elements — clair</span></span><span style="flex:1;display:flex;flex-direction:column;gap:7px">
-            <span style="display:flex;height:70px;border:1px solid #333B3A;border-radius:var(--r-controle);overflow:hidden;
+            <span style="display:flex;height:70px;border:1px solid #333B3A;border-radius:var(--r-control);overflow:hidden;
               ">
               <i style="width:22%;background:#0D100F;border-right:1px solid #333B3A"></i>
               <i style="width:32%;background:#0D100F;border-right:1px solid #333B3A"></i>
@@ -3900,7 +3900,7 @@ svg.g{flex:none}
       </div>
       <div class="fiche">
         <h3 class="sourcil">Raccourcis — table en référence, lecture seule</h3>
-        <table class="tbl" style="border-radius:var(--r-controle)">
+        <table class="tbl" style="border-radius:var(--r-control)">
           <thead><tr><th scope="col" style="width:88px">Touche</th><th scope="col">Geste</th></tr></thead>
           <tbody><tr><td class="nw"><span class="touche">c</span></td><td>Écrire un nouveau message</td></tr><tr><td class="nw"><span class="touche">r</span></td><td>Répondre à la conversation sélectionnée</td></tr><tr><td class="nw"><span class="touche">f</span></td><td>Transférer la conversation sélectionnée</td></tr><tr><td class="nw"><span class="touche">e</span></td><td>Archiver la conversation sélectionnée</td></tr><tr><td class="nw"><span class="touche">Suppr</span></td><td>Supprimer la conversation sélectionnée</td></tr><tr><td class="nw"><span class="touche">/</span></td><td>Aller à la recherche</td></tr><tr><td class="nw"><span class="touche">Échap</span></td><td>Fermer la surimpression, sortir du champ, revenir à la boîte</td></tr>
           </tbody>
@@ -4145,7 +4145,7 @@ svg.g{flex:none}
     <span class="txt">
       <span class="l1">
 
-        <span style="color:var(--tuileInk);display:inline-flex"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 3h4v7l2 4H8l2-4z"/><path d="M12 14v7"/></g></svg></span>
+        <span style="color:var(--tileInk);display:inline-flex"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M10 3h4v7l2 4H8l2-4z"/><path d="M12 14v7"/></g></svg></span>
         <span class="exp">Sofia Nardi</span><span class="boite"><span class="mot">sur</span><span class="rep-nu" data-teinte="pine"><svg class="g" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M3 11l9-7 9 7"/><path d="M6 10v10h12V10"/></g></svg></span><span class="lib">Travail</span></span><span class="h">4 août</span>
       </span>
       <span class="obj">Atelier de septembre</span>
@@ -4175,7 +4175,7 @@ svg.g{flex:none}
     silencieux</b> : il ne porte jamais d'état ni d'alerte — compter, pas signaler. Le survol teinte
     le fond <b>sans déplacer le contenu</b>. La sélection prend <code>--sel</code> et le liseré
     d'accent de 2 px au bord gauche ; jamais d'ombre ni de surface blanche. La rangée <b>épinglée</b>
-    prend le sol <code>--tuile</code> et la marque <code>keep</code> (A73) — et sur ce sol, l'accent
+    prend le sol <code>--tile</code> et la marque <code>keep</code> (A73) — et sur ce sol, l'accent
     ne sert qu'en liseré, jamais en libellé (mesuré : 4,38:1). Au raccourci <b>e</b> ou <b>Suppr</b>,
     la ligne du dessous devient la sélection (A38) : en trois volets elle ouvre son volet comme au
     clic, en deux ou un volet elle s'allume seulement. Le geste à la souris ne déplace pas la
@@ -4205,13 +4205,13 @@ svg.g{flex:none}
     L'enveloppe sur tuile au rabat en demi-disque remplace l'enveloppe à pastille « W » ; la pastille
     <b>disparaît</b> — le jeu ne met jamais rien dans un contenant en coin, et le « W » redisait le nom.
     Les deux couleurs de marque restent figées (W-D3) : tuile <code>#F2EDE3</code>, teal
-    <code>#1F8A8A</code>. Le teal entre à la table sous le jeton neuf <code>--marque</code>, mesuré
+    <code>#1F8A8A</code>. Le teal entre à la table sous le jeton neuf <code>--brand</code>, mesuré
     COMPOSANT (3:1) et jamais texte, et il est dédoublé d'une encre <code>--accent</code>
     <code>#1A7A7A</code> de même teinte pour tout ce qui se lit.</td></tr>
         <tr>
           <td class="nw">2026-08-24</td><th scope="row">V2</th><td><b>Le trait hitofude meurt ; la paire disque / anneau le remplace.</b>
     Décision du Chef Ingénieur. A28, A36 et A40 tombent — la signature calligraphique n'a pas de place
-    dans un système entièrement construit. Le disque plein <code>--marque</code> de <b>9 px</b> dit le
+    dans un système entièrement construit. Le disque plein <code>--brand</code> de <b>9 px</b> dit le
     repos, l'anneau évidé du <b>même diamètre</b> dit qu'une action tourne : ce n'est pas une forme de
     plus, c'est le même disque avec 2 px de paroi et son quart haut ouvert. Deux emplacements, la barre
     d'état et la modale de migration. A52 tient et se renforce : le pourcentage vit dans le TEXTE,
@@ -4234,7 +4234,7 @@ svg.g{flex:none}
     Chef Ingénieur. Navigation, entête, bandeaux et barre d'état cessent d'être en retrait ; le filet
     de 1 px porte SEUL la séparation. Wind reste <b>plat</b> — A29, A30, A46 et A72 tiennent tous : les
     panneaux bordés à rayon 18 du document d'icônes ne sont PAS repris. Le compte de jetons ne bouge
-    pas : <code>--panel</code> sort, <code>--marque</code> entre, dix-sept rôles. <b>Coût relevé</b> :
+    pas : <code>--panel</code> sort, <code>--brand</code> entre, dix-sept rôles. <b>Coût relevé</b> :
     16 emplois de <code>var(--panel)</code> dans 7 composants, dont <b>deux qui ne sont pas des fonds
     de panneau mais des états</b> — la tuile de date <i>éteinte</i> d'une invitation annulée et le fond
     de la garde d'images : ils retombent sur <code>--bg</code>. Conséquence de bord : le filet, qu'A28
@@ -4242,8 +4242,8 @@ svg.g{flex:none}
         <tr>
           <td class="nw">2026-08-24</td><th scope="row">V4</th><td><b>Le rond est rendu au disque.</b> Décision du Chef Ingénieur. Le disque n'a
     plus qu'un emploi dans tout le système : dire l'état. Deux ronds sont donc retirés — l'avatar
-    d'initiales devient une <b>tuile carrée</b> (28 px, rayon 2 — porté à <b>0</b> par V14, sol <code>--tuile</code>, encre
-    <code>--tuileInk</code>, <b>filet de 1 px</b> : mesurée, la tuile ne vaut que 1,04:1 sur le fond
+    d'initiales devient une <b>tuile carrée</b> (28 px, rayon 2 — porté à <b>0</b> par V14, sol <code>--tile</code>, encre
+    <code>--tileInk</code>, <b>filet de 1 px</b> : mesurée, la tuile ne vaut que 1,04:1 sur le fond
     clair, sans filet elle n'existe pas), et la <b>pastille pleine de non-lus</b> de la navigation
     devient un <b>nombre</b> en chiffres tabulaires à l'accent. En échange, le non-lu d'une rangée
     gagne un disque de 9 px. <b>Ce qui est renversé, exactement</b> : A29 point 2, qui IMPOSAIT la
@@ -4319,7 +4319,7 @@ svg.g{flex:none}
     <b>En tuile</b> — icône d'application, accueil, migration, « À propos » — elle est <b>figée hors
     thèmes</b> (W-D3) : structure <code>#141414</code>, tuile <code>#F2EDE3</code>, teal
     <code>#1F8A8A</code>, identiques dans les deux polarités. <b>En glyphe</b> — entête, tiroir — elle
-    suit l'encre courante et <code>--marque</code>. Ce n'est pas une entorse à W-D3 mais sa borne : la
+    suit l'encre courante et <code>--brand</code>. Ce n'est pas une entorse à W-D3 mais sa borne : la
     tuile porte son propre sol, un glyphe nu n'en a pas, et un <code>#141414</code> figé posé sur le
     fond nuit serait invisible (1,25:1). La première rédaction appliquait les deux régimes sans les
     énoncer.</td></tr>
@@ -4497,7 +4497,7 @@ svg.g{flex:none}
           <th scope="row">A34</th><td><b>Révision éditoriale du document.</b> Suppression des tirets cadratins dans tous les textes, libellés d'interface compris : le préfixe de liste devient « Brouillon : » (écrans, règles et catalogues à mettre à jour dans le même commit, DC-D2), les états de la barre d'état passent au point médian (« Synchronisation impossible · nouvelle tentative automatique »). Formulations resserrées, sans changement de règle ; les énoncés d'intention sont remplacés par des énoncés vérifiables (contrat des jetons : l'écart CSS/table fait échouer le build ; échec partiel : l'état existe parce que l'horodatage seul masquerait un compte injoignable). Aucun changement de géométrie ni de couleur.</td></tr>
         <tr>
           <td class="nw">2026-08-15</td>
-          <th scope="row">A35</th><td><b>Verdicts du GO PLAN-WADA</b> (W2-D1 à W2-D7, <code>docs/PLAN-WADA.md</code>). Trois jetons entrent au contrat, déclinés aux sept thèmes : <code>--hover</code> (le survol des rangées), <code>--tuile</code> et <code>--tuileInk</code> (la tuile de la boîte en cours) ; 17 jetons × 7 thèmes, 119 valeurs, gate inchangée. Deux remèdes A8 mesurés au banc avant livraison : <code>--muted</code> nature <code>#5c6470→#575f6a</code> (l’heure 12 px sur rangée sélectionnée mesurait 4,20:1) et <code>--muted</code> nuit <code>#929a96→#a0a7a4</code> (3,83:1 sur la sélection, même défaut découvert au banc) ; le document est repeint à ces valeurs. La tuile de la boîte en cours porte l’adresse et le compte de non-lus, icône <code>person</code> (D7 : « Travail »/<code>work</code> était la fiction d’exemple) ; <code>work</code> sort de la police au balayage (DC-D3), <code>inventory_2</code> y entre (A32), 44 glyphes. Le trait hitofude sous <code>prefers-reduced-motion</code> reste plein et immobile (A8 coupe toute animation). L’énoncé des filets « ≥ 3:1 aux frontières utiles » (1,49:1 mesuré) est retiré : les filets sont décoratifs, hors seuils du banc.</td></tr>
+          <th scope="row">A35</th><td><b>Verdicts du GO PLAN-WADA</b> (W2-D1 à W2-D7, <code>docs/PLAN-WADA.md</code>). Trois jetons entrent au contrat, déclinés aux sept thèmes : <code>--hover</code> (le survol des rangées), <code>--tile</code> et <code>--tileInk</code> (la tuile de la boîte en cours) ; 17 jetons × 7 thèmes, 119 valeurs, gate inchangée. Deux remèdes A8 mesurés au banc avant livraison : <code>--muted</code> nature <code>#5c6470→#575f6a</code> (l’heure 12 px sur rangée sélectionnée mesurait 4,20:1) et <code>--muted</code> nuit <code>#929a96→#a0a7a4</code> (3,83:1 sur la sélection, même défaut découvert au banc) ; le document est repeint à ces valeurs. La tuile de la boîte en cours porte l’adresse et le compte de non-lus, icône <code>person</code> (D7 : « Travail »/<code>work</code> était la fiction d’exemple) ; <code>work</code> sort de la police au balayage (DC-D3), <code>inventory_2</code> y entre (A32), 44 glyphes. Le trait hitofude sous <code>prefers-reduced-motion</code> reste plein et immobile (A8 coupe toute animation). L’énoncé des filets « ≥ 3:1 aux frontières utiles » (1,49:1 mesuré) est retiré : les filets sont décoratifs, hors seuils du banc.</td></tr>
         <tr>
           <td class="nw">2026-08-15</td>
           <th scope="row">A36</th><td><b>Constat terrain E3 (PLAN-WADA), deux retouches CE.</b> 1. La tuile de la boîte en cours ne compte plus rien : l'adresse seule (la pastille de la Réception dit déjà le non-lu ; la clé <code>nav.nonLus</code> quitte les catalogues). 2. Le trait hitofude quitte le bouton de relève et devient l'<b>indicateur de progression</b>, à gauche de la ligne d'état : dessiné au rythme du pourcentage pendant un chargement (jamais complet tant qu'il reste des éléments), en boucle pendant un cycle sans dénominateur, plein et immobile au repos. La <b>barre fine de 2 px disparaît du Système</b> ; le bouton garde son glyphe <code>sync</code>, immobile.</td></tr>
@@ -4512,7 +4512,7 @@ svg.g{flex:none}
           <th scope="row">A39</th><td><b>La fenêtre ne gèle jamais</b>, constat terrain CE (PLAN-GELS) : au démarrage, la fenêtre restait plusieurs secondes sans répondre — ni clic, ni déplacement. Racine : dans Tauri 2, une commande déclarée sans <code>async</code> s'exécute sur le <b>thread principal</b>, celui de la pompe de messages ; chaque commande synchrone qui ouvrait la base gelait la fenêtre pour toute sa durée (mesuré : 25,2 s de gels cumulés sur 40 s, pire gel 4,6 s — rattrapage des aperçus par lots de 2 000). Règle : <b>toute commande qui ouvre la base, touche un fichier ou le coffre est <code>async</code></b> — la pompe ne fait que pomper ; seules les commandes pures d'état (atomiques, détaché) restent synchrones, nommées et justifiées. Le lot du rattrapage des aperçus passe de 2 000 à 500 (verrou d'écriture court, les gestes UI ne rencontrent pas de BUSY). Tenu par une gate (<code>garde-thread-principal.mjs</code>) et un budget : aucun gel de pompe &gt; 150 ms (<code>sonde-gel.py</code>) — re-mesure après remède : zéro gel sur 40 s, même décor.</td></tr>
         <tr>
           <td class="nw">2026-08-15</td>
-          <th scope="row">A40</th><td><b>Le trait hitofude vit pendant les cycles</b>, constat terrain CE (validation PLAN-GELS) : « le trait reste fixe pendant une synchronisation ». Deux racines, mesurées sur copie de la base réelle. 1. <b>L'avancement se figeait à 99 %</b> après tout triage : le geste retire la ligne locale immédiatement (écho, E3) mais <code>remote_total</code> date du dernier SELECT — 5 archives + 1 suppression en attente de rejeu suffisaient à tenir <code>sync_percent</code> sous 100 (« jamais 100 tant que pas fini »), et le trait passait en mode « plein au pourcentage », immobile, à chaque cycle. Règle : <b>les départs en attente de rejeu (archive, suppression, déplacement) ne comptent plus dans le dénominateur</b> ; les marquages n'y touchent pas ; borne à zéro par boîte. 2. <b>La boucle <code>vague</code> était morte-née</b> : le chemin animé vit dans le <code>&lt;mask&gt;</code> SVG, sous-arbre non rendu où Chromium ne fait pas tourner les animations CSS (<code>playState idle</code>, prouvé sur la vraie fenêtre). Le tracé passe en <b>SMIL</b> (<code>&lt;animate&gt;</code>, 115→0 en 2 s puis plein, boucle 4 s) ; le fondu reste en CSS sur le chemin rendu ; <code>prefers-reduced-motion</code> (A8) tenu à la main — SMIL n'obéit pas au bloc CSS global, l'<code>&lt;animate&gt;</code> n'est pas rendu quand le mouvement est réduit, le trait retombe plein et immobile. Les keyframes <code>hitofudeDraw</code> quittent <code>systeme.css</code> (mortes) ; <code>hitofudeFade</code> demeure. Preuve : dashoffset en mouvement mesuré au CDP pendant un cycle réel ; un e2e tient la présence de l'<code>&lt;animate&gt;</code> dans le trait de la barre d'état.</td></tr>
+          <th scope="row">A40</th><td><b>Le trait hitofude vit pendant les cycles</b>, constat terrain CE (validation PLAN-GELS) : « le trait reste fixe pendant une synchronisation ». Deux racines, mesurées sur copie de la base réelle. 1. <b>L'avancement se figeait à 99 %</b> après tout triage : le geste retire la ligne locale immédiatement (écho, E3) mais <code>remote_total</code> date du dernier SELECT — 5 archives + 1 suppression en attente de rejeu suffisaient à tenir <code>sync_percent</code> sous 100 (« jamais 100 tant que pas fini »), et le trait passait en mode « plein au pourcentage », immobile, à chaque cycle. Règle : <b>les départs en attente de rejeu (archive, suppression, déplacement) ne comptent plus dans le dénominateur</b> ; les marquages n'y touchent pas ; borne à zéro par boîte. 2. <b>La boucle <code>vague</code> était morte-née</b> : le chemin animé vit dans le <code>&lt;mask&gt;</code> SVG, sous-arbre non rendu où Chromium ne fait pas tourner les animations CSS (<code>playState idle</code>, prouvé sur la vraie fenêtre). Le tracé passe en <b>SMIL</b> (<code>&lt;animate&gt;</code>, 115→0 en 2 s puis plein, boucle 4 s) ; le fondu reste en CSS sur le chemin rendu ; <code>prefers-reduced-motion</code> (A8) tenu à la main — SMIL n'obéit pas au bloc CSS global, l'<code>&lt;animate&gt;</code> n'est pas rendu quand le mouvement est réduit, le trait retombe plein et immobile. Les keyframes <code>hitofudeDraw</code> quittent <code>system.css</code> (mortes) ; <code>hitofudeFade</code> demeure. Preuve : dashoffset en mouvement mesuré au CDP pendant un cycle réel ; un e2e tient la présence de l'<code>&lt;animate&gt;</code> dans le trait de la barre d'état.</td></tr>
         <tr>
           <td class="nw">2026-08-15</td>
           <th scope="row">A41</th><td><b>Rien ne touche la base avant la modale de migration</b>, constat de revue du 2026-08-15 (chantier des gels de fenêtre) : la restauration de la langue, jouée avant le premier rendu, ouvrait la base (<code>lang_get</code>, et <code>lang_set</code> au premier lancement) — sur une base héritée, l'adoption se payait en silence au chargement de la langue, sans modale, sans avancement, sans annulation, contre l'ADR 0012. Règle : la lecture de la langue est une <b>sonde en lecture seule</b> (le patron de <code>pending_adoption</code> : fichier absent ou table absente, pas de trace, pas de migration), et la langue détectée au premier lancement <b>se pose après la modale</b>, seulement si la sonde de migration a répondu. Un échec de lecture n'est pas une absence de préférence : il vaut un repli de session, jamais une écriture. La modale reste la première surface à payer l'adoption — visible, interruptible.</td></tr>
@@ -4611,7 +4611,7 @@ svg.g{flex:none}
           <th scope="row">A72</th><td><b>L'écran 03 à plat</b> (PLAN-RETOURS-7, R3 ; décision CE D2 du 2026-08-21 — <b>renverse le « l'écran 03 garde sa carte pleine » d'A46</b>). La conversation ouverte prend la forme exacte du volet : <b>aucune élévation englobante</b> — chaque message dans sa carte élevée, la scène sur <code>--bg</code> défile en un seul flot (tête du fil sans filet, barre d'actions dans le flot). <b>Colonne de lecture centrée, bornée à 960 px</b> (D2) : l'écran large reste à largeur de lecture. Volet et écran 03 restent deux cadres du même objet (composant Fil) — la forme est désormais UNE. Garde e2e jumelle de la platitude du volet.</td></tr>
         <tr>
           <td class="nw">2026-08-21</td>
-          <th scope="row">A73</th><td><b>Épingler une conversation</b> (PLAN-RETOURS-7, R4 ; décisions CE D3-D5 du 2026-08-21). « <b>Épingler</b> »/« <b>Désépingler</b> » (glyphes <code>keep</code>/<code>keep_off</code>, <code>aria-pressed</code>) rejoint la barre du fil — la maison des gestes de tri (D3, jamais un geste sur les lignes) — en <b>Réception seule</b> (D4). La conversation épinglée vit <b>en tête de la liste</b>, dans une section préposée au flot (mêmes lignes, marque <code>keep</code> « Épinglé » au rang de puces), et <b>quitte sa place de date</b> (D5 : jamais deux fois la même ligne) ; désépingler l'y rend. <b>Terrain (2026-08-21)</b> : la ligne épinglée prend le <b>dessin de la tuile de la boîte en cours</b> (nav, W2-D5) — fond <code>--tuile</code>, encre <code>--tuileInk</code> — pour se distinguer du flot au premier regard ; la teinte tient au survol, la sélection garde son liseré d'accent. Donnée <b>locale</b> (IMAP n'a pas ce concept ; l'étoile <code>\Flagged</code> est une autre sémantique, jamais détournée), clé d'enveloppe — elle survit à la reconstruction des fils et suit le fil entier (une réponse qui déplace la tête ne décroche rien). Échos, brouillons et recherche : hors périmètre (§2.6). <b>Bilan glyphes A70-A73 : 3 neufs</b> (<code>download</code>, <code>keep</code>, <code>keep_off</code>), sous-ensemble 61 → <b>64</b>, cache-buster <code>?v=64</code>.</td></tr>
+          <th scope="row">A73</th><td><b>Épingler une conversation</b> (PLAN-RETOURS-7, R4 ; décisions CE D3-D5 du 2026-08-21). « <b>Épingler</b> »/« <b>Désépingler</b> » (glyphes <code>keep</code>/<code>keep_off</code>, <code>aria-pressed</code>) rejoint la barre du fil — la maison des gestes de tri (D3, jamais un geste sur les lignes) — en <b>Réception seule</b> (D4). La conversation épinglée vit <b>en tête de la liste</b>, dans une section préposée au flot (mêmes lignes, marque <code>keep</code> « Épinglé » au rang de puces), et <b>quitte sa place de date</b> (D5 : jamais deux fois la même ligne) ; désépingler l'y rend. <b>Terrain (2026-08-21)</b> : la ligne épinglée prend le <b>dessin de la tuile de la boîte en cours</b> (nav, W2-D5) — fond <code>--tile</code>, encre <code>--tileInk</code> — pour se distinguer du flot au premier regard ; la teinte tient au survol, la sélection garde son liseré d'accent. Donnée <b>locale</b> (IMAP n'a pas ce concept ; l'étoile <code>\Flagged</code> est une autre sémantique, jamais détournée), clé d'enveloppe — elle survit à la reconstruction des fils et suit le fil entier (une réponse qui déplace la tête ne décroche rien). Échos, brouillons et recherche : hors périmètre (§2.6). <b>Bilan glyphes A70-A73 : 3 neufs</b> (<code>download</code>, <code>keep</code>, <code>keep_off</code>), sous-ensemble 61 → <b>64</b>, cache-buster <code>?v=64</code>.</td></tr>
         <tr>
           <td class="nw">2026-08-22</td>
           <th scope="row">A74</th><td><b>Le repère de compte</b> (PLAN-RETOURS-8, R1 ; décisions CE D1-D3 du 2026-08-22). Un compte peut porter un repère — <b>une icône du jeu dédié + une teinte du nuancier des repères</b> — choisi dans Réglages &gt; Comptes (l'icône de la rangée est la porte ; carte de choix sous la rangée ; un repère n'existe qu'entier). Il remplace <code>person</code> dans la nav (pastille 20 px, rang et tuile) et marque les lignes en <b>boîte unifiée seule</b> (D3) d'un badge de 16 px sous l'avatar — les gabarits h1/h2 ne bougent pas. <b>Le nuancier est une famille de couleurs de CONTENU</b> (comme le nuancier du composeur, jamais des jetons de thème), né d'une mesure : aucune teinte unique ne tient 3:1 sur les fonds clairs ET sur les fonds -nuit (pire cas <code>iris-nuit/sel</code>) — chaque famille vit donc en <b>deux déclinaisons</b> (sombre pour les 14 thèmes clairs, glyphe blanc ; claire pour les 14 -nuit, encre <code>#1c1b1b</code>), servies par <code>[data-theme$="-nuit"]</code> et mesurées par la gate de contraste (≥ 3:1 composant, glyphe ≥ 4,5:1). <b>Le jeu d'icônes est DÉDIÉ</b> (D2) : réservé aux repères, jamais réemployé — A3 tenu par réservation ; <code>work</code> revient (retiré à A32) au sens unique de repère. Préférence locale (<code>prefs</code>, patron signature), défaut = <code>person</code> neutre : la mise à jour est invisible pour l'existant. <b>Bilan glyphes : 12 neufs</b>, sous-ensemble 64 → <b>76</b>, cache-buster <code>?v=76</code>. Au passage : le compte des groupes de Réglages disait « six » depuis A68 — corrigé (« sept », Signature listée).</td></tr>
@@ -4620,7 +4620,7 @@ svg.g{flex:none}
           <th scope="row">A75</th><td><b>Le parcours de premier démarrage</b> (PLAN-RETOURS-8, R2 ; décision CE D4 du 2026-08-22 — <b>amende « l'accueil qui ne réclame qu'une adresse » (Principes) et l'exclusivité de la modale de migration (« rien d'autre ne bloque jamais »)</b> ; <b>forme arrêtée au terrain du même jour, seize constats en trois passes, corrigés dans la session</b>). Le premier lancement devient un parcours en <b>quatre étapes</b> dans la géométrie de l'écran 01, chaque étape disant titre → « Étape n/4 » → texte, et <b>Continuer jamais grisé — absent tant qu'il ne peut pas continuer</b> : <b>1. comptes</b> — « Bienvenue dans Wind » (hitofude derrière la marque), barre d'adresse 40 px au bouton « Ajouter » (PRIMAIRE tant que Continuer est absent — aucun compte : c'est LE geste —, secondaire ensuite), sans note « serveur détecté », barre repliée derrière « Ajouter une autre adresse email » dès la première adresse ; le guichet générique révélé MASQUE Continuer, son « Ajouter » est toujours primaire, « Retour » replie les champs (guichet A11 inchangé sous ces habits ; sans compte, pas de Continuer — D4) ; <b>2. disposition</b> — UNE <b>capture RÉELLE</b> de l'app (décor Clarity, <code>e2e/capture-accueil.mjs</code>, recadrée au-dessus de la barre d'état) qui suit le bouton survolé/focalisé et retombe sur le choix, trois boutons centrés dessous, l'ensemble dans UNE élévation ; <b>3. thème</b> — 28 fenêtres miniatures aux couleurs de <code>FICHES</code>, dessinées dans la disposition CHOISIE ; <b>4. récapitulatif</b> — « Vérifiez vos choix avant de continuer. », les trois choix (« Comptes », « Disposition », « Thème ») en cartes-portes CÔTE À CÔTE à MINIATURES sous le texte (capture de la disposition, fenêtre du thème), voile « Revenir à cette étape » au survol/focus (règles d'A70, glyphe <code>arrow_back</code>), le clic ramène à l'étape, puis Terminer. Sélection des cartes et boutons = fond <code>--sel</code> + contour d'accent épaissi (liseré interne). Les choix s'appliquent et se persistent à l'instant — le geste du thème, aucun coût backend. Marques <code>wind-accueil-fait</code> / <code>wind-accueil-commence</code> (localStorage, V-D4) : une installation existante est réputée accueillie, un parcours COMMENCÉ puis abandonné reprend, un poste revenu à zéro compte retrouve le guichet seul. L'ordre A41 tient : migration, langue, accueil — le parcours couvre la fenêtre mais ne bloque aucune machine (la synchronisation démarre derrière). La dette D-10 (ordre d'<code>onMount</code> sans assertion e2e) s'est rouverte comme prévu (ce chantier touche <code>onMount</code>) : l'ordre est vérifié tenu sur pièces — la décision d'accueil vit dans <code>chargerNav</code>, APRÈS <code>assurer()</code> et la pose de langue — mais l'assertion `prefs.lang` reste à écrire (D-10 reste ouverte).</td></tr>
         <tr>
           <td class="nw">2026-08-22</td>
-          <th scope="row">A76</th><td><b>La carte d'invitation de réunion</b> (PLAN-INVITATIONS ; décisions CE D1-D7 du 2026-08-22). Un message qui porte une invitation iTIP (<code>text/calendar</code>) la montre en <b>carte EN TÊTE du contenu</b> de la carte dépliée — avant les fichiers joints et le corps : c'est l'objet du message. La carte (rayon surface 10 px, sans élévation — elle appartient au flot du contenu) dit : kicker « Invitation » (« Invitation annulée » en <code>--alert</code> pour un CANCEL ; « Réponse à votre invitation » pour un REPLY reçu), le statut à droite (« Vous n'avez pas répondu » / « Vous avez accepté/refusé/répondu provisoirement » — D6 : la dernière réponse PARTIE de Wind fait foi), une <b>tuile de date</b> (mois abrégé + quantième, la paire <code>--tuile</code>/<code>--tuileInk</code> de la boîte en cours ; éteinte en <code>--panel</code>/<code>--muted</code> pour un CANCEL), le titre (barré pour un CANCEL), l'horaire en heure locale du poste, lieu · organisateur. <b>Une heure au fuseau IRRÉSOLU s'affiche telle quelle</b>, suffixée « heure locale de l'organisateur » (garde D1) — jamais une conversion mensongère. <b>Trois boutons NEUTRES</b> « Accepter / Provisoire / Refuser » (D4 : <b>aucun accent — A14 reste intact</b>, la carte ne hiérarchise pas la réponse), au gabarit des actions de message (30 px) ; la réponse courante se dit par <code>aria-pressed</code> — fond <code>--sel</code> + liseré d'accent, la sélection d'A75 ; répondre reste possible après réponse (D6, nouvel email iTIP). La réponse part par LA boîte d'envoi (journal d'abord ; hors ligne : au prochain lancement, la sémantique dite d'A69), sujet dans la langue du produit (« Accepté : {titre} », D5). <b>D3 : la partie calendrier inline n'est PAS un fichier</b> — plus jamais de puce fantôme « piece-jointe.calendar » : filtrée à la source pour les scans neufs, et l'existant est RELU une fois (réparation <code>pieces-calendrier</code> — ses indices de pièces, décalés par le filtre, redeviennent justes ET sa carte naît du même re-scan) ; un vrai <code>.ics</code> nommé et joint reste une puce enregistrable. <b>Aucun glyphe neuf</b> — la tuile de date est typographique, les statuts sont dits en toutes lettres. <b>Terrain (verdict du 2026-08-22, neuf points, corrigé le 2026-08-23)</b> : (R8, verdict CE — renverse la garde de la revue) une invitation <b>TRANSFÉRÉE est une invitation</b> — être dans la liste ATTENDEE n'est pas exigé pour répondre, qui transfère en prend la responsabilité ; (R6) <b>l'annulation est CROISÉE</b> — un CANCEL éteint le REQUEST de la même réunion (même <code>event_uid</code>, même compte, dans les deux ordres d'arrivée) : la carte d'ORIGINE dit « Invitation annulée », l'annulation n'est plus orpheline dans sa conversation neuve ; (R10) <b>le rang de puces de la LISTE porte les trois gestes</b> — répondre sans ouvrir (mêmes puces-boutons de 24 px, gabarit h2 du fenêtrage inchangé), le clic ne choisit pas la ligne ; (R11) <b>une invitation répondue prête son VISAGE à la ligne</b> — sujet, expéditeur et aperçu de l'INVITATION, puce « Acceptée / Provisoire / Refusée / Annulée » — le SEUL cas où la liste ne montre pas le dernier message du fil, l'ordre de tri intact ; (R12, bug générique débusqué par le terrain) <b>la puce « n fichiers » d'une ligne somme le FIL entier</b> — la tête seule mentait dès que la pièce vivait sur un autre message. Le tout par une passe d'enrichissement bornée à la PAGE servie — la requête chaude de la liste ne paie rien. <b>Seconde passe (verdict du 2026-08-23, six points — quatre retours de finition, corrigés dans la session)</b> : la puce de réponse remplace les gestes <b>À L'INSTANT du clic</b> (optimiste — le journal suit, un échec rend l'état d'avant et le dit) ; <b>les gestes d'invitation occupent un rang À EUX</b> dans la ligne — les autres puces (messages, fichiers, épingle) vivent au rang du dessous et remontent quand la puce de réponse les rejoint (le fenêtrage compte des RANGS, coût marginal constant, toujours deux gabarits mesurés) ; boutons ET puces portent leur icône — <code>check_circle</code> (sens « confirmé » élargi à « accepté »), <code>cancel</code> (neuf : refuser — jamais <code>close</code>, qui garde « fermer »), <code>question_mark</code> (neuf : provisoire — jamais <code>hourglass_empty</code>, qui garde « programmé ») — et <b>la couleur dit le sens, portée par l'ICÔNE</b> (accent / neutre / alerte, texte toujours en double — A8 ; paires déjà gatées) ; « Annulée » reste typographique, en alerte. <b>« Supprimer » quitte la barre du fil pour CHAQUE message</b> (le pendant destructif de la barre de réponse R4/RETOURS-3) : on supprime CE message, le fil reste ouvert s'il lui en reste, l'écho dit l'attente comme avant. <b>Bilan glyphes A76 : 2 neufs</b> (<code>cancel</code>, <code>question_mark</code>), sous-ensemble 76 → <b>78</b>, cache-buster <code>?v=78</code>. <b>Troisième passe (2026-08-23)</b> : l'optimisme ne se voyait que sur une ligne déjà sélectionnée — la mutation écrivait dans les pages non réactives du fenêtrage ; le geste passe par <code>version</code>, le canal d'invalidation de la fenêtre, à l'écriture comme au rembobinage.</td></tr>
+          <th scope="row">A76</th><td><b>La carte d'invitation de réunion</b> (PLAN-INVITATIONS ; décisions CE D1-D7 du 2026-08-22). Un message qui porte une invitation iTIP (<code>text/calendar</code>) la montre en <b>carte EN TÊTE du contenu</b> de la carte dépliée — avant les fichiers joints et le corps : c'est l'objet du message. La carte (rayon surface 10 px, sans élévation — elle appartient au flot du contenu) dit : kicker « Invitation » (« Invitation annulée » en <code>--alert</code> pour un CANCEL ; « Réponse à votre invitation » pour un REPLY reçu), le statut à droite (« Vous n'avez pas répondu » / « Vous avez accepté/refusé/répondu provisoirement » — D6 : la dernière réponse PARTIE de Wind fait foi), une <b>tuile de date</b> (mois abrégé + quantième, la paire <code>--tile</code>/<code>--tileInk</code> de la boîte en cours ; éteinte en <code>--panel</code>/<code>--muted</code> pour un CANCEL), le titre (barré pour un CANCEL), l'horaire en heure locale du poste, lieu · organisateur. <b>Une heure au fuseau IRRÉSOLU s'affiche telle quelle</b>, suffixée « heure locale de l'organisateur » (garde D1) — jamais une conversion mensongère. <b>Trois boutons NEUTRES</b> « Accepter / Provisoire / Refuser » (D4 : <b>aucun accent — A14 reste intact</b>, la carte ne hiérarchise pas la réponse), au gabarit des actions de message (30 px) ; la réponse courante se dit par <code>aria-pressed</code> — fond <code>--sel</code> + liseré d'accent, la sélection d'A75 ; répondre reste possible après réponse (D6, nouvel email iTIP). La réponse part par LA boîte d'envoi (journal d'abord ; hors ligne : au prochain lancement, la sémantique dite d'A69), sujet dans la langue du produit (« Accepté : {titre} », D5). <b>D3 : la partie calendrier inline n'est PAS un fichier</b> — plus jamais de puce fantôme « piece-jointe.calendar » : filtrée à la source pour les scans neufs, et l'existant est RELU une fois (réparation <code>pieces-calendrier</code> — ses indices de pièces, décalés par le filtre, redeviennent justes ET sa carte naît du même re-scan) ; un vrai <code>.ics</code> nommé et joint reste une puce enregistrable. <b>Aucun glyphe neuf</b> — la tuile de date est typographique, les statuts sont dits en toutes lettres. <b>Terrain (verdict du 2026-08-22, neuf points, corrigé le 2026-08-23)</b> : (R8, verdict CE — renverse la garde de la revue) une invitation <b>TRANSFÉRÉE est une invitation</b> — être dans la liste ATTENDEE n'est pas exigé pour répondre, qui transfère en prend la responsabilité ; (R6) <b>l'annulation est CROISÉE</b> — un CANCEL éteint le REQUEST de la même réunion (même <code>event_uid</code>, même compte, dans les deux ordres d'arrivée) : la carte d'ORIGINE dit « Invitation annulée », l'annulation n'est plus orpheline dans sa conversation neuve ; (R10) <b>le rang de puces de la LISTE porte les trois gestes</b> — répondre sans ouvrir (mêmes puces-boutons de 24 px, gabarit h2 du fenêtrage inchangé), le clic ne choisit pas la ligne ; (R11) <b>une invitation répondue prête son VISAGE à la ligne</b> — sujet, expéditeur et aperçu de l'INVITATION, puce « Acceptée / Provisoire / Refusée / Annulée » — le SEUL cas où la liste ne montre pas le dernier message du fil, l'ordre de tri intact ; (R12, bug générique débusqué par le terrain) <b>la puce « n fichiers » d'une ligne somme le FIL entier</b> — la tête seule mentait dès que la pièce vivait sur un autre message. Le tout par une passe d'enrichissement bornée à la PAGE servie — la requête chaude de la liste ne paie rien. <b>Seconde passe (verdict du 2026-08-23, six points — quatre retours de finition, corrigés dans la session)</b> : la puce de réponse remplace les gestes <b>À L'INSTANT du clic</b> (optimiste — le journal suit, un échec rend l'état d'avant et le dit) ; <b>les gestes d'invitation occupent un rang À EUX</b> dans la ligne — les autres puces (messages, fichiers, épingle) vivent au rang du dessous et remontent quand la puce de réponse les rejoint (le fenêtrage compte des RANGS, coût marginal constant, toujours deux gabarits mesurés) ; boutons ET puces portent leur icône — <code>check_circle</code> (sens « confirmé » élargi à « accepté »), <code>cancel</code> (neuf : refuser — jamais <code>close</code>, qui garde « fermer »), <code>question_mark</code> (neuf : provisoire — jamais <code>hourglass_empty</code>, qui garde « programmé ») — et <b>la couleur dit le sens, portée par l'ICÔNE</b> (accent / neutre / alerte, texte toujours en double — A8 ; paires déjà gatées) ; « Annulée » reste typographique, en alerte. <b>« Supprimer » quitte la barre du fil pour CHAQUE message</b> (le pendant destructif de la barre de réponse R4/RETOURS-3) : on supprime CE message, le fil reste ouvert s'il lui en reste, l'écho dit l'attente comme avant. <b>Bilan glyphes A76 : 2 neufs</b> (<code>cancel</code>, <code>question_mark</code>), sous-ensemble 76 → <b>78</b>, cache-buster <code>?v=78</code>. <b>Troisième passe (2026-08-23)</b> : l'optimisme ne se voyait que sur une ligne déjà sélectionnée — la mutation écrivait dans les pages non réactives du fenêtrage ; le geste passe par <code>version</code>, le canal d'invalidation de la fenêtre, à l'écriture comme au rembobinage.</td></tr>
         <tr>
           <td class="nw">2026-08-23</td>
           <th scope="row">A77</th><td><b>Le retrait de compte se dit</b> (PLAN-RETOURS-9, sujet 2 ; décision CE D2 du 2026-08-23). Le bouton de la rangée Réglages &gt; Comptes passe d'icône seule (<code>delete</code>, sens porté par l'<code>aria-label</code> seul) à <b>icône + texte « Retirer le compte »</b> — le patron d'« Ajouter un compte ». Le vocabulaire reste « <b>retirer</b> » (D2, « Supprimer » de l'énoncé refusé) : le geste enlève le compte de Wind, rien n'est supprimé du serveur — c'est ce que la carte de confirmation dit déjà, et un bouton ne doit pas dire autre chose que sa confirmation. Encre <code>--muted</code> au repos, l'alerte ne se montre qu'au survol (dessin A74 conservé — le rouge permanent crierait sur chaque compte sain). Aucun glyphe neuf.</td></tr>
@@ -4629,7 +4629,7 @@ svg.g{flex:none}
           <th scope="row">A78</th><td><b>Le nom personnalisé d'un compte</b> (PLAN-RETOURS-9, sujet 3 ; décisions CE D3-D4 du 2026-08-23). Un compte peut porter un nom choisi (« Boulot », « Perso » — 60 caractères au plus, espaces rognés, le shell normalise et fait foi). <b>Le libellé de la rangée Réglages &gt; Comptes est la porte</b> : cliquer l'identité ouvre la carte de saisie sous la rangée (le patron du repère/retrait — champ prérempli, Entrée ou « Enregistrer » applique, vider le champ retire le nom). <b>Pas de glyphe neuf</b> : le jeu n'a pas de crayon et A3 interdit d'en réemployer un (<code>edit_note</code> dit « brouillons », <code>edit_square</code> dit « écrire ») — la porte est textuelle, comme « Reconnecter ». Surfaces (D4) : le nom <b>REMPLACE l'adresse</b> sur la tuile de nav et dans l'infobulle/aria du badge de repère en liste ; en <b>Réglages</b> il s'affiche <b>AVEC l'adresse</b> (nom en graisse, adresse dessous — elle reste la vérité de connexion ; la section Signature aussi, où éditer le mauvais compte coûte) ; l'<b>onboarding</b> de D4 est sans objet par construction (aucun nom ne peut exister au premier démarrage — consigné, pas escamoté) ; au <b>composeur</b> le sélecteur d'expéditeur dit « <b>Nom — adresse</b> » (la valeur reste l'adresse : la donnée fonctionnelle d'envoi ne change pas). <b>Le nom ne touche JAMAIS le <code>From:</code> des messages sortants</b> — libellé local, pas un display name SMTP (refus de périmètre explicite). Préférence locale <code>nom_compte.{id}</code> (patron repère/signature), purgée avec le compte au retrait — un id SQLite réutilisé n'hérite jamais de l'identité de l'ancien.</td></tr>
         <tr>
           <td class="nw">2026-08-24</td>
-          <th scope="row">A79</th><td><b>L'adoption : ce document devient le Système de référence, et l'UI le livre</b> (PLAN-ELEMENTS ; décisions CE D1-D5 du 2026-08-24, V1-V14 closes). <b>D1</b> : le HTML est LA source, éditée à la main — le générateur d'étude reste figé en trace (<code>spikes/direction-elements/v2/</code>), l'ancien Système part en <code>docs/archives/systeme.v1.dc.html</code>, la série V se ferme, les amendements reprennent ici en A-n. <b>Livré en cinq étapes, chacune gate-verte et validée au STOP visuel CE le jour même</b> : E1 le socle (17 jetons × 2 thèmes, <code>--panel</code> retiré — 16 emplois sur <code>--bg</code> —, migration des choix mémorisés : tout ancien -nuit vers <code>elements-nuit</code>, le reste au défaut) ; E2 les 78 glyphes en SVG en ligne (<code>lib/icones.js</code> + <code>Icone.svelte</code>, 95 emplois convertis, la fonte Material et son contrat README morts, mention « À propos » arrêtée — D2 : « Jeu original de Wind, dessiné d'après Material Symbols (Google, Apache 2.0) ») ; E3 les formes (zéro rayon par les trois jetons sur <code>html</code>, tuile d'initiales carrée, disque de non-lu 9 px, compteur de nav en nombre nu, marque <code>keep</code> des épinglées) ; E4 la marque (<code>Marque.svelte</code>, deux régimes V11 ; <code>Hitofude.svelte</code> supprimé, disque/anneau à la barre d'état) ; E5 le registre d'affichage (graisse 340 via Segoe UI Variable Display, repli 400). <b>Les gates encodent le Système</b> : contraste 220 paires (filets 1,49/1,26 et <code>--marque</code> compris), cohérence — noms ET tracés des glyphes dans les deux sens, zéro littéral de rayon (l'exception <code>--r-plateforme</code> déclarée), réservés jamais posés. <b>D3 (verdict au STOP E2)</b> : les trois familles de fusion restent différenciées par leurs marques actuelles (poignée corps/couvercle ; bandeau supérieur ; marque intérieure du cercle) — aucun redessin. <b>D4</b> : les maîtres réduits sont livrés, le palier 16 reste la dette V9. <b>Défaut trouvé à l'adoption, réparé</b> : la normalisation <code>scope="col"</code> du générateur avait mutilé onze <code>&lt;thead&gt;</code> (« <code>&lt;th scope="col"ead&gt;</code> ») — le navigateur se rattrapait, un lecteur automatique trébuchait ; les onze sont réparés, la leçon V12 valait aussi pour ce document. e2e : 124/124 ; gate complète ~1 min 40 s.</td></tr>
+          <th scope="row">A79</th><td><b>L'adoption : ce document devient le Système de référence, et l'UI le livre</b> (PLAN-ELEMENTS ; décisions CE D1-D5 du 2026-08-24, V1-V14 closes). <b>D1</b> : le HTML est LA source, éditée à la main — le générateur d'étude reste figé en trace (<code>spikes/direction-elements/v2/</code>), l'ancien Système part en <code>docs/archives/systeme.v1.dc.html</code>, la série V se ferme, les amendements reprennent ici en A-n. <b>Livré en cinq étapes, chacune gate-verte et validée au STOP visuel CE le jour même</b> : E1 le socle (17 jetons × 2 thèmes, <code>--panel</code> retiré — 16 emplois sur <code>--bg</code> —, migration des choix mémorisés : tout ancien -nuit vers <code>elements-nuit</code>, le reste au défaut) ; E2 les 78 glyphes en SVG en ligne (<code>lib/icones.js</code> + <code>Icone.svelte</code>, 95 emplois convertis, la fonte Material et son contrat README morts, mention « À propos » arrêtée — D2 : « Jeu original de Wind, dessiné d'après Material Symbols (Google, Apache 2.0) ») ; E3 les formes (zéro rayon par les trois jetons sur <code>html</code>, tuile d'initiales carrée, disque de non-lu 9 px, compteur de nav en nombre nu, marque <code>keep</code> des épinglées) ; E4 la marque (<code>Marque.svelte</code>, deux régimes V11 ; <code>Hitofude.svelte</code> supprimé, disque/anneau à la barre d'état) ; E5 le registre d'affichage (graisse 340 via Segoe UI Variable Display, repli 400). <b>Les gates encodent le Système</b> : contraste 220 paires (filets 1,49/1,26 et <code>--brand</code> compris), cohérence — noms ET tracés des glyphes dans les deux sens, zéro littéral de rayon (l'exception <code>--r-plateforme</code> déclarée), réservés jamais posés. <b>D3 (verdict au STOP E2)</b> : les trois familles de fusion restent différenciées par leurs marques actuelles (poignée corps/couvercle ; bandeau supérieur ; marque intérieure du cercle) — aucun redessin. <b>D4</b> : les maîtres réduits sont livrés, le palier 16 reste la dette V9. <b>Défaut trouvé à l'adoption, réparé</b> : la normalisation <code>scope="col"</code> du générateur avait mutilé onze <code>&lt;thead&gt;</code> (« <code>&lt;th scope="col"ead&gt;</code> ») — le navigateur se rattrapait, un lecteur automatique trébuchait ; les onze sont réparés, la leçon V12 valait aussi pour ce document. e2e : 124/124 ; gate complète ~1 min 40 s.</td></tr>
         <tr>
           <td class="nw">2026-08-24</td>
           <th scope="row">A80</th><td><b>La boîte se dit en toutes lettres, sur la ligne de l'expéditeur</b> (PLAN-REPERE-LIGNE ; décisions CE D1-D5 du 2026-08-24). Le badge de repère sous l'avatar (A74) est remplacé par un <b>bloc de texte</b> dans la ligne d'entête : <code>sur</code> à l'encre atténuée (<code>--muted</code>), le glyphe du repère à la teinte du compte (tracé nu, 14 px), puis le <b>libellé de la boîte</b> — nom personnalisé (A78) ou adresse. Motif du Chef Ingénieur : <i>la phrase se lit, et elle évite d'avoir à se souvenir en permanence d'une couleur ou d'un logo.</i> En anglais, le mot est <code>in</code> (D10 : la boîte est un contenant, pas un support). Trois règles de troncature, chacune en une phrase : <b>l'heure ne se coupe jamais</b> (c'est le repère de lecture de la colonne) ; <b>le bloc cède trois fois plus vite que l'expéditeur et ne prend jamais plus du tiers de la ligne</b> ; <b>les deux se terminent à l'ellipse</b>, jamais à la coupe sèche. Le tiers est <b>mesuré</b>, pas choisi : sur un nom de 32 caractères, à la moitié deux noms d'expéditeur se coupent au défaut (volet 400 px) ; à 30 % ce sont les libellés <b>courts</b> qui se coupent pour rien à la borne basse ; 33 à 36 % donnent le même résultat — un plateau, d'où le tiers, qui se dit en un mot. <b>A8 s'en trouve renforcé</b> : l'information est portée par un MOT, la couleur et le glyphe ne font que la doubler — plus fort que ce qu'A74 obtenait. Un compte <b>sans repère</b> dit quand même sa boîte (D8 : bloc sans tracé — deux comptes sans repère cessent d'être indiscernables, le repère redevient réellement facultatif). Le bloc vit là où les comptes se mélangent — boîte unifiée et recherche (D3 d'A74, inchangé) —, et « se mélangent » se lit <b>au pied de la lettre</b> (revue) : un poste qui n'a qu'<b>un seul compte</b> ne mélange rien, son bloc se tait partout, liste et volet compris ; la condition porte sur le NOMBRE de comptes, pas seulement sur la vue choisie —, et <b>le volet de lecture suit la MÊME règle que la liste</b> (verdict terrain du 2026-08-25) : là où la rangée se tait, la carte se tait aussi. D5 disait « le même schéma au volet » ; le terrain a montré l'asymétrie que cette formule laissait passer — dans la vue d'un seul compte, la liste ne disait rien et le volet parlait encore — et <b>le même bloc se répète au volet de lecture</b>, derrière le nom de l'expéditeur, carte dépliée et rangées repliées (D5). L'infobulle donne « libellé — adresse » ; la troncature est CSS seule (le libellé entier reste au DOM, lu par les technologies d'assistance) ; le tracé est <code>aria-hidden</code> : il double le mot. Aucun rang neuf, aucun glyphe neuf, <b>aucune paire de contraste neuve</b> ; les deux gabarits d'A44 sont mesurés inchangés.</td></tr>
@@ -4650,7 +4650,7 @@ svg.g{flex:none}
           <th scope="row">A85</th><td><b>Un échec de mise à jour se voit — l'application ne se ferme plus sans un mot</b> (PLAN-SIGNATURE E4 ; décisions CE D2/D4 du 2026-08-27). Constat terrain (2026-08-26, poste x64) : le clic « Installer » fermait Wind et rien ne s'installait — Smart App Control (<code>On</code>, verdict rendu <b>binaire par binaire</b> sur les exe non signés Authenticode) refusait le lancement de l'installateur, et le plugin updater sortait par <code>exit(0)</code> sans lire le retour de <code>ShellExecuteW</code>. Le lancement est repris à l'application (retour testé ; le téléchargement et sa vérification minisign restent au plugin), et l'échec suit <b>la voie d'erreur existante de chaque surface, sans état neuf</b> : au bandeau, <code>erreur.maj</code> en flash et le bandeau <b>se réarme depuis les données déjà connues</b> — jamais un aller-retour réseau, dont l'échec l'aurait refigé sur « Installation… » sans bouton ; aux Réglages, l'échec d'installation se dit <b>sous son vrai nom</b> (<code>erreur.maj</code>, pas « Vérification impossible ») devant la rangée « Mise à jour disponible », dont le bouton « Installer » <b>reste offert</b> — jamais de cul-de-sac. Deux gardes sœurs, même constat : le téléchargement gagne un <b>timeout de 10 minutes</b> (le plugin n'en pose aucun — un transfert qui calait figeait « Installation… » pour toujours), et la commande n'installe que la <b>version que le bandeau a annoncée</b> (le manifeste peut bouger entre l'annonce et le clic ; sur écart, erreur propre et l'UI redit la neuve). Aucun composant neuf, aucune couleur, aucune paire de contraste neuve. Ce que l'amendement ne couvre pas, et dit : sur un poste SAC, l'installation <b>reste refusée</b> tant que les exe ne sont pas signés Authenticode — la signature d'éditeur est gelée (D2 : la validation individuelle Trusted Signing est fermée hors USA/Canada), consignée en dette ; en attendant, l'échec se voit et se retente.</td></tr>
         <tr>
           <td class="nw">2026-08-27</td>
-          <th scope="row">A86</th><td><b>La liste sait sélectionner plusieurs conversations</b> (PLAN-RETOURS-10 R1 ; décisions CE D1/D3/D4 du 2026-08-27). Trois gestes, ceux des clients mûrs : <b>Ctrl-clic</b> bascule une rangée dans la sélection <b>et y déplace le focus de lecture</b> (terrain du 2026-08-27 : laisser le liseré et le volet sur une autre rangée que celle qu'on vient de cocher déroutait), <b>Shift-clic</b> étend depuis la dernière rangée basculée — à défaut, depuis la rangée <b>sélectionnée</b> (le premier message choisi au démarrage compte comme ancre, terrain) — sur l'ordre affiché des rangées chargées, jamais « tout le dossier », et une <b>case à cocher</b> par rangée. La case vit en <b>absolu dans la gouttière gauche</b> (8 px du bord, boîte de 16 px) : elle n'entre pas dans la grille de la rangée, donc <b>les gabarits sondés h1/h2 ne la voient jamais</b> — et quand elle se montre, le contenu s'écarte à 34 px par le <b>padding</b> (la hauteur ne bouge pas ; en mode sélection toutes les rangées s'écartent d'un bloc, rien ne saute pendant qu'on coche — terrain, la case affleurait le texte). Invisible au repos (opacité 0, D4), elle se révèle au survol de SA rangée et sur toutes dès qu'une sélection existe ; cochée, elle porte le glyphe <code>check</code> (neuf, 78 → <b>79</b> — le <code>check_circle</code> aurait rendu une forme ronde à l'écran 02, ce qu'A82 a chèrement conquis). La rangée cochée prend la teinte de sélection <b>sans le liseré</b> (le liseré reste la position de lecture — deux idées, deux dessins), et les raccourcis <b>e/Suppr s'appliquent au lot coché</b> quand il existe (terrain), par le même chemin que la barre. <b>La barre de la liste se transforme</b> (D3, aucune surface neuve) : tant que la sélection est non vide, le bandeau de titre cède à « N sélectionnés » + les gestes de masse (D1 : marquer lu, non lu, archiver, indésirable — « Ce n'est pas un spam » en Indésirables —, supprimer) en boutons-icônes 32 px à la grammaire de l'entête, et Annuler. Les gestes de masse <b>rejouent les commandes unitaires en séquence</b> (refus §2.6 : pas de commande cœur groupée — une sélection se compte en dizaines), et une rangée cochée est une <b>CONVERSATION</b> : le geste emporte le <b>fil entier</b> (D6, tranchée devant l'exemple Vantis — sans elle, un fil reperdait un message par passage et le toast mentait ; <code>thread_messages</code> liste le fil, purement local). UN toast par lot, compté en conversations — une rangée n'est réussie que si TOUS ses messages le sont ; un lot incomplet se dit (« n sur total »). Cocher n'est pas choisir : la sélection multiple n'ouvre rien, ne marque rien lu ; elle <b>meurt avec sa source</b> (changement de dossier, de compte, d'onglet, de recherche — un geste de masse sur des rangées qu'on ne voit plus serait un piège). Épinglées cochables, et <b>teintées comme les autres</b> (verdict terrain du 2026-08-27, renverse la première livraison) : la coche est le seul état qui déloge le sol <code>--tuile</code> d'A73, parce qu'elle précède un geste de masse — ce que l'œil ne compte pas peut partir par surprise. Le dossier Brouillons et les échos restent hors du geste ; un lot amputé d'échos se dit (« n sur total »), un lot tout-échos dit l'attente au lieu de disparaître, et le fil ouvert ne se ferme que si SON geste a réussi.</td></tr>
+          <th scope="row">A86</th><td><b>La liste sait sélectionner plusieurs conversations</b> (PLAN-RETOURS-10 R1 ; décisions CE D1/D3/D4 du 2026-08-27). Trois gestes, ceux des clients mûrs : <b>Ctrl-clic</b> bascule une rangée dans la sélection <b>et y déplace le focus de lecture</b> (terrain du 2026-08-27 : laisser le liseré et le volet sur une autre rangée que celle qu'on vient de cocher déroutait), <b>Shift-clic</b> étend depuis la dernière rangée basculée — à défaut, depuis la rangée <b>sélectionnée</b> (le premier message choisi au démarrage compte comme ancre, terrain) — sur l'ordre affiché des rangées chargées, jamais « tout le dossier », et une <b>case à cocher</b> par rangée. La case vit en <b>absolu dans la gouttière gauche</b> (8 px du bord, boîte de 16 px) : elle n'entre pas dans la grille de la rangée, donc <b>les gabarits sondés h1/h2 ne la voient jamais</b> — et quand elle se montre, le contenu s'écarte à 34 px par le <b>padding</b> (la hauteur ne bouge pas ; en mode sélection toutes les rangées s'écartent d'un bloc, rien ne saute pendant qu'on coche — terrain, la case affleurait le texte). Invisible au repos (opacité 0, D4), elle se révèle au survol de SA rangée et sur toutes dès qu'une sélection existe ; cochée, elle porte le glyphe <code>check</code> (neuf, 78 → <b>79</b> — le <code>check_circle</code> aurait rendu une forme ronde à l'écran 02, ce qu'A82 a chèrement conquis). La rangée cochée prend la teinte de sélection <b>sans le liseré</b> (le liseré reste la position de lecture — deux idées, deux dessins), et les raccourcis <b>e/Suppr s'appliquent au lot coché</b> quand il existe (terrain), par le même chemin que la barre. <b>La barre de la liste se transforme</b> (D3, aucune surface neuve) : tant que la sélection est non vide, le bandeau de titre cède à « N sélectionnés » + les gestes de masse (D1 : marquer lu, non lu, archiver, indésirable — « Ce n'est pas un spam » en Indésirables —, supprimer) en boutons-icônes 32 px à la grammaire de l'entête, et Annuler. Les gestes de masse <b>rejouent les commandes unitaires en séquence</b> (refus §2.6 : pas de commande cœur groupée — une sélection se compte en dizaines), et une rangée cochée est une <b>CONVERSATION</b> : le geste emporte le <b>fil entier</b> (D6, tranchée devant l'exemple Vantis — sans elle, un fil reperdait un message par passage et le toast mentait ; <code>thread_messages</code> liste le fil, purement local). UN toast par lot, compté en conversations — une rangée n'est réussie que si TOUS ses messages le sont ; un lot incomplet se dit (« n sur total »). Cocher n'est pas choisir : la sélection multiple n'ouvre rien, ne marque rien lu ; elle <b>meurt avec sa source</b> (changement de dossier, de compte, d'onglet, de recherche — un geste de masse sur des rangées qu'on ne voit plus serait un piège). Épinglées cochables, et <b>teintées comme les autres</b> (verdict terrain du 2026-08-27, renverse la première livraison) : la coche est le seul état qui déloge le sol <code>--tile</code> d'A73, parce qu'elle précède un geste de masse — ce que l'œil ne compte pas peut partir par surprise. Le dossier Brouillons et les échos restent hors du geste ; un lot amputé d'échos se dit (« n sur total »), un lot tout-échos dit l'attente au lieu de disparaître, et le fil ouvert ne se ferme que si SON geste a réussi.</td></tr>
         <tr>
           <td class="nw">2026-08-27</td>
           <th scope="row">A87</th><td><b>L'icône d'application rejoint Elements ; la marque d'entête passe à 24 px</b> (PLAN-RETOURS-10 R2/R3 ; décision CE D2 du 2026-08-27). L'icône Windows (<code>icons/icon.ico</code> — barre des tâches, exécutable, installeur) portait encore la marque « W-pastille » d'avant l'adoption : <code>scripts/faire-icone.ps1</code> n'avait jamais été rejoué depuis V1. Il trace désormais le <b>régime tuile</b> verbatim (tuile <code>#F2EDE3</code> au rayon de plateforme 15/64, enveloppe <code>#141414</code> à coins vifs trait 2,3, rabat demi-disque <code>#1F8A8A</code>) aux quatre tailles 256/48/32/16 — sous 16 px le trait passe à 2 unités, le régime de <code>Marque.svelte</code> ; les sources <code>assets/marque/*.svg</code> sont remises d'équerre. Dans l'entête (et la tête du tiroir), la marque en glyphe passe de 20 à <b>24 px</b> — 20 px se perdait dans l'entête de 52 px ; le mot « Wind » (18 px) reste dominant. La fiche V11 porte la nouvelle cote.</td></tr>
@@ -4671,7 +4671,7 @@ svg.g{flex:none}
           <th scope="row">A92</th><td><b>L'entête du message déplié dit tout en deux lignes — et l'annuaire rend leurs noms aux destinataires</b> (PLAN-RETOURS-12 R5 ; décisions CE D4-D6 du 2026-08-28). La tête de carte du fil (volet ET écran 03) passe de « nom / adresse · à destinataire » à : <b>ligne 1</b> « Nom de l'expéditeur <code>&lt;adresse&gt;</code> [sur Boîte] » — l'adresse en encre atténuée derrière le nom, le bloc de boîte d'A80 inchangé et toujours sous la garde D7 (≥ 2 comptes / vue mélangée) — puis <b>ligne 2</b> « À : Nom <code>&lt;adresse&gt;</code>, … » et, seulement quand des Cc existent, une ligne « Cc : … » de même forme (D6). Les <b>noms</b> des destinataires n'existent nulle part dans l'enveloppe stockée (<code>to_addrs</code>/<code>cc_addrs</code> sont des adresses nues) : ils viennent de l'<b>annuaire des correspondants</b> (D4 — commande <code>noms_adresses</code>, recherche par clé primaire bornée aux À/Cc du fil ouvert, jamais un parcours d'enveloppes, leçon A64) ; une adresse inconnue s'affiche nue, le repli des messages sans À stocké garde l'heuristique du prototype au même format. À l'étroit, <b>l'adresse de l'expéditeur cède trois fois plus vite que le nom</b> (le patron d'A80 : l'identité d'abord). Aucun glyphe neuf, aucune couleur, aucune paire de contraste neuve.</td></tr>
         <tr>
           <td class="nw">2026-08-28</td>
-          <th scope="row">A93</th><td><b>La marque d'entête passe à 28 px</b> (PLAN-RETOURS-12 R3 ; décision CE D2 du 2026-08-28, verdict au STOP visuel). Dans l'entête et la tête du tiroir, la marque en glyphe passe de 24 (A87) à <b>28 px</b> — le retour CE : à 24 px elle restait discrète dans l'entête de 52 px. Le mot « Wind » ne bouge pas (18 px dans l'app — la revue a corrigé au passage les 15 px que ce document portait, en retard sur l'UI) ; le régime glyphe (encre courante + <code>--marque</code>, V11) est inchangé. La fiche V11 porte les deux cotes.</td></tr>
+          <th scope="row">A93</th><td><b>La marque d'entête passe à 28 px</b> (PLAN-RETOURS-12 R3 ; décision CE D2 du 2026-08-28, verdict au STOP visuel). Dans l'entête et la tête du tiroir, la marque en glyphe passe de 24 (A87) à <b>28 px</b> — le retour CE : à 24 px elle restait discrète dans l'entête de 52 px. Le mot « Wind » ne bouge pas (18 px dans l'app — la revue a corrigé au passage les 15 px que ce document portait, en retard sur l'UI) ; le régime glyphe (encre courante + <code>--brand</code>, V11) est inchangé. La fiche V11 porte les deux cotes.</td></tr>
         <tr>
           <td class="nw">2026-08-29</td>
           <th scope="row">A94</th><td><b>« Mona » entre — la table des thèmes devient courte et VIVANTE</b> (PLAN-MONA ; décisions CE D1-D3 du 2026-08-29, ADR 0027). <b>Amende V7</b> : « deux thèmes, et deux seulement » devient « une table courte, où des thèmes s'ajoutent ou se retirent de temps à autre » — jamais le retour des vingt-huit. Mona et Mona · nuit sont les 3<sup>e</sup> et 4<sup>e</sup> thèmes, sortis de deux couleurs CE : l'accent <code>#AD204C</code> (6,80:1 sur blanc — il sert d'accent ET de marque du clair <b>tel quel</b>, le dédoublement d'A8 sans objet ; c'est aussi l'hex de <code>--mk-pink</code>, coïncidence assumée) et la teinte de tuile <code>#A0868F</code>, <b>déclinée par polarité</b> (D2) : mesurée au banc de la gate, la valeur brute est arithmétiquement impossible — 2,04:1 sous <code>ink2</code> (seuil 4,5), 1,88:1 sous le pire repère partagé (seuil 3), et en nuit le blanc pur ne donne que 3,33:1 — d'où <code>#EFDFE4</code> clair / <code>#2C2126</code> nuit, le geste exact d'Elements sur sa propre tuile. L'accent nuit <code>#E58BA4</code> éclaircit à teinte constante (D3, le motif <code>#1A7A7A</code> → <code>#3FA39C</code>). L'alerte reste un rouge-orangé, volontairement distinct de l'accent rose. Mécanique : les 24 <code>--mk-*</code> ne bougent pas d'un hex mais leur table claire est servie par <code>[data-theme$="-nuit"]</code> (toute polarité sombre, comme le <code>color-scheme</code> d'A44) ; la garde de migration V7 apprend les identifiants Mona (sans elle, un choix <code>mona-nuit</code> persisté était réécrit au démarrage — prouvé rouge) ; <code>NOMBRE_ATTENDU</code> passe à 4. Les 220 paires des deux thèmes neufs (110 chacun : 38 paires de jetons, 60 repère × fond, 12 glyphes de pastille) sont <b>vertes</b> aux seuils existants — aucun seuil touché, aucune paire neuve, aucun glyphe neuf.</td></tr>
@@ -4687,10 +4687,10 @@ svg.g{flex:none}
           <tr><th scope="row">A100</th><td><b>Le Kiosque devient des CARTES — E5bis</b> (décision CE du 2026-08-30 : le « Kiosque déjà ouvert » du prototype n'était assigné à aucune étape — tranché « avant la release » ; STOP visuel en TROIS passes le même jour : le pli d'abord en icône nue, puis en bouton du volet sous l'heure, arrêté SUR LA LIGNE DE L'OBJET, aligné à droite). La vue routée du Kiosque n'est plus une liste : une scène de lecture, colonne centrée 720 px, note d'intro (« les lettres arrivent déjà ouvertes… le Kiosque se parcourt, il ne se traite pas »). Une carte = expéditeur + heure, l'objet en display 24 px avec le bouton <b>Replier/Déplier</b> (le bouton nu du volet de lecture, glyphe unfold + texte ; dépliée par défaut, repliée = l'aperçu), le <b>corps ENTIER</b> — le même document auto-CSP que l'écran de lecture (mail_render, dalle claire R3, garde d'images consultée par message), dans une iframe <code>sandbox allow-same-origin</code> SANS scripts (invariant S1), hauteur au contenu (<code>corpsAuto</code>, extrait de Fil vers <code>lib/corps.js</code> — une porte), liens vers le navigateur système. Les corps viennent du CACHE par page servie de 20 (D5/S3 : 12,2 ms froid — jamais un réseau par carte ; corps absent = l'aperçu, le rattrapage suivra) ; les cartes s'ajoutent page à page au défilement — pas de fenêtrage (limite dite : un Kiosque se compte en dizaines). Le ⋯ de gestes par carte : Déplacer vers la Réception / le Registre, Mettre de côté, Écarter. Rien n'est marqué lu — le Kiosque ne se traite pas <i>(renversé par A101, RETOURS-13 R10 : le Kiosque gagne une mémoire « lu » de lecture, jamais un traitement)</i>. e2e : le « déjà ouvert » prouvé en le cassant (corps débranché = rouge), le pli au filet.</td></tr>
           <tr>
           <td class="nw">2026-08-30</td>
-          <th scope="row">A101</th><td><b>Douze retours CE sur le Mode organisé — RETOURS-13</b> (PLAN-RETOURS-13, D1-D5 + GO au STOP 1, deux STOP visuels validés le jour même). <b>Réglages</b> : « Sombre Automatique » passe en TÊTE de la section Thèmes (il gouverne le thème, pas l'affichage — R1) ; les glyphes du rail prennent le calage optique des dossiers de la nav — baseline du libellé + 2 px, la rangée garde ses 36 px par la line-height du libellé (R2). <b>Nav organisée</b> : la Réception se dit « <b>Réception</b> » (le classique garde « Boîte de réception » mot pour mot — R3 ; LA règle vit en un point, <code>cleLibelleBoite</code>, servie par nav, entête de liste, retour du fil, statut et toasts) ; un <b>filet séparateur</b> entre les 4 dossiers organisés et le reste (R12, le dessin du filet des Boîtes). <b>Portier</b> : l'entête se justifie à GAUCHE sur la colonne des rangs — le glyphe majordome coiffe le titre, le sous-titre passe à TROIS phrases CE (« Ces expéditeurs vous écrivent pour la première fois. / Les autorisez-vous à vous contacter ? / Les expéditeurs ne seront jamais informés de votre décision. » — R4/R7, D1 : traits d'union posés) ; « Personne n'attend au Portier… » suit (R8) ; l'historique vide dit « Vous n'avez écarté aucun expéditeur pour le moment. » (R6 — la note de confidentialité vit désormais au sous-titre). <b>Le clic nu suit des DÉFAUTS réglables</b> (R5/R9) : livrés Oui → Réception, Non → Corbeille (règle d'A98, mécanique intacte) ; une section <b>Réglages &gt; Portier</b> (mode organisé seul — un groupe ne s'expédie qu'avec du contenu réel) porte deux sélecteurs — Oui ∈ {Réception, Kiosque, Registre}, Non ∈ {Corbeille, Archive, Indésirables, Écartés sans déplacer} (D2) — vocabulaire DÉRIVÉ des tables de routage, refusé côté cœur ; les sélecteurs ne se peignent qu'avec l'état PERSISTÉ (revue — jamais une écriture au défaut livré pendant que la base répond) ; les mini ⋯ restent, choix ponctuel (D3). <b>Kiosque</b> : l'entête prend le format du Portier (glyphe + titre + deux phrases CE : « Tous vos emails d'information sont regroupés ici. / Il vous suffit de les faire défiler pour les lire. » — R11 ; classes PARTAGÉES <code>.entete-vue</code>/<code>.sous-titre-vue</code>/<code>.regle-libelle</code> en une copie, systeme.css) ; <b>R10 renverse le « rien n'est marqué lu » d'A100</b> : une carte dont le BAS de l'élévation a été affiché est LUE — témoin IntersectionObserver au pied de carte (réarmé sur échec d'écriture), table <code>kiosque_lus</code> au patron pins (clé d'enveloppe, locale au poste, meurt avec sa boîte et son message — jamais le <code>seen</code> IMAP) ; la scène se coupe en « <b>Non lus</b> » (cartes dépliées, chronologique) et « <b>Lus précédemment</b> » (groupes par expéditeur à l'alphabet de la langue de l'UI, repliés en rangée à pile d'élévations — D5 ; le clic déplie en cartes repliées sur l'objet) ; le sectionnement se calcule AU SERVICE de la page — une carte ne saute jamais en pleine lecture. <b>Terrain du 2026-08-30 (cinq constats, corrigés le jour même)</b> : le glyphe des titres de vue s'amincit (trait 1,5 en unités du viewBox — à 26 px le trait de 2 pesait face au display 340) ; le titre de section du Portier reste visible sans nouvel expéditeur ; « Supprimés automatiquement » devient « <b>Déplacés automatiquement dans la corbeille</b> » (rien n'est supprimé — D4) ; la section Réglages &gt; Portier est visible <b>quel que soit le mode</b> (renverse le « organisé seul » de la première passe) ; la section « Non lus » vide garde son titre et dit « Vous avez lu toutes les nouvelles actualités de votre Kiosque. » coiffée de la coche du Portier (check_circle à l'accent). <b>Le glyphe <code>kiosque</code> est REDESSINÉ</b> : un kiosque à journaux — auvent festonné en arches, guérite, comptoir (verdict CE devant une planche de 7 variantes, la B) — le presse-papiers du prototype meurt. e2e 166 → 169.</td></tr>
+          <th scope="row">A101</th><td><b>Douze retours CE sur le Mode organisé — RETOURS-13</b> (PLAN-RETOURS-13, D1-D5 + GO au STOP 1, deux STOP visuels validés le jour même). <b>Réglages</b> : « Sombre Automatique » passe en TÊTE de la section Thèmes (il gouverne le thème, pas l'affichage — R1) ; les glyphes du rail prennent le calage optique des dossiers de la nav — baseline du libellé + 2 px, la rangée garde ses 36 px par la line-height du libellé (R2). <b>Nav organisée</b> : la Réception se dit « <b>Réception</b> » (le classique garde « Boîte de réception » mot pour mot — R3 ; LA règle vit en un point, <code>cleLibelleBoite</code>, servie par nav, entête de liste, retour du fil, statut et toasts) ; un <b>filet séparateur</b> entre les 4 dossiers organisés et le reste (R12, le dessin du filet des Boîtes). <b>Portier</b> : l'entête se justifie à GAUCHE sur la colonne des rangs — le glyphe majordome coiffe le titre, le sous-titre passe à TROIS phrases CE (« Ces expéditeurs vous écrivent pour la première fois. / Les autorisez-vous à vous contacter ? / Les expéditeurs ne seront jamais informés de votre décision. » — R4/R7, D1 : traits d'union posés) ; « Personne n'attend au Portier… » suit (R8) ; l'historique vide dit « Vous n'avez écarté aucun expéditeur pour le moment. » (R6 — la note de confidentialité vit désormais au sous-titre). <b>Le clic nu suit des DÉFAUTS réglables</b> (R5/R9) : livrés Oui → Réception, Non → Corbeille (règle d'A98, mécanique intacte) ; une section <b>Réglages &gt; Portier</b> (mode organisé seul — un groupe ne s'expédie qu'avec du contenu réel) porte deux sélecteurs — Oui ∈ {Réception, Kiosque, Registre}, Non ∈ {Corbeille, Archive, Indésirables, Écartés sans déplacer} (D2) — vocabulaire DÉRIVÉ des tables de routage, refusé côté cœur ; les sélecteurs ne se peignent qu'avec l'état PERSISTÉ (revue — jamais une écriture au défaut livré pendant que la base répond) ; les mini ⋯ restent, choix ponctuel (D3). <b>Kiosque</b> : l'entête prend le format du Portier (glyphe + titre + deux phrases CE : « Tous vos emails d'information sont regroupés ici. / Il vous suffit de les faire défiler pour les lire. » — R11 ; classes PARTAGÉES <code>.entete-vue</code>/<code>.sous-titre-vue</code>/<code>.regle-libelle</code> en une copie, system.css) ; <b>R10 renverse le « rien n'est marqué lu » d'A100</b> : une carte dont le BAS de l'élévation a été affiché est LUE — témoin IntersectionObserver au pied de carte (réarmé sur échec d'écriture), table <code>kiosque_lus</code> au patron pins (clé d'enveloppe, locale au poste, meurt avec sa boîte et son message — jamais le <code>seen</code> IMAP) ; la scène se coupe en « <b>Non lus</b> » (cartes dépliées, chronologique) et « <b>Lus précédemment</b> » (groupes par expéditeur à l'alphabet de la langue de l'UI, repliés en rangée à pile d'élévations — D5 ; le clic déplie en cartes repliées sur l'objet) ; le sectionnement se calcule AU SERVICE de la page — une carte ne saute jamais en pleine lecture. <b>Terrain du 2026-08-30 (cinq constats, corrigés le jour même)</b> : le glyphe des titres de vue s'amincit (trait 1,5 en unités du viewBox — à 26 px le trait de 2 pesait face au display 340) ; le titre de section du Portier reste visible sans nouvel expéditeur ; « Supprimés automatiquement » devient « <b>Déplacés automatiquement dans la corbeille</b> » (rien n'est supprimé — D4) ; la section Réglages &gt; Portier est visible <b>quel que soit le mode</b> (renverse le « organisé seul » de la première passe) ; la section « Non lus » vide garde son titre et dit « Vous avez lu toutes les nouvelles actualités de votre Kiosque. » coiffée de la coche du Portier (check_circle à l'accent). <b>Le glyphe <code>kiosque</code> est REDESSINÉ</b> : un kiosque à journaux — auvent festonné en arches, guérite, comptoir (verdict CE devant une planche de 7 variantes, la B) — le presse-papiers du prototype meurt. e2e 166 → 169.</td></tr>
           <tr><th scope="row">A102</th><td><b>L'horizon d'import entre au guichet et aux Réglages — volet A de PLAN-HORIZON-NETTOYAGE</b> (ADR 0029, D1-D4 tranchées au STOP 1, STOP visuel CE validé le 2026-08-30). <b>Le guichet d'ajout</b> (les DEUX surfaces, les trois flux) gagne sous l'adresse un sélecteur natif « Historique à importer pour la recherche » — 1 mois → Tout depuis le début, défaut « <b>1 an</b> » (D2) ; le choix voyage DANS la commande d'ajout (l'id du compte n'existe qu'à son retour), validé à la frontière AVANT le consentement navigateur. Seuls les CORPS sont bornés (D1) : les enveloppes restent intégrales — la liste et la recherche par objet/expéditeur portent sur tout, un message hors horizon se lit au clic. <b>Réglages &gt; Comptes</b> (D3) : la rangée gagne une porte TEXTUELLE — la valeur courante est la porte (pas de glyphe neuf, A3) — qui ouvre la carte sous la rangée (patron du nom) : sélecteur à application immédiate, note qui dit ce qu'étendre et réduire FONT (étendre rapatrie à la prochaine relève ; réduire n'efface rien). Les portes se peignent depuis la BASE, jamais depuis la mémoire de l'ouverture précédente (patron expediteursImages — le filet a été prouvé VACANT sans cette règle, puis prouvé en la cassant). Un compte d'avant le réglage est réputé « tout » (D4). <b>Au passage, retour CE du STOP visuel : la note « Le serveur est détecté automatiquement… » meurt</b> — superflue. e2e 169 → 172.</td></tr>
           <tr><th scope="row">A103</th><td><b>Le Nettoyage de printemps — 5e section du Mode organisé</b> (PLAN-HORIZON-NETTOYAGE volet B, D5-D12 tranchées au STOP 1, deux STOP visuels CE le 2026-08-30 — l'intro puis le tri). La nav organisée gagne « <b>Nettoyage de printemps</b> » sous le Portier (le filet R12 glisse après lui) — <b>glyphe neuf <code>nettoyage</code></b>, le courant d'air (verdict CE « D » devant une planche de six, <code>spikes/glyphe-nettoyage/</code> ; 87ᵉ du jeu). <b>L'intro</b> : entête au patron du Portier, sous-texte CE mot pour mot, la plage (3 mois → tout, pastilles-radio, défaut 1 an) et — décision D6, mot pour mot — le PÉRIMÈTRE au choix (Réception seule / + Dossiers / + Dossiers + Archives / + Archives ; Envoyés, Brouillons, Indésirables, Corbeille toujours hors jeu ; l'archive INTÉGRALE de Gmail hors périmètre, limite dite), puis « Démarrer le nettoyage ». <b>Le tri</b> : l'organisation du Portier mais les rangs sont des GROUPES par expéditeur (nom, adresse, n messages, dernier objet) — le Oui/Non vaut pour le groupe ENTIER et s'applique au stock de la plage ET à l'avenir (D5 : la porte <code>nettoyage_verdict</code> pose le routage puis journalise UNE action par message du stock dans LA transaction du verdict, patron E3 ; corbeille du serveur, jamais définitive — D4) ; le clic nu suit les défauts du Portier (D9), le mini ⋯ déroge ; le rang est la PORTE du groupe — on entre pour VOIR ses messages (jamais trier au message, refus de périmètre) ; la <b>barre de progression en haut</b> dit le % de groupes traités (le dessin de la jauge de migration, le % dans le texte — A52). Les expéditeurs déjà routés sont exclus (D7, révisables à l'historique du Portier). La session est UNE et PERSISTÉE (<code>nettoyage_session</code>, D8) : borne FIGÉE au démarrage, reprise après redémarrage, « Terminer » l'efface — les verdicts, eux, restent posés. e2e 172 → 177.</td></tr>
-          <tr><th scope="row">A104</th><td><b>Sept retours d'utilisation réelle — PLAN-RETOURS-14</b> (D1-D8 tranchées au STOP 1 le 2026-08-31). <b>La barre du fil passe EN TÊTE et COLLE au défilement</b> (D1) : archiver / signaler comme spam / épingler (+ mettre de côté et Déplacer vers… en mode organisé) vivent sous l'entête du fil, <code>position:sticky</code> ancrée au scrollport du CADRE (volet comme écran 03), fond <code>--bg</code> opaque ; le menu « Déplacer vers… » s'ouvre désormais vers le BAS ; les maquettes du présent document suivent, et leur « Supprimer » périmé (parti PAR MESSAGE à R8', 2026-08-23) est retiré au passage. <b>La Réception organisée prend l'entête normalisé des vues du mode</b> (R7/R11 : <code>.entete-vue</code> + glyphe <code>inbox</code>, titre seul — D2), perd le bandeau générique ET les onglets Tous / Non lus (D3 — Brouillons reste en nav) ; <b>le nom de la section courante colle en tête du cadre au défilement</b> (bande à hauteur NULLE hors géométrie du fenêtrage, dessin de la bande réelle). <b>Le « fil mêlé » se dit</b> (D5) : un inconnu qui répond dans le fil d'un connu reste lisible (règle d'or E2) et son message porte le badge « En attente au Portier » — étiquette nue à l'encre atténuée, jamais une alerte. <b>Réglages &gt; Portier gagne la liste EXHAUSTIVE des décisions</b> (D6) : toutes les destinations (l'historique de la page Portier ne montre que les écartés), à l'alphabet, recherche CLIENTE, « Réintégrer » par ligne. <b>Le Registre se regroupe par expéditeur</b> (D7) : un rang-pile par expéditeur de TÊTE (visuel de la pile du Kiosque, deux lignes du Nettoyage), groupes par récence du dernier message, dépliés sur leurs fils — le volet de lecture reste le lecteur. <b>Kiosque et Registre gagnent leur pastille de nav</b> (D8) : cartes JAMAIS ouvertes (mémoire <code>kiosque_lus</code> — la sémantique de la page, pas l'<code>unseen</code> IMAP) pour le Kiosque, non-lu IMAP pour le Registre ; le Portier gardait la sienne. <b>Les tirets cadratins quittent tous les textes montrés</b> (D4) : catalogues fr/en, gabarits (« Nom (adresse) » au composeur et aux infobulles), messages d'erreur du cœur ; les « — » glyphes de vide (avatar sans lettres, version inconnue) restent — c'est un dessin, pas de la ponctuation ; filet <code>catalogues.test.mjs</code> prouvé en le cassant. <b>Terrain du jour même (1-7 OK, trois retours corrigés dans la session)</b> : <b>un OUI au Portier vaut confiance</b> (R8) — le verdict pose AUSSI la règle « toujours afficher les images de cet expéditeur » (table de la garde R1, révocable aux Réglages &gt; Affichage ; un Non ne touche à rien), posé dans LA transaction du verdict (<code>poser_verdict</code> — Portier, Déplacer vers…, Nettoyage, Réglages, tous les chemins) ; <b>le bouton de TRI des sections</b> (R9, forme arrêtée en 2e passe terrain) — le bouton (dessin des boutons nus « Tout déplier », justifié à droite de la ligne de section) ouvre un MENU déroulant des quatre tris (plus récents / plus anciens / expéditeur A → Z / Z → A, l'alphabet sur le NOM affiché, collation de la langue de l'UI), chaque entrée avec son glyphe — <b>quatre glyphes neufs <code>tri_recent</code>/<code>tri_ancien</code>/<code>tri_az</code>/<code>tri_za</code></b> (barres décroissantes + flèche ; A/Z empilés + flèche ; jeu 87 → 91, demande CE directe) ; UN composant (<code>TriSection.svelte</code> + <code>comparateurTri</code>) — Kiosque (Non lus ET Lus précédemment, chacune son tri), Registre (ligne du titre), historique du Portier, Nettoyage ; présentation seule, les défauts restent l'ordre d'avant ; <b>« Réintégrer » devient « Modifier » aux Réglages</b> (R10) — le menu repropose TOUTES les règles du Portier (les trois Oui, les quatre Non) plus « Renvoyer au portier », l'ancien comportement. Tests mail-core 419 → 422, e2e 177 → 187.</td></tr>
+          <tr><th scope="row">A104</th><td><b>Sept retours d'utilisation réelle — PLAN-RETOURS-14</b> (D1-D8 tranchées au STOP 1 le 2026-08-31). <b>La barre du fil passe EN TÊTE et COLLE au défilement</b> (D1) : archiver / signaler comme spam / épingler (+ mettre de côté et Déplacer vers… en mode organisé) vivent sous l'entête du fil, <code>position:sticky</code> ancrée au scrollport du CADRE (volet comme écran 03), fond <code>--bg</code> opaque ; le menu « Déplacer vers… » s'ouvre désormais vers le BAS ; les maquettes du présent document suivent, et leur « Supprimer » périmé (parti PAR MESSAGE à R8', 2026-08-23) est retiré au passage. <b>La Réception organisée prend l'entête normalisé des vues du mode</b> (R7/R11 : <code>.entete-vue</code> + glyphe <code>inbox</code>, titre seul — D2), perd le bandeau générique ET les onglets Tous / Non lus (D3 — Brouillons reste en nav) ; <b>le nom de la section courante colle en tête du cadre au défilement</b> (bande à hauteur NULLE hors géométrie du fenêtrage, dessin de la bande réelle). <b>Le « fil mêlé » se dit</b> (D5) : un inconnu qui répond dans le fil d'un connu reste lisible (règle d'or E2) et son message porte le badge « En attente au Portier » — étiquette nue à l'encre atténuée, jamais une alerte. <b>Réglages &gt; Portier gagne la liste EXHAUSTIVE des décisions</b> (D6) : toutes les destinations (l'historique de la page Portier ne montre que les écartés), à l'alphabet, recherche CLIENTE, « Réintégrer » par ligne. <b>Le Registre se regroupe par expéditeur</b> (D7) : un rang-pile par expéditeur de TÊTE (visuel de la pile du Kiosque, deux lignes du Nettoyage), groupes par récence du dernier message, dépliés sur leurs fils — le volet de lecture reste le lecteur. <b>Kiosque et Registre gagnent leur pastille de nav</b> (D8) : cartes JAMAIS ouvertes (mémoire <code>kiosque_lus</code> — la sémantique de la page, pas l'<code>unseen</code> IMAP) pour le Kiosque, non-lu IMAP pour le Registre ; le Portier gardait la sienne. <b>Les tirets cadratins quittent tous les textes montrés</b> (D4) : catalogues fr/en, gabarits (« Nom (adresse) » au composeur et aux infobulles), messages d'erreur du cœur ; les « — » glyphes de vide (avatar sans lettres, version inconnue) restent — c'est un dessin, pas de la ponctuation ; filet <code>catalogues.test.mjs</code> prouvé en le cassant. <b>Terrain du jour même (1-7 OK, trois retours corrigés dans la session)</b> : <b>un OUI au Portier vaut confiance</b> (R8) — le verdict pose AUSSI la règle « toujours afficher les images de cet expéditeur » (table de la garde R1, révocable aux Réglages &gt; Affichage ; un Non ne touche à rien), posé dans LA transaction du verdict (<code>poser_verdict</code> — Portier, Déplacer vers…, Nettoyage, Réglages, tous les chemins) ; <b>le bouton de TRI des sections</b> (R9, forme arrêtée en 2e passe terrain) — le bouton (dessin des boutons nus « Tout déplier », justifié à droite de la ligne de section) ouvre un MENU déroulant des quatre tris (plus récents / plus anciens / expéditeur A → Z / Z → A, l'alphabet sur le NOM affiché, collation de la langue de l'UI), chaque entrée avec son glyphe — <b>quatre glyphes neufs <code>sort_newest</code>/<code>sort_oldest</code>/<code>sort_az</code>/<code>sort_za</code></b> (barres décroissantes + flèche ; A/Z empilés + flèche ; jeu 87 → 91, demande CE directe) ; UN composant (<code>TriSection.svelte</code> + <code>comparateurTri</code>) — Kiosque (Non lus ET Lus précédemment, chacune son tri), Registre (ligne du titre), historique du Portier, Nettoyage ; présentation seule, les défauts restent l'ordre d'avant ; <b>« Réintégrer » devient « Modifier » aux Réglages</b> (R10) — le menu repropose TOUTES les règles du Portier (les trois Oui, les quatre Non) plus « Renvoyer au portier », l'ancien comportement. Tests mail-core 419 → 422, e2e 177 → 187.</td></tr>
           <tr><th scope="row">A105</th><td><b>Un choix exclusif dans un menu est un <code>menuitemradio</code></b> (audit 2026-09-01, constat CE au build release). Les quatre entrées du menu de tri (A104, <code>TriSection.svelte</code>) portaient <code>role="menuitem"</code> avec <code>aria-checked</code> — un attribut que ce rôle ne connaît pas (avertissement a11y de vite-plugin-svelte, muet dans deux gates vertes le même jour). Règle A8 : l'entrée cochable d'un menu — un tri, un thème, un filtre à choix unique — est <code>role="menuitemradio"</code> (choix exclusif) ou <code>menuitemcheckbox</code> (bascule), et c'est ELLE qui porte <code>aria-checked</code> ; <code>menuitem</code> reste aux actions (Déplacer vers…, Écarter). Le lecteur d'écran dit alors « coché » là où il ne disait rien. <b>Au passage, la gate cesse de mentir</b> : « zéro avertissement exigé » au build ui-v2 n'était vérifié par personne — hook et <code>gate.ps1</code> lisaient le seul code de sortie ; un avertissement <code>[vite-plugin-svelte]</code> est désormais un rouge, prouvé en le simulant.</td></tr>
           <tr><th scope="row">A106</th><td><b>La fente d'avis dit les actions que le serveur a refusées</b> (PLAN-AUDIT-V1 E3, décision CE D2 du 2026-09-01). Avant : une action du journal (archiver, supprimer, déplacer, marquer) refusée par le serveur — dossier disparu, <code>NO</code>/<code>BAD</code> — bloquait TOUTE la file de la boîte à vie, sans un mot ; l'utilisateur voyait ses gestes suivants « pris » et jamais joués. Désormais l'action refusée entre en QUARANTAINE (cinq échecs transitoires y mènent aussi), les suivantes passent, et la fente porte un avis d'alerte : « N action(s) refusée(s) par le serveur — le message est resté où il était. » Sans bouton (l'UI de décision — réessayer, abandonner — attend la vague 2) ; priorité juste après l'échec d'envoi, avant la reconnexion : un incident, pas une information. Même grammaire que l'échec d'envoi (glyphe <code>error</code>, bordure d'alerte). La ligne se ressert avec la sonde des envois (10 s).</td></tr>
           <tr><th scope="row">A107</th><td><b>Un corps que le cœur n'a pas servi se dit et se rejoue ; « Transférer » ne charge plus d'image distante</b> (PLAN-AUDIT-V2 E10, décision CE D8 du 2026-09-02). Avant : un échec du cœur au chargement d'un corps laissait un cadre VIDE à vie dans le fil (la garde de rechargement refusait tout second essai jusqu'à la fermeture du fil). Désormais le cadre porte une ligne d'incident — la grammaire de la garde d'images (glyphe <code>error</code>, texte, bouton) : « Le message n’a pas pu être chargé. » + <b>Réessayer</b>, qui rejoue le chargement. Et le composeur d'un TRANSFERT reçoit le bloc transféré au pixel neutre (<code>BlockRemote</code>) : le pixel de suivi ne part plus au clic « Transférer » ; à l'envoi, le bloc est remplacé par le rendu avec ses vraies images — le destinataire reçoit le même message (l'exception §6.4 assumée au terrain du 2026-08-20 est levée). Le Kiosque, lui, garde ses cartes entre deux relèves (fusion par clé, « lu » figé au premier service, pages suivantes conservées) et ne tient vivantes que les cartes à moins de douze rangs de la première visible — une carte hors fenêtre laisse un bloc de sa hauteur.</td></tr>
@@ -4698,10 +4698,11 @@ svg.g{flex:none}
           <tr><th scope="row">A109</th><td><b>Terrain STOP 2 de la vague 2 — trois constats, corrigés le jour même</b> (PLAN-AUDIT-V2, CE du 2026-09-02, onze points sur douze OK). (1) <b>Kiosque, « Toujours afficher les images »</b> sans effet après dix pages défilées : la garde appelait le cœur puis re-servait la <i>page 0</i> seule — la fusion par clé (E10) gardait telle quelle une carte au-delà. Règle amendée : <b>la carte se re-sert elle-même</b>, où qu'elle soit, par le même document que le volet (<code>message_body</code>) ; la règle d'expéditeur re-sert toutes les cartes encore gardées, le cœur départage (une carte d'un tiers re-rend à l'identique). Filet : <code>kiosque-images.spec.js</code> (25 lettres routées, la garde d'une carte de page 2). (2) <b>Transfert : un mot tapé APRÈS le bloc disparaissait à l'envoi</b> — dans un contenteditable, le curseur posé en fin de corps tombe DANS le dernier bloc, ici le bloc marqué que l'envoi remplace. Le bloc transféré se termine désormais par <b>une ligne vide éditable</b> : le curseur a un dehors, ce qu'on tape après arrive. (3) <b>Hors UI mais visible</b> : la colonne <code>reply_to</code> (E5) vivait dans le <code>CREATE TABLE</code> seul — sur la vraie base, chaque passe du veilleur échouait (« no column named reply_to ») et « Répondre à tous » refusait ; migrée par la liste des colonnes, avec le test de base héritée que les décors semés à neuf ne pouvaient pas remplacer. Reste ouvert au PLAN : la RAM privée après dix pages de Kiosque (249 Mo sur 6 processus WebView2, budget 200) — mesurée à trois largeurs de fenêtre (12 / 5 / 1 : +217 / +168 / +96 Mo à 160 cartes sur le banc), <b>D9 (CE, le jour même) : fenêtre 5</b> — onze iframes vivantes au plus ; la racine (une iframe par carte, mémoire retenue après retour) est D-53 ; passe 2 : 251 Mo, dont 132 pour le seul processus GPU — la fenêtre n'est pas le levier. <b>Passe 2, constat (4)</b> : la bande « Déjà consulté » chevauchait une rangée, un vide d'une rangée dessous — la bande vit en absolu d'après le modèle de hauteurs (sondes h1/h2, A83) tandis que les rangées s'empilent à leur hauteur réelle ; les sondes ne rendaient ni le bloc de boîte (A80, vue mêlée) ni le ⋯ du mode organisé (E4, 24 px centrés dans une ligne de 14 px) — 6 px de moins par rangée, une rangée au bout de vingt. Règle : <b>une sonde porte tout ce qui donne sa hauteur à la rangée réelle, sous les mêmes conditions</b> (filet : <code>sections-liste.spec.js</code>, la bande calée sur son vide à 2 px). <b>Remarque CE (5)</b> : la barre collante du fil doit FLOTTER au-dessus du message — proposition au STOP visuel : l'objet flottant du produit (A108) — surface, bordure, rayon des contrôles, <code>--shadow</code>, décollée de 8 px du haut du scrollport — accepté sur captures, puis <b>renversé par le CE au terrain (passe 3) : trois dessins</b>. (a) Au <b>volet</b>, la barre de tri (Archiver / Signaler comme spam / Épingler ; Mettre de côté, « Déplacer vers… » en mode organisé) est <b>collée sous l'entête du fil</b> — bande à plat sur le fond, fermée par un filet, collante en tête au défilement (R1 tenue). (b) À l'<b>écran 03</b>, ses boutons vivent <b>directement dans la barre d'entête de la scène</b>, entre « ← Réception » et « Écrire » — plus de barre dans le flot. Un seul composant, <code>BarreFil.svelte</code>, deux dessins. (c) La <b>barre de réponse d'un message</b> (Répondre / Répondre à tous / Transférer / Supprimer) <b>flotte en bas du message</b> : l'objet flottant d'A108 (surface, bordure, rayon des contrôles, <code>--shadow</code>), collante au bas du scrollport tant que le message défile — 12 px de marge avec le pied —, en place dans la carte quand sa fin arrive, à 12/20/16 px des bords de l'élévation ; resserrée sur ses boutons, elle ne barre pas la carte. Verdict CE sur captures : « OK tel quel » ; au volet étroit elle s'empile (trois rangs à 450 px), assumé. Passe 4 au terrain : (a') au volet, la barre collée s'arrêtait 18 px sous le haut visible — un <code>position:sticky</code> se borne au bord du CONTENU du cadre, sous son padding ; le cadre ne porte plus de padding haut, l'air est rendu par le fil (<code>--fil-haut</code>) ; (b') à l'écran 03, <b>les gestes de tri s'alignent sur le bord gauche de la colonne des messages</b> — l'entête est une grille à trois pistes dont la centrale reproduit la colonne (960 px, gouttières de 28 px, <code>scrollbar-gutter</code> symétrique sur la scène) ; le retour garde sa largeur de contenu (passe 5 : la grille l'étirait sur sa piste). Filet : <code>barres-fil.spec.js</code>.</td></tr>
           <tr><th scope="row">A110</th><td><b>The wire speaks English; the database keeps its French</b> (PLAN-BASCULE-ANGLAIS E5a, CE decisions D15-D17 of 2026-09-03). Five closed vocabularies cross the IPC and are persisted: the category ids, the 12 marker hues, the cleanup scopes, the invitation replies, the sync phases. Rule (D16): <b>the database keeps the French value</b> (D3, debt D-54); <b>the wire, the catalogue keys, the CSS selectors and the test ids carry the English one</b>; the shell maps at the boundary, in one module (<code>wire.rs</code>), never elsewhere. The 24 hex of the marker swatch move from <code>--rep-&lt;teinte&gt;</code> to <code>--mk-&lt;hue&gt;</code> with the twelve English family names (red, orange, ochre, olive, green, pine, blue, indigo, violet, magenta, pink, brown) — the values do not move, the contrast table does not move; the <code>data-teinte</code> attribute keeps its name until the DOM contract switches (E5d), its VALUES are English from here. Four glyphs of the set are renamed with the views they name: <code>feed</code>, <code>paper_trail</code>, <code>screener</code>, <code>cleanup</code> (drawings untouched). The IPC keys follow: 18 command parameters and ~45 payload fields in English (<code>title</code>, <code>hue</code>, <code>lastEpoch</code>…), the six bulk-gesture words too. Nothing visible changes: the French catalogue is delivered word for word, only its value-derived keys move (<code>boite.inbox</code>, <code>repere.teinte.blue</code>, <code>inv.puce_accepted</code>…).</td></tr>
           <tr><th scope="row">A111</th><td><b>English is the reference language of the interface</b> (PLAN-BASCULE-ANGLAIS E5b, Chief Engineer decision D4 of 2026-09-02; ADR 0016 amended in place). Rule: a key missing from the active catalogue falls back to the ENGLISH text; the first launch speaks English unless the system language is French (<code>lib/language.js</code>, one pure decision, <code>e2e/language.test.mjs</code>); the shell composes the notifications in English by default (<code>Lang::from_pref</code>). The French catalogue is delivered word for word (D3), only its keys are English (glossary §5.4). Nothing else visible changes: the UI code, its 43 files and its identifiers are in English, its comments too; the DOM contract (test ids, classes, <code>data-*</code> names, seams) keeps its French until E5d, the four remaining CSS tokens until E5c. Two persisted UI preferences migrate at read, without a reset: the list pane width (<code>wind-largeurs</code>, key <code>liste</code> → <code>list</code>) and the row spacing (<code>wind-espacement</code>, <code>faible|moyen|eleve</code> → <code>low|medium|high</code>).</td></tr>
+          <tr><th scope="row">A112</th><td><b>The last four CSS tokens and the sort glyphs speak English</b> (PLAN-BASCULE-ANGLAIS E5c, Chief Engineer decision D12 of 2026-09-02). <code>--marque</code> → <code>--brand</code>, <code>--r-controle</code> → <code>--r-control</code>, <code>--r-tuile</code> → <code>--r-tile</code>, <code>--tuile</code> / <code>--tuileInk</code> → <code>--tile</code> / <code>--tileInk</code>; the values, the contrast table and the zero-radius rule (V14) do not move. The four sort glyphs of A104 are renamed with the sort they draw: <code>sort_newest</code>, <code>sort_oldest</code>, <code>sort_az</code>, <code>sort_za</code> (drawings untouched). The stylesheet is <code>system.css</code> from here; the three nets that read it follow. Nothing visible changes.</td></tr>
       </tbody>
     </table>
     <p class="note">Les
-    125 lignes — 14 décisions d'adoption V1-V14, 111 amendements A1-A111 — portent leurs trois
+    126 lignes — 14 décisions d'adoption V1-V14, 112 amendements A1-A112 — portent leurs trois
     cellules : le défaut d'A48 relevé en V12 est <b>réparé à la
     source</b>, ce document n'a plus rien à restituer.</p>
   </section>

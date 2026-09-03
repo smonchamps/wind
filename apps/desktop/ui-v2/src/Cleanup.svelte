@@ -327,7 +327,7 @@
   .pastille-plage {
     height:32px; padding:0 14px; font-size:13px; color:var(--ink);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); cursor:pointer;
+    border-radius:var(--r-control); cursor:pointer;
   }
   .pastille-plage:hover { background:var(--sel); }
   .pastille-plage.choisie {
@@ -337,7 +337,7 @@
   .demarrer {
     margin-top:26px; height:40px; padding:0 22px; font-size:14px;
     font-weight:600; color:var(--onAccent); background:var(--accent);
-    border:1px solid var(--accent); border-radius:var(--r-controle);
+    border:1px solid var(--accent); border-radius:var(--r-control);
     cursor:pointer;
   }
   .demarrer:hover { background:var(--accentH); border-color:var(--accentH); }
@@ -359,7 +359,7 @@
     flex:1; min-width:0; display:flex; flex-direction:column; gap:3px;
     padding:4px 6px; margin:0 -6px; text-align:left;
     background:transparent; border:1px solid transparent;
-    border-radius:var(--r-controle); cursor:pointer;
+    border-radius:var(--r-control); cursor:pointer;
   }
   .msg:hover { background:var(--sel); border-color:var(--border); }
   .l1, .l2 { display:flex; align-items:baseline; gap:8px; min-width:0; }
@@ -381,7 +381,7 @@
     position:absolute; top:-8px; right:-8px; width:19px; height:19px; padding:0;
     display:inline-flex; align-items:center; justify-content:center;
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); color:var(--muted); cursor:pointer;
+    border-radius:var(--r-control); color:var(--muted); cursor:pointer;
   }
   .mini:hover, .mini[aria-expanded="true"] { background:var(--sel); color:var(--ink); }
   .dedans {
@@ -399,7 +399,7 @@
   .terminer {
     margin-top:22px; height:32px; padding:0 16px; font-size:13px;
     color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:var(--r-controle);
+    border:1px solid var(--border); border-radius:var(--r-control);
     cursor:pointer;
   }
   .terminer:hover { background:var(--sel); }

@@ -650,7 +650,7 @@
   .puce {
     height:32px; padding:0 12px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink2); background:var(--surface);
-    border:1px solid var(--border); border-radius:var(--r-controle); white-space:nowrap;
+    border:1px solid var(--border); border-radius:var(--r-control); white-space:nowrap;
   }
   .puce.bouton { cursor:pointer; }
   .puce.bouton:hover { background:var(--sel); }
@@ -660,7 +660,7 @@
   .nu {
     height:26px; padding:0 9px; display:inline-flex; align-items:center;
     gap:6px; font-size:12px; color:var(--ink2); background:none;
-    border:1px solid transparent; border-radius:var(--r-controle); cursor:pointer;
+    border:1px solid transparent; border-radius:var(--r-control); cursor:pointer;
     white-space:nowrap;
   }
   .nu:hover { background:var(--sel); }
@@ -668,13 +668,13 @@
   .nu.inerte:hover { background:none; }
   /* The initials avatar of the cards (A45) — the list's drawing
      (E2): 28 px expanded, 26 px collapsed. */
-  /* V4 — the square initials tile: ground --tuile, ink --tuileInk,
+  /* V4 — the square initials tile: ground --tile, ink --tileInk,
      1 px stroke (measured: without it the tile does not exist). */
   .avatar {
-    width:28px; height:28px; border-radius:var(--r-tuile);
-    background:var(--tuile);
+    width:28px; height:28px; border-radius:var(--r-tile);
+    background:var(--tile);
     border:1px solid var(--border); display:grid; place-items:center;
-    font-size:11px; font-weight:600; color:var(--tuileInk); flex:none;
+    font-size:11px; font-weight:600; color:var(--tileInk); flex:none;
   }
   .avatar.petit { width:26px; height:26px; }
   .fil { flex:none; overflow-y:visible; padding:0; }
@@ -735,7 +735,7 @@
   /* The invitation card (A76): a card WITHIN the message card —
      10 px surface radius, no elevation (it belongs to the content's
      flow, not the thread). The date tile reuses the current
-     mailbox's --tuile/--tuileInk pair; a cancellation switches the
+     mailbox's --tile/--tileInk pair; a cancellation switches the
      tile to dimmed and the title to struck through. */
   .invitation { border:1px solid var(--border); border-radius:var(--r-surface); background:var(--surface); }
   .inv-tete { display:flex; align-items:center; gap:10px; padding:12px 14px 0; }
@@ -747,8 +747,8 @@
   .inv-statut { font-size:12px; color:var(--ink2); white-space:nowrap; }
   .inv-corps { display:flex; gap:14px; padding:12px 14px 14px; align-items:flex-start; }
   .inv-tuile {
-    width:52px; height:52px; border-radius:var(--r-controle); background:var(--tuile);
-    color:var(--tuileInk); display:flex; flex-direction:column;
+    width:52px; height:52px; border-radius:var(--r-control); background:var(--tile);
+    color:var(--tileInk); display:flex; flex-direction:column;
     align-items:center; justify-content:center; gap:1px; flex:none;
   }
   .inv-tuile.eteinte { background:var(--bg); color:var(--muted); }
@@ -784,7 +784,7 @@
   .garde-images {
     padding:10px 14px; display:flex; align-items:center; gap:10px;
     font-size:13px; color:var(--ink2); background:var(--bg);
-    border:1px solid var(--border); border-radius:var(--r-controle);
+    border:1px solid var(--border); border-radius:var(--r-control);
     /* Two buttons since RETOURS-11 (D3): in a narrow window they
        wrap to the next line rather than crushing the text. */
     flex-wrap:wrap;
@@ -794,7 +794,7 @@
   .garde-images button {
     height:26px; padding:0 10px; font-size:12px; color:var(--ink);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); cursor:pointer;
+    border-radius:var(--r-control); cursor:pointer;
   }
   .garde-images button:hover { background:var(--sel); }
   .corps {
@@ -821,7 +821,7 @@
      alert: the mail is legitimate, its verdict is just due. */
   .attente-portier {
     flex:none; padding:1px 6px; font-size:11px; color:var(--ink2);
-    border:1px solid var(--border); border-radius:var(--r-controle);
+    border:1px solid var(--border); border-radius:var(--r-control);
     white-space:nowrap;
   }
   /* E1: the "Move to…" menu — a card BELOW the button
@@ -841,7 +841,7 @@
     margin:12px 20px 16px; padding:8px 10px;
     display:flex; gap:10px; flex-wrap:wrap;
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); box-shadow:var(--shadow);
+    border-radius:var(--r-control); box-shadow:var(--shadow);
   }
   /* ONE template for the message buttons AND the invitation card's
      (A76 says "at the message actions' template"): keeping it by
@@ -849,7 +849,7 @@
   .actions-message button, .inv-actions button {
     height:30px; padding:0 14px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:var(--r-controle); cursor:pointer;
+    border:1px solid var(--border); border-radius:var(--r-control); cursor:pointer;
   }
   .actions-message button:hover, .inv-actions button:hover { background:var(--sel); }
   .actions-message .principal {
@@ -868,7 +868,7 @@
   .puce .voile {
     position:absolute; inset:0; display:none; align-items:center;
     justify-content:center; gap:6px; font-size:12px; font-weight:600;
-    color:var(--ink); background:var(--sel); border-radius:var(--r-controle);
+    color:var(--ink); background:var(--sel); border-radius:var(--r-control);
     white-space:nowrap; overflow:hidden;
   }
   .puce.bouton:hover .voile, .puce.bouton:focus-visible .voile { display:inline-flex; }

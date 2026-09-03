@@ -1490,14 +1490,14 @@
   .puce {
     height:32px; padding:0 12px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink2); background:var(--surface);
-    border:1px solid var(--border); border-radius:var(--r-controle); white-space:nowrap;
+    border:1px solid var(--border); border-radius:var(--r-control); white-space:nowrap;
     flex:none;
   }
   .fermer {
     height:32px; width:32px; padding:0; display:inline-flex; flex:none;
     align-items:center; justify-content:center; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); cursor:pointer;
+    border-radius:var(--r-control); cursor:pointer;
   }
   .fermer:hover { background:var(--sel); }
 
@@ -1515,12 +1515,12 @@
     min-width:280px; max-width:440px;
     margin:2px 0 0; padding:6px; list-style:none;
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); box-shadow:var(--shadow);
+    border-radius:var(--r-control); box-shadow:var(--shadow);
     display:flex; flex-direction:column; gap:2px;
   }
   .suggestion {
     width:100%; display:flex; align-items:baseline; gap:8px;
-    padding:6px 8px; border:none; background:transparent; border-radius:var(--r-controle);
+    padding:6px 8px; border:none; background:transparent; border-radius:var(--r-control);
     cursor:pointer; font-size:13px; text-align:left; font-family:inherit;
   }
   .suggestion:hover { background:var(--hover); }
@@ -1568,14 +1568,14 @@
   .piece {
     height:32px; padding:0 12px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink2); background:var(--surface);
-    border:1px solid var(--border); border-radius:var(--r-controle); white-space:nowrap;
+    border:1px solid var(--border); border-radius:var(--r-control); white-space:nowrap;
   }
   .piece .nom { color:var(--ink); }
   .piece .taille { font-size:12px; color:var(--muted); }
   .retrait {
     height:22px; width:22px; padding:0; display:inline-flex; align-items:center;
     justify-content:center; color:var(--muted); background:transparent;
-    border:none; border-radius:var(--r-controle); cursor:pointer;
+    border:none; border-radius:var(--r-control); cursor:pointer;
   }
   .retrait:hover { background:var(--sel); color:var(--ink); }
   .retrait :global(.ic) { width:13px; height:13px; }
@@ -1587,7 +1587,7 @@
   .reessayer {
     height:22px; padding:0 8px; display:inline-flex; align-items:center;
     font-size:12px; font-family:inherit; font-weight:600; color:var(--ink2);
-    background:var(--surface); border:1px solid var(--border); border-radius:var(--r-controle);
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--r-control);
     cursor:pointer;
   }
   .reessayer:hover { background:var(--sel); color:var(--ink); }
@@ -1607,7 +1607,7 @@
     height:32px; min-width:32px; padding:0 6px; display:inline-flex;
     align-items:center; justify-content:center; font-size:13px;
     color:var(--ink2); background:var(--surface); cursor:pointer;
-    border:1px solid var(--border); border-radius:var(--r-controle);
+    border:1px solid var(--border); border-radius:var(--r-control);
   }
   .bouton-format:hover { background:var(--sel); color:var(--ink); }
   /* The active state states what the selection carries (aria-pressed
@@ -1619,7 +1619,7 @@
   .select-format {
     height:32px; padding:0 8px; font:inherit; font-size:13px;
     color:var(--ink2); background:var(--surface); cursor:pointer;
-    border:1px solid var(--border); border-radius:var(--r-controle);
+    border:1px solid var(--border); border-radius:var(--r-control);
   }
   .select-format option { background:var(--surface); color:var(--ink); }
   .sep {
@@ -1632,12 +1632,12 @@
     position:absolute; bottom:38px; left:0; z-index:1;
     display:grid; grid-template-columns:repeat(6, 22px); gap:6px;
     padding:10px; background:var(--surface);
-    border:1px solid var(--border); border-radius:var(--r-controle);
+    border:1px solid var(--border); border-radius:var(--r-control);
     box-shadow:var(--shadow);
   }
   .teinte {
     height:22px; width:22px; min-width:0; padding:0;
-    border:1px solid var(--border); border-radius:var(--r-controle); cursor:pointer;
+    border:1px solid var(--border); border-radius:var(--r-control); cursor:pointer;
   }
   .teinte:hover { outline:2px solid var(--accent); outline-offset:1px; }
 
@@ -1650,7 +1650,7 @@
   button {
     height:32px; padding:0 16px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:var(--r-controle); cursor:pointer;
+    border:1px solid var(--border); border-radius:var(--r-control); cursor:pointer;
     white-space:nowrap;
   }
   .pied { flex-wrap:wrap; }
@@ -1676,7 +1676,7 @@
   .differe {
     position:absolute; bottom:40px; left:0; z-index:3; width:320px;
     padding:14px; background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); box-shadow:var(--shadow);
+    border-radius:var(--r-control); box-shadow:var(--shadow);
     display:flex; flex-direction:column; gap:10px;
   }
   .differe-label {
@@ -1686,7 +1686,7 @@
   .differe-label input {
     flex:1; min-width:0; height:32px; padding:0 8px; font:inherit;
     font-size:13px; color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:var(--r-controle);
+    border:1px solid var(--border); border-radius:var(--r-control);
   }
   .differe-note { margin:0; font-size:12px; color:var(--muted); line-height:1.5; }
   .differe-actions { display:flex; align-items:center; gap:12px; }

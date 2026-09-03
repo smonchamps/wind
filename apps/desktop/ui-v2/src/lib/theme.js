@@ -15,7 +15,7 @@ const AUTO_KEY = 'wind-theme-auto';
 // from the contract table, in the order accent, background, net,
 // surface, ink (`panel` is dead — V3; the net takes its place: since
 // V3 it is THE one that draws the separation, the thumbnails show it).
-// The same values live as tokens in systeme.css: the swatches must
+// The same values live as tokens in system.css: the swatches must
 // show each theme WITHOUT applying it, hence the hex values repeated
 // here — the coherence-systeme.mjs gate keeps them equal to the
 // shipped tokens. Labels and descriptions live in the catalogue
@@ -104,7 +104,7 @@ function setThemeAttribute(name) {
   else document.documentElement.dataset.theme = name;
   // A44: the native bars' `color-scheme` is NOT set here —
   // it lives in CSS, next to the tokens (`:root[data-theme$="-nuit"]`,
-  // systeme.css): every path that sets data-theme gets it, without JS.
+  // system.css): every path that sets data-theme gets it, without JS.
   // A42 review: the Settings checkmark follows the DISPLAYED card —
   // the signal says “the set theme has just changed”, whatever the
   // path (choice, tracking toggle, OS event during the session).

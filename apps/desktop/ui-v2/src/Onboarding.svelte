@@ -343,14 +343,14 @@
     border-radius:var(--r-surface); box-shadow:var(--shadow);
   }
   .capture-grande {
-    width:100%; height:auto; display:block; border-radius:var(--r-controle);
+    width:100%; height:auto; display:block; border-radius:var(--r-control);
     border:1px solid var(--border);
   }
   .boutons-volets { display:flex; gap:12px; justify-content:center; }
   .choix-volet {
     height:40px; padding:0 18px; font-size:14px; font-weight:600;
     color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:var(--r-controle); cursor:pointer;
+    border:1px solid var(--border); border-radius:var(--r-control); cursor:pointer;
   }
   .choix-volet:hover { background:var(--sel); }
   .choix-volet.choisie {
@@ -361,7 +361,7 @@
 
   /* Step 3's preview window, in the card's colors. */
   .fenetre {
-    display:flex; flex-direction:column; height:110px; border-radius:var(--r-controle);
+    display:flex; flex-direction:column; height:110px; border-radius:var(--r-control);
     border:1px solid var(--border); overflow:hidden;
   }
   .f-tete { height:14px; flex:none; border-bottom:1px solid var(--border); }
@@ -370,7 +370,7 @@
   .f-liste {
     flex:1; display:flex; flex-direction:column; gap:4px; padding:6px;
   }
-  .f-liste span { height:10px; border-radius:var(--r-controle); }
+  .f-liste span { height:10px; border-radius:var(--r-control); }
   .f-liste span:nth-child(2) { opacity:.85; }
   .f-lecture { width:38%; flex:none; border-left:1px solid var(--border); }
 
@@ -387,7 +387,7 @@
     flex:none; display:inline-flex; align-items:center; gap:8px;
     height:32px; padding:0 14px; font-size:13px; color:var(--ink);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle);
+    border-radius:var(--r-control);
   }
   .beta-texte {
     margin:0; font-size:13px; line-height:1.5; color:var(--ink2);
@@ -409,13 +409,13 @@
      the window in the theme's colors. */
   .mini {
     width:100%; height:auto; flex:none; display:block;
-    border-radius:var(--r-controle); border:1px solid var(--border);
+    border-radius:var(--r-control); border:1px solid var(--border);
   }
   .mini-theme { width:100%; flex:none; display:block; }
-  .mini-theme .fenetre { height:64px; border-radius:var(--r-controle); }
+  .mini-theme .fenetre { height:64px; border-radius:var(--r-control); }
   .mini-theme .f-tete { height:8px; }
   .mini-theme .f-liste { padding:3px; gap:2px; }
-  .mini-theme .f-liste span { height:5px; border-radius:var(--r-controle); }
+  .mini-theme .f-liste span { height:5px; border-radius:var(--r-control); }
   /* The "Back to this step" veil: the attachments' veil rules
      (A70) — absolute overlay, opaque --sel background,
      shown on hover AND on keyboard focus (A8), stable geometry. */
@@ -433,14 +433,14 @@
   .principal {
     height:40px; padding:0 22px; font-size:14px; font-weight:600;
     color:var(--onAccent); background:var(--accent); border:none;
-    border-radius:var(--r-controle); cursor:pointer;
+    border-radius:var(--r-control); cursor:pointer;
   }
   .principal:hover { background:var(--accentH); }
   .principal:disabled { opacity:.5; cursor:default; }
   .secondaire {
     height:40px; padding:0 18px; font-size:14px; color:var(--ink);
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle); cursor:pointer; align-self:flex-start;
+    border-radius:var(--r-control); cursor:pointer; align-self:flex-start;
   }
   .secondaire:hover { background:var(--sel); }
 </style>

@@ -154,7 +154,7 @@ test('la sélection se vide au changement de dossier', async () => {
 test('une épinglée cochée se teinte comme les autres (terrain R1-7)', async () => {
   // Épingler la première rangée par la barre du fil, puis la cocher
   // dans sa section : son fond doit être LA teinte de sélection — le
-  // sol --tuile d'A73 cède à la coche (verdict terrain).
+  // sol --tile d'A73 cède à la coche (verdict terrain).
   await lignes().nth(0).click();
   await page.locator('[data-testid="epingler"]').click();
   const ep = page.locator('[data-testid="epingles"] [data-testid="ligne"]').first();

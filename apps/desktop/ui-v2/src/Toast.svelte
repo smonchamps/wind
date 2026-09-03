@@ -20,7 +20,7 @@
     position:absolute; left:50%; bottom:28px; transform:translateX(-50%);
     z-index:3;
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--r-controle);
+    border-radius:var(--r-control);
     box-shadow:var(--shadow); padding:10px 16px;
     display:flex; align-items:center; gap:10px;
   }

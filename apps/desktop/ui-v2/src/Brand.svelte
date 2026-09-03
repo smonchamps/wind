@@ -9,7 +9,7 @@
   //     radius is a PLATFORM measurement (15/64), the product's ONLY
   //     rounded shape (V14, declared exception).
   //   - AS A GLYPH (default) — header, drawer: the envelope follows
-  //     the current ink, the flap takes --marque. A fixed #141414 laid
+  //     the current ink, the flap takes --brand. A fixed #141414 laid
   //     on the night background would be invisible (1.25:1) — that is
   //     W-D3's bound, not a breach.
   import { BRAND } from './lib/icons.js';
@@ -38,7 +38,7 @@
        stroke-linecap="butt" stroke-linejoin="miter">
       {#each BRAND.d as d (d)}<path {d} />{/each}
     </g>
-    <path d={BRAND.flap} fill="var(--marque)" />
+    <path d={BRAND.flap} fill="var(--brand)" />
   </svg>
 {/if}
 

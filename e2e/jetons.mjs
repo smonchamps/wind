@@ -1,4 +1,4 @@
-// Lecture des jetons de systeme.css — le parseur UNIQUE des deux gates
+// Lecture des jetons de system.css — le parseur UNIQUE des deux gates
 // (contraste.mjs, coherence-systeme.mjs). Né à la revue d'A42 : chacune
 // portait sa copie de la même regex, et le même bogue s'y est corrigé
 // deux fois de suite (la classe [a-zA-Z] qui perdait « ink2 » à
