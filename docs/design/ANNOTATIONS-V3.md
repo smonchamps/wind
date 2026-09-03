@@ -1,65 +1,66 @@
-# Annotations CE — vers une UI v3
+# CE annotations — toward a v3 UI
 
-Séance d'annotation du prototype `prototype-classique.html` (mode Classique,
-Système v2 « Wada »), panneau navigateur intégré. Chaque entrée est un verdict
-CE consigné tel quel ; la synthèse et la proposition v3 viendront après la
-séance.
+Annotation session on the `prototype-classique.html` mockup (Classic
+mode, System v2 "Wada"), integrated browser panel. Each entry is a CE
+verdict recorded as given; the synthesis and the v3 proposal come after
+the session.
 
 ## 2026-08-16
 
-### 1. Navigation latérale (`.nav`, rail 248 px)
-**Verdict CE : conserver la v2 telle quelle.**
-Bloc concerné : le rail complet — boîtes (Réception/Envoyés/Brouillons/
-Archives/Indésirables/Corbeille, pastille de non-lus), section Bibliothèque
-(Fichiers, Contacts, Collections, Parcours, Extraits, Modèles), Étiquettes,
-section Boîtes (Toutes les boîtes, Travail…). Aucun changement en v3.
+### 1. Side navigation (`.nav`, 248 px rail)
+**CE verdict: keep v2 as it is.**
+Block concerned: the whole rail — mailboxes (Inbox/Sent/Drafts/
+Archives/Junk/Trash, unread badge), Library section (Files, Contacts,
+Collections, Journeys, Snippets, Templates), Labels, Mailboxes section
+(All mailboxes, Work…). No change in v3.
 
-### 2. En-tête (`header.entete`, 52 px)
-**Verdict CE : remplacer l'en-tête v2 par celui de la maquette Classique.**
-Composition retenue (telle que dans `prototype-classique.html`) :
-- marque « Wind » 18 px + trait hitofude (SVG accent, décalé de 3 px sous la
-  ligne de base, sans tuile-enveloppe — A30) ;
-- champ de recherche central (max 520 px, placeholder « Chercher un message,
-  une personne, un fichier ») ;
-- à droite : bouton accent « Écrire » et bouton « Réglages ».
+### 2. Header (`header.entete`, 52 px)
+**CE verdict: replace the v2 header with the Classic mockup's.**
+Retained composition (as in `prototype-classique.html`):
+- "Wind" brand 18 px + hitofude stroke (accent SVG, offset 3 px below
+  the baseline, without the envelope tile — A30);
+- central search field (max 520 px, placeholder « Chercher un message,
+  une personne, un fichier »);
+- on the right: accent button "Écrire" and button "Réglages".
 
-### 3. Bandeau d'en-tête de liste (`.listeTete`)
-**Verdict CE : ajouter ce bandeau en v3, SANS le bouton « Tout marquer lu ».**
-On garde le titre de la boîte (h1 16 px, « Boîte de réception »…) en tête du
-volet liste ; le bouton mini « Tout marquer lu » est écarté.
+### 3. List header band (`.listeTete`)
+**CE verdict: add this band in v3, WITHOUT the "Tout marquer lu" button.**
+We keep the mailbox title (h1 16 px, « Boîte de réception »…) at the
+top of the list pane; the mini "Tout marquer lu" button is set aside.
 
-### 4. Liste des messages (`.liste` / `.ligne`)
-**Verdict CE : la liste des emails v3 suit le format de la maquette.**
-Dessin des pistes (A29.3/A30) : lignes continues séparées au filet, 14 px,
-grille avatar (28 px, cliquable = sélection lot) · nom + heure tabulaire ·
-objet · aperçu une ligne. Non-lu en 700, survol en teinte légère, ligne
-choisie en teinte + liseré gauche accent. Rang de puces sous l'aperçu quand
-il existe : étiquette (accent), « Brouillon : » en alerte dans l'aperçu,
-« Remonté ce matin », note de ligne en italique.
+### 4. Message list (`.liste` / `.ligne`)
+**CE verdict: the v3 email list follows the mockup's format.**
+Track drawing (A29.3/A30): continuous rows separated by a hairline,
+14 px, avatar grid (28 px, clickable = batch selection) · name +
+tabular time · subject · one-line preview. Unread at 700, hover in a
+light tint, chosen row in tint + accent left edge. Chip row under the
+preview when present: label (accent), « Brouillon : » in alert ink in
+the preview, « Remonté ce matin », italic row note.
 
-### 5. Filtres du volet liste (`.filtres` — Tous / Non lus / Brouillons)
-**Verdict CE : conserver le bloc v2 tel quel.**
-Les onglets de filtre de la maquette (Tous / Non lus / Brouillons en pied de
-liste) ne remplacent pas l'existant : la v3 garde le dispositif de filtrage
-de la v2.
+### 5. List pane filters (`.filtres` — Tous / Non lus / Brouillons)
+**CE verdict: keep the v2 block as it is.**
+The mockup's filter tabs (Tous / Non lus / Brouillons at the foot of
+the list) do not replace the existing ones: v3 keeps the v2 filtering
+device.
 
-### 6. Volet de lecture (`.voletLecture` / `.lecture`)
-**Verdict CE : ce layout remplace celui de la v2 — sous réserve des
-exceptions listées ci-dessous (en cours de dictée).**
-Composition retenue :
-- titre du fil (h1 24 px) ;
-- sous-titre en puces : n messages, n fichiers, étiquettes (accent) ;
-  bouton nu « Tout déplier » à droite ;
-- messages en cartes (`.carteMsg`) : les anciens repliés sur une ligne
-  (avatar · nom · résumé · quand), le dernier déplié en carte pleine
-  (en-tête avec adresse et destinataire, corps 68ch max, section
-  « Fichiers joints » en puces) ;
-- ~~note privée du fil sur fond jaune (« jamais transmise »)~~ → retirée,
-  voir exception a.
+### 6. Reading pane (`.voletLecture` / `.lecture`)
+**CE verdict: this layout replaces the v2's — subject to the
+exceptions listed below (dictation in progress).**
+Retained composition:
+- thread title (h1 24 px);
+- subtitle as chips: n messages, n files, labels (accent);
+  bare button "Tout déplier" on the right;
+- messages as cards (`.carteMsg`): older ones folded on one line
+  (avatar · name · summary · when), the last one unfolded as a full
+  card (header with address and recipient, body 68ch max, "Fichiers
+  joints" section as chips);
+- ~~private thread note on a yellow ground (« jamais transmise »)~~ →
+  removed, see exception a.
 
-**Exceptions CE :**
-- **a. Note privée de fil (`.noteFil`) : non implémentée.** Le bloc jaune
-  « note privée, jamais transmise » ne fait pas partie de la v3.
-- **b. Bouton « Plus » de la barre d'actions (`.barreActions`) : écarté à ce
-  stade.** La barre d'actions du fil garde ses boutons directs (Répondre,
-  Répondre à tous, Transférer, Supprimer…) sans le menu « ⋯ Plus ».
+**CE exceptions:**
+- **a. Private thread note (`.noteFil`): not implemented.** The yellow
+  "private note, never sent" block is not part of v3.
+- **b. "More" button of the action bar (`.barreActions`): set aside at
+  this stage.** The thread's action bar keeps its direct buttons
+  (Répondre, Répondre à tous, Transférer, Supprimer…) without the
+  "⋯ Plus" menu.
