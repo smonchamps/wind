@@ -678,6 +678,11 @@ Les noms de fichiers sur disque (`wind.log`, `maj.log`,
 > 81 skipped by the serial cascade; the 8 files replayed 96/96; after
 > the review 172/172 on 14 files), full gate green in 150 s (198 e2e,
 > flaky 0). Baseline 87 925 → 87 900 (docs quote French names).
+> Commit `2c30cea`, CI green 33781288186. **Field (STOP 2) on
+> 2026-09-03: validated by the Chief Engineer, no finding** — the ten
+> screens of §7 bis in both themes, no unstyled element; the five words
+> added after D20 (libre→free, renoncer→give-up, bande→band,
+> retrait→removal + the two format phrases) validated as they are.
 >
 > **§7 bis — field checklist for E5d** (STOP 2): every screen once,
 > looking for an UNSTYLED element (a class missed): Inbox rows (bare,
