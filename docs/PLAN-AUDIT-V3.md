@@ -355,6 +355,19 @@ the composed fetch paths); the stable MIME part index finished and
 **D-30 closed** (the legacy-invitation gap gets its repair or an
 explicit kept-debt line).
 
+**Delivered 2026-09-04** (`2db018c`, CI 33887416322, gate 204 e2e /
+0 flaky). `fetch_body_html` removed (unit duplicate of the batched
+path; `load_body` rides a one-element slice); `fetch_recipients`
+removed (`fetch_envelopes` already carries to/cc — the backfill
+always knew; the Reply-all on-demand path follows; the dead
+`envelope_recipients` left with it, its edge-case tests rewritten);
+`Folder.delimiter` populated from LIST; the D-30 repair widened
+(`BEGIN:VCALENDAR` body criterion, RED-proven) — **D-30 closed**,
+**D-59 opened** (the rank/filter tripwire); `capabilities()`
+**refused** §2.6 (Chief-Engineer decision at the step: the
+Option-sentinels ARE the capability surface) and `CycleConnection`
+stays a separate trait. **ADR 0035.** mail-core 461.
+
 ### E7 — the front (G)
 
 `generation` store (11 `bind:this` die, **D-48 closed**);
@@ -365,6 +378,41 @@ App/List/Compose/Settings each split along their existing seams; the
 build keeps them, the release build loses them; proven by grepping the
 built bundle both ways. DC-D2: any UI-visible drift is a defect, not
 an amendment — the System should need **no** A-n from this step.
+
+**Delivered 2026-09-04** (`90a61e4`, CI 33890577051, gate 204 e2e /
+0 flaky; scope per decision D7 — a-d kept, the rest refused §2.6).
+(a) `lib/views.svelte.js` + subscriptions in the four views (the pile
+included, which the old per-ref list missed) and 13 shell write
+commands bumping the shared generation — **D-48 closed** as its entry
+prescribed; three `bind:this` refs die (11 → 8, the rest are
+modals/focus by nature). (b) The 8 `__e2e*` seams compiled OUT of a
+release build behind `VITE_E2E` (buildV2 flavor; make-release rebuilds
+clean and asserts absence in the bundle) — **D-52 item 8 closed**,
+proven both ways by grep and by this gate's whole suite. (c)
+`Editor.svelte` (417 l.) out of Compose (1,704 → 1,395), the
+deprecated `execCommand` quarantined behind a component contract. (d)
+`.btn-screener` and the AccountDesk/Settings `select` pair live once
+in `system.css` — D-47's stated UI leftovers done, its core half
+noted open. The commit also carries the parallel session's
+stale-binary guard (`frontendFailure` + its five tests), inseparable
+from the seams edit in the same file, credited in the message.
+
+### Fresh-eyes review of the wave (Phase 3)
+
+`/code-review high` over `8efd983..HEAD` (`d3e49b0`, CI 33893460770):
+8 finder angles, 16 deduped candidates, 10 verified findings — **8
+fixed the same session** (the poll-reason trace masked per §6;
+bump-on-real-change; `cycle::local_marker` exported and the third
+marker copy collapsed; the platform-verifier config built once per
+process in both crates; `watchViews()` one-liners; the shell cycle's
+bar detail restored; the duplicate mail-smtp test removed; the
+release seam check recursive over every text asset), **1 accepted**
+with its register sentence (a body QUOTING `BEGIN:VCALENDAR` is
+dropped and redownloaded once — the criterion's own semantics), **1
+standing** as ADR 0033's recorded limit (the cycle traits' stringly
+errors). The cadence-consumed-on-skip candidate was REFUTED as a
+regression — parity with the old JS timers, verified against
+`8efd983`.
 
 ### Estimate
 
