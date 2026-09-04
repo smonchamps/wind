@@ -1,0 +1,30 @@
+#!/bin/sh
+# commit-msg: strip every co-authorship trailer from the message.
+#
+# STANDARD §2.8 (CE ruling 2026-09-04): a Wind commit carries ONE author,
+# the one who signs it. No `Co-Authored-By:`, whatever the tool that
+# generated the message and whatever its own default. A rule that only
+# lives in the method is a rule that gets forgotten under a harness
+# default — so it is enforced here, mechanically, on every commit path
+# (commit, amend, merge, cherry-pick, rebase -m).
+#
+# Deliberate scope: the trailer, and the blank lines it leaves behind.
+# Nothing else in the message is touched.
+#
+# Emergency bypass: git commit --no-verify (knowingly).
+set -e
+
+msg=$1
+tmp=$msg.nocoauthor
+
+# Case-insensitive, tolerant of leading spaces: `Co-authored-by:`,
+# `co-authored-by:` and the `Co-Authored-By:` of the harnesses are the
+# same trailer. The trailing blank lines the deletion leaves are collapsed
+# so the message does not end on a hole.
+awk '
+  tolower($0) ~ /^[ \t]*co-authored-by:/ { next }
+  /^[ \t]*$/ { blanks = blanks "\n"; next }
+  { printf "%s%s\n", blanks, $0; blanks = "" }
+' "$msg" > "$tmp"
+
+mv "$tmp" "$msg"

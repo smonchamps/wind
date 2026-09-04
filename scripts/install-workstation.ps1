@@ -150,9 +150,9 @@ if (-not (Test-Path (Join-Path $root "Cargo.toml"))) {
 }
 Ok "Repository root: $root"
 
-# Pre-push gate: a fresh clone does not enable it by itself.
+# Repository hooks: a fresh clone does not enable them by itself.
 git config core.hooksPath .githooks
-Ok "core.hooksPath = .githooks (pre-push gate armed)"
+Ok "core.hooksPath = .githooks (pre-push gate + commit-msg co-author strip armed)"
 
 # Local git identity: NEVER guessed (personal data). Warn if absent.
 $mail = ((git config --local user.email) 2>$null)
