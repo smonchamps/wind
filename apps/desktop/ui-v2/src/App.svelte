@@ -8,6 +8,7 @@
   import Icon from './Icon.svelte';
   import { onMount, tick } from 'svelte';
   import { call } from './lib/transport.js';
+import { invalidateViews } from './lib/views.svelte.js';
   import { t, setDetectedLanguage } from './lib/text.svelte.js';
   import { currentPanes } from './lib/panes.svelte.js';
   import { onboardingDone, markOnboardingDone, onboardingStarted } from './lib/onboarding.js';
@@ -626,7 +627,7 @@
         if (report.sent > 0) {
           // The Sent echo was born at the flush (E3) — the copy shows
           // without waiting; reconciliation will follow at the cycle.
-          list?.reload();
+          reloadViews();
           loadNav();
         }
       } catch (err) {
@@ -885,7 +886,7 @@
       await probeActivity();
       if (activity && activity.mail > mailSeen) {
         mailSeen = activity.mail;
-        list?.reload();
+        reloadViews();
         loadNav();
       }
       const trace = JSON.stringify([activity, sync?.local]);
@@ -915,7 +916,7 @@
       loadNav();
       probeDrafts();
       if (report.fetched > 0 || report.deleted > 0) {
-        list?.reload();
+        reloadViews();
         backfillBodies();
       }
     } catch (err) {
@@ -959,7 +960,7 @@
       probeSends();
       loadNav();
       if (report.fetched > 0 || report.deleted > 0) {
-        list?.reload();
+        reloadViews();
         backfillBodies();
       }
     } catch (err) {
@@ -1100,11 +1101,8 @@
   // E5: the pile toggle — from the thread bar or a row's ⋯. Set
   // aside: the thread leaves its view, the pile keeps it;
   // "Resume"/"Done" returns it to where it came from.
-  let pile = $state(null);
-  let feed = $state(null);
   // RETOURS-14 R6: the Paper trail's grouped view — same reload
   // regime as the Feed.
-  let paperTrail = $state(null);
   async function toggleAside(row, fromThread = false) {
     if (gestureOnEcho(row)) return;
     try {
@@ -1120,7 +1118,6 @@
       // review).
       if (thread.row && msgKey(thread.row) === msgKey(row)) thread.aside = aside;
       reloadViews();
-      pile?.reload();
       loadNav();
       // From the reading surface: a thread just set aside has just
       // left its view — screen 03 returns to the mailbox, the pane
@@ -1202,7 +1199,7 @@
         // retention and routing) — the list re-serves, as after a
         // "Move to…"; otherwise the screen keeps the other mode's
         // page until the next round trip.
-        list?.reload();
+        reloadViews();
       }
       loadNav();
     } catch (err) {
@@ -1304,7 +1301,7 @@
         for (const incident of report.errors) console.error('sync_after_gesture :', incident);
         if (report.fetched > 0 || report.deleted > 0 || report.reconciled > 0 || report.swept > 0) {
           loadNav();
-          list?.reload();
+          reloadViews();
         }
       })
       .catch((err) => console.error('sync_after_gesture :', err));
@@ -1340,7 +1337,7 @@
       // this conversation — otherwise another row's state would land
       // here.
       if (thread.row && msgKey(thread.row) === msgKey(row)) thread.pin = state;
-      list?.reload();
+      reloadViews();
     } catch (err) {
       console.error('toggle_pin :', err);
     }
@@ -1350,8 +1347,7 @@
     // E4: on return from screen 03, a READ thread leaves "New for
     // you" — the list and the seam re-serve, the nav follows.
     if (organizedInbox) {
-      list?.reload();
-      pile?.reload();
+      reloadViews();
       loadNav();
     }
   }
@@ -1382,7 +1378,7 @@
   // poll, will pass back over it for free.
   function afterMailSent() {
     loadNav();
-    list?.reload();
+    reloadViews();
   }
   // Simple door (D4): the account is added, the nav reloads RIGHT
   // AWAY (local read — never behind the network, review), and the
@@ -1414,7 +1410,7 @@
     selectedRow = null;
     closeThread();
     loadNav();
-    list?.reload();
+    reloadViews();
   }
 
   // RETOURS-14 (review): ONE re-serve of the views — the list AND
@@ -1436,9 +1432,11 @@
     setTimeout(() => {
       reloadRecent = false;
     }, 50);
-    list?.reload();
-    feed?.reload();
-    paperTrail?.reload();
+    // E7: ONE mechanism — the mounted views subscribe to the store
+    // (List, Feed, Paper trail, and now the pile too, which the old
+    // per-ref list missed: an external write to the set-aside pile
+    // was the same D-48 staleness).
+    invalidateViews();
   }
 
   // The last drafts revision seen — the actual list (bodies included)
@@ -1811,7 +1809,7 @@
         <!-- E5bis: the Feed in cards — the letters already opened,
              the whole scene (CE decision of 2026-08-30). -->
         <div class="frame-screener">
-          <Feed bind:this={feed} {account}
+          <Feed {account}
                    onmove={moveSender} onsetaside={toggleAside}
                    ontotal={(t) => (listTotal = t)} />
         </div>
@@ -1819,7 +1817,7 @@
         <!-- R6: the grouped Paper trail takes the list column — the
              reading pane stays on the right, opening goes through the
              list's path (surSelection). -->
-        <PaperTrail bind:this={paperTrail} {account}
+        <PaperTrail {account}
                   onopen={onSelection} onroute={routeAddress}
                   ontotal={(t) => (listTotal = t)} />
       {:else}
@@ -1868,8 +1866,8 @@
              Inbox (prototype) — fans out on click, full-screen table.
              It hides under screen 03 (E5 review: it used to float
              over the reading pane, z 20 against 1). -->
-        <SetAsidePile bind:this={pile} onopen={openConversation} onflash={flash}
-                       onchange={() => { list?.reload(); loadNav(); }} />
+        <SetAsidePile onopen={openConversation} onflash={flash}
+                       onchange={() => { reloadViews(); loadNav(); }} />
       {/if}
       {#if panes !== 1}
         {@render handle('nav', t('panes.handleNav'), lNav - 3)}

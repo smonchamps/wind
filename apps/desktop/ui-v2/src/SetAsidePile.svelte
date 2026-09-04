@@ -10,6 +10,7 @@
   // `onchange` — the component owns the pile, never the lists.
   import Icon from './Icon.svelte';
   import { call } from './lib/transport.js';
+  import { views } from './lib/views.svelte.js';
   import { when } from './lib/when.js';
   import { t } from './lib/text.svelte.js';
 
@@ -26,6 +27,19 @@
       console.error('pile :', err);
     }
   }
+
+  // E7 (PLAN-AUDIT-V3, closes D-48): the view subscribes to the shared
+  // invalidation signal — any writer that bumps it (gesture handlers,
+  // the resting probe on a generation move, Settings) reloads this view
+  // while it is mounted, without a ref wired per surface.
+  let seenGeneration = views.generation;
+  $effect(() => {
+    if (views.generation !== seenGeneration) {
+      seenGeneration = views.generation;
+      reload();
+    }
+  });
+
   $effect(() => {
     reload();
   });

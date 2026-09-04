@@ -9,6 +9,15 @@
 // never silence — the remote impl (POST /api/appel/<commande>)
 // will replace this rejection without changing the application.
 
+// The e2e seams are COMPILED OUT of a release build (PLAN-AUDIT-V3
+// E7, D-52 item 8): vite replaces `import.meta.env.VITE_E2E` with a
+// literal at build time, and the minifier drops every dead branch —
+// the release bundle carries neither the reads nor the `__e2e*`
+// property names (make-release asserts their absence). The e2e build
+// (VITE_E2E=1, set by e2e/rebuild-v2.mjs) keeps the exact historical
+// paths.
+const E2E = import.meta.env.VITE_E2E === '1';
+
 const invoke = globalThis.window?.__TAURI__?.core?.invoke;
 
 const brut = invoke
@@ -37,7 +46,7 @@ const brut = invoke
 // reads the addition report, and only `email` is consumed from the
 // connection report — a richer contract would be a test's lie.
 const fakeAdd = (command, args) => {
-  const add = globalThis.window?.__e2eAdd;
+  const add = E2E ? globalThis.window?.__e2eAdd : undefined;
   if (!Array.isArray(add)) return null;
   if (command === 'add_account' || command === 'add_microsoft_account') {
     return () => Promise.resolve();
@@ -56,7 +65,7 @@ const fakeAdd = (command, args) => {
 // — the only way to play “the core has not answered” on a fixture.
 // Outside e2e the variable does not exist: identical path.
 const fakeFailure = (command) => {
-  const failure = globalThis.window?.__e2eFailure;
+  const failure = E2E ? globalThis.window?.__e2eFailure : undefined;
   if (!Array.isArray(failure)) return null;
   const i = failure.indexOf(command);
   if (i === -1) return null;
@@ -66,9 +75,9 @@ const fakeFailure = (command) => {
 
 export const call = (command, args) => {
   const launch = fakeFailure(command) ?? fakeAdd(command, args) ?? (() => brut(command, args));
-  const hold = globalThis.window?.__e2eHold;
+  const hold = E2E ? globalThis.window?.__e2eHold : undefined;
   const flight = hold ? hold.then(launch) : launch();
-  const log = globalThis.window?.__e2eLog;
+  const log = E2E ? globalThis.window?.__e2eLog : undefined;
   if (log) {
     const poll = { command, start: performance.now(), arrival: null };
     log.push(poll);
@@ -90,7 +99,7 @@ export const call = (command, args) => {
 // paths in `window.__e2eAttachments` and the picker never opens;
 // the rest of the path (attach_files → chips → send) is the real one.
 export const chooseFiles = async () => {
-  const injectes = globalThis.window?.__e2eAttachments;
+  const injectes = E2E ? globalThis.window?.__e2eAttachments : undefined;
   if (injectes !== undefined) return Array.isArray(injectes) ? injectes : [];
   const choice = await call('plugin:dialog|open', { options: { multiple: true } });
   if (!choice) return [];
@@ -107,7 +116,7 @@ export const chooseFiles = async () => {
 // `window.__e2eDestination` is returned as is, the native dialog —
 // not drivable by Playwright — never opens.
 export const chooseDestination = async (defaultPath) => {
-  const injecte = globalThis.window?.__e2eDestination;
+  const injecte = E2E ? globalThis.window?.__e2eDestination : undefined;
   if (injecte !== undefined) return injecte || null;
   const choice = await call('plugin:dialog|save', { options: { defaultPath: defaultPath } });
   return choice || null;

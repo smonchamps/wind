@@ -348,9 +348,12 @@ deferral = one justified line.)
   batch of 50 bodies for a bound (32 MB) rarely reached — the
   alternative is to store the size when envelopes are polled (a
   job); (7) `etat_ui` at 5 s doubles the cadence of nav and sends
-  (the watcher's poll imposes 5 s; accepted); (8) `__e2ePanne` is a
+  (the watcher's poll imposes 5 s; accepted); (8) `__e2ePanne` was a
   fifth e2e seam compiled into production, without
-  `import.meta.env` (wave 3, with the other four); (9) the E1
+  `import.meta.env` — **closed 2026-09-04** (PLAN-AUDIT-V3 E7: the
+  seams, EIGHT by then, are compiled out of a release build behind
+  `VITE_E2E`, and make-release asserts their absence in the bundle;
+  item 3 closed at E5 — `ui_state` carries a drafts revision); (9) the E1
   fast-gate registry is keyed by PATH, not by file identity — safe
   under single-instance, not guarded by code.
 - **Reopens if**: a tester edits a forward and loses the edit; the
@@ -944,6 +947,12 @@ deferral = one justified line.)
   job E4 (the organized Inbox reuses these rows as sections).
 
 ### D-47 · Three context menus and two thread toggles are hand copies
+
+> 2026-09-04 (PLAN-AUDIT-V3 E7): the stated UI leftovers are done —
+> `.btn-screener` (Screener/Cleanup literal duplicate) and the
+> `select` pair (AccountDesk 40 px / Settings 32 px) live once in
+> `system.css`. The CORE half below (the pin/set-aside twins, the
+> Paper trail's stack/rank) stays open.
 
 - **Amended (PLAN-AUDIT-V2 E11, 2026-09-02, A108) — the MENUS are
   settled**: `Menu.svelte` is THE product's menu (eight surfaces —

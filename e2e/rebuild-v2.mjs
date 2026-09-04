@@ -126,12 +126,18 @@ function construire(root, { release, windowOverride }) {
 // on-disk fingerprint then avoids the bump — cargo only checks.
 const alreadyBuilt = new Set();
 
-export function buildV2(root, { release = true, windowOverride = null } = {}) {
-  const key = `${root}|${release}|${JSON.stringify(windowOverride)}`;
+export function buildV2(root, { release = true, windowOverride = null, seams = false } = {}) {
+  const key = `${root}|${release}|${seams}|${JSON.stringify(windowOverride)}`;
   if (alreadyBuilt.has(key)) return;
+  // The seam flavor (PLAN-AUDIT-V3 E7, D-52 item 8): the e2e build
+  // compiles the `__e2e*` seams IN (VITE_E2E=1), every other build
+  // compiles them OUT. Vite folds the flag at build time; the release
+  // path (make-release.ps1) additionally ASSERTS their absence in the
+  // bundle before cargo tauri build embeds it.
   execSync('npm run build', {
     cwd: path.join(root, 'apps', 'desktop', 'ui-v2'),
     stdio: 'inherit',
+    env: { ...process.env, VITE_E2E: seams ? '1' : '0' },
   });
   construire(root, { release, windowOverride });
   alreadyBuilt.add(key);

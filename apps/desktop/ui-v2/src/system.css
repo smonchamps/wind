@@ -261,6 +261,29 @@ html {
   text-transform:uppercase; color:var(--muted); font-weight:600;
 }
 
+/* D-47 (DEBT.md) — `.btn-screener`: the Yes/No button + its mini ⋯
+   badge anchor, shared by Screener and Cleanup (a literal duplicate,
+   diffed identical at the retouch — no drift to reconcile). ONE copy
+   here, as the other shared classes above. */
+.btn-screener { position:relative; display:inline-flex; }
+
+/* D-47 (DEBT.md) — the select pair born in two copies (AccountDesk
+   40 px / Settings' `.select-horizon` 32 px): same shape (surface
+   fill, single border, no radius surprise, self-aligned left,
+   outline suppressed) — only the SIZE differs by site, carried by a
+   modifier (`.lg`/`.sm`) rather than guessed twice. Settings'
+   `.language` (the inline Language/Layout pickers) is a different
+   family — flex:none, font:inherit, no min-width/align-self — and
+   stays local: not the pair D-47 names. */
+.select-desk {
+  font-size:13px; color:var(--ink); background:var(--surface);
+  border:1px solid var(--border); border-radius:var(--r-control);
+  outline:none; align-self:flex-start; cursor:pointer;
+}
+.select-desk:disabled { opacity:.6; cursor:default; }
+.select-desk.lg { height:40px; padding:0 12px; min-width:220px; }
+.select-desk.sm { height:32px; padding:0 10px; min-width:200px; }
+
 /* A8 — focus is VISIBLE, everywhere, keyboard only: 2 px accent
    ring offset by 2 px. Never removed without a replacement. */
 :focus-visible {

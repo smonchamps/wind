@@ -122,7 +122,7 @@
          for the three flows (the choice travels with the add). -->
     <div class="horizon">
       <label for="ob-horizon">{t('desk.horizon')}</label>
-      <select id="ob-horizon" bind:value={horizon} disabled={busy}
+      <select id="ob-horizon" class="select-desk lg" bind:value={horizon} disabled={busy}
               data-testid="desk-horizon">
         {#each HORIZONS as h (h)}
           <option value={h}>{t(`horizon.${h}`)}</option>
@@ -197,13 +197,8 @@
   /* The horizon selector: the entries' drawing, at reduced height —
      a setting, not an input (native selector, A26's pattern). */
   .horizon { display:flex; flex-direction:column; gap:12px; }
-  select {
-    height:40px; font-size:13px; padding:0 12px; background:var(--surface);
-    color:var(--ink); border:1px solid var(--border);
-    border-radius:var(--r-control); outline:none; align-self:flex-start;
-    min-width:220px; cursor:pointer;
-  }
-  select:disabled { opacity:.6; cursor:default; }
+  /* .select-desk.lg (system.css, D-47): the shared select shape at
+     this component's 40 px site variation. */
   .servers { display:flex; gap:12px; }
   .servers span { display:flex; flex-direction:column; gap:12px; flex:1; }
   .servers .port { flex:0 0 110px; }

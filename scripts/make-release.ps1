@@ -151,6 +151,28 @@ Write-Host "Cargo.toml (workspace.package) bumped to $Version."
 # entries, the price for it never appearing in an environment inherited
 # by the build's child processes.
 $desktop = Join-Path $PSScriptRoot "..\apps\desktop"
+
+# The release dist is built CLEAN of the e2e seams (PLAN-AUDIT-V3 E7,
+# D-52 item 8): `cargo tauri build` embeds WHATEVER dist sits on disk,
+# and a gate or an e2e run leaves a seam-flavored one behind. Rebuild
+# without the flag, then ASSERT no `__e2e` survives in the bundle --
+# the poka-yoke, not the build, is what makes the release deterministic.
+Push-Location (Join-Path $desktop "ui-v2")
+$env:VITE_E2E = "0"
+try {
+    & npm run build
+    if ($LASTEXITCODE -ne 0) { throw "vite build failed -- release interrupted, NOTHING is published." }
+} finally {
+    Remove-Item Env:VITE_E2E -ErrorAction SilentlyContinue
+    Pop-Location
+}
+$assets = Get-ChildItem (Join-Path $desktop "ui-v2\dist\assets") -Filter *.js
+$leaks = $assets | Where-Object { Select-String -Path $_.FullName -Pattern "__e2e" -Quiet }
+if ($leaks) {
+    throw "e2e seams found in the release bundle ($($leaks.Name -join ', ')) -- release interrupted, NOTHING is published."
+}
+Write-Host "dist rebuilt clean: no __e2e in the bundle"
+
 Push-Location $desktop
 # The WIND_RELEASE_* live only for the TWO builds, and the finally removes
 # them even on failure or interruption: left in the environment, they

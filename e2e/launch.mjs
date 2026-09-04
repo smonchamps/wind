@@ -124,7 +124,7 @@ export async function purgeLocals(page, keys = LOCAL_KEYS) {
 }
 
 export async function launchAppV2({ fresh = false, accounts = null, lang = 'en' } = {}) {
-  buildV2(root, { release: false });
+  buildV2(root, { release: false, seams: true });
 
   const db = path.join(
     root,
@@ -290,7 +290,41 @@ async function attach(db, emails, lang = 'en') {
     app.kill();
     throw new Error(startupFailure(exited, browser !== null, log, port));
   }
+
+  // The window being UP is not the same as the application being THERE:
+  // a binary that did not embed its dist answers CDP, serves the right
+  // URL, and paints one line of error. Every selector then times out and
+  // the suite reports the SPECS as red (six of them, 2026-09-04) instead
+  // of the BUILD. We read the page once, and we name it.
+  const served = await page
+    .evaluate(() => document.body?.innerText ?? '')
+    .catch(() => '');
+  const missing = frontendFailure(served);
+  if (missing) {
+    if (browser) await browser.close().catch(() => {});
+    app.kill();
+    throw new Error(missing);
+  }
   return { app, browser, page };
+}
+
+/// The Tauri asset protocol answers a missing embedded asset with a bare
+/// error page — the WHOLE document is that one line. Deliberately narrow:
+/// an empty body is the NORMAL early state (attach() finds the page before
+/// the application paints) and must never abort a healthy launch, and a
+/// sentence that merely speaks of a missing asset is a rendered
+/// application, not a broken build.
+export function frontendFailure(text) {
+  const served = (text ?? '').trim();
+  if (!/^asset not found\b/i.test(served)) return null;
+  return [
+    `the binary does not carry its frontend — WebView2 served "${served}".`,
+    'The last link never happened: a live wind-desktop.exe locks '
+      + 'target/debug/wind-desktop.exe, cargo fails on "Accès refusé (os error 5)" ' // lang:fr (the real Windows message)
+      + 'and the stale binary is replayed silently.',
+    'Remedy: close every Wind window, then `cargo build -p wind-desktop` — '
+      + 'it must report Compiling, not a bare Finished.',
+  ].join('\n');
 }
 
 /// Failure message that SAYS why: dead process (with its code), silent

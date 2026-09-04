@@ -1650,6 +1650,19 @@ pub async fn archive_message(
     .await
 }
 
+/// One more thing changed in a view (PLAN-AUDIT-V3 E7, closing D-48):
+/// a WRITE outside the List's own paths — Settings removing a routing,
+/// an e2e command, tomorrow a second window — bumps the same generation
+/// the polls bump. The resting probe reads it within 5 s and the views
+/// reload through ONE mechanism; the gesture handlers keep their
+/// immediate local reloads on top.
+pub(crate) fn bump_view_generation(app: &AppHandle) {
+    app.state::<AppState>()
+        .sync_cycle
+        .generation
+        .fetch_add(1, Ordering::Relaxed);
+}
+
 /// The state the UI polls at rest, in ONE command (PLAN-AUDIT-V2 E10):
 /// nav, sync progress, outbox — three probes, three `Store::open` calls
 /// and three passes through the serialized queue used to cost 10 s
@@ -1717,7 +1730,7 @@ pub async fn act_on_group(
         other => return Err(format!("unknown bulk gesture: {other}").into()),
     };
     let total = targets.len();
-    store_off_pump(app, move |_, store| {
+    store_off_pump(app, move |app, store| {
         let targets: Vec<mail_core::GestureTarget> = targets
             .into_iter()
             .map(|cible| mail_core::GestureTarget {
@@ -1730,6 +1743,7 @@ pub async fn act_on_group(
         let done = store
             .act_on_group(&targets, &gesture)
             .map_err(|err| err.to_string())?;
+        bump_view_generation(app);
         Ok(GroupOutcome { done, total })
     })
     .await
@@ -1883,7 +1897,9 @@ fn queue_removal(
         Action::Archive => Some("archives"),
         _ => None,
     };
-    Ok(store.gesture_with_echo(state.mailbox_id, uid, action, destination)?)
+    store.gesture_with_echo(state.mailbox_id, uid, action, destination)?;
+    bump_view_generation(app);
+    Ok(())
 }
 
 /// The body of a local echo (E3) for Reading: same sanitization as
@@ -1955,7 +1971,7 @@ pub async fn mark_seen(
     uid: u32,
     seen: bool,
 ) -> Result<(), CommandError> {
-    store_off_pump(app, move |_, store| {
+    store_off_pump(app, move |app, store| {
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
@@ -1975,6 +1991,7 @@ pub async fn mark_seen(
                 .enqueue_action(state.mailbox_id, uid, action)
                 .map_err(|err| err.to_string())?;
         }
+        bump_view_generation(app);
         Ok(())
     })
     .await
@@ -1989,7 +2006,7 @@ pub async fn mark_flagged(
     uid: u32,
     flagged: bool,
 ) -> Result<(), CommandError> {
-    store_off_pump(app, move |_, store| {
+    store_off_pump(app, move |app, store| {
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
@@ -2009,6 +2026,7 @@ pub async fn mark_flagged(
                 .enqueue_action(state.mailbox_id, uid, action)
                 .map_err(|err| err.to_string())?;
         }
+        bump_view_generation(app);
         Ok(())
     })
     .await
@@ -2024,14 +2042,16 @@ pub async fn toggle_pin(
     mailbox: String,
     uid: u32,
 ) -> Result<bool, CommandError> {
-    store_off_pump(app, move |_, store| {
+    store_off_pump(app, move |app, store| {
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
         else {
             return Ok(false);
         };
-        Ok(store.toggle_pin(state.mailbox_id, uid, epoch_now())?)
+        let out = store.toggle_pin(state.mailbox_id, uid, epoch_now())?;
+        bump_view_generation(app);
+        Ok(out)
     })
     .await
 }
@@ -2229,10 +2249,12 @@ pub async fn route_sender(
     destination: String,
     rule: Option<String>,
 ) -> Result<(), CommandError> {
-    store_off_pump(app, move |_, store| {
+    store_off_pump(app, move |app, store| {
         let (destination, rule) =
             crate::wire::destination_rule_from_wire(&destination, rule.as_deref());
-        Ok(store.route_sender(&address, &destination, rule.as_deref(), epoch_now())?)
+        store.route_sender(&address, &destination, rule.as_deref(), epoch_now())?;
+        bump_view_generation(app);
+        Ok(())
     })
     .await
 }
@@ -2251,7 +2273,7 @@ pub async fn route_sender_from(
     destination: String,
     rule: Option<String>,
 ) -> Result<Option<String>, CommandError> {
-    store_off_pump(app, move |_, store| {
+    store_off_pump(app, move |app, store| {
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
@@ -2260,13 +2282,15 @@ pub async fn route_sender_from(
         };
         let (destination, rule) =
             crate::wire::destination_rule_from_wire(&destination, rule.as_deref());
-        Ok(store.route_sender_of(
+        let out = store.route_sender_of(
             state.mailbox_id,
             uid,
             &destination,
             rule.as_deref(),
             epoch_now(),
-        )?)
+        )?;
+        bump_view_generation(app);
+        Ok(out)
     })
     .await
 }
@@ -2274,7 +2298,12 @@ pub async fn route_sender_from(
 /// "Reinstate" from the Screener's history: the verdict disappears.
 #[tauri::command]
 pub async fn remove_routing(app: AppHandle, address: String) -> Result<(), CommandError> {
-    store_off_pump(app, move |_, store| Ok(store.remove_routing(&address)?)).await
+    store_off_pump(app, move |app, store| {
+        store.remove_routing(&address)?;
+        bump_view_generation(app);
+        Ok(())
+    })
+    .await
 }
 
 /// The Screener's history — every decision, the most recent first.
@@ -2536,16 +2565,18 @@ pub async fn cleanup_verdict(
     destination: String,
     rule: Option<String>,
 ) -> Result<Option<CleanupSessionPayload>, CommandError> {
-    store_off_pump(app, move |_, store| {
+    store_off_pump(app, move |app, store| {
         let (destination, rule) =
             crate::wire::destination_rule_from_wire(&destination, rule.as_deref());
         store
             .cleanup_verdict(&address, &destination, rule.as_deref(), epoch_now())
             .map_err(|err| err.to_string())?;
-        Ok(store
+        let out = store
             .cleanup_state()
             .map_err(|err| err.to_string())?
-            .map(Into::into))
+            .map(Into::into);
+        bump_view_generation(app);
+        Ok(out)
     })
     .await
 }
@@ -2565,14 +2596,16 @@ pub async fn toggle_set_aside(
     mailbox: String,
     uid: u32,
 ) -> Result<bool, CommandError> {
-    store_off_pump(app, move |_, store| {
+    store_off_pump(app, move |app, store| {
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
         else {
             return Err(format!("unknown mailbox: {mailbox}").into());
         };
-        Ok(store.toggle_set_aside(state.mailbox_id, uid, epoch_now())?)
+        let out = store.toggle_set_aside(state.mailbox_id, uid, epoch_now())?;
+        bump_view_generation(app);
+        Ok(out)
     })
     .await
 }
@@ -2711,14 +2744,16 @@ pub async fn feed_mark_read(
     mailbox: String,
     uid: u32,
 ) -> Result<(), CommandError> {
-    store_off_pump(app, move |_, store| {
+    store_off_pump(app, move |app, store| {
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
         else {
             return Err(format!("unknown mailbox: {mailbox}").into());
         };
-        Ok(store.mark_feed_read(state.mailbox_id, uid, epoch_now())?)
+        store.mark_feed_read(state.mailbox_id, uid, epoch_now())?;
+        bump_view_generation(app);
+        Ok(())
     })
     .await
 }

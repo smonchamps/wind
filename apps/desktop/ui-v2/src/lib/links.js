@@ -20,7 +20,9 @@ const SCHEMAS = new Set(['http:', 'https:', 'mailto:']);
 // browser — the whole upstream path (iframe, interception, filter) is
 // the real one. Outside e2e the variable does not exist.
 function open(url) {
-  const captured = globalThis.window?.__e2eLinks;
+  // Compiled out of a release build (E7, see transport.js).
+  const captured =
+    import.meta.env.VITE_E2E === '1' ? globalThis.window?.__e2eLinks : undefined;
   if (captured !== undefined) {
     captured.push(url);
     return;

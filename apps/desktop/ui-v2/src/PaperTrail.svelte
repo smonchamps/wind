@@ -10,6 +10,7 @@
   import Menu from './Menu.svelte';
   import SectionSort from './SectionSort.svelte';
   import { call } from './lib/transport.js';
+  import { views } from './lib/views.svelte.js';
   import { sortComparator } from './lib/sort.js';
   import { when } from './lib/when.js';
   import { t } from './lib/text.svelte.js';
@@ -69,6 +70,19 @@
   export function reload() {
     load();
   }
+
+  // E7 (PLAN-AUDIT-V3, closes D-48): the view subscribes to the shared
+  // invalidation signal — any writer that bumps it (gesture handlers,
+  // the resting probe on a generation move, Settings) reloads this view
+  // while it is mounted, without a ref wired per surface.
+  let seenGeneration = views.generation;
+  $effect(() => {
+    if (views.generation !== seenGeneration) {
+      seenGeneration = views.generation;
+      reload();
+    }
+  });
+
 
   $effect(() => {
     void account;

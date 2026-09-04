@@ -16,7 +16,9 @@
 const DONE_KEY = 'wind-accueil-fait';
 const STARTED_KEY = 'wind-accueil-commence';
 
-const forceE2e = () => globalThis.window?.__e2eOnboarding === true;
+// Compiled out of a release build (E7, see transport.js).
+const forceE2e = () =>
+  import.meta.env.VITE_E2E === '1' && globalThis.window?.__e2eOnboarding === true;
 
 export function onboardingDone() {
   if (forceE2e()) return false;

@@ -790,7 +790,7 @@
                   <div class="card-name" data-testid="settings-horizon">
                     <p class="title-marker">{t('settings.horizonTitle')}</p>
                     {#if horizons[c.account_id]}
-                      <select class="select-horizon" data-testid="horizon-select"
+                      <select class="select-desk sm" data-testid="horizon-select"
                               value={horizons[c.account_id]}
                               onchange={(e) => changeHorizon(c.account_id, e.currentTarget.value)}>
                         {#each HORIZONS as h (h)}
@@ -1392,12 +1392,8 @@
   }
   .btn-horizon:hover { color:var(--ink); background:var(--sel); border-color:var(--border); }
   .account:has(.disconnected) .btn-horizon { margin-left:0; }
-  .select-horizon {
-    height:32px; font-size:13px; padding:0 10px; align-self:flex-start;
-    min-width:200px; color:var(--ink); background:var(--surface);
-    border:1px solid var(--border); border-radius:var(--r-control);
-    outline:none; cursor:pointer;
-  }
+  /* .select-desk.sm (system.css, D-47): the shared select shape at
+     this component's 32 px site variation. */
   .note-horizon { margin:0; font-size:12px; line-height:1.5; color:var(--muted); }
   .error-reconnection {
     margin:0; padding:0 16px 6px; font-size:12px; line-height:1.4;

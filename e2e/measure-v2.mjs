@@ -37,7 +37,7 @@ import { browserArgs } from './browser-args.mjs';
 const root = path.resolve(import.meta.dirname, '..');
 
 // --- 1. Build ui-v2 then the shell that embeds it ---------------------
-buildV2(root);
+buildV2(root, { seams: true });
 
 // --- 2. Database seeded at scale ---------------------------------------
 const db = process.env.MEASURE_DB || path.join(root, 'target', 'e2e', 'measure-v2.db');

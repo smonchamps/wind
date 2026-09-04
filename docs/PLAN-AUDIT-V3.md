@@ -397,6 +397,7 @@ bigger and serialized by dependency (§3.2). Expect **2–3 sessions**;
 | D4 | Scheduler ownership: shell-side tokio cadence (UI keeps the button + progress), per §3.4? | Yes | **2026-09-04: "Shell-side tokio"** |
 | D5 | Release: wave 3 is behavior-neutral — publish a release at the end (PATCH per §2.9, nothing user-visible) or let it ride with the next feature release? | Ride with the next release | **2026-09-04: "Ride with next release"** |
 | D6 | Field cadence: one STOP 2 at the end, or an intermediate field pass after E5 (the scheduler is the riskiest behavioral seam)? | Intermediate after E5 + final | **2026-09-04: "Intermediate after E5 + final"** |
+| D7 | E7 scope, corrected by recon: transport.js already IS the one invoke doorway; no `.btn` class exists (the real duplicate is `.btn-screener` ×2 + the `select` pair); the four big-file splits are pure churn during an open beta | Keep (a) generation store closing D-48, (b) the 8 seams gated, (c) Editor.svelte, (d) the button/select dedup; refuse lib/commands.js, theme runes, the splits | **2026-09-04: "a-d, refuse the rest"** — refusals recorded §2.6, the splits reopen when a file next needs surgery |
 
 ## 7. Field checklist (STOP 2) — what the Chief Engineer plays
 

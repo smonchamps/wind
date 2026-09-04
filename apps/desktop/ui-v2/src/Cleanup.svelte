@@ -376,7 +376,9 @@
   .choice .big { height:44px; padding:0 18px; font-weight:600; }
   .ic-yes :global(.ic) { color:var(--accent); }
   .ic-no :global(.ic) { color:var(--alert); }
-  .btn-screener { position:relative; display:inline-flex; }
+  /* .btn-screener: shared with Screener.svelte (D-47) — the class
+     now lives in system.css, a literal duplicate would drift in
+     silence. */
   .mini {
     position:absolute; top:-8px; right:-8px; width:19px; height:19px; padding:0;
     display:inline-flex; align-items:center; justify-content:center;
