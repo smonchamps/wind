@@ -970,6 +970,10 @@ same one in place.
 > after the translation erased their French left sides — a lesson: a
 > historical old→new table is data, not prose. `architecture/index.html`
 > translated, stale bench pointers fixed. Baseline 19 634 → 1 985.
+>
+> **Field (STOP 2) on 2026-09-04: E8 validated by the CE, no finding**
+> — visual review in both document themes, D9 full reread of the
+> System, the architecture map skimmed.
 
 ### E9 — Archives (per D1)
 
