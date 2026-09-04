@@ -177,6 +177,18 @@ not code-fixed: the Keychain-ACL prompt after an ad-hoc update (ADR
 duplication (kept: renaming check contexts risks branch protection; a
 cross-reference comment binds the pins).
 
+**The E3 net proved itself unstaged**: `quality-macos`'s FIRST run
+(33924763712) went red on a real mac-only break every other job missed
+— on a macOS target `generate_context!` resolves a `.png` window icon
+(fallback `icons/icon.png`, absent; proc-macro panic). Fixed in
+`3f9cc14`: make-icon.ps1 also writes `icon.png` (the 512 macOS
+rendition), listed in `tauri.macos.conf.json`. The deliberate-break
+branch planned for the proof became unnecessary. Two other reds paid
+on the way to the push: the language ratchet flagged the new tracked
+files (the two-letter Chief-Engineer abbreviation reads as a French
+function word, and guillemet quote marks count as accents — reworded
+to the full title, straight quotes).
+
 **Stated limits**: a Windows-only release drops the darwin key from
 `latest.json` until release-macos.sh reruns — the mac half is part of
 EVERY release (ADR 0036, make-release reminder); the mac update path
