@@ -355,13 +355,16 @@ pub fn draft_bytes(
     body_html: Option<&str>,
     attachments: &[DraftAttachmentFull],
 ) -> Result<Vec<u8>, SendError> {
+    let sender = parse_mailbox(from)?;
     let mut builder = Message::builder()
-        .from(parse_mailbox(from)?)
+        .from(sender.clone())
         .subject(subject)
         .date_now();
+    let mut recipients = 0usize;
     for candidate in to_raw.split([',', ';']) {
         if let Ok(mailbox) = candidate.trim().parse::<Mailbox>() {
             builder = builder.to(mailbox);
+            recipients += 1;
         }
     }
     // A draft is the message as the user prepares it: it carries THEIR Cc
@@ -370,12 +373,27 @@ pub fn draft_bytes(
     for candidate in cc_raw.split([',', ';']) {
         if let Ok(mailbox) = candidate.trim().parse::<Mailbox>() {
             builder = builder.cc(mailbox);
+            recipients += 1;
         }
     }
     for candidate in bcc_raw.split([',', ';']) {
         if let Ok(mailbox) = candidate.trim().parse::<Mailbox>() {
             builder = builder.bcc(mailbox);
+            recipients += 1;
         }
+    }
+    // No recipient typed YET: the draft is still a draft (field
+    // 2026-09-04, PLAN-AUDIT-V3 STOP 2 — Gmail keeps recipient-less
+    // drafts, the mirror must too). lettre derives its envelope from
+    // the headers and refuses an empty destination — a draft is never
+    // SENT, so we hand it an explicit envelope (the sender alone). The
+    // envelope is transport-only: `formatted()` writes headers and
+    // body, the pushed bytes carry no invented recipient.
+    if recipients == 0 {
+        let envelope =
+            lettre::address::Envelope::new(Some(sender.email.clone()), vec![sender.email.clone()])
+                .map_err(|err| SendError::Permanent(format!("draft construction: {err}")))?;
+        builder = builder.envelope(envelope);
     }
     if attachments.is_empty() {
         // Same switch as the send: the reflection shows the rich draft as
@@ -814,11 +832,15 @@ mod tests {
         assert!(text.contains("Subject: Draft"));
     }
 
-    /// A draft without any (yet) valid recipient is not pushable: it stays
-    /// local, nothing is lost — behavior documented by test.
+    /// A draft without any (yet) valid recipient IS pushable — the
+    /// Chief Engineer's ruling at the PLAN-AUDIT-V3 field pass
+    /// (2026-09-04) REVERSES the old documented limit ("stays local"):
+    /// Gmail keeps recipient-less drafts, the mirror must too. The
+    /// envelope handed to lettre is transport-only — the pushed bytes
+    /// must carry no invented recipient.
     #[test]
-    fn draft_without_any_valid_recipient_stays_local() {
-        let result = draft_bytes(
+    fn draft_without_any_valid_recipient_is_still_mirrored() {
+        let raw = draft_bytes(
             "moi@exemple.fr",
             "no address yet",
             "",
@@ -827,8 +849,12 @@ mod tests {
             "c",
             None,
             &[],
-        );
-        assert!(result.is_err(), "expected: not pushable as is");
+        )
+        .expect("a recipient-less draft still builds");
+        let text = String::from_utf8_lossy(&raw);
+        assert!(!text.contains("To:"), "no invented To header");
+        assert!(text.contains("Subject: s"));
+        assert!(text.contains("From: moi@exemple.fr"));
     }
 
     /// PJ-D6: the remote reflection shows the WHOLE draft — attachments
@@ -974,5 +1000,34 @@ mod tests {
             Err(other) => panic!("expected a permanent refusal, got {other:?}"),
             Ok(_) => panic!("expected a permanent refusal, got a built message"),
         }
+    }
+}
+
+#[cfg(test)]
+mod draft_bytes_tests {
+    use super::draft_bytes;
+
+    /// The field draft of 2026-09-04 (PLAN-AUDIT-V3 STOP 2): a draft
+    /// typed without a valid recipient yet — Gmail keeps such drafts,
+    /// the mirror must too. If the builder refuses a recipient-less
+    /// message, the push silently keeps the draft local FOREVER
+    /// (`kept_local`), and the user reads "no draft on the web".
+    #[test]
+    fn a_recipientless_draft_still_builds() {
+        let bytes = draft_bytes(
+            "me@x.io",
+            "", // nothing typed in To yet
+            "",
+            "",
+            "subject in progress",
+            "body in progress",
+            None,
+            &[],
+        );
+        assert!(
+            bytes.is_ok(),
+            "a draft without a recipient must still be pushable: {:?}",
+            bytes.err()
+        );
     }
 }

@@ -820,8 +820,23 @@ async fn automatic(app: &AppHandle, due: mail_core::cycle::Due) {
             if let Err(err) = commands::flush_outbox(app.clone(), app.state()).await {
                 crate::trace::trace(&format!("scheduler: outbox flush: {err}"));
             }
-            if let Err(err) = commands::sync_drafts(app.clone(), app.state()).await {
-                crate::trace::trace(&format!("scheduler: draft sync: {err}"));
+            match commands::sync_drafts(app.clone(), app.state()).await {
+                Err(err) => crate::trace::trace(&format!("scheduler: draft sync: {err}")),
+                // A summary that CARRIES an error is a soft failure the
+                // UI's catch used to swallow (field 2026-09-04: a draft
+                // sat local with no trace anywhere). Named here, once
+                // per automatic cycle.
+                Ok(summary) => {
+                    if let Some(err) = summary.error {
+                        crate::trace::trace(&format!("scheduler: draft sync: {err}"));
+                    }
+                    if summary.kept_local > 0 {
+                        crate::trace::trace(&format!(
+                            "scheduler: draft sync: {} draft(s) not constructible, kept local",
+                            summary.kept_local
+                        ));
+                    }
+                }
             }
         }
         Due::LightPass => {
