@@ -6,9 +6,11 @@ use std::collections::BTreeMap;
 
 use chrono::{TimeZone, Utc};
 
+use crate::cycle::CycleConnection;
 use crate::envelope::{Envelope, Uid};
 use crate::error::Error;
 use crate::remote::{FetchedBody, MailServer, MailboxSnapshot, MessageRecipients, ThreadHeaders};
+use crate::store::Store;
 
 pub(crate) struct FakeServer {
     pub(crate) uid_validity: u32,
@@ -370,6 +372,20 @@ impl MailServer for FakeServer {
         self.action_calls.push(format!("delete:{uid}"));
         self.messages.remove(&uid);
         self.modseq += 1;
+        Ok(())
+    }
+}
+
+/// The fake server has neither a sent folder nor a Drafts folder to
+/// pull from — the honest default (PLAN-AUDIT-V3 E4): no test needs
+/// RFC 6154 heuristics or a draft round trip faked, `run_sync` treats
+/// both as absent capabilities, exactly as a bare IMAP server would.
+impl CycleConnection for FakeServer {
+    fn sent_folder_name(&mut self) -> Result<Option<String>, String> {
+        Ok(None)
+    }
+
+    fn pull_drafts(&mut self, _store: &Store, _account_id: i64) -> Result<(), String> {
         Ok(())
     }
 }

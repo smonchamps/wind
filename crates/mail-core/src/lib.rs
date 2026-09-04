@@ -13,6 +13,7 @@ mod body;
 mod compose;
 mod contacts;
 mod crash;
+pub mod cycle;
 mod drafts;
 mod echo;
 mod envelope;

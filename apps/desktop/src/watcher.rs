@@ -4,7 +4,7 @@
 //! (never the cycle's own: the crate's `idle` handle clears the P0
 //! timeout on exit — isolating it protects the cycle's lifetime from
 //! the rest). The watcher NEVER touches the database: it SIGNALS, and
-//! the account's light pass ([`crate::commands::light_pass_account`])
+//! the account's light pass ([`crate::poll::light_pass_account`])
 //! does the work — a single poll path, the one the button and the
 //! cycle share.
 //!
@@ -14,6 +14,10 @@
 //! mail arrived during an outage never emits an EXISTS, reconnection
 //! with a doubled delay, token re-read from the keyring on every
 //! connection.
+//!
+//! Talks to [`crate::poll`] only, never to [`crate::commands`]
+//! (PLAN-AUDIT-V3 E4): the light pass is the one poll path the button,
+//! the cycle, and this watcher all share, and it now lives there.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -22,7 +26,7 @@ use std::time::{Duration, Instant};
 use tauri::Manager;
 
 use crate::AppState;
-use crate::commands;
+use crate::poll;
 
 /// IDLE restart: the max delay to detect a dead connection (2nd field
 /// session: a network drop or Windows sleep produces NO error, the
@@ -97,7 +101,7 @@ fn run_loop(app: tauri::AppHandle, email: String, alive: Arc<AtomicBool>) {
             // Backoff is respected, READ-only: the watcher never
             // worsens it (its own doubled delay is politeness enough),
             // but it does not push on an account in failure.
-            if commands::current_backoff(&state.sync_backoffs, &email).is_some() {
+            if poll::current_backoff(&state.sync_backoffs, &email).is_some() {
                 std::thread::sleep(SLEEP);
                 continue;
             }
@@ -139,23 +143,23 @@ fn watch_session(
 ) -> Result<(), String> {
     let session = {
         let state = app.state::<AppState>();
-        let Some(session) = commands::lock_accounts(&state)?.get(email).cloned() else {
+        let Some(session) = poll::lock_accounts(&state)?.get(email).cloned() else {
             // No more session (account removed): clean exit, the
             // reconciliation has already turned off the flag or will.
             return Ok(());
         };
         session
     };
-    let (mut server, refreshed) = commands::connect_imap(&session)?;
+    let (mut server, refreshed) = poll::connect_imap(&session)?;
     if let Some(fresh) = refreshed {
         let state = app.state::<AppState>();
-        commands::lock_accounts(&state)?.insert(fresh.email().to_string(), fresh);
+        poll::lock_accounts(&state)?.insert(fresh.email().to_string(), fresh);
     }
     // The (RE)CONNECTION pass, never optional: mail that arrived
     // during the absence is already in the mailbox — no EXISTS will
     // signal it (2nd field session). Best effort: its failure does not
     // bring down the watch, the next mail will trigger it.
-    if let Err(err) = commands::light_pass_account(app, email) {
+    if let Err(err) = poll::light_pass_account(app, email) {
         crate::trace::trace(&format!("watcher: connection pass failed: {err}"));
     }
     loop {
@@ -173,12 +177,12 @@ fn watch_session(
                 return Ok(());
             }
         }
-        match server.watch(commands::MAILBOX, RESTART) {
+        match server.watch(poll::MAILBOX, RESTART) {
             Ok(mail_imap::Watch::Mail) => {
                 // Mail! The account's light pass polls it — on ITS OWN
                 // connection (P0 timeouts intact), while this one goes
                 // back to watching.
-                if let Err(err) = commands::light_pass_account(app, email) {
+                if let Err(err) = poll::light_pass_account(app, email) {
                     crate::trace::trace(&format!("watcher: light pass failed: {err}"));
                 }
             }
@@ -194,7 +198,7 @@ fn watch_session(
 /// carry (§6.8).
 fn account_id(app: &tauri::AppHandle, email: &str) -> String {
     let found = || -> Option<i64> {
-        let path = commands::db_path(app).ok()?;
+        let path = poll::db_path(app).ok()?;
         let store = mail_core::Store::open(&path).ok()?;
         store
             .accounts()

@@ -257,6 +257,23 @@ four pref families' keys declared in the core (D-34). D-49 items fixed
 in passing where the line is already under the pen (`verrou_repris`…
 now under their English names).
 
+**Delivered 2026-09-04** (`a850cfd`, CI 33870746895). `CommandError`
+in `fault.rs` (104 signatures; the wire unchanged — serialized as its
+message, and no error substring is matched by UI or e2e);
+`with_store`/`store_off_pump` (open sites 93 → 21, deliberate fusions
+kept); the twins share ONE `poll_cycle` + `CycleTally`; `queue_send`
+packs `SendContent` at the boundary (flat IPC keys kept); D-34 closed
+(the three global pref keys in the core); D-49 partial: `recovered()`
+replaces twelve poison matches — left open: the
+reply/forward-context triple `off_pump`, `compose()` without
+references (E4's neighborhood). Andon story: three local gates red on
+three DISJOINT e2e sets, every red green in isolation (the machine's
+engraved WebView2/OneDrive flake; the -1 silent externals) — no
+bypass, the pre-push gate decided: green, 203 e2e, flaky 0. Root of
+the "asset not found" reds found by the parallel session: a live Wind
+window locks the exe and cargo silently replays a stale binary — its
+guard (`frontendFailure` in `launch.mjs`) now names it.
+
 ### E4 — poll policy into the core (G, ADR "poll policy lives in the core")
 
 `run_sync`, `poll_inbox`, the pure helpers of §1.1 →

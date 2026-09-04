@@ -24,27 +24,16 @@ use tauri::{AppHandle, Manager, State};
 use crate::fault::CommandError;
 use crate::{AppState, PassFlight};
 
-pub(crate) const MAILBOX: &str = "INBOX";
+/// INBOX's wire name — aliases `mail_core::cycle::INBOX` (PLAN-AUDIT-V3
+/// E4: the poll policy moved into the core, this name is now ITS to
+/// own; the shell, including `watcher.rs`, keeps using it through this
+/// one alias so the two never drift apart).
+pub(crate) const MAILBOX: &str = mail_core::cycle::INBOX;
 const LIST_LIMIT_MAX: usize = 500;
 const SEARCH_LIMIT: usize = 100;
 /// Bodies backfilled per call, across all accounts. Capping the batch makes
 /// interruption free: the UI simply stops calling back.
 const BACKFILL_BUDGET: usize = 200;
-/// Thread headers backfilled per account and per synchronization.
-///
-/// Generous compared to the body budget (200) because the cost isn't the
-/// same: a header block weighs ~3 KB against ~50 KB for a whole message.
-/// On the user's mailbox (~2,700 messages), two synchronizations are
-/// enough to group the entire mailbox.
-const THREAD_HEADER_BUDGET: usize = 2_000;
-/// Recipients backfilled per account and per synchronization (R4/R1),
-/// budget SHARED between INBOX and Sent. Same cost as a header (one
-/// ENVELOPE), and the scope is the same, already converged, one as the
-/// thread pass: the pass catches up over a few cycles, then goes quiet.
-const RECIPIENTS_BUDGET: usize = 2_000;
-/// Arrivals surfaced per account for notifications. Beyond that, only the
-/// COUNT matters — the bubble summarizes anyway.
-const NOTIFY_MAX_ARRIVALS: usize = 50;
 
 #[derive(Serialize)]
 pub struct AccountInfo {
@@ -617,468 +606,18 @@ fn build_generic_session(
     }))
 }
 
-/// Names the mailbox currently being polled in the shared activity — the
-/// movement the field called for (“2/2 frozen for 7 minutes”). Empty
-/// string between two mailboxes.
-fn set_mailbox(cycle: &crate::SyncShared, name: &str) {
-    if let Ok(mut mailbox) = cycle.mailbox.lock() {
-        mailbox.clear();
-        mailbox.push_str(name);
-    }
-    if let Ok(mut phase) = cycle.phase.lock() {
-        phase.clear();
-    }
-}
-
-/// Names the step WITHOUT a mailbox (folder inventory, threads, drafts):
-/// `name` is a key, the UI translates it — the shell doesn't compose UI
-/// text (A15). Exclusive with the mailbox.
-fn set_phase(cycle: &crate::SyncShared, name: &str) {
-    if let Ok(mut phase) = cycle.phase.lock() {
-        phase.clear();
-        phase.push_str(name);
-    }
-    if let Ok(mut mailbox) = cycle.mailbox.lock() {
-        mailbox.clear();
-    }
-}
-
-/// The guarded poll (ADR 0017): should this folder be polled? Any
-/// uncertainty — poll refused by the server, unreadable marker — polls:
-/// sobriety doesn't have the right to cost a message.
-fn must_poll(
-    store: &Store,
-    account_id: i64,
-    mailbox: &str,
-    status: Option<&mail_core::FolderStatus>,
-    problems: &mut Vec<String>,
-) -> bool {
-    let Some(status) = status else {
-        return true;
-    };
-    let marker = (|| -> Result<Option<mail_core::LocalMarker>, mail_core::Error> {
-        let Some(state) = store.sync_state(account_id, mailbox)? else {
-            return Ok(None);
-        };
-        Ok(Some(mail_core::LocalMarker {
-            uid_validity: state.uid_validity,
-            uidnext_seen: store.remote_uidnext(state.mailbox_id)?,
-            local_messages: store.envelope_count(state.mailbox_id)?,
-            pending_actions: store.has_pending_actions(state.mailbox_id)?,
-            // E2b: the modseq of the last settled SELECT — it's what
-            // wakes up a folder where only the flags have shifted.
-            modseq_seen: state.highest_modseq,
-        }))
-    })();
-    match marker {
-        Ok(marker) => mail_core::must_poll(status, marker.as_ref()),
-        Err(err) => {
-            problems.push(format!("marker of \"{mailbox}\": {err}"));
-            true
-        }
-    }
-}
-
-/// Settles the marker of a SUCCESSFUL poll: the UIDNEXT of the status
-/// that preceded it. Never on a failed poll — a marker set on a folder
-/// that wasn't caught up would wrongly make it skip at the next cycle.
-fn settle_marker(
-    store: &Store,
-    account_id: i64,
-    mailbox: &str,
-    status: Option<&mail_core::FolderStatus>,
-    problems: &mut Vec<String>,
-) {
-    let Some(uidnext) = status.and_then(|status| status.uid_next) else {
-        return;
-    };
-    let outcome = store.sync_state(account_id, mailbox).and_then(|state| {
-        if let Some(state) = state {
-            store.set_remote_uidnext(state.mailbox_id, uidnext)?;
-        }
-        Ok(())
-    });
-    if let Err(err) = outcome {
-        problems.push(format!("marker of \"{mailbox}\": {err}"));
-    }
-}
-
-/// The INBOX poll of an account — the shared core of the full cycle and
-/// the light pass (E3): STATUS status, guarded poll (E2a), marker
-/// settled, mail counted and account bubbles (P1). Returns the report
-/// AND the status paid for — the full cycle reuses it for the space
-/// guard, it's never paid for twice.
-fn poll_inbox(
-    server: &mut ImapServer,
-    store: &mut Store,
-    account_id: i64,
-    cycle: &crate::SyncShared,
-    app: &AppHandle,
-    problems: &mut Vec<String>,
-) -> Result<(mail_core::SyncReport, Option<mail_core::FolderStatus>), String> {
-    set_mailbox(cycle, MAILBOX);
-    // The highest UID BEFORE the sync: it's what separates “new” from
-    // “already known”. Fetched before, otherwise the sync would already
-    // have moved it.
-    let last_uid_before = store
-        .sync_state(account_id, MAILBOX)
-        .map_err(|err| err.to_string())?
-        .map(|state| state.last_uid)
-        .unwrap_or(0);
-    // INBOX is guarded like the others (ADR 0017): a STATUS status, the
-    // poll only if something has moved.
-    let inbox_status = server.folder_status(MAILBOX).ok();
-    let report = if must_poll(store, account_id, MAILBOX, inbox_status.as_ref(), problems) {
-        let report = SyncEngine::default()
-            .sync(server, store, account_id, MAILBOX)
-            .map_err(|err| err.to_string())?;
-        settle_marker(store, account_id, MAILBOX, inbox_status.as_ref(), problems);
-        report
-    } else {
-        // Nothing moved: empty incremental report — no arrivals, no
-        // bubbles, no lie.
-        mail_core::SyncReport {
-            mode: mail_core::SyncMode::Incremental,
-            fetched: 0,
-            deleted: 0,
-            replayed: 0,
-            refused: 0,
-            without_condstore: false,
-        }
-    };
-
-    // E4 (PLAN-REACTIVITE, R-D2): the bodies of ARRIVALS are backfilled
-    // on the connection already open, BEFORE the generation bump — the
-    // row is born WITH its preview, in the cycle as in the light pass as
-    // in the watcher (a single display, never a mute row that fills in
-    // later). Bounded: a batch that overflows (catch-up after an
-    // outage) bumps first — the rows show fast — and the bodies fall to
-    // the pump, which the UI primes on the generation. `bodies_to_backfill`
-    // serves from the most recent to the oldest: the “number of
-    // arrivals” budget covers exactly the batch that just came in.
-    //
-    // The bound is measured on ARRIVALS (UID above the pre-poll marker),
-    // NEVER on `report.fetched` — first E4 field finding (2026-08-14): on
-    // Gmail, every arrival shifts HIGHESTMODSEQ and the CONDSTORE delta
-    // returns dozens of retouched envelopes (the recorded observation of
-    // PLAN-SYNCHRO); measured on `fetched`, the batch “overflowed” on
-    // EVERY arrival and the row was born mute, filled in 3-4s later by
-    // the pump.
-    let arrivals = match store.arrivals_since(account_id, MAILBOX, last_uid_before) {
-        Ok(n) => n as usize,
-        Err(err) => {
-            problems.push(format!("count of arrivals: {err}"));
-            0
-        }
-    };
-    let body_count = body_on_arrival(arrivals);
-    // The import horizon applies here too (uniform with the pump). The
-    // bound compares the message's DATE, not its arrival: an arrival
-    // with an old Date header (delayed resend, message moved into
-    // INBOX by another client) stays out of scope — intended, that's
-    // the D1 semantics: its body loads on click.
-    let horizon = body_horizon(store, account_id);
-    if body_count > 0
-        && let Err(err) =
-            mail_core::backfill_bodies(server, store, account_id, MAILBOX, horizon, body_count)
-    {
-        problems.push(format!("bodies of arrivals: {err}"));
-    }
-
-    // P1 (PLAN-SYNCHRO): INBOX's mail is seen RIGHT AWAY — the polled
-    // counter reloads the list on the UI side, and the account's
-    // bubbles go out HERE, without waiting for the inventory, the
-    // folders, or the OTHER accounts (the end-of-cycle aggregate always
-    // lost the race against the phone). Arrivals only come from INBOX:
-    // nothing is announced late. Best effort, like the neighboring
-    // passes: the mail is there, an announcement that fails is logged.
-    if report.fetched > 0 || report.deleted > 0 {
-        cycle
-            .mail
-            .fetch_add((report.fetched + report.deleted) as u64, Ordering::Relaxed);
-        // E4: the MONOTONIC generation — the UI polls it via
-        // `sync_progress` and reloads the list when it moves. It's the
-        // path through which mail signaled by an IDLE watcher shows up
-        // at rest, with no new channel (R0-S5).
-        cycle.generation.fetch_add(1, Ordering::Relaxed);
-    }
-    match store.new_unread_after(account_id, MAILBOX, last_uid_before, NOTIFY_MAX_ARRIVALS) {
-        Ok(arrivals) => {
-            let arrivals = mail_core::arrivals_to_notify(report.mode, arrivals);
-            if let Some(problem) = arrival_notification_problem(app, store, &arrivals) {
-                problems.push(problem);
-            }
-        }
-        Err(err) => problems.push(format!("arrivals to announce: {err}")),
-    }
-    // PLAN-AUDIT-V1 review: the cycle that quarantines an action SAYS
-    // SO — otherwise only the slot's global counter reveals it, with no
-    // link to the faulty cycle. Single exit point for the four paths.
-    // D-51 (CE decision D3, PLAN-AUDIT-V2): a server without CONDSTORE
-    // never resynchronizes its flags — debt stated, named ONCE per
-    // account and per session in `wind.log`, to know whether the case
-    // exists.
-    if report.without_condstore && without_condstore_first_time(account_id) {
-        crate::trace::trace(&format!(
-            "account {account_id}: without CONDSTORE, flags not resynchronized (D-51)"
-        ));
-    }
-    if report.refused > 0 {
-        crate::trace::trace(&format!(
-            "poll account {account_id}: {} action(s) quarantined",
-            report.refused
-        ));
-    }
-    Ok((report, inbox_status))
-}
-
-/// How long to wait after `failures` CONSECUTIVE failures of an account —
-/// pure decision (P0 complement, anti-hammering). 0 or 1 failure:
-/// nothing, the 5-min cadence is already a courtesy; after that the
-/// delay DOUBLES (10, 20, 40 min), capped at 60 — a server that throttles
-/// needs air, not a client that insists.
-fn wait_after_failures(failures: u32) -> Duration {
-    if failures <= 1 {
-        return Duration::ZERO;
-    }
-    let factor = 1u64 << (failures - 1).min(4);
-    Duration::from_secs((300 * factor).min(3600))
-}
-
-/// The time remaining on this account's backoff, if it's still running.
-/// An unreadable lock counts as “no backoff”: the protection yields to
-/// the poll, never the reverse.
-pub(crate) fn current_backoff(
-    backoffs: &Mutex<HashMap<String, crate::Backoff>>,
-    email: &str,
-) -> Option<Duration> {
-    let backoffs = backoffs.lock().ok()?;
-    let backoff = backoffs.get(email)?;
-    wait_after_failures(backoff.failures)
-        .checked_sub(backoff.since.elapsed())
-        .filter(|remaining| !remaining.is_zero())
-}
-
-/// This account's poll lock (E4): the cycle, the button, and the IDLE
-/// watcher may all want to poll the same INBOX at the same moment — one
-/// account at a time. A poisoned MAP lock is repaired by taking it back:
-/// losing the serialization is better than losing the poll.
-pub(crate) fn account_lock(
-    locks: &Mutex<HashMap<String, Arc<Mutex<()>>>>,
-    email: &str,
-) -> Arc<Mutex<()>> {
-    let mut locks = recovered(locks);
-    locks.entry(email.to_string()).or_default().clone()
-}
-
-/// The light pass of ONE account (ADR 0018): the one the IDLE watcher
-/// triggers — on `EXISTS`, and on every (re)connection (a mail that
-/// arrived during an outage never emits EXISTS, 2nd field finding). Same
-/// work as `sync_inbox_light` for this account: guarded poll (E2a), mail
-/// counted and generation bumped (the UI reloads on the poll), bubbles
-/// (P1). Best effort: incidents go to the console — account id and
-/// counts only (§6.8).
-pub(crate) fn light_pass_account(app: &AppHandle, email: &str) -> Result<(), String> {
-    let state = app.state::<AppState>();
-    let path = db_path(app)?;
-    let session = lock_accounts(&state)?
-        .get(email)
-        .cloned()
-        .ok_or_else(|| "account not connected".to_string())?;
-    // One account at a time: the cycle's or the button's poll may be in
-    // progress on THIS account — we wait our turn.
-    let lock = account_lock(&state.poll_locks, email);
-    let _poll = lock.lock().map_err(|_| "poisoned poll lock".to_string())?;
-    // The backoff is respected (read-only): if the account is in
-    // repeated failure, the cycle will pick it up — the watcher doesn't
-    // insist.
-    if current_backoff(&state.sync_backoffs, email).is_some() {
-        return Ok(());
-    }
-    // ONE connection for the pass (PLAN-AUDIT-V2 E1): it crosses the
-    // IMAP connection without holding anything — in WAL, a connection
-    // open outside a transaction locks no one; the id read before the
-    // network is stable, it isn't a state we'd replay afterwards.
-    let mut store = Store::open(&path).map_err(|err| err.to_string())?;
-    let account_id = store
-        .accounts()
-        .map_err(|err| err.to_string())?
-        .into_iter()
-        .find(|account| account.email == email)
-        .map(|account| account.id)
-        .ok_or_else(|| "unknown account in database".to_string())?;
-
-    let (mut server, refreshed) = connect_imap(&session)?;
-    let mut problems = Vec::new();
-    let cycle = state.sync_cycle.clone();
-    let outcome = poll_inbox(
-        &mut server,
-        &mut store,
-        account_id,
-        &cycle,
-        app,
-        &mut problems,
-    );
-    server.logout();
-    match outcome {
-        Ok(_) => {
-            note_outcome(&state.sync_backoffs, email, true);
-            if let Some(fresh) = refreshed {
-                lock_accounts(&state)?.insert(fresh.email().to_string(), fresh);
-            }
-            // The timestamp counts for this poll as for the others:
-            // INBOX has just been checked.
-            if let Ok(epoch) = SystemTime::now().duration_since(UNIX_EPOCH) {
-                let _ = store.set_text_pref(PREF_LAST_SYNC, &epoch.as_secs().to_string());
-            }
-            for problem in problems {
-                crate::trace::trace(&format!("watcher account {account_id}: {problem}"));
-            }
-            Ok(())
-        }
-        Err(err) => {
-            note_outcome(&state.sync_backoffs, email, false);
-            Err(err)
-        }
-    }
-}
-
-/// Settles the outcome of an attempt: success clears the backoff,
-/// failure worsens it and restarts from now.
-fn note_outcome(backoffs: &Mutex<HashMap<String, crate::Backoff>>, email: &str, success: bool) {
-    let Ok(mut backoffs) = backoffs.lock() else {
-        return;
-    };
-    if success {
-        backoffs.remove(email);
-        return;
-    }
-    let backoff = backoffs.entry(email.to_string()).or_insert(crate::Backoff {
-        failures: 0,
-        since: Instant::now(),
-    });
-    backoff.failures = backoff.failures.saturating_add(1);
-    backoff.since = Instant::now();
-}
-
-/// On leaving the cycle — normally or via panic — the activity turns
-/// off: a status bar that would announce a phantom cycle would be the
-/// exact lie E1 corrects.
-struct CycleEnd(Arc<crate::SyncShared>);
-
-impl Drop for CycleEnd {
-    fn drop(&mut self) {
-        self.0.in_progress.store(false, Ordering::Relaxed);
-    }
-}
-
-/// What one cycle's account loop tallies — shared by the full cycle
-/// and the light pass (PLAN-AUDIT-V3 E3: the two loops were twins,
-/// their scaffolding copied line for line).
-struct CycleTally {
-    accounts: usize,
-    accounts_failed: usize,
-    fetched: usize,
-    deleted: usize,
-    replayed: usize,
-    errors: Vec<String>,
-    refreshed: Vec<AccountSession>,
-}
-
-/// ONE account loop for both cycles: activity bookkeeping (E1),
-/// backoff (P0 — bypassed only by the manual gesture's `force`),
-/// per-account lock (E4: an IDLE watcher may be mid-pass on the same
-/// account), outcome accounting. Only the per-account WORK differs —
-/// the full `run_sync` or the light `poll_inbox` — and it comes in as
-/// a closure returning the same (report, problems, refreshed session)
-/// shape.
-fn poll_cycle(
-    jobs: Vec<(i64, AccountSession)>,
-    cycle: &Arc<crate::SyncShared>,
-    backoffs: &Mutex<HashMap<String, crate::Backoff>>,
-    locks: &Mutex<HashMap<String, Arc<Mutex<()>>>>,
-    force: bool,
-    mut per_account: impl FnMut(
-        i64,
-        &AccountSession,
-    ) -> Result<
-        (mail_core::SyncReport, Vec<String>, Option<AccountSession>),
-        String,
-    >,
-) -> CycleTally {
-    // The activity for the status bar (PLAN-SYNCHRO E1): set BEFORE the
-    // first account, turned off by the guard no matter what happens. An
-    // empty cycle (no account connected) announces nothing.
-    let _end = CycleEnd(cycle.clone());
-    cycle.done.store(0, Ordering::Relaxed);
-    cycle.total.store(jobs.len() as u64, Ordering::Relaxed);
-    cycle.mail.store(0, Ordering::Relaxed);
-    cycle.in_progress.store(!jobs.is_empty(), Ordering::Relaxed);
-    let mut tally = CycleTally {
-        accounts: 0,
-        accounts_failed: 0,
-        fetched: 0,
-        deleted: 0,
-        replayed: 0,
-        errors: Vec::new(),
-        refreshed: Vec::new(),
-    };
-    for (account_id, session) in jobs {
-        let email = session.email().to_string();
-        // The backoff (P0 complement): an account in repeated failures
-        // is SKIPPED while its delay runs — no connection, no OAuth
-        // refresh. Without being SILENCED: it stays counted as
-        // unreachable, otherwise the bar's alert would turn off on an
-        // account still dead. The manual gesture is an order — `force`
-        // always attempts.
-        if !force && let Some(remaining) = current_backoff(backoffs, &email) {
-            tally.accounts_failed += 1;
-            tally.errors.push(format!(
-                "{email}: backing off after repeated failures; retrying in {} min",
-                remaining.as_secs().div_ceil(60).max(1)
-            ));
-            cycle.done.fetch_add(1, Ordering::Relaxed);
-            continue;
-        }
-        // E4: one account at a time — an IDLE watcher may be in the
-        // middle of a light pass on THIS account at the same moment.
-        let lock = account_lock(locks, &email);
-        let _poll = lock.lock();
-        if let Ok(mut account) = cycle.account.lock() {
-            account.clone_from(&email);
-        }
-        set_mailbox(cycle, "");
-        match per_account(account_id, &session) {
-            Ok((report, problems, fresh)) => {
-                note_outcome(backoffs, &email, true);
-                tally.accounts += 1;
-                tally.fetched += report.fetched;
-                tally.deleted += report.deleted;
-                tally.replayed += report.replayed;
-                if let Some(fresh) = fresh {
-                    tally.refreshed.push(fresh);
-                }
-                for problem in problems {
-                    tally.errors.push(format!("{email}: {problem}"));
-                }
-            }
-            Err(err) => {
-                note_outcome(backoffs, &email, false);
-                tally.accounts_failed += 1;
-                tally.errors.push(format!("{email}: {err}"));
-            }
-        }
-        cycle.done.fetch_add(1, Ordering::Relaxed);
-    }
-    tally
-}
-
 /// Synchronizes ALL connected accounts — one account's failure doesn't
 /// block the others (it's logged in the report).
+///
+/// The orchestration itself (backoff, per-account lock, activity
+/// bookkeeping) is [`crate::poll::poll_cycle`] — shared with the light
+/// pass below (PLAN-AUDIT-V3 E4). This command's own job is the
+/// glue: gather the jobs, hand each account to
+/// [`crate::poll::run_sync`], settle the sessions and the timestamp.
 #[tauri::command]
 pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<SyncSummary, String> {
     let path = db_path(&app)?;
-    let jobs = off_pump(app.clone(), |app| connected_jobs(&app)).await?;
+    let jobs = off_pump(app.clone(), |app| crate::poll::connected_jobs(&app)).await?;
     let timer = Instant::now();
     let cycle = state.sync_cycle.clone();
     // The relay carries through the loop: bubbles go out PER ACCOUNT, as
@@ -1090,9 +629,9 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
 
     let mut tally = tauri::async_runtime::spawn_blocking(move || {
         let run_cycle = cycle.clone();
-        poll_cycle(jobs, &cycle, &backoffs, &locks, false, {
+        crate::poll::poll_cycle(jobs, &cycle, &backoffs, &locks, false, {
             move |account_id, session| {
-                run_sync(session, account_id, &path, &run_cycle, &app_bubbles)
+                crate::poll::run_sync(session, account_id, &path, &run_cycle, &app_bubbles)
                     .map(|outcome| (outcome.report, outcome.problems, outcome.refreshed))
             }
         })
@@ -1101,7 +640,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
     .map_err(|err| err.to_string())?;
 
     reset_sessions(&state, std::mem::take(&mut tally.refreshed))?;
-    settle_poll(&app, tally.accounts, &mut tally.errors).await?;
+    crate::poll::settle_poll(&app, tally.accounts, &mut tally.errors).await?;
 
     Ok(SyncSummary {
         accounts: tally.accounts,
@@ -1127,7 +666,7 @@ pub async fn sync_inbox_light(
     force: bool,
 ) -> Result<SyncSummary, String> {
     let path = db_path(&app)?;
-    let jobs = off_pump(app.clone(), |app| connected_jobs(&app)).await?;
+    let jobs = off_pump(app.clone(), |app| crate::poll::connected_jobs(&app)).await?;
     let timer = Instant::now();
     let cycle = state.sync_cycle.clone();
     let app_bubbles = app.clone();
@@ -1139,17 +678,17 @@ pub async fn sync_inbox_light(
     // order, `force` always attempts.
     let mut tally = tauri::async_runtime::spawn_blocking(move || {
         let run_cycle = cycle.clone();
-        poll_cycle(jobs, &cycle, &backoffs, &locks, force, {
+        crate::poll::poll_cycle(jobs, &cycle, &backoffs, &locks, force, {
             move |account_id, session| {
-                let (mut server, fresh) = connect_imap(session)?;
+                let (mut server, fresh) = crate::poll::connect_imap(session)?;
                 let mut store = Store::open(&path).map_err(|err| err.to_string())?;
                 let mut problems = Vec::new();
-                let (report, _) = poll_inbox(
+                let hooks = crate::poll::ShellHooks::new(&run_cycle, app_bubbles.clone());
+                let (report, _) = mail_core::cycle::poll_inbox(
                     &mut server,
                     &mut store,
                     account_id,
-                    &run_cycle,
-                    &app_bubbles,
+                    &hooks,
                     &mut problems,
                 )?;
                 server.logout();
@@ -1166,7 +705,7 @@ pub async fn sync_inbox_light(
     // button that would leave “12 minutes ago” after a successful click
     // would look broken. The folders, for their part, keep their own
     // cadence.
-    settle_poll(&app, tally.accounts, &mut tally.errors).await?;
+    crate::poll::settle_poll(&app, tally.accounts, &mut tally.errors).await?;
 
     Ok(SyncSummary {
         accounts: tally.accounts,
@@ -1177,464 +716,6 @@ pub async fn sync_inbox_light(
         elapsed_ms: timer.elapsed().as_millis() as u64,
         errors: tally.errors,
     })
-}
-
-/// “1.2 GB” or “850 MB” — the user needs to know HOW MUCH to free up,
-/// not convert bytes in their head. Decimal prefixes (the Explorer's
-/// would be GiB, but GB is what the general public reads on a disk
-/// box).
-fn format_bytes(bytes: u64) -> String {
-    if bytes >= 1_000_000_000 {
-        format!("{:.1} GB", bytes as f64 / 1e9)
-    } else {
-        // Rounded UP to the MB: announcing “0 MB” to free up would be
-        // absurd, and under-announcing would make the retry fail.
-        format!("{} MB", bytes.div_ceil(1_000_000).max(1))
-    }
-}
-
-/// What an account synchronization reports, beyond the counts.
-struct SyncOutcome {
-    report: mail_core::SyncReport,
-    /// Session whose token has just been renewed, to put back in cache.
-    refreshed: Option<AccountSession>,
-    /// Non-blocking incidents: the synchronization succeeded, but some
-    /// background work that goes with it failed. Reported, never
-    /// swallowed — a symptom without a trace is undiagnosable.
-    problems: Vec<String>,
-}
-
-fn run_sync(
-    session: &AccountSession,
-    account_id: i64,
-    db_path: &Path,
-    cycle: &crate::SyncShared,
-    app: &AppHandle,
-) -> Result<SyncOutcome, String> {
-    let (mut server, refreshed) = connect_imap(session)?;
-    let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
-    // Stopwatch per phase (field finding 2026-08-13: “INBOX” mute for
-    // 2 min 15 — the observation must become a measurement). Durations
-    // and counts ONLY: no address, no folder name (diagnostics rule,
-    // HANDOVER §6.8) — the account id is an internal integer.
-    let stopwatch = Instant::now();
-    let mut problems: Vec<String> = Vec::new();
-    let (report, inbox_status) = poll_inbox(
-        &mut server,
-        &mut store,
-        account_id,
-        cycle,
-        app,
-        &mut problems,
-    )?;
-    let inbox_duration = stopwatch.elapsed();
-
-    // The inventory: sent folder, scope, folder list, space guard
-    // (STATUS on each folder) — four tasks that used to live under the
-    // “INBOX” label, wrongly.
-    set_phase(cycle, "inventory");
-    let stopwatch = Instant::now();
-
-    // “Sent”: without it, a thread only carries the received half of
-    // the exchange. Measured on the real mailbox — 15 conversations of
-    // more than one message before, 234 after.
-    //
-    // Only becomes safe because a message's identity now carries its
-    // MAILBOX (ADR 0009, step 4b): without that, a UID from this folder
-    // would be read in INBOX, and since UIDs restart at 1 in each
-    // mailbox, collision would be the norm.
-    //
-    // Best effort, like the neighboring passes: INCOMING mail is the
-    // result that counts, and a server without a sent folder must keep
-    // working. The failure is reported, never swallowed — otherwise a
-    // mailbox that refused to group would be undiagnosable.
-    let sent = match server.sent_folder_name() {
-        Ok(found) => found,
-        Err(reason) => {
-            problems.push(format!("sent folder: {reason}"));
-            None
-        }
-    };
-
-    // The grouping SCOPE, declared before pouring anything else into
-    // the account (ADR 0010 §3). Without it, messages from the folders
-    // about to be synchronized would join threads on their own: a spam
-    // message would bump a conversation to the top of the list.
-    //
-    // Re-declared on EVERY synchronization, not only on account
-    // creation: a server can rename its sent folder.
-    //
-    // BEFORE the loop, and that's the whole point: the store keeps it in
-    // memory on the account, so the mailboxes the loop is about to
-    // CREATE are born already on the right side of the scope. Declaring
-    // it afterwards would make them born without a thread, and their
-    // messages would wait for the next startup.
-    if let Err(reason) = store.set_thread_scope(account_id, sent.as_deref()) {
-        problems.push(format!("conversation scope: {reason}"));
-    }
-
-    // ALL the other folders — archive, trash, spam, user folders (ADR
-    // 0010 §1). INBOX has just been done; `sync_order` puts it back
-    // first and avoids it twice.
-    //
-    // LIST-STATUS (RFC 5819) when the server announces it: the list AND
-    // the status of EACH folder in ONE round trip — field finding of
-    // 2026-08-13, the inventory was the last bottleneck (66s of ~51
-    // sequential STATUS on the Gmail account). `statuses` comes out of
-    // it pre-filled; the space guard below has nothing left to ask.
-    // Fallback (capability absent OR LIST-STATUS failure): a plain
-    // LIST, the STATUS calls will go out one by one — the old path,
-    // intact.
-    let mut statuses: HashMap<String, mail_core::FolderStatus> = HashMap::new();
-    let with_status = match server.folders_with_status() {
-        Ok(v) => v,
-        Err(reason) => {
-            problems.push(format!("LIST-STATUS inventory: {reason}"));
-            None
-        }
-    };
-    let folders = if let Some(with_status) = with_status {
-        let mut folders = Vec::with_capacity(with_status.len());
-        for (folder, status) in with_status {
-            // The server MAY omit a folder's status (RFC 5819 §2): this
-            // folder then starts out unguarded, the loop below will
-            // catch it up with a targeted STATUS.
-            if let Some(status) = status {
-                statuses.insert(folder.wire.clone(), status);
-            }
-            folders.push(folder);
-        }
-        folders
-    } else {
-        server.folders().unwrap_or_else(|reason| {
-            problems.push(format!("folder list: {reason}"));
-            Vec::new()
-        })
-    };
-    // Refreshed ONCE per cycle — hoisted out of `SyncEngine::sync` which
-    // used to pay for it on EVERY folder (~51 LIST per cycle, ADR 0017).
-    // Moving it out keeps its list.
-    if let Err(reason) = store.replace_folders(account_id, &folders) {
-        problems.push(format!("folder list: {reason}"));
-    }
-    let order = mail_core::sync_order(&folders, sent.as_deref());
-
-    // The disk space guard (ADR 0010 §4): estimate BEFORE committing,
-    // refuse with a figure if it's short.
-    //
-    // INBOX is counted on both sides (announced AND local database):
-    // removing it from just one would underestimate the remainder.
-    //
-    // Each folder's status is GUARDED (ADR 0017): the space guard and
-    // the poll decision use the same status — the one from LIST-STATUS
-    // if it answered, a targeted STATUS otherwise.
-    let mut announced: u64 = 0;
-    for mailbox in &order {
-        let status = if mailbox == MAILBOX {
-            // INBOX already has its status, paid for before its poll.
-            inbox_status.ok_or_else(|| "missing INBOX status".to_string())
-        } else if let Some(status) = statuses.get(mailbox).copied() {
-            // Already fetched by LIST-STATUS: no second round trip.
-            Ok(status)
-        } else {
-            server.folder_status(mailbox).map_err(|err| err.to_string())
-        };
-        match status {
-            Ok(status) => {
-                announced += u64::from(status.messages);
-                statuses.insert(mailbox.clone(), status);
-            }
-            // A folder that refuses the status makes the estimate low
-            // and will be polled without a guard. We continue: the
-            // guard is a protection, not a veto right — and the failure
-            // is logged.
-            Err(reason) => problems.push(format!("status of \"{mailbox}\": {reason}")),
-        }
-    }
-    let local = store
-        .account_message_count(account_id)
-        .map_err(|err| err.to_string())?;
-    let pending = announced.saturating_sub(local);
-    // Space is measured on the database's VOLUME: that's what will
-    // absorb the writes, not the system disk.
-    let shortfall = match fs4::available_space(db_path.parent().unwrap_or(db_path)) {
-        Ok(available) => mail_core::disk_shortfall(pending, available),
-        Err(reason) => {
-            // Immeasurable ≠ insufficient space. Blocking mail because a
-            // system call failed would be worse than the risk covered;
-            // the failure is stated, and SQLite will signal a full disk
-            // anyway, write by write.
-            problems.push(format!("disk space not measurable: {reason}"));
-            None
-        }
-    };
-    let inventory_duration = stopwatch.elapsed();
-    let n_folders = order.len().saturating_sub(1);
-    let mut n_skipped = 0usize;
-    let stopwatch = Instant::now();
-    if let Some(missing) = shortfall {
-        problems.push(format!(
-            "insufficient disk space: ~{} needed for {} remaining \
-             message(s), {} short; folder recovery suspended until \
-             space is freed up",
-            format_bytes(pending.saturating_mul(mail_core::SYNC_BYTES_PER_MESSAGE)),
-            pending,
-            format_bytes(missing),
-        ));
-    } else {
-        for mailbox in order.into_iter().skip(1) {
-            // The guarded poll (ADR 0017): nothing moved → skipped. The
-            // field paid 26 min of SELECT + SEARCH ALL per cycle for
-            // motionless folders.
-            let status = statuses.get(&mailbox);
-            if !must_poll(&store, account_id, &mailbox, status, &mut problems) {
-                n_skipped += 1;
-                continue;
-            }
-            set_mailbox(cycle, &mailbox);
-            match SyncEngine::default().sync(&mut server, &mut store, account_id, &mailbox) {
-                Ok(_) => settle_marker(&store, account_id, &mailbox, status, &mut problems),
-                Err(reason) => problems.push(format!("folder \"{mailbox}\": {reason}")),
-            }
-        }
-    }
-    let folders_duration = stopwatch.elapsed();
-    // The header pass isn't a mailbox: the step is named.
-    set_phase(cycle, "threads");
-    let stopwatch = Instant::now();
-
-    // The header pass benefits from the connection already open: that's
-    // what makes it free in round trips. Its failure must NOT make the
-    // synchronization fail — the mail has arrived, that's the only
-    // result that counts — but it's reported, never swallowed. Without a
-    // trace, a mailbox that refuses to group would be undiagnosable.
-    //
-    // It runs on BOTH mailboxes. `References` carries the thread root
-    // where `In-Reply-To` only designates the immediate parent: without
-    // it, a reply whose original message was archived out of INBOX
-    // couldn't reattach. ADR 0008 (measurement 2) is explicit —
-    // `References` is mandatory, not a refinement.
-    //
-    // The budget is SHARED, not doubled: the second mailbox only
-    // consumes what the first left. The network cost of a
-    // synchronization thus stays exactly what it was before, and since
-    // the pass is resumable, the remainder goes out the next round.
-    //
-    // WITHOUT a horizon since ADR 0010: the field diagnostic showed the
-    // pass converged at 1,656 messages read out of 1,656 eligible — and
-    // 5,883 messages outside the 12 months that would NEVER be read.
-    // The bound came from the bodies' disk budget; a header block
-    // weighs ~3 KB and isn't stored on disk like a body.
-    //
-    // The pass stays on INBOX + Sent, though: `References` is the
-    // grouping's fuel, and the grouping stops at that scope (ADR 0010
-    // §3). Reading Spam's headers would pay round trips for messages
-    // that attach to nothing.
-    let mut budget = THREAD_HEADER_BUDGET;
-    for mailbox in std::iter::once(MAILBOX).chain(sent.as_deref()) {
-        if budget == 0 {
-            break;
-        }
-        match mail_core::backfill_thread_headers(
-            &mut server,
-            &mut store,
-            account_id,
-            mailbox,
-            mail_core::NO_HORIZON,
-            budget,
-        ) {
-            Ok(report) => budget = budget.saturating_sub(report.fetched),
-            Err(err) => problems.push(format!("incomplete conversations: {err}")),
-        }
-    }
-
-    // R4/R1 (PLAN-RETOURS-MAIL): backfill of RECIPIENTS. The header pass
-    // has converged — already-synchronized messages have no To/Cc in
-    // the database. Two needs: in a sent folder, the sender is SELF and
-    // only the recipient says who the message went to (R4 display); and
-    // “Reply all” reads these same To/Cc to be instant, offline (R1 —
-    // the old server poll on click cost >10s). We re-read the ENVELOPE
-    // (To/Cc free, along with the sender) on the open connection,
-    // bounded, resumable and at a SHARED budget, on the SAME INBOX +
-    // Sent scope as the thread pass. Best effort: a failure is logged,
-    // it doesn't make the poll fail.
-    let mut budget_recipients = RECIPIENTS_BUDGET;
-    for mailbox in std::iter::once(MAILBOX).chain(sent.as_deref()) {
-        if budget_recipients == 0 {
-            break;
-        }
-        match mail_core::backfill_recipients(
-            &mut server,
-            &mut store,
-            account_id,
-            mailbox,
-            budget_recipients,
-        ) {
-            Ok(report) => budget_recipients = budget_recipients.saturating_sub(report.fetched),
-            Err(err) => problems.push(format!("missing recipients: {err}")),
-        }
-    }
-
-    let threads_duration = stopwatch.elapsed();
-    // Drafts pulling also benefits from the open connection. It CANNOT
-    // live in the push cycle: that one stops early when there's nothing
-    // to push — rightly so, otherwise every keystroke would open a
-    // connection. A draft started elsewhere would then never arrive.
-    set_phase(cycle, "drafts");
-    let stopwatch = Instant::now();
-    if let Err(reason) = pull_drafts(&mut server, &store, account_id) {
-        problems.push(format!("remote drafts: {reason}"));
-    }
-    let drafts_duration = stopwatch.elapsed();
-
-    // E3 (PLAN-REACTIVITE): the cycle may have just brought in the real
-    // row of an echo's destination — the reconciliation notices it, and
-    // the generation reserves the list (the echo fades under its real
-    // row, invisible to the eye).
-    match store.reconcile_echos(account_id) {
-        Ok(n) if n > 0 => {
-            cycle.generation.fetch_add(1, Ordering::Relaxed);
-        }
-        Ok(_) => {}
-        Err(reason) => problems.push(format!("echo reconciliation: {reason}")),
-    }
-
-    // The trace that turns “it's stuck” into a measurement — readable
-    // in a `cargo run` console. BEFORE logout: a logout that hangs must
-    // not take the trace down with it.
-    crate::trace::trace(&format!(
-        "poll account {account_id}: INBOX {:.1}s · inventory {:.1}s · {n_folders} folders ({n_skipped} skipped) {:.1}s · threads {:.1}s · drafts {:.1}s",
-        inbox_duration.as_secs_f32(),
-        inventory_duration.as_secs_f32(),
-        folders_duration.as_secs_f32(),
-        threads_duration.as_secs_f32(),
-        drafts_duration.as_secs_f32(),
-    ));
-
-    server.logout();
-
-    Ok(SyncOutcome {
-        report,
-        refreshed,
-        problems,
-    })
-}
-
-/// Pulls in drafts started elsewhere, and removes mirrors that have
-/// become stale.
-///
-/// The decision belongs to the core ([`mail_core::plan_draft_pull`], pure
-/// and tested); here we only execute it.
-fn pull_drafts(server: &mut ImapServer, store: &Store, account_id: i64) -> Result<(), String> {
-    // The marker guard first, like in the push cycle: if UIDVALIDITY has
-    // changed, the recorded `remote_uid`s no longer designate anything.
-    // Comparing the remote list to stale markers would make ALL mirrors
-    // look stale and would reimport the whole mailbox.
-    // No Drafts folder announced: nothing to pull, and nothing to
-    // report. The server isn't down, it just doesn't have the
-    // capability.
-    if server
-        .drafts_folder_name()
-        .map_err(|err| err.to_string())?
-        .is_none()
-    {
-        return Ok(());
-    }
-    let validity = server.drafts_uidvalidity().map_err(|err| err.to_string())?;
-    let reset = store
-        .align_drafts_uidvalidity(account_id, validity)
-        .map_err(|err| err.to_string())?;
-    if reset {
-        // Markers abandoned: nothing distinguishes our own copies from
-        // others' anymore. We let the push cycle re-establish them and
-        // will pull at the next pass. A duplicate stays possible —
-        // that's the golden rule already in force, and it prefers a
-        // duplicate to a loss.
-        return Ok(());
-    }
-
-    let remote = server.draft_uids().map_err(|err| err.to_string())?;
-    let local = store.drafts_of(account_id).map_err(|err| err.to_string())?;
-    let tombstones = store
-        .draft_tombstones(account_id)
-        .map_err(|err| err.to_string())?;
-    let plan = mail_core::plan_draft_pull(&local, &remote, &tombstones);
-
-    for id in plan.stale {
-        store.drop_stale_draft(id).map_err(|err| err.to_string())?;
-    }
-    for uid in plan.fetch {
-        let Some(draft) = server.fetch_draft(uid).map_err(|err| err.to_string())? else {
-            // Gone between the listing and the read: no consequence.
-            continue;
-        };
-        // The body arrives in one of two possible MIME forms; it goes
-        // through THE boundary (`body_boundary`) like any body entering
-        // the database: sanitized HTML kept (a rich draft pushed then
-        // pulled back keeps its formatting), text derived — the MIME
-        // text only serves as a fallback when there's no HTML.
-        let text = draft.text.unwrap_or_default();
-        let (body, body_html) = body_boundary(text, draft.html.as_deref());
-        store
-            .import_remote_draft(
-                account_id,
-                uid,
-                &draft.to_raw,
-                &draft.subject,
-                &body,
-                body_html.as_deref(),
-            )
-            .map_err(|err| err.to_string())?;
-    }
-    Ok(())
-}
-
-/// Shows the system bubble for a batch of arrivals, if warranted.
-///
-/// A failure — permission denied, application identity not registered —
-/// must NEVER make a sync fail: the mail has arrived, that's the only
-/// result that counts. But it is **reported**.
-///
-/// The first version swallowed the error silently. On a workstation
-/// where Windows refused the toast, the symptom was “nothing happens”:
-/// undiagnosable. Absorbing a failure is one thing, erasing its trace is
-/// another.
-/// Key of the “arrival bubbles” preference (Settings > Notifications).
-const PREF_ARRIVAL_BUBBLES: &str = "arrival_bubbles";
-const PREF_LANG: &str = "lang";
-/// Epoch (seconds) of the last successful poll — written by
-/// `sync_inbox`, read by `sync_progress` for the status bar (E1).
-const PREF_LAST_SYNC: &str = "derniere_synchro";
-
-fn arrival_notification_problem(
-    app: &AppHandle,
-    store: &Store,
-    arrivals: &[mail_core::Envelope],
-) -> Option<String> {
-    use tauri_plugin_notification::NotificationExt;
-
-    // R-D2 (PLAN-REGLAGES): the preference lives IN THE DATABASE and is
-    // read HERE, at emission time — the setting cuts the bubble, never
-    // the sync. Unreadable database = enabled: the default protects the
-    // announcement, and the sync that just wrote these arrivals makes
-    // this case theoretical. The same read carries the texts' language
-    // (PLAN-LANGUES, E2): `prefs.lang`, set by the UI — absent or
-    // unknown, French. On the caller's connection (PLAN-AUDIT-V2 E1):
-    // the poll already holds one, reopening a second one would protect
-    // nothing.
-    let active = store.bool_pref(PREF_ARRIVAL_BUBBLES, true).unwrap_or(true);
-    if !active {
-        return None;
-    }
-    let lang = mail_core::Lang::from_pref(store.text_pref(PREF_LANG).ok().flatten().as_deref());
-    let notification = mail_core::notification_for(arrivals, lang)?;
-    app.notification()
-        .builder()
-        .title(notification.title)
-        .body(notification.body)
-        .show()
-        .err()
-        .map(|err| format!("notification not shown: {err}"))
 }
 
 // The page no LONGER carries a total (field finding 2026-08-20,
@@ -2128,7 +1209,7 @@ fn fetch_body(
     mailbox: String,
     uid: u32,
 ) -> Result<String, String> {
-    let (mut server, _refreshed) = connect_imap(session)?;
+    let (mut server, _refreshed) = crate::poll::connect_imap(session)?;
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
     let body = mail_core::load_body(&mut server, &mut store, account_id, &mailbox, uid)
         .map_err(|err| err.to_string())?;
@@ -2442,7 +1523,7 @@ pub async fn save_attachment(
 ) -> Result<String, CommandError> {
     let session = off_pump(app.clone(), move |app| auth_for(&app, account_id)).await?;
     let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
-        let (mut server, _refreshed) = connect_imap(&session)?;
+        let (mut server, _refreshed) = crate::poll::connect_imap(&session)?;
         let bytes = server
             .fetch_attachment(&mailbox, uid, index)
             .map_err(|err| err.to_string())?;
@@ -2601,18 +1682,6 @@ pub struct TargetArg {
 pub struct GroupOutcome {
     pub done: usize,
     pub total: usize,
-}
-
-/// The accounts already flagged "without CONDSTORE" in this session —
-/// the line is said once, not on every poll.
-fn without_condstore_first_time(account_id: i64) -> bool {
-    static TOLD: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<i64>>> =
-        std::sync::OnceLock::new();
-    let told = TOLD.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()));
-    match told.lock() {
-        Ok(mut told) => told.insert(account_id),
-        Err(poisoned) => poisoned.into_inner().insert(account_id),
-    }
 }
 
 /// The BULK gesture of the selection bar (PLAN-AUDIT-V2 E6): ONE call,
@@ -3941,7 +3010,7 @@ fn fetch_recipients_remote(
     mailbox: &str,
     uid: u32,
 ) -> Result<mail_core::MessageRecipients, String> {
-    let (mut server, _refreshed) = connect_imap(session)?;
+    let (mut server, _refreshed) = crate::poll::connect_imap(session)?;
     let recipients = server
         .fetch_recipients(mailbox, uid)
         .map_err(|err| err.to_string());
@@ -4180,36 +3249,6 @@ async fn queue_send_content(
     .await
 }
 
-/// The end of a cycle (full or light): the timestamp of the last
-/// successful poll (E1) — set only when AT LEAST one account answered;
-/// an empty cycle does not refresh "last sync." A write failure is
-/// reported, never swallowed; it does not fail the poll, the mail is
-/// there. Under `off_pump` (E5): database + commands lock. The
-/// `unified_count()` that used to live here fed `SyncSummary.total`,
-/// which the UI never read (PLAN-AUDIT-V2 E1).
-async fn settle_poll(
-    app: &AppHandle,
-    accounts: usize,
-    errors: &mut Vec<String>,
-) -> Result<(), String> {
-    if accounts == 0 {
-        return Ok(());
-    }
-    let timestamp = off_pump(app.clone(), move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        let mut timestamp = None;
-        if let Ok(epoch) = SystemTime::now().duration_since(UNIX_EPOCH)
-            && let Err(err) = store.set_text_pref(PREF_LAST_SYNC, &epoch.as_secs().to_string())
-        {
-            timestamp = Some(format!("poll timestamp: {err}"));
-        }
-        Ok::<_, String>(timestamp)
-    })
-    .await?;
-    errors.extend(timestamp);
-    Ok(())
-}
-
 /// Flushes the outboxes of ALL connected accounts — each through ITS
 /// OWN SMTP connection. Offline = a summary, not an error. Reentrancy
 /// forbidden (lock).
@@ -4219,7 +3258,7 @@ pub async fn flush_outbox(
     state: State<'_, AppState>,
 ) -> Result<OutboxSummary, CommandError> {
     let path = db_path(&app)?;
-    let jobs = off_pump(app.clone(), |app| connected_jobs(&app)).await?;
+    let jobs = off_pump(app.clone(), |app| crate::poll::connected_jobs(&app)).await?;
     let lock = state.outbox_flush.clone();
 
     let (summary, refreshed) =
@@ -4243,27 +3282,6 @@ fn retry_after(attempt: u32) -> Option<Duration> {
         1 => Some(Duration::from_secs(5)),
         2 => Some(Duration::from_secs(15)),
         _ => None,
-    }
-}
-
-/// Beyond this, the poll no longer fetches bodies itself: the rows
-/// first, the pump will do the bodies. ~192 ms per message amortized
-/// per batch (`spikes/body-backfill`): ten bodies cost ~2 s on the
-/// bubble path — the < 30 s bound of PLAN-SYNCHRO keeps its margin.
-const BODY_ON_ARRIVAL_MAX: usize = 10;
-
-/// How many bodies to fetch WITHIN the INBOX poll that just brought
-/// `arrivals` NEW messages (UID above the marker — never the report's
-/// `fetched`, inflated by a CONDSTORE delta's flags) — a pure decision
-/// (PLAN-REACTIVITE E4, R-D2). A normal batch: all its bodies, the row
-/// is born with its preview. A batch that overflows (catch-up after an
-/// outage, full sync): zero — the bump goes out first, the rows fast,
-/// and the bodies fall to the pump.
-fn body_on_arrival(arrivals: usize) -> usize {
-    if arrivals > BODY_ON_ARRIVAL_MAX {
-        0
-    } else {
-        arrivals
     }
 }
 
@@ -4430,6 +3448,72 @@ impl Drop for FlightGuard<'_> {
     }
 }
 
+/// The guarded poll (ADR 0017): should this folder be polled? Any
+/// uncertainty — poll refused by the server, unreadable marker — polls:
+/// sobriety doesn't have the right to cost a message.
+///
+/// A second copy of the pure decision's shell wrapper: [`mail_core::cycle`]
+/// keeps its own (PLAN-AUDIT-V3 E4, the cycle and the light pass), and
+/// this after-gesture pass — a THIRD poll path, out of E4's scope — is
+/// simplest served by its own small copy rather than a cross-crate
+/// export of what `cycle.rs` deliberately keeps private.
+fn must_poll(
+    store: &Store,
+    account_id: i64,
+    mailbox: &str,
+    status: Option<&mail_core::FolderStatus>,
+    problems: &mut Vec<String>,
+) -> bool {
+    let Some(status) = status else {
+        return true;
+    };
+    let marker = (|| -> Result<Option<mail_core::LocalMarker>, mail_core::Error> {
+        let Some(state) = store.sync_state(account_id, mailbox)? else {
+            return Ok(None);
+        };
+        Ok(Some(mail_core::LocalMarker {
+            uid_validity: state.uid_validity,
+            uidnext_seen: store.remote_uidnext(state.mailbox_id)?,
+            local_messages: store.envelope_count(state.mailbox_id)?,
+            pending_actions: store.has_pending_actions(state.mailbox_id)?,
+            // E2b: the modseq of the last settled SELECT — it's what
+            // wakes up a folder where only the flags have shifted.
+            modseq_seen: state.highest_modseq,
+        }))
+    })();
+    match marker {
+        Ok(marker) => mail_core::must_poll(status, marker.as_ref()),
+        Err(err) => {
+            problems.push(format!("marker of \"{mailbox}\": {err}"));
+            true
+        }
+    }
+}
+
+/// Settles the marker of a SUCCESSFUL poll: the UIDNEXT of the status
+/// that preceded it. Never on a failed poll — a marker set on a folder
+/// that wasn't caught up would wrongly make it skip at the next cycle.
+fn settle_marker(
+    store: &Store,
+    account_id: i64,
+    mailbox: &str,
+    status: Option<&mail_core::FolderStatus>,
+    problems: &mut Vec<String>,
+) {
+    let Some(uidnext) = status.and_then(|status| status.uid_next) else {
+        return;
+    };
+    let outcome = store.sync_state(account_id, mailbox).and_then(|state| {
+        if let Some(state) = state {
+            store.set_remote_uidnext(state.mailbox_id, uidnext)?;
+        }
+        Ok(())
+    });
+    if let Err(err) = outcome {
+        problems.push(format!("marker of \"{mailbox}\": {err}"));
+    }
+}
+
 /// The pass of ONE account — the blocking body of `sync_after_gesture`.
 fn pass_after_gesture_account(
     path: &Path,
@@ -4454,9 +3538,9 @@ fn pass_after_gesture_account(
         let mut mail_this_attempt = 0usize;
         let total_timer = Instant::now();
         {
-            let lock = account_lock(locks, session.email());
+            let lock = crate::poll::account_lock(locks, session.email());
             let _poll = lock.lock();
-            let (mut server, fresh) = connect_imap(&session)?;
+            let (mut server, fresh) = crate::poll::connect_imap(&session)?;
             if let Some(fresh) = fresh {
                 session = fresh.clone();
                 sessions.push(fresh);
@@ -4469,12 +3553,12 @@ fn pass_after_gesture_account(
                 .map_err(|err| err.to_string())?;
             for mailbox in &sources {
                 if mailbox == MAILBOX {
-                    if let Err(reason) = poll_inbox(
+                    let hooks = crate::poll::ShellHooks::new(cycle, app.clone());
+                    if let Err(reason) = mail_core::cycle::poll_inbox(
                         &mut server,
                         &mut store,
                         account_id,
-                        cycle,
-                        app,
+                        &hooks,
                         &mut report.errors,
                     ) {
                         report.errors.push(format!("INBOX: {reason}"));
@@ -5164,7 +4248,7 @@ pub struct DraftContentArg {
 /// (the leftover `<br>` of an emptied contenteditable) counts as “no
 /// HTML”: text path — otherwise the text/plain part of a send would go
 /// out empty.
-fn body_boundary(body: String, body_html: Option<&str>) -> (String, Option<String>) {
+pub(crate) fn body_boundary(body: String, body_html: Option<&str>) -> (String, Option<String>) {
     let rich = body_html
         .filter(|html| !html.trim().is_empty())
         .map(|html| mail_render::sanitize_with(html, mail_render::ImagePolicy::AllowRemote).html);
@@ -5480,7 +4564,7 @@ pub async fn fetch_source_attachment(
     .await?;
 
     let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
-        let (mut server, _refreshed) = connect_imap(&session)?;
+        let (mut server, _refreshed) = crate::poll::connect_imap(&session)?;
         let bytes = server
             .fetch_attachment(&mailbox, uid, index)
             .map_err(|err| err.to_string())?;
@@ -5600,7 +4684,7 @@ pub async fn sync_drafts(
     state: State<'_, AppState>,
 ) -> Result<DraftSyncSummary, CommandError> {
     let path = db_path(&app)?;
-    let jobs = off_pump(app.clone(), |app| connected_jobs(&app)).await?;
+    let jobs = off_pump(app.clone(), |app| crate::poll::connected_jobs(&app)).await?;
     let lock = state.drafts_push.clone();
 
     let (summary, refreshed) =
@@ -5641,7 +4725,7 @@ fn run_draft_sync_all(
             continue;
         }
 
-        let (mut server, refreshed) = match connect_imap(&session) {
+        let (mut server, refreshed) = match crate::poll::connect_imap(&session) {
             Ok(pair) => pair,
             Err(reason) => {
                 summary.error = Some(reason);
@@ -5801,73 +4885,6 @@ fn connect_smtp(session: &AccountSession) -> Result<(SmtpMailer, Option<AccountS
             Ok((mailer, None))
         }
     }
-}
-
-/// Opens an IMAP connection matching the account type. For an OAuth2
-/// account, a failure triggers a silent refresh; for a generic account,
-/// the password is fixed.
-pub(crate) fn connect_imap(
-    session: &AccountSession,
-) -> Result<(ImapServer, Option<AccountSession>), String> {
-    match session {
-        AccountSession::OAuth(auth) => {
-            let imap = auth.provider.imap;
-            match ImapServer::connect_xoauth2(imap.host, imap.port, &auth.email, &auth.access_token)
-            {
-                Ok(server) => Ok((server, None)),
-                // A CONNECTION failure is not a dead token: no
-                // refreshing — hammering the OAuth endpoint on every
-                // cycle during a network outage is the best way to turn
-                // an IMAP throttle into an account freeze (P0
-                // complement, anti-hammering).
-                Err(err) if mail_imap::is_connection_error(&err) => Err(err.to_string()),
-                Err(_) => {
-                    let fresh = Authenticator::from_env(auth.provider)
-                        .map_err(|err| err.to_string())?
-                        .authenticate_silent(&auth.email)
-                        .map_err(|err| err.to_string())?;
-                    let server = ImapServer::connect_xoauth2(
-                        imap.host,
-                        imap.port,
-                        &fresh.email,
-                        &fresh.access_token,
-                    )
-                    .map_err(|err| err.to_string())?;
-                    Ok((server, Some(AccountSession::OAuth(fresh))))
-                }
-            }
-        }
-        AccountSession::Generic(creds) => {
-            let server = ImapServer::connect_password(
-                &creds.imap_host,
-                creds.imap_port,
-                &creds.username,
-                &creds.password,
-            )
-            .map_err(|err| err.to_string())?;
-            Ok((server, None))
-        }
-    }
-}
-
-/// The accounts from the registry that are connected (session in
-/// memory) — the unit of work for the sync/drain/drafts loops.
-/// Accounts both known AND connected — opens the database: call it
-/// UNDER `off_pump` (E5), never in the glue of an async command.
-fn connected_jobs(app: &AppHandle) -> Result<Vec<(i64, AccountSession)>, String> {
-    let store = Store::open(&db_path(app)?).map_err(|err| err.to_string())?;
-    let known = store.accounts().map_err(|err| err.to_string())?;
-    let state = app.state::<AppState>();
-    let connected = lock_accounts(&state)?;
-    Ok(known
-        .into_iter()
-        .filter_map(|account| {
-            connected
-                .get(&account.email)
-                .cloned()
-                .map(|session| (account.id, session))
-        })
-        .collect())
 }
 
 /// The session of an account — opens the database: UNDER `off_pump`
@@ -6071,7 +5088,7 @@ fn read_sync(store: &Store, generation: u64) -> Result<SyncProgress, String> {
     // status bar falls back to the dateless text rather than showing
     // garbage.
     let last = store
-        .text_pref(PREF_LAST_SYNC)
+        .text_pref(mail_core::PREF_LAST_SYNC)
         .map_err(|err| err.to_string())?
         .and_then(|value| value.parse::<i64>().ok());
     Ok(SyncProgress {
@@ -6329,7 +5346,7 @@ pub async fn backfill_bodies(
     state: State<'_, AppState>,
 ) -> Result<BackfillSummary, CommandError> {
     let path = db_path(&app)?;
-    let jobs = off_pump(app.clone(), |app| connected_jobs(&app)).await?;
+    let jobs = off_pump(app.clone(), |app| crate::poll::connected_jobs(&app)).await?;
     let lock = state.bodies_backfill.clone();
 
     let (summary, refreshed) =
@@ -6389,7 +5406,7 @@ fn run_backfill_all(
         if pending == 0 {
             continue;
         }
-        match connect_imap(&session) {
+        match crate::poll::connect_imap(&session) {
             Err(reason) => summary.errors.push(format!("{email}: {reason}")),
             Ok((mut server, refreshed)) => {
                 if let Some(fresh) = refreshed {
@@ -6518,7 +5535,7 @@ pub fn open_link(url: String) -> Result<(), CommandError> {
 #[tauri::command]
 pub async fn notif_pref_get(app: AppHandle) -> Result<bool, CommandError> {
     store_off_pump(app, move |_, store| {
-        Ok(store.bool_pref(PREF_ARRIVAL_BUBBLES, true)?)
+        Ok(store.bool_pref(mail_core::PREF_ARRIVAL_BUBBLES, true)?)
     })
     .await
 }
@@ -6529,7 +5546,7 @@ pub async fn notif_pref_get(app: AppHandle) -> Result<bool, CommandError> {
 #[tauri::command]
 pub async fn notif_pref_set(app: AppHandle, enabled: bool) -> Result<(), CommandError> {
     store_off_pump(app, move |_, store| {
-        Ok(store.set_bool_pref(PREF_ARRIVAL_BUBBLES, enabled)?)
+        Ok(store.set_bool_pref(mail_core::PREF_ARRIVAL_BUBBLES, enabled)?)
     })
     .await
 }
@@ -6547,7 +5564,10 @@ pub async fn notif_pref_set(app: AppHandle, enabled: bool) -> Result<(), Command
 #[tauri::command]
 pub async fn lang_get(app: AppHandle) -> Result<Option<String>, CommandError> {
     off_pump(app, move |app| {
-        Ok(Store::text_pref_readonly(&db_path(&app)?, PREF_LANG)?)
+        Ok(Store::text_pref_readonly(
+            &db_path(&app)?,
+            mail_core::PREF_LANG,
+        )?)
     })
     .await
 }
@@ -6558,7 +5578,7 @@ pub async fn lang_get(app: AppHandle) -> Result<Option<String>, CommandError> {
 #[tauri::command]
 pub async fn lang_set(app: AppHandle, lang: String) -> Result<(), CommandError> {
     store_off_pump(app, move |_, store| {
-        Ok(store.set_text_pref(PREF_LANG, &lang)?)
+        Ok(store.set_text_pref(mail_core::PREF_LANG, &lang)?)
     })
     .await
 }
@@ -6849,61 +5869,6 @@ mod tests {
         assert_eq!(retry_after(3), None);
         assert_eq!(retry_after(0), None);
         assert_eq!(retry_after(u32::MAX), None);
-    }
-
-    /// The bodies-on-arrival table (PLAN-REACTIVITE E4, R-D2): a
-    /// regular batch carries its bodies along — the row is born with
-    /// its preview —, a batch that overflows carries NONE: rows first,
-    /// the pump will do the bodies. Zero arrivals = zero bodies, never
-    /// a round trip for nothing.
-    #[test]
-    fn bodies_follow_the_batch_without_delaying_it() {
-        assert_eq!(body_on_arrival(0), 0);
-        assert_eq!(body_on_arrival(1), 1);
-        assert_eq!(body_on_arrival(BODY_ON_ARRIVAL_MAX), BODY_ON_ARRIVAL_MAX);
-        assert_eq!(body_on_arrival(BODY_ON_ARRIVAL_MAX + 1), 0);
-        assert_eq!(body_on_arrival(usize::MAX), 0);
-    }
-
-    /// The backoff table (P0 complement): nothing before two failures —
-    /// the 5 min cadence is already a courtesy —, then the delay
-    /// doubles, capped at one hour. An overflow of failures (a runaway
-    /// counter) must never panic the bit shift.
-    #[test]
-    fn the_backoff_doubles_then_caps() {
-        assert_eq!(wait_after_failures(0), Duration::ZERO);
-        assert_eq!(wait_after_failures(1), Duration::ZERO);
-        assert_eq!(wait_after_failures(2), Duration::from_secs(600));
-        assert_eq!(wait_after_failures(3), Duration::from_secs(1200));
-        assert_eq!(wait_after_failures(4), Duration::from_secs(2400));
-        assert_eq!(wait_after_failures(5), Duration::from_secs(3600));
-        assert_eq!(wait_after_failures(u32::MAX), Duration::from_secs(3600));
-    }
-
-    /// The full lifecycle: two failures set a backoff that runs, a
-    /// success clears it entirely — the account starts over confident.
-    #[test]
-    fn a_success_clears_the_backoff() {
-        let backoffs = Mutex::new(HashMap::new());
-        assert_eq!(current_backoff(&backoffs, "a@exemple.fr"), None);
-
-        note_outcome(&backoffs, "a@exemple.fr", false);
-        assert_eq!(
-            current_backoff(&backoffs, "a@exemple.fr"),
-            None,
-            "a single failure doesn't back off: the normal cadence is enough"
-        );
-
-        note_outcome(&backoffs, "a@exemple.fr", false);
-        assert!(
-            current_backoff(&backoffs, "a@exemple.fr").is_some(),
-            "two consecutive failures set the backoff"
-        );
-        // The other account is not touched: the backoff is PER account.
-        assert_eq!(current_backoff(&backoffs, "b@exemple.fr"), None);
-
-        note_outcome(&backoffs, "a@exemple.fr", true);
-        assert_eq!(current_backoff(&backoffs, "a@exemple.fr"), None);
     }
 
     /// The type of an attachment is deduced from its extension, case

@@ -16,6 +16,7 @@
 mod commands;
 mod fault;
 mod instance;
+mod poll;
 mod relocation;
 mod telemetry;
 mod trace;
