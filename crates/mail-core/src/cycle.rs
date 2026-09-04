@@ -141,12 +141,13 @@ pub struct SyncOutcome {
 /// The guarded poll (ADR 0017): should this folder be polled? Any
 /// uncertainty — poll refused by the server, unreadable marker — polls:
 /// sobriety doesn't have the right to cost a message.
-fn must_poll(
+fn must_poll<H: CycleHooks>(
     store: &Store,
     account_id: i64,
     mailbox: &str,
     status: Option<&FolderStatus>,
     problems: &mut Vec<String>,
+    hooks: &H,
 ) -> bool {
     let Some(status) = status else {
         return true;
@@ -166,7 +167,16 @@ fn must_poll(
         }))
     })();
     match marker {
-        Ok(marker) => crate::sync::must_poll(status, marker.as_ref()),
+        Ok(marker) => match crate::sync::poll_reason(status, marker.as_ref()) {
+            Some(reason) => {
+                // The resweep diagnostic (field 2026-09-04): a polled
+                // folder NAMES its reason in the trace — a cycle that
+                // re-polls everything can then be read, not guessed at.
+                hooks.trace(&format!("poll \"{mailbox}\": {reason}"));
+                true
+            }
+            None => false,
+        },
         Err(err) => {
             problems.push(format!("marker of \"{mailbox}\": {err}"));
             true
@@ -274,7 +284,14 @@ pub fn poll_inbox<S: MailServer, H: CycleHooks>(
     // INBOX is guarded like the others (ADR 0017): a STATUS status, the
     // poll only if something has moved.
     let inbox_status = server.folder_status(INBOX).ok();
-    let report = if must_poll(store, account_id, INBOX, inbox_status.as_ref(), problems) {
+    let report = if must_poll(
+        store,
+        account_id,
+        INBOX,
+        inbox_status.as_ref(),
+        problems,
+        hooks,
+    ) {
         let report = SyncEngine::default()
             .sync(server, store, account_id, INBOX)
             .map_err(|err| err.to_string())?;
@@ -557,7 +574,7 @@ pub fn run_sync<S: CycleConnection, H: CycleHooks>(
             // field paid 26 min of SELECT + SEARCH ALL per cycle for
             // motionless folders.
             let status = statuses.get(&mailbox);
-            if !must_poll(store, account_id, &mailbox, status, &mut problems) {
+            if !must_poll(store, account_id, &mailbox, status, &mut problems, hooks) {
                 n_skipped += 1;
                 continue;
             }
@@ -717,6 +734,54 @@ mod tests {
         assert!(
             store.envelope_count(mailbox_id).unwrap_or(0) >= 1,
             "the envelope is in the store"
+        );
+    }
+
+    /// The guarded poll (ADR 0017) across a WHOLE cycle: a second
+    /// cycle over a motionless server re-lists nothing — the field
+    /// paid 26 minutes of SELECT + SEARCH per cycle before the guard,
+    /// and the E5 field pass caught a resweep (every folder
+    /// "0 skipped") that this net must make impossible to reintroduce.
+    #[test]
+    fn a_motionless_second_cycle_lists_no_folder_again_with_condstore() {
+        motionless_second_cycle_lists_nothing(true);
+    }
+
+    #[test]
+    fn a_motionless_second_cycle_lists_no_folder_again() {
+        motionless_second_cycle_lists_nothing(false);
+    }
+
+    fn motionless_second_cycle_lists_nothing(condstore: bool) {
+        let mut store = Store::open_in_memory().expect("store");
+        let account_id = store
+            .adopt_or_create_account("cycle@test.io", "imap.test.io")
+            .expect("account");
+        let mut server = FakeServer::new(condstore);
+        server.add(1, "hello");
+
+        run_sync(
+            &mut server,
+            &mut store,
+            account_id,
+            Path::new(":memory:"),
+            &NoHooks,
+        )
+        .expect("first cycle");
+        let listed_after_first = server.uid_list_calls;
+
+        let outcome = run_sync(
+            &mut server,
+            &mut store,
+            account_id,
+            Path::new(":memory:"),
+            &NoHooks,
+        )
+        .expect("second cycle");
+        assert_eq!(outcome.report.fetched, 0, "nothing moved, nothing fetched");
+        assert_eq!(
+            server.uid_list_calls, listed_after_first,
+            "a motionless folder must be SKIPPED, never re-listed (ADR 0017)"
         );
     }
 }

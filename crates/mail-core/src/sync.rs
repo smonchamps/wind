@@ -462,26 +462,37 @@ pub struct LocalMarker {
 /// server, UIDVALIDITY changed, pending actions — polls: sobriety has no
 /// right to cost a message.
 pub fn must_poll(remote: &crate::remote::FolderStatus, local: Option<&LocalMarker>) -> bool {
+    poll_reason(remote, local).is_some()
+}
+
+/// WHY this folder polls — `None`: nothing moved, skip. The reason is
+/// pure diagnosis (PLAN-AUDIT-V3 field, 2026-09-04: a full resweep in
+/// the field could not be NAMED — the cycle now traces which criterion
+/// tripped, per folder).
+pub fn poll_reason(
+    remote: &crate::remote::FolderStatus,
+    local: Option<&LocalMarker>,
+) -> Option<&'static str> {
     let Some(local) = local else {
-        return true;
+        return Some("never polled");
     };
     if local.pending_actions {
-        return true;
+        return Some("pending actions");
     }
     let (Some(uid_validity), Some(uid_next)) = (remote.uid_validity, remote.uid_next) else {
-        return true;
+        return Some("status withheld");
     };
     if uid_validity != local.uid_validity {
-        return true;
+        return Some("uidvalidity changed");
     }
     let Some(uidnext_seen) = local.uidnext_seen else {
-        return true;
+        return Some("no uidnext marker");
     };
     if uid_next != uidnext_seen {
-        return true;
+        return Some("uidnext moved");
     }
     if u64::from(remote.messages) != local.local_messages {
-        return true;
+        return Some("message count drift");
     }
     // E2b: a flag change ALONE moves neither UIDNEXT nor MESSAGES — only
     // HIGHESTMODSEQ betrays it. A signal is required on both sides: a
@@ -490,9 +501,9 @@ pub fn must_poll(remote: &crate::remote::FolderStatus, local: Option<&LocalMarke
     // database from before E2b) polls ONCE — the SELECT of that poll sets
     // the modseq, and the folder becomes sober again.
     match (remote.highest_modseq, local.modseq_seen) {
-        (Some(remote), Some(seen)) => remote != seen,
-        (Some(_), None) => true,
-        (None, _) => false,
+        (Some(remote), Some(seen)) if remote != seen => Some("modseq moved"),
+        (Some(_), None) => Some("no modseq marker"),
+        _ => None,
     }
 }
 

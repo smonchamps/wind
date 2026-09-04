@@ -303,6 +303,37 @@ App.svelte's timer block (~250 l. with its state) dies.
 `main-thread-guard.mjs` and `freeze-probe.py` are the nets — the probe
 played OUTSIDE the gate (memory: never during a gate).
 
+**Delivered 2026-09-04** (`2b57646`, CI 33875624702, gate 203 e2e /
+0 flaky). The tick's DECISION is core policy
+(`mail_core::cycle::Cadence`, three unit tests, reality-rearm
+`ran_full`/`ran_light`); the CLOCK is a shell thread
+(`poll::spawn_scheduler`, 15 s) invoking the SAME commands the UI's
+timers invoked, in the same sequences — offline or in-flight, a tick
+does nothing; `network_state` kicks on the offline→online edge.
+**D-52 item 3 closed**: `ui_state` carries the drafts revision, the
+10 s whole-list poll is dead; the two cadence intervals, the
+sleep-wake block and the online-poll trigger left App.svelte (the UI
+keeps the manual gestures, the startup cycle, the watchdog, the 5 s
+resting probe). **ADR 0034.** mail-core 458, wind-desktop 36.
+
+**D6 intermediate field pass, 2026-09-04 — in progress.** Steps 2, 3,
+6 OK. Four findings: (F3) offline must carry the red alert disc —
+**fixed the same day** (`011001a`, CI 33879707541, A116, net proven
+RED under sabotage; in the same seam, `ui_state.sync.in_progress` —
+the bar now lights for a SHELL-driven cycle, the 2026-08-13 rule);
+(F4) the checklist's freeze-probe path was wrong — `e2e\freeze-probe.py`;
+(F2) a typed draft did not reach Gmail web — the push has always fired
+on composer CLOSE or send, never on a timer; the checklist stated a
+wrong expectation; awaiting the gesture detail (composer open or
+closed?) to say regression or not; (F1) "Synchronisation · 99 %"
+persists after the manual sync — the line renders whenever local
+envelopes < announced totals (pre-wave code); the trace's anomaly is
+account 3's full sweep (40 folders, 0 skipped, 107 s) while accounts
+1–2 skipped ~95 %; the E4 move kept the targeted-STATUS fallback
+verbatim — awaiting the at-rest persistence check and the next
+launch's `poll account 3` line. Steps 7 (corrected path) and 8 (RAM)
+still open.
+
 ### E6 — `MailServer` trait cleaned (M, ADR)
 
 `capabilities()` separated; `Folder` gains `delimiter`;
