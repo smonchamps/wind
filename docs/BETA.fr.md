@@ -4,7 +4,8 @@ Merci de tester Wind. Ce guide couvre l'installation, les deux
 avertissements que vous pouvez rencontrer (ils sont attendus, et
 expliqués honnêtement), et la façon de donner un retour.
 
-Wind est un client email Windows : rapide, sobre, local. Vos messages
+Wind est un client email pour Windows et macOS : rapide, sobre,
+local. Vos messages
 restent sur votre machine ; l'application ne contacte que vos
 fournisseurs de messagerie et la page des mises à jour. Aucune
 télémétrie réseau.
@@ -13,14 +14,19 @@ télémétrie réseau.
 
 1. Ouvrez la page des versions :
    <https://github.com/smonchamps/wind/releases/latest>
-2. Téléchargez l'installeur qui correspond à votre machine :
+2. Téléchargez le fichier qui correspond à votre machine :
    - `Wind_<version>_x64-setup.exe` — PC Intel/AMD (le cas le plus
      courant) ;
    - `Wind_<version>_arm64-setup.exe` — PC ARM (Surface Pro X,
-     Copilot+ à puce Snapdragon…).
-   En cas de doute : Paramètres Windows > Système > Informations
-   système, ligne « Type du système ».
-3. Lancez l'installeur et suivez-le.
+     Copilot+ à puce Snapdragon…) ;
+   - `Wind_<version>_x64.dmg` — Mac Intel (les Mac Apple Silicon
+     l'exécutent via Rosetta ; une version native viendra avec la
+     demande).
+   En cas de doute sur PC : Paramètres Windows > Système >
+   Informations système, ligne « Type du système ». Sur Mac : menu
+   Pomme > À propos de ce Mac.
+3. Windows : lancez l'installeur et suivez-le. Mac : ouvrez le dmg et
+   glissez Wind dans Applications.
 
 ### Si Windows affiche « Windows a protégé votre ordinateur »
 
@@ -40,6 +46,24 @@ limitation connue n° 1 de cette bêta. Si cela vous arrive :
 fausse manœuvre de votre part. Nous ne vous demanderons jamais de
 désactiver Smart App Control (sa désactivation est définitive et
 c'est une protection réelle).
+
+### Sur Mac : « Wind » ne peut pas être ouvert
+
+macOS bloque les applications non notariées par Apple — Wind ne l'est
+pas encore (même raison que les avertissements Windows ci-dessus : la
+certification attend, la bêta passe d'abord). Une fois, au premier
+lancement :
+
+1. Double-cliquez Wind ; macOS refuse. Ouvrez **Réglages Système >
+   Confidentialité et sécurité**, descendez jusqu'à *« Wind » a été
+   bloqué*, cliquez **Ouvrir quand même**, puis relancez Wind.
+2. Sous macOS 14 (Sonoma) ou avant, un raccourci existe : clic droit
+   sur Wind dans Applications, « Ouvrir », puis **Ouvrir** dans la
+   boîte de dialogue. (macOS 15 a retiré ce raccourci — passez par
+   l'étape 1.)
+
+Les mises à jour installées par Wind lui-même ne redemandent pas ce
+geste.
 
 ## 2. Connecter votre boîte
 
@@ -135,7 +159,8 @@ La version installée se lit dans Réglages > À propos — mentionnez-la.
 
 - Pas de signature commerciale de l'installeur (les avertissements du
   §1 — en attente de l'ouverture de la validation d'émetteur).
-- Windows seulement, pas de version web ni mobile.
+- Windows et macOS (natif Intel) seulement, pas de version web ni
+  mobile.
 - Le rattrapage complet d'une très grosse boîte (des centaines de
   milliers de messages) s'étale sur les premières heures d'usage — la
   recherche gagne en profondeur à mesure.

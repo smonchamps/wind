@@ -100,6 +100,14 @@ Step 6 "script syntax (node --check, PowerShell parser)" {
             return
         }
     }
+    # PLAN-MACOS: the mac release script is bash -- same rule as the
+    # .ps1 (a syntax error must never wait for release day on the
+    # MacBook). Git Bash carries `bash -n` on the workstation.
+    $sh = @(Get-ChildItem scripts -Filter *.sh)
+    foreach ($f in $sh) {
+        & bash -n $f.FullName
+        if ($LASTEXITCODE -ne 0) { Write-Host "bash syntax: $($f.Name)" -ForegroundColor Red; return }
+    }
 }
 
 # PLAN-ENGLISH-SWITCH E1: three textual nets, in seconds, played on the

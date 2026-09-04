@@ -5667,20 +5667,22 @@ pub async fn address_names(
     store_off_pump(app, move |_, store| Ok(store.address_names(&addresses)?)).await
 }
 
-/// Downloads, verifies the signature, launches the installer, and only
-/// QUITS IF that launch succeeded.
+/// Downloads, verifies the signature, installs, and only QUITS IF
+/// that install succeeded.
 ///
 /// The download stays with the plugin: the minisign verification is on
-/// that path (updater.rs:712) and stays there. The LAUNCH, though, is
-/// ours (PLAN-SIGNATURE E4, D4): the plugin's `install()` calls
+/// that path (updater.rs:712) and stays there. On Windows the LAUNCH
+/// is ours (PLAN-SIGNATURE E4, D4): the plugin's `install()` calls
 /// `ShellExecuteW` without reading its return value then exits via
 /// `exit(0)` — a Windows refusal (Smart App Control, field finding
 /// 2026-08-26) closed the application without a word and without
 /// installing anything. Here the refusal goes back up to the banner
-/// (`erreur.maj`), which re-arms.
+/// (`erreur.maj`), which re-arms. On macOS the plugin's `install` IS
+/// the flow (PLAN-MACOS D3) — see `install_downloaded`.
 ///
-/// The database doesn't move from `%APPDATA%` (NSIS, not MSIX — ADR
-/// 0013): an update can never orphan the messages.
+/// The database doesn't move from the app-data folder (NSIS, not MSIX
+/// — ADR 0013; the macOS bundle swap never touches Application
+/// Support): an update can never orphan the messages.
 #[tauri::command]
 pub async fn update_install(app: AppHandle, version: String) -> Result<(), CommandError> {
     // Same isolation guard as `update_check` (handover §7.5): a test
@@ -5758,6 +5760,20 @@ async fn download_and_launch(app: AppHandle, version: String) -> Result<(), Stri
             download_start.elapsed().as_millis()
         ),
     );
+    install_downloaded(app, update, bytes, trace_folder).await
+}
+
+/// The Windows install (ADR 0013): Wind's artifact is the bare NSIS
+/// exe, written to a fresh temp folder and launched with OUR
+/// arguments — the plugin's internals are only trusted up to
+/// `download()` (minisign verification), pinned at `=2.10.1`.
+#[cfg(windows)]
+async fn install_downloaded(
+    app: AppHandle,
+    update: tauri_plugin_updater::Update,
+    bytes: Vec<u8>,
+    trace_folder: Option<std::path::PathBuf>,
+) -> Result<(), String> {
     // Format net: the plugin used to sniff zip/exe/msi (extract,
     // updater.rs:882); Wind's artifact is the bare NSIS exe
     // (createUpdaterArtifacts: true, nsis target only). Any other
@@ -5820,6 +5836,37 @@ async fn download_and_launch(app: AppHandle, version: String) -> Result<(), Stri
     .await
 }
 
+/// The macOS install (PLAN-MACOS D3, CE 2026-09-04): the artifact is
+/// the `.app.tar.gz` the bundler emits, and the PLUGIN's own
+/// `install` replaces the bundle in place — the standard flow, kept
+/// standard on purpose (nothing NSIS-shaped exists here; the pinned
+/// `=2.10.1` audit covers this path too). Signature already verified
+/// inside `download()`. Extraction touches the disk: off the pump
+/// (ADR 0019). Then relaunch — the new version.
+#[cfg(target_os = "macos")]
+async fn install_downloaded(
+    app: AppHandle,
+    update: tauri_plugin_updater::Update,
+    bytes: Vec<u8>,
+    trace_folder: Option<std::path::PathBuf>,
+) -> Result<(), String> {
+    off_pump(app, move |app| {
+        let install_start = std::time::Instant::now();
+        update.install(&bytes).map_err(|err| err.to_string())?;
+        trace_update(
+            trace_folder.as_deref(),
+            &format!(
+                "update: bundle replaced in {} ms",
+                install_start.elapsed().as_millis()
+            ),
+        );
+        // ONLY on a successful replacement: relaunch into the new
+        // version (the Windows twin exits and lets NSIS relaunch).
+        app.restart();
+    })
+    .await
+}
+
 /// Wind's updater — ONE build for both commands.
 /// The plugin sets NO timeout (`timeout: None`): a stalled transfer
 /// would leave `check` silent at startup and freeze the banner on
@@ -5859,6 +5906,7 @@ fn trace_update(folder: Option<&Path>, line: &str) {
 
 /// The NSIS installer invocation — the pure decision, pinned down by
 /// the test `the_installer_is_invoked_passive_relaunching_and_updating`.
+#[cfg(windows)]
 fn installer_command(installer_path: &std::path::Path) -> std::process::Command {
     let mut command = std::process::Command::new(installer_path);
     command.args(["/P", "/R", "/UPDATE"]);
@@ -5920,6 +5968,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&folder);
     }
 
+    #[cfg(windows)]
     #[test]
     fn the_installer_is_invoked_passive_relaunching_and_updating() {
         let installer_path = std::path::Path::new("C:\\tmp\\Wind_0.10.2_x64-setup.exe");

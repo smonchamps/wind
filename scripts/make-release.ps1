@@ -166,13 +166,12 @@ try {
     Remove-Item Env:VITE_E2E -ErrorAction SilentlyContinue
     Pop-Location
 }
-$assets = Get-ChildItem (Join-Path $desktop "ui-v2\dist") -Recurse -File |
-    Where-Object { $_.Extension -in ".js", ".mjs", ".css", ".html", ".map" }
-$leaks = $assets | Where-Object { Select-String -Path $_.FullName -Pattern "__e2e" -Quiet }
-if ($leaks) {
-    throw "e2e seams found in the release bundle ($($leaks.Name -join ', ')) -- release interrupted, NOTHING is published."
+# The guard is ONE file shared with release-macos.sh (PLAN-MACOS
+# review): two copies of a shipping poka-yoke drift.
+& node (Join-Path $PSScriptRoot "assert-dist-clean.mjs")
+if ($LASTEXITCODE -ne 0) {
+    throw "e2e seams found in the release bundle -- release interrupted, NOTHING is published."
 }
-Write-Host "dist rebuilt clean: no __e2e in the bundle"
 
 Push-Location $desktop
 # The WIND_RELEASE_* live only for the TWO builds, and the finally removes
@@ -314,6 +313,10 @@ finally {
 
 Write-Host ""
 Write-Host "Release $Version published and marked Latest."
+Write-Host ""
+Write-Host "macOS half still due (PLAN-MACOS D4): this latest.json carries ONLY the"
+Write-Host "Windows keys -- until ./scripts/release-macos.sh $Version runs on the Mac,"
+Write-Host "darwin clients find no update (their check errors on the missing key)."
 Write-Host "Verify it: powershell scripts\verify-release.ps1 $Version (STANDARD 2.10,"
 Write-Host "BOTH platforms). Then confirm the AUTO-UPDATE on the installed app"
 Write-Host "(arm64: this workstation; x64: the second workstation, decision D5) -- the only"

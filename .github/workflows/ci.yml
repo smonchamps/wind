@@ -53,6 +53,43 @@ jobs:
   # window (measured — see ADR 0005). The E2E journeys are played by the
   # `.githooks/pre-push` hook, on a real Windows session.
 
+  # PLAN-MACOS D6 (Chief Engineer, 2026-09-04): the macOS compile-and-unit net —
+  # without it, a mac-breaking change is invisible from the Windows
+  # workstation until someone builds on the MacBook Air. No fmt (the
+  # Windows job holds it, one copy) and no e2e (WKWebView exposes no
+  # CDP — D5: the mac gate is THIS job plus the field pass).
+  # NB: `macos-latest` is an Apple Silicon runner; the product triple
+  # is x86_64-apple-darwin (D1: the build machine is an Intel Air).
+  # Every cargo step therefore names `--target x86_64-apple-darwin` --
+  # the test binaries run under Rosetta 2 -- so the job proves the
+  # triple that SHIPS, not the runner's (review 2026-09-04). Pinned
+  # versions mirror the `quality` job: a toolchain or action bump
+  # changes BOTH jobs and rust-toolchain.toml.
+  quality-macos:
+    name: clippy + tests (macOS x64, the second platform)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@032958afbdc797a9164d3bc0b56325c1308924a5 # 1.97.1
+        with:
+          components: clippy
+          targets: x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/ui-v2/package-lock.json
+      - name: Build ui-v2 (required by generate_context)
+        run: npm ci && npm run build
+        working-directory: apps/desktop/ui-v2
+      - name: Lints (warnings = errors)
+        run: cargo clippy --workspace --all-targets --target x86_64-apple-darwin -- -D warnings
+      - name: Tests (--all-targets)
+        run: cargo test --workspace --all-targets --target x86_64-apple-darwin
+      - name: Tests (--doc)
+        run: cargo test --workspace --doc --target x86_64-apple-darwin
+
   ui-v2:
     name: build ui-v2 (Svelte + Vite, PLAN-UI-V2)
     runs-on: ubuntu-latest

@@ -8,8 +8,10 @@
 #   powershell scripts\verify-release.ps1 0.6.0
 #
 # Checks, for the given version: Release marked Latest at the BARE tag;
-# the 5 named assets (2 exe, 2 sig, latest.json); latest.json without
-# BOM, matching version, BOTH platform keys; per platform: manifest
+# the 5 named Windows assets (2 exe, 2 sig, latest.json) and, once
+# release-macos.sh has uploaded them (PLAN-MACOS), the 3 macOS assets
+# (dmg, app.tar.gz, sig); latest.json without BOM, matching version,
+# every expected platform key; per platform: manifest
 # signature == .sig file, URL at the bare tag that resolves (200,
 # Content-Length == asset size); distinct signatures (anti-crossing
 # guard). What this script does NOT prove (STANDARD 2.10): the minisign
@@ -46,7 +48,11 @@ if ($null -eq $release -or $null -eq $release.assets) {
     exit 1
 }
 
-# 2. The 5 assets, named exactly.
+# 2. The assets, named exactly. 5 Windows assets always; the 3 macOS
+# assets (dmg + updater tar.gz + sig, PLAN-MACOS D4/D7) are uploaded
+# LATER by release-macos.sh from the MacBook -- before that upload the
+# script says NOT PRESENT (never PASS, never FAIL: the Windows half is
+# verifiable on publication day, the mac half on its own upload).
 $expected = @(
     "Wind_${Version}_arm64-setup.exe",
     "Wind_${Version}_arm64-setup.exe.sig",
@@ -54,8 +60,21 @@ $expected = @(
     "Wind_${Version}_x64-setup.exe.sig",
     "latest.json"
 )
+$macExpected = @(
+    "Wind_${Version}_x64.dmg",
+    "Wind_${Version}_x64.app.tar.gz",
+    "Wind_${Version}_x64.app.tar.gz.sig"
+)
 $names = @($release.assets | ForEach-Object { $_.name })
-Say ($names.Count -eq 5) "5 assets ($($names.Count) seen)"
+$macPresent = ($names -contains $macExpected[1])
+if ($macPresent) {
+    $expected += $macExpected
+} else {
+    Write-Host "NOT PRESENT  macOS assets (release-macos.sh not run yet for $Version)"
+}
+# The count DERIVES from the name list: they can never disagree, and a
+# third asset family (Apple Silicon, D-62) is one array away.
+Say ($names.Count -eq $expected.Count) "$($expected.Count) assets ($($names.Count) seen)"
 foreach ($n in $expected) {
     Say ($names -contains $n) "asset '$n' present"
 }
@@ -81,10 +100,26 @@ try {
     $manifest = [System.Text.Encoding]::UTF8.GetString($bytes) | ConvertFrom-Json
     Say ($manifest.version -eq $Version) "manifest version '$($manifest.version)'"
 
+    # The manifest key and the mac assets stand or fall TOGETHER: a
+    # darwin key whose tar.gz was deleted (or a rerun that uploaded
+    # assets but died before the manifest) is a broken release, not a
+    # "not yet" (review 2026-09-04 -- keying the checks on asset
+    # presence alone let a manifest-orphan darwin key pass silently
+    # while every mac updater 404'd).
+    $macKey = ($null -ne $manifest.platforms.'darwin-x86_64')
+    Say ($macKey -eq $macPresent) "darwin-x86_64 key and mac assets consistent (key: $macKey, assets: $macPresent)"
+
+    # `exe` names the downloadable updater artifact of the channel --
+    # the bare NSIS exe on Windows, the .app.tar.gz on macOS.
     $platforms = @(
         @{ key = "windows-aarch64"; exe = "Wind_${Version}_arm64-setup.exe" },
         @{ key = "windows-x86_64"; exe = "Wind_${Version}_x64-setup.exe" }
     )
+    if ($macPresent -or $macKey) {
+        $platforms += @{ key = "darwin-x86_64"; exe = "Wind_${Version}_x64.app.tar.gz" }
+    } else {
+        Write-Host "NOT PRESENT  darwin-x86_64 channel (mac assets not uploaded yet)"
+    }
     $signatures = @()
     foreach ($p in $platforms) {
         $entry = $manifest.platforms.($p.key)
@@ -138,8 +173,29 @@ try {
             Say $false "$($p.key): the URL does not resolve -- $($_.Exception.Message)"
         }
     }
-    # Anti-crossing guard: two channels, two DISTINCT signatures.
-    Say ($signatures.Count -eq 2 -and $signatures[0] -ne $signatures[1]) "arm64 and x64 signatures distinct"
+    # The dmg is the mac FIRST-INSTALL artifact (no .sig by design --
+    # the updater never touches it) and the only downloadable with no
+    # integrity check otherwise: at least prove it resolves whole
+    # (review 2026-09-04: a truncated --clobber re-upload passed).
+    if ($macPresent) {
+        $dmgName = "Wind_${Version}_x64.dmg"
+        $dmgAsset = $release.assets | Where-Object { $_.name -eq $dmgName }
+        try {
+            $response = Invoke-WebRequest -Uri "https://github.com/$repo/releases/download/$Version/$dmgName" -Method Head -MaximumRedirection 5 -UseBasicParsing
+            $cl = $response.Headers['Content-Length']
+            if ($cl -is [array]) { $cl = $cl[0] }
+            $size = [int64]$cl
+            Say ($response.StatusCode -eq 200 -and $size -eq $dmgAsset.size) "darwin-x86_64: the dmg resolves 200 / $size bytes (asset: $($dmgAsset.size))"
+        }
+        catch {
+            Say $false "darwin-x86_64: the dmg URL does not resolve -- $($_.Exception.Message)"
+        }
+    }
+
+    # Anti-crossing guard: one DISTINCT signature per channel, whatever
+    # their number (2 Windows, +1 macOS once uploaded).
+    $uniqueSignatures = @($signatures | Select-Object -Unique)
+    Say ($signatures.Count -eq $platforms.Count -and $uniqueSignatures.Count -eq $signatures.Count) "$($signatures.Count) channel signatures, pairwise distinct"
 }
 finally {
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue

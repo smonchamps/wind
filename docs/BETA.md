@@ -4,21 +4,25 @@ Thank you for testing Wind. This guide covers installation, the two
 warnings you may run into (they are expected, and honestly explained),
 and how to give feedback.
 
-Wind is a Windows email client: fast, sober, local. Your messages stay
-on your machine; the application only contacts your email providers
-and the update page. No network telemetry.
+Wind is an email client for Windows and macOS: fast, sober, local.
+Your messages stay on your machine; the application only contacts
+your email providers and the update page. No network telemetry.
 
 ## 1. Install
 
 1. Open the releases page:
    <https://github.com/smonchamps/wind/releases/latest>
-2. Download the installer that matches your machine:
+2. Download the file that matches your machine:
    - `Wind_<version>_x64-setup.exe` — Intel/AMD PC (the most common
      case);
    - `Wind_<version>_arm64-setup.exe` — ARM PC (Surface Pro X,
-     Snapdragon-based Copilot+ PCs…).
-   If in doubt: Windows Settings > System > About, "System type" line.
-3. Run the installer and follow it.
+     Snapdragon-based Copilot+ PCs…);
+   - `Wind_<version>_x64.dmg` — Intel Mac (Apple Silicon Macs can run
+     it through Rosetta; a native build will come with demand).
+   If in doubt on a PC: Windows Settings > System > About, "System
+   type" line. On a Mac: Apple menu > About This Mac.
+3. Windows: run the installer and follow it. Mac: open the dmg and
+   drag Wind to Applications.
 
 ### If Windows shows "Windows protected your PC"
 
@@ -36,6 +40,21 @@ to another. This is known limitation #1 of this beta. If this happens
 to you: **tell us** (see §5) — it's valuable feedback, not a mistake
 on your part. We will never ask you to disable Smart App Control (it
 can't be turned back on once disabled, and it's a real protection).
+
+### On a Mac: "Wind" can't be opened
+
+macOS blocks apps that aren't notarized by Apple — Wind isn't yet
+(same reason as the Windows warnings above: certification is pending,
+the beta comes first). Once, at first launch:
+
+1. Double-click Wind; macOS refuses. Open **System Settings >
+   Privacy & Security**, scroll down to *"Wind" was blocked*, click
+   **Open Anyway**, then launch Wind again.
+2. On macOS 14 (Sonoma) or older, a shortcut works instead:
+   right-click Wind in Applications, choose "Open", then **Open** in
+   the dialog. (macOS 15 removed this shortcut — use step 1.)
+
+Updates installed by Wind itself don't need this gesture again.
 
 ## 2. Connect your mailbox
 
@@ -128,7 +147,7 @@ The installed version is shown in Settings > About — mention it.
 
 - No commercial signature on the installer (the warnings of §1 —
   pending the opening of publisher validation).
-- Windows only, no web or mobile version.
+- Windows and macOS (Intel-native) only, no web or mobile version.
 - Fully catching up a very large mailbox (hundreds of thousands of
   messages) spreads over the first hours of use — search gets deeper
   as it goes.

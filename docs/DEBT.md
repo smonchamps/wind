@@ -1122,3 +1122,43 @@ both sets, select per `lang`, unpin the script.
   `is_inline_calendar`, or a mail-parser upgrade that reclassifies
   parts — that change must carry a rank migration, this line is its
   tripwire.
+
+### D-60 · macOS unsigned: the Gatekeeper gesture is the price
+
+- **Since**: 2026-09-04 (PLAN-MACOS, Chief-Engineer decision D2:
+  ad-hoc for the beta, no Apple Developer account).
+- **What**: the mac app is ad-hoc signed, not notarized; every tester
+  plays the "Open Anyway" gesture once per fresh install (BETA.md §1).
+  Updates installed by Wind itself are exempt (no quarantine flag on
+  updater-written files) — but the ad-hoc CDHash changes per build,
+  so after an auto-update the Keychain may prompt once per stored
+  credential before "Always Allow" re-binds (ADR 0036 consequences;
+  to watch at the second mac release).
+- **Why owned**: 99 USD/yr plus Apple enrollment before a single mac
+  tester exists; the gesture is documented and one-shot.
+- **Reopens if**: a mac tester reports Gatekeeper friction (blocked,
+  gave up, thought Wind malicious) — then notarization is bought and
+  wired into release-macos.sh.
+
+### D-61 · No e2e suite on macOS
+
+- **Since**: 2026-09-04 (PLAN-MACOS, Chief-Engineer decision D5).
+- **What**: the 205-spec Playwright suite drives WebView2 over CDP;
+  WKWebView exposes no CDP — nothing e2e runs against the mac build.
+  The mac gate is `quality-macos` (CI: clippy + full unit tests) plus
+  the manual field checklist.
+- **Why owned**: porting means a different automation stack
+  (WebDriver/tauri-driver) — a full job, not a rider on the platform
+  debut.
+- **Reopens if**: the first mac-only regression a tester finds that
+  the Windows suite cannot see.
+
+### D-62 · macOS is Intel-only
+
+- **Since**: 2026-09-04 (PLAN-MACOS §2, one triple: the build
+  machine is the Intel MacBook Air).
+- **What**: no `aarch64-apple-darwin` build; Apple Silicon Macs run
+  the x64 app through Rosetta 2.
+- **Why owned**: no Apple Silicon machine to build or field-test on.
+- **Reopens if**: an Apple Silicon tester reports Rosetta friction,
+  or an Apple Silicon build machine appears.

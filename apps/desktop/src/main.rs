@@ -13,6 +13,12 @@
 //! intents through the commands of [`commands`]; all the intelligence
 //! lives in mail-core / mail-imap / mail-smtp / mail-auth.
 
+// The platform boundary is a DECISION, not an accident of cfg holes
+// (ADR 0036): the update flow and the data root exist per platform.
+// A third platform starts here, by naming itself.
+#[cfg(not(any(windows, target_os = "macos")))]
+compile_error!("Wind targets Windows and macOS -- see ADR 0036 before adding a platform.");
+
 mod commands;
 mod fault;
 mod instance;
@@ -246,7 +252,9 @@ fn main() {
     if let Some(folder) = &folder {
         trace::init(folder.clone());
     }
-    let _instance_guard = match folder.as_deref().map(instance::lock) {
+    // `lock_patiently`, not `lock`: on macOS the updater's restart
+    // spawns us while the dying predecessor still holds the lock.
+    let _instance_guard = match folder.as_deref().map(instance::lock_patiently) {
         Some(Ok(Some(guard))) => Some(guard),
         Some(Ok(None)) => warn_and_exit("Wind est déjà ouvert.", 0), // lang:fr
         // Lock impossible (read-only folder, disk full…): we do not

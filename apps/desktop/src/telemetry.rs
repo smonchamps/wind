@@ -271,10 +271,10 @@ pub async fn telemetry_open_folder(app: AppHandle) -> Result<(), String> {
         let base = base_dir(&app)?;
         let dir = crashes_dir(&base);
         std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
-        std::process::Command::new("explorer")
-            .arg(&dir)
-            .spawn()
-            .map_err(|err| err.to_string())?;
+        // The system file browser — the `open` crate is the one
+        // doorway to the system handler (Explorer, Finder), same as
+        // `open_link` (PLAN-MACOS E1: `explorer` failed on macOS).
+        open::that_detached(&dir).map_err(|err| err.to_string())?;
         Ok(())
     })
     .await

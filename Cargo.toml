@@ -41,7 +41,11 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # hand for the timeouts — P0, PLAN-SYNCHRO).
 imap = { version = "3.0.0-alpha.14", default-features = false }
 imap-proto = "0.16"
-keyring = { version = "3", features = ["windows-native"] }
+# One feature per platform backend, each inert elsewhere (the crate
+# cfg-gates them): Credential Manager on Windows, Keychain on macOS
+# (PLAN-MACOS E1 — without `apple-native`, mail-auth has NO secure
+# storage on macOS).
+keyring = { version = "3", features = ["windows-native", "apple-native"] }
 # `rustls` + `rustls-platform-verifier` (not `rustls-tls`): the Default
 # certificate store then routes through the platform verifier — the ONE
 # TLS stack rule (ADR 0032). `rustls-tls` would pin webpki roots instead.

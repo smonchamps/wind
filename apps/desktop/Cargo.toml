@@ -51,6 +51,10 @@ tauri-plugin-dialog = "2"
 # dans mail-core : interroger le systeme de fichiers est de l'I/O de
 # plateforme, la DECISION (disk_shortfall) reste pure dans le coeur.
 fs4 = "0.13"
+# The pre-Tauri data root (single-instance lock, early trace): dirs is
+# what tauri's app_data_dir() itself reads — one truth for the folder,
+# already in the tree (PLAN-MACOS E1, review of 2026-09-04).
+dirs = "6"
 # Boite de dialogue AVANT toute fenetre Tauri (mono-instance E1, echec du
 # demenagement) : rfd est ce que tauri-plugin-dialog utilise deja — aucune
 # compilation ni feature de plus, et pas de dependance windows-sys directe.
