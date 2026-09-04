@@ -943,6 +943,12 @@ plan and PLAN-AUDIT-V2 (in progress) translated. `ANNOTATIONS-V3.md`,
 > green at each commit; baseline 76 919 → 19 633. Repaired in passing:
 > the D22-D26 records jammed on line 1 of this plan; nine stale bench
 > pointers in STANDARD §7.3 and the `-DocsOnly` flag.
+>
+> **Field (STOP 2) on 2026-09-04: E7 validated by the CE, no finding**
+> — D9 reread of STANDARD, WORKFLOW and the 31 ADRs; T6 proven twice
+> (branch refusal in English, then the missing `## [0.18.0]` entry read
+> from the translated CHANGELOG); T7 by the push itself (pre-push gate,
+> CI green 33812777584).
 
 ### E8 — The System and the architecture map (G)
 
