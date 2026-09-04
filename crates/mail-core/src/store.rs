@@ -2024,6 +2024,10 @@ impl Store {
                     .get::<_, Option<String>>(3)?
                     .as_deref()
                     .and_then(SpecialUse::from_code),
+                // Not persisted (no consumer yet, PLAN-AUDIT-V3 E6):
+                // the local read never claims a separator the database
+                // never stored.
+                delimiter: None,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)

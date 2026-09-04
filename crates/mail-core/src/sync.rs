@@ -703,6 +703,7 @@ mod sync_order_tests {
             display: wire.to_string(),
             selectable,
             special_use: None,
+            delimiter: None,
         }
     }
 
@@ -1202,6 +1203,7 @@ mod tests {
             display: "Archivés".to_string(), // lang:fr
             selectable: true,
             special_use: None,
+            delimiter: None,
         }];
         let mut store = Store::open_in_memory().unwrap();
         synced(&mut server, &mut store, &SyncEngine::default());

@@ -3024,11 +3024,21 @@ fn fetch_recipients_remote(
     uid: u32,
 ) -> Result<mail_core::MessageRecipients, String> {
     let (mut server, _refreshed) = crate::poll::connect_imap(session)?;
-    let recipients = server
-        .fetch_recipients(mailbox, uid)
+    // `fetch_recipients` is gone (PLAN-AUDIT-V3 E6, a unit duplicate of
+    // this same ENVELOPE re-read): a one-UID `fetch_envelopes` carries
+    // the same To/Cc, already parsed into `to_addrs`/`cc_addrs` (R4).
+    let envelopes = server
+        .fetch_envelopes(mailbox, &[uid])
         .map_err(|err| err.to_string());
     server.logout();
-    recipients?.ok_or_else(|| "message not found on the server".to_string())
+    let envelope = envelopes?
+        .into_iter()
+        .next()
+        .ok_or_else(|| "message not found on the server".to_string())?;
+    Ok(mail_core::MessageRecipients {
+        to: envelope.to_addrs,
+        cc: envelope.cc_addrs,
+    })
 }
 
 /// Pre-filling a forward: without a body, a forward would transmit

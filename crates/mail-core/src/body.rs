@@ -22,8 +22,12 @@ pub fn load_body(
     let Some(state) = store.sync_state(account_id, mailbox)? else {
         return Ok(None);
     };
-    match server.fetch_body_html(mailbox, uid)? {
-        Some(fetched) => {
+    match server
+        .fetch_bodies_html(mailbox, &[uid])?
+        .into_iter()
+        .next()
+    {
+        Some((_, fetched)) => {
             let invitation = invitation_from(store, account_id, fetched.ics.as_deref())?;
             store.save_body_full(
                 state.mailbox_id,
@@ -428,11 +432,15 @@ mod tests {
 
         let first = load_body(&mut server, &mut store, account, "INBOX", 1).unwrap();
         assert_eq!(first.as_deref(), Some("<p>message body</p>"));
-        assert_eq!(server.body_fetches, 1);
+        assert_eq!(server.body_batches.len(), 1);
 
         let second = load_body(&mut server, &mut store, account, "INBOX", 1).unwrap();
         assert_eq!(second.as_deref(), Some("<p>message body</p>"));
-        assert_eq!(server.body_fetches, 1, "the cache must avoid the server");
+        assert_eq!(
+            server.body_batches.len(),
+            1,
+            "the cache must avoid the server"
+        );
     }
 
     /// PLAN-INVITATIONS: the calendar part travels with the body and ends
@@ -485,6 +493,6 @@ mod tests {
             load_body(&mut server, &mut store, account, "INBOX", 1).unwrap(),
             None
         );
-        assert_eq!(server.body_fetches, 0);
+        assert_eq!(server.body_batches.len(), 0);
     }
 }

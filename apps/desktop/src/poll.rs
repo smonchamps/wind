@@ -68,13 +68,6 @@ impl mail_core::MailServer for ShellServer<'_> {
     ) -> Result<Option<Vec<Envelope>>, mail_core::Error> {
         self.0.changes_since(mailbox, modseq)
     }
-    fn fetch_body_html(
-        &mut self,
-        mailbox: &str,
-        uid: mail_core::Uid,
-    ) -> Result<Option<mail_core::FetchedBody>, mail_core::Error> {
-        self.0.fetch_body_html(mailbox, uid)
-    }
     fn fetch_bodies_html(
         &mut self,
         mailbox: &str,
@@ -96,13 +89,6 @@ impl mail_core::MailServer for ShellServer<'_> {
         index: usize,
     ) -> Result<Option<Vec<u8>>, mail_core::Error> {
         self.0.fetch_attachment(mailbox, uid, index)
-    }
-    fn fetch_recipients(
-        &mut self,
-        mailbox: &str,
-        uid: mail_core::Uid,
-    ) -> Result<Option<mail_core::MessageRecipients>, mail_core::Error> {
-        self.0.fetch_recipients(mailbox, uid)
     }
     fn set_seen(
         &mut self,

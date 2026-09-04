@@ -279,6 +279,16 @@ pub(super) fn migrate(
     // `save_body_full` redoes attachments (fresh indices), preview,
     // search index and invitation all at once. ONCE, held by the
     // marker.
+    //
+    // D-30 (docs/DEBT.md): the `attachments` criterion above misses a
+    // LEGACY message whose calendar part mail-parser never classified
+    // as an attachment (an exotic `inline` disposition) — it has no
+    // matching row there. Widened with a SECOND, independent
+    // criterion: the stored BODY itself still carries the raw
+    // `BEGIN:VCALENDAR` marker (SQLite's `LIKE` already folds ASCII
+    // case, so this reads both `BEGIN:VCALENDAR` and any
+    // lowercase/mixed-case variant a server might send). One bounded
+    // pass, at this SAME adoption moment — never a per-poll cost.
     let already_done: bool = conn
         .prepare("SELECT 1 FROM reparations WHERE nom = 'pieces-calendrier'")?
         .exists([])?;
@@ -287,7 +297,10 @@ pub(super) fn migrate(
             "CREATE TEMP TABLE reparation_calendrier AS
                  SELECT DISTINCT mailbox_id, uid FROM attachments
                  WHERE mime IN ('text/calendar', 'application/ics')
-                    OR LOWER(name) LIKE '%.ics';
+                    OR LOWER(name) LIKE '%.ics'
+             UNION
+                 SELECT DISTINCT mailbox_id, uid FROM bodies
+                 WHERE html LIKE '%BEGIN:VCALENDAR%';
              DELETE FROM bodies WHERE (mailbox_id, uid) IN
                  (SELECT mailbox_id, uid FROM reparation_calendrier);
              DELETE FROM attachments WHERE (mailbox_id, uid) IN

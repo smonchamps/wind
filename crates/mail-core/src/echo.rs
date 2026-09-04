@@ -629,12 +629,14 @@ mod tests {
                         display: "INBOX".into(),
                         selectable: true,
                         special_use: None,
+                        delimiter: None,
                     },
                     crate::Folder {
                         wire: "Trash".into(),
                         display: "Trash".into(),
                         selectable: true,
                         special_use: None,
+                        delimiter: None,
                     },
                 ],
             )

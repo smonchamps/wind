@@ -324,15 +324,28 @@ the bar now lights for a SHELL-driven cycle, the 2026-08-13 rule);
 (F4) the checklist's freeze-probe path was wrong — `e2e\freeze-probe.py`;
 (F2) a typed draft did not reach Gmail web — the push has always fired
 on composer CLOSE or send, never on a timer; the checklist stated a
-wrong expectation; awaiting the gesture detail (composer open or
-closed?) to say regression or not; (F1) "Synchronisation · 99 %"
-persists after the manual sync — the line renders whenever local
-envelopes < announced totals (pre-wave code); the trace's anomaly is
-account 3's full sweep (40 folders, 0 skipped, 107 s) while accounts
-1–2 skipped ~95 %; the E4 move kept the targeted-STATUS fallback
-verbatim — awaiting the at-rest persistence check and the next
-launch's `poll account 3` line. Steps 7 (corrected path) and 8 (RAM)
-still open.
+wrong expectation; **rooted and fixed the same day** (`ab08ea9`, CI
+33883236110): the draft sat local because lettre refuses a message
+with no destination — `draft_bytes` errored, the push counted
+`kept_local`, the UI's catch swallowed it. NOT a wave regression (the
+limit was documented by test since PLAN-BROUILLONS); **Chief-Engineer
+ruling at STOP 2: reversed** — recipient-less drafts mirror (explicit
+transport-only envelope, no invented `To:` in the pushed bytes,
+contract test rewritten), and soft push failures now trace on the
+automatic path; (F1/resweep) NOT a wave regression — the installed
+0.17.0's own log resweeps identically (11:30Z); the "99 %" line is
+transient during those legitimate sweeps; instrumented (`8f755bd`):
+`sync::poll_reason` behind `must_poll`, one trace line per polled
+folder, plus two permanent FakeServer nets (a motionless second cycle
+re-lists nothing, ± CONDSTORE). **D-51's reopening condition fired**:
+account 3 is CONDSTORE-less (`13:06:19Z` log line) — register note at
+close. **Pass CLOSED VALIDATED by the Chief Engineer, 2026-09-04**:
+recipient-less draft ON Gmail web (F2 proven in the field); the trace
+names the resweep — `poll "INBOX": modseq moved`, folders skipping
+50/52 and 10/11 again: the sweeps were LEGITIMATE CONDSTORE movement,
+the guarded poll is healthy; freeze probe 0 freeze > 150 ms over
+40 s; RAM 135 MB private working set — the 200 MB budget holds. E1-E5
+field-validated; the wave resumes at E6.
 
 ### E6 — `MailServer` trait cleaned (M, ADR)
 

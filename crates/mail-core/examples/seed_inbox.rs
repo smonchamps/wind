@@ -241,12 +241,14 @@ fn main() -> Result<(), mail_core::Error> {
             display: "Archivés".to_string(),
             selectable: true,
             special_use: None,
+            delimiter: None,
         },
         mail_core::Folder {
             wire: "Factures".to_string(),
             display: "Factures".to_string(),
             selectable: true,
             special_use: None,
+            delimiter: None,
         },
     ];
     if boite != "INBOX" {
@@ -255,6 +257,7 @@ fn main() -> Result<(), mail_core::Error> {
             display: boite.to_string(),
             selectable: true,
             special_use: None,
+            delimiter: None,
         });
     }
     store.replace_folders(account, &dossiers)?;

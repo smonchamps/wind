@@ -1030,6 +1030,7 @@ fn folder(wire: &str, display: &str) -> Folder {
         display: display.to_string(),
         selectable: true,
         special_use: None,
+        delimiter: None,
     }
 }
 
@@ -1347,6 +1348,110 @@ fn the_calendar_attachments_repair_rereads_the_affected_messages() {
         "the ordinary message does not move"
     );
     assert_eq!(store.attachments(account, "INBOX", 2).unwrap().len(), 1);
+    drop(store);
+    let _ = std::fs::remove_file(&path);
+}
+
+/// D-30 (docs/DEBT.md): a LEGACY invitation whose calendar part was
+/// never classified as an attachment (exotic `inline` disposition,
+/// mail-parser) escapes the `pieces-calendrier` criterion above — it
+/// has no `attachments` row to match on. Widened lead (the debt's
+/// own): messages whose stored BODY still carries a raw
+/// `BEGIN:VCALENDAR` marker are ALSO caught, same repair, same
+/// remedy (drop the body, the backfill rereads it and the card is
+/// born of the same scan).
+#[test]
+fn the_calendar_body_marker_repair_rereads_the_affected_message() {
+    let path = std::env::temp_dir().join(format!(
+        "wind-test-repair-cal-body-{}.db",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&path);
+    {
+        let mut store = Store::open(&path).unwrap();
+        let account = store
+            .adopt_or_create_account("moi@exemple.fr", "gmail")
+            .unwrap();
+        let id = store.create_mailbox(account, "INBOX", 1).unwrap();
+        store
+            .upsert_envelopes(
+                id,
+                &[
+                    envelope(1, "legacy invitation", 100, true),
+                    envelope(2, "simple", 90, true),
+                ],
+            )
+            .unwrap();
+        // The BEFORE state: the calendar part was never classified as
+        // an attachment (exotic disposition) — it stayed inline in the
+        // stored body, no `attachments` row of a calendar mime exists.
+        store
+            .save_body(
+                id,
+                1,
+                "<p>invitation</p>BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nEND:VCALENDAR\r\n",
+                &[],
+            )
+            .unwrap();
+        store
+            .save_body(id, 2, "<p>simple</p>", &[pdf(0, "note.pdf")])
+            .unwrap();
+        // Replays the arrival of a database from BEFORE the widening.
+        store
+            .conn()
+            .execute(
+                "DELETE FROM reparations WHERE nom = 'pieces-calendrier'",
+                [],
+            )
+            .unwrap();
+    }
+
+    Store::forget_initialization(&path);
+    let mut store = Store::open(&path).unwrap();
+    let account = store
+        .adopt_or_create_account("moi@exemple.fr", "gmail")
+        .unwrap();
+    assert_eq!(
+        store.body(account, "INBOX", 1).unwrap(),
+        None,
+        "the message whose BODY carries the marker will be reread"
+    );
+    assert_eq!(
+        store.body(account, "INBOX", 2).unwrap().as_deref(),
+        Some("<p>simple</p>"),
+        "the ordinary message does not move"
+    );
+
+    // The adoption path: the backfill rereads the dropped body from the
+    // server, which now serves the calendar part it always carried —
+    // the card must be born of this very re-fetch.
+    let mut server = crate::test_support::FakeServer::new(false);
+    server.add_with_body(1, "legacy invitation", "<p>invitation</p>");
+    server.ics.insert(
+        1,
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REQUEST\r\n\
+         BEGIN:VEVENT\r\nUID:legacy@exemple.fr\r\nSUMMARY:Legacy sync\r\n\
+         DTSTART:20260903T123000Z\r\n\
+         ORGANIZER;CN=Claire Martin:mailto:claire@exemple.fr\r\n\
+         ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:moi@exemple.fr\r\n\
+         END:VEVENT\r\nEND:VCALENDAR\r\n"
+            .to_string(),
+    );
+    crate::backfill::backfill_bodies(
+        &mut server,
+        &mut store,
+        account,
+        "INBOX",
+        crate::NO_HORIZON,
+        10,
+    )
+    .unwrap();
+
+    let stored = store
+        .invitation(account, "INBOX", 1)
+        .unwrap()
+        .expect("the invitation row must be born of the repair + backfill");
+    assert_eq!(stored.row.title, "Legacy sync");
     drop(store);
     let _ = std::fs::remove_file(&path);
 }
@@ -4920,6 +5025,7 @@ fn the_spam_rule_goes_to_the_resolved_junk_folder() {
                 display: "Junk".to_string(),
                 selectable: true,
                 special_use: None,
+                delimiter: None,
             }],
         )
         .unwrap();

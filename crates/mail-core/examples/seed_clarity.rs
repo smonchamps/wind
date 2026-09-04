@@ -113,6 +113,7 @@ fn dossiers(store: &Store, compte: i64) -> Result<(), mail_core::Error> {
                 display: nom.to_string(),
                 selectable: true,
                 special_use: None,
+                delimiter: None,
             })
             .collect::<Vec<_>>(),
     )

@@ -1082,6 +1082,7 @@ mod tests {
             display: name.to_string(),
             selectable: true,
             special_use: role,
+            delimiter: None,
         };
         store
             .replace_folders(
@@ -1124,6 +1125,7 @@ mod tests {
             display: wire.to_string(),
             selectable: true,
             special_use: None,
+            delimiter: None,
         }
     }
 
@@ -1378,6 +1380,7 @@ mod tests {
                     display: "Trash".into(),
                     selectable: true,
                     special_use: None,
+                    delimiter: None,
                 }],
             )
             .unwrap();

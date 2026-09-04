@@ -24,8 +24,7 @@ use std::time::Duration;
 use imap_proto::NameAttribute;
 use imap_proto::types::UidSetMember;
 use mail_core::{
-    Envelope, Error, FetchedBody, MailServer, MailboxSnapshot, MessageRecipients, RemoteDraft,
-    ThreadHeaders, Uid,
+    Envelope, Error, FetchedBody, MailServer, MailboxSnapshot, RemoteDraft, ThreadHeaders, Uid,
 };
 
 /// The cycle's timeouts (P0, PLAN-SYNCHRO): without them, a network stalling
@@ -716,17 +715,6 @@ impl MailServer for ImapServer {
         Ok(Some(envelopes))
     }
 
-    fn fetch_body_html(&mut self, mailbox: &str, uid: Uid) -> Result<Option<FetchedBody>, Error> {
-        self.ensure_selected(mailbox)?;
-        let fetches = self
-            .session
-            .uid_fetch(uid.to_string(), "(UID BODY.PEEK[])")
-            .map_err(server_err)?;
-        Ok(fetches
-            .iter()
-            .find_map(|fetch| body_from_raw(fetch.body()?)))
-    }
-
     /// One `UID FETCH` command per batch — that is what makes the body
     /// backfill tenable (one round trip per message costs ~192 ms on a real
     /// server, cf. `spikes/body-backfill`). The sizes first (`RFC822.SIZE`,
@@ -790,25 +778,6 @@ impl MailServer for ImapServer {
         Ok(fetches
             .iter()
             .find_map(|fetch| convert::attachment_bytes(fetch.body()?, index)))
-    }
-
-    /// Re-reads the message's ENVELOPE to extract To and Cc: the locally
-    /// stored envelope does not carry them, "Reply all" asks for them at
-    /// click time — an on-demand round trip, not a byte more in the
-    /// database nor in the "envelopes first" sync.
-    fn fetch_recipients(
-        &mut self,
-        mailbox: &str,
-        uid: Uid,
-    ) -> Result<Option<MessageRecipients>, Error> {
-        self.ensure_selected(mailbox)?;
-        let fetches = self
-            .session
-            .uid_fetch(uid.to_string(), "(UID ENVELOPE)")
-            .map_err(server_err)?;
-        Ok(fetches
-            .iter()
-            .find_map(|fetch| Some(convert::envelope_recipients(fetch.envelope()?))))
     }
 
     fn folders(&mut self) -> Result<Vec<mail_core::Folder>, Error> {
@@ -1002,6 +971,9 @@ fn name_to_folder(name: &imap::types::Name<'_>) -> mail_core::Folder {
                 _ => return None,
             })
         }),
+        // The LIST hierarchy separator (RFC 3501 §7.2.2) — the imap
+        // crate already parses it, we used to drop it on the floor.
+        delimiter: name.delimiter().map(str::to_string),
     }
 }
 

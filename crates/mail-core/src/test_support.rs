@@ -9,7 +9,7 @@ use chrono::{TimeZone, Utc};
 use crate::cycle::CycleConnection;
 use crate::envelope::{Envelope, Uid};
 use crate::error::Error;
-use crate::remote::{FetchedBody, MailServer, MailboxSnapshot, MessageRecipients, ThreadHeaders};
+use crate::remote::{FetchedBody, MailServer, MailboxSnapshot, ThreadHeaders};
 use crate::store::Store;
 
 pub(crate) struct FakeServer {
@@ -32,8 +32,6 @@ pub(crate) struct FakeServer {
     pub(crate) body_batches: Vec<Vec<Uid>>,
     /// `References` served by the fake server, by UID.
     pub(crate) references: BTreeMap<Uid, String>,
-    /// Recipients (To / Cc) served by the fake server, by UID.
-    pub(crate) recipients: BTreeMap<Uid, MessageRecipients>,
     /// Batches of headers requested: the proof that the pass batches.
     pub(crate) header_batches: Vec<Vec<Uid>>,
     pub(crate) folders: Vec<crate::remote::Folder>,
@@ -67,7 +65,6 @@ impl FakeServer {
             body_fetches: 0,
             body_batches: Vec::new(),
             references: BTreeMap::new(),
-            recipients: BTreeMap::new(),
             header_batches: Vec::new(),
             folders: Vec::new(),
             moved: Vec::new(),
@@ -230,15 +227,6 @@ impl MailServer for FakeServer {
         ))
     }
 
-    fn fetch_body_html(&mut self, _mailbox: &str, uid: Uid) -> Result<Option<FetchedBody>, Error> {
-        self.body_fetches += 1;
-        Ok(self.bodies.get(&uid).map(|html| {
-            let mut fetched = FetchedBody::html(html);
-            fetched.ics = self.ics.get(&uid).cloned();
-            fetched
-        }))
-    }
-
     fn fetch_bodies_html(
         &mut self,
         _mailbox: &str,
@@ -280,19 +268,6 @@ impl MailServer for FakeServer {
                 ))
             })
             .collect())
-    }
-
-    /// The fake server returns the recipients set in `recipients` —
-    /// empty by default: a message may have neither readable To nor Cc.
-    fn fetch_recipients(
-        &mut self,
-        _mailbox: &str,
-        uid: Uid,
-    ) -> Result<Option<MessageRecipients>, Error> {
-        if !self.messages.contains_key(&uid) {
-            return Ok(None);
-        }
-        Ok(Some(self.recipients.get(&uid).cloned().unwrap_or_default()))
     }
 
     /// The fake server serves the bytes it was given — enough to prove

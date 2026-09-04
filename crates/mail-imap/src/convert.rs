@@ -243,16 +243,6 @@ pub(crate) fn envelope_from_parts(
     }
 }
 
-/// The recipients (To / Cc) of an ENVELOPE, raw addresses — what "Reply
-/// all" re-reads at click time, the stored envelope only carrying the
-/// sender.
-pub(crate) fn envelope_recipients(proto: &ProtoEnvelope<'_>) -> mail_core::MessageRecipients {
-    mail_core::MessageRecipients {
-        to: address_list(proto.to.as_deref()),
-        cc: address_list(proto.cc.as_deref()),
-    }
-}
-
 /// The raw addresses of an ENVELOPE list; those without a complete
 /// `mailbox@host` (RFC 5322 groups, empty entries) are silenced.
 fn address_list(addresses: Option<&[Address<'_>]>) -> Vec<String> {
@@ -769,8 +759,12 @@ mod tests {
         assert_eq!(uid_set(&[9, 7, 8, 8, 1]), "1,7:9");
     }
 
+    /// `to_addrs`/`cc_addrs` come from the SAME ENVELOPE fields the removed
+    /// `fetch_recipients` used to re-read on demand (PLAN-AUDIT-V3 E6): this
+    /// is now their only coverage, `envelope_recipients` having been deleted
+    /// as a unit duplicate of the same `address_list` conversion.
     #[test]
-    fn envelope_recipients_reads_raw_to_and_cc_addresses() {
+    fn envelope_reads_raw_to_and_cc_addresses() {
         let mut proto = proto_envelope(b"subject", address(None, Some(b"alice"), Some(b"a.fr")));
         proto.to = Some(vec![
             address(Some(b"Bob"), Some(b"bob"), Some(b"b.fr")),
@@ -778,9 +772,9 @@ mod tests {
             address(Some(b"the group"), None, None),
         ]);
         proto.cc = Some(vec![address(None, Some(b"carole"), Some(b"c.fr"))]);
-        let recipients = envelope_recipients(&proto);
-        assert_eq!(recipients.to, vec!["bob@b.fr"]);
-        assert_eq!(recipients.cc, vec!["carole@c.fr"]);
+        let envelope = envelope_from_parts(1, Some(&proto), None, false, false);
+        assert_eq!(envelope.to_addrs, vec!["bob@b.fr"]);
+        assert_eq!(envelope.cc_addrs, vec!["carole@c.fr"]);
     }
 
     const ICS_MINIMAL: &str = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REQUEST\r\n\
@@ -848,11 +842,11 @@ mod tests {
     }
 
     #[test]
-    fn envelope_recipients_tolerates_missing_lists() {
+    fn envelope_tolerates_missing_to_and_cc_lists() {
         let proto = proto_envelope(b"subject", address(None, Some(b"alice"), Some(b"a.fr")));
-        let recipients = envelope_recipients(&proto);
-        assert!(recipients.to.is_empty());
-        assert!(recipients.cc.is_empty());
+        let envelope = envelope_from_parts(1, Some(&proto), None, false, false);
+        assert!(envelope.to_addrs.is_empty());
+        assert!(envelope.cc_addrs.is_empty());
     }
 
     #[test]

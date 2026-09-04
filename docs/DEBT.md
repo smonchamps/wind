@@ -644,7 +644,7 @@ deferral = one justified line.)
   invitations or searches them by title. Leads: index the invitation
   title in FTS at `save_body_full` ; attach the ICS on forward.
 
-### D-30 · A legacy invitation WITHOUT a calendar attachment row has no card
+### ~~D-30 · A legacy invitation WITHOUT a calendar attachment row has no card~~ — closed 2026-09-04
 
 - **Fact (review PLAN-INVITATIONS, 2026-08-22)**: adopting existing
   data goes through the `pieces-calendrier` repair (bodies of messages
@@ -661,6 +661,20 @@ deferral = one justified line.)
   invitation with no card". Lead: widen the repair to messages whose
   BODY contains a BEGIN:VCALENDAR marker (SQL LIKE criterion, one
   pass).
+- **Closed at PLAN-AUDIT-V3 E6 (2026-09-04)**: the debt's own lead
+  applied verbatim — `pieces-calendrier` (`store/migrations.rs`) now
+  ALSO selects `(mailbox_id, uid)` from `bodies` whose `html` matches
+  `LIKE '%BEGIN:VCALENDAR%'` (SQLite folds ASCII case on `LIKE`, no
+  extra `COLLATE` needed), unioned with the original `attachments`
+  criterion, same single bounded pass, same repair (drop body +
+  attachments, the backfill rereads and re-derives the card). Proven
+  by breaking it: RED first (a message seeded with a body carrying the
+  marker but NO calendar `attachments` row survived the repair
+  untouched), GREEN once the second criterion was added — the
+  backfill then rereads the dropped body from a fake server and the
+  `invitations` row is born of that same re-fetch
+  (`the_calendar_body_marker_repair_rereads_the_affected_message`,
+  `crates/mail-core/src/store/tests.rs`).
 
 ### D-31 · `drafts` does not carry `ics_reply` — the draft round trip would lose it
 
@@ -1056,3 +1070,21 @@ both sets, select per `lang`, unpin the script.
   living value.
 - **Reopens if**: an English-only reader needs them — an open beta, an
   external contributor reading history.
+
+### D-59 · The attachment rank is a function of the adapter's inline filters
+
+- **Since**: 2026-09-04 (PLAN-AUDIT-V3 E6, re-scoped out of D-30 at
+  its closure; audit 2026-09-01 finding at `convert.rs:537-562`).
+- **What**: a stored attachment's rank is its position in
+  mail-parser's `.attachments()` walk AFTER the inline-image and
+  inline-calendar exclusions — stable only while those filters and
+  mail-parser's classification stay frozen. Any filter change shifts
+  every stored rank retroactively; the fetch would then serve the
+  wrong part.
+- **Why owned**: the filters are frozen in practice, and addressing
+  parts by structural MIME path instead would require a rank
+  migration of the stored rows — disproportionate while nothing moves.
+- **Reopens if**: any change to `is_inlined_image`,
+  `is_inline_calendar`, or a mail-parser upgrade that reclassifies
+  parts — that change must carry a rank migration, this line is its
+  tripwire.

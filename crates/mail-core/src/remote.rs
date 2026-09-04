@@ -116,6 +116,11 @@ pub struct Folder {
     /// for canonical folders (PLAN-AUDIT-V2 E5: `[Gmail]` was hardcoded,
     /// a "[Google Mail]/…" account lost Archive, Spam and Trash).
     pub special_use: Option<SpecialUse>,
+    /// The hierarchy separator announced by LIST (`.`, `/`…) — `None`
+    /// for a flat namespace or a server that leaves it unannounced.
+    /// No consumer reads it yet (PLAN-AUDIT-V3 E6): it lands so the
+    /// model stops silently dropping what the adapter already parses.
+    pub delimiter: Option<String>,
 }
 
 /// The RFC 6154 roles a folder can carry — what the server KNOWS,
@@ -194,17 +199,12 @@ pub trait MailServer {
     fn changes_since(&mut self, mailbox: &str, modseq: u64)
     -> Result<Option<Vec<Envelope>>, Error>;
 
-    /// A message's body, ready to sanitize (MIME extraction is the
-    /// adapter's responsibility). `None` if the message no longer
-    /// exists.
-    fn fetch_body_html(&mut self, mailbox: &str, uid: Uid) -> Result<Option<FetchedBody>, Error>;
-
     /// Bodies of SEVERAL messages in a single command. UIDs the server
     /// no longer serves are simply absent from the result.
     ///
     /// Deliberately without a default implementation: a fallback that
-    /// looped over [`Self::fetch_body_html`] would be silently ruinous.
-    /// A per-message round trip costs ~192 ms on a real server
+    /// looped it one UID at a time would be silently ruinous. A
+    /// per-message round trip costs ~192 ms on a real server
     /// (`spikes/body-backfill`) — catching up a whole mailbox is only
     /// tenable by batching, and each adapter must say so explicitly.
     fn fetch_bodies_html(
@@ -245,14 +245,6 @@ pub trait MailServer {
         uid: Uid,
         index: usize,
     ) -> Result<Option<Vec<u8>>, Error>;
-
-    /// A message's recipients (To / Cc) — "Reply all". `None` if the
-    /// message no longer exists on the server.
-    fn fetch_recipients(
-        &mut self,
-        mailbox: &str,
-        uid: Uid,
-    ) -> Result<Option<MessageRecipients>, Error>;
 
     /// Applies (or removes) the `\Seen` flag server-side.
     fn set_seen(&mut self, mailbox: &str, uid: Uid, seen: bool) -> Result<(), Error>;

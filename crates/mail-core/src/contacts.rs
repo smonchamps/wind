@@ -341,6 +341,7 @@ mod tests {
                         display: name.to_string(),
                         selectable: true,
                         special_use: None,
+                        delimiter: None,
                     })
                     .collect::<Vec<_>>(),
             )
