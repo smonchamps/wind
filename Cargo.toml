@@ -36,16 +36,26 @@ base64 = "0.22"
 # features par défaut : elles tirent jmap-tools/serde/uuid, inutiles ici.
 calcard = { version = "0.3.11", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-imap = "3.0.0-alpha.14"
+# default-features off: the crate's default pulls native-tls for its
+# convenience connectors, which mail-imap never uses (streams built by
+# hand for the timeouts — P0, PLAN-SYNCHRO).
+imap = { version = "3.0.0-alpha.14", default-features = false }
 imap-proto = "0.16"
 keyring = { version = "3", features = ["windows-native"] }
-lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "rustls-tls", "builder"] }
+# `rustls` + `rustls-platform-verifier` (not `rustls-tls`): the Default
+# certificate store then routes through the platform verifier — the ONE
+# TLS stack rule (ADR 0032). `rustls-tls` would pin webpki roots instead.
+lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "rustls", "ring", "rustls-platform-verifier", "builder"] }
 mail-parser = { version = "0.11", features = ["full_encoding"] }
-# Le backend TLS que `imap` embarque déjà (feature par défaut) : exposé en
-# dépendance directe pour poser les timeouts socket AVANT la poignée de
-# main (P0, PLAN-SYNCHRO) — le ClientBuilder de la crate ne borne rien.
-native-tls = "0.2"
 oauth2 = { version = "5", default-features = false, features = ["reqwest-blocking", "rustls-tls"] }
+# ONE TLS stack for IMAP, SMTP and OAuth (ADR 0032): rustls with the
+# platform verifier — the Windows certificate store decides, corporate
+# CAs included, exactly as the updater already does. `ring` as the SOLE
+# crypto provider: a second provider (aws-lc-rs, rustls's default) makes
+# rustls's auto-selection panic at the first handshake — measured at the
+# E1 spike (spikes/tls-stack).
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-platform-verifier = "0.7"
 rusqlite = { version = "0.37", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

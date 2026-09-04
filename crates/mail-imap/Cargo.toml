@@ -10,7 +10,8 @@ imap.workspace = true
 imap-proto.workspace = true
 mail-core.workspace = true
 mail-parser.workspace = true
-native-tls.workspace = true
+rustls.workspace = true
+rustls-platform-verifier.workspace = true
 
 [dev-dependencies]
 anyhow.workspace = true

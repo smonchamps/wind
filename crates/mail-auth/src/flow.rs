@@ -63,7 +63,17 @@ pub(crate) fn oauth_client(
 }
 
 pub(crate) fn http_client() -> Result<HttpClient, AuthError> {
+    // rustls with the PLATFORM verifier (Windows certificate store,
+    // corporate CAs included) — the ONE TLS stack rule (ADR 0032): without
+    // this, reqwest's plain rustls path trusts webpki roots only, and a
+    // corporate CA that works in IMAP fails here.
+    use rustls_platform_verifier::BuilderVerifierExt;
+    let tls = rustls::ClientConfig::builder()
+        .with_platform_verifier()
+        .map_err(|err| AuthError::Config(err.to_string()))?
+        .with_no_client_auth();
     oauth2::reqwest::blocking::ClientBuilder::new()
+        .use_preconfigured_tls(tls)
         .redirect(oauth2::reqwest::redirect::Policy::none())
         .build()
         .map_err(|err| AuthError::Config(err.to_string()))

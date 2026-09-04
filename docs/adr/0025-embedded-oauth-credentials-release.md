@@ -43,6 +43,15 @@ before the closed beta.
   missing from this binary — install an official Wind release; in
   development, set {VAR}."
 
+## Client type — confirmed
+
+The audit of 2026-09-01 (decision #7) asked to confirm the assumption
+this ADR rests on: **checked by the Chief Engineer in the Google Cloud
+console on 2026-09-04 — the Wind OAuth client is the "Desktop app" type**, whose
+secret is non-confidential by design (Google's own documentation).
+Compiling it into the binary discloses nothing that the client type
+does not already treat as public.
+
 ## Named limits
 
 - The script's `$oauth` table duplicates the `option_env!` calls of

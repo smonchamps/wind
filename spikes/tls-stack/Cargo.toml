@@ -1,0 +1,27 @@
+# Spike E1 (PLAN-AUDIT-V3, decision D2) — can Wind unify on ONE TLS
+# stack: rustls + rustls-platform-verifier (Windows cert store), across
+# its three TLS users (mail-imap, mail-smtp/lettre, mail-auth/oauth2)?
+# THROW-AWAY: outside the production workspace, like every spike.
+[workspace]
+
+[package]
+name = "spike-tls-stack"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1"
+# Pinned "=" to the exact versions in the production Cargo.lock, so the
+# compilation proof speaks about what Wind actually ships.
+# Production features + "rustls-platform-verifier": the implicit feature
+# of lettre's optional dependency — its build_rustls() then routes
+# CertificateStore::Default through rustls_platform_verifier::Verifier.
+lettre = { version = "=0.11.22", default-features = false, features = ["smtp-transport", "rustls-tls", "builder", "rustls-platform-verifier"] }
+oauth2 = { version = "=5.0.0", default-features = false, features = ["reqwest-blocking", "rustls-tls"] }
+reqwest = { version = "=0.12.28", default-features = false, features = ["blocking", "rustls-tls"] }
+imap = { version = "=3.0.0-alpha.15", default-features = false }
+# "ring" only: the provider already in the production lock (ring 0.17.14,
+# no aws-lc-rs). Default features MUST stay off — they pull aws-lc-rs,
+# and two providers in the tree break rustls's auto-selection at runtime.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-platform-verifier = "0.7"

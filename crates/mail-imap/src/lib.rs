@@ -79,11 +79,8 @@ fn connect_client(
     tcp.set_write_timeout(Some(io_timeout))
         .map_err(|err| context(err.to_string()))?;
 
-    let connector = native_tls::TlsConnector::new().map_err(|err| context(err.to_string()))?;
     if port == 993 {
-        let tls = connector
-            .connect(host, tcp)
-            .map_err(|err| context(err.to_string()))?;
+        let tls = tls_stream(host, tcp).map_err(context)?;
         let mut client =
             imap::Client::new(Box::new(BoundedStream::new(tls, io_timeout)) as imap::Connection);
         client.read_greeting().map_err(server_err)?;
@@ -107,15 +104,42 @@ fn connect_client(
             }
             return Err(context(format!("STARTTLS refused: {}", line.trim_end())));
         }
-        let tls = connector
-            .connect(host, tcp)
-            .map_err(|err| context(err.to_string()))?;
+        let tls = tls_stream(host, tcp).map_err(context)?;
         // No greeting to read: it was consumed in cleartext, the server
         // does not send another after STARTTLS (RFC 3501 §6.2.1).
         Ok(imap::Client::new(
             Box::new(BoundedStream::new(tls, io_timeout)) as imap::Connection,
         ))
     }
+}
+
+/// Wraps an already-bounded TCP socket in TLS — rustls with the PLATFORM
+/// verifier: the Windows certificate store decides, corporate CAs included,
+/// exactly as native-tls (SChannel) did before and as the updater still
+/// does. ONE TLS stack for the whole app (ADR 0032). The handshake is
+/// driven to completion HERE, under the socket's timeouts: a certificate
+/// refusal must surface at connect, not at the first command.
+fn tls_stream(
+    host: &str,
+    tcp: TcpStream,
+) -> Result<rustls::StreamOwned<rustls::ClientConnection, TcpStream>, String> {
+    use rustls_platform_verifier::BuilderVerifierExt;
+    let config = rustls::ClientConfig::builder()
+        .with_platform_verifier()
+        .map_err(|err| err.to_string())?
+        .with_no_client_auth();
+    let name =
+        rustls::pki_types::ServerName::try_from(host.to_string()).map_err(|err| err.to_string())?;
+    let conn = rustls::ClientConnection::new(std::sync::Arc::new(config), name)
+        .map_err(|err| err.to_string())?;
+    let mut stream = rustls::StreamOwned::new(conn, tcp);
+    while stream.conn.is_handshaking() {
+        stream
+            .conn
+            .complete_io(&mut stream.sock)
+            .map_err(|err| err.to_string())?;
+    }
+    Ok(stream)
 }
 
 /// The TCP socket under a stream (bare, or under TLS): it is ON IT that the
@@ -131,7 +155,7 @@ impl InnerSocket for TcpStream {
     }
 }
 
-impl InnerSocket for native_tls::TlsStream<TcpStream> {
+impl InnerSocket for rustls::StreamOwned<rustls::ClientConnection, TcpStream> {
     fn socket(&self) -> &TcpStream {
         self.get_ref()
     }
@@ -1184,5 +1208,33 @@ mod connect_timeout_tests {
         let refusal =
             mail_core::Error::Server("AUTHENTICATIONFAILED Invalid credentials".to_string());
         assert!(!super::is_connection_error(&refusal));
+    }
+}
+
+/// One-TLS-stack net (PLAN-AUDIT-V3 E1, ADR 0032): the whole workspace runs
+/// on rustls + rustls-platform-verifier — the Windows certificate store as
+/// verifier, the updater's stack. A dependency bump that quietly reintroduces
+/// native-tls (hence OpenSSL) would split certificate behavior again: the
+/// audit's original finding was a corporate CA working in IMAP and failing
+/// in SMTP/OAuth.
+#[cfg(test)]
+mod tls_stack_net {
+    #[test]
+    fn the_workspace_ships_one_tls_stack() {
+        let lock =
+            std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.lock"))
+                .expect("workspace Cargo.lock");
+        assert!(
+            !lock.contains("name = \"native-tls\""),
+            "native-tls is back in the lockfile: two TLS stacks again"
+        );
+        assert!(
+            !lock.contains("name = \"openssl-sys\""),
+            "openssl-sys is back in the lockfile"
+        );
+        assert!(
+            lock.contains("name = \"rustls-platform-verifier\""),
+            "rustls-platform-verifier missing: the platform certificate store is not the verifier"
+        );
     }
 }
