@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # Revue de conception — clôture de la Phase 0 (2026-07-12)
 
 Conformément au plan ([PLAN.md](../PLAN.md) §2), la Phase 0 se clôt par cette

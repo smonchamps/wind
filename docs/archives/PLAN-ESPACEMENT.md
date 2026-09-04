@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-08-25; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # PLAN-ESPACEMENT — trois crans d'air entre les messages
 
 > **SOLDÉ au terrain le 2026-08-25 — 7/7, zéro constat.** STOP 1 passé

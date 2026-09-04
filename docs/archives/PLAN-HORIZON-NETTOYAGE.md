@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-08-30; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # PLAN-HORIZON-NETTOYAGE — profondeur d'historique à l'ajout d'un compte, et « Nettoyage de printemps »
 
 > Ouvert le 2026-08-30. Deux volets demandés ensemble par le CE.

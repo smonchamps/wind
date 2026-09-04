@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-08-23; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # PLAN-RETOURS-9 — OAuth transparent, libellé de suppression, noms de comptes
 
 > **CHANTIER SOLDÉ le 2026-08-23 — terrain complet** (6/6, zéro KO au

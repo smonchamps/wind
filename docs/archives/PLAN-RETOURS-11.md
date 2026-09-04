@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-08-28; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # PLAN-RETOURS-11 — trois retours CE (mémoire d'images, Made in EU, bêta)
 
 > **CHANTIER SOLDÉ le 2026-08-28 — terrain complet.** Ouvert le

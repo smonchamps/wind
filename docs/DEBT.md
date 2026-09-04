@@ -1042,3 +1042,17 @@ decision). The rule the Chief Engineer set: **every screenshot shown to
 the user is in the language the user chose** — one set per language,
 selected with the catalogue. To do at the next onboarding job: capture
 both sets, select per `lang`, unpin the script.
+
+### D-58 · The archives stay French under an English banner
+
+- **Since**: 2026-09-04 (PLAN-ENGLISH-SWITCH E9, decision D1 of
+  2026-09-02: « Geler avec bandeau »).
+- **What**: the 53 files of `docs/archives/` (closing reviews, closed
+  plans, the v1 System) are French, frozen as historical record; each
+  carries an English banner at its head, and the language ratchet and
+  the markdown-links net exclude the directory.
+- **Why owned**: closed documents the method never rereads (§0 reads
+  STANDARD, STATE, PLAN, the ADRs); ~40 % of the doc volume for zero
+  living value.
+- **Reopens if**: an English-only reader needs them — an open beta, an
+  external contributor reading history.

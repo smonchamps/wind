@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-08-15; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # Plan — Système v2 « Wada » : la palette, la signature du vent et les dessins des pistes
 
 **CHANTIER SOLDÉ le 2026-08-15 — terrain complet le jour même.** GO

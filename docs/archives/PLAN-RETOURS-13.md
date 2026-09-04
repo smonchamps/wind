@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-08-30; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # PLAN-RETOURS-13 — douze retours CE sur le Mode organisé (post-0.14.0)
 
 > **CHANTIER SOLDÉ le 2026-08-30 — terrain complet.** Douze retours

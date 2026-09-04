@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-08-15; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # PLAN-ISOLATION-E2E — deux suites e2e simultanées ne doivent plus se marcher dessus
 
 **CHANTIER SOLDÉ le 2026-08-15 — terrain complet.** Commit `ec1fe61`

@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # Revue de clôture — Phase 3 « recherche, multi-comptes, échelle » (2026-07-25)
 
 La recherche, le multi-comptes et le passage à l'échelle du plan

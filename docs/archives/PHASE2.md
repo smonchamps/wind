@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # Revue de clôture — Phase 2 « je travaille dans mes mails » (2026-07-17)
 
 Le triage et l'écriture du plan ([PLAN.md](../PLAN.md) §4) sont livrés, validés

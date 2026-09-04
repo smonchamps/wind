@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-08-18; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # PLAN-RETOURS-3 — quatre retours terrain (rattrapage %, spam, brouillon, réponse par message)
 
 > **CHANTIER SOLDÉ le 2026-08-18 — terrain complet.** Commit `8819090`

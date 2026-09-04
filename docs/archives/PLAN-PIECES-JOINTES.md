@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-08-14; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # Plan — Pièces jointes : l'envoi
 
 **CHANTIER SOLDÉ le 2026-08-14.** Le dernier constat dû — la copie

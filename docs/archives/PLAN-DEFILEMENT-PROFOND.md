@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-08-20; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # PLAN-DEFILEMENT-PROFOND — le drag de la barre ne doit plus affamer l'application
 
 > **CHANTIER SOLDÉ le 2026-08-20 — terrain complet.** Commit `70e44e3`

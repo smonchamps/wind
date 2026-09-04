@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-08-29; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # PLAN-MONA — un troisième thème « Mona » (clair + nuit)
 
 > **Renommé le 2026-08-29 (A95)** : le thème s'appelle désormais

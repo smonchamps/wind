@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-08-21; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # PLAN-RETOURS-5 — l'écho d'envoi dit vrai, l'adresse se complète
 
 > **CHANTIER SOLDÉ le 2026-08-21 — terrain complet.** Chantier ouvert,

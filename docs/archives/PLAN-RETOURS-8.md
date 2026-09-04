@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-08-22; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # PLAN-RETOURS-8 — repères de comptes, parcours de premier démarrage, release bi-arch
 
 > Chantier ouvert le 2026-08-22 (`/job`), sur trois retours CE :

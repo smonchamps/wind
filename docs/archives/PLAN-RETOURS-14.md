@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-08-31; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # PLAN-RETOURS-14 — sept retours CE (post-0.15.0)
 
 > Ouvert le 2026-08-31. Sept retours d'utilisation réelle : six

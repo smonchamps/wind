@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-09-02; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # PLAN-AUDIT-V1 — vague 1 de l'audit du 2026-09-01 : les S1 du cœur et du shell
 
 > **CHANTIER SOLDÉ le 2026-09-02 — terrain complet** (GO CE au STOP 1

@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-08-11; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # Plan — UI v2 : livrer l'UI du prototype
 
 > **CHANTIER SOLDÉ.** Le verdict de solde est au fil du document ;

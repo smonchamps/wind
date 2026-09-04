@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # Revue de clôture — Phase 1 « je lis mes mails » (2026-07-12)
 
 Le squelette marchant du plan ([PLAN.md](../PLAN.md) §4) est livré, validé sur

@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-08-17; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # PLAN-RECHERCHE — pertinence et performance de la barre de recherche
 
 **CHANTIER SOLDÉ le 2026-08-17 — terrain complet.** Deux commits :

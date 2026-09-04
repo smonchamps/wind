@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-08-15; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # Revue de clôture — la refonte UI v2
 
 Exigée par la gate de bascule (PLAN-UI-V2 §P5). Close le 2026-08-15

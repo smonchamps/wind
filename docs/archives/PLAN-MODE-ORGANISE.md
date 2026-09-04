@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-08-30; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # PLAN-MODE-ORGANISE — Portier, Kiosque, Registre, Mis de côté, Groupes
 
 > **CHANTIER SOLDÉ le 2026-08-30 — terrain complet, E1-E5bis

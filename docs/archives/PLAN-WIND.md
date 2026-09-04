@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-08-14; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # Plan — WIND : Discovery devient Wind, marque de la suite Elements
 
 > **CHANTIER SOLDÉ.** Le verdict de solde est au fil du document ;

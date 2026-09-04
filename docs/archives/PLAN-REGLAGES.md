@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # Plan — Réglages en deux volets
 
 > **CHANTIER SOLDÉ.** Le verdict de solde est au fil du document ;

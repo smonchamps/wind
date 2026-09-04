@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-08-16; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # PLAN-WADA-ELARGI — 28 thèmes « Wada élargi » et sombre automatique par déclinaison (A42)
 
 **CHANTIER SOLDÉ le 2026-08-16 — terrain complet.** GO CE du même jour

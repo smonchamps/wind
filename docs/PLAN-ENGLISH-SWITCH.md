@@ -981,6 +981,13 @@ Freeze: an English banner at the head of each file ("Historical
 record, French, closed on …") and exclusion from the E1a net; or
 full translation (6,804 lines + the closed PLANs moved in E7).
 
+> **E9 delivered on 2026-09-04, one commit**: D1 applied — an English
+> banner at the head of the 53 archives (the closing date carried where
+> a file records one; a visible strip in `systeme.v1.dc.html`), debt
+> **D-58** written (the §9 prediction said D-55, a number since taken by
+> the French-persistence debt). No translation, no other change; the
+> ratchet and the links net already excluded `docs/archives/`.
+
 ### E10 — Memory, close-out (P)
 
 17 memory files and `MEMORY.md` translated, pointers to the renamed

@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # PLAN-DOCUMENTATION — trois gestes kaizen, et le standard prend son nom (2026-08-19)
 
 > **CHANTIER OUVERT — décisions D1-D4 tranchées par le CE le

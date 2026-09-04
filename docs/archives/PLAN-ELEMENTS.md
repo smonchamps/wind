@@ -1,3 +1,6 @@
+> **Historical record — French, frozen** (closed on 2026-08-24; PLAN-ENGLISH-SWITCH
+> D1, debt D-58). Not translated; the living documentation is in `docs/`.
+
 # PLAN-ELEMENTS — le Système v2 « Elements » devient la référence, et l'UI le livre
 
 > **CHANTIER SOLDÉ le 2026-08-24 — terrain complet (8/8, zéro
