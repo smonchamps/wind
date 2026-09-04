@@ -1,11 +1,11 @@
 // System coherence gate (PLAN-DC E3, decision DC-D6): the
-// normative document (docs/design/systeme.dc.html) must never
+// normative document (docs/design/system.dc.html) must never
 // drift from the shipped values (apps/desktop/ui-v2/src/system.css).
 //
 //   node system-coherence.mjs   -> named gaps + verdict
 //
 // Checks:
-//   1. The token contract table (data-theme/data-jeton cells)
+//   1. The token contract table (data-theme/data-token cells)
 //      equals the :root of system.css, VALUE FOR VALUE, in both
 //      directions — a CSS token missing from the doc is as much a
 //      failure as a wrong value, and an orphan cell (token dead in
@@ -32,7 +32,7 @@ const css = readFileSync(
   'utf8',
 );
 const doc = readFileSync(
-  path.join(root, 'docs', 'design', 'systeme.dc.html'),
+  path.join(root, 'docs', 'design', 'system.dc.html'),
   'utf8',
 );
 
@@ -54,13 +54,13 @@ if (Object.keys(cssThemes).length !== EXPECTED_COUNT) {
 // --- …the doc's contract table on the other --------------------------
 const docThemes = {};
 for (const [, theme, token, content] of doc.matchAll(
-  /<td data-theme="([a-z-]+)" data-jeton="([a-zA-Z0-9]+)"[^>]*>([^<]*)<\/td>/g,
+  /<td data-theme="([a-z-]+)" data-token="([a-zA-Z0-9]+)"[^>]*>([^<]*)<\/td>/g,
 )) {
   (docThemes[theme] ??= {})[token] = content.replace(/\s+/g, ' ').trim();
 }
 
 if (Object.keys(docThemes).length === 0) {
-  failure('the token contract table is not found in the doc (data-theme/data-jeton cells)');
+  failure('the token contract table is not found in the doc (data-theme/data-token cells)');
 }
 
 for (const [name, cssTokens] of Object.entries(cssThemes)) {
@@ -85,8 +85,8 @@ for (const name of Object.keys(docThemes)) {
 }
 
 // --- 2. The amendments log is present -----------------------
-if (!doc.includes('Journal des amendements')) { // lang:fr — the System's heading, English at E8
-  failure('the "Journal des amendements" section is not found'); // lang:fr
+if (!doc.includes('Amendments journal')) {
+  failure('the "Amendments journal" section is not found');
 }
 
 // --- 3. The CARDS' swatches say the shipped tokens -------------

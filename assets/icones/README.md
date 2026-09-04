@@ -8,7 +8,7 @@ joins), served as inline SVG by
 `apps/desktop/ui-v2/src/lib/icons.js`.
 
 **The normative inventory lives in the System**: the survey of the
-"Icônes" section of `docs/design/systeme.dc.html` — one glyph, one
+"Icons" section of `docs/design/system.dc.html` — one glyph, one
 meaning, one use. The gate `e2e/system-coherence.mjs` keeps the survey
 and the catalogue equal in both directions and checks every path (A18).
 

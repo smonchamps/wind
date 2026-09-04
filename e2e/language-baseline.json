@@ -39,7 +39,7 @@
   "apps/desktop/ui-v2/src/lib/widths.svelte.js": 1,
   "apps/desktop/ui-v2/src/system.css": 3,
   "apps/desktop/ui-v2/vite.config.js": 13,
-  "assets/icones/README.md": 2,
+  "assets/icones/README.md": 1,
   "crates/mail-auth/src/flow.rs": 1,
   "crates/mail-core/examples/bench_cleanup.rs": 1,
   "crates/mail-core/examples/seed_arrival.rs": 58,
@@ -85,8 +85,8 @@
   "docs/adr/0029-import-horizon-per-account.md": 3,
   "docs/adr/0030-single-instance-and-action-quarantine.md": 1,
   "docs/adr/0031-audit-wave-2-bounded-send-atomic-batch-imageless-forward.md": 1,
-  "docs/architecture/index.html": 1479,
+  "docs/architecture/index.html": 3,
   "docs/design/ANNOTATIONS-V3.md": 38,
-  "docs/design/systeme.dc.html": 16322,
+  "docs/design/system.dc.html": 149,
   "rust-toolchain.toml": 35
 }

@@ -5,7 +5,7 @@
   // inscribed in a circle of radius h/9. The points are BAKED IN
   // (review 2026-08-28): the image is strictly constant, like the
   // glyph registry's traces — and the System's mockup
-  // (systeme.dc.html, § Settings) carries the same coordinates
+  // (system.dc.html, § Settings) carries the same coordinates
   // verbatim, the brand's precedent. Colors FIXED outside themes
   // (the tile brand's regime, W-D3): these are the flag's colors,
   // not the product's. Outside the glyph registry: the registry is

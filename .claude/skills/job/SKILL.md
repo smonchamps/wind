@@ -17,7 +17,7 @@ validation. Nothing bypasses them.
   cannot read their database), ask for the measurement and wait. A
   symptom is not a cause: trace it to the root (model: A38, commits
   9ebd7b2 → 5698641 — the belt first, the root next).
-- **Feature**: read the System (`docs/design/systeme.dc.html`, the only
+- **Feature**: read the System (`docs/design/system.dc.html`, the only
   normative document — A18), the ADRs concerned (frozen decisions,
   STANDARD §5), the state of the code. On a wide area, the built-in
   `Explore`/`Plan` agents do the reconnaissance — **on Sonnet 5** (Haiku
@@ -59,7 +59,7 @@ with the date. **No production code before the GO.**
   The full gate is played only at the moments stated in Phase 3 — not
   at every increment.
 - **DC-D2**: every commit that touches the UI amends
-  `docs/design/systeme.dc.html` in the **same commit** (journal A-n).
+  `docs/design/system.dc.html` in the **same commit** (journal A-n).
 - **Early visual STOP (UI)**: as soon as the first minimal TDD
   increment renders something, ask the CE for a verdict on the look —
   before rolling out the rest. A whole UI job was cancelled in the field

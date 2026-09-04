@@ -19,7 +19,7 @@ in the field on 2026-08-24 on the real render.
 ## Decision
 
 The "Elements" System **becomes the reference System**
-(`docs/design/systeme.dc.html`, the path the gates read) and **the UI
+(`docs/design/system.dc.html`, the path the gates read) and **the UI
 delivers it** (PLAN-ELEMENTS, E1-E5). CE decisions of 2026-08-24:
 
 - **D1** — the HTML is THE source, hand-edited (DC-D2 unchanged); the

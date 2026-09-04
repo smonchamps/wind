@@ -899,7 +899,7 @@ deferral = one justified line.)
   System's contract table and its visual swatches. The first three are
   kept in sync with each other by the gates (checks 1 and 3 of
   `system-coherence.mjs`); the swatches are NOT: check 1 only reads
-  `data-theme`/`data-jeton` cells, never the `style="background:#…"`
+  `data-theme`/`data-token` cells, never the `style="background:#…"`
   or `title="--bg #…"` of the swatches. A token retouched after a
   field finding would leave the swatch at the old color, gate green,
   forever. ~80 hex values exposed (4 themes), the

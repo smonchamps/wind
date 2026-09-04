@@ -73,7 +73,7 @@ Every skill carries the rules paid for over the project:
 
 - **Strict TDD** — RED shown before GREEN; a RED that teaches nothing
   is said, never faked.
-- **DC-D2** — every UI commit amends `docs/design/systeme.dc.html` in
+- **DC-D2** — every UI commit amends `docs/design/system.dc.html` in
   the same commit (journal A-n).
 - **Full gate, never the tests alone** — the thirteen steps of
   [/gate](../.claude/skills/gate/SKILL.md), `system-coherence`

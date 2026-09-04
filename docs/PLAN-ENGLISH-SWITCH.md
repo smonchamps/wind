@@ -68,7 +68,7 @@ underestimates rather than overestimates).
 - **CSS tokens**: 15 `--*` properties in `systeme.css`, mixed (`--ink`,
   `--bg`, `--border` English; `--marque`, `--r-controle`, `--r-tuile`,
   `--rep-bleu`… French), held value for value by the
-  `coherence-systeme.mjs` gate against `systeme.dc.html` and `theme.js`
+  `coherence-systeme.mjs` gate against `system.dc.html` and `theme.js`
   (DC-D6): renaming a token means three files in the same commit.
 - **`wind.log` traces**: 15 `trace::trace(…)` sites, French lines; no
   script in the repository reads them back (grep `wind.log|maj.log` in
@@ -85,7 +85,7 @@ underestimates rather than overestimates).
 | 29 archives (`docs/archives/`) | 6 804 lines | closed; PHASE0-3, closed plans |
 | `CHANGELOG.md` | 758 lines | public; **read by `make-release.ps1`** for Release notes (`## [x.y.z]` mandatory); 5 Releases published 0.11→0.15 with French notes |
 | `README.md`, `e2e/README.md`, `assets/icones/README.md`, `ANNOTATIONS-V3.md` | 36 + 100 + 18 + 65 l. | living |
-| **`docs/design/systeme.dc.html`** | 570 KB, **~37 000 words**, 109 A-n amendments | **the only normative document for the UI** (A18), tooled by the gate; the A-n log is cited 3 978 times (docs + code) |
+| **`docs/design/system.dc.html`** | 570 KB, **~37 000 words**, 109 A-n amendments | **the only normative document for the UI** (A18), tooled by the gate; the A-n log is cited 3 978 times (docs + code) |
 | `docs/architecture/index.html` | ~4 300 words | living |
 | Skills, agent, `CLAUDE.md`, persistent memory (17 files outside the repository) | ~600 l. | permanent session instruction |
 | **Total markdown** | 104 files, 25 346 lines, **~200 000 words** | |
@@ -492,7 +492,7 @@ The file names on disk (`wind.log`, `maj.log`,
 > - **E5c — the CSS tokens** (P, D12): `systeme.css` → `system.css`,
 >   the tokens of §5.5 (the `--rep-*` family becoming `--mk-*` for all
 >   12 hues under D16 (a)) in the CSS, every `var(--…)` of the
->   components, `theme.js`, `systeme.dc.html` (A110, DC-D2), and the
+>   components, `theme.js`, `system.dc.html` (A110, DC-D2), and the
 >   three nets that parse them by name — one commit.
 > **E5c delivered on 2026-09-03.** One mechanical pass (a regex bounded on the token name, `--tuileInk` before `--tuile`): `--r-controle` → `--r-control` (144 uses), `--marque` → `--brand` (61), `--tuile` → `--tile` (54), `--tuileInk` → `--tileInk` (37), `--r-tuile` → `--r-tile` (44) in the 25 components, `system.css` (renamed from `systeme.css`, `git mv`, the import in `main.js`), the System (the `:root` blocks, the contract table’s `data-jeton` cells, the prose) and the three nets — the contrast net carried the names in its pair table, the coherence net in its form-token list. The four sort glyphs of A104 follow the sort they draw (`sort_newest`, `sort_oldest`, `sort_az`, `sort_za`: `icons.js` keys, `SectionSort` icon names, the System’s figcaptions). System A112. Fifteen comments and the gate skill named the stylesheet; they say `system.css`. Values, contrast table and the zero-radius rule untouched: nothing visible changes. Oracles: build zero warnings, eslint, the System net (68 token values, the doc says the delivered), the contrast net (440 pairs); the first full gate was red on one spec that asserted the glyph ids by prefix (`svg[data-nom^="tri_"]`, the value-built selector of the E5a lesson) — updated, replayed as a whole file, full gate green in 145 s (198 e2e, flaky 0). Commit `29c6a68`, CI green 33765915506. **Field (STOP 2) on 2026-09-03: validated by the Chief Engineer, no finding** — release launched with trace, both accounts polled (52 + 11 folders), brand, tiles, radii, the four sort glyphs and both themes with their night variants OK.
 > - **E5d — the DOM contract** (M, D15): 305 test ids, 230 classes,
@@ -952,13 +952,24 @@ plan and PLAN-AUDIT-V2 (in progress) translated. `ANNOTATIONS-V3.md`,
 
 ### E8 — The System and the architecture map (G)
 
-`systeme.dc.html` (~37,000 words): translate the prose **in place**, the
+`system.dc.html` (~37,000 words): translate the prose **in place**, the
 A1-A109 log keeping its numbers and dates, the token table keeping its
 values (gate `coherence-systeme`); CE visual review through
 `launch.json` `maquettes-design`. New amendment **A110** to the log:
 "the System has been written in English since …". `architecture/index.html`
 (~4,300 words). D8 decides whether a new V-n version is needed or the
 same one in place.
+
+> **E8 delivered on 2026-09-04, one commit**: the System translated in
+> place by nine Sonnet chunks under four oracles — tag skeleton, the 68
+> `data-theme`/`data-token` cells, the 91 glyph figcaptions and the
+> A-numbers all byte-identical; mockup UI strings quote `catalog.en.js`
+> (D4/D6), sample data stays fixture French; `system.dc.html` per
+> GLOSSARY §5.1, `data-jeton` → `data-token` with the net in the same
+> commit; **A115** written (129 rows); the A114 rename pairs restored
+> after the translation erased their French left sides — a lesson: a
+> historical old→new table is data, not prose. `architecture/index.html`
+> translated, stale bench pointers fixed. Baseline 19 634 → 1 985.
 
 ### E9 — Archives (per D1)
 

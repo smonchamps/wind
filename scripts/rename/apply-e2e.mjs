@@ -100,7 +100,7 @@ const POINTER_FILES = [
   'docs/DEBT.md',
   'docs/WORKFLOW.md',
   'docs/AUDIT-2026-09-01.md',
-  'docs/design/systeme.dc.html',
+  'docs/design/system.dc.html',
   'docs/architecture/index.html',
 ];
 
