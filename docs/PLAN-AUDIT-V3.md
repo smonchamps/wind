@@ -226,7 +226,25 @@ wrap, and the Chief-Engineer abbreviation in the ADR 0025 note counting as a Fre
 `cleanup`, `prefs`, `sql`; `SCHEMA` stays the single fresh-database
 source of truth, `user_version` the single gate; the pure decisions of
 `upsert_envelopes` extracted. Pure moves — `cargo test -p mail-core`
-count identical (433), zero test rewritten beyond `use` paths.
+count identical (451 at measurement, not the plan draft's stale 433),
+zero test rewritten beyond `use` paths.
+
+**Delivered 2026-09-04.** `store.rs` 10,568 → 2,890 lines; `tests.rs`
+5,421 (the module body moved verbatim, fmt-dedented); `migrations` 860,
+`screener` 611, `cleanup` 399, `sql` 369, `prefs` 156. Blanket
+`pub(crate) use` re-exports at the store root keep every external path
+(`nav.rs`, `search.rs`, `backfill.rs`, `thread.rs` untouched);
+`SCHEMA` and `write_invitation` stayed in `store.rs` (shared);
+visibility bumps to `pub(super)` only. Extraction by a Sonnet agent
+under five oracles — suite EXACTLY 451/0/2, clippy zero, fmt,
+per-name item conservation, diff confined to the store files. Then the
+three pure decisions of `upsert_envelopes` extracted RED-first
+(`needs_reindex`, `no_rule_action`, `arrived_after_verdict`): suite
+451 → 454. Full gate green (203 e2e, flaky 0). Two ratchet lessons
+paid: the scanner reads `git ls-files`, so a gate played before
+`git add` of new files lies on that step; and a file SPLIT
+redistributes per-file baselines — `--update` legitimate only because
+the total fell (1991 → 1974).
 
 ### E3 — `commands.rs` de-boilerplated (M)
 
