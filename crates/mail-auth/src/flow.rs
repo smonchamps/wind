@@ -68,10 +68,20 @@ pub(crate) fn http_client() -> Result<HttpClient, AuthError> {
     // this, reqwest's plain rustls path trusts webpki roots only, and a
     // corporate CA that works in IMAP fails here.
     use rustls_platform_verifier::BuilderVerifierExt;
-    let tls = rustls::ClientConfig::builder()
-        .with_platform_verifier()
-        .map_err(|err| AuthError::Config(err.to_string()))?
-        .with_no_client_auth();
+    // Built ONCE per process (review, wave 3) — the same
+    // platform-verifier config mail-imap caches on its side; a change
+    // here changes there (ADR 0032's one-stack rule).
+    static CONFIG: std::sync::OnceLock<rustls::ClientConfig> = std::sync::OnceLock::new();
+    let tls = match CONFIG.get() {
+        Some(config) => config.clone(),
+        None => {
+            let built = rustls::ClientConfig::builder()
+                .with_platform_verifier()
+                .map_err(|err| AuthError::Config(err.to_string()))?
+                .with_no_client_auth();
+            CONFIG.get_or_init(|| built).clone()
+        }
+    };
     oauth2::reqwest::blocking::ClientBuilder::new()
         .use_preconfigured_tls(tls)
         .redirect(oauth2::reqwest::redirect::Policy::none())

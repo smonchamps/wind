@@ -123,14 +123,28 @@ fn tls_stream(
     tcp: TcpStream,
 ) -> Result<rustls::StreamOwned<rustls::ClientConnection, TcpStream>, String> {
     use rustls_platform_verifier::BuilderVerifierExt;
-    let config = rustls::ClientConfig::builder()
-        .with_platform_verifier()
-        .map_err(|err| err.to_string())?
-        .with_no_client_auth();
+    // Built ONCE per process (review, wave 3): the platform verifier's
+    // construction walks the Windows certificate store — a cost every
+    // poll of every account was paying again. NOTE: mail-auth's
+    // `http_client` builds the same config for its own crate; a change
+    // here changes there (ADR 0032's one-stack rule).
+    static CONFIG: std::sync::OnceLock<std::sync::Arc<rustls::ClientConfig>> =
+        std::sync::OnceLock::new();
+    let config = match CONFIG.get() {
+        Some(config) => config.clone(),
+        None => {
+            let built = std::sync::Arc::new(
+                rustls::ClientConfig::builder()
+                    .with_platform_verifier()
+                    .map_err(|err| err.to_string())?
+                    .with_no_client_auth(),
+            );
+            CONFIG.get_or_init(|| built).clone()
+        }
+    };
     let name =
         rustls::pki_types::ServerName::try_from(host.to_string()).map_err(|err| err.to_string())?;
-    let conn = rustls::ClientConnection::new(std::sync::Arc::new(config), name)
-        .map_err(|err| err.to_string())?;
+    let conn = rustls::ClientConnection::new(config, name).map_err(|err| err.to_string())?;
     let mut stream = rustls::StreamOwned::new(conn, tcp);
     while stream.conn.is_handshaking() {
         stream

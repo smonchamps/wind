@@ -1990,8 +1990,10 @@ pub async fn mark_seen(
             store
                 .enqueue_action(state.mailbox_id, uid, action)
                 .map_err(|err| err.to_string())?;
+            // Review (wave 3): the bump follows a REAL change only —
+            // re-marking read mail must not reload every view.
+            bump_view_generation(app);
         }
-        bump_view_generation(app);
         Ok(())
     })
     .await
@@ -2025,8 +2027,10 @@ pub async fn mark_flagged(
             store
                 .enqueue_action(state.mailbox_id, uid, action)
                 .map_err(|err| err.to_string())?;
+            // Review (wave 3): the bump follows a REAL change only —
+            // re-marking read mail must not reload every view.
+            bump_view_generation(app);
         }
-        bump_view_generation(app);
         Ok(())
     })
     .await
@@ -3510,11 +3514,10 @@ impl Drop for FlightGuard<'_> {
 /// uncertainty — poll refused by the server, unreadable marker — polls:
 /// sobriety doesn't have the right to cost a message.
 ///
-/// A second copy of the pure decision's shell wrapper: [`mail_core::cycle`]
-/// keeps its own (PLAN-AUDIT-V3 E4, the cycle and the light pass), and
-/// this after-gesture pass — a THIRD poll path, out of E4's scope — is
-/// simplest served by its own small copy rather than a cross-crate
-/// export of what `cycle.rs` deliberately keeps private.
+/// The after-gesture pass's own guarded-poll door — the DECISION and
+/// the marker construction are the core's (`mail_core::must_poll`,
+/// `cycle::local_marker`): review wave 3 collapsed the third
+/// hand-synced marker copy this comment used to defend.
 fn must_poll(
     store: &Store,
     account_id: i64,
@@ -3525,21 +3528,7 @@ fn must_poll(
     let Some(status) = status else {
         return true;
     };
-    let marker = (|| -> Result<Option<mail_core::LocalMarker>, mail_core::Error> {
-        let Some(state) = store.sync_state(account_id, mailbox)? else {
-            return Ok(None);
-        };
-        Ok(Some(mail_core::LocalMarker {
-            uid_validity: state.uid_validity,
-            uidnext_seen: store.remote_uidnext(state.mailbox_id)?,
-            local_messages: store.envelope_count(state.mailbox_id)?,
-            pending_actions: store.has_pending_actions(state.mailbox_id)?,
-            // E2b: the modseq of the last settled SELECT — it's what
-            // wakes up a folder where only the flags have shifted.
-            modseq_seen: state.highest_modseq,
-        }))
-    })();
-    match marker {
+    match mail_core::cycle::local_marker(store, account_id, mailbox) {
         Ok(marker) => mail_core::must_poll(status, marker.as_ref()),
         Err(err) => {
             problems.push(format!("marker of \"{mailbox}\": {err}"));

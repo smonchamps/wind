@@ -649,6 +649,13 @@ deferral = one justified line.)
 
 ### ~~D-30 · A legacy invitation WITHOUT a calendar attachment row has no card~~ — closed 2026-09-04
 
+> Accepted limit of the closure (review, wave 3): a body that merely
+> QUOTES `BEGIN:VCALENDAR` (a technical email) matches the widened
+> criterion — its body rows are dropped by the one-time pass and
+> redownloaded at that mailbox's next backfill, the same
+> delete-and-redownload semantics the original criterion always had.
+> One redownload, once, for a rare shape.
+
 - **Fact (review PLAN-INVITATIONS, 2026-08-22)**: adopting existing
   data goes through the `pieces-calendrier` repair (bodies of messages
   carrying a calendar `attachments` row are re-read). A message scanned

@@ -17,7 +17,7 @@
   import { tick, untrack } from 'svelte';
   import { SvelteMap } from 'svelte/reactivity';
   import { call } from './lib/transport.js';
-  import { views } from './lib/views.svelte.js';
+  import { watchViews } from './lib/views.svelte.js';
   import { when } from './lib/when.js';
   import { invitationChip } from './lib/invitation.js';
   import { mailboxBlock, mixedView } from './lib/mailbox.js';
@@ -1074,16 +1074,8 @@
   }
 
   // E7 (PLAN-AUDIT-V3, closes D-48): the view subscribes to the shared
-  // invalidation signal — any writer that bumps it (gesture handlers,
-  // the resting probe on a generation move, Settings) reloads this view
-  // while it is mounted, without a ref wired per surface.
-  let seenGeneration = views.generation;
-  $effect(() => {
-    if (views.generation !== seenGeneration) {
-      seenGeneration = views.generation;
-      reload();
-    }
-  });
+  // invalidation signal — one line, the wiring lives in views.svelte.js.
+  watchViews(reload);
 
 </script>
 

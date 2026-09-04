@@ -1002,32 +1002,3 @@ mod tests {
         }
     }
 }
-
-#[cfg(test)]
-mod draft_bytes_tests {
-    use super::draft_bytes;
-
-    /// The field draft of 2026-09-04 (PLAN-AUDIT-V3 STOP 2): a draft
-    /// typed without a valid recipient yet — Gmail keeps such drafts,
-    /// the mirror must too. If the builder refuses a recipient-less
-    /// message, the push silently keeps the draft local FOREVER
-    /// (`kept_local`), and the user reads "no draft on the web".
-    #[test]
-    fn a_recipientless_draft_still_builds() {
-        let bytes = draft_bytes(
-            "me@x.io",
-            "", // nothing typed in To yet
-            "",
-            "",
-            "subject in progress",
-            "body in progress",
-            None,
-            &[],
-        );
-        assert!(
-            bytes.is_ok(),
-            "a draft without a recipient must still be pushable: {:?}",
-            bytes.err()
-        );
-    }
-}

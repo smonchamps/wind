@@ -166,7 +166,8 @@ try {
     Remove-Item Env:VITE_E2E -ErrorAction SilentlyContinue
     Pop-Location
 }
-$assets = Get-ChildItem (Join-Path $desktop "ui-v2\dist\assets") -Filter *.js
+$assets = Get-ChildItem (Join-Path $desktop "ui-v2\dist") -Recurse -File |
+    Where-Object { $_.Extension -in ".js", ".mjs", ".css", ".html", ".map" }
 $leaks = $assets | Where-Object { Select-String -Path $_.FullName -Pattern "__e2e" -Quiet }
 if ($leaks) {
     throw "e2e seams found in the release bundle ($($leaks.Name -join ', ')) -- release interrupted, NOTHING is published."

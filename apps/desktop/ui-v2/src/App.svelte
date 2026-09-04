@@ -1449,6 +1449,12 @@ import { invalidateViews } from './lib/views.svelte.js';
       loadNav(state.nav);
       probeSync(state.sync);
       probeSends(state.outbox);
+      // Review (wave 3): a SHELL-driven cycle (the E5 scheduler) must
+      // show its rank/account/mailbox too, not a bare "Syncing…" —
+      // the 2026-08-13 rule's DETAIL. The UI-driven cycles keep their
+      // own 1 s probe; at rest this costs nothing.
+      if (state.sync?.in_progress && !syncing) probeActivity();
+      else if (!state.sync?.in_progress && !syncing && activity) activity = null;
       const revision = JSON.stringify(state.drafts_revision);
       if (draftsRevision !== null && revision !== draftsRevision) probeDrafts();
       draftsRevision = revision;

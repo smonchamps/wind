@@ -26,8 +26,7 @@ use crate::error::Error;
 use crate::remote::{FolderStatus, MailServer};
 use crate::store::Store;
 use crate::sync::{
-    LocalMarker, SYNC_BYTES_PER_MESSAGE, SyncEngine, SyncMode, SyncReport, disk_shortfall,
-    sync_order,
+    SYNC_BYTES_PER_MESSAGE, SyncEngine, SyncMode, SyncReport, disk_shortfall, sync_order,
 };
 
 /// INBOX's wire name — the mail-core notion the shell used to keep to
@@ -141,6 +140,30 @@ pub struct SyncOutcome {
 /// The guarded poll (ADR 0017): should this folder be polled? Any
 /// uncertainty — poll refused by the server, unreadable marker — polls:
 /// sobriety doesn't have the right to cost a message.
+/// Reads the folder's local marker — THE construction both the cycle
+/// and the shell's post-gesture pass compare against a STATUS
+/// (review, wave 3: it existed in three hand-synced copies; a marker
+/// field added in one and not the others silently splits the guarded
+/// poll).
+pub fn local_marker(
+    store: &Store,
+    account_id: i64,
+    mailbox: &str,
+) -> Result<Option<crate::sync::LocalMarker>, Error> {
+    let Some(state) = store.sync_state(account_id, mailbox)? else {
+        return Ok(None);
+    };
+    Ok(Some(crate::sync::LocalMarker {
+        uid_validity: state.uid_validity,
+        uidnext_seen: store.remote_uidnext(state.mailbox_id)?,
+        local_messages: store.envelope_count(state.mailbox_id)?,
+        pending_actions: store.has_pending_actions(state.mailbox_id)?,
+        // E2b: the modseq of the last settled SELECT — it's what
+        // wakes up a folder where only the flags have shifted.
+        modseq_seen: state.highest_modseq,
+    }))
+}
+
 fn must_poll<H: CycleHooks>(
     store: &Store,
     account_id: i64,
@@ -152,27 +175,21 @@ fn must_poll<H: CycleHooks>(
     let Some(status) = status else {
         return true;
     };
-    let marker = (|| -> Result<Option<LocalMarker>, Error> {
-        let Some(state) = store.sync_state(account_id, mailbox)? else {
-            return Ok(None);
-        };
-        Ok(Some(LocalMarker {
-            uid_validity: state.uid_validity,
-            uidnext_seen: store.remote_uidnext(state.mailbox_id)?,
-            local_messages: store.envelope_count(state.mailbox_id)?,
-            pending_actions: store.has_pending_actions(state.mailbox_id)?,
-            // E2b: the modseq of the last settled SELECT — it's what
-            // wakes up a folder where only the flags have shifted.
-            modseq_seen: state.highest_modseq,
-        }))
-    })();
-    match marker {
+    match local_marker(store, account_id, mailbox) {
         Ok(marker) => match crate::sync::poll_reason(status, marker.as_ref()) {
             Some(reason) => {
                 // The resweep diagnostic (field 2026-09-04): a polled
-                // folder NAMES its reason in the trace — a cycle that
+                // folder names its REASON in the trace — a cycle that
                 // re-polls everything can then be read, not guessed at.
-                hooks.trace(&format!("poll \"{mailbox}\": {reason}"));
+                // The folder itself is MASKED (STANDARD §6, invariant 8:
+                // shape only — a user-named folder can carry PII); INBOX
+                // is a protocol constant and may be named.
+                let shown = if mailbox == INBOX {
+                    INBOX.to_string()
+                } else {
+                    format!("folder({} chars)", mailbox.chars().count())
+                };
+                hooks.trace(&format!("poll {shown}: {reason}"));
                 true
             }
             None => false,
