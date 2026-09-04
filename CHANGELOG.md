@@ -12,6 +12,39 @@ The signed packages and their notes live in the
 [GitHub Releases](https://github.com/smonchamps/wind/releases); the update
 is automatic and signed (minisign, ADR 0013).
 
+## [0.18.0] - 2026-09-04
+
+The Organized inbox learns to use the reading pane, and an account
+whose server never announces flag changes stays in step with your
+phone anyway.
+
+### Added
+
+- **The Organized inbox reads in the pane.** With the three-pane
+  layout, clicking a conversation opens it in the reading pane on the
+  right — sections, gestures and the thread bar included — instead of
+  covering the whole screen. The first change asked for by a beta
+  tester. With two panes or one, nothing moves: reading still opens
+  full screen.
+- **Read on the phone, read here.** On a mail server that does not
+  announce flag changes (no CONDSTORE), Wind now re-reads the recent
+  messages' read/star state at each poll, in one bounded request — a
+  message read elsewhere no longer stays bold forever. Older messages
+  beyond that window catch up when they next move.
+
+### Changed
+
+- While a conversation is open in the pane, the list stays still — a
+  read conversation leaves "New for you" the next time the list is
+  served, never under your eyes.
+- The Set-aside pile steps back while a conversation is open in the
+  pane, and returns when the pane is empty.
+
+*This release also carries the third audit wave (internal
+reorganization, behavior-neutral by contract): one TLS stack, the
+store split into submodules, typed command errors, the poll policy in
+the core, the cadence shell-side, e2e seams compiled out of releases.*
+
 ## [0.17.0] - 2026-09-02
 
 Wind moves faster wherever it was counting its steps, and says what it

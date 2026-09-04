@@ -1,5 +1,13 @@
 # PLAN-RETOURS-15 — the organized Reception gains the reading pane in 3-pane mode; the pending measures settled
 
+> ✅ **JOB CLOSED on 2026-09-04 — full field validation** ("All ok",
+> zero KO, Chief Engineer GO the same day). One commit `2160fac`
+> (18 files, +842/−71), CI green run 33917364222. System **A117**;
+> DEBT **D-51 closed**; S4 closed on both workstations; the GitHub
+> purge ticket resolved. Kaizen: ~20 M input equivalents in a 1.5 h
+> session (15.1 M main thread + 5.1 M across 6 agents), 2 full green
+> gates (+2 andon-stopped: fmt, language ratchet), 0 KO at STOP 2.
+>
 > Opened 2026-09-04. First job sourced from the **beta** (wave 1).
 > Statement (Chief Engineer): *on Reception in organized mode, add a visualization
 > pane when the 3-pane mode setting is active. It reverses a decision I
