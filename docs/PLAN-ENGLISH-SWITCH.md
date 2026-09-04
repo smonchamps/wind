@@ -1,7 +1,19 @@
 # PLAN-ENGLISH-SWITCH — the whole repository from French to English
 
-> **JOB OPENED on 2026-09-02** (CE go-ahead after 0.16.0, 0.17.0 and the
-> close-out of PLAN-AUDIT-V2; fourteen decisions settled, §6).
+> **JOB CLOSED on 2026-09-04 — full field validation.** Opened on
+> 2026-09-02 (GO CE after 0.16.0, 0.17.0 and the close-out of
+> PLAN-AUDIT-V2; fourteen decisions settled, §6), delivered E0-E10 in
+> three days: 46 commits on `main`, every step field-validated by the
+> CE (nine STOP 2 passes, the E5/E6/E7/E8/E9 ones at zero finding; the
+> four field findings of E3c-E5b fixed the same day), every push CI
+> green (last: E9 run 33856383445). Language baseline 142 113 → ~1 985
+> French markers — the residue is decided debt (D-55 persistence,
+> D-56 shell text, D-57 illustrations, D-58 archives) plus the French
+> catalogue delivered word for word and the scanner counting the
+> abbreviation "CE". Kaizen figures (T1/W3, §E10): **~434 M input
+> equivalents over 8 sessions** (244 M main thread + 190 M in 158
+> agents — heavy but each session under 24 h wall, T3 held), **12+ full
+> gates green**, 0 KO at the five final STOP 2 passes.
 >
 > Written on 2026-09-02 on the CE's order ("switch the whole
 > codebase and documentation from French to English"). **No
@@ -987,6 +999,8 @@ full translation (6,804 lines + the closed PLANs moved in E7).
 > **D-58** written (the §9 prediction said D-55, a number since taken by
 > the French-persistence debt). No translation, no other change; the
 > ratchet and the links net already excluded `docs/archives/`.
+>
+> **Field (STOP 2) on 2026-09-04: E9 validated by the CE, no finding.**
 
 ### E10 — Memory, close-out (P)
 
@@ -994,6 +1008,14 @@ full translation (6,804 lines + the closed PLANs moved in E7).
 scripts fixed; `/close`: ETAT, DETTE (whatever stays French by decision
 — D3 — enters the register as **assumed** debt, with what would
 reopen it), kaizen figures (T1, W3, STOP 2 findings).
+
+
+> **E10 delivered on 2026-09-04**: the 19 memory files and `MEMORY.md`
+> translated and re-slugged in English (three Sonnet batches; wiki-links
+> re-mapped, zero dead; pointers follow the repo renames), the beta
+> register still anonymous. The French kept by decision is in the
+> register as owned debt: D-55 (persistence), D-56 (shell-composed
+> text), D-57 (onboarding illustrations), D-58 (frozen archives).
 
 ### Estimate, to be re-measured after E3a
 
