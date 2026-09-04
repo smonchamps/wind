@@ -67,7 +67,8 @@ pub use remote::{
 pub use search::WIDE_QUERY_THRESHOLD;
 pub use store::{
     Account, AccountConfig, AdoptionProgress, CLEANUP_RANGES, CLEANUP_SCOPES, CleanupGroup,
-    CleanupSession, InvitationRank, Store, SyncState, UnifiedRow,
+    CleanupSession, InvitationRank, PREF_ARRIVAL_BUBBLES, PREF_LANG, PREF_LAST_SYNC, Store,
+    SyncState, UnifiedRow,
 };
 pub use sync::{
     LocalMarker, SYNC_BYTES_PER_MESSAGE, SyncEngine, SyncMode, SyncReport, disk_shortfall,

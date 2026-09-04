@@ -17,6 +17,19 @@ pub const PREFS_PER_ACCOUNT: &[&str] = &[
     "horizon_import",
 ];
 
+// The GLOBAL pref keys the shell reads and writes — declared next to
+// the store that owns the table, not at the call sites (D-34,
+// PLAN-AUDIT-V3 E3). The stored strings keep their historical names
+// (D-55: on-disk keys never rename without a migration).
+
+/// "Arrival bubbles" toggle (Settings > Notifications).
+pub const PREF_ARRIVAL_BUBBLES: &str = "arrival_bubbles";
+/// The UI language ("en" reference, D4 of PLAN-ENGLISH-SWITCH).
+pub const PREF_LANG: &str = "lang";
+/// Epoch (seconds) of the last successful poll — written at the end of
+/// a cycle, read by `sync_progress` for the status bar.
+pub const PREF_LAST_SYNC: &str = "derniere_synchro";
+
 impl Store {
     /// Reads a preference WITHOUT opening the database — a probe in
     /// **read-only** mode, sibling of [`Store::pending_adoption`]:

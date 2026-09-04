@@ -14,6 +14,7 @@
 //! lives in mail-core / mail-imap / mail-smtp / mail-auth.
 
 mod commands;
+mod fault;
 mod instance;
 mod relocation;
 mod telemetry;

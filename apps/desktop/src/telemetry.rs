@@ -201,10 +201,10 @@ pub async fn telemetry_consent_get(app: AppHandle) -> String {
     // "disabled" — the opt-in banner is not invented.
     crate::commands::off_pump(app, |app| {
         if is_e2e() {
-            return Ok("disabled".to_string());
+            return Ok::<_, String>("disabled".to_string());
         }
         let Ok(base) = base_dir(&app) else {
-            return Ok("disabled".to_string());
+            return Ok::<_, String>("disabled".to_string());
         };
         Ok(match std::fs::read_to_string(consent_file(&base)) {
             Ok(text) => match serde_json::from_str::<ConsentFile>(&text) {
@@ -245,10 +245,10 @@ pub async fn telemetry_pending(app: AppHandle) -> u32 {
     // worth zero reports — same fallback as an unreadable folder.
     crate::commands::off_pump(app, |app| {
         if is_e2e() {
-            return Ok(0);
+            return Ok::<_, String>(0);
         }
         let Ok(base) = base_dir(&app) else {
-            return Ok(0);
+            return Ok::<_, String>(0);
         };
         Ok(std::fs::read_dir(crashes_dir(&base))
             .map(|entries| {

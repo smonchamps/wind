@@ -21,6 +21,7 @@ use mail_smtp::SmtpMailer;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
+use crate::fault::CommandError;
 use crate::{AppState, PassFlight};
 
 pub(crate) const MAILBOX: &str = "INBOX";
@@ -160,12 +161,11 @@ pub struct ConnectReport {
 /// token of one must never prevent the others from coming back. Same
 /// principle as [`sync_inbox`].
 #[tauri::command]
-pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, String> {
+pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, CommandError> {
     // E2E hook: fake accounts (emails separated by commas), tokens
     // invalid by construction — offline guaranteed.
     if let Ok(list) = std::env::var("WIND_E2E_ACCOUNT") {
-        return off_pump(app, move |app| {
-            let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        return store_off_pump(app, move |app, store| {
             let state = app.state::<AppState>();
             let mut infos = Vec::new();
             for email in list.split(',').map(str::trim).filter(|e| !e.is_empty()) {
@@ -188,7 +188,7 @@ pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, String> {
             // E4: the fixture's accounts also get their watchers — same
             // path as the real ones, their connection failures are
             // bounded (P0 timeouts) and spaced out (doubling delay).
-            crate::watcher::reconcile(&app);
+            crate::watcher::reconcile(app);
             Ok(ConnectReport {
                 accounts: infos,
                 problems: Vec::new(),
@@ -246,8 +246,7 @@ pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, String> {
 
     // E5: writing the accounts and setting the sessions under the
     // commands' lock — never again on the bare async worker.
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    store_off_pump(app, move |app, store| {
         let state = app.state::<AppState>();
         let mut infos = Vec::new();
         for session in connected {
@@ -269,7 +268,7 @@ pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, String> {
         // E4: one IDLE watcher per reconnected account (ADR 0018) —
         // started HERE, after the sessions are set, never at boot
         // (nothing to watch without a session).
-        crate::watcher::reconcile(&app);
+        crate::watcher::reconcile(app);
         Ok(ConnectReport {
             accounts: infos,
             problems,
@@ -300,7 +299,7 @@ pub async fn add_account(
     app: AppHandle,
     state: State<'_, AppState>,
     horizon: Option<String>,
-) -> Result<AccountInfo, String> {
+) -> Result<AccountInfo, CommandError> {
     add_oauth_account(app, state, &mail_auth::GOOGLE, None, horizon).await
 }
 
@@ -315,13 +314,13 @@ pub async fn add_microsoft_account(
     state: State<'_, AppState>,
     email: String,
     horizon: Option<String>,
-) -> Result<AccountInfo, String> {
+) -> Result<AccountInfo, CommandError> {
     let email = email.trim().to_string();
     // Validation at the boundary: the declared address becomes the
     // account's key AND the XOAUTH2 identifier. An empty entry would
     // produce a ghost account nothing could ever reach again.
     if !is_plausible_address(&email) {
-        return Err("invalid address: enter the account's full address".to_string());
+        return Err("invalid address: enter the account's full address".into());
     }
     add_oauth_account(app, state, &mail_auth::MICROSOFT, Some(email), horizon).await
 }
@@ -334,7 +333,7 @@ async fn add_oauth_account(
     provider: &'static mail_auth::Provider,
     declared_email: Option<String>,
     horizon: Option<String>,
-) -> Result<AccountInfo, String> {
+) -> Result<AccountInfo, CommandError> {
     // Validation at the boundary, BEFORE the browser flow: refusing an
     // unreadable horizon after consent would leave an account created
     // under a gesture that failed.
@@ -374,7 +373,10 @@ async fn add_oauth_account(
 /// guard is structural there. A generic IMAP account has no token:
 /// a plain refusal with what to do instead.
 #[tauri::command]
-pub async fn reconnect_account(app: AppHandle, account_id: i64) -> Result<AccountInfo, String> {
+pub async fn reconnect_account(
+    app: AppHandle,
+    account_id: i64,
+) -> Result<AccountInfo, CommandError> {
     let account = off_pump(app.clone(), move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
@@ -387,8 +389,7 @@ pub async fn reconnect_account(app: AppHandle, account_id: i64) -> Result<Accoun
     .await?;
     if account.provider == "imap" {
         return Err(
-            "generic IMAP account: remove then re-add the account to re-enter the password"
-                .to_string(),
+            "generic IMAP account: remove then re-add the account to re-enter the password".into(),
         );
     }
     let provider = mail_auth::for_account_kind(&account.provider)
@@ -412,7 +413,8 @@ pub async fn reconnect_account(app: AppHandle, account_id: i64) -> Result<Accoun
         return Err(format!(
             "consent was given for {}, not for {}; replay the reconnection and pick the right account",
             session.email, account.email
-        ));
+        )
+        .into());
     }
     off_pump(app, move |app| {
         let state = app.state::<AppState>();
@@ -496,7 +498,7 @@ pub async fn add_generic_account(
     app: AppHandle,
     input: GenericAccountInput,
     horizon: Option<String>,
-) -> Result<AccountInfo, String> {
+) -> Result<AccountInfo, CommandError> {
     validate_horizon(horizon.as_deref())?;
     let username = input.username.unwrap_or_else(|| input.email.clone());
     let email = input.email.clone();
@@ -524,14 +526,13 @@ pub async fn add_generic_account(
     .await
     .map_err(|err| err.to_string())??;
 
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    store_off_pump(app, move |app, store| {
         let id = store
             .create_generic_account(
                 &email, &username, &imap_host, imap_port, &smtp_host, smtp_port,
             )
             .map_err(|err| err.to_string())?;
-        write_horizon_on_first_add(&store, id, horizon.as_deref())?;
+        write_horizon_on_first_add(store, id, horizon.as_deref())?;
 
         let session = AccountSession::Generic(GenericCredentials {
             email: email.clone(),
@@ -545,7 +546,7 @@ pub async fn add_generic_account(
         let state = app.state::<AppState>();
         lock_accounts(&state)?.insert(email.clone(), session);
         // E4: the new account gets its IDLE watcher without delay.
-        crate::watcher::reconcile(&app);
+        crate::watcher::reconcile(app);
         Ok(AccountInfo { id, email })
     })
     .await
@@ -561,7 +562,7 @@ pub async fn add_generic_account(
 /// an orphaned token that survives the account — would stay invisible
 /// forever.
 #[tauri::command]
-pub async fn remove_account(app: AppHandle, account_id: i64) -> Result<(), String> {
+pub async fn remove_account(app: AppHandle, account_id: i64) -> Result<(), CommandError> {
     let account = off_pump(app.clone(), move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         store
@@ -585,15 +586,14 @@ pub async fn remove_account(app: AppHandle, account_id: i64) -> Result<(), Strin
         .map_err(|err| err.to_string())??;
     }
 
-    off_pump(app, move |app| {
-        let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    store_off_pump(app, move |app, store| {
         store
             .delete_account(account_id)
             .map_err(|err| err.to_string())?;
         let state = app.state::<AppState>();
         lock_accounts(&state)?.remove(&account.email);
         // E4: its IDLE watcher shuts down at the next round.
-        crate::watcher::reconcile(&app);
+        crate::watcher::reconcile(app);
         Ok(())
     })
     .await
@@ -867,10 +867,7 @@ pub(crate) fn account_lock(
     locks: &Mutex<HashMap<String, Arc<Mutex<()>>>>,
     email: &str,
 ) -> Arc<Mutex<()>> {
-    let mut locks = match locks.lock() {
-        Ok(locks) => locks,
-        Err(poisoned) => poisoned.into_inner(),
-    };
+    let mut locks = recovered(locks);
     locks.entry(email.to_string()).or_default().clone()
 }
 
@@ -975,6 +972,107 @@ impl Drop for CycleEnd {
     }
 }
 
+/// What one cycle's account loop tallies — shared by the full cycle
+/// and the light pass (PLAN-AUDIT-V3 E3: the two loops were twins,
+/// their scaffolding copied line for line).
+struct CycleTally {
+    accounts: usize,
+    accounts_failed: usize,
+    fetched: usize,
+    deleted: usize,
+    replayed: usize,
+    errors: Vec<String>,
+    refreshed: Vec<AccountSession>,
+}
+
+/// ONE account loop for both cycles: activity bookkeeping (E1),
+/// backoff (P0 — bypassed only by the manual gesture's `force`),
+/// per-account lock (E4: an IDLE watcher may be mid-pass on the same
+/// account), outcome accounting. Only the per-account WORK differs —
+/// the full `run_sync` or the light `poll_inbox` — and it comes in as
+/// a closure returning the same (report, problems, refreshed session)
+/// shape.
+fn poll_cycle(
+    jobs: Vec<(i64, AccountSession)>,
+    cycle: &Arc<crate::SyncShared>,
+    backoffs: &Mutex<HashMap<String, crate::Backoff>>,
+    locks: &Mutex<HashMap<String, Arc<Mutex<()>>>>,
+    force: bool,
+    mut per_account: impl FnMut(
+        i64,
+        &AccountSession,
+    ) -> Result<
+        (mail_core::SyncReport, Vec<String>, Option<AccountSession>),
+        String,
+    >,
+) -> CycleTally {
+    // The activity for the status bar (PLAN-SYNCHRO E1): set BEFORE the
+    // first account, turned off by the guard no matter what happens. An
+    // empty cycle (no account connected) announces nothing.
+    let _end = CycleEnd(cycle.clone());
+    cycle.done.store(0, Ordering::Relaxed);
+    cycle.total.store(jobs.len() as u64, Ordering::Relaxed);
+    cycle.mail.store(0, Ordering::Relaxed);
+    cycle.in_progress.store(!jobs.is_empty(), Ordering::Relaxed);
+    let mut tally = CycleTally {
+        accounts: 0,
+        accounts_failed: 0,
+        fetched: 0,
+        deleted: 0,
+        replayed: 0,
+        errors: Vec::new(),
+        refreshed: Vec::new(),
+    };
+    for (account_id, session) in jobs {
+        let email = session.email().to_string();
+        // The backoff (P0 complement): an account in repeated failures
+        // is SKIPPED while its delay runs — no connection, no OAuth
+        // refresh. Without being SILENCED: it stays counted as
+        // unreachable, otherwise the bar's alert would turn off on an
+        // account still dead. The manual gesture is an order — `force`
+        // always attempts.
+        if !force && let Some(remaining) = current_backoff(backoffs, &email) {
+            tally.accounts_failed += 1;
+            tally.errors.push(format!(
+                "{email}: backing off after repeated failures; retrying in {} min",
+                remaining.as_secs().div_ceil(60).max(1)
+            ));
+            cycle.done.fetch_add(1, Ordering::Relaxed);
+            continue;
+        }
+        // E4: one account at a time — an IDLE watcher may be in the
+        // middle of a light pass on THIS account at the same moment.
+        let lock = account_lock(locks, &email);
+        let _poll = lock.lock();
+        if let Ok(mut account) = cycle.account.lock() {
+            account.clone_from(&email);
+        }
+        set_mailbox(cycle, "");
+        match per_account(account_id, &session) {
+            Ok((report, problems, fresh)) => {
+                note_outcome(backoffs, &email, true);
+                tally.accounts += 1;
+                tally.fetched += report.fetched;
+                tally.deleted += report.deleted;
+                tally.replayed += report.replayed;
+                if let Some(fresh) = fresh {
+                    tally.refreshed.push(fresh);
+                }
+                for problem in problems {
+                    tally.errors.push(format!("{email}: {problem}"));
+                }
+            }
+            Err(err) => {
+                note_outcome(backoffs, &email, false);
+                tally.accounts_failed += 1;
+                tally.errors.push(format!("{email}: {err}"));
+            }
+        }
+        cycle.done.fetch_add(1, Ordering::Relaxed);
+    }
+    tally
+}
+
 /// Synchronizes ALL connected accounts — one account's failure doesn't
 /// block the others (it's logged in the report).
 #[tauri::command]
@@ -990,95 +1088,29 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
     let backoffs = state.sync_backoffs.clone();
     let locks = state.poll_locks.clone();
 
-    let (accounts, accounts_failed, fetched, deleted, replayed, mut errors, refreshed) =
-        tauri::async_runtime::spawn_blocking(move || {
-            // The activity for the status bar (PLAN-SYNCHRO E1): set
-            // BEFORE the first account, turned off by the guard no
-            // matter what happens. An empty cycle (no account connected)
-            // announces nothing.
-            let _end = CycleEnd(cycle.clone());
-            cycle.done.store(0, Ordering::Relaxed);
-            cycle.total.store(jobs.len() as u64, Ordering::Relaxed);
-            cycle.mail.store(0, Ordering::Relaxed);
-            cycle.in_progress.store(!jobs.is_empty(), Ordering::Relaxed);
-            let mut accounts = 0;
-            let mut accounts_failed = 0;
-            let mut fetched = 0;
-            let mut deleted = 0;
-            let mut replayed = 0;
-            let mut errors = Vec::new();
-            let mut refreshed = Vec::new();
-            for (account_id, session) in jobs {
-                let email = session.email().to_string();
-                // The backoff (P0 complement): an account in repeated
-                // failures is SKIPPED while its delay runs — no
-                // connection, no OAuth refresh. Without being SILENCED:
-                // it stays counted as unreachable, otherwise the bar's
-                // alert would turn off on an account still dead.
-                if let Some(remaining) = current_backoff(&backoffs, &email) {
-                    accounts_failed += 1;
-                    errors.push(format!(
-                        "{email}: backing off after repeated failures; retrying in {} min",
-                        remaining.as_secs().div_ceil(60).max(1)
-                    ));
-                    cycle.done.fetch_add(1, Ordering::Relaxed);
-                    continue;
-                }
-                // E4: one account at a time — an IDLE watcher may be in
-                // the middle of a light pass on THIS account at the same
-                // moment.
-                let lock = account_lock(&locks, &email);
-                let _poll = lock.lock();
-                if let Ok(mut account) = cycle.account.lock() {
-                    account.clone_from(&email);
-                }
-                set_mailbox(&cycle, "");
-                match run_sync(&session, account_id, &path, &cycle, &app_bubbles) {
-                    Ok(outcome) => {
-                        note_outcome(&backoffs, &email, true);
-                        accounts += 1;
-                        fetched += outcome.report.fetched;
-                        deleted += outcome.report.deleted;
-                        replayed += outcome.report.replayed;
-                        if let Some(fresh) = outcome.refreshed {
-                            refreshed.push(fresh);
-                        }
-                        for problem in outcome.problems {
-                            errors.push(format!("{email}: {problem}"));
-                        }
-                    }
-                    Err(err) => {
-                        note_outcome(&backoffs, &email, false);
-                        accounts_failed += 1;
-                        errors.push(format!("{email}: {err}"));
-                    }
-                }
-                cycle.done.fetch_add(1, Ordering::Relaxed);
+    let mut tally = tauri::async_runtime::spawn_blocking(move || {
+        let run_cycle = cycle.clone();
+        poll_cycle(jobs, &cycle, &backoffs, &locks, false, {
+            move |account_id, session| {
+                run_sync(session, account_id, &path, &run_cycle, &app_bubbles)
+                    .map(|outcome| (outcome.report, outcome.problems, outcome.refreshed))
             }
-            (
-                accounts,
-                accounts_failed,
-                fetched,
-                deleted,
-                replayed,
-                errors,
-                refreshed,
-            )
         })
-        .await
-        .map_err(|err| err.to_string())?;
+    })
+    .await
+    .map_err(|err| err.to_string())?;
 
-    reset_sessions(&state, refreshed)?;
-    settle_poll(&app, accounts, &mut errors).await?;
+    reset_sessions(&state, std::mem::take(&mut tally.refreshed))?;
+    settle_poll(&app, tally.accounts, &mut tally.errors).await?;
 
     Ok(SyncSummary {
-        accounts,
-        accounts_failed,
-        fetched,
-        deleted,
-        replayed,
+        accounts: tally.accounts,
+        accounts_failed: tally.accounts_failed,
+        fetched: tally.fetched,
+        deleted: tally.deleted,
+        replayed: tally.replayed,
         elapsed_ms: timer.elapsed().as_millis() as u64,
-        errors,
+        errors: tally.errors,
     })
 }
 
@@ -1102,106 +1134,48 @@ pub async fn sync_inbox_light(
     let backoffs = state.sync_backoffs.clone();
     let locks = state.poll_locks.clone();
 
-    let (accounts, accounts_failed, fetched, deleted, replayed, mut errors, refreshed) =
-        tauri::async_runtime::spawn_blocking(move || {
-            // The same activity as the full cycle: the status bar tells
-            // the pass's story while it runs, the button runs with it
-            // (reentrancy guarded on the UI side).
-            let _end = CycleEnd(cycle.clone());
-            cycle.done.store(0, Ordering::Relaxed);
-            cycle.total.store(jobs.len() as u64, Ordering::Relaxed);
-            cycle.mail.store(0, Ordering::Relaxed);
-            cycle.in_progress.store(!jobs.is_empty(), Ordering::Relaxed);
-            let mut accounts = 0;
-            let mut accounts_failed = 0;
-            let mut fetched = 0;
-            let mut deleted = 0;
-            let mut replayed = 0;
-            let mut errors = Vec::new();
-            let mut refreshed = Vec::new();
-            for (account_id, session) in jobs {
-                let email = session.email().to_string();
-                // The backoff also applies to the light pass (wake from
-                // sleep, future IDLE) — EXCEPT on the manual gesture: the
-                // click is an order, it always forces an attempt.
-                if !force && let Some(remaining) = current_backoff(&backoffs, &email) {
-                    accounts_failed += 1;
-                    errors.push(format!(
-                        "{email}: backing off after repeated failures; retrying in {} min",
-                        remaining.as_secs().div_ceil(60).max(1)
-                    ));
-                    cycle.done.fetch_add(1, Ordering::Relaxed);
-                    continue;
-                }
-                // E4: one account at a time — an IDLE watcher may be in
-                // the middle of a light pass on THIS account at the same
-                // moment.
-                let lock = account_lock(&locks, &email);
-                let _poll = lock.lock();
-                if let Ok(mut account) = cycle.account.lock() {
-                    account.clone_from(&email);
-                }
-                set_mailbox(&cycle, "");
-                let poll = (|| -> Result<(mail_core::SyncReport, Vec<String>, Option<AccountSession>), String> {
-                    let (mut server, fresh) = connect_imap(&session)?;
-                    let mut store = Store::open(&path).map_err(|err| err.to_string())?;
-                    let mut problems = Vec::new();
-                    let (report, _) = poll_inbox(
-                        &mut server,
-                        &mut store,
-                        account_id,
-                        &cycle,
-                        &app_bubbles,
-                        &mut problems,
-                    )?;
-                    server.logout();
-                    Ok((report, problems, fresh))
-                })();
-                match poll {
-                    Ok((report, problems, fresh)) => {
-                        note_outcome(&backoffs, &email, true);
-                        accounts += 1;
-                        fetched += report.fetched;
-                        deleted += report.deleted;
-                        replayed += report.replayed;
-                        if let Some(fresh) = fresh {
-                            refreshed.push(fresh);
-                        }
-                        for problem in problems {
-                            errors.push(format!("{email}: {problem}"));
-                        }
-                    }
-                    Err(err) => {
-                        note_outcome(&backoffs, &email, false);
-                        accounts_failed += 1;
-                        errors.push(format!("{email}: {err}"));
-                    }
-                }
-                cycle.done.fetch_add(1, Ordering::Relaxed);
+    // The backoff also applies to the light pass (wake from sleep,
+    // future IDLE) — EXCEPT on the manual gesture: the click is an
+    // order, `force` always attempts.
+    let mut tally = tauri::async_runtime::spawn_blocking(move || {
+        let run_cycle = cycle.clone();
+        poll_cycle(jobs, &cycle, &backoffs, &locks, force, {
+            move |account_id, session| {
+                let (mut server, fresh) = connect_imap(session)?;
+                let mut store = Store::open(&path).map_err(|err| err.to_string())?;
+                let mut problems = Vec::new();
+                let (report, _) = poll_inbox(
+                    &mut server,
+                    &mut store,
+                    account_id,
+                    &run_cycle,
+                    &app_bubbles,
+                    &mut problems,
+                )?;
+                server.logout();
+                Ok((report, problems, fresh))
             }
-            (
-                accounts, accounts_failed, fetched, deleted, replayed, errors, refreshed,
-            )
         })
-        .await
-        .map_err(|err| err.to_string())?;
+    })
+    .await
+    .map_err(|err| err.to_string())?;
 
-    reset_sessions(&state, refreshed)?;
+    reset_sessions(&state, std::mem::take(&mut tally.refreshed))?;
     // The timestamp counts for the light pass too: every INBOX has just
     // been checked — it's mail polling in the prototype's sense, and a
     // button that would leave “12 minutes ago” after a successful click
     // would look broken. The folders, for their part, keep their own
     // cadence.
-    settle_poll(&app, accounts, &mut errors).await?;
+    settle_poll(&app, tally.accounts, &mut tally.errors).await?;
 
     Ok(SyncSummary {
-        accounts,
-        accounts_failed,
-        fetched,
-        deleted,
-        replayed,
+        accounts: tally.accounts,
+        accounts_failed: tally.accounts_failed,
+        fetched: tally.fetched,
+        deleted: tally.deleted,
+        replayed: tally.replayed,
         elapsed_ms: timer.elapsed().as_millis() as u64,
-        errors,
+        errors: tally.errors,
     })
 }
 
@@ -1684,9 +1658,11 @@ pub struct MessagePage {
 /// which had been shipped by querying the server — unusable from the
 /// first outage on.
 #[tauri::command]
-pub async fn thread_messages(app: AppHandle, thread_id: i64) -> Result<Vec<MessageRow>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+pub async fn thread_messages(
+    app: AppHandle,
+    thread_id: i64,
+) -> Result<Vec<MessageRow>, CommandError> {
+    store_off_pump(app, move |_, store| {
         Ok(store
             .thread_messages(thread_id)
             .map_err(|err| err.to_string())?
@@ -1784,12 +1760,8 @@ fn read_nav(store: &Store) -> Result<Vec<NavAccount>, String> {
 }
 
 #[tauri::command]
-pub async fn nav_snapshot(app: AppHandle) -> Result<Vec<NavAccount>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        read_nav(&store)
-    })
-    .await
+pub async fn nav_snapshot(app: AppHandle) -> Result<Vec<NavAccount>, CommandError> {
+    store_off_pump(app, move |_, store| Ok(read_nav(store)?)).await
 }
 
 /// A page of one nav category, bounded or not to an account.
@@ -1803,7 +1775,7 @@ pub async fn list_category(
     unread: bool,
     offset: usize,
     limit: usize,
-) -> Result<MessagePage, String> {
+) -> Result<MessagePage, CommandError> {
     off_pump(app, move |app| {
         let category = crate::wire::category_from_wire(&category);
         let timer = Instant::now();
@@ -1950,7 +1922,7 @@ pub async fn category_total(
     category: String,
     account_id: Option<i64>,
     unread: bool,
-) -> Result<u64, String> {
+) -> Result<u64, CommandError> {
     off_pump(app, move |app| {
         let category = crate::wire::category_from_wire(&category);
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
@@ -1959,20 +1931,14 @@ pub async fn category_total(
             // the page (lesson of `pins`), and classic mode stays
             // intact.
             let organized = store.organized_mode().map_err(|err| err.to_string())?;
-            return if organized {
-                store
-                    .organized_inbox_count_scoped(account_id, unread)
-                    .map_err(|err| err.to_string())
+            return Ok(if organized {
+                store.organized_inbox_count_scoped(account_id, unread)?
             } else {
-                store
-                    .unified_count_scoped(account_id, unread)
-                    .map_err(|err| err.to_string())
-            };
+                store.unified_count_scoped(account_id, unread)?
+            });
         }
         if category == "kiosque" || category == "registre" {
-            return store
-                .routing_count_scoped(&category, account_id, unread)
-                .map_err(|err| err.to_string());
+            return Ok(store.routing_count_scoped(&category, account_id, unread)?);
         }
         let scope = resolve_category(&store, &category, account_id)?;
         let echoes = mail_core::ECHO_DESTINATIONS
@@ -1990,12 +1956,8 @@ pub async fn category_total(
 /// column, in bounded batches — the UI calls it as it polls, down to
 /// zero, never on the opening path. Returns the number remaining.
 #[tauri::command]
-pub async fn preview_catchup(app: AppHandle, limit: usize) -> Result<u64, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store.preview_catchup(limit).map_err(|err| err.to_string())
-    })
-    .await
+pub async fn preview_catchup(app: AppHandle, limit: usize) -> Result<u64, CommandError> {
+    store_off_pump(app, move |_, store| Ok(store.preview_catchup(limit)?)).await
 }
 
 /// The results of a search: the rendered rows (capped at
@@ -2016,9 +1978,8 @@ pub async fn search_messages(
     app: AppHandle,
     query: String,
     offset: usize,
-) -> Result<SearchResults, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<SearchResults, CommandError> {
+    store_off_pump(app, move |_, store| {
         // `search_capped` returns the slice `[offset, offset+SEARCH_LIMIT)` AND
         // the exact total, and switches to date sort past the wide-query
         // threshold (BM25 ranking there exceeds the budget and stops meaning
@@ -2060,7 +2021,7 @@ pub async fn message_body(
     mailbox: String,
     uid: u32,
     show_images: bool,
-) -> Result<BodyView, String> {
+) -> Result<BodyView, CommandError> {
     // Current path — cached body: ONE lock take, ONE opening (PLAN-AUDIT-V1
     // review: `raw_body` then a second `off_pump` used to take the
     // lock twice for nothing).
@@ -2083,9 +2044,15 @@ pub async fn message_body(
     }
     // Body absent: bare network fetch, then the view under the lock.
     let html = raw_body(&app, account_id, &mailbox, uid).await?;
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        body_view(&store, account_id, &mailbox, uid, show_images, &html)
+    store_off_pump(app, move |_, store| {
+        Ok(body_view(
+            store,
+            account_id,
+            &mailbox,
+            uid,
+            show_images,
+            &html,
+        )?)
     })
     .await
 }
@@ -2176,16 +2143,16 @@ async fn raw_body(
     account_id: i64,
     mailbox: &str,
     uid: u32,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     // E5: the cache read and the session under `off_pump` (database +
     // commands' lock); only the network fetch runs bare.
     let mailbox2 = mailbox.to_string();
-    let cached = off_pump(app.clone(), move |app| {
+    let cached: Result<String, AccountSession> = off_pump(app.clone(), move |app| {
         let cached = Store::open(&db_path(&app)?)
             .and_then(|store| store.body(account_id, &mailbox2, uid))
             .map_err(|err| err.to_string())?;
         match cached {
-            Some(html) => Ok(Ok(html)),
+            Some(html) => Ok::<_, CommandError>(Ok(html)),
             None => Ok(Err(auth_for(&app, account_id)?)),
         }
     })
@@ -2196,11 +2163,12 @@ async fn raw_body(
             let path = db_path(app)?;
             // Owned copy: the closure runs on another thread.
             let mailbox = mailbox.to_string();
-            tauri::async_runtime::spawn_blocking(move || {
+            let result = tauri::async_runtime::spawn_blocking(move || {
                 fetch_body(&session, &path, account_id, mailbox, uid)
             })
             .await
-            .map_err(|err| err.to_string())?
+            .map_err(|err| err.to_string())?;
+            Ok(result?)
         }
     }
 }
@@ -2223,9 +2191,8 @@ pub async fn message_attachments(
     account_id: i64,
     mailbox: String,
     uid: u32,
-) -> Result<Vec<AttachmentRow>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<Vec<AttachmentRow>, CommandError> {
+    store_off_pump(app, move |_, store| {
         let found = store
             .attachments(account_id, &mailbox, uid)
             .map_err(|err| err.to_string())?;
@@ -2331,7 +2298,7 @@ pub async fn reply_invitation(
     reply: String,
     subject: String,
     body: String,
-) -> Result<Option<InvitationView>, String> {
+) -> Result<Option<InvitationView>, CommandError> {
     off_pump(app, move |app| {
         // The UI speaks the wire word (`accepted`); the core and the
         // database keep the French stable string (D16).
@@ -2348,7 +2315,7 @@ pub async fn reply_invitation(
             // Same rule as `can_reply` — R8: a forwarded `.ics` IS
             // an invitation (CE verdict); a cancelled meeting can no
             // longer be replied to.
-            return Err("this message is not an invitation to reply to".to_string());
+            return Err("this message is not an invitation to reply to".into());
         }
         let organizer = stored
             .row
@@ -2398,7 +2365,7 @@ pub async fn reply_invitation(
             )
             .map_err(|err| err.to_string())?;
         if queued.is_none() {
-            return Err("the invitation no longer exists; nothing was sent".to_string());
+            return Err("the invitation no longer exists; nothing was sent".into());
         }
         let updated = store
             .invitation(account_id, &mailbox, uid)
@@ -2422,9 +2389,8 @@ pub async fn complete_addresses(
     app: AppHandle,
     prefix: String,
     limit: usize,
-) -> Result<Vec<ContactRow>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<Vec<ContactRow>, CommandError> {
+    store_off_pump(app, move |_, store| {
         let found = store
             .complete_addresses(&prefix, limit.min(16))
             .map_err(|err| err.to_string())?;
@@ -2447,7 +2413,7 @@ pub async fn complete_addresses(
 /// though the dialog then lets the user decide the final folder AND
 /// name).
 #[tauri::command]
-pub async fn suggested_save_path(app: AppHandle, name: String) -> Result<String, String> {
+pub async fn suggested_save_path(app: AppHandle, name: String) -> Result<String, CommandError> {
     off_pump(app, move |app| {
         let directory = app
             .path()
@@ -2473,7 +2439,7 @@ pub async fn save_attachment(
     uid: u32,
     index: usize,
     dest: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     let session = off_pump(app.clone(), move |app| auth_for(&app, account_id)).await?;
     let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
         let (mut server, _refreshed) = connect_imap(&session)?;
@@ -2590,7 +2556,7 @@ pub async fn archive_message(
     account_id: i64,
     mailbox: String,
     uid: u32,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     off_pump(app, move |app| {
         queue_removal(&app, account_id, mailbox, uid, Action::Archive)
     })
@@ -2609,14 +2575,13 @@ pub struct UiState {
 }
 
 #[tauri::command]
-pub async fn ui_state(app: AppHandle, state: State<'_, AppState>) -> Result<UiState, String> {
+pub async fn ui_state(app: AppHandle, state: State<'_, AppState>) -> Result<UiState, CommandError> {
     let generation = state.sync_cycle.generation.load(Ordering::Relaxed);
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    store_off_pump(app, move |_, store| {
         Ok(UiState {
-            nav: read_nav(&store)?,
-            sync: read_sync(&store, generation)?,
-            outbox: read_sends(&store)?,
+            nav: read_nav(store)?,
+            sync: read_sync(store, generation)?,
+            outbox: read_sends(store)?,
         })
     })
     .await
@@ -2659,7 +2624,7 @@ pub async fn act_on_group(
     app: AppHandle,
     targets: Vec<TargetArg>,
     action: String,
-) -> Result<GroupOutcome, String> {
+) -> Result<GroupOutcome, CommandError> {
     let gesture = match action.as_str() {
         "archive" => mail_core::GroupGesture::Archive,
         "delete" => mail_core::GroupGesture::Delete,
@@ -2667,11 +2632,10 @@ pub async fn act_on_group(
         "not_spam" => mail_core::GroupGesture::NotSpam,
         "read" => mail_core::GroupGesture::Seen(true),
         "unread" => mail_core::GroupGesture::Seen(false),
-        other => return Err(format!("unknown bulk gesture: {other}")),
+        other => return Err(format!("unknown bulk gesture: {other}").into()),
     };
     let total = targets.len();
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    store_off_pump(app, move |_, store| {
         let targets: Vec<mail_core::GestureTarget> = targets
             .into_iter()
             .map(|cible| mail_core::GestureTarget {
@@ -2708,9 +2672,8 @@ pub struct FolderRow {
 /// The current mailbox is excluded: "move to INBOX" from INBOX makes
 /// no sense, and some servers refuse it.
 #[tauri::command]
-pub async fn list_folders(app: AppHandle, account_id: i64) -> Result<Vec<FolderRow>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+pub async fn list_folders(app: AppHandle, account_id: i64) -> Result<Vec<FolderRow>, CommandError> {
+    store_off_pump(app, move |_, store| {
         Ok(store
             .folders(account_id)
             .map_err(|err| err.to_string())?
@@ -2734,13 +2697,13 @@ pub async fn move_message(
     mailbox: String,
     uid: u32,
     folder: String,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     off_pump(app, move |app| {
         // The name comes from the UI, which got it from `list_folders`:
         // it is already in network form. Decoding it here would make
         // the replay fail.
         if folder.trim().is_empty() {
-            return Err("destination folder missing".to_string());
+            return Err("destination folder missing".into());
         }
         queue_removal(&app, account_id, mailbox, uid, Action::MoveTo(folder))
     })
@@ -2755,7 +2718,7 @@ pub async fn delete_message(
     account_id: i64,
     mailbox: String,
     uid: u32,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     off_pump(app, move |app| {
         queue_removal(&app, account_id, mailbox, uid, Action::Delete)
     })
@@ -2775,21 +2738,20 @@ pub async fn report_spam(
     account_id: i64,
     mailbox: String,
     uid: u32,
-) -> Result<(), String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<(), CommandError> {
+    store_off_pump(app, move |app, store| {
         let folders = store
             .canonical_folders(account_id)
             .map_err(|err| err.to_string())?;
         let Some(spam) = folders.junk else {
-            return Err("no junk folder recognized on this account".to_string());
+            return Err("no junk folder recognized on this account".into());
         };
         // Already in Junk: nothing to do (the view does not offer the
         // gesture, but the guard avoids a move onto itself).
         if spam == mailbox {
             return Ok(());
         }
-        queue_removal(&app, account_id, mailbox, uid, Action::MoveTo(spam))
+        queue_removal(app, account_id, mailbox, uid, Action::MoveTo(spam))
     })
     .await
 }
@@ -2804,7 +2766,7 @@ pub async fn mark_not_spam(
     account_id: i64,
     mailbox: String,
     uid: u32,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     off_pump(app, move |app| {
         queue_removal(
             &app,
@@ -2823,12 +2785,9 @@ fn queue_removal(
     mailbox: String,
     uid: u32,
     action: Action,
-) -> Result<(), String> {
-    let store = Store::open(&db_path(app)?).map_err(|err| err.to_string())?;
-    let Some(state) = store
-        .sync_state(account_id, &mailbox)
-        .map_err(|err| err.to_string())?
-    else {
+) -> Result<(), CommandError> {
+    let store = Store::open(&db_path(app)?)?;
+    let Some(state) = store.sync_state(account_id, &mailbox)? else {
         return Ok(());
     };
     // E3 (PLAN-REACTIVITE, R-D1): the gesture is a MOVE — the message's
@@ -2842,9 +2801,7 @@ fn queue_removal(
         Action::Archive => Some("archives"),
         _ => None,
     };
-    store
-        .gesture_with_echo(state.mailbox_id, uid, action, destination)
-        .map_err(|err| err.to_string())
+    Ok(store.gesture_with_echo(state.mailbox_id, uid, action, destination)?)
 }
 
 /// The body of a local echo (E3) for Reading: same sanitization as
@@ -2852,9 +2809,12 @@ fn queue_removal(
 /// text is already escaped but goes through the same door). Purely
 /// local — an echo has nothing to ask the server.
 #[tauri::command]
-pub async fn echo_body(app: AppHandle, id: i64, show_images: bool) -> Result<BodyView, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+pub async fn echo_body(
+    app: AppHandle,
+    id: i64,
+    show_images: bool,
+) -> Result<BodyView, CommandError> {
+    store_off_pump(app, move |_, store| {
         let (html, attachment_count) = store
             .echo_view(id)
             .map_err(|err| err.to_string())?
@@ -2886,9 +2846,8 @@ pub async fn echo_body(app: AppHandle, id: i64, show_images: bool) -> Result<Bod
 /// `sent`, the chips stay inert during the reconciliation window. A
 /// gesture echo returns an empty list.
 #[tauri::command]
-pub async fn echo_attachments(app: AppHandle, id: i64) -> Result<Vec<AttachmentRow>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+pub async fn echo_attachments(app: AppHandle, id: i64) -> Result<Vec<AttachmentRow>, CommandError> {
+    store_off_pump(app, move |_, store| {
         let found = store.echo_attachments(id).map_err(|err| err.to_string())?;
         Ok(found
             .into_iter()
@@ -2913,9 +2872,8 @@ pub async fn mark_seen(
     mailbox: String,
     uid: u32,
     seen: bool,
-) -> Result<(), String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<(), CommandError> {
+    store_off_pump(app, move |_, store| {
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
@@ -2948,9 +2906,8 @@ pub async fn mark_flagged(
     mailbox: String,
     uid: u32,
     flagged: bool,
-) -> Result<(), String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<(), CommandError> {
+    store_off_pump(app, move |_, store| {
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
@@ -2984,18 +2941,15 @@ pub async fn toggle_pin(
     account_id: i64,
     mailbox: String,
     uid: u32,
-) -> Result<bool, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<bool, CommandError> {
+    store_off_pump(app, move |_, store| {
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
         else {
             return Ok(false);
         };
-        store
-            .toggle_pin(state.mailbox_id, uid, epoch_now())
-            .map_err(|err| err.to_string())
+        Ok(store.toggle_pin(state.mailbox_id, uid, epoch_now())?)
     })
     .await
 }
@@ -3034,9 +2988,8 @@ pub async fn allow_images_message(
     account_id: i64,
     mailbox: String,
     uid: u32,
-) -> Result<(), String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<(), CommandError> {
+    store_off_pump(app, move |_, store| {
         // Unknown mailbox = a SAID failure, never a facade success: the
         // UI would show "remembered" while nothing is written (review
         // 2026-08-28).
@@ -3044,11 +2997,9 @@ pub async fn allow_images_message(
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
         else {
-            return Err(format!("unknown mailbox: {mailbox}"));
+            return Err(format!("unknown mailbox: {mailbox}").into());
         };
-        store
-            .allow_images_message(state.mailbox_id, uid, epoch_now())
-            .map_err(|err| err.to_string())
+        Ok(store.allow_images_message(state.mailbox_id, uid, epoch_now())?)
     })
     .await
 }
@@ -3063,9 +3014,8 @@ pub async fn allow_images_sender(
     account_id: i64,
     mailbox: String,
     uid: u32,
-) -> Result<Option<String>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<Option<String>, CommandError> {
+    store_off_pump(app, move |_, store| {
         // Same contract: the failure is said. The remaining `None`
         // (envelope without an address — nothing is written) is a real
         // business case the UI must distinguish.
@@ -3073,33 +3023,24 @@ pub async fn allow_images_sender(
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
         else {
-            return Err(format!("unknown mailbox: {mailbox}"));
+            return Err(format!("unknown mailbox: {mailbox}").into());
         };
-        store
-            .allow_images_sender_of(state.mailbox_id, uid, epoch_now())
-            .map_err(|err| err.to_string())
+        Ok(store.allow_images_sender_of(state.mailbox_id, uid, epoch_now())?)
     })
     .await
 }
 
 /// D4: the sender rules, for the Settings list.
 #[tauri::command]
-pub async fn images_senders(app: AppHandle) -> Result<Vec<String>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store.images_senders().map_err(|err| err.to_string())
-    })
-    .await
+pub async fn images_senders(app: AppHandle) -> Result<Vec<String>, CommandError> {
+    store_off_pump(app, move |_, store| Ok(store.images_senders()?)).await
 }
 
 /// D4: removes a sender rule — the exit door of "always".
 #[tauri::command]
-pub async fn revoke_images_sender(app: AppHandle, address: String) -> Result<(), String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store
-            .revoke_images_sender(&address)
-            .map_err(|err| err.to_string())
+pub async fn revoke_images_sender(app: AppHandle, address: String) -> Result<(), CommandError> {
+    store_off_pump(app, move |_, store| {
+        Ok(store.revoke_images_sender(&address)?)
     })
     .await
 }
@@ -3108,23 +3049,16 @@ pub async fn revoke_images_sender(app: AppHandle, address: String) -> Result<(),
 /// SQLite `prefs`, the core reads the state) and its retention bound
 /// (the epoch of first activation, D3 "arrivals only").
 #[tauri::command]
-pub async fn organized_mode_get(app: AppHandle) -> Result<bool, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store.organized_mode().map_err(|err| err.to_string())
-    })
-    .await
+pub async fn organized_mode_get(app: AppHandle) -> Result<bool, CommandError> {
+    store_off_pump(app, move |_, store| Ok(store.organized_mode()?)).await
 }
 
 /// Toggles organized mode. The first-activation bound is written on the
 /// core side, in the same gesture — the UI never carries the epoch.
 #[tauri::command]
-pub async fn organized_mode_set(app: AppHandle, active: bool) -> Result<(), String> {
-    off_pump(app, move |app| {
-        let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store
-            .set_organized_mode(active, epoch_now())
-            .map_err(|err| err.to_string())
+pub async fn organized_mode_set(app: AppHandle, active: bool) -> Result<(), CommandError> {
+    store_off_pump(app, move |_, store| {
+        Ok(store.set_organized_mode(active, epoch_now())?)
     })
     .await
 }
@@ -3132,13 +3066,11 @@ pub async fn organized_mode_set(app: AppHandle, active: bool) -> Result<(), Stri
 /// The import horizon of an account (ADR 0029, D3: adjustable after the
 /// fact). Absent = "everything" — the safe default, on the core side.
 #[tauri::command]
-pub async fn horizon_import_get(app: AppHandle, account_id: i64) -> Result<String, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store
+pub async fn horizon_import_get(app: AppHandle, account_id: i64) -> Result<String, CommandError> {
+    store_off_pump(app, move |_, store| {
+        Ok(store
             .horizon_import(account_id)
-            .map(|h| crate::wire::category_to_wire(&h))
-            .map_err(|err| err.to_string())
+            .map(|h| crate::wire::category_to_wire(&h))?)
     })
     .await
 }
@@ -3151,12 +3083,9 @@ pub async fn horizon_import_set(
     app: AppHandle,
     account_id: i64,
     value: String,
-) -> Result<(), String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store
-            .set_horizon_import(account_id, &crate::wire::category_from_wire(&value))
-            .map_err(|err| err.to_string())
+) -> Result<(), CommandError> {
+    store_off_pump(app, move |_, store| {
+        Ok(store.set_horizon_import(account_id, &crate::wire::category_from_wire(&value))?)
     })
     .await
 }
@@ -3170,9 +3099,8 @@ pub struct ScreenerDefaults {
 }
 
 #[tauri::command]
-pub async fn screener_defaults_get(app: AppHandle) -> Result<ScreenerDefaults, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+pub async fn screener_defaults_get(app: AppHandle) -> Result<ScreenerDefaults, CommandError> {
+    store_off_pump(app, move |_, store| {
         let (yes, no) = store.screener_defaults().map_err(|err| err.to_string())?;
         Ok(ScreenerDefaults {
             yes: crate::wire::category_to_wire(&yes),
@@ -3185,15 +3113,16 @@ pub async fn screener_defaults_get(app: AppHandle) -> Result<ScreenerDefaults, S
 /// The vocabulary is closed and rejected on the core side — the UI
 /// cannot write a broken default.
 #[tauri::command]
-pub async fn screener_defaults_set(app: AppHandle, yes: String, no: String) -> Result<(), String> {
-    off_pump(app, move |app| {
-        let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store
-            .set_screener_defaults(
-                &crate::wire::category_from_wire(&yes),
-                &crate::wire::no_default_from_wire(&no),
-            )
-            .map_err(|err| err.to_string())
+pub async fn screener_defaults_set(
+    app: AppHandle,
+    yes: String,
+    no: String,
+) -> Result<(), CommandError> {
+    store_off_pump(app, move |_, store| {
+        Ok(store.set_screener_defaults(
+            &crate::wire::category_from_wire(&yes),
+            &crate::wire::no_default_from_wire(&no),
+        )?)
     })
     .await
 }
@@ -3217,14 +3146,11 @@ pub async fn route_sender(
     address: String,
     destination: String,
     rule: Option<String>,
-) -> Result<(), String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<(), CommandError> {
+    store_off_pump(app, move |_, store| {
         let (destination, rule) =
             crate::wire::destination_rule_from_wire(&destination, rule.as_deref());
-        store
-            .route_sender(&address, &destination, rule.as_deref(), epoch_now())
-            .map_err(|err| err.to_string())
+        Ok(store.route_sender(&address, &destination, rule.as_deref(), epoch_now())?)
     })
     .await
 }
@@ -3242,47 +3168,37 @@ pub async fn route_sender_from(
     uid: u32,
     destination: String,
     rule: Option<String>,
-) -> Result<Option<String>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<Option<String>, CommandError> {
+    store_off_pump(app, move |_, store| {
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
         else {
-            return Err(format!("unknown mailbox: {mailbox}"));
+            return Err(format!("unknown mailbox: {mailbox}").into());
         };
         let (destination, rule) =
             crate::wire::destination_rule_from_wire(&destination, rule.as_deref());
-        store
-            .route_sender_of(
-                state.mailbox_id,
-                uid,
-                &destination,
-                rule.as_deref(),
-                epoch_now(),
-            )
-            .map_err(|err| err.to_string())
+        Ok(store.route_sender_of(
+            state.mailbox_id,
+            uid,
+            &destination,
+            rule.as_deref(),
+            epoch_now(),
+        )?)
     })
     .await
 }
 
 /// "Reinstate" from the Screener's history: the verdict disappears.
 #[tauri::command]
-pub async fn remove_routing(app: AppHandle, address: String) -> Result<(), String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store
-            .remove_routing(&address)
-            .map_err(|err| err.to_string())
-    })
-    .await
+pub async fn remove_routing(app: AppHandle, address: String) -> Result<(), CommandError> {
+    store_off_pump(app, move |_, store| Ok(store.remove_routing(&address)?)).await
 }
 
 /// The Screener's history — every decision, the most recent first.
 #[tauri::command]
-pub async fn routings(app: AppHandle) -> Result<Vec<RoutingPayload>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+pub async fn routings(app: AppHandle) -> Result<Vec<RoutingPayload>, CommandError> {
+    store_off_pump(app, move |_, store| {
         Ok(store
             .routings()
             .map_err(|err| err.to_string())?
@@ -3310,9 +3226,8 @@ pub struct ScreenerRow {
 /// The Screener's desk: one row per waiting sender, most recent first.
 /// Empty as long as the mode has never been activated.
 #[tauri::command]
-pub async fn screener_waiting(app: AppHandle) -> Result<Vec<ScreenerRow>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+pub async fn screener_waiting(app: AppHandle) -> Result<Vec<ScreenerRow>, CommandError> {
+    store_off_pump(app, move |_, store| {
         Ok(store
             .screener_waiting()
             .map_err(|err| err.to_string())?
@@ -3329,35 +3244,23 @@ pub async fn screener_waiting(app: AppHandle) -> Result<Vec<ScreenerRow>, String
 /// The Screener badge: how many MESSAGES are waiting at the desk (the
 /// prototype's design — nav and light reloads).
 #[tauri::command]
-pub async fn screener_total(app: AppHandle) -> Result<u64, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store.screener_total().map_err(|err| err.to_string())
-    })
-    .await
+pub async fn screener_total(app: AppHandle) -> Result<u64, CommandError> {
+    store_off_pump(app, move |_, store| Ok(store.screener_total()?)).await
 }
 
 /// RETOURS-14 R4 (review) — the addresses waiting at the desk, bare:
 /// the thread badge compares identities, it does not paint rows.
 #[tauri::command]
-pub async fn screener_addresses(app: AppHandle) -> Result<Vec<String>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store.screener_addresses().map_err(|err| err.to_string())
-    })
-    .await
+pub async fn screener_addresses(app: AppHandle) -> Result<Vec<String>, CommandError> {
+    store_off_pump(app, move |_, store| Ok(store.screener_addresses()?)).await
 }
 
 /// RETOURS-14 R7 (D8) — the Feed badge: how many cards have NEVER been
 /// opened (the `kiosque_lus` memory, the page's own semantics — never
 /// IMAP `unseen`). Global, like `screener_total`.
 #[tauri::command]
-pub async fn feed_unopened(app: AppHandle) -> Result<u64, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store.feed_unopened(None).map_err(|err| err.to_string())
-    })
-    .await
+pub async fn feed_unopened(app: AppHandle) -> Result<u64, CommandError> {
+    store_off_pump(app, move |_, store| Ok(store.feed_unopened(None)?)).await
 }
 
 // ---------------------------------------------------------------------
@@ -3438,9 +3341,8 @@ impl From<mail_core::PaperTrailGroup> for PaperTrailGroupPayload {
 pub async fn paper_trail_groups(
     app: AppHandle,
     account_id: Option<i64>,
-) -> Result<Vec<PaperTrailGroupPayload>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<Vec<PaperTrailGroupPayload>, CommandError> {
+    store_off_pump(app, move |_, store| {
         Ok(store
             .paper_trail_groups(account_id)
             .map_err(|err| err.to_string())?
@@ -3460,9 +3362,8 @@ pub async fn paper_trail_group_page(
     account_id: Option<i64>,
     offset: usize,
     limit: usize,
-) -> Result<Vec<MessageRow>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<Vec<MessageRow>, CommandError> {
+    store_off_pump(app, move |_, store| {
         let limit = limit.min(LIST_LIMIT_MAX);
         let mut rows = store
             .paper_trail_group_scoped(&address, account_id, offset, limit)
@@ -3477,9 +3378,8 @@ pub async fn paper_trail_group_page(
 
 /// The current session — `null`: nothing started (the intro screen).
 #[tauri::command]
-pub async fn cleanup_state(app: AppHandle) -> Result<Option<CleanupSessionPayload>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+pub async fn cleanup_state(app: AppHandle) -> Result<Option<CleanupSessionPayload>, CommandError> {
+    store_off_pump(app, move |_, store| {
         Ok(store
             .cleanup_state()
             .map_err(|err| err.to_string())?
@@ -3494,17 +3394,15 @@ pub async fn cleanup_start(
     app: AppHandle,
     range: String,
     scope: String,
-) -> Result<CleanupSessionPayload, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store
+) -> Result<CleanupSessionPayload, CommandError> {
+    store_off_pump(app, move |_, store| {
+        Ok(store
             .cleanup_start(
                 &crate::wire::category_from_wire(&range),
                 &crate::wire::scope_from_wire(&scope),
                 epoch_now(),
             )
-            .map(Into::into)
-            .map_err(|err| err.to_string())
+            .map(Into::into)?)
     })
     .await
 }
@@ -3512,9 +3410,8 @@ pub async fn cleanup_start(
 /// The remaining groups (sender × mail of the range), most recent
 /// first.
 #[tauri::command]
-pub async fn cleanup_groups(app: AppHandle) -> Result<Vec<CleanupGroupPayload>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+pub async fn cleanup_groups(app: AppHandle) -> Result<Vec<CleanupGroupPayload>, CommandError> {
+    store_off_pump(app, move |_, store| {
         // The measurement due since HORIZON-NETTOYAGE ("cost on a real
         // 200k base"), readable afterwards in `wind.log` — count and
         // duration, never an address (§6.8).
@@ -3532,9 +3429,11 @@ pub async fn cleanup_groups(app: AppHandle) -> Result<Vec<CleanupGroupPayload>, 
 
 /// The mail of a group — VIEW, never sort per message.
 #[tauri::command]
-pub async fn cleanup_messages(app: AppHandle, address: String) -> Result<Vec<MessageRow>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+pub async fn cleanup_messages(
+    app: AppHandle,
+    address: String,
+) -> Result<Vec<MessageRow>, CommandError> {
+    store_off_pump(app, move |_, store| {
         Ok(store
             .cleanup_messages(&address)
             .map_err(|err| err.to_string())?
@@ -3554,9 +3453,8 @@ pub async fn cleanup_verdict(
     address: String,
     destination: String,
     rule: Option<String>,
-) -> Result<Option<CleanupSessionPayload>, String> {
-    off_pump(app, move |app| {
-        let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<Option<CleanupSessionPayload>, CommandError> {
+    store_off_pump(app, move |_, store| {
         let (destination, rule) =
             crate::wire::destination_rule_from_wire(&destination, rule.as_deref());
         store
@@ -3572,12 +3470,8 @@ pub async fn cleanup_verdict(
 
 /// Closes the session — the verdicts stay set (routing).
 #[tauri::command]
-pub async fn cleanup_finish(app: AppHandle) -> Result<(), String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store.cleanup_finish().map_err(|err| err.to_string())
-    })
-    .await
+pub async fn cleanup_finish(app: AppHandle) -> Result<(), CommandError> {
+    store_off_pump(app, move |_, store| Ok(store.cleanup_finish()?)).await
 }
 
 /// E5 — the "Set aside / Resume" toggle: the state applies to the
@@ -3588,18 +3482,15 @@ pub async fn toggle_set_aside(
     account_id: i64,
     mailbox: String,
     uid: u32,
-) -> Result<bool, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<bool, CommandError> {
+    store_off_pump(app, move |_, store| {
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
         else {
-            return Err(format!("unknown mailbox: {mailbox}"));
+            return Err(format!("unknown mailbox: {mailbox}").into());
         };
-        store
-            .toggle_set_aside(state.mailbox_id, uid, epoch_now())
-            .map_err(|err| err.to_string())
+        Ok(store.toggle_set_aside(state.mailbox_id, uid, epoch_now())?)
     })
     .await
 }
@@ -3607,9 +3498,8 @@ pub async fn toggle_set_aside(
 /// The pile (E5): the heads of the set-aside threads — the fan-out and
 /// the table use them as they are.
 #[tauri::command]
-pub async fn set_aside_pile(app: AppHandle) -> Result<Vec<MessageRow>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+pub async fn set_aside_pile(app: AppHandle) -> Result<Vec<MessageRow>, CommandError> {
+    store_off_pump(app, move |_, store| {
         let mut rows = store.set_aside_pile().map_err(|err| err.to_string())?;
         store
             .enrich_rows(&mut rows)
@@ -3653,9 +3543,8 @@ pub async fn feed_cards(
     account_id: Option<i64>,
     offset: usize,
     limit: usize,
-) -> Result<Vec<FeedCard>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<Vec<FeedCard>, CommandError> {
+    store_off_pump(app, move |_, store| {
         let limit = limit.min(LIST_LIMIT_MAX);
         let mut rows = store
             .routing_unified_scoped("kiosque", account_id, false, offset, limit)
@@ -3739,18 +3628,15 @@ pub async fn feed_mark_read(
     account_id: i64,
     mailbox: String,
     uid: u32,
-) -> Result<(), String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<(), CommandError> {
+    store_off_pump(app, move |_, store| {
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
         else {
-            return Err(format!("unknown mailbox: {mailbox}"));
+            return Err(format!("unknown mailbox: {mailbox}").into());
         };
-        store
-            .mark_feed_read(state.mailbox_id, uid, epoch_now())
-            .map_err(|err| err.to_string())
+        Ok(store.mark_feed_read(state.mailbox_id, uid, epoch_now())?)
     })
     .await
 }
@@ -3763,9 +3649,8 @@ pub async fn pinned_rows(
     app: AppHandle,
     account_id: Option<i64>,
     unread: bool,
-) -> Result<Vec<MessageRow>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<Vec<MessageRow>, CommandError> {
+    store_off_pump(app, move |_, store| {
         // E2: the prepended section follows the shared exclusion of the
         // organized Inbox — a routed pinned item lives in its own view.
         let organized = store.organized_mode().map_err(|err| err.to_string())?;
@@ -3876,7 +3761,7 @@ pub async fn reply_context(
     account_id: i64,
     mailbox: String,
     uid: u32,
-) -> Result<ComposeContext, String> {
+) -> Result<ComposeContext, CommandError> {
     let (envelope, own) = enveloppe_et_compte(&app, account_id, &mailbox, uid).await?;
     let repondre_a = reply_to_of(&app, account_id, &mailbox, uid).await?;
     // Our own message? (the sender is the account). Replying to the
@@ -3909,7 +3794,7 @@ pub async fn reply_context(
         recipients = fetched.to;
     }
     if recipients.is_empty() {
-        return Err("unknown recipient: resync the mailbox".to_string());
+        return Err("unknown recipient: resync the mailbox".into());
     }
     let to = recipients.join(", ");
     let body_html = citation_reply(&app, account_id, &mailbox, uid, &envelope).await;
@@ -3934,13 +3819,10 @@ async fn reply_to_of(
     account_id: i64,
     mailbox: &str,
     uid: u32,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, CommandError> {
     let mailbox_name = mailbox.to_string();
-    off_pump(app.clone(), move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store
-            .reply_to_of(account_id, &mailbox_name, uid)
-            .map_err(|err| err.to_string())
+    store_off_pump(app.clone(), move |_, store| {
+        Ok(store.reply_to_of(account_id, &mailbox_name, uid)?)
     })
     .await
 }
@@ -3950,15 +3832,13 @@ async fn enveloppe_et_compte(
     account_id: i64,
     mailbox: &str,
     uid: u32,
-) -> Result<(mail_core::Envelope, String), String> {
+) -> Result<(mail_core::Envelope, String), CommandError> {
     let mailbox_name = mailbox.to_string();
-    off_pump(app.clone(), move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    store_off_pump(app.clone(), move |_, store| {
         let envelope = store
-            .envelope(account_id, &mailbox_name, uid)
-            .map_err(|err| err.to_string())?
-            .ok_or_else(|| "message not found".to_string())?;
-        let own = account_email(&store, account_id)?;
+            .envelope(account_id, &mailbox_name, uid)?
+            .ok_or_else(|| CommandError::new("message not found"))?;
+        let own = account_email(store, account_id)?;
         Ok((envelope, own))
     })
     .await
@@ -3984,7 +3864,7 @@ async fn citation_reply(
     let sender = envelope.sender.clone();
     let date = quote_date(envelope);
     off_pump(app.clone(), move |_| {
-        Ok(mail_core::quote_reply_html(
+        Ok::<_, CommandError>(mail_core::quote_reply_html(
             sender.as_deref(),
             date.as_deref(),
             &mail_render::sanitize(&html).html,
@@ -4012,7 +3892,7 @@ pub async fn reply_all_context(
     account_id: i64,
     mailbox: String,
     uid: u32,
-) -> Result<ComposeContext, String> {
+) -> Result<ComposeContext, CommandError> {
     let (envelope, own) = enveloppe_et_compte(&app, account_id, &mailbox, uid).await?;
     let repondre_a = reply_to_of(&app, account_id, &mailbox, uid).await?;
     // Recipients known in the database: instant path, no network. Not
@@ -4041,7 +3921,7 @@ pub async fn reply_all_context(
         to.extend(repondre_a.or_else(|| envelope.sender_address.clone()));
     }
     if to.is_empty() {
-        return Err("unknown sender address: resync the mailbox".to_string());
+        return Err("unknown sender address: resync the mailbox".into());
     }
     let body_html = citation_reply(&app, account_id, &mailbox, uid, &envelope).await;
     Ok(ComposeContext {
@@ -4078,7 +3958,7 @@ pub async fn forward_context(
     account_id: i64,
     mailbox: String,
     uid: u32,
-) -> Result<ComposeContext, String> {
+) -> Result<ComposeContext, CommandError> {
     let (envelope, _own) = enveloppe_et_compte(&app, account_id, &mailbox, uid).await?;
     let html = raw_body(&app, account_id, &mailbox, uid).await?;
     // D8 (PLAN-AUDIT-V2 E10): NO remote image in the composer — the
@@ -4190,13 +4070,66 @@ pub async fn queue_send(
     // right away, the historical path.
     send_at_epoch: Option<i64>,
 ) -> Result<(), String> {
+    // The wire stays FLAT (the IPC keys are a contract since E5a); the
+    // arguments are packed HERE and travel as one value from here on
+    // (audit 3.4 — `queue_send(DraftContent)`).
+    let content = SendContent {
+        to,
+        cc,
+        bcc,
+        subject,
+        body,
+        body_html,
+        reply_to_mailbox,
+        reply_to_uid,
+        draft_id,
+        important,
+        send_at_epoch,
+    };
+    queue_send_content(app, account_id, content)
+        .await
+        .map_err(String::from)
+}
+
+/// The full content of one queued send, packed off the wire.
+struct SendContent {
+    to: String,
+    cc: String,
+    bcc: String,
+    subject: String,
+    body: String,
+    body_html: Option<String>,
+    reply_to_mailbox: Option<String>,
+    reply_to_uid: Option<u32>,
+    draft_id: Option<i64>,
+    important: bool,
+    send_at_epoch: Option<i64>,
+}
+
+async fn queue_send_content(
+    app: AppHandle,
+    account_id: i64,
+    content: SendContent,
+) -> Result<(), CommandError> {
+    let SendContent {
+        to,
+        cc,
+        bcc,
+        subject,
+        body,
+        body_html,
+        reply_to_mailbox,
+        reply_to_uid,
+        draft_id,
+        important,
+        send_at_epoch,
+    } = content;
     let body_html = match body_html {
         Some(html) => Some(rendre_les_images_du_transfert(&app, account_id, html).await?),
         None => None,
     };
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        let from = account_email(&store, account_id)?;
+    store_off_pump(app, move |_, store| {
+        let from = account_email(store, account_id)?;
         // Rich body: THE boundary (`body_boundary`) — sanitized, text
         // derived. The `body` received serves only the text path.
         let (text_body, rich_body) = body_boundary(body, body_html.as_deref());
@@ -4222,8 +4155,7 @@ pub async fn queue_send(
             &subject,
             &text_body,
             in_reply_to.as_deref(),
-        )
-        .map_err(|err| err.to_string())?;
+        )?;
         // E7: the entire References chain (RFC 5322 §3.6.4) — the core
         // knows it, the adapter copies it over.
         draft.references = parent.as_ref().and_then(|(uid, mailbox)| {
@@ -4271,7 +4203,7 @@ async fn settle_poll(
         {
             timestamp = Some(format!("poll timestamp: {err}"));
         }
-        Ok(timestamp)
+        Ok::<_, String>(timestamp)
     })
     .await?;
     errors.extend(timestamp);
@@ -4285,7 +4217,7 @@ async fn settle_poll(
 pub async fn flush_outbox(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<OutboxSummary, String> {
+) -> Result<OutboxSummary, CommandError> {
     let path = db_path(&app)?;
     let jobs = off_pump(app.clone(), |app| connected_jobs(&app)).await?;
     let lock = state.outbox_flush.clone();
@@ -4384,7 +4316,7 @@ pub async fn sync_after_gesture(
     app: AppHandle,
     state: State<'_, AppState>,
     account_id: Option<i64>,
-) -> Result<PassReport, String> {
+) -> Result<PassReport, CommandError> {
     let path = db_path(&app)?;
     let targets: Vec<i64> = match account_id {
         Some(id) => vec![id],
@@ -4468,10 +4400,7 @@ impl<'a> FlightGuard<'a> {
     /// `None`: a pass is already in flight for this account — the
     /// request is absorbed (the flag will make it replay once).
     fn take(passes: &'a Mutex<HashMap<String, PassFlight>>, email: &str) -> Option<Self> {
-        let mut table = match passes.lock() {
-            Ok(table) => table,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        let mut table = recovered(passes);
         let flight = table.entry(email.to_string()).or_default();
         if flight.in_flight {
             flight.rerequest = true;
@@ -4486,10 +4415,7 @@ impl<'a> FlightGuard<'a> {
 
     /// Did a gesture arrive during the pass? Consumes the flag.
     fn rerequest_consumed(&self) -> bool {
-        let mut table = match self.passes.lock() {
-            Ok(table) => table,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        let mut table = recovered(self.passes);
         let flight = table.entry(self.email.clone()).or_default();
         std::mem::take(&mut flight.rerequest)
     }
@@ -4497,10 +4423,7 @@ impl<'a> FlightGuard<'a> {
 
 impl Drop for FlightGuard<'_> {
     fn drop(&mut self) {
-        let mut table = match self.passes.lock() {
-            Ok(table) => table,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        let mut table = recovered(self.passes);
         if let Some(flight) = table.get_mut(&self.email) {
             flight.in_flight = false;
         }
@@ -4739,10 +4662,7 @@ fn run_flush_all(
     lock: &Mutex<()>,
 ) -> Result<(OutboxSummary, Vec<AccountSession>), String> {
     // E5: a poisoned lock is reclaimed (the panic is logged, ADR 0014).
-    let _guard = match lock.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
+    let _guard = recovered(lock);
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
 
     // An earlier crash is noted even offline: quarantine first.
@@ -4863,34 +4783,22 @@ fn read_sends(store: &Store) -> Result<OutboxStatus, String> {
 }
 
 #[tauri::command]
-pub async fn outbox_status(app: AppHandle) -> Result<OutboxStatus, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        read_sends(&store)
-    })
-    .await
+pub async fn outbox_status(app: AppHandle) -> Result<OutboxStatus, CommandError> {
+    store_off_pump(app, move |_, store| Ok(read_sends(store)?)).await
 }
 
 /// Requeuing a quarantined or rejected send: THE explicit user decision
 /// required by the "never a ghost send" rule.
 #[tauri::command]
-pub async fn outbox_requeue(app: AppHandle, id: i64) -> Result<(), String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store.requeue_outbox(id).map_err(|err| err.to_string())
-    })
-    .await
+pub async fn outbox_requeue(app: AppHandle, id: i64) -> Result<(), CommandError> {
+    store_off_pump(app, move |_, store| Ok(store.requeue_outbox(id)?)).await
 }
 
 /// Abandoning a send (user decision); the `sent` history is preserved
 /// by the core.
 #[tauri::command]
-pub async fn outbox_delete(app: AppHandle, id: i64) -> Result<(), String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store.delete_outbox(id).map_err(|err| err.to_string())
-    })
-    .await
+pub async fn outbox_delete(app: AppHandle, id: i64) -> Result<(), CommandError> {
+    store_off_pump(app, move |_, store| Ok(store.delete_outbox(id)?)).await
 }
 
 /// R2, CE decision D2: cancels a scheduled send — the entry leaves the
@@ -4900,14 +4808,8 @@ pub async fn outbox_delete(app: AppHandle, id: i64) -> Result<(), String> {
 /// going out — the UI says so honestly rather than promising a ghost
 /// draft.
 #[tauri::command]
-pub async fn outbox_cancel_scheduled(app: AppHandle, id: i64) -> Result<Option<i64>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store
-            .cancel_scheduled_send(id)
-            .map_err(|err| err.to_string())
-    })
-    .await
+pub async fn outbox_cancel_scheduled(app: AppHandle, id: i64) -> Result<Option<i64>, CommandError> {
+    store_off_pump(app, move |_, store| Ok(store.cancel_scheduled_send(id)?)).await
 }
 
 // ---------------------------------------------------------------------
@@ -4926,9 +4828,8 @@ pub struct SignatureRow {
 }
 
 #[tauri::command]
-pub async fn signature_get(app: AppHandle, account_id: i64) -> Result<SignatureRow, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+pub async fn signature_get(app: AppHandle, account_id: i64) -> Result<SignatureRow, CommandError> {
+    store_off_pump(app, move |_, store| {
         let html = store
             .text_pref(&format!("signature.{account_id}"))
             .map_err(|err| err.to_string())?
@@ -4951,9 +4852,8 @@ pub async fn signature_set(
     account_id: i64,
     html: Option<String>,
     replies: bool,
-) -> Result<(), String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<(), CommandError> {
+    store_off_pump(app, move |_, store| {
         let clean = html
             .as_deref()
             .and_then(|h| body_boundary(String::new(), Some(h)).1);
@@ -5051,13 +4951,12 @@ pub struct MarkerRow {
 /// reloads them on change. An account without a marker has no row: its
 /// default render (`person`, neutral token) depends on nothing.
 #[tauri::command]
-pub async fn markers_get(app: AppHandle) -> Result<Vec<MarkerRow>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+pub async fn markers_get(app: AppHandle) -> Result<Vec<MarkerRow>, CommandError> {
+    store_off_pump(app, move |_, store| {
         let mut rows = Vec::new();
         for account in store.accounts().map_err(|err| err.to_string())? {
             if let Some((icon, hue)) =
-                marker_of(&store, account.id).map_err(|err| err.to_string())?
+                marker_of(store, account.id).map_err(|err| err.to_string())?
             {
                 rows.push(MarkerRow {
                     account_id: account.id,
@@ -5080,7 +4979,7 @@ pub async fn marker_set(
     account_id: i64,
     icon: Option<String>,
     hue: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     off_pump(app, move |app| {
         // The UI speaks the wire hue (`blue`); the allowlist and the
         // database keep the French family name (D16).
@@ -5088,17 +4987,17 @@ pub async fn marker_set(
             .as_deref()
             .is_some_and(|h| !crate::wire::WIRE_HUES.contains(&h))
         {
-            return Err("marker outside the dedicated set".to_string());
+            return Err("marker outside the dedicated set".into());
         }
         let hue = hue.map(|h| crate::wire::hue_from_wire(&h));
         let marker = match (icon.as_deref(), hue.as_deref()) {
             (None, None) => None,
             (Some(i), Some(t)) if valid_marker(i, t) => Some((i, t)),
-            (Some(_), Some(_)) => return Err("marker outside the dedicated set".to_string()),
-            _ => return Err("icon and hue go together".to_string()),
+            (Some(_), Some(_)) => return Err("marker outside the dedicated set".into()),
+            _ => return Err("icon and hue go together".into()),
         };
         let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        set_marker(&mut store, account_id, marker).map_err(|err| err.to_string())
+        Ok(set_marker(&mut store, account_id, marker)?)
     })
     .await
 }
@@ -5146,12 +5045,11 @@ pub struct NameRow {
 /// All the set names — the UI loads them ONCE (nav + settings +
 /// composer) and patches its table on gesture (marker pattern).
 #[tauri::command]
-pub async fn names_get(app: AppHandle) -> Result<Vec<NameRow>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+pub async fn names_get(app: AppHandle) -> Result<Vec<NameRow>, CommandError> {
+    store_off_pump(app, move |_, store| {
         let mut rows = Vec::new();
         for account in store.accounts().map_err(|err| err.to_string())? {
-            if let Some(name) = name_of(&store, account.id).map_err(|err| err.to_string())? {
+            if let Some(name) = name_of(store, account.id).map_err(|err| err.to_string())? {
                 rows.push(NameRow {
                     account_id: account.id,
                     name,
@@ -5170,7 +5068,7 @@ pub async fn name_set(
     app: AppHandle,
     account_id: i64,
     name: Option<String>,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, CommandError> {
     off_pump(app, move |app| {
         let normalized = normalized_name(name.as_deref().unwrap_or(""))?;
         let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
@@ -5290,9 +5188,8 @@ pub async fn save_draft(
     id: Option<i64>,
     base_epoch: Option<i64>,
     content: DraftContentArg,
-) -> Result<DraftSavedRow, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<DraftSavedRow, CommandError> {
+    store_off_pump(app, move |_, store| {
         // Same boundary as sending (`body_boundary`): sanitized HTML,
         // derived text (previews and fallback).
         let (body_text, body_rich) =
@@ -5325,9 +5222,8 @@ pub async fn save_draft(
 }
 
 #[tauri::command]
-pub async fn list_drafts(app: AppHandle) -> Result<Vec<DraftRow>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+pub async fn list_drafts(app: AppHandle) -> Result<Vec<DraftRow>, CommandError> {
+    store_off_pump(app, move |_, store| {
         Ok(store
             .drafts()
             .map_err(|err| err.to_string())?
@@ -5353,12 +5249,8 @@ pub async fn list_drafts(app: AppHandle) -> Result<Vec<DraftRow>, String> {
 }
 
 #[tauri::command]
-pub async fn delete_draft(app: AppHandle, id: i64) -> Result<(), String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store.delete_draft(id).map_err(|err| err.to_string())
-    })
-    .await
+pub async fn delete_draft(app: AppHandle, id: i64) -> Result<(), CommandError> {
+    store_off_pump(app, move |_, store| Ok(store.delete_draft(id)?)).await
 }
 
 // ---------------------------------------------------------------------
@@ -5455,9 +5347,8 @@ pub async fn attach_files(
     account_id: i64,
     draft_id: Option<i64>,
     paths: Vec<String>,
-) -> Result<AttachReport, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<AttachReport, CommandError> {
+    store_off_pump(app, move |_, store| {
         let created = draft_id.is_none();
         let draft_id = match draft_id {
             Some(id) => id,
@@ -5491,9 +5382,7 @@ pub async fn attach_files(
             // a path relative to the process.
             let candidate = std::path::Path::new(path);
             if !candidate.is_absolute() || !candidate.is_file() {
-                return Err(format!(
-                    "attachment refused: {path:?} is not an absolute file"
-                ));
+                return Err(format!("attachment refused: {path:?} is not an absolute file").into());
             }
             // A read failure is an outright failure of the gesture:
             // files already entered stay (the UI re-reads the chips),
@@ -5511,7 +5400,7 @@ pub async fn attach_files(
                     name,
                     remaining: mail_core::human_size(remaining),
                 }),
-                Err(err) => return Err(err.to_string()),
+                Err(err) => return Err(err.to_string().into()),
             }
         }
         // The anchor created for nothing (all refused) is reclaimed on
@@ -5571,7 +5460,7 @@ pub async fn fetch_source_attachment(
     uid: u32,
     index: usize,
     draft_id: Option<i64>,
-) -> Result<FetchAttachmentReport, String> {
+) -> Result<FetchAttachmentReport, CommandError> {
     // E5: read (attachment + session) under `off_pump`, bare network,
     // then write under `off_pump` — never again a SQLite connection
     // held across the network wait, nor a draft written outside the
@@ -5586,7 +5475,7 @@ pub async fn fetch_source_attachment(
             .into_iter()
             .find(|candidate| candidate.index == index)
             .ok_or_else(|| "unknown attachment".to_string())?;
-        Ok((attachment, auth_for(&app, account_id)?))
+        Ok::<_, CommandError>((attachment, auth_for(&app, account_id)?))
     })
     .await?;
 
@@ -5601,8 +5490,7 @@ pub async fn fetch_source_attachment(
     .await
     .map_err(|err| err.to_string())??;
 
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    store_off_pump(app, move |_, store| {
         let created = draft_id.is_none();
         let draft_id = match draft_id {
             Some(id) => id,
@@ -5658,7 +5546,7 @@ pub async fn fetch_source_attachment(
                     }),
                 })
             }
-            Err(err) => Err(err.to_string()),
+            Err(err) => Err(err.to_string().into()),
         }
     })
     .await
@@ -5668,12 +5556,9 @@ pub async fn fetch_source_attachment(
 /// `None` if the attachment no longer existed (double click) — nothing
 /// moved.
 #[tauri::command]
-pub async fn detach_file(app: AppHandle, attachment_id: i64) -> Result<Option<i64>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store
-            .remove_draft_attachment(attachment_id)
-            .map_err(|err| err.to_string())
+pub async fn detach_file(app: AppHandle, attachment_id: i64) -> Result<Option<i64>, CommandError> {
+    store_off_pump(app, move |_, store| {
+        Ok(store.remove_draft_attachment(attachment_id)?)
     })
     .await
 }
@@ -5683,9 +5568,8 @@ pub async fn detach_file(app: AppHandle, attachment_id: i64) -> Result<Option<i6
 pub async fn draft_attachments(
     app: AppHandle,
     draft_id: i64,
-) -> Result<Vec<DraftAttachmentRow>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+) -> Result<Vec<DraftAttachmentRow>, CommandError> {
+    store_off_pump(app, move |_, store| {
         Ok(store
             .draft_attachments_meta(draft_id)
             .map_err(|err| err.to_string())?
@@ -5714,7 +5598,7 @@ pub struct DraftSyncSummary {
 pub async fn sync_drafts(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DraftSyncSummary, String> {
+) -> Result<DraftSyncSummary, CommandError> {
     let path = db_path(&app)?;
     let jobs = off_pump(app.clone(), |app| connected_jobs(&app)).await?;
     let lock = state.drafts_push.clone();
@@ -5734,10 +5618,7 @@ fn run_draft_sync_all(
     lock: &Mutex<()>,
 ) -> Result<(DraftSyncSummary, Vec<AccountSession>), String> {
     // E5: a poisoned lock is recovered (the panic is logged, ADR 0014).
-    let _guard = match lock.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
+    let _guard = recovered(lock);
     let store = Store::open(db_path).map_err(|err| err.to_string())?;
     let mut summary = DraftSyncSummary {
         pushed: 0,
@@ -6019,10 +5900,7 @@ pub(crate) fn lock_accounts<'a>(
     // is already logged by telemetry (ADR 0014); condemning every
     // subsequent command until restart, as before, contradicted ADR
     // 0019.
-    Ok(match state.accounts.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    })
+    Ok(recovered(&state.accounts))
 }
 
 /// Puts back the sessions refreshed by a loop (renewed OAuth token) —
@@ -6042,6 +5920,17 @@ fn reset_sessions(
     Ok(())
 }
 
+/// Locks a mutex, RECOVERING a poisoned one (the panic is logged by its
+/// own thread, ADR 0014): the work under these locks holds no invariant
+/// in shared memory. One name for the twelve copies of the same match
+/// (D-49, PLAN-AUDIT-V3 E3).
+pub(crate) fn recovered<T>(lock: &Mutex<T>) -> MutexGuard<'_, T> {
+    match lock.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
 /// Runs a blocking job OFF the message pump and UNDER the commands'
 /// global lock (PLAN-GELS).
 ///
@@ -6055,21 +5944,45 @@ fn reset_sessions(
 /// `SQLITE_BUSY_SNAPSHOT` that `busy_timeout` doesn't cover). A
 /// poisoned lock is recovered (same choice as `account_lock`): the work
 /// under the lock has no invariant in shared memory.
-pub(crate) async fn off_pump<T, F>(app: AppHandle, work: F) -> Result<T, String>
+pub(crate) async fn off_pump<T, E, F>(app: AppHandle, work: F) -> Result<T, E>
 where
-    F: FnOnce(AppHandle) -> Result<T, String> + Send + 'static,
+    F: FnOnce(AppHandle) -> Result<T, E> + Send + 'static,
     T: Send + 'static,
+    E: From<String> + Send + 'static,
 {
     let lock = app.state::<AppState>().commands.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let _guard = match lock.lock() {
-            Ok(guard) => guard,
-            Err(poison) => poison.into_inner(),
-        };
+        let _guard = recovered(&lock);
         work(app)
     })
     .await
-    .map_err(|err| err.to_string())?
+    .map_err(|err| E::from(err.to_string()))?
+}
+
+/// Opens the store at the app's database and hands it to `work` — the
+/// standard body of a blocking command already off the pump
+/// (PLAN-AUDIT-V3 E3): one doorway in place of ~105 copies of
+/// `Store::open(&db_path(&app)?).map_err(…)`. Commands that
+/// deliberately batch several reads under ONE open (`ui_state`) call
+/// it once with a bigger closure — the fusion stays theirs.
+pub(crate) fn with_store<T>(
+    app: &AppHandle,
+    work: impl FnOnce(&mut Store) -> Result<T, CommandError>,
+) -> Result<T, CommandError> {
+    let mut store = Store::open(&db_path(app)?)?;
+    work(&mut store)
+}
+
+/// `off_pump` + `with_store` in one call — the whole standard async
+/// command body.
+pub(crate) async fn store_off_pump<T>(
+    app: AppHandle,
+    work: impl FnOnce(&AppHandle, &mut Store) -> Result<T, CommandError> + Send + 'static,
+) -> Result<T, CommandError>
+where
+    T: Send + 'static,
+{
+    off_pump(app, move |app| with_store(&app, |store| work(&app, store))).await
 }
 
 pub(crate) fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -6174,15 +6087,11 @@ fn read_sync(store: &Store, generation: u64) -> Result<SyncProgress, String> {
 pub async fn sync_progress(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<SyncProgress, String> {
+) -> Result<SyncProgress, CommandError> {
     // `State` doesn't cross `spawn_blocking` (lifetime): we carry the
     // cycle's Arc, not the state.
     let generation = state.sync_cycle.generation.load(Ordering::Relaxed);
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        read_sync(&store, generation)
-    })
-    .await
+    store_off_pump(app, move |_, store| Ok(read_sync(store, generation)?)).await
 }
 
 /// P0-bis + E4: the UI reports the OS's network state
@@ -6191,7 +6100,7 @@ pub async fn sync_progress(
 /// cleared — the network is fresh, yesterday's failure was the outage,
 /// not the server — and the watchers resume on their own.
 #[tauri::command]
-pub fn network_state(state: State<'_, AppState>, online: bool) -> Result<(), String> {
+pub fn network_state(state: State<'_, AppState>, online: bool) -> Result<(), CommandError> {
     state.online.store(online, Ordering::Relaxed);
     if online && let Ok(mut reculs) = state.sync_backoffs.lock() {
         reculs.clear();
@@ -6268,7 +6177,7 @@ pub struct BackfillStatus {
 /// Backfill status, without downloading anything — enough to show
 /// “N remaining · P%” before even starting.
 #[tauri::command]
-pub async fn backfill_status(app: AppHandle) -> Result<BackfillStatus, String> {
+pub async fn backfill_status(app: AppHandle) -> Result<BackfillStatus, CommandError> {
     off_pump(app, move |app| {
         // Measurement milestones (feature `mesure` — never in the
         // shipped binary). The upstream span `wry::custom_protocol::handle`
@@ -6318,7 +6227,7 @@ pub struct MigrationCheck {
 
 /// Read-only probe: nothing is triggered, nothing is created.
 #[tauri::command]
-pub async fn migration_check(app: AppHandle) -> Result<MigrationCheck, String> {
+pub async fn migration_check(app: AppHandle) -> Result<MigrationCheck, CommandError> {
     off_pump(app, move |app| {
         Ok(MigrationCheck {
             pending: Store::pending_adoption(&db_path(&app)?).map_err(|err| err.to_string())?,
@@ -6364,7 +6273,10 @@ pub fn migration_cancel(state: State<'_, AppState>) {
 /// `user_version` unchanged, and the whole pass replays on the next
 /// launch.
 #[tauri::command]
-pub async fn migration_run(app: AppHandle, state: State<'_, AppState>) -> Result<bool, String> {
+pub async fn migration_run(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<bool, CommandError> {
     let path = db_path(&app)?;
     let shared = state.migration.clone();
     shared.cancel.store(false, Ordering::Relaxed);
@@ -6392,6 +6304,7 @@ pub async fn migration_run(app: AppHandle, state: State<'_, AppState>) -> Result
     })
     .await
     .map_err(|err| err.to_string())?
+    .map_err(CommandError::from)
 }
 
 #[derive(Serialize)]
@@ -6414,7 +6327,7 @@ pub struct BackfillSummary {
 pub async fn backfill_bodies(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<BackfillSummary, String> {
+) -> Result<BackfillSummary, CommandError> {
     let path = db_path(&app)?;
     let jobs = off_pump(app.clone(), |app| connected_jobs(&app)).await?;
     let lock = state.bodies_backfill.clone();
@@ -6434,10 +6347,7 @@ fn run_backfill_all(
     lock: &Mutex<()>,
 ) -> Result<(BackfillSummary, Vec<AccountSession>), String> {
     // E5: a poisoned lock is recovered (the panic is logged, ADR 0014).
-    let _guard = match lock.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
+    let _guard = recovered(lock);
 
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
     let mut summary = BackfillSummary {
@@ -6549,7 +6459,7 @@ pub struct UpdateInfo {
 /// UI which stays quiet rather than nagging; it is never SWALLOWED
 /// (§9), only judged non-critical by the caller.
 #[tauri::command]
-pub async fn update_check(app: AppHandle) -> Result<Option<UpdateInfo>, String> {
+pub async fn update_check(app: AppHandle) -> Result<Option<UpdateInfo>, CommandError> {
     // E2E tests talk to NO server (handover §7.5). Without this guard,
     // as soon as a Release exists, the `latest.json` endpoint would
     // answer and the banner would appear mid-test — a flake.
@@ -6592,26 +6502,23 @@ pub fn app_version(app: AppHandle) -> String {
 /// feature (Cargo.toml); without it, it's a `powershell.exe` launched
 /// synchronously (2026-09-01 audit).
 #[tauri::command]
-pub fn open_link(url: String) -> Result<(), String> {
+pub fn open_link(url: String) -> Result<(), CommandError> {
     let trimmed = url.trim();
     let lower = trimmed.to_ascii_lowercase();
     let allowed = lower.starts_with("http://")
         || lower.starts_with("https://")
         || lower.starts_with("mailto:");
     if !allowed {
-        return Err(format!("link scheme refused: {trimmed}"));
+        return Err(format!("link scheme refused: {trimmed}").into());
     }
-    open::that_detached(trimmed).map_err(|err| err.to_string())
+    Ok(open::that_detached(trimmed).map_err(|err| err.to_string())?)
 }
 
 /// Arrival notifications: the preference is READ to display it…
 #[tauri::command]
-pub async fn notif_pref_get(app: AppHandle) -> Result<bool, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store
-            .bool_pref(PREF_ARRIVAL_BUBBLES, true)
-            .map_err(|err| err.to_string())
+pub async fn notif_pref_get(app: AppHandle) -> Result<bool, CommandError> {
+    store_off_pump(app, move |_, store| {
+        Ok(store.bool_pref(PREF_ARRIVAL_BUBBLES, true)?)
     })
     .await
 }
@@ -6620,12 +6527,9 @@ pub async fn notif_pref_get(app: AppHandle) -> Result<bool, String> {
 /// the database (PLAN-REGLAGES, R-D2): it's the Rust shell that emits
 /// the notifications, localStorage would be invisible to it.
 #[tauri::command]
-pub async fn notif_pref_set(app: AppHandle, enabled: bool) -> Result<(), String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store
-            .set_bool_pref(PREF_ARRIVAL_BUBBLES, enabled)
-            .map_err(|err| err.to_string())
+pub async fn notif_pref_set(app: AppHandle, enabled: bool) -> Result<(), CommandError> {
+    store_off_pump(app, move |_, store| {
+        Ok(store.set_bool_pref(PREF_ARRIVAL_BUBBLES, enabled)?)
     })
     .await
 }
@@ -6641,9 +6545,9 @@ pub async fn notif_pref_set(app: AppHandle, enabled: bool) -> Result<(), String>
 /// 30 s busy_timeout — a database in rollback under a writer would
 /// otherwise freeze the pump.
 #[tauri::command]
-pub async fn lang_get(app: AppHandle) -> Result<Option<String>, String> {
+pub async fn lang_get(app: AppHandle) -> Result<Option<String>, CommandError> {
     off_pump(app, move |app| {
-        Store::text_pref_readonly(&db_path(&app)?, PREF_LANG).map_err(|err| err.to_string())
+        Ok(Store::text_pref_readonly(&db_path(&app)?, PREF_LANG)?)
     })
     .await
 }
@@ -6652,12 +6556,9 @@ pub async fn lang_get(app: AppHandle) -> Result<Option<String>, String> {
 /// localStorage), same reason as the bubbles: the shell will compose
 /// notifications in this language (E2).
 #[tauri::command]
-pub async fn lang_set(app: AppHandle, lang: String) -> Result<(), String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store
-            .set_text_pref(PREF_LANG, &lang)
-            .map_err(|err| err.to_string())
+pub async fn lang_set(app: AppHandle, lang: String) -> Result<(), CommandError> {
+    store_off_pump(app, move |_, store| {
+        Ok(store.set_text_pref(PREF_LANG, &lang)?)
     })
     .await
 }
@@ -6670,14 +6571,8 @@ pub async fn lang_set(app: AppHandle, lang: String) -> Result<(), String> {
 pub async fn address_names(
     app: AppHandle,
     addresses: Vec<String>,
-) -> Result<std::collections::HashMap<String, String>, String> {
-    off_pump(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store
-            .address_names(&addresses)
-            .map_err(|err| err.to_string())
-    })
-    .await
+) -> Result<std::collections::HashMap<String, String>, CommandError> {
+    store_off_pump(app, move |_, store| Ok(store.address_names(&addresses)?)).await
 }
 
 /// Downloads, verifies the signature, launches the installer, and only
@@ -6695,23 +6590,23 @@ pub async fn address_names(
 /// The database doesn't move from `%APPDATA%` (NSIS, not MSIX — ADR
 /// 0013): an update can never orphan the messages.
 #[tauri::command]
-pub async fn update_install(app: AppHandle, version: String) -> Result<(), String> {
+pub async fn update_install(app: AppHandle, version: String) -> Result<(), CommandError> {
     // Same isolation guard as `update_check` (handover §7.5): a test
     // NEVER downloads or launches anything.
     if std::env::var("WIND_DB_PATH").is_ok() {
-        return Err("update unavailable in test".to_string());
+        return Err("update unavailable in test".into());
     }
     // One installation at a time, across every surface (banner AND
     // Settings): a second one would write the same marker and double
     // the launch.
     if UPDATE_IN_PROGRESS.swap(true, std::sync::atomic::Ordering::SeqCst) {
-        return Err("an installation is already in progress".to_string());
+        return Err("an installation is already in progress".into());
     }
     let result = download_and_launch(app, version).await;
     // On success the application quits: we only come back here on
     // failure.
     UPDATE_IN_PROGRESS.store(false, std::sync::atomic::Ordering::SeqCst);
-    result
+    Ok(result?)
 }
 
 /// The installation never doubles up (banner + Settings are two
