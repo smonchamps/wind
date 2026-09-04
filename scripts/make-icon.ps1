@@ -165,3 +165,10 @@ foreach ($e in $icnsEntries) {
 $icnsWriter.Dispose()
 
 Write-Host "icon.icns written ($($icnsEntries.Count) entries, tile at 824/1024)."
+
+# icon.png: on a macOS target, tauri's generate_context! wants a .png
+# window icon (its fallback is icons/icon.png -- CI red 33924763712
+# without it). The 512 macOS rendition, already in $rendered.
+$outPng = Join-Path $PSScriptRoot "..\apps\desktop\icons\icon.png"
+[System.IO.File]::WriteAllBytes($outPng, $rendered[512])
+Write-Host "icon.png written (512, the macOS rendition)."
