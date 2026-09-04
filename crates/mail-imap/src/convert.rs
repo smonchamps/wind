@@ -170,8 +170,10 @@ fn format_run(start: Uid, end: Uid) -> String {
     }
 }
 
-pub(crate) fn fetch_to_envelope(fetch: &imap::types::Fetch) -> Option<Envelope> {
-    let uid = fetch.uid?;
+/// The seen/star pair of a `Fetch`, in ONE copy — read by the envelope
+/// mapping AND the D-51 flag window (PLAN-RETOURS-15 review: a server
+/// quirk fixed in one reader must never stay broken in the other).
+pub(crate) fn seen_flagged(fetch: &imap::types::Fetch) -> (bool, bool) {
     let seen = fetch
         .flags()
         .iter()
@@ -180,6 +182,12 @@ pub(crate) fn fetch_to_envelope(fetch: &imap::types::Fetch) -> Option<Envelope> 
         .flags()
         .iter()
         .any(|flag| matches!(flag, imap::types::Flag::Flagged));
+    (seen, flagged)
+}
+
+pub(crate) fn fetch_to_envelope(fetch: &imap::types::Fetch) -> Option<Envelope> {
+    let uid = fetch.uid?;
+    let (seen, flagged) = seen_flagged(fetch);
     let date = fetch.internal_date().map(|d| d.with_timezone(&Utc));
     Some(envelope_from_parts(
         uid,

@@ -49,6 +49,9 @@ pub(crate) struct FakeServer {
     /// PLAN-AUDIT-V2 E5: the server cuts at the n-th `fetch_envelopes`
     /// (1 = the first) — the initial sync interrupted at batch k.
     pub(crate) envelope_batch_failure: Option<usize>,
+    /// Flag windows requested (RETOURS-15 E3, D-51): the proof that the
+    /// window is BOUNDED and asked in one batch.
+    pub(crate) flag_batches: Vec<Vec<Uid>>,
 }
 
 impl FakeServer {
@@ -73,6 +76,7 @@ impl FakeServer {
             actions_fail: false,
             refused_moves: false,
             envelope_batch_failure: None,
+            flag_batches: Vec::new(),
         }
     }
 
@@ -225,6 +229,26 @@ impl MailServer for FakeServer {
                 .map(|(envelope, _)| envelope.clone())
                 .collect(),
         ))
+    }
+
+    fn fetch_flags(
+        &mut self,
+        _mailbox: &str,
+        uids: &[Uid],
+    ) -> Result<Vec<crate::remote::FlagState>, Error> {
+        self.flag_batches.push(uids.to_vec());
+        Ok(uids
+            .iter()
+            .filter_map(|uid| {
+                self.messages
+                    .get(uid)
+                    .map(|(e, _)| crate::remote::FlagState {
+                        uid: *uid,
+                        seen: e.seen,
+                        flagged: e.flagged,
+                    })
+            })
+            .collect())
     }
 
     fn fetch_bodies_html(

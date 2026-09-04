@@ -24,7 +24,8 @@ use std::time::Duration;
 use imap_proto::NameAttribute;
 use imap_proto::types::UidSetMember;
 use mail_core::{
-    Envelope, Error, FetchedBody, MailServer, MailboxSnapshot, RemoteDraft, ThreadHeaders, Uid,
+    Envelope, Error, FetchedBody, FlagState, MailServer, MailboxSnapshot, RemoteDraft,
+    ThreadHeaders, Uid,
 };
 
 /// The cycle's timeouts (P0, PLAN-SYNCHRO): without them, a network stalling
@@ -727,6 +728,32 @@ impl MailServer for ImapServer {
             envelopes.extend(fetches.iter().filter_map(convert::fetch_to_envelope));
         }
         Ok(Some(envelopes))
+    }
+
+    /// ONE `UID FETCH … (UID FLAGS)` for the whole window — one short
+    /// line per message, no envelope bytes (the D-51 window,
+    /// PLAN-RETOURS-15 E3). The engine bounds the window; this adapter
+    /// only pays the single round trip.
+    fn fetch_flags(&mut self, mailbox: &str, uids: &[Uid]) -> Result<Vec<FlagState>, Error> {
+        if uids.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.ensure_selected(mailbox)?;
+        let fetches = self
+            .session
+            .uid_fetch(convert::uid_set(uids), "(UID FLAGS)")
+            .map_err(server_err)?;
+        Ok(fetches
+            .iter()
+            .filter_map(|fetch| {
+                let (seen, flagged) = convert::seen_flagged(fetch);
+                Some(FlagState {
+                    uid: fetch.uid?,
+                    seen,
+                    flagged,
+                })
+            })
+            .collect())
     }
 
     /// One `UID FETCH` command per batch — that is what makes the body

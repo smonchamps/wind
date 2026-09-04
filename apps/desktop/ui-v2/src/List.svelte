@@ -63,6 +63,10 @@
     // gesture menu (Move to…, Screen out) — passed up to the App,
     // which owns the commands (same rule as the bulk selection).
     organized = false,
+    // RETOURS-15 D1: the centered column belongs to the PANELESS
+    // organized Inbox (two or one pane(s)); at three panes the list
+    // lives in the 400 px column and the pane reads (A99 reversed).
+    centered = true,
     onmove = () => {},
     onsetaside = () => {},
   } = $props();
@@ -74,15 +78,19 @@
   // the unread COUNT. The headers live OUTSIDE the rows (the
   // windowing geometry gains an offset, the pattern of the invitation
   // chips) — never a row of exceptional height.
-  const sections = $derived(
-    organized && category === 'inbox' && tab === 'tous'
-      && results === null && draftRows === null,
-  );
-  // The centered column of the organized Inbox (~760 px, prototype).
-  const center = $derived(
+  // The organized Inbox's own dressing (RETOURS-14 R2: normalized
+  // header, no tabs) — a property of the MODE, whatever the pane
+  // setting says. `sections` and `center` both derive from it: the
+  // shared clauses live ONCE (review 2026-09-04).
+  const organizedInboxView = $derived(
     organized && category === 'inbox'
       && results === null && draftRows === null,
   );
+  const sections = $derived(organizedInboxView && tab === 'tous');
+  // The centered column (~760 px, prototype) — only while the Inbox
+  // is PANELESS (RETOURS-15 D1): at three panes the 400 px list
+  // column is the geometry, the pane reads.
+  const center = $derived(organizedInboxView && centered);
   // The ⋯ gesture menu per row — organized views only.
   const organizedGestures = $derived(
     organized && ['inbox', 'feed', 'paper_trail'].includes(category)
@@ -1107,7 +1115,7 @@
               aria-label={t('action.cancelSelection')} title={t('action.cancelSelection')}
               onclick={clearSelection}><Icon name="close" /></button>
     </header>
-  {:else if center}
+  {:else if organizedInboxView}
     <!-- RETOURS-14 R2 (D2/D3): the organized Inbox takes the mode's
          normalized header (shared .header-view classes from
          system.css, the Feed/Screener pattern R7/R11) — title alone
@@ -1464,7 +1472,7 @@
   <!-- RETOURS-14 R2 (D3): the organized Inbox has no footer — the
        tabs (and their All / Unread filter) belong to the classic
        view; Drafts stays accessible from the nav. -->
-  {#if !center}
+  {#if !organizedInboxView}
   <div class="tabs" data-testid="tabs">
     {#each TABS as o (o.id)}
       <span class="tab" class:active={tabActive === o.id}

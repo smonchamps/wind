@@ -62,7 +62,7 @@ pub use nav::{CanonicalFolders, NavCounts, PaperTrailGroup};
 pub use notify::{Lang, Notification, arrivals_to_notify, notification_for};
 pub use outbox::{OutboxAttachment, OutboxMessage, OutboxReport, OutboxState, flush_outbox};
 pub use remote::{
-    FetchedBody, Folder, FolderStatus, FolderWithStatus, MailServer, MailboxSnapshot,
+    FetchedBody, FlagState, Folder, FolderStatus, FolderWithStatus, MailServer, MailboxSnapshot,
     MessageRecipients, RemoteDraft, SpecialUse, ThreadHeaders,
 };
 pub use search::WIDE_QUERY_THRESHOLD;

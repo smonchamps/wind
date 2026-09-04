@@ -1343,10 +1343,13 @@ import { invalidateViews } from './lib/views.svelte.js';
     }
   }
   function backToMailbox() {
-    shrinkThread(panes === 3 && !organizedInbox);
+    shrinkThread(panes === 3 && !sceneWithoutReading);
     // E4: on return from screen 03, a READ thread leaves "New for
-    // you" — the list and the seam re-serve, the nav follows.
-    if (organizedInbox) {
+    // you" — the list and the seam re-serve, the nav follows. At
+    // three panes (RETOURS-15 D2) the return shrinks INTO the pane:
+    // the list holds until its next re-serve — a row never jumps
+    // under an open reading.
+    if (organizedPaneless) {
       reloadViews();
       loadNav();
     }
@@ -1475,9 +1478,16 @@ import { invalidateViews } from './lib/views.svelte.js';
       })
       .catch((err) => console.error('mark_seen :', err));
   }
-  // E4: the ORGANIZED Inbox has no reading pane — a click opens
-  // screen 03 (the existing overlay), regardless of the panes setting.
+  // RETOURS-15 D1 (2026-09-04, beta feedback — reverses the E4/A99
+  // rule): the ORGANIZED Inbox honors the panes setting. At three
+  // panes it reads in the pane like the classic Inbox; at two or one,
+  // a click opens screen 03 (V-D2 unchanged).
   const organizedInbox = $derived(organizedMode() && category === 'inbox');
+  // The ONE spelling of "the organized Inbox without its pane" —
+  // sceneWithoutReading, the grid class, backToMailbox and the List's
+  // centering all read IT (review 2026-09-04: three raw copies had
+  // already crept in).
+  const organizedPaneless = $derived(organizedInbox && panes !== 3);
   // E5bis: the Feed in CARDS — a reading scene, not a list; like the
   // Screener and the Organized Inbox, no pane.
   const feedCards = $derived(organizedMode() && category === 'feed');
@@ -1489,14 +1499,14 @@ import { invalidateViews } from './lib/views.svelte.js';
   // Reading/handle guards; the next full-scene section is added
   // HERE, not in N places).
   const sceneWithoutReading = $derived(
-    category === 'screener' || category === 'cleanup' || organizedInbox || feedCards,
+    category === 'screener' || category === 'cleanup' || feedCards || organizedPaneless,
   );
   function onSelection(row) {
     selectedRow = row;
     // V-D2: in two panes, opening IS screen 03 — which knows how to
     // serve a message with no thread (echo included). Read-marking
     // doesn't change: only the destination surface changes.
-    if (panes === 3 && !organizedInbox) reading.open(row);
+    if (panes === 3 && !sceneWithoutReading) reading.open(row);
     else conversation.open(row);
     markSeen(row);
   }
@@ -1701,11 +1711,12 @@ import { invalidateViews } from './lib/views.svelte.js';
     if (!(await gesture(row)) || !next) return;
     list?.select(next);
     selectedRow = next;
-    // E5 review: in the ORGANIZED Inbox the pane doesn't exist —
-    // opening and marking as read a conversation never shown would
-    // lie to the "New for you" section (the disc would leave without
-    // a read).
-    if (panes === 3 && !organizedInbox) {
+    // E5 review: without a pane, opening and marking as read a
+    // conversation never shown would lie to the "New for you" section
+    // (the disc would leave without a read). With the pane there
+    // (RETOURS-15: the organized Inbox at three panes included), the
+    // advance shows the next conversation — marking it read is honest.
+    if (panes === 3 && !sceneWithoutReading) {
       reading?.open(next);
       markSeen(next);
     }
@@ -1789,7 +1800,7 @@ import { invalidateViews } from './lib/views.svelte.js';
   {#if ready}
     <div class="columns" class:columns-2={panes === 2}
          class:columns-1={panes === 1}
-         class:columns-organized={organizedInbox}
+         class:columns-organized={organizedPaneless}
          style="--l-nav:{lNav}px; --l-liste:{listWidth}px">
       {#if panes !== 1}
         <Nav {accounts} {markers} {names} {category} {account}
@@ -1831,7 +1842,8 @@ import { invalidateViews } from './lib/views.svelte.js';
                {drafts} onresume={resumeDraft}
                onselect={onSelection} ontab={onTab} ongroup={group}
                ontotal={(t) => (listTotal = t)}
-               organized={organizedMode()} onmove={moveSender}
+               organized={organizedMode()} centered={organizedPaneless}
+               onmove={moveSender}
                onsetaside={toggleAside}
                onresults={(n, total) => { resultCount = n; totalCount = total; }} onflash={flash} />
       {/if}
@@ -1867,11 +1879,12 @@ import { invalidateViews } from './lib/views.svelte.js';
              ondblclick={() => defaultWidth(pane)}
              onkeydown={(e) => keyHandle(pane, e)}></div>
       {/snippet}
-      {#if organizedInbox && !(thread.frame === 'full' && thread.row)}
+      {#if organizedInbox && !(thread.row && (thread.frame === 'full' || thread.frame === 'pane'))}
         <!-- E5: the pile lives at the bottom right of the Organized
              Inbox (prototype) — fans out on click, full-screen table.
-             It hides under screen 03 (E5 review: it used to float
-             over the reading pane, z 20 against 1). -->
+             It hides under screen 03 AND behind an OPEN reading pane
+             (E5 review + RETOURS-15 review: it used to float over the
+             reading, z 20 against 1); an empty pane keeps it. -->
         <SetAsidePile onopen={openConversation} onflash={flash}
                        onchange={() => { reloadViews(); loadNav(); }} />
       {/if}
@@ -2078,8 +2091,10 @@ import { invalidateViews } from './lib/views.svelte.js';
     overflow:hidden; background:var(--bg);
   }
   .columns-1 .frame-screener { grid-column:1 / -1; }
-  /* E4: the Organized Inbox has no reading pane — the list extends
-     from the nav to the right edge (centered column inside). */
+  /* RETOURS-15 D1: at two or one pane(s), the Organized Inbox has no
+     reading pane — the list extends from the nav to the right edge
+     (centered column inside). At three panes the class is absent and
+     the standard screen-02 grid applies (list column + pane). */
   .columns-organized > :global([data-testid="list"]) { grid-column:2 / -1; }
   .columns-1.columns-organized > :global([data-testid="list"]) { grid-column:1 / -1; }
   /* The handle (R3): 7 px straddling the hairline, out of flow; on

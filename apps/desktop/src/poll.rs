@@ -68,6 +68,13 @@ impl mail_core::MailServer for ShellServer<'_> {
     ) -> Result<Option<Vec<Envelope>>, mail_core::Error> {
         self.0.changes_since(mailbox, modseq)
     }
+    fn fetch_flags(
+        &mut self,
+        mailbox: &str,
+        uids: &[mail_core::Uid],
+    ) -> Result<Vec<mail_core::FlagState>, mail_core::Error> {
+        self.0.fetch_flags(mailbox, uids)
+    }
     fn fetch_bodies_html(
         &mut self,
         mailbox: &str,

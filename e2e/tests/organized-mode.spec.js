@@ -9,7 +9,7 @@
 // PK probe proven at spike S2). Classic mode stays today's app: the
 // "zero diff" guard is the first test.
 import { test, expect } from '@playwright/test';
-import { launchAppV2, closeApp, injectArrival } from '../launch.mjs';
+import { launchAppV2, closeApp, injectArrival, purgeLocals } from '../launch.mjs';
 
 let app;
 let browser;
@@ -22,9 +22,16 @@ test.beforeAll(async () => {
   ({ app, browser, page } = await launchAppV2({
     accounts: [{ email: 'principal@exemple.fr', messages: 6 }],
   }));
+  // RETOURS-15: the suite asserts the PANE at three panes — a
+  // `wind-volets` left behind by an interrupted redesign-panes run
+  // (shared WebView2 profile, the launch.mjs trap) would silently run
+  // it at two. Purge, then reload so the app re-reads the default.
+  await purgeLocals(page, ['wind-volets', 'wind-largeurs']);
+  await page.reload();
 });
 
 test.afterAll(async () => {
+  await purgeLocals(page, ['wind-volets', 'wind-largeurs']);
   await closeApp({ app, browser });
 });
 
@@ -382,27 +389,51 @@ test('Settings > Screener sets the defaults — the bare click obeys, persistenc
 });
 
 // ---------------- E4 — the organized Inbox (sections) ----------------
-test('the organized Inbox has its sections, opens at screen 03, and a read thread leaves "New for you"', async () => {
-  // Mode ON, on the Inbox (end of the E3 test). The prototype's two
-  // sections frame ONE flow: unread first, the seam is the COUNT —
-  // and the reading pane does not exist here.
+test('the organized Inbox has its sections and, at three panes, reads in the PANE', async () => {
+  // Mode ON, on the Inbox (end of the E3 test). The two sections
+  // frame ONE flow: unread first, the seam is the COUNT. RETOURS-15
+  // D1 (2026-09-04, beta feedback — reverses the E4/A99 rule): the
+  // 3-pane setting is honored here — the reading pane exists and a
+  // click opens IN the pane, never screen 03.
   const sections = page.locator('[data-testid="section"]');
   await expect(sections).toHaveCount(2);
   await expect(sections.first()).toContainText('New for you ·');
   await expect(sections.last()).toContainText('Previously seen');
-  // `reading-pane`: the REAL testid of the pane (E5 review — "lecture"
-  // does not exist, the assertion was vacant by construction).
-  await expect(page.locator('[data-testid="reading-pane"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="reading-pane"]')).toBeVisible();
 
   const label = await sections.first().textContent();
   const n = Number(label.match(/(\d+)/)[1]);
-  // The click opens SCREEN 03 (never a pane), going back refreshes
-  // the list: the READ thread has left "New for you".
+  await page.locator('[data-testid="row"]').first().click();
+  await expect(
+    page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]'),
+  ).toBeVisible();
+  await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
+  // D2 (2026-09-04): the row never jumps under the open reading — the
+  // sections hold until the list is re-served.
+  await expect(sections.first()).toContainText(`New for you · ${n}`);
+  // The product gesture that re-serves (a folder round trip): the
+  // READ thread has left "New for you".
+  await page.locator('[data-testid="nav-folder"][data-category="feed"]').click();
+  await page.locator('[data-testid="nav-folder"][data-category="inbox"]').click();
+  await expect(sections.first()).toContainText(`New for you · ${n - 1}`);
+});
+
+test('at two panes the organized Inbox still opens screen 03 (V-D2 unchanged)', async () => {
+  await page.locator('[data-testid="settings"]').click();
+  await page.locator('[data-testid="settings-group"][data-group="affichage"]').click();
+  await page.locator('[data-testid="display-panes"]').selectOption('2');
+  await page.locator('[data-testid="settings-done"]').click();
+  await expect(page.locator('[data-testid="reading-pane"]')).toHaveCount(0);
   await page.locator('[data-testid="row"]').first().click();
   await expect(page.locator('[data-testid="conversation"]')).toBeVisible();
-  await page.locator('[data-testid="back-to-mailbox"]').click();
+  await page.keyboard.press('Escape');
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
-  await expect(sections.first()).toContainText(`New for you · ${n - 1}`);
+  // Back to three panes: the suite's default state is restored.
+  await page.locator('[data-testid="settings"]').click();
+  await page.locator('[data-testid="settings-group"][data-group="affichage"]').click();
+  await page.locator('[data-testid="display-panes"]').selectOption('3');
+  await page.locator('[data-testid="settings-done"]').click();
+  await expect(page.locator('[data-testid="reading-pane"]')).toBeVisible();
 });
 
 test("a row's ⋯ moves the sender — left of the time, without shifting the geometry", async () => {
@@ -458,12 +489,15 @@ test('set aside: the thread leaves the list, lives in the pile, and "Done" retur
 
 test('the thread bar toggles "Set aside" / "Resume"', async () => {
   await page.locator('[data-testid="row"]', { hasText: 'Premiere fois' }).click();
-  await expect(page.locator('[data-testid="conversation"]')).toBeVisible();
+  // RETOURS-15 D1: at three panes the thread opens in the PANE — its
+  // bar carries the same toggle as screen 03.
+  await expect(
+    page.locator('[data-testid="reading-pane"] [data-testid="thread-subject"]'),
+  ).toBeVisible();
   const toggle = page.locator('[data-testid="put-aside"]');
   await expect(toggle).toContainText('Set aside');
   await toggle.click();
-  // The thread has just left its view: the screen goes back to the mailbox.
-  await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
+  // The thread has just left its view: its row is gone from the list.
   await expect(page.locator('[data-testid="row"]', { hasText: 'Premiere fois' })).toHaveCount(0);
   // Resuming from the fan: the card opens screen 03, the bar says
   // "Bring back", the gesture returns the thread to the Inbox.

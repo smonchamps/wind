@@ -183,6 +183,15 @@ pub struct FolderStatus {
 /// omit it for a folder it stumbles on (RFC 5819 §2).
 pub type FolderWithStatus = (Folder, Option<FolderStatus>);
 
+/// A message's server-side flag state, as one `UID FETCH … (UID FLAGS)`
+/// line serves it — the D-51 window's currency (PLAN-RETOURS-15 E3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FlagState {
+    pub uid: Uid,
+    pub seen: bool,
+    pub flagged: bool,
+}
+
 pub trait MailServer {
     /// Selects a mailbox and returns its current state.
     fn select(&mut self, mailbox: &str) -> Result<MailboxSnapshot, Error>;
@@ -198,6 +207,17 @@ pub trait MailServer {
     /// engine then falls back to UID differential detection.
     fn changes_since(&mut self, mailbox: &str, modseq: u64)
     -> Result<Option<Vec<Envelope>>, Error>;
+
+    /// The seen/flagged state of the requested messages, in ONE command
+    /// (`UID FETCH … (UID FLAGS)` — one short line per message, no
+    /// envelope bytes). Serves the D-51 window (PLAN-RETOURS-15 E3): a
+    /// server without CONDSTORE offers no delta, so the engine re-reads
+    /// a BOUNDED window of recent flags instead. UIDs the server no
+    /// longer serves are simply absent from the result.
+    ///
+    /// Deliberately without a default implementation (the
+    /// `fetch_bodies_html` rule): each adapter must state its cost.
+    fn fetch_flags(&mut self, mailbox: &str, uids: &[Uid]) -> Result<Vec<FlagState>, Error>;
 
     /// Bodies of SEVERAL messages in a single command. UIDs the server
     /// no longer serves are simply absent from the result.

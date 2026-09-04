@@ -793,6 +793,97 @@ fn action_queue_roundtrips_in_emission_order() {
 }
 
 #[test]
+fn apply_flags_updates_changed_rows_and_counts_them() {
+    let (mut store, id) = store_with_mailbox();
+    store
+        .upsert_envelopes(
+            id,
+            &[envelope(1, "a", 100, false), envelope(2, "b", 200, false)],
+        )
+        .unwrap();
+
+    let applied = store
+        .apply_flags(
+            id,
+            &[
+                crate::remote::FlagState {
+                    uid: 1,
+                    seen: true,
+                    flagged: false,
+                },
+                // uid 2 matches its fixture state exactly (the helper
+                // stars even UIDs): the window must count it as a no-op.
+                crate::remote::FlagState {
+                    uid: 2,
+                    seen: false,
+                    flagged: true,
+                },
+            ],
+        )
+        .unwrap();
+
+    assert_eq!(applied, 1, "only the row that differs counts");
+    let rows = recent(&store, 0, 10);
+    assert!(rows.iter().any(|r| r.uid == 1 && r.seen));
+    assert!(rows.iter().any(|r| r.uid == 2 && !r.seen));
+}
+
+/// The D-51 window never tramples a local intent still in the queue:
+/// a mail marked unread HERE, not yet replayed to the server, must not
+/// come back read because the window read the server's stale state.
+#[test]
+fn apply_flags_spares_envelopes_with_a_pending_action() {
+    let (mut store, id) = store_with_mailbox();
+    store
+        .upsert_envelopes(id, &[envelope(1, "a", 100, false)])
+        .unwrap();
+    store.enqueue_action(id, 1, Action::MarkUnseen).unwrap();
+
+    let applied = store
+        .apply_flags(
+            id,
+            &[crate::remote::FlagState {
+                uid: 1,
+                seen: true,
+                flagged: false,
+            }],
+        )
+        .unwrap();
+
+    assert_eq!(applied, 0, "a queued intent wins over the window");
+    assert!(!recent(&store, 0, 1)[0].seen);
+}
+
+/// A QUARANTINED action is a dead intent, not a live one: it stays in
+/// `pending_actions` until a fresh gesture, and it must not freeze the
+/// D-51 window forever (review 2026-09-04 — every sibling check
+/// filters `refusee = 0`).
+#[test]
+fn apply_flags_ignores_quarantined_actions() {
+    let (mut store, id) = store_with_mailbox();
+    store
+        .upsert_envelopes(id, &[envelope(1, "a", 100, false)])
+        .unwrap();
+    store.enqueue_action(id, 1, Action::MarkUnseen).unwrap();
+    let action = &store.pending_actions(id).unwrap()[0];
+    store.refuse_action(action.id, "NO refused").unwrap();
+
+    let applied = store
+        .apply_flags(
+            id,
+            &[crate::remote::FlagState {
+                uid: 1,
+                seen: true,
+                flagged: false,
+            }],
+        )
+        .unwrap();
+
+    assert_eq!(applied, 1, "a dead intent never blocks the window");
+    assert!(recent(&store, 0, 1)[0].seen);
+}
+
+#[test]
 fn set_seen_local_updates_and_reports_actual_change() {
     let (mut store, id) = store_with_mailbox();
     store

@@ -3,7 +3,7 @@
 // (Feed/Screener pattern, .header-view classes), and the current
 // section's name stays visible while scrolling (a sticky band).
 import { test, expect } from '@playwright/test';
-import { launchAppV2, closeApp, injectArrival } from '../launch.mjs';
+import { launchAppV2, closeApp, injectArrival, purgeLocals } from '../launch.mjs';
 
 let app;
 let browser;
@@ -15,9 +15,15 @@ test.beforeAll(async () => {
   ({ app, browser, page } = await launchAppV2({
     accounts: [{ email: 'principal@exemple.fr', messages: 40 }],
   }));
+  // RETOURS-15: the pane assertions need the three-pane default — a
+  // stale `wind-volets` from an interrupted run (shared WebView2
+  // profile) must not decide this suite's layout.
+  await purgeLocals(page, ['wind-volets', 'wind-largeurs']);
+  await page.reload();
 });
 
 test.afterAll(async () => {
+  await purgeLocals(page, ['wind-volets', 'wind-largeurs']);
   await closeApp({ app, browser });
 });
 
@@ -257,11 +263,10 @@ test('mixed thread: the unknown sender who replies in a known thread is flagged,
   await expect(row).toBeVisible();
   await row.click();
 
-  // The organized Inbox is a scene without a pane: the thread opens
-  // at screen 03. The badge says the wait — on the intruder's message.
-  await expect(page.locator('[data-testid="conversation"] [data-testid="screener-pending"]').first())
+  // RETOURS-15 D1: at three panes the thread opens in the PANE. The
+  // badge says the wait — on the intruder's message.
+  await expect(page.locator('[data-testid="reading-pane"] [data-testid="screener-pending"]').first())
     .toContainText('Awaiting the Screener');
-  await page.locator('[data-testid="back-to-mailbox"]').click();
 
   // And the intruder REALLY waits at the desk.
   await page.locator('[data-testid="nav-folder"][data-category="screener"]').click();

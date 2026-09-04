@@ -318,6 +318,18 @@ deferral = one justified line.)
 
 ### D-51 · An account without CONDSTORE never resyncs its flags
 
+> ✅ **CLOSED on 2026-09-04 (PLAN-RETOURS-15 E3, Chief-Engineer decision D4).**
+> Its reopening clause came true the day before: the `wind.log` line
+> fired on the Chief Engineer's own account 3. The incremental sync
+> now re-reads a **bounded flag window** on CONDSTORE-less accounts —
+> the 500 most recent UIDs per poll, ONE `UID FETCH … (UID FLAGS)`
+> round trip, a queued local intent always winning over the window
+> (`Store::apply_flags` guard). **Stated limit that remains**: beyond
+> the window a flag stays stale until its UID moves; the log line
+> stays, reworded (`flags resynchronized by bounded window only`).
+> Reopens if the field shows stale flags INSIDE the window, or the
+> window's cost shows up in a poll measurement.
+
 - **Fact (audit 2026-09-01 §2.1, CE decision D3 of PLAN-AUDIT-V2 on
   2026-09-02)**: without the CONDSTORE announcement, `changes_since`
   returns `None` and the engine only re-reads the UID differential —

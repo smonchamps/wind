@@ -1676,6 +1676,22 @@ impl Store {
         }
     }
 
+    /// The `n` highest UIDs known locally — the D-51 light pass's
+    /// window (PLAN-RETOURS-15), read from the store so no server
+    /// inventory is ever paid for it.
+    pub fn recent_uids(&self, mailbox_id: i64, n: usize) -> Result<Vec<Uid>, Error> {
+        let mut stmt = self.0.prepare(
+            "SELECT uid FROM envelopes WHERE mailbox_id = ?1
+              ORDER BY uid DESC LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![mailbox_id, n as i64], |row| row.get(0))?;
+        let mut uids = Vec::new();
+        for uid in rows {
+            uids.push(uid?);
+        }
+        Ok(uids)
+    }
+
     /// Locally applies a read/unread change (UI optimism).
     /// Returns `false` if the envelope was already in this state.
     pub fn set_seen_local(&self, mailbox_id: i64, uid: Uid, seen: bool) -> Result<bool, Error> {
@@ -1693,6 +1709,52 @@ impl Store {
             }
         }
         Ok(changed > 0)
+    }
+
+    /// Applies a server-side flags reading — the D-51 window
+    /// (PLAN-RETOURS-15 E3). Seen and star updated where they differ,
+    /// the touched threads' counters refreshed. Returns how many
+    /// envelopes actually changed.
+    pub fn apply_flags(
+        &self,
+        mailbox_id: i64,
+        flags: &[crate::remote::FlagState],
+    ) -> Result<usize, Error> {
+        // ONE transaction (the `cleanup_verdict` pattern, E4 of
+        // RETOURS-13's review): an autocommit UPDATE per message would
+        // cost a fsync each on a 500-UID window; the touched threads
+        // refresh ONCE apiece, after the loop.
+        let tx = self.0.unchecked_transaction()?;
+        let mut applied = 0;
+        let mut threads: BTreeSet<i64> = BTreeSet::new();
+        for state in flags {
+            // A LIVE local intent wins over the window: the server's
+            // reading predates the replay — without this guard a mail
+            // marked unread HERE would come back read. `refusee = 0`
+            // matters: a quarantined action is a dead intent that stays
+            // queued until a fresh gesture, and it must not freeze the
+            // window (review 2026-09-04).
+            let changed = tx.execute(
+                "UPDATE envelopes SET seen = ?3, flagged = ?4
+                 WHERE mailbox_id = ?1 AND uid = ?2
+                   AND (seen != ?3 OR flagged != ?4)
+                   AND NOT EXISTS (SELECT 1 FROM pending_actions p
+                                    WHERE p.mailbox_id = ?1 AND p.uid = ?2
+                                      AND p.refusee = 0)",
+                params![mailbox_id, state.uid, state.seen, state.flagged],
+            )?;
+            if changed > 0 {
+                applied += 1;
+                if let Some(thread) = thread::thread_of(&tx, mailbox_id, state.uid)? {
+                    threads.insert(thread);
+                }
+            }
+        }
+        for thread in &threads {
+            thread::refresh(&tx, *thread)?;
+        }
+        tx.commit()?;
+        Ok(applied)
     }
 
     /// Locally applies the star (UI optimism).

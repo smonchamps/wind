@@ -17,6 +17,11 @@ use crate::remote::{MailServer, MailboxSnapshot};
 use crate::store::{Store, SyncState};
 
 const DEFAULT_BATCH_SIZE: usize = 500;
+/// D-51 window (PLAN-RETOURS-15 E3): how many recent UIDs get their
+/// flags re-read per poll on a CONDSTORE-less server. 500 `(UID FLAGS)`
+/// lines ≈ one bounded round trip — the figure is validated in the
+/// field on the Chief Engineer's account 3 (STOP 2).
+const DEFAULT_FLAG_WINDOW: usize = 500;
 
 /// What a pass must do, decided BEFORE any write I/O (STANDARD §4: the
 /// pure decision, the execution elsewhere). Audit 2026-09-01 S1-6: the
@@ -64,20 +69,31 @@ pub struct SyncReport {
     /// Actions put into QUARANTINE during this replay (E3): a definitive
     /// refusal from the server, or a fifth transient failure.
     pub refused: usize,
-    /// The server does not announce CONDSTORE: its flags never
-    /// resynchronize (D-51, CE decision D3 of PLAN-AUDIT-V2 — declared
-    /// debt, tracked by the shell).
+    /// The server does not announce CONDSTORE: only a BOUNDED window of
+    /// recent flags resynchronizes (D-51, paid at PLAN-RETOURS-15 E3) —
+    /// beyond the window a flag stays stale until its UID moves. The
+    /// shell logs the account once per session.
     pub without_condstore: bool,
+    /// Envelopes whose flags the D-51 window actually changed — the
+    /// signal that makes the shell re-serve the UI when nothing else
+    /// moved (review 2026-09-04: without it the bold never cleared).
+    pub flags_applied: usize,
 }
 
 pub struct SyncEngine {
     batch_size: usize,
+    /// How many of the most recent UIDs the D-51 flag window re-reads
+    /// on a CONDSTORE-less server (PLAN-RETOURS-15 E3). One short
+    /// `(UID FLAGS)` line per message — the bound keeps the cost flat
+    /// however deep the mailbox is.
+    flag_window: usize,
 }
 
 impl Default for SyncEngine {
     fn default() -> Self {
         Self {
             batch_size: DEFAULT_BATCH_SIZE,
+            flag_window: DEFAULT_FLAG_WINDOW,
         }
     }
 }
@@ -86,7 +102,15 @@ impl SyncEngine {
     pub fn new(batch_size: usize) -> Self {
         Self {
             batch_size: batch_size.max(1),
+            ..Self::default()
         }
+    }
+
+    /// Overrides the D-51 window's bound — tests prove the bound with
+    /// a window of 1.
+    pub fn with_flag_window(mut self, flag_window: usize) -> Self {
+        self.flag_window = flag_window;
+        self
     }
 
     pub fn sync(
@@ -192,6 +216,7 @@ impl SyncEngine {
             replayed: 0,
             refused: 0,
             without_condstore: false,
+            flags_applied: 0,
         })
     }
 
@@ -205,6 +230,7 @@ impl SyncEngine {
     ) -> Result<SyncReport, Error> {
         let mut fetched = 0;
         let mut deleted = 0;
+        let mut flags_applied = 0;
 
         let condstore_changes = match state.highest_modseq {
             Some(modseq) => server.changes_since(mailbox, modseq)?,
@@ -228,8 +254,8 @@ impl SyncEngine {
                 }
             }
             None => {
-                // Without CONDSTORE: only new messages are detected; flag
-                // changes will wait for a full resync.
+                // Without CONDSTORE: only new messages are detected by
+                // the UID differential.
                 let server_uids = server.list_uids(mailbox)?;
                 let mut new_uids: Vec<Uid> = server_uids
                     .iter()
@@ -241,6 +267,19 @@ impl SyncEngine {
                     let envelopes = server.fetch_envelopes(mailbox, chunk)?;
                     fetched += envelopes.len();
                     store.upsert_envelopes(state.mailbox_id, &envelopes)?;
+                }
+                // The D-51 window (PLAN-RETOURS-15 E3, decision D4):
+                // the flags of the most recent UIDs are re-read in ONE
+                // bounded `(UID FLAGS)` command — a mail read on the
+                // phone no longer stays bold here forever. The
+                // inventory is already in hand; the window costs one
+                // round trip, flat however deep the mailbox is. Beyond
+                // the bound the flag stays stale — the stated limit
+                // (DEBT D-51).
+                let window = flag_window_uids(&server_uids, self.flag_window);
+                if !window.is_empty() {
+                    let flags = server.fetch_flags(mailbox, &window)?;
+                    flags_applied = store.apply_flags(state.mailbox_id, &flags)?;
                 }
                 // Here the inventory is already paid for (it served the
                 // new messages): the deletion diff is free.
@@ -256,8 +295,51 @@ impl SyncEngine {
             replayed: 0,
             refused: 0,
             without_condstore: false,
+            flags_applied,
         })
     }
+
+    /// The LIGHT flags pass (PLAN-RETOURS-15 review). On a
+    /// CONDSTORE-less server a flag-only change moves neither EXISTS
+    /// nor UIDNEXT: the guarded poll rightly skips the mailbox (ADR
+    /// 0017) and the window above never plays. This pass re-reads the
+    /// window from the UIDs the STORE already knows — one bounded
+    /// `(UID FLAGS)` round trip, no inventory. Returns how many
+    /// envelopes actually changed.
+    pub fn flags_pass(
+        &self,
+        server: &mut dyn MailServer,
+        store: &mut Store,
+        account_id: i64,
+        mailbox: &str,
+    ) -> Result<usize, Error> {
+        let Some(state) = store.sync_state(account_id, mailbox)? else {
+            return Ok(0);
+        };
+        let uids = store.recent_uids(state.mailbox_id, self.flag_window)?;
+        if uids.is_empty() {
+            return Ok(0);
+        }
+        let flags = server.fetch_flags(mailbox, &uids)?;
+        store.apply_flags(state.mailbox_id, &flags)
+    }
+}
+
+/// The D-51 window's pure decision (STANDARD §4): which UIDs get their
+/// flags re-read — the `bound` highest, whatever order the server
+/// listed them in. Partial selection: the mailbox's depth is never
+/// sorted whole.
+fn flag_window_uids(uids: &[Uid], bound: usize) -> Vec<Uid> {
+    if bound == 0 || uids.is_empty() {
+        return Vec::new();
+    }
+    let mut uids = uids.to_vec();
+    if uids.len() > bound {
+        uids.select_nth_unstable_by(bound - 1, |a, b| b.cmp(a));
+        uids.truncate(bound);
+    }
+    uids.sort_unstable_by(|a, b| b.cmp(a));
+    uids
 }
 
 /// Replays the action queue to the server, in emission order.
@@ -1137,22 +1219,115 @@ mod tests {
         );
     }
 
-    /// A known and accepted limit: without CONDSTORE, a flag changed
-    /// server-side is not refreshed by the incremental sync. This test
-    /// documents the behavior so that a future fix is a choice, not an
-    /// accident.
+    /// D-51 paid (PLAN-RETOURS-15 E3, Chief-Engineer decision D4 of
+    /// 2026-09-04 — their own account 3 is CONDSTORE-less): without CONDSTORE,
+    /// the incremental sync re-reads a BOUNDED window of recent flags
+    /// in one `fetch_flags` call. A message read on the phone no
+    /// longer stays bold here forever.
     #[test]
-    fn without_condstore_flag_changes_are_not_detected() {
+    fn without_condstore_the_flag_window_refreshes_recent_flags() {
         let mut server = FakeServer::new(false);
         server.add(1, "to read");
+        server.add(2, "starred elsewhere");
         let mut store = Store::open_in_memory().unwrap();
         let engine = SyncEngine::default();
         synced(&mut server, &mut store, &engine);
 
         server.mark_seen(1);
+        server.mark_flagged(2);
         synced(&mut server, &mut store, &engine);
 
-        assert!(!recent(&store, 0, 1)[0].seen);
+        let rows = recent(&store, 0, 10);
+        assert!(
+            rows.iter().any(|r| r.uid == 1 && r.seen),
+            "the seen flag must come back through the window"
+        );
+        assert!(
+            rows.iter().any(|r| r.uid == 2 && r.flagged),
+            "the star must come back through the window"
+        );
+        assert_eq!(
+            server.flag_batches.len(),
+            1,
+            "one poll pays ONE flag window, in one command"
+        );
+    }
+
+    /// The report says HOW MANY flags the window changed — the shell
+    /// bumps the UI generation on it (review 2026-09-04: without the
+    /// signal, the database updated but the rendered row stayed bold).
+    #[test]
+    fn the_window_reports_how_many_flags_it_applied() {
+        let mut server = FakeServer::new(false);
+        server.add(1, "a");
+        server.add(2, "b");
+        let mut store = Store::open_in_memory().unwrap();
+        let engine = SyncEngine::default();
+        synced(&mut server, &mut store, &engine);
+
+        server.mark_seen(1);
+        let report = synced(&mut server, &mut store, &engine);
+        assert_eq!(report.flags_applied, 1);
+
+        let report = synced(&mut server, &mut store, &engine);
+        assert_eq!(
+            report.flags_applied, 0,
+            "an unchanged window applies nothing"
+        );
+    }
+
+    /// §4 pure decision (trivial RED would teach nothing — stated): the
+    /// window picks the highest UIDs whatever the server's listing
+    /// order; an under-filled list travels whole; bound 0 is empty.
+    #[test]
+    fn flag_window_uids_picks_the_highest_in_any_order() {
+        assert_eq!(flag_window_uids(&[3, 9, 1, 7], 2), vec![9, 7]);
+        assert_eq!(flag_window_uids(&[3, 1], 5), vec![3, 1]);
+        assert!(flag_window_uids(&[1, 2], 0).is_empty());
+        assert!(flag_window_uids(&[], 5).is_empty());
+    }
+
+    /// The window is a BOUND, not an inventory: only the most recent
+    /// UIDs travel — an old message's flag is out of reach, and that
+    /// limit is stated (DEBT D-51 rewording), never an accident.
+    #[test]
+    fn the_flag_window_is_bounded_to_the_most_recent_uids() {
+        let mut server = FakeServer::new(false);
+        server.add(1, "old");
+        server.add(2, "recent");
+        let mut store = Store::open_in_memory().unwrap();
+        let engine = SyncEngine::default().with_flag_window(1);
+        synced(&mut server, &mut store, &engine);
+
+        server.mark_seen(1);
+        server.mark_seen(2);
+        synced(&mut server, &mut store, &engine);
+
+        assert_eq!(
+            server.flag_batches.last().unwrap(),
+            &vec![2],
+            "the window carries the highest UIDs only"
+        );
+        let rows = recent(&store, 0, 10);
+        assert!(rows.iter().any(|r| r.uid == 2 && r.seen));
+        assert!(
+            rows.iter().any(|r| r.uid == 1 && !r.seen),
+            "beyond the bound the flag stays stale — the stated limit"
+        );
+    }
+
+    /// CONDSTORE servers never pay the window: the delta already
+    /// carries the flags.
+    #[test]
+    fn with_condstore_no_flag_window_is_paid() {
+        let mut server = FakeServer::new(true);
+        server.add(1, "a");
+        let mut store = Store::open_in_memory().unwrap();
+        let engine = SyncEngine::default();
+        synced(&mut server, &mut store, &engine);
+        server.mark_seen(1);
+        synced(&mut server, &mut store, &engine);
+        assert!(server.flag_batches.is_empty());
     }
 
     fn mailbox_id(store: &Store) -> i64 {

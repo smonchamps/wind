@@ -315,8 +315,20 @@ pub fn poll_inbox<S: MailServer, H: CycleHooks>(
         settle_marker(store, account_id, INBOX, inbox_status.as_ref(), problems);
         report
     } else {
-        // Nothing moved: empty incremental report — no arrivals, no
-        // bubbles, no lie.
+        // Nothing moved by COUNT. On a CONDSTORE-less server a
+        // flag-only change is invisible to STATUS (no HIGHESTMODSEQ,
+        // EXISTS/UIDNEXT silent): without the light flags pass the
+        // D-51 window never played on a quiet mailbox and a mail read
+        // on the phone stayed bold here (RETOURS-15 review). One
+        // bounded `(UID FLAGS)` round trip from the STORE's own UIDs,
+        // no inventory — ADR 0017's sobriety holds. A CONDSTORE
+        // server skips it: its delta will speak when polled.
+        let flags_applied = match inbox_status.as_ref() {
+            Some(status) if status.highest_modseq.is_none() => SyncEngine::default()
+                .flags_pass(server, store, account_id, INBOX)
+                .map_err(|err| err.to_string())?,
+            _ => 0,
+        };
         SyncReport {
             mode: SyncMode::Incremental,
             fetched: 0,
@@ -324,6 +336,7 @@ pub fn poll_inbox<S: MailServer, H: CycleHooks>(
             replayed: 0,
             refused: 0,
             without_condstore: false,
+            flags_applied,
         }
     };
 
@@ -379,6 +392,11 @@ pub fn poll_inbox<S: MailServer, H: CycleHooks>(
         // path through which mail signaled by an IDLE watcher shows up
         // at rest, with no new channel (R0-S5).
         hooks.bump_generation();
+    } else if report.flags_applied > 0 {
+        // Flags alone (the D-51 window): nothing to count as mail, but
+        // the UI must re-serve — without this bump the database
+        // updated and the rendered row stayed bold (RETOURS-15 review).
+        hooks.bump_generation();
     }
     match store.new_unread_after(account_id, INBOX, last_uid_before, NOTIFY_MAX_ARRIVALS) {
         Ok(arrivals) => {
@@ -392,13 +410,13 @@ pub fn poll_inbox<S: MailServer, H: CycleHooks>(
     // PLAN-AUDIT-V1 review: the cycle that quarantines an action SAYS
     // SO — otherwise only the slot's global counter reveals it, with no
     // link to the faulty cycle. Single exit point for the four paths.
-    // D-51 (Chief-Engineer decision D3, PLAN-AUDIT-V2): a server without CONDSTORE
-    // never resynchronizes its flags — debt stated, named ONCE per
-    // account and per session in `wind.log`, to know whether the case
-    // exists.
+    // D-51 paid at PLAN-RETOURS-15 E3 (Chief-Engineer decision D4, 2026-09-04): a
+    // server without CONDSTORE gets a BOUNDED flag window per poll —
+    // the line stays, named ONCE per account and per session in
+    // `wind.log`, because beyond the window flags remain stale.
     if report.without_condstore && hooks.condstore_missing_first_time(account_id) {
         hooks.trace(&format!(
-            "account {account_id}: without CONDSTORE, flags not resynchronized (D-51)"
+            "account {account_id}: without CONDSTORE, flags resynchronized by bounded window only (D-51)"
         ));
     }
     if report.refused > 0 {
@@ -800,6 +818,56 @@ mod tests {
             server.uid_list_calls, listed_after_first,
             "a motionless folder must be SKIPPED, never re-listed (ADR 0017)"
         );
+    }
+
+    /// D-51's blind spot (RETOURS-15 review): on a CONDSTORE-less
+    /// server a flag-only change moves neither EXISTS nor UIDNEXT, so
+    /// the guarded poll rightly skips the mailbox — and the window
+    /// inside `incremental_sync` never plays. The light flags pass
+    /// must bring the phone's read back anyway, WITHOUT paying an
+    /// inventory (ADR 0017's sobriety holds).
+    #[test]
+    fn a_flag_change_on_a_quiet_condstore_less_server_still_lands() {
+        let mut store = Store::open_in_memory().expect("store");
+        let account_id = store
+            .adopt_or_create_account("cycle@test.io", "imap.test.io")
+            .expect("account");
+        let mut server = FakeServer::new(false);
+        server.add(1, "read on the phone");
+
+        run_sync(
+            &mut server,
+            &mut store,
+            account_id,
+            Path::new(":memory:"),
+            &NoHooks,
+        )
+        .expect("first cycle");
+        let listed_after_first = server.uid_list_calls;
+
+        // Read elsewhere: flags move, counts do not.
+        server.mark_seen(1);
+        run_sync(
+            &mut server,
+            &mut store,
+            account_id,
+            Path::new(":memory:"),
+            &NoHooks,
+        )
+        .expect("second cycle");
+
+        let mailbox_id = store
+            .sync_state(account_id, INBOX)
+            .expect("state readable")
+            .expect("INBOX state exists")
+            .mailbox_id;
+        let rows = store.recent(account_id, INBOX, 0, 1).expect("rows");
+        assert!(rows[0].seen, "the phone's read must land here");
+        assert_eq!(
+            server.uid_list_calls, listed_after_first,
+            "the light pass pays NO inventory"
+        );
+        assert!(store.envelope_count(mailbox_id).unwrap_or(0) >= 1);
     }
 }
 
