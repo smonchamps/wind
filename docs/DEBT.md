@@ -329,6 +329,12 @@ deferral = one justified line.)
   `wind.log` names the account without CONDSTORE at each poll: the
   field will say whether the case exists.
 - **Reopens if**: the line appears for a tester.
+- **2026-09-04 (PLAN-AUDIT-V3 field)**: the line fired — the Chief
+  Engineer's own account 3 is CONDSTORE-less (`wind.log`,
+  `account 3: without CONDSTORE, flags not resynchronized`). The case
+  is no longer theoretical; whether its cost (flags stale on that
+  account until a UID moves) warrants the `FETCH FLAGS` window is a
+  Chief-Engineer call at the next job touching sync.
 
 ### D-52 · Stated limits of audit wave 2
 

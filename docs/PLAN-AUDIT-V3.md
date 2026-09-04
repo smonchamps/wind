@@ -2,8 +2,27 @@
 
 > Statement: deliver wave 3 of [AUDIT-2026-09-01.md](AUDIT-2026-09-01.md)
 > §5 — the seven architecture jobs (3.1–3.7), each carrying its ADR
-> where the audit marks one. Opened 2026-09-04. Status: **draft,
-> awaiting STOP 1**.
+> where the audit marks one. Opened 2026-09-04.
+>
+> **JOB CLOSED on 2026-09-04 — full field validation.** GO at STOP 1
+> on 2026-09-04 (D1-D6), "Desktop app confirmed" (D3) the same
+> morning; E1-E7 delivered in eleven commits (`5acfdc6` → `081bd56`),
+> every one pushed on a green pre-push gate and a green CI (last run
+> 33893884411). Two field passes: the D6 intermediate after E5 (four
+> findings, all resolved the same day — the offline alert disc A116,
+> the recipient-less draft ruling and fix, the resweep exonerated and
+> instrumented, a checklist correction) and the final pass on the
+> whole wave ("All OK", zero KO — the trace itself proving the §6
+> masking and the named resweeps). Fresh-eyes review: ten findings,
+> eight fixed in session, one accepted with its register sentence,
+> one standing as ADR 0033's limit. ADRs 0032-0035; D-30, D-34, D-48,
+> D-52(3,8) closed; D-59 opened; D-47's UI half done; D-49 largely
+> absorbed. **Kaizen figures**: one session, 9.0 h of wall, 7
+> Chief-Engineer prompts, ~87 M input equivalents (49.1 M main thread
+> + 38.3 M across 18 agent transcripts, agents on Sonnet for the
+> mechanical waves), ~27 full gates (17 scripted + the pre-push
+> replays), 4 findings at the intermediate STOP 2 / **0 KO at the
+> final**.
 
 ---
 

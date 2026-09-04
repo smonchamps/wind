@@ -636,6 +636,25 @@ Recent jobs, the long tail, and deliberate deferrals live in
 
 They cost dearly. Ignoring them will make them cost again.
 
+### The text gates read `git ls-files` — stage before you gate
+
+The language ratchet (and any gate that walks the tracked files) does
+not see an UNTRACKED file: a gate played before `git add` of new files
+passed green, and the pre-push replay went red on the same tree
+(PLAN-AUDIT-V3 E1, paid twice). Stage the new files, then gate. Same
+family: a file SPLIT redistributes per-file ratchet baselines —
+`--update` is legitimate only when the TOTAL falls.
+
+### A live Wind locks the exe — cargo replays a stale binary silently
+
+`target\debug\wind-desktop.exe` held by a running Wind makes the link
+step fail quietly and the old binary is replayed with a NEW dist — the
+window then serves "asset not found" and the e2e reds the SPECS
+instead of the build (2026-09-04, six specs). The launcher's
+`frontendFailure` guard (e2e/launch.mjs) now names it; the remedy is
+always: close every Wind window, rebuild, expect `Compiling`, not a
+bare `Finished`.
+
 ### Defects are found in the field, not in tests
 
 Never logic errors: always **false assumptions about the environment
