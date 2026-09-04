@@ -285,7 +285,9 @@
           ? t('status.offlineSince', { since: since(last, now) })
           : t('status.offline'),
         thread: null,
-        alert: false,
+        // Field 2026-09-04 (PLAN-AUDIT-V3 STOP 2): offline is an alert
+        // state - the red disc says it before the text.
+        alert: true,
       };
     }
     // The current cycle: never "up to date" again while the machine is
@@ -295,7 +297,7 @@
     // exists, because the full sync IS the cycle — hiding it was a
     // regression from the pre-E1 display. Determinate bar with the %,
     // sweep otherwise.
-    if (syncing) {
+    if (syncing || sync?.in_progress) {
       const pct =
         sync && sync.percent !== null && sync.percent < 100 ? sync.percent : null;
       const parts = [t('status.cyclePrefix')];

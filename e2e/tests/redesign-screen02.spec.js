@@ -180,6 +180,18 @@ test("the status bar dates the last poll — even on failure", async () => {
   );
 });
 
+test('offline is an alert state — the red disc precedes the text (field 2026-09-04)', async () => {
+  // The OS event is enough: the UI listens to window online/offline
+  // (P0-bis). Offline, the bar must not merely say it — it must ALERT
+  // it, with the same red disc as a failed sync (PLAN-AUDIT-V3
+  // STOP 2, Chief-Engineer finding at the E5 field pass).
+  await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+  await expect(page.locator('[data-testid="progress"]')).toContainText(/Offline/);
+  await expect(page.locator('.alert-dot')).toHaveCount(1);
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect(page.locator('.alert-dot')).toHaveCount(1); // the decor's poll failure keeps its own dot afterwards
+});
+
 test('the poll button lives in the bar — "Retry" on failure (E3)', async () => {
   // Same decor: the poll fails, and the button becomes the lever
   // closest to the fault (S-D1, state 6 mockup). The click triggers

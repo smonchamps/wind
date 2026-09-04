@@ -1669,10 +1669,11 @@ pub struct UiState {
 #[tauri::command]
 pub async fn ui_state(app: AppHandle, state: State<'_, AppState>) -> Result<UiState, CommandError> {
     let generation = state.sync_cycle.generation.load(Ordering::Relaxed);
+    let in_progress = state.sync_cycle.in_progress.load(Ordering::Relaxed);
     store_off_pump(app, move |_, store| {
         Ok(UiState {
             nav: read_nav(store)?,
-            sync: read_sync(store, generation)?,
+            sync: read_sync(store, generation, in_progress)?,
             outbox: read_sends(store)?,
             drafts_revision: store.drafts_revision()?,
         })
@@ -5084,6 +5085,11 @@ pub struct SyncProgress {
     /// no cycle has completed: the interface doesn't invent a
     /// timestamp (PLAN-SYNCHRO E1).
     pub last: Option<i64>,
+    /// A cycle is running RIGHT NOW — whoever drives it. Since the
+    /// scheduler moved shell-side (E5), a cycle can run without the
+    /// UI having triggered it: the bar must still say so (field rule
+    /// of 2026-08-13 — never "up to date" while the machine works).
+    pub in_progress: bool,
     /// Mail generation, monotonic (E4): the UI reloads the list when it
     /// moves — that's how mail polled by an IDLE watcher shows up at
     /// rest, via polling (R0-S5).
@@ -5094,7 +5100,7 @@ pub struct SyncProgress {
 ///
 /// Purely local — no network connection: the interface can call it in
 /// a loop while a synchronization runs, at no round-trip cost.
-fn read_sync(store: &Store, generation: u64) -> Result<SyncProgress, String> {
+fn read_sync(store: &Store, generation: u64, in_progress: bool) -> Result<SyncProgress, String> {
     let (local, remote) = store.sync_progress().map_err(|err| err.to_string())?;
     // An unreadable timestamp (corrupted pref) counts as "never": the
     // status bar falls back to the dateless text rather than showing
@@ -5108,6 +5114,7 @@ fn read_sync(store: &Store, generation: u64) -> Result<SyncProgress, String> {
         remote,
         percent: mail_core::sync_percent(local, remote),
         last,
+        in_progress,
         generation,
     })
 }
@@ -5120,7 +5127,11 @@ pub async fn sync_progress(
     // `State` doesn't cross `spawn_blocking` (lifetime): we carry the
     // cycle's Arc, not the state.
     let generation = state.sync_cycle.generation.load(Ordering::Relaxed);
-    store_off_pump(app, move |_, store| Ok(read_sync(store, generation)?)).await
+    let in_progress = state.sync_cycle.in_progress.load(Ordering::Relaxed);
+    store_off_pump(app, move |_, store| {
+        Ok(read_sync(store, generation, in_progress)?)
+    })
+    .await
 }
 
 /// P0-bis + E4: the UI reports the OS's network state

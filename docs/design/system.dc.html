@@ -3334,7 +3334,7 @@ svg.g{flex:none}
           font-size:12px;border-bottom:1px solid var(--border)">… reading pane …</div>
 
   <div class="statut">
-    <span class="disque"></span>
+    <span style="width:7px;height:7px;border-radius:50%;background:var(--alert);flex:none"></span>
 
     <span class="txt">Offline · last synced 18 minutes ago</span>
     <span class="bt"><span class="btn nu"><svg class="g" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></g></svg>Sync</span></span>
@@ -3343,7 +3343,8 @@ svg.g{flex:none}
       <p>Network status comes from the OS via the WebView, <b>instantly</b>, with no timeout wait.
         The application serves the local store. Automatic cycles suspend; the return of the network
         triggers an immediate light pass. "Offline" is a <b>state</b>, not an incident: it
-        lives in the row, never in the notice slot.</p>
+        lives in the row, never in the notice slot — and it is an <b>alert</b> state: the red
+        disc precedes the text, as it does for a failed sync (A116).</p>
     </div>
 
     <div class="fiche">
@@ -4700,10 +4701,11 @@ svg.g{flex:none}
           <tr><th scope="row">A113</th><td><b>The DOM contract speaks English</b> (PLAN-ENGLISH-SWITCH E5d, Chief Engineer decisions D15 and D18-D21 of 2026-09-03). The test ids, the CSS classes, the <code>data-*</code> attribute names and the <code>__e2e*</code> seams are renamed from one table (<code>scripts/rename/dom.csv</code>, 651 rows) in the components, in <code>system.css</code> and in the specs' selector literals, in the same commit: <code>.repere</code> → <code>.marker</code>, <code>.repere-nu</code> → <code>.bare-marker</code>, <code>data-teinte</code> → <code>data-hue</code>, <code>ligne</code> → <code>row</code> (the list row is <code>row</code> in the code too, D18), <code>tete-message</code> → <code>message-head</code>, <code>__e2eRetenue</code> → <code>__e2eHold</code>. The coherence net reads <code>.marker[data-hue=…]</code> and <code>.bare-marker[data-hue=…]</code> from here; the contrast net reads the glyph ink at <code>.marker</code>. Values, geometry and the contrast table do not move: nothing visible changes.</td></tr>
           <tr><th scope="row">A114</th><td><b>The e2e layer speaks English</b> (PLAN-ENGLISH-SWITCH E6a, Chief Engineer decisions D22-D26 of 2026-09-03). The 30 specs and the e2e tools this document names are renamed (<code>contraste.mjs</code> → <code>contrast.mjs</code>, <code>coherence-systeme.mjs</code> → <code>system-coherence.mjs</code>, <code>jetons.mjs</code> → <code>tokens.mjs</code>, <code>garde-thread-principal.mjs</code> → <code>main-thread-guard.mjs</code>, <code>mesure-v2.mjs</code> → <code>measure-v2.mjs</code>, <code>capture-accueil.mjs</code> → <code>capture-onboarding.mjs</code>, <code>sonde-gel.py</code> → <code>freeze-probe.py</code>, <code>refonte-ecran02.spec.js</code> → <code>redesign-screen02.spec.js</code>…), their identifiers, comments and test titles translated; the suite launches in English by default (D22, the D4 default), <code>redesign-language.spec.js</code> keeps the French round trip. The nets measure the same values from the same tokens: nothing visible changes.</td></tr>
           <tr><th scope="row">A115</th><td><b>The System is written in English</b> (PLAN-ENGLISH-SWITCH E8, Chief Engineer decision D8: translated in place, same document, no new V-n). The prose, the survey texts, the CSS comments and the journal A1&#8211;A114 are English from 2026-09-04 on; the mockup UI strings quote <code>catalog.en.js</code>, the English reference since D4; sample data (names, addresses, French subjects) stays as fixture content. The file takes its decided name <code>system.dc.html</code> (GLOSSARY &#167;5.1) and the token-table attribute reads <code>data-token</code>, with <code>system-coherence.mjs</code> following in the same commit. The token values, the 91 glyphs and every A-n number are byte-identical &#8212; the gates prove it.</td></tr>
+          <tr><th scope="row">A116</th><td><b>Offline carries the alert disc</b> (PLAN-AUDIT-V3, field finding at the E5 STOP 2, 2026-09-04). The status row's "Offline" state gains the red disc before its text &#8212; the same mark as a failed sync: a state the user must notice is an alert state, whatever its cause. One flag in the status line's offline branch; proven by breaking it (the new e2e asserts the disc under a dispatched <code>offline</code> event). In the same pass, the bar learned to show the cycle line for a SHELL-driven cycle (the E5 scheduler): "never up to date while the machine works" (A15's field rule) now holds whoever drives the cycle.</td></tr>
       </tbody>
     </table>
     <p class="note">The
-    129 rows — 14 adoption decisions V1-V14, 115 amendments A1-A115 — carry their three
+    130 rows — 14 adoption decisions V1-V14, 116 amendments A1-A116 — carry their three
     cells: the A48 defect noted in V12 is <b>repaired at
     the source</b>, this document has nothing left to restore.</p>
   </section>
