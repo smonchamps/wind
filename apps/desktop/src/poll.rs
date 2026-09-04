@@ -728,6 +728,114 @@ pub(crate) fn run_sync(
     })
 }
 
+// --- The scheduler (PLAN-AUDIT-V3 E5, audit 3.2) ---------------------
+//
+// The CADENCE used to live in the UI's `setInterval`s (App.svelte): a
+// window closed to the tray, or a busy renderer, and no cycle ran but
+// the watcher's. The clock now ticks HERE; the DECISION of what a tick
+// runs stays policy and lives in `mail_core::cycle::Cadence` (three
+// unit tests). The tick invokes the SAME Tauri commands the UI's
+// timers invoked — full cycle then outbox flush then draft
+// reflection, light pass then flush — so the sequence is
+// behavior-identical by construction; the UI keeps the manual button
+// and its 5 s resting probe, which already reloads the views when the
+// generation moves.
+
+/// The scheduler's own clock: one look at the cadence every 15 s —
+/// also the sleep-wake detector's resolution (a tick arriving late by
+/// more than `WAKE_LAG` means the machine slept; the UI's E3 rule,
+/// verbatim).
+const TICK: Duration = Duration::from_secs(15);
+const FULL_CYCLE_EVERY: Duration = Duration::from_secs(30 * 60);
+const LIGHT_PASS_EVERY: Duration = Duration::from_secs(5 * 60);
+const WAKE_LAG: Duration = Duration::from_secs(120);
+
+pub(crate) fn new_cadence() -> mail_core::cycle::Cadence {
+    mail_core::cycle::Cadence::new(FULL_CYCLE_EVERY, LIGHT_PASS_EVERY, WAKE_LAG)
+}
+
+/// Starts the cadence thread. One per process, spawned at setup; it
+/// never stops — the process's end is its end.
+pub(crate) fn spawn_scheduler(app: AppHandle) {
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(TICK);
+            // No account connected yet: the cadence is not consumed —
+            // the FIRST tick after the UI connects runs the startup
+            // full cycle (and `connect_accounts` kicks one
+            // immediately, so mail never waits on this clock).
+            let connected = {
+                let state = app.state::<AppState>();
+                lock_accounts(&state).map(|accounts| !accounts.is_empty())
+            };
+            if !matches!(connected, Ok(true)) {
+                continue;
+            }
+            let due = {
+                let state = app.state::<AppState>();
+                let mut cadence = recovered(&state.cadence);
+                cadence.tick(Instant::now())
+            };
+            tauri::async_runtime::block_on(automatic(&app, due));
+        }
+    });
+}
+
+/// The network came back, or the accounts just connected: a pass
+/// leaves right away instead of waiting for the next tick.
+pub(crate) fn kick(app: &AppHandle, due: mail_core::cycle::Due) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        automatic(&app, due).await;
+    });
+}
+
+/// Runs what the tick decided — the UI timers' exact sequences, through
+/// the SAME commands they called. Offline, automatic passes wait (the
+/// network's return kicks one); a cycle already in flight inhibits the
+/// tick the way the UI's `syncing` guard inhibited its timers.
+async fn automatic(app: &AppHandle, due: mail_core::cycle::Due) {
+    use mail_core::cycle::Due;
+    if matches!(due, Due::Nothing) {
+        return;
+    }
+    {
+        let state = app.state::<AppState>();
+        if !state.online.load(Ordering::Relaxed)
+            || state.sync_cycle.in_progress.load(Ordering::Relaxed)
+        {
+            return;
+        }
+    }
+    match due {
+        Due::Nothing => {}
+        Due::FullCycle => {
+            let outcome = commands::sync_inbox(app.clone(), app.state()).await;
+            if let Err(err) = &outcome {
+                crate::trace::trace(&format!("scheduler: full cycle: {err}"));
+            }
+            // The network may be back: the outbox tries its luck
+            // again, then the drafts are reflected (push + purge) —
+            // the UI cycle's exact tail.
+            if let Err(err) = commands::flush_outbox(app.clone(), app.state()).await {
+                crate::trace::trace(&format!("scheduler: outbox flush: {err}"));
+            }
+            if let Err(err) = commands::sync_drafts(app.clone(), app.state()).await {
+                crate::trace::trace(&format!("scheduler: draft sync: {err}"));
+            }
+        }
+        Due::LightPass => {
+            let outcome = commands::sync_inbox_light(app.clone(), app.state(), false).await;
+            if let Err(err) = &outcome {
+                crate::trace::trace(&format!("scheduler: light pass: {err}"));
+            }
+            if let Err(err) = commands::flush_outbox(app.clone(), app.state()).await {
+                crate::trace::trace(&format!("scheduler: outbox flush: {err}"));
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -850,15 +850,10 @@
   // batches of ~75 s, and each batch moves the progress
   // (`sync.local`), hence the signature.
   const STALL_MAX_MS = 5 * 60 * 1000;
-  // Sync cadences (PLAN-RETOURS-2, ADR 0021). The FULL cycle
-  // (inventory + folder sweep + threads + drafts) is expensive on an
-  // account with many folders; since IDLE (ADR 0018) keeps INBOX
-  // real-time, it runs every 30 min. The LIGHT pass (STATUS INBOX
-  // only) runs every 5 min as a net — if an IDLE watcher dropped
-  // without reconnecting, INBOX still stays fresh to within 5 min
-  // regardless.
-  const FULL_CYCLE_MS = 30 * 60 * 1000;
-  const LIGHT_PASS_MS = 5 * 60 * 1000;
+  // The sync CADENCES (30 min full, 5 min light, sleep-wake — ADR
+  // 0021's figures) live in the shell since PLAN-AUDIT-V3 E5
+  // (mail_core::cycle::Cadence): here remain the MANUAL triggers and
+  // the startup cycle, with their watchdog.
   // The token forbids the LATE end of a cycle declared dead from
   // touching the state of a cycle restarted since.
   let cycleToken = 0;
@@ -1038,31 +1033,18 @@
     checkUpdate();
     checkTelemetry();
     probeDrafts();
-    setInterval(probeDrafts, 10000);
     // R1 — the sync cycle: AFTER the first renders (the list is
-    // usable before, "envelopes first"); never blocking.
+    // usable before, "envelopes first"); never blocking. The startup
+    // cycle stays a UI trigger (the moment the accounts connect); the
+    // RECURRING cadence — full cycle every 30 min, light pass every
+    // 5 min, sleep-wake — lives in the shell since PLAN-AUDIT-V3 E5
+    // (mail_core::cycle::Cadence + poll.rs): a window closed to the
+    // tray or a busy renderer no longer stops the mail. The commands
+    // rearm the shared cadence, so this startup cycle counts there.
     (async () => {
       await connect();
       await runSyncCycle();
     })();
-    // The full cycle every 30 min (IDLE holds INBOX, ADR 0018/0021),
-    // and a light INBOX pass every 5 min as a net against a dropped
-    // watcher. The light pass is cut short during a cycle
-    // (`syncing`) — never two polls of the same INBOX.
-    setInterval(runSyncCycle, FULL_CYCLE_MS);
-    setInterval(() => poll(false), LIGHT_PASS_MS);
-    // E3: sleep-wake — a tick running several minutes late signals a
-    // sleep (clock jump: timers sleep with the machine), and that's
-    // THE moment when the user looks at the screen. The light pass
-    // leaves right away, without waiting for the next poll at 5 min.
-    // No system API: the clock drift is enough.
-    let lastTick = Date.now();
-    setInterval(() => {
-      const tic = Date.now();
-      const lag = tic - lastTick;
-      lastTick = tic;
-      if (lag > 120000) poll(false);
-    }, 15000);
     // P0-bis: the OS network state, live. `offline` switches the bar
     // instantly (no more waiting for the 120 s timeout); `online`
     // polls right away — the mail held back during the outage arrives
@@ -1079,8 +1061,9 @@
       // The network's return clears the backoffs (shell side) and
       // wakes the watchers; the immediate poll covers the mail held
       // back.
+      // The shell's cadence polls on the network's return
+      // (network_state kicks the light pass — PLAN-AUDIT-V3 E5).
       call('network_state', { online: true }).catch(() => {});
-      poll(false);
       // R-D3 (E3): gestures played offline wait — the after-gesture
       // pass replays their actions and reconciles their echoes. With
       // no work, it costs no connection.
@@ -1456,12 +1439,19 @@
     paperTrail?.reload();
   }
 
+  // The last drafts revision seen — the actual list (bodies included)
+  // is fetched ONLY when it moves (PLAN-AUDIT-V3 E5, D-52 item 3: the
+  // whole-list poll every 10 s is dead).
+  let draftsRevision = null;
   async function probeState() {
     try {
       const state = await call('ui_state');
       loadNav(state.nav);
       probeSync(state.sync);
       probeSends(state.outbox);
+      const revision = JSON.stringify(state.drafts_revision);
+      if (draftsRevision !== null && revision !== draftsRevision) probeDrafts();
+      draftsRevision = revision;
     } catch { /* offline or core busy: the next probe will do */ }
   }
 

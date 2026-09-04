@@ -720,3 +720,162 @@ mod tests {
         );
     }
 }
+
+/// What one scheduler tick decides to run — nothing, the light pass,
+/// or the full cycle (PLAN-AUDIT-V3 E5: the cadence's DECISION is
+/// policy and lives here; the shell owns only the clock that calls it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Due {
+    Nothing,
+    LightPass,
+    FullCycle,
+}
+
+/// The poll cadence, as the UI's timers used to encode it (App.svelte,
+/// R1 + E3 sleep-wake): a full cycle every `full_every`, a light INBOX
+/// pass every `light_every` as a net against a dropped watcher, and a
+/// tick arriving late by more than `wake_lag` signals a sleep-wake —
+/// THE moment the user looks at the screen: the light pass leaves
+/// right away. A full cycle outranks a light pass due at the same
+/// tick; the caller skips whatever it decides while a cycle is
+/// already in flight (never two polls of the same INBOX).
+pub struct Cadence {
+    full_every: std::time::Duration,
+    light_every: std::time::Duration,
+    wake_lag: std::time::Duration,
+    last_full: Option<Instant>,
+    last_light: Option<Instant>,
+    last_tick: Option<Instant>,
+}
+
+impl Cadence {
+    pub fn new(
+        full_every: std::time::Duration,
+        light_every: std::time::Duration,
+        wake_lag: std::time::Duration,
+    ) -> Self {
+        Self {
+            full_every,
+            light_every,
+            wake_lag,
+            last_full: None,
+            last_light: None,
+            last_tick: None,
+        }
+    }
+
+    /// One clock tick: what is due at `now`? The FIRST tick runs the
+    /// full cycle (startup: the mail is fetched without waiting half
+    /// an hour — the UI used to fire it right after `connect()`).
+    pub fn tick(&mut self, now: Instant) -> Due {
+        let woke = self
+            .last_tick
+            .is_some_and(|last| now.saturating_duration_since(last) > self.wake_lag);
+        self.last_tick = Some(now);
+        let full_due = self
+            .last_full
+            .is_none_or(|last| now.saturating_duration_since(last) >= self.full_every);
+        if full_due {
+            self.last_full = Some(now);
+            self.last_light = Some(now);
+            return Due::FullCycle;
+        }
+        let light_due = self
+            .last_light
+            .is_none_or(|last| now.saturating_duration_since(last) >= self.light_every);
+        if woke || light_due {
+            self.last_light = Some(now);
+            return Due::LightPass;
+        }
+        Due::Nothing
+    }
+
+    /// The network came back: the mail held back during the outage
+    /// arrives on return (P0-bis) — a light pass leaves right away,
+    /// and the cadence counts it.
+    pub fn network_returned(&mut self, now: Instant) -> Due {
+        self.last_light = Some(now);
+        Due::LightPass
+    }
+
+    /// A full cycle RAN — whoever triggered it (the scheduler, the
+    /// UI's startup sequence, a test). The cadence tracks reality,
+    /// never only its own intentions: a cycle the UI just ran must
+    /// not be doubled by the next tick.
+    pub fn ran_full(&mut self, now: Instant) {
+        self.last_full = Some(now);
+        self.last_light = Some(now);
+    }
+
+    /// A light pass RAN (the manual button included).
+    pub fn ran_light(&mut self, now: Instant) {
+        self.last_light = Some(now);
+    }
+}
+
+#[cfg(test)]
+mod cadence_tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn cadence() -> Cadence {
+        Cadence::new(
+            Duration::from_secs(1800),
+            Duration::from_secs(300),
+            Duration::from_secs(120),
+        )
+    }
+
+    #[test]
+    fn the_first_tick_runs_the_full_cycle_and_the_cadence_settles() {
+        let mut cadence = cadence();
+        let t0 = Instant::now();
+        assert_eq!(cadence.tick(t0), Due::FullCycle, "startup fetches now");
+        assert_eq!(
+            cadence.tick(t0 + Duration::from_secs(15)),
+            Due::Nothing,
+            "nothing is due fifteen seconds in"
+        );
+        assert_eq!(
+            cadence.tick(t0 + Duration::from_secs(301)),
+            Due::LightPass,
+            "the five-minute net fires"
+        );
+        assert_eq!(
+            cadence.tick(t0 + Duration::from_secs(1801)),
+            Due::FullCycle,
+            "the half-hour cycle fires and outranks the light pass"
+        );
+    }
+
+    #[test]
+    fn a_late_tick_is_a_wake_and_the_light_pass_leaves_right_away() {
+        let mut cadence = cadence();
+        let t0 = Instant::now();
+        cadence.tick(t0);
+        cadence.tick(t0 + Duration::from_secs(15));
+        // The machine slept: the next tick lands 10 minutes late but
+        // under the full cycle's due time.
+        assert_eq!(
+            cadence.tick(t0 + Duration::from_secs(15 + 600)),
+            Due::LightPass,
+            "a clock jump beyond the lag bound polls without waiting"
+        );
+    }
+
+    #[test]
+    fn a_network_return_polls_and_resets_the_light_timer() {
+        let mut cadence = cadence();
+        let t0 = Instant::now();
+        cadence.tick(t0);
+        assert_eq!(
+            cadence.network_returned(t0 + Duration::from_secs(60)),
+            Due::LightPass
+        );
+        assert_eq!(
+            cadence.tick(t0 + Duration::from_secs(75)),
+            Due::Nothing,
+            "the return's pass counted: the five-minute net is rearmed"
+        );
+    }
+}

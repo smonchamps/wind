@@ -335,6 +335,19 @@ impl Store {
         Ok(self.conn().last_insert_rowid())
     }
 
+    /// A cheap revision of the drafts table — `(count, latest
+    /// updated_epoch, largest id)`: any add, delete or edit moves at
+    /// least one of the three. It is what lets the resting probe say
+    /// "nothing changed" without shipping the whole list, bodies
+    /// included, every ten seconds (PLAN-AUDIT-V3 E5, D-52 item 3).
+    pub fn drafts_revision(&self) -> Result<(i64, i64, i64), Error> {
+        Ok(self.conn().query_row(
+            "SELECT COUNT(*), COALESCE(MAX(updated_epoch), 0), COALESCE(MAX(id), 0) FROM drafts",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?)
+    }
+
     /// The drafts, most recent first.
     pub fn drafts(&self) -> Result<Vec<SavedDraft>, Error> {
         let mut stmt = self.conn().prepare(&format!(

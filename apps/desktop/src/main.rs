@@ -132,6 +132,10 @@ pub(crate) struct AppState {
     /// Post-gesture passes in flight, per account (E3): one flight at
     /// a time, requests during the flight coalesce.
     pub gesture_passes: Arc<Mutex<HashMap<String, PassFlight>>>,
+    /// The poll cadence (PLAN-AUDIT-V3 E5): the DECISION of what a
+    /// scheduler tick runs — core policy (`mail_core::cycle::Cadence`),
+    /// shared between the tick thread and the network-return kick.
+    pub cadence: Arc<Mutex<mail_core::cycle::Cadence>>,
     /// The commands lock (PLAN-GELS): blocking commands run off the
     /// pump (`spawn_blocking`) BUT one at a time, as when the main
     /// thread used to serialize them — without this lock, two
@@ -271,6 +275,7 @@ fn main() {
         // sleep.
         online: Arc::new(AtomicBool::new(true)),
         gesture_passes: Arc::new(Mutex::new(HashMap::new())),
+        cadence: Arc::new(Mutex::new(poll::new_cadence())),
         commands: Arc::new(Mutex::new(())),
     };
     let result = tauri::Builder::default()
@@ -288,6 +293,10 @@ fn main() {
             // on the main thread before the window — never in the
             // bare async body of a command.
             let _ = commands::db_path(app.handle());
+            // The poll cadence's clock (PLAN-AUDIT-V3 E5): the shell
+            // owns it — a window closed to the tray no longer stops
+            // the mail.
+            poll::spawn_scheduler(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

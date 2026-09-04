@@ -282,6 +282,18 @@ guard (`frontendFailure` in `launch.mjs`) now names it.
 shell keeps I/O wiring only. RED first: the pure functions get direct
 unit tests as they land (they had none reachable outside the shell).
 
+**Delivered 2026-09-04** (`41b3b59`, CI 33873953201, gate 203 e2e /
+0 flaky). `mail_core::cycle` (722 l.) owns `run_sync`/`poll_inbox`
+behind `CycleHooks` (progress, toast, trace, CONDSTORE-once, disk
+probe) — RED first: the cycle test drives the full pipeline on
+`FakeServer` + `NoHooks`. `CycleConnection: MailServer` names the two
+IMAP-inherent capabilities instead of widening `MailServer` (E6's
+subject); `logout()` stays shell-side (ownership). New shell
+`poll.rs` (775 l.): `ShellHooks`, `ShellServer`, backoff, locks,
+`poll_cycle`, `light_pass_account`; `watcher.rs` names `commands::`
+zero times. `commands.rs` 7,120 → 6,085. **ADR 0033.** mail-core 455,
+wind-desktop 36 (one test migrated with its function).
+
 ### E5 — the scheduler on the shell side (G, ADR)
 
 Per D4. Tokio interval tasks own full cycle, light pass, state probe;

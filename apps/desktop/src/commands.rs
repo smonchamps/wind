@@ -616,6 +616,10 @@ fn build_generic_session(
 /// [`crate::poll::run_sync`], settle the sessions and the timestamp.
 #[tauri::command]
 pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<SyncSummary, String> {
+    // The cadence tracks REALITY (PLAN-AUDIT-V3 E5): a cycle running
+    // now — scheduler tick, UI startup, test — rearms the clock, so
+    // the next tick never doubles it.
+    recovered(&state.cadence).ran_full(Instant::now());
     let path = db_path(&app)?;
     let jobs = off_pump(app.clone(), |app| crate::poll::connected_jobs(&app)).await?;
     let timer = Instant::now();
@@ -665,6 +669,8 @@ pub async fn sync_inbox_light(
     state: State<'_, AppState>,
     force: bool,
 ) -> Result<SyncSummary, String> {
+    // Reality rearm, same rule as the full cycle (the button included).
+    recovered(&state.cadence).ran_light(Instant::now());
     let path = db_path(&app)?;
     let jobs = off_pump(app.clone(), |app| crate::poll::connected_jobs(&app)).await?;
     let timer = Instant::now();
@@ -1653,6 +1659,11 @@ pub struct UiState {
     pub nav: Vec<NavAccount>,
     pub sync: SyncProgress,
     pub outbox: OutboxStatus,
+    /// Revision of the drafts table (count, latest edit, largest id) —
+    /// the UI fetches the ACTUAL list only when this moves, instead of
+    /// polling `list_drafts` whole (bodies included) every ten seconds
+    /// (PLAN-AUDIT-V3 E5, D-52 item 3).
+    pub drafts_revision: (i64, i64, i64),
 }
 
 #[tauri::command]
@@ -1663,6 +1674,7 @@ pub async fn ui_state(app: AppHandle, state: State<'_, AppState>) -> Result<UiSt
             nav: read_nav(store)?,
             sync: read_sync(store, generation)?,
             outbox: read_sends(store)?,
+            drafts_revision: store.drafts_revision()?,
         })
     })
     .await
@@ -5117,10 +5129,25 @@ pub async fn sync_progress(
 /// cleared — the network is fresh, yesterday's failure was the outage,
 /// not the server — and the watchers resume on their own.
 #[tauri::command]
-pub fn network_state(state: State<'_, AppState>, online: bool) -> Result<(), CommandError> {
-    state.online.store(online, Ordering::Relaxed);
+pub fn network_state(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    online: bool,
+) -> Result<(), CommandError> {
+    let was_online = state.online.swap(online, Ordering::Relaxed);
     if online && let Ok(mut reculs) = state.sync_backoffs.lock() {
         reculs.clear();
+    }
+    // The mail held back during the outage arrives on RETURN (P0-bis)
+    // — a light pass leaves right away, and the cadence counts it
+    // (PLAN-AUDIT-V3 E5: the trigger moved here with the clock; the
+    // UI's listener now only reports the state).
+    if online && !was_online {
+        let due = {
+            let mut cadence = recovered(&state.cadence);
+            cadence.network_returned(Instant::now())
+        };
+        crate::poll::kick(&app, due);
     }
     Ok(())
 }
