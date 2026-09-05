@@ -106,6 +106,42 @@ the personal address, the repo is public):
 git config user.name "smonchamps" && git config user.email "smonchamps@users.noreply.github.com"
 ```
 
+## 6 bis. OAuth credentials (needed to CONNECT accounts)
+
+Field finding 2026-09-05: without these, adding a Google/Microsoft
+account fails with "OAuth credentials absent from this binary". A
+dev/test build embeds nothing on purpose (the
+`dev_builds_embed_no_credentials` net); it reads the three values
+from the environment at RUNTIME. They are the same values as the
+Windows workstation's `setx` — print them THERE (PowerShell):
+
+```text
+[Environment]::GetEnvironmentVariable('GOOGLE_CLIENT_ID','User')
+[Environment]::GetEnvironmentVariable('GOOGLE_CLIENT_SECRET','User')
+[Environment]::GetEnvironmentVariable('MICROSOFT_CLIENT_ID','User')
+```
+
+Then, on the Mac, append them to `~/.zprofile` (fill the values) and
+reload:
+
+```bash
+cat >> ~/.zprofile << 'EOF'
+export GOOGLE_CLIENT_ID="..."
+export GOOGLE_CLIENT_SECRET="..."
+export MICROSOFT_CLIENT_ID="..."
+EOF
+```
+
+```bash
+source ~/.zprofile
+```
+
+Unlike Windows' `setx`, a shell export does NOT reach a double-clicked
+app: to test account connection, launch Wind from a Terminal that has
+these variables (`cargo tauri dev`, §7). Official release builds embed
+the credentials and need none of this (§9's script checks them at
+build time for exactly that reason).
+
 ## 7. Build the UI, then the app
 
 ```bash
@@ -168,18 +204,9 @@ Copy `C:\Keys\wind.key` from the Windows workstation to `~/Keys/wind.key`
 on the Mac — by USB stick or another private channel, never mail in
 clear text, never into the repository.
 
-Append the three OAuth values (same values as the Windows
-workstation's `setx`) to `~/.zprofile`, then reload:
-
-```bash
-source ~/.zprofile
-```
-
-```text
-export GOOGLE_CLIENT_ID="..."
-export GOOGLE_CLIENT_SECRET="..."
-export MICROSOFT_CLIENT_ID="..."
-```
+The three OAuth values must be in `~/.zprofile` — already done at
+§6 bis (the release script refuses to run without them: the public
+build would ship unable to connect).
 
 Per release — pull the release commit that make-release.ps1 pushed,
 then run the mac half (order is the invariant: **Windows first, mac
