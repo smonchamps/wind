@@ -60,6 +60,13 @@ CONF_VERSION="$(node -e "console.log(require('./apps/desktop/tauri.conf.json').v
 gh auth status >/dev/null 2>&1 || { echo "gh is not authenticated on this Mac -- gh auth login (GitHub.com, HTTPS, web browser), then rerun." >&2; exit 1; }
 gh api "repos/$REPO/releases/tags/$VERSION" >/dev/null || { echo "No GitHub release at tag $VERSION (gh error above) -- make-release.ps1 (Windows) publishes FIRST." >&2; exit 1; }
 
+# A mounted "Wind" image (a dmg opened to install/test) or a leftover
+# "dmg.*" temp volume makes bundle_dmg.sh fail AFTER the build (field
+# 2026-09-06, 5 min lost): refuse before building.
+for VOL in /Volumes/Wind /Volumes/dmg.*; do
+  [[ -d "$VOL" ]] && { echo "Volume $VOL is mounted -- hdiutil detach \"$VOL\" -force, then rerun (bundle_dmg.sh cannot build the dmg over it)." >&2; exit 1; }
+done
+
 # OAuth credentials embedded at build time (D1, PLAN-RETOURS-9) -- the
 # same three as make-release.ps1; a missing one stops the release (the
 # public build would ship unable to connect). Set them in ~/.zshrc or

@@ -242,6 +242,18 @@ The three OAuth values must be in `~/.zprofile` — already done at
 §6 bis (the release script refuses to run without them: the public
 build would ship unable to connect).
 
+Before each run, eject any Wind image still mounted from an earlier
+install or test — the script refuses to start over one (field
+2026-09-06: `bundle_dmg.sh` fails after the 5-minute build otherwise):
+
+```bash
+ls /Volumes
+```
+
+```bash
+hdiutil detach /Volumes/Wind -force
+```
+
 Per release — pull the release commit that make-release.ps1 pushed,
 then run the mac half (order is the invariant: **Windows first, mac
 second** — the manifest never points at an absent asset). The mac
