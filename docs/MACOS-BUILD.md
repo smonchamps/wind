@@ -1,9 +1,19 @@
 # Building Wind on macOS — the MacBook Air, step by step
 
-> PLAN-MACOS E4. Target machine: the Intel MacBook Air on macOS 13
+> PLAN-MACOS E4. Target machine: the **Intel** MacBook Air on macOS 13
 > (Ventura) or newer — Chief-Engineer reading of 2026-09-04, decision D1. Target
-> triple: `x86_64-apple-darwin`. Every command is copy-ready, one per
-> block, in Terminal (Applications > Utilities > Terminal).
+> triple: `x86_64-apple-darwin`. The paths in this guide are the
+> Intel ones (Homebrew under `/usr/local`; an Apple Silicon Mac puts
+> it under `/opt/homebrew` and is NOT this guide's machine — D-62).
+> Every command is copy-ready, one per block, in Terminal
+> (Applications > Utilities > Terminal).
+
+Before anything, confirm the machine is the Intel one (must print
+`x86_64`; `arm64` means the wrong Mac for this guide):
+
+```bash
+uname -m
+```
 
 ## 0. What you end up with
 
@@ -46,6 +56,9 @@ brew --version
 ```bash
 brew install node@24 gh
 ```
+
+Put node@24 on the PATH (`/usr/local/opt` is the Intel Homebrew
+prefix — matches the §0 check):
 
 ```bash
 echo 'export PATH="/usr/local/opt/node@24/bin:$PATH"' >> ~/.zprofile && source ~/.zprofile
