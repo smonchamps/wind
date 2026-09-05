@@ -55,7 +55,10 @@ cargo tauri --version >/dev/null 2>&1 || { echo "cargo tauri not found -- cargo 
 [[ -f "$TAURI_SIGNING_PRIVATE_KEY" ]] || { echo "Signing key not found at $TAURI_SIGNING_PRIVATE_KEY (copy C:\\Keys\\wind.key there)." >&2; exit 1; }
 CONF_VERSION="$(node -e "console.log(require('./apps/desktop/tauri.conf.json').version)")"
 [[ "$CONF_VERSION" == "$VERSION" ]] || { echo "tauri.conf.json says $CONF_VERSION, not $VERSION -- pull the Windows release commit first (the order is the invariant)." >&2; exit 1; }
-gh api "repos/$REPO/releases/tags/$VERSION" >/dev/null 2>&1 || { echo "No GitHub release at tag $VERSION -- make-release.ps1 (Windows) publishes FIRST." >&2; exit 1; }
+# Auth first, then the release: an unauthenticated gh made the next
+# line say "no release" while 0.19.0 was published (field 2026-09-06).
+gh auth status >/dev/null 2>&1 || { echo "gh is not authenticated on this Mac -- gh auth login (GitHub.com, HTTPS, web browser), then rerun." >&2; exit 1; }
+gh api "repos/$REPO/releases/tags/$VERSION" >/dev/null || { echo "No GitHub release at tag $VERSION (gh error above) -- make-release.ps1 (Windows) publishes FIRST." >&2; exit 1; }
 
 # OAuth credentials embedded at build time (D1, PLAN-RETOURS-9) -- the
 # same three as make-release.ps1; a missing one stops the release (the

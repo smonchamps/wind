@@ -159,6 +159,14 @@ cd ~/wind/apps/desktop/ui-v2 && npm ci && npm run build
 
 (The Rust build embeds `ui-v2/dist` — the UI build always comes first.)
 
+**Only ever `npm ci` on this Mac** — never `npm install`, never the
+`npm audit fix --force` that npm's own output suggests: both rewrite
+`package.json` and the lockfile (field 2026-09-06: a stray upgrade to
+vite 8 left the tree dirty and the release script refused to run). The
+lockfile is the Windows workstation's; a dirty tree here is discarded
+with `git checkout -- apps/desktop/ui-v2/package.json apps/desktop/ui-v2/package-lock.json`,
+then `npm ci` again.
+
 Dev run (a window opens; Cmd+Q quits):
 
 ```bash
@@ -221,6 +229,10 @@ credentials.
 ```bash
 gh auth login
 ```
+
+(GitHub.com, HTTPS, login with a web browser. The release script
+checks `gh auth status` first — field 2026-09-06: unauthenticated, it
+used to report "no release" for a release that existed.)
 
 Copy `C:\Keys\wind.key` from the Windows workstation to `~/Keys/wind.key`
 on the Mac — by USB stick or another private channel, never mail in
