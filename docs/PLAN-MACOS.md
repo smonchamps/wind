@@ -6,8 +6,23 @@
 > need everything prepped up in the code and a step by step guide to
 > install everything that is needed on MacOS in order to succeed."*
 
-Status: **STOP 1 played on 2026-09-04 — D1-D7 settled (§6), GO from the
-Chief Engineer the same day** (flag accepted: the mac update path is only provable
+**JOB CLOSED on 2026-09-05 — full field validation** (Chief-Engineer
+verdict "everything ok" on the Air after the rebuild; the onboarding
+Add button re-verified from the code and due a glance at the next
+fresh install — an account already on the Air kept the welcome pages
+out of reach). Seven commits: `2e8034c` (code+bundle+CI+tooling+docs),
+`3f9cc14` (png window icon — the mac CI net's first, unstaged catch),
+`479f4e2` + `1733a08` (records, Intel check), `0c18555` + `2145542`
+(field findings 1-2, same day), `42687d9` (field finding 3 — A119
+painted selects + the Add button repair, same day). CI green on every
+push (last: 33992168397). Kaizen: ~22.4 M input equivalents in one
+session (17.8 M main + 4.6 M agents), ~9 full gates (3 in-session, 6
+pre-push replays — two stopped red by the ratchet, one by the mac CI
+net), 3 field findings all fixed the same day, **0 KO at the final
+STOP 2**.
+
+Status: STOP 1 played on 2026-09-04 — D1-D9 settled (§6), GO from the
+Chief Engineer the same day (flag accepted: the mac update path is only provable
 at the SECOND mac release — the first proves install).
 
 ---

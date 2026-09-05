@@ -12,6 +12,32 @@ The signed packages and their notes live in the
 [GitHub Releases](https://github.com/smonchamps/wind/releases); the update
 is automatic and signed (minisign, ADR 0013).
 
+## [0.19.0] - unreleased
+
+Wind comes to the Mac.
+
+### Added
+
+- **Wind runs on macOS.** A first macOS version (Intel;
+  Apple Silicon Macs run it through Rosetta), installed from a dmg on
+  the releases page. Accounts, mail, themes and the Organized mode
+  work as on Windows; credentials are stored in the macOS Keychain,
+  and updates are automatic and signed, as everywhere. Wind is not
+  yet notarized by Apple: the first launch takes one "Open Anyway"
+  gesture, explained in the tester guide.
+
+### Fixed
+
+- **Drop-down selectors wear Wind's clothes.** Every drop-down
+  (layout, language, history depth, the Screener defaults, the
+  compose toolbar) is now drawn by Wind on both platforms — flat, in
+  the theme's colors, with Wind's own chevron — instead of borrowing
+  the browser engine's control, which on macOS showed up as the
+  system's glass widget.
+- **The onboarding "Add" button found its clothes back.** It had
+  quietly lost its styling in an internal rename and rendered as a
+  bare default button; it wears the primary drawing again.
+
 ## [0.18.0] - 2026-09-04
 
 The Organized inbox learns to use the reading pane, and an account
