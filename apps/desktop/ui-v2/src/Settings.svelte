@@ -790,13 +790,15 @@
                   <div class="card-name" data-testid="settings-horizon">
                     <p class="title-marker">{t('settings.horizonTitle')}</p>
                     {#if horizons[c.account_id]}
-                      <select class="select-desk sm" data-testid="horizon-select"
-                              value={horizons[c.account_id]}
-                              onchange={(e) => changeHorizon(c.account_id, e.currentTarget.value)}>
-                        {#each HORIZONS as h (h)}
-                          <option value={h}>{t(`horizon.${h}`)}</option>
-                        {/each}
-                      </select>
+                      <span class="select-wrap">
+                        <select class="select-desk sm" data-testid="horizon-select"
+                                value={horizons[c.account_id]}
+                                onchange={(e) => changeHorizon(c.account_id, e.currentTarget.value)}>
+                          {#each HORIZONS as h (h)}
+                            <option value={h}>{t(`horizon.${h}`)}</option>
+                          {/each}
+                        </select>
+                      </span>
                     {/if}
                     <p class="note-horizon">{t('settings.horizonNote')}</p>
                     {#if horizonError}
@@ -892,26 +894,30 @@
                   <span class="name">{t('settings.language')}</span>
                   <span class="desc">{t('settings.languageDesc')}</span>
                 </span>
-                <select class="language" data-testid="display-language"
-                        aria-label={t('settings.language')} value={language}
-                        onchange={(e) => changeLanguage(e.target.value)}>
-                  {#each LANGUAGES as code (code)}
-                    <option value={code}>{t(`language.${code}`)}</option>
-                  {/each}
-                </select>
+                <span class="select-wrap">
+                  <select class="language" data-testid="display-language"
+                          aria-label={t('settings.language')} value={language}
+                          onchange={(e) => changeLanguage(e.target.value)}>
+                    {#each LANGUAGES as code (code)}
+                      <option value={code}>{t(`language.${code}`)}</option>
+                    {/each}
+                  </select>
+                </span>
               </div>
               <div class="setting">
                 <span class="labels">
                   <span class="name">{t('settings.panes')}</span>
                   <span class="desc">{t('settings.panesDesc')}</span>
                 </span>
-                <select class="language" data-testid="display-panes"
-                        aria-label={t('settings.panes')} value={String(panes)}
-                        onchange={(e) => changePanes(Number(e.target.value))}>
-                  {#each [3, 2, 1] as n (n)}
-                    <option value={String(n)}>{t(`panes.${n}`)}</option>
-                  {/each}
-                </select>
+                <span class="select-wrap">
+                  <select class="language" data-testid="display-panes"
+                          aria-label={t('settings.panes')} value={String(panes)}
+                          onchange={(e) => changePanes(Number(e.target.value))}>
+                    {#each [3, 2, 1] as n (n)}
+                      <option value={String(n)}>{t(`panes.${n}`)}</option>
+                    {/each}
+                  </select>
+                </span>
               </div>
               <!-- A83: row spacing, to the EXACT pattern of Layout
                    (A26) — native selector dressed in the row's tokens,
@@ -921,13 +927,15 @@
                   <span class="name">{t('settings.spacing')}</span>
                   <span class="desc">{t('settings.spacingDesc')}</span>
                 </span>
-                <select class="language" data-testid="display-spacing"
-                        aria-label={t('settings.spacing')} value={spacing}
-                        onchange={(e) => changeSpacing(e.target.value)}>
-                  {#each LEVELS as n (n)}
-                    <option value={n}>{t(`spacing.${n}`)}</option>
-                  {/each}
-                </select>
+                <span class="select-wrap">
+                  <select class="language" data-testid="display-spacing"
+                          aria-label={t('settings.spacing')} value={spacing}
+                          onchange={(e) => changeSpacing(e.target.value)}>
+                    {#each LEVELS as n (n)}
+                      <option value={n}>{t(`spacing.${n}`)}</option>
+                    {/each}
+                  </select>
+                </span>
               </div>
               <!-- R1 (RETOURS-11, D4): the "always show images from
                    this sender" rules, removable here. No new group for
@@ -961,27 +969,31 @@
                   <span class="name">{t('settings.screenerYes')}</span>
                   <span class="desc">{t('settings.screenerYesDesc')}</span>
                 </span>
-                <select class="language" data-testid="screener-default-yes"
-                        aria-label={t('settings.screenerYes')} value={screenerDefaults.yes}
-                        onchange={(e) => changeScreener('yes', e.target.value)}>
-                  <option value="inbox">{t('screener.toInbox')}</option>
-                  <option value="feed">{t('screener.toFeed')}</option>
-                  <option value="paper_trail">{t('screener.toPaperTrail')}</option>
-                </select>
+                <span class="select-wrap">
+                  <select class="language" data-testid="screener-default-yes"
+                          aria-label={t('settings.screenerYes')} value={screenerDefaults.yes}
+                          onchange={(e) => changeScreener('yes', e.target.value)}>
+                    <option value="inbox">{t('screener.toInbox')}</option>
+                    <option value="feed">{t('screener.toFeed')}</option>
+                    <option value="paper_trail">{t('screener.toPaperTrail')}</option>
+                  </select>
+                </span>
               </div>
               <div class="setting">
                 <span class="labels">
                   <span class="name">{t('settings.screenerNo')}</span>
                   <span class="desc">{t('settings.screenerNoDesc')}</span>
                 </span>
-                <select class="language" data-testid="screener-default-no"
-                        aria-label={t('settings.screenerNo')} value={screenerDefaults.no}
-                        onchange={(e) => changeScreener('no', e.target.value)}>
-                  <option value="trash">{t('screener.ruleTrash')}</option>
-                  <option value="archive">{t('screener.ruleArchive')}</option>
-                  <option value="spam">{t('screener.ruleSpam')}</option>
-                  <option value="screened_out">{t('screener.ruleScreenedOut')}</option>
-                </select>
+                <span class="select-wrap">
+                  <select class="language" data-testid="screener-default-no"
+                          aria-label={t('settings.screenerNo')} value={screenerDefaults.no}
+                          onchange={(e) => changeScreener('no', e.target.value)}>
+                    <option value="trash">{t('screener.ruleTrash')}</option>
+                    <option value="archive">{t('screener.ruleArchive')}</option>
+                    <option value="spam">{t('screener.ruleSpam')}</option>
+                    <option value="screened_out">{t('screener.ruleScreenedOut')}</option>
+                  </select>
+                </span>
               </div>
               {/if}
               <!-- RETOURS-14 R5 (D6): all the decisions, alphabetized,
@@ -1484,7 +1496,7 @@
      (32 px, tokens) — a native <select>, keyboard and screen reader
      included. */
   .language {
-    height:32px; padding:0 10px; flex:none; font:inherit; font-size:13px;
+    height:32px; padding:0 26px 0 10px; flex:none; font:inherit; font-size:13px;
     color:var(--ink); background:var(--surface);
     border:1px solid var(--border); border-radius:var(--r-control); cursor:pointer;
   }

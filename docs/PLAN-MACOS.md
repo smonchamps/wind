@@ -220,6 +220,34 @@ is fixed the same day on main.
    WKWebView renders differently from Windows (fonts, scrollbars,
    theme).
 
+## 5 bis. Field record (STOP 2, the Air, 2026-09-05)
+
+Checklist steps 1-3 and the test build: **OK** (Chief-Engineer
+verdict). Account connects, Keychain survives the relaunch,
+receive/read/send, body link to the system browser, second instance
+refused, dmg + Wind.app produced, ad-hoc signing ran. **Cold release
+build: 13 min 08 s** on the Intel Air. Three findings, fixed the same
+day:
+
+1. **The test build demanded the minisign key** — `createUpdaterArtifacts`
+   makes every build sign the updater tarball; the guide's test build
+   now passes `--config '{"bundle":{"createUpdaterArtifacts":false}}'`.
+2. **No OAuth credentials in a dev build** (by design) — the guide
+   gained §6 bis: export the three values in `~/.zprofile`, launch
+   from a Terminal that carries them.
+3. **WKWebView rendered the native glass on selects and on the
+   onboarding Add button, and the system font.** Three distinct roots:
+   the Add button was UNSTYLED on every platform (French class names
+   in a dynamic ternary E5d's applier missed — repaired); selects are
+   now painted on both engines with a Wind chevron (D9, A119); the
+   font is the platform's by authored design (D8 — no change, SF is
+   what `-apple-system` first means).
+
+Re-verification due on the Air after the fix commit (pull, `cargo
+tauri dev`): selects flat with the Wind chevron in both themes, the
+Add button in the primary drawing — and a Windows glance at the same
+four surfaces (the chevron replaced Chromium's arrow there too).
+
 ## 6. Chief-Engineer decisions
 
 | # | Question | Answer (date) |
@@ -231,3 +259,5 @@ is fixed the same day on main.
 | D5 | Quality bar accepted: no macOS e2e — macOS CI (clippy+tests) + manual field pass on the Air stand as the mac gate? | **"Accepted"** (Chief Engineer, 2026-09-04). e2e-on-mac logged as debt; reopening condition: first mac-only regression found by a tester. |
 | D6 | Add the `macos-latest` CI job (E3)? | **"Yes"** (Chief Engineer, 2026-09-04). |
 | D7 | Release vehicle: the macOS debut ships in the next MINOR (0.19.0) alongside whatever else lands? | **"Yes, 0.19.0"** (Chief Engineer, 2026-09-04) — win + mac assets on one release, one `latest.json` with all platform keys. |
+| D8 | The font on macOS (field, 2026-09-05): per-platform system font, or one bundled font? | **"Per-platform system font"** (Chief Engineer, 2026-09-05) — SF on macOS is the authored stack; nothing ships. |
+| D9 | The select glass on macOS (field, 2026-09-05): normalize both platforms (painted select + Wind chevron), or a macOS-only override? | **"Normalize both platforms"** (Chief Engineer, 2026-09-05) — A119; Windows' Chromium arrow gives way to the Wind chevron. |

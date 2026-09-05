@@ -281,8 +281,26 @@ html {
   outline:none; align-self:flex-start; cursor:pointer;
 }
 .select-desk:disabled { opacity:.6; cursor:default; }
-.select-desk.lg { height:40px; padding:0 12px; min-width:220px; }
-.select-desk.sm { height:32px; padding:0 10px; min-width:200px; }
+.select-desk.lg { height:40px; padding:0 30px 0 12px; min-width:220px; }
+.select-desk.sm { height:32px; padding:0 26px 0 10px; min-width:200px; }
+
+/* A119 — selects are PAINTED, on both engines (PLAN-MACOS field
+   finding, D9): WKWebView keeps its native glass bezel unless
+   `appearance` is off, and turning it off removes the engine's arrow
+   on BOTH engines — so Wind draws its own chevron, ONE drawing for
+   every select family. The wrapper carries it (a select is a replaced
+   element, it has no ::after); the chevron is borders in tokens
+   (--ink2, 1.5 — the glyph stroke regime), never a hex, and ink2 on
+   surface is an already-measured pair. Each family reserves the room
+   in its own right padding. */
+select { appearance:none; -webkit-appearance:none; }
+.select-wrap { position:relative; display:inline-flex; align-self:flex-start; }
+.select-wrap > select { width:100%; }
+.select-wrap::after {
+  content:""; position:absolute; right:11px; top:50%; width:6px; height:6px;
+  border-right:1.5px solid var(--ink2); border-bottom:1.5px solid var(--ink2);
+  transform:translateY(-70%) rotate(45deg); pointer-events:none;
+}
 
 /* A8 — focus is VISIBLE, everywhere, keyboard only: 2 px accent
    ring offset by 2 px. Never removed without a replacement. */

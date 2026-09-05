@@ -113,7 +113,7 @@
              data-testid="onboarding-address"
              onkeydown={(e) => e.key === 'Enter' && !busy && proceed()}>
       {#if onboarding && !generic}
-        <button type="button" class={mainAdd ? 'primaire' : 'secondaire'}
+        <button type="button" class={mainAdd ? 'primary' : 'secondary'}
                 data-testid="desk-continue"
                 disabled={busy} onclick={proceed}>{t('onboarding.add')}</button>
       {/if}
@@ -122,12 +122,14 @@
          for the three flows (the choice travels with the add). -->
     <div class="horizon">
       <label for="ob-horizon">{t('desk.horizon')}</label>
-      <select id="ob-horizon" class="select-desk lg" bind:value={horizon} disabled={busy}
-              data-testid="desk-horizon">
-        {#each HORIZONS as h (h)}
-          <option value={h}>{t(`horizon.${h}`)}</option>
-        {/each}
-      </select>
+      <span class="select-wrap">
+        <select id="ob-horizon" class="select-desk lg" bind:value={horizon} disabled={busy}
+                data-testid="desk-horizon">
+          {#each HORIZONS as h (h)}
+            <option value={h}>{t(`horizon.${h}`)}</option>
+          {/each}
+        </select>
+      </span>
     </div>
     {#if generic}
       <label for="ob-mdp">{t('desk.password')}</label>

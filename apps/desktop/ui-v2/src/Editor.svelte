@@ -237,23 +237,27 @@
      Quote removed). `onmousedown` neutralized everywhere: a format
      button never steals the body's selection. -->
 <div class="format" data-testid="compose-format">
-  <select class="select-format" aria-label={t('compose.font')} title={t('compose.font')}
-          data-testid="compose-format-font"
-          onchange={(e) => selectCommand(e, 'fontName')}>
-    <option value="" disabled selected hidden>{t('compose.font')}</option>
-    <option value="sans-serif">{t('compose.fontSans')}</option>
-    <option value="serif">{t('compose.fontSerif')}</option>
-    <option value="monospace">{t('compose.fontMono')}</option>
-  </select>
-  <select class="select-format" aria-label={t('compose.size')} title={t('compose.size')}
-          data-testid="compose-format-size"
-          onchange={(e) => selectCommand(e, 'fontSize')}>
-    <option value="" disabled selected hidden>{t('compose.size')}</option>
-    <option value="2">{t('compose.sizeSmall')}</option>
-    <option value="3">{t('compose.sizeNormal')}</option>
-    <option value="4">{t('compose.sizeLarge')}</option>
-    <option value="6">{t('compose.sizeVeryLarge')}</option>
-  </select>
+  <span class="select-wrap">
+    <select class="select-format" aria-label={t('compose.font')} title={t('compose.font')}
+            data-testid="compose-format-font"
+            onchange={(e) => selectCommand(e, 'fontName')}>
+      <option value="" disabled selected hidden>{t('compose.font')}</option>
+      <option value="sans-serif">{t('compose.fontSans')}</option>
+      <option value="serif">{t('compose.fontSerif')}</option>
+      <option value="monospace">{t('compose.fontMono')}</option>
+    </select>
+  </span>
+  <span class="select-wrap">
+    <select class="select-format" aria-label={t('compose.size')} title={t('compose.size')}
+            data-testid="compose-format-size"
+            onchange={(e) => selectCommand(e, 'fontSize')}>
+      <option value="" disabled selected hidden>{t('compose.size')}</option>
+      <option value="2">{t('compose.sizeSmall')}</option>
+      <option value="3">{t('compose.sizeNormal')}</option>
+      <option value="4">{t('compose.sizeLarge')}</option>
+      <option value="6">{t('compose.sizeVeryLarge')}</option>
+    </select>
+  </span>
   <span class="sep" aria-hidden="true"></span>
   <button type="button" class="button-format" class:active={activeFormats.bold}
           aria-label={t('compose.bold')} title={t('compose.bold')} aria-pressed={activeFormats.bold}
@@ -391,7 +395,7 @@
   }
   .button-format :global(.ic) { width:18px; height:18px; }
   .select-format {
-    height:32px; padding:0 8px; font:inherit; font-size:13px;
+    height:32px; padding:0 24px 0 8px; font:inherit; font-size:13px;
     color:var(--ink2); background:var(--surface); cursor:pointer;
     border:1px solid var(--border); border-radius:var(--r-control);
   }

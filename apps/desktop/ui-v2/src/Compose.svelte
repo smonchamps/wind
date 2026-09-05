@@ -1034,13 +1034,15 @@
           {#if accounts.length > 1}
             <!-- A10: the sending account IS CHOSEN (field verdict) —
                  the prototype froze the row, v1 had the selector. -->
-            <select class="value" data-testid="compose-from" aria-label={t('compose.sendingAccount')}
-                    value={sender?.email ?? ''}
-                    onchange={(e) => changeSender(e.target.value)}>
-              {#each accounts as c (c.account_id)}
-                <option value={c.email}>{labelFor(c)}</option>
-              {/each}
-            </select>
+            <span class="select-wrap from-wrap">
+              <select class="value" data-testid="compose-from" aria-label={t('compose.sendingAccount')}
+                      value={sender?.email ?? ''}
+                      onchange={(e) => changeSender(e.target.value)}>
+                {#each accounts as c (c.account_id)}
+                  <option value={c.email}>{labelFor(c)}</option>
+                {/each}
+              </select>
+            </span>
           {:else}
             <span class="value" data-testid="compose-from">{labelFor(sender)}</span>
           {/if}
@@ -1278,8 +1280,12 @@
   .suggestion .address { color:var(--muted); overflow:hidden; text-overflow:ellipsis; }
   .label { width:52px; font-size:13px; color:var(--muted); flex:none; }
   .value { flex:1; font-size:13px; color:var(--ink); }
+  /* A119: the wrapper takes the row slot, the select fills it; the
+     chevron sits at the row's edge, where the engine arrow used to. */
+  .from-wrap { flex:1; }
+  .from-wrap::after { right:2px; }
   select.value {
-    border:none; background:transparent; cursor:pointer; padding:0;
+    border:none; background:transparent; cursor:pointer; padding:0 18px 0 0;
     font:inherit; font-size:13px; color:var(--ink); min-width:0;
   }
   select.value option { background:var(--surface); color:var(--ink); }
