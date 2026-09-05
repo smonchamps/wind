@@ -4,8 +4,19 @@
 > wants to enter the beta. How to build an Apple Silicon version?"* —
 > GO on `/job Feature: Apple Silicon build (D-62)` the same day.
 
-Status: STOP 1 played on 2026-09-05 — D1-D5 settled (§6); E1-E4 delivered and gated the same day; **E0 measured on the Air 2026-09-06 (§5 bis): arm64 links, 13 min 24 s**. Awaiting the CI (the aarch64 leg) and the tester's install at 0.19.0.
+**JOB CLOSED on 2026-09-06 — full field validation** (E0 measured by
+the Chief Engineer on the Intel Air: arm64 links in 13 min 24 s, `file`
+says arm64, the bundler names the dmg `_aarch64`; the RUN proof is the
+tester's install at 0.19.0, accepted at the GO). One commit `0ef4f81`,
+CI green 33995481451 — all five jobs, the new aarch64 leg passing the
+full test suite NATIVELY on Apple Silicon for the first time. ADR
+0037, debt D-62 paid. Kaizen: ~3.0 M input equivalents main thread +
+2.5 M agents in one 0.9 h session (121 turns, 3 prompts), 3 full
+gates (1 red — the gate's own bash lookup, fixed —, 1 green, 1
+pre-push replay), **0 KO at STOP 2**.
 
+Status: STOP 1 played on 2026-09-05 — D1-D5 settled (§6), GO the same
+day.
 ---
 
 ## 1. Finding (sweep of 2026-09-05)
