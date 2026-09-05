@@ -209,9 +209,13 @@ is fixed the same day on main.
    invariant S1); open an attachment.
 5. Second launch while running: refused with the message
    (single instance).
-6. `cargo tauri build --target x86_64-apple-darwin`: dmg + .app.tar.gz
-   + .sig land in the bundle; the built app double-clicks open (no
-   quarantine on a local build).
+6. The MACOS-BUILD.md §7 test build (with
+   `createUpdaterArtifacts:false` — field finding 2026-09-05: a bare
+   build demands the minisign key, which only the release path
+   carries): dmg + Wind.app land in the bundle; the built app
+   double-clicks open (no quarantine on a local build). The
+   .app.tar.gz + .sig pair is proven at the first real
+   release-macos.sh run, not here.
 7. Report the figures: cold build minutes, launch feel, anything
    WKWebView renders differently from Windows (fonts, scrollbars,
    theme).

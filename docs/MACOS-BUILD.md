@@ -120,16 +120,23 @@ Dev run (a window opens; Cmd+Q quits):
 cd ~/wind/apps/desktop && cargo tauri dev
 ```
 
-Release-style build (unsigned, for local testing):
+Release-style build for LOCAL TESTING (field finding 2026-09-05: a
+bare `cargo tauri build` refuses with "A public key has been found,
+but no private key" — `createUpdaterArtifacts: true` in the config
+makes every build want the minisign key to sign the updater tarball.
+The key belongs only to the real release, on purpose; a test build
+skips the updater artifact instead):
 
 ```bash
-cd ~/wind/apps/desktop && cargo tauri build --target x86_64-apple-darwin
+cd ~/wind/apps/desktop && cargo tauri build --target x86_64-apple-darwin --config '{"bundle":{"createUpdaterArtifacts":false}}'
 ```
 
 The bundle lands in
 `target/x86_64-apple-darwin/release/bundle/` — `macos/Wind.app` and
-`dmg/Wind_<version>_x64.dmg`. An app built ON this machine carries no
-quarantine flag: it opens with a double-click, no Gatekeeper gesture.
+`dmg/Wind_<version>_x64.dmg` (no `.app.tar.gz`/`.sig`: those are the
+updater artifacts, produced only by the signed release build of §9).
+An app built ON this machine carries no quarantine flag: it opens
+with a double-click, no Gatekeeper gesture.
 
 ## 8. First-launch gesture for DOWNLOADED builds (what testers do)
 
