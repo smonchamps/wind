@@ -9,8 +9,9 @@
 #
 # Checks, for the given version: Release marked Latest at the BARE tag;
 # the 5 named Windows assets (2 exe, 2 sig, latest.json) and, once
-# release-macos.sh has uploaded them (PLAN-MACOS), the 3 macOS assets
-# (dmg, app.tar.gz, sig); latest.json without BOM, matching version,
+# release-macos.sh has uploaded them (PLAN-MACOS), the 6 macOS assets
+# (dmg, app.tar.gz, sig -- x64 and aarch64, PLAN-APPLE-SILICON: 11
+# assets, 4 keys); latest.json without BOM, matching version,
 # every expected platform key; per platform: manifest
 # signature == .sig file, URL at the bare tag that resolves (200,
 # Content-Length == asset size); distinct signatures (anti-crossing
@@ -27,6 +28,24 @@ $failures = 0
 function Say($ok, $text) {
     if ($ok) { Write-Host "PASS  $text" }
     else { Write-Host "FAIL  $text"; $script:failures += 1 }
+}
+# HEAD the URL: 302 then 200, Content-Length == the asset's size on the
+# release (a truncated --clobber re-upload passed once, review
+# 2026-09-04). One copy for the updater artifacts AND the dmgs.
+function ResolvesWhole($url, $expectedSize, $label) {
+    try {
+        # -UseBasicParsing: PowerShell 5.1 would otherwise go through IE.
+        # Headers['Content-Length'] is an array under pwsh, a string
+        # under 5.1 -- both forms are accepted.
+        $response = Invoke-WebRequest -Uri $url -Method Head -MaximumRedirection 5 -UseBasicParsing
+        $cl = $response.Headers['Content-Length']
+        if ($cl -is [array]) { $cl = $cl[0] }
+        $size = [int64]$cl
+        Say ($response.StatusCode -eq 200 -and $size -eq $expectedSize) "$label resolves 200 / $size bytes (asset: $expectedSize)"
+    }
+    catch {
+        Say $false "$label URL does not resolve -- $($_.Exception.Message)"
+    }
 }
 
 # 1. The Latest release is the version's, at the BARE tag.
@@ -60,11 +79,20 @@ $expected = @(
     "Wind_${Version}_x64-setup.exe.sig",
     "latest.json"
 )
-$macExpected = @(
-    "Wind_${Version}_x64.dmg",
-    "Wind_${Version}_x64.app.tar.gz",
-    "Wind_${Version}_x64.app.tar.gz.sig"
-)
+# Two mac families, published TOGETHER by release-macos.sh (both
+# builds complete before the first upload -- PLAN-APPLE-SILICON D1).
+# Presence is keyed on the x64 tarball: "not yet" means the mac half
+# has not run; once it has, the aarch64 family is EXPECTED, and its
+# absence is a failed check, not a second "not yet".
+$macArchs = @("x64", "aarch64")
+$macExpected = @()
+foreach ($a in $macArchs) {
+    $macExpected += @(
+        "Wind_${Version}_$a.dmg",
+        "Wind_${Version}_$a.app.tar.gz",
+        "Wind_${Version}_$a.app.tar.gz.sig"
+    )
+}
 $names = @($release.assets | ForEach-Object { $_.name })
 $macPresent = ($names -contains $macExpected[1])
 if ($macPresent) {
@@ -72,8 +100,7 @@ if ($macPresent) {
 } else {
     Write-Host "NOT PRESENT  macOS assets (release-macos.sh not run yet for $Version)"
 }
-# The count DERIVES from the name list: they can never disagree, and a
-# third asset family (Apple Silicon, D-62) is one array away.
+# The count DERIVES from the name list: they can never disagree.
 Say ($names.Count -eq $expected.Count) "$($expected.Count) assets ($($names.Count) seen)"
 foreach ($n in $expected) {
     Say ($names -contains $n) "asset '$n' present"
@@ -108,6 +135,8 @@ try {
     # while every mac updater 404'd).
     $macKey = ($null -ne $manifest.platforms.'darwin-x86_64')
     Say ($macKey -eq $macPresent) "darwin-x86_64 key and mac assets consistent (key: $macKey, assets: $macPresent)"
+    $armKey = ($null -ne $manifest.platforms.'darwin-aarch64')
+    Say ($armKey -eq $macPresent) "darwin-aarch64 key and mac assets consistent (key: $armKey, assets: $macPresent)"
 
     # `exe` names the downloadable updater artifact of the channel --
     # the bare NSIS exe on Windows, the .app.tar.gz on macOS.
@@ -115,10 +144,16 @@ try {
         @{ key = "windows-aarch64"; exe = "Wind_${Version}_arm64-setup.exe" },
         @{ key = "windows-x86_64"; exe = "Wind_${Version}_x64-setup.exe" }
     )
-    if ($macPresent -or $macKey) {
-        $platforms += @{ key = "darwin-x86_64"; exe = "Wind_${Version}_x64.app.tar.gz" }
+    if ($macPresent -or $macKey -or $armKey) {
+        # The key word per asset word (x64 -> x86_64 is the one
+        # mismatch: Tauri's key uses the Rust arch, the Windows-era
+        # asset name kept x64).
+        $macKeyWord = @{ x64 = "x86_64"; aarch64 = "aarch64" }
+        foreach ($a in $macArchs) {
+            $platforms += @{ key = "darwin-$($macKeyWord[$a])"; exe = "Wind_${Version}_$a.app.tar.gz" }
+        }
     } else {
-        Write-Host "NOT PRESENT  darwin-x86_64 channel (mac assets not uploaded yet)"
+        Write-Host "NOT PRESENT  darwin channels (mac assets not uploaded yet)"
     }
     $signatures = @()
     foreach ($p in $platforms) {
@@ -159,41 +194,24 @@ try {
 
         # The URL resolves (302 then 200), Content-Length == asset size.
         $asset = $release.assets | Where-Object { $_.name -eq $p.exe }
-        try {
-            # -UseBasicParsing: PowerShell 5.1 would otherwise go through IE.
-            # Headers['Content-Length'] is an array under pwsh, a string
-            # under 5.1 -- both forms are accepted.
-            $response = Invoke-WebRequest -Uri $entry.url -Method Head -MaximumRedirection 5 -UseBasicParsing
-            $cl = $response.Headers['Content-Length']
-            if ($cl -is [array]) { $cl = $cl[0] }
-            $size = [int64]$cl
-            Say ($response.StatusCode -eq 200 -and $size -eq $asset.size) "$($p.key): the exe resolves 200 / $size bytes (asset: $($asset.size))"
-        }
-        catch {
-            Say $false "$($p.key): the URL does not resolve -- $($_.Exception.Message)"
-        }
+        ResolvesWhole $entry.url $asset.size "$($p.key): the exe"
     }
     # The dmg is the mac FIRST-INSTALL artifact (no .sig by design --
     # the updater never touches it) and the only downloadable with no
     # integrity check otherwise: at least prove it resolves whole
     # (review 2026-09-04: a truncated --clobber re-upload passed).
+    # Both dmgs (review 2026-09-05: the aarch64 dmg was the one asset
+    # no check covered when the family was added).
     if ($macPresent) {
-        $dmgName = "Wind_${Version}_x64.dmg"
-        $dmgAsset = $release.assets | Where-Object { $_.name -eq $dmgName }
-        try {
-            $response = Invoke-WebRequest -Uri "https://github.com/$repo/releases/download/$Version/$dmgName" -Method Head -MaximumRedirection 5 -UseBasicParsing
-            $cl = $response.Headers['Content-Length']
-            if ($cl -is [array]) { $cl = $cl[0] }
-            $size = [int64]$cl
-            Say ($response.StatusCode -eq 200 -and $size -eq $dmgAsset.size) "darwin-x86_64: the dmg resolves 200 / $size bytes (asset: $($dmgAsset.size))"
-        }
-        catch {
-            Say $false "darwin-x86_64: the dmg URL does not resolve -- $($_.Exception.Message)"
+        foreach ($a in $macArchs) {
+            $dmgName = "Wind_${Version}_$a.dmg"
+            $dmgAsset = $release.assets | Where-Object { $_.name -eq $dmgName }
+            ResolvesWhole "https://github.com/$repo/releases/download/$Version/$dmgName" $dmgAsset.size "${a}: the dmg"
         }
     }
 
     # Anti-crossing guard: one DISTINCT signature per channel, whatever
-    # their number (2 Windows, +1 macOS once uploaded).
+    # their number (2 Windows, +2 macOS once uploaded).
     $uniqueSignatures = @($signatures | Select-Object -Unique)
     Say ($signatures.Count -eq $platforms.Count -and $uniqueSignatures.Count -eq $signatures.Count) "$($signatures.Count) channel signatures, pairwise distinct"
 }

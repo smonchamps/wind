@@ -17,10 +17,12 @@ your email providers and the update page. No network telemetry.
      case);
    - `Wind_<version>_arm64-setup.exe` — ARM PC (Surface Pro X,
      Snapdragon-based Copilot+ PCs…);
-   - `Wind_<version>_x64.dmg` — Intel Mac (Apple Silicon Macs can run
-     it through Rosetta; a native build will come with demand).
+   - `Wind_<version>_x64.dmg` — Intel Mac;
+   - `Wind_<version>_aarch64.dmg` — Apple Silicon Mac (M1 and later).
    If in doubt on a PC: Windows Settings > System > About, "System
-   type" line. On a Mac: Apple menu > About This Mac.
+   type" line. On a Mac: Apple menu > About This Mac — the "Chip" line
+   says Apple M-something (Apple Silicon) or the "Processor" line says
+   Intel.
 3. Windows: run the installer and follow it. Mac: open the dmg and
    drag Wind to Applications.
 
@@ -147,7 +149,7 @@ The installed version is shown in Settings > About — mention it.
 
 - No commercial signature on the installer (the warnings of §1 —
   pending the opening of publisher validation).
-- Windows and macOS (Intel-native) only, no web or mobile version.
+- Windows and macOS only, no web or mobile version.
 - Fully catching up a very large mailbox (hundreds of thousands of
   messages) spreads over the first hours of use — search gets deeper
   as it goes.

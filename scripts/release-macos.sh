@@ -11,10 +11,12 @@
 # gh authenticated, signing key, OAuth credentials, the version already
 # bumped by the Windows release; (2) ui-v2 build CLEAN of e2e seams
 # (VITE_E2E=0 + __e2e absence assert, the make-release.ps1 poka-yoke);
-# (3) one signed build, x86_64-apple-darwin (D1: the MacBook Air is
-# Intel) -- dmg for first installs, app.tar.gz + minisign sig for the
-# updater; (4) uploads the 3 assets under VERSIONED names; (5) patches
-# latest.json: adds the darwin-x86_64 key, re-uploads with --clobber.
+# (3) one signed build PER TRIPLE -- x86_64-apple-darwin (the Air's
+# own) and aarch64-apple-darwin (cross-built on the same Intel Air,
+# PLAN-APPLE-SILICON D1) -- dmg for first installs, app.tar.gz +
+# minisign sig for the updater; (4) uploads the 6 assets under
+# VERSIONED, arch-named names; (5) patches latest.json: adds the
+# darwin-x86_64 and darwin-aarch64 keys, re-uploads with --clobber.
 #
 # The minisign key is THE SAME as Windows' (one pubkey in
 # tauri.conf.json): copy C:\Keys\wind.key to the Mac OUTSIDE the
@@ -25,7 +27,14 @@ set -euo pipefail
 
 VERSION="${1:?usage: release-macos.sh <version>}"
 REPO="smonchamps/wind"
-TRIPLE="x86_64-apple-darwin"
+# Two triples from ONE Intel machine (PLAN-APPLE-SILICON D1): the
+# asset word and the manifest key word per triple. x64 is the
+# PLAN-MACOS name kept; aarch64 is Tauri's bundler word (D3).
+# Functions, not `declare -A`: /bin/bash on macOS is 3.2, which has
+# no associative arrays -- the script would die at release day.
+TRIPLES=(x86_64-apple-darwin aarch64-apple-darwin)
+arch_of() { case "$1" in x86_64-*) echo x64 ;; aarch64-*) echo aarch64 ;; *) echo "unknown triple $1" >&2; exit 1 ;; esac; }
+key_of() { echo "darwin-${1%%-*}"; }
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
@@ -38,6 +47,9 @@ BRANCH="$(git branch --show-current)"
 git diff --quiet && git diff --cached --quiet || { echo "Working tree not clean -- pull the release commit, nothing else." >&2; exit 1; }
 command -v gh >/dev/null || { echo "gh (GitHub CLI) not found -- brew install gh, then gh auth login." >&2; exit 1; }
 command -v node >/dev/null || { echo "node not found -- needed for the ui-v2 build and the manifest patch." >&2; exit 1; }
+for TRIPLE in "${TRIPLES[@]}"; do
+  rustup target list --installed | grep -qx "$TRIPLE" || { echo "Rust target $TRIPLE not installed -- rustup target add $TRIPLE (MACOS-BUILD.md 4)." >&2; exit 1; }
+done
 cargo tauri --version >/dev/null 2>&1 || { echo "cargo tauri not found -- cargo install tauri-cli --version '^2' --locked (MACOS-BUILD.md 5)." >&2; exit 1; }
 [[ -d apps/desktop/ui-v2/node_modules ]] || { echo "ui-v2/node_modules absent -- run 'npm ci' in apps/desktop/ui-v2 first (MACOS-BUILD.md 7)." >&2; exit 1; }
 [[ -f "$TAURI_SIGNING_PRIVATE_KEY" ]] || { echo "Signing key not found at $TAURI_SIGNING_PRIVATE_KEY (copy C:\\Keys\\wind.key there)." >&2; exit 1; }
@@ -64,46 +76,69 @@ export WIND_RELEASE_MICROSOFT_CLIENT_ID="$MICROSOFT_CLIENT_ID"
 ( cd apps/desktop/ui-v2 && VITE_E2E=0 npm run build )
 node scripts/assert-dist-clean.mjs
 
-# (3) The signed build. Tauri asks for the key password here.
-( cd apps/desktop && cargo tauri build --target "$TRIPLE" )
+# (3) One signed build PER TRIPLE (PLAN-APPLE-SILICON D1, 2026-09-05:
+# the Intel Air cross-builds arm64 -- Xcode's SDK is fat, `cc` passes
+# -arch arm64). BOTH builds complete before anything is uploaded: a
+# release with one mac family and not the other is a broken release
+# (verify-release checks the two families and their keys together),
+# so a failed second build leaves the GitHub release untouched.
+# Tauri asks for the key password at each build (two prompts).
+OUT="$ROOT/target/upload-macos-$VERSION"
+rm -rf "$OUT" && mkdir -p "$OUT"
+ASSETS=()
+for TRIPLE in "${TRIPLES[@]}"; do
+  ARCH="$(arch_of "$TRIPLE")"
+  ( cd apps/desktop && cargo tauri build --target "$TRIPLE" )
 
-BUNDLE="$ROOT/target/$TRIPLE/release/bundle"
-# The glob PINS the version: the dmg directory accumulates one file
-# per version across builds -- an unpinned `ls | head -1` would ship
-# the alphabetically-first (OLD) dmg under the new name (review
-# 2026-09-04). The tar is unversioned by the bundler (overwritten
-# each build), no pin possible there.
-DMG_SRC="$(ls "$BUNDLE/dmg/"*"${VERSION}"*.dmg 2>/dev/null | head -1 || true)"
-TAR_SRC="$(ls "$BUNDLE/macos/"*.app.tar.gz 2>/dev/null | head -1 || true)"
-[[ -n "$DMG_SRC" && -n "$TAR_SRC" && -f "$TAR_SRC.sig" ]] || { echo "Bundle incomplete under $BUNDLE (dmg / app.tar.gz / sig) -- nothing is published." >&2; exit 1; }
+  BUNDLE="$ROOT/target/$TRIPLE/release/bundle"
+  # The glob PINS the version: the dmg directory accumulates one file
+  # per version across builds -- an unpinned `ls | head -1` would ship
+  # the alphabetically-first (OLD) dmg under the new name (review
+  # 2026-09-04). The tar is unversioned by the bundler (overwritten
+  # each build), no pin possible there. The arch needs no pin: the
+  # bundle directory is per triple.
+  DMG_SRC="$(ls "$BUNDLE/dmg/"*"${VERSION}"*.dmg 2>/dev/null | head -1 || true)"
+  TAR_SRC="$(ls "$BUNDLE/macos/"*.app.tar.gz 2>/dev/null | head -1 || true)"
+  [[ -n "$DMG_SRC" && -n "$TAR_SRC" && -f "$TAR_SRC.sig" ]] || { echo "Bundle incomplete under $BUNDLE (dmg / app.tar.gz / sig) -- nothing is published." >&2; exit 1; }
 
-# Versioned, arch-named assets (the bundler's names are not): the
-# release holds several versions' history side by side.
-OUT="$ROOT/target/$TRIPLE/release/bundle/upload"
-mkdir -p "$OUT"
-DMG="$OUT/Wind_${VERSION}_x64.dmg"
-TAR="$OUT/Wind_${VERSION}_x64.app.tar.gz"
-cp "$DMG_SRC" "$DMG"
-cp "$TAR_SRC" "$TAR"
-cp "$TAR_SRC.sig" "$TAR.sig"
-SIGNATURE="$(cat "$TAR.sig")"
-[[ -n "$SIGNATURE" ]] || { echo "Empty signature in $TAR.sig -- the updater would refuse the package." >&2; exit 1; }
+  # Versioned, arch-named assets (the bundler's names are not): the
+  # release holds several versions' history side by side. The arch
+  # word is the manifest key's (x64 kept from PLAN-MACOS, aarch64 =
+  # Tauri's bundler word, D3).
+  DMG="$OUT/Wind_${VERSION}_${ARCH}.dmg"
+  TAR="$OUT/Wind_${VERSION}_${ARCH}.app.tar.gz"
+  cp "$DMG_SRC" "$DMG"
+  cp "$TAR_SRC" "$TAR"
+  cp "$TAR_SRC.sig" "$TAR.sig"
+  # Content, not size (-s): a whitespace-only .sig must fail HERE,
+  # before the upload -- patch-manifest would catch it, one step late.
+  [[ -n "$(cat "$TAR.sig")" ]] || { echo "Empty signature in $TAR.sig -- the updater would refuse the package." >&2; exit 1; }
+  ASSETS+=("$DMG" "$TAR" "$TAR.sig")
+done
 
-# (4) Upload. --clobber: a rerun after a partial failure re-uploads.
-gh release upload "$VERSION" "$DMG" "$TAR" "$TAR.sig" --repo "$REPO" --clobber
+# (4) Upload, all six at once. --clobber: a rerun after a partial
+# failure re-uploads.
+gh release upload "$VERSION" "${ASSETS[@]}" --repo "$REPO" --clobber
 
-# (5) latest.json: download the published one, ADD the darwin key,
-# re-upload. The Windows keys are never touched (trap 3 of
-# make-release.ps1: a crossed signature produces NO error, only a
-# silent channel).
+# (5) latest.json: download the published one, ADD one darwin key per
+# triple, re-upload ONCE. The Windows keys are never touched (trap 3
+# of make-release.ps1: a crossed signature produces NO error, only a
+# silent channel); patch-manifest refuses a signature already present
+# under another key -- the second call is where two identical mac
+# signatures would be caught.
 MANIFEST="$OUT/latest.json"
 gh release download "$VERSION" --repo "$REPO" --pattern latest.json --dir "$OUT" --clobber
-node "$ROOT/scripts/patch-manifest.mjs" "$MANIFEST" "$VERSION" "$TAR.sig" \
-  "https://github.com/$REPO/releases/download/$VERSION/Wind_${VERSION}_x64.app.tar.gz"
+for TRIPLE in "${TRIPLES[@]}"; do
+  ARCH="$(arch_of "$TRIPLE")"
+  node "$ROOT/scripts/patch-manifest.mjs" "$MANIFEST" "$VERSION" "$OUT/Wind_${VERSION}_${ARCH}.app.tar.gz.sig" \
+    "https://github.com/$REPO/releases/download/$VERSION/Wind_${VERSION}_${ARCH}.app.tar.gz" \
+    "$(key_of "$TRIPLE")"
+done
 gh release upload "$VERSION" "$MANIFEST" --repo "$REPO" --clobber
 
 echo ""
-echo "macOS assets of $VERSION published; darwin-x86_64 added to latest.json."
-echo "Verify from the Windows workstation: powershell scripts\\verify-release.ps1 $VERSION"
-echo "(now checks 8 assets and 3 platform keys). The field proof: install the"
+echo "macOS assets of $VERSION published (${#ASSETS[@]} files, ${TRIPLES[*]});"
+echo "${#TRIPLES[@]} darwin keys added to latest.json."
+echo "Verify from the Windows workstation: powershell scripts\verify-release.ps1 $VERSION"
+echo "(expects $((5 + ${#ASSETS[@]})) assets and $((2 + ${#TRIPLES[@]})) platform keys). The field proof: install the"
 echo "dmg, then observe the n-1 -> n auto-update at the NEXT release."

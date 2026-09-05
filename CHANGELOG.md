@@ -18,9 +18,9 @@ Wind comes to the Mac.
 
 ### Added
 
-- **Wind runs on macOS.** A first macOS version (Intel;
-  Apple Silicon Macs run it through Rosetta), installed from a dmg on
-  the releases page. Accounts, mail, themes and the Organized mode
+- **Wind runs on macOS.** A first macOS version, native on both
+  Intel and Apple Silicon Macs (one dmg each), installed from the
+  releases page. Accounts, mail, themes and the Organized mode
   work as on Windows; credentials are stored in the macOS Keychain,
   and updates are automatic and signed, as everywhere. Wind is not
   yet notarized by Apple: the first launch takes one "Open Anyway"

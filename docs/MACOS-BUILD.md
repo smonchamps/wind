@@ -1,10 +1,13 @@
 # Building Wind on macOS — the MacBook Air, step by step
 
-> PLAN-MACOS E4. Target machine: the **Intel** MacBook Air on macOS 13
-> (Ventura) or newer — Chief-Engineer reading of 2026-09-04, decision D1. Target
-> triple: `x86_64-apple-darwin`. The paths in this guide are the
-> Intel ones (Homebrew under `/usr/local`; an Apple Silicon Mac puts
-> it under `/opt/homebrew` and is NOT this guide's machine — D-62).
+> PLAN-MACOS E4. Build machine: the **Intel** MacBook Air on macOS 13
+> (Ventura) or newer — Chief-Engineer reading of 2026-09-04, decision D1. It
+> builds BOTH mac triples: `x86_64-apple-darwin` natively and
+> `aarch64-apple-darwin` cross (PLAN-APPLE-SILICON D1, 2026-09-05 —
+> Xcode's SDK is fat, nothing else is needed). The paths in this
+> guide are the Intel ones (Homebrew under `/usr/local`; an Apple
+> Silicon Mac puts it under `/opt/homebrew` and is NOT this guide's
+> machine).
 > Every command is copy-ready, one per block, in Terminal
 > (Applications > Utilities > Terminal).
 
@@ -19,8 +22,9 @@ uname -m
 
 - a working dev build (`cargo tauri dev`) for poking at Wind on macOS;
 - `Wind_<version>_x64.dmg` + `Wind_<version>_x64.app.tar.gz` + `.sig`,
-  the three release assets `scripts/release-macos.sh` uploads
-  (PLAN-MACOS D3/D4).
+  and the same three under `_aarch64` for Apple Silicon — the six
+  release assets `scripts/release-macos.sh` uploads (PLAN-MACOS
+  D3/D4, PLAN-APPLE-SILICON).
 
 Budget the first run: ~15 min of installs, then the first Rust build
 is long on an old Air (30-60 min cold; later builds are incremental).
@@ -83,7 +87,12 @@ source "$HOME/.cargo/env"
 ```
 
 `rust-toolchain.toml` makes every cargo command in the repo install and
-use 1.97.1 automatically — nothing to pick by hand.
+use 1.97.1 automatically — nothing to pick by hand. Add the Apple
+Silicon target (the release script refuses to run without it):
+
+```bash
+rustup target add aarch64-apple-darwin
+```
 
 ## 5. The Tauri CLI
 
@@ -174,6 +183,19 @@ updater artifacts, produced only by the signed release build of §9).
 An app built ON this machine carries no quarantine flag: it opens
 with a double-click, no Gatekeeper gesture.
 
+The Apple Silicon test build is the same command with the other
+triple; it lands under `target/aarch64-apple-darwin/`. This Intel Air
+cannot RUN it — the proof that it links is the build's exit status
+plus `file` saying `arm64`:
+
+```bash
+cd ~/wind/apps/desktop && cargo tauri build --target aarch64-apple-darwin --config '{"bundle":{"createUpdaterArtifacts":false}}'
+```
+
+```bash
+file ~/wind/target/aarch64-apple-darwin/release/bundle/macos/Wind.app/Contents/MacOS/wind-desktop
+```
+
 ## 8. First-launch gesture for DOWNLOADED builds (what testers do)
 
 A dmg downloaded from GitHub is quarantined and Wind is not notarized
@@ -219,14 +241,18 @@ clients find no update (ADR 0036):
 cd ~/wind && git pull && ./scripts/release-macos.sh <version>
 ```
 
-Tauri asks for the key password at the build. Then, from the Windows
-workstation, `powershell scripts\verify-release.ps1 <version>` — it
-now expects 8 assets and 3 platform keys.
+The script builds x64 then aarch64 (Tauri asks for the key password
+at EACH build — two prompts), uploads the six assets only once both
+builds succeeded, then patches `latest.json` with both darwin keys.
+Then, from the Windows workstation,
+`powershell scripts\verify-release.ps1 <version>` — it now expects
+11 assets and 4 platform keys.
 
 ## Known limits (stated, PLAN-MACOS §2)
 
 - No e2e suite on macOS (WKWebView has no CDP) — the mac gate is the
-  `quality-macos` CI job + the field checklist (D5).
-- One arch only (`x86_64`); Apple Silicon joins when a tester needs it.
+  `quality-macos` CI job (both triples) + the field checklist (D5).
+- The Apple Silicon build is cross-built and never RUN on the Air:
+  its run proof is a tester's install (PLAN-APPLE-SILICON).
 - Unsigned/ad-hoc: the §8 gesture is the price until notarization (D2
   debt).

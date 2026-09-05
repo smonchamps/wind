@@ -103,9 +103,15 @@ Step 6 "script syntax (node --check, PowerShell parser)" {
     # PLAN-MACOS: the mac release script is bash -- same rule as the
     # .ps1 (a syntax error must never wait for release day on the
     # MacBook). Git Bash carries `bash -n` on the workstation.
+    # Git for Windows puts only Git\cmd (git.exe) on the PATH; bash.exe
+    # lives in Git\bin. Resolve it there when the PATH has none (gate
+    # red 2026-09-05 from a PowerShell whose PATH lacked Git\bin).
+    $bash = (Get-Command bash -ErrorAction SilentlyContinue).Source
+    if (-not $bash) { $bash = Join-Path $env:ProgramFiles "Git\bin\bash.exe" }
+    if (-not (Test-Path $bash)) { Write-Host "bash not found (PATH, nor $bash) -- the .sh syntax net cannot run" -ForegroundColor Red; return }
     $sh = @(Get-ChildItem scripts -Filter *.sh)
     foreach ($f in $sh) {
-        & bash -n $f.FullName
+        & $bash -n $f.FullName
         if ($LASTEXITCODE -ne 0) { Write-Host "bash syntax: $($f.Name)" -ForegroundColor Red; return }
     }
 }

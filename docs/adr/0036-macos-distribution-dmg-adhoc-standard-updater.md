@@ -1,6 +1,11 @@
 # 0036 — macOS distribution: dmg, ad-hoc signature, the plugin's standard updater
 
 - **Status**: accepted (Chief-Engineer decisions D2/D3/D4, 2026-09-04, PLAN-MACOS)
+  · **Amended by [ADR 0037](0037-apple-silicon-second-mac-family.md)**
+  (2026-09-05): a second mac family, `Wind_<v>_aarch64.*` under the
+  `darwin-aarch64` key, cross-built on the same Intel Air — the
+  mentions "one triple only", "3 mac assets" and "the darwin-x86_64
+  key" below read as "two triples", "6 mac assets", "both darwin keys".
 - **Context**: the beta needs macOS testers; the build machine is an
   Intel MacBook Air on macOS 13 (D1). ADR 0013's whole rationale
   (NSIS over MSIX, our own installer launch with `/P /R /UPDATE`) is

@@ -428,6 +428,22 @@ deferral = one justified line.)
 - **Reopens if**: a fourth occurrence, or a red run in CI.
 ## Closed
 
+### ~~D-62 · macOS is Intel-only~~ — closed 2026-09-05
+
+- **Since**: 2026-09-04 (PLAN-MACOS §2, one triple: the build
+  machine is the Intel MacBook Air).
+- **What**: no `aarch64-apple-darwin` build; Apple Silicon Macs run
+  the x64 app through Rosetta 2.
+- **Why owned**: no Apple Silicon machine to build or field-test on.
+- **Reopens if**: an Apple Silicon tester reports Rosetta friction,
+  or an Apple Silicon build machine appears.
+- **Closed at [PLAN-APPLE-SILICON](PLAN-APPLE-SILICON.md)** (the
+  reopening condition fired: an Apple Silicon tester asked to enter
+  the beta). The Intel Air cross-builds arm64; a second asset family
+  under `darwin-aarch64`; the mac CI job proves both triples. The
+  field-test half stays true — no arm64 machine in the fleet, the
+  tester's first install is the run proof (stated at the GO).
+
 ### ~~D-36 · The ghost column of `echos` is born on every fresh database~~ — closed 2026-09-01
 
 - **Fact (PLAN-DEMARRAGE, 2026-08-26)**: the `SCHEMA` literal in
@@ -1153,12 +1169,3 @@ both sets, select per `lang`, unpin the script.
 - **Reopens if**: the first mac-only regression a tester finds that
   the Windows suite cannot see.
 
-### D-62 · macOS is Intel-only
-
-- **Since**: 2026-09-04 (PLAN-MACOS §2, one triple: the build
-  machine is the Intel MacBook Air).
-- **What**: no `aarch64-apple-darwin` build; Apple Silicon Macs run
-  the x64 app through Rosetta 2.
-- **Why owned**: no Apple Silicon machine to build or field-test on.
-- **Reopens if**: an Apple Silicon tester reports Rosetta friction,
-  or an Apple Silicon build machine appears.

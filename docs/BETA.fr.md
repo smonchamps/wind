@@ -19,12 +19,12 @@ télémétrie réseau.
      courant) ;
    - `Wind_<version>_arm64-setup.exe` — PC ARM (Surface Pro X,
      Copilot+ à puce Snapdragon…) ;
-   - `Wind_<version>_x64.dmg` — Mac Intel (les Mac Apple Silicon
-     l'exécutent via Rosetta ; une version native viendra avec la
-     demande).
+   - `Wind_<version>_x64.dmg` — Mac Intel ;
+   - `Wind_<version>_aarch64.dmg` — Mac Apple Silicon (M1 et suivants).
    En cas de doute sur PC : Paramètres Windows > Système >
    Informations système, ligne « Type du système ». Sur Mac : menu
-   Pomme > À propos de ce Mac.
+   Pomme > À propos de ce Mac — la ligne « Puce » indique Apple M-quelque
+   chose (Apple Silicon), ou la ligne « Processeur » indique Intel.
 3. Windows : lancez l'installeur et suivez-le. Mac : ouvrez le dmg et
    glissez Wind dans Applications.
 
@@ -159,8 +159,7 @@ La version installée se lit dans Réglages > À propos — mentionnez-la.
 
 - Pas de signature commerciale de l'installeur (les avertissements du
   §1 — en attente de l'ouverture de la validation d'émetteur).
-- Windows et macOS (natif Intel) seulement, pas de version web ni
-  mobile.
+- Windows et macOS seulement, pas de version web ni mobile.
 - Le rattrapage complet d'une très grosse boîte (des centaines de
   milliers de messages) s'étale sur les premières heures d'usage — la
   recherche gagne en profondeur à mesure.

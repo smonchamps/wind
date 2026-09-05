@@ -6,7 +6,8 @@
 Desktop application: Rust core (IMAP, SMTP, OAuth, message rendering)
 and Svelte interface, packaged by Tauri. Targets: Windows **arm64 and
 x64** (bi-arch release, ADR 0023; NSIS installer, ADR 0013) and
-**macOS x64** (dmg, ADR 0036) — automatic signed update on all
+**macOS x64 and Apple Silicon** (dmg, ADR 0036; both cross-built on one
+Intel Mac, PLAN-APPLE-SILICON) — automatic signed update on all
 channels (minisign, ADR 0013).
 
 The last shipped version and the current state live in
