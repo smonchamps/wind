@@ -224,6 +224,16 @@ says `Mach-O 64-bit executable arm64`; the bundler wrote
 the dmg glob and the asset name agree. Ad-hoc signing ran on the arm64
 binary as on x64. Build proof done; the run proof is the tester's.
 
+**The release (2026-09-06)**: `release-macos.sh 0.19.0` on the Air —
+x64 4 min 45 s incremental, six assets uploaded in one call, two
+darwin keys patched, one manifest re-upload; `verify-release.ps1`
+from the workstation: 36 PASS, 11 assets, 4 keys, both dmgs whole.
+Three field findings on the way, fixed the same day (`875d999`,
+`0f0f463`): `gh` unauthenticated read as "no release"; a stray `npm
+install` dirtied the tree; a mounted `Wind` volume broke
+`bundle_dmg.sh` after the build. The aarch64 dmg is on the release;
+its run proof is the tester's.
+
 ## 6. Chief-Engineer decisions
 
 | # | Question | Answer (date) |
