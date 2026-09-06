@@ -193,5 +193,5 @@ test('R3: "Important" marks itself, follows the resumed draft, and reaches the j
   // marking and the SMTP headers are proven on the Rust side.
   await page.locator('[data-testid="compose-send"]').click();
   await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="toast"]')).toContainText('Message sent.');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Message queued for sending.');
 });

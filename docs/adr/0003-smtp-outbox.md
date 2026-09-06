@@ -82,3 +82,25 @@ other.
   `network_cut_keeps_message_queued_then_next_flush_sends_it`,
   `inflight_message_is_quarantined_never_resent`,
   `user_requeue_is_the_only_way_out_of_quarantine`.
+
+
+## Extension — 2026-09-06, audit Lot 2 D4
+
+The Chief Engineer selected option A after two loopback spikes. Retain the
+high-level lettre transport; a response-less submission error becomes
+`SendError::Unknown`, persisted as `interrupted` with the reason, attempt count,
+Message-ID and attachment bytes. The same rule covers unexpected final positive
+replies other than DATA acceptance 250. Reopening and repeated flushes cannot
+resubmit that entry; only the existing explicit requeue permits it. A missing
+Sent-folder echo is never proof of non-delivery.
+
+This deliberately quarantines some failures before DATA, because the transport's
+public error does not identify their stage. Explicit SMTP refusals and proven
+pre-submission client/TLS errors remain retryable or rejected as appropriate.
+Connection checks have separate connection/authentication error types; text
+prefixes no longer decide OAuth refresh. Final 250 followed by failed QUIT remains
+accepted. UI enqueue confirmation says queued; uncertainty tells the user to check
+Sent before choosing Send again or Discard.
+
+See [the focused plan](../PLAN-AUDIT-2026-09-LOT2.md) for measurements, maintained
+wire/restart tests and the pending delivery validations.

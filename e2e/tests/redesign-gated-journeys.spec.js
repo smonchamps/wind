@@ -77,7 +77,7 @@ test.describe('v1 decor: one account, 200 messages', () => {
     await body.fill(`Réponse E2E.\n${cite}`); // lang:fr
     await page.locator('[data-testid="compose-send"]').click();
     await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
-    await expect(page.locator('[data-testid="toast"]')).toContainText('Message sent.');
+    await expect(page.locator('[data-testid="toast"]')).toContainText('Message queued for sending.');
     // Offline by construction: the golden rule, VISIBLE — the
     // blameless wait lives on the progress line (10 s probe).
     await expect(page.locator('[data-testid="progress"]')).toContainText(

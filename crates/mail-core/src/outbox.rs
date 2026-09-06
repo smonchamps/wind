@@ -2,8 +2,8 @@
 //!
 //! Two golden rules (PLAN.md §1 and §4), proven by tests:
 //! - **never a lost send**: the send intent is journaled in SQLite
-//!   BEFORE any network attempt; on a cut connection or a crash, it
-//!   survives and departs at the next flush;
+//!   BEFORE any network attempt; a failure preserves it. Proven non-delivery
+//!   permits an automatic retry; uncertain delivery requires a user decision.
 //! - **never a phantom send**: a send interrupted in flight (a crash
 //!   between delivery to the server and the local acknowledgment) is
 //!   NEVER resent automatically — it is quarantined until the user's
@@ -11,7 +11,7 @@
 //!   delay catches up, a duplicate is already at the recipient's door.
 
 use chrono::Utc;
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
 use crate::compose::Draft;
 use crate::error::Error;
@@ -40,7 +40,7 @@ fn split_recipients(stored: &str) -> Vec<String> {
 ///    ↑          │
 ///    │          ├─ transient failure ──→ queued (automatic retry)
 ///    │          ├─ permanent refusal ──→ rejected (user decision)
-///    │          └─ crash in flight ────→ interrupted (quarantine)
+///    │          └─ unknown delivery ──→ interrupted (quarantine)
 ///    └────────── requeue: the user's explicit decision
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -440,6 +440,31 @@ impl Store {
         Ok(())
     }
 
+    fn claim_outbox(&self, message: &OutboxMessage) -> Result<bool, Error> {
+        Ok(self.conn().execute(
+            "UPDATE outbox SET state = 'sending'
+            WHERE id = ?1 AND message_id = ?2 AND account_id = ?3 AND state = 'queued'
+              AND (send_at_epoch IS NULL OR send_at_epoch <= ?4)",
+            params![
+                message.id,
+                message.message_id,
+                message.account_id,
+                chrono::Utc::now().timestamp()
+            ],
+        )? == 1)
+    }
+
+    pub fn outbox_account(&self, id: i64, message_id: &str) -> Result<i64, Error> {
+        self.conn()
+            .query_row(
+                "SELECT account_id FROM outbox WHERE id = ?1 AND message_id = ?2",
+                params![id, message_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .ok_or(Error::StaleDelivery)
+    }
+
     pub(crate) fn set_outbox_state(&self, id: i64, state: OutboxState) -> Result<(), Error> {
         self.conn().execute(
             "UPDATE outbox SET state = ?2 WHERE id = ?1",
@@ -464,6 +489,16 @@ impl Store {
         self.conn().execute(
             "UPDATE outbox
              SET state = 'rejected', attempts = attempts + 1, last_error = ?2
+             WHERE id = ?1",
+            params![id, reason],
+        )?;
+        Ok(())
+    }
+
+    fn record_unknown_delivery(&self, id: i64, reason: &str) -> Result<(), Error> {
+        self.conn().execute(
+            "UPDATE outbox
+             SET state = 'interrupted', attempts = attempts + 1, last_error = ?2
              WHERE id = ?1",
             params![id, reason],
         )?;
@@ -499,8 +534,20 @@ impl Store {
     /// Abandons a send (user decision). `sent` sends are preserved:
     /// they are the outbox's provable history.
     pub fn delete_outbox(&self, id: i64) -> Result<(), Error> {
-        self.conn()
-            .execute("DELETE FROM outbox WHERE id = ?1 AND state != 'sent'", [id])?;
+        let tx = self.conn().unchecked_transaction()?;
+        let sending: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM outbox WHERE id = ?1 AND state = 'sending')",
+            [id],
+            |row| row.get(0),
+        )?;
+        if sending {
+            return Err(Error::DeliveryInProgress);
+        }
+        tx.execute(
+            "DELETE FROM outbox WHERE id = ?1 AND state IN ('queued', 'interrupted', 'rejected')",
+            [id],
+        )?;
+        tx.commit()?;
         Ok(())
     }
 }
@@ -552,7 +599,7 @@ pub struct OutboxReport {
     pub deferred: usize,
     /// Definitively refused — out of the queue, a user decision.
     pub rejected: usize,
-    /// Sends found "in flight" from an earlier crash, quarantined.
+    /// Uncertain sends, including those left in flight by an earlier crash.
     pub quarantined: usize,
 }
 
@@ -576,13 +623,29 @@ pub fn flush_outbox(
     store: &mut Store,
     account_id: i64,
 ) -> Result<OutboxReport, Error> {
+    flush_outbox_while(transport, store, account_id, &mut || true)
+}
+
+/// Admission is checked before marking each message Sending. A handoff already
+/// started always finishes and records its outcome, even when admission closes.
+pub fn flush_outbox_while(
+    transport: &mut dyn MailTransport,
+    store: &mut Store,
+    account_id: i64,
+    admit: &mut dyn FnMut() -> bool,
+) -> Result<OutboxReport, Error> {
     let mut report = OutboxReport {
         quarantined: store.quarantine_inflight()?,
         ..OutboxReport::default()
     };
 
     for message in store.outbox_to_send(account_id)? {
-        store.set_outbox_state(message.id, OutboxState::Sending)?;
+        if !admit() {
+            break;
+        }
+        if !store.claim_outbox(&message)? {
+            continue;
+        }
         match transport.send(&message) {
             Ok(()) => {
                 store.set_outbox_state(message.id, OutboxState::Sent)?;
@@ -616,6 +679,12 @@ pub fn flush_outbox(
                 store.record_rejection(message.id, &reason)?;
                 report.rejected += 1;
             }
+            Err(SendError::Unknown(reason)) => {
+                store.record_unknown_delivery(message.id, &reason)?;
+                report.quarantined += 1;
+                // A broken connection can affect the rest of this account's queue.
+                break;
+            }
         }
     }
     Ok(report)
@@ -625,6 +694,131 @@ pub fn flush_outbox(
 mod tests {
     use super::*;
     use crate::compose::compose;
+
+    fn disk_fixture() -> (std::path::PathBuf, Store, i64) {
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "wind-send-decision-{}-{suffix}.db",
+            std::process::id()
+        ));
+        let store = Store::open(&path).unwrap();
+        let account = store
+            .adopt_or_create_account("decision@example.invalid", "generic")
+            .unwrap();
+        (path, store, account)
+    }
+    fn remove_fixture(path: &std::path::Path) {
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+        }
+    }
+    #[test]
+    fn discard_during_transport_keeps_the_delivery_decision() {
+        struct DiscardDuringSend {
+            other: Store,
+            refused: bool,
+            unknown: bool,
+        }
+        impl MailTransport for DiscardDuringSend {
+            fn send(&mut self, message: &OutboxMessage) -> Result<(), SendError> {
+                self.refused = self.other.delete_outbox(message.id).is_err();
+                if self.unknown {
+                    Err(SendError::Unknown("synthetic lost reply".to_string()))
+                } else {
+                    Ok(())
+                }
+            }
+        }
+        for unknown in [false, true] {
+            let (path, mut store, account) = disk_fixture();
+            let id = store
+                .enqueue_outbox(account, &draft("held delivery"))
+                .unwrap();
+            let mut transport = DiscardDuringSend {
+                other: Store::open(&path).unwrap(),
+                refused: false,
+                unknown,
+            };
+            flush_outbox(&mut transport, &mut store, account).unwrap();
+            assert!(transport.refused, "a started handoff cannot be discarded");
+            let rows = store.outbox().unwrap();
+            assert_eq!(rows[0].id, id);
+            assert_eq!(
+                rows[0].state,
+                if unknown {
+                    OutboxState::Interrupted
+                } else {
+                    OutboxState::Sent
+                }
+            );
+            drop(transport);
+            drop(store);
+            remove_fixture(&path);
+        }
+    }
+    #[test]
+    fn a_cancelled_queued_snapshot_cannot_send_or_claim_its_replacement() {
+        for replace in [false, true] {
+            let (path, mut store, account) = disk_fixture();
+            let id = store
+                .enqueue_outbox(account, &draft("cancelled snapshot"))
+                .unwrap();
+            let message_id = store.outbox_to_send(account).unwrap()[0].message_id.clone();
+            assert_eq!(store.outbox_account(id, &message_id).unwrap(), account);
+            let other = Store::open(&path).unwrap();
+            let mut transport = FakeTransport::default();
+            let report = flush_outbox_while(&mut transport, &mut store, account, &mut || {
+                other.delete_outbox(id).unwrap();
+                if replace {
+                    assert_eq!(
+                        other
+                            .enqueue_outbox(account, &draft("replacement"))
+                            .unwrap(),
+                        id
+                    );
+                }
+                true
+            })
+            .unwrap();
+            assert!(matches!(
+                store.outbox_account(id, &message_id),
+                Err(Error::StaleDelivery)
+            ));
+            assert_eq!(transport.calls, 0, "the captured message was cancelled");
+            assert_eq!(report.sent, 0);
+            if replace {
+                assert_eq!(
+                    store.outbox_to_send(account).unwrap()[0].subject,
+                    "replacement"
+                );
+            }
+            drop(other);
+            drop(store);
+            remove_fixture(&path);
+        }
+    }
+
+    #[test]
+    fn closing_admission_keeps_later_messages_unattempted() {
+        let (mut store, account) = store();
+        store.enqueue_outbox(account, &draft("first")).unwrap();
+        store.enqueue_outbox(account, &draft("second")).unwrap();
+        let mut transport = FakeTransport::default();
+        let mut admitted = false;
+        let report = flush_outbox_while(&mut transport, &mut store, account, &mut || {
+            !std::mem::replace(&mut admitted, true)
+        })
+        .unwrap();
+        assert_eq!(report.sent, 1);
+        assert_eq!(transport.calls, 1);
+        let remaining = store.outbox_to_send(account).unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].subject, "second");
+        assert_eq!(remaining[0].attempts, 0);
+    }
 
     /// Simulated transport: accepts, cuts the network, or refuses by subject.
     #[derive(Default)]
@@ -1159,6 +1353,42 @@ mod tests_pieces {
     use super::*;
     use crate::compose::compose;
     use crate::drafts::DraftContent;
+
+    #[test]
+    fn removing_an_account_cannot_erase_a_sending_or_uncertain_delivery_decision() {
+        for state in [OutboxState::Sending, OutboxState::Interrupted] {
+            let (mut store, account) = store();
+            let draft = draft_with_attachments(&store, account);
+            let id = store
+                .enqueue_outbox_from_draft(account, &composed(), draft)
+                .unwrap();
+            store.set_outbox_state(id, state).unwrap();
+            let other = store
+                .adopt_or_create_account("other@example.invalid", "gmail")
+                .unwrap();
+            store.delete_account(other).unwrap();
+            assert!(matches!(
+                store.check_account_removal(account),
+                Err(Error::UnresolvedDelivery)
+            ));
+            assert!(
+                matches!(
+                    store.delete_account(account),
+                    Err(Error::UnresolvedDelivery)
+                ),
+                "{state:?} must remain a user decision"
+            );
+            assert!(store.account_email(account).unwrap().is_some());
+            let pending = store.outbox_in_state(state).unwrap();
+            assert_eq!(pending.len(), 1);
+            assert_eq!(pending[0].attachments[0].bytes, Some(vec![1, 2, 3]));
+            if state == OutboxState::Interrupted {
+                store.delete_outbox(id).unwrap();
+                store.delete_account(account).unwrap();
+                assert!(store.account_email(account).unwrap().is_none());
+            }
+        }
+    }
 
     /// Simulated transport, reduced to what this module checks: the
     /// attachments seen at delivery — what the transport receives is

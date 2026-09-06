@@ -366,9 +366,9 @@ fn replay_actions(
             Action::MarkUnseen => server.set_seen(mailbox, pending.uid, false),
             Action::MarkFlagged => server.set_flagged(mailbox, pending.uid, true),
             Action::MarkUnflagged => server.set_flagged(mailbox, pending.uid, false),
-            Action::Archive => server.archive(mailbox, pending.uid),
-            Action::Delete => server.delete(mailbox, pending.uid),
-            Action::MoveTo(target) => server.move_to(mailbox, pending.uid, target),
+            Action::Archive | Action::Delete | Action::MoveTo(_) => {
+                crate::mutations::replay_removal(server, store, mailbox, mailbox_id, &pending)
+            }
         };
         match outcome {
             Ok(()) => {
@@ -1053,9 +1053,7 @@ mod tests {
         let engine = SyncEngine::default();
         synced(&mut server, &mut store, &engine);
         let id = mailbox_id(&store);
-        store
-            .enqueue_action(id, 1, Action::MoveTo("Factures".to_string()))
-            .unwrap();
+        store.enqueue_action(id, 1, Action::MarkSeen).unwrap();
         server.actions_fail = true;
 
         for attempt in 1..=4 {
@@ -1417,32 +1415,27 @@ mod tests {
         assert!(store.pending_actions(id).unwrap().is_empty());
     }
 
-    /// A disconnect during the replay must lose nothing: the action
-    /// stays in the queue for the next sync. Same guarantee as for the
-    /// other actions — the move is no exception.
     #[test]
-    fn a_failed_move_stays_queued() {
+    fn a_failed_move_is_retained_for_verification_without_automatic_replay() {
         let mut server = FakeServer::new(false);
         server.add(1, "a");
         let mut store = Store::open_in_memory().unwrap();
         let engine = SyncEngine::default();
         synced(&mut server, &mut store, &engine);
-
         let id = mailbox_id(&store);
         store
             .enqueue_action(id, 1, Action::MoveTo("Factures".to_string()))
             .unwrap();
         server.actions_fail = true;
-
         let report = synced(&mut server, &mut store, &engine);
-
         assert_eq!(report.replayed, 0);
+        assert_eq!(report.refused, 1);
+        assert!(store.pending_actions(id).unwrap().is_empty());
+        assert_eq!(store.action_incidents().unwrap().len(), 1);
+        server.actions_fail = false;
+        synced(&mut server, &mut store, &engine);
         assert!(server.moved.is_empty());
-        assert_eq!(
-            store.pending_actions(id).unwrap().len(),
-            1,
-            "the intention must survive the disconnect"
-        );
+        assert_eq!(store.action_incidents().unwrap().len(), 1);
     }
 
     #[test]

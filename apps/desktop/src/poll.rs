@@ -16,11 +16,12 @@
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use mail_auth::{AccountSession, Authenticator};
+use crate::account_work::{AccountWork, Lease};
+use mail_auth::{AccountSession as Credentials, Authenticator};
 use mail_core::{Envelope, Store};
 use mail_imap::ImapServer;
 use tauri::{AppHandle, Manager};
@@ -37,7 +38,7 @@ pub(crate) const MAILBOX: &str = mail_core::cycle::INBOX;
 /// `commands.rs` — `lock_accounts` guards `AppState.accounts` used far
 /// beyond polling, `db_path` is the one memoized computation of the
 /// database's path.
-pub(crate) use commands::{db_path, lock_accounts};
+pub(crate) use commands::{db_path, lock_accounts, reset_sessions};
 
 /// Wraps the shell's real `ImapServer` so `mail_core::cycle::run_sync`
 /// can drive it generically: `MailServer`'s portable operations
@@ -48,6 +49,24 @@ pub(crate) use commands::{db_path, lock_accounts};
 pub(crate) struct ShellServer<'a>(pub(crate) &'a mut ImapServer);
 
 impl mail_core::MailServer for ShellServer<'_> {
+    fn plan_removal(
+        &mut self,
+        mailbox: &str,
+        action: &mail_core::Action,
+    ) -> Result<mail_core::RemovalPlan, mail_core::Error> {
+        self.0.plan_removal(mailbox, action)
+    }
+    fn removal_step(
+        &mut self,
+        mailbox: &str,
+        uid: mail_core::Uid,
+        action: &mail_core::Action,
+        plan: &mail_core::RemovalPlan,
+        step: mail_core::RemovalStep,
+    ) -> Result<(), mail_core::Error> {
+        self.0.removal_step(mailbox, uid, action, plan, step)
+    }
+
     fn select(&mut self, mailbox: &str) -> Result<mail_core::MailboxSnapshot, mail_core::Error> {
         self.0.select(mailbox)
     }
@@ -404,13 +423,38 @@ fn note_outcome(backoffs: &Mutex<HashMap<String, crate::Backoff>>, email: &str, 
 /// account, a failure triggers a silent refresh; for a generic account,
 /// the password is fixed.
 pub(crate) fn connect_imap(
-    session: &AccountSession,
-) -> Result<(ImapServer, Option<AccountSession>), String> {
-    match session {
-        AccountSession::OAuth(auth) => {
+    session: &AccountWork,
+) -> Result<(ImapServer, Option<AccountWork>, Lease), String> {
+    connect_imap_with_stop(session, None)
+}
+
+pub(crate) fn connect_imap_with_stop(
+    session: &AccountWork,
+    alive: Option<Arc<AtomicBool>>,
+) -> Result<(ImapServer, Option<AccountWork>, Lease), String> {
+    let lease = session.ticket.lease()?;
+    let check = || {
+        session.ticket.check()?;
+        if alive
+            .as_ref()
+            .is_some_and(|flag| !flag.load(Ordering::Acquire))
+        {
+            Err("watcher stopped".to_string())
+        } else {
+            Ok(())
+        }
+    };
+    check()?;
+    let outcome = match &session.session {
+        Credentials::OAuth(auth) => {
             let imap = auth.provider.imap;
-            match ImapServer::connect_xoauth2(imap.host, imap.port, &auth.email, &auth.access_token)
-            {
+            match ImapServer::connect_xoauth2_with_stop(
+                imap.host,
+                imap.port,
+                &auth.email,
+                &auth.access_token,
+                alive.clone(),
+            ) {
                 Ok(server) => Ok((server, None)),
                 // A CONNECTION failure is not a dead token: no
                 // refreshing — hammering the OAuth endpoint on every
@@ -419,39 +463,47 @@ pub(crate) fn connect_imap(
                 // complement, anti-hammering).
                 Err(err) if mail_imap::is_connection_error(&err) => Err(err.to_string()),
                 Err(_) => {
+                    check()?;
                     let fresh = Authenticator::from_env(auth.provider)
                         .map_err(|err| err.to_string())?
                         .authenticate_silent(&auth.email)
                         .map_err(|err| err.to_string())?;
-                    let server = ImapServer::connect_xoauth2(
+                    check()?;
+                    let server = ImapServer::connect_xoauth2_with_stop(
                         imap.host,
                         imap.port,
                         &fresh.email,
                         &fresh.access_token,
+                        alive.clone(),
                     )
                     .map_err(|err| err.to_string())?;
-                    Ok((server, Some(AccountSession::OAuth(fresh))))
+                    Ok((server, Some(session.refreshed(Credentials::OAuth(fresh)))))
                 }
             }
         }
-        AccountSession::Generic(creds) => {
-            let server = ImapServer::connect_password(
+        Credentials::Generic(creds) => {
+            let server = ImapServer::connect_password_with_stop(
                 &creds.imap_host,
                 creds.imap_port,
                 &creds.username,
                 &creds.password,
+                alive.clone(),
             )
             .map_err(|err| err.to_string())?;
             Ok((server, None))
         }
-    }
+    };
+    outcome.map(|(mut server, fresh)| {
+        server.set_operation_stop(session.ticket.stop_flag());
+        (server, fresh, lease)
+    })
 }
 
 /// The accounts from the registry that are connected (session in
 /// memory) — the unit of work for the sync/drain/drafts loops.
 /// Accounts both known AND connected — opens the database: call it
 /// UNDER `off_pump` (E5), never in the glue of an async command.
-pub(crate) fn connected_jobs(app: &AppHandle) -> Result<Vec<(i64, AccountSession)>, String> {
+pub(crate) fn connected_jobs(app: &AppHandle) -> Result<Vec<(i64, AccountWork)>, String> {
     let store = Store::open(&commands::db_path(app)?).map_err(|err| err.to_string())?;
     let known = store.accounts().map_err(|err| err.to_string())?;
     let state = app.state::<AppState>();
@@ -459,10 +511,9 @@ pub(crate) fn connected_jobs(app: &AppHandle) -> Result<Vec<(i64, AccountSession
     Ok(known
         .into_iter()
         .filter_map(|account| {
-            connected
-                .get(&account.email)
-                .cloned()
-                .map(|session| (account.id, session))
+            let session = connected.get(&account.email)?.clone();
+            let ticket = state.account_work.capture(account.id).ok()?;
+            Some((account.id, AccountWork { session, ticket }))
         })
         .collect())
 }
@@ -475,13 +526,10 @@ pub(crate) fn connected_jobs(app: &AppHandle) -> Result<Vec<(i64, AccountSession
 /// counted and generation bumped (the UI reloads on the poll), bubbles
 /// (P1). Best effort: incidents go to the console — account id and
 /// counts only (§6.8).
-pub(crate) fn light_pass_account(app: &AppHandle, email: &str) -> Result<(), String> {
+pub(crate) fn light_pass_account(app: &AppHandle, session: &AccountWork) -> Result<(), String> {
     let state = app.state::<AppState>();
     let path = commands::db_path(app)?;
-    let session = commands::lock_accounts(&state)?
-        .get(email)
-        .cloned()
-        .ok_or_else(|| "account not connected".to_string())?;
+    let email = session.email();
     // One account at a time: the cycle's or the button's poll may be in
     // progress on THIS account — we wait our turn.
     let lock = account_lock(&state.poll_locks, email);
@@ -497,15 +545,9 @@ pub(crate) fn light_pass_account(app: &AppHandle, email: &str) -> Result<(), Str
     // open outside a transaction locks no one; the id read before the
     // network is stable, it isn't a state we'd replay afterwards.
     let mut store = Store::open(&path).map_err(|err| err.to_string())?;
-    let account_id = store
-        .accounts()
-        .map_err(|err| err.to_string())?
-        .into_iter()
-        .find(|account| account.email == email)
-        .map(|account| account.id)
-        .ok_or_else(|| "unknown account in database".to_string())?;
+    let account_id = session.ticket.account_id;
 
-    let (mut server, refreshed) = connect_imap(&session)?;
+    let (mut server, refreshed, _lease) = connect_imap(session)?;
     let mut problems = Vec::new();
     let hooks = ShellHooks {
         cycle: state.sync_cycle.as_ref(),
@@ -518,7 +560,7 @@ pub(crate) fn light_pass_account(app: &AppHandle, email: &str) -> Result<(), Str
         Ok(_) => {
             note_outcome(&state.sync_backoffs, email, true);
             if let Some(fresh) = refreshed {
-                commands::lock_accounts(&state)?.insert(fresh.email().to_string(), fresh);
+                commands::reset_sessions(&state, vec![fresh])?;
             }
             // The timestamp counts for this poll as for the others:
             // INBOX has just been checked.
@@ -559,7 +601,7 @@ pub(crate) struct CycleTally {
     pub(crate) deleted: usize,
     pub(crate) replayed: usize,
     pub(crate) errors: Vec<String>,
-    pub(crate) refreshed: Vec<AccountSession>,
+    pub(crate) refreshed: Vec<AccountWork>,
 }
 
 /// ONE account loop for both cycles: activity bookkeeping (E1),
@@ -570,16 +612,16 @@ pub(crate) struct CycleTally {
 /// a closure returning the same (report, problems, refreshed session)
 /// shape.
 pub(crate) fn poll_cycle(
-    jobs: Vec<(i64, AccountSession)>,
+    jobs: Vec<(i64, AccountWork)>,
     cycle: &Arc<SyncShared>,
     backoffs: &Mutex<HashMap<String, crate::Backoff>>,
     locks: &Mutex<HashMap<String, Arc<Mutex<()>>>>,
     force: bool,
     mut per_account: impl FnMut(
         i64,
-        &AccountSession,
+        &AccountWork,
     ) -> Result<
-        (mail_core::SyncReport, Vec<String>, Option<AccountSession>),
+        (mail_core::SyncReport, Vec<String>, Option<AccountWork>),
         String,
     >,
 ) -> CycleTally {
@@ -621,6 +663,10 @@ pub(crate) fn poll_cycle(
         // middle of a light pass on THIS account at the same moment.
         let lock = account_lock(locks, &email);
         let _poll = lock.lock();
+        let Ok(_lease) = session.ticket.lease() else {
+            cycle.done.fetch_add(1, Ordering::Relaxed);
+            continue;
+        };
         if let Ok(mut account) = cycle.account.lock() {
             account.clone_from(&email);
         }
@@ -694,7 +740,7 @@ pub(crate) async fn settle_poll(
 pub(crate) struct SyncOutcome {
     pub(crate) report: mail_core::SyncReport,
     /// Session whose token has just been renewed, to put back in cache.
-    pub(crate) refreshed: Option<AccountSession>,
+    pub(crate) refreshed: Option<AccountWork>,
     /// Non-blocking incidents: the synchronization succeeded, but some
     /// background work that goes with it failed. Reported, never
     /// swallowed — a symptom without a trace is undiagnosable.
@@ -707,13 +753,13 @@ pub(crate) struct SyncOutcome {
 /// (`&mut S`) — it never owns it, so it can never log out; that step,
 /// like the connect that opened it, stays here.
 pub(crate) fn run_sync(
-    session: &AccountSession,
+    session: &AccountWork,
     account_id: i64,
     db_path: &Path,
     cycle: &SyncShared,
     app: &AppHandle,
 ) -> Result<SyncOutcome, String> {
-    let (mut server, refreshed) = connect_imap(session)?;
+    let (mut server, refreshed, _lease) = connect_imap(session)?;
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
     let hooks = ShellHooks {
         cycle,
@@ -853,9 +899,53 @@ async fn automatic(app: &AppHandle, due: mail_core::cycle::Due) {
     }
 }
 
+/// Capture a watcher job under the same snapshot lock as command jobs.
+pub(crate) fn job_for_email(app: &AppHandle, email: &str) -> Result<AccountWork, String> {
+    let state = app.state::<AppState>();
+    let _commands = recovered(&state.commands);
+    connected_jobs(app)?
+        .into_iter()
+        .find(|(_, job)| job.email() == email)
+        .map(|(_, job)| job)
+        .ok_or_else(|| "account not connected".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_closed_job_does_not_poll_or_publish_backoff_after_account_readdition() {
+        let registry = crate::account_work::Registry::default();
+        let ticket = registry.capture(1).unwrap();
+        let session = AccountWork {
+            ticket,
+            session: Credentials::Generic(mail_auth::GenericCredentials {
+                email: "lifetime@example.invalid".to_string(),
+                username: "fixture".to_string(),
+                password: "synthetic".to_string(),
+                imap_host: "example.invalid".to_string(),
+                imap_port: 993,
+                smtp_host: "example.invalid".to_string(),
+                smtp_port: 465,
+            }),
+        };
+        registry.retire(1).unwrap().commit();
+        let _replacement = registry.capture(1).unwrap();
+        let cycle = Arc::new(SyncShared::default());
+        let backoffs = Mutex::new(HashMap::new());
+        let locks = Mutex::new(HashMap::new());
+        let tally = poll_cycle(
+            vec![(1, session)],
+            &cycle,
+            &backoffs,
+            &locks,
+            true,
+            |_, _| panic!("stale job reached the network"),
+        );
+        assert_eq!(tally.accounts_failed, 0);
+        assert!(recovered(&backoffs).is_empty());
+        assert_eq!(cycle.done.load(Ordering::Relaxed), 1);
+    }
 
     /// The backoff table (P0 complement): nothing before two failures —
     /// the 5 min cadence is already a courtesy —, then the delay

@@ -21,6 +21,7 @@ mod envelope;
 mod error;
 mod imap_quoted;
 mod invitation;
+mod mutations;
 mod nav;
 mod notify;
 mod outbox;
@@ -34,7 +35,7 @@ mod test_support;
 mod thread;
 mod transport;
 
-pub use action::{Action, PendingAction};
+pub use action::{Action, ActionIncident, PendingAction, RemovalMethod, RemovalPlan, RemovalStep};
 pub use address::EmailAddress;
 pub use attachment::{Attachment, human_size};
 pub use backfill::{
@@ -62,7 +63,9 @@ pub use invitation::{
 };
 pub use nav::{CanonicalFolders, NavCounts, PaperTrailGroup};
 pub use notify::{Lang, Notification, arrivals_to_notify, notification_for};
-pub use outbox::{OutboxAttachment, OutboxMessage, OutboxReport, OutboxState, flush_outbox};
+pub use outbox::{
+    OutboxAttachment, OutboxMessage, OutboxReport, OutboxState, flush_outbox, flush_outbox_while,
+};
 pub use remote::{
     FetchedBody, FlagState, Folder, FolderStatus, FolderWithStatus, MailServer, MailboxSnapshot,
     MessageRecipients, RemoteDraft, SpecialUse, ThreadHeaders, fetch_attachment_checked,

@@ -8,6 +8,15 @@ pub enum Error {
     #[error("mailbox identity changed; synchronize before retrying")]
     StaleMailbox,
 
+    #[error("check the unresolved delivery before removing this account")]
+    UnresolvedDelivery,
+
+    #[error("this send is in progress; wait for its result before deciding")]
+    DeliveryInProgress,
+
+    #[error("this send changed; refresh its status before deciding")]
+    StaleDelivery,
+
     #[error("invalid email address: {0:?}")]
     InvalidEmailAddress(String),
 

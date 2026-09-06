@@ -120,6 +120,8 @@ Inner gates: mail-render/core/imap unit files, whole impacted composer/attachmen
 
 ### Lot 2 — Irreversible effects and account lifecycle
 
+Started on 2026-09-06 after the Chief Engineer's go. The [focused Lot 2 plan](PLAN-AUDIT-2026-09-LOT2.md) records reproductions, measured SMTP alternatives and the implementation contract. D4 was answered “A” and D5 “Ok go” on 2026-09-06. E4–E6 are implemented; the one fresh review is complete and its three confirmed findings are corrected. Full gate GREEN in 476 seconds: 774 Rust, 28 Node, 228 UI passed, one UI flaky (passed on retry), four Rust ignored and one optional UI benchmark skipped. STOP 2 was validated on 2026-09-06, verbatim “1-4 OK”, with zero reported KO. No removal duration was supplied. Commit/push and candidate CI follow.
+
 | Step | Implementation and acceptance | Audit coverage |
 |---|---|---|
 | E4 | Classify unknown SMTP delivery and quarantine it; use a fake SMTP dialogue cutting at defined stages. Require single-instance exclusivity for writing. Show queued/sent/unknown accurately. | B01, B22, B26; A05 |

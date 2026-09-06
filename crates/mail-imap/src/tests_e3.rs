@@ -126,27 +126,152 @@ fn a_body_batch_is_bounded_to_32_mb() {
 }
 
 #[test]
-fn a_server_without_uidplus_never_gets_uid_expunge() {
+fn an_unsupported_move_is_refused_before_any_mutation() {
     let mut script = Script::simple();
     script.capabilities = "IMAP4rev1".to_string();
     let fake = FakeImap::start(script);
     let mut server = fake.connect();
 
-    server.move_to("INBOX", 1, "Archive").unwrap();
+    let outcome = server.move_to("INBOX", 1, "Archive");
 
     let commands = fake.commands();
     assert!(
-        commands.iter().any(|c| c.starts_with("UID COPY 1 ")),
-        "without MOVE, a copy: {commands:?}"
+        matches!(outcome, Err(mail_core::Error::Refusal(_))),
+        "{outcome:?}"
+    );
+    assert_no_mutations(&commands);
+}
+
+fn assert_no_mutations(commands: &[String]) {
+    assert!(
+        !commands.iter().any(|c| c.starts_with("UID COPY")
+            || c.starts_with("UID MOVE")
+            || c.starts_with("UID STORE")
+            || c.contains("EXPUNGE")),
+        "unexpected mutation: {commands:?}"
+    );
+}
+
+#[test]
+fn move_only_servers_share_one_safe_path_for_archive_and_trash() {
+    let mut script = Script::simple();
+    script.capabilities = "IMAP4rev1 MOVE".to_string();
+    let fake = FakeImap::start(script);
+    let mut server = fake.connect();
+    server.archive("INBOX", 1).unwrap();
+    server.delete("INBOX", 2).unwrap();
+    let commands = fake.commands();
+    assert!(
+        commands.contains(&"UID MOVE 1 \"Archive\"".to_string()),
+        "{commands:?}"
     );
     assert!(
-        !commands.iter().any(|c| c.starts_with("UID EXPUNGE")),
-        "UID EXPUNGE without UIDPLUS: {commands:?}"
+        commands.contains(&"UID MOVE 2 \"Corbeille\"".to_string()),
+        "{commands:?}"
     );
     assert!(
-        commands.iter().any(|c| c == "EXPUNGE"),
-        "the RFC 3501 EXPUNGE is missing: {commands:?}"
+        !commands
+            .iter()
+            .any(|c| c.starts_with("UID COPY") || c.contains("EXPUNGE")),
+        "{commands:?}"
     );
+}
+
+#[test]
+fn draft_purge_without_uidplus_never_sets_deleted() {
+    let mut script = Script::simple();
+    script.capabilities = "IMAP4rev1 MOVE".to_string();
+    let fake = FakeImap::start(script);
+    let mut server = fake.connect();
+    let outcome = server.delete_draft_remote(1);
+    assert!(
+        matches!(outcome, Err(mail_core::Error::Refusal(_))),
+        "{outcome:?}"
+    );
+    assert_no_mutations(&fake.commands());
+}
+
+#[test]
+fn copy_fallback_quotes_the_entire_destination_and_scopes_expunge() {
+    let mut script = Script::simple();
+    script.capabilities = "IMAP4rev1 UIDPLUS".to_string();
+    let fake = FakeImap::start(script);
+    let mut server = fake.connect();
+    server.move_to("INBOX", 1, "Client \"A\"\\2026").unwrap();
+    let commands = fake.commands();
+    assert!(
+        commands.contains(&"UID COPY 1 \"Client \\\"A\\\"\\\\2026\"".to_string()),
+        "{commands:?}"
+    );
+    assert!(
+        commands.contains(&"UID EXPUNGE 1".to_string()),
+        "{commands:?}"
+    );
+    assert!(!commands.iter().any(|c| c == "EXPUNGE"), "{commands:?}");
+}
+
+#[test]
+fn unsafe_destination_bytes_are_refused_without_a_command() {
+    for target in ["Archive\r\na99 EXPUNGE", "Archive\n", "Archive\0"] {
+        let mut script = Script::simple();
+        script.capabilities = "IMAP4rev1 UIDPLUS".to_string();
+        let fake = FakeImap::start(script);
+        let mut server = fake.connect();
+        assert!(server.move_to("INBOX", 1, target).is_err());
+        assert_no_mutations(&fake.commands());
+    }
+}
+
+#[test]
+fn generic_all_mail_is_not_evidence_that_expunge_preserves_content() {
+    let mut script = Script::simple();
+    script.list = vec!["* LIST (\\All) \"/\" \"Everywhere\"".to_string()];
+    let fake = FakeImap::start(script);
+    let mut server = fake.connect();
+    let outcome = server.archive("INBOX", 1);
+    assert!(
+        matches!(outcome, Err(mail_core::Error::Refusal(_))),
+        "{outcome:?}"
+    );
+    assert_no_mutations(&fake.commands());
+}
+
+#[test]
+fn a_generic_all_role_does_not_hide_a_usable_archive_destination() {
+    let mut script = Script::simple();
+    script
+        .list
+        .push("* LIST (\\All) \"/\" \"Everywhere\"".to_string());
+    let fake = FakeImap::start(script);
+    let mut server = fake.connect();
+    server.archive("INBOX", 1).unwrap();
+    assert!(
+        fake.commands()
+            .contains(&"UID MOVE 1 \"Archive\"".to_string())
+    );
+}
+
+#[test]
+fn gmail_label_archive_requires_inbox_and_targeted_expunge() {
+    for (capabilities, mailbox, allowed) in [
+        ("IMAP4rev1 UIDPLUS X-GM-EXT-1", "INBOX", true),
+        ("IMAP4rev1 UIDPLUS X-GM-EXT-1", "Trash", false),
+        ("IMAP4rev1 X-GM-EXT-1", "INBOX", false),
+    ] {
+        let mut script = Script::simple();
+        script.capabilities = capabilities.to_string();
+        script.list = vec!["* LIST (\\All) \"/\" \"All Mail\"".to_string()];
+        let fake = FakeImap::start(script);
+        let mut server = fake.connect();
+        assert_eq!(server.archive(mailbox, 1).is_ok(), allowed);
+        if allowed {
+            let commands = fake.commands();
+            assert!(commands.contains(&"UID EXPUNGE 1".to_string()));
+            assert!(!commands.iter().any(|c| c == "EXPUNGE"));
+        } else {
+            assert_no_mutations(&fake.commands());
+        }
+    }
 }
 
 #[test]

@@ -47,3 +47,56 @@ awaits wave 2).
   a socket CLONE acts on the original handle — the IDLE watch is
   bounded by a stream where `set_read_timeout(None)` is worth a floor
   (`FluxBorne`); `REFERENCES` is a reserved SQLite word.
+
+
+## Amendment — audit Lot 2, 2026-09-06
+
+The Chief Engineer approved [Lot 2](../PLAN-AUDIT-2026-09-LOT2.md), SMTP option A
+and fast IDLE stop (D5). Lock failure now prevents any Store/window startup.
+
+Account jobs capture an incarnation ticket and acquire a lease immediately before
+work. Removal closes admission, stops the watcher and drains active work outside
+the command mutex before vault/Store deletion. A timeout keeps the account; a
+fresh incarnation reopens admission without reviving old jobs. Old and new
+incarnations share outstanding-work counters after an aborted removal, so a retry
+cannot bypass an unfinished SMTP handoff. Unknown-identity authentication flows
+also drain before vault removal. Started SMTP persists its result before release;
+Sending or Interrupted blocks purge. Local saves/enqueues reject closing accounts,
+and late refresh/publication cannot act on a replacement account.
+
+The watcher stop token is checked below TLS through 100 ms local TCP read slices.
+The 180-second heartbeat and ordinary poll read timeouts remain unchanged. Cancelled
+streams are terminal. This implements measured D5; it does not promise immediate
+cancellation of DNS, connect, writes or a started SMTP submission.
+
+IMAP removal now crosses a portable plan/step boundary. The adapter resolves safe
+capabilities and a fixed destination before mutation: MOVE when advertised;
+otherwise COPY plus targeted UID EXPUNGE only with UIDPLUS. Pure purge also needs
+UIDPLUS. No global EXPUNGE fallback. Generic All is not evidence of Gmail archive
+semantics; label-removal archive requires INBOX, X-GM-EXT-1 and UIDPLUS.
+
+A separate action_effects journal freezes source/destination generations. In-flight
+is committed before COPY/MOVE; confirmed COPY advances before deleting the source.
+Only source deletion can repeat. A missing or inconsistent confirmation is retained
+as uncertain across restart, disappearing source rows and generation changes.
+The action link uses ON DELETE SET NULL and a separate non-reused effect ID, so an
+orphan cannot attach to a new action with a recycled rowid. Startup recovery runs
+once before new work through the Store command boundary. A pre-mutation refusal or an unsuccessful COPY remains a refusal; after MOVE
+emission, NO is uncertain because [RFC 6851 section 3.3](https://www.rfc-editor.org/rfc/rfc6851.html#section-3.3)
+permits partial effects. [RFC 3501 section 6.4.7](https://www.rfc-editor.org/rfc/rfc3501.html#section-6.4.7)
+requires destination restoration for unsuccessful COPY. Repeatable flags retain
+the five-failure policy. COPYUID is corroboration,
+validated for both tagged/untagged replies through the pinned parser; absent mapping
+is allowed, mismatched identities are uncertain, Message-ID alone proves nothing.
+
+The notice now consumes the actual refused_actions schema and includes the refusal
+reason. An uncertain move directs inspection of source/destination before a new
+gesture. I checked acknowledges the incident; it never repeats the old operation.
+
+
+Removal actions capture subject and sender when enqueued, before local envelope
+removal. The retained incident exposes that snapshot with its account address so
+acknowledgement follows an identifiable check, including after a generation reset.
+Outbox decisions additionally carry Message-ID; an old notice cannot operate on a
+recycled rowid. Sending refuses discard, and queued snapshots must atomically claim
+the same id, Message-ID, account and queued state before entering the transport.

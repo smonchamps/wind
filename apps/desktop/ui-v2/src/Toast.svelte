@@ -24,6 +24,6 @@
     box-shadow:var(--shadow); padding:10px 16px;
     display:flex; align-items:center; gap:10px;
   }
-  .check { color:var(--accent); }
+  .check { color:var(--accent); transform:translateY(-2px); }
   .text { font-size:13px; color:var(--ink); }
 </style>

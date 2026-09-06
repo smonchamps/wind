@@ -35,6 +35,18 @@ pub use prefs::{PREF_ARRIVAL_BUBBLES, PREF_LANG, PREF_LAST_SYNC, PREFS_PER_ACCOU
 pub(crate) use screener::*;
 pub(crate) use sql::*;
 
+fn check_account_removal(conn: &Connection, account_id: i64) -> Result<(), Error> {
+    let unresolved: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM outbox WHERE account_id = ?1 AND state IN ('sending', 'interrupted'))",
+        [account_id],
+        |row| row.get(0),
+    )?;
+    if unresolved {
+        return Err(Error::UnresolvedDelivery);
+    }
+    Ok(())
+}
+
 const SCHEMA: &str = "
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS accounts (
@@ -179,9 +191,34 @@ CREATE TABLE IF NOT EXISTS pending_actions (
     -- — but stays visible (notice slot, D2) with its reason.
     attempts   INTEGER NOT NULL DEFAULT 0,
     refusee    INTEGER NOT NULL DEFAULT 0,
-    last_error TEXT
+    last_error TEXT,
+    message_subject TEXT,
+    message_sender TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_pending_actions_message ON pending_actions(mailbox_id, uid);
+CREATE TABLE IF NOT EXISTS action_effects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    action_id INTEGER UNIQUE REFERENCES pending_actions(id) ON DELETE SET NULL,
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    source TEXT NOT NULL,
+    source_generation INTEGER NOT NULL,
+    uid INTEGER NOT NULL,
+    destination TEXT,
+    destination_generation INTEGER,
+    method TEXT NOT NULL,
+    phase TEXT NOT NULL,
+    message_subject TEXT,
+    message_sender TEXT,
+    reason TEXT
+);
+CREATE TRIGGER IF NOT EXISTS retain_orphan_action_effect
+AFTER UPDATE OF action_id ON action_effects
+WHEN NEW.action_id IS NULL
+BEGIN
+    UPDATE action_effects SET phase = 'uncertain',
+        reason = COALESCE(reason, 'source disappeared or changed identity before completion')
+    WHERE id = NEW.id;
+END;
 CREATE TABLE IF NOT EXISTS drafts (
     id            INTEGER PRIMARY KEY,
     account_id    INTEGER NOT NULL DEFAULT 1,
@@ -1069,6 +1106,11 @@ impl Store {
             .ok_or_else(|| Error::Corrupt("generic account not found after write".to_string()))
     }
 
+    /// Checks before touching the vault; deletion repeats this check in its transaction.
+    pub fn check_account_removal(&self, account_id: i64) -> Result<(), Error> {
+        check_account_removal(&self.0, account_id)
+    }
+
     /// Deletes an account and EVERYTHING attached to it, in one
     /// transaction.
     ///
@@ -1085,6 +1127,7 @@ impl Store {
     /// showing up in search or leaving on the next flush.
     pub fn delete_account(&mut self, account_id: i64) -> Result<(), Error> {
         let tx = self.0.transaction()?;
+        check_account_removal(&tx, account_id)?;
         let mailboxes: Vec<i64> = {
             let mut stmt = tx.prepare("SELECT id FROM mailboxes WHERE account_id = ?1")?;
             stmt.query_map([account_id], |row| row.get(0))?
@@ -1855,7 +1898,8 @@ impl Store {
     /// the notice slot's line (D2).
     pub fn refused_actions(&self) -> Result<u64, Error> {
         let n: i64 = self.0.query_row(
-            "SELECT COUNT(*) FROM pending_actions WHERE refusee = 1",
+            "SELECT COUNT(*) FROM pending_actions p WHERE refusee = 1
+               AND NOT EXISTS (SELECT 1 FROM action_effects e WHERE e.action_id = p.id AND e.phase = 'uncertain')",
             [],
             |row| row.get(0),
         )?;
@@ -1863,8 +1907,13 @@ impl Store {
     }
 
     pub fn remove_action(&self, action_id: i64) -> Result<(), Error> {
-        self.0
-            .execute("DELETE FROM pending_actions WHERE id = ?1", [action_id])?;
+        let tx = self.0.unchecked_transaction()?;
+        tx.execute(
+            "DELETE FROM action_effects WHERE action_id = ?1",
+            [action_id],
+        )?;
+        tx.execute("DELETE FROM pending_actions WHERE id = ?1", [action_id])?;
+        tx.commit()?;
         Ok(())
     }
 

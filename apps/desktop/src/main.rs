@@ -19,6 +19,7 @@
 #[cfg(not(any(windows, target_os = "macos")))]
 compile_error!("Wind targets Windows and macOS -- see ADR 0036 before adding a platform.");
 
+mod account_work;
 mod commands;
 mod fault;
 mod instance;
@@ -103,6 +104,8 @@ pub(crate) struct PassFlight {
 }
 
 pub(crate) struct AppState {
+    pub account_work: account_work::Registry,
+    pub mutation_recovery: std::sync::OnceLock<()>,
     /// Connected accounts' sessions, by email (multi-account).
     pub accounts: Mutex<HashMap<String, mail_auth::AccountSession>>,
     /// Serializes outbox flushes: two concurrent pumps would quarantine
@@ -137,7 +140,7 @@ pub(crate) struct AppState {
     pub online: Arc<AtomicBool>,
     /// Post-gesture passes in flight, per account (E3): one flight at
     /// a time, requests during the flight coalesce.
-    pub gesture_passes: Arc<Mutex<HashMap<String, PassFlight>>>,
+    pub gesture_passes: Arc<Mutex<HashMap<account_work::Ticket, PassFlight>>>,
     /// The poll cadence (PLAN-AUDIT-V3 E5): the DECISION of what a
     /// scheduler tick runs — core policy (`mail_core::cycle::Cadence`),
     /// shared between the tick thread and the network-return kick.
@@ -255,20 +258,25 @@ fn main() {
     // `lock_patiently`, not `lock`: on macOS the updater's restart
     // spawns us while the dying predecessor still holds the lock.
     let _instance_guard = match folder.as_deref().map(instance::lock_patiently) {
-        Some(Ok(Some(guard))) => Some(guard),
+        Some(Ok(Some(guard))) => guard,
         Some(Ok(None)) => warn_and_exit("Wind est déjà ouvert.", 0), // lang:fr
-        // Lock impossible (read-only folder, disk full…): we do not
-        // deprive the user of their mail for a lock file — said to
-        // the trace, without a guard.
         Some(Err(err)) => {
-            trace::trace(&format!(
-                "instance lock impossible: {err} — launching without a guard"
-            ));
-            None
+            trace::trace(&format!("instance lock failed: {err}"));
+            warn_and_exit(
+                &format!(
+                    "Impossible de protéger les données de Wind : {err}\nVérifiez l’accès au dossier de données, puis relancez." // lang:fr
+                ),
+                1,
+            );
         }
-        None => None,
+        None => warn_and_exit(
+            "Le dossier de données de Wind est introuvable. Le démarrage est arrêté.", // lang:fr
+            1,
+        ),
     };
     let state = AppState {
+        account_work: account_work::Registry::default(),
+        mutation_recovery: std::sync::OnceLock::new(),
         accounts: Mutex::new(HashMap::new()),
         outbox_flush: Arc::new(Mutex::new(())),
         drafts_push: Arc::new(Mutex::new(())),
@@ -373,12 +381,14 @@ fn main() {
             commands::reply_all_context,
             commands::forward_context,
             commands::queue_send,
+            commands::queued_draft_edit,
             commands::flush_outbox,
             commands::sync_after_gesture,
             commands::echo_body,
             commands::echo_attachments,
             commands::complete_addresses,
             commands::outbox_status,
+            commands::dismiss_action_incident,
             commands::outbox_requeue,
             commands::outbox_delete,
             commands::outbox_cancel_scheduled,

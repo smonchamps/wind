@@ -10,6 +10,9 @@
 //! STATUS. Without the announcement, `None` — the engine falls back on the
 //! UID differential, a complete and tested path.
 
+mod cancel;
+#[cfg(test)]
+mod cancel_tls_tests;
 mod convert;
 #[cfg(test)]
 mod fake_server;
@@ -17,8 +20,10 @@ mod mutf7;
 #[cfg(test)]
 mod tests_e3;
 
+use cancel::CancelableTcp;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
+use std::sync::{Arc, atomic::AtomicBool};
 use std::time::Duration;
 
 use imap_proto::NameAttribute;
@@ -46,11 +51,22 @@ const IO_TIMEOUT: Duration = Duration::from_secs(120);
 /// 993 and mandatory STARTTLS elsewhere — the exact behavior of the
 /// `ClientBuilder` (AutoTls mode), which itself bounds nothing: that is the
 /// whole reason to build by hand.
+#[cfg(test)]
 fn connect_client(
     host: &str,
     port: u16,
     connect_timeout: Duration,
     io_timeout: Duration,
+) -> Result<imap::Client<imap::Connection>, Error> {
+    connect_client_cancellable(host, port, connect_timeout, io_timeout, None)
+}
+
+fn connect_client_cancellable(
+    host: &str,
+    port: u16,
+    connect_timeout: Duration,
+    io_timeout: Duration,
+    alive: Option<Arc<AtomicBool>>,
 ) -> Result<imap::Client<imap::Connection>, Error> {
     let context = |err: String| Error::Server(format!("connection {host}:{port}: {err}"));
     // The resolution may return several addresses (IPv4/IPv6): each one
@@ -69,7 +85,7 @@ fn connect_client(
             Err(err) => last = Some(err),
         }
     }
-    let mut tcp = match (tcp, last) {
+    let tcp = match (tcp, last) {
         (Some(tcp), _) => tcp,
         (None, Some(err)) => return Err(context(err.to_string())),
         (None, None) => return Err(context("address not found".to_string())),
@@ -78,6 +94,8 @@ fn connect_client(
         .map_err(|err| context(err.to_string()))?;
     tcp.set_write_timeout(Some(io_timeout))
         .map_err(|err| context(err.to_string()))?;
+    let mut tcp =
+        CancelableTcp::new(tcp, io_timeout, alive).map_err(|err| context(err.to_string()))?;
 
     if port == 993 {
         let tls = tls_stream(host, tcp).map_err(context)?;
@@ -121,8 +139,8 @@ fn connect_client(
 /// refusal must surface at connect, not at the first command.
 fn tls_stream(
     host: &str,
-    tcp: TcpStream,
-) -> Result<rustls::StreamOwned<rustls::ClientConnection, TcpStream>, String> {
+    tcp: CancelableTcp,
+) -> Result<rustls::StreamOwned<rustls::ClientConnection, CancelableTcp>, String> {
     use rustls_platform_verifier::BuilderVerifierExt;
     // Built ONCE per process (review, wave 3): the platform verifier's
     // construction walks the Windows certificate store — a cost every
@@ -160,18 +178,20 @@ fn tls_stream(
 /// read timeout is set — never on a clone (Windows: `SO_RCVTIMEO` is
 /// specific to the handle, proven by a test that hung).
 trait InnerSocket {
-    fn socket(&self) -> &TcpStream;
+    fn set_timeout(&mut self, timeout: Duration) -> std::io::Result<()>;
 }
 
 impl InnerSocket for TcpStream {
-    fn socket(&self) -> &TcpStream {
-        self
+    fn set_timeout(&mut self, timeout: Duration) -> std::io::Result<()> {
+        self.set_read_timeout(Some(timeout))
     }
 }
 
-impl InnerSocket for rustls::StreamOwned<rustls::ClientConnection, TcpStream> {
-    fn socket(&self) -> &TcpStream {
-        self.get_ref()
+impl<S: Read + Write + InnerSocket> InnerSocket
+    for rustls::StreamOwned<rustls::ClientConnection, S>
+{
+    fn set_timeout(&mut self, timeout: Duration) -> std::io::Result<()> {
+        self.sock.set_timeout(timeout)
     }
 }
 
@@ -215,8 +235,7 @@ impl<S: Read + Write + Send + InnerSocket> imap::extensions::idle::SetReadTimeou
 {
     fn set_read_timeout(&mut self, timeout: Option<Duration>) -> imap::error::Result<()> {
         self.stream
-            .socket()
-            .set_read_timeout(Some(timeout.unwrap_or(self.floor)))
+            .set_timeout(timeout.unwrap_or(self.floor))
             .map_err(imap::Error::Io)
     }
 }
@@ -225,7 +244,7 @@ impl<S: Read + Write + Send + InnerSocket> imap::extensions::idle::SetReadTimeou
 /// pre-TLS part of IMAP fits in two short lines, any overrun is suspect.
 /// Byte by byte, deliberately — no buffer must swallow the first bytes of
 /// the TLS handshake that follows.
-fn read_line(tcp: &mut TcpStream) -> std::io::Result<String> {
+fn read_line(tcp: &mut impl Read) -> std::io::Result<String> {
     let mut line = Vec::new();
     let mut byte = [0u8; 1];
     loop {
@@ -276,6 +295,7 @@ impl imap::Authenticator for XOAuth2 {
 }
 
 pub struct ImapServer {
+    operation_stop: Option<Arc<AtomicBool>>,
     session: imap::Session<Box<dyn imap::ImapConnection>>,
     selected: Option<(String, MailboxSnapshot)>,
     /// The special folders (RFC 6154), discovered by ONE `LIST` and memorized
@@ -316,6 +336,7 @@ const CHANGES_BATCH: usize = 500;
 impl ImapServer {
     fn new(session: imap::Session<Box<dyn imap::ImapConnection>>) -> Self {
         Self {
+            operation_stop: None,
             session,
             selected: None,
             special: None,
@@ -339,7 +360,17 @@ impl ImapServer {
         user: &str,
         access_token: &str,
     ) -> Result<Self, Error> {
-        let client = connect_client(host, port, CONNECT_TIMEOUT, IO_TIMEOUT)?;
+        Self::connect_xoauth2_with_stop(host, port, user, access_token, None)
+    }
+
+    pub fn connect_xoauth2_with_stop(
+        host: &str,
+        port: u16,
+        user: &str,
+        access_token: &str,
+        alive: Option<Arc<AtomicBool>>,
+    ) -> Result<Self, Error> {
+        let client = connect_client_cancellable(host, port, CONNECT_TIMEOUT, IO_TIMEOUT, alive)?;
         let auth = XOAuth2 {
             user: user.to_string(),
             access_token: access_token.to_string(),
@@ -358,20 +389,50 @@ impl ImapServer {
         user: &str,
         password: &str,
     ) -> Result<Self, Error> {
-        let client = connect_client(host, port, CONNECT_TIMEOUT, IO_TIMEOUT)?;
+        Self::connect_password_with_stop(host, port, user, password, None)
+    }
+
+    pub fn connect_password_with_stop(
+        host: &str,
+        port: u16,
+        user: &str,
+        password: &str,
+        alive: Option<Arc<AtomicBool>>,
+    ) -> Result<Self, Error> {
+        let client = connect_client_cancellable(host, port, CONNECT_TIMEOUT, IO_TIMEOUT, alive)?;
         let session = client
             .login(user, password)
             .map_err(|(err, _)| server_err(err))?;
         Ok(Self::new(session))
     }
 
+    /// Stops admission between commands; an in-flight command is allowed to finish.
+    pub fn set_operation_stop(&mut self, stopped: Arc<AtomicBool>) {
+        self.operation_stop = Some(stopped);
+    }
+
+    fn check_operation(&self) -> Result<(), Error> {
+        if self
+            .operation_stop
+            .as_ref()
+            .is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Acquire))
+        {
+            Err(Error::Server("account is closing".to_string()))
+        } else {
+            Ok(())
+        }
+    }
+
     pub fn logout(mut self) {
-        let _ = self.session.logout();
+        if self.check_operation().is_ok() {
+            let _ = self.session.logout();
+        }
     }
 
     /// Selects the mailbox if it is not already selected (the engine calls
     /// `select` then chains the operations on the same mailbox).
     fn ensure_selected(&mut self, mailbox: &str) -> Result<MailboxSnapshot, Error> {
+        self.check_operation()?;
         if let Some((name, snapshot)) = &self.selected
             && name == mailbox
         {
@@ -396,7 +457,9 @@ impl ImapServer {
     /// "[Gmail]/Corbeille" on a French account, "Trash" elsewhere. ONE
     /// `LIST "" "*"` per session, memorized.
     fn special_folders(&mut self) -> Result<&SpecialFolders, Error> {
+        self.check_operation()?;
         if self.special.is_none() {
+            let gmail_labels = self.announces("X-GM-EXT-1")?;
             let names = self.session.list(None, Some("*")).map_err(server_err)?;
             let carries = |name: &imap::types::Name, wanted: NameAttribute| {
                 name.attributes().contains(&wanted)
@@ -416,7 +479,7 @@ impl ImapServer {
             let archive = convert::archive_strategy(roles(&|name| {
                 if carries(name, NameAttribute::Archive) {
                     convert::SpecialUse::Archive
-                } else if carries(name, NameAttribute::All) {
+                } else if gmail_labels && carries(name, NameAttribute::All) {
                     convert::SpecialUse::All
                 } else {
                     convert::SpecialUse::Other
@@ -585,6 +648,7 @@ impl ImapServer {
     /// once: asking an extension of a server that does not announce it would
     /// be a BAD — hence the guards below.
     fn announces(&mut self, name: &str) -> Result<bool, Error> {
+        self.check_operation()?;
         if self.capabilities.is_none() {
             self.capabilities = Some(self.session.capabilities().map_err(server_err)?);
         }
@@ -611,33 +675,128 @@ impl ImapServer {
         self.announces("LIST-STATUS")
     }
 
-    /// Can the server do UIDPLUS (RFC 4315, `UID EXPUNGE`)? Without it, a
-    /// `UID EXPUNGE` is a BAD: the copy succeeded then the original stayed —
-    /// a duplicate at every cycle.
+    /// UIDPLUS permits expunging only the requested UID.
     fn supports_uidplus(&mut self) -> Result<bool, Error> {
         self.announces("UIDPLUS")
     }
 
-    /// Marks `\Deleted` then expunges: the single targeted UID with UIDPLUS;
-    /// without it, the RFC 3501 `EXPUNGE` (everything the mailbox carries as
-    /// `\Deleted` — and those are messages meant to be deleted).
+    /// Refuse before STORE when targeted expunge is unavailable.
     fn expunge_uid(&mut self, uid: Uid) -> Result<(), Error> {
+        self.check_operation()?;
+        if !self.supports_uidplus()? {
+            return Err(Error::Refusal(
+                "targeted deletion requires UIDPLUS".to_string(),
+            ));
+        }
         self.session
             .uid_store(uid.to_string(), "+FLAGS.SILENT (\\Deleted)")
             .map_err(server_err)?;
-        if self.supports_uidplus()? {
-            self.session
-                .uid_expunge(uid.to_string())
-                .map_err(server_err)?;
-        } else {
-            self.session.expunge().map_err(server_err)?;
-        }
+        self.check_operation()?;
+        self.session
+            .uid_expunge(uid.to_string())
+            .map_err(server_err)?;
         Ok(())
     }
 }
 
 impl MailServer for ImapServer {
+    fn plan_removal(
+        &mut self,
+        mailbox: &str,
+        action: &mail_core::Action,
+    ) -> Result<mail_core::RemovalPlan, Error> {
+        use mail_core::{Action, RemovalMethod, RemovalPlan};
+        self.check_operation()?;
+        let destination = match action {
+            Action::MoveTo(target) => target.clone(),
+            Action::Delete => self.trash_folder()?,
+            Action::Archive => match self.archive_strategy()? {
+                convert::ArchiveStrategy::MoveTo(folder) => folder,
+                convert::ArchiveStrategy::ExpungeOnly
+                    if mailbox.eq_ignore_ascii_case("INBOX")
+                        && self.announces("X-GM-EXT-1")?
+                        && self.supports_uidplus()? =>
+                {
+                    return Ok(RemovalPlan {
+                        method: RemovalMethod::Remove,
+                        destination: None,
+                        destination_generation: None,
+                    });
+                }
+                _ => {
+                    return Err(Error::Refusal(
+                        "this mailbox does not provide safe archiving".to_string(),
+                    ));
+                }
+            },
+            _ => return Err(Error::Refusal("not a removal action".to_string())),
+        };
+        quote_mailbox(&destination)?;
+        let method = if self.supports_move()? {
+            RemovalMethod::Move
+        } else if self.supports_uidplus()? {
+            RemovalMethod::CopyThenRemove
+        } else {
+            return Err(Error::Refusal(
+                "moving requires MOVE or UIDPLUS".to_string(),
+            ));
+        };
+        let destination_generation = self
+            .folder_status(&destination)?
+            .uid_validity
+            .filter(|value| *value != 0)
+            .ok_or_else(|| Error::Refusal("destination UIDVALIDITY unavailable".to_string()))?;
+        Ok(RemovalPlan {
+            method,
+            destination: Some(destination),
+            destination_generation: Some(destination_generation),
+        })
+    }
+
+    fn removal_step(
+        &mut self,
+        mailbox: &str,
+        uid: Uid,
+        _action: &mail_core::Action,
+        plan: &mail_core::RemovalPlan,
+        step: mail_core::RemovalStep,
+    ) -> Result<(), Error> {
+        use mail_core::{RemovalMethod, RemovalStep};
+        self.check_operation()?;
+        self.ensure_selected(mailbox)?;
+        if step == RemovalStep::RemoveSource {
+            return self.expunge_uid(uid);
+        }
+        let target = plan
+            .destination
+            .as_deref()
+            .ok_or_else(|| Error::Refusal("missing transfer destination".to_string()))?;
+        let command = match plan.method {
+            RemovalMethod::Move if self.supports_move()? => "MOVE",
+            RemovalMethod::CopyThenRemove if self.supports_uidplus()? => "COPY",
+            _ => {
+                return Err(Error::Refusal(
+                    "planned transfer capability unavailable".to_string(),
+                ));
+            }
+        };
+        let (reply, _) = self
+            .session
+            .run(format!("UID {command} {uid} {}", quote_mailbox(target)?))
+            .map_err(|err| {
+                // RFC 6851 permits a MOVE effect even with tagged NO.
+                if command == "MOVE" && matches!(err, imap::Error::No(_)) {
+                    Error::Server(format!("MOVE result needs verification: {err}"))
+                } else {
+                    server_err(err)
+                }
+            })?;
+        validate_copy_uid(&reply, uid, plan.destination_generation)?;
+        Ok(())
+    }
+
     fn select(&mut self, mailbox: &str) -> Result<MailboxSnapshot, Error> {
+        self.check_operation()?;
         // Systematic re-selection: it is the refresh point of the snapshot
         // (UIDVALIDITY) at the start of a sync.
         self.selected = None;
@@ -645,12 +804,14 @@ impl MailServer for ImapServer {
     }
 
     fn list_uids(&mut self, mailbox: &str) -> Result<Vec<Uid>, Error> {
+        self.check_operation()?;
         self.ensure_selected(mailbox)?;
         let uids = self.session.uid_search("ALL").map_err(server_err)?;
         Ok(uids.into_iter().collect())
     }
 
     fn fetch_envelopes(&mut self, mailbox: &str, uids: &[Uid]) -> Result<Vec<Envelope>, Error> {
+        self.check_operation()?;
         self.ensure_selected(mailbox)?;
         if uids.is_empty() {
             return Ok(Vec::new());
@@ -678,6 +839,7 @@ impl MailServer for ImapServer {
         mailbox: &str,
         uids: &[Uid],
     ) -> Result<Vec<(Uid, ThreadHeaders)>, Error> {
+        self.check_operation()?;
         if uids.is_empty() {
             return Ok(Vec::new());
         }
@@ -700,6 +862,7 @@ impl MailServer for ImapServer {
         mailbox: &str,
         modseq: u64,
     ) -> Result<Option<Vec<Envelope>>, Error> {
+        self.check_operation()?;
         // Without the CONDSTORE announcement, `None`: the engine falls back
         // on the UID differential — the complete, tested path from before E2b.
         if !self.supports_condstore()? {
@@ -722,6 +885,7 @@ impl MailServer for ImapServer {
         let uids: Vec<Uid> = changes.iter().filter_map(|fetch| fetch.uid).collect();
         let mut envelopes = Vec::with_capacity(uids.len());
         for batch in uids.chunks(CHANGES_BATCH) {
+            self.check_operation()?;
             let fetches = self
                 .session
                 .uid_fetch(convert::uid_set(batch), "(UID ENVELOPE INTERNALDATE FLAGS)")
@@ -736,6 +900,7 @@ impl MailServer for ImapServer {
     /// PLAN-RETOURS-15 E3). The engine bounds the window; this adapter
     /// only pays the single round trip.
     fn fetch_flags(&mut self, mailbox: &str, uids: &[Uid]) -> Result<Vec<FlagState>, Error> {
+        self.check_operation()?;
         if uids.is_empty() {
             return Ok(Vec::new());
         }
@@ -771,6 +936,7 @@ impl MailServer for ImapServer {
         mailbox: &str,
         uids: &[Uid],
     ) -> Result<Vec<(Uid, FetchedBody)>, Error> {
+        self.check_operation()?;
         if uids.is_empty() {
             return Ok(Vec::new());
         }
@@ -785,6 +951,7 @@ impl MailServer for ImapServer {
             .collect();
         let mut bodies = Vec::with_capacity(weighed.len());
         for batch in bounded_batches(&weighed, BODY_BATCH_BYTES) {
+            self.check_operation()?;
             let fetches = self
                 .session
                 .uid_fetch(convert::uid_set(&batch), "(UID BODY.PEEK[])")
@@ -812,6 +979,7 @@ impl MailServer for ImapServer {
         uid: Uid,
         index: usize,
     ) -> Result<Option<Vec<u8>>, Error> {
+        self.check_operation()?;
         self.ensure_selected(mailbox)?;
         let fetches = self
             .session
@@ -824,11 +992,13 @@ impl MailServer for ImapServer {
     }
 
     fn folders(&mut self) -> Result<Vec<mail_core::Folder>, Error> {
+        self.check_operation()?;
         let names = self.session.list(None, Some("*")).map_err(server_err)?;
         Ok(names.iter().map(name_to_folder).collect())
     }
 
     fn folders_with_status(&mut self) -> Result<Option<Vec<mail_core::FolderWithStatus>>, Error> {
+        self.check_operation()?;
         if !self.supports_list_status()? {
             return Ok(None);
         }
@@ -864,6 +1034,7 @@ impl MailServer for ImapServer {
     }
 
     fn folder_status(&mut self, mailbox: &str) -> Result<mail_core::FolderStatus, Error> {
+        self.check_operation()?;
         // STATUS and not SELECT: the command is made to query a NON-selected
         // mailbox (RFC 3501 §6.3.10) — the engine's current selection is not
         // disturbed, and some servers charge a SELECT much more than a
@@ -887,15 +1058,11 @@ impl MailServer for ImapServer {
         })
     }
 
-    /// MOVE if the server announces it, COPY + EXPUNGE otherwise.
-    ///
-    /// The fallback is not equivalent, and the gap deserves to be named:
-    /// between the COPY and the EXPUNGE there is a window where a cut leaves
-    /// the message in BOTH folders. It is a duplicate, not a loss — and the
-    /// chosen order guarantees it will always be in that direction. Copy
-    /// first, only remove next: "never lose a mail" (PLAN.md §1) wins over
-    /// tidiness.
+    /// MOVE, or COPY followed by targeted UID EXPUNGE. Capability checks
+    /// precede mutation; the fallback's recovery belongs to the action journal.
     fn move_to(&mut self, mailbox: &str, uid: Uid, target: &str) -> Result<(), Error> {
+        self.check_operation()?;
+        let destination = quote_mailbox(target)?;
         self.ensure_selected(mailbox)?;
         if self.supports_move()? {
             return self
@@ -903,13 +1070,19 @@ impl MailServer for ImapServer {
                 .uid_mv(uid.to_string(), target)
                 .map_err(server_err);
         }
+        if !self.supports_uidplus()? {
+            return Err(Error::Refusal(
+                "moving requires MOVE or UIDPLUS".to_string(),
+            ));
+        }
         self.session
-            .uid_copy(uid.to_string(), target)
+            .run(format!("UID COPY {uid} {destination}"))
             .map_err(server_err)?;
         self.expunge_uid(uid)
     }
 
     fn set_seen(&mut self, mailbox: &str, uid: Uid, seen: bool) -> Result<(), Error> {
+        self.check_operation()?;
         self.ensure_selected(mailbox)?;
         let query = if seen {
             "+FLAGS.SILENT (\\Seen)"
@@ -923,6 +1096,7 @@ impl MailServer for ImapServer {
     }
 
     fn set_flagged(&mut self, mailbox: &str, uid: Uid, flagged: bool) -> Result<(), Error> {
+        self.check_operation()?;
         self.ensure_selected(mailbox)?;
         let query = if flagged {
             "+FLAGS.SILENT (\\Flagged)"
@@ -935,27 +1109,23 @@ impl MailServer for ImapServer {
         Ok(())
     }
 
-    /// Archiving depends on the server's capabilities, NEVER on the provider.
-    ///
-    /// At Gmail (`\All`), expunging from INBOX only removes the label: the
-    /// message survives in "All Mail". On a generic IMAP, the same expunge
-    /// would **destroy** the message — it must therefore be moved to
-    /// `\Archive`. With neither, we refuse: "never lose a mail" (PLAN.md §1)
-    /// wins over the availability of the feature.
+    /// Move to Archive when available. Label-removal archive is restricted
+    /// to INBOX on a server advertising Gmail's extension and All Mail;
+    /// a generic All role or a Trash selection does not guarantee retention.
     fn archive(&mut self, mailbox: &str, uid: Uid) -> Result<(), Error> {
+        self.check_operation()?;
         match self.archive_strategy()? {
-            convert::ArchiveStrategy::MoveTo(folder) => {
-                self.ensure_selected(mailbox)?;
-                self.session
-                    .uid_copy(uid.to_string(), &folder)
-                    .map_err(server_err)?;
-                self.expunge_uid(uid)
-            }
+            convert::ArchiveStrategy::MoveTo(folder) => self.move_to(mailbox, uid, &folder),
             convert::ArchiveStrategy::ExpungeOnly => {
+                if !mailbox.eq_ignore_ascii_case("INBOX") || !self.announces("X-GM-EXT-1")? {
+                    return Err(Error::Refusal(
+                        "this mailbox does not guarantee safe archive by label removal".to_string(),
+                    ));
+                }
                 self.ensure_selected(mailbox)?;
                 self.expunge_uid(uid)
             }
-            convert::ArchiveStrategy::Unsupported => Err(Error::Server(
+            convert::ArchiveStrategy::Unsupported => Err(Error::Refusal(
                 "this server exposes neither an Archive folder (\\Archive) nor \"all mail\" \
                  (\\All): archiving there would destroy the message"
                     .to_string(),
@@ -964,13 +1134,63 @@ impl MailServer for ImapServer {
     }
 
     fn delete(&mut self, mailbox: &str, uid: Uid) -> Result<(), Error> {
+        self.check_operation()?;
         let trash = self.trash_folder()?;
-        self.ensure_selected(mailbox)?;
-        self.session
-            .uid_copy(uid.to_string(), &trash)
-            .map_err(server_err)?;
-        self.expunge_uid(uid)
+        self.move_to(mailbox, uid, &trash)
     }
+}
+
+/// COPYUID corroborates one transferred UID. Absence is allowed; disagreement is not.
+fn validate_copy_uid(mut bytes: &[u8], source: Uid, generation: Option<u32>) -> Result<(), Error> {
+    use imap_proto::types::{Response, ResponseCode, UidSetMember};
+    fn singleton(set: &[UidSetMember]) -> Option<u32> {
+        match set {
+            [UidSetMember::Uid(uid)] if *uid != 0 => Some(*uid),
+            [UidSetMember::UidRange(range)]
+                if range.start() == range.end() && *range.start() != 0 =>
+            {
+                Some(*range.start())
+            }
+            _ => None,
+        }
+    }
+    let mut mapping = None;
+    while !bytes.is_empty() {
+        let (rest, response) = Response::from_bytes(bytes)
+            .map_err(|_| Error::Server("malformed transfer response".to_string()))?;
+        bytes = rest;
+        let code = match response {
+            Response::Data { code, .. } | Response::Done { code, .. } => code,
+            _ => None,
+        };
+        if let Some(ResponseCode::CopyUid(validity, sources, destinations)) = code {
+            let destination = singleton(&destinations);
+            if generation != Some(validity)
+                || singleton(&sources) != Some(source)
+                || destination.is_none()
+                || mapping.is_some_and(|previous| Some(previous) != destination)
+            {
+                return Err(Error::Server(
+                    "COPYUID does not match the planned transfer".to_string(),
+                ));
+            }
+            mapping = destination;
+        }
+    }
+    Ok(())
+}
+
+fn quote_mailbox(mailbox: &str) -> Result<String, Error> {
+    if mailbox
+        .bytes()
+        .any(|byte| matches!(byte, 0 | b'\r' | b'\n'))
+    {
+        return Err(Error::Refusal("invalid mailbox name".to_string()));
+    }
+    Ok(format!(
+        "\"{}\"",
+        mailbox.replace('\\', "\\\\").replace('"', "\\\"")
+    ))
 }
 
 /// NO/BAD = the server understood and REFUSES (vanished folder, `[CANNOT]`,
@@ -1253,3 +1473,6 @@ mod tls_stack_net {
         );
     }
 }
+
+#[cfg(test)]
+mod mutation_tests;

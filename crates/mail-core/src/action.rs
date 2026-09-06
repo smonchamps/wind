@@ -155,3 +155,37 @@ mod tests {
         assert!(!Action::MarkFlagged.removes_from_mailbox());
     }
 }
+
+/// Whether the first remote effect can be safely repeated after a lost reply.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RemovalMethod {
+    Atomic,
+    Move,
+    CopyThenRemove,
+    Remove,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemovalPlan {
+    pub method: RemovalMethod,
+    pub destination: Option<String>,
+    pub destination_generation: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RemovalStep {
+    Transfer,
+    RemoveSource,
+}
+
+#[derive(Debug, Clone)]
+pub struct ActionIncident {
+    pub id: i64,
+    pub account_id: i64,
+    pub source: String,
+    pub destination: Option<String>,
+    pub uid: Uid,
+    pub reason: String,
+    pub subject: Option<String>,
+    pub sender: Option<String>,
+}

@@ -186,13 +186,16 @@ export const FR = {
 
   // --- Notice slot --------------------------------------------------------
   'notice.sendRefused': "L'envoi « {subject} » a été refusé{error}.",
-  'notice.sendInterrupted': "L'envoi « {subject} » a été interrompu{error}.",
+  'notice.sendInterrupted': 'La remise de « {subject} » est incertaine. Vérifiez les Envoyés avant de décider de renvoyer.{error}',
   'notice.update': 'Une mise à jour est disponible (version {version}).',
   'notice.crash': "Wind a rencontré un problème lors d'une session précédente ({n} rapport(s) en attente). Rien n'est envoyé sans vous.",
   'notice.telemetry': "Aider à améliorer Wind ? En cas de plantage, un rapport technique serait enregistré sur votre machine, jamais le contenu de vos mails. Vous choisissez ensuite de l'envoyer.",
   'notice.connection': 'Compte non reconnecté : {details}',
   'notice.scheduled': '« {subject} » partira {when}, si Wind est ouvert à ce moment-là.',
-  'notice.refusedActions': "{n} action refusée par le serveur (dossier introuvable ou refus) : le message est resté où il était.|{n} actions refusées par le serveur (dossier introuvable ou refus) : les messages sont restés où ils étaient.",
+  'notice.uncertainMove': 'Le déplacement de {source} vers {destination} est incertain. Vérifiez les deux dossiers avant une nouvelle action.',
+  'notice.uncertainRemoval': 'L’action dans {source} est incertaine. Vérifiez le message avant une nouvelle action.',
+  'action.checkedMove': 'J’ai vérifié',
+  'notice.refusedActions': "{n} action n’a pas pu être exécutée. Vérifiez le message et le dossier concernés.|{n} actions n’ont pas pu être exécutées. Vérifiez les messages et les dossiers concernés.",
 
   // --- Shared actions -------------------------------------------------
   'action.resend': 'Renvoyer',
@@ -280,7 +283,7 @@ export const FR = {
   'toast.draftSaved': 'Brouillon enregistré.',
   'toast.draftDeleted': 'Brouillon supprimé.',
   'toast.draftFork': 'Ce brouillon avait changé ailleurs ; votre version a été conservée à part.',
-  'toast.sent': 'Message envoyé.',
+  'toast.queued': 'Message mis en file d’envoi.',
   'toast.scheduled': 'Envoi programmé : départ {when}.',
   'toast.sendCancelled': 'Envoi annulé : le message est revenu dans vos brouillons.',
   'toast.signature': 'Signature enregistrée.',
@@ -408,6 +411,8 @@ export const FR = {
   'compose.sendingAccount': 'Compte émetteur',
   'compose.sessionFailed': 'Le brouillon n’a pas pu être ouvert ou récupéré : {err}',
   'compose.contextFailed': 'Le message source n’a pas pu être chargé. Votre texte est conservé. Fermez ce brouillon et rouvrez le message source pour réessayer.',
+  'compose.enqueueUncertain': 'La mise en file n’a pas pu être confirmée. Votre contenu est conservé. Vérifiez son état avant de modifier ou de renvoyer.',
+  'compose.verifyEnqueue': 'Vérifier la mise en file',
   'compose.saveFailed': 'Le brouillon n’a pas pu être enregistré. Votre texte est toujours ici. Réessayez de l’enregistrer.',
   'compose.htmlFailed': 'Le contenu mis en forme n’a pas pu être affiché. Fermez puis rouvrez le brouillon pour réessayer.',
   'compose.pasteFailed': 'Le contenu n’a pas pu être collé. Votre texte est inchangé. Réessayez le collage.',

@@ -2395,6 +2395,7 @@ dependencies = [
  "lettre",
  "mail-auth",
  "mail-core",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

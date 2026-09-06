@@ -189,6 +189,7 @@ import { invalidateViews } from './lib/views.svelte.js';
   // Drafts no longer live there (PLAN-BROUILLONS): they are in the
   // list — Drafts folder and a mention on the thread.
   let sendNotice = $state(null);
+  let sendDecisionBusy = $state(false);
   // PLAN-AUDIT-V1 E3 (D2): quarantined log actions — the server
   // refused them. An incident: right after the send failure, before
   // everything else. No button (wave 2).
@@ -637,13 +638,45 @@ import { invalidateViews } from './lib/views.svelte.js';
     }, delay);
   }
 
+  async function decideSend(problem, resend) {
+    if (sendDecisionBusy) return;
+    sendDecisionBusy = true;
+    if (sendNotice) sendNotice.actions = sendNotice.actions.map((action) => ({ ...action, disabled: true }));
+    try {
+      const identity = { id: problem.id, messageId: problem.message_id };
+      if (resend) {
+        await call('outbox_requeue', identity);
+        await call('flush_outbox');
+      } else {
+        await call('outbox_delete', identity);
+      }
+    } catch (err) {
+      flash(t(resend ? 'error.resend' : 'error.discard', { err }));
+    } finally {
+      sendDecisionBusy = false;
+      await probeSends();
+    }
+  }
+
   async function probeSends(providedState = null) {
     try {
       const state = providedState ?? (await call('outbox_status'));
-      const refused = state.actions_refusees ?? 0;
-      refusalNotice = refused > 0
-        ? { alert: true, icon: 'error', text: t('notice.refusedActions', { n: refused }), actions: [] }
-        : null;
+      const refused = state.refused_actions ?? 0;
+      const incident = state.action_incidents?.[0];
+      refusalNotice = incident
+        ? { alert: true, icon: 'error', text: `${[incident.account, incident.subject, incident.sender].filter(Boolean).join(' · ')}. ${incident.destination
+            ? t('notice.uncertainMove', { source: incident.source, destination: incident.destination })
+            : t('notice.uncertainRemoval', { source: incident.source })}`,
+            actions: [{ label: t('action.checkedMove'), do: async () => {
+              try {
+                await call('dismiss_action_incident', { id: incident.id });
+                await probeSends();
+              } catch (err) { flash(String(err)); }
+            } }],
+          }
+        : refused > 0
+          ? { alert: true, icon: 'error', text: `${t('notice.refusedActions', { n: refused })} ${state.refused_action_reason ?? ''}`.trim(), actions: [] }
+          : null;
       pendingSends = state.queued;
       scheduledSends = state.scheduled ?? 0;
       nextScheduled = state.next_scheduled_epoch ?? null;
@@ -661,7 +694,7 @@ import { invalidateViews } from './lib/views.svelte.js';
             actions: [
               { label: t('action.cancelSend'), primary: true, do: async () => {
                 try {
-                  const draft = await call('outbox_cancel_scheduled', { id: scheduledEntry.id });
+                  const draft = await call('outbox_cancel_scheduled', { id: scheduledEntry.id, messageId: scheduledEntry.message_id });
                   flash(draft !== null ? t('toast.sendCancelled') : t('error.cancelLater'));
                 } catch (err) {
                   flash(t('error.cancelSend', { err }));
@@ -672,6 +705,7 @@ import { invalidateViews } from './lib/views.svelte.js';
             ],
           }
         : null;
+      if (sendDecisionBusy) return;
       const problem = state.entries.find(
         (e) => e.state === 'interrupted' || e.state === 'rejected',
       );
@@ -685,18 +719,11 @@ import { invalidateViews } from './lib/views.svelte.js';
         icon: 'error',
         text: t(noticeKey, {
           subject: problem.subject,
-          error: problem.error ? ` : ${problem.error}` : '',
+          error: problem.error ? ` (${problem.error})` : '',
         }),
         actions: [
-          { label: t('action.resend'), primary: true, do: async () => {
-            await call('outbox_requeue', { id: problem.id }).catch((err) => flash(t('error.resend', { err })));
-            await call('flush_outbox').catch(() => {});
-            probeSends();
-          } },
-          { label: t('action.discard'), do: async () => {
-            await call('outbox_delete', { id: problem.id }).catch((err) => flash(t('error.discard', { err })));
-            probeSends();
-          } },
+          { label: t('action.resend'), primary: true, do: () => decideSend(problem, true) },
+          { label: t('action.discard'), do: () => decideSend(problem, false) },
         ],
       };
     } catch { /* the next probe will do */ }

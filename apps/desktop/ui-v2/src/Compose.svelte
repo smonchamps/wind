@@ -10,10 +10,7 @@
   // shows none — mail usage does not transmit the original attachments
   // in a reply, the prototype's chip was lying.
   //
-  // Sending goes through the outbox (golden rules: logged BEFORE any
-  // network attempt, then flushed) — the prototype's toast says
-  // “Message sent.” as soon as it is queued; the visible send incident
-  // is the notice slot, debt of switch P5.
+  // Enqueue acknowledges local persistence. Delivery incidents use the notice slot.
   //
   // The v1 autosave is kept under the button: draft saved 2 s after
   // the keystroke, edit conflict (`forked`) NEVER hidden, closing =
@@ -116,6 +113,7 @@
   let contextError = $state(false);
   let contextLoading = $state(false);
   let sendInProgress = $state(false);
+  let pendingSend = $state(null);
   // R3 (PLAN-RETOURS-6): the “important” marker — a state of the
   // MESSAGE (saved with the draft, carried by the send log,
   // priority headers on the SMTP side), not a screen state.
@@ -138,6 +136,7 @@
   let finishing = $state(false);
 
   function queueOpen(operation) {
+    if (pendingSend || sendInProgress) return Promise.resolve();
     const flight = (opening ?? Promise.resolve()).then(async () => {
       if (!visible && editToken) await finishEdit(false);
       await operation();
@@ -670,6 +669,7 @@
   const canDelete = $derived(draftId !== null || !empty());
 
   function scheduleSave() {
+    if (pendingSend) return;
     editRevision += 1;
     clearTimeout(timer);
     timer = setTimeout(saveNow, 2000);
@@ -677,6 +677,7 @@
 
   // A failed save leaves the editor recoverable and returns no report.
   function saveNow() {
+    if (pendingSend) return Promise.resolve(null);
     clearTimeout(timer);
     return queueEdit(saveAlone);
   }
@@ -749,7 +750,7 @@
   // draft; a draft emptied of its text is discarded — this is the
   // only case where closing deletes, and it is the user who erased.
   export async function close() {
-    if (!visible || sendInProgress || finishing) return;
+    if (!visible || sendInProgress || finishing || pendingSend) return;
     const mine = token;
     clearTimeout(timer);
     closeSuggestions();
@@ -798,7 +799,7 @@
   // confirmation. The opposite of `close()` — which keeps: here we
   // delete the trace in the folder, whatever it contains.
   async function deleteDraft() {
-    if (sendInProgress) return;
+    if (sendInProgress || pendingSend) return;
     const mine = token;
     deleteRequest = false;
     clearTimeout(timer);
@@ -857,7 +858,7 @@
   // send is LOGGED right away (golden rule) and the flush will only
   // pick it up at the stated time (R2, filter on the core side).
   async function sendWith(deadline) {
-    if (sendInProgress || contextError || contextLoading) return;
+    if (sendInProgress || pendingSend || contextError || contextLoading) return;
     if (!sender) {
       onflash(t('error.noAccount'));
       return;
@@ -888,6 +889,8 @@
     try {
       if (!await saveNow()) return;
       const { body, bodyHtml, imageSources } = editorRef.getLoaded();
+      if (!editToken) return;
+      pendingSend = { accountId: sendAccount, token: editToken, deadline, failure: null };
       await call('queue_send', {
         accountId: sendAccount,
         to: a,
@@ -907,23 +910,53 @@
         editToken,
       });
     } catch (err) {
-      onflash(t('error.send', { err }));
+      if (pendingSend) {
+        pendingSend.failure = String(err);
+        await verifyQueuedSend();
+      } else {
+        onflash(t('error.send', { err }));
+      }
       return;
     } finally {
       sendInProgress = false;
     }
+    await finishQueuedSend(pendingSend);
+  }
+
+  async function verifyQueuedSend() {
+    const submitted = pendingSend;
+    if (!submitted) return;
+    sendInProgress = true;
+    try {
+      const id = await call('queued_draft_edit', {
+        accountId: submitted.accountId, token: submitted.token,
+      });
+      if (id !== null) {
+        await finishQueuedSend(submitted);
+      } else {
+        pendingSend = null;
+        onflash(t('error.send', { err: submitted.failure }));
+      }
+    } catch {
+      // Keep the submitted version frozen until its durable result is available.
+    } finally {
+      sendInProgress = false;
+    }
+  }
+
+  async function finishQueuedSend(submitted) {
+    const { deadline, accountId: sendAccount } = submitted;
+    pendingSend = null;
     // The send is logged: the draft has done its job.
     const rule = editToken ? null : draftId;
     editToken = null;
     clearTimeout(timer);
     endSession();
-    // R2: the toast of a scheduled send states the DEADLINE, never
-    // “sent” — nothing has left, the echo will only be born when it
-    // does.
+    // The local commit confirms queuing; SMTP acceptance is still pending.
     onflash(
       deadline
         ? t('toast.scheduled', { when: whenLong(deadline) })
-        : t('toast.sent'),
+        : t('toast.queued'),
     );
     if (rule !== null) {
       await call('delete_draft', { id: rule })
@@ -989,7 +1022,7 @@
   const totalWeight = $derived(attachments.reduce((sum, attachment) => sum + attachment.size, 0));
 
   async function attach() {
-    if (sendInProgress) return;
+    if (sendInProgress || pendingSend) return;
     const mine = token;
     if (!sender) {
       onflash(t('error.noAccount'));
@@ -1044,7 +1077,7 @@
   }
 
   function remove(attachment) {
-    if (sendInProgress) return;
+    if (sendInProgress || pendingSend) return;
     return queueEdit((mine) => removeAlone(attachment, mine));
   }
 
@@ -1167,6 +1200,7 @@
     <div class="card" bind:this={card} role="dialog" aria-modal="true" aria-label={t(KICKERS[mode])}>
       <!-- Field A46: the header no longer repeats the subject — the
            Subject field states it, just below. -->
+      <div class="editable" inert={pendingSend !== null}>
       <div class="head">
         <span class="kicker" data-testid="compose-kicker">{t(KICKERS[mode])}</span>
         <span class="grow"></span>
@@ -1292,12 +1326,22 @@
           </div>
         {/if}
       </Editor>
-      {#if saveError || contextError}
+      </div>
+      {#if pendingSend}
+        <div class="refusal save-error" role="alert">
+          <Icon name="warning" />{t('compose.enqueueUncertain')}
+        </div>
+      {:else if saveError || contextError}
         <div class="refusal save-error" role="alert">
           <Icon name="warning" />{t(saveError ? 'compose.saveFailed' : 'compose.contextFailed')}
         </div>
       {/if}
-      {#if deleteRequest}
+      {#if pendingSend}
+        <div class="foot">
+          <button type="button" class="main" data-testid="compose-verify-send" onclick={verifyQueuedSend}>
+            <Icon name="sync" />{t('compose.verifyEnqueue')}</button>
+        </div>
+      {:else if deleteRequest}
         <!-- R3/D3: the confirmation lives IN the footer, in the
              buttons' place — a discarded draft does not come back,
              the gesture states what it does before doing it. -->
@@ -1363,6 +1407,7 @@
 {/if}
 
 <style>
+  .editable { display:contents; }
   /* VERBATIM geometry of the prototype's compose overlay. */
   .scrim {
     position:absolute; inset:0; background:var(--scrim); z-index:2;

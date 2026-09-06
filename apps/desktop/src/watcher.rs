@@ -141,25 +141,21 @@ fn watch_session(
     email: &str,
     alive: &Arc<AtomicBool>,
 ) -> Result<(), String> {
-    let session = {
-        let state = app.state::<AppState>();
-        let Some(session) = poll::lock_accounts(&state)?.get(email).cloned() else {
-            // No more session (account removed): clean exit, the
-            // reconciliation has already turned off the flag or will.
-            return Ok(());
-        };
-        session
-    };
-    let (mut server, refreshed) = poll::connect_imap(&session)?;
+    let session = poll::job_for_email(app, email)?;
+    let (mut server, refreshed, _lease) =
+        poll::connect_imap_with_stop(&session, Some(alive.clone()))?;
+    if !alive.load(Ordering::Acquire) {
+        return Ok(());
+    }
     if let Some(fresh) = refreshed {
         let state = app.state::<AppState>();
-        poll::lock_accounts(&state)?.insert(fresh.email().to_string(), fresh);
+        poll::reset_sessions(&state, vec![fresh])?;
     }
     // The (RE)CONNECTION pass, never optional: mail that arrived
     // during the absence is already in the mailbox — no EXISTS will
     // signal it (2nd field session). Best effort: its failure does not
     // bring down the watch, the next mail will trigger it.
-    if let Err(err) = poll::light_pass_account(app, email) {
+    if let Err(err) = poll::light_pass_account(app, &session) {
         crate::trace::trace(&format!("watcher: connection pass failed: {err}"));
     }
     loop {
@@ -177,12 +173,17 @@ fn watch_session(
                 return Ok(());
             }
         }
-        match server.watch(poll::MAILBOX, RESTART) {
+        let outcome = server.watch(poll::MAILBOX, RESTART);
+        // IDLE's destructor can swallow a cancelled DONE read after producing Ok.
+        if !alive.load(Ordering::Acquire) {
+            return Ok(());
+        }
+        match outcome {
             Ok(mail_imap::Watch::Mail) => {
                 // Mail! The account's light pass polls it — on ITS OWN
                 // connection (P0 timeouts intact), while this one goes
                 // back to watching.
-                if let Err(err) = poll::light_pass_account(app, email) {
+                if let Err(err) = poll::light_pass_account(app, &session) {
                     crate::trace::trace(&format!("watcher: light pass failed: {err}"));
                 }
             }

@@ -636,7 +636,7 @@ test('sending logs into the outbox and confirms', async () => {
   );
   await page.locator('[data-testid="compose-send"]').click();
   await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="toast"]')).toContainText('Message sent.');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Message queued for sending.');
 });
 
 // ——— P5: search, image guard, feedback slot, progress ———————
@@ -1213,7 +1213,7 @@ test('sending carries the attachment: the log holds it (PJ-D2)', async () => {
   await page.locator('[data-testid="compose-subject"]').fill('Envoi avec pièce E2'); // lang:fr
   await page.locator('[data-testid="compose-send"]').click();
   await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="toast"]')).toContainText('Message sent.');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Message queued for sending.');
 
   // The decor accounts have no server: the send stays logged in the
   // queue — and the log must carry the attachment (assertion PJ-D2).
@@ -1295,7 +1295,7 @@ test('forwarding fetches for real — offline: failure said, "Retry", send held 
   await expect(failures).toHaveCount(0);
   await page.locator('[data-testid="compose-send"]').click();
   await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="toast"]')).toContainText('Message sent.');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Message queued for sending.');
 });
 
 // P0-bis (PLAN-SYNCHRO): a network drop is SAID instantly, without

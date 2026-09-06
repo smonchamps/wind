@@ -239,6 +239,36 @@ pub struct FlagState {
 }
 
 pub trait MailServer {
+    /// Resolve capabilities and a fixed destination before the journal permits mutation.
+    fn plan_removal(
+        &mut self,
+        _mailbox: &str,
+        _action: &crate::Action,
+    ) -> Result<crate::RemovalPlan, Error> {
+        Ok(crate::RemovalPlan {
+            method: crate::RemovalMethod::Atomic,
+            destination: None,
+            destination_generation: None,
+        })
+    }
+
+    /// The default adapter operation is treated conservatively as one non-repeatable effect.
+    fn removal_step(
+        &mut self,
+        mailbox: &str,
+        uid: Uid,
+        action: &crate::Action,
+        _plan: &crate::RemovalPlan,
+        _step: crate::RemovalStep,
+    ) -> Result<(), Error> {
+        match action {
+            crate::Action::Archive => self.archive(mailbox, uid),
+            crate::Action::Delete => self.delete(mailbox, uid),
+            crate::Action::MoveTo(target) => self.move_to(mailbox, uid, target),
+            _ => Err(Error::Refusal("not a removal action".to_string())),
+        }
+    }
+
     /// Selects a mailbox and returns its current state.
     fn select(&mut self, mailbox: &str) -> Result<MailboxSnapshot, Error>;
 

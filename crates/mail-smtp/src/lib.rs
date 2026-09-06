@@ -1,15 +1,10 @@
 //! SMTP adapter: the real implementation of [`mail_core::MailTransport`].
 //!
 //! The core only knows the trait; this crate turns an [`OutboxMessage`]
-//! into an RFC 5322 message (`lettre` crate) and hands it to the server in
-//! XOAUTH2 — never a password, as for IMAP.
+//! into an RFC 5322 message and submits it over TLS using OAuth or password authentication.
 //!
-//! Classification of failures (the port's contract):
-//! - authentication happens at CONNECTION time (`test_connection`): an
-//!   expired token fails the opening, never a send — otherwise a merely
-//!   expired token would quarantine healthy messages;
-//! - during the send, a 5xx response of the server is a refusal of the
-//!   MESSAGE (`Permanent`), everything else (network, 4xx) is `Transient`.
+//! Explicit refusals may be retried or rejected. A lost acknowledgement is
+//! uncertain: the high-level transport does not expose the transaction stage.
 //!
 //! Gmail note: a message accepted over SMTP is added by Gmail itself to
 //! the "Sent" folder — no IMAP APPEND to do. Other providers will require
@@ -25,6 +20,15 @@ use mail_core::{DraftAttachmentFull, MailTransport, OutboxMessage, SendError};
 
 pub struct SmtpMailer {
     transport: SmtpTransport,
+}
+
+/// A failed connection check has not submitted a message.
+#[derive(Debug, thiserror::Error)]
+pub enum ConnectError {
+    #[error("SMTP connection failed: {0}")]
+    Connection(String),
+    #[error("SMTP authentication refused: {0}")]
+    Authentication(String),
 }
 
 /// TLS mode inferred from the SMTP submission port. 465 is the SMTPS port
@@ -50,13 +54,13 @@ fn smtp_tls_for_port(port: u16) -> SmtpTls {
 /// SINGLE path of both authentication modes: that is what guarantees a fix
 /// on the port policy can no longer benefit only one of the two. Bug #3
 /// was born of that duplication.
-fn transport_builder(host: &str, port: u16) -> Result<SmtpTransportBuilder, SendError> {
+fn transport_builder(host: &str, port: u16) -> Result<SmtpTransportBuilder, ConnectError> {
     match smtp_tls_for_port(port) {
         SmtpTls::Implicit => SmtpTransport::relay(host),
         SmtpTls::StartTls => SmtpTransport::starttls_relay(host),
     }
     .map(|builder| builder.port(port))
-    .map_err(|err| SendError::Transient(err.to_string()))
+    .map_err(|err| ConnectError::Connection(err.to_string()))
 }
 
 impl SmtpMailer {
@@ -70,7 +74,7 @@ impl SmtpMailer {
         port: u16,
         user: &str,
         access_token: &str,
-    ) -> Result<Self, SendError> {
+    ) -> Result<Self, ConnectError> {
         let transport = transport_builder(host, port)?
             .authentication(vec![Mechanism::Xoauth2])
             .credentials(Credentials::new(user.to_string(), access_token.to_string()))
@@ -85,56 +89,43 @@ impl SmtpMailer {
         port: u16,
         user: &str,
         password: &str,
-    ) -> Result<Self, SendError> {
+    ) -> Result<Self, ConnectError> {
         let transport = transport_builder(host, port)?
             .credentials(Credentials::new(user.to_string(), password.to_string()))
             .build();
         Self::test_transport(transport)
     }
 
-    fn test_transport(transport: SmtpTransport) -> Result<Self, SendError> {
+    fn test_transport(transport: SmtpTransport) -> Result<Self, ConnectError> {
         match transport.test_connection() {
             Ok(true) => Ok(Self { transport }),
-            Ok(false) => Err(SendError::Transient(
-                "the SMTP server does not answer".to_string(),
+            Ok(false) => Err(ConnectError::Connection(
+                "the SMTP server does not answer".into(),
             )),
-            // Opening failure (network OR authentication): transient by
-            // definition — the message was not even presented. The PREFIX
-            // says which (E7): the shell only redoes the OAuth session on an
-            // authentication refusal, never on a network failure (the P0
-            // defect fixed on the IMAP side).
-            Err(err) if err.status().is_none() => {
-                Err(SendError::Transient(format!("connection: {err}")))
+            Err(err) if is_auth_refusal(err.status().map(u16::from)) => {
+                Err(ConnectError::Authentication(err.to_string()))
             }
-            Err(err) => Err(SendError::Transient(format!("authentication: {err}"))),
+            Err(err) => Err(ConnectError::Connection(err.to_string())),
         }
     }
 }
 
-/// The shell's discriminant (E7), twin of `mail_imap::is_connection_error`:
-/// an opening failure WITHOUT a server response — network, TLS, timeout.
-pub fn is_connection_error(err: &SendError) -> bool {
-    matches!(err, SendError::Transient(msg) if msg.starts_with("connection"))
+fn is_auth_refusal(status: Option<u16>) -> bool {
+    matches!(status, Some(530 | 534 | 535 | 538))
 }
 
-/// How to handle a send failure. Pure decision (STANDARD §4), tested
-/// without network.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FailureClass {
-    Transient,
-    Permanent,
-}
-
-/// E7: `lettre` without `pool` reopens and re-authenticates at EACH send —
-/// an OAuth token expired in the middle of a flush yields an AUTHENTICATION
-/// 5xx (530/534/535/538) on a healthy message. It is the session that must
-/// be redone, not the message: transient. The other 5xx (unknown
-/// recipient, rejected message) stay definitive.
-fn classify_failure(status: Option<u16>, permanent: bool) -> FailureClass {
-    match status {
-        Some(530 | 534 | 535 | 538) => FailureClass::Transient,
-        _ if permanent => FailureClass::Permanent,
-        _ => FailureClass::Transient,
+fn classify_failure(err: lettre::transport::smtp::Error) -> SendError {
+    let reason = err.to_string();
+    if is_auth_refusal(err.status().map(u16::from)) {
+        SendError::Transient(reason)
+    } else if err.is_permanent() {
+        SendError::Permanent(reason)
+    } else if err.is_transient() || err.is_client() || err.is_tls() || err.is_transport_shutdown() {
+        // In pinned lettre 0.11.22, client/TLS/shutdown errors occur before DATA.
+        // Network, timeout and response parsing errors do not reveal the stage.
+        SendError::Transient(reason)
+    } else {
+        SendError::Unknown(reason)
     }
 }
 
@@ -149,16 +140,12 @@ impl MailTransport for SmtpMailer {
         let envelope = build_envelope(message)?;
         let raw = email.formatted();
         match self.transport.send_raw(&envelope, &raw) {
-            Ok(_) => Ok(()),
-            Err(err) => {
-                let status = err
-                    .status()
-                    .and_then(|code| code.to_string().parse::<u16>().ok());
-                match classify_failure(status, err.is_permanent()) {
-                    FailureClass::Permanent => Err(SendError::Permanent(err.to_string())),
-                    FailureClass::Transient => Err(SendError::Transient(err.to_string())),
-                }
-            }
+            Ok(response) if response.has_code(250) => Ok(()),
+            Ok(response) => Err(SendError::Unknown(format!(
+                "unexpected final SMTP response: {}",
+                u16::from(response.code())
+            ))),
+            Err(err) => Err(classify_failure(err)),
         }
     }
 }
@@ -445,42 +432,15 @@ mod tests {
     use super::*;
     use mail_core::{OutboxAttachment, OutboxState};
 
-    /// PLAN-AUDIT-V1 E7 (audit S2): `lettre` without `pool` reopens and
-    /// re-authenticates at EACH send — an OAuth token expired in the middle
-    /// of a long flush yields a 535 on a healthy message, and the code
-    /// classified every 5xx as `Permanent`: message "refused", user gesture
-    /// required. An AUTHENTICATION refusal is transient — it is the session
-    /// that must be redone, not the message.
     #[test]
-    fn a_535_in_the_middle_of_a_flush_is_transient() {
-        assert!(matches!(
-            classify_failure(Some(535), true),
-            FailureClass::Transient
-        ));
-        assert!(matches!(
-            classify_failure(Some(530), true),
-            FailureClass::Transient
-        ));
-        assert!(matches!(
-            classify_failure(Some(534), true),
-            FailureClass::Transient
-        ));
-        assert!(matches!(
-            classify_failure(Some(538), true),
-            FailureClass::Transient
-        ));
-        assert!(
-            matches!(classify_failure(Some(550), true), FailureClass::Permanent),
-            "an unknown recipient remains a definitive refusal"
-        );
-        assert!(matches!(
-            classify_failure(None, false),
-            FailureClass::Transient
-        ));
-        assert!(matches!(
-            classify_failure(Some(451), false),
-            FailureClass::Transient
-        ));
+    fn authentication_statuses_are_distinct_from_message_refusals() {
+        for code in [530, 534, 535, 538] {
+            assert!(is_auth_refusal(Some(code)));
+        }
+        for code in [450, 451, 454, 550] {
+            assert!(!is_auth_refusal(Some(code)));
+        }
+        assert!(!is_auth_refusal(None));
     }
 
     /// RFC 5322 §3.6.4: `References` = the parent's + its Message-ID. Before
@@ -499,21 +459,6 @@ mod tests {
         assert!(alone.contains("References: <c@x>"), "{alone}");
     }
 
-    /// The shell did "any SMTP opening error ⇒ OAuth refresh": every network
-    /// failure hammered the provider's endpoint (the P0 defect fixed on the
-    /// IMAP side). Same discriminant, same prefix.
-    #[test]
-    fn an_smtp_network_failure_is_not_an_auth_refusal() {
-        assert!(is_connection_error(&SendError::Transient(
-            "connection smtp.exemple.fr:587: timed out".to_string()
-        )));
-        assert!(!is_connection_error(&SendError::Transient(
-            "authentication: 535 5.7.8 Username and Password not accepted".to_string()
-        )));
-        assert!(!is_connection_error(&SendError::Permanent(
-            "connection refused by the recipient".to_string()
-        )));
-    }
     use std::net::TcpListener;
     use std::sync::mpsc;
     use std::thread;
@@ -1053,3 +998,6 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod delivery_tests;

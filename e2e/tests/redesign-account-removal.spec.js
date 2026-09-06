@@ -65,6 +65,37 @@ test('removal confirms — and cancelling touches nothing', async () => {
   await page.locator('[data-testid="settings-done"]').click();
 });
 
+test('a removal in progress cannot be hidden by a false cancel action', async () => {
+  await page.locator('[data-testid="settings"]').click();
+  await page.locator('[data-testid="account-remove"]').first().click();
+  await page.evaluate(() => {
+    const original = window.fetch;
+    window.removalStarted = false;
+    window.restoreRemovalFetch = () => { window.fetch = original; };
+    window.fetch = async (...args) => {
+      const command = new URL(String(args[0]), location.href).pathname.slice(1);
+      if (command !== 'remove_account') return original(...args);
+      window.removalStarted = true;
+      await new Promise((resolve) => { window.releaseRemoval = resolve; });
+      // No deletion is performed in this UI-only failure fixture.
+      return new Response(JSON.stringify('synthetic pre-removal failure'), {
+        headers: { 'Content-Type': 'application/json', 'Tauri-Response': 'error' },
+      });
+    };
+  });
+  try {
+    await page.locator('[data-testid="removal-confirm"]').click();
+    await expect.poll(() => page.evaluate(() => window.removalStarted)).toBe(true);
+    await expect(page.locator('[data-testid="removal-cancel"]')).toBeDisabled();
+    await expect(page.locator('[data-testid="removal-confirm"]')).toBeDisabled();
+  } finally {
+    await page.evaluate(() => { window.releaseRemoval?.(); window.restoreRemovalFetch(); });
+    await expect(page.locator('[data-testid="removal-error"]')).toContainText('synthetic pre-removal failure');
+    await page.locator('[data-testid="removal-cancel"]').click();
+    await page.locator('[data-testid="settings-done"]').click();
+  }
+});
+
 test('confirmed: the account leaves Settings, the nav and the list', async () => {
   await page.locator('[data-testid="settings"]').click();
 

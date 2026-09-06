@@ -1,8 +1,6 @@
 //! The core's send port: the SMTP counterpart of [`crate::MailServer`].
 //!
-//! The transient/permanent distinction is THE decision the core
-//! delegates to the adapter: on it depends the fate of a message in the
-//! outbox (retry as is, or stop and let the user decide).
+//! The adapter distinguishes safe retries, refusals and uncertain delivery.
 
 use crate::outbox::OutboxMessage;
 
@@ -16,8 +14,7 @@ pub trait MailTransport {
 /// Send failure, classified by the conduct to follow.
 #[derive(Debug, thiserror::Error)]
 pub enum SendError {
-    /// Network down, server unreachable or overloaded: the send will be
-    /// retried as is at the outbox's next flush.
+    /// Proven not accepted: retry at the next flush.
     #[error("transient failure: {0}")]
     Transient(String),
 
@@ -26,4 +23,8 @@ pub enum SendError {
     /// decides.
     #[error("permanent refusal: {0}")]
     Permanent(String),
+
+    /// Acceptance cannot be determined. Never retry without a user decision.
+    #[error("delivery unknown: {0}")]
+    Unknown(String),
 }

@@ -169,13 +169,16 @@ export const EN = {
 
   // --- Notice slot --------------------------------------------------------
   'notice.sendRefused': 'The message “{subject}” was rejected{error}.',
-  'notice.sendInterrupted': 'The message “{subject}” was interrupted{error}.',
+  'notice.sendInterrupted': 'Delivery of “{subject}” is uncertain. Check Sent before deciding to send again.{error}',
   'notice.update': 'An update is available (version {version}).',
   'notice.crash': 'Wind ran into a problem during a previous session ({n} report(s) pending). Nothing is sent without you.',
   'notice.telemetry': 'Help improve Wind? If it crashes, a technical report would be saved on your machine, never the content of your mail. You then choose whether to send it.',
   'notice.connection': 'Account not reconnected: {details}',
   'notice.scheduled': '“{subject}” will be sent {when}, if Wind is open at that time.',
-  'notice.refusedActions': '{n} action refused by the server (folder not found or rejected): the message stayed where it was.|{n} actions refused by the server (folder not found or rejected): the messages stayed where they were.',
+  'notice.uncertainMove': 'The move from {source} to {destination} is uncertain. Check both folders before a new action.',
+  'notice.uncertainRemoval': 'The action in {source} is uncertain. Check the message before a new action.',
+  'action.checkedMove': 'I checked',
+  'notice.refusedActions': '{n} action could not be completed. Check the message and folder concerned.|{n} actions could not be completed. Check the messages and folders concerned.',
 
   // --- Shared actions -------------------------------------------------
   'action.resend': 'Send again',
@@ -263,7 +266,7 @@ export const EN = {
   'toast.draftSaved': 'Draft saved.',
   'toast.draftDeleted': 'Draft deleted.',
   'toast.draftFork': 'This draft had changed elsewhere; your version was kept separately.',
-  'toast.sent': 'Message sent.',
+  'toast.queued': 'Message queued for sending.',
   'toast.scheduled': 'Send scheduled: leaves {when}.',
   'toast.sendCancelled': 'Send cancelled: the message is back in your drafts.',
   'toast.signature': 'Signature saved.',
@@ -389,6 +392,8 @@ export const EN = {
   'compose.sendingAccount': 'Sending account',
   'compose.sessionFailed': 'The draft could not be opened or recovered: {err}',
   'compose.contextFailed': 'The source message could not be loaded. Your text is kept. Close this draft and reopen the source message to try again.',
+  'compose.enqueueUncertain': 'Queuing could not be confirmed. Your content is retained. Check its status before editing or sending again.',
+  'compose.verifyEnqueue': 'Check queued send',
   'compose.saveFailed': 'The draft could not be saved. Your text is still here. Try saving again.',
   'compose.htmlFailed': 'The formatted content could not be displayed. Close and reopen the draft to try again.',
   'compose.pasteFailed': 'The content could not be pasted. Your text is unchanged. Please paste again.',

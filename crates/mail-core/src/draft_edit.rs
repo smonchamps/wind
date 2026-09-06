@@ -36,6 +36,33 @@ impl SavedDraft {
 }
 
 impl Store {
+    /// Owner of the active snapshot, including one without a persisted source draft.
+    pub fn active_draft_edit_account(&self) -> Result<Option<i64>, Error> {
+        Ok(self
+            .conn()
+            .query_row("SELECT account_id FROM draft_edit LIMIT 1", [], |row| {
+                row.get(0)
+            })
+            .optional()?)
+    }
+
+    /// Resolve an enqueue acknowledgement before saving the consumed editing session.
+    /// Only a still-owned snapshot permits a new attempt when no receipt exists.
+    pub fn queued_draft_edit(&self, token: &str, account_id: i64) -> Result<Option<i64>, Error> {
+        let queued = self
+            .conn()
+            .query_row(
+                "SELECT id FROM outbox WHERE edit_token = ?1 AND account_id = ?2",
+                params![token, account_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if queued.is_none() && self.edit_snapshot(token)?.draft.account_id != account_id {
+            return Err(Error::StaleDraft);
+        }
+        Ok(queued)
+    }
+
     /// Freeze reply headers while the displayed source identity still matches.
     pub fn set_draft_edit_reply(
         &self,
@@ -480,6 +507,56 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn enqueue_receipt_survives_consumption_and_delivery_but_never_authorizes_another_session() {
+        let (store, draft) = fixture();
+        begin(&store, &draft);
+        assert_eq!(
+            store.queued_draft_edit("test", draft.account_id).unwrap(),
+            None
+        );
+        assert!(matches!(
+            store.queued_draft_edit("missing", draft.account_id),
+            Err(Error::StaleDraft)
+        ));
+        assert!(matches!(
+            store.queued_draft_edit("test", draft.account_id + 1),
+            Err(Error::StaleDraft)
+        ));
+        let message = crate::compose(
+            "edit@example.com",
+            "to@example.com",
+            "",
+            "",
+            "receipt",
+            "body",
+            None,
+        )
+        .unwrap();
+        let id = store
+            .enqueue_draft_edit("test", draft.account_id, &message, None)
+            .unwrap();
+        assert_eq!(
+            store.queued_draft_edit("test", draft.account_id).unwrap(),
+            Some(id)
+        );
+        store
+            .set_outbox_state(id, crate::OutboxState::Sent)
+            .unwrap();
+        assert_eq!(
+            store.queued_draft_edit("test", draft.account_id).unwrap(),
+            Some(id)
+        );
+        assert!(matches!(
+            store.queued_draft_edit("test", draft.account_id + 1),
+            Err(Error::StaleDraft)
+        ));
+        assert!(matches!(
+            store.queued_draft_edit("other", draft.account_id),
+            Err(Error::StaleDraft)
+        ));
+    }
 
     fn fixture() -> (Store, SavedDraft) {
         let store = Store::open_in_memory().unwrap();

@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 lettre.workspace = true
 mail-core.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 anyhow.workspace = true

@@ -12,7 +12,35 @@
 
 ## Where things stand, and what to do first
 
-**Active program: [PLAN-AUDIT-2026-09](PLAN-AUDIT-2026-09.md), Lot 1 DELIVERED on 2026-09-06: `e95adb4`, field validated, [CI 34038794672](https://github.com/smonchamps/wind/actions/runs/34038794672) green on Windows, macOS Intel and Apple Silicon.** Safe rich composition, durable draft editing snapshots with immutable attachment references, complete remote-draft import, and mailbox-generation guards are implemented (System A120–A121, ADR 0038). The final field replay confirms a Gmail draft and its two readable attachments after manual sync, plus centered sender selection. The final correction gate passed in 200 seconds: 727 Rust tests, 28 Node tests and 220 UI tests passed, 4 Rust tests ignored, 1 optional UI benchmark skipped, no flaky UI result. Migration/reversal were tested on synthetic legacy data; no migration was observed in the real installation. The audit program remains open: **next Lot 2, E4–E6**, covering uncertain SMTP acceptance, account lifecycle and safe IMAP actions. Existing atomic enqueue and draft sender-transfer work is already included in Lot 1; this does not close the remaining E5 requirements. Structural MIME-part identity (D-59) remains open in Lot 5. The complete findings and remaining scope live in the plan and its linked audit.
+**Lot 2 checkpoint, 2026-09-06:** [focused plan](PLAN-AUDIT-2026-09-LOT2.md),
+D4 answered “A”; D5 answered “Ok go”. E4–E6 are implemented but not delivered:
+conservative SMTP uncertainty with durable quarantine, truthful queued wording,
+startup lock refusal, enqueue acknowledgement recovery, account incarnation
+admission/draining and cancellable IDLE reads below TLS (100 ms slices, unchanged
+180 s heartbeat). Account removal waits up to 30 seconds, keeps unresolved sends
+and retains the account on timeout. The progress card disables concurrent actions.
+E6 persists IMAP transfer phases and uncertain incidents; confirmed COPY resumes
+only targeted source removal. Source/destination generation checks prevent old UID
+reuse. Incidents retain account/message context and acknowledgement never replays.
+The one fresh review retained three findings, now corrected: concurrent SMTP
+send/discard and stale queue snapshots, partial MOVE NO effects, and missing
+incident identity. Maintained RED/GREEN covers the first two; the UI RED found the
+missing context and concurrent decisions. Current core GREEN: 510 passed, two
+optional benchmarks ignored. The final UI fixing wave passes 5/5 with retries disabled; its actual WebView2
+capture was inspected. The full gate is GREEN in 476 seconds: 774 Rust and 28 Node
+tests passed; UI report 228 passed, one flaky (organized-mode Feed-card hover;
+its full serial file passed on automatic retry), one optional benchmark skipped.
+Four Rust tests were ignored. All other steps passed, including 440 contrast
+pairs, 68 System token values, 118 IPC commands and zero clippy warnings.
+The one review is complete with its three confirmed findings corrected.
+**STOP 2 validated on 2026-09-06**, verbatim “1-4 OK”; zero reported KO.
+The four field checks cover sending with two files, scheduled cancellation,
+IMAP mutations after sync and secondary-account removal. No removal duration was
+supplied, so no new field timing is claimed. **Next: commit/push and candidate CI.**
+The uncertain-delivery notice and the 2 CSS px toast glyph offset are approved.
+Prior Lot 1 approvals and its delivery remain valid.
+
+**Active program: [PLAN-AUDIT-2026-09](PLAN-AUDIT-2026-09.md), Lot 1 DELIVERED on 2026-09-06: `e95adb4`, field validated, [CI 34038794672](https://github.com/smonchamps/wind/actions/runs/34038794672) green on Windows, macOS Intel and Apple Silicon.** Safe rich composition, durable draft editing snapshots with immutable attachment references, complete remote-draft import, and mailbox-generation guards are implemented (System A120–A121, ADR 0038). The final field replay confirms a Gmail draft and its two readable attachments after manual sync, plus centered sender selection. The final correction gate passed in 200 seconds: 727 Rust tests, 28 Node tests and 220 UI tests passed, 4 Rust tests ignored, 1 optional UI benchmark skipped, no flaky UI result. Migration/reversal were tested on synthetic legacy data; no migration was observed in the real installation. The audit program remains open: **active Lot 2, E4–E6, field validated and awaiting delivery CI**, covering uncertain SMTP acceptance, account lifecycle and safe IMAP actions. Existing atomic enqueue and draft sender-transfer work is already included in Lot 1; this does not close the remaining E5 requirements. Structural MIME-part identity (D-59) remains open in Lot 5. The complete findings and remaining scope live in the plan and its linked audit.
 
 ✅ **Last job closed: [PLAN-APPLE-SILICON](PLAN-APPLE-SILICON.md)** (2026-09-06, one commit `0ef4f81`, CI green 33995481451 with the aarch64 leg passing the full suite natively, **ADR 0037**, debt **D-62 paid**, 0 KO at STOP 2) — **the Apple Silicon build**, opened the day an Apple Silicon tester asked to enter the beta (D-62's reopening condition). The Intel Air cross-builds `aarch64-apple-darwin` (D1); a second mac family `Wind_<v>_aarch64.{dmg,app.tar.gz,sig}` under the `darwin-aarch64` key (D3 — Tauri's word; the updater plugin keys on `{target}-{arch}`, verified in the pinned crate); `release-macos.sh` builds BOTH before the first upload (an x64 family without its twin is a broken release); `verify-release.ps1` expects **11 assets, 4 keys**, both dmgs proven to resolve whole (the review's catch), the mac arch table in one list; `quality-macos` is a matrix over both triples, aarch64 NATIVE on the runner (D2); universal binary refused (one signature under two keys = the crossing the guard forbids); vehicle **0.19.0** (D4). Two traps caught before release day: macOS `/bin/bash` is 3.2 (no `declare -A`), and the aarch64 dmg was the one asset no check covered. **Field split (stated at the GO)**: the build proof = E0 on the Air, **measured 2026-09-06: arm64 links in 13 min 24 s, `file` says arm64, the bundler names the dmg `_aarch64`** (D5, PLAN § 5 bis); the RUN proof = the tester's first install, since no arm64 Mac exists in the fleet. Closed the day before:
 

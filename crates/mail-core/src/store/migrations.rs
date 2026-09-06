@@ -51,6 +51,25 @@ pub(super) fn migrate(
             ("last_error", "TEXT"),
         ],
     )?;
+    add_missing_columns(
+        conn,
+        "pending_actions",
+        &[("message_subject", "TEXT"), ("message_sender", "TEXT")],
+    )?;
+    add_missing_columns(
+        conn,
+        "action_effects",
+        &[("message_subject", "TEXT"), ("message_sender", "TEXT")],
+    )?;
+    // Capture before the gesture removes its source; this also covers bulk and automatic actions.
+    conn.execute_batch("CREATE TRIGGER IF NOT EXISTS capture_action_context AFTER INSERT ON pending_actions
+        WHEN NEW.kind IN ('archive', 'delete') OR NEW.kind LIKE 'move_to:%'
+        BEGIN
+            UPDATE pending_actions SET
+                message_subject = (SELECT subject FROM envelopes WHERE mailbox_id = NEW.mailbox_id AND uid = NEW.uid),
+                message_sender = (SELECT COALESCE(sender_address, sender) FROM envelopes WHERE mailbox_id = NEW.mailbox_id AND uid = NEW.uid)
+            WHERE id = NEW.id;
+        END;")?;
     // PLAN-AUDIT-V1 E2: the initialization flag. On a legacy
     // database, ONCE, when the column is added: any mailbox that
     // already has a marker is deemed initialized — rows at 0 keep the

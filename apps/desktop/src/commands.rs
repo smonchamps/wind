@@ -13,6 +13,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use crate::account_work::{AccountWork, Lease, Ticket};
 use mail_auth::{AccountSession, Authenticated, Authenticator, GenericCredentials};
 use mail_core::AccountConfig;
 use mail_core::{Action, MailServer, OutboxState, Store, SyncEngine};
@@ -172,6 +173,7 @@ pub struct ConnectReport {
 /// principle as [`sync_inbox`].
 #[tauri::command]
 pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, CommandError> {
+    let _registration = app.state::<AppState>().account_work.registration()?;
     // E2E hook: fake accounts (emails separated by commas), tokens
     // invalid by construction — offline guaranteed.
     if let Ok(list) = std::env::var("WIND_E2E_ACCOUNT") {
@@ -208,9 +210,22 @@ pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, CommandEr
     }
 
     let path = db_path(&app)?;
-    let accounts = off_pump(app.clone(), |app| {
+    let (accounts, legacy) = off_pump(app.clone(), |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store.accounts().map_err(|err| err.to_string())
+        let state = app.state::<AppState>();
+        let known = store.accounts().map_err(|err| err.to_string())?;
+        let legacy = known.is_empty();
+        let jobs = known
+            .into_iter()
+            .filter_map(|account| {
+                state
+                    .account_work
+                    .capture(account.id)
+                    .ok()
+                    .map(|ticket| (account, ticket))
+            })
+            .collect::<Vec<_>>();
+        Ok::<_, String>((jobs, legacy))
     })
     .await?;
 
@@ -218,7 +233,8 @@ pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, CommandEr
     let (connected, mut problems) = tauri::async_runtime::spawn_blocking(move || {
         let mut list = Vec::new();
         let mut problems: Vec<String> = Vec::new();
-        for account in accounts {
+        for (account, ticket) in accounts {
+            let Ok(_lease) = ticket.lease() else { continue };
             // A provider's missing OAuth configuration concerns ONLY its
             // accounts: it must never prevent any other one from coming
             // back.
@@ -233,7 +249,7 @@ pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, CommandEr
                 },
             };
             match outcome {
-                Ok(Some(session)) => list.push(session),
+                Ok(Some(session)) => list.push((session, Some(ticket))),
                 Ok(None) => problems.push(format!(
                     "{}: incomplete server configuration",
                     account.email
@@ -243,11 +259,11 @@ pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, CommandEr
         }
         // Legacy Phase 2 fallback: a Gmail account without an explicit
         // provider. Specific to Google — Phase 2 only knew that one.
-        if list.is_empty()
+        if legacy
             && let Ok(auth) = Authenticator::google_from_env()
             && let Ok(account) = auth.authenticate_silent_legacy()
         {
-            list.push(AccountSession::OAuth(account));
+            list.push((AccountSession::OAuth(account), None));
         }
         (list, problems)
     })
@@ -259,12 +275,26 @@ pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, CommandEr
     store_off_pump(app, move |app, store| {
         let state = app.state::<AppState>();
         let mut infos = Vec::new();
-        for session in connected {
+        for (session, ticket) in connected {
+            if ticket
+                .as_ref()
+                .is_some_and(|ticket| !state.account_work.is_current(ticket))
+            {
+                continue;
+            }
             let email = session.email().to_string();
             let provider = match &session {
                 AccountSession::OAuth(auth) => auth.provider.account_kind,
                 AccountSession::Generic(_) => "imap",
             };
+            if let Some(known) = store
+                .accounts()?
+                .into_iter()
+                .find(|known| known.email == email)
+                && state.account_work.capture(known.id).is_err()
+            {
+                continue;
+            }
             let id = store
                 .adopt_or_create_account(&email, provider)
                 .map_err(|err| err.to_string())?;
@@ -310,7 +340,8 @@ pub async fn add_account(
     state: State<'_, AppState>,
     horizon: Option<String>,
 ) -> Result<AccountInfo, CommandError> {
-    add_oauth_account(app, state, &mail_auth::GOOGLE, None, horizon).await
+    let _ = state;
+    add_oauth_account(app, &mail_auth::GOOGLE, None, horizon).await
 }
 
 /// Adds a Microsoft 365 / Outlook.com account.
@@ -332,18 +363,19 @@ pub async fn add_microsoft_account(
     if !is_plausible_address(&email) {
         return Err("invalid address: enter the account's full address".into());
     }
-    add_oauth_account(app, state, &mail_auth::MICROSOFT, Some(email), horizon).await
+    let _ = state;
+    add_oauth_account(app, &mail_auth::MICROSOFT, Some(email), horizon).await
 }
 
 /// The common trunk of OAuth2 additions: browser consent, then
 /// registering the account under the key of ITS provider.
 async fn add_oauth_account(
     app: AppHandle,
-    state: State<'_, AppState>,
     provider: &'static mail_auth::Provider,
     declared_email: Option<String>,
     horizon: Option<String>,
 ) -> Result<AccountInfo, CommandError> {
+    let _registration = app.state::<AppState>().account_work.registration()?;
     // Validation at the boundary, BEFORE the browser flow: refusing an
     // unreadable horizon after consent would leave an account created
     // under a gesture that failed.
@@ -357,17 +389,26 @@ async fn add_oauth_account(
     .await
     .map_err(|err| err.to_string())??;
 
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    let id = store
-        .adopt_or_create_account(&account.email, account.provider.account_kind)
-        .map_err(|err| err.to_string())?;
-    write_horizon_on_first_add(&store, id, horizon.as_deref())?;
-    let info = AccountInfo {
-        id,
-        email: account.email.clone(),
-    };
-    lock_accounts(&state)?.insert(account.email.clone(), AccountSession::OAuth(account));
-    Ok(info)
+    store_off_pump(app, move |app, store| {
+        let state = app.state::<AppState>();
+        if let Some(known) = store
+            .accounts()?
+            .into_iter()
+            .find(|known| known.email == account.email)
+        {
+            state.account_work.capture(known.id)?;
+        }
+        let id = store.adopt_or_create_account(&account.email, account.provider.account_kind)?;
+        write_horizon_on_first_add(store, id, horizon.as_deref())?;
+        let info = AccountInfo {
+            id,
+            email: account.email.clone(),
+        };
+        lock_accounts(&state)?.insert(account.email.clone(), AccountSession::OAuth(account));
+        crate::watcher::reconcile(app);
+        Ok(info)
+    })
+    .await
 }
 
 /// Reconnects a registry account whose token is dead — field finding of
@@ -387,14 +428,18 @@ pub async fn reconnect_account(
     app: AppHandle,
     account_id: i64,
 ) -> Result<AccountInfo, CommandError> {
-    let account = off_pump(app.clone(), move |app| {
+    let _registration = app.state::<AppState>().account_work.registration()?;
+    let (account, ticket, lease) = off_pump(app.clone(), move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store
+        let account = store
             .accounts()
             .map_err(|err| err.to_string())?
             .into_iter()
             .find(|account| account.id == account_id)
-            .ok_or_else(|| "unknown account".to_string())
+            .ok_or_else(|| "unknown account".to_string())?;
+        let ticket = app.state::<AppState>().account_work.capture(account_id)?;
+        let lease = ticket.lease()?;
+        Ok::<_, String>((account, ticket, lease))
     })
     .await?;
     if account.provider == "imap" {
@@ -427,7 +472,11 @@ pub async fn reconnect_account(
         .into());
     }
     off_pump(app, move |app| {
+        let _lease = lease;
         let state = app.state::<AppState>();
+        if !state.account_work.is_current(&ticket) {
+            return Err("account changed during reconnection".into());
+        }
         lock_accounts(&state)?.insert(account.email.clone(), AccountSession::OAuth(session));
         // The account gets its IDLE watcher back without waiting for a restart.
         crate::watcher::reconcile(&app);
@@ -509,6 +558,7 @@ pub async fn add_generic_account(
     input: GenericAccountInput,
     horizon: Option<String>,
 ) -> Result<AccountInfo, CommandError> {
+    let _registration = app.state::<AppState>().account_work.registration()?;
     validate_horizon(horizon.as_deref())?;
     let username = input.username.unwrap_or_else(|| input.email.clone());
     let email = input.email.clone();
@@ -537,6 +587,14 @@ pub async fn add_generic_account(
     .map_err(|err| err.to_string())??;
 
     store_off_pump(app, move |app, store| {
+        let state = app.state::<AppState>();
+        if let Some(known) = store
+            .accounts()?
+            .into_iter()
+            .find(|known| known.email == email)
+        {
+            state.account_work.capture(known.id)?;
+        }
         let id = store
             .create_generic_account(
                 &email, &username, &imap_host, imap_port, &smtp_host, smtp_port,
@@ -573,40 +631,58 @@ pub async fn add_generic_account(
 /// forever.
 #[tauri::command]
 pub async fn remove_account(app: AppHandle, account_id: i64) -> Result<(), CommandError> {
-    let account = off_pump(app.clone(), move |app| {
+    let (account, retirement) = off_pump(app.clone(), move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store
+        let account = store
             .accounts()
             .map_err(|err| err.to_string())?
             .into_iter()
             .find(|account| account.id == account_id)
-            .ok_or_else(|| format!("unknown account: {account_id}"))
+            .ok_or_else(|| format!("unknown account: {account_id}"))?;
+        let state = app.state::<AppState>();
+        let retirement = state.account_work.retire(account_id)?;
+        if let Some(alive) = recovered(&state.watchers).get(&account.email) {
+            alive.store(false, Ordering::Release);
+        }
+        Ok::<_, CommandError>((account, retirement))
     })
     .await?;
-
-    // The vault is a blocking OS API: off the window's thread, like all
-    // its other accesses.
-    {
-        let email = account.email.clone();
-        let provider = account.provider.clone();
-        tauri::async_runtime::spawn_blocking(move || {
-            mail_auth::forget_credentials(&provider, &email).map_err(|err| err.to_string())
-        })
-        .await
-        .map_err(|err| err.to_string())??;
-    }
-
-    store_off_pump(app, move |app, store| {
-        store
-            .delete_account(account_id)
-            .map_err(|err| err.to_string())?;
-        let state = app.state::<AppState>();
-        lock_accounts(&state)?.remove(&account.email);
-        // E4: its IDLE watcher shuts down at the next round.
-        crate::watcher::reconcile(app);
-        Ok(())
+    let email = account.email.clone();
+    let work_app = app.clone();
+    let outcome = tauri::async_runtime::spawn_blocking(move || {
+        let result = (|| -> Result<(), CommandError> {
+            retirement.wait(Duration::from_secs(30))?;
+            let state = work_app.state::<AppState>();
+            let _commands = recovered(&state.commands);
+            let mut store = Store::open(&db_path(&work_app)?)?;
+            // Admission is closed and every started operation has persisted its result.
+            store.check_account_removal(account_id)?;
+            mail_auth::forget_credentials(&account.provider, &account.email)
+                .map_err(|err| err.to_string())?;
+            store.delete_account(account_id)?;
+            lock_accounts(&state)?.remove(&account.email);
+            recovered(&state.sync_backoffs).remove(&account.email);
+            recovered(&state.gesture_passes).retain(|ticket, _| ticket.account_id != account_id);
+            Ok(())
+        })();
+        if result.is_ok() {
+            retirement.commit();
+        } else {
+            drop(retirement);
+        }
+        result
     })
     .await
+    .map_err(|err| CommandError::from(err.to_string()))
+    .and_then(|result| result);
+    off_pump(app, move |app| {
+        let state = app.state::<AppState>();
+        recovered(&state.watchers).remove(&email);
+        crate::watcher::reconcile(&app);
+        Ok::<_, CommandError>(())
+    })
+    .await?;
+    outcome
 }
 
 /// Builds a generic session from the password and the stored
@@ -704,7 +780,7 @@ pub async fn sync_inbox_light(
         let run_cycle = cycle.clone();
         crate::poll::poll_cycle(jobs, &cycle, &backoffs, &locks, force, {
             move |account_id, session| {
-                let (mut server, fresh) = crate::poll::connect_imap(session)?;
+                let (mut server, fresh, _lease) = crate::poll::connect_imap(session)?;
                 let mut store = Store::open(&path).map_err(|err| err.to_string())?;
                 let mut problems = Vec::new();
                 let hooks = crate::poll::ShellHooks::new(&run_cycle, app_bubbles.clone());
@@ -1245,14 +1321,14 @@ fn body_view(
 }
 
 fn fetch_body(
-    session: &AccountSession,
+    session: &AccountWork,
     db_path: &Path,
     account_id: i64,
     mailbox: String,
     uid: u32,
     version: MessageVersion,
 ) -> Result<String, String> {
-    let (mut server, _refreshed) = crate::poll::connect_imap(session)?;
+    let (mut server, _refreshed, _lease) = crate::poll::connect_imap(session)?;
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
     let body = mail_core::load_body_version(
         &mut server,
@@ -1277,7 +1353,7 @@ async fn raw_body(
     // E5: the cache read and the session under `off_pump` (database +
     // commands' lock); only the network fetch runs bare.
     let mailbox2 = mailbox.to_string();
-    let cached: Result<String, AccountSession> = off_pump(app.clone(), move |app| {
+    let cached: Result<String, AccountWork> = off_pump(app.clone(), move |app| {
         let cached = Store::open(&db_path(&app)?)
             .and_then(|store| store.body_version(&version.identity(account_id, &mailbox2), uid))
             .map_err(|err| err.to_string())?;
@@ -1440,6 +1516,7 @@ pub async fn reply_invitation(
             .filter(|p| !matches!(p, mail_ical::Participation::NeedsAction))
             .ok_or_else(|| format!("unknown reply: {reply}"))?;
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        admit_account(&app, &store, account_id)?;
         let stored = store
             .invitation(account_id, &mailbox, uid)
             .map_err(|err| err.to_string())?
@@ -1582,9 +1659,10 @@ pub async fn save_attachment(
         Ok::<_, CommandError>((auth_for(&app, account_id)?, identity))
     })
     .await?;
+    let completion_ticket = session.ticket.clone();
     let expected_generation = identity.uid_validity;
     let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
-        let (mut server, _refreshed) = crate::poll::connect_imap(&session)?;
+        let (mut server, _refreshed, _lease) = crate::poll::connect_imap(&session)?;
         let bytes = mail_core::fetch_attachment_checked(
             &mut server,
             &mailbox,
@@ -1601,7 +1679,14 @@ pub async fn save_attachment(
 
     // E5: the disk write (bytes chosen by the sender, up to 25 MB) off
     // the bare async worker.
-    store_off_pump(app, move |_, store| {
+    store_off_pump(app, move |app, store| {
+        if !app
+            .state::<AppState>()
+            .account_work
+            .is_current(&completion_ticket)
+        {
+            return Err("account changed during download".into());
+        }
         store
             .verify_mailbox_identity(&identity)
             .map_err(|err| err.to_string())?;
@@ -1803,6 +1888,13 @@ pub async fn act_on_group(
                 thread_id: cible.thread_id,
             })
             .collect();
+        for account in targets
+            .iter()
+            .map(|target| target.account_id)
+            .collect::<std::collections::BTreeSet<_>>()
+        {
+            admit_account(app, store, account)?;
+        }
         let done = store
             .act_on_group(&targets, &gesture)
             .map_err(|err| err.to_string())?;
@@ -1898,7 +1990,7 @@ pub async fn report_spam(
     mailbox: String,
     uid: u32,
 ) -> Result<(), CommandError> {
-    store_off_pump(app, move |app, store| {
+    account_store_off_pump(app, account_id, move |app, store| {
         let folders = store
             .canonical_folders(account_id)
             .map_err(|err| err.to_string())?;
@@ -1946,6 +2038,7 @@ fn queue_removal(
     action: Action,
 ) -> Result<(), CommandError> {
     let store = Store::open(&db_path(app)?)?;
+    admit_account(app, &store, account_id)?;
     let Some(state) = store.sync_state(account_id, &mailbox)? else {
         return Ok(());
     };
@@ -2034,7 +2127,7 @@ pub async fn mark_seen(
     uid: u32,
     seen: bool,
 ) -> Result<(), CommandError> {
-    store_off_pump(app, move |app, store| {
+    account_store_off_pump(app, account_id, move |app, store| {
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
@@ -2071,7 +2164,7 @@ pub async fn mark_flagged(
     uid: u32,
     flagged: bool,
 ) -> Result<(), CommandError> {
-    store_off_pump(app, move |app, store| {
+    account_store_off_pump(app, account_id, move |app, store| {
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
@@ -2109,7 +2202,7 @@ pub async fn toggle_pin(
     mailbox: String,
     uid: u32,
 ) -> Result<bool, CommandError> {
-    store_off_pump(app, move |app, store| {
+    account_store_off_pump(app, account_id, move |app, store| {
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
@@ -2158,7 +2251,7 @@ pub async fn allow_images_message(
     mailbox: String,
     uid: u32,
 ) -> Result<(), CommandError> {
-    store_off_pump(app, move |_, store| {
+    account_store_off_pump(app, account_id, move |_, store| {
         // Unknown mailbox = a SAID failure, never a facade success: the
         // UI would show "remembered" while nothing is written (review
         // 2026-08-28).
@@ -2184,7 +2277,7 @@ pub async fn allow_images_sender(
     mailbox: String,
     uid: u32,
 ) -> Result<Option<String>, CommandError> {
-    store_off_pump(app, move |_, store| {
+    account_store_off_pump(app, account_id, move |_, store| {
         // Same contract: the failure is said. The remaining `None`
         // (envelope without an address — nothing is written) is a real
         // business case the UI must distinguish.
@@ -2253,7 +2346,7 @@ pub async fn horizon_import_set(
     account_id: i64,
     value: String,
 ) -> Result<(), CommandError> {
-    store_off_pump(app, move |_, store| {
+    account_store_off_pump(app, account_id, move |_, store| {
         Ok(store.set_horizon_import(account_id, &crate::wire::category_from_wire(&value))?)
     })
     .await
@@ -2340,7 +2433,7 @@ pub async fn route_sender_from(
     destination: String,
     rule: Option<String>,
 ) -> Result<Option<String>, CommandError> {
-    store_off_pump(app, move |app, store| {
+    account_store_off_pump(app, account_id, move |app, store| {
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
@@ -2633,6 +2726,14 @@ pub async fn cleanup_verdict(
     rule: Option<String>,
 ) -> Result<Option<CleanupSessionPayload>, CommandError> {
     store_off_pump(app, move |app, store| {
+        for account in store
+            .cleanup_messages(&address)?
+            .iter()
+            .map(|row| row.account_id)
+            .collect::<std::collections::BTreeSet<_>>()
+        {
+            admit_account(app, store, account)?;
+        }
         let (destination, rule) =
             crate::wire::destination_rule_from_wire(&destination, rule.as_deref());
         store
@@ -2663,7 +2764,7 @@ pub async fn toggle_set_aside(
     mailbox: String,
     uid: u32,
 ) -> Result<bool, CommandError> {
-    store_off_pump(app, move |app, store| {
+    account_store_off_pump(app, account_id, move |app, store| {
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
@@ -2795,7 +2896,7 @@ pub async fn feed_mark_read(
     mailbox: String,
     uid: u32,
 ) -> Result<(), CommandError> {
-    store_off_pump(app, move |app, store| {
+    account_store_off_pump(app, account_id, move |app, store| {
         let Some(state) = store
             .sync_state(account_id, &mailbox)
             .map_err(|err| err.to_string())?
@@ -2885,6 +2986,7 @@ pub struct OutboxSummary {
 #[derive(Serialize)]
 pub struct OutboxEntry {
     pub id: i64,
+    pub message_id: String,
     pub subject: String,
     pub to: String,
     pub state: String,
@@ -2898,6 +3000,22 @@ pub struct OutboxEntry {
     /// for an ordinary send. The UI derives "scheduled for {h}" and the
     /// cancel gesture from it.
     pub send_at_epoch: Option<i64>,
+}
+
+#[derive(Serialize)]
+pub struct ActionIncidentRow {
+    id: i64,
+    account: String,
+    subject: Option<String>,
+    sender: Option<String>,
+    source: String,
+    destination: Option<String>,
+    reason: String,
+}
+
+#[tauri::command]
+pub async fn dismiss_action_incident(app: AppHandle, id: i64) -> Result<(), CommandError> {
+    store_off_pump(app, move |_, store| Ok(store.dismiss_action_incident(id)?)).await
 }
 
 #[derive(Serialize)]
@@ -2918,6 +3036,8 @@ pub struct OutboxStatus {
     /// refusal, or five failures) — all accounts. The slot says so; the
     /// intent is no longer lost in silence.
     pub refused_actions: u64,
+    pub refused_action_reason: Option<String>,
+    pub action_incidents: Vec<ActionIncidentRow>,
 }
 
 /// Pre-filling a reply: recipient = the sender's raw address, subject
@@ -3135,12 +3255,12 @@ pub async fn reply_all_context(
 }
 
 fn fetch_recipients_remote(
-    session: &AccountSession,
+    session: &AccountWork,
     mailbox: &str,
     uid: u32,
     version: MessageVersion,
 ) -> Result<mail_core::MessageRecipients, String> {
-    let (mut server, _refreshed) = crate::poll::connect_imap(session)?;
+    let (mut server, _refreshed, _lease) = crate::poll::connect_imap(session)?;
     // `fetch_recipients` is gone (PLAN-AUDIT-V3 E6, a unit duplicate of
     // this same ENVELOPE re-read): a one-UID `fetch_envelopes` carries
     // the same To/Cc, already parsed into `to_addrs`/`cc_addrs` (R4).
@@ -3252,6 +3372,20 @@ pub async fn queue_send(
         .map_err(String::from)
 }
 
+#[tauri::command]
+pub async fn queued_draft_edit(
+    app: AppHandle,
+    account_id: i64,
+    token: String,
+) -> Result<Option<i64>, CommandError> {
+    store_off_pump(app, move |_, store| {
+        store
+            .queued_draft_edit(&token, account_id)
+            .map_err(CommandError::from)
+    })
+    .await
+}
+
 /// The full content of one queued send, packed off the wire.
 struct SendContent {
     to: String,
@@ -3289,7 +3423,7 @@ async fn queue_send_content(
         send_at_epoch,
         edit_token,
     } = content;
-    store_off_pump(app, move |_, store| {
+    account_store_off_pump(app, account_id, move |_, store| {
         let from = account_email(store, account_id)?;
         // Rich body: THE boundary (`body_boundary`) — sanitized, text
         // derived. The `body` received serves only the text path.
@@ -3462,7 +3596,7 @@ pub async fn sync_after_gesture(
         // The flight is a GUARD (E5): a `?` in the middle of the pass
         // used to leave it in flight forever, and every later pass for
         // the account was absorbed until restart.
-        let Some(flight) = FlightGuard::take(&state.gesture_passes, &email) else {
+        let Some(flight) = FlightGuard::take(&state.gesture_passes, &session.ticket) else {
             continue;
         };
         loop {
@@ -3511,16 +3645,17 @@ pub async fn sync_after_gesture(
 /// down when it's released — by the explicit `drop` as well as by a
 /// `?`.
 struct FlightGuard<'a> {
-    passes: &'a Mutex<HashMap<String, PassFlight>>,
-    email: String,
+    passes: &'a Mutex<HashMap<Ticket, PassFlight>>,
+    ticket: Ticket,
 }
 
 impl<'a> FlightGuard<'a> {
     /// `None`: a pass is already in flight for this account — the
     /// request is absorbed (the flag will make it replay once).
-    fn take(passes: &'a Mutex<HashMap<String, PassFlight>>, email: &str) -> Option<Self> {
+    fn take(passes: &'a Mutex<HashMap<Ticket, PassFlight>>, ticket: &Ticket) -> Option<Self> {
         let mut table = recovered(passes);
-        let flight = table.entry(email.to_string()).or_default();
+        table.retain(|ticket, flight| flight.in_flight || ticket.check().is_ok());
+        let flight = table.entry(ticket.clone()).or_default();
         if flight.in_flight {
             flight.rerequest = true;
             return None;
@@ -3528,14 +3663,14 @@ impl<'a> FlightGuard<'a> {
         flight.in_flight = true;
         Some(Self {
             passes,
-            email: email.to_string(),
+            ticket: ticket.clone(),
         })
     }
 
     /// Did a gesture arrive during the pass? Consumes the flag.
     fn rerequest_consumed(&self) -> bool {
         let mut table = recovered(self.passes);
-        let flight = table.entry(self.email.clone()).or_default();
+        let flight = table.entry(self.ticket.clone()).or_default();
         std::mem::take(&mut flight.rerequest)
     }
 }
@@ -3543,7 +3678,9 @@ impl<'a> FlightGuard<'a> {
 impl Drop for FlightGuard<'_> {
     fn drop(&mut self) {
         let mut table = recovered(self.passes);
-        if let Some(flight) = table.get_mut(&self.email) {
+        if self.ticket.check().is_err() {
+            table.remove(&self.ticket);
+        } else if let Some(flight) = table.get_mut(&self.ticket) {
             flight.in_flight = false;
         }
     }
@@ -3603,12 +3740,12 @@ fn settle_marker(
 /// The pass of ONE account — the blocking body of `sync_after_gesture`.
 fn pass_after_gesture_account(
     path: &Path,
-    mut session: AccountSession,
+    mut session: AccountWork,
     account_id: i64,
     cycle: &crate::SyncShared,
     locks: &Mutex<HashMap<String, Arc<Mutex<()>>>>,
     app: &AppHandle,
-) -> Result<(PassReport, Vec<AccountSession>), String> {
+) -> Result<(PassReport, Vec<AccountWork>), String> {
     let mut report = PassReport::default();
     let mut sessions = Vec::new();
     let mut attempt = 0u32;
@@ -3626,7 +3763,7 @@ fn pass_after_gesture_account(
         {
             let lock = crate::poll::account_lock(locks, session.email());
             let _poll = lock.lock();
-            let (mut server, fresh) = crate::poll::connect_imap(&session)?;
+            let (mut server, fresh, _lease) = crate::poll::connect_imap(&session)?;
             if let Some(fresh) = fresh {
                 session = fresh.clone();
                 sessions.push(fresh);
@@ -3765,10 +3902,12 @@ fn pass_after_gesture_account(
             }
         }
         last_clean = report.errors.len() == errors_before;
+        let pending_lease = session.ticket.lease()?;
         let pending = Store::open(path)
             .map_err(|err| err.to_string())?
             .pending_echos(account_id)
             .map_err(|err| err.to_string())?;
+        drop(pending_lease);
         if pending == 0 {
             break;
         }
@@ -3780,6 +3919,7 @@ fn pass_after_gesture_account(
     // 4. The sweep — after a CLEAN attempt only: a failed poll denied
     // nothing, the echo lives on (offline, backoff…).
     if last_clean {
+        let _lease = session.ticket.lease()?;
         let store = Store::open(path).map_err(|err| err.to_string())?;
         let incidents = store
             .sweep_echos(account_id)
@@ -3827,10 +3967,10 @@ fn poll_folder_pass(
 }
 
 fn run_flush_all(
-    jobs: Vec<(i64, AccountSession)>,
+    jobs: Vec<(i64, AccountWork)>,
     db_path: &Path,
     lock: &Mutex<()>,
-) -> Result<(OutboxSummary, Vec<AccountSession>), String> {
+) -> Result<(OutboxSummary, Vec<AccountWork>), String> {
     // E5: a poisoned lock is reclaimed (the panic is logged, ADR 0014).
     let _guard = recovered(lock);
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
@@ -3857,8 +3997,11 @@ fn run_flush_all(
         match connect_smtp(&session) {
             // Offline: this account's queue survives as is.
             Err(reason) => summary.error = Some(reason),
-            Ok((mut mailer, refreshed)) => {
-                let report = mail_core::flush_outbox(&mut mailer, &mut store, account_id)
+            Ok((mut mailer, refreshed, _lease)) => {
+                let report =
+                    mail_core::flush_outbox_while(&mut mailer, &mut store, account_id, &mut || {
+                        session.ticket.check().is_ok()
+                    })
                     .map_err(|err| err.to_string())?;
                 summary.sent += report.sent;
                 summary.deferred += report.deferred;
@@ -3908,6 +4051,7 @@ fn run_flush_all(
 /// The outbox state for the UI: everything that hasn't gone out, all
 /// accounts combined.
 fn read_sends(store: &Store) -> Result<OutboxStatus, String> {
+    let accounts = store.accounts().map_err(|err| err.to_string())?;
     let mut status = OutboxStatus {
         queued: 0,
         interrupted: 0,
@@ -3916,6 +4060,27 @@ fn read_sends(store: &Store) -> Result<OutboxStatus, String> {
         next_scheduled_epoch: None,
         entries: Vec::new(),
         refused_actions: store.refused_actions().map_err(|err| err.to_string())?,
+        refused_action_reason: store
+            .refused_action_reason()
+            .map_err(|err| err.to_string())?,
+        action_incidents: store
+            .action_incidents()
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .map(|incident| ActionIncidentRow {
+                id: incident.id,
+                account: accounts
+                    .iter()
+                    .find(|account| account.id == incident.account_id)
+                    .map(|account| account.email.clone())
+                    .unwrap_or_default(),
+                subject: incident.subject,
+                sender: incident.sender,
+                source: incident.source,
+                destination: incident.destination,
+                reason: incident.reason,
+            })
+            .collect(),
     };
     let now = chrono::Utc::now().timestamp();
     for message in store.outbox_metadata().map_err(|err| err.to_string())? {
@@ -3940,6 +4105,7 @@ fn read_sends(store: &Store) -> Result<OutboxStatus, String> {
         }
         status.entries.push(OutboxEntry {
             id: message.id,
+            message_id: message.message_id,
             subject: message.subject,
             to: message.to.join(", "),
             state: message.state.as_str().to_string(),
@@ -3960,15 +4126,32 @@ pub async fn outbox_status(app: AppHandle) -> Result<OutboxStatus, CommandError>
 /// Requeuing a quarantined or rejected send: THE explicit user decision
 /// required by the "never a ghost send" rule.
 #[tauri::command]
-pub async fn outbox_requeue(app: AppHandle, id: i64) -> Result<(), CommandError> {
-    store_off_pump(app, move |_, store| Ok(store.requeue_outbox(id)?)).await
+pub async fn outbox_requeue(
+    app: AppHandle,
+    id: i64,
+    message_id: String,
+) -> Result<(), CommandError> {
+    store_off_pump(app, move |app, store| {
+        let account_id = store.outbox_account(id, &message_id)?;
+        admit_account(app, store, account_id)?;
+        Ok(store.requeue_outbox(id)?)
+    })
+    .await
 }
 
 /// Abandoning a send (user decision); the `sent` history is preserved
 /// by the core.
 #[tauri::command]
-pub async fn outbox_delete(app: AppHandle, id: i64) -> Result<(), CommandError> {
-    store_off_pump(app, move |_, store| Ok(store.delete_outbox(id)?)).await
+pub async fn outbox_delete(
+    app: AppHandle,
+    id: i64,
+    message_id: String,
+) -> Result<(), CommandError> {
+    store_off_pump(app, move |_, store| {
+        store.outbox_account(id, &message_id)?;
+        Ok(store.delete_outbox(id)?)
+    })
+    .await
 }
 
 /// R2, CE decision D2: cancels a scheduled send — the entry leaves the
@@ -3978,8 +4161,17 @@ pub async fn outbox_delete(app: AppHandle, id: i64) -> Result<(), CommandError> 
 /// going out — the UI says so honestly rather than promising a ghost
 /// draft.
 #[tauri::command]
-pub async fn outbox_cancel_scheduled(app: AppHandle, id: i64) -> Result<Option<i64>, CommandError> {
-    store_off_pump(app, move |_, store| Ok(store.cancel_scheduled_send(id)?)).await
+pub async fn outbox_cancel_scheduled(
+    app: AppHandle,
+    id: i64,
+    message_id: String,
+) -> Result<Option<i64>, CommandError> {
+    store_off_pump(app, move |app, store| {
+        let account_id = store.outbox_account(id, &message_id)?;
+        admit_account(app, store, account_id)?;
+        Ok(store.cancel_scheduled_send(id)?)
+    })
+    .await
 }
 
 // ---------------------------------------------------------------------
@@ -4024,7 +4216,7 @@ pub async fn signature_set(
     image_sources: Option<BTreeMap<String, String>>,
     replies: bool,
 ) -> Result<(), CommandError> {
-    store_off_pump(app, move |_, store| {
+    account_store_off_pump(app, account_id, move |_, store| {
         let clean = html.as_deref().and_then(|h| {
             composition_boundary(String::new(), Some(h), &image_sources.unwrap_or_default()).1
         });
@@ -4384,7 +4576,7 @@ pub async fn save_draft(
     content: DraftContentArg,
     edit_token: Option<String>,
 ) -> Result<Option<DraftSavedRow>, CommandError> {
-    store_off_pump(app, move |_, store| {
+    account_store_off_pump(app, account_id, move |_, store| {
         // Same boundary as sending (`body_boundary`): sanitized HTML,
         // derived text (previews and fallback).
         let (body_text, body_rich) = composition_boundary(
@@ -4468,7 +4660,7 @@ pub async fn begin_draft_edit(
     incarnation: Option<String>,
     base_epoch: Option<i64>,
 ) -> Result<DraftEditRow, CommandError> {
-    store_off_pump(app, move |_, store| {
+    account_store_off_pump(app, account_id, move |_, store| {
         let edit =
             store.begin_draft_edit(&token, account_id, id, incarnation.as_deref(), base_epoch)?;
         Ok(DraftEditRow {
@@ -4485,7 +4677,10 @@ pub async fn finish_draft_edit(
     token: String,
     discard: bool,
 ) -> Result<Option<DraftSavedRow>, CommandError> {
-    store_off_pump(app, move |_, store| {
+    store_off_pump(app, move |app, store| {
+        if !discard && let Some(account) = store.active_draft_edit_account()? {
+            admit_account(app, store, account)?;
+        }
         Ok(store
             .finish_draft_edit(&token, discard)?
             .map(draft_saved_row))
@@ -4495,7 +4690,13 @@ pub async fn finish_draft_edit(
 
 #[tauri::command]
 pub async fn recover_draft_edit(app: AppHandle) -> Result<(), CommandError> {
-    store_off_pump(app, move |_, store| Ok(store.recover_draft_edit()?)).await
+    store_off_pump(app, move |app, store| {
+        if let Some(account) = store.active_draft_edit_account()? {
+            admit_account(app, store, account)?;
+        }
+        Ok(store.recover_draft_edit()?)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -4505,7 +4706,7 @@ pub async fn detach_draft_edit_file(
     account_id: i64,
     attachment_id: i64,
 ) -> Result<Option<DraftSavedRow>, CommandError> {
-    store_off_pump(app, move |_, store| {
+    account_store_off_pump(app, account_id, move |_, store| {
         Ok(store
             .remove_draft_edit_attachment(&token, account_id, attachment_id)?
             .map(draft_saved_row))
@@ -4661,7 +4862,7 @@ pub async fn attach_files(
     paths: Vec<String>,
     edit_token: Option<String>,
 ) -> Result<AttachReport, CommandError> {
-    store_off_pump(app, move |_, store| {
+    account_store_off_pump(app, account_id, move |_, store| {
         if let Some(token) = edit_token {
             return attach_edit_files(store, &token, account_id, &paths);
         }
@@ -4791,7 +4992,7 @@ pub async fn fetch_source_attachment(
     // commands' lock (the `save_draft`/`delete_draft` TOCTOU of ADR
     // 0019).
     let mailbox_name = mailbox.clone();
-    let (attachment, session, identity) = off_pump(app.clone(), move |app| {
+    let (attachment, session, identity, sender_ticket) = off_pump(app.clone(), move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let identity = version.identity(account_id, &mailbox_name);
         store.verify_mailbox_identity(&identity)?;
@@ -4801,13 +5002,22 @@ pub async fn fetch_source_attachment(
             .into_iter()
             .find(|candidate| candidate.index == index)
             .ok_or_else(|| "unknown attachment".to_string())?;
-        Ok::<_, CommandError>((attachment, auth_for(&app, account_id)?, identity))
+        let sender = sender_account_id.unwrap_or(account_id);
+        admit_account(&app, &store, sender)?;
+        let sender_ticket = app.state::<AppState>().account_work.capture(sender)?;
+        Ok::<_, CommandError>((
+            attachment,
+            auth_for(&app, account_id)?,
+            identity,
+            sender_ticket,
+        ))
     })
     .await?;
 
+    let completion_ticket = session.ticket.clone();
     let expected_generation = identity.uid_validity;
     let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
-        let (mut server, _refreshed) = crate::poll::connect_imap(&session)?;
+        let (mut server, _refreshed, _lease) = crate::poll::connect_imap(&session)?;
         let bytes = mail_core::fetch_attachment_checked(
             &mut server,
             &mailbox,
@@ -4822,10 +5032,24 @@ pub async fn fetch_source_attachment(
     .await
     .map_err(|err| err.to_string())??;
 
-    store_off_pump(app, move |_, store| {
+    store_off_pump(app, move |app, store| {
+        if !app
+            .state::<AppState>()
+            .account_work
+            .is_current(&completion_ticket)
+        {
+            return Err("account changed during download".into());
+        }
         store
             .verify_mailbox_identity(&identity)
             .map_err(|err| err.to_string())?;
+        if !app
+            .state::<AppState>()
+            .account_work
+            .is_current(&sender_ticket)
+        {
+            return Err("sender account changed during download".into());
+        }
         if let Some(token) = edit_token {
             return match store.add_draft_edit_source_attachment(
                 &token,
@@ -4986,10 +5210,10 @@ pub async fn sync_drafts(
 }
 
 fn run_draft_sync_all(
-    jobs: Vec<(i64, AccountSession)>,
+    jobs: Vec<(i64, AccountWork)>,
     db_path: &Path,
     lock: &Mutex<()>,
-) -> Result<(DraftSyncSummary, Vec<AccountSession>), String> {
+) -> Result<(DraftSyncSummary, Vec<AccountWork>), String> {
     // E5: a poisoned lock is recovered (the panic is logged, ADR 0014).
     let _guard = recovered(lock);
     let store = Store::open(db_path).map_err(|err| err.to_string())?;
@@ -5014,7 +5238,7 @@ fn run_draft_sync_all(
             continue;
         }
 
-        let (mut server, refreshed) = match crate::poll::connect_imap(&session) {
+        let (mut server, refreshed, _lease) = match crate::poll::connect_imap(&session) {
             Ok(pair) => pair,
             Err(reason) => {
                 summary.error = Some(reason);
@@ -5137,8 +5361,9 @@ fn purge_draft_tombstones(
 /// The servers come from the session's provider, never from an
 /// application constant: that's what makes a second provider possible
 /// without touching this function.
-fn connect_smtp(session: &AccountSession) -> Result<(SmtpMailer, Option<AccountSession>), String> {
-    match session {
+fn connect_smtp(session: &AccountWork) -> Result<(SmtpMailer, Option<AccountWork>, Lease), String> {
+    let lease = session.ticket.lease()?;
+    let outcome = match &session.session {
         AccountSession::OAuth(auth) => {
             let smtp = auth.provider.smtp;
             match SmtpMailer::connect_xoauth2(smtp.host, smtp.port, &auth.email, &auth.access_token)
@@ -5148,12 +5373,14 @@ fn connect_smtp(session: &AccountSession) -> Result<(SmtpMailer, Option<AccountS
                 // refusal — redoing the OAuth session would change
                 // nothing and would hammer the provider's endpoint (the
                 // P0 defect already fixed on the IMAP side).
-                Err(err) if mail_smtp::is_connection_error(&err) => Err(err.to_string()),
-                Err(_) => {
+                Err(err @ mail_smtp::ConnectError::Connection(_)) => Err(err.to_string()),
+                Err(mail_smtp::ConnectError::Authentication(_)) => {
+                    session.ticket.check()?;
                     let fresh = Authenticator::from_env(auth.provider)
                         .map_err(|err| err.to_string())?
                         .authenticate_silent(&auth.email)
                         .map_err(|err| err.to_string())?;
+                    session.ticket.check()?;
                     let mailer = SmtpMailer::connect_xoauth2(
                         smtp.host,
                         smtp.port,
@@ -5161,7 +5388,10 @@ fn connect_smtp(session: &AccountSession) -> Result<(SmtpMailer, Option<AccountS
                         &fresh.access_token,
                     )
                     .map_err(|err| err.to_string())?;
-                    Ok((mailer, Some(AccountSession::OAuth(fresh))))
+                    Ok((
+                        mailer,
+                        Some(session.refreshed(AccountSession::OAuth(fresh))),
+                    ))
                 }
             }
         }
@@ -5175,19 +5405,22 @@ fn connect_smtp(session: &AccountSession) -> Result<(SmtpMailer, Option<AccountS
             .map_err(|err| err.to_string())?;
             Ok((mailer, None))
         }
-    }
+    };
+    outcome.map(|(mailer, fresh)| (mailer, fresh, lease))
 }
 
 /// The session of an account — opens the database: UNDER `off_pump`
 /// (E5).
-fn auth_for(app: &AppHandle, account_id: i64) -> Result<AccountSession, String> {
+fn auth_for(app: &AppHandle, account_id: i64) -> Result<AccountWork, String> {
     let store = Store::open(&db_path(app)?).map_err(|err| err.to_string())?;
     let email = account_email(&store, account_id)?;
     let state = app.state::<AppState>();
-    lock_accounts(&state)?
+    let ticket = state.account_work.capture(account_id)?;
+    let session = lock_accounts(&state)?
         .get(&email)
         .cloned()
-        .ok_or_else(|| format!("account not connected: {email}"))
+        .ok_or_else(|| format!("account not connected: {email}"))?;
+    Ok(AccountWork { session, ticket })
 }
 
 // Delegates to `Store::account_email` (PLAN-INVITATIONS review): ONE
@@ -5215,14 +5448,15 @@ pub(crate) fn lock_accounts<'a>(
 /// WITHOUT resurrecting an account removed while it was running: its
 /// row in the database has disappeared, an orphaned session in memory
 /// would make every subsequent cycle fail until restart.
-fn reset_sessions(
+pub(crate) fn reset_sessions(
     state: &State<'_, AppState>,
-    refreshed: Vec<AccountSession>,
+    refreshed: Vec<AccountWork>,
 ) -> Result<(), String> {
+    let _commands = recovered(&state.commands);
     let mut accounts = lock_accounts(state)?;
     for fresh in refreshed {
-        if accounts.contains_key(fresh.email()) {
-            accounts.insert(fresh.email().to_string(), fresh);
+        if state.account_work.is_current(&fresh.ticket) && accounts.contains_key(fresh.email()) {
+            accounts.insert(fresh.email().to_string(), fresh.session);
         }
     }
     Ok(())
@@ -5278,6 +5512,11 @@ pub(crate) fn with_store<T>(
     work: impl FnOnce(&mut Store) -> Result<T, CommandError>,
 ) -> Result<T, CommandError> {
     let mut store = Store::open(&db_path(app)?)?;
+    let state = app.state::<AppState>();
+    if state.mutation_recovery.get().is_none() {
+        store.recover_action_effects()?;
+        let _ = state.mutation_recovery.set(());
+    }
     work(&mut store)
 }
 
@@ -5291,6 +5530,33 @@ where
     T: Send + 'static,
 {
     off_pump(app, move |app| with_store(&app, |store| work(&app, store))).await
+}
+
+fn admit_account(app: &AppHandle, store: &Store, account_id: i64) -> Result<(), CommandError> {
+    if !store
+        .accounts()?
+        .iter()
+        .any(|account| account.id == account_id)
+    {
+        return Err(format!("unknown account: {account_id}").into());
+    }
+    app.state::<AppState>().account_work.capture(account_id)?;
+    Ok(())
+}
+
+async fn account_store_off_pump<T>(
+    app: AppHandle,
+    account_id: i64,
+    work: impl FnOnce(&AppHandle, &mut Store) -> Result<T, CommandError> + Send + 'static,
+) -> Result<T, CommandError>
+where
+    T: Send + 'static,
+{
+    store_off_pump(app, move |app, store| {
+        admit_account(app, store, account_id)?;
+        work(app, store)
+    })
+    .await
 }
 
 pub(crate) fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -5679,10 +5945,10 @@ pub async fn backfill_bodies(
 }
 
 fn run_backfill_all(
-    jobs: Vec<(i64, AccountSession)>,
+    jobs: Vec<(i64, AccountWork)>,
     db_path: &Path,
     lock: &Mutex<()>,
-) -> Result<(BackfillSummary, Vec<AccountSession>), String> {
+) -> Result<(BackfillSummary, Vec<AccountWork>), String> {
     // E5: a poisoned lock is recovered (the panic is logged, ADR 0014).
     let _guard = recovered(lock);
 
@@ -5728,7 +5994,7 @@ fn run_backfill_all(
         }
         match crate::poll::connect_imap(&session) {
             Err(reason) => summary.errors.push(format!("{email}: {reason}")),
-            Ok((mut server, refreshed)) => {
+            Ok((mut server, refreshed, _lease)) => {
                 if let Some(fresh) = refreshed {
                     refreshed_list.push(fresh);
                 }
@@ -6433,23 +6699,41 @@ mod tests {
     /// was absorbed until restart. RED with no lesson (the behavior is
     /// that of `Drop`) — the test states the contract.
     #[test]
+    fn a_late_flight_cannot_absorb_or_release_a_new_account_incarnation() {
+        let registry = crate::account_work::Registry::default();
+        let old = registry.capture(1).unwrap();
+        let flights = Mutex::new(HashMap::<Ticket, PassFlight>::new());
+        let old_flight = FlightGuard::take(&flights, &old).unwrap();
+        registry.retire(1).unwrap().commit();
+        let new = registry.capture(1).unwrap();
+        let new_flight = FlightGuard::take(&flights, &new).unwrap();
+        drop(old_flight);
+        assert!(FlightGuard::take(&flights, &new).is_none());
+        assert!(new_flight.rerequest_consumed());
+        assert!(!new_flight.rerequest_consumed());
+        assert_eq!(recovered(&flights).len(), 1);
+    }
+
+    #[test]
     fn the_flight_falls_when_the_guard_is_released_even_by_an_early_exit() {
-        let flights = Mutex::new(HashMap::<String, PassFlight>::new());
-        let in_flight = |flights: &Mutex<HashMap<String, PassFlight>>| {
+        let registry = crate::account_work::Registry::default();
+        let ticket = registry.capture(1).unwrap();
+        let flights = Mutex::new(HashMap::<Ticket, PassFlight>::new());
+        let in_flight = |flights: &Mutex<HashMap<Ticket, PassFlight>>| {
             flights
                 .lock()
                 .unwrap()
-                .get("a@x.fr")
+                .get(&ticket)
                 .map(|v| v.in_flight)
                 .unwrap_or(false)
         };
 
-        let early_exit = |flights: &Mutex<HashMap<String, PassFlight>>| -> Result<(), String> {
-            let _flight = FlightGuard::take(flights, "a@x.fr").expect("first take");
+        let early_exit = |flights: &Mutex<HashMap<Ticket, PassFlight>>| -> Result<(), String> {
+            let _flight = FlightGuard::take(flights, &ticket).expect("first take");
             assert!(in_flight(flights));
             // A second request during the flight is absorbed and noted.
-            assert!(FlightGuard::take(flights, "a@x.fr").is_none());
-            assert!(flights.lock().unwrap()["a@x.fr"].rerequest);
+            assert!(FlightGuard::take(flights, &ticket).is_none());
+            assert!(flights.lock().unwrap()[&ticket].rerequest);
             Err("failure mid-pass".to_string())?;
             Ok(())
         };
@@ -6457,7 +6741,7 @@ mod tests {
         assert!(!in_flight(&flights), "the early exit released the flight");
 
         // The rerequest noted during the flight is consumed ONCE.
-        let flight = FlightGuard::take(&flights, "a@x.fr").expect("the flight is free");
+        let flight = FlightGuard::take(&flights, &ticket).expect("the flight is free");
         assert!(flight.rerequest_consumed());
         assert!(!flight.rerequest_consumed());
         drop(flight);

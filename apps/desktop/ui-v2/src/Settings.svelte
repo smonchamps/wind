@@ -278,6 +278,7 @@
   // single point — the next card gets added here, not in N places
   // (review 2026-08-23: the invariant lived copied in five spots).
   function closeCards() {
+    if (removalBusy) return;
     removalTarget = null;
     removalError = null;
     markerOpen = null;
@@ -337,17 +338,20 @@
     }
   }
   export function close() {
+    if (removalBusy) return;
     visible = false;
   }
   export function isOpen() {
     return visible;
   }
   function chooseGroup(id) {
+    if (removalBusy) return;
     group = id;
     addOpen = false;
     closeCards();
   }
   function requestRemoval(id) {
+    if (removalBusy) return;
     const reopening = removalTarget !== id;
     closeCards();
     if (reopening) removalTarget = id;
@@ -849,7 +853,8 @@
                       <button type="button" class="danger" data-testid="removal-confirm"
                               disabled={removalBusy} onclick={confirmRemoval}>
                         {removalBusy ? t('settings.removalInProgress') : t('action.remove')}</button>
-                      <button type="button" class="add" data-testid="removal-cancel"
+                        <button type="button" class="add" data-testid="removal-cancel"
+                                disabled={removalBusy}
                               onclick={() => requestRemoval(c.account_id)}>
                         {t('action.cancel')}</button>
                     </div>
@@ -1225,7 +1230,7 @@
         </div>
       </div>
       <div class="foot">
-        <button type="button" class="main" data-testid="settings-done" onclick={close}>
+        <button type="button" class="main" data-testid="settings-done" disabled={removalBusy} onclick={close}>
           {t('action.done')}</button>
       </div>
     </div>
