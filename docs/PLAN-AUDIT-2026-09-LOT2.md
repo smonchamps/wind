@@ -3,7 +3,7 @@
 Opened: 2026-09-06. Baseline: `d13811c340568b79ffadb17f9d4ffa600a46b509`.
 Parent: [six-lot audit program](PLAN-AUDIT-2026-09.md), E4–E6.
 
-**Status: E4–E6 implemented; full gate GREEN; STOP 2 validated; commit/push/CI in progress.** The Chief Engineer authorized starting Lot 2
+**JOB CLOSED on 2026-09-06 — full field validation.** E4–E6 delivered in `0374e43fd29c00acb3e1c6e3e3da77ecf89366d7`; [CI 34053044227](https://github.com/smonchamps/wind/actions/runs/34053044227) is green on Windows, macOS Intel and Apple Silicon. The Chief Engineer authorized starting Lot 2
 on 2026-09-06. The program, Lot 1 field approvals and its delivery remain valid.
 
 ## Reproduced findings
@@ -441,11 +441,11 @@ No production change followed this gate; this checkpoint only records its result
 | 8. IPC contract | GREEN; 118 defined/registered, 110 called by name | 0.1 |
 | 9. Documentation links | GREEN; 70 files, 398 relative links | 0.2 |
 | 10. Clippy | GREEN; all targets, warnings denied | 11.6 |
-| 11. Rust tests | GREEN; 774 passed, four ignored | 51.0 |
+| 11. Rust tests | GREEN; 776 passed, four ignored | 51.0 |
 | 12. Rust documentation tests | GREEN; no runnable doctest | 8.2 |
 | 13. Node and UI tests | GREEN; 28 Node passed; 228 UI passed, one flaky, one optional benchmark skipped | 384.4 |
 
-Rust totals: auth 24, core 510, iCal 16, IMAP 101, render 34, SMTP 45, desktop 44.
+Rust totals: auth 24, core 510, iCal 16, IMAP 101, render 34, SMTP 45, desktop 44, core examples 2.
 The UI retry is recorded rather than hidden: organized-mode.spec.js:129 timed out
 waiting to hover the first Feed card at line 138; the full serial file passed on
 its automatic retry (the gesture took 634 ms). The final report has zero unexpected
@@ -492,3 +492,36 @@ Zero KO findings were reported. No elapsed removal time was supplied; the 30-sec
 bound is an implementation/test fact, not a newly measured field figure.
 No implementation change follows the field GO. Commit, push and candidate CI are
 now authorized by the workflow; the audit's later lots remain open.
+
+
+## Delivery and closure — 2026-09-06
+
+Implementation commit: `0374e43fd29c00acb3e1c6e3e3da77ecf89366d7`, pushed to
+origin/main after the Chief Engineer explicitly authorized that destination.
+[CI 34053044227](https://github.com/smonchamps/wind/actions/runs/34053044227) completed
+successfully: Windows 4m20s, macOS Intel 2m04s, Apple Silicon 2m03s; UI/coherence and
+dependency audit also green. The tree and origin/main matched at closure.
+
+The required pre-push full gate passed in 227 seconds: 776 Rust, 28 Node and
+229 UI tests passed, four Rust tests ignored, one optional UI benchmark skipped,
+zero flaky results. The earlier 476-second gate's one UI retry remains recorded
+above. The initial summary and implementation commit message omitted the two core
+example tests; 776 is the corrected all-targets Rust total, not an added test wave.
+
+Field GO: **“1-4 OK”**, 2026-09-06. Zero KO findings. The earlier visual request
+raised the queued-toast glyph by 2 CSS px (System A122); no touch-up followed this
+final field verdict. No real-account removal duration was supplied.
+
+Owned limits: SMTP option A can require manual verification for a response-less
+failure before DATA; precise transport phase control remains an explicitly
+unchosen alternative, now indexed as D-63 in [DEBT](DEBT.md). IDLE read cancellation
+does not promise cancellation of DNS, connect, writes or an already started SMTP
+handoff. IMAP operations lacking safe capabilities are refused before mutation.
+Existing D-27 retry scheduling and D-59 structural attachment identity remain open;
+this lot does not silently close the remaining audit program.
+
+Kaizen: **W3 = two full local gates** (476 s and the required pre-push 227 s);
+**STOP 2 KO = 0**. T1 input-equivalent usage is unavailable for this Codex task:
+`scripts/measure-sessions.mjs` reads Claude Code transcripts, not this runtime's
+usage. No substitute or zero consumption is asserted. This plan and STATE retain
+the durable handover. Next audit work: Lot 3, E7–E10, in the parent plan.

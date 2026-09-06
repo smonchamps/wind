@@ -12,37 +12,36 @@
 
 ## Where things stand, and what to do first
 
-**Lot 2 checkpoint, 2026-09-06:** [focused plan](PLAN-AUDIT-2026-09-LOT2.md),
-D4 answered “A”; D5 answered “Ok go”. E4–E6 are implemented but not delivered:
-conservative SMTP uncertainty with durable quarantine, truthful queued wording,
-startup lock refusal, enqueue acknowledgement recovery, account incarnation
-admission/draining and cancellable IDLE reads below TLS (100 ms slices, unchanged
-180 s heartbeat). Account removal waits up to 30 seconds, keeps unresolved sends
-and retains the account on timeout. The progress card disables concurrent actions.
-E6 persists IMAP transfer phases and uncertain incidents; confirmed COPY resumes
-only targeted source removal. Source/destination generation checks prevent old UID
-reuse. Incidents retain account/message context and acknowledgement never replays.
-The one fresh review retained three findings, now corrected: concurrent SMTP
-send/discard and stale queue snapshots, partial MOVE NO effects, and missing
-incident identity. Maintained RED/GREEN covers the first two; the UI RED found the
-missing context and concurrent decisions. Current core GREEN: 510 passed, two
-optional benchmarks ignored. The final UI fixing wave passes 5/5 with retries disabled; its actual WebView2
-capture was inspected. The full gate is GREEN in 476 seconds: 774 Rust and 28 Node
-tests passed; UI report 228 passed, one flaky (organized-mode Feed-card hover;
-its full serial file passed on automatic retry), one optional benchmark skipped.
-Four Rust tests were ignored. All other steps passed, including 440 contrast
-pairs, 68 System token values, 118 IPC commands and zero clippy warnings.
-The one review is complete with its three confirmed findings corrected.
-**STOP 2 validated on 2026-09-06**, verbatim “1-4 OK”; zero reported KO.
-The four field checks cover sending with two files, scheduled cancellation,
-IMAP mutations after sync and secondary-account removal. No removal duration was
-supplied, so no new field timing is claimed. **Next: commit/push and candidate CI.**
-The uncertain-delivery notice and the 2 CSS px toast glyph offset are approved.
-Prior Lot 1 approvals and its delivery remain valid.
+**Lot 2 DELIVERED on 2026-09-06:** [focused plan](PLAN-AUDIT-2026-09-LOT2.md),
+implementation `0374e43`, [CI 34053044227](https://github.com/smonchamps/wind/actions/runs/34053044227)
+green on Windows, macOS Intel and Apple Silicon. D4 “A”, D5 “Ok go”; final field
+verdict **“1-4 OK”**, zero KO. Queued-send glyph raised 2 CSS px (System A122).
+No removal duration was supplied, so no new field timing is claimed.
 
-**Active program: [PLAN-AUDIT-2026-09](PLAN-AUDIT-2026-09.md), Lot 1 DELIVERED on 2026-09-06: `e95adb4`, field validated, [CI 34038794672](https://github.com/smonchamps/wind/actions/runs/34038794672) green on Windows, macOS Intel and Apple Silicon.** Safe rich composition, durable draft editing snapshots with immutable attachment references, complete remote-draft import, and mailbox-generation guards are implemented (System A120–A121, ADR 0038). The final field replay confirms a Gmail draft and its two readable attachments after manual sync, plus centered sender selection. The final correction gate passed in 200 seconds: 727 Rust tests, 28 Node tests and 220 UI tests passed, 4 Rust tests ignored, 1 optional UI benchmark skipped, no flaky UI result. Migration/reversal were tested on synthetic legacy data; no migration was observed in the real installation. The audit program remains open: **active Lot 2, E4–E6, field validated and awaiting delivery CI**, covering uncertain SMTP acceptance, account lifecycle and safe IMAP actions. Existing atomic enqueue and draft sender-transfer work is already included in Lot 1; this does not close the remaining E5 requirements. Structural MIME-part identity (D-59) remains open in Lot 5. The complete findings and remaining scope live in the plan and its linked audit.
+E4–E6 now cover durable SMTP uncertainty, truthful send states, startup lock
+refusal, lost enqueue acknowledgement recovery, account-incarnation admission and
+draining, fast IDLE read cancellation, and safe journaled IMAP mutations. Confirmed
+COPY resumes only targeted source removal; uncertainty retains identifiable
+account/message context and never automatically repeats an old transfer.
+The one fresh review's three confirmed findings were corrected before field GO.
 
-✅ **Last job closed: [PLAN-APPLE-SILICON](PLAN-APPLE-SILICON.md)** (2026-09-06, one commit `0ef4f81`, CI green 33995481451 with the aarch64 leg passing the full suite natively, **ADR 0037**, debt **D-62 paid**, 0 KO at STOP 2) — **the Apple Silicon build**, opened the day an Apple Silicon tester asked to enter the beta (D-62's reopening condition). The Intel Air cross-builds `aarch64-apple-darwin` (D1); a second mac family `Wind_<v>_aarch64.{dmg,app.tar.gz,sig}` under the `darwin-aarch64` key (D3 — Tauri's word; the updater plugin keys on `{target}-{arch}`, verified in the pinned crate); `release-macos.sh` builds BOTH before the first upload (an x64 family without its twin is a broken release); `verify-release.ps1` expects **11 assets, 4 keys**, both dmgs proven to resolve whole (the review's catch), the mac arch table in one list; `quality-macos` is a matrix over both triples, aarch64 NATIVE on the runner (D2); universal binary refused (one signature under two keys = the crossing the guard forbids); vehicle **0.19.0** (D4). Two traps caught before release day: macOS `/bin/bash` is 3.2 (no `declare -A`), and the aarch64 dmg was the one asset no check covered. **Field split (stated at the GO)**: the build proof = E0 on the Air, **measured 2026-09-06: arm64 links in 13 min 24 s, `file` says arm64, the bundler names the dmg `_aarch64`** (D5, PLAN § 5 bis); the RUN proof = the tester's first install, since no arm64 Mac exists in the fleet. Closed the day before:
+Final pre-push gate: **227 s, 776 Rust + 28 Node + 229 UI passed**, four Rust ignored,
+one optional UI benchmark skipped, zero flaky results. The earlier 476-second gate
+had one Feed-card-hover retry; it remains recorded in the plan. The corrected Rust
+total includes two example tests omitted from the initial summary/commit message.
+The 13 controls passed, including 440 contrast pairs, 68 System token values,
+118 IPC commands and zero clippy warnings. Two full local gates, zero field KO;
+T1 unavailable because the repository's meter targets Claude Code transcripts.
+
+Owned limits remain explicit: D-63 records conservative SMTP pre-DATA quarantine;
+IDLE stop does not interrupt DNS/connect/writes or a started SMTP handoff. D-27
+ordinary queue retry scheduling and D-59 MIME-part identity remain open.
+**Next: Lot 3, E7–E10** in the parent plan. Lots 3–6 are not implemented by this
+closure. No release was requested; the published version remains 0.19.0.
+
+**Active program: [PLAN-AUDIT-2026-09](PLAN-AUDIT-2026-09.md), Lot 1 DELIVERED on 2026-09-06: `e95adb4`, field validated, [CI 34038794672](https://github.com/smonchamps/wind/actions/runs/34038794672) green on Windows, macOS Intel and Apple Silicon.** Safe rich composition, durable draft editing snapshots with immutable attachment references, complete remote-draft import, and mailbox-generation guards are implemented (System A120–A121, ADR 0038). The final field replay confirms a Gmail draft and its two readable attachments after manual sync, plus centered sender selection. The final correction gate passed in 200 seconds: 727 Rust tests, 28 Node tests and 220 UI tests passed, 4 Rust tests ignored, 1 optional UI benchmark skipped, no flaky UI result. Migration/reversal were tested on synthetic legacy data; no migration was observed in the real installation. The audit program remains open: **next Lot 3, E7–E10**, covering daily workflows, bounded work, account settings and keyboard interaction. Existing atomic enqueue and draft sender-transfer work is already included in Lot 1; the remaining E5 lifecycle requirements were delivered by Lot 2. Structural MIME-part identity (D-59) remains open in Lot 5. The complete findings and remaining scope live in the plan and its linked audit.
+
+✅ **Previously closed: [PLAN-APPLE-SILICON](PLAN-APPLE-SILICON.md)** (2026-09-06, one commit `0ef4f81`, CI green 33995481451 with the aarch64 leg passing the full suite natively, **ADR 0037**, debt **D-62 paid**, 0 KO at STOP 2) — **the Apple Silicon build**, opened the day an Apple Silicon tester asked to enter the beta (D-62's reopening condition). The Intel Air cross-builds `aarch64-apple-darwin` (D1); a second mac family `Wind_<v>_aarch64.{dmg,app.tar.gz,sig}` under the `darwin-aarch64` key (D3 — Tauri's word; the updater plugin keys on `{target}-{arch}`, verified in the pinned crate); `release-macos.sh` builds BOTH before the first upload (an x64 family without its twin is a broken release); `verify-release.ps1` expects **11 assets, 4 keys**, both dmgs proven to resolve whole (the review's catch), the mac arch table in one list; `quality-macos` is a matrix over both triples, aarch64 NATIVE on the runner (D2); universal binary refused (one signature under two keys = the crossing the guard forbids); vehicle **0.19.0** (D4). Two traps caught before release day: macOS `/bin/bash` is 3.2 (no `declare -A`), and the aarch64 dmg was the one asset no check covered. **Field split (stated at the GO)**: the build proof = E0 on the Air, **measured 2026-09-06: arm64 links in 13 min 24 s, `file` says arm64, the bundler names the dmg `_aarch64`** (D5, PLAN § 5 bis); the RUN proof = the tester's first install, since no arm64 Mac exists in the fleet. Closed the day before:
 
 ✅ **[PLAN-MACOS](PLAN-MACOS.md)** (2026-09-05, seven commits `2e8034c` → `42687d9`, field "everything ok" on the MacBook Air, CI green 33992168397, System **A118-A119**, **ADR 0036**) — **Wind's platform debut beyond Windows**: the whole workspace compiles, lints and unit-tests on `x86_64-apple-darwin` (the `quality-macos` CI job — proven UNSTAGED: its first run caught the missing png window icon every other net missed), Keychain credential storage (keyring `apple-native`), the update flow split per platform (macOS = the plugin's standard install+relaunch, D3; Windows keeps the MZ net and OUR NSIS launch), the single-instance lock and early trace now platform-true (`dirs::data_dir()` — the same source `app_data_dir()` reads) with a 2 s patient lock absorbing the mac update-relaunch race, `icon.icns`/`icon.png` from the one brand drawing (824/1024 Apple grid), `tauri.macos.conf.json` (dmg+app, ad-hoc `signingIdentity "-"`), `release-macos.sh` + `patch-manifest.mjs` + `verify-release.ps1` extended (8 assets, 3 platform keys, darwin key ↔ assets stand or fall together), the `__e2e` poka-yoke in ONE shared copy (`assert-dist-clean.mjs`, proven by breaking it), the gate now parses `.sh`, [MACOS-BUILD.md](MACOS-BUILD.md) (the Air step by step, Intel-checked) and the BETA guides' Gatekeeper section (ordered for macOS 15). **Cold release build on the Air: 13 min 08 s.** Three field findings fixed the same day: the test build demanded the signing key (`createUpdaterArtifacts:false` for tests), OAuth env absent (guide §6 bis — a dev build reads it at runtime, launch from the exporting Terminal), and **A119**: selects painted on BOTH engines (WKWebView kept the native glass; `appearance:none` + a Wind chevron in `--ink2`, all four select families wrapped) plus the onboarding Add button UNSTYLED on every platform since the English switch (French class names in a dynamic ternary E5d's applier missed — Windows' quiet default hid it, macOS's glass said it loud). D8 decided: the font stays the platform's (SF on macOS — the authored `-apple-system` stack). Debts opened: **D-60** (no notarization — Gatekeeper gesture + a possible one-per-credential Keychain prompt after an ad-hoc update, watch at the SECOND mac release), **D-61** (no mac e2e — WKWebView has no CDP; the mac gate = CI + field), **D-62** (Intel only). Stated limits: a Windows-only release drops the darwin key from `latest.json` until `release-macos.sh` reruns — **the mac half is part of EVERY release** (make-release prints the reminder); the mac auto-update is only field-provable at the second mac release. **The 0.19.0 MINOR (D7) carries the macOS debut** — CHANGELOG entry written at close; release order: `make-release.ps1` on Windows FIRST, then `release-macos.sh` on the Air, then `verify-release.ps1`. Closed the day before:
 

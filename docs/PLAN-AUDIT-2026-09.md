@@ -4,7 +4,7 @@ Opened: 2026-09-06.
 Statement: implement the recommendations of AUDIT-2026-09-06 while following WORKFLOW.md.
 Baseline: 7cdc4495c68c52a2a7d02702d52f86d368ae0653, Wind 0.19.0.
 
-**Status: Lot 1 DELIVERED on 2026-09-06 — implementation commit `e95adb4`, field validated, CI 34038794672 green. D1, D2, D3 and the first visual increment were approved on 2026-09-06. Lots 2–6 remain open; this program is not closed.**
+**Status: Lot 1 DELIVERED on 2026-09-06 — implementation commit `e95adb4`, field validated, CI 34038794672 green. D1, D2, D3 and the first visual increment were approved on 2026-09-06. Lot 2 is DELIVERED in `0374e43`, field “1-4 OK” and CI 34053044227 green on 2026-09-06. Lots 3–6 remain open; this program is not closed.**
 
 ## 1. Finding and evidence
 
@@ -12,7 +12,7 @@ Source: [audit report](../docs/AUDIT-2026-09-06.md).
 Operating method: [WORKFLOW](../docs/WORKFLOW.md), [job skill](../.claude/skills/job/SKILL.md), [STANDARD section 2](../docs/STANDARD.md).
 At the audit baseline, the System ended at amendment A119 and STATE recorded the Apple Silicon job as closed. Lot 1 adds A120–A121 and ADR 0038.
 
-The audit distinguishes 5 security findings, 31 behavioral defects, 10 architecture recommendations, 7 product recommendations and 8 comment/documentation findings. Its debt table covers all 61 entries actually present in DEBT.md. These are overlapping views of the same work, not 122 independent bugs.
+The audit distinguishes 5 security findings, 31 behavioral defects, 10 architecture recommendations, 7 product recommendations and 8 comment/documentation findings. Its debt table covers all 61 entries present in the baseline DEBT.md. These are overlapping views of the same work, not 122 independent bugs.
 
 The baseline's Rust tests, clippy, UI lint/build and small Node suites passed during the audit. Passing them did not exercise the following failures. The synthetic probes were replayed on the unchanged baseline on 2026-09-06:
 
@@ -120,7 +120,7 @@ Inner gates: mail-render/core/imap unit files, whole impacted composer/attachmen
 
 ### Lot 2 — Irreversible effects and account lifecycle
 
-Started on 2026-09-06 after the Chief Engineer's go. The [focused Lot 2 plan](PLAN-AUDIT-2026-09-LOT2.md) records reproductions, measured SMTP alternatives and the implementation contract. D4 was answered “A” and D5 “Ok go” on 2026-09-06. E4–E6 are implemented; the one fresh review is complete and its three confirmed findings are corrected. Full gate GREEN in 476 seconds: 774 Rust, 28 Node, 228 UI passed, one UI flaky (passed on retry), four Rust ignored and one optional UI benchmark skipped. STOP 2 was validated on 2026-09-06, verbatim “1-4 OK”, with zero reported KO. No removal duration was supplied. Commit/push and candidate CI follow.
+Started on 2026-09-06 after the Chief Engineer's go. The [focused Lot 2 plan](PLAN-AUDIT-2026-09-LOT2.md) records reproductions, measured SMTP alternatives and the implementation contract. D4 was answered “A” and D5 “Ok go” on 2026-09-06. E4–E6 are implemented; the one fresh review is complete and its three confirmed findings are corrected. Full gate GREEN in 476 seconds: 776 Rust, 28 Node, 228 UI passed, one UI flaky (passed on retry), four Rust ignored and one optional UI benchmark skipped. STOP 2 was validated on 2026-09-06, verbatim “1-4 OK”, with zero reported KO. No removal duration was supplied. Delivered in `0374e43`; [CI 34053044227](https://github.com/smonchamps/wind/actions/runs/34053044227) is green on Windows and both mac architectures. The required pre-push gate passed in 227 seconds, with 229 UI passes and zero flaky results. The Rust total includes two example tests omitted from the initial summary.
 
 | Step | Implementation and acceptance | Audit coverage |
 |---|---|---|

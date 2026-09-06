@@ -286,6 +286,10 @@ deferral = one justified line.)
 
 ### D-49 · Cleanliness deferred from the PLAN-AUDIT-V1 review (audit wave 3)
 
+- **Partial payment (2026-09-06, audit Lot 2, `0374e43`)**: SMTP setup now
+  uses typed connection/authentication errors. IMAP's connection-prefix
+  classifier remains; this does not close the whole cleanliness list.
+
 - **Fact (fresh-eyes review, 2026-09-02)**: nine cleanliness
   candidates checked but not taken up, wave 1 only fixing S1 issues:
   `into_inner` copy-pasted seven times (one `verrou_repris` helper);
@@ -1174,3 +1178,19 @@ both sets, select per `lang`, unpin the script.
   debut.
 - **Reopens if**: the first mac-only regression a tester finds that
   the Windows suite cannot see.
+
+
+### D-63 · Conservative SMTP quarantine before an unobservable submission stage
+
+- **Since**: 2026-09-06, [audit Lot 2](PLAN-AUDIT-2026-09-LOT2.md), Chief Engineer
+  decision D4 “A”; delivered in `0374e43`, field “1-4 OK”.
+- **What**: the retained high-level lettre transport does not expose the stage of
+  response-less failures. Some pre-DATA failures therefore require the same manual
+  verification as a lost final acknowledgement, despite no message having left.
+- **Why owned**: the approved option retains secure setup and capability handling
+  in the maintained transport, and prefers a delayed message over a duplicate.
+  Stage-aware SMTP was measured as an alternative but was not selected; its broader
+  setup/authentication responsibilities are not part of this lot.
+- **Reopens if**: field reports show frequent unnecessary manual verification of
+  proven pre-DATA failures. Revisit the measured alternative with TLS/authentication
+  coverage; never infer non-delivery from an absent Sent-folder echo alone.
