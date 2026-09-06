@@ -4,7 +4,7 @@ Opened: 2026-09-06.
 Statement: implement the recommendations of AUDIT-2026-09-06 while following WORKFLOW.md.
 Baseline: 7cdc4495c68c52a2a7d02702d52f86d368ae0653, Wind 0.19.0.
 
-**Status: Lot 1 is implemented and field-validated on 2026-09-06. The final correction gate passed in 200 seconds; commit and green CI are pending. D1, D2, D3 and the first visual increment were approved on 2026-09-06. Lots 2–6 remain open.**
+**Status: Lot 1 DELIVERED on 2026-09-06 — implementation commit `e95adb4`, field validated, CI 34038794672 green. D1, D2, D3 and the first visual increment were approved on 2026-09-06. Lots 2–6 remain open; this program is not closed.**
 
 ## 1. Finding and evidence
 
@@ -421,3 +421,9 @@ Only the targeted real-account replay remains for this field correction: after c
 The Chief Engineer answered **"1 et 2 ok"** to the targeted replay: (1) after manual sync, the Gmail draft appears with both attachments present and readable; (2) the From label, selected account and chevron align in a forward. This closes both reported field defects. The earlier approvals remain valid. No migration was observed on this installation; migration and reversal evidence remains synthetic, not a claimed real-account measurement. <!-- lang:fr -->
 
 Lot 1 has its field GO. Commit/push and the CI verdict follow; the complete audit program is not closed. Next is Lot 2, E4–E6, with the remaining account lifecycle and irreversible-delivery behavior described above. The E5 transaction work already integrated for editing snapshots must be reused, not repeated.
+
+### Lot 1 publication and CI — 2026-09-06
+
+Implementation commit `e95adb4c8335208816005c5bc57765ce0d19700f` is published on `origin/main`. Automatic approval review initially blocked publication; the Chief Engineer subsequently authorized the push explicitly. The mandatory pre-push full gate passed in **179 seconds**: 727 Rust tests, 28 Node tests and 220 UI tests passed; 4 Rust tests ignored, 1 optional UI benchmark skipped, 0 flaky UI tests. No source edits occurred during the gate.
+
+[CI 34038794672](https://github.com/smonchamps/wind/actions/runs/34038794672) passed on that exact commit: Windows 3m55s, macOS Intel 2m53s, macOS Apple Silicon 1m38s, UI checks 14s and dependency audit 25s. Field validation, publication and CI are complete for Lot 1. The final documentary commit records this verdict; it does not implement or close Lots 2–6.

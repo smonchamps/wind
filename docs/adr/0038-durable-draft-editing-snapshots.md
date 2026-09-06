@@ -1,6 +1,6 @@
 # ADR 0038 — Durable draft editing snapshots
 
-Date: 2026-09-06 · Status: accepted, implemented and field-validated; CI pending.
+Date: 2026-09-06 · Status: accepted and delivered in `e95adb4`, field validated, CI green.
 Chief Engineer: D3 of [PLAN-AUDIT-2026-09](../PLAN-AUDIT-2026-09.md).
 
 ## Context
@@ -78,6 +78,8 @@ and sender-row misalignment; both are corrected locally. The new full gate
 passed in 200 seconds (727 Rust and 220 UI tests passed, no flaky result).
 The Chief Engineer approved the targeted field replay on 2026-09-06.
 Migration/reversal were verified synthetically; no migration was observed in
-the real installation. Commit and CI remain due.
+the real installation. Implementation commit `e95adb4` is published, with
+[CI 34038794672](https://github.com/smonchamps/wind/actions/runs/34038794672)
+green on Windows and both macOS architectures.
 Broader SMTP outcome reporting, account removal coordination and attachment
 caching remain in their separately planned lots.
