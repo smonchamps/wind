@@ -30,6 +30,7 @@ mail-imap = { path = "crates/mail-imap" }
 mail-render = { path = "crates/mail-render" }
 mail-smtp = { path = "crates/mail-smtp" }
 ammonia = "4.1"
+cssparser = { version = "0.37", default-features = false }
 anyhow = "1"
 base64 = "0.22"
 # Parseur/générateur iCalendar (invitations, PLAN-INVITATIONS D1) — sans les

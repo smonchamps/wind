@@ -71,6 +71,11 @@ pub struct RemoteDraft {
     /// "To" field as is: a draft is allowed to be incomplete, that is
     /// even its point.
     pub to_raw: String,
+    pub cc_raw: String,
+    pub bcc_raw: String,
+    pub important: bool,
+    pub thread_headers: ThreadHeaders,
+    pub attachments: Vec<crate::DraftAttachmentFull>,
     pub subject: String,
     /// `text/plain` part, when there is one.
     pub text: Option<String>,
@@ -94,6 +99,47 @@ pub struct MailboxSnapshot {
     /// — without it, "12,000 messages fetched" does not say whether we
     /// are a tenth of the way in or at the end.
     pub exists: u32,
+}
+
+/// A network operation must refer to the same UID namespace throughout.
+pub fn verify_mailbox_generation(
+    server: &mut dyn MailServer,
+    mailbox: &str,
+    uid_validity: u32,
+) -> Result<(), Error> {
+    if server.select(mailbox)?.uid_validity != uid_validity {
+        return Err(Error::StaleMailbox);
+    }
+    Ok(())
+}
+
+pub(crate) fn fetch_bodies_checked(
+    server: &mut dyn MailServer,
+    mailbox: &str,
+    uid_validity: u32,
+    uids: &[Uid],
+) -> Result<Vec<(Uid, FetchedBody)>, Error> {
+    verify_mailbox_generation(server, mailbox, uid_validity)?;
+    let bodies = server.fetch_bodies_html(mailbox, uids)?;
+    verify_mailbox_generation(server, mailbox, uid_validity)?;
+    let mut remaining: std::collections::HashSet<Uid> = uids.iter().copied().collect();
+    Ok(bodies
+        .into_iter()
+        .filter(|(uid, _)| remaining.remove(uid))
+        .collect())
+}
+
+pub fn fetch_attachment_checked(
+    server: &mut dyn MailServer,
+    mailbox: &str,
+    uid_validity: u32,
+    uid: Uid,
+    index: usize,
+) -> Result<Option<Vec<u8>>, Error> {
+    verify_mailbox_generation(server, mailbox, uid_validity)?;
+    let bytes = server.fetch_attachment(mailbox, uid, index)?;
+    verify_mailbox_generation(server, mailbox, uid_validity)?;
+    Ok(bytes)
 }
 
 /// A server folder, under its TWO names.

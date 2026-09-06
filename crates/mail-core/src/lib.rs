@@ -14,6 +14,7 @@ mod compose;
 mod contacts;
 mod crash;
 pub mod cycle;
+mod draft_edit;
 mod drafts;
 mod echo;
 mod envelope;
@@ -24,6 +25,7 @@ mod nav;
 mod notify;
 mod outbox;
 mod remote;
+mod remote_drafts;
 mod search;
 mod store;
 mod sync;
@@ -39,14 +41,14 @@ pub use backfill::{
     BACKFILL_BATCH, BackfillReport, HORIZONS_IMPORT, NO_HORIZON, THREAD_HEADER_BATCH,
     backfill_bodies, backfill_percent, backfill_recipients, backfill_thread_headers, horizon_epoch,
 };
-pub use body::load_body;
+pub use body::{load_body, load_body_version};
 pub use compose::{
-    Draft, FORWARD_MARKER, ForwardSource, compose, forward_source, forward_subject, quote_forward,
-    quote_forward_html, quote_reply, quote_reply_html, reply_all_split, reply_subject, reply_to,
-    substitute_forward,
+    Draft, compose, forward_subject, quote_forward, quote_forward_html, quote_reply,
+    quote_reply_html, reply_all_split, reply_subject, reply_to,
 };
 pub use contacts::Contact;
 pub use crash::{CrashReport, RawPanic, redact};
+pub use draft_edit::DraftEdit;
 pub use drafts::{
     DraftAttachmentFull, DraftAttachmentMeta, DraftAttachmentSaved, DraftContent, DraftPull,
     DraftSaved, MAX_ATTACHMENTS_BYTES, SavedDraft, plan_draft_pull,
@@ -63,13 +65,14 @@ pub use notify::{Lang, Notification, arrivals_to_notify, notification_for};
 pub use outbox::{OutboxAttachment, OutboxMessage, OutboxReport, OutboxState, flush_outbox};
 pub use remote::{
     FetchedBody, FlagState, Folder, FolderStatus, FolderWithStatus, MailServer, MailboxSnapshot,
-    MessageRecipients, RemoteDraft, SpecialUse, ThreadHeaders,
+    MessageRecipients, RemoteDraft, SpecialUse, ThreadHeaders, fetch_attachment_checked,
+    verify_mailbox_generation,
 };
 pub use search::WIDE_QUERY_THRESHOLD;
 pub use store::{
     Account, AccountConfig, AdoptionProgress, CLEANUP_RANGES, CLEANUP_SCOPES, CleanupGroup,
-    CleanupSession, InvitationRank, PREF_ARRIVAL_BUBBLES, PREF_LANG, PREF_LAST_SYNC, Store,
-    SyncState, UnifiedRow,
+    CleanupSession, InvitationRank, MailboxIdentity, PREF_ARRIVAL_BUBBLES, PREF_LANG,
+    PREF_LAST_SYNC, Store, SyncState, UnifiedRow,
 };
 pub use sync::{
     LocalMarker, SYNC_BYTES_PER_MESSAGE, SyncEngine, SyncMode, SyncReport, disk_shortfall,

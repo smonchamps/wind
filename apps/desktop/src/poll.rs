@@ -45,7 +45,7 @@ pub(crate) use commands::{db_path, lock_accounts};
 /// `CycleConnection` adds — the sent folder's name, pulling drafts —
 /// are answered HERE, on the crate that already knows both mail-core
 /// and mail-imap (neither may know the other exists).
-struct ShellServer<'a>(&'a mut ImapServer);
+pub(crate) struct ShellServer<'a>(pub(crate) &'a mut ImapServer);
 
 impl mail_core::MailServer for ShellServer<'_> {
     fn select(&mut self, mailbox: &str) -> Result<mail_core::MailboxSnapshot, mail_core::Error> {
@@ -189,34 +189,42 @@ impl mail_core::cycle::CycleConnection for ShellServer<'_> {
             .map_err(|err| err.to_string())?;
         let plan = mail_core::plan_draft_pull(&local, &remote, &tombstones);
 
-        for id in plan.stale {
-            store.drop_stale_draft(id).map_err(|err| err.to_string())?;
-        }
         for uid in plan.fetch {
-            let Some(draft) = self.0.fetch_draft(uid).map_err(|err| err.to_string())? else {
-                // Gone between the listing and the read: no
-                // consequence.
-                continue;
-            };
-            // The body arrives in one of two possible MIME forms; it
-            // goes through THE boundary (`body_boundary`) like any
-            // body entering the database: sanitized HTML kept (a rich
-            // draft pushed then pulled back keeps its formatting),
-            // text derived — the MIME text only serves as a fallback
-            // when there's no HTML.
-            let text = draft.text.unwrap_or_default();
-            let (body, body_html) = commands::body_boundary(text, draft.html.as_deref());
+            if self.0.drafts_uidvalidity().map_err(|err| err.to_string())? != validity {
+                return Err(mail_core::Error::StaleMailbox.to_string());
+            }
+            let mut draft = self
+                .0
+                .fetch_draft(uid)
+                .map_err(|err| err.to_string())?
+                .ok_or_else(|| {
+                    "remote draft disappeared during import; retrying next cycle".to_string()
+                })?;
+            if self.0.drafts_uidvalidity().map_err(|err| err.to_string())? != validity {
+                return Err(mail_core::Error::StaleMailbox.to_string());
+            }
+            let (body, html) = commands::body_boundary(
+                draft.text.take().unwrap_or_default(),
+                draft.html.as_deref(),
+            );
+            draft.text = Some(body);
+            draft.html = html;
             store
-                .import_remote_draft(
-                    account_id,
-                    uid,
-                    &draft.to_raw,
-                    &draft.subject,
-                    &body,
-                    body_html.as_deref(),
-                )
+                .import_remote_draft_complete(account_id, validity, uid, &draft)
                 .map_err(|err| err.to_string())?;
         }
+        // Retain old mirrors on any failed fetch/import; only complete imports
+        // become visible. One message at a time bounds retained MIME payloads.
+        if self.0.drafts_uidvalidity().map_err(|err| err.to_string())? != validity {
+            return Err(mail_core::Error::StaleMailbox.to_string());
+        }
+        let stale: Vec<_> = local
+            .into_iter()
+            .filter(|draft| plan.stale.contains(&draft.id))
+            .collect();
+        store
+            .finish_remote_draft_pull(account_id, validity, &stale)
+            .map_err(|err| err.to_string())?;
         Ok(())
     }
 }
@@ -461,8 +469,9 @@ pub(crate) fn connected_jobs(app: &AppHandle) -> Result<Vec<(i64, AccountSession
 
 /// The light pass of ONE account (ADR 0018): the one the IDLE watcher
 /// triggers — on `EXISTS`, and on every (re)connection (a mail that
-/// arrived during an outage never emits EXISTS, 2nd field finding). Same
-/// work as `sync_inbox_light` for this account: guarded poll (E2a), mail
+/// arrived during an outage never emits EXISTS, 2nd field finding).
+/// INBOX only: draft imports use the manual and scheduled light sync.
+/// Guarded poll (E2a), mail
 /// counted and generation bumped (the UI reloads on the poll), bubbles
 /// (P1). Best effort: incidents go to the console — account id and
 /// counts only (§6.8).

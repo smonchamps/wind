@@ -22,6 +22,7 @@ use crate::search;
 use crate::thread;
 
 mod cleanup;
+mod draft_storage;
 mod migrations;
 mod prefs;
 mod screener;
@@ -571,7 +572,16 @@ pub struct AdoptionProgress {
     pub total: u64,
 }
 
-/// Persisted sync state of a mailbox.
+/// Account, mailbox and UID namespace captured before a remote read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MailboxIdentity {
+    pub account_id: i64,
+    pub mailbox: String,
+    pub mailbox_id: i64,
+    pub uid_validity: u32,
+}
+
+/// Persisted synchronization cursor, separate from the mailbox identity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncState {
     pub mailbox_id: i64,
@@ -596,6 +606,8 @@ pub struct Account {
 /// play.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnifiedRow {
+    pub mailbox_id: i64,
+    pub uid_validity: u32,
     pub account_id: i64,
     pub account_email: String,
     /// The mailbox that CONTAINS this message, under its network name.
@@ -1900,11 +1912,43 @@ impl Store {
         attachments: &[Attachment],
         invitation: Option<&InvitationRow>,
     ) -> Result<(), Error> {
+        self.write_body((mailbox_id, None), uid, html, attachments, invitation)
+    }
+
+    pub(crate) fn save_body_checked(
+        &self,
+        state: &MailboxIdentity,
+        uid: Uid,
+        html: &str,
+        attachments: &[Attachment],
+        invitation: Option<&InvitationRow>,
+    ) -> Result<(), Error> {
+        self.write_body(
+            (state.mailbox_id, Some(state)),
+            uid,
+            html,
+            attachments,
+            invitation,
+        )
+    }
+
+    fn write_body(
+        &self,
+        identity: (i64, Option<&MailboxIdentity>),
+        uid: Uid,
+        html: &str,
+        attachments: &[Attachment],
+        invitation: Option<&InvitationRow>,
+    ) -> Result<(), Error> {
+        let (mailbox_id, expected_identity) = identity;
         // Same rule as the preview backfill: HTML parsing is paid for
         // BEFORE opening the transaction — never any CPU inside the
         // write-lock window.
         let preview = crate::body::extract_preview(html);
         let tx = self.0.unchecked_transaction()?;
+        if let Some(expected) = expected_identity {
+            self.verify_mailbox_identity(expected)?;
+        }
         tx.execute(
             "INSERT OR REPLACE INTO bodies (mailbox_id, uid, html, scanned, preview)
              VALUES (?1, ?2, ?3, 1, ?4)",
@@ -1973,6 +2017,50 @@ impl Store {
             )?;
         }
         tx.commit()?;
+        Ok(())
+    }
+
+    pub fn mailbox_identity(
+        &self,
+        account_id: i64,
+        mailbox: &str,
+    ) -> Result<Option<MailboxIdentity>, Error> {
+        Ok(self
+            .sync_state(account_id, mailbox)?
+            .map(|state| MailboxIdentity {
+                account_id,
+                mailbox: mailbox.to_owned(),
+                mailbox_id: state.mailbox_id,
+                uid_validity: state.uid_validity,
+            }))
+    }
+
+    pub fn thread_messages_version(
+        &self,
+        identity: &MailboxIdentity,
+        uid: Uid,
+        thread_id: i64,
+    ) -> Result<Vec<UnifiedRow>, Error> {
+        let tx = self.conn().unchecked_transaction()?;
+        self.verify_mailbox_identity(identity)?;
+        let belongs: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2 AND thread_id = ?3)", params![identity.mailbox_id, uid, thread_id], |r| r.get(0))?;
+        if !belongs {
+            return Err(Error::StaleMailbox);
+        }
+        let rows = self.thread_messages(thread_id)?;
+        tx.commit()?;
+        Ok(rows)
+    }
+
+    pub fn verify_mailbox_identity(&self, expected: &MailboxIdentity) -> Result<(), Error> {
+        let current = self.0.query_row(
+            "SELECT EXISTS(SELECT 1 FROM mailboxes WHERE id = ?1 AND account_id = ?2 AND name = ?3 AND uid_validity = ?4)",
+            params![expected.mailbox_id, expected.account_id, expected.mailbox, expected.uid_validity],
+            |row| row.get::<_, bool>(0),
+        )?;
+        if !current {
+            return Err(Error::StaleMailbox);
+        }
         Ok(())
     }
 

@@ -278,140 +278,22 @@ pub fn quote_reply_html(sender: Option<&str>, date: Option<&str>, body_html: &st
     )
 }
 
-/// Rich block of a forward: the original header (From/Date/Subject)
-/// escaped, then the HTML body as is — a forward transmits.
-/// The attribute that marks the forwarded block in a composed body
-/// (PLAN-AUDIT-V2 E10, D8). Its value names the source
-/// (`account/uid/mailbox`): on send, [`substitute_forward`] replaces
-/// everything that follows with the render WITH remote images — the
-/// composer itself loaded none.
-pub const FORWARD_MARKER: &str = "data-wind-transfert";
-
+/// Escaped attribution followed by the editable body. Image preparation belongs
+/// to mail-render; this markup carries no authority to read another message.
 pub fn quote_forward_html(
     sender: Option<&str>,
     date: Option<&str>,
     subject: Option<&str>,
     body_html: &str,
-    source: Option<&str>,
 ) -> String {
-    let opening = match source {
-        Some(source) => format!("<div {FORWARD_MARKER}=\"{}\">", escape_attribute(source)),
-        None => "<div>".to_string(),
-    };
-    // The editable blank line AFTER the block (field, STOP 2, 2026-09-02):
-    // in a contenteditable, the cursor placed after the last block falls
-    // INSIDE it — a word typed "after" used to live inside the marked
-    // `<div>`, and the send-time substitution swept it away too. Here,
-    // the cursor has an outside.
     format!(
-        "<br><br>{}<br>{opening}{body_html}</div><div><br></div>",
+        "<br><br>{}<br><div>{body_html}</div><div><br></div>",
         crate::echo::text_as_html(&forward_header(sender, date, subject)),
     )
 }
 
-fn escape_attribute(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('"', "&quot;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-}
-
-/// Where a forwarded block comes from: the account, the UID and the
-/// mailbox of the original message — what the marker carries
-/// (`account/uid/mailbox`, the mailbox last because it can contain `/`).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ForwardSource {
-    pub account_id: i64,
-    pub uid: crate::Uid,
-    pub mailbox: String,
-}
-
-impl ForwardSource {
-    /// The value of the marker — the exact inverse of [`forward_source`].
-    pub fn key(&self) -> String {
-        format!("{}/{}/{}", self.account_id, self.uid, self.mailbox)
-    }
-}
-
-/// The source of the forwarded block of a composed body, as the marker
-/// carries it — `None` without a marker (reply, new message) or if the
-/// value doesn't have the expected shape. Pure decision: the shell only
-/// re-reads the source and substitutes (review, STANDARD §4).
-pub fn forward_source(body_html: &str) -> Option<ForwardSource> {
-    let key = format!("{FORWARD_MARKER}=\"");
-    let start = body_html.find(&key)? + key.len();
-    let end = body_html[start..].find('"')? + start;
-    let value = body_html[start..end]
-        .replace("&quot;", "\"")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&amp;", "&");
-    let (account, rest) = value.split_once('/')?;
-    let (uid, mailbox) = rest.split_once('/')?;
-    Some(ForwardSource {
-        account_id: account.parse().ok()?,
-        uid: uid.parse().ok()?,
-        mailbox: mailbox.to_string(),
-    })
-}
-
-/// Replaces the forwarded block — the marked `<div>`, up to ITS closing
-/// tag (nested `<div>`s in the quoted mail are counted) — with
-/// `fresh_body` (the render with its remote images). What the user typed
-/// BEFORE and AFTER the block stays; an edit INSIDE the block is lost
-/// (a stated limit: we forward, we don't comment line by line). A block
-/// that is never closed is replaced up to the end.
-pub fn substitute_forward(body_html: &str, fresh_body: &str) -> String {
-    // By the ATTRIBUTE, then the tag that carries it (review): an editor
-    // that sets `style` or `class` before the marker doesn't make it miss.
-    let key = format!(" {FORWARD_MARKER}=");
-    let Some(attribute) = body_html.find(&key) else {
-        return body_html.to_string();
-    };
-    let Some(start) = body_html[..attribute].rfind('<') else {
-        return body_html.to_string();
-    };
-    let end = block_end(&body_html[start..]).map_or(body_html.len(), |l| start + l);
-    format!(
-        "{}<div>{fresh_body}</div>{}",
-        &body_html[..start],
-        &body_html[end..]
-    )
-}
-
-/// The length of the first `<div …>…</div>` element of `html`, nested
-/// closings included — `None` if it is never closed. Case-insensitive
-/// (the composer may rewrite `<DIV>`).
-fn block_end(html: &str) -> Option<usize> {
-    // On BYTES, never `str[i..]`: advancing byte by byte used to land in
-    // the middle of an "é" and panic (gate andon, 2026-09-02). The tags
-    // being searched for are ASCII: the returned index is a character
-    // boundary.
-    let lower = html.to_ascii_lowercase();
-    let lower = lower.as_bytes();
-    let mut depth = 0usize;
-    let mut i = 0;
-    while i < lower.len() {
-        if lower[i..].starts_with(b"</div") {
-            depth = depth.checked_sub(1)?;
-            let close = lower[i..].iter().position(|&c| c == b'>')? + i + 1;
-            if depth == 0 {
-                return Some(close);
-            }
-            i = close;
-        } else if lower[i..].starts_with(b"<div") {
-            depth += 1;
-            i += 4;
-        } else {
-            i += 1;
-        }
-    }
-    None
-}
-
 /// Block of a forward: the original header (From/Date/Subject) then the
-/// text as is — a forward transmits, it doesn't comment line by line.
+/// editable text as is.
 pub fn quote_forward(
     sender: Option<&str>,
     date: Option<&str>,
@@ -723,101 +605,6 @@ mod tests {
         );
     }
 
-    /// PLAN-AUDIT-V2 E10, CE decision D8: "Forward" loads NO remote image
-    /// into the composer (the tracking pixel used to fire on click,
-    /// "Cancel" didn't undo it); on send, the forwarded block is replaced
-    /// by the render WITH the real URLs — the recipient gets the same
-    /// message.
-    /// Gate andon (2026-09-02): "transféré" in the block — a non-ASCII
-    /// byte made `block_end` PANIC (slicing a `str` off a character
-    /// boundary); the async task crashed and `queue_send` never answered:
-    /// composition frozen, no toast, no error. The review's test only had
-    /// ASCII.
-    #[test]
-    fn an_accented_block_substitutes_without_panicking() {
-        let body = format!(
-            "<p>Salut é</p><div {FORWARD_MARKER}=\"1/17/INBOX\">             <p>Message transféré — été</p><div>à</div></div><p>après</p>" // lang:fr
-        );
-        assert_eq!(
-            substitute_forward(&body, "Z"),
-            "<p>Salut é</p><div>Z</div><p>après</p>" // lang:fr
-        );
-    }
-
-    #[test]
-    fn a_forward_loads_no_remote_image_at_composition_but_renders_them_at_send() {
-        let blocked = r#"<p>letter</p><img src="data:image/gif;base64,R0lGOD" alt="">"#;
-        let source = ForwardSource {
-            account_id: 3,
-            uid: 42,
-            mailbox: "INBOX".to_string(),
-        };
-        let compose = quote_forward_html(
-            Some("Alice"),
-            Some("2026-09-02"),
-            Some("Letter"),
-            blocked,
-            Some(&source.key()),
-        );
-        assert!(!compose.contains("https://"), "{compose}");
-        assert!(
-            compose.contains(r#"data-wind-transfert="3/42/INBOX""#),
-            "{compose}"
-        );
-        assert_eq!(forward_source(&compose), Some(source));
-
-        // Typed BEFORE and AFTER the block: both remain (review — the
-        // first version truncated everything after the marker).
-        let edited = format!("<div>my word</div>{compose}<div>and my conclusion</div>");
-        let fresh = r#"<p>letter</p><img src="https://x.example/p.gif" alt="">"#;
-        let sent = substitute_forward(&edited, fresh);
-        assert!(sent.starts_with("<div>my word</div><br><br>"), "{sent}");
-        assert!(
-            sent.ends_with("</div><div>and my conclusion</div>"),
-            "{sent}"
-        );
-        assert!(sent.contains("https://x.example/p.gif"), "{sent}");
-        assert!(!sent.contains("data:image"), "{sent}");
-        assert!(!sent.contains("data-wind-transfert"), "{sent}");
-        // Quoted mail full of nested <div>s: the closing tag found is the
-        // RIGHT one, not the first one to come along.
-        let nested = quote_forward_html(
-            None,
-            None,
-            None,
-            "<div><div>a</div><div>b</div></div>",
-            Some("1/1/INBOX"),
-        );
-        let sent = substitute_forward(&format!("{nested}<p>end</p>"), "X");
-        // Between the block and "end": the forward's editable blank line
-        // (field, STOP 2) — it lives OUTSIDE the block, it survives.
-        assert!(
-            sent.ends_with("<div>X</div><div><br></div><p>end</p>"),
-            "{sent}"
-        );
-        // The editor placed an attribute BEFORE the marker: found anyway.
-        let reserialized = nested.replace(
-            "<div data-wind-transfert",
-            r#"<div style="x" data-wind-transfert"#,
-        );
-        assert!(substitute_forward(&reserialized, "Y").contains("<div>Y</div>"));
-        // Without a marker (a reply, a new message): nothing moves.
-        assert_eq!(substitute_forward("<p>a</p>", fresh), "<p>a</p>");
-        assert_eq!(forward_source("<p>a</p>"), None);
-        // A mailbox name with quotes AND `/` survives the round trip; a
-        // malformed value is worth nothing.
-        let weird = quote_forward_html(None, None, None, "", Some(r#"1/2/[Gmail]/Dossier "cité""#)); // lang:fr
-        assert_eq!(
-            forward_source(&weird),
-            Some(ForwardSource {
-                account_id: 1,
-                uid: 2,
-                mailbox: r#"[Gmail]/Dossier "cité""#.to_string() // lang:fr
-            })
-        );
-        assert_eq!(forward_source(r#"<div data-wind-transfert="x/y/z">"#), None);
-    }
-
     #[test]
     fn reply_to_received_targets_the_sender() {
         assert_eq!(
@@ -907,7 +694,6 @@ mod tests {
             Some("2026-08-19 10:23"),
             Some("Quote <urgent>"),
             "<p>the body</p>",
-            None,
         );
         assert!(
             block.contains("---------- Message transféré ----------"), // lang:fr
@@ -922,26 +708,16 @@ mod tests {
         );
     }
 
-    /// Field, STOP 2, PLAN-AUDIT-V2 (2026-09-02): "a word typed AFTER the
-    /// block disappeared on send". In a contenteditable, the cursor
-    /// placed after the last block falls INSIDE it; the word therefore
-    /// lived inside the marked `<div>`, and the substitution swept it
-    /// away too. The block ends with an editable blank line — the cursor
-    /// has an outside.
     #[test]
     fn a_forward_leaves_an_editable_line_after_the_block() {
-        let block = quote_forward_html(None, None, None, "<p>body</p>", Some("1/2/INBOX"));
+        let block = quote_forward_html(None, None, None, "<p>body</p>");
         assert!(block.ends_with("</div><div><br></div>"), "{block}");
-        let without_source = quote_forward_html(None, None, None, "<p>body</p>", None);
-        assert!(
-            without_source.ends_with("</div><div><br></div>"),
-            "{without_source}"
-        );
+        assert!(!block.contains("data-wind"), "{block}");
     }
 
     #[test]
     fn quote_forward_html_uses_placeholders_for_missing_metadata() {
-        let block = quote_forward_html(None, None, None, "<p>body</p>", None);
+        let block = quote_forward_html(None, None, None, "<p>body</p>");
         assert!(block.contains("De : (expéditeur inconnu)"), "{block}"); // lang:fr
         assert!(!block.contains("Date :"), "{block}");
         assert!(block.contains("Objet : (sans objet)"), "{block}"); // lang:fr

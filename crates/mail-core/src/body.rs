@@ -7,30 +7,29 @@ use crate::error::Error;
 use crate::remote::MailServer;
 use crate::store::Store;
 
-/// Raw HTML body (pre-sanitization) of a message. `None` if the mailbox was
-/// never synchronized, or if the message has vanished from the server.
-pub fn load_body(
+/// Load the message selected by a displayed row, including its UID namespace.
+pub fn load_body_version(
     server: &mut dyn MailServer,
     store: &mut Store,
-    account_id: i64,
-    mailbox: &str,
+    identity: &crate::MailboxIdentity,
     uid: Uid,
 ) -> Result<Option<String>, Error> {
-    if let Some(cached) = store.body(account_id, mailbox, uid)? {
+    if let Some(cached) = store.body_version(identity, uid)? {
         return Ok(Some(cached));
     }
-    let Some(state) = store.sync_state(account_id, mailbox)? else {
-        return Ok(None);
-    };
-    match server
-        .fetch_bodies_html(mailbox, &[uid])?
-        .into_iter()
-        .next()
+    match crate::remote::fetch_bodies_checked(
+        server,
+        &identity.mailbox,
+        identity.uid_validity,
+        &[uid],
+    )?
+    .into_iter()
+    .next()
     {
         Some((_, fetched)) => {
-            let invitation = invitation_from(store, account_id, fetched.ics.as_deref())?;
-            store.save_body_full(
-                state.mailbox_id,
+            let invitation = invitation_from(store, identity.account_id, fetched.ics.as_deref())?;
+            store.save_body_checked(
+                identity,
                 uid,
                 &fetched.html,
                 &fetched.attachments,
@@ -39,6 +38,34 @@ pub fn load_body(
             Ok(Some(fetched.html))
         }
         None => Ok(None),
+    }
+}
+
+/// Background callers capture the current local namespace before loading.
+pub fn load_body(
+    server: &mut dyn MailServer,
+    store: &mut Store,
+    account_id: i64,
+    mailbox: &str,
+    uid: Uid,
+) -> Result<Option<String>, Error> {
+    let Some(identity) = store.mailbox_identity(account_id, mailbox)? else {
+        return Ok(None);
+    };
+    load_body_version(server, store, &identity, uid)
+}
+
+impl Store {
+    pub fn body_version(
+        &self,
+        identity: &crate::MailboxIdentity,
+        uid: Uid,
+    ) -> Result<Option<String>, Error> {
+        let tx = self.conn().unchecked_transaction()?;
+        self.verify_mailbox_identity(identity)?;
+        let body = self.body(identity.account_id, &identity.mailbox, uid)?;
+        tx.commit()?;
+        Ok(body)
     }
 }
 
@@ -424,6 +451,115 @@ mod tests {
             .sync(&mut server, &mut store, account, "INBOX")
             .unwrap();
         (server, store, account)
+    }
+
+    #[test]
+    fn displayed_message_version_cannot_read_a_reused_uid_from_cache() {
+        let (mut server, mut store, account) = synced_setup();
+        let identity = store.mailbox_identity(account, "INBOX").unwrap().unwrap();
+        server.uid_validity += 1;
+        crate::SyncEngine::default()
+            .sync(&mut server, &mut store, account, "INBOX")
+            .unwrap();
+        load_body(&mut server, &mut store, account, "INBOX", 1).unwrap();
+        assert!(matches!(
+            load_body_version(&mut server, &mut store, &identity, 1),
+            Err(Error::StaleMailbox)
+        ));
+    }
+
+    #[test]
+    fn refuses_a_body_from_a_reused_uid_generation() {
+        let (mut server, mut store, account) = synced_setup();
+        server.uid_validity += 1;
+        server
+            .bodies
+            .insert(1, "<p>Unrelated replacement</p>".into());
+
+        assert!(load_body(&mut server, &mut store, account, "INBOX", 1).is_err());
+        assert_eq!(store.body(account, "INBOX", 1).unwrap(), None);
+        assert!(server.body_batches.is_empty());
+    }
+
+    #[test]
+    fn refuses_a_generation_change_during_body_fetch() {
+        let (mut server, mut store, account) = synced_setup();
+        server.reset_during_body_fetch = true;
+        assert!(load_body(&mut server, &mut store, account, "INBOX", 1).is_err());
+        assert_eq!(store.body(account, "INBOX", 1).unwrap(), None);
+    }
+
+    #[test]
+    fn ignores_a_body_returned_for_another_uid() {
+        let (mut server, mut store, account) = synced_setup();
+        server.body_reply_uid = Some(2);
+        assert_eq!(
+            load_body(&mut server, &mut store, account, "INBOX", 1).unwrap(),
+            None
+        );
+        assert_eq!(store.body(account, "INBOX", 1).unwrap(), None);
+    }
+
+    #[test]
+    fn checked_cache_write_refuses_a_local_reset() {
+        let (_, store, account) = synced_setup();
+        let before = store.mailbox_identity(account, "INBOX").unwrap().unwrap();
+        store
+            .reset_mailbox(before.mailbox_id, before.uid_validity + 1)
+            .unwrap();
+        assert!(matches!(
+            store.save_body_checked(&before, 1, "stale bytes", &[], None),
+            Err(Error::StaleMailbox)
+        ));
+        assert_eq!(store.body(account, "INBOX", 1).unwrap(), None);
+    }
+
+    #[test]
+    fn checked_cache_write_refuses_a_reassigned_mailbox_id() {
+        let (_, store, account) = synced_setup();
+        let before = store.mailbox_identity(account, "INBOX").unwrap().unwrap();
+        let other = store
+            .adopt_or_create_account("other@example.com", "gmail")
+            .unwrap();
+        store
+            .conn()
+            .execute(
+                "UPDATE mailboxes SET account_id = ?1 WHERE id = ?2",
+                rusqlite::params![other, before.mailbox_id],
+            )
+            .unwrap();
+        assert!(matches!(
+            store.save_body_checked(&before, 1, "old account body", &[], None),
+            Err(Error::StaleMailbox)
+        ));
+        assert_eq!(store.body(other, "INBOX", 1).unwrap(), None);
+    }
+
+    #[test]
+    fn attachment_fetch_refuses_a_reset_before_or_during_download() {
+        for during in [false, true] {
+            let (mut server, _, _) = synced_setup();
+            server
+                .attachment_bytes
+                .insert((1, 0), b"unrelated bytes".to_vec());
+            if during {
+                server.reset_during_attachment_fetch = true;
+            } else {
+                server.uid_validity += 1;
+            }
+            assert!(matches!(
+                crate::fetch_attachment_checked(&mut server, "INBOX", 1, 1, 0),
+                Err(Error::StaleMailbox)
+            ));
+        }
+        let (mut server, _, _) = synced_setup();
+        server
+            .attachment_bytes
+            .insert((1, 0), b"requested bytes".to_vec());
+        assert_eq!(
+            crate::fetch_attachment_checked(&mut server, "INBOX", 1, 1, 0).unwrap(),
+            Some(b"requested bytes".to_vec())
+        );
     }
 
     #[test]

@@ -271,6 +271,7 @@
         accountId: m.account_id,
         mailbox: m.mailbox,
         uid: m.uid,
+        version: m.version,
         reply,
         subject,
         body: subject,
@@ -306,6 +307,7 @@
         accountId: m.account_id,
         mailbox: m.mailbox,
         uid: m.uid,
+        version: m.version,
         index: attachment.index,
         dest,
       });

@@ -40,7 +40,7 @@
   let served = $state(false);
   let generation = 0;
 
-  const cardKey = (r) => `${r.account_id}:${r.mailbox}:${r.uid}`;
+  const cardKey = (r) => `${r.account_id}:${r.mailbox}:${r.version?.mailbox_id ?? 0}:${r.version?.uid_validity ?? 0}:${r.uid}`;
 
   async function load(since) {
     const capturedGen = ++generation;
@@ -166,6 +166,7 @@
         accountId: card.row.account_id,
         mailbox: card.row.mailbox,
         uid: card.row.uid,
+        version: card.row.version,
       });
       const targets = always ? cards.filter((c) => c.remote_images_blocked > 0) : [card];
       await Promise.all(targets.map(serveAgain));
@@ -178,6 +179,7 @@
       accountId: card.row.account_id,
       mailbox: card.row.mailbox,
       uid: card.row.uid,
+      version: card.row.version,
       showImages: false,
     });
     const key = cardKey(card.row);
@@ -279,6 +281,7 @@
         accountId: card.row.account_id,
         mailbox: card.row.mailbox,
         uid: card.row.uid,
+        version: card.row.version,
       });
     } catch (err) {
       // The write failed: the witness RE-ARMS (review — without the

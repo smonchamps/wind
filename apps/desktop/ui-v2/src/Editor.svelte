@@ -38,11 +38,13 @@
   import Icon from './Icon.svelte';
   import { tick } from 'svelte';
   import { t } from './lib/text.svelte.js';
+  import { imageSources, markHtmlEdited, pasteSafeHtml, setSafeHtml, waitForHtml } from './lib/editable-html.js';
 
   let {
     important = false,
     onImportantToggle = () => {},
     oninput = () => {},
+    onerror = () => {},
     children = null,
   } = $props();
 
@@ -72,7 +74,7 @@
     if (!bodyModified) {
       return { body: initialBodyText, bodyHtml: initialBodyHtml };
     }
-    return { body: '', bodyHtml: bodyHtmlNow() };
+    return { body: '', bodyHtml: bodyHtmlNow(), imageSources: imageSources(bodyField) };
   }
 
   export function isModified() {
@@ -81,6 +83,19 @@
 
   export function getText() {
     return bodyField?.textContent ?? '';
+  }
+
+  export function hasContent() {
+    return Boolean(getText().trim() || bodyField?.querySelector('img'));
+  }
+
+  export async function settle() {
+    try {
+      await waitForHtml(bodyField);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   export function getVersion() {
@@ -95,13 +110,18 @@
   // bar's own local state — the selection snapshot, the open color
   // swatch — resets here too, so Compose never has to know it exists.
   export async function set(html, { initialText = '', htmlInitial = html } = {}) {
+    if (bodyModified) return;
     bodyModified = false;
     initialBodyText = initialText;
     initialBodyHtml = htmlInitial;
     bodySelection = null;
     showColors = false;
     await tick();
-    if (bodyField) bodyField.innerHTML = html;
+    try {
+      if (bodyField) await setSafeHtml(bodyField, html);
+    } catch {
+      onerror(t('compose.htmlFailed'));
+    }
     bodyVersion += 1;
   }
 
@@ -127,15 +147,20 @@
   }
 
   function onBodyKeystroke() {
+    markHtmlEdited(bodyField);
     // Chromium leaves an orphan <br> after “select all then
     // delete”: the body is empty but no longer `:empty` — without
     // this renormalization, the placeholder would never come back.
-    if (bodyField && !bodyField.textContent && bodyField.innerHTML !== '') {
+    if (bodyField && !hasContent() && bodyField.innerHTML !== '') {
       bodyField.innerHTML = '';
     }
     bodyModified = true;
     bodyVersion += 1;
     oninput();
+  }
+
+  function paste(event) {
+    pasteSafeHtml(event).catch(() => onerror(t('compose.pasteFailed')));
   }
 
   // --- The formatting bar (R4, Chief-Engineer decisions D1-D3) --------------------
@@ -225,7 +250,8 @@
        no onkeyup/onmouseup duplicate). -->
   <div class="body-editor" contenteditable="true" role="textbox" aria-multiline="true"
        tabindex="0"
-       bind:this={bodyField} oninput={onBodyKeystroke}
+        bind:this={bodyField} oninput={onBodyKeystroke} onpaste={paste} ondrop={paste}
+        ondragover={(event) => event.preventDefault()}
        data-placeholder={t('compose.bodyPlaceholder')}
        aria-label={t('compose.bodyPlaceholder')}
        data-testid="compose-body"></div>

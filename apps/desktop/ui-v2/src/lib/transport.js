@@ -74,7 +74,10 @@ const fakeFailure = (command) => {
 };
 
 export const call = (command, args) => {
-  const launch = fakeFailure(command) ?? fakeAdd(command, args) ?? (() => brut(command, args));
+  // Exercise partial sync reports without connecting the isolated E2E account.
+  const summary = E2E && command === 'sync_inbox_light' ? globalThis.window?.__e2eSyncSummary : undefined;
+  const launch = fakeFailure(command) ?? fakeAdd(command, args)
+    ?? (summary ? () => Promise.resolve(summary) : () => brut(command, args));
   const hold = E2E ? globalThis.window?.__e2eHold : undefined;
   const flight = hold ? hold.then(launch) : launch();
   const log = E2E ? globalThis.window?.__e2eLog : undefined;

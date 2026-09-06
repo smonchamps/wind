@@ -354,12 +354,24 @@ pub fn draft_bytes(
     body: &str,
     body_html: Option<&str>,
     attachments: &[DraftAttachmentFull],
+    headers: &mail_core::ThreadHeaders,
+    important: bool,
 ) -> Result<Vec<u8>, SendError> {
     let sender = parse_mailbox(from)?;
     let mut builder = Message::builder()
         .from(sender.clone())
         .subject(subject)
-        .date_now();
+        .date_now()
+        .keep_bcc();
+    if let Some(parent) = &headers.in_reply_to {
+        builder = builder.in_reply_to(parent.clone());
+    }
+    if let Some(references) = &headers.references {
+        builder = builder.references(references.clone());
+    }
+    if important {
+        builder = builder.header(XPriority).header(Importance);
+    }
     let mut recipients = 0usize;
     for candidate in to_raw.split([',', ';']) {
         if let Ok(mailbox) = candidate.trim().parse::<Mailbox>() {
@@ -814,6 +826,35 @@ mod tests {
     }
 
     #[test]
+    fn draft_mirror_keeps_hidden_recipients_priority_and_reply_chain() {
+        let headers = mail_core::ThreadHeaders {
+            in_reply_to: Some("<parent@example.com>".into()),
+            references: Some("<root@example.com> <parent@example.com>".into()),
+        };
+        let raw = draft_bytes(
+            "from@example.com",
+            "to@example.com",
+            "cc@example.com",
+            "hidden@example.com",
+            "reply",
+            "body",
+            None,
+            &[],
+            &headers,
+            true,
+        )
+        .unwrap();
+        let text = String::from_utf8(raw).unwrap();
+        assert!(text.contains("Bcc: hidden@example.com"), "{text}");
+        assert!(text.contains("In-Reply-To: <parent@example.com>"), "{text}");
+        assert!(
+            text.contains("References: <root@example.com> <parent@example.com>"),
+            "{text}"
+        );
+        assert!(text.contains("Importance: high"), "{text}");
+    }
+
+    #[test]
     fn draft_bytes_keeps_valid_recipients_and_omits_the_rest() {
         let raw = draft_bytes(
             "moi@exemple.fr",
@@ -824,6 +865,8 @@ mod tests {
             "body",
             None,
             &[],
+            &Default::default(),
+            false,
         )
         .expect("constructible draft");
         let text = String::from_utf8_lossy(&raw);
@@ -849,6 +892,8 @@ mod tests {
             "c",
             None,
             &[],
+            &Default::default(),
+            false,
         )
         .expect("a recipient-less draft still builds");
         let text = String::from_utf8_lossy(&raw);
@@ -874,6 +919,8 @@ mod tests {
                 mime: "application/pdf".to_string(),
                 bytes: vec![0xFF, 0xD8, 0xFF, 0xE0],
             }],
+            &Default::default(),
+            false,
         )
         .expect("constructible draft");
         let text = String::from_utf8_lossy(&raw);
@@ -900,6 +947,8 @@ mod tests {
             "body",
             Some("<b>body</b>"),
             &[],
+            &Default::default(),
+            false,
         )
         .expect("constructible draft");
         let text = String::from_utf8_lossy(&raw);
@@ -925,6 +974,8 @@ mod tests {
             "c",
             None,
             &[],
+            &Default::default(),
+            false,
         )
         .expect("constructible draft");
         assert!(!String::from_utf8_lossy(&raw).contains("multipart/mixed"));

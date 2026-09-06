@@ -13,6 +13,8 @@ use crate::remote::{FetchedBody, MailServer, MailboxSnapshot, ThreadHeaders};
 use crate::store::Store;
 
 pub(crate) struct FakeServer {
+    pub(crate) remote_drafts: Vec<(Uid, crate::RemoteDraft)>,
+    pub(crate) draft_pull_error: Option<String>,
     pub(crate) uid_validity: u32,
     pub(crate) condstore: bool,
     pub(crate) modseq: u64,
@@ -30,6 +32,8 @@ pub(crate) struct FakeServer {
     /// Batches of bodies requested, in order: this is what proves that
     /// backfill batches instead of chaining round trips.
     pub(crate) body_batches: Vec<Vec<Uid>>,
+    pub(crate) body_reply_uid: Option<Uid>,
+    pub(crate) reset_during_body_fetch: bool,
     /// `References` served by the fake server, by UID.
     pub(crate) references: BTreeMap<Uid, String>,
     /// Batches of headers requested: the proof that the pass batches.
@@ -39,6 +43,7 @@ pub(crate) struct FakeServer {
     pub(crate) moved: Vec<(Uid, String)>,
     /// Bytes served for (uid, rank) — the simulator's attachments.
     pub(crate) attachment_bytes: BTreeMap<(Uid, usize), Vec<u8>>,
+    pub(crate) reset_during_attachment_fetch: bool,
     /// Log of actions received, in order (`seen:1:true`, `archive:2`…).
     pub(crate) action_calls: Vec<String>,
     /// Simulates a cut on actions ("zero loss" test).
@@ -57,6 +62,8 @@ pub(crate) struct FakeServer {
 impl FakeServer {
     pub(crate) fn new(condstore: bool) -> Self {
         Self {
+            remote_drafts: Vec::new(),
+            draft_pull_error: None,
             uid_validity: 1,
             condstore,
             modseq: 0,
@@ -67,11 +74,14 @@ impl FakeServer {
             uid_list_calls: 0,
             body_fetches: 0,
             body_batches: Vec::new(),
+            body_reply_uid: None,
+            reset_during_body_fetch: false,
             references: BTreeMap::new(),
             header_batches: Vec::new(),
             folders: Vec::new(),
             moved: Vec::new(),
             attachment_bytes: BTreeMap::new(),
+            reset_during_attachment_fetch: false,
             action_calls: Vec::new(),
             actions_fail: false,
             refused_moves: false,
@@ -257,13 +267,16 @@ impl MailServer for FakeServer {
         uids: &[Uid],
     ) -> Result<Vec<(Uid, FetchedBody)>, Error> {
         self.body_batches.push(uids.to_vec());
+        if self.reset_during_body_fetch {
+            self.uid_validity += 1;
+        }
         Ok(uids
             .iter()
             .filter_map(|uid| {
                 self.bodies.get(uid).map(|html| {
                     let mut fetched = FetchedBody::html(html);
                     fetched.ics = self.ics.get(uid).cloned();
-                    (*uid, fetched)
+                    (self.body_reply_uid.unwrap_or(*uid), fetched)
                 })
             })
             .collect())
@@ -302,6 +315,9 @@ impl MailServer for FakeServer {
         uid: Uid,
         index: usize,
     ) -> Result<Option<Vec<u8>>, Error> {
+        if self.reset_during_attachment_fetch {
+            self.uid_validity += 1;
+        }
         Ok(self
             .attachment_bytes
             .get(&(uid, index))
@@ -375,16 +391,26 @@ impl MailServer for FakeServer {
     }
 }
 
-/// The fake server has neither a sent folder nor a Drafts folder to
-/// pull from — the honest default (PLAN-AUDIT-V3 E4): no test needs
-/// RFC 6154 heuristics or a draft round trip faked, `run_sync` treats
-/// both as absent capabilities, exactly as a bare IMAP server would.
+/// Drafts are absent unless a test supplies a remote fixture.
 impl CycleConnection for FakeServer {
     fn sent_folder_name(&mut self) -> Result<Option<String>, String> {
         Ok(None)
     }
 
-    fn pull_drafts(&mut self, _store: &Store, _account_id: i64) -> Result<(), String> {
+    fn pull_drafts(&mut self, store: &Store, account_id: i64) -> Result<(), String> {
+        if let Some(reason) = &self.draft_pull_error {
+            return Err(reason.clone());
+        }
+        if !self.remote_drafts.is_empty() {
+            store
+                .align_drafts_uidvalidity(account_id, self.uid_validity)
+                .map_err(|err| err.to_string())?;
+            for (uid, draft) in &self.remote_drafts {
+                store
+                    .import_remote_draft_complete(account_id, self.uid_validity, *uid, draft)
+                    .map_err(|err| err.to_string())?;
+            }
+        }
         Ok(())
     }
 }

@@ -11,14 +11,12 @@ use super::*;
 // COUNT replaces the old EXISTS: the prototype's chip says "2 files",
 // not "some files". Both only run on the rows KEPT by pagination
 // (gate P1).
-pub(crate) const SELECT_UNIFIED: &str = "SELECT a.id, a.email, e.uid, e.subject, e.sender, e.sender_address, e.message_id, e.date_epoch, e.seen, e.flagged, (SELECT COUNT(*) FROM attachments att WHERE att.mailbox_id = e.mailbox_id AND att.uid = e.uid), e.thread_id, e.in_reply_to, m.name, b.preview, e.to_addrs, e.cc_addrs";
+pub(crate) const SELECT_UNIFIED: &str = "SELECT a.id, a.email, e.uid, e.subject, e.sender, e.sender_address, e.message_id, e.date_epoch, e.seen, e.flagged, (SELECT COUNT(*) FROM attachments att WHERE att.mailbox_id = e.mailbox_id AND att.uid = e.uid), e.thread_id, e.in_reply_to, m.name, b.preview, e.to_addrs, e.cc_addrs, m.id, m.uid_validity";
 
 /// The SELECT for the grouped list: the columns above, plus the thread
 /// aggregate. It requires the join on `threads` (alias `t`), which
 /// search does not have — a search result is ONE message, not a
-/// conversation. Comes AFTER `to_addrs`/`cc_addrs` of
-/// [`SELECT_UNIFIED`]: `t.size`/`t.unseen` are therefore at indices
-/// 17/18.
+/// conversation. Follows the identity columns of [`SELECT_UNIFIED`].
 pub(crate) const THREAD_AGGREGATE: &str = ", t.size, t.unseen";
 
 /// PINNED threads (R4, PLAN-RETOURS-7) — the subquery shared by the
@@ -323,6 +321,8 @@ pub(super) fn row_to_envelope(row: &rusqlite::Row<'_>) -> rusqlite::Result<Envel
 pub(crate) fn row_to_unified(row: &rusqlite::Row<'_>) -> rusqlite::Result<UnifiedRow> {
     let attachment_count = row.get::<_, i64>(10)?.max(0) as u32;
     Ok(UnifiedRow {
+        mailbox_id: row.get(17)?,
+        uid_validity: row.get(18)?,
         account_id: row.get(0)?,
         account_email: row.get(1)?,
         envelope: Envelope {
@@ -361,9 +361,8 @@ pub(crate) fn row_to_unified(row: &rusqlite::Row<'_>) -> rusqlite::Result<Unifie
 /// aggregate added by [`THREAD_AGGREGATE`].
 pub(crate) fn row_to_threaded(row: &rusqlite::Row<'_>) -> rusqlite::Result<UnifiedRow> {
     Ok(UnifiedRow {
-        // `to_addrs`/`cc_addrs` pushed the aggregate to indexes 17/18.
-        thread_size: row.get(17)?,
-        thread_unseen: row.get(18)?,
+        thread_size: row.get(19)?,
+        thread_unseen: row.get(20)?,
         ..row_to_unified(row)?
     })
 }

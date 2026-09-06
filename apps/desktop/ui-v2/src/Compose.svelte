@@ -48,7 +48,7 @@
   // the next autosave would see a phantom conflict and fork the draft.
   import Icon from './Icon.svelte';
   import Editor from './Editor.svelte';
-  import { tick } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { call, chooseFiles } from './lib/transport.js';
   import { t } from './lib/text.svelte.js';
   import { whenLong } from './lib/when.js';
@@ -112,6 +112,9 @@
   // The refusal at the cap, shown under the row; cleared on the
   // next gesture that succeeds (addition accepted or removal).
   let refusal = $state(null);
+  let saveError = $state(false);
+  let contextError = $state(false);
+  let contextLoading = $state(false);
   let sendInProgress = $state(false);
   // R3 (PLAN-RETOURS-6): the “important” marker — a state of the
   // MESSAGE (saved with the draft, carried by the send log,
@@ -130,6 +133,32 @@
   // not refresh the footer.
   let draftId = $state(null);
   let draftEpoch = null;
+  let editToken = null;
+  let opening = null;
+  let finishing = $state(false);
+
+  function queueOpen(operation) {
+    const flight = (opening ?? Promise.resolve()).then(async () => {
+      if (!visible && editToken) await finishEdit(false);
+      await operation();
+    }).catch((err) => onflash(t('compose.sessionFailed', { err })));
+    opening = flight;
+    const settled = () => { if (opening === flight) opening = null; };
+    flight.then(settled, settled);
+    return flight;
+  }
+
+  async function finishEdit(discard) {
+    if (!editToken) return;
+    finishing = true;
+    try {
+      const saved = await call('finish_draft_edit', { token: editToken, discard });
+      if (saved?.forked) onflash(t('toast.draftFork'));
+      editToken = null;
+    } finally {
+      finishing = false;
+    }
+  }
   // R3 (PLAN-RETOURS-3, D3): the VOLUNTARY deletion of a draft from
   // the compose window goes through a confirmation — an irreversible
   // act never leaves on the first click (same rule as account removal).
@@ -137,14 +166,35 @@
   // confused.
   let deleteRequest = $state(false);
   let timer;
-  // The save IN FLIGHT: its promise, as long as it runs. Saves are
-  // SERIALIZED behind it, and the gestures that decide the draft's
-  // fate (close, send) wait for it — without which a save started
-  // BEFORE an “empty then close” would resurrect the draft the
-  // gesture had just deleted (phantom in the folder, found twice by
-  // the e2e suite under load, always at the same gesture).
+  // Saves and attachment mutations share the draft ID and epoch.
+  // Serialize them; closing must also wait for an attachment's anchor.
   let saveFlight = null;
   let token = 0;
+  let editRevision = 0;
+
+  const currentSession = (mine) => mine === token && visible;
+
+  function queueEdit(operation, mine = token) {
+    const turn = (saveFlight ?? Promise.resolve()).then(() =>
+      currentSession(mine) ? operation(mine) : null);
+    saveFlight = turn;
+    const settled = () => { if (saveFlight === turn) saveFlight = null; };
+    turn.then(settled, settled);
+    return turn;
+  }
+
+  async function settleEdits() {
+    if (!await editorRef?.settle()) return false;
+    while (saveFlight) await saveFlight;
+    return true;
+  }
+
+  function endSession() {
+    clearTimeout(timer);
+    token += 1;
+    signatureToken += 1;
+    visible = false;
+  }
 
   let toField = $state(null);
   let editorRef = $state(null);
@@ -281,6 +331,7 @@
   let templateAlone = false;
   let signatureToken = 0;
   async function changeSender(email) {
+    const session = token;
     const chosen = accounts.find((c) => c.email === email);
     if (!chosen) return;
     sender = { account_id: chosen.account_id, email: chosen.email };
@@ -298,12 +349,23 @@
     const sig = loaded?.html ?? null;
     const applicable = mode === 'new' || loaded?.replies ? sig : null;
     await editorRef.set(bodyTemplate(applicable));
+    if (!currentSession(session) || mine !== signatureToken) return;
     autoBody = templateAlone && Boolean(applicable);
   }
 
-  export async function open(newMode, source = null) {
+  export function open(newMode, source = null) {
+    return queueOpen(() => openNew(newMode, source));
+  }
+
+  async function openNew(newMode, source) {
+    if (visible) {
+      await close();
+      if (visible) return;
+    }
     const mine = ++token;
     mode = newMode;
+    contextError = false;
+    contextLoading = newMode !== 'new';
     a = '';
     cc = '';
     cci = '';
@@ -313,6 +375,7 @@
     attachments = [];
     retrievals = [];
     refusal = null;
+    saveError = false;
     sourceForward = null;
     replyToMailbox = null;
     replyToUid = null;
@@ -333,13 +396,20 @@
       ? accountOf(source.account_id)
       : accountOf(account) ?? (accounts.length > 0 ? accountOf(accounts[0].account_id) : null);
     closeSuggestions();
+    editRevision = 0;
+    if (sender) {
+      editToken = crypto.randomUUID();
+      await call('begin_draft_edit', { token: editToken, accountId: sender.account_id });
+    }
     visible = true;
     await tick();
+    if (!currentSession(mine)) return;
     // `Editor.set` also resets the formatting bar's own local state
     // (the color swatch, the selection snapshot) — it would survive
     // the card's closing otherwise, a Range from the previous body
     // coloring a phantom.
     await editorRef.set('');
+    if (!currentSession(mine)) return;
 
     // R1: the sending account's signature, read once at opening.
     // A failure means “no signature” — never a block.
@@ -377,6 +447,8 @@
           accountId: source.account_id,
           mailbox: source.mailbox,
           uid: source.uid,
+          version: source.version,
+          editToken,
         });
         if (mine !== token) return;
         subject = replying ? reSubject(source.subject) : fwdSubject(source.subject);
@@ -410,6 +482,7 @@
           // user typed in the meantime would be worse than a missing
           // quote.
           if (!editorRef.isModified()) await editorRef.set(content);
+          if (!currentSession(mine)) return;
           replyToMailbox = source.mailbox;
           replyToUid = source.uid;
         } else {
@@ -421,32 +494,13 @@
           if (!editorRef.isModified()) await editorRef.set(bodyTemplate(repliesSig));
         }
       } catch (err) {
-        if (mine !== token) return;
-        if (newMode !== 'reply') {
-          // Without a body, a forward would transmit nothing;
-          // without the full list, an “all” would send to fewer
-          // people than promised (the core rereads it on the
-          // server): a clean failure.
-          visible = false;
-          onflash(
-            newMode === 'forward'
-              ? t('error.forward', { err })
-              : t('error.replyAll', { err }),
-          );
-          return;
-        }
-        // Reply without a quote: the core allows it, we still
-        // write — the signature too, if the account's scope says so.
-        subject = reSubject(source.subject);
-        replyToMailbox = source.mailbox;
-        replyToUid = source.uid;
-        bodyTemplate = (s) => (s ? `<div><br></div><div><br></div>${s}` : '');
-        templateAlone = true;
-        if (repliesSig && !editorRef.isModified()) {
-          await editorRef.set(bodyTemplate(repliesSig));
-          autoBody = true;
-        }
+        if (!currentSession(mine)) return;
+        console.error('composition source:', err);
+        contextError = true;
+        contextLoading = false;
+        return;
       }
+      if (!currentSession(mine)) return;
       // The forward transmits its attachments FOR REAL (PJ-D4): each
       // one is retrieved from the server and poured into the draft —
       // one chip per state. A reply, meanwhile, shows nothing: mail
@@ -466,12 +520,14 @@
             accountId: source.account_id,
             mailbox: source.mailbox,
             uid: source.uid,
+            version: source.version,
           });
           if (mine !== token) return;
           sourceForward = {
             account_id: source.account_id,
             mailbox: source.mailbox,
             uid: source.uid,
+            version: source.version,
           };
           retrievals = fetched.map((attachment) => ({
             index: attachment.index,
@@ -483,10 +539,12 @@
           // arrives.
           retrieveAll([...retrievals], mine);
         } catch (err) {
+          if (currentSession(mine)) contextError = true;
           console.error('message_attachments :', err);
         }
       }
     }
+    if (currentSession(mine)) contextLoading = false;
     // Top-posting: the cursor is placed ABOVE the quote.
     setTimeout(() => {
       if (mine !== token || !visible) return;
@@ -510,9 +568,24 @@
   // Resume a local draft (notice slot, debt §6): the content comes
   // back as is, autosave restarts from ITS epoch — the edit
   // conflict stays covered.
-  export async function openDraft(draft) {
+  export function openDraft(draft) {
+    return queueOpen(() => openSavedDraft(draft));
+  }
+
+  async function openSavedDraft(draft) {
+    if (visible) {
+      await close();
+      if (visible) return;
+    }
     token += 1;
     const mine = token;
+    editToken = crypto.randomUUID();
+    const opened = await call('begin_draft_edit', {
+      token: editToken, accountId: draft.account_id, id: draft.id,
+      incarnation: draft.incarnation, baseEpoch: draft.updated_epoch,
+    });
+    draft = opened.draft;
+    editRevision = 0;
     mode = 'new';
     sender = accountOf(draft.account_id);
     a = draft.to;
@@ -523,17 +596,13 @@
     showCc = cc.trim() !== '';
     showBcc = cci.trim() !== '';
     subject = draft.subject;
-    attachments = [];
+    attachments = opened.attachments;
     retrievals = [];
     refusal = null;
+    saveError = false;
+    contextError = false;
+    contextLoading = false;
     sourceForward = null;
-    // The chips come back with the text (PJ-D1): the bytes lived in
-    // the draft, not in the composer's session.
-    call('draft_attachments', { draftId: draft.id })
-      .then((fetched) => {
-        if (mine === token) attachments = fetched;
-      })
-      .catch((err) => console.error('draft_attachments :', err));
     // The mailbox comes back WITH the UID: the chain reply → draft →
     // resume → save must not lose the link to the thread (B-D2).
     replyToMailbox = draft.reply_to_mailbox ?? null;
@@ -554,6 +623,7 @@
     closeSuggestions();
     visible = true;
     await tick();
+    if (!currentSession(mine)) return;
     // Rich draft: its HTML as is. Text draft: converted for the
     // editor (`htmlInitial: null` — without a keystroke it does not
     // become rich). In both cases the anti-churn will re-emit what
@@ -565,6 +635,7 @@
     });
     setTimeout(() => {
       // Same guard as `open()`: a focus already placed takes priority.
+      if (!currentSession(mine)) return;
       if (card?.contains(document.activeElement)) return;
       editorRef?.focus();
     }, 0);
@@ -582,7 +653,7 @@
     // keystroke from the user counts as empty — otherwise every
     // compose window opened then closed would seed a phantom draft.
     const bodyEmpty =
-      (autoBody && !editorRef?.isModified()) || !(editorRef?.getText() ?? '').trim();
+      (autoBody && !editorRef?.isModified()) || !editorRef?.hasContent();
     return (
       !a.trim() &&
       !cc.trim() &&
@@ -599,32 +670,29 @@
   const canDelete = $derived(draftId !== null || !empty());
 
   function scheduleSave() {
+    editRevision += 1;
     clearTimeout(timer);
     timer = setTimeout(saveNow, 2000);
   }
 
-  // The net: a crash only costs the last two seconds of typing.
-  // Returns the report, or null if there was nothing to do.
-  // Only one save at a time: each turn leaves behind the previous
-  // flight, and `saveFlight` always carries the last turn.
+  // A failed save leaves the editor recoverable and returns no report.
   function saveNow() {
     clearTimeout(timer);
-    const turn = (saveFlight ?? Promise.resolve()).then(saveAlone);
-    saveFlight = turn;
-    turn.finally(() => {
-      if (saveFlight === turn) saveFlight = null;
-    });
-    return turn;
+    return queueEdit(saveAlone);
   }
 
-  async function saveAlone() {
-    if (!visible || empty() || !sender) return null;
+  async function saveAlone(mine) {
+    if (!visible || !sender) return null;
     try {
-      const { body, bodyHtml } = editorRef.getLoaded();
+      if (!await editorRef.settle() || !currentSession(mine) || empty()) return null;
+      const revision = editRevision;
+      const bodyVersion = editorRef.getVersion();
+      const { body, bodyHtml, imageSources } = editorRef.getLoaded();
       const report = await call('save_draft', {
         accountId: sender.account_id,
         id: draftId,
         baseEpoch: draftEpoch,
+        editToken,
         content: {
           to: a,
           cc,
@@ -632,31 +700,27 @@
           subject: subject,
           body,
           bodyHtml,
+          imageSources,
           replyToUid,
           replyToMailbox,
           important,
         },
       });
-      if (!visible) {
-        // The panel closed during the save (a send left): do not
-        // resurrect a draft already settled.
-        await call('delete_draft', { id: report.id })
-          .catch((err) => console.error('delete_draft (panel closed during the save):', err));
-        ondraft();
-        return null;
-      }
+      if (!currentSession(mine)) return null;
+      if (!report) return { unchanged: true, revision, bodyVersion };
       draftId = report.id;
       draftEpoch = report.updated_epoch;
+      attachments = report.attachments;
+      saveError = false;
       if (report.forked) {
         // NEVER hide this case: two texts now exist, only the user
         // can decide.
         onflash(t('toast.draftFork'));
       }
       ondraft();
-      return report;
+      return { ...report, revision, bodyVersion };
     } catch {
-      // The next keystroke will retry — the net does not alarm for
-      // nothing.
+      if (currentSession(mine)) saveError = true;
     }
     return null;
   }
@@ -665,33 +729,64 @@
     return visible;
   }
 
+  onMount(() => {
+    const nativeWindow = globalThis.window?.__TAURI__?.window?.getCurrentWindow?.();
+    if (!nativeWindow) return;
+    const listener = nativeWindow.onCloseRequested(async (event) => {
+      if (!visible) return;
+      try {
+        await close();
+      } finally {
+        // Tauri awaits this callback before destroying the window.
+        if (visible) event.preventDefault();
+      }
+    });
+    listener.catch((err) => console.error('native close registration:', err));
+    return () => { listener.then((unlisten) => unlisten()).catch(() => {}); };
+  });
+
   // Closing = keeping: non-empty content becomes (or stays) a
   // draft; a draft emptied of its text is discarded — this is the
   // only case where closing deletes, and it is the user who erased.
   export async function close() {
-    if (!visible) return;
+    if (!visible || sendInProgress || finishing) return;
+    const mine = token;
     clearTimeout(timer);
     closeSuggestions();
-    // The save in flight first: it can carry content from BEFORE
-    // the emptying and resurrect what the gesture deletes — the
-    // draft's fate is decided on still ground, never while a write
-    // is running.
-    if (saveFlight) await saveFlight;
-    if (empty()) {
-      if (draftId !== null) {
-        await call('delete_draft', { id: draftId })
-          .catch((err) => console.error('delete_draft (draft emptied):', err));
-        ondraft();
+    while (currentSession(mine)) {
+      if (!await settleEdits()) return;
+      if (!currentSession(mine)) return;
+      if (empty()) {
+        if (draftId !== null) {
+          try {
+            if (editToken) await finishEdit(true);
+            else await call('delete_draft', { id: draftId });
+          } catch {
+            if (currentSession(mine)) saveError = true;
+            return;
+          }
+          if (!currentSession(mine)) return;
+          draftId = null;
+          draftEpoch = null;
+          ondraft();
+          if (!empty()) continue;
+        }
+        try { await finishEdit(true); } catch { saveError = true; return; }
+        endSession();
+        return;
       }
-      visible = false;
+      const report = await saveNow();
+      if (!currentSession(mine) || !report) return;
+      // Typing stays available during storage I/O. Close only after
+      // the most recent content and attachment gestures have settled.
+      if (saveFlight || report.revision !== editRevision
+          || report.bodyVersion !== editorRef.getVersion()) continue;
+      try { await finishEdit(false); } catch { saveError = true; return; }
+      endSession();
+      if (!report.forked && !report.unchanged) onflash(t('toast.draftSaved'));
+      call('sync_drafts').catch(() => {});
       return;
     }
-    const report = await saveNow();
-    visible = false;
-    if (!(report && report.forked)) onflash(t('toast.draftSaved'));
-    // The mirroring leaves RIGHT AWAY, silently (R1, v1 sequence):
-    // offline, the next cycle will retry — nothing to say.
-    call('sync_drafts').catch(() => {});
   }
 
   async function saveDraft() {
@@ -703,25 +798,28 @@
   // confirmation. The opposite of `close()` — which keeps: here we
   // delete the trace in the folder, whatever it contains.
   async function deleteDraft() {
+    if (sendInProgress) return;
+    const mine = token;
     deleteRequest = false;
     clearTimeout(timer);
     // The still ground of `close()`: a save in flight can carry
     // content from BEFORE the gesture and resurrect what we are
     // deleting — we wait for it, then erase the FINAL id.
-    if (saveFlight) await saveFlight;
+    if (!await settleEdits()) return;
+    if (!currentSession(mine)) return;
     // `draftId` may have been set BY the save we just waited on —
     // we read it after, never before.
     const hadDraft = draftId !== null;
-    if (hadDraft) {
-      await call('delete_draft', { id: draftId })
-        .catch((err) => console.error('delete_draft (suppression volontaire) :', err));
-      ondraft();
-    }
+    try {
+      if (editToken) await finishEdit(true);
+      else if (hadDraft) await call('delete_draft', { id: draftId });
+    } catch { saveError = true; return; }
+    if (hadDraft) ondraft();
     // No id remains: reopening starts blank again, never on a
     // deleted draft.
     draftId = null;
     draftEpoch = null;
-    visible = false;
+    endSession();
     // “Deleted” is only said if a draft REALLY existed: on a
     // compose window never saved, there was nothing to delete.
     if (hadDraft) onflash(t('toast.draftDeleted'));
@@ -759,7 +857,7 @@
   // send is LOGGED right away (golden rule) and the flush will only
   // pick it up at the stated time (R2, filter on the core side).
   async function sendWith(deadline) {
-    if (sendInProgress) return; // double-clic = un seul envoi
+    if (sendInProgress || contextError || contextLoading) return;
     if (!sender) {
       onflash(t('error.noAccount'));
       return;
@@ -773,21 +871,32 @@
       return;
     }
     sendInProgress = true;
+    const mine = token;
+    const sendAccount = sender.account_id;
     // Same rule as closing: the save in flight is settled before
     // leaving — the anchor draft (`draftId`) must be its FINAL id,
     // not the one from before a write still in progress.
     clearTimeout(timer);
-    if (saveFlight) await saveFlight;
+    if (!await settleEdits()) {
+      sendInProgress = false;
+      return;
+    }
+    if (!currentSession(mine)) {
+      sendInProgress = false;
+      return;
+    }
     try {
-      const { body, bodyHtml } = editorRef.getLoaded();
+      if (!await saveNow()) return;
+      const { body, bodyHtml, imageSources } = editorRef.getLoaded();
       await call('queue_send', {
-        accountId: sender.account_id,
+        accountId: sendAccount,
         to: a,
         cc,
         bcc: cci,
         subject: subject.trim(),
         body,
         bodyHtml,
+        imageSources,
         replyToMailbox,
         replyToUid,
         // The anchor draft: its attachments join the log in the
@@ -795,6 +904,7 @@
         draftId: draftId,
         important,
         sendAtEpoch: deadline,
+        editToken,
       });
     } catch (err) {
       onflash(t('error.send', { err }));
@@ -803,9 +913,10 @@
       sendInProgress = false;
     }
     // The send is logged: the draft has done its job.
-    const rule = draftId;
+    const rule = editToken ? null : draftId;
+    editToken = null;
     clearTimeout(timer);
-    visible = false;
+    endSession();
     // R2: the toast of a scheduled send states the DEADLINE, never
     // “sent” — nothing has left, the echo will only be born when it
     // does.
@@ -837,7 +948,6 @@
     // the console (the silent `.catch` from field 0.1.5 made the
     // instruction blind: never again), the reported mail reserves
     // the list via `onmail`.
-    const sendAccount = sender.account_id;
     call('flush_outbox')
       .then((report) => {
         // A DEFERRED send (offline) has deposited nothing at the
@@ -879,21 +989,29 @@
   const totalWeight = $derived(attachments.reduce((sum, attachment) => sum + attachment.size, 0));
 
   async function attach() {
+    if (sendInProgress) return;
+    const mine = token;
     if (!sender) {
       onflash(t('error.noAccount'));
       return;
     }
     const paths = await chooseFiles().catch((err) => {
-      onflash(t('error.attachment', { err }));
+      if (currentSession(mine)) onflash(t('error.attachment', { err }));
       return [];
     });
-    if (paths.length === 0) return;
+    if (!currentSession(mine) || sendInProgress || paths.length === 0) return;
+    return queueEdit(() => attachPaths(paths, mine), mine);
+  }
+
+  async function attachPaths(paths, mine) {
     try {
       const report = await call('attach_files', {
         accountId: sender.account_id,
         draftId: draftId,
         paths: paths,
+        editToken,
       });
+      if (!currentSession(mine)) return;
       // `null`: everything refused with no pre-existing draft —
       // nothing to adopt.
       draftId = report.draft_id ?? draftId;
@@ -901,6 +1019,8 @@
       // conflict.
       if (report.updated_epoch != null) draftEpoch = report.updated_epoch;
       attachments = report.attachments;
+      if (report.forked) onflash(t('toast.draftFork'));
+      editRevision += 1;
       refusal =
         report.refused.length > 0
           ? t('compose.attachmentRefused', {
@@ -910,28 +1030,44 @@
           : null;
       ondraft();
     } catch (err) {
+      if (!currentSession(mine)) return;
       onflash(t('error.attachment', { err }));
       // A failure along the way may have left some attachments
       // entered: reread rather than guess.
-      if (draftId !== null) {
-        call('draft_attachments', { draftId: draftId })
-          .then((fetched) => {
-            attachments = fetched;
-          })
-          .catch(() => {});
+      if (draftId !== null || editToken) {
+        try {
+          const fetched = await call('draft_attachments', { draftId, editToken });
+          if (currentSession(mine)) attachments = fetched;
+        } catch { /* The attachment failure is already shown above. */ }
       }
     }
   }
 
-  async function remove(attachment) {
+  function remove(attachment) {
+    if (sendInProgress) return;
+    return queueEdit((mine) => removeAlone(attachment, mine));
+  }
+
+  async function removeAlone(attachment, mine) {
+    // A queued click may refer to the pre-fork chip. Never remove a
+    // file from that other draft; the refreshed chip can be retried.
+    if (!attachments.some((entry) => entry.id === attachment.id)) return;
     try {
-      const epoch = await call('detach_file', { attachmentId: attachment.id });
-      attachments = attachments.filter((p) => p.id !== attachment.id);
-      if (epoch != null) draftEpoch = epoch;
+      const report = await call('detach_draft_edit_file', {
+        token: editToken, accountId: sender.account_id, attachmentId: attachment.id,
+      });
+      if (!currentSession(mine)) return;
+      if (report) {
+        draftId = report.id;
+        draftEpoch = report.updated_epoch;
+        attachments = report.attachments;
+        if (report.forked) onflash(t('toast.draftFork'));
+      }
       refusal = null;
+      editRevision += 1;
       ondraft();
     } catch (err) {
-      onflash(t('error.attachment', { err }));
+      if (currentSession(mine)) onflash(t('error.attachment', { err }));
     }
   }
 
@@ -939,19 +1075,28 @@
   // Three outcomes: poured in (it becomes a full chip), refused at
   // the cap (it disappears, the refusal is stated — final), network
   // failure (the chip goes to failed, “Retry” stays).
-  async function retrieveOne(entry, mine) {
+  function retrieveOne(entry, mine) {
+    return queueEdit(() => retrieveAlone(entry, mine), mine);
+  }
+
+  async function retrieveAlone(entry, mine) {
     try {
       const report = await call('fetch_source_attachment', {
         accountId: sourceForward.account_id,
         mailbox: sourceForward.mailbox,
         uid: sourceForward.uid,
+        version: sourceForward.version,
         index: entry.index,
         draftId: draftId,
+        editToken,
+        senderAccountId: sender.account_id,
       });
-      if (mine !== token) return;
+      if (!currentSession(mine)) return;
       draftId = report.draft_id ?? draftId;
       if (report.updated_epoch != null) draftEpoch = report.updated_epoch;
+      if (report.forked) onflash(t('toast.draftFork'));
       if (report.attachment) {
+        editRevision += 1;
         attachments = [...attachments, report.attachment];
         retrievals = retrievals.filter((r) => r.index !== entry.index);
         ondraft();
@@ -1018,7 +1163,7 @@
 {/snippet}
 
 {#if visible}
-  <div class="scrim" data-testid="compose">
+  <div class="scrim" data-testid="compose" inert={finishing || sendInProgress}>
     <div class="card" bind:this={card} role="dialog" aria-modal="true" aria-label={t(KICKERS[mode])}>
       <!-- Field A46: the header no longer repeats the subject — the
            Subject field states it, just below. -->
@@ -1104,7 +1249,7 @@
       <Editor bind:this={editorRef}
               important={important}
               onImportantToggle={() => { important = !important; scheduleSave(); }}
-              oninput={scheduleSave}>
+              oninput={scheduleSave} onerror={onflash}>
         {#if attachments.length > 0 || retrievals.length > 0}
           <div class="files" data-testid="compose-attachments">
             {#each attachments as attachment (attachment.id)}
@@ -1147,6 +1292,11 @@
           </div>
         {/if}
       </Editor>
+      {#if saveError || contextError}
+        <div class="refusal save-error" role="alert">
+          <Icon name="warning" />{t(saveError ? 'compose.saveFailed' : 'compose.contextFailed')}
+        </div>
+      {/if}
       {#if deleteRequest}
         <!-- R3/D3: the confirmation lives IN the footer, in the
              buttons' place — a discarded draft does not come back,
@@ -1163,14 +1313,14 @@
       {:else}
         <div class="foot">
           <button type="button" class="main" data-testid="compose-send"
-                  disabled={sendInProgress} onclick={send}>
+                  disabled={sendInProgress || contextError || contextLoading} onclick={send}>
             <Icon name="send" />{t('action.send')}</button>
           <!-- R2: “Send later” — the card opens above the footer
                (same idiom as the color swatch), deadline preset to
                +1 h, native date+time control. -->
           <span class="group-deferred">
             <button type="button" data-testid="compose-later"
-                    disabled={sendInProgress} onclick={openDeferred}>
+                    disabled={sendInProgress || contextError || contextLoading} onclick={openDeferred}>
               <Icon name="schedule_send" />{t('compose.later')}</button>
             {#if showDeferred}
               <div class="deferred" data-testid="compose-deferred">
@@ -1282,7 +1432,7 @@
   .value { flex:1; font-size:13px; color:var(--ink); }
   /* A119: the wrapper takes the row slot, the select fills it; the
      chevron sits at the row's edge, where the engine arrow used to. */
-  .from-wrap { flex:1; }
+  .from-wrap { flex:1; align-self:center; }
   .from-wrap::after { right:2px; }
   select.value {
     border:none; background:transparent; cursor:pointer; padding:0 18px 0 0;
@@ -1332,6 +1482,7 @@
     display:flex; align-items:center; gap:8px;
   }
   .refusal :global(.ic) { width:14px; height:14px; }
+  .save-error { padding:7px 22px; }
 
   /* `.button-format`'s icon size is shared with Editor.svelte's copy
      of the rule (the formatting bar lives there now) — `.delete`

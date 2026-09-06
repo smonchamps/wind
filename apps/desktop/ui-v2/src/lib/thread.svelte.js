@@ -60,7 +60,7 @@ let token = 0;
 // effect consults it and sets it back.
 export const hiddenNames = { key: '', names: {} };
 
-export const msgKey = (m) => `${m.account_id}/${m.mailbox}/${m.uid}`;
+export const msgKey = (m) => `${m.account_id}/${m.mailbox}/${m.version?.mailbox_id ?? 0}/${m.version?.uid_validity ?? 0}/${m.uid}`;
 
 // A local echo (PLAN-REACTIVITE E3) is recognized by its synthetic
 // mailbox — its body is local (echo_body), never from a thread.
@@ -98,13 +98,17 @@ export async function openThread(newRow, frame = 'pane') {
     return thread.lastOpenMs;
   }
   try {
-    const messages = await call('thread_messages', { threadId: newRow.thread_id });
+    const messages = await call('thread_messages', { threadId: newRow.thread_id, accountId: newRow.account_id, mailbox: newRow.mailbox, uid: newRow.uid, version: newRow.version });
     if (mine !== token) return thread.lastOpenMs;
     thread.messages = messages;
     const last = messages[messages.length - 1];
     if (last) await toggleMessage(last, true);
   } catch (err) {
     console.error('thread_messages :', err);
+    if (mine === token) {
+      thread.messages = [newRow];
+      await toggleMessage(newRow, true);
+    }
   }
   if (mine === token) thread.lastOpenMs = performance.now() - t0;
   return thread.lastOpenMs;
@@ -161,6 +165,7 @@ async function loadMessage(m, withImages = false) {
             accountId: m.account_id,
             mailbox: m.mailbox,
             uid: m.uid,
+            version: m.version,
             showImages: withImages,
           });
       // The opening token guards every write: a late reply
@@ -198,6 +203,7 @@ async function loadMessage(m, withImages = false) {
           accountId: m.account_id,
           mailbox: m.mailbox,
           uid: m.uid,
+          version: m.version,
         });
     reading
       .then((fetched) => {
@@ -249,6 +255,7 @@ export function showImages(m) {
       accountId: m.account_id,
       mailbox: m.mailbox,
       uid: m.uid,
+      version: m.version,
     }).catch((err) => console.error('allow_images_message :', err));
   }
   return loadMessage(m, true);
@@ -269,6 +276,7 @@ export function alwaysShowImages(m) {
     accountId: m.account_id,
     mailbox: m.mailbox,
     uid: m.uid,
+    version: m.version,
   })
     .then((address) => {
       if (address == null) {

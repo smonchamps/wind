@@ -13,8 +13,12 @@
 //! (`lightningcss`) will come for the fidelity of `<style>` blocks.
 
 mod sanitize;
+mod style;
 
-pub use sanitize::{BLOCKED_PIXEL, ImagePolicy, Sanitized, sanitize, sanitize_with};
+pub use sanitize::{
+    BLOCKED_PIXEL, ImagePolicy, Sanitized, sanitize, sanitize_composition, sanitize_for_composer,
+    sanitize_with,
+};
 
 /// A message body reduced to its text — the raw material of a quote
 /// (reply, forward — Phase 2).

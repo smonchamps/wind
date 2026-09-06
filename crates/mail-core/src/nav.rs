@@ -1010,7 +1010,7 @@ impl Store {
                         -- echo (copies from the sending log or from
                         -- the source envelope) — never the destination
                         -- slug (“To: envoyes”, field, 2026-08-21).
-                        ec.to_addrs, NULL, 1, 0,
+                        ec.to_addrs, NULL, 0, 0, 1, 0,
                         page.date_epoch AS sort_date, page.uid AS sort_uid,
                         page.mailbox_id AS sort_mailbox
                    FROM page

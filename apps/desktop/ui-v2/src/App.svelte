@@ -236,10 +236,10 @@ import { invalidateViews } from './lib/views.svelte.js';
   // failure, partial failure, or nothing — a single write, the two
   // states cannot diverge.
   function failedUpdates(report) {
-    syncFailure = report.accounts === 0 && report.errors.length > 0;
     syncPartial = report.accounts_failed > 0 && report.accounts > 0
       ? { n: report.accounts_failed, m: report.accounts_failed + report.accounts }
       : null;
+    syncFailure = report.errors.length > 0 && !syncPartial;
   }
 
   // RETOURS-13 R3: a mailbox's label comes out of THE shared rule
@@ -934,12 +934,8 @@ import { invalidateViews } from './lib/views.svelte.js';
     }
   }
 
-  // E3: the manual gesture (D5 reopened) — the light pass: STATUS
-  // INBOX per account, polls only if it moved (E2a), then the outbox
-  // tries its luck again (the network may be back — that's often WHY
-  // we click). Response in seconds, held by E2a's gate; every command
-  // is bounded by the P0 timeouts, the pass always ends — no
-  // dedicated watchdog.
+  // Manual light sync checks INBOX and imports complete remote drafts,
+  // then retries pending sends. Network calls retain their P0 timeouts.
   // `force`: the click is an ORDER — it bypasses the per-account
   // backoff (anti-hammering, shell); sleep-wake, on the other hand,
   // respects it.
@@ -956,6 +952,7 @@ import { invalidateViews } from './lib/views.svelte.js';
       const report = await call('sync_inbox_light', { force: force === true });
       if (token !== cycleToken) return;
       failedUpdates(report);
+      probeDrafts();
       await call('flush_outbox').catch((err) => console.error('flush_outbox :', err));
       probeSends();
       loadNav();
@@ -988,7 +985,10 @@ import { invalidateViews } from './lib/views.svelte.js';
     // would itself be the first full opening. Awaited, not fired: on
     // first launch it's the one that creates the schema — serialized
     // before the fleet of probes, as when it lived before mount.
-    if (dbReady) await setDetectedLanguage();
+    if (dbReady) {
+      await setDetectedLanguage();
+      await call('recover_draft_edit').catch((err) => flash(t('compose.sessionFailed', { err })));
+    }
     ready = true;
     // THE LIST FIRST (PLAN-DEMARRAGE, E2). `prete = true` doesn't
     // paint right away: Svelte schedules the flush as a microtask.

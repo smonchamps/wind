@@ -36,7 +36,7 @@ use crate::store::Store;
 ///
 /// Nothing is validated here: a half-typed address must be kept exactly
 /// as it is. Strict validation only happens at send time.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct DraftContent<'a> {
     pub to_raw: &'a str,
     /// Raw, unvalidated Cc and Bcc — like `to_raw`, strict validation
@@ -70,12 +70,18 @@ pub struct DraftSaved {
     /// fingers: its text was kept **apart** instead of overwriting the
     /// other one.
     pub forked: bool,
+    /// Metadata from the committed version, including new IDs after a fork.
+    pub attachments: Vec<DraftAttachmentMeta>,
 }
 
 /// A draft as the user left it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SavedDraft {
     pub id: i64,
+    pub incarnation: String,
+    /// Frozen RFC reply headers, independent of a mailbox UID.
+    pub thread_headers: crate::ThreadHeaders,
+    pub reply_identity: Option<crate::MailboxIdentity>,
     /// The account that will send it (and whose Drafts folder mirrors it).
     pub account_id: i64,
     /// Raw, unvalidated "To" field (can be empty or incomplete).
@@ -158,6 +164,26 @@ pub struct DraftAttachmentSaved {
 }
 
 impl Store {
+    fn capture_draft_reply_identity(
+        &self,
+        id: i64,
+        account_id: i64,
+        mailbox: Option<&str>,
+    ) -> Result<(), Error> {
+        if let Some(mailbox) = mailbox {
+            let identity = self.mailbox_identity(account_id, mailbox)?;
+            self.conn().execute(
+                "UPDATE drafts SET reply_mailbox_id = ?1, reply_uid_validity = ?2 WHERE id = ?3",
+                params![
+                    identity.as_ref().map(|i| i.mailbox_id),
+                    identity.as_ref().map(|i| i.uid_validity),
+                    id
+                ],
+            )?;
+        }
+        Ok(())
+    }
+
     /// Saves (`id: None`) or updates a draft.
     ///
     /// A stale id (draft deleted in the meantime by another view)
@@ -186,6 +212,20 @@ impl Store {
     /// `None` disables the detection — for callers that do not hold an
     /// in-memory copy, and so have nothing to overwrite.
     pub fn save_draft(
+        &self,
+        account_id: i64,
+        id: Option<i64>,
+        base_epoch: Option<i64>,
+        content: DraftContent<'_>,
+    ) -> Result<DraftSaved, Error> {
+        let tx = self.conn().unchecked_transaction()?;
+        let mut saved = self.save_draft_in_transaction(account_id, id, base_epoch, content)?;
+        saved.attachments = self.draft_attachments_meta(saved.id)?;
+        tx.commit()?;
+        Ok(saved)
+    }
+
+    pub(crate) fn save_draft_in_transaction(
         &self,
         account_id: i64,
         id: Option<i64>,
@@ -239,10 +279,17 @@ impl Store {
                         important,
                         now,
                     )?;
+                    self.conn().execute(
+                        "INSERT INTO draft_attachments (draft_id, name, mime, size, blob_id)
+                         SELECT ?1, name, mime, size, blob_id FROM draft_attachments
+                         WHERE draft_id = ?2 ORDER BY id",
+                        params![forked, id],
+                    )?;
                     return Ok(DraftSaved {
                         id: forked,
                         updated_epoch: now,
                         forked: true,
+                        attachments: Vec::new(),
                     });
                 }
                 // MAX(…, +1): the timestamp advances STRICTLY on every
@@ -277,6 +324,9 @@ impl Store {
                         OR drafts.important IS NOT excluded.important",
                     params![id, account_id, to_raw, cc_raw, bcc_raw, subject, body, body_html, reply_to_uid, reply_to_mailbox, important, now],
                 )?;
+                if stored.is_none() {
+                    self.capture_draft_reply_identity(id, account_id, reply_to_mailbox)?;
+                }
                 // Re-read, not assumed: the `WHERE` above may have left
                 // the timestamp untouched (identical save), and
                 // returning `now` would make detection fail on the next
@@ -290,6 +340,7 @@ impl Store {
                     id,
                     updated_epoch,
                     forked: false,
+                    attachments: Vec::new(),
                 })
             }
             None => Ok(DraftSaved {
@@ -308,6 +359,7 @@ impl Store {
                 )?,
                 updated_epoch: now,
                 forked: false,
+                attachments: Vec::new(),
             }),
         }
     }
@@ -332,7 +384,9 @@ impl Store {
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![account_id, to_raw, cc_raw, bcc_raw, subject, body, body_html, reply_to_uid, reply_to_mailbox, important, now],
         )?;
-        Ok(self.conn().last_insert_rowid())
+        let id = self.conn().last_insert_rowid();
+        self.capture_draft_reply_identity(id, account_id, reply_to_mailbox)?;
+        Ok(id)
     }
 
     /// A cheap revision of the drafts table — `(count, latest
@@ -357,6 +411,17 @@ impl Store {
             .query_map([], row_to_draft)?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
+    }
+
+    pub fn draft(&self, id: i64) -> Result<Option<SavedDraft>, Error> {
+        Ok(self
+            .conn()
+            .query_row(
+                &format!("{DRAFT_SELECT} WHERE d.id = ?1"),
+                [id],
+                row_to_draft,
+            )
+            .optional()?)
     }
 
     /// All the drafts of ONE account — what the pull compares to the
@@ -458,10 +523,12 @@ impl Store {
                 remaining,
             });
         }
+        tx.execute("INSERT INTO draft_blobs (bytes) VALUES (?1)", [bytes])?;
+        let blob_id = tx.last_insert_rowid();
         tx.execute(
-            "INSERT INTO draft_attachments (draft_id, name, mime, size, bytes)
+            "INSERT INTO draft_attachments (draft_id, name, mime, size, blob_id)
              VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![draft_id, name, mime, size, bytes],
+            params![draft_id, name, mime, size, blob_id],
         )?;
         let attachment_id = tx.last_insert_rowid();
         let updated_epoch = touch_draft(&tx, draft_id)?;
@@ -508,8 +575,8 @@ impl Store {
     /// [`Store::draft_attachments_meta`].
     pub fn draft_attachments_full(&self, draft_id: i64) -> Result<Vec<DraftAttachmentFull>, Error> {
         let mut stmt = self.conn().prepare(
-            "SELECT name, mime, bytes FROM draft_attachments
-             WHERE draft_id = ?1 ORDER BY id",
+            "SELECT a.name, a.mime, b.bytes FROM draft_attachments a JOIN draft_blobs b ON b.id = a.blob_id
+             WHERE a.draft_id = ?1 ORDER BY a.id",
         )?;
         let rows = stmt
             .query_map([draft_id], |row| {
@@ -753,14 +820,32 @@ fn touch_draft(conn: &rusqlite::Connection, draft_id: i64) -> Result<i64, Error>
 const DRAFT_SELECT: &str = "SELECT d.id, d.account_id, d.to_raw, d.subject, d.body,
         d.reply_to_uid, d.reply_to_mailbox, re.thread_id,
         d.updated_epoch, d.remote_uid, d.pushed_epoch, d.cc_raw, d.bcc_raw,
-        d.body_html, d.important
+        d.body_html, d.important, d.incarnation, d.reply_in_reply_to, d.reply_references, d.reply_mailbox_id, d.reply_uid_validity
  FROM drafts d
  LEFT JOIN mailboxes rm ON rm.account_id = d.account_id AND rm.name = d.reply_to_mailbox
- LEFT JOIN envelopes re ON re.mailbox_id = rm.id AND re.uid = d.reply_to_uid";
+ LEFT JOIN envelopes re ON re.mailbox_id = rm.id AND re.uid = d.reply_to_uid AND rm.id = d.reply_mailbox_id AND rm.uid_validity = d.reply_uid_validity";
 
 fn row_to_draft(row: &rusqlite::Row<'_>) -> rusqlite::Result<SavedDraft> {
+    let account_id = row.get(1)?;
     Ok(SavedDraft {
         id: row.get(0)?,
+        incarnation: row.get(15)?,
+        reply_identity: row
+            .get::<_, Option<i64>>(18)?
+            .zip(row.get::<_, Option<u32>>(19)?)
+            .zip(row.get::<_, Option<String>>(6)?)
+            .map(
+                |((mailbox_id, uid_validity), mailbox)| crate::MailboxIdentity {
+                    account_id,
+                    mailbox,
+                    mailbox_id,
+                    uid_validity,
+                },
+            ),
+        thread_headers: crate::ThreadHeaders {
+            in_reply_to: row.get(16)?,
+            references: row.get(17)?,
+        },
         account_id: row.get(1)?,
         to_raw: row.get(2)?,
         subject: row.get(3)?,
@@ -1894,6 +1979,9 @@ mod tests_pull {
     fn draft(id: i64, remote_uid: Option<Uid>, updated: i64, pushed: Option<i64>) -> SavedDraft {
         SavedDraft {
             id,
+            incarnation: format!("test-{id}"),
+            thread_headers: Default::default(),
+            reply_identity: None,
             account_id: 1,
             to_raw: "alice@example.com".to_string(),
             cc_raw: String::new(),
@@ -2185,6 +2273,122 @@ mod tests_attachments {
                 |row| row.get(0),
             )
             .unwrap()
+    }
+
+    fn save_snapshot(store: &Store, draft: &SavedDraft) -> Result<DraftSaved, Error> {
+        store.save_draft(
+            draft.account_id,
+            Some(draft.id),
+            Some(draft.updated_epoch),
+            DraftContent {
+                to_raw: &draft.to_raw,
+                cc_raw: &draft.cc_raw,
+                bcc_raw: &draft.bcc_raw,
+                subject: &draft.subject,
+                body: &draft.body,
+                body_html: draft.body_html.as_deref(),
+                reply_to_uid: draft.reply_to_uid,
+                reply_to_mailbox: draft.reply_to_mailbox.as_deref(),
+                important: draft.important,
+            },
+        )
+    }
+
+    #[test]
+    fn conflict_fork_preserves_attachment_bytes_and_order() {
+        let (store, draft) = store_with_draft();
+        let snapshot = store.drafts().unwrap().remove(0);
+        store
+            .add_draft_attachment(draft, "first.txt", "text/plain", b"first")
+            .unwrap();
+        store
+            .add_draft_attachment(
+                draft,
+                "second.bin",
+                "application/octet-stream",
+                &[0, 255, 7],
+            )
+            .unwrap();
+
+        let fork = save_snapshot(&store, &snapshot).unwrap();
+
+        assert!(fork.forked);
+        let original = store.draft_attachments_full(draft).unwrap();
+        assert_eq!(original.len(), 2);
+        assert_eq!(store.draft_attachments_full(fork.id).unwrap(), original);
+        store.delete_draft(draft).unwrap();
+        assert_eq!(
+            store.draft_attachments_full(fork.id).unwrap(),
+            original,
+            "the fork owns its bytes independently"
+        );
+    }
+
+    #[test]
+    fn editing_version_keeps_files_after_remote_deletion() {
+        let (store, draft) = store_with_draft();
+        store
+            .add_draft_attachment(draft, "original.txt", "text/plain", b"original")
+            .unwrap();
+        let snapshot = store.draft(draft).unwrap().unwrap();
+        store
+            .begin_draft_edit(
+                "edit",
+                snapshot.account_id,
+                Some(draft),
+                Some(&snapshot.incarnation),
+                Some(snapshot.updated_epoch),
+            )
+            .unwrap();
+        store.drop_stale_draft(draft).unwrap();
+        let fork = store
+            .save_draft_edit(
+                "edit",
+                snapshot.account_id,
+                DraftContent {
+                    body: "edited after remote replacement",
+                    ..snapshot.content()
+                },
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(store.draft_attachments_full(fork.id).unwrap().len(), 1);
+        assert_eq!(
+            store.draft_attachments_full(fork.id).unwrap()[0].bytes,
+            b"original"
+        );
+    }
+
+    #[test]
+    fn conflict_fork_rolls_back_if_an_attachment_cannot_be_copied() {
+        let (store, draft) = store_with_draft();
+        let snapshot = store.drafts().unwrap().remove(0);
+        store
+            .add_draft_attachment(draft, "first.txt", "text/plain", b"first")
+            .unwrap();
+        store
+            .conn()
+            .execute_batch(
+                "CREATE TRIGGER reject_fork_attachment BEFORE INSERT ON draft_attachments
+             BEGIN SELECT RAISE(ABORT, 'synthetic attachment copy failure'); END;",
+            )
+            .unwrap();
+
+        assert!(
+            save_snapshot(&store, &snapshot).is_err(),
+            "an incomplete fork must not be reported as saved"
+        );
+        let remaining = store.drafts().unwrap();
+        assert_eq!(
+            remaining.len(),
+            1,
+            "the new draft must roll back with its files"
+        );
+        assert_eq!(remaining[0].id, draft);
+        assert_eq!(
+            store.draft_attachments_full(draft).unwrap()[0].bytes,
+            b"first"
+        );
     }
 
     #[test]

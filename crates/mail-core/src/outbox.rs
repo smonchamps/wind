@@ -213,8 +213,8 @@ impl Store {
         if let Some(draft_id) = draft_id {
             tx.execute(
                 "INSERT INTO outbox_attachments (outbox_id, name, mime, size, bytes)
-                 SELECT ?1, name, mime, size, bytes FROM draft_attachments
-                 WHERE draft_id = ?2 ORDER BY id",
+                 SELECT ?1, a.name, a.mime, a.size, b.bytes FROM draft_attachments a JOIN draft_blobs b ON b.id = a.blob_id
+                 WHERE a.draft_id = ?2 ORDER BY a.id",
                 params![outbox_id, draft_id],
             )?;
         }
@@ -311,12 +311,17 @@ impl Store {
         let draft_id = self.conn().last_insert_rowid();
         // The bytes live in the journal as long as the send has not
         // gone out (PJ-D7): the copy goes back to the draft whole.
-        self.conn().execute(
-            "INSERT INTO draft_attachments (draft_id, name, mime, size, bytes)
-             SELECT ?1, name, mime, size, bytes FROM outbox_attachments
-             WHERE outbox_id = ?2 AND bytes IS NOT NULL ORDER BY id",
-            params![draft_id, id],
-        )?;
+        let files = self.conn().prepare("SELECT id FROM outbox_attachments WHERE outbox_id = ?1 AND bytes IS NOT NULL ORDER BY id")?
+            .query_map([id], |row| row.get::<_, i64>(0))?.collect::<Result<Vec<_>, _>>()?;
+        for file in files {
+            self.conn().execute("INSERT INTO draft_blobs (bytes) SELECT bytes FROM outbox_attachments WHERE id = ?1", [file])?;
+            let blob_id = self.conn().last_insert_rowid();
+            self.conn().execute(
+                "INSERT INTO draft_attachments (draft_id, name, mime, size, blob_id)
+                 SELECT ?1, name, mime, size, ?2 FROM outbox_attachments WHERE id = ?3",
+                params![draft_id, blob_id, file],
+            )?;
+        }
         self.conn()
             .execute("DELETE FROM outbox WHERE id = ?1", [id])?;
         tx.commit()?;

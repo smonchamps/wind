@@ -23,6 +23,7 @@
   } from './lib/spacing.svelte.js';
   import { activation } from './lib/keyboard.js';
   import { call } from './lib/transport.js';
+  import { imageSources, markHtmlEdited, pasteSafeHtml, setSafeHtml, waitForHtml } from './lib/editable-html.js';
   import { SCREENED_OUT_LABEL, DESTINATION_LABEL } from './lib/screener.js';
   import { MARKER_ICONS, MARKER_HUES } from './lib/markers.js';
   import { IMPORT_HORIZONS as HORIZONS } from './lib/vocabularies.js';
@@ -515,17 +516,26 @@
   // account, applicable to all in one gesture (D4, word for word).
   let signatures = $state({}); // account_id -> { replies, state }
   let signatureFields = {}; // account_id -> contenteditable (outside reactivity)
-  async function loadSignatures() {
+  let signatureLoadFlight = null;
+  let signatureLoadToken = 0;
+  function loadSignatures() {
+    const flight = loadSignaturesAlone(++signatureLoadToken);
+    signatureLoadFlight = flight;
+    const settled = () => { if (signatureLoadFlight === flight) signatureLoadFlight = null; };
+    flight.then(settled, settled);
+  }
+  async function loadSignaturesAlone(mine) {
     for (const c of accounts) {
       try {
         const loaded = await call('signature_get', { accountId: c.account_id });
+        if (mine !== signatureLoadToken || !visible || group !== 'signature') return;
         signatures[c.account_id] = { replies: loaded.replies, state: null };
         // The node only exists once the group is rendered — setting
         // it before would be lost (same reason as `setBody` at the
         // composer).
         await tick();
         const field = signatureFields[c.account_id];
-        if (field) field.innerHTML = loaded.html ?? '';
+        if (field && !field.innerHTML && loaded.html) await setSafeHtml(field, loaded.html);
       } catch (err) {
         console.error('signature_get :', err);
       }
@@ -541,18 +551,23 @@
     document.execCommand(name, false, null);
   }
   async function saveSignature(c, { replies = null, state = 'ok' } = {}) {
+    const field = signatureFields[c.account_id];
+    if (!field) return false;
+    if (signatureLoadFlight) await signatureLoadFlight;
     const sig = signatures[c.account_id] ?? { replies: false };
     const wanted = replies ?? sig.replies;
     try {
+      await waitForHtml(field);
       await call('signature_set', {
         accountId: c.account_id,
-        html: signatureFields[c.account_id]?.innerHTML ?? '',
+        html: field.innerHTML,
+        imageSources: imageSources(field),
         replies: wanted,
       });
-      signatures[c.account_id] = { replies: wanted, state };
+      if (signatureFields[c.account_id] === field) signatures[c.account_id] = { replies: wanted, state };
       return true;
     } catch (err) {
-      signatures[c.account_id] = {
+      if (signatureFields[c.account_id] === field) signatures[c.account_id] = {
         ...sig,
         state: { error: t('error.signature', { err }) },
       };
@@ -561,7 +576,7 @@
   }
   function clearSignature(c) {
     const field = signatureFields[c.account_id];
-    if (field) field.innerHTML = '';
+    if (field) setSafeHtml(field, '', {}, { overwrite: true });
     saveSignature(c);
   }
   // The toggle SAVES (the choice applies right away, like the other
@@ -576,19 +591,24 @@
   // and it SHOWS: their editors and their switches update on screen,
   // not just in the database.
   async function applyToAll(c) {
-    const html = signatureFields[c.account_id]?.innerHTML ?? '';
+    const source = signatureFields[c.account_id];
+    if (!source) return;
+    const targets = [...accounts];
     const wanted = signatures[c.account_id]?.replies ?? false;
-    await saveSignature(c, { replies: wanted, state: 'tous' });
-    for (const other of accounts) {
+    if (!await saveSignature(c, { replies: wanted, state: 'tous' })) return;
+    const html = source.innerHTML;
+    const images = imageSources(source);
+    for (const other of targets) {
       if (other.account_id === c.account_id) continue;
       try {
         await call('signature_set', {
           accountId: other.account_id,
           html,
+          imageSources: images,
           replies: wanted,
         });
         const field = signatureFields[other.account_id];
-        if (field) field.innerHTML = html;
+        if (field) await setSafeHtml(field, html, images, { overwrite: true });
         signatures[other.account_id] = { replies: wanted, state: null };
       } catch (err) {
         signatures[other.account_id] = {
@@ -597,6 +617,15 @@
         };
       }
     }
+  }
+
+  function pasteSignature(event, c) {
+    pasteSafeHtml(event).catch(() => {
+      signatures[c.account_id] = {
+        ...(signatures[c.account_id] ?? { replies: false }),
+        state: { error: t('compose.pasteFailed') },
+      };
+    });
   }
 
   // The same flow as the notification slot (ADR 0013): update_check
@@ -1090,7 +1119,11 @@
                        aria-label={t('settings.signaturePlaceholder')}
                        data-testid="signature-editor"
                        bind:this={signatureFields[c.account_id]}
+                       onpaste={(event) => pasteSignature(event, c)}
+                       ondrop={(event) => pasteSignature(event, c)}
+                       ondragover={(event) => event.preventDefault()}
                        oninput={() => {
+                         markHtmlEdited(signatureFields[c.account_id]);
                          const sig = signatures[c.account_id];
                          if (sig?.state) signatures[c.account_id] = { ...sig, state: null };
                        }}></div>

@@ -12,6 +12,22 @@ The signed packages and their notes live in the
 [GitHub Releases](https://github.com/smonchamps/wind/releases); the update
 is automatic and signed (minisign, ADR 0013).
 
+## [Unreleased]
+
+### Fixed
+
+- Rich replies, forwards and pasted content keep permitted formatting while
+  blocking remote-image requests in the composer. Deleted quoted content
+  stays deleted when saving or sending.
+- Failed draft saves keep the composer open with a retryable error. Closing
+  waits for pending edits and attachments; recovered edits and conflict copies
+  retain their committed content and files.
+- Drafts imported from another mail client retain recipients, attachments,
+  priority and reply headers. Manual synchronization now imports them too,
+  reports import failures, and refreshes the draft list.
+- Remote body and attachment reads reject a changed mailbox generation.
+- The sender selector is vertically centered beside its From label.
+
 ## [0.19.0] - unreleased
 
 Wind comes to the Mac.

@@ -268,12 +268,47 @@ fn address_list(addresses: Option<&[Address<'_>]>) -> Vec<String> {
 /// subject, nor body. That is exactly what distinguishes it from a message:
 /// it is being written.
 pub(crate) fn draft_from_raw(raw: &[u8]) -> Option<mail_core::RemoteDraft> {
+    use mail_parser::MimeHeaders;
     let message = mail_parser::MessageParser::new().parse(raw)?;
+    let html = message.body_html(0).map(|body| body.into_owned());
+    let attachments = message
+        .attachments()
+        .filter(|part| {
+            !is_inlined_image(part)
+                || !part.content_id().is_some_and(|id| {
+                    html.as_ref().is_some_and(|html| {
+                        html.contains(&format!("cid:{}", id.trim_matches(['<', '>'])))
+                    })
+                })
+        })
+        .map(|part| {
+            let mime = part_mime(part);
+            let name = part
+                .attachment_name()
+                .map(str::to_owned)
+                .unwrap_or_else(|| fallback_name(&mime));
+            mail_core::DraftAttachmentFull {
+                name,
+                mime,
+                bytes: part.contents().to_vec(),
+            }
+        })
+        .collect();
+    let headers = String::from_utf8_lossy(raw);
+    let important = header_value(&headers, "x-priority")
+        .is_some_and(|value| value.starts_with(['1', '2']))
+        || header_value(&headers, "importance")
+            .is_some_and(|value| value.eq_ignore_ascii_case("high"));
     Some(mail_core::RemoteDraft {
-        to_raw: recipients(&message),
+        to_raw: draft_addresses(message.to()),
+        cc_raw: draft_addresses(message.cc()),
+        bcc_raw: draft_addresses(message.bcc()),
+        important,
+        thread_headers: thread_headers(raw),
+        attachments,
         subject: message.subject().unwrap_or_default().to_string(),
         text: message.body_text(0).map(|body| body.into_owned()),
-        html: message.body_html(0).map(|body| body.into_owned()),
+        html: html.map(|html| inline_cid_images(html, &message)),
     })
 }
 
@@ -282,8 +317,8 @@ pub(crate) fn draft_from_raw(raw: &[u8]) -> Option<mail_core::RemoteDraft> {
 ///
 /// We keep the ADDRESS and not the display name: it is what must survive
 /// the round trip, and what the send validation will examine.
-fn recipients(message: &mail_parser::Message<'_>) -> String {
-    let Some(to) = message.to() else {
+fn draft_addresses(addresses: Option<&mail_parser::Address<'_>>) -> String {
+    let Some(to) = addresses else {
         return String::new();
     };
     to.iter()
@@ -1522,6 +1557,38 @@ Content-Transfer-Encoding: base64\r\n\r\niVBORw0KGgo=\r\n--B--\r\n";
     fn a_header_quoted_in_the_body_is_ignored() {
         let raw = b"Subject: x\r\n\r\nReferences: <fake@b>\r\n";
         assert_eq!(thread_headers(raw).references.as_deref(), Some(""));
+    }
+
+    #[test]
+    fn remote_draft_keeps_cc_bcc_priority_and_reply_headers() {
+        let draft = draft_from_raw(b"To: a@example.com\r\nCc: C <c@example.com>\r\nBcc: b@example.com\r\nX-Priority: 1\r\nIn-Reply-To: <parent@example.com>\r\nReferences: <root@example.com>\r\n <parent@example.com>\r\n\r\nBody").unwrap();
+        assert_eq!(draft.cc_raw, "c@example.com");
+        assert_eq!(draft.bcc_raw, "b@example.com");
+        assert!(draft.important);
+        assert_eq!(
+            draft.thread_headers.in_reply_to.as_deref(),
+            Some("<parent@example.com>")
+        );
+        assert_eq!(
+            draft.thread_headers.references.as_deref(),
+            Some("<root@example.com> <parent@example.com>")
+        );
+    }
+
+    #[test]
+    fn remote_draft_keeps_files_calendar_and_embedded_image_bytes() {
+        let raw = b"MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=x\r\n\r\n\
+--x\r\nContent-Type: text/html\r\n\r\n<p>Body<img src=\"cid:logo\"></p>\r\n\
+--x\r\nContent-Type: image/png\r\nContent-ID: <logo>\r\nContent-Transfer-Encoding: base64\r\n\r\nAQID\r\n\
+--x\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment; filename=notes.bin\r\nContent-Transfer-Encoding: base64\r\n\r\nAP8q\r\n\
+--x\r\nContent-Type: text/calendar\r\n\r\nBEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n--x--\r\n";
+        let draft = draft_from_raw(raw).unwrap();
+        assert!(draft.html.unwrap().contains("data:image/png;base64,AQID"));
+        assert_eq!(draft.attachments.len(), 2);
+        assert_eq!(draft.attachments[0].name, "notes.bin");
+        assert_eq!(draft.attachments[0].bytes, [0, 255, 42]);
+        assert_eq!(draft.attachments[1].mime, "text/calendar");
+        assert!(draft.attachments[1].bytes.starts_with(b"BEGIN:VCALENDAR"));
     }
 
     #[test]

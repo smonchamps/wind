@@ -8,13 +8,15 @@
 //!    1-2, nothing can execute or load.
 
 use std::borrow::Cow;
-use std::collections::HashSet;
-use std::sync::Arc;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 /// 1×1 grey GIF: replaces every blocked remote image.
 pub const BLOCKED_PIXEL: &str =
     "data:image/gif;base64,R0lGODlhAQABAIAAAMLCwgAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==";
+
+static NEXT_IMAGE: AtomicUsize = AtomicUsize::new(1);
 
 /// Fate of the remote images. Blocking is the non-negotiable default;
 /// displaying is an explicit choice of the user, per message.
@@ -28,17 +30,38 @@ pub struct Sanitized {
     pub html: String,
     pub remote_images_blocked: usize,
     pub styles_cleaned: usize,
+    pub image_sources: BTreeMap<String, String>,
 }
 
 pub fn sanitize(html: &str) -> Sanitized {
     sanitize_with(html, ImagePolicy::BlockRemote)
 }
 
+pub fn sanitize_for_composer(html: &str) -> Sanitized {
+    sanitize_policy(html, ImagePolicy::BlockRemote, true, None)
+}
+
+pub fn sanitize_composition(html: &str, images: &BTreeMap<String, String>) -> Sanitized {
+    sanitize_policy(html, ImagePolicy::AllowRemote, true, Some(images))
+}
+
 pub fn sanitize_with(html: &str, policy: ImagePolicy) -> Sanitized {
+    sanitize_policy(html, policy, false, None)
+}
+
+fn sanitize_policy(
+    html: &str,
+    policy: ImagePolicy,
+    composer: bool,
+    images: Option<&BTreeMap<String, String>>,
+) -> Sanitized {
     let remote_images = Arc::new(AtomicUsize::new(0));
     let styles_cleaned = Arc::new(AtomicUsize::new(0));
     let images_counter = Arc::clone(&remote_images);
     let styles_counter = Arc::clone(&styles_cleaned);
+    let image_sources = Arc::new(Mutex::new(BTreeMap::new()));
+    let sources = Arc::clone(&image_sources);
+    let images = images.cloned();
 
     let clean = ammonia::Builder::default()
         // R3: `ammonia` removes a forbidden tag but UNWRAPS its text
@@ -50,9 +73,6 @@ pub fn sanitize_with(html: &str, policy: ImagePolicy) -> Sanitized {
         .add_tags(["font"])
         .add_tag_attributes("font", ["color", "face", "size"])
         .add_generic_attributes([
-            // The marker of the forwarded block (PLAN-AUDIT-V2 E10, D8) —
-            // inert when reading, it tells the send where the block comes from.
-            "data-wind-transfert",
             "style",
             "width",
             "height",
@@ -67,6 +87,38 @@ pub fn sanitize_with(html: &str, policy: ImagePolicy) -> Sanitized {
             "http", "https", "mailto", "tel", "cid", "data",
         ]))
         .attribute_filter(move |element, attribute, value| {
+            if composer {
+                if element == "img" && attribute == "src" {
+                    if policy == ImagePolicy::AllowRemote {
+                        if let Some(url) = images.as_ref().and_then(|images| images.get(value)) {
+                            return remote_url(url).map(|url| Cow::Owned(url.into_owned()));
+                        }
+                    } else if let Some(url) = remote_url(value) {
+                        let id = NEXT_IMAGE.fetch_add(1, Ordering::Relaxed);
+                        let placeholder = format!("{BLOCKED_PIXEL}#wind-image-{id}");
+                        sources
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .insert(placeholder.clone(), url.into_owned());
+                        images_counter.fetch_add(1, Ordering::Relaxed);
+                        return Some(Cow::Owned(placeholder));
+                    }
+                    // Input cannot introduce a reference into another preparation's map.
+                    if value.starts_with(BLOCKED_PIXEL) {
+                        return Some(Cow::Borrowed(BLOCKED_PIXEL));
+                    }
+                }
+                if attribute == "style" {
+                    let clean = crate::style::clean_style(value);
+                    if clean != value {
+                        styles_counter.fetch_add(1, Ordering::Relaxed);
+                    }
+                    return Some(Cow::Owned(clean));
+                }
+                if !editor_attribute_allowed(element, attribute, value) {
+                    return None;
+                }
+            }
             filter_attribute(
                 element,
                 attribute,
@@ -83,7 +135,46 @@ pub fn sanitize_with(html: &str, policy: ImagePolicy) -> Sanitized {
         html: clean,
         remote_images_blocked: remote_images.load(Ordering::Relaxed),
         styles_cleaned: styles_cleaned.load(Ordering::Relaxed),
+        image_sources: image_sources
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone(),
     }
+}
+
+fn remote_url(value: &str) -> Option<Cow<'_, str>> {
+    let value = value.trim();
+    let lower = value.to_ascii_lowercase();
+    if lower.starts_with("http://") || lower.starts_with("https://") {
+        Some(Cow::Borrowed(value))
+    } else if value.starts_with("//") {
+        Some(Cow::Owned(format!("https:{value}")))
+    } else {
+        None
+    }
+}
+
+fn editor_attribute_allowed(element: &str, attribute: &str, value: &str) -> bool {
+    let cap = match attribute {
+        "width" | "height" => 1600.0,
+        "cellpadding" | "cellspacing" => 64.0,
+        "border" => 16.0,
+        "colspan" | "rowspan" => 100.0,
+        "size" if element == "font" => 7.0,
+        _ => return true,
+    };
+    let value = value.trim();
+    let (number, cap) = if let Some(number) = value.strip_suffix('%') {
+        if !matches!(attribute, "width" | "height") {
+            return false;
+        }
+        (number, 100.0)
+    } else {
+        (value, cap)
+    };
+    number
+        .parse::<f32>()
+        .is_ok_and(|number| number.is_finite() && (0.0..=cap).contains(&number))
 }
 
 fn filter_attribute<'a>(
@@ -96,10 +187,13 @@ fn filter_attribute<'a>(
 ) -> Option<Cow<'a, str>> {
     if element == "img" && attribute == "src" {
         let lower = value.trim().to_ascii_lowercase();
-        let remote = lower.starts_with("http://")
-            || lower.starts_with("https://")
-            || lower.starts_with("//");
-        if remote && policy == ImagePolicy::BlockRemote {
+        let remote = !(lower.starts_with("data:image/") || lower.starts_with("cid:"));
+        if remote {
+            if policy == ImagePolicy::AllowRemote
+                && let Some(url) = remote_url(value)
+            {
+                return Some(url);
+            }
             remote_images.fetch_add(1, Ordering::Relaxed);
             return Some(Cow::Borrowed(BLOCKED_PIXEL));
         }
@@ -119,10 +213,8 @@ fn filter_attribute<'a>(
     Some(Cow::Borrowed(value))
 }
 
-/// CSS filtering per declaration: removes any load or execution.
-/// Deliberately naive (CSS escapes such as `\75rl(` would get through):
-/// the iframe's CSP is the safety net (crate doc). The fidelity of `<style>`
-/// blocks will come with a real CSS parser.
+/// Reading-only cleanup; escaped loads are blocked by the iframe's CSP.
+/// Editable documents use the token/value policy in `style` instead.
 fn clean_style(value: &str) -> String {
     value
         .split(';')
@@ -226,17 +318,10 @@ mod tests {
         assert!(!out.html.contains("x.example"));
     }
 
-    /// The marker of the forwarded block (PLAN-AUDIT-V2 E10, D8) survives
-    /// the boundary: a forward draft resumed later must still know where
-    /// it comes from to restore its images at send time.
     #[test]
-    fn the_forward_marker_survives_the_boundary() {
+    fn received_html_cannot_supply_forward_authority() {
         let out = sanitize(r#"<div data-wind-transfert="3/42/INBOX"><p>x</p></div>"#);
-        assert!(
-            out.html.contains(r#"data-wind-transfert="3/42/INBOX""#),
-            "{}",
-            out.html
-        );
+        assert!(!out.html.contains("data-wind-transfert"), "{}", out.html);
     }
 
     #[test]
@@ -304,5 +389,118 @@ mod tests {
         assert!(out.html.contains(r#"width="600""#));
         assert!(out.html.contains(r#"align="center""#));
         assert!(out.html.contains("color: #333"));
+    }
+}
+
+#[cfg(test)]
+mod composer_tests {
+    #[test]
+    fn protocol_relative_images_stay_blocked_while_editing_and_roundtrip_as_https() {
+        let prepared = super::sanitize_for_composer("<img src=\"//audit.invalid/image\">");
+        assert_eq!(prepared.image_sources.len(), 1);
+        assert!(
+            prepared
+                .image_sources
+                .values()
+                .any(|url| url == "https://audit.invalid/image")
+        );
+        assert!(!prepared.html.contains("audit.invalid"));
+        let saved = super::sanitize_composition(&prepared.html, &prepared.image_sources);
+        assert!(saved.html.contains("https://audit.invalid/image"));
+    }
+    use super::*;
+
+    #[test]
+    fn retained_images_roundtrip_without_restoring_deleted_text_or_images() {
+        let source = r#"<p>Delete this sentence.</p><p>Keep this sentence.</p><img src="https://a.invalid/one"><img src="https://a.invalid/two">"#;
+        let prepared = sanitize_for_composer(source);
+        assert_eq!(prepared.image_sources.len(), 2);
+        assert!(!prepared.html.contains("https://a.invalid"));
+        let first = prepared
+            .image_sources
+            .iter()
+            .find(|(_, url)| url.ends_with("one"))
+            .unwrap()
+            .0;
+        let edited = prepared
+            .html
+            .replace("<p>Delete this sentence.</p>", "")
+            .replace(&format!("<img src=\"{first}\">"), "");
+        let sent = sanitize_composition(&edited, &prepared.image_sources).html;
+        assert!(!sent.contains("Delete this sentence"));
+        assert!(!sent.contains("https://a.invalid/one"));
+        assert!(sent.contains("https://a.invalid/two"));
+        assert!(sent.contains("Keep this sentence"));
+        assert!(!sent.contains("wind-image"));
+    }
+
+    #[test]
+    fn image_metadata_never_authorizes_a_local_body_or_unsafe_url() {
+        let images = BTreeMap::from([("placeholder".into(), "javascript:alert(1)".into())]);
+        let sent = sanitize_composition(
+            r#"<img src="placeholder"><div data-wind-transfert="1/42/INBOX">edited</div>"#,
+            &images,
+        )
+        .html;
+        assert!(!sent.contains("javascript"));
+        assert!(!sent.contains("data-wind-transfert"));
+        assert!(sent.contains("edited"));
+    }
+
+    #[test]
+    fn rejects_escaped_loads_functions_and_positioning() {
+        for style in [
+            r"background:u\72l(https://audit.invalid/pixel)",
+            r"color:u\72l(https://audit.invalid/pixel)",
+            "position:fixed;inset:0;z-index:99",
+            "--image:url(https://audit.invalid/pixel);color:var(--image)",
+            "color:rgb(var(--red),0,0)",
+            "font-size:100000px;padding:999999em;line-height:9000",
+        ] {
+            let html = format!("<p style=\"{style}\">text</p>");
+            let clean = sanitize_for_composer(&html).html;
+            for forbidden in [
+                "audit.invalid",
+                "fixed",
+                "inset",
+                "z-index",
+                "var(",
+                "100000",
+                "999999",
+                "9000",
+            ] {
+                assert!(!clean.contains(forbidden), "{style}: {clean}");
+            }
+        }
+    }
+
+    #[test]
+    fn blocks_relative_images_and_bounds_legacy_layout() {
+        let clean = sanitize_for_composer(
+            r#"<img src="/pixel" width="100000"><table cellpadding="99999"><tr><td>ok</td></tr></table>"#,
+        );
+        assert!(!clean.html.contains("/pixel"));
+        assert!(!clean.html.contains("100000"));
+        assert!(!clean.html.contains("99999"));
+        assert_eq!(clean.remote_images_blocked, 1);
+    }
+
+    #[test]
+    fn preserves_ordinary_formatting_after_rejected_nested_function() {
+        let clean = sanitize_for_composer(r#"<p style="COLOR:red;background-color:color-mix(in srgb,rgb(0,0,0),white);padding:4px 8px;font-size:14px">ok</p>"#).html;
+        assert!(clean.contains("color:red"), "{clean}");
+        assert!(clean.contains("padding:4px 8px"), "{clean}");
+        assert!(clean.contains("font-size:14px"), "{clean}");
+        assert!(!clean.contains("color-mix"), "{clean}");
+    }
+
+    #[test]
+    fn retains_image_only_markup_without_private_attributes() {
+        let clean = sanitize_for_composer(
+            r#"<img src="data:image/png;base64,AA==" data-wind-transfert="1/2/INBOX">"#,
+        )
+        .html;
+        assert!(clean.contains("data:image/png;base64,AA=="));
+        assert!(!clean.contains("data-wind"));
     }
 }

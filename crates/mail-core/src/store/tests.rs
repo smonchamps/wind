@@ -2,6 +2,333 @@ use chrono::{TimeZone, Utc};
 
 use super::*;
 
+#[test]
+fn legacy_reply_migration_freezes_headers_before_the_source_disappears() {
+    let (mut store, mailbox) = store_with_mailbox();
+    let account = test_account(&store);
+    store
+        .upsert_envelopes(mailbox, &[envelope(7, "parent", 100, true)])
+        .unwrap();
+    store
+        .conn()
+        .execute(
+            "UPDATE envelopes SET refs = '<root@example.com>' WHERE mailbox_id = ?1 AND uid = 7",
+            [mailbox],
+        )
+        .unwrap();
+    let draft = store
+        .save_draft(
+            account,
+            None,
+            None,
+            crate::DraftContent {
+                body: "legacy reply",
+                reply_to_uid: Some(7),
+                reply_to_mailbox: Some("INBOX"),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    store.conn().execute_batch("ALTER TABLE drafts DROP COLUMN reply_in_reply_to; ALTER TABLE drafts DROP COLUMN reply_references; ALTER TABLE drafts DROP COLUMN reply_mailbox_id; ALTER TABLE drafts DROP COLUMN reply_uid_validity;").unwrap();
+    migrate(store.conn(), &mut |_| ControlFlow::Continue(())).unwrap();
+    store.reset_mailbox(mailbox, 2).unwrap();
+    let draft = store.draft(draft.id).unwrap().unwrap();
+    assert_eq!(
+        draft.thread_headers.in_reply_to.as_deref(),
+        Some("<m7@example.com>")
+    );
+    assert_eq!(
+        draft.thread_headers.references.as_deref(),
+        Some("<root@example.com> <m7@example.com>")
+    );
+    assert_eq!(draft.thread_id, None);
+}
+
+#[test]
+fn draft_file_migration_disk_full_keeps_the_complete_legacy_schema() {
+    let path = std::env::temp_dir().join(format!("wind-draft-full-{}.db", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+    let store = Store::open(&path).unwrap();
+    let account = test_account(&store);
+    let draft = store
+        .save_draft(
+            account,
+            None,
+            None,
+            crate::DraftContent {
+                body: "kept",
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    store
+        .add_draft_attachment(
+            draft.id,
+            "file.bin",
+            "application/octet-stream",
+            &vec![42; 1024 * 1024],
+        )
+        .unwrap();
+    store
+        .revert_draft_file_storage(|_| ControlFlow::Continue(()))
+        .unwrap();
+    let conn = Connection::open(&path).unwrap();
+    conn.execute_batch("VACUUM").unwrap();
+    let pages: i64 = conn
+        .query_row("PRAGMA page_count", [], |r| r.get(0))
+        .unwrap();
+    conn.pragma_update(None, "max_page_count", pages).unwrap();
+    let mut complete = false;
+    let result = draft_storage::migrate_files(&conn, &mut |p| {
+        complete |= p.done == p.total;
+        ControlFlow::Continue(())
+    });
+    assert!(
+        matches!(result, Err(Error::Storage(rusqlite::Error::SqliteFailure(code, _))) if code.code == rusqlite::ErrorCode::DiskFull)
+    );
+    assert!(!complete);
+    assert!(
+        table_columns(&conn, "draft_attachments")
+            .unwrap()
+            .contains("bytes")
+    );
+    assert_eq!(
+        conn.query_row("SELECT length(bytes) FROM draft_attachments", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        1024 * 1024
+    );
+    assert_eq!(
+        conn.query_row("SELECT body FROM drafts", [], |r| r.get::<_, String>(0))
+            .unwrap(),
+        "kept"
+    );
+    drop(conn);
+    Store::forget_initialization(&path);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn draft_file_near_cap_migration_and_edit_reference_measurement() {
+    let path = std::env::temp_dir().join(format!("wind-draft-near-cap-{}.db", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+    let store = Store::open(&path).unwrap();
+    let account = test_account(&store);
+    let saved = store
+        .save_draft(
+            account,
+            None,
+            None,
+            crate::DraftContent {
+                body: "body",
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let size = crate::MAX_ATTACHMENTS_BYTES as usize - 1;
+    store
+        .add_draft_attachment(
+            saved.id,
+            "near-cap.bin",
+            "application/octet-stream",
+            &vec![42; size],
+        )
+        .unwrap();
+    let reverse_start = std::time::Instant::now();
+    store
+        .revert_draft_file_storage(|_| ControlFlow::Continue(()))
+        .unwrap();
+    let reverse_ms = reverse_start.elapsed().as_secs_f64() * 1000.0;
+    let upgrade_start = std::time::Instant::now();
+    let store = Store::open(&path).unwrap();
+    let upgrade_ms = upgrade_start.elapsed().as_secs_f64() * 1000.0;
+    let draft = store.draft(saved.id).unwrap().unwrap();
+    let mut opens = Vec::new();
+    for _ in 0..7 {
+        let start = std::time::Instant::now();
+        store
+            .begin_draft_edit(
+                "bench",
+                account,
+                Some(draft.id),
+                Some(&draft.incarnation),
+                Some(draft.updated_epoch),
+            )
+            .unwrap();
+        opens.push(start.elapsed().as_secs_f64() * 1000.0);
+        assert_eq!(
+            store
+                .conn()
+                .query_row("SELECT COUNT(*) FROM draft_blobs", [], |r| r
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        store.finish_draft_edit("bench", false).unwrap();
+    }
+    store
+        .begin_draft_edit(
+            "bench",
+            account,
+            Some(draft.id),
+            Some(&draft.incarnation),
+            Some(draft.updated_epoch),
+        )
+        .unwrap();
+    store.drop_stale_draft(draft.id).unwrap();
+    let fork_start = std::time::Instant::now();
+    let fork = store
+        .save_draft_edit(
+            "bench",
+            account,
+            crate::DraftContent {
+                body: "edited",
+                ..draft.content()
+            },
+        )
+        .unwrap()
+        .unwrap();
+    let fork_ms = fork_start.elapsed().as_secs_f64() * 1000.0;
+    assert!(fork.forked);
+    store.finish_draft_edit("bench", false).unwrap();
+    assert_eq!(
+        store.draft_attachments_meta(fork.id).unwrap()[0].size,
+        size as u64
+    );
+    assert_eq!(
+        store
+            .conn()
+            .query_row("SELECT COUNT(*) FROM draft_blobs", [], |r| r
+                .get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        store
+            .conn()
+            .query_row("SELECT length(bytes) FROM draft_blobs", [], |r| r
+                .get::<_, i64>(0))
+            .unwrap(),
+        size as i64
+    );
+    assert_eq!(
+        store.draft_attachments_full(fork.id).unwrap()[0].bytes,
+        vec![42; size]
+    );
+    opens.sort_by(f64::total_cmp);
+    println!(
+        "Rust WAL fixture, {size} bytes: upgrade={upgrade_ms:.3} ms, reverse={reverse_ms:.3} ms, open median={:.3} ms, fork={fork_ms:.3} ms",
+        opens[3]
+    );
+    drop(store);
+    Store::forget_initialization(&path);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn draft_file_reversal_and_cancelled_upgrade_roundtrip_on_disk() {
+    let path = std::env::temp_dir().join(format!(
+        "wind-draft-files-roundtrip-{}.db",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&path);
+    let store = Store::open(&path).unwrap();
+    let account = test_account(&store);
+    let draft = store
+        .save_draft(
+            account,
+            None,
+            None,
+            crate::DraftContent {
+                body: "legacy text",
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let file = store
+        .add_draft_attachment(
+            draft.id,
+            "binary.bin",
+            "application/octet-stream",
+            &[0, 255, 42],
+        )
+        .unwrap();
+    store
+        .revert_draft_file_storage(|_| ControlFlow::Continue(()))
+        .unwrap();
+    assert_eq!(Store::pending_adoption(&path).unwrap(), Some(1));
+    assert!(
+        Store::draft_file_migration_headroom(&path)
+            .unwrap()
+            .is_some()
+    );
+    let cancelled = Store::open_with_progress(&path, |p| {
+        if p.done > 0 {
+            ControlFlow::Break(())
+        } else {
+            ControlFlow::Continue(())
+        }
+    });
+    assert!(matches!(cancelled, Err(Error::Interrupted)));
+    let conn = Connection::open(&path).unwrap();
+    assert_eq!(
+        conn.query_row(
+            "SELECT bytes FROM draft_attachments WHERE id = ?1",
+            [file.attachment.id],
+            |r| r.get::<_, Vec<u8>>(0)
+        )
+        .unwrap(),
+        [0, 255, 42]
+    );
+    drop(conn);
+    let store = Store::open(&path).unwrap();
+    assert_eq!(store.draft(draft.id).unwrap().unwrap().body, "legacy text");
+    assert_eq!(
+        store.draft_attachments_full(draft.id).unwrap()[0].bytes,
+        [0, 255, 42]
+    );
+    drop(store);
+    Store::forget_initialization(&path);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn draft_file_migration_is_interruptible_and_preserves_legacy_bytes() {
+    let conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(SCHEMA).unwrap();
+    conn.execute("INSERT INTO drafts (id, account_id, to_raw, subject, body, updated_epoch) VALUES (17, 1, '', 'Legacy', 'Text', 123)", []).unwrap();
+    conn.execute("INSERT INTO draft_attachments (id, draft_id, name, mime, size, bytes) VALUES (29, 17, 'kept.txt', 'text/plain', 4, x'6b657074')", []).unwrap();
+    migrate(&conn, &mut |_| ControlFlow::Continue(())).unwrap();
+    let mut calls = 0;
+    let result = draft_storage::migrate_files(&conn, &mut |_| {
+        calls += 1;
+        ControlFlow::Break(())
+    });
+    assert!(matches!(result, Err(Error::Interrupted)));
+    assert_eq!(calls, 1);
+    assert!(
+        table_columns(&conn, "draft_attachments")
+            .unwrap()
+            .contains("bytes")
+    );
+    assert_eq!(
+        conn.query_row(
+            "SELECT bytes FROM draft_attachments WHERE id = 29",
+            [],
+            |row| row.get::<_, Vec<u8>>(0)
+        )
+        .unwrap(),
+        b"kept"
+    );
+    draft_storage::migrate_files(&conn, &mut |_| ControlFlow::Continue(())).unwrap();
+    assert!(
+        table_columns(&conn, "draft_attachments")
+            .unwrap()
+            .contains("blob_id")
+    );
+    assert_eq!(conn.query_row("SELECT b.bytes FROM draft_attachments a JOIN draft_blobs b ON b.id = a.blob_id WHERE a.id = 29 AND a.draft_id = 17", [], |row| row.get::<_, Vec<u8>>(0)).unwrap(), b"kept");
+}
+
 fn envelope(uid: Uid, subject: &str, epoch: i64, seen: bool) -> Envelope {
     Envelope {
         reply_to: None,

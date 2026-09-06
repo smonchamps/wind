@@ -1,6 +1,13 @@
 /// Domain errors.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("draft editing session is stale or belongs to another composition")]
+    StaleDraft,
+    #[error("another draft editing session must be closed first")]
+    DraftAlreadyOpen,
+    #[error("mailbox identity changed; synchronize before retrying")]
+    StaleMailbox,
+
     #[error("invalid email address: {0:?}")]
     InvalidEmailAddress(String),
 

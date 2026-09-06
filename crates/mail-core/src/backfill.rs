@@ -121,7 +121,7 @@ pub fn backfill_bodies(
     since_epoch: i64,
     budget: usize,
 ) -> Result<BackfillReport, Error> {
-    let Some(state) = store.sync_state(account_id, mailbox)? else {
+    let Some(state) = store.mailbox_identity(account_id, mailbox)? else {
         return Ok(BackfillReport {
             fetched: 0,
             remaining: 0,
@@ -147,10 +147,12 @@ pub fn backfill_bodies(
         }
         attempted.extend(batch.iter().copied());
 
-        for (uid, body) in server.fetch_bodies_html(mailbox, &batch)? {
+        for (uid, body) in
+            crate::remote::fetch_bodies_checked(server, mailbox, state.uid_validity, &batch)?
+        {
             let invitation = crate::body::invitation_from(store, account_id, body.ics.as_deref())?;
-            store.save_body_full(
-                state.mailbox_id,
+            store.save_body_checked(
+                &state,
                 uid,
                 &body.html,
                 &body.attachments,
@@ -419,6 +421,26 @@ mod tests {
 
     /// The pump's reason to exist: after it runs, a word from the BODY
     /// becomes findable — which was impossible before.
+    #[test]
+    fn body_backfill_refuses_generation_changes_and_unsolicited_uids() {
+        for during_fetch in [false, true] {
+            let (mut server, mut store, account) = synced(2);
+            if during_fetch {
+                server.reset_during_body_fetch = true;
+            } else {
+                server.uid_validity += 1;
+            }
+            assert!(backfill_bodies(&mut server, &mut store, account, "INBOX", 0, 2).is_err());
+            assert_eq!(store.body(account, "INBOX", 1).unwrap(), None);
+            assert_eq!(store.body(account, "INBOX", 2).unwrap(), None);
+        }
+        let (mut server, mut store, account) = synced(2);
+        server.body_reply_uid = Some(99);
+        let report = backfill_bodies(&mut server, &mut store, account, "INBOX", 0, 2).unwrap();
+        assert_eq!(report.fetched, 0);
+        assert_eq!(store.body(account, "INBOX", 99).unwrap(), None);
+    }
+
     #[test]
     fn backfilled_bodies_become_searchable() {
         let (mut server, mut store, account) = synced(3);

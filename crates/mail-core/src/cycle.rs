@@ -428,12 +428,26 @@ pub fn poll_inbox<S: MailServer, H: CycleHooks>(
     Ok((report, inbox_status))
 }
 
-/// The full per-account pipeline (PLAN-AUDIT-V3 E4): INBOX poll,
-/// inventory (sent folder, scope, folder list, space guard), the
-/// guarded folder sweep, thread headers, recipients, drafts, echo
-/// reconciliation. The shell keeps the connection's OWNERSHIP —
-/// `&mut S`, never `S` — so it can `logout()` afterwards; the core
-/// never gets to consume it.
+/// Manual and scheduled light sync: INBOX arrivals, then remote drafts.
+/// Draft failures are reported without discarding a successful INBOX poll.
+pub fn run_light<S: CycleConnection, H: CycleHooks>(
+    server: &mut S,
+    store: &mut Store,
+    account_id: i64,
+    hooks: &H,
+    problems: &mut Vec<String>,
+) -> Result<SyncReport, String> {
+    let (report, _) = poll_inbox(server, store, account_id, hooks, problems)?;
+    hooks.set_phase("drafts");
+    if let Err(reason) = server.pull_drafts(store, account_id) {
+        problems.push(format!("remote drafts: {reason}"));
+    }
+    Ok(report)
+}
+
+/// Full sync adds folder inventory, a guarded sweep, thread headers,
+/// recipients and echo reconciliation. The shell owns the connection
+/// and logs out after this pipeline returns, including on failure.
 pub fn run_sync<S: CycleConnection, H: CycleHooks>(
     server: &mut S,
     store: &mut Store,
@@ -739,6 +753,70 @@ pub fn run_sync<S: CycleConnection, H: CycleHooks>(
 mod tests {
     use super::*;
     use crate::test_support::FakeServer;
+
+    #[test]
+    fn light_sync_imports_a_remote_draft_with_two_files_on_a_quiet_inbox() {
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("draft@test.io", "imap.test.io")
+            .unwrap();
+        let mut server = FakeServer::new(true);
+        let mut problems = Vec::new();
+        run_light(&mut server, &mut store, account, &NoHooks, &mut problems).unwrap();
+        let remote = crate::RemoteDraft {
+            subject: "Created in webmail".into(),
+            text: Some("Keep both files".into()),
+            attachments: vec![
+                crate::DraftAttachmentFull {
+                    name: "first.txt".into(),
+                    mime: "text/plain".into(),
+                    bytes: b"First file".to_vec(),
+                },
+                crate::DraftAttachmentFull {
+                    name: "second.bin".into(),
+                    mime: "application/octet-stream".into(),
+                    bytes: vec![0, 255, 17],
+                },
+            ],
+            ..Default::default()
+        };
+        server.remote_drafts.push((42, remote.clone()));
+        let report = run_light(&mut server, &mut store, account, &NoHooks, &mut problems).unwrap();
+        assert_eq!(report.fetched, 0);
+        assert!(problems.is_empty());
+        let drafts = store.drafts().unwrap();
+        assert_eq!(
+            drafts.len(),
+            1,
+            "manual sync must import drafts even without new mail"
+        );
+        assert_eq!(drafts[0].subject, remote.subject);
+        assert_eq!(
+            store.draft_attachments_full(drafts[0].id).unwrap(),
+            remote.attachments
+        );
+        run_light(&mut server, &mut store, account, &NoHooks, &mut problems).unwrap();
+        assert_eq!(
+            store.drafts().unwrap().len(),
+            1,
+            "repeating sync must not duplicate the draft"
+        );
+    }
+
+    #[test]
+    fn light_sync_reports_a_draft_failure_without_losing_inbox_arrivals() {
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("draft@test.io", "imap.test.io")
+            .unwrap();
+        let mut server = FakeServer::new(true);
+        server.add(1, "Inbox arrival");
+        server.draft_pull_error = Some("simulated draft fetch failure".into());
+        let mut problems = Vec::new();
+        let report = run_light(&mut server, &mut store, account, &NoHooks, &mut problems).unwrap();
+        assert_eq!(report.fetched, 1);
+        assert_eq!(problems, ["remote drafts: simulated draft fetch failure"]);
+    }
 
     /// The whole per-account pipeline runs against the trait — the
     /// proof the policy left the shell (it had NO test reachable

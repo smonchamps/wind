@@ -486,7 +486,7 @@ impl ImapServer {
     /// if it changes, the recorded UIDs no longer mean anything.
     pub fn drafts_uidvalidity(&mut self) -> Result<u32, Error> {
         let folder = self.drafts_folder()?;
-        Ok(self.ensure_selected(&folder)?.uid_validity)
+        Ok(self.select(&folder)?.uid_validity)
     }
 
     /// The UIDs present in the server's Drafts folder.
@@ -513,6 +513,7 @@ impl ImapServer {
             .map_err(server_err)?;
         Ok(fetches
             .iter()
+            .filter(|fetch| fetch.uid == Some(uid))
             .find_map(|fetch| convert::draft_from_raw(fetch.body()?)))
     }
 
@@ -818,6 +819,7 @@ impl MailServer for ImapServer {
             .map_err(server_err)?;
         Ok(fetches
             .iter()
+            .filter(|fetch| fetch.uid == Some(uid))
             .find_map(|fetch| convert::attachment_bytes(fetch.body()?, index)))
     }
 

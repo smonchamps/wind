@@ -1257,17 +1257,16 @@ test('forwarding fetches for real — offline: failure said, "Retry", send held 
   // carries the pricing annex (`.last()`).
   await page.locator('[data-testid="forward"]').last().click();
   await expect(page.locator('[data-testid="compose-kicker"]')).toHaveText('Forward');
-  // Field finding STOP 2 PLAN-AUDIT-V2 (2026-09-02): "a word typed
-  // AFTER the block vanished on send" — the cursor placed at the end
-  // of the body was landing INSIDE the marked block, which the send
-  // replaces. The word typed at the end lives OUTSIDE the block (the
-  // editable blank line that follows it).
+  // Wait for the source body before typing after its editable block.
   const body = page.locator('[data-testid="compose-body"]');
+  const forwardedBody = body.locator(':scope > div').filter({ hasText: "J'ajoute la grille tarifaire" }); // lang:fr
+  await expect(forwardedBody).toBeVisible();
   await body.click();
   await page.keyboard.press('Control+End');
   await page.keyboard.type('APRES-LE-BLOC');
   await expect(body).toContainText('APRES-LE-BLOC');
-  await expect(body.locator('[data-wind-transfert]')).not.toContainText('APRES-LE-BLOC');
+  await expect(forwardedBody).not.toContainText('APRES-LE-BLOC');
+  await expect(body.locator('[data-wind-transfert]')).toHaveCount(0);
   // The decor accounts have no server: every fetch ends in failure —
   // name in alert, "Retry" — never a filled chip, and never an
   // attachment silently missing.

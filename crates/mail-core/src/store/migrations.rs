@@ -5,12 +5,17 @@ pub(super) fn migrate(
     on_progress: &mut dyn FnMut(AdoptionProgress) -> ControlFlow<()>,
 ) -> Result<(), Error> {
     migrate_multi_account(conn)?;
+    let had_reply_identity = table_columns(conn, "drafts")?.contains("reply_mailbox_id");
     add_missing_columns(
         conn,
         "drafts",
         &[
             ("account_id", "INTEGER NOT NULL DEFAULT 1"),
             ("reply_to_mailbox", "TEXT"),
+            ("reply_in_reply_to", "TEXT"),
+            ("reply_references", "TEXT"),
+            ("reply_mailbox_id", "INTEGER"),
+            ("reply_uid_validity", "INTEGER"),
         ],
     )?;
     // ADR 0010: the scope of grouping becomes explicit. The mailboxes
@@ -372,6 +377,22 @@ pub(super) fn migrate(
             ("username", "TEXT"),
         ],
     )?;
+    let reply_headers_done = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM reparations WHERE nom = 'draft-reply-headers-v1')",
+        [],
+        |row| row.get::<_, bool>(0),
+    )?;
+    if !had_reply_identity || !reply_headers_done {
+        // Freeze legacy reply context once, while its current local source
+        // exists. The marker commits with the data so an interrupted upgrade retries.
+        let tx = conn.unchecked_transaction()?;
+        tx.execute_batch("UPDATE drafts SET reply_mailbox_id = (SELECT id FROM mailboxes m WHERE m.account_id = drafts.account_id AND m.name = drafts.reply_to_mailbox), reply_uid_validity = (SELECT uid_validity FROM mailboxes m WHERE m.account_id = drafts.account_id AND m.name = drafts.reply_to_mailbox) WHERE reply_to_uid IS NOT NULL;
+            UPDATE drafts SET reply_in_reply_to = e.message_id,
+                reply_references = CASE WHEN e.message_id IS NULL THEN NULL WHEN trim(COALESCE(e.refs, '')) = '' THEN e.message_id ELSE trim(e.refs) || ' ' || e.message_id END
+            FROM envelopes e WHERE e.mailbox_id = drafts.reply_mailbox_id AND e.uid = drafts.reply_to_uid;
+            INSERT OR IGNORE INTO reparations (nom) VALUES ('draft-reply-headers-v1');")?;
+        tx.commit()?;
+    }
     search::migrate_search(conn, on_progress)?;
     // The index comes AFTER `add_missing_columns`, not in `SCHEMA`:
     // on a legacy database, `CREATE TABLE IF NOT EXISTS envelopes`
@@ -557,6 +578,12 @@ fn file_key(conn: &Connection) -> Option<std::path::PathBuf> {
         .map(std::path::PathBuf::from)
 }
 
+pub(super) fn invalidate_initialization(conn: &Connection) {
+    if let Some(key) = file_key(conn) {
+        initialized_registry().lock().remove(&key);
+    }
+}
+
 /// The registry of paths whose full initialization has SUCCEEDED in
 /// this process (PLAN-AUDIT-V2 E1). A poisoned lock is recovered:
 /// losing the registry would replay the migrations, never skip them.
@@ -642,7 +669,7 @@ pub(super) fn table_columns(conn: &Connection, table: &str) -> Result<HashSet<St
     Ok(columns)
 }
 
-fn add_missing_columns(
+pub(super) fn add_missing_columns(
     conn: &Connection,
     table: &str,
     columns: &[(&str, &str)],
@@ -677,6 +704,13 @@ impl Store {
             return Ok(None);
         }
         let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        if table_columns(&conn, "draft_attachments")?.contains("bytes") {
+            let files: u64 =
+                conn.query_row("SELECT COUNT(*) FROM draft_attachments", [], |r| r.get(0))?;
+            if files > 0 {
+                return Ok(Some(files));
+            }
+        }
         // Two distinct passes may claim the screen, independently:
         // thread adoption (a database from before ADR 0008) AND
         // rebuilding the search index (FTS schema from before the
@@ -805,7 +839,6 @@ impl Store {
         // The line stays, ahead of the fast door: a belt that does not
         // depend on a compile flag (the test keeps it honest).
         conn.execute_batch("PRAGMA foreign_keys = ON")?;
-        conn.execute_batch("PRAGMA foreign_keys = ON")?;
         let key = file_key(&conn);
         if let Some(key) = &key
             && initialized_registry().contains(key)
@@ -865,6 +898,9 @@ impl Store {
         // (PLAN-RETOURS-5): set-based, marked in `prefs` — on an
         // up-to-date database, one SELECT and nothing else.
         store.backfill_contacts()?;
+        // Last incompatible schema change: an earlier failed adoption leaves
+        // legacy attachment rows usable, and cancellation rewinds this unit.
+        super::draft_storage::migrate_files(store.conn(), on_progress)?;
         if let Some(key) = key {
             initialized_registry().insert(key);
         }

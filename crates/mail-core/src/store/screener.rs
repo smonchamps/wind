@@ -568,7 +568,7 @@ impl Store {
             .query_map(params![epoch, thread::RECEIVED_MAILBOX], |row| {
                 Ok(ScreenerRank {
                     row: row_to_threaded(row)?,
-                    address: row.get(19)?,
+                    address: row.get(21)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;

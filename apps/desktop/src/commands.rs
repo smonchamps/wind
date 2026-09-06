@@ -6,7 +6,7 @@
 //! aggregate the connected accounts. Blocking work (OAuth, IMAP, SMTP)
 //! goes through `spawn_blocking` so the window never freezes.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
@@ -57,8 +57,29 @@ pub struct SyncSummary {
     pub errors: Vec<String>,
 }
 
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub struct MessageVersion {
+    pub mailbox_id: i64,
+    pub uid_validity: u32,
+}
+
+impl MessageVersion {
+    fn identity(self, account_id: i64, mailbox: &str) -> mail_core::MailboxIdentity {
+        mail_core::MailboxIdentity {
+            account_id,
+            mailbox: mailbox.to_string(),
+            mailbox_id: self.mailbox_id,
+            uid_validity: self.uid_validity,
+        }
+    }
+    fn verify(self, store: &Store, account_id: i64, mailbox: &str) -> Result<(), mail_core::Error> {
+        store.verify_mailbox_identity(&self.identity(account_id, mailbox))
+    }
+}
+
 #[derive(Serialize)]
 pub struct MessageRow {
+    pub version: MessageVersion,
     pub account_id: i64,
     pub account_email: String,
     /// The mailbox that contains this message. **Essential**: UIDs are
@@ -657,12 +678,9 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
     })
 }
 
-/// The light pass (PLAN-SYNCHRO E3, S-D2): INBOX STATUS of each
-/// account, polls only if something moved (E2a), mail visible and
-/// bubbles per account (P1) — no inventory, no folder sweep, no
-/// threads: the response is counted in seconds, held by E2a's gate.
-/// It's what the button triggers, what waking from sleep triggers, what
-/// the IDLE watcher (E4) will trigger.
+/// Manual, scheduled and wake light sync: guarded INBOX polling and
+/// complete remote-draft import on the same connection. Other folders
+/// retain the full-cycle cadence; IDLE arrivals use the INBOX-only path.
 #[tauri::command]
 pub async fn sync_inbox_light(
     app: AppHandle,
@@ -690,14 +708,15 @@ pub async fn sync_inbox_light(
                 let mut store = Store::open(&path).map_err(|err| err.to_string())?;
                 let mut problems = Vec::new();
                 let hooks = crate::poll::ShellHooks::new(&run_cycle, app_bubbles.clone());
-                let (report, _) = mail_core::cycle::poll_inbox(
-                    &mut server,
+                let outcome = mail_core::cycle::run_light(
+                    &mut crate::poll::ShellServer(&mut server),
                     &mut store,
                     account_id,
                     &hooks,
                     &mut problems,
-                )?;
+                );
                 server.logout();
+                let report = outcome?;
                 Ok((report, problems, fresh))
             }
         })
@@ -748,10 +767,14 @@ pub struct MessagePage {
 pub async fn thread_messages(
     app: AppHandle,
     thread_id: i64,
+    account_id: i64,
+    mailbox: String,
+    uid: u32,
+    version: MessageVersion,
 ) -> Result<Vec<MessageRow>, CommandError> {
     store_off_pump(app, move |_, store| {
         Ok(store
-            .thread_messages(thread_id)
+            .thread_messages_version(&version.identity(account_id, &mailbox), uid, thread_id)
             .map_err(|err| err.to_string())?
             .into_iter()
             .map(to_message_row)
@@ -763,6 +786,10 @@ pub async fn thread_messages(
 /// Mapping shared between the unified mailbox and the search results.
 fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
     MessageRow {
+        version: MessageVersion {
+            mailbox_id: row.mailbox_id,
+            uid_validity: row.uid_validity,
+        },
         epoch: row.envelope.date.map(|date| date.timestamp()).unwrap_or(0),
         attachment_count: row.attachment_count,
         preview: row.preview,
@@ -1107,6 +1134,7 @@ pub async fn message_body(
     account_id: i64,
     mailbox: String,
     uid: u32,
+    version: MessageVersion,
     show_images: bool,
 ) -> Result<BodyView, CommandError> {
     // Current path — cached body: ONE lock take, ONE opening (PLAN-AUDIT-V1
@@ -1115,12 +1143,19 @@ pub async fn message_body(
     let mailbox2 = mailbox.clone();
     let cached = off_pump(app.clone(), move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        version
+            .verify(&store, account_id, &mailbox2)
+            .map_err(|err| err.to_string())?;
         match store
             .body(account_id, &mailbox2, uid)
             .map_err(|err| err.to_string())?
         {
             Some(html) => {
-                body_view(&store, account_id, &mailbox2, uid, show_images, &html).map(Some)
+                let view = body_view(&store, account_id, &mailbox2, uid, show_images, &html)?;
+                version
+                    .verify(&store, account_id, &mailbox2)
+                    .map_err(|err| err.to_string())?;
+                Ok::<_, CommandError>(Some(view))
             }
             None => Ok(None),
         }
@@ -1130,8 +1165,9 @@ pub async fn message_body(
         return Ok(view);
     }
     // Body absent: bare network fetch, then the view under the lock.
-    let html = raw_body(&app, account_id, &mailbox, uid).await?;
+    let html = raw_body(&app, account_id, &mailbox, uid, version).await?;
     store_off_pump(app, move |_, store| {
+        version.verify(store, account_id, &mailbox)?;
         Ok(body_view(
             store,
             account_id,
@@ -1214,11 +1250,17 @@ fn fetch_body(
     account_id: i64,
     mailbox: String,
     uid: u32,
+    version: MessageVersion,
 ) -> Result<String, String> {
     let (mut server, _refreshed) = crate::poll::connect_imap(session)?;
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
-    let body = mail_core::load_body(&mut server, &mut store, account_id, &mailbox, uid)
-        .map_err(|err| err.to_string())?;
+    let body = mail_core::load_body_version(
+        &mut server,
+        &mut store,
+        &version.identity(account_id, &mailbox),
+        uid,
+    )
+    .map_err(|err| err.to_string())?;
     server.logout();
     body.ok_or_else(|| "message not found on the server".to_string())
 }
@@ -1230,13 +1272,14 @@ async fn raw_body(
     account_id: i64,
     mailbox: &str,
     uid: u32,
+    version: MessageVersion,
 ) -> Result<String, CommandError> {
     // E5: the cache read and the session under `off_pump` (database +
     // commands' lock); only the network fetch runs bare.
     let mailbox2 = mailbox.to_string();
     let cached: Result<String, AccountSession> = off_pump(app.clone(), move |app| {
         let cached = Store::open(&db_path(&app)?)
-            .and_then(|store| store.body(account_id, &mailbox2, uid))
+            .and_then(|store| store.body_version(&version.identity(account_id, &mailbox2), uid))
             .map_err(|err| err.to_string())?;
         match cached {
             Some(html) => Ok::<_, CommandError>(Ok(html)),
@@ -1251,7 +1294,7 @@ async fn raw_body(
             // Owned copy: the closure runs on another thread.
             let mailbox = mailbox.to_string();
             let result = tauri::async_runtime::spawn_blocking(move || {
-                fetch_body(&session, &path, account_id, mailbox, uid)
+                fetch_body(&session, &path, account_id, mailbox, uid, version)
             })
             .await
             .map_err(|err| err.to_string())?;
@@ -1278,11 +1321,14 @@ pub async fn message_attachments(
     account_id: i64,
     mailbox: String,
     uid: u32,
+    version: MessageVersion,
 ) -> Result<Vec<AttachmentRow>, CommandError> {
     store_off_pump(app, move |_, store| {
+        version.verify(store, account_id, &mailbox)?;
         let found = store
             .attachments(account_id, &mailbox, uid)
             .map_err(|err| err.to_string())?;
+        version.verify(store, account_id, &mailbox)?;
         Ok(found
             .into_iter()
             .map(|attachment| AttachmentRow {
@@ -1524,15 +1570,29 @@ pub async fn save_attachment(
     account_id: i64,
     mailbox: String,
     uid: u32,
+    version: MessageVersion,
     index: usize,
     dest: String,
 ) -> Result<String, CommandError> {
-    let session = off_pump(app.clone(), move |app| auth_for(&app, account_id)).await?;
+    let mailbox_name = mailbox.clone();
+    let (session, identity) = off_pump(app.clone(), move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let identity = version.identity(account_id, &mailbox_name);
+        store.verify_mailbox_identity(&identity)?;
+        Ok::<_, CommandError>((auth_for(&app, account_id)?, identity))
+    })
+    .await?;
+    let expected_generation = identity.uid_validity;
     let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
         let (mut server, _refreshed) = crate::poll::connect_imap(&session)?;
-        let bytes = server
-            .fetch_attachment(&mailbox, uid, index)
-            .map_err(|err| err.to_string())?;
+        let bytes = mail_core::fetch_attachment_checked(
+            &mut server,
+            &mailbox,
+            expected_generation,
+            uid,
+            index,
+        )
+        .map_err(|err| err.to_string())?;
         server.logout();
         bytes.ok_or_else(|| "attachment missing from the message".to_string())
     })
@@ -1541,7 +1601,10 @@ pub async fn save_attachment(
 
     // E5: the disk write (bytes chosen by the sender, up to 25 MB) off
     // the bare async worker.
-    off_pump(app, move |_| {
+    store_off_pump(app, move |_, store| {
+        store
+            .verify_mailbox_identity(&identity)
+            .map_err(|err| err.to_string())?;
         let dest = output_path(&dest)?;
         std::fs::write(&dest, &bytes).map_err(|err| format!("write failed: {err}"))?;
         Ok(dest.to_string_lossy().into_owned())
@@ -2672,27 +2735,10 @@ pub async fn feed_cards(
             .enrich_rows(&mut rows)
             .map_err(|err| err.to_string())?;
         let mut cards = Vec::with_capacity(rows.len());
-        // The (account, mailbox) → id resolution, ONCE per mailbox of
-        // the page — not twenty identical probes per page of twenty
-        // cards (E5bis review).
-        let mut mailboxes: std::collections::HashMap<(i64, String), Option<i64>> =
-            std::collections::HashMap::new();
         for row in rows {
             let row = to_message_row(row);
-            // The mailbox resolution serves both the body AND the "read"
-            // mark (R10): hoisted out of the body match.
-            let key = (row.account_id, row.mailbox.clone());
-            let mailbox_id = match mailboxes.get(&key) {
-                Some(id) => *id,
-                None => {
-                    let id = store
-                        .sync_state(row.account_id, &row.mailbox)
-                        .map_err(|err| err.to_string())?
-                        .map(|s| s.mailbox_id);
-                    mailboxes.insert(key, id);
-                    id
-                }
-            };
+            row.version.verify(store, row.account_id, &row.mailbox)?;
+            let mailbox_id = Some(row.version.mailbox_id);
             // R10: the "read" flag of the card — a PK probe, one per card.
             let read = mailbox_id
                 .map(|id| store.feed_read(id, row.uid))
@@ -2727,6 +2773,7 @@ pub async fn feed_cards(
                 }
                 None => (None, 0),
             };
+            row.version.verify(store, row.account_id, &row.mailbox)?;
             cards.push(FeedCard {
                 row,
                 document,
@@ -2882,9 +2929,11 @@ pub async fn reply_context(
     account_id: i64,
     mailbox: String,
     uid: u32,
+    version: MessageVersion,
+    edit_token: Option<String>,
 ) -> Result<ComposeContext, CommandError> {
-    let (envelope, own) = enveloppe_et_compte(&app, account_id, &mailbox, uid).await?;
-    let repondre_a = reply_to_of(&app, account_id, &mailbox, uid).await?;
+    let (envelope, own) = enveloppe_et_compte(&app, account_id, &mailbox, uid, version).await?;
+    let repondre_a = reply_to_of(&app, account_id, &mailbox, uid, version).await?;
     // Our own message? (the sender is the account). Replying to the
     // sender would write to ourselves.
     let is_own = envelope
@@ -2908,7 +2957,7 @@ pub async fn reply_context(
         let session = off_pump(app.clone(), move |app| auth_for(&app, account_id)).await?;
         let mailbox_name = mailbox.clone();
         let fetched = tauri::async_runtime::spawn_blocking(move || {
-            fetch_recipients_remote(&session, &mailbox_name, uid)
+            fetch_recipients_remote(&session, &mailbox_name, uid, version)
         })
         .await
         .map_err(|err| err.to_string())??;
@@ -2918,7 +2967,8 @@ pub async fn reply_context(
         return Err("unknown recipient: resync the mailbox".into());
     }
     let to = recipients.join(", ");
-    let body_html = citation_reply(&app, account_id, &mailbox, uid, &envelope).await;
+    let body_html = citation_reply(&app, account_id, &mailbox, uid, version, &envelope).await;
+    finish_reply_context(&app, account_id, &mailbox, uid, version, edit_token).await?;
     Ok(ComposeContext {
         account_id,
         mailbox,
@@ -2931,6 +2981,25 @@ pub async fn reply_context(
     })
 }
 
+async fn finish_reply_context(
+    app: &AppHandle,
+    account_id: i64,
+    mailbox: &str,
+    uid: u32,
+    version: MessageVersion,
+    edit_token: Option<String>,
+) -> Result<(), CommandError> {
+    let identity = version.identity(account_id, mailbox);
+    store_off_pump(app.clone(), move |_, store| {
+        match edit_token {
+            Some(token) => store.set_draft_edit_reply(&token, &identity, uid)?,
+            None => store.verify_mailbox_identity(&identity)?,
+        }
+        Ok(())
+    })
+    .await
+}
+
 /// The envelope of a message and its account's address, in ONE pass
 /// under `off_pump` (E5) — the common matter of the three compose
 /// contexts.
@@ -2940,9 +3009,11 @@ async fn reply_to_of(
     account_id: i64,
     mailbox: &str,
     uid: u32,
+    version: MessageVersion,
 ) -> Result<Option<String>, CommandError> {
     let mailbox_name = mailbox.to_string();
     store_off_pump(app.clone(), move |_, store| {
+        version.verify(store, account_id, &mailbox_name)?;
         Ok(store.reply_to_of(account_id, &mailbox_name, uid)?)
     })
     .await
@@ -2953,9 +3024,11 @@ async fn enveloppe_et_compte(
     account_id: i64,
     mailbox: &str,
     uid: u32,
+    version: MessageVersion,
 ) -> Result<(mail_core::Envelope, String), CommandError> {
     let mailbox_name = mailbox.to_string();
     store_off_pump(app.clone(), move |_, store| {
+        version.verify(store, account_id, &mailbox_name)?;
         let envelope = store
             .envelope(account_id, &mailbox_name, uid)?
             .ok_or_else(|| CommandError::new("message not found"))?;
@@ -2975,9 +3048,10 @@ async fn citation_reply(
     account_id: i64,
     mailbox: &str,
     uid: u32,
+    version: MessageVersion,
     envelope: &mail_core::Envelope,
 ) -> String {
-    let Ok(html) = raw_body(app, account_id, mailbox, uid).await else {
+    let Ok(html) = raw_body(app, account_id, mailbox, uid, version).await else {
         return String::new();
     };
     // Sanitizing is CPU-bound (a 28 MB body, D-1): under the commands
@@ -3013,9 +3087,11 @@ pub async fn reply_all_context(
     account_id: i64,
     mailbox: String,
     uid: u32,
+    version: MessageVersion,
+    edit_token: Option<String>,
 ) -> Result<ComposeContext, CommandError> {
-    let (envelope, own) = enveloppe_et_compte(&app, account_id, &mailbox, uid).await?;
-    let repondre_a = reply_to_of(&app, account_id, &mailbox, uid).await?;
+    let (envelope, own) = enveloppe_et_compte(&app, account_id, &mailbox, uid, version).await?;
+    let repondre_a = reply_to_of(&app, account_id, &mailbox, uid, version).await?;
     // Recipients known in the database: instant path, no network. Not
     // empty = "backfilled" (a receipt always carries at least oneself in
     // To); empty = not backfilled yet, poll the server once.
@@ -3025,7 +3101,7 @@ pub async fn reply_all_context(
         let session = off_pump(app.clone(), move |app| auth_for(&app, account_id)).await?;
         let mailbox_name = mailbox.clone();
         let fetched = tauri::async_runtime::spawn_blocking(move || {
-            fetch_recipients_remote(&session, &mailbox_name, uid)
+            fetch_recipients_remote(&session, &mailbox_name, uid, version)
         })
         .await
         .map_err(|err| err.to_string())??;
@@ -3044,7 +3120,8 @@ pub async fn reply_all_context(
     if to.is_empty() {
         return Err("unknown sender address: resync the mailbox".into());
     }
-    let body_html = citation_reply(&app, account_id, &mailbox, uid, &envelope).await;
+    let body_html = citation_reply(&app, account_id, &mailbox, uid, version, &envelope).await;
+    finish_reply_context(&app, account_id, &mailbox, uid, version, edit_token).await?;
     Ok(ComposeContext {
         account_id,
         mailbox,
@@ -3061,18 +3138,23 @@ fn fetch_recipients_remote(
     session: &AccountSession,
     mailbox: &str,
     uid: u32,
+    version: MessageVersion,
 ) -> Result<mail_core::MessageRecipients, String> {
     let (mut server, _refreshed) = crate::poll::connect_imap(session)?;
     // `fetch_recipients` is gone (PLAN-AUDIT-V3 E6, a unit duplicate of
     // this same ENVELOPE re-read): a one-UID `fetch_envelopes` carries
     // the same To/Cc, already parsed into `to_addrs`/`cc_addrs` (R4).
+    mail_core::verify_mailbox_generation(&mut server, mailbox, version.uid_validity)
+        .map_err(|err| err.to_string())?;
     let envelopes = server
         .fetch_envelopes(mailbox, &[uid])
         .map_err(|err| err.to_string());
+    mail_core::verify_mailbox_generation(&mut server, mailbox, version.uid_validity)
+        .map_err(|err| err.to_string())?;
     server.logout();
     let envelope = envelopes?
         .into_iter()
-        .next()
+        .find(|envelope| envelope.uid == uid)
         .ok_or_else(|| "message not found on the server".to_string())?;
     Ok(mail_core::MessageRecipients {
         to: envelope.to_addrs,
@@ -3082,34 +3164,20 @@ fn fetch_recipients_remote(
 
 /// Pre-filling a forward: without a body, a forward would transmit
 /// nothing — here the failure is blocking. New thread: no In-Reply-To.
-/// Attachments don't follow yet (Phase 3).
+/// Attachment retrieval is coordinated separately by the composer.
 #[tauri::command]
 pub async fn forward_context(
     app: AppHandle,
     account_id: i64,
     mailbox: String,
     uid: u32,
+    version: MessageVersion,
 ) -> Result<ComposeContext, CommandError> {
-    let (envelope, _own) = enveloppe_et_compte(&app, account_id, &mailbox, uid).await?;
-    let html = raw_body(&app, account_id, &mailbox, uid).await?;
-    // D8 (PLAN-AUDIT-V2 E10): NO remote image in the composer — the
-    // tracking pixel used to fire on the "Forward" click. The block
-    // carries its SOURCE; `queue_send` restores the real URLs at send
-    // time.
-    let source = mail_core::ForwardSource {
-        account_id,
-        uid,
-        mailbox: mailbox.clone(),
-    }
-    .key();
-    // Field verdict D5 (2026-08-20): a forward TRANSMITS — remote
-    // images are KEPT (`AllowRemote`), the recipient gets the whole
-    // message. The §6.4 exception is deliberate and logged: composing
-    // the forward loads those images in the editor, like an implicit
-    // "show images" — it's the act of forwarding that says so. The
-    // REPLY, on the other hand, stays at the neutral pixel
-    // (`citation_reply`). Sanitizing under `off_pump` (E5).
-    off_pump(app, move |_| {
+    let (envelope, _own) = enveloppe_et_compte(&app, account_id, &mailbox, uid, version).await?;
+    let html = raw_body(&app, account_id, &mailbox, uid, version).await?;
+    // The editor prepares inert image references before DOM insertion.
+    store_off_pump(app, move |_, store| {
+        version.verify(store, account_id, &mailbox)?;
         Ok(ComposeContext {
             account_id,
             mailbox,
@@ -3121,52 +3189,10 @@ pub async fn forward_context(
                 envelope.sender.as_deref(),
                 quote_date(&envelope).as_deref(),
                 envelope.subject.as_deref(),
-                &mail_render::sanitize_with(&html, mail_render::ImagePolicy::BlockRemote).html,
-                Some(&source),
+                &mail_render::sanitize_with(&html, mail_render::ImagePolicy::AllowRemote).html,
             ),
             reply: false,
         })
-    })
-    .await
-}
-
-/// D8 (PLAN-AUDIT-V2 E10): the forwarded block of a composed body is
-/// replaced by the render of its source WITH remote images — the
-/// composer never loaded them, the recipient receives them. Without a
-/// marker, or if the source isn't from the sending account, the body
-/// goes out as is (a stated limit).
-async fn rendre_les_images_du_transfert(
-    app: &AppHandle,
-    account_id: i64,
-    html: String,
-) -> Result<String, String> {
-    let Some(source) = mail_core::forward_source(&html) else {
-        return Ok(html);
-    };
-    if source.account_id != account_id {
-        return Ok(html);
-    }
-    // The source may have disappeared between composing and sending
-    // (cleanup, server purge): the message goes out anyway, with its
-    // block at the neutral pixel — never a send blocked by a citation
-    // (review; the outbox is resilient offline, this path too).
-    let raw = match raw_body(app, account_id, &source.mailbox, source.uid).await {
-        Ok(raw) => raw,
-        Err(err) => {
-            crate::trace::trace(&format!(
-                "forward: source not found at send time ({err}) - block sent without remote images"
-            ));
-            return Ok(html);
-        }
-    };
-    // Render AND substitution under `off_pump`: a panic in a pure
-    // decision becomes a TOLD error there (spawn_blocking reports it) —
-    // bare in the async task, it used to leave the invoke without a
-    // response and the compose window frozen without a word (gate
-    // andon, 2026-09-02).
-    off_pump(app.clone(), move |_| {
-        let fresh = mail_render::sanitize_with(&raw, mail_render::ImagePolicy::AllowRemote).html;
-        Ok(mail_core::substitute_forward(&html, &fresh))
     })
     .await
 }
@@ -3193,6 +3219,7 @@ pub async fn queue_send(
     subject: String,
     body: String,
     body_html: Option<String>,
+    image_sources: Option<BTreeMap<String, String>>,
     reply_to_mailbox: Option<String>,
     reply_to_uid: Option<u32>,
     draft_id: Option<i64>,
@@ -3200,6 +3227,7 @@ pub async fn queue_send(
     // R2: the due time (epoch seconds) of a deferred send — None =
     // right away, the historical path.
     send_at_epoch: Option<i64>,
+    edit_token: Option<String>,
 ) -> Result<(), String> {
     // The wire stays FLAT (the IPC keys are a contract since E5a); the
     // arguments are packed HERE and travel as one value from here on
@@ -3211,11 +3239,13 @@ pub async fn queue_send(
         subject,
         body,
         body_html,
+        image_sources,
         reply_to_mailbox,
         reply_to_uid,
         draft_id,
         important,
         send_at_epoch,
+        edit_token,
     };
     queue_send_content(app, account_id, content)
         .await
@@ -3230,11 +3260,13 @@ struct SendContent {
     subject: String,
     body: String,
     body_html: Option<String>,
+    image_sources: Option<BTreeMap<String, String>>,
     reply_to_mailbox: Option<String>,
     reply_to_uid: Option<u32>,
     draft_id: Option<i64>,
     important: bool,
     send_at_epoch: Option<i64>,
+    edit_token: Option<String>,
 }
 
 async fn queue_send_content(
@@ -3249,21 +3281,23 @@ async fn queue_send_content(
         subject,
         body,
         body_html,
+        image_sources,
         reply_to_mailbox,
         reply_to_uid,
         draft_id,
         important,
         send_at_epoch,
+        edit_token,
     } = content;
-    let body_html = match body_html {
-        Some(html) => Some(rendre_les_images_du_transfert(&app, account_id, html).await?),
-        None => None,
-    };
     store_off_pump(app, move |_, store| {
         let from = account_email(store, account_id)?;
         // Rich body: THE boundary (`body_boundary`) — sanitized, text
         // derived. The `body` received serves only the text path.
-        let (text_body, rich_body) = body_boundary(body, body_html.as_deref());
+        let (text_body, rich_body) = composition_boundary(
+            body,
+            body_html.as_deref(),
+            &image_sources.unwrap_or_default(),
+        );
         // Without the mailbox, we resolve NOTHING — we don't guess.
         //
         // A UID alone no longer designates a message now that the
@@ -3273,7 +3307,11 @@ async fn queue_send_content(
         // conversation. Omitting it splits a thread — "a thread split in
         // two is repairable and honest; two unrelated messages merged
         // are not" (ADR 0008 §2).
-        let parent = reply_to_uid.zip(reply_to_mailbox);
+        let parent = if edit_token.is_none() {
+            reply_to_uid.zip(reply_to_mailbox)
+        } else {
+            None
+        };
         let in_reply_to = parent
             .as_ref()
             .and_then(|(uid, mailbox)| store.envelope(account_id, mailbox, *uid).ok().flatten())
@@ -3303,9 +3341,10 @@ async fn queue_send_content(
         let due = send_at_epoch.filter(|epoch| *epoch > chrono::Utc::now().timestamp());
         // Anchor draft (attachments in the SAME transaction, PJ-D2) and
         // due time (R2) go through THE single queuing path.
-        store
-            .enqueue_outbox_full(account_id, &draft, draft_id, due)
-            .map_err(|err| err.to_string())?;
+        match edit_token {
+            Some(token) => store.enqueue_draft_edit(&token, account_id, &draft, due)?,
+            None => store.enqueue_outbox_full(account_id, &draft, draft_id, due)?,
+        };
         Ok(())
     })
     .await
@@ -3976,18 +4015,19 @@ pub async fn signature_get(app: AppHandle, account_id: i64) -> Result<SignatureR
 /// Saves an account's signature. The HTML goes through THE boundary
 /// (`body_boundary`, ammonia allowlist) — a signature enters the
 /// database like any body: sanitized, never taken raw. An HTML with an
-/// empty text render counts as "signature cleared."
+/// no text and no image counts as "signature cleared."
 #[tauri::command]
 pub async fn signature_set(
     app: AppHandle,
     account_id: i64,
     html: Option<String>,
+    image_sources: Option<BTreeMap<String, String>>,
     replies: bool,
 ) -> Result<(), CommandError> {
     store_off_pump(app, move |_, store| {
-        let clean = html
-            .as_deref()
-            .and_then(|h| body_boundary(String::new(), Some(h)).1);
+        let clean = html.as_deref().and_then(|h| {
+            composition_boundary(String::new(), Some(h), &image_sources.unwrap_or_default()).1
+        });
         store
             .set_text_pref(
                 &format!("signature.{account_id}"),
@@ -4216,6 +4256,7 @@ pub async fn name_set(
 #[derive(Serialize)]
 pub struct DraftRow {
     pub id: i64,
+    pub incarnation: String,
     pub account_id: i64,
     pub to: String,
     pub cc: String,
@@ -4249,6 +4290,7 @@ pub struct DraftSavedRow {
     /// The draft had changed elsewhere: the editor's text was kept
     /// aside. To be told to the user, never hidden.
     pub forked: bool,
+    pub attachments: Vec<DraftAttachmentRow>,
 }
 
 /// Saves a draft — plain text, never validated: it's a net. The content
@@ -4270,6 +4312,8 @@ pub struct DraftContentArg {
     /// Rich body from the editor (PLAN-COMPOSITION-HTML) — absent or
     /// empty = text draft. Sanitized on the Rust side before any write.
     body_html: Option<String>,
+    #[serde(default)]
+    image_sources: BTreeMap<String, String>,
     reply_to_uid: Option<u32>,
     reply_to_mailbox: Option<String>,
     /// Marked “important” (R3, PLAN-RETOURS-6). `default`: a caller
@@ -4278,31 +4322,24 @@ pub struct DraftContentArg {
     important: bool,
 }
 
-/// THE boundary of the rich body (PLAN-COMPOSITION-HTML) — the single
-/// point through which every body enters the database (draft, send
-/// log, pull): sanitized by ammonia, the fallback text DERIVED from
-/// that same HTML (one single authority, never two truths).
-///
-/// `AllowRemote` HERE: the boundary does not re-neutralize what
-/// upstream already decided. Remote-image policy is decided BY CONTEXT
-/// (field verdict D5, 2026-08-20) — a REPLY quotes in pixel-neutral
-/// form (`citation_reply`, §6.4: once put back in the editor, it must
-/// load nothing) and, sanitization being idempotent, it stays neutral
-/// when passing through here again; a FORWARD keeps its images (the
-/// recipient gets the whole message), and so does a deliberate paste.
-///
-/// An HTML body that is empty, blank, or whose rendered TEXT is empty
-/// (the leftover `<br>` of an emptied contenteditable) counts as “no
-/// HTML”: text path — otherwise the text/plain part of a send would go
-/// out empty.
+/// Stored HTML retains permitted image URLs; only the editor preparation may
+/// insert it into the live document. The fallback text comes from the same HTML.
 pub(crate) fn body_boundary(body: String, body_html: Option<&str>) -> (String, Option<String>) {
+    composition_boundary(body, body_html, &BTreeMap::new())
+}
+
+fn composition_boundary(
+    body: String,
+    body_html: Option<&str>,
+    images: &BTreeMap<String, String>,
+) -> (String, Option<String>) {
     let rich = body_html
         .filter(|html| !html.trim().is_empty())
-        .map(|html| mail_render::sanitize_with(html, mail_render::ImagePolicy::AllowRemote).html);
+        .map(|html| mail_render::sanitize_composition(html, images).html);
     match rich {
         Some(html) => {
             let text = mail_render::body_text(&html);
-            if text.trim().is_empty() {
+            if text.trim().is_empty() && !html.contains("<img") {
                 (body, None)
             } else {
                 (text, Some(html))
@@ -4312,6 +4349,32 @@ pub(crate) fn body_boundary(body: String, body_html: Option<&str>) -> (String, O
     }
 }
 
+#[derive(Serialize)]
+pub struct ComposerHtml {
+    html: String,
+    image_sources: BTreeMap<String, String>,
+}
+
+#[tauri::command]
+pub async fn prepare_composer_html(
+    app: AppHandle,
+    html: String,
+    image_sources: Option<BTreeMap<String, String>>,
+) -> Result<ComposerHtml, CommandError> {
+    off_pump(app, move |_| {
+        let html = match image_sources.filter(|images| !images.is_empty()) {
+            Some(images) => mail_render::sanitize_composition(&html, &images).html,
+            None => html,
+        };
+        let prepared = mail_render::sanitize_for_composer(&html);
+        Ok(ComposerHtml {
+            html: prepared.html,
+            image_sources: prepared.image_sources,
+        })
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn save_draft(
     app: AppHandle,
@@ -4319,35 +4382,32 @@ pub async fn save_draft(
     id: Option<i64>,
     base_epoch: Option<i64>,
     content: DraftContentArg,
-) -> Result<DraftSavedRow, CommandError> {
+    edit_token: Option<String>,
+) -> Result<Option<DraftSavedRow>, CommandError> {
     store_off_pump(app, move |_, store| {
         // Same boundary as sending (`body_boundary`): sanitized HTML,
         // derived text (previews and fallback).
-        let (body_text, body_rich) =
-            body_boundary(content.body.clone(), content.body_html.as_deref());
-        let saved = store
-            .save_draft(
-                account_id,
-                id,
-                base_epoch,
-                mail_core::DraftContent {
-                    to_raw: &content.to,
-                    cc_raw: &content.cc,
-                    bcc_raw: &content.bcc,
-                    body_html: body_rich.as_deref(),
-                    subject: &content.subject,
-                    body: &body_text,
-                    reply_to_uid: content.reply_to_uid,
-                    reply_to_mailbox: content.reply_to_mailbox.as_deref(),
-                    important: content.important,
-                },
-            )
-            .map_err(|err| err.to_string())?;
-        Ok(DraftSavedRow {
-            id: saved.id,
-            updated_epoch: saved.updated_epoch,
-            forked: saved.forked,
-        })
+        let (body_text, body_rich) = composition_boundary(
+            content.body.clone(),
+            content.body_html.as_deref(),
+            &content.image_sources,
+        );
+        let content = mail_core::DraftContent {
+            to_raw: &content.to,
+            cc_raw: &content.cc,
+            bcc_raw: &content.bcc,
+            body_html: body_rich.as_deref(),
+            subject: &content.subject,
+            body: &body_text,
+            reply_to_uid: content.reply_to_uid,
+            reply_to_mailbox: content.reply_to_mailbox.as_deref(),
+            important: content.important,
+        };
+        let saved = match edit_token {
+            Some(token) => store.save_draft_edit(&token, account_id, content)?,
+            None => Some(store.save_draft(account_id, id, base_epoch, content)?),
+        };
+        Ok(saved.map(draft_saved_row))
     })
     .await
 }
@@ -4359,22 +4419,96 @@ pub async fn list_drafts(app: AppHandle) -> Result<Vec<DraftRow>, CommandError> 
             .drafts()
             .map_err(|err| err.to_string())?
             .into_iter()
-            .map(|draft| DraftRow {
-                updated_epoch: draft.updated_epoch,
-                id: draft.id,
-                account_id: draft.account_id,
-                to: draft.to_raw,
-                cc: draft.cc_raw,
-                bcc: draft.bcc_raw,
-                subject: draft.subject,
-                body: draft.body,
-                body_html: draft.body_html,
-                reply_to_uid: draft.reply_to_uid,
-                reply_to_mailbox: draft.reply_to_mailbox,
-                thread_id: draft.thread_id,
-                important: draft.important,
-            })
+            .map(draft_row)
             .collect())
+    })
+    .await
+}
+
+fn draft_row(draft: mail_core::SavedDraft) -> DraftRow {
+    DraftRow {
+        updated_epoch: draft.updated_epoch,
+        id: draft.id,
+        incarnation: draft.incarnation,
+        account_id: draft.account_id,
+        to: draft.to_raw,
+        cc: draft.cc_raw,
+        bcc: draft.bcc_raw,
+        subject: draft.subject,
+        body: draft.body,
+        body_html: draft.body_html,
+        reply_to_uid: draft.reply_to_uid,
+        reply_to_mailbox: draft.reply_to_mailbox,
+        thread_id: draft.thread_id,
+        important: draft.important,
+    }
+}
+
+fn draft_saved_row(saved: mail_core::DraftSaved) -> DraftSavedRow {
+    DraftSavedRow {
+        id: saved.id,
+        updated_epoch: saved.updated_epoch,
+        forked: saved.forked,
+        attachments: saved.attachments.into_iter().map(attachment_row).collect(),
+    }
+}
+
+#[derive(Serialize)]
+pub struct DraftEditRow {
+    draft: Option<DraftRow>,
+    attachments: Vec<DraftAttachmentRow>,
+}
+
+#[tauri::command]
+pub async fn begin_draft_edit(
+    app: AppHandle,
+    token: String,
+    account_id: i64,
+    id: Option<i64>,
+    incarnation: Option<String>,
+    base_epoch: Option<i64>,
+) -> Result<DraftEditRow, CommandError> {
+    store_off_pump(app, move |_, store| {
+        let edit =
+            store.begin_draft_edit(&token, account_id, id, incarnation.as_deref(), base_epoch)?;
+        Ok(DraftEditRow {
+            draft: edit.draft.map(draft_row),
+            attachments: edit.attachments.into_iter().map(attachment_row).collect(),
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn finish_draft_edit(
+    app: AppHandle,
+    token: String,
+    discard: bool,
+) -> Result<Option<DraftSavedRow>, CommandError> {
+    store_off_pump(app, move |_, store| {
+        Ok(store
+            .finish_draft_edit(&token, discard)?
+            .map(draft_saved_row))
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn recover_draft_edit(app: AppHandle) -> Result<(), CommandError> {
+    store_off_pump(app, move |_, store| Ok(store.recover_draft_edit()?)).await
+}
+
+#[tauri::command]
+pub async fn detach_draft_edit_file(
+    app: AppHandle,
+    token: String,
+    account_id: i64,
+    attachment_id: i64,
+) -> Result<Option<DraftSavedRow>, CommandError> {
+    store_off_pump(app, move |_, store| {
+        Ok(store
+            .remove_draft_edit_attachment(&token, account_id, attachment_id)?
+            .map(draft_saved_row))
     })
     .await
 }
@@ -4412,6 +4546,7 @@ pub struct RefusedAttachment {
 /// Outcome of the “Attach” gesture.
 #[derive(Serialize)]
 pub struct AttachReport {
+    pub forked: bool,
     /// The anchor draft (created on the first file if needed, PJ-D1).
     /// `None`: nothing was entered AND no draft existed — the anchor
     /// created for nothing was reclaimed, no empty draft left lying
@@ -4465,6 +4600,52 @@ fn mime_for_name(name: &str) -> &'static str {
     }
 }
 
+fn attach_edit_files(
+    store: &Store,
+    token: &str,
+    account_id: i64,
+    paths: &[String],
+) -> Result<AttachReport, CommandError> {
+    store.draft_edit(token)?;
+    let mut refused = Vec::new();
+    let mut forked = false;
+    for path in paths {
+        let candidate = Path::new(path);
+        if !candidate.is_absolute() || !candidate.is_file() {
+            return Err(format!("attachment refused: {path:?} is not an absolute file").into());
+        }
+        let name = candidate
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.clone());
+        let bytes = std::fs::read(candidate).map_err(|err| format!("reading {path:?}: {err}"))?;
+        match store.add_draft_edit_attachment(
+            token,
+            account_id,
+            &name,
+            mime_for_name(&name),
+            &bytes,
+        ) {
+            Ok(saved) => forked |= saved.forked,
+            Err(mail_core::Error::AttachmentOverBudget {
+                name, remaining, ..
+            }) => refused.push(RefusedAttachment {
+                name,
+                remaining: mail_core::human_size(remaining),
+            }),
+            Err(err) => return Err(err.into()),
+        }
+    }
+    let edit = store.draft_edit(token)?;
+    Ok(AttachReport {
+        forked,
+        draft_id: edit.draft.as_ref().map(|draft| draft.id),
+        updated_epoch: edit.draft.map(|draft| draft.updated_epoch),
+        attachments: edit.attachments.into_iter().map(attachment_row).collect(),
+        refused,
+    })
+}
+
 /// Attaches files to the draft: reads each path, copies the bytes into
 /// the database on the gesture (PJ-D1 — the picker returned paths, they
 /// don't survive past this call), refuses at the cap without punishing
@@ -4478,8 +4659,12 @@ pub async fn attach_files(
     account_id: i64,
     draft_id: Option<i64>,
     paths: Vec<String>,
+    edit_token: Option<String>,
 ) -> Result<AttachReport, CommandError> {
     store_off_pump(app, move |_, store| {
+        if let Some(token) = edit_token {
+            return attach_edit_files(store, &token, account_id, &paths);
+        }
         let created = draft_id.is_none();
         let draft_id = match draft_id {
             Some(id) => id,
@@ -4541,6 +4726,7 @@ pub async fn attach_files(
                 .delete_draft(draft_id)
                 .map_err(|err| err.to_string())?;
             return Ok(AttachReport {
+                forked: false,
                 draft_id: None,
                 updated_epoch: None,
                 attachments: Vec::new(),
@@ -4548,6 +4734,7 @@ pub async fn attach_files(
             });
         }
         Ok(AttachReport {
+            forked: false,
             draft_id: Some(draft_id),
             updated_epoch,
             attachments: store
@@ -4568,6 +4755,7 @@ pub async fn attach_files(
 /// (final refusal vs “Retry”).
 #[derive(Serialize)]
 pub struct FetchAttachmentReport {
+    pub forked: bool,
     /// `None`: the attachment was refused AND no draft existed — the
     /// anchor created for nothing was reclaimed.
     pub draft_id: Option<i64>,
@@ -4584,13 +4772,18 @@ pub struct FetchAttachmentReport {
 /// file. One per call — the composer chains them, and each chip carries
 /// its own state.
 #[tauri::command]
+// Named IPC arguments distinguish the source account from the draft owner.
+#[allow(clippy::too_many_arguments)]
 pub async fn fetch_source_attachment(
     app: AppHandle,
     account_id: i64,
     mailbox: String,
     uid: u32,
+    version: MessageVersion,
     index: usize,
     draft_id: Option<i64>,
+    edit_token: Option<String>,
+    sender_account_id: Option<i64>,
 ) -> Result<FetchAttachmentReport, CommandError> {
     // E5: read (attachment + session) under `off_pump`, bare network,
     // then write under `off_pump` — never again a SQLite connection
@@ -4598,23 +4791,31 @@ pub async fn fetch_source_attachment(
     // commands' lock (the `save_draft`/`delete_draft` TOCTOU of ADR
     // 0019).
     let mailbox_name = mailbox.clone();
-    let (attachment, session) = off_pump(app.clone(), move |app| {
+    let (attachment, session, identity) = off_pump(app.clone(), move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let identity = version.identity(account_id, &mailbox_name);
+        store.verify_mailbox_identity(&identity)?;
         let attachment = store
             .attachments(account_id, &mailbox_name, uid)
             .map_err(|err| err.to_string())?
             .into_iter()
             .find(|candidate| candidate.index == index)
             .ok_or_else(|| "unknown attachment".to_string())?;
-        Ok::<_, CommandError>((attachment, auth_for(&app, account_id)?))
+        Ok::<_, CommandError>((attachment, auth_for(&app, account_id)?, identity))
     })
     .await?;
 
+    let expected_generation = identity.uid_validity;
     let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
         let (mut server, _refreshed) = crate::poll::connect_imap(&session)?;
-        let bytes = server
-            .fetch_attachment(&mailbox, uid, index)
-            .map_err(|err| err.to_string())?;
+        let bytes = mail_core::fetch_attachment_checked(
+            &mut server,
+            &mailbox,
+            expected_generation,
+            uid,
+            index,
+        )
+        .map_err(|err| err.to_string())?;
         server.logout();
         bytes.ok_or_else(|| "attachment absent from the message".to_string())
     })
@@ -4622,6 +4823,45 @@ pub async fn fetch_source_attachment(
     .map_err(|err| err.to_string())??;
 
     store_off_pump(app, move |_, store| {
+        store
+            .verify_mailbox_identity(&identity)
+            .map_err(|err| err.to_string())?;
+        if let Some(token) = edit_token {
+            return match store.add_draft_edit_source_attachment(
+                &token,
+                sender_account_id.unwrap_or(account_id),
+                &identity,
+                &mail_core::DraftAttachmentFull {
+                    name: attachment.name,
+                    mime: attachment.mime,
+                    bytes,
+                },
+            ) {
+                Ok(saved) => Ok(FetchAttachmentReport {
+                    forked: saved.forked,
+                    draft_id: Some(saved.id),
+                    updated_epoch: Some(saved.updated_epoch),
+                    attachment: saved.attachments.last().cloned().map(attachment_row),
+                    refused: None,
+                }),
+                Err(mail_core::Error::AttachmentOverBudget {
+                    name, remaining, ..
+                }) => {
+                    let edit = store.draft_edit(&token)?;
+                    Ok(FetchAttachmentReport {
+                        forked: false,
+                        draft_id: edit.draft.as_ref().map(|draft| draft.id),
+                        updated_epoch: edit.draft.map(|draft| draft.updated_epoch),
+                        attachment: None,
+                        refused: Some(RefusedAttachment {
+                            name,
+                            remaining: mail_core::human_size(remaining),
+                        }),
+                    })
+                }
+                Err(err) => Err(err.into()),
+            };
+        }
         let created = draft_id.is_none();
         let draft_id = match draft_id {
             Some(id) => id,
@@ -4649,6 +4889,7 @@ pub async fn fetch_source_attachment(
         };
         match store.add_draft_attachment(draft_id, &attachment.name, &attachment.mime, &bytes) {
             Ok(saved) => Ok(FetchAttachmentReport {
+                forked: false,
                 draft_id: Some(draft_id),
                 updated_epoch: Some(saved.updated_epoch),
                 attachment: Some(attachment_row(saved.attachment)),
@@ -4668,6 +4909,7 @@ pub async fn fetch_source_attachment(
                     Some(draft_id)
                 };
                 Ok(FetchAttachmentReport {
+                    forked: false,
                     draft_id,
                     updated_epoch: None,
                     attachment: None,
@@ -4698,15 +4940,15 @@ pub async fn detach_file(app: AppHandle, attachment_id: i64) -> Result<Option<i6
 #[tauri::command]
 pub async fn draft_attachments(
     app: AppHandle,
-    draft_id: i64,
+    draft_id: Option<i64>,
+    edit_token: Option<String>,
 ) -> Result<Vec<DraftAttachmentRow>, CommandError> {
     store_off_pump(app, move |_, store| {
-        Ok(store
-            .draft_attachments_meta(draft_id)
-            .map_err(|err| err.to_string())?
-            .into_iter()
-            .map(attachment_row)
-            .collect())
+        let files = match edit_token {
+            Some(token) => store.draft_edit_attachments(&token)?,
+            None => store.draft_attachments_meta(draft_id.ok_or(mail_core::Error::StaleDraft)?)?,
+        };
+        Ok(files.into_iter().map(attachment_row).collect())
     })
     .await
 }
@@ -4820,6 +5062,8 @@ fn run_draft_sync_all(
                 &draft.body,
                 draft.body_html.as_deref(),
                 &attachments,
+                &draft.thread_headers,
+                draft.important,
             ) {
                 Ok(bytes) => bytes,
                 // Not pushable as it stands: the local copy stays the
@@ -5373,6 +5617,10 @@ pub async fn migration_run(
     shared.total.store(0, Ordering::Relaxed);
 
     tauri::async_runtime::spawn_blocking(move || {
+        if let Some(required) = Store::draft_file_migration_headroom(&path).map_err(|err| err.to_string())? {
+            let available = fs4::available_space(path.parent().unwrap_or(&path)).map_err(|err| err.to_string())?;
+            if available < required { return Err(format!("not enough free space for draft migration: {required} bytes required, {available} available")); }
+        }
         let result = Store::open_with_progress(&path, |progress| {
             shared.done.store(progress.done, Ordering::Relaxed);
             shared.total.store(progress.total, Ordering::Relaxed);
@@ -5915,6 +6163,18 @@ fn installer_command(installer_path: &std::path::Path) -> std::process::Command 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn body_boundary_preserves_image_only_content() {
+        let (_, rich) = super::body_boundary(
+            String::new(),
+            Some(r#"<img src="data:image/png;base64,AA==">"#),
+        );
+        assert!(
+            rich.is_some(),
+            "an image-only draft must not become empty text"
+        );
+    }
+
     /// PLAN-AUDIT-V2 E8: the save path of an attachment comes from the
     /// UI (the "Save as" dialog); it is written with bytes chosen by
     /// the sender. Defense in depth: absolute, no traversal, in a

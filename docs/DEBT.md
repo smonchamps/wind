@@ -1123,6 +1123,12 @@ both sets, select per `lang`, unpin the script.
 
 ### D-59 · The attachment rank is a function of the adapter's inline filters
 
+- **Audit follow-up (2026-09-06, [PLAN-AUDIT-2026-09](PLAN-AUDIT-2026-09.md))**:
+  Lot 1 adds generation guards and complete remote-draft MIME imports, but
+  leaves reading attachment ranks unchanged. This debt remains open for
+  structural MIME-part identity and migration in Lot 5; generation checks
+  alone do not repair ranks after an adapter filter change.
+
 - **Since**: 2026-09-04 (PLAN-AUDIT-V3 E6, re-scoped out of D-30 at
   its closure; audit 2026-09-01 finding at `convert.rs:537-562`).
 - **What**: a stored attachment's rank is its position in
@@ -1168,4 +1174,3 @@ both sets, select per `lang`, unpin the script.
   debut.
 - **Reopens if**: the first mac-only regression a tester finds that
   the Windows suite cannot see.
-
