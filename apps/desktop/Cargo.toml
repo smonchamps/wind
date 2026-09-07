@@ -61,7 +61,7 @@ same-file = "1"
 # Boite de dialogue AVANT toute fenetre Tauri (mono-instance E1, echec du
 # demenagement) : rfd est ce que tauri-plugin-dialog utilise deja — aucune
 # compilation ni feature de plus, et pas de dependance windows-sys directe.
-rfd = { version = "0.16", default-features = false }
+rfd = { version = "0.17", default-features = false }
 # Liens du corps vers le navigateur SYSTEME (open_link) : ShellExecuteW
 # bien emballe, la ou `explorer` (patron de telemetry_open_folder) est
 # fait pour des dossiers, pas des URL. Le schema est valide en Rust
