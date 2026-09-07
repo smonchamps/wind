@@ -322,6 +322,23 @@ fn file_part(name: &str, mime: &str, bytes: Vec<u8>) -> Result<SinglePart, SendE
     Ok(FilePart::new(name.to_string()).body(bytes, content_type))
 }
 
+/// What a mirrored draft is made of — named fields in place of the ten
+/// positional parameters `draft_bytes` used to take, six of them
+/// consecutive `&str` (Lot 5 E13e, D-25).
+#[derive(Clone, Copy)]
+pub struct DraftMessage<'a> {
+    pub from: &'a str,
+    pub to_raw: &'a str,
+    pub cc_raw: &'a str,
+    pub bcc_raw: &'a str,
+    pub subject: &'a str,
+    pub body: &'a str,
+    pub body_html: Option<&'a str>,
+    pub attachments: &'a [DraftAttachmentFull],
+    pub headers: &'a mail_core::ThreadHeaders,
+    pub important: bool,
+}
+
 /// RFC 5322 message of a draft, ready for an APPEND `\Draft` — the push to
 /// the Gmail Drafts folder (Phase 2).
 ///
@@ -331,21 +348,19 @@ fn file_part(name: &str, mime: &str, bytes: Vec<u8>) -> Result<SinglePart, SendE
 ///
 /// The attachments follow (PJ-D6): the remote reflection shows the WHOLE
 /// draft, same part constructor as the send.
-// The flat fields of a draft, all strings of the same register — the same
-// compromise as `insert_draft` on the core side.
-#[allow(clippy::too_many_arguments)]
-pub fn draft_bytes(
-    from: &str,
-    to_raw: &str,
-    cc_raw: &str,
-    bcc_raw: &str,
-    subject: &str,
-    body: &str,
-    body_html: Option<&str>,
-    attachments: &[DraftAttachmentFull],
-    headers: &mail_core::ThreadHeaders,
-    important: bool,
-) -> Result<Vec<u8>, SendError> {
+pub fn draft_bytes(draft: &DraftMessage<'_>) -> Result<Vec<u8>, SendError> {
+    let DraftMessage {
+        from,
+        to_raw,
+        cc_raw,
+        bcc_raw,
+        subject,
+        body,
+        body_html,
+        attachments,
+        headers,
+        important,
+    } = *draft;
     let sender = parse_mailbox(from)?;
     let mut builder = Message::builder()
         .from(sender.clone())
@@ -805,18 +820,18 @@ mod tests {
             in_reply_to: Some("<parent@example.com>".into()),
             references: Some("<root@example.com> <parent@example.com>".into()),
         };
-        let raw = draft_bytes(
-            "from@example.com",
-            "to@example.com",
-            "cc@example.com",
-            "hidden@example.com",
-            "reply",
-            "body",
-            None,
-            &[],
-            &headers,
-            true,
-        )
+        let raw = draft_bytes(&DraftMessage {
+            from: "from@example.com",
+            to_raw: "to@example.com",
+            cc_raw: "cc@example.com",
+            bcc_raw: "hidden@example.com",
+            subject: "reply",
+            body: "body",
+            body_html: None,
+            attachments: &[],
+            headers: &headers,
+            important: true,
+        })
         .unwrap();
         let text = String::from_utf8(raw).unwrap();
         assert!(text.contains("Bcc: hidden@example.com"), "{text}");
@@ -830,18 +845,18 @@ mod tests {
 
     #[test]
     fn draft_bytes_keeps_valid_recipients_and_omits_the_rest() {
-        let raw = draft_bytes(
-            "moi@exemple.fr",
-            "valide@exemple.fr, address-being-typ",
-            "",
-            "",
-            "Draft",
-            "body",
-            None,
-            &[],
-            &Default::default(),
-            false,
-        )
+        let raw = draft_bytes(&DraftMessage {
+            from: "moi@exemple.fr",
+            to_raw: "valide@exemple.fr, address-being-typ",
+            cc_raw: "",
+            bcc_raw: "",
+            subject: "Draft",
+            body: "body",
+            body_html: None,
+            attachments: &[],
+            headers: &Default::default(),
+            important: false,
+        })
         .expect("constructible draft");
         let text = String::from_utf8_lossy(&raw);
         assert!(text.contains("valide@exemple.fr"));
@@ -857,18 +872,18 @@ mod tests {
     /// must carry no invented recipient.
     #[test]
     fn draft_without_any_valid_recipient_is_still_mirrored() {
-        let raw = draft_bytes(
-            "moi@exemple.fr",
-            "no address yet",
-            "",
-            "",
-            "s",
-            "c",
-            None,
-            &[],
-            &Default::default(),
-            false,
-        )
+        let raw = draft_bytes(&DraftMessage {
+            from: "moi@exemple.fr",
+            to_raw: "no address yet",
+            cc_raw: "",
+            bcc_raw: "",
+            subject: "s",
+            body: "c",
+            body_html: None,
+            attachments: &[],
+            headers: &Default::default(),
+            important: false,
+        })
         .expect("a recipient-less draft still builds");
         let text = String::from_utf8_lossy(&raw);
         assert!(!text.contains("To:"), "no invented To header");
@@ -880,22 +895,22 @@ mod tests {
     /// included, through the same part constructor as the send.
     #[test]
     fn draft_bytes_carries_attachments_as_multipart_mixed() {
-        let raw = draft_bytes(
-            "moi@exemple.fr",
-            "valide@exemple.fr",
-            "",
-            "",
-            "Draft",
-            "body",
-            None,
-            &[DraftAttachmentFull {
+        let raw = draft_bytes(&DraftMessage {
+            from: "moi@exemple.fr",
+            to_raw: "valide@exemple.fr",
+            cc_raw: "",
+            bcc_raw: "",
+            subject: "Draft",
+            body: "body",
+            body_html: None,
+            attachments: &[DraftAttachmentFull {
                 name: "quote.pdf".to_string(),
                 mime: "application/pdf".to_string(),
                 bytes: vec![0xFF, 0xD8, 0xFF, 0xE0],
             }],
-            &Default::default(),
-            false,
-        )
+            headers: &Default::default(),
+            important: false,
+        })
         .expect("constructible draft");
         let text = String::from_utf8_lossy(&raw);
         assert!(text.contains("multipart/mixed"), "{text}");
@@ -912,18 +927,18 @@ mod tests {
     /// draft — multipart/alternative, like the send.
     #[test]
     fn draft_bytes_with_html_is_multipart_alternative() {
-        let raw = draft_bytes(
-            "moi@exemple.fr",
-            "valide@exemple.fr",
-            "",
-            "",
-            "Draft",
-            "body",
-            Some("<b>body</b>"),
-            &[],
-            &Default::default(),
-            false,
-        )
+        let raw = draft_bytes(&DraftMessage {
+            from: "moi@exemple.fr",
+            to_raw: "valide@exemple.fr",
+            cc_raw: "",
+            bcc_raw: "",
+            subject: "Draft",
+            body: "body",
+            body_html: Some("<b>body</b>"),
+            attachments: &[],
+            headers: &Default::default(),
+            important: false,
+        })
         .expect("constructible draft");
         let text = String::from_utf8_lossy(&raw);
         assert!(text.contains("multipart/alternative"), "{text}");
@@ -939,18 +954,18 @@ mod tests {
     /// does not pay the multipart.
     #[test]
     fn draft_bytes_without_attachments_stays_single_part() {
-        let raw = draft_bytes(
-            "moi@exemple.fr",
-            "valide@exemple.fr",
-            "",
-            "",
-            "s",
-            "c",
-            None,
-            &[],
-            &Default::default(),
-            false,
-        )
+        let raw = draft_bytes(&DraftMessage {
+            from: "moi@exemple.fr",
+            to_raw: "valide@exemple.fr",
+            cc_raw: "",
+            bcc_raw: "",
+            subject: "s",
+            body: "c",
+            body_html: None,
+            attachments: &[],
+            headers: &Default::default(),
+            important: false,
+        })
         .expect("constructible draft");
         assert!(!String::from_utf8_lossy(&raw).contains("multipart/mixed"));
     }

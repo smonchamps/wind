@@ -153,11 +153,14 @@ export function closeThread() {
   thread.lastOpenMs = null;
 }
 
-async function loadMessage(m, withImages = false) {
+async function loadMessage(m, withImages = false, refresh = false) {
   const k = msgKey(m);
   const mine = token;
   const permissions = imagePermissionGeneration();
-  if (thread.body[k] === undefined || withImages) {
+  // `refresh`: the body is re-read after a permission change and the
+  // one on screen STAYS until the new one lands (field 2026-09-07: the
+  // frame went blank for the length of a synchronization batch).
+  if (thread.body[k] === undefined || withImages || refresh) {
     if (thread.body[k] === undefined) thread.body[k] = '';
     try {
       const view = isEcho(m)
@@ -258,9 +261,9 @@ export async function verifyInvitation(m) {
 export function refreshThreadImages() {
   for (const message of thread.messages) {
     const key = msgKey(message);
-    delete thread.body[key];
     delete thread.messageImageGrants[key];
-    if (thread.expanded[key]) loadMessage(message);
+    if (thread.expanded[key]) loadMessage(message, false, true);
+    else delete thread.body[key];
   }
 }
 

@@ -385,6 +385,7 @@ impl Store {
         // the Screener AND in its view.
         let tx = self.0.unchecked_transaction()?;
         set_verdict(&tx, &address, destination, rule, epoch)?;
+        self.note_view_change()?;
         tx.commit()?;
         Ok(())
     }
@@ -498,6 +499,7 @@ impl Store {
             )?;
         }
         refresh_threads_of(&tx, &address)?;
+        self.note_view_change()?;
         tx.commit()?;
         Ok(())
     }

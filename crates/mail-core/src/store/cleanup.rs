@@ -361,6 +361,7 @@ impl Store {
             for thread in &touched {
                 thread::refresh(&tx, *thread)?;
             }
+            self.note_view_change()?;
             tx.commit()?;
         }
         Ok(handled)

@@ -86,6 +86,9 @@ pub(crate) fn reconcile(app: &tauri::AppHandle) {
 /// a dedicated connection → (re)connection pass → watch — and
 /// reconnection with a doubled delay when the session drops.
 fn run_loop(app: tauri::AppHandle, email: String, alive: Arc<AtomicBool>) {
+    // This thread is the shell's own (`std::thread`), never a tokio
+    // worker: it opens the database with its own token (Lot 5 E13b).
+    let app = poll::Blocking::on_dedicated_thread(app);
     // The account's NUMERIC id, for the console (§6.8: never an
     // address in traces). Not found = trace "?".
     let account_id = account_id(&app, &email);
@@ -136,11 +139,7 @@ fn run_loop(app: tauri::AppHandle, email: String, alive: Arc<AtomicBool>) {
 /// keyring by `connect_imap`), a (re)connection pass, then IDLE turns.
 /// `Ok(())` = voluntary exit; `Err` = the connection is dead, the
 /// caller reconnects.
-fn watch_session(
-    app: &tauri::AppHandle,
-    email: &str,
-    alive: &Arc<AtomicBool>,
-) -> Result<(), String> {
+fn watch_session(app: &poll::Blocking, email: &str, alive: &Arc<AtomicBool>) -> Result<(), String> {
     let session = poll::job_for_email(app, email)?;
     let (mut server, refreshed, _lease) =
         poll::connect_imap_with_stop(&session, Some(alive.clone()))?;
@@ -197,9 +196,9 @@ fn watch_session(
 
 /// The account's numeric id — the only name a trace is allowed to
 /// carry (§6.8).
-fn account_id(app: &tauri::AppHandle, email: &str) -> String {
+fn account_id(app: &poll::Blocking, email: &str) -> String {
     let found = || -> Option<i64> {
-        let path = poll::db_path(app).ok()?;
+        let path = poll::adopted_db(app).ok()?;
         let store = mail_core::Store::open(&path).ok()?;
         store
             .accounts()

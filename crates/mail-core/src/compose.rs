@@ -224,6 +224,86 @@ pub fn reply_to(
     }
 }
 
+/// Is the message OURS — the sender is the account? Trimmed,
+/// ASCII-case-insensitive, the one rule for reply and reply-all
+/// (Lot 5 E13c, audit A01: the shell used two slightly different
+/// comparisons).
+pub fn is_own_message(sender: Option<&str>, own_address: &str) -> bool {
+    sender
+        .map(str::trim)
+        .filter(|address| !address.is_empty())
+        .is_some_and(|address| address.eq_ignore_ascii_case(own_address.trim()))
+}
+
+/// The address a "Reply all" answers: on a received message `Reply-To`
+/// when it says something, else `From`; on our own message the sender
+/// (ourselves — the split then removes us, the fallback below may put
+/// us back), whatever `Reply-To` says.
+fn reply_all_sender<'a>(
+    is_own: bool,
+    sender: Option<&'a str>,
+    reply_to: Option<&'a str>,
+) -> Option<&'a str> {
+    if is_own {
+        return sender;
+    }
+    reply_to
+        .filter(|address| !address.trim().is_empty())
+        .or(sender)
+}
+
+/// The whole "Reply all" decision: the answered address, the To/Cc
+/// split, and the self-only fallback (a message sent to ourselves
+/// alone answers ourselves rather than nobody). A Cc-only outcome is
+/// left alone (B12). Both lists empty = nobody: the caller refuses.
+pub fn reply_all_recipients(
+    sender: Option<&str>,
+    reply_to: Option<&str>,
+    to: &[String],
+    cc: &[String],
+    own_address: &str,
+) -> (Vec<String>, Vec<String>) {
+    let is_own = is_own_message(sender, own_address);
+    let sender = reply_all_sender(is_own, sender, reply_to);
+    let (mut to_out, cc_out) = reply_all_split(sender, to, cc, own_address);
+    if to_out.is_empty() && cc_out.is_empty() {
+        to_out.extend(sender.map(str::trim).map(str::to_string));
+    }
+    (to_out, cc_out)
+}
+
+/// What the composer is doing — the wire's `mode` (`new`, `reply`,
+/// `reply_all`, `forward`), decided once here for the signature scope.
+/// A mode the core does not know is refused (`None`): the caller then
+/// carries no signature rather than a guessed one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComposeMode {
+    New,
+    Reply,
+    Forward,
+}
+
+impl ComposeMode {
+    pub fn parse(mode: &str) -> Option<Self> {
+        match mode {
+            "new" => Some(Self::New),
+            // "Reply all" signs like a reply (review 2026-09-07: the
+            // first cut forgot the wire's fourth mode and dropped the
+            // signature on every reply-all).
+            "reply" | "reply_all" => Some(Self::Reply),
+            "forward" => Some(Self::Forward),
+            _ => None,
+        }
+    }
+}
+
+/// Does the account's signature go into this composition? Always on a
+/// new message; on a reply or a forward only when the account signs
+/// those (Settings, D4 of PLAN-SIGNATURE).
+pub fn signature_applies(mode: ComposeMode, signs_replies: bool) -> bool {
+    matches!(mode, ComposeMode::New) || signs_replies
+}
+
 /// The attribution line of a quote — the SINGLE authority for both
 /// variants (text and rich): a label that changes changes everywhere.
 fn attribution(sender: Option<&str>, date: Option<&str>) -> String {
@@ -661,6 +741,95 @@ mod tests {
     #[test]
     fn reply_to_received_without_sender_is_empty() {
         assert!(reply_to(false, None, &["x@y.fr".to_string()], None).is_empty());
+    }
+
+    // Lot 5 E13c (audit A01): the sender rules of a reply live HERE,
+    // not in the shell — one trimmed, case-insensitive "is it ours"
+    // for both reply and reply-all, one Reply-To precedence, one
+    // self-only fallback.
+
+    #[test]
+    fn own_message_is_decided_trimmed_and_case_insensitively() {
+        assert!(is_own_message(Some("  Me@Example.fr "), "me@example.fr"));
+        assert!(is_own_message(Some("me@example.fr"), "  ME@EXAMPLE.FR"));
+        assert!(!is_own_message(Some("you@example.fr"), "me@example.fr"));
+        assert!(!is_own_message(None, "me@example.fr"));
+        assert!(!is_own_message(Some("   "), "me@example.fr"));
+    }
+
+    #[test]
+    fn reply_all_sender_prefers_reply_to_on_a_received_message_only() {
+        assert_eq!(
+            reply_all_sender(false, Some("alice@x.fr"), Some("list@x.fr")),
+            Some("list@x.fr")
+        );
+        assert_eq!(
+            reply_all_sender(false, Some("alice@x.fr"), Some("  ")),
+            Some("alice@x.fr")
+        );
+        assert_eq!(
+            reply_all_sender(false, Some("alice@x.fr"), None),
+            Some("alice@x.fr")
+        );
+        // Our own message: back to the same group, Reply-To ignored.
+        assert_eq!(
+            reply_all_sender(true, Some("me@x.fr"), Some("list@x.fr")),
+            Some("me@x.fr")
+        );
+        assert_eq!(reply_all_sender(false, None, None), None);
+    }
+
+    #[test]
+    fn reply_all_recipients_keep_the_cc_and_honor_reply_to() {
+        let to = vec!["me@x.fr".to_string(), "bob@x.fr".to_string()];
+        let cc = vec!["carol@x.fr".to_string()];
+        let (to_out, cc_out) =
+            reply_all_recipients(Some("alice@x.fr"), Some("list@x.fr"), &to, &cc, "me@x.fr");
+        assert_eq!(to_out, vec!["list@x.fr", "bob@x.fr"]);
+        assert_eq!(cc_out, vec!["carol@x.fr"]);
+    }
+
+    /// A message we sent to ourselves alone: the split removes us, the
+    /// fallback writes back to ourselves rather than to nobody.
+    #[test]
+    fn reply_all_recipients_fall_back_to_self_when_alone() {
+        let to = vec!["Me@x.fr".to_string()];
+        let (to_out, cc_out) = reply_all_recipients(Some("me@x.fr"), None, &to, &[], "me@x.fr");
+        assert_eq!(to_out, vec!["me@x.fr"]);
+        assert!(cc_out.is_empty());
+    }
+
+    /// A Cc-only reply needs no fallback (B12): nobody is added to To.
+    #[test]
+    fn reply_all_recipients_leave_a_cc_only_reply_alone() {
+        let cc = vec!["carol@x.fr".to_string()];
+        let (to_out, cc_out) = reply_all_recipients(Some("me@x.fr"), None, &[], &cc, "me@x.fr");
+        assert!(to_out.is_empty());
+        assert_eq!(cc_out, vec!["carol@x.fr"]);
+    }
+
+    /// Nobody at all: both empty — the caller refuses.
+    #[test]
+    fn reply_all_recipients_can_be_nobody() {
+        let (to_out, cc_out) = reply_all_recipients(None, None, &[], &[], "me@x.fr");
+        assert!(to_out.is_empty() && cc_out.is_empty());
+    }
+
+    /// The signature scope (Settings D4): always on a new message; on a
+    /// reply or a forward only when the account signs those.
+    #[test]
+    fn signature_applies_by_mode_and_scope() {
+        assert!(signature_applies(ComposeMode::New, false));
+        assert!(signature_applies(ComposeMode::New, true));
+        assert!(!signature_applies(ComposeMode::Reply, false));
+        assert!(signature_applies(ComposeMode::Reply, true));
+        assert!(!signature_applies(ComposeMode::Forward, false));
+        assert!(signature_applies(ComposeMode::Forward, true));
+        assert_eq!(ComposeMode::parse("new"), Some(ComposeMode::New));
+        assert_eq!(ComposeMode::parse("reply"), Some(ComposeMode::Reply));
+        assert_eq!(ComposeMode::parse("reply_all"), Some(ComposeMode::Reply));
+        assert_eq!(ComposeMode::parse("forward"), Some(ComposeMode::Forward));
+        assert_eq!(ComposeMode::parse("edit"), None);
     }
 
     /// PLAN-COMPOSITION-HTML E2: the rich quote of a reply — an ESCAPED

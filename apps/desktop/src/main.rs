@@ -20,6 +20,7 @@
 compile_error!("Wind targets Windows and macOS -- see ADR 0036 before adding a platform.");
 
 mod account_work;
+mod adoption;
 mod attachment_file;
 mod commands;
 mod consent;
@@ -46,6 +47,10 @@ pub(crate) struct MigrationShared {
     pub done: AtomicU64,
     pub total: AtomicU64,
     pub cancel: AtomicBool,
+    /// The adopted database file (Lot 5 E13a): recorded by
+    /// `migration_check` when nothing is pending, by `migration_run`
+    /// after the pass; every blocking body checks it before opening.
+    pub adopted: adoption::Adoption,
 }
 
 /// The sync cycle's activity (PLAN-SYNCHRO E1), shared between the
@@ -312,7 +317,7 @@ fn main() {
             // does I/O (folder created, path memorized) happens here,
             // on the main thread before the window — never in the
             // bare async body of a command.
-            let _ = commands::db_path(app.handle());
+            let _ = commands::probe_path(app.handle());
             // The poll cadence's clock (PLAN-AUDIT-V3 E5): the shell
             // owns it — a window closed to the tray no longer stops
             // the mail.

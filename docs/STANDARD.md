@@ -997,6 +997,31 @@ PANICKED. Two rules in one:
 And the method rule: a review fix replays the spec of the path it
 touches, not just the specs being watched.
 
+### A pure read must not queue behind a write that waits
+
+Field, 2026-09-07 (Lot 5 E13, STOP 2): a few seconds after launch, "Always
+show images" on a newsletter blanked the reading pane until the initial
+synchronization ended — more than ten seconds. In WAL a reader never waits
+for a writer; the grant (a write) waited SQLite's writer out behind a sync
+batch (`busy_timeout` 30 s) while holding the commands' lock, and the
+pane's own re-read of the body queued behind it. Two rules:
+
+- **A pure read runs off the pump WITHOUT the commands' lock**
+  (`read_off_pump`, `read_store_off_pump`, `&Store` not `&mut`): it has no
+  read-decide-write pair to serialize. The lock is for writes and for the
+  pairs that decide on shared state. The text guard refuses a writing name
+  under a read helper.
+- **A refresh keeps what is on screen until the new value lands** — the
+  frame went blank because the UI deleted the body before re-reading it.
+
+The net: `e2e/tests/reads-under-write.spec.js` holds a writer from outside
+(Python, `BEGIN IMMEDIATE`, 12 s) and opens the next unread message — its
+own mark-as-read is the write that queues; the message must open within
+three seconds. It was red on the code of the morning: the frame stayed
+empty behind the queued write. And a command slower than a second now writes its lock wait and
+its work to the trace (`slow command <name>`): the field trace of that day
+had no line for a wait of ten seconds.
+
 ## 10. File map
 
 | File | Role |
@@ -1018,6 +1043,7 @@ touches, not just the specs being watched.
 | [`crates/mail-ical/src/lib.rs`](../crates/mail-ical/src/lib.rs) | iCalendar/iTIP invitations: parser + REPLY generator, pure (ADR 0024) — spike corpus as tests |
 | [`crates/mail-auth/src/provider.rs`](../crates/mail-auth/src/provider.rs) | OAuth providers described **as data** |
 | [`apps/desktop/src/commands.rs`](../apps/desktop/src/commands.rs) | Tauri commands (IPC), all-mailboxes loop, disk guard, progress |
+| [`apps/desktop/src/adoption.rs`](../apps/desktop/src/adoption.rs) | The database boundary (ADR 0045): the adopted file's identity, the `Blocking` token, `adopted_db` — the only way a command reaches `Store::open` |
 | [`apps/desktop/ui-v2/src/App.svelte`](../apps/desktop/ui-v2/src/App.svelte) | The UI (Svelte 5, sole framework since B2/PLAN-RETRAIT-V1): screens 01-04, notice slot, automatic sync cycle |
 | [`e2e/README.md`](../e2e/README.md) | Deterministic E2E harness (CDP) |
 | [`scripts/make-release.ps1`](../scripts/make-release.ps1) | The Windows half of a release (ADR 0013, 0023, 0044): clean-tree and main guards, bump + release commit FIRST, two signed builds arm64 + x64 from it (all-or-nothing), BOM-free `latest.json`, attestation, push + bare tag + DRAFT Release |
@@ -1029,6 +1055,7 @@ touches, not just the specs being watched.
 | [`crates/mail-core/src/crash.rs`](../crates/mail-core/src/crash.rs) | PURE redaction of a crash report — discards the message (PII) (ADR 0014) |
 | [`apps/desktop/src/telemetry.rs`](../apps/desktop/src/telemetry.rs) | Panic hook, file-based consent, local report write (ADR 0014) |
 | [`spikes/ui-socle-v2/`](../spikes/ui-socle-v2/RAPPORT.md) | Tie-breaking spike for the UI v2 foundation — evidence for ADR 0015, **throwaway** |
+| [`spikes/global-lock/`](../spikes/global-lock/REPORT.md) | The commands' lock under a 10 MB sanitize and a 25 MiB attach — evidence for ADR 0045's unlocked work, **throwaway** |
 
 ---
 

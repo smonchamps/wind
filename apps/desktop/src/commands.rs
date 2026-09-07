@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::account_work::{AccountWork, Lease, Ticket};
+use crate::adoption::{Blocking, adopted_db};
 use mail_auth::{AccountSession, Authenticated, Authenticator, GenericCredentials};
 use mail_core::AccountConfig;
 use mail_core::{Action, MailServer, OutboxState, Store, SyncEngine};
@@ -211,9 +212,9 @@ pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, CommandEr
         .await;
     }
 
-    let path = db_path(&app)?;
-    let (accounts, legacy) = off_pump(app.clone(), |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    let (path, accounts, legacy) = off_pump(app.clone(), |app| {
+        let path = adopted_db(&app)?;
+        let store = Store::open(&path).map_err(|err| err.to_string())?;
         let state = app.state::<AppState>();
         let known = store.accounts().map_err(|err| err.to_string())?;
         let legacy = known.is_empty();
@@ -227,7 +228,7 @@ pub async fn connect_accounts(app: AppHandle) -> Result<ConnectReport, CommandEr
                     .map(|ticket| (account, ticket))
             })
             .collect::<Vec<_>>();
-        Ok::<_, String>((jobs, legacy))
+        Ok::<_, String>((path, jobs, legacy))
     })
     .await?;
 
@@ -471,7 +472,7 @@ pub async fn reconnect_account(
     let control = consent.control.clone();
     let _registration = app.state::<AppState>().account_work.registration()?;
     let (account, ticket, lease) = off_pump(app.clone(), move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let store = Store::open(&adopted_db(&app)?).map_err(|err| err.to_string())?;
         let account = store
             .accounts()
             .map_err(|err| err.to_string())?
@@ -511,7 +512,7 @@ pub async fn reconnect_account(
         lock_accounts(&state)?.insert(account.email.clone(), AccountSession::OAuth(session));
         // Same rule as the generic repair: a renewed connection releases the
         // refusals waiting for a manual retry without erasing the diagnostic.
-        Store::open(&db_path(&app)?)
+        Store::open(&adopted_db(&app)?)
             .and_then(|store| store.retry_operations(account.id))
             .map_err(|err| err.to_string())?;
         // The account gets its IDLE watcher back without waiting for a restart.
@@ -792,7 +793,7 @@ pub async fn repair_generic_account(
     let mut creds = generic_credentials(input)?;
     let (config, ticket, lease, creds) = off_pump(app.clone(), move |app| {
         let state = app.state::<AppState>();
-        let store = Store::open(&db_path(&app)?)?;
+        let store = Store::open(&adopted_db(&app)?)?;
         let account = store
             .accounts()?
             .into_iter()
@@ -840,9 +841,10 @@ pub async fn repair_generic_account(
     let outcome = tauri::async_runtime::spawn_blocking(move || {
         let result = (|| -> Result<AccountInfo, CommandError> {
             retirement.wait(Duration::from_secs(30))?;
+            let worker_app = Blocking::on_dedicated_thread(worker_app);
             let state = worker_app.state::<AppState>();
             let _commands = recovered(&state.commands);
-            let store = Store::open(&db_path(&worker_app)?)?;
+            let store = Store::open(&adopted_db(&worker_app)?)?;
             if store.account_config(account_id)? != config {
                 return Err("connection settings changed during verification".into());
             }
@@ -885,7 +887,7 @@ pub async fn repair_generic_account(
 #[tauri::command]
 pub async fn remove_account(app: AppHandle, account_id: i64) -> Result<(), CommandError> {
     let (account, retirement) = off_pump(app.clone(), move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let store = Store::open(&adopted_db(&app)?).map_err(|err| err.to_string())?;
         let account = store
             .accounts()
             .map_err(|err| err.to_string())?
@@ -905,9 +907,10 @@ pub async fn remove_account(app: AppHandle, account_id: i64) -> Result<(), Comma
     let outcome = tauri::async_runtime::spawn_blocking(move || {
         let result = (|| -> Result<(), CommandError> {
             retirement.wait(Duration::from_secs(30))?;
+            let work_app = Blocking::on_dedicated_thread(work_app);
             let state = work_app.state::<AppState>();
             let _commands = recovered(&state.commands);
-            let mut store = Store::open(&db_path(&work_app)?)?;
+            let mut store = Store::open(&adopted_db(&work_app)?)?;
             // Admission is closed and every started operation has persisted its result.
             store.check_account_removal(account_id)?;
             mail_auth::forget_credentials(&account.provider, &account.email)
@@ -970,8 +973,10 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
     // now — scheduler tick, UI startup, test — rearms the clock, so
     // the next tick never doubles it.
     recovered(&state.cadence).ran_full(Instant::now());
-    let path = db_path(&app)?;
-    let jobs = off_pump(app.clone(), |app| crate::poll::connected_jobs(&app)).await?;
+    let (path, jobs) = off_pump(app.clone(), |app| {
+        Ok::<_, String>((adopted_db(&app)?, crate::poll::connected_jobs(&app)?))
+    })
+    .await?;
     let timer = Instant::now();
     let cycle = state.sync_cycle.clone();
     // The relay carries through the loop: bubbles go out PER ACCOUNT, as
@@ -1018,8 +1023,10 @@ pub async fn sync_inbox_light(
 ) -> Result<SyncSummary, String> {
     // Reality rearm, same rule as the full cycle (the button included).
     recovered(&state.cadence).ran_light(Instant::now());
-    let path = db_path(&app)?;
-    let jobs = off_pump(app.clone(), |app| crate::poll::connected_jobs(&app)).await?;
+    let (path, jobs) = off_pump(app.clone(), |app| {
+        Ok::<_, String>((adopted_db(&app)?, crate::poll::connected_jobs(&app)?))
+    })
+    .await?;
     let timer = Instant::now();
     let cycle = state.sync_cycle.clone();
     let app_bubbles = app.clone();
@@ -1126,7 +1133,7 @@ pub async fn thread_messages(
     uid: u32,
     version: MessageVersion,
 ) -> Result<Vec<MessageRow>, CommandError> {
-    store_off_pump(app, move |_, store| {
+    read_store_off_pump(app, move |_, store| {
         Ok(store
             .thread_messages_version(&version.identity(account_id, &mailbox), uid, thread_id)
             .map_err(|err| err.to_string())?
@@ -1251,10 +1258,10 @@ pub async fn list_category(
     offset: usize,
     limit: usize,
 ) -> Result<MessagePage, CommandError> {
-    off_pump(app, move |app| {
+    read_off_pump(app, move |app| {
         let category = crate::wire::category_from_wire(&category);
         let timer = Instant::now();
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let store = Store::open(&adopted_db(&app)?).map_err(|err| err.to_string())?;
         let limit = limit.min(LIST_LIMIT_MAX);
         if category == "reception" {
             // E2: in Organized mode, the Inbox HOLDS BACK the threads
@@ -1398,9 +1405,9 @@ pub async fn category_total(
     account_id: Option<i64>,
     unread: bool,
 ) -> Result<u64, CommandError> {
-    off_pump(app, move |app| {
+    read_off_pump(app, move |app| {
         let category = crate::wire::category_from_wire(&category);
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let store = Store::open(&adopted_db(&app)?).map_err(|err| err.to_string())?;
         if category == "reception" {
             // E2: the total follows the flow — exclusion SHARED with
             // the page (lesson of `pins`), and classic mode stays
@@ -1454,7 +1461,7 @@ pub async fn search_messages(
     query: String,
     offset: usize,
 ) -> Result<SearchResults, CommandError> {
-    store_off_pump(app, move |_, store| {
+    read_store_off_pump(app, move |_, store| {
         // `search_capped` returns the slice `[offset, offset+SEARCH_LIMIT)` AND
         // the exact total, and switches to date sort past the wide-query
         // threshold (BM25 ranking there exceeds the budget and stops meaning
@@ -1501,10 +1508,11 @@ pub async fn message_body(
 ) -> Result<BodyView, CommandError> {
     // Current path — cached body: ONE lock take, ONE opening (PLAN-AUDIT-V1
     // review: `raw_body` then a second `off_pump` used to take the
-    // lock twice for nothing).
+    // lock twice for nothing). Under the lock ONLY the SQLite reads;
+    // the sanitize runs unlocked (Lot 5 E13d).
     let mailbox2 = mailbox.clone();
-    let cached = off_pump(app.clone(), move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    let cached = read_off_pump(app.clone(), move |app| {
+        let store = Store::open(&adopted_db(&app)?).map_err(|err| err.to_string())?;
         version
             .verify(&store, account_id, &mailbox2)
             .map_err(|err| err.to_string())?;
@@ -1513,46 +1521,76 @@ pub async fn message_body(
             .map_err(|err| err.to_string())?
         {
             Some(html) => {
-                let view = body_view(&store, account_id, &mailbox2, uid, show_images, &html)?;
-                version
-                    .verify(&store, account_id, &mailbox2)
-                    .map_err(|err| err.to_string())?;
-                Ok::<_, CommandError>(Some(view))
+                let inputs = body_inputs(&store, account_id, &mailbox2, uid, show_images)?;
+                Ok::<_, CommandError>(Some((html, inputs)))
             }
             None => Ok(None),
         }
     })
     .await?;
-    if let Some(view) = cached {
-        return Ok(view);
-    }
-    // Body absent: bare network fetch, then the view under the lock.
-    let html = raw_body(&app, account_id, &mailbox, uid, version).await?;
-    store_off_pump(app, move |_, store| {
-        version.verify(store, account_id, &mailbox)?;
-        Ok(body_view(
-            store,
-            account_id,
-            &mailbox,
-            uid,
-            show_images,
-            &html,
-        )?)
-    })
-    .await
+    let (html, inputs) = match cached {
+        Some(found) => found,
+        None => {
+            // Body absent: bare network fetch, then the inputs under
+            // the lock.
+            let html = raw_body(&app, account_id, &mailbox, uid, version).await?;
+            let mailbox2 = mailbox.clone();
+            let inputs = read_store_off_pump(app.clone(), move |_, store| {
+                version.verify(store, account_id, &mailbox2)?;
+                Ok(body_inputs(store, account_id, &mailbox2, uid, show_images)?)
+            })
+            .await?;
+            (html, inputs)
+        }
+    };
+    // The sanitize (CPU-heavy: a 28 MB body, D-1) OFF the lock. A pure
+    // read: the identity was verified with the body it describes, and
+    // nothing is written after — no second look (the next gesture on
+    // the message verifies again; review 2026-09-07 dropped the extra
+    // lock take the spike had kept).
+    unlocked(move || Ok::<_, CommandError>(render_body(inputs, &html))).await
 }
 
-/// The view of a body already in the database: image guard, attachments,
-/// invitation, sanitization (CPU-heavy: a 28 MB body, D-1) — under the
-/// commands' lock (E5), never on a bare async worker.
-fn body_view(
+/// The sanitized document of a body and how many remote images it
+/// held back — the one renderer behind the reading pane, the echo and
+/// the Feed (review 2026-09-07: it was written three times).
+fn render_document(html: &str, images_granted: bool) -> (String, usize) {
+    let policy = if images_granted {
+        mail_render::ImagePolicy::AllowRemote
+    } else {
+        mail_render::ImagePolicy::BlockRemote
+    };
+    let sanitized = mail_render::sanitize_with(html, policy);
+    // R3 (PLAN-RETOURS-4, D3, 2026-08-18): the body ALWAYS displays
+    // on a light slate (`Palette::default` = dark ink / white
+    // background), whatever the theme. A42's dark slate made
+    // sender-colored text unreadable (common: newsletters designed
+    // for a white background — field finding 2026-08-18); the email
+    // reads as it was composed, like in mature clients. Text
+    // WITHOUT its own color was already readable; text that carries
+    // one now is too.
+    (
+        mail_render::email_document(&sanitized.html, policy, &mail_render::Palette::default()),
+        sanitized.remote_images_blocked,
+    )
+}
+
+/// The SQLite half of a body view: what must stay under the lock
+/// (Lot 5 E13d) — image guard, attachments, invitation.
+struct BodyInputs {
+    images_granted: bool,
+    images_message_allowed: bool,
+    attachment_count: usize,
+    invitation: Option<InvitationView>,
+}
+
+fn body_inputs(
     store: &Store,
     account_id: i64,
     mailbox: &str,
     uid: u32,
     show_images: bool,
-    html: &str,
-) -> Result<BodyView, String> {
+) -> Result<BodyInputs, String> {
     {
         // R1 (PLAN-RETOURS-11, D1): the image guard's memory is consulted
         // HERE — the authority is the core, the UI decides nothing (it
@@ -1578,38 +1616,38 @@ fn body_view(
             .invitation(account_id, mailbox, uid)
             .map_err(|err| err.to_string())?
             .map(invitation_view);
-
-        let policy = if images_granted {
-            mail_render::ImagePolicy::AllowRemote
-        } else {
-            mail_render::ImagePolicy::BlockRemote
-        };
-        let sanitized = mail_render::sanitize_with(html, policy);
-        // R3 (PLAN-RETOURS-4, D3, 2026-08-18): the body ALWAYS displays
-        // on a light slate (`Palette::default` = dark ink / white
-        // background), whatever the theme. A42's dark slate made
-        // sender-colored text unreadable (common: newsletters designed
-        // for a white background — field finding 2026-08-18); the email
-        // reads as it was composed, like in mature clients. Text
-        // WITHOUT its own color was already readable; text that carries
-        // one now is too.
-        Ok(BodyView {
-            images_message_allowed: store
-                .sync_state(account_id, mailbox)
-                .map_err(|e| e.to_string())?
-                .map(|m| store.images_allowed_message(m.mailbox_id, uid))
-                .transpose()
-                .map_err(|e| e.to_string())?
-                .unwrap_or(false),
-            document: mail_render::email_document(
-                &sanitized.html,
-                policy,
-                &mail_render::Palette::default(),
-            ),
-            remote_images_blocked: sanitized.remote_images_blocked,
+        let images_message_allowed = store
+            .sync_state(account_id, mailbox)
+            .map_err(|e| e.to_string())?
+            .map(|m| store.images_allowed_message(m.mailbox_id, uid))
+            .transpose()
+            .map_err(|e| e.to_string())?
+            .unwrap_or(false);
+        Ok(BodyInputs {
+            images_granted,
+            images_message_allowed,
             attachment_count,
             invitation,
         })
+    }
+}
+
+/// The CPU half of a body view — the sanitize and the document — needs
+/// no store: it runs through `unlocked` (Lot 5 E13d).
+fn render_body(inputs: BodyInputs, html: &str) -> BodyView {
+    let BodyInputs {
+        images_granted,
+        images_message_allowed,
+        attachment_count,
+        invitation,
+    } = inputs;
+    let (document, remote_images_blocked) = render_document(html, images_granted);
+    BodyView {
+        images_message_allowed,
+        document,
+        remote_images_blocked,
+        attachment_count,
+        invitation,
     }
 }
 
@@ -1645,8 +1683,9 @@ async fn raw_body(
     // E5: the cache read and the session under `off_pump` (database +
     // commands' lock); only the network fetch runs bare.
     let mailbox2 = mailbox.to_string();
-    let cached: Result<String, AccountWork> = off_pump(app.clone(), move |app| {
-        let store = Store::open(&db_path(&app)?)?;
+    let cached: Result<String, (AccountWork, PathBuf)> = off_pump(app.clone(), move |app| {
+        let path = adopted_db(&app)?;
+        let store = Store::open(&path)?;
         let identity = version.identity(account_id, &mailbox2);
         let cached = store.body_version(&identity, uid)?;
         if cached.is_none()
@@ -1656,14 +1695,13 @@ async fn raw_body(
         }
         match cached {
             Some(html) => Ok::<_, CommandError>(Ok(html)),
-            None => Ok(Err(auth_for(&app, account_id)?)),
+            None => Ok(Err((auth_for(&app, account_id)?, path))),
         }
     })
     .await?;
     match cached {
         Ok(html) => Ok(html),
-        Err(session) => {
-            let path = db_path(app)?;
+        Err((session, path)) => {
             // Owned copy: the closure runs on another thread.
             let mailbox = mailbox.to_string();
             let result = tauri::async_runtime::spawn_blocking(move || {
@@ -1807,21 +1845,21 @@ pub async fn refresh_invitation(
 ) -> Result<Option<InvitationView>, CommandError> {
     let folder = mailbox.clone();
     let ready = off_pump(app.clone(), move |app| {
-        let store = Store::open(&db_path(&app)?)?;
+        let path = adopted_db(&app)?;
+        let store = Store::open(&path)?;
         version.verify(&store, account_id, &folder)?;
         let stored = store.invitation_version(&version.identity(account_id, &folder), uid)?;
         if stored.as_ref().is_none_or(|i| i.row.metadata_version != 0) {
             Ok::<_, CommandError>(Ok(stored.map(invitation_view)))
         } else {
-            Ok(Err(auth_for(&app, account_id)?))
+            Ok(Err((auth_for(&app, account_id)?, path)))
         }
     })
     .await?;
-    let session = match ready {
+    let (session, path) = match ready {
         Ok(view) => return Ok(view),
         Err(session) => session,
     };
-    let path = db_path(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
         let (mut server, _, _lease) = crate::poll::connect_imap(&session)?;
         let result = (|| {
@@ -1880,7 +1918,7 @@ pub async fn reply_invitation(
         mail_core::participation_de_stable(&reply)
             .filter(|p| !matches!(p, mail_ical::Participation::NeedsAction))
             .ok_or_else(|| format!("unknown reply: {reply}"))?;
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let store = Store::open(&adopted_db(&app)?).map_err(|err| err.to_string())?;
         admit_account(&app, &store, account_id)?;
         version.verify(&store, account_id, &mailbox)?;
         let stored = store
@@ -2008,7 +2046,7 @@ pub async fn save_attachment(
 ) -> Result<String, CommandError> {
     let mailbox_name = mailbox.clone();
     let (session, identity) = off_pump(app.clone(), move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let store = Store::open(&adopted_db(&app)?).map_err(|err| err.to_string())?;
         let identity = version.identity(account_id, &mailbox_name);
         store.verify_mailbox_identity(&identity)?;
         Ok::<_, CommandError>((auth_for(&app, account_id)?, identity))
@@ -2181,13 +2219,17 @@ pub struct UiState {
     /// polling `list_drafts` whole (bodies included) every ten seconds
     /// (PLAN-AUDIT-V3 E5, D-52 item 3).
     pub drafts_revision: (i64, i64, i64),
+    /// Revision of the views (Lot 5 E13e, D-48): moved by any core
+    /// write that changes a list outside the sync's generation — the
+    /// UI reloads its views when it moves, whoever wrote.
+    pub views_revision: i64,
 }
 
 #[tauri::command]
 pub async fn ui_state(app: AppHandle, state: State<'_, AppState>) -> Result<UiState, CommandError> {
     let generation = state.sync_cycle.generation.load(Ordering::Relaxed);
     let in_progress = state.sync_cycle.in_progress.load(Ordering::Relaxed);
-    store_off_pump(app, move |app, store| {
+    read_store_off_pump(app, move |app, store| {
         let state = app.state::<AppState>();
         let connected = lock_accounts(&state)?.keys().cloned().collect();
         let connection_states = state.account_work.connection_states();
@@ -2198,6 +2240,7 @@ pub async fn ui_state(app: AppHandle, state: State<'_, AppState>) -> Result<UiSt
             sync: read_sync(store, generation, in_progress)?,
             outbox: read_sends(store)?,
             drafts_revision: store.drafts_revision()?,
+            views_revision: store.views_revision()?,
         })
     })
     .await
@@ -2285,7 +2328,7 @@ pub struct FolderRow {
 /// no sense, and some servers refuse it.
 #[tauri::command]
 pub async fn list_folders(app: AppHandle, account_id: i64) -> Result<Vec<FolderRow>, CommandError> {
-    store_off_pump(app, move |_, store| {
+    read_store_off_pump(app, move |_, store| {
         Ok(store
             .folders(account_id)
             .map_err(|err| err.to_string())?
@@ -2392,13 +2435,13 @@ pub async fn mark_not_spam(
 }
 
 fn queue_removal(
-    app: &AppHandle,
+    app: &Blocking,
     account_id: i64,
     mailbox: String,
     uid: u32,
     action: Action,
 ) -> Result<(), CommandError> {
-    let store = Store::open(&db_path(app)?)?;
+    let store = Store::open(&adopted_db(app)?)?;
     admit_account(app, &store, account_id)?;
     let Some(state) = store.sync_state(account_id, &mailbox)? else {
         return Ok(());
@@ -2429,26 +2472,22 @@ pub async fn echo_body(
     id: i64,
     show_images: bool,
 ) -> Result<BodyView, CommandError> {
-    store_off_pump(app, move |_, store| {
-        let (html, attachment_count) = store
+    let (html, attachment_count) = read_store_off_pump(app, move |_, store| {
+        Ok(store
             .echo_view(id)
             .map_err(|err| err.to_string())?
-            .ok_or_else(|| "echo already reconciled".to_string())?;
-        let policy = if show_images {
-            mail_render::ImagePolicy::AllowRemote
-        } else {
-            mail_render::ImagePolicy::BlockRemote
-        };
-        let sanitized = mail_render::sanitize_with(&html, policy);
-        // R3: light slate always (see `message_body`) — same door, S1.
-        Ok(BodyView {
+            .ok_or_else(|| "echo already reconciled".to_string())?)
+    })
+    .await?;
+    // Our own send, read once and written nowhere after: the sanitize
+    // runs unlocked (Lot 5 E13d) and nothing needs a second look.
+    unlocked(move || {
+        // R3: light slate always (see `render_document`) — same door, S1.
+        let (document, remote_images_blocked) = render_document(&html, show_images);
+        Ok::<_, CommandError>(BodyView {
             images_message_allowed: false,
-            document: mail_render::email_document(
-                &sanitized.html,
-                policy,
-                &mail_render::Palette::default(),
-            ),
-            remote_images_blocked: sanitized.remote_images_blocked,
+            document,
+            remote_images_blocked,
             attachment_count,
             // An echo is OUR OWN send: never a received invitation.
             invitation: None,
@@ -2671,7 +2710,7 @@ pub async fn revoke_images_message(
 /// D4: the sender rules, for the Settings list.
 #[tauri::command]
 pub async fn images_senders(app: AppHandle) -> Result<Vec<String>, CommandError> {
-    store_off_pump(app, move |_, store| Ok(store.images_senders()?)).await
+    read_store_off_pump(app, move |_, store| Ok(store.images_senders()?)).await
 }
 
 /// D4: removes a sender rule — the exit door of "always".
@@ -2874,7 +2913,7 @@ pub struct ScreenerRow {
 /// Empty as long as the mode has never been activated.
 #[tauri::command]
 pub async fn screener_waiting(app: AppHandle) -> Result<Vec<ScreenerRow>, CommandError> {
-    store_off_pump(app, move |_, store| {
+    read_store_off_pump(app, move |_, store| {
         Ok(store
             .screener_waiting()
             .map_err(|err| err.to_string())?
@@ -2989,7 +3028,7 @@ pub async fn paper_trail_groups(
     app: AppHandle,
     account_id: Option<i64>,
 ) -> Result<Vec<PaperTrailGroupPayload>, CommandError> {
-    store_off_pump(app, move |_, store| {
+    read_store_off_pump(app, move |_, store| {
         Ok(store
             .paper_trail_groups(account_id)
             .map_err(|err| err.to_string())?
@@ -3058,7 +3097,7 @@ pub async fn cleanup_start(
 /// first.
 #[tauri::command]
 pub async fn cleanup_groups(app: AppHandle) -> Result<Vec<CleanupGroupPayload>, CommandError> {
-    store_off_pump(app, move |_, store| {
+    read_store_off_pump(app, move |_, store| {
         // The measurement due since HORIZON-NETTOYAGE ("cost on a real
         // 200k base"), readable afterwards in `wind.log` — count and
         // duration, never an address (§6.8).
@@ -3204,7 +3243,11 @@ pub async fn feed_cards(
     offset: usize,
     limit: usize,
 ) -> Result<Vec<FeedCard>, CommandError> {
-    store_off_pump(app, move |_, store| {
+    // Under the lock, the SQLite reads only: rows, flags, cached bodies
+    // and the image guard; the page's sanitizes run unlocked (Lot 5
+    // E13d — a page of letters is the heaviest sanitize of the app). A
+    // read snapshot that nothing writes after: no second look.
+    let snapshot = read_store_off_pump(app, move |_, store| {
         let limit = limit.min(LIST_LIMIT_MAX);
         let mut rows = store
             .routing_unified_scoped("kiosque", account_id, false, offset, limit)
@@ -3212,7 +3255,7 @@ pub async fn feed_cards(
         store
             .enrich_rows(&mut rows)
             .map_err(|err| err.to_string())?;
-        let mut cards = Vec::with_capacity(rows.len());
+        let mut inputs = Vec::with_capacity(rows.len());
         for row in rows {
             let row = to_message_row(row);
             row.version.verify(store, row.account_id, &row.mailbox)?;
@@ -3227,43 +3270,45 @@ pub async fn feed_cards(
             let body = store
                 .body(row.account_id, &row.mailbox, row.uid)
                 .map_err(|err| err.to_string())?;
-            let (document, remote_images_blocked) = match body {
+            let body = match body {
                 Some(html) => {
                     let granted = mailbox_id
                         .map(|id| store.images_allowed(id, row.uid))
                         .transpose()
                         .map_err(|err| err.to_string())?
                         .unwrap_or(false);
-                    let policy = if granted {
-                        mail_render::ImagePolicy::AllowRemote
-                    } else {
-                        mail_render::ImagePolicy::BlockRemote
-                    };
-                    let sanitized = mail_render::sanitize_with(&html, policy);
-                    (
-                        Some(mail_render::email_document(
-                            &sanitized.html,
-                            policy,
-                            &mail_render::Palette::default(),
-                        )),
-                        sanitized.remote_images_blocked,
-                    )
+                    Some((html, granted))
+                }
+                None => None,
+            };
+            let images_message_allowed = mailbox_id
+                .map(|id| store.images_allowed_message(id, row.uid))
+                .transpose()?
+                .unwrap_or(false);
+            inputs.push((row, read, body, images_message_allowed));
+        }
+        Ok(inputs)
+    })
+    .await?;
+    unlocked(move || {
+        let mut cards = Vec::with_capacity(snapshot.len());
+        for (row, read, body, images_message_allowed) in snapshot {
+            let (document, remote_images_blocked) = match body {
+                Some((html, granted)) => {
+                    let (document, blocked) = render_document(&html, granted);
+                    (Some(document), blocked)
                 }
                 None => (None, 0),
             };
-            row.version.verify(store, row.account_id, &row.mailbox)?;
             cards.push(FeedCard {
-                images_message_allowed: mailbox_id
-                    .map(|id| store.images_allowed_message(id, row.uid))
-                    .transpose()?
-                    .unwrap_or(false),
+                images_message_allowed,
                 row,
                 document,
                 remote_images_blocked,
                 read,
             });
         }
-        Ok(cards)
+        Ok::<_, CommandError>(cards)
     })
     .await
 }
@@ -3435,16 +3480,10 @@ pub async fn reply_context(
 ) -> Result<ComposeContext, CommandError> {
     let (envelope, own) = enveloppe_et_compte(&app, account_id, &mailbox, uid, version).await?;
     let repondre_a = reply_to_of(&app, account_id, &mailbox, uid, version).await?;
-    // Our own message? (the sender is the account). Replying to the
-    // sender would write to ourselves.
-    let is_own = envelope
-        .sender_address
-        .as_deref()
-        .map(|address| address.trim().eq_ignore_ascii_case(own.trim()))
-        .unwrap_or(false);
-    // R4 (field finding): on one's own message, replying targets the
-    // original recipients (the To); otherwise, the sender. A pure
-    // decision.
+    // Our own message? (the sender is the account) — the core's rule
+    // (Lot 5 E13c). R4 (field finding): on one's own message, replying
+    // targets the original recipients (the To); otherwise, the sender.
+    let is_own = mail_core::is_own_message(envelope.sender_address.as_deref(), &own);
     let mut recipients = mail_core::reply_to(
         is_own,
         envelope.sender_address.as_deref(),
@@ -3555,11 +3594,12 @@ async fn citation_reply(
     let Ok(html) = raw_body(app, account_id, mailbox, uid, version).await else {
         return String::new();
     };
-    // Sanitizing is CPU-bound (a 28 MB body, D-1): under the commands
-    // lock, not on an async worker (E5).
+    // Sanitizing is CPU-bound (a 28 MB body, D-1): on a blocking
+    // worker, never on the async worker (E5) — and not under the
+    // commands' lock either (Lot 5 E13d): the quote needs no store.
     let sender = envelope.sender.clone();
     let date = quote_date(envelope);
-    off_pump(app.clone(), move |_| {
+    unlocked(move || {
         Ok::<_, CommandError>(mail_core::quote_reply_html(
             sender.as_deref(),
             date.as_deref(),
@@ -3608,23 +3648,15 @@ pub async fn reply_all_context(
         .map_err(|err| err.to_string())??;
         (fetched.to, fetched.cc)
     };
-    let is_own = envelope
-        .sender_address
-        .as_deref()
-        .is_some_and(|sender| sender.eq_ignore_ascii_case(&own));
-    let sender = if is_own {
-        envelope.sender_address.as_deref()
-    } else {
-        repondre_a
-            .as_deref()
-            .filter(|address| !address.trim().is_empty())
-            .or(envelope.sender_address.as_deref())
-    };
-    let (mut to, cc) = mail_core::reply_all_split(sender, &to_list, &cc_list, &own);
-    if to.is_empty() && cc.is_empty() {
-        // Preserve the existing self-only reply fallback; a Cc-only reply needs none.
-        to.extend(sender.map(str::to_string));
-    }
+    // The whole decision is the core's (Lot 5 E13c, audit A01): own
+    // message, Reply-To precedence, To/Cc split, self-only fallback.
+    let (to, cc) = mail_core::reply_all_recipients(
+        envelope.sender_address.as_deref(),
+        repondre_a.as_deref(),
+        &to_list,
+        &cc_list,
+        &own,
+    );
     if to.is_empty() && cc.is_empty() {
         return Err("unknown sender address: resync the mailbox".into());
     }
@@ -3683,26 +3715,34 @@ pub async fn forward_context(
 ) -> Result<ComposeContext, CommandError> {
     let (envelope, _own) = enveloppe_et_compte(&app, account_id, &mailbox, uid, version).await?;
     let html = raw_body(&app, account_id, &mailbox, uid, version).await?;
-    // The editor prepares inert image references before DOM insertion.
+    let mailbox2 = mailbox.clone();
     store_off_pump(app, move |_, store| {
-        version.verify(store, account_id, &mailbox)?;
-        Ok(ComposeContext {
-            account_id,
-            mailbox,
-            uid,
-            to: String::new(),
-            cc: String::new(),
-            subject: mail_core::forward_subject(envelope.subject.as_deref()),
-            body_html: mail_core::quote_forward_html(
-                envelope.sender.as_deref(),
-                quote_date(&envelope).as_deref(),
-                envelope.subject.as_deref(),
-                &mail_render::sanitize_with(&html, mail_render::ImagePolicy::AllowRemote).html,
-            ),
-            reply: false,
-        })
+        Ok(version.verify(store, account_id, &mailbox2)?)
     })
-    .await
+    .await?;
+    // The editor prepares inert image references before DOM insertion.
+    // The sanitize of the quoted body runs unlocked (Lot 5 E13d): the
+    // identity was verified above, nothing is written after.
+    let subject = mail_core::forward_subject(envelope.subject.as_deref());
+    let body_html = unlocked(move || {
+        Ok::<_, CommandError>(mail_core::quote_forward_html(
+            envelope.sender.as_deref(),
+            quote_date(&envelope).as_deref(),
+            envelope.subject.as_deref(),
+            &mail_render::sanitize_with(&html, mail_render::ImagePolicy::AllowRemote).html,
+        ))
+    })
+    .await?;
+    Ok(ComposeContext {
+        account_id,
+        mailbox,
+        uid,
+        to: String::new(),
+        cc: String::new(),
+        subject,
+        body_html,
+        reply: false,
+    })
 }
 
 /// Date formatted for the attribution line of a citation.
@@ -3880,8 +3920,10 @@ pub async fn flush_outbox(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<OutboxSummary, CommandError> {
-    let path = db_path(&app)?;
-    let jobs = off_pump(app.clone(), |app| crate::poll::connected_jobs(&app)).await?;
+    let (path, jobs) = off_pump(app.clone(), |app| {
+        Ok::<_, String>((adopted_db(&app)?, crate::poll::connected_jobs(&app)?))
+    })
+    .await?;
     let lock = state.outbox_flush.clone();
 
     let (summary, refreshed) =
@@ -3958,17 +4000,18 @@ pub async fn sync_after_gesture(
     state: State<'_, AppState>,
     account_id: Option<i64>,
 ) -> Result<PassReport, CommandError> {
-    let path = db_path(&app)?;
-    let targets: Vec<i64> = match account_id {
-        Some(id) => vec![id],
-        None => {
-            off_pump(app.clone(), |app| {
-                let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-                store.accounts_with_work().map_err(|err| err.to_string())
-            })
-            .await?
-        }
-    };
+    let (path, targets): (PathBuf, Vec<i64>) = off_pump(app.clone(), move |app| {
+        let path = adopted_db(&app)?;
+        let targets = match account_id {
+            Some(id) => vec![id],
+            None => {
+                let store = Store::open(&path).map_err(|err| err.to_string())?;
+                store.accounts_with_work().map_err(|err| err.to_string())?
+            }
+        };
+        Ok::<_, String>((path, targets))
+    })
+    .await?;
     let mut report = PassReport::default();
     for account in targets {
         let session = match off_pump(app.clone(), move |app| auth_for(&app, account)).await {
@@ -4508,7 +4551,7 @@ fn read_sends(store: &Store) -> Result<OutboxStatus, String> {
 
 #[tauri::command]
 pub async fn outbox_status(app: AppHandle) -> Result<OutboxStatus, CommandError> {
-    store_off_pump(app, move |_, store| Ok(read_sends(store)?)).await
+    read_store_off_pump(app, move |_, store| Ok(read_sends(store)?)).await
 }
 
 /// Requeuing a quarantined or rejected send: THE explicit user decision
@@ -4575,11 +4618,21 @@ pub struct SignatureRow {
     /// D4: the signature is ALSO inserted into replies and forwards.
     /// Default: new messages only.
     pub replies: bool,
+    /// The signature the composition CARRIES, decided by the core from
+    /// the `mode` the composer passed (`new`, `reply`, `forward`) and
+    /// the scope above (Lot 5 E13c): `None` when the scope excludes it,
+    /// when there is no signature, or when no mode was passed (Settings
+    /// reads the row, it composes nothing).
+    pub applicable: Option<String>,
 }
 
 #[tauri::command]
-pub async fn signature_get(app: AppHandle, account_id: i64) -> Result<SignatureRow, CommandError> {
-    store_off_pump(app, move |_, store| {
+pub async fn signature_get(
+    app: AppHandle,
+    account_id: i64,
+    mode: Option<String>,
+) -> Result<SignatureRow, CommandError> {
+    read_store_off_pump(app, move |_, store| {
         let html = store
             .text_pref(&format!("signature.{account_id}"))
             .map_err(|err| err.to_string())?
@@ -4587,7 +4640,16 @@ pub async fn signature_get(app: AppHandle, account_id: i64) -> Result<SignatureR
         let replies = store
             .bool_pref(&format!("signature_replies.{account_id}"), false)
             .map_err(|err| err.to_string())?;
-        Ok(SignatureRow { html, replies })
+        let applicable = mode
+            .as_deref()
+            .and_then(mail_core::ComposeMode::parse)
+            .filter(|mode| mail_core::signature_applies(*mode, replies))
+            .and(html.clone());
+        Ok(SignatureRow {
+            html,
+            replies,
+            applicable,
+        })
     })
     .await
 }
@@ -4703,7 +4765,7 @@ pub struct MarkerRow {
 /// default render (`person`, neutral token) depends on nothing.
 #[tauri::command]
 pub async fn markers_get(app: AppHandle) -> Result<Vec<MarkerRow>, CommandError> {
-    store_off_pump(app, move |_, store| {
+    read_store_off_pump(app, move |_, store| {
         let mut rows = Vec::new();
         for account in store.accounts().map_err(|err| err.to_string())? {
             if let Some((icon, hue)) =
@@ -4747,7 +4809,7 @@ pub async fn marker_set(
             (Some(_), Some(_)) => return Err("marker outside the dedicated set".into()),
             _ => return Err("icon and hue go together".into()),
         };
-        let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let mut store = Store::open(&adopted_db(&app)?).map_err(|err| err.to_string())?;
         Ok(set_marker(&mut store, account_id, marker)?)
     })
     .await
@@ -4797,7 +4859,7 @@ pub struct NameRow {
 /// composer) and patches its table on gesture (marker pattern).
 #[tauri::command]
 pub async fn names_get(app: AppHandle) -> Result<Vec<NameRow>, CommandError> {
-    store_off_pump(app, move |_, store| {
+    read_store_off_pump(app, move |_, store| {
         let mut rows = Vec::new();
         for account in store.accounts().map_err(|err| err.to_string())? {
             if let Some(name) = name_of(store, account.id).map_err(|err| err.to_string())? {
@@ -4822,7 +4884,7 @@ pub async fn name_set(
 ) -> Result<Option<String>, CommandError> {
     off_pump(app, move |app| {
         let normalized = normalized_name(name.as_deref().unwrap_or(""))?;
-        let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let mut store = Store::open(&adopted_db(&app)?).map_err(|err| err.to_string())?;
         set_name(&mut store, account_id, normalized.as_deref()).map_err(|err| err.to_string())?;
         Ok(normalized)
     })
@@ -4994,7 +5056,7 @@ pub async fn save_draft(
 
 #[tauri::command]
 pub async fn list_drafts(app: AppHandle) -> Result<Vec<DraftRow>, CommandError> {
-    store_off_pump(app, move |_, store| {
+    read_store_off_pump(app, move |_, store| {
         Ok(store
             .drafts()
             .map_err(|err| err.to_string())?
@@ -5197,42 +5259,65 @@ fn attachment_room(files: &[mail_core::DraftAttachmentMeta]) -> u64 {
         })
 }
 
-fn attach_edit_files(
-    store: &Store,
-    token: &str,
-    account_id: i64,
-    paths: &[String],
-) -> Result<AttachReport, CommandError> {
-    let edit = store.draft_edit(token)?;
-    let mut remaining = attachment_room(&edit.attachments);
-    let mut refused = Vec::new();
-    let mut forked = false;
+/// The file half of the "Attach" gesture, OFF the commands' lock (Lot 5
+/// E13d): each path is checked and read against the room the draft had
+/// when the gesture started. The room is looked at again by the core at
+/// every insert (`AttachmentOverBudget`): a file that fit here but no
+/// longer fits there is refused there, never stored over the cap.
+struct ReadAttachments {
+    files: Vec<(String, Vec<u8>)>,
+    refused: Vec<RefusedAttachment>,
+    /// The first hard read failure, kept for AFTER the files read
+    /// before it are stored: the gesture fails as it always did, the
+    /// files that read fine stay attached (review 2026-09-07 — the
+    /// first cut dropped them with the failure).
+    failure: Option<String>,
+}
+
+fn read_attachment_files(paths: &[String], mut remaining: u64) -> ReadAttachments {
+    let mut read = ReadAttachments {
+        files: Vec::with_capacity(paths.len()),
+        refused: Vec::new(),
+        failure: None,
+    };
     for path in paths {
         let candidate = Path::new(path);
         let name = candidate
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| path.clone());
-        let Some(bytes) = crate::attachment_file::read(candidate, remaining)
-            .map_err(|err| format!("reading {path:?}: {err}"))?
-        else {
-            refused.push(RefusedAttachment {
+        // A read failure is an outright failure of the gesture: files
+        // already entered stay (the UI re-reads the chips), this one
+        // has a problem the user must see, not a silence.
+        match crate::attachment_file::read(candidate, remaining) {
+            Ok(Some(bytes)) => {
+                remaining = remaining.saturating_sub(bytes.len() as u64);
+                read.files.push((name, bytes));
+            }
+            Ok(None) => read.refused.push(RefusedAttachment {
                 name,
                 remaining: mail_core::human_size(remaining),
-            });
-            continue;
-        };
-        match store.add_draft_edit_attachment(
-            token,
-            account_id,
-            &name,
-            mime_for_name(&name),
-            &bytes,
-        ) {
-            Ok(saved) => {
-                forked |= saved.forked;
-                remaining = remaining.saturating_sub(bytes.len() as u64);
+            }),
+            Err(err) => {
+                read.failure = Some(format!("reading {path:?}: {err}"));
+                break;
             }
+        }
+    }
+    read
+}
+
+fn attach_edit_files(
+    store: &Store,
+    token: &str,
+    account_id: i64,
+    files: Vec<(String, Vec<u8>)>,
+    mut refused: Vec<RefusedAttachment>,
+) -> Result<AttachReport, CommandError> {
+    let mut forked = false;
+    for (name, bytes) in &files {
+        match store.add_draft_edit_attachment(token, account_id, name, mime_for_name(name), bytes) {
+            Ok(saved) => forked |= saved.forked,
             Err(mail_core::Error::AttachmentOverBudget {
                 name, remaining, ..
             }) => refused.push(RefusedAttachment {
@@ -5267,10 +5352,47 @@ pub async fn attach_files(
     paths: Vec<String>,
     edit_token: Option<String>,
 ) -> Result<AttachReport, CommandError> {
+    // Lock 1: the room left, read from the edit session or the draft.
+    // Unlocked: the reads (a 25 MiB file, cold disk — never behind the
+    // lock, Lot 5 E13d). Lock 2: the SQLite work, the core re-checking
+    // the budget at every insert.
+    let token = edit_token.clone();
+    let room = account_store_off_pump(app.clone(), account_id, move |_, store| {
+        Ok(match (&token, draft_id) {
+            (Some(token), _) => attachment_room(&store.draft_edit(token)?.attachments),
+            (None, Some(id)) => attachment_room(&store.draft_attachments_meta(id)?),
+            (None, None) => mail_core::MAX_ATTACHMENTS_BYTES,
+        })
+    })
+    .await?;
+    let read = unlocked(move || Ok::<_, CommandError>(read_attachment_files(&paths, room))).await?;
+    let ReadAttachments {
+        files,
+        refused,
+        failure,
+    } = read;
     account_store_off_pump(app, account_id, move |_, store| {
-        if let Some(token) = edit_token {
-            return attach_edit_files(store, &token, account_id, &paths);
+        let report = if let Some(token) = edit_token {
+            attach_edit_files(store, &token, account_id, files, refused)
+        } else {
+            attach_draft_files(store, account_id, draft_id, files, refused)
+        }?;
+        match failure {
+            Some(failure) => Err(failure.into()),
+            None => Ok(report),
         }
+    })
+    .await
+}
+
+fn attach_draft_files(
+    store: &mut Store,
+    account_id: i64,
+    draft_id: Option<i64>,
+    files: Vec<(String, Vec<u8>)>,
+    refused: Vec<RefusedAttachment>,
+) -> Result<AttachReport, CommandError> {
+    {
         let created = draft_id.is_none();
         let draft_id = match draft_id {
             Some(id) => id,
@@ -5297,27 +5419,10 @@ pub async fn attach_files(
             }
         };
         let mut updated_epoch = None;
-        let mut remaining = attachment_room(&store.draft_attachments_meta(draft_id)?);
-        let mut refused = Vec::new();
-        for path in &paths {
-            let name = std::path::Path::new(path)
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| path.clone());
-            let Some(bytes) = crate::attachment_file::read(Path::new(path), remaining)
-                .map_err(|err| format!("reading {path:?}: {err}"))?
-            else {
-                refused.push(RefusedAttachment {
-                    name,
-                    remaining: mail_core::human_size(remaining),
-                });
-                continue;
-            };
-            match store.add_draft_attachment(draft_id, &name, mime_for_name(&name), &bytes) {
-                Ok(saved) => {
-                    updated_epoch = Some(saved.updated_epoch);
-                    remaining = remaining.saturating_sub(bytes.len() as u64);
-                }
+        let mut refused = refused;
+        for (name, bytes) in &files {
+            match store.add_draft_attachment(draft_id, name, mime_for_name(name), bytes) {
+                Ok(saved) => updated_epoch = Some(saved.updated_epoch),
                 Err(mail_core::Error::AttachmentOverBudget {
                     name, remaining, ..
                 }) => refused.push(RefusedAttachment {
@@ -5353,8 +5458,7 @@ pub async fn attach_files(
                 .collect(),
             refused,
         })
-    })
-    .await
+    }
 }
 
 /// Outcome of repatriating ONE attachment from the source message
@@ -5400,7 +5504,7 @@ pub async fn fetch_source_attachment(
     // 0019).
     let mailbox_name = mailbox.clone();
     let (attachment, session, identity, sender_ticket) = off_pump(app.clone(), move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let store = Store::open(&adopted_db(&app)?).map_err(|err| err.to_string())?;
         let identity = version.identity(account_id, &mailbox_name);
         store.verify_mailbox_identity(&identity)?;
         let attachment = store
@@ -5603,8 +5707,10 @@ pub async fn sync_drafts(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<DraftSyncSummary, CommandError> {
-    let path = db_path(&app)?;
-    let jobs = off_pump(app.clone(), |app| crate::poll::connected_jobs(&app)).await?;
+    let (path, jobs) = off_pump(app.clone(), |app| {
+        Ok::<_, String>((adopted_db(&app)?, crate::poll::connected_jobs(&app)?))
+    })
+    .await?;
     let lock = state.drafts_push.clone();
 
     let (summary, refreshed) =
@@ -5684,18 +5790,18 @@ fn run_draft_sync_all(
             let attachments = store
                 .draft_attachments_full(draft.id)
                 .map_err(|err| err.to_string())?;
-            let bytes = match mail_smtp::draft_bytes(
-                session.email(),
-                &draft.to_raw,
-                &draft.cc_raw,
-                &draft.bcc_raw,
-                &draft.subject,
-                &draft.body,
-                draft.body_html.as_deref(),
-                &attachments,
-                &draft.thread_headers,
-                draft.important,
-            ) {
+            let bytes = match mail_smtp::draft_bytes(&mail_smtp::DraftMessage {
+                from: session.email(),
+                to_raw: &draft.to_raw,
+                cc_raw: &draft.cc_raw,
+                bcc_raw: &draft.bcc_raw,
+                subject: &draft.subject,
+                body: &draft.body,
+                body_html: draft.body_html.as_deref(),
+                attachments: &attachments,
+                headers: &draft.thread_headers,
+                important: draft.important,
+            }) {
                 Ok(bytes) => bytes,
                 // Not pushable as it stands: the local copy stays the
                 // reference.
@@ -5818,8 +5924,8 @@ fn connect_smtp(session: &AccountWork) -> Result<(SmtpMailer, Option<AccountWork
 
 /// The session of an account — opens the database: UNDER `off_pump`
 /// (E5).
-fn auth_for(app: &AppHandle, account_id: i64) -> Result<AccountWork, String> {
-    let store = Store::open(&db_path(app)?).map_err(|err| err.to_string())?;
+fn auth_for(app: &Blocking, account_id: i64) -> Result<AccountWork, String> {
+    let store = Store::open(&adopted_db(app)?).map_err(|err| err.to_string())?;
     let email = account_email(&store, account_id)?;
     let state = app.state::<AppState>();
     let ticket = state.account_work.capture(account_id)?;
@@ -5893,32 +5999,125 @@ pub(crate) fn recovered<T>(lock: &Mutex<T>) -> MutexGuard<'_, T> {
 /// `SQLITE_BUSY_SNAPSHOT` that `busy_timeout` doesn't cover). A
 /// poisoned lock is recovered (same choice as `account_lock`): the work
 /// under the lock has no invariant in shared memory.
+///
+/// The closure receives a [`Blocking`] token (Lot 5 E13b): the adopted
+/// database's path is only reachable through it, so an async body
+/// cannot open the database by construction. The token derefs to the
+/// `AppHandle`.
 pub(crate) async fn off_pump<T, E, F>(app: AppHandle, work: F) -> Result<T, E>
 where
-    F: FnOnce(AppHandle) -> Result<T, E> + Send + 'static,
+    F: FnOnce(Blocking) -> Result<T, E> + Send + 'static,
     T: Send + 'static,
     E: From<String> + Send + 'static,
 {
     let lock = app.state::<AppState>().commands.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let queued = Instant::now();
         let _guard = recovered(&lock);
-        work(app)
+        let waited = queued.elapsed();
+        let started = Instant::now();
+        let outcome = work(Blocking::from_off_pump(app));
+        trace_slow::<F>("command", waited, started.elapsed());
+        outcome
     })
     .await
     .map_err(|err| E::from(err.to_string()))?
 }
 
+/// A command that took more than a second — its lock wait and its
+/// work, named by the closure's type (the enclosing function's path),
+/// so a field trace says WHICH command waited and behind what (field
+/// 2026-09-07: a grant waited a synchronization batch out, and the
+/// trace had no line for it). No address, no subject: the name only.
+fn trace_slow<F>(kind: &str, waited: Duration, worked: Duration) {
+    const SLOW: Duration = Duration::from_secs(1);
+    if waited < SLOW && worked < SLOW {
+        return;
+    }
+    let name = std::any::type_name::<F>();
+    let name = name
+        .strip_suffix("::{{closure}}")
+        .unwrap_or(name)
+        .rsplit("::")
+        .next()
+        .unwrap_or(name);
+    crate::trace::trace(&format!(
+        "slow {kind} {name}: lock wait {} ms, work {} ms",
+        waited.as_millis(),
+        worked.as_millis()
+    ));
+}
+
+/// Runs a PURE READ off the pump, WITHOUT the commands' lock (field
+/// finding 2026-09-07, Lot 5 E13). In WAL a reader never waits for a
+/// writer; what made the reading pane wait a synchronization batch out
+/// was the commands' lock, held by a write command that itself waited
+/// on SQLite's writer (busy_timeout 30 s). A read has no
+/// read-decide-write pair to serialize: it opens its own connection and
+/// reads. The closure gets `&Store`, never `&mut`, and the recovery of
+/// action effects stays with `with_store` — a read writes nothing.
+pub(crate) async fn read_off_pump<T, E, F>(app: AppHandle, work: F) -> Result<T, E>
+where
+    F: FnOnce(Blocking) -> Result<T, E> + Send + 'static,
+    T: Send + 'static,
+    E: From<String> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(move || {
+        let started = Instant::now();
+        let outcome = work(Blocking::from_off_pump(app));
+        trace_slow::<F>("read", Duration::ZERO, started.elapsed());
+        outcome
+    })
+    .await
+    .map_err(|err| E::from(err.to_string()))?
+}
+
+/// `read_off_pump` + the adopted store, read-only — the standard body
+/// of a pure-read command.
+pub(crate) async fn read_store_off_pump<T>(
+    app: AppHandle,
+    work: impl FnOnce(&Blocking, &Store) -> Result<T, CommandError> + Send + 'static,
+) -> Result<T, CommandError>
+where
+    T: Send + 'static,
+{
+    read_off_pump(app, move |app| {
+        let store = Store::open(&adopted_db(&app)?)?;
+        work(&app, &store)
+    })
+    .await
+}
+
+/// Runs CPU or file work on a bare blocking worker, OUTSIDE the
+/// commands' lock (Lot 5 E13d, audit A02; measured in
+/// `spikes/global-lock`: an open gesture waited 466 ms p50 behind a
+/// 10 MB sanitize under the lock, 12 ms with the sanitize here). Owned
+/// inputs in, owned outputs out: no [`Blocking`] token reaches the
+/// closure, so no database is reachable from it by construction. A
+/// read-decide-write that depends on the unlocked result re-takes the
+/// lock and looks again (the A41 rule); a pure read does not.
+pub(crate) async fn unlocked<T, E, F>(work: F) -> Result<T, E>
+where
+    F: FnOnce() -> Result<T, E> + Send + 'static,
+    T: Send + 'static,
+    E: From<String> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(work)
+        .await
+        .map_err(|err| E::from(err.to_string()))?
+}
+
 /// Opens the store at the app's database and hands it to `work` — the
 /// standard body of a blocking command already off the pump
 /// (PLAN-AUDIT-V3 E3): one doorway in place of ~105 copies of
-/// `Store::open(&db_path(&app)?).map_err(…)`. Commands that
+/// `Store::open(&adopted_db(&app)?).map_err(…)`. Commands that
 /// deliberately batch several reads under ONE open (`ui_state`) call
 /// it once with a bigger closure — the fusion stays theirs.
 pub(crate) fn with_store<T>(
-    app: &AppHandle,
+    app: &Blocking,
     work: impl FnOnce(&mut Store) -> Result<T, CommandError>,
 ) -> Result<T, CommandError> {
-    let mut store = Store::open(&db_path(app)?)?;
+    let mut store = Store::open(&adopted_db(app)?)?;
     let state = app.state::<AppState>();
     if state.mutation_recovery.get().is_none() {
         store.recover_action_effects()?;
@@ -5931,7 +6130,7 @@ pub(crate) fn with_store<T>(
 /// command body.
 pub(crate) async fn store_off_pump<T>(
     app: AppHandle,
-    work: impl FnOnce(&AppHandle, &mut Store) -> Result<T, CommandError> + Send + 'static,
+    work: impl FnOnce(&Blocking, &mut Store) -> Result<T, CommandError> + Send + 'static,
 ) -> Result<T, CommandError>
 where
     T: Send + 'static,
@@ -5954,7 +6153,7 @@ fn admit_account(app: &AppHandle, store: &Store, account_id: i64) -> Result<(), 
 async fn account_store_off_pump<T>(
     app: AppHandle,
     account_id: i64,
-    work: impl FnOnce(&AppHandle, &mut Store) -> Result<T, CommandError> + Send + 'static,
+    work: impl FnOnce(&Blocking, &mut Store) -> Result<T, CommandError> + Send + 'static,
 ) -> Result<T, CommandError>
 where
     T: Send + 'static,
@@ -5966,7 +6165,12 @@ where
     .await
 }
 
-pub(crate) fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
+/// The database's path for the READ-ONLY probes and the visible pass
+/// (`lang_get`, `migration_check`, `migration_run`) — the ones allowed
+/// before adoption. Everything else goes through
+/// [`adoption::adopted_db`], which refuses until the file is adopted
+/// and while it is not the adopted file (Lot 5 E13a).
+pub(crate) fn probe_path(app: &AppHandle) -> Result<PathBuf, String> {
     // PLAN-AUDIT-V1 E5: computed ONCE (the folder is created on this
     // first call), then a pure read — 107 calls per session were each
     // doing their own `create_dir_all`.
@@ -6101,7 +6305,7 @@ pub async fn sync_progress(
     // cycle's Arc, not the state.
     let generation = state.sync_cycle.generation.load(Ordering::Relaxed);
     let in_progress = state.sync_cycle.in_progress.load(Ordering::Relaxed);
-    store_off_pump(app, move |_, store| {
+    read_store_off_pump(app, move |_, store| {
         Ok(read_sync(store, generation, in_progress)?)
     })
     .await
@@ -6206,7 +6410,7 @@ pub struct BackfillStatus {
 /// “N remaining · P%” before even starting.
 #[tauri::command]
 pub async fn backfill_status(app: AppHandle) -> Result<BackfillStatus, CommandError> {
-    off_pump(app, move |app| {
+    read_off_pump(app, move |app| {
         // Measurement milestones (feature `mesure` — never in the
         // shipped binary). The upstream span `wry::custom_protocol::handle`
         // gives the command's TOTAL and nothing more: measured cold on
@@ -6218,7 +6422,7 @@ pub async fn backfill_status(app: AppHandle) -> Result<BackfillStatus, CommandEr
         let store = {
             #[cfg(feature = "mesure")]
             let _milestone = tracing::debug_span!("mesure::store_open").entered();
-            Store::open(&db_path(&app)?).map_err(|err| err.to_string())?
+            Store::open(&adopted_db(&app)?).map_err(|err| err.to_string())?
         };
         let (remaining, total) = {
             #[cfg(feature = "mesure")]
@@ -6257,9 +6461,18 @@ pub struct MigrationCheck {
 #[tauri::command]
 pub async fn migration_check(app: AppHandle) -> Result<MigrationCheck, CommandError> {
     off_pump(app, move |app| {
-        Ok(MigrationCheck {
-            pending: Store::pending_adoption(&db_path(&app)?).map_err(|err| err.to_string())?,
-        })
+        let path = probe_path(&app)?;
+        let pending = Store::pending_adoption(&path).map_err(|err| err.to_string())?;
+        if pending.is_none() {
+            // Nothing to pay: this file is the one every command may
+            // open from now on (Lot 5 E13a).
+            app.state::<AppState>()
+                .migration
+                .adopted
+                .adopt(&path)
+                .map_err(|err| err.to_string())?;
+        }
+        Ok(MigrationCheck { pending })
     })
     .await
 }
@@ -6305,7 +6518,7 @@ pub async fn migration_run(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<bool, CommandError> {
-    let path = db_path(&app)?;
+    let path = probe_path(&app)?;
     let shared = state.migration.clone();
     shared.cancel.store(false, Ordering::Relaxed);
     shared.done.store(0, Ordering::Relaxed);
@@ -6328,8 +6541,11 @@ pub async fn migration_run(
         match result {
             // The Store closes right away: the next commands will open
             // their own, as usual — but with no pass left to pay, it's
-            // done.
-            Ok(_store) => Ok(true),
+            // done. The file is adopted from here on (Lot 5 E13a).
+            Ok(_store) => {
+                shared.adopted.adopt(&path).map_err(|err| err.to_string())?;
+                Ok(true)
+            }
             Err(mail_core::Error::Interrupted) => Ok(false),
             Err(err) => Err(err.to_string()),
         }
@@ -6362,8 +6578,10 @@ pub async fn backfill_bodies(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<BackfillSummary, CommandError> {
-    let path = db_path(&app)?;
-    let jobs = off_pump(app.clone(), |app| crate::poll::connected_jobs(&app)).await?;
+    let (path, jobs) = off_pump(app.clone(), |app| {
+        Ok::<_, String>((adopted_db(&app)?, crate::poll::connected_jobs(&app)?))
+    })
+    .await?;
     let lock = state.bodies_backfill.clone();
 
     let (summary, refreshed) =
@@ -6656,7 +6874,7 @@ pub async fn notif_pref_set(app: AppHandle, enabled: bool) -> Result<(), Command
 pub async fn lang_get(app: AppHandle) -> Result<Option<String>, CommandError> {
     off_pump(app, move |app| {
         Ok(Store::text_pref_readonly(
-            &db_path(&app)?,
+            &probe_path(&app)?,
             mail_core::PREF_LANG,
         )?)
     })

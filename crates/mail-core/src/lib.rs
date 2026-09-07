@@ -56,8 +56,9 @@ pub use backfill::{
 pub use body::REMOTE_MESSAGE_BYTES;
 pub use body::{load_body, load_body_version, refresh_invitation_version};
 pub use compose::{
-    Draft, compose, forward_subject, quote_forward, quote_forward_html, quote_reply,
-    quote_reply_html, reply_all_split, reply_subject, reply_to,
+    ComposeMode, Draft, compose, forward_subject, is_own_message, quote_forward,
+    quote_forward_html, quote_reply, quote_reply_html, reply_all_recipients, reply_all_split,
+    reply_subject, reply_to, signature_applies,
 };
 pub use contacts::Contact;
 pub use crash::{CrashReport, RawPanic, redact};

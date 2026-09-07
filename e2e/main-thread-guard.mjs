@@ -66,7 +66,21 @@ const PURE_COMMANDS = new Set([
 // connection), files, the OS vault. If an exempted command comes near
 // one, it loses the exemption. (Best-effort detection — indirect help
 // escapes it, which is why the exemption is a LIST, not a heuristic.)
-const MARKERS = ['Store::', 'db_path(', 'std::fs', 'File::', 'keyring', 'read_to_string'];
+// Lot 5 E13b: the database is reachable only through `adopted_db(` with
+// a `Blocking` token that `off_pump` builds; `probe_path(` is the
+// read-only probes' path and `on_dedicated_thread(` the one escape
+// hatch (a thread the shell spawned itself) — neither belongs in the
+// glue of an async command.
+const MARKERS = [
+  'Store::',
+  'probe_path(',
+  'adopted_db(',
+  'on_dedicated_thread(',
+  'std::fs',
+  'File::',
+  'keyring',
+  'read_to_string',
+];
 
 // PLAN-AUDIT-V1 E5 (2026-09-01 audit S1-2): the guard used to stop at
 // the `async` keyword — seventeen commands opened the database, read
@@ -76,13 +90,13 @@ const MARKERS = ['Store::', 'db_path(', 'std::fs', 'File::', 'keyring', 'read_to
 // Rule: the body of an async command, once the `off_pump(...)` and
 // `spawn_blocking(...)` calls are STRIPPED (balanced parentheses), is
 // nothing but glue — none of these markers belong there.
-// `db_path(` is NOT in it: since E5 it is a pure read (OnceLock, the
-// folder is created on first call) — it stays in MARKERS for the
+// `probe_path(` is NOT in it: since E5 it is a pure read (OnceLock,
+// the folder is created on first call) — it stays in MARKERS for the
 // exempted commands, which must not even name the database.
 // `lock_accounts` and `veilleur::reconcilier` are memory locks of a
 // few microseconds, not I/O: the probe (`freeze-probe.py`) decides.
 const GLUE_MARKERS = [
-  ...MARKERS.filter((m) => m !== 'db_path('),
+  ...MARKERS.filter((m) => m !== 'probe_path('),
   'auth_for(',
   'connected_jobs(',
   'account_email(',
@@ -90,26 +104,44 @@ const GLUE_MARKERS = [
   'connect_imap(',
   'trace_maj(',
 ];
-const OFF_PUMP = ['off_pump(', 'spawn_blocking('];
+const OFF_PUMP = ['off_pump(', 'spawn_blocking(', 'unlocked('];
+// `read_off_pump(` / `read_store_off_pump(` contain `off_pump(`: the
+// substring match strips them too (their prefix stays behind, harmless).
+// They take NO lock — a write inside one would escape the serialization
+// the lock exists for; the rule below refuses the writing names there.
+const READ_HELPERS = ['read_off_pump(', 'read_store_off_pump('];
+const WRITES_IN_A_READ = [
+  'store.set_', 'store.save_', 'store.insert_', 'store.delete_', 'store.toggle_',
+  'store.enqueue_', 'store.mark_', 'store.route_', 'store.remove_', 'store.allow_',
+  'store.revoke_', 'store.add_', 'store.record_', 'store.note_', 'store.upsert_',
+  'store.apply_', 'store.queue_', 'store.reset_', 'store.retry_', 'store.clear_',
+  'recover_action_effects(', '&mut store', 'store: &mut',
+];
 
 // Strips every `name(...)` call from the text, with balanced
 // parentheses — what remains is the glue the command runs itself, on
 // the async worker.
+// The index of the `)` matching the `(` at `opening` (the text's end
+// when unbalanced) — the one parenthesis scanner of this file.
+function closingOf(text, opening) {
+  let depth = 0;
+  for (let end = opening; end < text.length; end += 1) {
+    if (text[end] === '(') depth += 1;
+    else if (text[end] === ')') {
+      depth -= 1;
+      if (depth === 0) return end;
+    }
+  }
+  return text.length;
+}
+
 function withoutCalls(text, names) {
   let remaining = text;
   for (const name of names) {
     let departure = remaining.indexOf(name);
     while (departure !== -1) {
       const opening = departure + name.length - 1;
-      let depth = 0;
-      let end = opening;
-      for (; end < remaining.length; end += 1) {
-        if (remaining[end] === '(') depth += 1;
-        else if (remaining[end] === ')') {
-          depth -= 1;
-          if (depth === 0) break;
-        }
-      }
+      const end = closingOf(remaining, opening);
       remaining = remaining.slice(0, departure) + remaining.slice(end + 1);
       departure = remaining.indexOf(name);
     }
@@ -183,6 +215,110 @@ for (const file of readdirSync(sources).filter((f) => f.endsWith('.rs'))) {
       failure(
         `${file}: \`${name}\` is exempted as pure but touches ${found.join(', ')} — turn it into \`async fn\` + \`off_pump\``,
       );
+    }
+  }
+}
+
+// Lot 5 E13d (audit A02, spike `spikes/global-lock`): CPU-bound
+// sanitizing and file reads do not belong UNDER the commands' lock —
+// measured: an open gesture waited 466 ms (p50) behind a 10 MB
+// sanitize, 12 ms once the sanitize ran on a bare worker. Inside every
+// `off_pump(...)` family call, these names are a red: the SQLite reads
+// stay under the lock, the heavy step goes through `unlocked(...)`,
+// and the lock is re-taken to look again when a write or an identity
+// claim follows. The composer's own boundary (`sanitize_composition`,
+// `sanitize_for_composer`: the user's typed content, small by
+// construction) is not in this list on purpose.
+const UNDER_LOCK = ['off_pump(', 'store_off_pump(', 'account_store_off_pump('];
+const HEAVY_UNDER_LOCK = [
+  'mail_render::sanitize(',
+  'mail_render::sanitize_with(',
+  'attachment_file::read(',
+  'std::fs::read(',
+];
+function lockedBodies(text) {
+  const bodies = [];
+  for (const name of UNDER_LOCK) {
+    let departure = text.indexOf(name);
+    while (departure !== -1) {
+      // `store_off_pump(` also matches inside `account_store_off_pump(`:
+      // the enclosing call is scanned once through its own name.
+      const preceded = departure > 0 && /[A-Za-z0-9_]/.test(text[departure - 1]);
+      const opening = departure + name.length - 1;
+      const end = closingOf(text, opening);
+      if (!preceded) {
+        const before = text.slice(0, departure);
+        const owner = [...before.matchAll(/fn\s+([A-Za-z0-9_]+)/g)].pop()?.[1] ?? '?';
+        bodies.push({ owner, inner: text.slice(opening, end + 1) });
+      }
+      departure = text.indexOf(name, opening + 1);
+    }
+  }
+  return bodies;
+}
+// A helper whose body carries a heavy step is heavy itself (`body_view`
+// used to hide the sanitize from a marker scan — the A03 lesson):
+// the list grows to a fixpoint through the file's own functions.
+function heavyNames(text) {
+  const names = [...HEAVY_UNDER_LOCK];
+  const functions = [...text.matchAll(/fn\s+([A-Za-z0-9_]+)\s*(?:<[^>]*>)?\s*\(/g)].map((m) => ({
+    name: m[1],
+    inner: body(text, text.indexOf('{', m.index + m[0].length)),
+  }));
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const { name, inner } of functions) {
+      const marker = `${name}(`;
+      if (names.includes(marker)) continue;
+      if (names.some((m) => inner.includes(m))) {
+        names.push(marker);
+        grew = true;
+      }
+    }
+  }
+  return names;
+}
+{
+  // The whole shell, not one file: a helper moved to its own module
+  // must stay heavy in the eyes of this net (review 2026-09-07).
+  const shell = readdirSync(sources)
+    .filter((f) => f.endsWith('.rs'))
+    .map((f) => readFileSync(path.join(sources, f), 'utf8'))
+    .join('\n');
+  const heavyMarkers = heavyNames(shell);
+  for (const file of readdirSync(sources).filter((f) => f.endsWith('.rs'))) {
+    const text = readFileSync(path.join(sources, file), 'utf8');
+    for (const { owner, inner } of lockedBodies(text)) {
+      const heavy = heavyMarkers.filter((m) => inner.includes(m));
+      if (heavy.length > 0) {
+        failure(
+          `${file}: \`${owner}\` runs ${heavy.join(', ')} UNDER the commands' lock — move it through \`unlocked(...)\`, keep only the SQLite reads under the lock (Lot 5 E13d, A02)`,
+        );
+      }
+    }
+  }
+}
+
+// A read helper carries no lock: nothing under it may write.
+{
+  for (const file of readdirSync(sources).filter((f) => f.endsWith('.rs'))) {
+    const text = readFileSync(path.join(sources, file), 'utf8');
+    for (const name of READ_HELPERS) {
+      let departure = text.indexOf(name);
+      while (departure !== -1) {
+        const opening = departure + name.length - 1;
+        const end = closingOf(text, opening);
+        const inner = text.slice(opening, end + 1);
+        const writes = WRITES_IN_A_READ.filter((m) => inner.includes(m));
+        if (writes.length > 0) {
+          const owner = [...text.slice(0, departure).matchAll(/fn\s+([A-Za-z0-9_]+)/g)].pop()?.[1] ?? '?';
+          failure(
+            `${file}: \`${owner}\` writes (${writes.join(', ')}) inside \`${name.slice(0, -1)}\`, which takes no commands' lock — use \`store_off_pump\``,
+          );
+        }
+        departure = text.indexOf(name, opening + 1);
+      }
     }
   }
 }

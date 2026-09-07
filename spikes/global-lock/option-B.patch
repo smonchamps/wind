@@ -1,0 +1,195 @@
+diff --git a/apps/desktop/src/commands.rs b/apps/desktop/src/commands.rs
+index 747218a..bc43d1e 100644
+--- a/apps/desktop/src/commands.rs
++++ b/apps/desktop/src/commands.rs
+@@ -1216,6 +1216,10 @@ pub async fn message_body(
+     // Current path — cached body: ONE lock take, ONE opening (PLAN-AUDIT-V1
+     // review: `raw_body` then a second `off_pump` used to take the
+     // lock twice for nothing).
++    // SPIKE A02 option B: under the lock ONLY the SQLite reads (verify,
++    // body, image guard, attachments, invitation); the sanitize (CPU)
++    // runs on a bare blocking worker; then the lock is re-taken to
++    // re-validate the identity after the unlocked step.
+     let mailbox2 = mailbox.clone();
+     let cached = off_pump(app.clone(), move |app| {
+         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+@@ -1227,17 +1231,25 @@ pub async fn message_body(
+             .map_err(|err| err.to_string())?
+         {
+             Some(html) => {
+-                let view = body_view(&store, account_id, &mailbox2, uid, show_images, &html)?;
+-                version
+-                    .verify(&store, account_id, &mailbox2)
+-                    .map_err(|err| err.to_string())?;
+-                Ok::<_, CommandError>(Some(view))
++                let inputs = body_inputs(&store, account_id, &mailbox2, uid, show_images)?;
++                Ok::<_, CommandError>(Some((html, inputs)))
+             }
+             None => Ok(None),
+         }
+     })
+     .await?;
+-    if let Some(view) = cached {
++    if let Some((html, inputs)) = cached {
++        let view = tauri::async_runtime::spawn_blocking(move || render_body(inputs, &html))
++            .await
++            .map_err(|err| err.to_string())?;
++        let mailbox3 = mailbox.clone();
++        off_pump(app, move |app| {
++            let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
++            version
++                .verify(&store, account_id, &mailbox3)
++                .map_err(|err| err.to_string())
++        })
++        .await?;
+         return Ok(view);
+     }
+     // Body absent: bare network fetch, then the view under the lock.
+@@ -1267,6 +1279,25 @@ fn body_view(
+     show_images: bool,
+     html: &str,
+ ) -> Result<BodyView, String> {
++    let inputs = body_inputs(store, account_id, mailbox, uid, show_images)?;
++    Ok(render_body(inputs, html))
++}
++
++/// SPIKE A02 option B: the SQLite half of `body_view` — what must stay
++/// under the lock.
++struct BodyInputs {
++    images_granted: bool,
++    attachment_count: usize,
++    invitation: Option<InvitationView>,
++}
++
++fn body_inputs(
++    store: &Store,
++    account_id: i64,
++    mailbox: &str,
++    uid: u32,
++    show_images: bool,
++) -> Result<BodyInputs, String> {
+     {
+         // R1 (PLAN-RETOURS-11, D1): the image guard's memory is consulted
+         // HERE — the authority is the core, the UI decides nothing (it
+@@ -1292,7 +1323,23 @@ fn body_view(
+             .invitation(account_id, mailbox, uid)
+             .map_err(|err| err.to_string())?
+             .map(invitation_view);
++        Ok(BodyInputs {
++            images_granted,
++            attachment_count,
++            invitation,
++        })
++    }
++}
+ 
++/// SPIKE A02 option B: the CPU half of `body_view` — the sanitize and
++/// the document, needing no store at all.
++fn render_body(inputs: BodyInputs, html: &str) -> BodyView {
++    let BodyInputs {
++        images_granted,
++        attachment_count,
++        invitation,
++    } = inputs;
++    {
+         let policy = if images_granted {
+             mail_render::ImagePolicy::AllowRemote
+         } else {
+@@ -1307,7 +1354,7 @@ fn body_view(
+         // reads as it was composed, like in mature clients. Text
+         // WITHOUT its own color was already readable; text that carries
+         // one now is too.
+-        Ok(BodyView {
++        BodyView {
+             document: mail_render::email_document(
+                 &sanitized.html,
+                 policy,
+@@ -1316,7 +1363,7 @@ fn body_view(
+             remote_images_blocked: sanitized.remote_images_blocked,
+             attachment_count,
+             invitation,
+-        })
++        }
+     }
+ }
+ 
+@@ -4847,6 +4894,30 @@ fn attach_edit_files(
+     })
+ }
+ 
++/// SPIKE A02 option B: the file half of `attach_files`, lock-free.
++fn read_attachment_files(paths: &[String]) -> Result<Vec<(String, Vec<u8>)>, CommandError> {
++    let mut files = Vec::with_capacity(paths.len());
++    for path in paths {
++        // E8: a path coming from the UI is read only if it is
++        // absolute and names a regular file — never a folder, never
++        // a path relative to the process.
++        let candidate = std::path::Path::new(path);
++        if !candidate.is_absolute() || !candidate.is_file() {
++            return Err(format!("attachment refused: {path:?} is not an absolute file").into());
++        }
++        // A read failure is an outright failure of the gesture:
++        // files already entered stay (the UI re-reads the chips),
++        // this one has a problem the user must see, not a silence.
++        let bytes = std::fs::read(path).map_err(|err| format!("reading {path:?}: {err}"))?;
++        let name = candidate
++            .file_name()
++            .map(|n| n.to_string_lossy().into_owned())
++            .unwrap_or_else(|| path.clone());
++        files.push((name, bytes));
++    }
++    Ok(files)
++}
++
+ /// Attaches files to the draft: reads each path, copies the bytes into
+ /// the database on the gesture (PJ-D1 — the picker returned paths, they
+ /// don't survive past this call), refuses at the cap without punishing
+@@ -4862,10 +4933,19 @@ pub async fn attach_files(
+     paths: Vec<String>,
+     edit_token: Option<String>,
+ ) -> Result<AttachReport, CommandError> {
++    if let Some(token) = edit_token {
++        return account_store_off_pump(app, account_id, move |_, store| {
++            attach_edit_files(store, &token, account_id, &paths)
++        })
++        .await;
++    }
++    // SPIKE A02 option B: the file IO (path check + read) runs on a bare
++    // blocking worker, OUTSIDE the commands' lock; only the SQLite
++    // work (draft anchor, blob insert, meta) stays under it.
++    let files = tauri::async_runtime::spawn_blocking(move || read_attachment_files(&paths))
++        .await
++        .map_err(|err| err.to_string())??;
+     account_store_off_pump(app, account_id, move |_, store| {
+-        if let Some(token) = edit_token {
+-            return attach_edit_files(store, &token, account_id, &paths);
+-        }
+         let created = draft_id.is_none();
+         let draft_id = match draft_id {
+             Some(id) => id,
+@@ -4893,23 +4973,8 @@ pub async fn attach_files(
+         };
+         let mut updated_epoch = None;
+         let mut refused = Vec::new();
+-        for path in &paths {
+-            // E8: a path coming from the UI is read only if it is
+-            // absolute and names a regular file — never a folder, never
+-            // a path relative to the process.
+-            let candidate = std::path::Path::new(path);
+-            if !candidate.is_absolute() || !candidate.is_file() {
+-                return Err(format!("attachment refused: {path:?} is not an absolute file").into());
+-            }
+-            // A read failure is an outright failure of the gesture:
+-            // files already entered stay (the UI re-reads the chips),
+-            // this one has a problem the user must see, not a silence.
+-            let bytes = std::fs::read(path).map_err(|err| format!("reading {path:?}: {err}"))?;
+-            let name = std::path::Path::new(path)
+-                .file_name()
+-                .map(|n| n.to_string_lossy().into_owned())
+-                .unwrap_or_else(|| path.clone());
+-            match store.add_draft_attachment(draft_id, &name, mime_for_name(&name), &bytes) {
++        for (name, bytes) in &files {
++            match store.add_draft_attachment(draft_id, name, mime_for_name(name), bytes) {
+                 Ok(saved) => updated_epoch = Some(saved.updated_epoch),
+                 Err(mail_core::Error::AttachmentOverBudget {
+                     name, remaining, ..

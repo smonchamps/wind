@@ -1486,6 +1486,12 @@ import { invalidateViews } from './lib/views.svelte.js';
   // is fetched ONLY when it moves (PLAN-AUDIT-V3 E5, D-52 item 3: the
   // whole-list poll every 10 s is dead).
   let draftsRevision = null;
+  // D-48 (Lot 5 E13e): the views' revision moves on any core write
+  // that changes a list outside the sync's generation — a routing
+  // verdict from the Screener, a pin, a replay, a second workstation.
+  // When it moves at rest, the views reload on the probe's beat, like
+  // the generation does for arrivals.
+  let viewsRevision = null;
   async function probeState() {
     const mine = ++stateProbe;
     try {
@@ -1505,6 +1511,11 @@ import { invalidateViews } from './lib/views.svelte.js';
       const revision = JSON.stringify(state.drafts_revision);
       if (draftsRevision !== null && revision !== draftsRevision) probeDrafts();
       draftsRevision = revision;
+      const views = state.views_revision ?? null;
+      if (views !== null) {
+        if (viewsRevision !== null && views !== viewsRevision) reloadViews();
+        viewsRevision = views;
+      }
     } catch { /* offline or core busy: the next probe will do */ }
   }
 

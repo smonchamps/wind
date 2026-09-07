@@ -29,9 +29,16 @@
     try {
       probe = await call('migration_check');
     } catch {
-      // Probe impossible: the normal opening will say it better than a
-      // pointless screen — startup is not blocked.
-      return false;
+      // Probe impossible: one more try after a beat (a transient I/O
+      // hiccup), then the commands say it themselves — since Lot 5
+      // E13a every one of them refuses until this probe has adopted
+      // the file, with the reason in clear; startup is not blocked.
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      try {
+        probe = await call('migration_check');
+      } catch {
+        return false;
+      }
     }
     if (probe.pending === null || probe.pending === undefined) return true;
     note = t('migration.note', { n: probe.pending });

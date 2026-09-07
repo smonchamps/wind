@@ -3899,8 +3899,58 @@ fn cleanup_groups_are_read_via_the_senders_index() {
     );
 }
 
-/// Wave 2 review: `PRAGMA foreign_keys = ON` lives in `SCHEMA` and
-/// holds PER CONNECTION — the fast path does not replay the schema.
+/// Lot 5 E13e (D-48): a write that changes a view outside the sync's
+/// paths — a routing verdict, its removal, a pin, a set-aside, a
+/// cleanup verdict — moves ONE revision the resting probe can watch;
+/// reads and unrelated writes (a preference) leave it alone.
+#[test]
+fn the_views_revision_moves_on_view_changing_writes_only() {
+    let mut store = Store::open_in_memory().unwrap();
+    let account = store
+        .adopt_or_create_account("me@example.fr", "gmail")
+        .unwrap();
+    let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+    store
+        .upsert_envelopes(inbox, &[envelope(1, "hello", 1_000, false)])
+        .unwrap();
+    let start = store.views_revision().unwrap();
+    // Reads and a plain preference: nothing moves.
+    let _ = store.routings().unwrap();
+    store.set_bool_pref("arrival_bubbles", true).unwrap();
+    assert_eq!(
+        store.views_revision().unwrap(),
+        start,
+        "a read or a preference moved the revision"
+    );
+    // A routing verdict, then its removal.
+    store
+        .route_sender("alice@example.com", "kiosque", None, 2_000)
+        .unwrap();
+    let after_route = store.views_revision().unwrap();
+    assert!(after_route > start, "routing did not move the revision");
+    store.remove_routing("alice@example.com").unwrap();
+    let after_remove = store.views_revision().unwrap();
+    assert!(
+        after_remove > after_route,
+        "removing the routing did not move the revision"
+    );
+    // A pin and a set-aside.
+    store.toggle_pin(inbox, 1, 3_000).unwrap();
+    let after_pin = store.views_revision().unwrap();
+    assert!(
+        after_pin > after_remove,
+        "the pin did not move the revision"
+    );
+    store.toggle_set_aside(inbox, 1, 4_000).unwrap();
+    assert!(
+        store.views_revision().unwrap() > after_pin,
+        "the set-aside did not move the revision"
+    );
+}
+
+/// Wave 2 review: `PRAGMA foreign_keys = ON` holds PER CONNECTION and
+/// is set once in `init_with`, ahead of the fast path (Lot 5 E13e:
+/// `SCHEMA` no longer repeats it).
 /// This test stayed green BEFORE the line was added to `init_with`:
 /// rusqlite's `bundled` enables foreign keys by default at compile
 /// time. It keeps the belt anyway: on a FILE database (an in-memory

@@ -5,6 +5,7 @@
   import Icon from './Icon.svelte';
   import Menu from './Menu.svelte';
   import SectionSort from './SectionSort.svelte';
+  import Stacked from './Stacked.svelte';
   import { sortComparator } from './lib/sort.js';
   import { call } from './lib/transport.js';
   import ImagePermission from './ImagePermission.svelte';
@@ -396,7 +397,7 @@
         <button type="button" class="rank-group" data-testid="feed-group"
                 aria-expanded={!!openGroups[g.who]}
                 onclick={() => (openGroups[g.who] = !openGroups[g.who])}>
-          <span class="stacked" aria-hidden="true"><span></span><span></span><span></span></span>
+          <Stacked />
           <span class="who" data-testid="feed-group-name">{g.who}</span>
           <span class="count">{g.cards.length}</span>
         </button>
@@ -457,17 +458,6 @@
     flex:none; font-size:12px; font-weight:600; color:var(--accent);
     font-variant-numeric:tabular-nums;
   }
-  /* The pile (D5): three offset elevations, the set-aside's fan
-     visual in miniature. */
-  .stacked { position:relative; width:20px; height:16px; flex:none; }
-  /* V14: zero radius — the pile's sheets are bare
-     rectangles, like the set-aside pile's visual. */
-  .stacked span {
-    position:absolute; inset:0; background:var(--surface);
-    border:1px solid var(--border);
-  }
-  .stacked span:nth-child(1) { transform:translate(4px, -4px); }
-  .stacked span:nth-child(2) { transform:translate(2px, -2px); }
   /* The read witness: a node with no geometry — it moves
      nothing, it only exists for the observer. */
   .read-witness { height:1px; }

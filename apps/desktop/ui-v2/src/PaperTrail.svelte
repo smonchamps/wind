@@ -9,6 +9,7 @@
   import Icon from './Icon.svelte';
   import Menu from './Menu.svelte';
   import SectionSort from './SectionSort.svelte';
+  import Stacked from './Stacked.svelte';
   import { call } from './lib/transport.js';
   import { watchViews } from './lib/views.svelte.js';
   import { sortComparator } from './lib/sort.js';
@@ -157,7 +158,7 @@
              tabindex="0" data-address={g.address} aria-expanded={isOpen === g.address}
              onclick={() => toggleGroup(g.address)}
              onkeydown={activation(() => toggleGroup(g.address))}>
-          <span class="stacked" aria-hidden="true"><span></span><span></span><span></span></span>
+          <Stacked />
           <span class="body">
             <span class="l1">
               <span class="sender">{g.who ?? g.address}</span>
@@ -230,13 +231,6 @@
     cursor:pointer;
   }
   .rank-group:hover { background:var(--hover); }
-  .stacked { position:relative; width:20px; height:16px; flex:none; }
-  .stacked span {
-    position:absolute; inset:0; background:var(--surface);
-    border:1px solid var(--border);
-  }
-  .stacked span:nth-child(1) { transform:translate(4px, -4px); }
-  .stacked span:nth-child(2) { transform:translate(2px, -2px); }
   .body { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
   .l1, .l2 { display:flex; align-items:baseline; gap:8px; min-width:0; }
   .sender {

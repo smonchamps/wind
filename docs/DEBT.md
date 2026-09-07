@@ -69,20 +69,6 @@ deferral = one justified line.)
 - **Reopens if**: the field points to the cost (fan, battery, write
   contention, perceived probe latency).
 
-### D-9 · Invariant A41 has no structural guard
-
-- **Fact (review 2026-08-15, A41)**: « nothing touches the database
-  before `migration_check` » lives in comments and one probe test
-  (`la_langue_se_lit_sans_adopter_la_base`) — nothing stops a future
-  pre-modal command from opening the database in full (`Store::open`):
-  the whole suite would stay green, the bug would be rediscovered in
-  the field.
-- **Lead**: an `adopted` flag on `MigrationShared` (or a shared
-  opening helper for the 30+ `Store::open` calls in `commands.rs`)
-  that makes any full opening before the probe fail LOUDLY; to be
-  investigated as a job, not on the fast lane.
-- **Reopens if**: a startup command is added before the modal.
-
 ### D-10 · Deferred setting of the language has no UI test
 
 - **Fact (review 2026-08-15)**: the Rust half of A41 is held by a
@@ -432,6 +418,115 @@ deferral = one justified line.)
 - **Reopens if**: a fourth occurrence, or a red run in CI.
 ## Closed
 
+### ~~D-48 · The list does not follow an external write~~ — closed 2026-09-07
+
+- **Finding (RETOURS-13 review, 2026-08-30)**: the Inbox only reloads
+  on a poll generation's beat or through its own gesture handlers. A
+  `retirer_routage` (or any write outside the List's paths — second
+  workstation, replay, e2e command) leaves the list stale until a
+  manual navigation. The e2e step of `organized-mode.spec.js` that
+  "passed" lived off a FORTUITOUS reload of the probe — it now holds
+  honestly through the folder round trip. Same family as D-44
+  (`connectes` with no refresh cycle).
+- **Reason for deferring**: the proper fix is a generic invalidation
+  signal (bump the generation on any core write that changes a view),
+  not one more `liste.recharger()` wired per surface — a job, not a
+  retouch.
+- **Reopen if**: a field finding of "the list does not move" on a
+  gesture outside the List, or at the multi-window/second-workstation
+  job.
+
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E13e
+  (2026-09-07)**: the generic signal exists — `views_revision` in `prefs`,
+  bumped by the core on a routing verdict or removal, a pin, a set-aside, a
+  cleanup verdict; `ui_state` carries it and the UI reloads its views when
+  it moves, on the resting probe's beat, whoever wrote. Sync arrivals keep
+  the shell's generation. Test: reads and preferences leave it alone.
+
+### ~~D-47 · Three context menus and two thread toggles are hand copies~~ — closed 2026-09-07
+
+> 2026-09-04 (PLAN-AUDIT-V3 E7): the stated UI leftovers are done —
+> `.btn-screener` (Screener/Cleanup literal duplicate) and the
+> `select` pair (AccountDesk 40 px / Settings 32 px) live once in
+> `system.css`. The CORE half below (the pin/set-aside twins, the
+> Paper trail's stack/rank) stays open.
+
+- **Amended (PLAN-AUDIT-V2 E11, 2026-09-02, A108) — the MENUS are
+  settled**: `Menu.svelte` is THE product's menu (eight surfaces —
+  List, Feed, Screener, Cleanup, Paper trail, section sort, Settings >
+  Screener, the thread's "Move to…"), drawing AND mechanics in one
+  copy (keyboard included, A8 held), 24 CSS copy rules removed, the
+  `--ombre` token that did not exist along with them. **Still open**
+  is the "core" half of this debt: `toggle_mis_de_cote`/
+  `etat_mis_de_cote`, twins of `toggle_pin`/`pin_state`, and the Paper
+  trail's stack/rank recopied from the Feed — audit wave 3.
+
+- **Amended (RETOURS-14, 2026-08-31)**: two more copies — the grouped
+  Paper trail's `.menu-groupe` (`Registre.svelte`), and the FAMILY
+  extends to the STACK drawing (`.empile`/`.rang-groupe` recopied from
+  `Kiosque.svelte` to `Registre.svelte`) and to Cleanup's two-line row
+  (`.l1/.l2` recopied). The verdict vocabulary, meanwhile, was
+  factored out along the way (`lib/portier.js`).
+- **Finding (E4/E5 review, 2026-08-30)**: the product menu's drawing
+  lives in three CSS copies (`Portier.svelte` `.menu`, `Liste.svelte`
+  `.menu-gestes`, `PileMisDeCote.svelte`'s fan) — the `0 8px 24px`
+  shadow is already written three times there, `min-width` diverges by
+  10 px for no reason, and only Screener goes through
+  `var(--ombre, …)`. On the core side, `toggle_mis_de_cote`/
+  `etat_mis_de_cote` are the structural twin of `toggle_pin`/
+  `pin_state` (~80 lines, only the table changes), and
+  `pile_mis_de_cote` is the twin of `pinned_unified_scoped`.
+- **Reason for deferring**: factoring the menu = a shared component
+  touching three surfaces validated at the visual STOP; the core
+  twins are each covered by their own tests — the refactor brings
+  nothing to the field for the release underway.
+- **Reopen if**: a shadow/menu token enters the theme table (the copy
+  would drift at the first retouch), at the third twin (E6 groups), or
+  at the next retouch of the thread resolution contract (the RED
+  "never the head" would need to be carried twice).
+- **REOPENED on 2026-08-30 (PLAN-HORIZON-NETTOYAGE, review)**: Spring
+  cleaning is the announced twin — `Nettoyage.svelte` recopies the
+  Screener's ⋯ menu whole (markup, `ouvrirMini` and its 250/170 bounds
+  hard-coded, `BOITE_DE`/`TOAST_NON` cards, `.btn-portier`/`.mini`/
+  `.menu` CSS), a 4th copy of the drawing. Not factored within the job
+  (three surfaces validated at the visual STOP, same reason as at the
+  deferral) — **to be handled as a dedicated debt**: a shared
+  `MenuVerdict.svelte` for Screener/Cleanup, and the common classes in
+  `systeme.css` (the earlier `.entete-vue`). Add to it the `select`
+  style pair born in two copies (AccountDesk 40 px / Settings 32 px).
+
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E13e
+  (2026-09-07)**: the core half — one private `Mark {Pin, SetAside}` behind
+  `toggle_pin`/`pin_state`/`toggle_set_aside`/`set_aside_state` (the table
+  name was the only difference); the Feed's and the Paper trail's stacked
+  fan is one `Stacked.svelte`. The set-aside pile's large fan (52 × 38,
+  rotated sheets) is a different drawing and stays its own.
+
+### ~~D-9 · Invariant A41 has no structural guard~~ — closed 2026-09-07
+
+- **Fact (review 2026-08-15, A41)**: « nothing touches the database
+  before `migration_check` » lives in comments and one probe test
+  (`la_langue_se_lit_sans_adopter_la_base`) — nothing stops a future
+  pre-modal command from opening the database in full (`Store::open`):
+  the whole suite would stay green, the bug would be rediscovered in
+  the field.
+- **Lead**: an `adopted` flag on `MigrationShared` (or a shared
+  opening helper for the 30+ `Store::open` calls in `commands.rs`)
+  that makes any full opening before the probe fail LOUDLY; to be
+  investigated as a job, not on the fast lane.
+- **Reopens if**: a startup command is added before the modal.
+
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E13a/E13b
+  (2026-09-07)**: the lead became the structure. `apps/desktop/src/adoption.rs`
+  records the adopted file's identity at `migration_check` (nothing pending)
+  or after `migration_run`; `adopted_db` refuses before adoption and when
+  the file at the path is no longer the adopted one; the path is reachable
+  only through the `Blocking` token `off_pump` builds — a pre-modal command
+  opening the database in full fails LOUDLY, at run time by the record and
+  at compile time by the token (17 errors on the first build, all indirect
+  helpers). Six unit tests on the record, the text guard kept as the second
+  net.
+
 ### ~~D-62 · macOS is Intel-only~~ — closed 2026-09-05
 
 - **Since**: 2026-09-04 (PLAN-MACOS §2, one triple: the build
@@ -600,6 +695,12 @@ deferral = one justified line.)
   sending, fix 2 and 3 (group the parameters, derive `Default`) ; 1
   reopens only if a third converter appears ; 4 at the next spec that
   needs it (shared helper).
+- **2026-09-07 (PLAN-AUDIT-2026-09-LOT5 E13e)**: item 2 is done —
+  `mail_smtp::draft_bytes(&DraftMessage { .. })`, named fields, the six
+  test callers converted. Item 3 is REFUSED on the audit's own
+  reconciliation ("do not impose `Default` on intentionally required
+  fields"): a draft with no subject and no body is a valid literal the
+  compiler should keep asking for. Items 1 and 4 keep their conditions.
 
 ### D-26 · Deep category pagination: O(offset) cost accepted
 
@@ -1011,76 +1112,6 @@ deferral = one justified line.)
 - **Reopen if**: a retouch of the row template (spacing, typography) —
   the finding "the Screener did not follow" materializes it —, or at
   job E4 (the organized Inbox reuses these rows as sections).
-
-### D-47 · Three context menus and two thread toggles are hand copies
-
-> 2026-09-04 (PLAN-AUDIT-V3 E7): the stated UI leftovers are done —
-> `.btn-screener` (Screener/Cleanup literal duplicate) and the
-> `select` pair (AccountDesk 40 px / Settings 32 px) live once in
-> `system.css`. The CORE half below (the pin/set-aside twins, the
-> Paper trail's stack/rank) stays open.
-
-- **Amended (PLAN-AUDIT-V2 E11, 2026-09-02, A108) — the MENUS are
-  settled**: `Menu.svelte` is THE product's menu (eight surfaces —
-  List, Feed, Screener, Cleanup, Paper trail, section sort, Settings >
-  Screener, the thread's "Move to…"), drawing AND mechanics in one
-  copy (keyboard included, A8 held), 24 CSS copy rules removed, the
-  `--ombre` token that did not exist along with them. **Still open**
-  is the "core" half of this debt: `toggle_mis_de_cote`/
-  `etat_mis_de_cote`, twins of `toggle_pin`/`pin_state`, and the Paper
-  trail's stack/rank recopied from the Feed — audit wave 3.
-
-- **Amended (RETOURS-14, 2026-08-31)**: two more copies — the grouped
-  Paper trail's `.menu-groupe` (`Registre.svelte`), and the FAMILY
-  extends to the STACK drawing (`.empile`/`.rang-groupe` recopied from
-  `Kiosque.svelte` to `Registre.svelte`) and to Cleanup's two-line row
-  (`.l1/.l2` recopied). The verdict vocabulary, meanwhile, was
-  factored out along the way (`lib/portier.js`).
-- **Finding (E4/E5 review, 2026-08-30)**: the product menu's drawing
-  lives in three CSS copies (`Portier.svelte` `.menu`, `Liste.svelte`
-  `.menu-gestes`, `PileMisDeCote.svelte`'s fan) — the `0 8px 24px`
-  shadow is already written three times there, `min-width` diverges by
-  10 px for no reason, and only Screener goes through
-  `var(--ombre, …)`. On the core side, `toggle_mis_de_cote`/
-  `etat_mis_de_cote` are the structural twin of `toggle_pin`/
-  `pin_state` (~80 lines, only the table changes), and
-  `pile_mis_de_cote` is the twin of `pinned_unified_scoped`.
-- **Reason for deferring**: factoring the menu = a shared component
-  touching three surfaces validated at the visual STOP; the core
-  twins are each covered by their own tests — the refactor brings
-  nothing to the field for the release underway.
-- **Reopen if**: a shadow/menu token enters the theme table (the copy
-  would drift at the first retouch), at the third twin (E6 groups), or
-  at the next retouch of the thread resolution contract (the RED
-  "never the head" would need to be carried twice).
-- **REOPENED on 2026-08-30 (PLAN-HORIZON-NETTOYAGE, review)**: Spring
-  cleaning is the announced twin — `Nettoyage.svelte` recopies the
-  Screener's ⋯ menu whole (markup, `ouvrirMini` and its 250/170 bounds
-  hard-coded, `BOITE_DE`/`TOAST_NON` cards, `.btn-portier`/`.mini`/
-  `.menu` CSS), a 4th copy of the drawing. Not factored within the job
-  (three surfaces validated at the visual STOP, same reason as at the
-  deferral) — **to be handled as a dedicated debt**: a shared
-  `MenuVerdict.svelte` for Screener/Cleanup, and the common classes in
-  `systeme.css` (the earlier `.entete-vue`). Add to it the `select`
-  style pair born in two copies (AccountDesk 40 px / Settings 32 px).
-
-### D-48 · The list does not follow an external write
-
-- **Finding (RETOURS-13 review, 2026-08-30)**: the Inbox only reloads
-  on a poll generation's beat or through its own gesture handlers. A
-  `retirer_routage` (or any write outside the List's paths — second
-  workstation, replay, e2e command) leaves the list stale until a
-  manual navigation. The e2e step of `organized-mode.spec.js` that
-  "passed" lived off a FORTUITOUS reload of the probe — it now holds
-  honestly through the folder round trip. Same family as D-44
-  (`connectes` with no refresh cycle).
-- **Reason for deferring**: the proper fix is a generic invalidation
-  signal (bump the generation on any core write that changes a view),
-  not one more `liste.recharger()` wired per surface — a job, not a
-  retouch.
-- **Reopen if**: a field finding of "the list does not move" on a
-  gesture outside the List, or at the multi-window/second-workstation
-  job.
 
 ### D-55 · The database, the disk files, the `prefs` keys and the localStorage keys stay French
 

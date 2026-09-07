@@ -1,10 +1,28 @@
 # State — Wind's handover snapshot
 
-**Lots 3 and 4 field-validated and committed locally — 2026-09-07; NOT
-pushed (D10: one grouped push of the audit's changes).** Lot 3 is
-`9f4a9b1`; Lot 4 is the commit on top of it. **Do not push on your own
-initiative; do not rewrite either commit.** No CI has run on them and
-neither lot is `/close`d yet.
+**Lot 5 (E13–E15) ACTIVE since 2026-09-07 — sub-lot E13 field-validated
+(“1–7 OK”, item 2 fixed the same day, “2 OK”) and committed locally
+([plan](PLAN-AUDIT-2026-09-LOT5.md)); E14 next.
+Lots 3 and 4 field-validated and committed locally on 2026-09-07
+(`9f4a9b1`, `400de5e`), NOT pushed: D0 of Lot 5 — the grouped push of
+Lots 3, 4 and 5 comes after a `/code-review ultra` of the whole diff.
+Do not push on your own initiative; do not rewrite either commit.** No
+CI has run on them and neither lot is `/close`d yet.
+
+Lot 5 E13 (ADR 0045, System A135): the adopted database handle and the
+`Blocking` token (A07/A03, D-9 closed), the reply and signature rules in
+the core (A01), the sanitize and file reads off the commands' lock
+(A02, spike `spikes/global-lock`: open gesture 466 → 12 ms p50 behind a
+10 MB sanitize), the pin/set-aside twin and the stacked fan shared, a
+named `DraftMessage`, one `PRAGMA foreign_keys`, `views_revision`
+(D-47 core half, D-48 closed; D-25 item 2). Field of the same day: the
+pure reads no longer take the commands' lock (a grant waiting SQLite's
+writer out behind a sync batch had blanked the reading pane for ten
+seconds; net `reads-under-write.spec.js`; a command slower than a second
+now traces its lock wait). Remaining sub-lots: E14
+(offline visibility, snapshot backup/restore with outbox hold, forget
+derived data), E15 (rebaseline, Feed memory spike, bounded growth,
+invitations and language, platform proof, D-54).
 
 Lot 4 (E11–E12, [plan](PLAN-AUDIT-2026-09-LOT4.md)): Vite 7.3.6 with zero
 advisories (D2); CI gains `npm audit` at moderate (D3), the seam guard on

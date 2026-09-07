@@ -49,7 +49,6 @@ fn check_account_removal(conn: &Connection, account_id: i64) -> Result<(), Error
 }
 
 const SCHEMA: &str = "
-PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS accounts (
     id       INTEGER PRIMARY KEY,
     email    TEXT NOT NULL UNIQUE,
@@ -770,6 +769,26 @@ pub(crate) fn unified_join_tail(sections: bool) -> String {
 }
 
 pub struct Store(Connection);
+
+/// The two per-thread marks a user sets by hand — one table each, the
+/// same contract (Lot 5 E13e, D-47).
+#[derive(Clone, Copy)]
+enum Mark {
+    Pin,
+    SetAside,
+}
+
+impl Mark {
+    fn table(self) -> &'static str {
+        match self {
+            Self::Pin => "pins",
+            Self::SetAside => "mis_de_cote",
+        }
+    }
+}
+
+/// The key of the views' revision in `prefs` (D-48).
+const PREF_VIEWS_REVISION: &str = "views_revision";
 
 impl Store {
     /// Access reserved to crate modules that extend storage (the
@@ -2807,27 +2826,7 @@ impl Store {
     /// (review 2026-08-21: two resolutions could diverge if a sync slid
     /// in between them).
     pub fn toggle_pin(&self, mailbox_id: i64, uid: Uid, epoch: i64) -> Result<bool, Error> {
-        let thread = thread::thread_of(&self.0, mailbox_id, uid)?;
-        if self.thread_pin_state(thread, mailbox_id, uid)? {
-            match thread {
-                Some(thread) => self.0.execute(
-                    "DELETE FROM pins WHERE (mailbox_id, uid) IN
-                       (SELECT mailbox_id, uid FROM envelopes WHERE thread_id = ?1)",
-                    params![thread],
-                )?,
-                None => self.0.execute(
-                    "DELETE FROM pins WHERE mailbox_id = ?1 AND uid = ?2",
-                    params![mailbox_id, uid],
-                )?,
-            };
-            Ok(false)
-        } else {
-            self.0.execute(
-                "INSERT OR REPLACE INTO pins (mailbox_id, uid, epoch) VALUES (?1, ?2, ?3)",
-                params![mailbox_id, uid, epoch],
-            )?;
-            Ok(true)
-        }
+        self.toggle_mark(Mark::Pin, mailbox_id, uid, epoch)
     }
 
     /// Is the message's conversation pinned? The state is read by the
@@ -2835,31 +2834,7 @@ impl Store {
     /// current head — the thread bar tells the truth even when a reply
     /// has moved the head since the gesture.
     pub fn pin_state(&self, mailbox_id: i64, uid: Uid) -> Result<bool, Error> {
-        let thread = thread::thread_of(&self.0, mailbox_id, uid)?;
-        self.thread_pin_state(thread, mailbox_id, uid)
-    }
-
-    fn thread_pin_state(
-        &self,
-        thread: Option<i64>,
-        mailbox_id: i64,
-        uid: Uid,
-    ) -> Result<bool, Error> {
-        let pinned = match thread {
-            Some(thread) => self
-                .0
-                .prepare(
-                    "SELECT 1 FROM pins p JOIN envelopes e
-                       ON e.mailbox_id = p.mailbox_id AND e.uid = p.uid
-                     WHERE e.thread_id = ?1",
-                )?
-                .exists(params![thread])?,
-            None => self
-                .0
-                .prepare("SELECT 1 FROM pins WHERE mailbox_id = ?1 AND uid = ?2")?
-                .exists(params![mailbox_id, uid])?,
-        };
-        Ok(pinned)
+        self.mark_state(Mark::Pin, mailbox_id, uid)
     }
 
     /// E5 — Set aside: the SAME contract as pin (the `toggle_pin`
@@ -2867,57 +2842,115 @@ impl Store {
     /// applies to the whole thread; “Done” from any head releases
     /// everything. Returns the state AFTER the gesture.
     pub fn toggle_set_aside(&self, mailbox_id: i64, uid: Uid, epoch: i64) -> Result<bool, Error> {
-        let thread = thread::thread_of(&self.0, mailbox_id, uid)?;
-        if self.thread_set_aside(thread, mailbox_id, uid)? {
-            match thread {
-                Some(thread) => self.0.execute(
-                    "DELETE FROM mis_de_cote WHERE (mailbox_id, uid) IN
-                       (SELECT mailbox_id, uid FROM envelopes WHERE thread_id = ?1)",
-                    params![thread],
-                )?,
-                None => self.0.execute(
-                    "DELETE FROM mis_de_cote WHERE mailbox_id = ?1 AND uid = ?2",
-                    params![mailbox_id, uid],
-                )?,
-            };
-            Ok(false)
-        } else {
-            self.0.execute(
-                "INSERT OR REPLACE INTO mis_de_cote (mailbox_id, uid, epoch) VALUES (?1, ?2, ?3)",
-                params![mailbox_id, uid, epoch],
-            )?;
-            Ok(true)
-        }
+        self.toggle_mark(Mark::SetAside, mailbox_id, uid, epoch)
     }
 
     /// Is this message's thread set aside? — the state is by THREAD,
     /// new head included (same rule as `pin_state`).
     pub fn set_aside_state(&self, mailbox_id: i64, uid: Uid) -> Result<bool, Error> {
-        let thread = thread::thread_of(&self.0, mailbox_id, uid)?;
-        self.thread_set_aside(thread, mailbox_id, uid)
+        self.mark_state(Mark::SetAside, mailbox_id, uid)
     }
 
-    fn thread_set_aside(
+    /// The one implementation behind pin and set-aside (Lot 5 E13e,
+    /// D-47: the two were twins down to the table name). Thread
+    /// resolved ONCE, the state and the write look at the same one.
+    fn toggle_mark(
         &self,
+        mark: Mark,
+        mailbox_id: i64,
+        uid: Uid,
+        epoch: i64,
+    ) -> Result<bool, Error> {
+        let table = mark.table();
+        // One transaction: the mark and the views' revision land
+        // together, one commit per gesture (review 2026-09-07).
+        let tx = self.0.unchecked_transaction()?;
+        let thread = thread::thread_of(&tx, mailbox_id, uid)?;
+        let after = if self.thread_mark_state(mark, thread, mailbox_id, uid)? {
+            match thread {
+                Some(thread) => self.0.execute(
+                    &format!(
+                        "DELETE FROM {table} WHERE (mailbox_id, uid) IN
+                           (SELECT mailbox_id, uid FROM envelopes WHERE thread_id = ?1)"
+                    ),
+                    params![thread],
+                )?,
+                None => self.0.execute(
+                    &format!("DELETE FROM {table} WHERE mailbox_id = ?1 AND uid = ?2"),
+                    params![mailbox_id, uid],
+                )?,
+            };
+            false
+        } else {
+            self.0.execute(
+                &format!(
+                    "INSERT OR REPLACE INTO {table} (mailbox_id, uid, epoch) VALUES (?1, ?2, ?3)"
+                ),
+                params![mailbox_id, uid, epoch],
+            )?;
+            true
+        };
+        self.note_view_change()?;
+        tx.commit()?;
+        Ok(after)
+    }
+
+    fn mark_state(&self, mark: Mark, mailbox_id: i64, uid: Uid) -> Result<bool, Error> {
+        let thread = thread::thread_of(&self.0, mailbox_id, uid)?;
+        self.thread_mark_state(mark, thread, mailbox_id, uid)
+    }
+
+    fn thread_mark_state(
+        &self,
+        mark: Mark,
         thread: Option<i64>,
         mailbox_id: i64,
         uid: Uid,
     ) -> Result<bool, Error> {
-        let aside = match thread {
+        let table = mark.table();
+        let marked = match thread {
             Some(thread) => self
                 .0
-                .prepare(
-                    "SELECT 1 FROM mis_de_cote c JOIN envelopes e
-                       ON e.mailbox_id = c.mailbox_id AND e.uid = c.uid
-                     WHERE e.thread_id = ?1",
-                )?
+                .prepare(&format!(
+                    "SELECT 1 FROM {table} m JOIN envelopes e
+                       ON e.mailbox_id = m.mailbox_id AND e.uid = m.uid
+                     WHERE e.thread_id = ?1"
+                ))?
                 .exists(params![thread])?,
             None => self
                 .0
-                .prepare("SELECT 1 FROM mis_de_cote WHERE mailbox_id = ?1 AND uid = ?2")?
+                .prepare(&format!(
+                    "SELECT 1 FROM {table} WHERE mailbox_id = ?1 AND uid = ?2"
+                ))?
                 .exists(params![mailbox_id, uid])?,
         };
-        Ok(aside)
+        Ok(marked)
+    }
+
+    /// The revision of the views (Lot 5 E13e, D-48): moved by every
+    /// core write that changes what a list shows OUTSIDE the sync's
+    /// own generation — a routing verdict or its removal, a pin, a
+    /// set-aside, a cleanup verdict. The resting probe reads it; the
+    /// UI reloads its views when it moves, whoever wrote (a second
+    /// workstation, a replay, a command outside the List's paths).
+    pub fn views_revision(&self) -> Result<i64, Error> {
+        Ok(self
+            .text_pref(PREF_VIEWS_REVISION)?
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0))
+    }
+
+    /// Moves the views' revision — called by the writes listed on
+    /// [`Store::views_revision`], never by a read or a preference.
+    /// Inside the write's own transaction when it has one: the change
+    /// and its signal commit together.
+    pub(crate) fn note_view_change(&self) -> Result<(), Error> {
+        self.0.execute(
+            "INSERT INTO prefs (key, value) VALUES (?1, '1')
+             ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT)",
+            params![PREF_VIEWS_REVISION],
+        )?;
+        Ok(())
     }
 
     /// The pile (E5): the heads of set-aside threads, in the unified

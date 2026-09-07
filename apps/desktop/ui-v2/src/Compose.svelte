@@ -340,14 +340,14 @@
     const mine = ++signatureToken;
     let loaded = null;
     try {
-      loaded = await call('signature_get', { accountId: chosen.account_id });
+      loaded = await call('signature_get', { accountId: chosen.account_id, mode });
     } catch (err) {
       console.error('signature_get :', err);
     }
     if (mine !== signatureToken || !visible || editorRef.isModified()) return;
-    // D4: on reply/forward, the SCOPE of the new account decides.
-    const sig = loaded?.html ?? null;
-    const applicable = mode === 'new' || loaded?.replies ? sig : null;
+    // D4: on reply/forward, the SCOPE of the new account decides — the
+    // core decided (`applicable`, Lot 5 E13c), the composer inserts.
+    const applicable = loaded?.applicable ?? null;
     await editorRef.set(bodyTemplate(applicable));
     if (!currentSession(session) || mine !== signatureToken) return;
     autoBody = templateAlone && Boolean(applicable);
@@ -416,17 +416,17 @@
     let signature = null;
     if (sender) {
       try {
-        signature = await call('signature_get', { accountId: sender.account_id });
+        signature = await call('signature_get', { accountId: sender.account_id, mode: newMode });
       } catch (err) {
         console.error('signature_get :', err);
       }
       if (mine !== token) return;
     }
-    const sig = signature?.html ?? null;
     // D4: the “also in replies and forwards” scope is a per-account
     // setting — a new message always carries its signature, a reply
-    // only if the account has chosen it.
-    const repliesSig = sig && signature.replies ? sig : null;
+    // only if the account has chosen it. The core decides (Lot 5
+    // E13c): `applicable` is the signature this mode carries, or null.
+    const sig = signature?.applicable ?? null;
 
     if (newMode === 'new') {
       // Two empty lines then the signature: the cursor stays at
@@ -476,7 +476,7 @@
                 `${textAsHtml(t('compose.hello', { firstName }))}<div><br></div>${s ? `${s}<div><br></div>` : ''}${cleanQuote}`
             : (s) =>
                 s ? `<div><br></div>${s}<div><br></div>${cleanQuote}` : quote;
-          const content = bodyTemplate(repliesSig);
+          const content = bodyTemplate(sig);
           // The keystroke already made TAKES PRIORITY: the context can
           // take seconds (body to retrieve) — overwriting what the
           // user typed in the meantime would be worse than a missing
@@ -491,7 +491,7 @@
           // brings its own separators. Same recomposable template.
           const block = context.body_html ?? '';
           bodyTemplate = (s) => (s ? `<div><br></div>${s}${block}` : block);
-          if (!editorRef.isModified()) await editorRef.set(bodyTemplate(repliesSig));
+          if (!editorRef.isModified()) await editorRef.set(bodyTemplate(sig));
         }
       } catch (err) {
         if (!currentSession(mine)) return;

@@ -301,7 +301,9 @@ async function attach(db, emails, lang = 'en') {
     app.kill();
     throw new Error(missing);
   }
-  return { app, browser, page };
+  // `db`: the isolated database's path — for the specs that hold a
+  // writer on it from outside (reads-under-write.spec.js).
+  return { app, browser, page, db };
 }
 
 /// The Tauri asset protocol answers a missing embedded asset with a bare

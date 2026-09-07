@@ -33,12 +33,13 @@ use crate::{AppState, SyncShared};
 /// watcher and the rest of the shell keep one name for it).
 pub(crate) const MAILBOX: &str = mail_core::cycle::INBOX;
 
+pub(crate) use crate::adoption::{Blocking, adopted_db};
 /// Re-exported so `watcher.rs` reaches them through `poll::`, never
 /// through `commands::` (ADR 0018's boundary): both stay defined in
 /// `commands.rs` — `lock_accounts` guards `AppState.accounts` used far
 /// beyond polling, `db_path` is the one memoized computation of the
 /// database's path.
-pub(crate) use commands::{db_path, lock_accounts, reset_sessions};
+pub(crate) use commands::{lock_accounts, reset_sessions};
 
 /// Wraps the shell's real `ImapServer` so `mail_core::cycle::run_sync`
 /// can drive it generically: `MailServer`'s portable operations
@@ -540,8 +541,8 @@ pub(crate) fn connect_imap_with_stop(
 /// memory) — the unit of work for the sync/drain/drafts loops.
 /// Accounts both known AND connected — opens the database: call it
 /// UNDER `off_pump` (E5), never in the glue of an async command.
-pub(crate) fn connected_jobs(app: &AppHandle) -> Result<Vec<(i64, AccountWork)>, String> {
-    let store = Store::open(&commands::db_path(app)?).map_err(|err| err.to_string())?;
+pub(crate) fn connected_jobs(app: &Blocking) -> Result<Vec<(i64, AccountWork)>, String> {
+    let store = Store::open(&adopted_db(app)?).map_err(|err| err.to_string())?;
     let known = store.accounts().map_err(|err| err.to_string())?;
     let state = app.state::<AppState>();
     let connected = commands::lock_accounts(&state)?;
@@ -563,9 +564,9 @@ pub(crate) fn connected_jobs(app: &AppHandle) -> Result<Vec<(i64, AccountWork)>,
 /// counted and generation bumped (the UI reloads on the poll), bubbles
 /// (P1). Best effort: incidents go to the console — account id and
 /// counts only (§6.8).
-pub(crate) fn light_pass_account(app: &AppHandle, session: &AccountWork) -> Result<(), String> {
+pub(crate) fn light_pass_account(app: &Blocking, session: &AccountWork) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let path = commands::db_path(app)?;
+    let path = adopted_db(app)?;
     let email = session.email();
     // One account at a time: the cycle's or the button's poll may be in
     // progress on THIS account — we wait our turn.
@@ -588,7 +589,7 @@ pub(crate) fn light_pass_account(app: &AppHandle, session: &AccountWork) -> Resu
     let mut problems = Vec::new();
     let hooks = ShellHooks {
         cycle: state.sync_cycle.as_ref(),
-        app: app.clone(),
+        app: app.handle().clone(),
     };
     let outcome =
         mail_core::cycle::poll_inbox(&mut server, &mut store, account_id, &hooks, &mut problems);
@@ -754,7 +755,7 @@ pub(crate) async fn settle_poll(
         return Ok(());
     }
     let timestamp = commands::off_pump(app.clone(), move |app| {
-        let store = Store::open(&commands::db_path(&app)?).map_err(|err| err.to_string())?;
+        let store = Store::open(&adopted_db(&app)?).map_err(|err| err.to_string())?;
         let mut timestamp = None;
         if let Ok(epoch) = SystemTime::now().duration_since(UNIX_EPOCH)
             && let Err(err) =
@@ -948,7 +949,7 @@ async fn automatic(app: &AppHandle, due: mail_core::cycle::Due) {
 }
 
 /// Capture a watcher job under the same snapshot lock as command jobs.
-pub(crate) fn job_for_email(app: &AppHandle, email: &str) -> Result<AccountWork, String> {
+pub(crate) fn job_for_email(app: &Blocking, email: &str) -> Result<AccountWork, String> {
     let state = app.state::<AppState>();
     let _commands = recovered(&state.commands);
     connected_jobs(app)?

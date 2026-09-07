@@ -5599,6 +5599,7 @@ dependencies = [
  "mail-smtp",
  "open",
  "rfd",
+ "same-file",
  "serde",
  "serde_json",
  "tauri",

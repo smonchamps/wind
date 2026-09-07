@@ -55,6 +55,9 @@ fs4 = "0.13"
 # what tauri's app_data_dir() itself reads — one truth for the folder,
 # already in the tree (PLAN-MACOS E1, review of 2026-09-04).
 dirs = "6"
+# The adopted database file's identity (Lot 5 E13a, audit A07): the same
+# crate walkdir already pulls in — one stat, no handle kept open.
+same-file = "1"
 # Boite de dialogue AVANT toute fenetre Tauri (mono-instance E1, echec du
 # demenagement) : rfd est ce que tauri-plugin-dialog utilise deja — aucune
 # compilation ni feature de plus, et pas de dependance windows-sys directe.

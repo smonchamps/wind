@@ -915,13 +915,14 @@ impl Store {
         // cancellation, a failure: nothing registered, the whole pass
         // replays). An in-memory database has no path: never
         // registered.
-        // Foreign keys are a PER-CONNECTION setting: `SCHEMA` turns
-        // them on up front, and the fast door does not replay `SCHEMA`.
-        // The wave-2 review found lost cascades there; the test meant
-        // to prove it stayed GREEN without this line — rusqlite's
+        // Foreign keys are a PER-CONNECTION setting, set HERE, once,
+        // ahead of the fast door (which does not replay `SCHEMA`). The
+        // wave-2 review found lost cascades there; the test meant to
+        // prove it stayed GREEN without this line — rusqlite's
         // `bundled` compiles SQLite with `SQLITE_DEFAULT_FOREIGN_KEYS=1`.
-        // The line stays, ahead of the fast door: a belt that does not
-        // depend on a compile flag (the test keeps it honest).
+        // The line stays: a belt that does not depend on a compile flag
+        // (the test keeps it honest). Lot 5 E13e (C08): `SCHEMA` used
+        // to repeat it — one PRAGMA per connection now.
         conn.execute_batch("PRAGMA foreign_keys = ON")?;
         let key = file_key(&conn);
         if let Some(key) = &key
