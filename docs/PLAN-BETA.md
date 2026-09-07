@@ -91,8 +91,8 @@ message content — only the fact, the version, the date.
 | # | Workstation (arch. / SAC) | Account targeted | Invited on | Installed on | Feedback |
 |---|---------------------|-------------|-----------|-------------|---------|
 | T1 | x64 / **SAC `On`** | **Gmail** | 2026-08-31 | **2026-08-31** | — |
-| T2 | — | — | **2026-08-31** | — | — |
-| T3 | — | — | **2026-08-31** | — | — |
+| T2 | **Apple Silicon** (macOS) | **Gmail** | 2026-08-31 | **≤ 2026-09-06** (0.19.0 in use, first feedback) | 0.19.0 · 23 items 2026-09-06/07 · **one P0 open** (sync stalled, 2026-09-07) |
+| T3 | **Apple Silicon** (macOS) | **Gmail** (Workspace) | 2026-08-31 | **≤ 2026-09-07** (0.19.0 in use, first feedback) | 0.19.0 · 1 item 2026-09-07 |
 | T4 | — | — | **2026-08-31** | — | — |
 | T5 | — | — | **2026-08-31** | — | — |
 
@@ -118,6 +118,24 @@ and they do not carry the same weight:
 
 Next deadline: **follow-up with the silent ones on 2026-09-03** (the
 three-day rule below).
+
+**Field record of 2026-09-07 — the Apple Silicon run proof.** T2 and
+T3 both run **0.19.0 on Apple Silicon** (architecture stated by the
+Chief Engineer on 2026-09-07; 24 feedback items sent from the app's
+Feedback button on 2026-09-06/07, 23 by T2, 1 by T3 — the button sends
+through the normal outbox, so every item is also proof that an account
+is connected and that sending works). This is the run proof
+PLAN-APPLE-SILICON § 5 bis was waiting for, with ONE reservation
+stated as such: which dmg they installed — `_aarch64` native, or `_x64`
+under Rosetta 2 — is **not confirmed**; the check is Activity Monitor ›
+Kind = "Apple" (the plan's § 5 gesture), to ask both. The feedback
+themselves live in the Chief Engineer's backlog (out of the repository,
+§ 3 bis rule); the one P0 — T2's synchronization stalled at 72 % since
+the morning of 2026-09-07, no arrival since 2026-08-25 — is the next
+`/field`, on the tester's trace, not on a hypothesis. The mandatory
+postures of § 2 now read: SAC `On` (T1), Gmail (T1, T2, T3), and a
+platform the plan did not require — the first two mac workstations of
+the beta, both on the binary no machine of the fleet runs natively.
 
 Rules for keeping the register:
 

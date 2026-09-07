@@ -234,6 +234,22 @@ install` dirtied the tree; a mounted `Wind` volume broke
 `bundle_dmg.sh` after the build. The aarch64 dmg is on the release;
 its run proof is the tester's.
 
+**The run proof (2026-09-06/07, recorded by `/field` on 2026-09-07).**
+Two beta testers run **0.19.0 on Apple Silicon** — T2 and T3 of the
+wave-1 register ([PLAN-BETA § 3 bis](PLAN-BETA.md)), architecture
+stated by the Chief Engineer; both have a Gmail account connected and
+sent 24 feedback items from the app's Feedback button (the normal
+outbox: the app launches, reads and sends). One reservation, stated
+rather than assumed: **which dmg they installed is not confirmed** —
+`_aarch64` native, or `_x64` under Rosetta 2 (§ 2 said Rosetta was the
+tester's fallback). The § 5 gesture that settles it — Activity Monitor
+› Kind column reads "Apple", not "Intel" — is asked of both testers;
+until it is answered, the proof reads "runs on Apple Silicon", not
+"runs the arm64 binary". The first mac field finding arrived with the
+proof: T2's synchronization stalled at 72 % on 2026-09-07 (its own
+`/field`, on the trace). D-61 stands: no mac e2e, the mac gate is CI
+plus the field — and the field has just started speaking.
+
 ## 6. Chief-Engineer decisions
 
 | # | Question | Answer (date) |

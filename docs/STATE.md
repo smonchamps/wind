@@ -62,8 +62,11 @@ verified). No release was requested since. Still open:
 
 - the x64 INSTALL on the Air by the Chief Engineer
   (`Wind_0.19.0_x64.dmg`);
-- the Apple Silicon INSTALL by the requesting tester — the run proof of
-  PLAN-APPLE-SILICON;
+- the Apple Silicon run proof of PLAN-APPLE-SILICON — **narrowed on
+  2026-09-07**: 0.19.0 RUNS on two Apple Silicon Macs (T2, T3, Gmail,
+  24 feedback items sent from the app); still to confirm that they run
+  the `_aarch64` binary and not `_x64` under Rosetta (Activity Monitor
+  › Kind = "Apple", asked of both);
 - the mac AUTO-UPDATE at the next release (ADR 0036); the mac half is
   part of EVERY release;
 - the SAC net stays armed (a VISIBLE failure under a real Smart App
@@ -72,7 +75,15 @@ verified). No release was requested since. Still open:
 
 **Beta wave 1** running since 2026-08-31 (five invitations out,
 anonymous register T1–T5 with the Chief Engineer); a tester report goes
-first, in `/field`. Follow-up with the silent ones was due 2026-09-03.
+first, in `/field`. **First feedback wave landed 2026-09-06/07: 24
+items from T2 and T3 (both Apple Silicon, Gmail), analyzed and entered
+in the Chief Engineer's backlog (out of the repository, PLAN-BETA § 3
+bis rule). One P0 open: T2's synchronization stalled at 72 % since the
+morning of 2026-09-07, no arrival since 2026-08-25 — next `/field`, on
+the tester's trace (`~/Library/Application Support/Wind/`), with T3 as
+the same-architecture witness. Two S bugs share one component (the
+product menu does not close on an outside click, seen on two screens).**
+Follow-up with the silent ones (T4, T5) was due 2026-09-03.
 S4 measure closed: ~13 unknown senders/day, peak 19, workstation 1.
 
 ## Stated limits carried by the unclosed lots
