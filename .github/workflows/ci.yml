@@ -10,7 +10,7 @@ env:
 
 jobs:
   quality:
-    name: fmt + clippy + tests (Windows, the product's target)
+    name: fmt + clippy + tests (Windows leg — the support matrix lists all four triples)
     runs-on: windows-latest
     steps:
       # v5 runs on Node 24; v4 (Node 20) is deprecated by GitHub.

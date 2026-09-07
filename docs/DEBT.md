@@ -5,6 +5,17 @@ choice, and what would reopen it. An entry is closed out by a commit
 that strikes it — never by being forgotten. (STANDARD §2.6: a
 deferral = one justified line.)
 
+
+**Filing rule (Lot 6 E16c, 2026-09-07)**: an entry lives under the
+section its own status states; updates are appended to the entry, never
+after a section banner. Two numbers are referenced but were never given
+entries and stay unassigned (never to be reused): **D-7**, the
+responsiveness-stopwatch family (its record lives in
+[archives/PLAN-GELS.md](archives/PLAN-GELS.md)), and **D-11**, the
+themes-bench recalibration folded into the bench family and paid by the
+dated baseline of [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md)
+E15a (2026-09-07).
+
 ## Open
 
 ### D-1 · p95 opening time above budget on very large bodies
@@ -53,34 +64,6 @@ deferral = one justified line.)
   background; Escape and visible focus cover the essentials.
 - **Reopens if**: the field with a screen reader calls for it.
 
-### D-8 · Expensive queries from periodic probes (off pump, real CPU cost)
-
-> ✅ **CLOSED on 2026-08-26 (PLAN-DEMARRAGE).** Its reopening clause
-> came true: the database went from 1.3 to 12.8 GB and the 575 ms of
-> `pending_total` had become **20,839 ms cold**, holding the global
-> lock 8,870 ms on every startup. Fixed — `pending_total` now
-> measures **107.9 ms**, `backfill_status` **124.9 ms** in the field
-> cold (×71). The 865 ms figure below was **STALE** the moment this
-> debt was written: re-measured at ~31 ms cold / ~11 ms hot,
-> `nav_snapshot` having been rewritten in the meantime. **The lesson
-> to keep is not the figure, it is that a debt entry carries a DATED
-> measurement: re-measure it before relying on it.**
-
-- **Fact (2026-08-15, PLAN-GELS)**: `nav_snapshot` **865 ms** per
-  Gmail account (Archive counter for a full account, exclusion by
-  `message_id`, 87k rows — every 10 s) — **stale figure, see the box
-  above**; `pending_total` **575 ms** (COUNT per mailbox, NOT EXISTS
-  on `bodies` — on every mail generation). Measured in direct SQL on
-  the real database.
-- **CE decision (2026-08-15, D4 of the plan)**: from `hors_pompe()`
-  they no longer freeze anything or anyone — optimizing them without
-  a finding would be work without a measurement. Family D-7
-  (responsiveness stopwatches).
-- **Lead**: nav counter cache invalidated by generation;
-  `pending_total` as one aggregated query.
-- **Reopens if**: the field points to the cost (fan, battery, write
-  contention, perceived probe latency).
-
 ### D-10 · Deferred setting of the language has no UI test
 
 - **Fact (review 2026-08-15)**: the Rust half of A41 is held by a
@@ -98,6 +81,17 @@ deferral = one justified line.)
   A41 order is intact. The e2e tests now play the first launch on a
   blank database (full journey), but the `prefs.lang` assertion from
   the lead above is still to be written — the debt remains.
+
+### D-13 · Expand/collapse remounts the thread's iframes
+
+- **Fact (v3 review)**: the frame change unmounts then remounts the
+  `srcdoc` iframes of expanded messages — the network replays nothing
+  (shared state), but the render re-parses each document and loses
+  internal scroll. Noticeable on a long "all expanded" thread.
+- **Accepted deferral**: keeping both frames mounted (`display:none` +
+  `inert`) would cost duplicated testids — exactly what the v3 review
+  just fixed ; the remedy requires re-scoping the e2e suite first. To
+  be investigated if the field feels it.
 
 ### D-15 · « To: recipient » display scoped to the Sent category
 
@@ -266,404 +260,6 @@ deferral = one justified line.)
 - **Reopens if**: real usage shows the false success being a
   problem.
 
-### D-49 · Cleanliness deferred from the PLAN-AUDIT-V1 review (audit wave 3)
-
-- **Partial payment (2026-09-06, audit Lot 2, `0374e43`)**: SMTP setup now
-  uses typed connection/authentication errors. IMAP's connection-prefix
-  classifier remains; this does not close the whole cleanliness list.
-
-- **Fact (fresh-eyes review, 2026-09-02)**: nine cleanliness
-  candidates checked but not taken up, wave 1 only fixing S1 issues:
-  `into_inner` copy-pasted seven times (one `verrou_repris` helper);
-  `hors_pompe(app, |app| auth_for(&app, id))` ×4 (`session_de`);
-  `trace::trace` and `trace_maj` — two dated-line writers, only
-  `wind.log` is capped at a megabyte; `is_connection_error`
-  duplicated IMAP/SMTP on the « connexion » prefix;
-  `instance::dossier_de_la_base` recomputes the `db_path` rule (two
-  sources of the path, with no test tying them together);
-  `sync_inbox`/`sync_inbox_light` still twins; `remove_local` with
-  two paths (`is_autocommit`); `compose()` with no `references` (set
-  after the fact in two places); `SEUIL_QUARANTAINE` hardcoded in the
-  Store; `reply_*`/`forward_context` take the lock three times (rare
-  paths).
-- **Reason for deferral**: none is an observable defect; audit wave
-  3 (`docs/AUDIT-2026-09-01.md` §5) reorganizes these files.
-- **Reopens if**: a job touches one of these sites — fix it in
-  passing, not as a gratuitous refactor (§2.6).
-
-### D-50 · Two stated limits of wave 1 to confirm in the field
-
-- **Fact (PLAN-AUDIT-V1 E8, 2026-09-02)**: (1) the refresh token
-  renewed by Microsoft is now stored when it changes — not proven in
-  test (the vault cannot be simulated); to confirm on a Microsoft
-  account beyond 90 days; (2) the « open manually » fallback
-  (`BrowserFallback`) returns control without waiting for the
-  redirect — rare case (no browser), unchanged.
-- **Reopens if**: a silent Microsoft disconnection after 90 days, or
-  a tester with no default browser.
-
-### D-51 · An account without CONDSTORE never resyncs its flags
-
-> ✅ **CLOSED on 2026-09-04 (PLAN-RETOURS-15 E3, Chief-Engineer decision D4).**
-> Its reopening clause came true the day before: the `wind.log` line
-> fired on the Chief Engineer's own account 3. The incremental sync
-> now re-reads a **bounded flag window** on CONDSTORE-less accounts —
-> the 500 most recent UIDs per poll, ONE `UID FETCH … (UID FLAGS)`
-> round trip, a queued local intent always winning over the window
-> (`Store::apply_flags` guard). **Stated limit that remains**: beyond
-> the window a flag stays stale until its UID moves; the log line
-> stays, reworded (`flags resynchronized by bounded window only`).
-> Reopens if the field shows stale flags INSIDE the window, or the
-> window's cost shows up in a poll measurement.
-
-- **Fact (audit 2026-09-01 §2.1, CE decision D3 of PLAN-AUDIT-V2 on
-  2026-09-02)**: without the CONDSTORE announcement, `changes_since`
-  returns `None` and the engine only re-reads the UID differential —
-  a message read on the phone stays unread here, forever (`sync.rs`
-  promised a « full resync » that does not exist). Gmail, Microsoft
-  365 and Dovecot all announce it; the case is theoretical in beta.
-- **Reason for deferral**: a `FETCH FLAGS` window on every cycle
-  would cost everyone for a server we have never seen. A line in
-  `wind.log` names the account without CONDSTORE at each poll: the
-  field will say whether the case exists.
-- **Reopens if**: the line appears for a tester.
-- **2026-09-04 (PLAN-AUDIT-V3 field)**: the line fired — the Chief
-  Engineer's own account 3 is CONDSTORE-less (`wind.log`,
-  `account 3: without CONDSTORE, flags not resynchronized`). The case
-  is no longer theoretical; whether its cost (flags stale on that
-  account until a UID moves) warrants the `FETCH FLAGS` window is a
-  Chief-Engineer call at the next job touching sync.
-
-### D-52 · Stated limits of audit wave 2
-
-- **Fact (PLAN-AUDIT-V2, 2026-09-02)**: (1) an edit MADE INSIDE the
-  forwarded block is lost on send (the block is replaced by a render
-  of its source with its images, D8); a forward whose source is
-  ANOTHER account goes out as-is, at neutral pixel; (2) the « RAM
-  after five Feed pages » measurement cannot be run on the e2e
-  fixture — the windowing is in place, its gain will be read in the
-  field; (3) `list_drafts` remains a WHOLE list (bodies included)
-  polled every 10 s, outside the single `etat_ui` probe (wave 3,
-  with command pagination); (4) `decode_header` still parses one
-  synthetic message per subject — not measured as a cost; (5) the
-  « archive by shortcut from screen 03 » test flaked twice after the
-  resent-mail coalescing (E10) — passed on a rising edge at review,
-  79/79 since; (6) the `RFC822.SIZE` probe costs one round trip per
-  batch of 50 bodies for a bound (32 MB) rarely reached — the
-  alternative is to store the size when envelopes are polled (a
-  job); (7) `etat_ui` at 5 s doubles the cadence of nav and sends
-  (the watcher's poll imposes 5 s; accepted); (8) `__e2ePanne` was a
-  fifth e2e seam compiled into production, without
-  `import.meta.env` — **closed 2026-09-04** (PLAN-AUDIT-V3 E7: the
-  seams, EIGHT by then, are compiled out of a release build behind
-  `VITE_E2E`, and make-release asserts their absence in the bundle;
-  item 3 closed at E5 — `ui_state` carries a drafts revision); (9) the E1
-  fast-gate registry is keyed by PATH, not by file identity — safe
-  under single-instance, not guarded by code.
-- **Reopens if**: a tester edits a forward and loses the edit; the
-  « flaky: N » counter names the same test twice.
-
-### D-53 · Feed RAM: one page of letters costs 70 to 136 MB, and 94 to 167 MB remain after returning
-
-- **Finding** (field STOP 2 PLAN-AUDIT-V2, 2026-09-02): 249 MB of
-  private working set across 6 WebView2 processes after ten Feed
-  pages on the CE's workstation — STANDARD §3 budget « < 200 MB »
-  (at rest 95.5 MB). Bench `e2e/tests/bench-ram-feed.spec.js` (200
-  letters of 100 KB, debug build): window 12 → +136 MB on the first
-  page, +217 at 160 cards, +167 RETAINED on returning to Inbox;
-  window 1 → +70, +96, +94, stable at +25 s. Window width (E10)
-  bounds it, it does not cure it: a letter's `srcdoc` iframe is
-  worth dozens of MB, and unmounted documents do not release their
-  memory (`corpsAuto` and `brancherLiens` clean up — the retention is
-  elsewhere: documents of removed iframes, render heap that does not
-  shrink?).
-- **Pass 2 (window 5, CE's workstation)**: 251.5 MB across 6
-  processes — GPU 132.3 MB, renderer 69.6, manager 36.3, network
-  8.1, storage 3.2, crashpad 1.8. The window changes nothing to the
-  total: the GPU process carries more than half (composited surfaces
-  of the iframes and their granted images), the DOM is not the
-  lever.
-- **Reason for deferral**: CE decision D9 on the window (an
-  immediate setting, held — costs nothing); the root cause — one
-  iframe per card — is a design question (a single iframe for the
-  read card? cards collapsed by default? rendering without an
-  iframe?): a set-based job, not a setting. The budget itself needs
-  clarifying: « private working set » at rest, or after the
-  product's heaviest gesture?
-- **Lead**: memory profile of the WebView2 renderer (DevTools,
-  before/after-unmount snapshot) to name what is retaining; then
-  options measured on the bench.
-- **Reopens if**: the clarified budget is exceeded on the CE's
-  workstation after D9, or a freeze appears while scrolling the
-  Feed.
-- **2026-09-07 ([PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md)
-  E15b, spike `spikes/feed-memory/`)**: options A (shipped), B (window
-  ±1, iframes blanked before unmount) and C (pool of five) measured on
-  the arm64 workstation, 160 cards of 100 KB then 300 KB: **none under
-  200 MB** (medians after ten pages 281.8 / 257.6 / 297.9 MB; after a
-  forced GC 208.5 / 196.5 / 227.5). The live iframes are not where the
-  memory is: 100–130 MB of renderer memory outside the JS heap survive
-  in every option, and the 160-card figure moves by ±100 MB with V8's
-  GC timing (the `cards[].document` strings and their IPC copies).
-  **CE decision D6: a dated exception at the measured figure, nothing
-  built.** The lead stands (renderer snapshot before/after unmount);
-  the first named suspect is the document strings kept in `cards`.
-
-### D-54 · `multi-select:173` (« the `e` shortcut archives the CHECKED batch ») flakes one gate in three
-
-- **Finding** (2026-09-02, PLAN-AUDIT-V2 gates): passed on the second
-  try in three gates out of six (D4: counted, never red). The
-  gesture: several rows checked, `e` on the keyboard, a single toast
-  and the threads leave. On this machine only so far (CI is green
-  every time) — STANDARD §7.5, CI is the reference.
-- **Reason for deferral**: out of scope for the day's field work; a
-  flaky test that passes on the second try does not block, but three
-  occurrences the same day stand out from the noise.
-- **Lead**: replay the spec alone twenty times (`--repeat-each`),
-  read the trace of the first failure — a race between the checkbox
-  and the shortcut (focus left on the checkbox, A38) or between the
-  toast and the assertion.
-- **Reopens if**: a fourth occurrence, or a red run in CI.
-## Closed
-- **2026-09-07 ([PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15f)**: replayed ten times without retries in
-  isolation — 90/90, no first failure to capture. The flake belongs to
-  the loaded suite; the entry stays open on its own condition.
-
-### ~~D-48 · The list does not follow an external write~~ — closed 2026-09-07
-
-- **Finding (RETOURS-13 review, 2026-08-30)**: the Inbox only reloads
-  on a poll generation's beat or through its own gesture handlers. A
-  `retirer_routage` (or any write outside the List's paths — second
-  workstation, replay, e2e command) leaves the list stale until a
-  manual navigation. The e2e step of `organized-mode.spec.js` that
-  "passed" lived off a FORTUITOUS reload of the probe — it now holds
-  honestly through the folder round trip. Same family as D-44
-  (`connectes` with no refresh cycle).
-- **Reason for deferring**: the proper fix is a generic invalidation
-  signal (bump the generation on any core write that changes a view),
-  not one more `liste.recharger()` wired per surface — a job, not a
-  retouch.
-- **Reopen if**: a field finding of "the list does not move" on a
-  gesture outside the List, or at the multi-window/second-workstation
-  job.
-
-- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E13e
-  (2026-09-07)**: the generic signal exists — `views_revision` in `prefs`,
-  bumped by the core on a routing verdict or removal, a pin, a set-aside, a
-  cleanup verdict; `ui_state` carries it and the UI reloads its views when
-  it moves, on the resting probe's beat, whoever wrote. Sync arrivals keep
-  the shell's generation. Test: reads and preferences leave it alone.
-
-### ~~D-47 · Three context menus and two thread toggles are hand copies~~ — closed 2026-09-07
-
-> 2026-09-04 (PLAN-AUDIT-V3 E7): the stated UI leftovers are done —
-> `.btn-screener` (Screener/Cleanup literal duplicate) and the
-> `select` pair (AccountDesk 40 px / Settings 32 px) live once in
-> `system.css`. The CORE half below (the pin/set-aside twins, the
-> Paper trail's stack/rank) stays open.
-
-- **Amended (PLAN-AUDIT-V2 E11, 2026-09-02, A108) — the MENUS are
-  settled**: `Menu.svelte` is THE product's menu (eight surfaces —
-  List, Feed, Screener, Cleanup, Paper trail, section sort, Settings >
-  Screener, the thread's "Move to…"), drawing AND mechanics in one
-  copy (keyboard included, A8 held), 24 CSS copy rules removed, the
-  `--ombre` token that did not exist along with them. **Still open**
-  is the "core" half of this debt: `toggle_mis_de_cote`/
-  `etat_mis_de_cote`, twins of `toggle_pin`/`pin_state`, and the Paper
-  trail's stack/rank recopied from the Feed — audit wave 3.
-
-- **Amended (RETOURS-14, 2026-08-31)**: two more copies — the grouped
-  Paper trail's `.menu-groupe` (`Registre.svelte`), and the FAMILY
-  extends to the STACK drawing (`.empile`/`.rang-groupe` recopied from
-  `Kiosque.svelte` to `Registre.svelte`) and to Cleanup's two-line row
-  (`.l1/.l2` recopied). The verdict vocabulary, meanwhile, was
-  factored out along the way (`lib/portier.js`).
-- **Finding (E4/E5 review, 2026-08-30)**: the product menu's drawing
-  lives in three CSS copies (`Portier.svelte` `.menu`, `Liste.svelte`
-  `.menu-gestes`, `PileMisDeCote.svelte`'s fan) — the `0 8px 24px`
-  shadow is already written three times there, `min-width` diverges by
-  10 px for no reason, and only Screener goes through
-  `var(--ombre, …)`. On the core side, `toggle_mis_de_cote`/
-  `etat_mis_de_cote` are the structural twin of `toggle_pin`/
-  `pin_state` (~80 lines, only the table changes), and
-  `pile_mis_de_cote` is the twin of `pinned_unified_scoped`.
-- **Reason for deferring**: factoring the menu = a shared component
-  touching three surfaces validated at the visual STOP; the core
-  twins are each covered by their own tests — the refactor brings
-  nothing to the field for the release underway.
-- **Reopen if**: a shadow/menu token enters the theme table (the copy
-  would drift at the first retouch), at the third twin (E6 groups), or
-  at the next retouch of the thread resolution contract (the RED
-  "never the head" would need to be carried twice).
-- **REOPENED on 2026-08-30 (PLAN-HORIZON-NETTOYAGE, review)**: Spring
-  cleaning is the announced twin — `Nettoyage.svelte` recopies the
-  Screener's ⋯ menu whole (markup, `ouvrirMini` and its 250/170 bounds
-  hard-coded, `BOITE_DE`/`TOAST_NON` cards, `.btn-portier`/`.mini`/
-  `.menu` CSS), a 4th copy of the drawing. Not factored within the job
-  (three surfaces validated at the visual STOP, same reason as at the
-  deferral) — **to be handled as a dedicated debt**: a shared
-  `MenuVerdict.svelte` for Screener/Cleanup, and the common classes in
-  `systeme.css` (the earlier `.entete-vue`). Add to it the `select`
-  style pair born in two copies (AccountDesk 40 px / Settings 32 px).
-
-- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E13e
-  (2026-09-07)**: the core half — one private `Mark {Pin, SetAside}` behind
-  `toggle_pin`/`pin_state`/`toggle_set_aside`/`set_aside_state` (the table
-  name was the only difference); the Feed's and the Paper trail's stacked
-  fan is one `Stacked.svelte`. The set-aside pile's large fan (52 × 38,
-  rotated sheets) is a different drawing and stays its own.
-
-### ~~D-9 · Invariant A41 has no structural guard~~ — closed 2026-09-07
-
-- **Fact (review 2026-08-15, A41)**: « nothing touches the database
-  before `migration_check` » lives in comments and one probe test
-  (`la_langue_se_lit_sans_adopter_la_base`) — nothing stops a future
-  pre-modal command from opening the database in full (`Store::open`):
-  the whole suite would stay green, the bug would be rediscovered in
-  the field.
-- **Lead**: an `adopted` flag on `MigrationShared` (or a shared
-  opening helper for the 30+ `Store::open` calls in `commands.rs`)
-  that makes any full opening before the probe fail LOUDLY; to be
-  investigated as a job, not on the fast lane.
-- **Reopens if**: a startup command is added before the modal.
-
-- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E13a/E13b
-  (2026-09-07)**: the lead became the structure. `apps/desktop/src/adoption.rs`
-  records the adopted file's identity at `migration_check` (nothing pending)
-  or after `migration_run`; `adopted_db` refuses before adoption and when
-  the file at the path is no longer the adopted one; the path is reachable
-  only through the `Blocking` token `off_pump` builds — a pre-modal command
-  opening the database in full fails LOUDLY, at run time by the record and
-  at compile time by the token (17 errors on the first build, all indirect
-  helpers). Six unit tests on the record, the text guard kept as the second
-  net.
-
-### ~~D-62 · macOS is Intel-only~~ — closed 2026-09-05
-
-- **Since**: 2026-09-04 (PLAN-MACOS §2, one triple: the build
-  machine is the Intel MacBook Air).
-- **What**: no `aarch64-apple-darwin` build; Apple Silicon Macs run
-  the x64 app through Rosetta 2.
-- **Why owned**: no Apple Silicon machine to build or field-test on.
-- **Reopens if**: an Apple Silicon tester reports Rosetta friction,
-  or an Apple Silicon build machine appears.
-- **Closed at [PLAN-APPLE-SILICON](PLAN-APPLE-SILICON.md)** (the
-  reopening condition fired: an Apple Silicon tester asked to enter
-  the beta). The Intel Air cross-builds arm64; a second asset family
-  under `darwin-aarch64`; the mac CI job proves both triples. The
-  field-test half stays true — no arm64 machine in the fleet, the
-  tester's first install is the run proof (stated at the GO).
-
-### ~~D-36 · The ghost column of `echos` is born on every fresh database~~ — closed 2026-09-01
-
-- **Fact (PLAN-DEMARRAGE, 2026-08-26)**: the `SCHEMA` literal in
-  `store.rs` carries a `backslash-n` **inside a SQL comment
-  `--`** of an ordinary Rust string. Rust turns it into a real line
-  break: the comment stops there, and SQLite swallows the rest as a
-  **column**. Reproduced on a fresh database — a column named
-  `) — the list o` whose type absorbs the declaration of `to_addrs`.
-  The real `to_addrs` exists only because `add_missing_columns` adds
-  it back later. The fleet's databases are sound (created before this
-  comment) ; **any fresh database is not**.
-- **Reason for the deferral**: this is not a performance defect, and
-  removing a column from an existing database requires a table
-  rewrite. Out of scope for a startup job (refusal §2.6).
-- **Lead**: fix the literal, plus a test asserting the column names of
-  `echos` on a FRESH database — that is what is missing, and its
-  absence is the real cause.
-- **Reopens if**: a fresh database shows a defect tied to `to_addrs`,
-  or at the first job that rewrites `echos`.
-- **Closed at wave 0 of the [2026-09-01 audit](AUDIT-2026-09-01.md)**
-  (S1-11): the literal fixed (« joined by a line break », no more
-  escape sequence in a SQL comment) AND the missing net —
-  `une_base_neuve_n_a_aucune_colonne_fantome`: every column of every
-  table of a fresh database carries a sound name. Proven by breaking
-  it: RED on the prior database (« ) — the list o »), then RED again
-  when the fix itself reintroduced a `backslash-n` in the explanatory
-  comment — the net caught its own fix.
-  The five databases of beta wave 1 (installed before) carry the
-  ghost column; harmless (`to_addrs` exists via
-  `add_missing_columns`), it only comes off by rewriting `echos`.
-
-### ~~D-6 · e2e v1 flake: "starring" (parcours-critiques)~~ — closed 2026-08-15
-
-- **Fact (2026-08-13)**: the v1 "starring" test flakes one run in
-  three, a path unrelated to the jobs under way; logged, not
-  investigated — v1 dormant.
-- **Closed at B2** (PLAN-RETRAIT-V1): the `parcours-critiques` spec is
-  removed along with the v1 interface, the flake dies with it. Would
-  reopen if an equivalent symptom touched a v2 journey.
-
-### ~~D-3 · Weekday dates (2 to 6 days)~~ — closed 2026-08-12
-
-- **Fact (P3)**: the prototype displays « Monday, 18:20 » for
-  messages of the week ; `quand()` displayed « August 8 ». Minor visual
-  gap, noted at the P3 delivery.
-- **Closed at Settings E2** (R-D1, PLAN-REGLAGES): `quand()` extended
-  — 2 to 6 days → weekday, `quandLong()` composes « Monday,
-  18:20 » with no rework. Without a setting: the prototype's form is
-  not opted into.
-
-### ~~D-5 · Upstream charset (U+FFFD in stored bodies)~~ — closed 2026-08-11
-
-- **Fact**: bodies from the real database carried U+FFFD as early as
-  the stored HTML — MIME charset decoding at sync time.
-- **Closed by `0f7f059`** (separate session, PR #1 merged): the
-  `full_encoding` feature of mail-parser (gb2312…), a windows-1252
-  fallback when the bytes are not valid UTF-8, and a one-time repair
-  of mangled bodies (purge flagged, re-download at backfill, preview
-  and index rebuilt along the way).
-
-### D-12 · Opening the thread: `thread_messages` → body cascade, P1 series to re-baseline
-
-- **Fact (UI v3, review of 2026-08-16)**: selection now opens the
-  THREAD — `thread_messages` then the last one's body, in series (two
-  round trips where v2 made only one), and the P1 "opening" stopwatch
-  has changed definition (selection → thread displayed, attachments
-  excluded). The historical series (< 50 ms, ADR 0015) is no longer
-  comparable.
-- **Accepted deferral**: parallelize the head row's body with the
-  thread list (one lost fetch in the rare case of a fresher head), and
-  re-baseline the `measure-v2` bench on the new definition. Deferred
-  to keep the v3 commit on CE verdicts ; to be investigated with
-  D-7/D-11 (bench family).
-- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15a (2026-09-07)**: the first dated figure on the
-  shipped definition (list row served → thread served → head body
-  rendered): p50 15.9–20.1 ms, p95 30.0–40.8 ms over three runs
-  (release, 200k fixture) — budget < 50 ms held. The ADR 0015 series is
-  not compared to it.
-
-### D-13 · Expand/collapse remounts the thread's iframes
-
-- **Fact (v3 review)**: the frame change unmounts then remounts the
-  `srcdoc` iframes of expanded messages — the network replays nothing
-  (shared state), but the render re-parses each document and loses
-  internal scroll. Noticeable on a long "all expanded" thread.
-- **Accepted deferral**: keeping both frames mounted (`display:none` +
-  `inert`) would cost duplicated testids — exactly what the v3 review
-  just fixed ; the remedy requires re-scoping the e2e suite first. To
-  be investigated if the field feels it.
-
-### D-14 · Re-baseline the P1 bench on the A44 geometry
-
-- **Fact (PLAN-RETOURS-V3, 2026-08-16)**: two geometry changes in the
-  same job — the overlay bars render ~10 px of width on every
-  scrolling pane (0 px reserved vs 10 px webkit), and the list has two
-  templates (bare h1 / carrying h2, ~+27 px per bulleted row):
-  `visible`, the number of rows rendered per jump and the cost of a
-  reflow have moved. The "page" percentiles of the `measure-v2` bench
-  are no longer comparable to the series from before A44.
-- **Accepted deferral**: re-measure and re-baseline the P1 budgets on
-  the delivered geometry, in a dedicated pass — to be investigated
-  with the bench family (D-7/D-11/D-12), so as not to mix a budget
-  re-baseline with a feature job. The benches ALREADY measure the
-  right geometry (browser-args.mjs) ; only the reference series is
-  dated.
-- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15a (2026-09-07)**: page jump on the shipped
-  geometry, p50 15.4–17.4 ms, p95 26.6–26.9 ms over three runs (release,
-  200k fixture, 300 random jumps) — budget < 100 ms held; first page
-  70–144 ms between two launches of the same warm copy (variance noted).
-
 ### D-23 · Downloading an attachment: network path not covered in e2e
 
 - **Fact (PLAN-RETOURS-4, R1, 2026-08-18)**: the new "Save as" gesture
@@ -788,67 +384,6 @@ deferral = one justified line.)
   Lead: re-anchor the pin on the thread's current head at each service
   (`pinned_rows` knows how), and sweep orphans at flush.
 
-### D-29 · A message whose root IS the calendar has a permanently empty body
-
-- **Fact (review PLAN-INVITATIONS, 2026-08-22)**: a message with no
-  text/HTML part whose root is `text/calendar` (case C of the
-  finding) is now DISPLAYABLE — empty body, the invitation card is the
-  content. Before, it fell into "message not found" and stayed an
-  eternal backfill candidate. Trade-off: the `""` body is cached
-  (`scanned = 1`) — full-text search does not see the meeting title's
-  words, and FORWARDING this message produces an empty quote (the ICS
-  does not follow), with no warning.
-- **Why accepted**: the card shows the essentials (title, time, place,
-  organizer) ; the old behavior (hard error) was worse on both counts
-  ; the shape is rare (Google/Outlook emit multipart/alternative with
-  an HTML part).
-- **Reopening condition**: if the field or beta forwards bare
-  invitations or searches them by title. Leads: index the invitation
-  title in FTS at `save_body_full` ; attach the ICS on forward.
-- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15d (2026-09-07)**: the meeting's title and
-  location are indexed with the (empty) body; the ICS is kept
-  (`invitations.ics`) and the forward's file list carries it as
-  `invitation.ics`, served from the store. The card is unchanged.
-
-### ~~D-30 · A legacy invitation WITHOUT a calendar attachment row has no card~~ — closed 2026-09-04
-
-> Accepted limit of the closure (review, wave 3): a body that merely
-> QUOTES `BEGIN:VCALENDAR` (a technical email) matches the widened
-> criterion — its body rows are dropped by the one-time pass and
-> redownloaded at that mailbox's next backfill, the same
-> delete-and-redownload semantics the original criterion always had.
-> One redownload, once, for a rare shape.
-
-- **Fact (review PLAN-INVITATIONS, 2026-08-22)**: adopting existing
-  data goes through the `pieces-calendrier` repair (bodies of messages
-  carrying a calendar `attachments` row are re-read). A message scanned
-  BEFORE the feature whose calendar part was NOT classified as an
-  attachment by mail-parser (e.g. an exotic `inline` disposition) is
-  invisible to the criterion: its card is only born on a chance re-read
-  (UIDVALIDITY reset, body re-fetched).
-- **Why accepted**: rare shape (the major producers use
-  multipart/alternative, classified as an attachment), and the only
-  possible local criterion would be re-reading ALL bodies — the
-  opposite of a targeted repair.
-- **Reopening condition**: a field finding of "this old message is an
-  invitation with no card". Lead: widen the repair to messages whose
-  BODY contains a BEGIN:VCALENDAR marker (SQL LIKE criterion, one
-  pass).
-- **Closed at PLAN-AUDIT-V3 E6 (2026-09-04)**: the debt's own lead
-  applied verbatim — `pieces-calendrier` (`store/migrations.rs`) now
-  ALSO selects `(mailbox_id, uid)` from `bodies` whose `html` matches
-  `LIKE '%BEGIN:VCALENDAR%'` (SQLite folds ASCII case on `LIKE`, no
-  extra `COLLATE` needed), unioned with the original `attachments`
-  criterion, same single bounded pass, same repair (drop body +
-  attachments, the backfill rereads and re-derives the card). Proven
-  by breaking it: RED first (a message seeded with a body carrying the
-  marker but NO calendar `attachments` row survived the repair
-  untouched), GREEN once the second criterion was added — the
-  backfill then rereads the dropped body from a fake server and the
-  `invitations` row is born of that same re-fetch
-  (`the_calendar_body_marker_repair_rereads_the_affected_message`,
-  `crates/mail-core/src/store/tests.rs`).
-
 ### D-31 · `drafts` does not carry `ics_reply` — the draft round trip would lose it
 
 - **Fact (review PLAN-INVITATIONS, 2026-08-22)**: `Draft.ics_reply` and
@@ -862,55 +397,6 @@ deferral = one justified line.)
 - **Reopening condition**: the day an invitation reply becomes
   schedulable or editable in the composer — the `drafts` column and
   its copy in both directions are part of the same job.
-
-### D-32 · The gate lives in TWO encodings — pre-push (sh) and gate.ps1 (PowerShell)
-
-> ✅ **CLOSED on 2026-09-07 (PLAN-AUDIT-2026-09 lot 4, E12d).** Paid
-> earlier than recorded: since PLAN-AUDIT-V2 E9 the hook only calls
-> `scripts/gate.ps1 -DocsOnly`, ONE encoding; the reopening condition
-> (a 10th step) had fired silently at 13 steps. Lot 4 goes one step
-> further on the build side: the "rebuild the dist clean, then assert"
-> sequence that lived in PowerShell AND bash is now one script
-> (`scripts/build-dist-clean.mjs`) declared in `tauri.conf.json`'s
-> `beforeBuildCommand`, and the release chain's decisions live in one
-> tested module (`scripts/release-lib.mjs`, ADR 0044).
-
-- **Fact (review PLAN-KAIZEN-CLAUDE wave 2, 2026-08-23)**: the 9 steps
-  exist in sh in `.githooks/pre-push` (with the docs-only fast path)
-  and in PowerShell in `scripts/gate.ps1` (without that path — by
-  design: the gate before commit is always full). Any step added or
-  changed must be done twice, with no safeguard.
-- **Why accepted**: the two homes have different needs (the hook
-  redirects silent steps, the script shows everything ; the hook
-  carries the docs-only path, the script never does) ; unifying today
-  would cost more than the risk run.
-- **Reopening condition**: the first OBSERVED divergence between the
-  two verdicts, or the addition of a 10th step.
-
-### D-33 · A stale dist is only fixed in JS — `build.rs` has no `rerun-if-changed`
-
-> ✅ **CLOSED on 2026-09-07 (PLAN-AUDIT-2026-09 lot 4, E12d, measured
-> spike).** `apps/desktop/build.rs` now emits
-> `cargo:rerun-if-changed=ui-v2/dist`: a file ADDED to the dist reruns
-> the build script, recompiles `main.rs` and is re-embedded by a bare
-> `cargo build` (proven by decompressing the brotli blob out of the
-> exe); a content change was already tracked by tauri-codegen's
-> `include_bytes!`; a no-op build stays at 0.5 s. `tauri.conf.json`'s
-> `beforeBuildCommand`/`beforeDevCommand` rebuild the dist clean of
-> seams before `cargo tauri build`/`dev`. Reopens if a stale dist is
-> observed in the field after this line.
-
-- **Fact (review PLAN-KAIZEN-CLAUDE wave 2, 2026-08-23)**: the trap
-  "generate_context! only embeds the dist when main.rs compiles" is
-  held by `e2e/rebuild-v2.mjs` (fingerprint + bump) and
-  `scripts/build-wind.mjs` — but a bare `cargo build`, outside these
-  two gates, stays exposed.
-- **Why accepted**: adding the dependency in
-  `apps/desktop/build.rs` would touch shipped code with a tauri_build
-  semantic to prove (a build-script rerun does not imply main.rs
-  recompiles) — out of scope for the tooling.
-- **Reopening condition**: a stale dist observed OUTSIDE the two
-  gates (release or field), or a job that touches build.rs.
 
 ### D-34 · The "pref per account" pattern is duplicated at every table (loaders, commands, release script)
 
@@ -942,27 +428,6 @@ deferral = one justified line.)
 - **Reopen if**: the field or the beta sees blur at 16 px or on the
   10-12 px markers — then a dedicated drawing job, glyph by glyph
   (`format_list_numbered` pleads first).
-
-### D-37 · `sync_progress` recounts every mailbox, every 5 s, forever
-
-- **Finding (PLAN-DEMARRAGE, 2026-08-26)**: `store.sync_progress()` is a
-  `SUM` of correlated `COUNT`s over every mailbox — **152 ms cold**,
-  8.6 ms warm, replayed **every 5 seconds forever**, under the
-  global lock. Over the first 60 seconds of a startup, ~1.8 s
-  of lock.
-- **Reason for deferring (CE decision D6, 2026-08-26)**: its fix is a
-  counter kept up to date on write — same family and same drift risk
-  as the missing-bodies counter, for ~1.8 s against the ~26 s of the
-  main defect. A counter that lies is worse than a slow count.
-- **Lead**: a per-mailbox counter kept on write, or a single aggregated
-  query instead of the loop (the pattern measured at E1-bis:
-  it was the index that carried the cost, not the round trips).
-- **Reopen if**: the field points to the cost — fan, battery,
-  or perceived latency of the probes at rest.
-- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15c (2026-09-07)**: `mailboxes.local_count`, kept
-  by two triggers on `envelopes` (a replace nets zero), recounted once
-  for a database from before the column; `sync_progress` sums the column
-  — the 152 ms cold / 8.6 ms warm recount is gone from the 5 s probe.
 
 ### D-38 · The preview backfill reloads the list even when it did nothing
 
@@ -1038,6 +503,11 @@ deferral = one justified line.)
 - **Reopen if**: at the crate's next bump (pinned `=2.10.1`) — if
   upstream has fixed it, the local workaround becomes a candidate for
   removal.
+
+- **Re-filed under Open (Lot 6 E16c, 2026-09-07)**: the upstream
+  action and the local workaround are settled; what stays open is the
+  WATCH — recheck at each updater upgrade, remove the workaround only
+  after the launch-refusal test.
 
 ### D-41 · The multi-select checkbox has no dedicated keyboard gesture
 
@@ -1141,6 +611,136 @@ deferral = one justified line.)
   the finding "the Screener did not follow" materializes it —, or at
   job E4 (the organized Inbox reuses these rows as sections).
 
+### D-49 · Cleanliness deferred from the PLAN-AUDIT-V1 review (audit wave 3)
+
+- **Partial payment (2026-09-06, audit Lot 2, `0374e43`)**: SMTP setup now
+  uses typed connection/authentication errors. IMAP's connection-prefix
+  classifier remains; this does not close the whole cleanliness list.
+
+- **Fact (fresh-eyes review, 2026-09-02)**: nine cleanliness
+  candidates checked but not taken up, wave 1 only fixing S1 issues:
+  `into_inner` copy-pasted seven times (one `verrou_repris` helper);
+  `hors_pompe(app, |app| auth_for(&app, id))` ×4 (`session_de`);
+  `trace::trace` and `trace_maj` — two dated-line writers, only
+  `wind.log` is capped at a megabyte; `is_connection_error`
+  duplicated IMAP/SMTP on the « connexion » prefix;
+  `instance::dossier_de_la_base` recomputes the `db_path` rule (two
+  sources of the path, with no test tying them together);
+  `sync_inbox`/`sync_inbox_light` still twins; `remove_local` with
+  two paths (`is_autocommit`); `compose()` with no `references` (set
+  after the fact in two places); `SEUIL_QUARANTAINE` hardcoded in the
+  Store; `reply_*`/`forward_context` take the lock three times (rare
+  paths).
+- **Reason for deferral**: none is an observable defect; audit wave
+  3 (`docs/AUDIT-2026-09-01.md` §5) reorganizes these files.
+- **Reopens if**: a job touches one of these sites — fix it in
+  passing, not as a gratuitous refactor (§2.6).
+
+### D-50 · Two stated limits of wave 1 to confirm in the field
+
+- **Fact (PLAN-AUDIT-V1 E8, 2026-09-02)**: (1) the refresh token
+  renewed by Microsoft is now stored when it changes — not proven in
+  test (the vault cannot be simulated); to confirm on a Microsoft
+  account beyond 90 days; (2) the « open manually » fallback
+  (`BrowserFallback`) returns control without waiting for the
+  redirect — rare case (no browser), unchanged.
+- **Reopens if**: a silent Microsoft disconnection after 90 days, or
+  a tester with no default browser.
+
+### D-52 · Stated limits of audit wave 2
+
+- **Fact (PLAN-AUDIT-V2, 2026-09-02)**: (1) an edit MADE INSIDE the
+  forwarded block is lost on send (the block is replaced by a render
+  of its source with its images, D8); a forward whose source is
+  ANOTHER account goes out as-is, at neutral pixel; (2) the « RAM
+  after five Feed pages » measurement cannot be run on the e2e
+  fixture — the windowing is in place, its gain will be read in the
+  field; (3) `list_drafts` remains a WHOLE list (bodies included)
+  polled every 10 s, outside the single `etat_ui` probe (wave 3,
+  with command pagination); (4) `decode_header` still parses one
+  synthetic message per subject — not measured as a cost; (5) the
+  « archive by shortcut from screen 03 » test flaked twice after the
+  resent-mail coalescing (E10) — passed on a rising edge at review,
+  79/79 since; (6) the `RFC822.SIZE` probe costs one round trip per
+  batch of 50 bodies for a bound (32 MB) rarely reached — the
+  alternative is to store the size when envelopes are polled (a
+  job); (7) `etat_ui` at 5 s doubles the cadence of nav and sends
+  (the watcher's poll imposes 5 s; accepted); (8) `__e2ePanne` was a
+  fifth e2e seam compiled into production, without
+  `import.meta.env` — **closed 2026-09-04** (PLAN-AUDIT-V3 E7: the
+  seams, EIGHT by then, are compiled out of a release build behind
+  `VITE_E2E`, and make-release asserts their absence in the bundle;
+  item 3 closed at E5 — `ui_state` carries a drafts revision); (9) the E1
+  fast-gate registry is keyed by PATH, not by file identity — safe
+  under single-instance, not guarded by code.
+- **Reopens if**: a tester edits a forward and loses the edit; the
+  « flaky: N » counter names the same test twice.
+
+### D-53 · Feed RAM: one page of letters costs 70 to 136 MB, and 94 to 167 MB remain after returning
+
+- **Finding** (field STOP 2 PLAN-AUDIT-V2, 2026-09-02): 249 MB of
+  private working set across 6 WebView2 processes after ten Feed
+  pages on the CE's workstation — STANDARD §3 budget « < 200 MB »
+  (at rest 95.5 MB). Bench `e2e/tests/bench-ram-feed.spec.js` (200
+  letters of 100 KB, debug build): window 12 → +136 MB on the first
+  page, +217 at 160 cards, +167 RETAINED on returning to Inbox;
+  window 1 → +70, +96, +94, stable at +25 s. Window width (E10)
+  bounds it, it does not cure it: a letter's `srcdoc` iframe is
+  worth dozens of MB, and unmounted documents do not release their
+  memory (`corpsAuto` and `brancherLiens` clean up — the retention is
+  elsewhere: documents of removed iframes, render heap that does not
+  shrink?).
+- **Pass 2 (window 5, CE's workstation)**: 251.5 MB across 6
+  processes — GPU 132.3 MB, renderer 69.6, manager 36.3, network
+  8.1, storage 3.2, crashpad 1.8. The window changes nothing to the
+  total: the GPU process carries more than half (composited surfaces
+  of the iframes and their granted images), the DOM is not the
+  lever.
+- **Reason for deferral**: CE decision D9 on the window (an
+  immediate setting, held — costs nothing); the root cause — one
+  iframe per card — is a design question (a single iframe for the
+  read card? cards collapsed by default? rendering without an
+  iframe?): a set-based job, not a setting. The budget itself needs
+  clarifying: « private working set » at rest, or after the
+  product's heaviest gesture?
+- **Lead**: memory profile of the WebView2 renderer (DevTools,
+  before/after-unmount snapshot) to name what is retaining; then
+  options measured on the bench.
+- **Reopens if**: the clarified budget is exceeded on the CE's
+  workstation after D9, or a freeze appears while scrolling the
+  Feed.
+- **2026-09-07 ([PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md)
+  E15b, spike `spikes/feed-memory/`)**: options A (shipped), B (window
+  ±1, iframes blanked before unmount) and C (pool of five) measured on
+  the arm64 workstation, 160 cards of 100 KB then 300 KB: **none under
+  200 MB** (medians after ten pages 281.8 / 257.6 / 297.9 MB; after a
+  forced GC 208.5 / 196.5 / 227.5). The live iframes are not where the
+  memory is: 100–130 MB of renderer memory outside the JS heap survive
+  in every option, and the 160-card figure moves by ±100 MB with V8's
+  GC timing (the `cards[].document` strings and their IPC copies).
+  **CE decision D6: a dated exception at the measured figure, nothing
+  built.** The lead stands (renderer snapshot before/after unmount);
+  the first named suspect is the document strings kept in `cards`.
+
+### D-54 · `multi-select:173` (« the `e` shortcut archives the CHECKED batch ») flakes one gate in three
+
+- **Finding** (2026-09-02, PLAN-AUDIT-V2 gates): passed on the second
+  try in three gates out of six (D4: counted, never red). The
+  gesture: several rows checked, `e` on the keyboard, a single toast
+  and the threads leave. On this machine only so far (CI is green
+  every time) — STANDARD §7.5, CI is the reference.
+- **Reason for deferral**: out of scope for the day's field work; a
+  flaky test that passes on the second try does not block, but three
+  occurrences the same day stand out from the noise.
+- **Lead**: replay the spec alone twenty times (`--repeat-each`),
+  read the trace of the first failure — a race between the checkbox
+  and the shortcut (focus left on the checkbox, A38) or between the
+  toast and the assertion.
+- **Reopens if**: a fourth occurrence, or a red run in CI.
+- **2026-09-07 ([PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15f)**: replayed ten times without retries in
+  isolation — 90/90, no first failure to capture. The flake belongs to
+  the loaded suite; the entry stays open on its own condition.
+
 ### D-55 · The database, the disk files, the `prefs` keys and the localStorage keys stay French
 
 - **Finding** (PLAN-ENGLISH-SWITCH, Chief Engineer decision D3 of 2026-09-02;
@@ -1163,43 +763,6 @@ deferral = one justified line.)
 - **Reopen if**: a schema migration is scheduled for another reason
   (rename the columns in the same migration), or the storage keys get a
   versioned envelope.
-
-### D-56 · Shell-composed text stays French while the UI may be English
-
-Opened on 2026-09-03 (PLAN-ENGLISH-SWITCH E5, CE decision D17). The size
-units of `human_size` (`o`, `Ko`, `Mo` — attachments, drafts, the outbox),
-the two native dialogs of `main.rs` (second instance, failed relocation)
-and the one shell error string a spec asserts are composed by the shell in
-French, marked `lang:fr`, whatever the UI language. The clean fix is a
-behavior change the switch refuses to embed (§5): send bytes on the wire
-and format in the UI per language; give the dialogs an English text when
-`prefs.lang` is `en`. A small dedicated job once the switch is closed.
-
-**Seen in the field on 2026-09-03 (E6b)**: in the English interface the
-compose weight reads `2.8 Mo / 25 MB` — the total from `human_size`
-(shell, French), the limit from the catalogue (English). The spec
-asserts it as shipped (`redesign-screen02.spec.js`).
-- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15d (2026-09-07, D7)**: the quote attribution and
-  the forward header, the size units (core and the composer's JS twin,
-  through the catalogue), and the three native dialogs of `main.rs`
-  follow the interface's language, read from the same preference
-  (English until set). The relocation-failure dialog of a Discovery
-  workstation stays French: it runs before any preference exists and
-  addresses the French-era install.
-
-### D-57 · The onboarding illustrations are French screenshots inside an English default UI
-
-Opened on 2026-09-03 (PLAN-ENGLISH-SWITCH E6b, Chief Engineer decision
-D28). `assets/accueil/disposition-{1,2,3}.png` are screenshots of the
-French interface, captured by `e2e/capture-onboarding.mjs` (pinned to
-`lang: 'fr'` so a replay does not change a visible asset without a
-decision). The rule the Chief Engineer set: **every screenshot shown to
-the user is in the language the user chose** — one set per language,
-selected with the catalogue. To do at the next onboarding job: capture
-both sets, select per `lang`, unpin the script.
-- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15d (2026-09-07)**: one capture set per language
-  (`assets/accueil/{en,fr}/`, `capture-onboarding.mjs` writes both);
-  the onboarding shows the set of the current language.
 
 ### D-58 · The archives stay French under an English banner
 
@@ -1269,7 +832,6 @@ both sets, select per `lang`, unpin the script.
 - **Reopens if**: the first mac-only regression a tester finds that
   the Windows suite cannot see.
 
-
 ### D-63 · Conservative SMTP quarantine before an unobservable submission stage
 
 - **Since**: 2026-09-06, [audit Lot 2](PLAN-AUDIT-2026-09-LOT2.md), Chief Engineer
@@ -1284,3 +846,464 @@ both sets, select per `lang`, unpin the script.
 - **Reopens if**: field reports show frequent unnecessary manual verification of
   proven pre-DATA failures. Revisit the measured alternative with TLS/authentication
   coverage; never infer non-delivery from an absent Sent-folder echo alone.
+
+## Closed
+
+### ~~D-57 · The onboarding illustrations are French screenshots inside an English default UI~~ — closed 2026-09-07
+
+Opened on 2026-09-03 (PLAN-ENGLISH-SWITCH E6b, Chief Engineer decision
+D28). `assets/accueil/disposition-{1,2,3}.png` are screenshots of the
+French interface, captured by `e2e/capture-onboarding.mjs` (pinned to
+`lang: 'fr'` so a replay does not change a visible asset without a
+decision). The rule the Chief Engineer set: **every screenshot shown to
+the user is in the language the user chose** — one set per language,
+selected with the catalogue. To do at the next onboarding job: capture
+both sets, select per `lang`, unpin the script.
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15d (2026-09-07)**: one capture set per language
+  (`assets/accueil/{en,fr}/`, `capture-onboarding.mjs` writes both);
+  the onboarding shows the set of the current language.
+
+### ~~D-56 · Shell-composed text stays French while the UI may be English~~ — closed 2026-09-07
+
+Opened on 2026-09-03 (PLAN-ENGLISH-SWITCH E5, CE decision D17). The size
+units of `human_size` (`o`, `Ko`, `Mo` — attachments, drafts, the outbox),
+the two native dialogs of `main.rs` (second instance, failed relocation)
+and the one shell error string a spec asserts are composed by the shell in
+French, marked `lang:fr`, whatever the UI language. The clean fix is a
+behavior change the switch refuses to embed (§5): send bytes on the wire
+and format in the UI per language; give the dialogs an English text when
+`prefs.lang` is `en`. A small dedicated job once the switch is closed.
+
+**Seen in the field on 2026-09-03 (E6b)**: in the English interface the
+compose weight reads `2.8 Mo / 25 MB` — the total from `human_size`
+(shell, French), the limit from the catalogue (English). The spec
+asserts it as shipped (`redesign-screen02.spec.js`).
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15d (2026-09-07, D7)**: the quote attribution and
+  the forward header, the size units (core and the composer's JS twin,
+  through the catalogue), and the three native dialogs of `main.rs`
+  follow the interface's language, read from the same preference
+  (English until set). The relocation-failure dialog of a Discovery
+  workstation stays French: it runs before any preference exists and
+  addresses the French-era install.
+
+### ~~D-48 · The list does not follow an external write~~ — closed 2026-09-07
+
+- **Finding (RETOURS-13 review, 2026-08-30)**: the Inbox only reloads
+  on a poll generation's beat or through its own gesture handlers. A
+  `retirer_routage` (or any write outside the List's paths — second
+  workstation, replay, e2e command) leaves the list stale until a
+  manual navigation. The e2e step of `organized-mode.spec.js` that
+  "passed" lived off a FORTUITOUS reload of the probe — it now holds
+  honestly through the folder round trip. Same family as D-44
+  (`connectes` with no refresh cycle).
+- **Reason for deferring**: the proper fix is a generic invalidation
+  signal (bump the generation on any core write that changes a view),
+  not one more `liste.recharger()` wired per surface — a job, not a
+  retouch.
+- **Reopen if**: a field finding of "the list does not move" on a
+  gesture outside the List, or at the multi-window/second-workstation
+  job.
+
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E13e
+  (2026-09-07)**: the generic signal exists — `views_revision` in `prefs`,
+  bumped by the core on a routing verdict or removal, a pin, a set-aside, a
+  cleanup verdict; `ui_state` carries it and the UI reloads its views when
+  it moves, on the resting probe's beat, whoever wrote. Sync arrivals keep
+  the shell's generation. Test: reads and preferences leave it alone.
+
+### ~~D-47 · Three context menus and two thread toggles are hand copies~~ — closed 2026-09-07
+
+> 2026-09-04 (PLAN-AUDIT-V3 E7): the stated UI leftovers are done —
+> `.btn-screener` (Screener/Cleanup literal duplicate) and the
+> `select` pair (AccountDesk 40 px / Settings 32 px) live once in
+> `system.css`. The CORE half below (the pin/set-aside twins, the
+> Paper trail's stack/rank) stays open.
+
+- **Amended (PLAN-AUDIT-V2 E11, 2026-09-02, A108) — the MENUS are
+  settled**: `Menu.svelte` is THE product's menu (eight surfaces —
+  List, Feed, Screener, Cleanup, Paper trail, section sort, Settings >
+  Screener, the thread's "Move to…"), drawing AND mechanics in one
+  copy (keyboard included, A8 held), 24 CSS copy rules removed, the
+  `--ombre` token that did not exist along with them. **Still open**
+  is the "core" half of this debt: `toggle_mis_de_cote`/
+  `etat_mis_de_cote`, twins of `toggle_pin`/`pin_state`, and the Paper
+  trail's stack/rank recopied from the Feed — audit wave 3.
+
+- **Amended (RETOURS-14, 2026-08-31)**: two more copies — the grouped
+  Paper trail's `.menu-groupe` (`Registre.svelte`), and the FAMILY
+  extends to the STACK drawing (`.empile`/`.rang-groupe` recopied from
+  `Kiosque.svelte` to `Registre.svelte`) and to Cleanup's two-line row
+  (`.l1/.l2` recopied). The verdict vocabulary, meanwhile, was
+  factored out along the way (`lib/portier.js`).
+- **Finding (E4/E5 review, 2026-08-30)**: the product menu's drawing
+  lives in three CSS copies (`Portier.svelte` `.menu`, `Liste.svelte`
+  `.menu-gestes`, `PileMisDeCote.svelte`'s fan) — the `0 8px 24px`
+  shadow is already written three times there, `min-width` diverges by
+  10 px for no reason, and only Screener goes through
+  `var(--ombre, …)`. On the core side, `toggle_mis_de_cote`/
+  `etat_mis_de_cote` are the structural twin of `toggle_pin`/
+  `pin_state` (~80 lines, only the table changes), and
+  `pile_mis_de_cote` is the twin of `pinned_unified_scoped`.
+- **Reason for deferring**: factoring the menu = a shared component
+  touching three surfaces validated at the visual STOP; the core
+  twins are each covered by their own tests — the refactor brings
+  nothing to the field for the release underway.
+- **Reopen if**: a shadow/menu token enters the theme table (the copy
+  would drift at the first retouch), at the third twin (E6 groups), or
+  at the next retouch of the thread resolution contract (the RED
+  "never the head" would need to be carried twice).
+- **REOPENED on 2026-08-30 (PLAN-HORIZON-NETTOYAGE, review)**: Spring
+  cleaning is the announced twin — `Nettoyage.svelte` recopies the
+  Screener's ⋯ menu whole (markup, `ouvrirMini` and its 250/170 bounds
+  hard-coded, `BOITE_DE`/`TOAST_NON` cards, `.btn-portier`/`.mini`/
+  `.menu` CSS), a 4th copy of the drawing. Not factored within the job
+  (three surfaces validated at the visual STOP, same reason as at the
+  deferral) — **to be handled as a dedicated debt**: a shared
+  `MenuVerdict.svelte` for Screener/Cleanup, and the common classes in
+  `systeme.css` (the earlier `.entete-vue`). Add to it the `select`
+  style pair born in two copies (AccountDesk 40 px / Settings 32 px).
+
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E13e
+  (2026-09-07)**: the core half — one private `Mark {Pin, SetAside}` behind
+  `toggle_pin`/`pin_state`/`toggle_set_aside`/`set_aside_state` (the table
+  name was the only difference); the Feed's and the Paper trail's stacked
+  fan is one `Stacked.svelte`. The set-aside pile's large fan (52 × 38,
+  rotated sheets) is a different drawing and stays its own.
+
+- **The 2026-08-30 "dedicated debt" (4th Spring-cleaning menu copy)
+  never got a number; closed by record (Lot 6 E16c, 2026-09-07)**: the
+  2026-09-02 amendment above already absorbed it — `Menu.svelte` is the
+  one menu across eight surfaces, Cleanup included (`Cleanup.svelte:15`
+  imports it), and the `select` pair lives once in `system.css`
+  (2026-09-04 note). Nothing remains to number.
+
+### ~~D-37 · `sync_progress` recounts every mailbox, every 5 s, forever~~ — closed 2026-09-07
+
+- **Finding (PLAN-DEMARRAGE, 2026-08-26)**: `store.sync_progress()` is a
+  `SUM` of correlated `COUNT`s over every mailbox — **152 ms cold**,
+  8.6 ms warm, replayed **every 5 seconds forever**, under the
+  global lock. Over the first 60 seconds of a startup, ~1.8 s
+  of lock.
+- **Reason for deferring (CE decision D6, 2026-08-26)**: its fix is a
+  counter kept up to date on write — same family and same drift risk
+  as the missing-bodies counter, for ~1.8 s against the ~26 s of the
+  main defect. A counter that lies is worse than a slow count.
+- **Lead**: a per-mailbox counter kept on write, or a single aggregated
+  query instead of the loop (the pattern measured at E1-bis:
+  it was the index that carried the cost, not the round trips).
+- **Reopen if**: the field points to the cost — fan, battery,
+  or perceived latency of the probes at rest.
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15c (2026-09-07)**: `mailboxes.local_count`, kept
+  by two triggers on `envelopes` (a replace nets zero), recounted once
+  for a database from before the column; `sync_progress` sums the column
+  — the 152 ms cold / 8.6 ms warm recount is gone from the 5 s probe.
+
+### ~~D-33 · A stale dist is only fixed in JS — `build.rs` has no `rerun-if-changed`~~ — closed 2026-09-07
+
+> ✅ **CLOSED on 2026-09-07 (PLAN-AUDIT-2026-09 lot 4, E12d, measured
+> spike).** `apps/desktop/build.rs` now emits
+> `cargo:rerun-if-changed=ui-v2/dist`: a file ADDED to the dist reruns
+> the build script, recompiles `main.rs` and is re-embedded by a bare
+> `cargo build` (proven by decompressing the brotli blob out of the
+> exe); a content change was already tracked by tauri-codegen's
+> `include_bytes!`; a no-op build stays at 0.5 s. `tauri.conf.json`'s
+> `beforeBuildCommand`/`beforeDevCommand` rebuild the dist clean of
+> seams before `cargo tauri build`/`dev`. Reopens if a stale dist is
+> observed in the field after this line.
+
+- **Fact (review PLAN-KAIZEN-CLAUDE wave 2, 2026-08-23)**: the trap
+  "generate_context! only embeds the dist when main.rs compiles" is
+  held by `e2e/rebuild-v2.mjs` (fingerprint + bump) and
+  `scripts/build-wind.mjs` — but a bare `cargo build`, outside these
+  two gates, stays exposed.
+- **Why accepted**: adding the dependency in
+  `apps/desktop/build.rs` would touch shipped code with a tauri_build
+  semantic to prove (a build-script rerun does not imply main.rs
+  recompiles) — out of scope for the tooling.
+- **Reopening condition**: a stale dist observed OUTSIDE the two
+  gates (release or field), or a job that touches build.rs.
+
+### ~~D-32 · The gate lives in TWO encodings — pre-push (sh) and gate.ps1 (PowerShell)~~ — closed 2026-09-07
+
+> ✅ **CLOSED on 2026-09-07 (PLAN-AUDIT-2026-09 lot 4, E12d).** Paid
+> earlier than recorded: since PLAN-AUDIT-V2 E9 the hook only calls
+> `scripts/gate.ps1 -DocsOnly`, ONE encoding; the reopening condition
+> (a 10th step) had fired silently at 13 steps. Lot 4 goes one step
+> further on the build side: the "rebuild the dist clean, then assert"
+> sequence that lived in PowerShell AND bash is now one script
+> (`scripts/build-dist-clean.mjs`) declared in `tauri.conf.json`'s
+> `beforeBuildCommand`, and the release chain's decisions live in one
+> tested module (`scripts/release-lib.mjs`, ADR 0044).
+
+- **Fact (review PLAN-KAIZEN-CLAUDE wave 2, 2026-08-23)**: the 9 steps
+  exist in sh in `.githooks/pre-push` (with the docs-only fast path)
+  and in PowerShell in `scripts/gate.ps1` (without that path — by
+  design: the gate before commit is always full). Any step added or
+  changed must be done twice, with no safeguard.
+- **Why accepted**: the two homes have different needs (the hook
+  redirects silent steps, the script shows everything ; the hook
+  carries the docs-only path, the script never does) ; unifying today
+  would cost more than the risk run.
+- **Reopening condition**: the first OBSERVED divergence between the
+  two verdicts, or the addition of a 10th step.
+
+### ~~D-29 · A message whose root IS the calendar has a permanently empty body~~ — closed 2026-09-07
+
+- **Fact (review PLAN-INVITATIONS, 2026-08-22)**: a message with no
+  text/HTML part whose root is `text/calendar` (case C of the
+  finding) is now DISPLAYABLE — empty body, the invitation card is the
+  content. Before, it fell into "message not found" and stayed an
+  eternal backfill candidate. Trade-off: the `""` body is cached
+  (`scanned = 1`) — full-text search does not see the meeting title's
+  words, and FORWARDING this message produces an empty quote (the ICS
+  does not follow), with no warning.
+- **Why accepted**: the card shows the essentials (title, time, place,
+  organizer) ; the old behavior (hard error) was worse on both counts
+  ; the shape is rare (Google/Outlook emit multipart/alternative with
+  an HTML part).
+- **Reopening condition**: if the field or beta forwards bare
+  invitations or searches them by title. Leads: index the invitation
+  title in FTS at `save_body_full` ; attach the ICS on forward.
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15d (2026-09-07)**: the meeting's title and
+  location are indexed with the (empty) body; the ICS is kept
+  (`invitations.ics`) and the forward's file list carries it as
+  `invitation.ics`, served from the store. The card is unchanged.
+
+### ~~D-14 · Re-baseline the P1 bench on the A44 geometry~~ — closed 2026-09-07
+
+- **Fact (PLAN-RETOURS-V3, 2026-08-16)**: two geometry changes in the
+  same job — the overlay bars render ~10 px of width on every
+  scrolling pane (0 px reserved vs 10 px webkit), and the list has two
+  templates (bare h1 / carrying h2, ~+27 px per bulleted row):
+  `visible`, the number of rows rendered per jump and the cost of a
+  reflow have moved. The "page" percentiles of the `measure-v2` bench
+  are no longer comparable to the series from before A44.
+- **Accepted deferral**: re-measure and re-baseline the P1 budgets on
+  the delivered geometry, in a dedicated pass — to be investigated
+  with the bench family (D-7/D-11/D-12), so as not to mix a budget
+  re-baseline with a feature job. The benches ALREADY measure the
+  right geometry (browser-args.mjs) ; only the reference series is
+  dated.
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15a (2026-09-07)**: page jump on the shipped
+  geometry, p50 15.4–17.4 ms, p95 26.6–26.9 ms over three runs (release,
+  200k fixture, 300 random jumps) — budget < 100 ms held; first page
+  70–144 ms between two launches of the same warm copy (variance noted).
+
+### ~~D-12 · Opening the thread: `thread_messages` → body cascade, P1 series to re-baseline~~ — closed 2026-09-07
+
+- **Fact (UI v3, review of 2026-08-16)**: selection now opens the
+  THREAD — `thread_messages` then the last one's body, in series (two
+  round trips where v2 made only one), and the P1 "opening" stopwatch
+  has changed definition (selection → thread displayed, attachments
+  excluded). The historical series (< 50 ms, ADR 0015) is no longer
+  comparable.
+- **Accepted deferral**: parallelize the head row's body with the
+  thread list (one lost fetch in the rare case of a fresher head), and
+  re-baseline the `measure-v2` bench on the new definition. Deferred
+  to keep the v3 commit on CE verdicts ; to be investigated with
+  D-7/D-11 (bench family).
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15a (2026-09-07)**: the first dated figure on the
+  shipped definition (list row served → thread served → head body
+  rendered): p50 15.9–20.1 ms, p95 30.0–40.8 ms over three runs
+  (release, 200k fixture) — budget < 50 ms held. The ADR 0015 series is
+  not compared to it.
+
+### ~~D-9 · Invariant A41 has no structural guard~~ — closed 2026-09-07
+
+- **Fact (review 2026-08-15, A41)**: « nothing touches the database
+  before `migration_check` » lives in comments and one probe test
+  (`la_langue_se_lit_sans_adopter_la_base`) — nothing stops a future
+  pre-modal command from opening the database in full (`Store::open`):
+  the whole suite would stay green, the bug would be rediscovered in
+  the field.
+- **Lead**: an `adopted` flag on `MigrationShared` (or a shared
+  opening helper for the 30+ `Store::open` calls in `commands.rs`)
+  that makes any full opening before the probe fail LOUDLY; to be
+  investigated as a job, not on the fast lane.
+- **Reopens if**: a startup command is added before the modal.
+
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E13a/E13b
+  (2026-09-07)**: the lead became the structure. `apps/desktop/src/adoption.rs`
+  records the adopted file's identity at `migration_check` (nothing pending)
+  or after `migration_run`; `adopted_db` refuses before adoption and when
+  the file at the path is no longer the adopted one; the path is reachable
+  only through the `Blocking` token `off_pump` builds — a pre-modal command
+  opening the database in full fails LOUDLY, at run time by the record and
+  at compile time by the token (17 errors on the first build, all indirect
+  helpers). Six unit tests on the record, the text guard kept as the second
+  net.
+
+### ~~D-62 · macOS is Intel-only~~ — closed 2026-09-05
+
+- **Since**: 2026-09-04 (PLAN-MACOS §2, one triple: the build
+  machine is the Intel MacBook Air).
+- **What**: no `aarch64-apple-darwin` build; Apple Silicon Macs run
+  the x64 app through Rosetta 2.
+- **Why owned**: no Apple Silicon machine to build or field-test on.
+- **Reopens if**: an Apple Silicon tester reports Rosetta friction,
+  or an Apple Silicon build machine appears.
+- **Closed at [PLAN-APPLE-SILICON](PLAN-APPLE-SILICON.md)** (the
+  reopening condition fired: an Apple Silicon tester asked to enter
+  the beta). The Intel Air cross-builds arm64; a second asset family
+  under `darwin-aarch64`; the mac CI job proves both triples. The
+  field-test half stays true — no arm64 machine in the fleet, the
+  tester's first install is the run proof (stated at the GO).
+
+### ~~D-51 · An account without CONDSTORE never resyncs its flags~~ — closed 2026-09-04
+
+> ✅ **CLOSED on 2026-09-04 (PLAN-RETOURS-15 E3, Chief-Engineer decision D4).**
+> Its reopening clause came true the day before: the `wind.log` line
+> fired on the Chief Engineer's own account 3. The incremental sync
+> now re-reads a **bounded flag window** on CONDSTORE-less accounts —
+> the 500 most recent UIDs per poll, ONE `UID FETCH … (UID FLAGS)`
+> round trip, a queued local intent always winning over the window
+> (`Store::apply_flags` guard). **Stated limit that remains**: beyond
+> the window a flag stays stale until its UID moves; the log line
+> stays, reworded (`flags resynchronized by bounded window only`).
+> Reopens if the field shows stale flags INSIDE the window, or the
+> window's cost shows up in a poll measurement.
+
+- **Fact (audit 2026-09-01 §2.1, CE decision D3 of PLAN-AUDIT-V2 on
+  2026-09-02)**: without the CONDSTORE announcement, `changes_since`
+  returns `None` and the engine only re-reads the UID differential —
+  a message read on the phone stays unread here, forever (`sync.rs`
+  promised a « full resync » that does not exist). Gmail, Microsoft
+  365 and Dovecot all announce it; the case is theoretical in beta.
+- **Reason for deferral**: a `FETCH FLAGS` window on every cycle
+  would cost everyone for a server we have never seen. A line in
+  `wind.log` names the account without CONDSTORE at each poll: the
+  field will say whether the case exists.
+- **Reopens if**: the line appears for a tester.
+- **2026-09-04 (PLAN-AUDIT-V3 field)**: the line fired — the Chief
+  Engineer's own account 3 is CONDSTORE-less (`wind.log`,
+  `account 3: without CONDSTORE, flags not resynchronized`). The case
+  is no longer theoretical; whether its cost (flags stale on that
+  account until a UID moves) warrants the `FETCH FLAGS` window is a
+  Chief-Engineer call at the next job touching sync.
+
+### ~~D-30 · A legacy invitation WITHOUT a calendar attachment row has no card~~ — closed 2026-09-04
+
+> Accepted limit of the closure (review, wave 3): a body that merely
+> QUOTES `BEGIN:VCALENDAR` (a technical email) matches the widened
+> criterion — its body rows are dropped by the one-time pass and
+> redownloaded at that mailbox's next backfill, the same
+> delete-and-redownload semantics the original criterion always had.
+> One redownload, once, for a rare shape.
+
+- **Fact (review PLAN-INVITATIONS, 2026-08-22)**: adopting existing
+  data goes through the `pieces-calendrier` repair (bodies of messages
+  carrying a calendar `attachments` row are re-read). A message scanned
+  BEFORE the feature whose calendar part was NOT classified as an
+  attachment by mail-parser (e.g. an exotic `inline` disposition) is
+  invisible to the criterion: its card is only born on a chance re-read
+  (UIDVALIDITY reset, body re-fetched).
+- **Why accepted**: rare shape (the major producers use
+  multipart/alternative, classified as an attachment), and the only
+  possible local criterion would be re-reading ALL bodies — the
+  opposite of a targeted repair.
+- **Reopening condition**: a field finding of "this old message is an
+  invitation with no card". Lead: widen the repair to messages whose
+  BODY contains a BEGIN:VCALENDAR marker (SQL LIKE criterion, one
+  pass).
+- **Closed at PLAN-AUDIT-V3 E6 (2026-09-04)**: the debt's own lead
+  applied verbatim — `pieces-calendrier` (`store/migrations.rs`) now
+  ALSO selects `(mailbox_id, uid)` from `bodies` whose `html` matches
+  `LIKE '%BEGIN:VCALENDAR%'` (SQLite folds ASCII case on `LIKE`, no
+  extra `COLLATE` needed), unioned with the original `attachments`
+  criterion, same single bounded pass, same repair (drop body +
+  attachments, the backfill rereads and re-derives the card). Proven
+  by breaking it: RED first (a message seeded with a body carrying the
+  marker but NO calendar `attachments` row survived the repair
+  untouched), GREEN once the second criterion was added — the
+  backfill then rereads the dropped body from a fake server and the
+  `invitations` row is born of that same re-fetch
+  (`the_calendar_body_marker_repair_rereads_the_affected_message`,
+  `crates/mail-core/src/store/tests.rs`).
+
+### ~~D-36 · The ghost column of `echos` is born on every fresh database~~ — closed 2026-09-01
+
+- **Fact (PLAN-DEMARRAGE, 2026-08-26)**: the `SCHEMA` literal in
+  `store.rs` carries a `backslash-n` **inside a SQL comment
+  `--`** of an ordinary Rust string. Rust turns it into a real line
+  break: the comment stops there, and SQLite swallows the rest as a
+  **column**. Reproduced on a fresh database — a column named
+  `) — the list o` whose type absorbs the declaration of `to_addrs`.
+  The real `to_addrs` exists only because `add_missing_columns` adds
+  it back later. The fleet's databases are sound (created before this
+  comment) ; **any fresh database is not**.
+- **Reason for the deferral**: this is not a performance defect, and
+  removing a column from an existing database requires a table
+  rewrite. Out of scope for a startup job (refusal §2.6).
+- **Lead**: fix the literal, plus a test asserting the column names of
+  `echos` on a FRESH database — that is what is missing, and its
+  absence is the real cause.
+- **Reopens if**: a fresh database shows a defect tied to `to_addrs`,
+  or at the first job that rewrites `echos`.
+- **Closed at wave 0 of the [2026-09-01 audit](AUDIT-2026-09-01.md)**
+  (S1-11): the literal fixed (« joined by a line break », no more
+  escape sequence in a SQL comment) AND the missing net —
+  `une_base_neuve_n_a_aucune_colonne_fantome`: every column of every
+  table of a fresh database carries a sound name. Proven by breaking
+  it: RED on the prior database (« ) — the list o »), then RED again
+  when the fix itself reintroduced a `backslash-n` in the explanatory
+  comment — the net caught its own fix.
+  The five databases of beta wave 1 (installed before) carry the
+  ghost column; harmless (`to_addrs` exists via
+  `add_missing_columns`), it only comes off by rewriting `echos`.
+
+### ~~D-8 · Expensive queries from periodic probes (off pump, real CPU cost)~~ — closed 2026-08-26
+
+> ✅ **CLOSED on 2026-08-26 (PLAN-DEMARRAGE).** Its reopening clause
+> came true: the database went from 1.3 to 12.8 GB and the 575 ms of
+> `pending_total` had become **20,839 ms cold**, holding the global
+> lock 8,870 ms on every startup. Fixed — `pending_total` now
+> measures **107.9 ms**, `backfill_status` **124.9 ms** in the field
+> cold (×71). The 865 ms figure below was **STALE** the moment this
+> debt was written: re-measured at ~31 ms cold / ~11 ms hot,
+> `nav_snapshot` having been rewritten in the meantime. **The lesson
+> to keep is not the figure, it is that a debt entry carries a DATED
+> measurement: re-measure it before relying on it.**
+
+- **Fact (2026-08-15, PLAN-GELS)**: `nav_snapshot` **865 ms** per
+  Gmail account (Archive counter for a full account, exclusion by
+  `message_id`, 87k rows — every 10 s) — **stale figure, see the box
+  above**; `pending_total` **575 ms** (COUNT per mailbox, NOT EXISTS
+  on `bodies` — on every mail generation). Measured in direct SQL on
+  the real database.
+- **CE decision (2026-08-15, D4 of the plan)**: from `hors_pompe()`
+  they no longer freeze anything or anyone — optimizing them without
+  a finding would be work without a measurement. Family D-7
+  (responsiveness stopwatches).
+- **Lead**: nav counter cache invalidated by generation;
+  `pending_total` as one aggregated query.
+- **Reopens if**: the field points to the cost (fan, battery, write
+  contention, perceived probe latency).
+
+### ~~D-6 · e2e v1 flake: "starring" (parcours-critiques)~~ — closed 2026-08-15
+
+- **Fact (2026-08-13)**: the v1 "starring" test flakes one run in
+  three, a path unrelated to the jobs under way; logged, not
+  investigated — v1 dormant.
+- **Closed at B2** (PLAN-RETRAIT-V1): the `parcours-critiques` spec is
+  removed along with the v1 interface, the flake dies with it. Would
+  reopen if an equivalent symptom touched a v2 journey.
+
+### ~~D-3 · Weekday dates (2 to 6 days)~~ — closed 2026-08-12
+
+- **Fact (P3)**: the prototype displays « Monday, 18:20 » for
+  messages of the week ; `quand()` displayed « August 8 ». Minor visual
+  gap, noted at the P3 delivery.
+- **Closed at Settings E2** (R-D1, PLAN-REGLAGES): `quand()` extended
+  — 2 to 6 days → weekday, `quandLong()` composes « Monday,
+  18:20 » with no rework. Without a setting: the prototype's form is
+  not opted into.
+
+### ~~D-5 · Upstream charset (U+FFFD in stored bodies)~~ — closed 2026-08-11
+
+- **Fact**: bodies from the real database carried U+FFFD as early as
+  the stored HTML — MIME charset decoding at sync time.
+- **Closed by `0f7f059`** (separate session, PR #1 merged): the
+  `full_encoding` feature of mail-parser (gb2312…), a windows-1252
+  fallback when the bytes are not valid UTF-8, and a one-time repair
+  of mangled bodies (purge flagged, re-download at backfill, preview
+  and index rebuilt along the way).

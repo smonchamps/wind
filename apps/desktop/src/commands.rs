@@ -3782,8 +3782,12 @@ fn quote_date(envelope: &mail_core::Envelope) -> Option<String> {
         .map(|date| date.format("%Y-%m-%d %H:%M").to_string())
 }
 
-/// Logs the send into the sending account's outbox — BEFORE any
-/// network attempt (the "never a lost send" rule).
+/// Logs the send into the sending account's outbox BEFORE this command
+/// touches the network (the "never a lost send" rule). Scope (audit
+/// C02): the rule covers the send itself — a forward may already have
+/// repatriated its source attachment over IMAP
+/// (`fetch_source_attachment`) before this command runs; that fetch is
+/// preparation and its failure loses no queued send.
 #[tauri::command]
 // The arguments of a Tauri command are NAMED at the call site (a JS
 // object): the silent swap the lint targets cannot happen here.
@@ -6080,10 +6084,10 @@ fn auth_for(app: &Blocking, account_id: i64) -> Result<AccountWork, String> {
     Ok(AccountWork { session, ticket })
 }
 
-// Delegates to `Store::account_email` (PLAN-INVITATIONS review): ONE
-// single answer to "the address of account N" — reading invitations
-// and sending their response must see the SAME truth (an empty address
-// = a half-provisioned account = unknown, same as `Store::accounts`).
+// ONE answer to "the address of account N" (PLAN-INVITATIONS):
+// delegates to `Store::account_email` so reading invitations and
+// sending their response see the SAME truth; an empty address = a
+// half-provisioned account = unknown, same as `Store::accounts`.
 fn account_email(store: &Store, account_id: i64) -> Result<String, String> {
     store
         .account_email(account_id)

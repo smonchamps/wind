@@ -225,6 +225,12 @@ norm when checking by hand:
 - `CHANGELOG.md` (root) carries the `## [<v>] - <date>` entry and the
   link to the Release at the bottom.
 
+What each shipped platform has actually proven — build, CI, e2e,
+install, vault, auto-update — lives in ONE dated table: the
+[support and proof matrix](MACOS-BUILD.md#support-and-proof-matrix-lot-5-e15e-audit-g06)
+(Lot 5 E15e, audit G06). A release claim about a platform is checked
+against that matrix, not against memory.
+
 ---
 ## 3. The product
 
@@ -253,9 +259,9 @@ accounts, 200,000 messages):
 | Metric | Target | Last measured |
 |---|---|---|
 | Cold start | < 1 s | 337 ms on the gate 3 fixture ✅ — and **384.6 ms on the REAL database** (12.84 GB, 251,524 envelopes, 64 mailboxes), first launch after a machine restart, 2026-08-26: the project's first honestly cold measurement ✅ |
-| Opening a message | < 50 ms | 1–3 ms ✅ |
-| List page | < 100 ms | 0.58 ms ✅ |
-| RAM (**private** working set) | < 200 MB | 95.5 MB · 7 processes ✅ |
+| Opening a thread (the shipped definition, D-12) | < 50 ms | p50 15.9 · p95 30.0 ms, 200k fixture, 2026-09-07 (Lot 5 E15a — the first figure on this definition; the old "1–3 ms" measured a single message) ✅ |
+| List page | < 100 ms | first page 70.2 ms; page jump p50 21.4 · p95 31.3 ms over the depth, 200k fixture, 2026-09-07 (Lot 5 E15a) ✅ |
+| RAM (**private** working set, AT REST — ADR 0002) | < 200 MB | 89.1 MB · 7 processes, 2026-09-07 (Lot 5 E15a; the budget's posture is at rest — the same bench reads 265.2 MB after 300 deep page jumps + 20 openings, recorded, no budget line. The Feed's own figure is D-53's, under its dated Chief-Engineer exception, Lot 5 D6) ✅ |
 | Database size | **lifted** (ADR 0010 §2) | disk-space guard at ~50 KB/message |
 | Data loss | 0, proven by crash recovery | ✅ |
 | **Mail pump freeze** | no freeze > 150 ms (window always movable) | 0 freezes over 40 s, fixture 251k envelopes (PLAN-GELS, `e2e/freeze-probe.py`) ✅ |
@@ -292,7 +298,7 @@ wind/
 │   ├── mail-ical/     # iCalendar/iTIP invitations (calcard), PURE (ADR 0024)
 │   ├── mail-render/   # HTML sanitization (ammonia) + text + CSP
 │   └── mail-smtp/     # SMTP adapter (lettre, XOAUTH2)
-├── apps/desktop/      # Tauri 2: commands.rs (IPC) + main.rs + ui/ (vanilla JS)
+├── apps/desktop/      # Tauri 2: commands.rs (IPC) + main.rs + ui-v2/ (Svelte, ADR 0015)
 ├── e2e/               # Playwright driving the REAL window via CDP WebView2
 ├── spikes/            # throw-away prototypes, outside the prod workspace
 └── docs/              # PLAN, phase reviews, ADRs, this document

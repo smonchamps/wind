@@ -27,10 +27,10 @@ const update = process.argv.includes('--update');
 const TEXT = /\.(rs|js|mjs|svelte|css|ps1|py|md|html|yml|yaml|toml|sh|json|txt)$/i;
 const EXEMPT = [
   /^docs\/archives\//,
-  // Frozen measurement evidence (2026-09-07). Same ground as spikes/: this
-  // material was written under the exemption below, and preserving it out of
-  // ignored target/ must not silently put it back under the ratchet.
-  // Translating a measurement falsifies it.
+  // Frozen measurement evidence — Chief Engineer decision, 2026-09-07.
+  // Same ground as spikes/ below: this material was written under that
+  // exemption, and lifting it out of ignored target/ must not silently
+  // put it back under the ratchet. Translating a measurement falsifies it.
   /^docs\/evidence\//,
   /^spikes\//, // throw-away, outside the switch (PLAN-ENGLISH-SWITCH §5)
   /^scripts\/rename\//,

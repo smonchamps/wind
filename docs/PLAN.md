@@ -34,7 +34,7 @@ reliability.
 | Opening a message | < 50 ms | Phase 1 |
 | Search over 100 000 messages | < 100 ms | Phase 3 |
 | RAM in everyday use | < 200 MB | Phase 1 |
-| Local database (3 accounts, bodies backfilled) | < 1 GB | Phase 3 ([ADR 0007](adr/0007-body-backfill.md)) |
+| Local database | target **lifted** by [ADR 0010](adr/0010-full-synchronization.md) §2 (full synchronization; disk-space guard instead) | the field database reads 12.49 GB on 2026-09-07 (Lot 5 E14) |
 | List scrolling | 60 fps | Phase 1 |
 | Windows installer size | < 15 MB | **measured: 4.75 MB** (NSIS, 2026-07-21) |
 | Data loss | 0, proven by crash-recovery tests | Phase 2 |
