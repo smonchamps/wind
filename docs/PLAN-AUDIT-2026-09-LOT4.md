@@ -5,8 +5,9 @@ Opened: 2026-09-07. Baseline: `9f4a9b1` (Lot 3 committed locally, field
 Parent: [audit program](PLAN-AUDIT-2026-09.md), E11–E12.
 Method: [WORKFLOW](WORKFLOW.md), [job](../.claude/skills/job/SKILL.md).
 
-**Status: at STOP 2 since 2026-09-07 — implemented, reviewed, gated; field
-verdict awaited. No delivery claim.**
+**Status: field-validated and committed locally on 2026-09-07 (`400de5e`,
+on top of Lot 3's `9f4a9b1`); NOT pushed (D10 of Lot 3: one grouped push);
+no CI yet, not closed. No delivery claim.**
 
 ## 1. Findings
 
