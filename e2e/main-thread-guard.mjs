@@ -60,6 +60,8 @@ const PURE_COMMANDS = new Set([
   'app_version',
   'open_link',
   'telemetry_selftest_panic',
+  // Lot 5 E14b: `app.restart()` — the process ends here, no I/O of ours.
+  'restart_app',
 ]);
 
 // What BLOCKS for sure: the database (each command opens its own

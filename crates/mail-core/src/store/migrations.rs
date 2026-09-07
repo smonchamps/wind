@@ -781,6 +781,71 @@ impl Store {
     /// denominator of progress: that one comes from
     /// [`Store::open_with_progress`], the only one that knows the exact
     /// scope.
+    /// Is the file at `path` a copy Wind can restore (Lot 5 E14b)? A
+    /// SQLite database with an `accounts` table whose threading version
+    /// this build knows — a copy from a NEWER Wind is refused (this
+    /// build would misread it); an older one is adopted at the next
+    /// start like any legacy database. Read-only: nothing is created.
+    pub fn inspect_copy(path: &Path) -> Result<(), Error> {
+        // Sixteen bytes, never the whole file: a copy weighs gigabytes.
+        let mut header = [0u8; 16];
+        {
+            use std::io::Read;
+            let mut file = std::fs::File::open(path)
+                .map_err(|err| Error::Corrupt(format!("cannot read the copy: {err}")))?;
+            let read = file
+                .read(&mut header)
+                .map_err(|err| Error::Corrupt(format!("cannot read the copy: {err}")))?;
+            if read < header.len() || &header != b"SQLite format 3\0" {
+                return Err(Error::Corrupt("not a SQLite database".to_string()));
+            }
+        }
+        let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        let accounts: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'accounts'",
+            [],
+            |row| row.get(0),
+        )?;
+        if accounts == 0 {
+            return Err(Error::Corrupt(
+                "not a Wind database (no accounts table)".to_string(),
+            ));
+        }
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        if version > thread::THREADING_VERSION {
+            return Err(Error::Corrupt(format!(
+                "the copy comes from a newer Wind (threading version {version}, this build knows {})",
+                thread::THREADING_VERSION
+            )));
+        }
+        // A hand copy of a live database (review 2026-09-07): its WAL
+        // sidecar holds transactions the file lacks — refused, the
+        // copy must be self-contained (what "Save a copy" writes).
+        let wal = {
+            let mut name = path
+                .file_name()
+                .map(|n| n.to_os_string())
+                .unwrap_or_default();
+            name.push("-wal");
+            path.with_file_name(name)
+        };
+        if wal.exists() {
+            return Err(Error::Corrupt(
+                "the copy has a -wal sidecar: it is not self-contained (use Save a copy)"
+                    .to_string(),
+            ));
+        }
+        // Torn pages read as a corrupt file, at staging time rather than
+        // after the swap. `quick_check` walks the file once.
+        let verdict: String = conn.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+        if verdict != "ok" {
+            return Err(Error::Corrupt(format!(
+                "the copy fails SQLite's check: {verdict}"
+            )));
+        }
+        Ok(())
+    }
+
     pub fn pending_adoption(path: &Path) -> Result<Option<u64>, Error> {
         if !path.exists() {
             // First install: nothing legacy, and opening would create

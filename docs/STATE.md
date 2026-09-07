@@ -1,9 +1,8 @@
 # State — Wind's handover snapshot
 
-**Lot 5 (E13–E15) ACTIVE since 2026-09-07 — sub-lot E13 field-validated
-(“1–7 OK”, item 2 fixed the same day, “2 OK”) and committed locally as
-`2e096d6`
-([plan](PLAN-AUDIT-2026-09-LOT5.md)); E14 next.
+**Lot 5 (E13–E15) ACTIVE since 2026-09-07 — E13 (`2e096d6`) and E14
+field-validated and committed locally ([plan](PLAN-AUDIT-2026-09-LOT5.md));
+E15 next.
 Lots 3 and 4 field-validated and committed locally on 2026-09-07
 (`9f4a9b1`, `400de5e`), NOT pushed: D0 of Lot 5 — the grouped push of
 Lots 3, 4 and 5 comes after a `/code-review ultra` of the whole diff.
@@ -20,10 +19,15 @@ named `DraftMessage`, one `PRAGMA foreign_keys`, `views_revision`
 pure reads no longer take the commands' lock (a grant waiting SQLite's
 writer out behind a sync batch had blanked the reading pane for ten
 seconds; net `reads-under-write.spec.js`; a command slower than a second
-now traces its lock wait). Remaining sub-lots: E14
-(offline visibility, snapshot backup/restore with outbox hold, forget
-derived data), E15 (rebaseline, Feed memory spike, bounded growth,
-invitations and language, platform proof, D-54).
+now traces its lock wait). Lot 5 E14 (System A136): Settings › Your data —
+a copy of the database (`VACUUM INTO`, no secret) and its restoration
+(staged, swapped at the next start under the instance lock, the replaced
+file kept, the copy's sends HELD until released), the "forget what Wind
+learned" choice at account removal, three distinct body failures, the
+search coverage line. Field: "1 à 9 ok" on the 12.49 GB database (a copy <!-- lang:fr -->
+takes ~12 GB and one to three minutes). Remaining sub-lot: E15
+(rebaseline, Feed memory spike, bounded growth, invitations and language,
+platform proof, D-54).
 
 Lot 4 (E11–E12, [plan](PLAN-AUDIT-2026-09-LOT4.md)): Vite 7.3.6 with zero
 advisories (D2); CI gains `npm audit` at moderate (D3), the seam guard on

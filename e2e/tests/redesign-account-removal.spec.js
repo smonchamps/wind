@@ -57,6 +57,16 @@ test('removal confirms — and cancelling touches nothing', async () => {
   await expect(page.locator('[data-testid="settings-removal"]')).toContainText(
     'Nothing is deleted on the server',
   );
+  // D4 (Lot 5 E14c): the second choice, off by default — the shared
+  // data survives either way; ticking it forgets only what no other
+  // account shares.
+  const forget = page.locator('[data-testid="removal-forget"] input');
+  await expect(forget).toBeVisible();
+  await expect(forget).not.toBeChecked();
+  await expect(page.locator('[data-testid="removal-forget"]')).toContainText(
+    'Also forget what Wind learned from this account',
+  );
+  await page.locator('[data-testid="settings-removal"]').screenshot({ path: 'test-results/removal-card.png' });
 
   // Cancel: the card collapses, both accounts are still there.
   await page.locator('[data-testid="removal-cancel"]').click();
@@ -104,6 +114,8 @@ test('confirmed: the account leaves Settings, the nav and the list', async () =>
   await expect(page.locator('[data-testid="settings-removal"]')).toContainText(
     'deux@exemple.fr',
   );
+  // With the second choice on: the removal goes through the same door.
+  await page.locator('[data-testid="removal-forget"] input').check();
   await page.locator('[data-testid="removal-confirm"]').click();
 
   await expect(page.locator('[data-testid="toast"]')).toContainText('Account removed.');

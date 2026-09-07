@@ -885,7 +885,12 @@ pub async fn repair_generic_account(
 /// an orphaned token that survives the account — would stay invisible
 /// forever.
 #[tauri::command]
-pub async fn remove_account(app: AppHandle, account_id: i64) -> Result<(), CommandError> {
+pub async fn remove_account(
+    app: AppHandle,
+    account_id: i64,
+    forget: Option<bool>,
+) -> Result<(), CommandError> {
+    let forget = forget.unwrap_or(false);
     let (account, retirement) = off_pump(app.clone(), move |app| {
         let store = Store::open(&adopted_db(&app)?).map_err(|err| err.to_string())?;
         let account = store
@@ -915,7 +920,14 @@ pub async fn remove_account(app: AppHandle, account_id: i64) -> Result<(), Comma
             store.check_account_removal(account_id)?;
             mail_auth::forget_credentials(&account.provider, &account.email)
                 .map_err(|err| err.to_string())?;
-            store.delete_account(account_id)?;
+            // D4 (Lot 5 E14c): "also forget what Wind learned from this
+            // account" — the rules and the image trust no other account
+            // shares go with it.
+            if forget {
+                store.delete_account_forgetting(account_id)?;
+            } else {
+                store.delete_account(account_id)?;
+            }
             lock_accounts(&state)?.remove(&account.email);
             recovered(&state.sync_backoffs).remove(&account.email);
             recovered(&state.gesture_passes).retain(|ticket, _| ticket.account_id != account_id);
@@ -1668,7 +1680,7 @@ fn fetch_body(
         uid,
     )?;
     server.logout();
-    body.ok_or_else(|| CommandError::new("message not found on the server"))
+    body.ok_or_else(|| mail_core::Error::MissingOnServer.into())
 }
 
 /// Raw HTML body of a message: local cache first (no network), the
@@ -3449,6 +3461,9 @@ pub struct OutboxStatus {
     pub queued: usize,
     pub interrupted: usize,
     pub rejected: usize,
+    /// Held after a restore from a copy (Lot 5 E14b): each one waits
+    /// for the user's word before it goes out.
+    pub held: usize,
     /// R2: scheduled sends NOT YET due — kept apart from `queued`,
     /// otherwise the status bar would say "waiting" about a send that
     /// is waiting for its time, not the network (a lie).
@@ -4487,6 +4502,7 @@ fn read_sends(store: &Store) -> Result<OutboxStatus, String> {
         queued: 0,
         interrupted: 0,
         rejected: 0,
+        held: 0,
         scheduled: 0,
         next_scheduled_epoch: None,
         entries: Vec::new(),
@@ -4533,6 +4549,7 @@ fn read_sends(store: &Store) -> Result<OutboxStatus, String> {
             OutboxState::Queued | OutboxState::Sending => status.queued += 1,
             OutboxState::Interrupted => status.interrupted += 1,
             OutboxState::Rejected => status.rejected += 1,
+            OutboxState::Held => status.held += 1,
         }
         status.entries.push(OutboxEntry {
             id: message.id,
@@ -4583,6 +4600,68 @@ pub async fn outbox_delete(
         Ok(store.delete_outbox(id)?)
     })
     .await
+}
+
+/// The user's word on a send held after a restore (Lot 5 E14b): back
+/// to the queue — the caller flushes.
+#[tauri::command]
+pub async fn outbox_release(
+    app: AppHandle,
+    id: i64,
+    message_id: String,
+) -> Result<(), CommandError> {
+    store_off_pump(app, move |app, store| {
+        let account_id = store.outbox_account(id, &message_id)?;
+        admit_account(app, store, account_id)?;
+        Ok(store.release_held(id)?)
+    })
+    .await
+}
+
+/// A copy of the database into the file the user named (Lot 5 E14b,
+/// G02): consistent, compacted, secret-free (the keyring holds them).
+/// E8: the path comes from the native dialog — absolute, in an existing
+/// folder, and not an existing file (never a database overwritten).
+/// A read of the database: no commands' lock (the copy of a large
+/// database takes seconds, the reading pane must not wait it out).
+#[tauri::command]
+pub async fn backup_snapshot(app: AppHandle, dest: String) -> Result<String, CommandError> {
+    let target = PathBuf::from(&dest);
+    if !target.is_absolute() || target.parent().is_none_or(|p| !p.is_dir()) {
+        return Err("the copy must go to an absolute path in an existing folder".into());
+    }
+    read_store_off_pump(app, move |_, store| {
+        store.snapshot_into(&target)?;
+        Ok(target.to_string_lossy().into_owned())
+    })
+    .await
+}
+
+/// Stages a copy for restoration (Lot 5 E14b): validated by the core's
+/// probe, placed next to the database; the swap happens at the next
+/// start, before anything opens the database (`restore::apply_pending`),
+/// and the copy's sends are held at the adoption. The caller restarts.
+#[tauri::command]
+pub async fn restore_snapshot(app: AppHandle, source: String) -> Result<(), CommandError> {
+    let source = PathBuf::from(&source);
+    if !source.is_absolute() || !source.is_file() {
+        return Err("the copy must be an existing file".into());
+    }
+    // The path under the token; the copy itself (a file of gigabytes)
+    // off the commands' lock — nothing reads the database meanwhile.
+    let db = off_pump(app, move |app| probe_path(&app)).await?;
+    unlocked(move || {
+        crate::restore::stage(&db, &source).map_err(|err| err.to_string())?;
+        Ok::<_, CommandError>(())
+    })
+    .await
+}
+
+/// Relaunches Wind (after a staged restore). Pure: no database, no
+/// file — the process ends here.
+#[tauri::command]
+pub fn restart_app(app: AppHandle) {
+    app.restart();
 }
 
 /// R2, CE decision D2: cancels a scheduled send — the entry leaves the
@@ -6457,6 +6536,19 @@ pub struct MigrationCheck {
     pub pending: Option<u64>,
 }
 
+/// After the adoption of a restored copy (Lot 5 E14b): every send the
+/// copy could still deliver is held; the marker says whether one was.
+/// A failure is traced, never a refusal of the start.
+fn hold_after_restore(path: &Path) {
+    match crate::restore::hold_if_marked(path) {
+        Ok(0) => {}
+        Ok(held) => {
+            crate::trace::trace(&format!("restore: {held} send(s) held for the user's word"))
+        }
+        Err(err) => crate::trace::trace(&format!("restore: could not hold the sends: {err}")),
+    }
+}
+
 /// Read-only probe: nothing is triggered, nothing is created.
 #[tauri::command]
 pub async fn migration_check(app: AppHandle) -> Result<MigrationCheck, CommandError> {
@@ -6471,6 +6563,7 @@ pub async fn migration_check(app: AppHandle) -> Result<MigrationCheck, CommandEr
                 .adopted
                 .adopt(&path)
                 .map_err(|err| err.to_string())?;
+            hold_after_restore(&path);
         }
         Ok(MigrationCheck { pending })
     })
@@ -6544,6 +6637,7 @@ pub async fn migration_run(
             // done. The file is adopted from here on (Lot 5 E13a).
             Ok(_store) => {
                 shared.adopted.adopt(&path).map_err(|err| err.to_string())?;
+                hold_after_restore(&path);
                 Ok(true)
             }
             Err(mail_core::Error::Interrupted) => Ok(false),

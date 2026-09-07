@@ -28,6 +28,7 @@ mod fault;
 mod instance;
 mod poll;
 mod relocation;
+mod restore;
 mod telemetry;
 mod trace;
 mod watcher;
@@ -282,6 +283,29 @@ fn main() {
             1,
         ),
     };
+    // A copy staged for restoration (Lot 5 E14b) takes the database's
+    // place NOW — under the instance lock, before anything opens it; the
+    // replaced database is kept beside it, the copy's outbox is held at
+    // the adoption. A failure here is said and stops nothing: the
+    // database in place opens as usual.
+    if let Some(folder) = &folder {
+        let db = std::env::var("WIND_DB_PATH")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| folder.join("wind.db"));
+        match restore::apply_pending(&db) {
+            Ok(Some(applied)) => trace::trace(&format!(
+                "restore: copy in place, previous database kept as {}",
+                applied
+                    .replaced
+                    .as_deref()
+                    .and_then(|p| p.file_name())
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "(none)".to_string())
+            )),
+            Ok(None) => {}
+            Err(err) => trace::trace(&format!("restore: staged copy NOT applied: {err}")),
+        }
+    }
     let state = AppState {
         account_work: account_work::Registry::default(),
         consent: consent::Registry::default(),
@@ -434,6 +458,10 @@ fn main() {
             commands::backfill_bodies,
             commands::migration_check,
             commands::migration_run,
+            commands::backup_snapshot,
+            commands::restore_snapshot,
+            commands::restart_app,
+            commands::outbox_release,
             commands::migration_progress,
             commands::migration_cancel,
             commands::update_check,

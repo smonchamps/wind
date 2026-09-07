@@ -57,6 +57,10 @@ pub enum OutboxState {
     Interrupted,
     /// Definitively refused by the server.
     Rejected,
+    /// Held after a restore from a copy (Lot 5 E14b, G02): the send was
+    /// queued in another life of the database — it goes out only when
+    /// the user releases it, never on the next cycle's own initiative.
+    Held,
 }
 
 impl OutboxState {
@@ -67,6 +71,7 @@ impl OutboxState {
             OutboxState::Sent => "sent",
             OutboxState::Interrupted => "interrupted",
             OutboxState::Rejected => "rejected",
+            OutboxState::Held => "held",
         }
     }
 
@@ -77,6 +82,7 @@ impl OutboxState {
             "sent" => Some(OutboxState::Sent),
             "interrupted" => Some(OutboxState::Interrupted),
             "rejected" => Some(OutboxState::Rejected),
+            "held" => Some(OutboxState::Held),
             _ => None,
         }
     }
@@ -577,6 +583,27 @@ impl Store {
         Ok(())
     }
 
+    /// After a restore from a copy (Lot 5 E14b): every send that could
+    /// still go out — queued, scheduled, interrupted — is HELD. The copy
+    /// may predate a send the user made since, or one they gave up on;
+    /// nothing leaves without their word. Returns how many were held.
+    pub fn hold_pending_sends(&self) -> Result<usize, Error> {
+        Ok(self.conn().execute(
+            "UPDATE outbox SET state = 'held' WHERE state IN ('queued', 'interrupted')",
+            [],
+        )?)
+    }
+
+    /// The user's word on one held send: back to the queue, the next
+    /// flush takes it.
+    pub fn release_held(&self, id: i64) -> Result<(), Error> {
+        self.conn().execute(
+            "UPDATE outbox SET state = 'queued' WHERE id = ?1 AND state = 'held'",
+            [id],
+        )?;
+        Ok(())
+    }
+
     /// Abandons a send (user decision). `sent` sends are preserved:
     /// they are the outbox's provable history.
     pub fn delete_outbox(&self, id: i64) -> Result<(), Error> {
@@ -590,7 +617,7 @@ impl Store {
             return Err(Error::DeliveryInProgress);
         }
         tx.execute(
-            "DELETE FROM outbox WHERE id = ?1 AND state IN ('queued', 'interrupted', 'rejected')",
+            "DELETE FROM outbox WHERE id = ?1 AND state IN ('queued', 'interrupted', 'rejected', 'held')",
             [id],
         )?;
         tx.commit()?;
@@ -761,6 +788,62 @@ mod tests {
             let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
         }
     }
+    /// Lot 5 E14b (G02): a database restored from a copy may carry
+    /// sends the user queued in another life — they are HELD, never
+    /// delivered by the next cycle; each one is released by hand.
+    #[test]
+    fn a_restored_outbox_is_held_until_each_send_is_released() {
+        struct Counting(usize);
+        impl MailTransport for Counting {
+            fn send(&mut self, _: &OutboxMessage) -> Result<(), SendError> {
+                self.0 += 1;
+                Ok(())
+            }
+        }
+        let (path, mut store, account) = disk_fixture();
+        let first = store.enqueue_outbox(account, &draft("first")).unwrap();
+        let second = store.enqueue_outbox(account, &draft("second")).unwrap();
+        let third = store.enqueue_outbox(account, &draft("third")).unwrap();
+        store
+            .conn()
+            .execute(
+                "UPDATE outbox SET state = 'interrupted' WHERE id = ?1",
+                [third],
+            )
+            .unwrap();
+        // The restore holds everything that could still go out.
+        assert_eq!(store.hold_pending_sends().unwrap(), 3);
+        let mut transport = Counting(0);
+        flush_outbox(&mut transport, &mut store, account).unwrap();
+        assert_eq!(transport.0, 0, "a held send went out on its own");
+        assert!(
+            store
+                .outbox()
+                .unwrap()
+                .iter()
+                .all(|row| row.state == OutboxState::Held),
+            "every pending send is held"
+        );
+        // Releasing ONE sends that one only.
+        store.release_held(second).unwrap();
+        flush_outbox(&mut transport, &mut store, account).unwrap();
+        assert_eq!(transport.0, 1);
+        let rows = store.outbox().unwrap();
+        assert_eq!(
+            rows.iter().find(|r| r.id == second).unwrap().state,
+            OutboxState::Sent
+        );
+        assert_eq!(
+            rows.iter().find(|r| r.id == first).unwrap().state,
+            OutboxState::Held
+        );
+        // A held send can be discarded like a queued one.
+        store.delete_outbox(first).unwrap();
+        assert!(store.outbox().unwrap().iter().all(|r| r.id != first));
+        drop(store);
+        remove_fixture(&path);
+    }
+
     #[test]
     fn discard_during_transport_keeps_the_delivery_decision() {
         struct DiscardDuringSend {

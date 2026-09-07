@@ -140,6 +140,16 @@ export const chooseFiles = async () => {
   return Array.isArray(choice) ? choice : [choice];
 };
 
+// One existing file (the copy to restore, Lot 5 E14b) — same seam
+// pattern: `window.__e2eSource` short-circuits the native dialog.
+export const chooseSource = async () => {
+  const injecte = E2E ? globalThis.window?.__e2eSource : undefined;
+  if (injecte !== undefined) return injecte || null;
+  const choice = await call('plugin:dialog|open', { options: { multiple: false } });
+  if (!choice) return null;
+  return Array.isArray(choice) ? choice[0] ?? null : choice;
+};
+
 // The native “Save as” dialog (dialog plugin), to download a
 // received attachment (R1/PLAN-RETOURS-4). Same invoke channel as the
 // rest; `defaultPath` prefills folder + name (Downloads + sanitized

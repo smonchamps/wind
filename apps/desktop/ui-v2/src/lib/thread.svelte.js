@@ -193,7 +193,12 @@ async function loadMessage(m, withImages = false, refresh = false) {
       // error is stated in the frame (“Retry”).
       if (mine === token && permissions === imagePermissionGeneration() && thread.body[k] === '') {
         delete thread.body[k];
-        thread.errors[k] = err?.code === 'remote_message_too_large' ? 'too-large' : true;
+        // Lot 5 E14a (G01): what the frame says depends on the cause —
+        // too large, offline and never downloaded, gone from the server.
+        thread.errors[k] = err?.code === 'remote_message_too_large' ? 'too-large'
+          : err?.code === 'gone' ? 'gone'
+          : err?.code === 'connection' ? 'offline'
+          : true;
       }
     }
   }

@@ -3899,6 +3899,246 @@ fn cleanup_groups_are_read_via_the_senders_index() {
     );
 }
 
+/// Lot 5 E14b (G02): a copy of the database written while it is open
+/// — consistent (WAL), complete (rows, bodies, drafts), and openable
+/// as a database of its own.
+#[test]
+fn a_snapshot_is_a_complete_copy_that_opens_on_its_own() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let path =
+        std::env::temp_dir().join(format!("wind-snapshot-{}-{suffix}.db", std::process::id()));
+    let copy = std::env::temp_dir().join(format!(
+        "wind-snapshot-{}-{suffix}-copy.db",
+        std::process::id()
+    ));
+    let mut store = Store::open(&path).unwrap();
+    let account = store
+        .adopt_or_create_account("me@example.fr", "gmail")
+        .unwrap();
+    let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+    store
+        .upsert_envelopes(
+            inbox,
+            &[
+                envelope(1, "kept", 1_000, false),
+                envelope(2, "also kept", 2_000, true),
+            ],
+        )
+        .unwrap();
+    store
+        .save_body(inbox, 1, "<p>the body travels</p>", &[])
+        .unwrap();
+    store.set_text_pref("lang", "fr").unwrap();
+    store.snapshot_into(&copy).unwrap();
+    // The live database keeps working after the copy.
+    store
+        .upsert_envelopes(inbox, &[envelope(3, "after the copy", 3_000, false)])
+        .unwrap();
+    drop(store);
+    let restored = Store::open(&copy).unwrap();
+    let subjects: Vec<String> = restored
+        .conn()
+        .prepare("SELECT subject FROM envelopes ORDER BY uid")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(
+        subjects,
+        vec!["kept", "also kept"],
+        "the copy is the database as it was"
+    );
+    assert_eq!(
+        restored.body(account, "INBOX", 1).unwrap().as_deref(),
+        Some("<p>the body travels</p>")
+    );
+    assert_eq!(restored.text_pref("lang").unwrap().as_deref(), Some("fr"));
+    drop(restored);
+    for p in [&path, &copy] {
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", p.display()));
+        }
+    }
+}
+
+/// Lot 5 E14b: what `inspect_copy` refuses — a foreign SQLite file, a
+/// copy from a newer Wind — and what it accepts (a snapshot).
+#[test]
+fn inspect_copy_refuses_foreign_and_newer_files_and_accepts_a_snapshot() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir();
+    let foreign = dir.join(format!(
+        "wind-inspect-{}-{suffix}-foreign.db",
+        std::process::id()
+    ));
+    rusqlite::Connection::open(&foreign)
+        .unwrap()
+        .execute_batch("CREATE TABLE notes (id INTEGER)")
+        .unwrap();
+    assert!(
+        Store::inspect_copy(&foreign).is_err(),
+        "a foreign SQLite file"
+    );
+    let text = dir.join(format!(
+        "wind-inspect-{}-{suffix}-text.db",
+        std::process::id()
+    ));
+    std::fs::write(&text, b"not a database").unwrap();
+    assert!(Store::inspect_copy(&text).is_err(), "a text file");
+    let copy = dir.join(format!(
+        "wind-inspect-{}-{suffix}-copy.db",
+        std::process::id()
+    ));
+    Store::open_in_memory()
+        .unwrap()
+        .snapshot_into(&copy)
+        .unwrap();
+    assert!(Store::inspect_copy(&copy).is_ok(), "a snapshot");
+    // A hand copy of a live database drags a WAL sidecar: refused.
+    let wal = dir.join(format!(
+        "wind-inspect-{}-{suffix}-copy.db-wal",
+        std::process::id()
+    ));
+    std::fs::write(&wal, b"pending transactions").unwrap();
+    assert!(
+        Store::inspect_copy(&copy).is_err(),
+        "a copy with a -wal sidecar"
+    );
+    std::fs::remove_file(&wal).unwrap();
+    assert!(Store::inspect_copy(&copy).is_ok());
+    rusqlite::Connection::open(&copy)
+        .unwrap()
+        .execute_batch(&format!(
+            "PRAGMA user_version = {}",
+            thread::THREADING_VERSION + 1
+        ))
+        .unwrap();
+    assert!(
+        Store::inspect_copy(&copy).is_err(),
+        "a copy from a newer Wind"
+    );
+    for p in [&foreign, &text, &copy] {
+        let _ = std::fs::remove_file(p);
+    }
+}
+
+/// A copy cannot be written over an existing file: the user names a
+/// new one, never overwrites a database by mistake.
+#[test]
+fn a_snapshot_refuses_an_existing_target() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let copy = std::env::temp_dir().join(format!(
+        "wind-snapshot-{}-{suffix}-taken.db",
+        std::process::id()
+    ));
+    std::fs::write(&copy, b"already here").unwrap();
+    let store = Store::open_in_memory().unwrap();
+    assert!(store.snapshot_into(&copy).is_err());
+    assert_eq!(std::fs::read(&copy).unwrap(), b"already here");
+    let _ = std::fs::remove_file(&copy);
+}
+
+/// Lot 5 E14c (G04, D4): removing an account WITH "forget what Wind
+/// learned from it" — the sender rules and the image trust that no
+/// remaining account shares go too; a rule an other account also
+/// receives mail from stays, and so do the contacts of unknown
+/// provenance (ADR 0040: nothing is inferred about them).
+#[test]
+fn forgetting_an_account_removes_only_what_no_other_account_shares() {
+    let mut store = Store::open_in_memory().unwrap();
+    let departed = store
+        .adopt_or_create_account("part@exemple.fr", "gmail")
+        .unwrap();
+    let neighbor = store
+        .adopt_or_create_account("reste@exemple.fr", "gmail")
+        .unwrap();
+    let departed_inbox = store.create_mailbox(departed, "INBOX", 1).unwrap();
+    let neighbor_inbox = store.create_mailbox(neighbor, "INBOX", 1).unwrap();
+    let from = |uid, address: &str| {
+        let mut e = envelope(uid, "hello", 1_000 + uid as i64, false);
+        e.sender_address = Some(address.to_string());
+        e
+    };
+    store
+        .upsert_envelopes(
+            departed_inbox,
+            &[from(1, "only@exemple.fr"), from(2, "shared@exemple.fr")],
+        )
+        .unwrap();
+    store
+        .upsert_envelopes(neighbor_inbox, &[from(1, "shared@exemple.fr")])
+        .unwrap();
+    store
+        .route_sender("only@exemple.fr", "kiosque", None, 2_000)
+        .unwrap();
+    store
+        .route_sender("shared@exemple.fr", "kiosque", None, 2_000)
+        .unwrap();
+    assert!(
+        store
+            .allow_images_sender_of(departed_inbox, 1, 3_000)
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        store
+            .allow_images_sender_of(departed_inbox, 2, 3_000)
+            .unwrap()
+            .is_some()
+    );
+    // A contact of unknown provenance (historical, source 0).
+    store
+        .conn()
+        .execute(
+            "INSERT INTO correspondants (address, name, last_epoch, hits) VALUES ('old@exemple.fr', 'Old', 1, 1)",
+            [],
+        )
+        .unwrap();
+
+    store.delete_account_forgetting(departed).unwrap();
+
+    assert!(
+        store.routing_of("only@exemple.fr").unwrap().is_none(),
+        "the exclusive rule is forgotten"
+    );
+    assert!(
+        store.routing_of("shared@exemple.fr").unwrap().is_some(),
+        "the shared rule stays"
+    );
+    let trusted = store.images_senders().unwrap();
+    assert!(
+        !trusted.iter().any(|a| a == "only@exemple.fr"),
+        "the exclusive image trust is forgotten"
+    );
+    assert!(
+        trusted.iter().any(|a| a == "shared@exemple.fr"),
+        "the shared image trust stays"
+    );
+    let old: i64 = store
+        .conn()
+        .query_row(
+            "SELECT COUNT(*) FROM correspondants WHERE address = 'old@exemple.fr'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        old, 1,
+        "a contact of unknown provenance is not inferred away"
+    );
+    assert!(store.accounts().unwrap().iter().all(|a| a.id != departed));
+}
+
 /// Lot 5 E13e (D-48): a write that changes a view outside the sync's
 /// paths — a routing verdict, its removal, a pin, a set-aside, a
 /// cleanup verdict — moves ONE revision the resting probe can watch;

@@ -9,8 +9,9 @@ Method: [WORKFLOW](WORKFLOW.md), [job](../.claude/skills/job/SKILL.md).
 figures). Sub-lot E13 implemented, reviewed, full gate GREEN (322 s);
 field pass 1: items 1, 3–7 OK, item 2 KO fixed the same day (reads off
 the commands' lock, net `reads-under-write.spec.js`), gate GREEN again
-(300 s); second field pass “2 OK”. **E13 field-validated and committed
-locally on 2026-09-07 as `2e096d6`; not pushed (D0). E14 next.**
+(300 s); second field pass “2 OK”. **E13 committed locally as `2e096d6`;
+E14 field-validated (“1 à 9 ok”, 12.49 GB database) and committed locally <!-- lang:fr -->
+on 2026-09-07; not pushed (D0). E15 next.**
 
 ## 1. Findings
 
@@ -580,3 +581,165 @@ review, the full `scripts/gate.ps1`, then STOP 2 with the committed
 checklist. The E14 restore fixture and the E13 compile-fail nets are proven
 by tests; the Feed figure and the gesture p95 are proven on this
 workstation's fixtures and then in the field on the real database.
+
+## Sub-lot E14 — 2026-09-07
+
+Started after E13's commit. A disk full to the byte (target caches of a
+hundred gigabytes, spike worktrees) stopped the line once; the Chief
+Engineer cleaned 85 GB and the work resumed.
+
+### Implementation increments
+
+- **E14b core (TDD).** RED shown (`Held` state, `hold_pending_sends`,
+  `release_held`, `snapshot_into`, `delete_account_forgetting`,
+  `inspect_copy` absent), then GREEN: an outbox held after a restore
+  delivers nothing until each send is released, a held send can be
+  discarded; `VACUUM INTO` writes a complete copy that opens on its own
+  while the live database keeps working, and refuses an existing target;
+  the copy probe refuses a text file, a foreign SQLite file and a copy
+  from a newer Wind. Core 581.
+- **E14c core (TDD).** `delete_account_forgetting`: the sender rules and
+  the image trust whose address no remaining account receives mail from
+  go with the account; a shared rule stays; a contact of unknown
+  provenance stays (ADR 0040). One test.
+- **E14b shell.** `apps/desktop/src/restore.rs`: a copy is STAGED while
+  Wind runs (validated by the core probe, placed as `wind.db.restore`) and
+  APPLIED at the next start under the instance lock, before anything opens
+  the database — the replaced file kept as `wind.db.replaced-<epoch>`, its
+  WAL and shm removed with it, a marker asking the adoption to hold the
+  outbox; `hold_if_marked` runs after both adoption paths. Three tests
+  (a text file refused, nothing staged touches nothing, the swap and the
+  hold). Commands: `backup_snapshot` (a read, no commands' lock — a large
+  copy takes seconds), `restore_snapshot`, `restart_app` (pure, listed),
+  `outbox_release`; `remove_account` gains `forget`; `OutboxStatus.held`.
+- **E14a.** `Error::MissingOnServer` (code `gone`, not retryable) replaces
+  the bare string; the reading pane says offline-never-downloaded (retry)
+  or gone (no retry); the search field carries a coverage line while
+  bodies are still on their way.
+- **UI.** Settings › Your data (two rows, the removal card's form for the
+  restore confirmation), the held-send notice with Send now / Discard, the
+  forget checkbox. Catalogs en/fr. `chooseSource` in the transport with
+  its e2e seam. The `storage` glyph un-reserved (System icon table).
+- **Nets.** `storage.spec.js` (the copy written where asked and a SQLite
+  file, a second copy never overwrites, the restore confirmation, the
+  staged file next to the database, a foreign file refused) and the
+  removal spec's second choice. 10/10 with the image-revocation spec.
+  **Early visual STOP: “OK, déroule” on 2026-09-07** (three captures). <!-- lang:fr -->
+
+### Fresh-eyes review (E14) — 2026-09-07
+
+Three finder passes (line-by-line; removed behavior and cross-file; the
+cleanup angles together), about fifteen candidates. Confirmed and
+corrected before the gate:
+
+1. **A failed swap kept its hold marker**: the marker is written first
+   (a failure after the swap must never leave the copy's outbox free), and
+   a swap that fails takes it back — nothing restored, the database's own
+   sends stay its own; the database steps back in if the copy could not
+   take its place (never a path that opens as a first install). Windows
+   test with an exclusive handle on the file.
+2. **Removal and forgetting in ONE transaction** (a crash between the two
+   stranded the rules forever).
+3. **A hand copy of a live database refused**: a `-wal` sidecar next to the
+   picked file means transactions the file lacks; `quick_check` runs at
+   staging, not after the swap.
+4. **The forget checkbox outlived its card** (a cancelled tick reached the
+   next account's card): reset with the card.
+5. Efficiency: the copy probe read the whole file for a sixteen-byte
+   header; the staging copy ran under the commands' lock; the orphan
+   subquery recomputed `lower(trim())` per row instead of the indexed
+   `sender_norm`. All three corrected.
+6. Cleanup: the `validate` wrapper inlined. Kept: the `Applied` type, the
+   per-module scratch helpers of the tests.
+
+Stated limits: an e2e session cannot survive `restart_app`, so the swap
+and the hold are proven by the shell's tests and by the field; the
+attachment bytes are not in the copy (never cached, ADR 0007); a restore
+into an older Wind is refused only when the threading version says so
+(other schema drift migrates forward as any legacy database, D-55).
+
+### Full gate and STOP 2 handoff (sub-lot E14) — 2026-09-07
+
+Two gates: the first red at step 13 on one legitimate count (the settings
+navigation spec expected eight groups, "Your data" makes nine — corrected,
+the file replayed whole in isolation 61/61); the second unchanged,
+`scripts/gate.ps1`, **exit 0 in 490 s** — 920 Rust (core 583, shell 69,
+others), 43 Node, **267 UI**, 1 optional benchmark skipped, one flaky
+scenario passed on retry (recorded below), zero failed. Contrasts 440
+pairs, System coherence 68 values (the `storage` glyph in use), guard 130
+commands, language ratchet no rise, IPC contract 129 commands. The flaky
+scenario is `organized-mode` "Move to… routes the whole sender" (first-card
+hover), the same as E13's day and Lot 3's — passed on retry.
+
+### STOP 2 — field checklist (E14)
+
+Real accounts, the release build from the sources. The restore path is
+proven end to end HERE (the e2e cannot survive the restart).
+
+`scripts\field.ps1` on the workstation, 2026-09-07 evening: `wind.db`
+**12.49 GB**, 64 GB free after the day's cleanup. A copy is the whole
+database, bodies included, compacted by little: **about 12 GB and one to
+three minutes per copy** (button greyed meanwhile, reading still
+possible — no commands' lock); a restore copies the file once more (a
+minute) then walks it with `quick_check` (one to two minutes, no
+progress bar — a stated limit). The sequence below keeps the disk under
+40 GB: ONE copy, made after the queued send of item 3, restored once,
+never a second restore.
+
+1. **A copy.** Settings › Your data › Save a copy… → name a file on the
+   Desktop. The toast names the path; the file is there (~12 GB, bodies
+   included, no attachment bytes); Wind kept working meanwhile.
+2. **A second copy under the same name** is refused (the toast says so);
+   the first file is intact.
+3. **A queued send.** Go offline (network off), send yourself a message:
+   "queued". Then Save a copy… again (this copy carries the queued send).
+   Go online, let it deliver.
+4. **Restore that copy.** Settings › Your data › Restore a copy… → pick the
+   second file → the confirmation card names it → Restart on this copy.
+   Wind restarts. Expected: the mail is as it was at the copy; the notice
+   slot says “…was waiting to be sent in the copy you restored” with
+   **Send now / Discard** — press **Discard** (it was already delivered
+   before the restore). Nothing goes out on its own. The trace carries
+   `restore: copy in place, previous database kept as wind.db.replaced-…`
+   and `restore: 1 send(s) held`.
+5. **No second restore**: the restored copy is today's mail minus what
+   arrived in between (the sync catches up). The replaced file sits next
+   to `wind.db` in `%APPDATA%\dev.elements.wind`, named
+   `wind.db.replaced-<epoch>` (12 GB); delete it and the Desktop copy by
+   hand once satisfied (Wind never deletes them).
+6. **A foreign file** (a .txt renamed .db): refused with the reason, no
+   restart.
+7. **Forget at removal** — only if you have a disposable account to
+   remove: tick “Also forget what Wind learned from this account”, Remove;
+   a Screener rule for a sender that only wrote to that account is gone
+   from Settings › Screener; a rule shared with another account stays.
+   Without a disposable account: open the card, see the checkbox, Cancel.
+8. **Bodies.** Offline, open a message never downloaded: the frame says
+   “You are offline and this message was never downloaded…” with Retry.
+   (“No longer on the server” needs a message deleted from the webmail
+   between two syncs — only if convenient.)
+9. **Search coverage.** During a body backfill (a fresh account, or the
+   first minutes after a restore), type a query: one muted line beside
+   the field says how many messages are searched by subject and sender
+   only; it goes away once the bodies are in.
+
+Commands, ready to copy — the committed scripts first:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scriptsield.ps1
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts
+un-wind.ps1
+```
+
+Verdict as a numbered list, 1–9 OK/KO, with what you saw (and the two
+`restore:` trace lines of item 4).
+
+### STOP 2 verdict (E14) — 2026-09-07
+
+**“1 à 9 ok”** (verbatim), on the 12.49 GB real database with the <!-- lang:fr -->
+tightened sequence (one copy, one restore, the held send discarded).
+Sub-lot E14 is field-validated. Committed locally; not pushed (D0). <!-- lang:fr -->
+

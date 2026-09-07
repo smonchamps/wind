@@ -63,6 +63,12 @@ pub enum Error {
     #[error("invalid local data: {0}")]
     Corrupt(String),
 
+    /// The server no longer holds the message (deleted or moved by
+    /// another client) and its content was never downloaded — the UI
+    /// says so, distinctly from a connection failure (Lot 5 E14a, G01).
+    #[error("the server no longer holds this message")]
+    MissingOnServer,
+
     /// A closed vocabulary of Organized mode (routing destination, No
     /// rule) received a word outside the table — refused before any
     /// write (PLAN-MODE-ORGANISE E1).
@@ -99,6 +105,7 @@ impl Error {
             Error::UnresolvedDelivery | Error::DeliveryInProgress => "delivery_pending",
             Error::InvalidEmailAddress(_) | Error::InvalidRouting(_) => "invalid_input",
             Error::Storage(_) | Error::Corrupt(_) => "local",
+            Error::MissingOnServer => "gone",
             Error::Server(_) => "server",
             Error::Connection(_) => "connection",
             Error::RemoteMessageTooLarge { .. } => "remote_message_too_large",

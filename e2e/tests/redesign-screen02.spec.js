@@ -944,8 +944,8 @@ test('the two-pane settings navigate by click AND by keyboard (A13)', async () =
   // The rail carries the seven groups (Signature entered with
   // RETOURS-6); Accounts is the opening group.
   // RETOURS-13 field C4: the Screener group is there regardless of
-  // mode — 8 groups.
-  await expect(page.locator('[data-testid="settings-group"]')).toHaveCount(8);
+  // mode — 8 groups; Lot 5 E14b adds "Your data" (A136): 9.
+  await expect(page.locator('[data-testid="settings-group"]')).toHaveCount(9);
   await expect(page.locator('[data-testid="settings-accounts"]')).toBeVisible();
   // By click: Shortcuts — the D3 table as reference, read-only.
   await page.locator('[data-testid="settings-group"][data-group="raccourcis"]').click();

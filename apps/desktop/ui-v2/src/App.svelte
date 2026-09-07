@@ -656,7 +656,7 @@ import { invalidateViews } from './lib/views.svelte.js';
     try {
       const identity = { id: problem.id, messageId: problem.message_id };
       if (resend) {
-        await call('outbox_requeue', identity);
+        await call(problem.state === 'held' ? 'outbox_release' : 'outbox_requeue', identity);
         await call('flush_outbox');
       } else {
         await call('outbox_delete', identity);
@@ -717,6 +717,20 @@ import { invalidateViews } from './lib/views.svelte.js';
           }
         : null;
       if (sendDecisionBusy) return;
+      // Lot 5 E14b: a send held after a restore waits for the user's
+      // word — the same slot, the same two gestures.
+      const held = state.entries.find((e) => e.state === 'held');
+      if (held) {
+        sendNotice = {
+          icon: 'schedule_send',
+          text: t('notice.sendHeld', { subject: held.subject }),
+          actions: [
+            { label: t('action.sendNow'), primary: true, do: () => decideSend(held, true) },
+            { label: t('action.discard'), do: () => decideSend(held, false) },
+          ],
+        };
+        return;
+      }
       const problem = state.entries.find(
         (e) => e.state === 'interrupted' || e.state === 'rejected',
       );
@@ -1830,6 +1844,12 @@ import { invalidateViews } from './lib/views.svelte.js';
                 onclick={() => { search = ''; searchField?.focus(); }}>
           <Icon name="close" /></button>
       {/if}</span>
+    {#if search && bodyBackfill !== null && bodyBackfill > 0}
+      <!-- Lot 5 E14a (G01): what the search does NOT cover, said where
+           the query is typed — a body not downloaded yet is indexed by
+           subject and sender only. -->
+      <span class="search-coverage" data-testid="search-coverage">{t('header.searchCoverage', { n: bodyBackfill })}</span>
+    {/if}
     <!-- PLAN-MODE-ORGANISE E1: the "Organized" toggle, to the right
          of the search (form settled at the prototype) — pill + disc,
          the only two legitimate round shapes (V14). -->
@@ -2070,6 +2090,10 @@ import { invalidateViews } from './lib/views.svelte.js';
     font-size:18px; font-weight:600; width:212px; color:var(--ink);
     display:flex; align-items:center; gap:10px;
   }
+  /* E14a: the search's coverage note — muted, one line, never a
+     banner; it only exists while a query is typed and bodies are
+     still on their way. */
+  .search-coverage { font-size:12px; color:var(--ink2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:34ch; }
   .search {
     flex:1; max-width:520px; height:32px; display:flex; align-items:center; gap:10px;
     padding:0 14px; font-size:13px; color:var(--ink2);

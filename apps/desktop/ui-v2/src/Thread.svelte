@@ -588,8 +588,11 @@
               {#if thread.errors[k]}
                 <div class="images-guard" data-testid="body-failure">
                   <Icon name="error" />
-                  <span class="guard-text">{t(thread.errors[k] === 'too-large' ? 'reading.bodyTooLarge' : 'reading.bodyFailure')}</span>
-                  {#if thread.errors[k] !== 'too-large'}
+                  <span class="guard-text">{t(thread.errors[k] === 'too-large' ? 'reading.bodyTooLarge'
+                    : thread.errors[k] === 'gone' ? 'reading.bodyGone'
+                    : thread.errors[k] === 'offline' ? 'reading.bodyOffline'
+                    : 'reading.bodyFailure')}</span>
+                  {#if thread.errors[k] !== 'too-large' && thread.errors[k] !== 'gone'}
                   <button type="button" data-testid="body-retry"
                           onclick={() => retry(m)}>
                     {t('action.retry')}</button>

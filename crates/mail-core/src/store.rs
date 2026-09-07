@@ -1184,6 +1184,22 @@ impl Store {
     /// drafts, outbox and this account's learned contacts. Shared explicit
     /// preferences and contacts with unknown historical ownership remain.
     pub fn delete_account(&mut self, account_id: i64) -> Result<(), Error> {
+        self.delete_account_with(account_id, false)
+    }
+
+    /// Removes the account AND forgets what only it taught the
+    /// workstation (Lot 5 E14c, G04, D4): the sender rules and the
+    /// image trust whose address no remaining account receives mail
+    /// from. What another account shares stays; contacts of unknown
+    /// provenance stay too (ADR 0040: nothing is inferred about them),
+    /// and the exclusive contacts already fall with their origins. One
+    /// transaction with the removal (review 2026-09-07): a crash between
+    /// the two would have stranded the rules forever.
+    pub fn delete_account_forgetting(&mut self, account_id: i64) -> Result<(), Error> {
+        self.delete_account_with(account_id, true)
+    }
+
+    fn delete_account_with(&mut self, account_id: i64, forget: bool) -> Result<(), Error> {
         let tx = self.0.transaction()?;
         check_account_removal(&tx, account_id)?;
         let mailboxes: Vec<i64> = {
@@ -1223,9 +1239,50 @@ impl Store {
         // The Screener's waiting list follows the mail (E2): the rows
         // the cascades just cleared die with the account. Routing,
         // itself, is GLOBAL to the workstation and survives (the
-        // `images_expediteurs` pattern).
+        // `images_expediteurs` pattern) — unless the user asked to
+        // forget it (D4).
         purge_orphan_pending(&tx)?;
+        if forget {
+            // The account's mail is gone: an address with no envelope
+            // left anywhere was this account's alone. `sender_norm` is
+            // the indexed, generated column of exactly that
+            // normalization (the Screener's own idiom) — an index scan,
+            // not a recompute per row.
+            const ORPHANED: &str = "address NOT IN (
+                SELECT DISTINCT sender_norm FROM envelopes WHERE sender_norm IS NOT NULL)";
+            tx.execute(
+                &format!("DELETE FROM routage_expediteurs WHERE {ORPHANED}"),
+                [],
+            )?;
+            tx.execute(
+                &format!("DELETE FROM images_expediteurs WHERE {ORPHANED}"),
+                [],
+            )?;
+            tx.execute(
+                "INSERT INTO prefs (key, value) VALUES (?1, '1')
+                 ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT)",
+                params![PREF_VIEWS_REVISION],
+            )?;
+        }
         tx.commit()?;
+        Ok(())
+    }
+
+    /// A consistent copy of the whole database into a NEW file (Lot 5
+    /// E14b, G02): SQLite's `VACUUM INTO` reads one snapshot of the
+    /// database — the WAL makes it consistent while writers go on — and
+    /// writes it compacted. Secrets are not in this file (the keyring
+    /// holds them). An existing target is refused: the user names a new
+    /// file, a database is never overwritten by mistake.
+    pub fn snapshot_into(&self, target: &Path) -> Result<(), Error> {
+        if target.exists() {
+            return Err(Error::Corrupt(format!(
+                "snapshot target already exists: {}",
+                target.display()
+            )));
+        }
+        let target = target.to_string_lossy().into_owned();
+        self.0.execute("VACUUM INTO ?1", params![target])?;
         Ok(())
     }
 

@@ -90,7 +90,7 @@ export const SET = {
   format_indent_decrease: { d:['M4 6h16','M11 10h9','M11 14h9','M4 18h16','M8 10l-3 2 3 2'] },
   format_clear: { d:['M3 5h12v5H3z','M15 7h4v6h-7v8','M2 2l20 20'] },
   format_quote: { d:['M5 14V9h5v5l-3 4H5z','M14 14V9h5v5l-3 4h-2z'], r:true },
-  storage: { d:['M3 5h18v4H3z','M3 10h18v4H3z','M3 15h18v4H3z'], r:true },
+  storage: { d:['M3 5h18v4H3z','M3 10h18v4H3z','M3 15h18v4H3z'] },
   account_balance: { d:['M3 9l9-5 9 5','M5 9v9','M10 9v9','M14 9v9','M19 9v9','M3 20h18'], marker:true },
   eco: { d:['M5 19L19 5','M5 19c0-9 6-14 15-14 0 9-6 14-15 14z'], marker:true },
   favorite: { d:['M12 20S4 14 4 9a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 5-8 11-8 11z'], marker:true },

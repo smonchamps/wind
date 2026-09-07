@@ -27,7 +27,7 @@
   } from './lib/spacing.svelte.js';
   import { activation } from './lib/keyboard.js';
   import { whenLong } from './lib/when.js';
-  import { call } from './lib/transport.js';
+  import { call, chooseDestination, chooseSource } from './lib/transport.js';
   import { imageSources, markHtmlEdited, pasteSafeHtml, setSafeHtml, waitForHtml } from './lib/editable-html.js';
   import { SCREENED_OUT_LABEL, DESTINATION_LABEL } from './lib/screener.js';
   import { MARKER_ICONS, MARKER_HUES } from './lib/markers.js';
@@ -81,6 +81,8 @@
     // (one editor per account), the group rule is kept.
     { id: 'signature', icon: 'signature', label: 'group.signature' },
     { id: 'raccourcis', icon: 'keyboard', label: 'group.shortcuts' },
+    // Lot 5 E14b (G02, D3): a copy of the data, and its restoration.
+    { id: 'stockage', icon: 'storage', label: 'group.storage' },
     { id: 'apropos', icon: 'info', label: 'group.about' },
   ];
 
@@ -115,6 +117,49 @@
   // `removalTarget` carries the account_id awaiting confirmation.
   let removalTarget = $state(null);
   let removalBusy = $state(false);
+  // D4 (Lot 5 E14c): "also forget what Wind learned from this account".
+  let forgetLearned = $state(false);
+  // Lot 5 E14b: the copy chosen for restoration, awaiting the word.
+  let restoreSource = $state(null);
+  let storageBusy = $state(false);
+  async function backupNow() {
+    if (storageBusy) return;
+    storageBusy = true;
+    try {
+      const stamp = new Date().toISOString().slice(0, 10);
+      const dest = await chooseDestination(`wind-${stamp}.db`);
+      if (!dest) return;
+      const path = await call('backup_snapshot', { dest });
+      onflash(t('settings.backupSaved', { path }));
+    } catch (err) {
+      onflash(t('error.backup', { err }));
+    } finally {
+      storageBusy = false;
+    }
+  }
+  async function pickRestore() {
+    if (storageBusy) return;
+    try {
+      restoreSource = await chooseSource();
+    } catch (err) {
+      onflash(t('error.restore', { err }));
+    }
+  }
+  async function restoreNow() {
+    if (storageBusy || !restoreSource) return;
+    storageBusy = true;
+    try {
+      await call('restore_snapshot', { source: restoreSource });
+      restoreSource = null;
+      // The swap happens at the next start (nothing may be reading the
+      // file while it moves): Wind restarts on the copy.
+      if (!globalThis.window?.__e2eNoRestart) await call('restart_app');
+    } catch (err) {
+      onflash(t('error.restore', { err }));
+    } finally {
+      storageBusy = false;
+    }
+  }
   let removalError = $state(null);
 
   // About: the version is read ONCE (it doesn't change during a
@@ -491,8 +536,9 @@
     removalBusy = true;
     removalError = null;
     try {
-      await call('remove_account', { accountId: id });
+      await call('remove_account', { accountId: id, forget: forgetLearned });
       removalTarget = null;
+      forgetLearned = false;
       onremove(id);
     } catch (err) {
       // The account is still listed: the error is said on the spot
@@ -912,6 +958,12 @@
                        and what it doesn't erase (the server). -->
                   <div class="card-removal" data-testid="settings-removal">
                     <p class="warning">{t('settings.removeConfirm', { email: c.email })}</p>
+                    <!-- D4 (Lot 5 E14c): the second choice — off by
+                         default; the shared data survives either way. -->
+                    <label class="forget" data-testid="removal-forget">
+                      <input type="checkbox" bind:checked={forgetLearned} disabled={removalBusy}>
+                      <span>{t('settings.forgetLearned')}</span>
+                    </label>
                     {#if removalError}
                       <p class="error-removal" data-testid="removal-error">{removalError}</p>
                     {/if}
@@ -1245,6 +1297,39 @@
               {/each}
               <p class="note">{t('settings.noteShortcuts')}</p>
             </div>
+          {:else if group === 'stockage'}
+            <p class="section">{t('group.storage')}</p>
+            <div class="rows" data-testid="settings-storage">
+              <div class="setting">
+                <span class="labels">
+                  <span class="name">{t('settings.backup')}</span>
+                  <span class="desc">{t('settings.backupDesc')}</span>
+                </span>
+                <button type="button" class="add" data-testid="backup-save"
+                        disabled={storageBusy} onclick={backupNow}>{t('settings.backupAction')}</button>
+              </div>
+              <div class="setting">
+                <span class="labels">
+                  <span class="name">{t('settings.restore')}</span>
+                  <span class="desc">{t('settings.restoreDesc')}</span>
+                </span>
+                <button type="button" class="add" data-testid="restore-pick"
+                        disabled={storageBusy} onclick={pickRestore}>{t('settings.restoreAction')}</button>
+              </div>
+              {#if restoreSource}
+                <!-- The confirmation, in the removal card's form: a
+                     restart is not a first-click gesture. -->
+                <div class="card-removal" data-testid="restore-confirm">
+                  <p class="warning">{t('settings.restoreConfirm', { name: restoreSource.split(/[\\/]/).pop() })}</p>
+                  <div class="buttons-removal">
+                    <button type="button" class="danger" data-testid="restore-now"
+                            disabled={storageBusy} onclick={restoreNow}>{t('settings.restoreNow')}</button>
+                    <button type="button" class="add" data-testid="restore-cancel"
+                            disabled={storageBusy} onclick={() => (restoreSource = null)}>{t('action.cancel')}</button>
+                  </div>
+                </div>
+              {/if}
+            </div>
           {:else if group === 'apropos'}
             <p class="section">{t('group.about')}</p>
             <div class="rows" data-testid="settings-about">
@@ -1562,6 +1647,10 @@
   .error-marker { margin:0; font-size:12px; line-height:1.4; color:var(--alert); }
   .warning { margin:0; font-size:13px; line-height:1.5; color:var(--ink2); }
   .error-removal { margin:0; font-size:12px; line-height:1.4; color:var(--alert); }
+  /* D4 (E14c): the second choice under the warning — a plain
+     checkbox line, the product's own control, never a toggle. */
+  .forget { display:flex; align-items:flex-start; gap:8px; font-size:13px; color:var(--ink2); margin:8px 0 10px; }
+  .forget input { margin-top:2px; }
   .buttons-removal { display:flex; align-items:center; gap:10px; }
   .danger {
     height:32px; padding:0 16px; display:inline-flex; align-items:center;
