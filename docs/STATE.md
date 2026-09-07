@@ -47,28 +47,38 @@ Six lots over [AUDIT-2026-09-06.md](AUDIT-2026-09-06.md).
   orphans resolved by record); STANDARD/PLAN/STATE brought current.
   Not `/close`d: waits on the grouped push and its green CI (D0).
 
-**Next, in order**: the grouped
-push decided by the Chief Engineer (background, `gh run watch`; the new
-CI jobs — `npm audit`, seam guard, Node-on-Windows, Dependabot,
-`quality-windows-arm64` — prove themselves there) → green CI →
-`/close` of Lots 3 and 4 (DEBT: strike D-4, D-41–D-44; record the
-stated limits and the `redesign-feedback-3` in-suite flake) → `/close`
-of Lot 5, then Lot 6.
+**The grouped push landed on 2026-09-07/08**: the seam guard's first
+CI run refused it — E14's restore read `__e2eNoRestart` unguarded in
+`Settings.svelte`, compiled out the transport.js way (`dfd734c`,
+RED→GREEN on the guard), then CI GREEN (34164333355) with every new
+job proven, `quality-windows-arm64` included. Nine of the ten first
+Dependabot PRs failed on that same seam job (rebase them); the majors
+(vite 8, eslint 10, rusqlite 0.40, …) fail on their own merits and
+are each a dedicated decision — merge none casually.
+
+**Next, in order**: `/close` of Lots 3 and 4 (DEBT: strike D-4,
+D-41–D-44; record the stated limits and the `redesign-feedback-3`
+in-suite flake) → `/close` of Lot 5, then Lot 6 → the `/field` on
+T2's P0 (sync stalled at 72 %).
 
 ## Delivered version and open field proofs
 
-**0.19.0 PUBLISHED 2026-09-05/06** (the macOS debut, 11 assets, 4 keys,
-verified). No release was requested since. Still open:
+**0.20.0 PUBLISHED 2026-09-08** (the audit release, lots 1–6; release
+commit `baeefc2`, bare tag, Latest; the mac half run on the Air the
+same day — its mounted-volume guard fired once, `hdiutil detach`,
+rerun clean; `verify-release.ps1`: **everything passes — 11 assets,
+4 keys, 4 channel signatures VERIFIED cryptographically, both dmgs
+resolve whole**). **Field the same day, Chief Engineer verdict:
+"release ok and autoupdate ok on all computers" — the first mac
+AUTO-UPDATE (0.19.0 → 0.20.0, ADR 0036's due proof) is PROVEN, both
+Windows channels proven again, and the Air runs 0.20.0 (which
+supersedes the pending x64-install proof).** Still open:
 
-- the x64 INSTALL on the Air by the Chief Engineer
-  (`Wind_0.19.0_x64.dmg`);
 - the Apple Silicon run proof of PLAN-APPLE-SILICON — **narrowed on
-  2026-09-07**: 0.19.0 RUNS on two Apple Silicon Macs (T2, T3, Gmail,
+  2026-09-07**: the app RUNS on two Apple Silicon Macs (T2, T3, Gmail,
   24 feedback items sent from the app); still to confirm that they run
   the `_aarch64` binary and not `_x64` under Rosetta (Activity Monitor
   › Kind = "Apple", asked of both);
-- the mac AUTO-UPDATE at the next release (ADR 0036); the mac half is
-  part of EVERY release;
 - the SAC net stays armed (a VISIBLE failure under a real Smart App
   Control refusal — not closable by us);
 - D-50, the Microsoft refresh-token confirmation, due ≈ 2026-12-01.
