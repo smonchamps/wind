@@ -33,7 +33,7 @@ mail-smtp = { path = "crates/mail-smtp" }
 ammonia = "4.1"
 cssparser = { version = "0.37", default-features = false }
 anyhow = "1"
-base64 = "0.22"
+base64 = "0.23"
 # Parseur/générateur iCalendar (invitations, PLAN-INVITATIONS D1) — sans les
 # features par défaut : elles tirent jmap-tools/serde/uuid, inutiles ici.
 calcard = { version = "0.3.11", default-features = false }
