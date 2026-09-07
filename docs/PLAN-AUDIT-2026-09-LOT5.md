@@ -943,7 +943,8 @@ validate your recommendations on both decisions."
   exception at the measured figure (D-53 stays open, next step the
   renderer snapshot that separates the retained memory; the document
   strings kept in `cards` the first named suspect).
-- **The evidence folder:** committed on its own, before the E15 commit.
+- **The evidence folder:** committed on its own, before the E15 commit
+  (`92fa3b6`). **E15 committed locally as `46c1463`** (not pushed, D0).
 
 ### E15 — D-53 and E15b
 

@@ -1,7 +1,8 @@
 # State — Wind's handover snapshot
 
 **Lot 5 (E13–E15) ACTIVE since 2026-09-07 — E13 (`2e096d6`), E14
-(`516180e`) and E15 (commit below) field-validated and committed locally
+(`516180e`) and E15 (`46c1463`; the audit's evidence folder `92fa3b6`
+before it) field-validated and committed locally
 ([plan](PLAN-AUDIT-2026-09-LOT5.md)); Lot 6 next.
 Lots 3 and 4 field-validated and committed locally on 2026-09-07
 (`9f4a9b1`, `400de5e`), NOT pushed: D0 of Lot 5 — the grouped push of
