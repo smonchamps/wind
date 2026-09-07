@@ -4,7 +4,15 @@ Opened: 2026-09-06.
 Statement: implement the recommendations of AUDIT-2026-09-06 while following WORKFLOW.md.
 Baseline: 7cdc4495c68c52a2a7d02702d52f86d368ae0653, Wind 0.19.0.
 
-**Status: Lot 1 DELIVERED on 2026-09-06 — implementation commit `e95adb4`, field validated, CI 34038794672 green. D1, D2, D3 and the first visual increment were approved on 2026-09-06. Lot 2 is DELIVERED in `0374e43`, field “1-4 OK” and CI 34053044227 green on 2026-09-06. Lots 3–5 are field-validated and committed locally (`9f4a9b1`, `400de5e`, `2e096d6`/`516180e`/`46c1463`), not pushed (Lot 5 D0). Lot 6 (E16) is in progress on 2026-09-07 ([focused plan](PLAN-AUDIT-2026-09-LOT6.md)); its §1 table is the C01–C08 consolidation record — C01/C03/C05/C08 fixed at their affected steps, the C02/C04/C06 residues and C07 handled at E16. This program is not closed.**
+**PROGRAM CLOSED on 2026-09-08.** All six lots delivered,
+field-validated and `/close`d; grouped push CI GREEN 34164333355;
+shipped in **0.20.0** (published 2026-09-08, "release ok and
+autoupdate ok on all computers" — the first mac auto-update proven).
+The C01–C08 consolidation record is Lot 6's §1 table; the debt
+reconciliation is DEBT.md as re-filed at Lot 6 plus the strikes and
+D-64/D-65 at close. Per-lot details: the six focused plans.
+
+*(Status as it stood before the close:)* Status: Lot 1 DELIVERED on 2026-09-06 — implementation commit `e95adb4`, field validated, CI 34038794672 green. D1, D2, D3 and the first visual increment were approved on 2026-09-06. Lot 2 is DELIVERED in `0374e43`, field “1-4 OK” and CI 34053044227 green on 2026-09-06. Lots 3–5 are field-validated and committed locally (`9f4a9b1`, `400de5e`, `2e096d6`/`516180e`/`46c1463`), not pushed (Lot 5 D0). Lot 6 (E16) is in progress on 2026-09-07 ([focused plan](PLAN-AUDIT-2026-09-LOT6.md)); its §1 table is the C01–C08 consolidation record — C01/C03/C05/C08 fixed at their affected steps, the C02/C04/C06 residues and C07 handled at E16. This program is not closed.**
 
 ## 1. Finding and evidence
 

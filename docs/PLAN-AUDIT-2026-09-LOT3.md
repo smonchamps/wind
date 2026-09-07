@@ -4,7 +4,15 @@ Opened: 2026-09-06. Baseline: `a58c1cf` (Lot 2 delivered, clean checkout).
 Parent: [audit program](PLAN-AUDIT-2026-09.md), E7–E10.
 Method: [WORKFLOW](WORKFLOW.md), [job](../.claude/skills/job/SKILL.md).
 
-**Status: authorized investigation and implementation; no delivery claim.**
+**JOB CLOSED on 2026-09-08 — full field validation** ("1-11 OK",
+zero KO, 2026-09-07; commit `9f4a9b1`); the grouped push landed 2026-09-07/08, CI GREEN 34164333355 (one red first: the seam guard caught an unguarded `__e2eNoRestart` read from Lot 5 E14, fixed in `dfd734c`); shipped in **0.20.0**, published 2026-09-08 and field-proven the same day ("release ok and autoupdate ok on all computers").
+At close: D-4 and D-41–D-44 struck; the E9 residue and ADR 0041's
+open cycle measurement entered as **D-65**; the two accepted limits
+(two body-pump drivers §5.9, the renamed Google address refusal)
+stand as written below. Kaizen: the lot's figures live in its own
+sessions; 0 KO at STOP 2.
+
+*(Original status: authorized investigation and implementation; no delivery claim.)*
 The Chief Engineer's “Go Lot 3” authorizes the existing E7–E10 scope. <!-- lang:fr -->
 New product tradeoffs are asked separately; existing approvals stay valid.
 

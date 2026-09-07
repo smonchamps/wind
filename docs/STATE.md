@@ -22,44 +22,35 @@ each platform has actually proven lives in the
 Budgets and their dated 2026-09-07 baseline: STANDARD §3. The field
 database reads 12.49 GB (2026-09-07, Lot 5 E14).
 
-## Active program — [the audit of 2026-09-06](PLAN-AUDIT-2026-09.md)
+## The audit program of 2026-09-06 — CLOSED 2026-09-08
 
-Six lots over [AUDIT-2026-09-06.md](AUDIT-2026-09-06.md).
+Six lots over [AUDIT-2026-09-06.md](AUDIT-2026-09-06.md), all
+delivered, field-validated, pushed, CI green, **shipped in 0.20.0**
+and `/close`d ([program plan](PLAN-AUDIT-2026-09.md)):
 
-- **Lots 1–2 DELIVERED and closed** (2026-09-06): commits `e95adb4`,
-  `0374e43`; CI green (34038794672, 34053044227) on Windows and both
-  mac triples; field-validated, zero KO.
-  [Lot 2 plan](PLAN-AUDIT-2026-09-LOT2.md).
-- **Lots 3–5 field-validated and committed locally, NOT pushed**:
-  Lot 3 `9f4a9b1` ([plan](PLAN-AUDIT-2026-09-LOT3.md)), Lot 4
-  `400de5e` ([plan](PLAN-AUDIT-2026-09-LOT4.md)), Lot 5 E13
-  `2e096d6` / E14 `516180e` / E15 `46c1463` (evidence folder
-  `92fa3b6`; [plan](PLAN-AUDIT-2026-09-LOT5.md)). **Lot 5 D0 AMENDED by the
-  Chief Engineer on 2026-09-07: `/code-review ultra` refused the grouped
-  diff on size (464 files, 44,983 lines — over its 8,000-line limit);
-  the push was ordered without it. Do not rewrite these commits.**
-  Grouped push under way; `/close` of the lots follows the green CI.
-- **Lot 6 (E16) DELIVERED and field-validated 2026-09-07, committed
-  locally as `01b9171`** ([plan](PLAN-AUDIT-2026-09-LOT6.md), STOP 1 D0–D4, STOP 2
-  "OK" zero findings, gate GREEN 681 s): documentation, comments and
-  reconciliation — the C01–C08 consolidation record is the plan's §1
-  table; DEBT.md re-filed (entries under their true sections, D-7/D-11
-  orphans resolved by record); STANDARD/PLAN/STATE brought current.
-  Not `/close`d: waits on the grouped push and its green CI (D0).
+- Lots 1–2 (2026-09-06): `e95adb4`, `0374e43`; their own green CIs.
+- Lot 3 ([plan](PLAN-AUDIT-2026-09-LOT3.md), `9f4a9b1`, field
+  "1-11 OK"), Lot 4 ([plan](PLAN-AUDIT-2026-09-LOT4.md), `400de5e`),
+  Lot 5 ([plan](PLAN-AUDIT-2026-09-LOT5.md), `2e096d6`/`516180e`/
+  `46c1463`), Lot 6 ([plan](PLAN-AUDIT-2026-09-LOT6.md), `01b9171`) —
+  grouped push, CI GREEN 34164333355 (D0 amended by the Chief
+  Engineer: the ultra review refused the diff on size, the push was
+  ordered without it).
+- The one red on the way: the Lot 4 seam guard's FIRST CI run caught
+  Lot 5 E14's unguarded `__e2eNoRestart` read (`dfd734c`, guard
+  replayed RED→GREEN). The `quality-windows-arm64` job proved itself
+  on the same run.
+- At close (2026-09-08): D-4 and D-41–D-44 struck; **D-64** (the
+  `redesign-feedback-3` in-suite flake) and **D-65** (Lot 3 E9's
+  bounded-work residue and ADR 0041's open cycle measurement) opened.
+- Dependabot's first ten PRs: nine failed on the seam job only
+  (rebase them); the majors (vite 8, eslint 10, rusqlite 0.40, …) fail
+  on their own merits and are each a dedicated decision.
 
-**The grouped push landed on 2026-09-07/08**: the seam guard's first
-CI run refused it — E14's restore read `__e2eNoRestart` unguarded in
-`Settings.svelte`, compiled out the transport.js way (`dfd734c`,
-RED→GREEN on the guard), then CI GREEN (34164333355) with every new
-job proven, `quality-windows-arm64` included. Nine of the ten first
-Dependabot PRs failed on that same seam job (rebase them); the majors
-(vite 8, eslint 10, rusqlite 0.40, …) fail on their own merits and
-are each a dedicated decision — merge none casually.
-
-**Next, in order**: `/close` of Lots 3 and 4 (DEBT: strike D-4,
-D-41–D-44; record the stated limits and the `redesign-feedback-3`
-in-suite flake) → `/close` of Lot 5, then Lot 6 → the `/field` on
-T2's P0 (sync stalled at 72 %).
+**Next, in order**: the `/field` on beta T2's P0 (sync stalled at
+72 %, on the tester's trace, T3 as the same-architecture witness) →
+the two S bugs sharing one component (the product menu does not close
+on an outside click) → the Dependabot triage.
 
 ## Delivered version and open field proofs
 
@@ -96,14 +87,9 @@ product menu does not close on an outside click, seen on two screens).**
 Follow-up with the silent ones (T4, T5) was due 2026-09-03.
 S4 measure closed: ~13 unknown senders/day, peak 19, workstation 1.
 
-## Stated limits carried by the unclosed lots
+## Where the audit's residues live
 
-Recorded in their plans, to land in DEBT at `/close`: two body-pump
-drivers and the renamed-Google-address case (Lot 3); the release
-chain's full field proof is the next actual release, dist digests are
-compared and said, `InvalidEmailAddress` keeps the address for the
-compose surface, the `redesign-feedback-3` reply scenario is a
-recurring in-suite flake — 12/12 in isolation (Lot 4); the
-`quality-windows-arm64` job is unproven until the grouped push, D-53
-(Feed memory) is a dated Chief-Engineer exception with nothing built,
-D-2 reopened with figures after its eviction measured worse (Lot 5).
+The lots' stated limits are recorded at their sources: the plans'
+close banners, DEBT (D-64, D-65, D-53 under its dated exception, D-2
+reopened with figures), and ADR 0041/0043 for the accepted bounds.
+Nothing is carried loose in this file.

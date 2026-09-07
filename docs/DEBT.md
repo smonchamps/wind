@@ -53,17 +53,6 @@ E15a (2026-09-07).
 - **Reopens if**: RAM exceeds the budget (200 MB) at rest in real use
   (the at-rest figure of 2026-09-07 is 89.1 MB).
 
-### D-4 · Focus trap of overlays
-
-- **Amended (PLAN-AUDIT-V2 E11, 2026-09-02)**: Settings now opens on
-  its first control (focus enters with the panel, pattern from
-  `Retour.svelte`) and menus set then return focus (`Menu.svelte`).
-  The Tab trap that EXITS the overlay, though, remains.
-
-- **Fact (A8)**: Tab can exit an overlay (compose, settings) to the
-  background; Escape and visible focus cover the essentials.
-- **Reopens if**: the field with a screen reader calls for it.
-
 ### D-10 · Deferred setting of the language has no UI test
 
 - **Fact (review 2026-08-15)**: the Rust half of A41 is held by a
@@ -509,71 +498,6 @@ E15a (2026-09-07).
   WATCH — recheck at each updater upgrade, remove the workaround only
   after the launch-refusal test.
 
-### D-41 · The multi-select checkbox has no dedicated keyboard gesture
-
-- **Finding (PLAN-RETOURS-10, 2026-08-27)**: multi-select in the list
-  is a pointer gesture — Ctrl-click, Shift-click, hover checkbox. On
-  keyboard, e/Delete do apply to the checked batch, but NOTHING lets
-  you CHECK without a mouse (no Ctrl+Space, no Shift+Arrows).
-- **Reason for deferring**: out of the job's scope (§2.6) — the CE's
-  statement targeted the three pointer gestures, and a keyboard
-  vocabulary for multi-select deserves its own design (interaction
-  with A38's e/Delete triage and the :focus-visible ring on recycled
-  nodes).
-- **Reopen if**: the field or the beta asks for it — then design the
-  full vocabulary (check, extend, clear all) in one pass.
-
-### D-42 · The PER-MESSAGE image memory has no exit door
-
-- **Finding (PLAN-RETOURS-11, fresh-eyes review of 2026-08-28)**: a
-  message's "Show images" choice is written to the database
-  (`images_messages`, envelope key) but is neither listed nor
-  revoked anywhere — the Settings list (D4) only covers sender
-  rules (`images_expediteurs`). An inadvertent click on a suspect
-  message reloads its remote pixel on every reopening, with no
-  visible way to re-block it.
-- **Reason for deferring**: scope assumed by the job — CE decision D4
-  only settled revocation for senders; a per-message exit door needs
-  its own form (where would the gesture live? an inverted banner?).
-- **Bound**: the consent dies with its mailbox (CASCADE), on the
-  message's local removal (`remove_local`) and on UIDVALIDITY change
-  (`reset_mailbox`, purge proven by test) — never inherited by a
-  recycled UID.
-- **Reopen if**: the field or the beta reports "I want to re-block
-  this MESSAGE's images."
-
-### D-43 · The local echo has no Cc column — the header changes at reconciliation
-
-- **Finding (PLAN-RETOURS-12, fresh-eyes review of 2026-08-28)**: the
-  `echos` table only copies `outbox.recipients` (the To) even though
-  `outbox.cc_addrs` exists; the "Cc: …" line of the A92 header
-  therefore never appears during the echo window. A send with Cc,
-  opened right away in Sent, shows "To: …" alone, then gains its Cc
-  line once the server envelope replaces the echo — two headers for
-  the same message depending on timing.
-- **Reason for deferring**: a column + migration + recopy for a window
-  of a few seconds in normal use; the RETOURS-5 net ("the echo states
-  its recipients") stays true for the To.
-- **Reopen if**: the field reports a header that "changes on its own,"
-  or a job already touches the echo schema.
-
-### D-44 · `connectes` is refreshed by no cycle — a revoked token with Wind open still says "Connected"
-
-- **Finding (PLAN-RETOURS-12, fresh-eyes review of 2026-08-28)**: the
-  `connectes` array (App.svelte) is only rehydrated on gestures —
-  startup, "Reconnect," and now the add (R1). No cycle (30-min sync,
-  5-min poll, opening Settings) sets it straight, and
-  `accounts_failed` from the sync summary is never reflected in it: an
-  OAuth token revoked while Wind is running leaves Settings > Accounts
-  saying "Connected" until restart — the mirror symptom of R1.
-- **Reason for deferring**: out of R1's scope (fixed at the gesture,
-  every add path covered); the right level is a refresh driven by the
-  cycle or a state derived from the core's summary — its own form to
-  design.
-- **Reopen if**: a field finding of "disconnected shown as connected"
-  (the opposite of R1), or at the first job that touches the sync
-  cycle.
-
 ### D-45 · The System theme visual swatches are the only hex copy outside the gate
 
 - **Finding (PLAN-MONA, fresh-eyes review of 2026-08-29)**: each theme
@@ -847,7 +771,131 @@ E15a (2026-09-07).
   proven pre-DATA failures. Revisit the measured alternative with TLS/authentication
   coverage; never infer non-delivery from an absent Sent-folder echo alone.
 
+### D-64 · `redesign-feedback-3` flakes inside the loaded suite
+
+- **Fact (Lot 4, 2026-09-07)**: the reply scenario of
+  `redesign-feedback-3.spec.js` is a recurring in-suite flake — 12/12
+  green in isolation, and it retried again at the Lot 6 gate. Same
+  family as D-54: the flake belongs to the loaded suite, not the spec.
+- **Reason for deferring**: no first failure captured under load yet;
+  a fix without the failing trace would be a guess.
+- **Reopens as a job if**: it produces a frank red (two failures in a
+  row) locally or in CI, or a captured trace names the race.
+
+### D-65 · Lot 3 E9's bounded-work residue
+
+- **Fact (Lot 3 E9, 2026-09-07)**: local attachment reads and rotating
+  flags shipped; the remaining resource/retry bounds of the E9 row
+  (bytes, attempts, elapsed work, disk writes on the paths E9 did not
+  reach) stayed pending at the lot's delivery. The full-cycle latency
+  of ADR 0041's quiet-folder flags pass is still an open FIELD
+  measurement: the "1-11 OK" verdict came with no cycle figure.
+- **Reason for deferring**: the shipped bounds cover the paths the
+  audit proved; the rest needs its own measured pass (§2.6).
+- **Reopens if**: the field reports an unbounded retry, a runaway
+  cycle, or the ADR 0041 measurement shows the flags pass over budget.
+
 ## Closed
+
+### ~~D-4 · Focus trap of overlays~~ — closed 2026-09-08
+
+- **Amended (PLAN-AUDIT-V2 E11, 2026-09-02)**: Settings now opens on
+  its first control (focus enters with the panel, pattern from
+  `Retour.svelte`) and menus set then return focus (`Menu.svelte`).
+  The Tab trap that EXITS the overlay, though, remains.
+
+- **Fact (A8)**: Tab can exit an overlay (compose, settings) to the
+  background; Escape and visible focus cover the essentials.
+- **Reopens if**: the field with a screen reader calls for it.
+
+- **Closed (Lot 3 E10, delivered 2026-09-07; struck at the /close of 2026-09-08)**: overlays take, hold and return focus
+  (modal focus/inert/restore); field item 6 of the Lot 3 checklist OK. Shipped in 0.20.0; grouped-push CI green
+  (34164333355).
+
+### ~~D-41 · The multi-select checkbox has no dedicated keyboard gesture~~ — closed 2026-09-08
+
+- **Finding (PLAN-RETOURS-10, 2026-08-27)**: multi-select in the list
+  is a pointer gesture — Ctrl-click, Shift-click, hover checkbox. On
+  keyboard, e/Delete do apply to the checked batch, but NOTHING lets
+  you CHECK without a mouse (no Ctrl+Space, no Shift+Arrows).
+- **Reason for deferring**: out of the job's scope (§2.6) — the CE's
+  statement targeted the three pointer gestures, and a keyboard
+  vocabulary for multi-select deserves its own design (interaction
+  with A38's e/Delete triage and the :focus-visible ring on recycled
+  nodes).
+- **Reopen if**: the field or the beta asks for it — then design the
+  full vocabulary (check, extend, clear all) in one pass.
+
+- **Closed (Lot 3 E10, delivered 2026-09-07; struck at the /close of 2026-09-08)**: Ctrl+Space toggles, Shift+Space
+  extends, bare arrows choose (`rowKeyboard`, `keyboard-selection.spec.js`);
+  field OK. Shipped in 0.20.0; grouped-push CI green
+  (34164333355).
+
+### ~~D-42 · The PER-MESSAGE image memory has no exit door~~ — closed 2026-09-08
+
+- **Finding (PLAN-RETOURS-11, fresh-eyes review of 2026-08-28)**: a
+  message's "Show images" choice is written to the database
+  (`images_messages`, envelope key) but is neither listed nor
+  revoked anywhere — the Settings list (D4) only covers sender
+  rules (`images_expediteurs`). An inadvertent click on a suspect
+  message reloads its remote pixel on every reopening, with no
+  visible way to re-block it.
+- **Reason for deferring**: scope assumed by the job — CE decision D4
+  only settled revocation for senders; a per-message exit door needs
+  its own form (where would the gesture live? an inverted banner?).
+- **Bound**: the consent dies with its mailbox (CASCADE), on the
+  message's local removal (`remove_local`) and on UIDVALIDITY change
+  (`reset_mailbox`, purge proven by test) — never inherited by a
+  recycled UID.
+- **Reopen if**: the field or the beta reports "I want to re-block
+  this MESSAGE's images."
+
+- **Closed (Lot 3 E10, delivered 2026-09-07; struck at the /close of 2026-09-08)**: the per-message "show images" memory
+  is revocable ("Block again"), and a removed sender rule blocks an open
+  message at once; field item 7 OK. Shipped in 0.20.0; grouped-push CI green
+  (34164333355).
+
+### ~~D-43 · The local echo has no Cc column — the header changes at reconciliation~~ — closed 2026-09-08
+
+- **Finding (PLAN-RETOURS-12, fresh-eyes review of 2026-08-28)**: the
+  `echos` table only copies `outbox.recipients` (the To) even though
+  `outbox.cc_addrs` exists; the "Cc: …" line of the A92 header
+  therefore never appears during the echo window. A send with Cc,
+  opened right away in Sent, shows "To: …" alone, then gains its Cc
+  line once the server envelope replaces the echo — two headers for
+  the same message depending on timing.
+- **Reason for deferring**: a column + migration + recopy for a window
+  of a few seconds in normal use; the RETOURS-5 net ("the echo states
+  its recipients") stays true for the To.
+- **Reopen if**: the field reports a header that "changes on its own,"
+  or a job already touches the echo schema.
+
+- **Closed (Lot 3 E10, delivered 2026-09-07; struck at the /close of 2026-09-08)**: the local echo carries its Cc; the
+  visible header is the same before and after reconciliation, Bcc stays
+  private. Shipped in 0.20.0; grouped-push CI green
+  (34164333355).
+
+### ~~D-44 · `connectes` is refreshed by no cycle — a revoked token with Wind open still says "Connected"~~ — closed 2026-09-08
+
+- **Finding (PLAN-RETOURS-12, fresh-eyes review of 2026-08-28)**: the
+  `connectes` array (App.svelte) is only rehydrated on gestures —
+  startup, "Reconnect," and now the add (R1). No cycle (30-min sync,
+  5-min poll, opening Settings) sets it straight, and
+  `accounts_failed` from the sync summary is never reflected in it: an
+  OAuth token revoked while Wind is running leaves Settings > Accounts
+  saying "Connected" until restart — the mirror symptom of R1.
+- **Reason for deferring**: out of R1's scope (fixed at the gesture,
+  every add path covered); the right level is a refresh driven by the
+  cycle or a state derived from the core's summary — its own form to
+  design.
+- **Reopen if**: a field finding of "disconnected shown as connected"
+  (the opposite of R1), or at the first job that touches the sync
+  cycle.
+
+- **Closed (Lot 3 E10, delivered 2026-09-07; struck at the /close of 2026-09-08)**: the connection state is reconciled
+  during cycles — a revoked credential shows within the next attempt,
+  without a restart; field item 8 OK. Shipped in 0.20.0; grouped-push CI green
+  (34164333355).
 
 ### ~~D-57 · The onboarding illustrations are French screenshots inside an English default UI~~ — closed 2026-09-07
 

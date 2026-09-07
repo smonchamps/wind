@@ -5,9 +5,14 @@ Opened: 2026-09-07. Baseline: `9f4a9b1` (Lot 3 committed locally, field
 Parent: [audit program](PLAN-AUDIT-2026-09.md), E11–E12.
 Method: [WORKFLOW](WORKFLOW.md), [job](../.claude/skills/job/SKILL.md).
 
-**Status: field-validated and committed locally on 2026-09-07 (`400de5e`,
-on top of Lot 3's `9f4a9b1`); NOT pushed (D10 of Lot 3: one grouped push);
-no CI yet, not closed. No delivery claim.**
+**JOB CLOSED on 2026-09-08 — full field validation** (2026-09-07;
+commit `400de5e`); the grouped push landed 2026-09-07/08, CI GREEN 34164333355 (one red first: the seam guard caught an unguarded `__e2eNoRestart` read from Lot 5 E14, fixed in `dfd734c`); shipped in **0.20.0**, published 2026-09-08 and field-proven the same day ("release ok and autoupdate ok on all computers").
+The release chain's full field proof, a stated limit at delivery, is
+PAID: 0.20.0 ran the three gestures end to end (draft, mac half on
+the Air, promotion after four verified signatures), and the seam
+guard proved itself with a real catch on its first CI run. At close:
+the `redesign-feedback-3` in-suite flake entered as **D-64**. Kaizen:
+the lot's figures live in its own sessions; 0 KO at STOP 2.
 
 ## 1. Findings
 

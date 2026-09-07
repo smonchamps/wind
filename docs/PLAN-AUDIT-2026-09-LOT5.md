@@ -5,7 +5,19 @@ Lot 3's `9f4a9b1`; neither pushed nor closed — see D0).
 Parent: [audit program](PLAN-AUDIT-2026-09.md), E13–E15.
 Method: [WORKFLOW](WORKFLOW.md), [job](../.claude/skills/job/SKILL.md).
 
-**Status: STOP 1 passed on 2026-09-07 (D0–D5, D7 answered; D6 pending
+**JOB CLOSED on 2026-09-08 — full field validation** (E13 two
+passes, E14 all nine items, E15 seven items, 2026-09-07; commits
+`2e096d6`, `516180e`, `46c1463`); the grouped push landed 2026-09-07/08, CI GREEN 34164333355 (one red first: the seam guard caught an unguarded `__e2eNoRestart` read from Lot 5 E14, fixed in `dfd734c`); shipped in **0.20.0**, published 2026-09-08 and field-proven the same day ("release ok and autoupdate ok on all computers").
+The `quality-windows-arm64` job, unproven at delivery, is PROVEN by
+that run. One residue surfaced at the push: E14's restore seam was
+read unguarded — caught by Lot 4's net, fixed in `dfd734c` the same
+hour. D-53 stays open under its dated exception; D-2 stays reopened
+with its figures. Kaizen: the lot's figures live in its own sessions;
+0 KO at the final STOP 2 passes.
+
+*(The status as it stood at delivery, kept:)*
+
+**Status at delivery: STOP 1 passed on 2026-09-07 (D0–D5, D7 answered; D6 pending
 figures). Sub-lot E13 implemented, reviewed, full gate GREEN (322 s);
 field pass 1: items 1, 3–7 OK, item 2 KO fixed the same day (reads off
 the commands' lock, net `reads-under-write.spec.js`), gate GREEN again

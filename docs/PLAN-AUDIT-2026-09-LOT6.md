@@ -5,7 +5,11 @@ top of E13/E14; Lots 3–5 neither pushed nor closed — D0 of Lot 5 stands).
 Parent: [audit program](PLAN-AUDIT-2026-09.md), E16.
 Method: [WORKFLOW](WORKFLOW.md), [job](../.claude/skills/job/SKILL.md).
 
-**Status: STOP 1 passed on 2026-09-07 — D0 "Confirmed, no push",
+**JOB CLOSED on 2026-09-08 — full field validation** ("OK", zero
+findings, 2026-09-07; commit `01b9171`); the grouped push landed 2026-09-07/08, CI GREEN 34164333355 (one red first: the seam guard caught an unguarded `__e2eNoRestart` read from Lot 5 E14, fixed in `dfd734c`); shipped in **0.20.0**, published 2026-09-08 and field-proven the same day ("release ok and autoupdate ok on all computers").
+Kaizen (this session): 3 full gates, 0 KO at STOP 2.
+
+**STOP 1 passed on 2026-09-07 — D0 "Confirmed, no push",
 D1 "Archive the history", D2 "Refresh in place, dated cells",
 D3 "Resolve by record", D4 "Keep decision citations" (all as
 recommended). E16a–E16e implemented; fresh-eyes review done (three confirmed findings fixed: the D-54 duplicate, this plan’s own ratchet markers, the 265.2 MB misattribution); full gate GREEN, exit 0 in 681 s — 927
