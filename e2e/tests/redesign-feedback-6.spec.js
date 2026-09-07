@@ -119,13 +119,13 @@ test('R1: the signature is set in Settings, appears on a new message — and clo
   await page.locator('[data-testid="reply"]').last().click();
   const body = page.locator('[data-testid="compose-body"]');
   await expect(body).toContainText('Cordialement, Léa'); // lang:fr
-  await expect(body).toContainText('a écrit :'); // lang:fr
+  await expect(body).toContainText('wrote:');
   const fromSelect2 = page.locator('select[data-testid="compose-from"]');
   const emails2 = await fromSelect2.locator('option').allTextContents();
   await fromSelect2.selectOption(emails2[1]);
   // Account 2: no signature (cleared) — the quote, though, stays.
   await expect(body).not.toContainText('Cordialement, Léa'); // lang:fr
-  await expect(body).toContainText('a écrit :'); // lang:fr
+  await expect(body).toContainText('wrote:');
   await page.locator('[data-testid="compose-cancel"]').click();
   await expect(page.locator('[data-testid="compose"]')).toHaveCount(0);
 });

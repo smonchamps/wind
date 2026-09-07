@@ -1,8 +1,8 @@
 # State — Wind's handover snapshot
 
-**Lot 5 (E13–E15) ACTIVE since 2026-09-07 — E13 (`2e096d6`) and E14
-(`516180e`) field-validated and committed locally ([plan](PLAN-AUDIT-2026-09-LOT5.md));
-E15 next.
+**Lot 5 (E13–E15) ACTIVE since 2026-09-07 — E13 (`2e096d6`), E14
+(`516180e`) and E15 (commit below) field-validated and committed locally
+([plan](PLAN-AUDIT-2026-09-LOT5.md)); Lot 6 next.
 Lots 3 and 4 field-validated and committed locally on 2026-09-07
 (`9f4a9b1`, `400de5e`), NOT pushed: D0 of Lot 5 — the grouped push of
 Lots 3, 4 and 5 comes after a `/code-review ultra` of the whole diff.
@@ -25,9 +25,19 @@ a copy of the database (`VACUUM INTO`, no secret) and its restoration
 file kept, the copy's sends HELD until released), the "forget what Wind
 learned" choice at account removal, three distinct body failures, the
 search coverage line. Field: "1 à 9 ok" on the 12.49 GB database (a copy <!-- lang:fr -->
-takes ~12 GB and one to three minutes). Remaining sub-lot: E15
-(rebaseline, Feed memory spike, bounded growth, invitations and language,
-platform proof, D-54).
+takes ~12 GB and one to three minutes). E15 in progress: language of the
+shell's texts and units (D-56, D7), calendar-only messages searchable and
+forwardable with their ICS (D-29), onboarding captures per language
+(D-57), the local envelope counter (D-37), the arm64 CI cross-check and the
+support matrix (G06), D-54 replayed 90/90, the dated rebaseline (E15a:
+RAM at rest 89.1 MB, thread opening p95 30–41 ms, page jump p95 27 ms on
+the 200k fixture; D-11/D-12/D-14 closed); a page eviction for D-2 was
+built, measured worse (+49 MB median, +6 ms per jump) and removed. The
+Feed memory spike (D-53, E15b, `spikes/feed-memory/`) measured A/B/C on
+the arm64 workstation: none under 200 MB, the retained memory is outside
+the live iframes — D6: a dated exception, nothing built, D-53 open.
+Field of E15: seven items OK (bench fixture: page p95 30.2 ms, thread
+open p95 27.9 ms, 264 MB after activity).
 
 Lot 4 (E11–E12, [plan](PLAN-AUDIT-2026-09-LOT4.md)): Vite 7.3.6 with zero
 advisories (D2); CI gains `npm audit` at moderate (D3), the seam guard on

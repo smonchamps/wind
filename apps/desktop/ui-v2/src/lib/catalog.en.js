@@ -24,6 +24,9 @@ export const EN = {
   // --- Screen 02 header --------------------------------------------------
   'header.search': 'Search',
   'header.searchHint': 'Search messages, people, files',
+  'size.b': 'B',
+  'size.kb': 'KB',
+  'size.mb': 'MB',
   'header.searchCoverage': '{n} message not downloaded yet is searched by subject and sender only.|{n} messages not downloaded yet are searched by subject and sender only.',
   'header.clearSearch': 'Clear search',
   'header.compose': 'Compose',

@@ -1745,18 +1745,25 @@ pub async fn message_attachments(
     mailbox: String,
     uid: u32,
     version: MessageVersion,
+    for_forward: Option<bool>,
 ) -> Result<Vec<AttachmentRow>, CommandError> {
-    store_off_pump(app, move |_, store| {
+    read_store_off_pump(app, move |_, store| {
         version.verify(store, account_id, &mailbox)?;
-        let found = store
-            .attachments(account_id, &mailbox, uid)
-            .map_err(|err| err.to_string())?;
+        // `for_forward` (Lot 5 E15d, D-29): the composer's list carries
+        // the invitation's ICS as a file; the reading pane's stays bare.
+        let found = if for_forward.unwrap_or(false) {
+            store.attachments_for_forward(account_id, &mailbox, uid)
+        } else {
+            store.attachments(account_id, &mailbox, uid)
+        }
+        .map_err(|err| err.to_string())?;
+        let lang = store.lang()?;
         version.verify(store, account_id, &mailbox)?;
         Ok(found
             .into_iter()
             .map(|attachment| AttachmentRow {
                 index: attachment.index,
-                size: attachment.human_size(),
+                size: attachment.human_size(lang),
                 name: attachment.name,
                 mime: attachment.mime,
             })
@@ -2516,12 +2523,13 @@ pub async fn echo_body(
 pub async fn echo_attachments(app: AppHandle, id: i64) -> Result<Vec<AttachmentRow>, CommandError> {
     store_off_pump(app, move |_, store| {
         let found = store.echo_attachments(id).map_err(|err| err.to_string())?;
+        let lang = store.lang()?;
         Ok(found
             .into_iter()
             .enumerate()
             .map(|(index, attachment)| AttachmentRow {
                 index,
-                size: mail_core::human_size(attachment.size),
+                size: mail_core::human_size(attachment.size, lang),
                 name: attachment.name,
                 mime: attachment.mime,
             })
@@ -3614,11 +3622,16 @@ async fn citation_reply(
     // commands' lock either (Lot 5 E13d): the quote needs no store.
     let sender = envelope.sender.clone();
     let date = quote_date(envelope);
+    // The attribution in the UI's language (Lot 5 E15d, D7).
+    let lang = read_store_off_pump(app.clone(), |_, store| Ok(store.lang()?))
+        .await
+        .unwrap_or_default();
     unlocked(move || {
         Ok::<_, CommandError>(mail_core::quote_reply_html(
             sender.as_deref(),
             date.as_deref(),
             &mail_render::sanitize(&html).html,
+            lang,
         ))
     })
     .await
@@ -3731,8 +3744,9 @@ pub async fn forward_context(
     let (envelope, _own) = enveloppe_et_compte(&app, account_id, &mailbox, uid, version).await?;
     let html = raw_body(&app, account_id, &mailbox, uid, version).await?;
     let mailbox2 = mailbox.clone();
-    store_off_pump(app, move |_, store| {
-        Ok(version.verify(store, account_id, &mailbox2)?)
+    let lang = read_store_off_pump(app, move |_, store| {
+        version.verify(store, account_id, &mailbox2)?;
+        Ok(store.lang()?)
     })
     .await?;
     // The editor prepares inert image references before DOM insertion.
@@ -3745,6 +3759,7 @@ pub async fn forward_context(
             quote_date(&envelope).as_deref(),
             envelope.subject.as_deref(),
             &mail_render::sanitize_with(&html, mail_render::ImagePolicy::AllowRemote).html,
+            lang,
         ))
     })
     .await?;
@@ -5128,7 +5143,7 @@ pub async fn save_draft(
             Some(token) => store.save_draft_edit(&token, account_id, content)?,
             None => Some(store.save_draft(account_id, id, base_epoch, content)?),
         };
-        Ok(saved.map(draft_saved_row))
+        Ok(saved.map(|saved| draft_saved_row(saved, ui_lang(store))))
     })
     .await
 }
@@ -5165,13 +5180,23 @@ fn draft_row(draft: mail_core::SavedDraft) -> DraftRow {
     }
 }
 
-fn draft_saved_row(saved: mail_core::DraftSaved) -> DraftSavedRow {
+fn draft_saved_row(saved: mail_core::DraftSaved, lang: mail_core::Lang) -> DraftSavedRow {
     DraftSavedRow {
         id: saved.id,
         updated_epoch: saved.updated_epoch,
         forked: saved.forked,
-        attachments: saved.attachments.into_iter().map(attachment_row).collect(),
+        attachments: saved
+            .attachments
+            .into_iter()
+            .map(|meta| attachment_row(meta, lang))
+            .collect(),
     }
+}
+
+/// The interface's language for what the shell formats (sizes, quotes)
+/// — read on the caller's connection, English when unreadable.
+fn ui_lang(store: &Store) -> mail_core::Lang {
+    store.lang().unwrap_or_default()
 }
 
 #[derive(Serialize)]
@@ -5190,11 +5215,16 @@ pub async fn begin_draft_edit(
     base_epoch: Option<i64>,
 ) -> Result<DraftEditRow, CommandError> {
     account_store_off_pump(app, account_id, move |_, store| {
+        let lang = ui_lang(store);
         let edit =
             store.begin_draft_edit(&token, account_id, id, incarnation.as_deref(), base_epoch)?;
         Ok(DraftEditRow {
             draft: edit.draft.map(draft_row),
-            attachments: edit.attachments.into_iter().map(attachment_row).collect(),
+            attachments: edit
+                .attachments
+                .into_iter()
+                .map(|meta| attachment_row(meta, lang))
+                .collect(),
         })
     })
     .await
@@ -5212,7 +5242,7 @@ pub async fn finish_draft_edit(
         }
         Ok(store
             .finish_draft_edit(&token, discard)?
-            .map(draft_saved_row))
+            .map(|saved| draft_saved_row(saved, ui_lang(store))))
     })
     .await
 }
@@ -5238,7 +5268,7 @@ pub async fn detach_draft_edit_file(
     account_store_off_pump(app, account_id, move |_, store| {
         Ok(store
             .remove_draft_edit_attachment(&token, account_id, attachment_id)?
-            .map(draft_saved_row))
+            .map(|saved| draft_saved_row(saved, ui_lang(store))))
     })
     .await
 }
@@ -5290,13 +5320,16 @@ pub struct AttachReport {
     pub refused: Vec<RefusedAttachment>,
 }
 
-fn attachment_row(meta: mail_core::DraftAttachmentMeta) -> DraftAttachmentRow {
+fn attachment_row(
+    meta: mail_core::DraftAttachmentMeta,
+    lang: mail_core::Lang,
+) -> DraftAttachmentRow {
     DraftAttachmentRow {
         id: meta.id,
         name: meta.name,
         mime: meta.mime,
         size: meta.size,
-        human: mail_core::human_size(meta.size),
+        human: mail_core::human_size(meta.size, lang),
     }
 }
 
@@ -5353,7 +5386,11 @@ struct ReadAttachments {
     failure: Option<String>,
 }
 
-fn read_attachment_files(paths: &[String], mut remaining: u64) -> ReadAttachments {
+fn read_attachment_files(
+    paths: &[String],
+    mut remaining: u64,
+    lang: mail_core::Lang,
+) -> ReadAttachments {
     let mut read = ReadAttachments {
         files: Vec::with_capacity(paths.len()),
         refused: Vec::new(),
@@ -5375,7 +5412,7 @@ fn read_attachment_files(paths: &[String], mut remaining: u64) -> ReadAttachment
             }
             Ok(None) => read.refused.push(RefusedAttachment {
                 name,
-                remaining: mail_core::human_size(remaining),
+                remaining: mail_core::human_size(remaining, lang),
             }),
             Err(err) => {
                 read.failure = Some(format!("reading {path:?}: {err}"));
@@ -5393,6 +5430,7 @@ fn attach_edit_files(
     files: Vec<(String, Vec<u8>)>,
     mut refused: Vec<RefusedAttachment>,
 ) -> Result<AttachReport, CommandError> {
+    let lang = ui_lang(store);
     let mut forked = false;
     for (name, bytes) in &files {
         match store.add_draft_edit_attachment(token, account_id, name, mime_for_name(name), bytes) {
@@ -5401,7 +5439,7 @@ fn attach_edit_files(
                 name, remaining, ..
             }) => refused.push(RefusedAttachment {
                 name,
-                remaining: mail_core::human_size(remaining),
+                remaining: mail_core::human_size(remaining, lang),
             }),
             Err(err) => return Err(err.into()),
         }
@@ -5411,7 +5449,11 @@ fn attach_edit_files(
         forked,
         draft_id: edit.draft.as_ref().map(|draft| draft.id),
         updated_epoch: edit.draft.map(|draft| draft.updated_epoch),
-        attachments: edit.attachments.into_iter().map(attachment_row).collect(),
+        attachments: edit
+            .attachments
+            .into_iter()
+            .map(|meta| attachment_row(meta, lang))
+            .collect(),
         refused,
     })
 }
@@ -5436,15 +5478,17 @@ pub async fn attach_files(
     // lock, Lot 5 E13d). Lock 2: the SQLite work, the core re-checking
     // the budget at every insert.
     let token = edit_token.clone();
-    let room = account_store_off_pump(app.clone(), account_id, move |_, store| {
-        Ok(match (&token, draft_id) {
+    let (room, lang) = account_store_off_pump(app.clone(), account_id, move |_, store| {
+        let room = match (&token, draft_id) {
             (Some(token), _) => attachment_room(&store.draft_edit(token)?.attachments),
             (None, Some(id)) => attachment_room(&store.draft_attachments_meta(id)?),
             (None, None) => mail_core::MAX_ATTACHMENTS_BYTES,
-        })
+        };
+        Ok((room, ui_lang(store)))
     })
     .await?;
-    let read = unlocked(move || Ok::<_, CommandError>(read_attachment_files(&paths, room))).await?;
+    let read =
+        unlocked(move || Ok::<_, CommandError>(read_attachment_files(&paths, room, lang))).await?;
     let ReadAttachments {
         files,
         refused,
@@ -5471,6 +5515,7 @@ fn attach_draft_files(
     files: Vec<(String, Vec<u8>)>,
     refused: Vec<RefusedAttachment>,
 ) -> Result<AttachReport, CommandError> {
+    let lang = ui_lang(store);
     {
         let created = draft_id.is_none();
         let draft_id = match draft_id {
@@ -5506,7 +5551,7 @@ fn attach_draft_files(
                     name, remaining, ..
                 }) => refused.push(RefusedAttachment {
                     name,
-                    remaining: mail_core::human_size(remaining),
+                    remaining: mail_core::human_size(remaining, lang),
                 }),
                 Err(err) => return Err(err.to_string().into()),
             }
@@ -5533,7 +5578,7 @@ fn attach_draft_files(
                 .draft_attachments_meta(draft_id)
                 .map_err(|err| err.to_string())?
                 .into_iter()
-                .map(attachment_row)
+                .map(|meta| attachment_row(meta, lang))
                 .collect(),
             refused,
         })
@@ -5582,47 +5627,59 @@ pub async fn fetch_source_attachment(
     // commands' lock (the `save_draft`/`delete_draft` TOCTOU of ADR
     // 0019).
     let mailbox_name = mailbox.clone();
-    let (attachment, session, identity, sender_ticket) = off_pump(app.clone(), move |app| {
-        let store = Store::open(&adopted_db(&app)?).map_err(|err| err.to_string())?;
-        let identity = version.identity(account_id, &mailbox_name);
-        store.verify_mailbox_identity(&identity)?;
-        let attachment = store
-            .attachments(account_id, &mailbox_name, uid)
-            .map_err(|err| err.to_string())?
-            .into_iter()
-            .find(|candidate| candidate.index == index)
-            .ok_or_else(|| "unknown attachment".to_string())?;
-        let sender = sender_account_id.unwrap_or(account_id);
-        admit_account(&app, &store, sender)?;
-        let sender_ticket = app.state::<AppState>().account_work.capture(sender)?;
-        Ok::<_, CommandError>((
-            attachment,
-            auth_for(&app, account_id)?,
-            identity,
-            sender_ticket,
-        ))
-    })
-    .await?;
+    let (attachment, session, identity, sender_ticket, kept_ics) =
+        off_pump(app.clone(), move |app| {
+            let store = Store::open(&adopted_db(&app)?).map_err(|err| err.to_string())?;
+            let identity = version.identity(account_id, &mailbox_name);
+            store.verify_mailbox_identity(&identity)?;
+            // The forward's list (Lot 5 E15d, D-29): the invitation's ICS
+            // is one of its files, served from the store, never fetched.
+            let attachment = store
+                .attachments_for_forward(account_id, &mailbox_name, uid)
+                .map_err(|err| err.to_string())?
+                .into_iter()
+                .find(|candidate| candidate.index == index)
+                .ok_or_else(|| "unknown attachment".to_string())?;
+            let kept_ics = (index == mail_core::CALENDAR_ATTACHMENT_INDEX)
+                .then(|| store.invitation_ics(account_id, &mailbox_name, uid))
+                .transpose()?
+                .flatten();
+            let sender = sender_account_id.unwrap_or(account_id);
+            admit_account(&app, &store, sender)?;
+            let sender_ticket = app.state::<AppState>().account_work.capture(sender)?;
+            Ok::<_, CommandError>((
+                attachment,
+                auth_for(&app, account_id)?,
+                identity,
+                sender_ticket,
+                kept_ics,
+            ))
+        })
+        .await?;
 
     let completion_ticket = session.ticket.clone();
     let expected_generation = identity.uid_validity;
-    let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
-        let (mut server, _refreshed, _lease) = crate::poll::connect_imap(&session)?;
-        let bytes = mail_core::fetch_attachment_checked(
-            &mut server,
-            &mailbox,
-            expected_generation,
-            uid,
-            index,
-        )
-        .map_err(|err| err.to_string())?;
-        server.logout();
-        bytes.ok_or_else(|| "attachment absent from the message".to_string())
-    })
-    .await
-    .map_err(|err| err.to_string())??;
+    let bytes = match kept_ics {
+        Some(ics) => ics.into_bytes(),
+        None => tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
+            let (mut server, _refreshed, _lease) = crate::poll::connect_imap(&session)?;
+            let bytes = mail_core::fetch_attachment_checked(
+                &mut server,
+                &mailbox,
+                expected_generation,
+                uid,
+                index,
+            )
+            .map_err(|err| err.to_string())?;
+            server.logout();
+            bytes.ok_or_else(|| "attachment absent from the message".to_string())
+        })
+        .await
+        .map_err(|err| err.to_string())??,
+    };
 
     store_off_pump(app, move |app, store| {
+        let lang = ui_lang(store);
         if !app
             .state::<AppState>()
             .account_work
@@ -5655,7 +5712,11 @@ pub async fn fetch_source_attachment(
                     forked: saved.forked,
                     draft_id: Some(saved.id),
                     updated_epoch: Some(saved.updated_epoch),
-                    attachment: saved.attachments.last().cloned().map(attachment_row),
+                    attachment: saved
+                        .attachments
+                        .last()
+                        .cloned()
+                        .map(|meta| attachment_row(meta, lang)),
                     refused: None,
                 }),
                 Err(mail_core::Error::AttachmentOverBudget {
@@ -5669,7 +5730,7 @@ pub async fn fetch_source_attachment(
                         attachment: None,
                         refused: Some(RefusedAttachment {
                             name,
-                            remaining: mail_core::human_size(remaining),
+                            remaining: mail_core::human_size(remaining, lang),
                         }),
                     })
                 }
@@ -5706,7 +5767,7 @@ pub async fn fetch_source_attachment(
                 forked: false,
                 draft_id: Some(draft_id),
                 updated_epoch: Some(saved.updated_epoch),
-                attachment: Some(attachment_row(saved.attachment)),
+                attachment: Some(attachment_row(saved.attachment, ui_lang(store))),
                 refused: None,
             }),
             Err(mail_core::Error::AttachmentOverBudget {
@@ -5729,7 +5790,7 @@ pub async fn fetch_source_attachment(
                     attachment: None,
                     refused: Some(RefusedAttachment {
                         name,
-                        remaining: mail_core::human_size(remaining),
+                        remaining: mail_core::human_size(remaining, lang),
                     }),
                 })
             }
@@ -5758,11 +5819,15 @@ pub async fn draft_attachments(
     edit_token: Option<String>,
 ) -> Result<Vec<DraftAttachmentRow>, CommandError> {
     store_off_pump(app, move |_, store| {
+        let lang = ui_lang(store);
         let files = match edit_token {
             Some(token) => store.draft_edit_attachments(&token)?,
             None => store.draft_attachments_meta(draft_id.ok_or(mail_core::Error::StaleDraft)?)?,
         };
-        Ok(files.into_iter().map(attachment_row).collect())
+        Ok(files
+            .into_iter()
+            .map(|meta| attachment_row(meta, lang))
+            .collect())
     })
     .await
 }

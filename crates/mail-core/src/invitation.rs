@@ -51,6 +51,10 @@ pub struct InvitationRow {
     pub attendee_status: Option<String>,
     /// Derived from the known versions of this organizer's meeting and occurrence.
     pub cancelled: bool,
+    /// The iCalendar text itself (Lot 5 E15d, D-29): kept so a forward
+    /// of a calendar-only message carries the invitation as a file.
+    /// `None` on rows written before this column.
+    pub ics: Option<String>,
 }
 
 /// A stored invitation, reread with OUR local reply (D6).
@@ -77,7 +81,9 @@ pub struct InvitationReplyTarget<'a> {
 /// without METHOD is NOT an invitation, it stays a plain attachment.
 pub fn extract_invitation(ics: &str, our_address: &str) -> Option<InvitationRow> {
     let invitation = mail_ical::parse(ics, our_address).ok()?;
-    Some(row_from(invitation))
+    let mut row = row_from(invitation);
+    row.ics = Some(ics.to_string());
+    Some(row)
 }
 
 fn row_from(invitation: Invitation) -> InvitationRow {
@@ -132,6 +138,7 @@ fn row_from(invitation: Invitation) -> InvitationRow {
         // A CANCEL is cancelled by nature; cross-setting it onto the
         // REQUEST of the same meeting belongs to storage.
         cancelled: matches!(invitation.method, Method::Cancel),
+        ics: None,
     }
 }
 

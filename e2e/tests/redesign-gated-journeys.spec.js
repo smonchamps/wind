@@ -69,7 +69,7 @@ test.describe('v1 decor: one account, 200 messages', () => {
     // The editor is rich (PLAN-COMPOSITION-HTML): the quote lives in
     // a blockquote, no longer in "> " prefixes — the text is read at the node.
     const body = page.locator('[data-testid="compose-body"]');
-    await expect(body).toContainText('a écrit :'); // lang:fr
+    await expect(body).toContainText('wrote:');
     await expect(body).toContainText('Corps du message n°199'); // lang:fr
     await expect(body.locator('blockquote')).toContainText('Corps du message n°199'); // lang:fr
 

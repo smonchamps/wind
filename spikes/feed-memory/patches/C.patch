@@ -1,0 +1,131 @@
+diff --git a/apps/desktop/ui-v2/src/Feed.svelte b/spikes/feed-memory/options/Feed-C.svelte
+index 21dfb0a..d978182 100644
+--- a/apps/desktop/ui-v2/src/Feed.svelte
++++ b/spikes/feed-memory/options/Feed-C.svelte
+@@ -125,10 +125,72 @@
+   // their iframe; a card that leaves the window leaves a block of its
+   // measured height (scrolling does not jump), and gets it back on
+   // return.
+-  const WINDOW = 5;
++  // SPIKE D-53 option C: a POOL of at most POOL iframes, created once
++  // in the column and never moved (a reparented iframe reloads —
++  // Chromium), absolutely positioned over a per-card SLOT (a block of
++  // the measured height, in flow). Cards within WINDOW = 2 rows of
++  // the first visible one (5 slots) borrow a pooled iframe whose
++  // `srcdoc` is swapped to their document; cards outside keep their
++  // dormant block. An idle pooled iframe is navigated to about:blank
++  // and hidden.
++  const WINDOW = 2;
++  const POOL = 5;
+   let visibleIndex = $state(0);
+   let heights = $state({});
+   const offWindow = (i) => Math.abs(i - visibleIndex) > WINDOW;
++  let column = $state(null);
++  const pool = [];
++  function makeFrame() {
++    const iframe = document.createElement('iframe');
++    iframe.className = 'body pooled';
++    iframe.setAttribute('sandbox', 'allow-same-origin');
++    iframe.addEventListener('load', () => wireLinks(iframe));
++    autoBody(iframe);
++    const entry = { iframe, key: null, doc: null };
++    new ResizeObserver(() => {
++      if (!entry.key) return;
++      const h = iframe.offsetHeight;
++      if (h > 0 && heights[entry.key] !== h) heights = { ...heights, [entry.key]: h };
++      requestAnimationFrame(syncPool);
++    }).observe(iframe);
++    column.appendChild(iframe);
++    pool.push(entry);
++    return entry;
++  }
++  function syncPool() {
++    if (!column?.isConnected) return;
++    const slots = new Map([...column.querySelectorAll('.body-slot')].map((s) => [s.dataset.key, s]));
++    for (const entry of pool) {
++      if (entry.key && !slots.has(entry.key)) {
++        entry.key = null; entry.doc = null;
++        entry.iframe.removeAttribute('srcdoc');
++        entry.iframe.src = 'about:blank';
++        entry.iframe.style.visibility = 'hidden';
++      }
++    }
++    for (const [key, slot] of slots) {
++      let entry = pool.find((e) => e.key === key);
++      const card = cards.find((c) => cardKey(c.row) === key);
++      if (!card) continue;
++      if (!entry) {
++        entry = pool.find((e) => e.key === null) ?? (pool.length < POOL ? makeFrame() : null);
++        if (!entry) continue;
++        entry.key = key;
++      }
++      if (entry.doc !== card.document) {
++        entry.doc = card.document;
++        entry.iframe.title = card.row.subject;
++        entry.iframe.style.visibility = '';
++        entry.iframe.srcdoc = card.document;
++      }
++      entry.iframe.style.top = `${slot.offsetTop}px`;
++      entry.iframe.style.width = `${slot.offsetWidth}px`;
++    }
++  }
++  $effect(() => {
++    void cards; void visibleIndex; void heights; void replies; void openGroups; void column;
++    requestAnimationFrame(syncPool);
++  });
+   let measureRequested = false;
+   function measureWindow(scene) {
+     if (measureRequested) return;
+@@ -143,17 +205,8 @@
+       for (let i = 0; i < articles.length; i += 1) {
+         if (articles[i].getBoundingClientRect().bottom > top) { first = i; break; }
+       }
+-      // The height of bodies about to leave the window, taken BEFORE
+-      // they unmount.
+-      const fresh = { ...heights };
+-      articles.forEach((article, i) => {
+-        if (Math.abs(i - first) > WINDOW) {
+-          const body = article.querySelector('iframe.body');
+-          if (body) fresh[article.dataset.key] = body.offsetHeight;
+-        }
+-      });
+-      heights = fresh;
+       visibleIndex = first;
++      syncPool();
+     });
+   }
+ 
+@@ -344,9 +397,10 @@
+             {t('reading.alwaysShowImages')}</button>
+         </div>
+       {/if}
+-      <iframe class="body" sandbox="allow-same-origin" srcdoc={card.document}
+-              title={card.row.subject} use:autoBody
+-              onload={(ev) => wireLinks(ev.currentTarget)}></iframe>
++      <!-- The slot: in flow, the measured height; a pooled iframe is
++           positioned over it by syncPool. -->
++      <div class="body-slot" data-testid="feed-slot" data-key={cardKey(card.row)}
++           style={`height:${heights[cardKey(card.row)] ?? 0}px`}></div>
+     {:else}
+       <!-- Body not yet cached: the preview says the essential, the
+            normal backfill will fill in the card. -->
+@@ -361,7 +415,7 @@
+ {/snippet}
+ 
+ <div class="scene" data-testid="feed" onscroll={onScroll} bind:this={scene}>
+-  <div class="column">
++  <div class="column" bind:this={column}>
+     <!-- R11 (RETOURS-13): the header at the Screener's format — glyph +
+          title + two CE sentences, left-justified on the column. -->
+     <h2 class="display header-view" data-testid="feed-title">
+@@ -432,7 +486,9 @@
+ 
+ <style>
+   .scene { flex:1; overflow:auto; padding:28px 36px 60px; min-width:0; }
+-  .column { max-width:720px; margin:0 auto; }
++  .column { max-width:720px; margin:0 auto; position:relative; }
++  .body-slot { display:block; }
++  :global(iframe.pooled) { position:absolute; left:0; }
+   /* R11: the header and the label rule are the SHARED classes of
+      system.css (.header-view / .subtitle-view / .rule-label —
+      one copy, Screener and Feed). */

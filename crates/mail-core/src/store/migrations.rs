@@ -63,6 +63,29 @@ pub(super) fn migrate(
         &[("threaded", "INTEGER NOT NULL DEFAULT 1")],
     )?;
     add_missing_columns(conn, "accounts", &[("sent_mailbox", "TEXT")])?;
+    // Lot 5 E15c (D-37): the local envelope count, kept by triggers.
+    // A database from before the column is recounted ONCE, here; the
+    // triggers wait for the column to exist (a trigger naming a missing
+    // column fails at creation).
+    if add_missing_columns(
+        conn,
+        "mailboxes",
+        &[("local_count", "INTEGER NOT NULL DEFAULT 0")],
+    )? {
+        conn.execute(
+            "UPDATE mailboxes SET local_count =
+                (SELECT COUNT(*) FROM envelopes e WHERE e.mailbox_id = mailboxes.id)",
+            [],
+        )?;
+    }
+    conn.execute_batch(
+        "CREATE TRIGGER IF NOT EXISTS envelopes_count_insert AFTER INSERT ON envelopes
+         BEGIN UPDATE mailboxes SET local_count = local_count + 1 WHERE id = NEW.mailbox_id; END;
+         CREATE TRIGGER IF NOT EXISTS envelopes_count_delete AFTER DELETE ON envelopes
+         BEGIN UPDATE mailboxes SET local_count = local_count - 1 WHERE id = OLD.mailbox_id; END;",
+    )?;
+    // Lot 5 E15d (D-29): the invitation's own text, for the forward.
+    add_missing_columns(conn, "invitations", &[("ics", "TEXT")])?;
     add_missing_columns(conn, "folders", &[("special_use", "TEXT")])?;
     add_missing_columns(conn, "mailboxes", &[("relevee_epoch", "INTEGER")])?;
     add_missing_columns(
@@ -753,21 +776,32 @@ pub(super) fn table_columns(conn: &Connection, table: &str) -> Result<HashSet<St
     Ok(columns)
 }
 
+/// Adds the columns the table lacks; says whether one was added (a
+/// caller may have a one-time backfill to run for it).
 pub(super) fn add_missing_columns(
     conn: &Connection,
     table: &str,
     columns: &[(&str, &str)],
-) -> Result<(), Error> {
+) -> Result<bool, Error> {
     let existing = table_columns(conn, table)?;
+    let mut added = false;
     for (column, ddl) in columns {
         if !existing.contains(*column) {
             conn.execute(
                 &format!("ALTER TABLE {table} ADD COLUMN {column} {ddl}"),
                 [],
             )?;
+            added = true;
         }
     }
-    Ok(())
+    Ok(added)
+}
+
+/// Test seam: forgets the fast-door registry so the next open replays
+/// the schema and the migrations on a path this process already opened.
+#[cfg(test)]
+pub(crate) fn forget_initialization_for_tests() {
+    initialized_registry().lock().clear();
 }
 
 impl Store {

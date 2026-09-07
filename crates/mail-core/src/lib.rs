@@ -46,7 +46,7 @@ mod transport;
 
 pub use action::{Action, ActionIncident, PendingAction, RemovalMethod, RemovalPlan, RemovalStep};
 pub use address::EmailAddress;
-pub use attachment::{Attachment, human_size};
+pub use attachment::{Attachment, CALENDAR_ATTACHMENT_INDEX, human_size};
 pub use backfill::{
     BACKFILL_BATCH, BackfillReport, HORIZONS_IMPORT, NO_HORIZON, THREAD_HEADER_BATCH,
     backfill_bodies, backfill_bodies_budgeted, backfill_percent, backfill_recipients,

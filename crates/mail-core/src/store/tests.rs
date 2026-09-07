@@ -3515,6 +3515,48 @@ fn the_language_reads_without_adopting_the_database() {
     let _ = std::fs::remove_file(&path);
 }
 
+/// Lot 5 E15d (review): the dialogs shown before any window read the
+/// language with a budget of their own. On a database in rollback
+/// mode held by a writer, the probe gives up within that budget
+/// instead of the full open's thirty seconds — the dialog then shows
+/// in English, it does not seem dead.
+#[test]
+fn the_budgeted_probe_gives_up_within_its_budget_behind_a_writer() {
+    let path = std::env::temp_dir().join(format!(
+        "wind-test-budgeted-probe-{}.db",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&path);
+    let writer = Connection::open(&path).unwrap();
+    writer
+        .query_row("PRAGMA journal_mode = delete", [], |row| {
+            row.get::<_, String>(0)
+        })
+        .unwrap();
+    writer
+        .execute_batch(
+            "CREATE TABLE prefs (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             INSERT INTO prefs VALUES ('lang', 'fr');
+             BEGIN EXCLUSIVE;
+             UPDATE prefs SET value = 'fr' WHERE key = 'lang';",
+        )
+        .unwrap();
+    let started = std::time::Instant::now();
+    let answer =
+        Store::text_pref_readonly_within(&path, "lang", std::time::Duration::from_millis(300));
+    let waited = started.elapsed();
+    assert!(
+        answer.is_err(),
+        "a writer blocks the reader in rollback mode: {answer:?}"
+    );
+    assert!(
+        waited < std::time::Duration::from_secs(5),
+        "gave up after {waited:?}, not within the budget"
+    );
+    drop(writer);
+    let _ = std::fs::remove_file(&path);
+}
+
 /// On an up-to-date database there is NOTHING to adopt — and so
 /// nothing to say. A migration banner on every launch would be a
 /// false signal, and every desktop command opens its own connection.
@@ -3896,6 +3938,181 @@ fn cleanup_groups_are_read_via_the_senders_index() {
         plan.iter()
             .any(|row| row.contains("idx_envelopes_sender (sender_norm=?)")),
         "a group's mail is not looked up by sender: {plan:?}"
+    );
+}
+
+/// Lot 5 E15c (D-37): the sync progress used to recount every mailbox
+/// every 5 s (152 ms cold on the real database). A counter on the
+/// mailbox, kept by triggers, follows every insert, replace and delete
+/// of an envelope — and a database from before the column is recounted
+/// once, at its adoption.
+#[test]
+fn the_local_count_follows_the_envelopes_and_feeds_the_progress() {
+    let mut store = Store::open_in_memory().unwrap();
+    let account = store
+        .adopt_or_create_account("me@example.fr", "gmail")
+        .unwrap();
+    let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+    store.record_remote_total(inbox, 3).unwrap();
+    let count = |store: &Store| -> i64 {
+        store
+            .conn()
+            .query_row(
+                "SELECT local_count FROM mailboxes WHERE id = ?1",
+                [inbox],
+                |r| r.get(0),
+            )
+            .unwrap()
+    };
+    store
+        .upsert_envelopes(
+            inbox,
+            &[
+                envelope(1, "a", 1, false),
+                envelope(2, "b", 2, false),
+                envelope(3, "c", 3, false),
+            ],
+        )
+        .unwrap();
+    assert_eq!(count(&store), 3);
+    // A replace (the same uid again) moves nothing.
+    store
+        .upsert_envelopes(inbox, &[envelope(2, "b2", 2, true)])
+        .unwrap();
+    assert_eq!(count(&store), 3);
+    assert_eq!(
+        store.sync_progress().unwrap(),
+        (3, 3),
+        "the progress reads the counter"
+    );
+    store
+        .conn()
+        .execute(
+            "DELETE FROM envelopes WHERE mailbox_id = ?1 AND uid = 1",
+            [inbox],
+        )
+        .unwrap();
+    assert_eq!(count(&store), 2);
+    assert_eq!(store.sync_progress().unwrap(), (2, 3));
+    store.reset_mailbox(inbox, 2).unwrap();
+    assert_eq!(
+        count(&store),
+        0,
+        "a reset empties the counter with the mailbox"
+    );
+}
+
+#[test]
+fn a_database_from_before_the_counter_is_recounted_once_at_adoption() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!(
+        "wind-local-count-{}-{suffix}.db",
+        std::process::id()
+    ));
+    {
+        let mut store = Store::open(&path).unwrap();
+        let account = store
+            .adopt_or_create_account("me@example.fr", "gmail")
+            .unwrap();
+        let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+        store
+            .upsert_envelopes(
+                inbox,
+                &[envelope(1, "a", 1, false), envelope(2, "b", 2, false)],
+            )
+            .unwrap();
+        // Back to the shape of a database written before the column:
+        // no column, no triggers.
+        store
+            .conn()
+            .execute_batch(
+                "DROP TRIGGER IF EXISTS envelopes_count_insert;
+                 DROP TRIGGER IF EXISTS envelopes_count_delete;
+                 ALTER TABLE mailboxes DROP COLUMN local_count;",
+            )
+            .unwrap();
+    }
+    crate::store::migrations::forget_initialization_for_tests();
+    let store = Store::open(&path).unwrap();
+    let count: i64 = store
+        .conn()
+        .query_row("SELECT SUM(local_count) FROM mailboxes", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(count, 2, "recounted at adoption");
+    drop(store);
+    for suffix in ["", "-wal", "-shm"] {
+        let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+    }
+}
+
+/// Lot 5 E15d: the language the shell composes in is the UI's, read
+/// from the same preference — English until set (D4).
+#[test]
+fn the_store_says_the_interface_language() {
+    let store = Store::open_in_memory().unwrap();
+    assert_eq!(store.lang().unwrap(), crate::Lang::En);
+    store.set_text_pref(crate::PREF_LANG, "fr").unwrap();
+    assert_eq!(store.lang().unwrap(), crate::Lang::Fr);
+    store.set_text_pref(crate::PREF_LANG, "de").unwrap();
+    assert_eq!(store.lang().unwrap(), crate::Lang::En);
+}
+
+/// Lot 5 E15d (D-29, G07): a message whose root IS the calendar has an
+/// empty body — its meeting title and location are what the user
+/// remembers; they are indexed with the body, and the invitation's ICS
+/// is kept so a forward carries it.
+#[test]
+fn a_calendar_only_message_is_searchable_by_its_meeting_and_forwards_its_ics() {
+    let mut store = Store::open_in_memory().unwrap();
+    let account = store
+        .adopt_or_create_account("me@example.fr", "gmail")
+        .unwrap();
+    let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+    store
+        .upsert_envelopes(inbox, &[envelope(1, "Invitation", 1_000, false)])
+        .unwrap();
+    let mut invitation = project_invitation();
+    invitation.title = "Budget committee".to_string();
+    invitation.location = Some("Room 4".to_string());
+    invitation.ics = Some("BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n".to_string());
+    store
+        .save_body_full(inbox, 1, "", &[], Some(&invitation))
+        .unwrap();
+
+    let (rows, total) = store.search_capped("committee", 10, 0).unwrap();
+    assert_eq!(total, 1, "the meeting title is searchable");
+    assert_eq!(rows[0].envelope.uid, 1);
+    let (_, by_place) = store.search_capped("Room", 10, 0).unwrap();
+    assert_eq!(by_place, 1, "the location is searchable");
+
+    // The reading pane's list is unchanged; the forward's list carries
+    // the ICS as one more file.
+    assert!(store.attachments(account, "INBOX", 1).unwrap().is_empty());
+    let forward = store.attachments_for_forward(account, "INBOX", 1).unwrap();
+    assert_eq!(forward.len(), 1);
+    assert_eq!(forward[0].index, crate::CALENDAR_ATTACHMENT_INDEX);
+    assert_eq!(forward[0].name, "invitation.ics");
+    assert_eq!(forward[0].mime, "text/calendar");
+    assert_eq!(
+        store
+            .invitation_ics(account, "INBOX", 1)
+            .unwrap()
+            .as_deref(),
+        Some("BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n")
+    );
+    // Without an ICS kept (a legacy row), the forward's list stays bare.
+    invitation.ics = None;
+    store
+        .save_body_full(inbox, 1, "", &[], Some(&invitation))
+        .unwrap();
+    assert!(
+        store
+            .attachments_for_forward(account, "INBOX", 1)
+            .unwrap()
+            .is_empty()
     );
 }
 

@@ -88,7 +88,7 @@ test("a message WITHOUT a thread opens full screen — the single-message fallba
   await expect(page.locator('[data-testid="message-expanded"]')).toHaveCount(1);
   const convAttachment = page.locator('[data-testid="conversation"] [data-testid="attachment"]');
   await expect(convAttachment).toContainText('CR_04-08.pdf');
-  await expect(convAttachment).toContainText('220 Ko');
+  await expect(convAttachment).toContainText('220 KB');
   await page.locator('[data-testid="back-to-mailbox"]').click();
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
 });

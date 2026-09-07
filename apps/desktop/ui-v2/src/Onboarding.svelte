@@ -25,14 +25,22 @@
   import { THEME_CARDS, applyTheme, displayedTheme } from './lib/theme.js';
   import { currentPanes, applyPanes } from './lib/panes.svelte.js';
   import { markOnboardingDone, markOnboardingStarted } from './lib/onboarding.js';
-  import preview3 from './assets/accueil/disposition-3.png';
-  import preview2 from './assets/accueil/disposition-2.png';
-  import preview1 from './assets/accueil/disposition-1.png';
+  import { currentLanguage } from './lib/text.svelte.js';
+  // Lot 5 E15d (D-57): one set of captures per language — the
+  // illustrations show the interface the user is about to use.
+  import previewFr3 from './assets/accueil/fr/disposition-3.png';
+  import previewFr2 from './assets/accueil/fr/disposition-2.png';
+  import previewFr1 from './assets/accueil/fr/disposition-1.png';
+  import previewEn3 from './assets/accueil/en/disposition-3.png';
+  import previewEn2 from './assets/accueil/en/disposition-2.png';
+  import previewEn1 from './assets/accueil/en/disposition-1.png';
 
   let { accounts = [], complete = false, onadd = () => {}, onfinish = () => {} } = $props();
 
   const STEPS = 5;
-  const PREVIEWS = { 3: preview3, 2: preview2, 1: preview1 };
+  const PREVIEWS = $derived(currentLanguage() === 'fr'
+    ? { 3: previewFr3, 2: previewFr2, 1: previewFr1 }
+    : { 3: previewEn3, 2: previewEn2, 1: previewEn1 });
   let step = $state(1);
   // Finding 2: as soon as one address exists, the add bar folds
   // behind "Add another email address" — and reopens on

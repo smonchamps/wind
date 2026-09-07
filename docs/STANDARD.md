@@ -1022,6 +1022,21 @@ empty behind the queued write. And a command slower than a second now writes its
 its work to the trace (`slow command <name>`): the field trace of that day
 had no line for a wait of ten seconds.
 
+### A background agent can empty the main tree's `node_modules`
+
+2026-09-07, Lot 5, 20:53: `e2e/node_modules` of the MAIN checkout was
+found empty (the directory itself timestamped 20:53) while a spike agent
+worked in an isolated worktree; the e2e batch of the moment died on
+"Cannot find package '@playwright/test'" and `npm ci` restored it in a
+minute. The cause was NOT established: the worktree's own `node_modules`
+are real directories, not junctions (checked with `Get-Item … |
+Select LinkType`); an `npm ci`/`rm` run against the main tree by the
+agent is the likeliest, not a proven, cause. What stands: a spike agent's
+brief must name the ONE tree it may touch and forbid any `npm ci`,
+`rm -r` or junction on the main checkout (the A02 spike's README named
+its junction and its removal gesture); and when a net dies on a missing
+package, look at the directory's timestamp before suspecting the code.
+
 ## 10. File map
 
 | File | Role |
@@ -1057,6 +1072,7 @@ had no line for a wait of ten seconds.
 | [`apps/desktop/src/telemetry.rs`](../apps/desktop/src/telemetry.rs) | Panic hook, file-based consent, local report write (ADR 0014) |
 | [`spikes/ui-socle-v2/`](../spikes/ui-socle-v2/RAPPORT.md) | Tie-breaking spike for the UI v2 foundation — evidence for ADR 0015, **throwaway** |
 | [`spikes/global-lock/`](../spikes/global-lock/REPORT.md) | The commands' lock under a 10 MB sanitize and a 25 MiB attach — evidence for ADR 0045's unlocked work, **throwaway** |
+| [`spikes/feed-memory/`](../spikes/feed-memory/REPORT.md) | Feed memory options A/B/C measured on the arm64 workstation (D-53, Lot 5 E15b) — none under 200 MB, **throwaway** |
 
 ---
 

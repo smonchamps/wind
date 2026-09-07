@@ -277,7 +277,7 @@ in French):
 - **D4, 2026-09-07:** “Oui (recommandé)”. <!-- lang:fr -->
 - **D5, 2026-09-07:** first “Non, à amender”, then “Quelles seraient tes recommandations pour chacun des éléments ?”; after the per-item recommendations (all: keep the refusal; D-26 re-measured in E15a): “Aucun : liste approuvée telle quelle”. <!-- lang:fr -->
 - **D7, 2026-09-07:** “Oui, langue de l'UI (recommandé)”. <!-- lang:fr -->
-- **D6:** not asked yet (needs the § 3.2 figures).
+- **D6 (2026-09-07, STOP 2 of E15):** "I validate your recommendations on both decisions" — no E15b implementation; a dated exception at the measured figure; D-53 stays open with the renderer snapshot as its next step.
 
 The questions as asked:
 
@@ -742,4 +742,264 @@ Verdict as a numbered list, 1–9 OK/KO, with what you saw (and the two
 **“1 à 9 ok”** (verbatim), on the 12.49 GB real database with the <!-- lang:fr -->
 tightened sequence (one copy, one restore, the held send discarded).
 Sub-lot E14 is field-validated. Committed locally as `516180e`; not pushed (D0). <!-- lang:fr -->
+
+## Sub-lot E15 — 2026-09-07
+
+Started after E14's commit. The Feed memory spike (§ 3.2) runs in one
+isolated worktree (disk: one target directory, debug builds, the UI dist
+rebuilt per option).
+
+### Implementation increments
+
+- **E15f (D-54).** `multi-select.spec.js` replayed ten times without
+  retries, in isolation: **90/90**, no first failure to capture. The
+  flake lives in the loaded suite only (three retries in six gates on
+  2026-09-02); the register keeps the entry with this figure.
+- **E15d, language (D-56, D7).** The core composes nothing in a fixed
+  language any more: `quote_reply*`/`quote_forward*` take the `Lang` and
+  carry the attribution ("On {date}, {sender} wrote:" and its French <!-- lang:fr -->
+  form) and the forward header (Forwarded message / From /
+  Date / Subject) in it; `human_size(bytes, lang)` says B/KB/MB or
+  o/Ko/Mo; `Store::lang()` reads the preference (English until set); the
+  shell passes it at every site (quotes, attachment chips, the room left
+  on a refusal); the three native dialogs of `main.rs` follow the
+  preference read without adopting the database. RED shown (three new
+  tests, twenty-five compile errors), GREEN after; the e2e assertions of
+  the shipped French mix (a French total beside an English limit, a
+  French attribution) corrected to the English interface they run in.
+- **E15d, invitations (D-29).** A calendar-only message's meeting title
+  and location are indexed with its (empty) body; the invitation's ICS
+  text is now KEPT (`invitations.ics`, added by migration) and the
+  forward's file list carries it as `invitation.ics` (`message_attachments
+  { forForward: true }`, `attachments_for_forward`), served from the store
+  without a fetch; the reading pane's list is unchanged. One test (search
+  by title and by place, the forward list with and without the ICS).
+- **E15d, onboarding (D-57).** `capture-onboarding.mjs` writes one set
+  per language under `assets/accueil/{en,fr}/`; `Onboarding.svelte` picks
+  the set of the current language. The English set captured on
+  2026-09-07 (the Clarity decor's own French subjects stay: they are the
+  data, the chrome is English — "1.2 MB", "Reply all", "Archive").
+- **E15c (D-37).** `mailboxes.local_count`, kept by two triggers on
+  `envelopes` (insert, delete — a replace nets zero), recounted once for a
+  database from before the column; `sync_progress` sums the column
+  instead of counting every mailbox under the lock every 5 s (152 ms
+  cold / 8.6 ms warm on the real database, 2026-08-26). Two tests (the
+  counter through upsert, replace, delete and reset; the legacy recount).
+- **E15c (D-2) — built, measured, REMOVED.** An eviction of the pages
+  beyond ±10 of the viewport (21 pages kept, the scroll anchor corrected
+  by the dropped chips' height, a net asserting the bound) was built and
+  measured against the shipped list on `measure-v2` (three runs each,
+  same fixture, same protocol as the baseline below): RAM after activity
+  221.8 MB median WITHOUT it, 270.5 MB WITH it; page jump p50 15–17 ms
+  without, 21–23 ms with. The alternative loses on both counts: the
+  re-serving churn of random deep jumps costs more than the rows it
+  frees. Code and net removed; D-2 stays open with the figures and a
+  different lead (weigh the retained pages on a long idle session).
+- **E15e (G06).** CI gains `quality-windows-arm64` (clippy for the
+  shipped `aarch64-pc-windows-msvc` triple on a hosted x64 runner — the
+  proof a hosted runner can give; it proves itself at the grouped push);
+  the support and proof matrix (OS × arch × build / unit / e2e /
+  install / vault / update, with where each proof lives) is written in
+  MACOS-BUILD.
+- **E15a.** `measure-v2.mjs` states its protocol as shipped (four themes
+  read from the product, thread openings); the dated baseline on the
+  gate-3 fixture and on the real database follows below.
+
+### E15a — the dated baseline (measure-v2, 2026-09-07)
+
+Protocol as the script now states it: release build with the e2e seams,
+a copy of the gate-3 fixture (`C:\mesureanc200k.db`: 200,000 envelopes,
+160,000 conversations, one account), warm disk (the copy was just
+written), this workstation (Snapdragon X, 12 cores), nothing else
+running. Private working set of the seven processes of the one instance,
+after 30 s of stabilization.
+
+| Measure | Figure | Budget (STANDARD §3) |
+|---|---|---|
+| Startup, spawn → first row (wall clock) | 1,499 ms | < 1 s — **not comparable**: the bench's spawn includes the e2e seams and a fresh WebView2 profile; the budget's figure (384.6 ms) is the installed app on the real database |
+| First page served + rendered | 70.2 ms | < 100 ms ✅ |
+| Page jump, 300 over the depth | p50 21.4 · p95 31.3 · max 41.3 ms | < 100 ms ✅ |
+| Theme switch, 60 over the 4 shipped themes | p50 0.6 · p95 1.2 ms | (D-11: recalibrated; no historical figure comparable) |
+| Thread opening, 20 among the 400 most recent | p50 15.9 · p95 30.0 ms | < 50 ms ✅ (D-12: the first figure on the shipped definition) |
+| RAM after the activity above | 265.2 MB | < 200 MB ✗ **as measured after 300 deep pages and 20 openings** — the budget's own posture is AT REST (ADR 0002), measured below |
+
+At rest (`MEASURE_NO_ACTIVITY=1`, the budget's own posture, ADR 0002):
+**RAM 89.1 MB** (7 processes) — budget 200 MB ✅, against 95.5 MB at the
+last recorded reading; first page 144.0 ms on that run (70.2 ms on the
+activity run: the first page's own variance between two launches on the
+same warm copy, noted, not explained). Startup 1,379 ms wall clock with
+the seams. D-11, D-12 and D-14 close on this dated table; the real
+database's figures come from the field (`measure-v2` cannot run on it
+without a copy — the copy of E14 is the way).
+
+### Fresh-eyes review (E15) — 2026-09-07
+
+Two finder passes on the frozen diff (1,671 lines): line-by-line with
+the enclosing functions, and the cleanup angles together. Six candidates
+survived; four corrected before the gate, two recorded:
+
+1. **The pre-window dialogs could wait thirty seconds with no window**:
+   `dialog_lang` read the language through the read-only probe and its
+   full-open budget, on the very path taken when another Wind holds the
+   folder and may be writing — on a database still in rollback mode a
+   writer blocks the reader. The probe gains a budgeted variant
+   (`text_pref_readonly_within`); the dialogs use one second and fall
+   back to English. Test: an exclusive writer on a rollback-mode file,
+   the probe gives up in 300 ms.
+2. **The language read once per attachment row** (`ui_lang(store)` inside
+   the `.map` closures of four draft commands) — hoisted to one read per
+   command.
+3. **A `lang:fr` marker on the wrong line** of a multi-line assert
+   (`compose.rs`) — moved onto the French string's line.
+4. **Indentation** of the launch line in `capture-onboarding.mjs`.
+5. **Recorded, not corrected — the arm64 CI job is unverified**: it
+   cross-compiles bundled SQLite for `aarch64-pc-windows-msvc` on an x64
+   runner with no explicit ARM64 MSVC step. Only a run on the hosted
+   runner can prove it, and D0 forbids a push before the grouped review.
+   If it is red on the grouped push, the fix (a `vcvarsall`-style setup
+   step) is part of that push, not a new job.
+6. **Recorded, not corrected — one extra SELECT** on a calendar forward
+   (`invitation_ics` after `attachments_for_forward` already read the
+   size): a rare path, one small row.
+
+Verified as not bugs, so they are not re-flagged: the `local_count`
+triggers under `ON CONFLICT DO UPDATE` (an update fires neither insert
+nor delete trigger — the count is stable on a re-sync by construction);
+the cascade delete of an account (the counter leaves with its mailbox
+row); the FTS round-trip of the escaped meeting words.
+
+### Full gate and STOP 2 handoff (sub-lot E15) — 2026-09-07
+
+`scripts/gate.ps1`, **exit 0 in 357 s** — 927 Rust (core 588 with the
+budgeted-probe test, shell 69, others), 43 Node, **268 UI**, zero failed,
+**zero flaky**. Contrasts 440 pairs, System coherence 68 values, guard 130
+commands, language ratchet no rise (1963 markers, baseline 1974), IPC
+contract 129 commands, markdown links 459.
+
+### STOP 2 — field checklist (E15)
+
+Real accounts, the release build from the sources
+(`scripts
+un-wind.ps1`), UI in English unless stated. The one figure to
+re-measure is the progress bar's cost, invisible by design: the check is
+that the bar still moves.
+
+1. **Reply attribution in English.** Reply to any message: the quote
+   header reads "On <date>, <sender> wrote:"; the forward header reads
+   "---------- Forwarded message ----------" with From / Date / Subject.
+   Switch the UI to French (Settings › Language), the same two read
+   "Le <date>, <sender> a écrit :" and "Message transféré". <!-- lang:fr -->
+2. **Sizes in English.** Attach a file to a draft: the chip and the total
+   read KB / MB (Ko / Mo once the UI is French); the reading pane's
+   attachment list follows the same rule.
+3. **The native dialog in the UI's language.** With Wind open, launch a
+   second Wind (`scripts
+un-wind.ps1` again): the dialog reads "Wind is
+   already open." at once (well under a second), French text if the UI
+   is French.
+4. **A calendar-only message.** Open an invitation whose message has no
+   body of its own (the card is the whole message): search its title or
+   its location from the search box — the message is found. Forward it:
+   the composer's attachment list carries `invitation.ics`; the sent
+   forward reaches the recipient with that file, and the file opens in a
+   calendar.
+5. **The onboarding illustrations.** Settings › Show the welcome again
+   (or a fresh profile): the three layout illustrations show an English
+   interface; in French, a French one.
+6. **The progress bar during a sync** (D-37): during the launch sync the
+   bar still moves and reaches its end; no visible change expected.
+7. **Optional, the baseline on the real database**: `node
+   e2e\measure-v2.mjs` on a COPY of `wind.db` — the plan records the
+   figures at E15a; a page p95 above 100 ms or a thread open above
+   50 ms stops the line.
+
+Then two decisions, asked at this STOP: **D6** (Feed memory, see the
+spike figures above) and the fate of the `docs/evidence/audit-2026-09/`
+folder found in the working tree (252 intent-to-add files plus hunks in
+the Lot 2 plan, STANDARD's file map and the language gate, none of them
+from this sub-lot's session): included in the Lot 5 commit or committed
+on its own.
+
+### STOP 2 field findings (E15) — 2026-09-07
+
+Items 1, 2, 4, 5, 6 OK. Item 7 (the bench fixture, 256,312 envelopes,
+release build): first page 12.1 ms, page p50 14.5 / p95 30.2 / max
+82.8 ms, thread open p50 24.4 / p95 27.9 ms, RAM 264.3 MB after
+activity — within the budgets and the E15a baseline.
+
+Item 3 was a **checklist error, not a product finding**: `run-wind.ps1`
+builds through `build-wind.mjs`, whose zombie sweep stops every
+`wind-desktop` under `target\` before launching — the second launch
+closed the first instance before any dialog could show. The check is
+replayed by starting the release exe directly while the first Wind runs.
+
+### STOP 2 verdict (E15) — 2026-09-07
+
+Item 3 replayed with the exe started directly: "3 ok". **Seven items OK,
+no field finding.** The two decisions, the Chief Engineer's words: "I
+validate your recommendations on both decisions."
+
+- **D6 (2026-09-07):** no E15b implementation in this lot; a dated
+  exception at the measured figure (D-53 stays open, next step the
+  renderer snapshot that separates the retained memory; the document
+  strings kept in `cards` the first named suspect).
+- **The evidence folder:** committed on its own, before the E15 commit.
+
+### E15 — D-53 and E15b
+
+The Feed memory spike (§ 3.2) had not reported when the sub-lot reached
+its review; E15b and decision D6 are NOT part of this sub-lot's delivery.
+The RAM budget at rest holds (89.1 MB); the Feed figure of D-53
+(249–251.5 MB after ten pages of letters) stands as recorded.
+
+**Spike report received 2026-09-07** (`spikes/feed-memory/REPORT.md`, the
+worktree moved to `2ade544` before measuring; **machine: the Snapdragon X
+arm64 workstation, WebView2 152 — not the x64 workstation of D-53 pass 2**,
+so A/B/C compare on this machine but the absolute figures do not
+transfer). Bench fixture: 200 letters, 100 KB then 300 KB bodies, 16
+senders routed, 160 cards = 8 pages (the routed decor's cap). Private
+working set, 7 processes, medians of 3 runs:
+
+| 100 KB | rest | page 1 | 160 cards | back in Inbox | +25 s | after forced GC (1 run) |
+|---|---:|---:|---:|---:|---:|---:|
+| A (shipped, ±5) | 88.5 | 150.4 | 281.8 | 237.5 | 236.0 | 208.5 |
+| B (±1, blank before unmount) | 91.3 | 133.7 | 257.6 | 255.7 | 254.1 | 196.5 |
+| C (pool of 5, ±2) | 89.9 | 143.9 | 297.9 | 258.1 | 258.5 | 227.5 |
+
+| 300 KB (run 3, the only one at 160 cards for all three) | page 1 | 160 cards | +25 s | after GC |
+|---|---:|---:|---:|---:|
+| A | 211.9 | 501.0 | 495.4 | 330.1 |
+| B | 161.7 | 424.4 | 420.5 | 296.8 |
+| C | 193.1 | 862.5 | 335.4 | 335.4 |
+
+Scroll cost at 100 KB: A 2–6 long frames (> 50 ms) per scroll, B none,
+C none but irregular page arrivals (1.0–3.3 s, its slots measure late).
+First card after the Feed click: A ~430 ms, B/C ~845 ms (untraced).
+
+What the figures say: (1) **no option passes 200 MB** on the protocol at
+either size; B is the closest (196.5 after a forced GC, one run). (2) The
+live iframes are not where the memory is — B and C still hold ~195 MB of
+renderer at 160 cards against A's ~215. (3) The 160-card figure is
+dominated by V8 GC timing (JS heap 41–75 MB at 100 KB, 68–198 MB at
+300 KB on identical runs): the `cards[].document` strings plus their IPC
+copies; (4) after the return V8 can sit on that heap for more than 30 s.
+(5) What survives a GC — 100–130 MB (100 KB) / 200–240 MB (300 KB) of
+renderer memory outside the JS heap — is released by neither blanking
+nor pooling: the lever, if any, is the number of documents ever parsed
+and the document strings kept in `cards`, to be separated by the D-53
+"lead" snapshot (renderer before/after unmount). (6) The run-to-run
+spread on the return phase (± 20–40 MB) exceeds the A/B gap.
+
+Spike defects, not corrected (time box): C overlaps two pooled iframes at
+160 cards and loses the scoped `.body` styling (figures valid, rendering
+not shippable as spiked); B adds ~400 ms to the first card. Estimates: B
+½ day code + 1 day e2e for a 15–25 MB gain on the Feed pages, within
+noise on the return; C 2–3 days code + 2 days e2e, equal or worse than B
+everywhere measured.
+
+**Recommendation for D6** (to be asked at STOP 2 of E15): neither B nor C
+buys the budget; the Deputy recommends **no E15b implementation in this
+lot** — a dated exception at the measured figure (D-53 stays open, next
+step the renderer snapshot that separates the retained memory), with the
+document strings kept in `cards` as the first named suspect.
 

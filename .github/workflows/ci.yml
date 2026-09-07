@@ -100,6 +100,36 @@ jobs:
       - name: Tests (--doc)
         run: cargo test --workspace --doc --target ${{ matrix.triple }}
 
+  # PLAN-AUDIT-2026-09 Lot 5 E15e (audit G06): Windows arm64 SHIPS
+  # (make-release.ps1 builds it from the release commit) but no hosted
+  # runner is arm64 — this job is the proof a hosted runner can give:
+  # the whole workspace type-checks and lints for the shipped triple
+  # (build scripts, cfg gates, windows-sys bindings). Tests run on x64
+  # (the `quality` job); the native run proof stays the field, on the
+  # Chief Engineer's arm64 workstation (STANDARD §2.10).
+  quality-windows-arm64:
+    name: clippy (Windows aarch64-pc-windows-msvc, cross-check)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@032958afbdc797a9164d3bc0b56325c1308924a5 # 1.97.1
+        with:
+          components: clippy
+          targets: aarch64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: aarch64-pc-windows-msvc
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/ui-v2/package-lock.json
+      - name: Build ui-v2 (required by generate_context)
+        run: npm ci && npm run build
+        working-directory: apps/desktop/ui-v2
+      - name: Lints for the arm64 triple (warnings = errors)
+        run: cargo clippy --workspace --all-targets --target aarch64-pc-windows-msvc -- -D warnings
+
   ui-v2:
     name: build ui-v2 (Svelte + Vite, PLAN-UI-V2)
     runs-on: ubuntu-latest

@@ -25,6 +25,9 @@ export const FR = {
   // --- Screen 02 header --------------------------------------------------
   'header.search': 'Recherche',
   'header.searchHint': 'Chercher un message, une personne, un fichier',
+  'size.b': 'o',
+  'size.kb': 'Ko',
+  'size.mb': 'Mo',
   'header.searchCoverage': '{n} message pas encore téléchargé n’est cherché que par objet et expéditeur.|{n} messages pas encore téléchargés ne sont cherchés que par objet et expéditeur.',
   'header.clearSearch': 'Effacer la recherche',
   'header.compose': 'Écrire',

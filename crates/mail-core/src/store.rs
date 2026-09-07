@@ -103,6 +103,11 @@ CREATE TABLE IF NOT EXISTS mailboxes (
     -- distinct because the progress bar must stay silent when it does
     -- not know, instead of showing '0%' or '100%'.
     remote_total   INTEGER NOT NULL DEFAULT 0,
+    -- The envelopes held locally (Lot 5 E15c, D-37): kept by two
+    -- triggers on `envelopes` (created after the column exists, in
+    -- `migrate`), recounted once for a database from before it. The
+    -- progress bar reads it instead of counting every mailbox every 5 s.
+    local_count    INTEGER NOT NULL DEFAULT 0,
     UNIQUE (account_id, name)
 );
 CREATE TABLE IF NOT EXISTS envelopes (
@@ -534,9 +539,9 @@ fn write_invitation(
              lieu, organisateur_adresse, organisateur_nom, debut_epoch, fin_epoch,
              debut_texte, fin_texte, journee_entiere, recurrent, partstat,
              repondant_adresse, repondant_nom, repondant_statut, annule,
-             metadata_version, dtstamp_epoch, occurrence_key, occurrence_property, scheduling_supported, scheduling_state)
+             metadata_version, dtstamp_epoch, occurrence_key, occurrence_property, scheduling_supported, scheduling_state, ics)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
-             ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)
+             ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)
          ON CONFLICT(mailbox_id, uid) DO UPDATE SET
              revision = invitations.revision + 1,
              methode = excluded.methode, event_uid = excluded.event_uid,
@@ -554,7 +559,8 @@ fn write_invitation(
              annule = excluded.annule,
              metadata_version = excluded.metadata_version, dtstamp_epoch = excluded.dtstamp_epoch,
              occurrence_key = excluded.occurrence_key, occurrence_property = excluded.occurrence_property,
-             scheduling_supported = excluded.scheduling_supported, scheduling_state = excluded.scheduling_state",
+             scheduling_supported = excluded.scheduling_supported, scheduling_state = excluded.scheduling_state,
+             ics = excluded.ics",
         params![
             mailbox_id,
             uid,
@@ -576,15 +582,37 @@ fn write_invitation(
             row.attendee_name,
             row.attendee_status,
             row.cancelled, row.metadata_version, row.dtstamp_epoch, row.occurrence_key,
-            row.occurrence_property, row.scheduling_supported, row.scheduling_state
+            row.occurrence_property, row.scheduling_supported, row.scheduling_state,
+            row.ics
         ],
     )?;
     refresh_invitation_group(conn, mailbox_id, &row.event_uid)?;
     Ok(())
 }
 
+/// What the search indexes as the body: the HTML, followed by the
+/// meeting's title and location when the message carries an invitation
+/// (Lot 5 E15d, D-29 — a calendar-only message has no body at all).
+fn meeting_words(html: &str, invitation: Option<&InvitationRow>) -> String {
+    match invitation {
+        None => html.to_string(),
+        Some(row) => {
+            let mut words = String::from(html);
+            words.push_str("<p>");
+            words.push_str(&crate::echo::text_as_html(&row.title));
+            if let Some(location) = &row.location {
+                words.push(' ');
+                words.push_str(&crate::echo::text_as_html(location));
+            }
+            words.push_str("</p>");
+            words
+        }
+    }
+}
+
 fn read_invitation_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<InvitationRow> {
     Ok(InvitationRow {
+        ics: row.get("ics")?,
         metadata_version: row.get("metadata_version")?,
         dtstamp_epoch: row.get("dtstamp_epoch")?,
         occurrence_key: row.get("occurrence_key")?,
@@ -990,8 +1018,7 @@ impl Store {
     /// running behind does not make the others go backward.
     pub fn sync_progress(&self) -> Result<(u64, u64), Error> {
         let (local, remote): (i64, i64) = self.0.query_row(
-            "SELECT COALESCE(SUM(
-                        (SELECT COUNT(*) FROM envelopes e WHERE e.mailbox_id = m.id)), 0),
+            "SELECT COALESCE(SUM(m.local_count), 0),
                     COALESCE(SUM(MAX(0, m.remote_total -
                         (SELECT COUNT(*) FROM pending_actions p
                           WHERE p.mailbox_id = m.id AND p.refusee = 0
@@ -2226,12 +2253,56 @@ impl Store {
                     sender_address: sender_address.as_deref(),
                     to_addrs: to_field.as_deref(),
                     cc_addrs: cc_field.as_deref(),
-                    body_html: Some(html),
+                    // Lot 5 E15d (D-29): a message whose root IS the
+                    // calendar has an empty body — the meeting's title
+                    // and location are what the user remembers.
+                    body_html: Some(&meeting_words(html, invitation)),
                 },
             )?;
         }
         tx.commit()?;
         Ok(())
+    }
+
+    /// The forward's list of files (Lot 5 E15d, D-29): the message's
+    /// attachments, plus the invitation itself as `invitation.ics` when
+    /// the ICS was kept — the reading pane's list stays bare.
+    pub fn attachments_for_forward(
+        &self,
+        account_id: i64,
+        mailbox: &str,
+        uid: Uid,
+    ) -> Result<Vec<Attachment>, Error> {
+        let mut files = self.attachments(account_id, mailbox, uid)?;
+        if let Some(ics) = self.invitation_ics(account_id, mailbox, uid)? {
+            files.push(Attachment {
+                index: crate::CALENDAR_ATTACHMENT_INDEX,
+                name: "invitation.ics".to_string(),
+                mime: "text/calendar".to_string(),
+                size: ics.len() as u64,
+            });
+        }
+        Ok(files)
+    }
+
+    /// The invitation's iCalendar text, when kept.
+    pub fn invitation_ics(
+        &self,
+        account_id: i64,
+        mailbox: &str,
+        uid: Uid,
+    ) -> Result<Option<String>, Error> {
+        Ok(self
+            .0
+            .query_row(
+                "SELECT i.ics FROM invitations i
+                 JOIN mailboxes m ON m.id = i.mailbox_id
+                 WHERE m.account_id = ?1 AND m.name = ?2 AND i.uid = ?3",
+                params![account_id, mailbox, uid],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten())
     }
 
     pub fn mailbox_identity(

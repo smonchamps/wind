@@ -214,6 +214,33 @@ fn arm_spans() {
         .try_init();
 }
 
+/// The interface's language for the dialogs shown BEFORE any window
+/// (Lot 5 E15d, D-56): the preference, read without adopting the
+/// database (the read-only probe of `lang_get`); English until set.
+/// The wait budget is ONE second, not the probe's thirty (review E15):
+/// these dialogs run precisely when another Wind holds the folder and
+/// may be writing — on a database still in rollback mode, a writer
+/// blocks the reader, and a dialog that waits thirty seconds with no
+/// window is a launch that seems dead. Late here means English.
+fn dialog_lang(folder: Option<&std::path::Path>) -> mail_core::Lang {
+    let db = std::env::var("WIND_DB_PATH")
+        .map(std::path::PathBuf::from)
+        .ok()
+        .or_else(|| folder.map(|f| f.join("wind.db")));
+    let code = db
+        .filter(|db| db.exists())
+        .and_then(|db| {
+            mail_core::Store::text_pref_readonly_within(
+                &db,
+                mail_core::PREF_LANG,
+                std::time::Duration::from_secs(1),
+            )
+            .ok()
+        })
+        .flatten();
+    mail_core::Lang::from_pref(code.as_deref())
+}
+
 /// A modal message BEFORE any Tauri window, then exit. `rfd` is what
 /// the dialog plugin wraps; there is no `AppHandle` yet at this point
 /// (the window would be born before `setup`, tauri `app.rs`). The
@@ -268,13 +295,24 @@ fn main() {
     // spawns us while the dying predecessor still holds the lock.
     let _instance_guard = match folder.as_deref().map(instance::lock_patiently) {
         Some(Ok(Some(guard))) => guard,
-        Some(Ok(None)) => warn_and_exit("Wind est déjà ouvert.", 0), // lang:fr
+        Some(Ok(None)) => warn_and_exit(
+            match dialog_lang(folder.as_deref()) {
+                mail_core::Lang::Fr => "Wind est déjà ouvert.", // lang:fr
+                mail_core::Lang::En => "Wind is already open.",
+            },
+            0,
+        ),
         Some(Err(err)) => {
             trace::trace(&format!("instance lock failed: {err}"));
             warn_and_exit(
-                &format!(
-                    "Impossible de protéger les données de Wind : {err}\nVérifiez l’accès au dossier de données, puis relancez." // lang:fr
-                ),
+                &match dialog_lang(folder.as_deref()) {
+                    mail_core::Lang::Fr => format!(
+                        "Impossible de protéger les données de Wind : {err}\nVérifiez l’accès au dossier de données, puis relancez." // lang:fr
+                    ),
+                    mail_core::Lang::En => format!(
+                        "Wind could not protect its data: {err}\nCheck access to the data folder, then start again."
+                    ),
+                },
                 1,
             );
         }

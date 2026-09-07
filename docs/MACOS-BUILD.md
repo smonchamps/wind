@@ -275,6 +275,22 @@ workstation, `powershell scripts\publish-release.ps1 <version>`
 (proves 11 assets, 4 keys, 4 signatures and both attestations, then
 Latest) and `powershell scripts\verify-release.ps1 <version>`.
 
+## Support and proof matrix (Lot 5 E15e, audit G06)
+
+What each shipped platform has actually proven, and where. A cell says
+where the evidence lives; "field" means the Chief Engineer's or a
+tester's own machine, dated in the plan that recorded it.
+
+| Platform | Build | Unit + clippy | UI journeys (e2e) | Install / open | Vault | Auto-update |
+|---|---|---|---|---|---|---|
+| Windows x64 | `make-release.ps1` (cross from the arm64 workstation) | CI `quality` (windows-latest) | pre-push hook on the workstation (WebView2, CDP) | field, 0.19.0 (tester T-x64) | field | field, chain 0.10.x → 0.19.0 |
+| Windows arm64 | `make-release.ps1` (native) | CI `quality-windows-arm64` (clippy, cross-check) | pre-push hook (the workstation IS arm64) | field, every release (the Chief Engineer's workstation) | field | field, every release |
+| macOS x64 (Intel) | `release-macos.sh` on the Air | CI `quality-macos` (Rosetta 2 on the arm64 runner) | none (WKWebView has no CDP, D-61) | field, 0.19.0 (the Air) | field (Keychain, one prompt per credential after an ad-hoc update — D-60, to watch at the second mac release) | field: pending the second mac release |
+| macOS arm64 (Apple Silicon) | `release-macos.sh` on the Air (cross) | CI `quality-macos` (native on the arm64 runner) | none (D-61) | field, 0.19.0 (tester, PLAN-APPLE-SILICON) | field: pending | field: pending the second mac release |
+
+Not supported: Linux, mobile (STANDARD §3). Signing: Windows Authenticode
+frozen (D-39), macOS ad-hoc (D-60) — accepted beta limits.
+
 ## Known limits (stated, PLAN-MACOS §2)
 
 - No e2e suite on macOS (WKWebView has no CDP) — the mac gate is the

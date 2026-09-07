@@ -49,6 +49,18 @@ impl Store {
     /// (system language), never as an absence of preference: nothing
     /// gets persisted on the strength of a silent probe.
     pub fn text_pref_readonly(path: &Path, key: &str) -> Result<Option<String>, Error> {
+        Self::text_pref_readonly_within(path, key, std::time::Duration::from_secs(30))
+    }
+
+    /// The same probe with its own wait budget — for a caller that
+    /// cannot afford the full open's thirty seconds (a dialog shown
+    /// before any window, Lot 5 E15d). Past the budget the probe fails,
+    /// and the caller falls back the same way as on any failure.
+    pub fn text_pref_readonly_within(
+        path: &Path,
+        key: &str,
+        budget: std::time::Duration,
+    ) -> Result<Option<String>, Error> {
         if !path.exists() {
             // First install: nothing to read, and opening would create
             // the file — a probe leaves no trace.
@@ -59,7 +71,7 @@ impl Store {
         // WAL is in rollback mode, where a writer blocks readers —
         // without this budget, the probe would die with SQLITE_BUSY on
         // the first try (late beats dead).
-        conn.busy_timeout(std::time::Duration::from_secs(30))?;
+        conn.busy_timeout(budget)?;
         // A database from before preferences may not have the table:
         // the probe must answer ("no preference"), not explain.
         let has_prefs: i64 = conn.query_row(
@@ -108,6 +120,15 @@ impl Store {
     /// `bool_pref` for named values (the UI language, PLAN-LANGUES).
     /// Absent = `None`: a preference never touched writes nothing, it
     /// is the caller that knows its default.
+    /// The interface's language, from the preference the UI sets —
+    /// what the shell composes in (quotes, sizes, notifications).
+    /// English until set (PLAN-ENGLISH-SWITCH D4).
+    pub fn lang(&self) -> Result<crate::Lang, Error> {
+        Ok(crate::Lang::from_pref(
+            self.text_pref(crate::PREF_LANG)?.as_deref(),
+        ))
+    }
+
     pub fn text_pref(&self, key: &str) -> Result<Option<String>, Error> {
         let value = self
             .0

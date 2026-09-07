@@ -30,26 +30,36 @@ pub struct Attachment {
 
 impl Attachment {
     /// Human-readable size, for the UI's use.
-    pub fn human_size(&self) -> String {
-        human_size(self.size)
+    pub fn human_size(&self, lang: crate::Lang) -> String {
+        human_size(self.size, lang)
     }
 }
 
+/// The index of the forward's virtual attachment carrying a calendar-only
+/// message's ICS (Lot 5 E15d, D-29): never a real MIME part's index.
+pub const CALENDAR_ATTACHMENT_INDEX: usize = 1_000_000;
+
 /// Human-readable size — the same form for Reading and the composer
-/// (attachment chips, remaining room on a cap refusal).
-pub fn human_size(bytes: u64) -> String {
+/// (attachment chips, remaining room on a cap refusal), in the UI's
+/// language (Lot 5 E15d, D-56: the field read "2.8 Mo / 25 MB").
+pub fn human_size(bytes: u64, lang: crate::Lang) -> String {
     const KB: u64 = 1024;
     const MB: u64 = KB * 1024;
+    let (b, kb, mb) = match lang {
+        crate::Lang::Fr => ("o", "Ko", "Mo"), // lang:fr
+        crate::Lang::En => ("B", "KB", "MB"),
+    };
     match bytes {
-        0..=1023 => format!("{bytes} o"),                         // lang:fr
-        n if n < MB => format!("{:.0} Ko", n as f64 / KB as f64), // lang:fr
-        n => format!("{:.1} Mo", n as f64 / MB as f64),           // lang:fr
+        0..=1023 => format!("{bytes} {b}"),
+        n if n < MB => format!("{:.0} {kb}", n as f64 / KB as f64),
+        n => format!("{:.1} {mb}", n as f64 / MB as f64),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Lang;
 
     fn sized(size: u64) -> Attachment {
         Attachment {
@@ -62,10 +72,21 @@ mod tests {
 
     #[test]
     fn human_size_changes_unit_where_it_becomes_readable() {
-        assert_eq!(sized(0).human_size(), "0 o"); // lang:fr
-        assert_eq!(sized(1023).human_size(), "1023 o"); // lang:fr
-        assert_eq!(sized(1024).human_size(), "1 Ko"); // lang:fr
-        assert_eq!(sized(1_048_576).human_size(), "1.0 Mo"); // lang:fr
-        assert_eq!(sized(2_600_000).human_size(), "2.5 Mo"); // lang:fr
+        assert_eq!(sized(0).human_size(Lang::Fr), "0 o"); // lang:fr
+        assert_eq!(sized(1023).human_size(Lang::Fr), "1023 o"); // lang:fr
+        assert_eq!(sized(1024).human_size(Lang::Fr), "1 Ko"); // lang:fr
+        assert_eq!(sized(1_048_576).human_size(Lang::Fr), "1.0 Mo"); // lang:fr
+        assert_eq!(sized(2_600_000).human_size(Lang::Fr), "2.5 Mo"); // lang:fr
+    }
+
+    /// Lot 5 E15d (D-56): the units follow the UI's language — the
+    /// field showed "2.8 Mo / 25 MB" on an English interface.
+    #[test]
+    fn human_size_speaks_the_interface_language() {
+        assert_eq!(sized(0).human_size(Lang::En), "0 B");
+        assert_eq!(sized(1023).human_size(Lang::En), "1023 B");
+        assert_eq!(sized(1024).human_size(Lang::En), "1 KB");
+        assert_eq!(sized(1_048_576).human_size(Lang::En), "1.0 MB");
+        assert_eq!(sized(2_600_000).human_size(Lang::En), "2.5 MB");
     }
 }

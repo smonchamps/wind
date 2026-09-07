@@ -609,7 +609,7 @@ test('replying prefills from the core: address, Re:, lead-in, quote — without 
   // not four): the assertion measures both line breaks, not just the
   // lead-in.
   expect(body.startsWith('Hello Camille,\n\n')).toBe(true);
-  expect(body).toContain('a écrit :'); // lang:fr
+  expect(body).toContain('wrote:'); // Lot 5 E15d (D7): the attribution in the UI's language
   // E3 (PJ-D4): a reply does NOT carry the original attachments — the
   // prototype's chip promised a send that never existed, it fell with
   // the fiction.
@@ -674,7 +674,7 @@ test('attachments are taken from the PANE — a lone message has no conversation
   const chip = page.locator('[data-testid="reading-files"] [data-testid="attachment"]');
   await expect(chip).toHaveCount(1);
   await expect(chip).toContainText('CR_04-08.pdf');
-  await expect(chip).toContainText('220 Ko');
+  await expect(chip).toContainText('220 KB');
   await expect(chip).toBeEnabled();
 });
 
@@ -1186,12 +1186,13 @@ test('attaching is real: name + size chips, total weight, removal per chip', asy
   await expect(page.locator('[data-testid="attachment-compose"]')).toHaveCount(2);
   await expect(page.locator('[data-testid="compose-attachments"]')).toContainText('devis.pdf');
   await expect(page.locator('[data-testid="compose-attachments"]')).toContainText('photo.jpg');
-  // 812 Ko + 2 Mo — the same shape as the chips (the core's decimal point).
-  await expect(page.locator('[data-testid="compose-weight"]')).toContainText('2.8 Mo / 25 MB'); // the total is composed by the shell in French (D17, debt D-56), the limit by the English catalogue
+  // 812 KB + 2 MB — the same shape as the chips (the core's decimal point);
+  // Lot 5 E15d (D-56): the shell's units follow the UI's language.
+  await expect(page.locator('[data-testid="compose-weight"]')).toContainText('2.8 MB / 25 MB');
 
   await page.locator('[data-testid="attachment-remove"]').first().click();
   await expect(page.locator('[data-testid="attachment-compose"]')).toHaveCount(1);
-  await expect(page.locator('[data-testid="compose-weight"]')).toContainText('2.0 Mo / 25 MB'); // idem D-56
+  await expect(page.locator('[data-testid="compose-weight"]')).toContainText('2.0 MB / 25 MB');
 });
 
 test('closing keeps the attachments, resuming restores them (PJ-D1)', async () => {
@@ -1483,7 +1484,7 @@ test('the send echo says its recipients and its attachment — never "To: sent" 
   const attachment = pane.locator('[data-testid="attachment"]');
   await expect(attachment).toHaveCount(1);
   await expect(attachment).toContainText('Bordereau-signe.pdf');
-  await expect(attachment).toContainText('20 Ko');
+  await expect(attachment).toContainText('20 KB');
   await expect(attachment).toBeDisabled();
   await folder('inbox').click();
 });

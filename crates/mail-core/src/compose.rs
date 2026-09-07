@@ -12,6 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::address::EmailAddress;
 use crate::error::Error;
+use crate::notify::Lang;
 
 /// A message ready to enter the outbox: everything in it is validated.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -306,32 +307,72 @@ pub fn signature_applies(mode: ComposeMode, signs_replies: bool) -> bool {
 
 /// The attribution line of a quote — the SINGLE authority for both
 /// variants (text and rich): a label that changes changes everywhere.
-fn attribution(sender: Option<&str>, date: Option<&str>) -> String {
-    let sender = sender.unwrap_or("(expéditeur inconnu)"); // lang:fr
-    match date {
-        Some(date) => format!("Le {date}, {sender} a écrit :"), // lang:fr
-        None => format!("{sender} a écrit :"),                  // lang:fr
+fn attribution(sender: Option<&str>, date: Option<&str>, lang: Lang) -> String {
+    // Lot 5 E15d (D-56, D7): the recipient reads the writer's language.
+    match lang {
+        Lang::Fr => {
+            let sender = sender.unwrap_or("(expéditeur inconnu)"); // lang:fr
+            match date {
+                Some(date) => format!("Le {date}, {sender} a écrit :"), // lang:fr
+                None => format!("{sender} a écrit :"),                  // lang:fr
+            }
+        }
+        Lang::En => {
+            let sender = sender.unwrap_or("(unknown sender)");
+            match date {
+                Some(date) => format!("On {date}, {sender} wrote:"),
+                None => format!("{sender} wrote:"),
+            }
+        }
     }
 }
 
 /// The header of a forward (separator, From/Date/Subject) — same rule:
-/// a single source for both the text and rich variants.
-fn forward_header(sender: Option<&str>, date: Option<&str>, subject: Option<&str>) -> String {
-    let mut header = String::from("---------- Message transféré ----------\n"); // lang:fr
-    header.push_str(&format!(
-        "De : {}\n",                              // lang:fr
-        sender.unwrap_or("(expéditeur inconnu)")  // lang:fr
-    ));
+/// a single source for both the text and rich variants, in the UI's
+/// language.
+fn forward_header(
+    sender: Option<&str>,
+    date: Option<&str>,
+    subject: Option<&str>,
+    lang: Lang,
+) -> String {
+    let (banner, from, date_label, subject_label, unknown, no_subject) = match lang {
+        Lang::Fr => (
+            "---------- Message transféré ----------", // lang:fr
+            "De :",                                    // lang:fr
+            "Date :",                                  // lang:fr
+            "Objet :",                                 // lang:fr
+            "(expéditeur inconnu)",                    // lang:fr
+            "(sans objet)",                            // lang:fr
+        ),
+        Lang::En => (
+            "---------- Forwarded message ----------",
+            "From:",
+            "Date:",
+            "Subject:",
+            "(unknown sender)",
+            "(no subject)",
+        ),
+    };
+    let mut header = format!("{banner}\n{from} {}\n", sender.unwrap_or(unknown));
     if let Some(date) = date {
-        header.push_str(&format!("Date : {date}\n")); // lang:fr
+        header.push_str(&format!("{date_label} {date}\n"));
     }
-    header.push_str(&format!("Objet : {}", subject.unwrap_or("(sans objet)"))); // lang:fr
+    header.push_str(&format!(
+        "{subject_label} {}",
+        subject.unwrap_or(no_subject)
+    ));
     header
 }
 
 /// Quote block of a reply, to place BELOW the cursor (top-posting): an
 /// attribution line then every line of the text prefixed with "> ".
-pub fn quote_reply(sender: Option<&str>, date: Option<&str>, body_text: &str) -> String {
+pub fn quote_reply(
+    sender: Option<&str>,
+    date: Option<&str>,
+    body_text: &str,
+    lang: Lang,
+) -> String {
     if body_text.trim().is_empty() {
         return String::new();
     }
@@ -339,7 +380,11 @@ pub fn quote_reply(sender: Option<&str>, date: Option<&str>, body_text: &str) ->
         .lines()
         .map(|line| format!("> {line}\n"))
         .collect();
-    format!("\n\n{}\n{}", attribution(sender, date), quoted.trim_end())
+    format!(
+        "\n\n{}\n{}",
+        attribution(sender, date, lang),
+        quoted.trim_end()
+    )
 }
 
 /// Rich quote of a reply (PLAN-COMPOSITION-HTML): the ESCAPED attribution
@@ -347,13 +392,18 @@ pub fn quote_reply(sender: Option<&str>, date: Option<&str>, body_text: &str) ->
 /// sanitized by the caller — inside a `<blockquote>` with a left rule,
 /// the shape every mature client gives quoted text. The inline style goes
 /// through `clean_style` (no url, no execution) and the allowlist.
-pub fn quote_reply_html(sender: Option<&str>, date: Option<&str>, body_html: &str) -> String {
+pub fn quote_reply_html(
+    sender: Option<&str>,
+    date: Option<&str>,
+    body_html: &str,
+    lang: Lang,
+) -> String {
     if body_html.trim().is_empty() {
         return String::new();
     }
     format!(
         "<br><br>{}<blockquote style=\"margin:0 0 0 0.8ex;border-left:2px solid #ccc;padding-left:1ex\">{body_html}</blockquote>",
-        crate::echo::text_as_html(&attribution(sender, date)),
+        crate::echo::text_as_html(&attribution(sender, date, lang)),
     )
 }
 
@@ -364,10 +414,11 @@ pub fn quote_forward_html(
     date: Option<&str>,
     subject: Option<&str>,
     body_html: &str,
+    lang: Lang,
 ) -> String {
     format!(
         "<br><br>{}<br><div>{body_html}</div><div><br></div>",
-        crate::echo::text_as_html(&forward_header(sender, date, subject)),
+        crate::echo::text_as_html(&forward_header(sender, date, subject, lang)),
     )
 }
 
@@ -378,10 +429,11 @@ pub fn quote_forward(
     date: Option<&str>,
     subject: Option<&str>,
     body_text: &str,
+    lang: Lang,
 ) -> String {
     format!(
         "\n\n{}\n\n{}",
-        forward_header(sender, date, subject),
+        forward_header(sender, date, subject, lang),
         body_text.trim_end(),
     )
 }
@@ -842,6 +894,7 @@ mod tests {
             Some("Alice <alice@ex.fr>"),
             Some("2026-08-19 10:23"),
             "<p>first</p>",
+            Lang::Fr,
         );
         assert!(
             quote.contains("Le 2026-08-19 10:23, Alice &lt;alice@ex.fr&gt; a écrit :"), // lang:fr
@@ -865,13 +918,56 @@ mod tests {
 
     #[test]
     fn quote_reply_html_degrades_gracefully_without_metadata() {
-        let quote = quote_reply_html(None, None, "<p>text</p>");
+        let quote = quote_reply_html(None, None, "<p>text</p>", Lang::Fr);
         assert!(quote.contains("(expéditeur inconnu) a écrit :"), "{quote}"); // lang:fr
+    }
+
+    /// Lot 5 E15d (D-56, Chief Engineer decision D7 of 2026-09-07): the
+    /// attribution and the forward header follow the UI's language — an
+    /// English user's recipients read English.
+    #[test]
+    fn quote_labels_follow_the_language() {
+        let en = quote_reply_html(
+            Some("Alice"),
+            Some("2026-08-19 10:23"),
+            "<p>x</p>",
+            Lang::En,
+        );
+        assert!(en.contains("On 2026-08-19 10:23, Alice wrote:"), "{en}");
+        let en_no_date = quote_reply_html(None, None, "<p>x</p>", Lang::En);
+        assert!(
+            en_no_date.contains("(unknown sender) wrote:"),
+            "{en_no_date}"
+        );
+        let fr = quote_reply_html(
+            Some("Alice"),
+            Some("2026-08-19 10:23"),
+            "<p>x</p>",
+            Lang::Fr,
+        );
+        assert!(fr.contains("Le 2026-08-19 10:23, Alice a écrit :"), "{fr}"); // lang:fr
+        let text = quote_reply(Some("Alice"), None, "line", Lang::En);
+        assert!(text.contains("Alice wrote:\n> line"), "{text}");
+
+        let fwd = quote_forward_html(Some("Bob"), Some("2026-08-20"), None, "<p>y</p>", Lang::En);
+        assert!(
+            fwd.contains("---------- Forwarded message ----------"),
+            "{fwd}"
+        );
+        assert!(fwd.contains("From: Bob"), "{fwd}");
+        assert!(fwd.contains("Date: 2026-08-20"), "{fwd}");
+        assert!(fwd.contains("Subject: (no subject)"), "{fwd}");
+        let fwd_fr = quote_forward(None, None, Some("Objet"), "y", Lang::Fr);
+        assert!(
+            fwd_fr.contains("---------- Message transféré ----------"), // lang:fr
+            "{fwd_fr}"
+        );
+        assert!(fwd_fr.contains("De : (expéditeur inconnu)"), "{fwd_fr}"); // lang:fr
     }
 
     #[test]
     fn quote_reply_html_of_empty_body_is_empty() {
-        assert_eq!(quote_reply_html(Some("Alice"), None, "  \n "), "");
+        assert_eq!(quote_reply_html(Some("Alice"), None, "  \n ", Lang::Fr), "");
     }
 
     /// The rich block of a forward: the original header (From/Date/
@@ -883,6 +979,7 @@ mod tests {
             Some("2026-08-19 10:23"),
             Some("Quote <urgent>"),
             "<p>the body</p>",
+            Lang::Fr,
         );
         assert!(
             block.contains("---------- Message transféré ----------"), // lang:fr
@@ -899,14 +996,14 @@ mod tests {
 
     #[test]
     fn a_forward_leaves_an_editable_line_after_the_block() {
-        let block = quote_forward_html(None, None, None, "<p>body</p>");
+        let block = quote_forward_html(None, None, None, "<p>body</p>", Lang::Fr);
         assert!(block.ends_with("</div><div><br></div>"), "{block}");
         assert!(!block.contains("data-wind"), "{block}");
     }
 
     #[test]
     fn quote_forward_html_uses_placeholders_for_missing_metadata() {
-        let block = quote_forward_html(None, None, None, "<p>body</p>");
+        let block = quote_forward_html(None, None, None, "<p>body</p>", Lang::Fr);
         assert!(block.contains("De : (expéditeur inconnu)"), "{block}"); // lang:fr
         assert!(!block.contains("Date :"), "{block}");
         assert!(block.contains("Objet : (sans objet)"), "{block}"); // lang:fr
@@ -918,6 +1015,7 @@ mod tests {
             Some("Alice Martin"),
             Some("2026-07-17 10:23"),
             "first line\n\nsecond line",
+            Lang::Fr,
         );
         assert!(quote.starts_with("\n\nLe 2026-07-17 10:23, Alice Martin a écrit :\n")); // lang:fr
         assert!(quote.contains("> first line"));
@@ -930,14 +1028,14 @@ mod tests {
 
     #[test]
     fn quote_reply_degrades_gracefully_without_metadata() {
-        let quote = quote_reply(None, None, "text");
+        let quote = quote_reply(None, None, "text", Lang::Fr);
         assert!(quote.contains("(expéditeur inconnu) a écrit :")); // lang:fr
         assert!(quote.contains("> text"));
     }
 
     #[test]
     fn quote_reply_of_empty_body_is_empty() {
-        assert_eq!(quote_reply(Some("Alice"), None, "  \n "), "");
+        assert_eq!(quote_reply(Some("Alice"), None, "  \n ", Lang::Fr), "");
     }
 
     #[test]
@@ -947,6 +1045,7 @@ mod tests {
             Some("2026-07-17 10:23"),
             Some("Meeting"),
             "the body\non two lines\n",
+            Lang::Fr,
         );
         assert!(block.contains("---------- Message transféré ----------")); // lang:fr
         assert!(block.contains("De : Alice Martin")); // lang:fr
@@ -957,7 +1056,7 @@ mod tests {
 
     #[test]
     fn quote_forward_uses_placeholders_for_missing_metadata() {
-        let block = quote_forward(None, None, None, "body");
+        let block = quote_forward(None, None, None, "body", Lang::Fr);
         assert!(block.contains("De : (expéditeur inconnu)")); // lang:fr
         assert!(!block.contains("Date :"));
         assert!(block.contains("Objet : (sans objet)")); // lang:fr

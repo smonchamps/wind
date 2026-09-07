@@ -21,9 +21,13 @@
 // - startup: wall clock, spawn -> first row visible;
 // - page: 300 jumps spread over the depth (deterministic LCG), each
 //   jump waits for the SERVICE (IPC) + the render + a forced reflow;
-// - theme: 60 hot switches across the 7 themes;
-// - open: 20 messages among the 400 most recent (the seeded bodies
-//   cover the 500 most recent);
+// - theme: 60 hot switches across the SHIPPED themes, read from the
+//   product (four since A42's pruning: 15 switches each — Lot 5 E15a,
+//   D-11: the old "7 themes" figure is not comparable);
+// - open: 20 THREAD openings among the 400 most recent rows — list row
+//   served, thread served, head body rendered (the shipped definition
+//   since the thread cascade, D-12; the pre-thread series of ADR 0015
+//   measured a single message and is not comparable);
 // - RAM: private working sets after 30 s (measure-ram.ps1, ADR 0002).
 import { spawn, execSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';

@@ -517,6 +517,7 @@
       if (newMode === 'forward') {
         try {
           const fetched = await call('message_attachments', {
+            forForward: true,
             accountId: source.account_id,
             mailbox: source.mailbox,
             uid: source.uid,
@@ -1012,13 +1013,15 @@
   }
 
   // Same form as the core's `human_size` (decimal point included):
-  // the total weight must speak like the chips it sums.
+  // the total weight must speak like the chips it sums — in the
+  // interface's language (Lot 5 E15d, D-56: the units come from the
+  // catalogue, the core's twin reads the same preference).
   const KO = 1024;
   const MO = KO * 1024;
   function humanWeight(bytes) {
-    if (bytes < KO) return `${bytes} o`;
-    if (bytes < MO) return `${Math.round(bytes / KO)} Ko`;
-    return `${(bytes / MO).toFixed(1)} Mo`;
+    if (bytes < KO) return `${bytes} ${t('size.b')}`;
+    if (bytes < MO) return `${Math.round(bytes / KO)} ${t('size.kb')}`;
+    return `${(bytes / MO).toFixed(1)} ${t('size.mb')}`;
   }
   const totalWeight = $derived(attachments.reduce((sum, attachment) => sum + attachment.size, 0));
 

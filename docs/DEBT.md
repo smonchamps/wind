@@ -27,8 +27,20 @@ deferral = one justified line.)
 - **Fact (P1-P2)**: the windowed list keeps every served page in
   memory; on a very long session with heavy scrolling, RAM climbs
   and never comes back down.
-- **Lead**: LRU eviction of pages outside the window.
-- **Reopens if**: RAM exceeds the budget (200 MB) in real use.
+- **Measured and REFUSED at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md)
+  E15c (2026-09-07)**: an eviction of the pages beyond ±10 of the
+  viewport (21 pages kept, the scroll anchor corrected) was built and
+  measured on `measure-v2` (release, 200k fixture, 300 random page jumps
+  + 20 openings, private working set of the 7 processes after 30 s):
+  WITHOUT eviction 215.5 / 221.8 / 225.6 MB (median 221.8), page jump
+  p50 15.4–17.4 ms; WITH it 265.2 / 270.5 / 274.0 MB (median 270.5),
+  page jump p50 21.4–23.2 ms. The re-serving churn of random deep jumps
+  costs more heap high-water and latency than the rows it frees; the
+  code was removed. The lead is not an LRU of rows: measure what the
+  retained pages actually weigh on a LONG session (idle after scrolling)
+  before any next attempt.
+- **Reopens if**: RAM exceeds the budget (200 MB) at rest in real use
+  (the at-rest figure of 2026-09-07 is 89.1 MB).
 
 ### D-4 · Focus trap of overlays
 
@@ -86,22 +98,6 @@ deferral = one justified line.)
   A41 order is intact. The e2e tests now play the first launch on a
   blank database (full journey), but the `prefs.lang` assertion from
   the lead above is still to be written — the debt remains.
-
-### D-11 · The theme-switch bench stayed calibrated for 7 themes
-
-- **Fact (review 2026-08-16, PLAN-WADA-ELARGI)**:
-  `e2e/measure-v2.mjs` keeps 60 iterations and comments saying « the
-  7 themes » while A42 now delivers 28 — the sample per theme drops
-  from ~8 to ~2, the « per-theme switch cost » figure is no longer
-  comparable to the historical baseline.
-- **Reason for deferral**: out of scope for the job (file untouched
-  by the diff), and recalibrating without re-measuring a baseline
-  would be work without a measurement. Family D-7 (responsiveness
-  stopwatches).
-- **Lead**: at the next measurement pass, recalibrate (28 × N
-  iterations) and re-set the baseline in the same reading.
-- **Reopens if**: a measurement pass compares theme switching to the
-  historical figures.
 
 ### D-15 · « To: recipient » display scoped to the Sent category
 
@@ -400,6 +396,18 @@ deferral = one justified line.)
 - **Reopens if**: the clarified budget is exceeded on the CE's
   workstation after D9, or a freeze appears while scrolling the
   Feed.
+- **2026-09-07 ([PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md)
+  E15b, spike `spikes/feed-memory/`)**: options A (shipped), B (window
+  ±1, iframes blanked before unmount) and C (pool of five) measured on
+  the arm64 workstation, 160 cards of 100 KB then 300 KB: **none under
+  200 MB** (medians after ten pages 281.8 / 257.6 / 297.9 MB; after a
+  forced GC 208.5 / 196.5 / 227.5). The live iframes are not where the
+  memory is: 100–130 MB of renderer memory outside the JS heap survive
+  in every option, and the 160-card figure moves by ±100 MB with V8's
+  GC timing (the `cards[].document` strings and their IPC copies).
+  **CE decision D6: a dated exception at the measured figure, nothing
+  built.** The lead stands (renderer snapshot before/after unmount);
+  the first named suspect is the document strings kept in `cards`.
 
 ### D-54 · `multi-select:173` (« the `e` shortcut archives the CHECKED batch ») flakes one gate in three
 
@@ -417,6 +425,9 @@ deferral = one justified line.)
   toast and the assertion.
 - **Reopens if**: a fourth occurrence, or a red run in CI.
 ## Closed
+- **2026-09-07 ([PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15f)**: replayed ten times without retries in
+  isolation — 90/90, no first failure to capture. The flake belongs to
+  the loaded suite; the entry stays open on its own condition.
 
 ### ~~D-48 · The list does not follow an external write~~ — closed 2026-09-07
 
@@ -616,6 +627,11 @@ deferral = one justified line.)
   re-baseline the `measure-v2` bench on the new definition. Deferred
   to keep the v3 commit on CE verdicts ; to be investigated with
   D-7/D-11 (bench family).
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15a (2026-09-07)**: the first dated figure on the
+  shipped definition (list row served → thread served → head body
+  rendered): p50 15.9–20.1 ms, p95 30.0–40.8 ms over three runs
+  (release, 200k fixture) — budget < 50 ms held. The ADR 0015 series is
+  not compared to it.
 
 ### D-13 · Expand/collapse remounts the thread's iframes
 
@@ -643,6 +659,10 @@ deferral = one justified line.)
   re-baseline with a feature job. The benches ALREADY measure the
   right geometry (browser-args.mjs) ; only the reference series is
   dated.
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15a (2026-09-07)**: page jump on the shipped
+  geometry, p50 15.4–17.4 ms, p95 26.6–26.9 ms over three runs (release,
+  200k fixture, 300 random jumps) — budget < 100 ms held; first page
+  70–144 ms between two launches of the same warm copy (variance noted).
 
 ### D-23 · Downloading an attachment: network path not covered in e2e
 
@@ -785,6 +805,10 @@ deferral = one justified line.)
 - **Reopening condition**: if the field or beta forwards bare
   invitations or searches them by title. Leads: index the invitation
   title in FTS at `save_body_full` ; attach the ICS on forward.
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15d (2026-09-07)**: the meeting's title and
+  location are indexed with the (empty) body; the ICS is kept
+  (`invitations.ics`) and the forward's file list carries it as
+  `invitation.ics`, served from the store. The card is unchanged.
 
 ### ~~D-30 · A legacy invitation WITHOUT a calendar attachment row has no card~~ — closed 2026-09-04
 
@@ -935,6 +959,10 @@ deferral = one justified line.)
   it was the index that carried the cost, not the round trips).
 - **Reopen if**: the field points to the cost — fan, battery,
   or perceived latency of the probes at rest.
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15c (2026-09-07)**: `mailboxes.local_count`, kept
+  by two triggers on `envelopes` (a replace nets zero), recounted once
+  for a database from before the column; `sync_progress` sums the column
+  — the 152 ms cold / 8.6 ms warm recount is gone from the 5 s probe.
 
 ### D-38 · The preview backfill reloads the list even when it did nothing
 
@@ -1151,6 +1179,13 @@ and format in the UI per language; give the dialogs an English text when
 compose weight reads `2.8 Mo / 25 MB` — the total from `human_size`
 (shell, French), the limit from the catalogue (English). The spec
 asserts it as shipped (`redesign-screen02.spec.js`).
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15d (2026-09-07, D7)**: the quote attribution and
+  the forward header, the size units (core and the composer's JS twin,
+  through the catalogue), and the three native dialogs of `main.rs`
+  follow the interface's language, read from the same preference
+  (English until set). The relocation-failure dialog of a Discovery
+  workstation stays French: it runs before any preference exists and
+  addresses the French-era install.
 
 ### D-57 · The onboarding illustrations are French screenshots inside an English default UI
 
@@ -1162,6 +1197,9 @@ decision). The rule the Chief Engineer set: **every screenshot shown to
 the user is in the language the user chose** — one set per language,
 selected with the catalogue. To do at the next onboarding job: capture
 both sets, select per `lang`, unpin the script.
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15d (2026-09-07)**: one capture set per language
+  (`assets/accueil/{en,fr}/`, `capture-onboarding.mjs` writes both);
+  the onboarding shows the set of the current language.
 
 ### D-58 · The archives stay French under an English banner
 
