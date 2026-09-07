@@ -16,6 +16,13 @@ use mail_ical::{Invitation, Method, Participation, When};
 /// The `invitations` row: ONE message's invitation, ready to display.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct InvitationRow {
+    pub metadata_version: u32,
+    pub dtstamp_epoch: Option<i64>,
+    /// Empty identifies the series; NULL means identity has not been recovered.
+    pub occurrence_key: Option<String>,
+    pub occurrence_property: Option<String>,
+    pub scheduling_supported: bool,
+    pub scheduling_state: String,
     /// `request` | `cancel` | `reply`.
     pub method: String,
     /// The iCalendar UID of the meeting (shared by REQUEST/CANCEL/REPLY).
@@ -42,11 +49,7 @@ pub struct InvitationRow {
     pub attendee_address: Option<String>,
     pub attendee_name: Option<String>,
     pub attendee_status: Option<String>,
-    /// The meeting is cancelled (field finding R6): true on a CANCEL,
-    /// and CROSS-SET on the REQUEST of the same meeting (same
-    /// `event_uid`, same account) — set by storage on write, whatever
-    /// order the scans arrive in. A cancelled invitation no longer
-    /// offers a reply.
+    /// Derived from the known versions of this organizer's meeting and occurrence.
     pub cancelled: bool,
 }
 
@@ -54,10 +57,18 @@ pub struct InvitationRow {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredInvitation {
     pub row: InvitationRow,
+    pub revision: i64,
     /// `accepte` | `provisoire` | `refuse` — the last reply sent through
     /// the outbox. `None`: not yet answered from Wind.
     pub reply: Option<String>,
     pub reply_epoch: Option<i64>,
+}
+
+/// Snapshot selected by the user, including the mailbox namespace.
+pub struct InvitationReplyTarget<'a> {
+    pub identity: &'a crate::MailboxIdentity,
+    pub uid: crate::envelope::Uid,
+    pub revision: i64,
 }
 
 /// Pulls the invitation row from a `text/calendar` part.
@@ -73,6 +84,30 @@ fn row_from(invitation: Invitation) -> InvitationRow {
     let (start_epoch, start_text, all_day) = decompose(invitation.start);
     let (end_epoch, end_text, _) = decompose(invitation.end);
     InvitationRow {
+        metadata_version: 1,
+        dtstamp_epoch: invitation.scheduling.dtstamp_epoch,
+        occurrence_key: invitation.scheduling.supported.then(|| {
+            invitation
+                .scheduling
+                .recurrence
+                .as_ref()
+                .map(|r| r.key().to_string())
+                .unwrap_or_default()
+        }),
+        occurrence_property: invitation
+            .scheduling
+            .recurrence
+            .as_ref()
+            .map(|r| r.property().to_string()),
+        scheduling_supported: invitation.scheduling.supported,
+        scheduling_state: if !invitation.scheduling.supported {
+            "unsupported"
+        } else if invitation.method == Method::Cancel {
+            "cancelled"
+        } else {
+            "active"
+        }
+        .into(),
         method: method_stable(invitation.method).to_string(),
         event_uid: invitation.uid,
         sequence: invitation.sequence,
@@ -97,6 +132,207 @@ fn row_from(invitation: Invitation) -> InvitationRow {
         // A CANCEL is cancelled by nature; cross-setting it onto the
         // REQUEST of the same meeting belongs to storage.
         cancelled: matches!(invitation.method, Method::Cancel),
+    }
+}
+
+impl InvitationRow {
+    pub fn can_reply(&self) -> bool {
+        self.method == "request"
+            && self.metadata_version == 1
+            && self.scheduling_supported
+            && self.occurrence_key.is_some()
+            && !self.cancelled
+            && self.scheduling_state == "active"
+            && self
+                .organizer_address
+                .as_ref()
+                .is_some_and(|address| !address.trim().is_empty())
+    }
+}
+
+// Peers are scoped to one account by storage. Arrival order is never a version.
+pub(crate) fn scheduling_state<'a>(
+    current: &InvitationRow,
+    peers: impl Iterator<Item = &'a InvitationRow>,
+) -> &'static str {
+    if current.metadata_version == 0 {
+        return "unverified";
+    }
+    if !current.scheduling_supported {
+        return "unsupported";
+    }
+    if current.method == "cancel" {
+        return "cancelled";
+    }
+    if current.method != "request" {
+        return "active";
+    }
+    let Some(organizer) = current
+        .organizer_address
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+    else {
+        return "unverified";
+    };
+    let relevant: Vec<_> = peers
+        .filter(|peer| {
+            peer.event_uid == current.event_uid
+                && peer
+                    .organizer_address
+                    .as_deref()
+                    .is_some_and(|s| s.trim().eq_ignore_ascii_case(organizer.trim()))
+                && matches!(peer.method.as_str(), "request" | "cancel")
+                && (peer.occurrence_key == current.occurrence_key
+                    || peer.occurrence_key.is_none()
+                    || (peer.method == "cancel" && peer.occurrence_key.as_deref() == Some("")))
+        })
+        .collect();
+    let sequence = relevant
+        .iter()
+        .map(|r| r.sequence)
+        .max()
+        .unwrap_or(current.sequence);
+    let latest: Vec<_> = relevant
+        .into_iter()
+        .filter(|r| r.sequence == sequence)
+        .collect();
+    if latest
+        .iter()
+        .any(|r| r.metadata_version == 0 || !r.scheduling_supported)
+    {
+        return "unverified";
+    }
+    let missing_stamp = latest.iter().any(|r| r.dtstamp_epoch.is_none());
+    let stamp = latest.iter().filter_map(|r| r.dtstamp_epoch).max();
+    let candidates: Vec<_> = latest
+        .into_iter()
+        .filter(|r| missing_stamp || r.dtstamp_epoch == stamp)
+        .collect();
+    let Some(winner) = candidates.first() else {
+        return "active";
+    };
+    if candidates
+        .iter()
+        .any(|r| !same_scheduling_content(winner, r))
+    {
+        return "unverified";
+    }
+    if winner.method == "cancel" {
+        return "cancelled";
+    }
+    if sequence > current.sequence || (!missing_stamp && stamp > current.dtstamp_epoch) {
+        return "superseded";
+    }
+    "active"
+}
+
+fn same_scheduling_content(a: &InvitationRow, b: &InvitationRow) -> bool {
+    a.method == b.method
+        && a.occurrence_key == b.occurrence_key
+        && a.title == b.title
+        && a.location == b.location
+        && a.start_epoch == b.start_epoch
+        && a.end_epoch == b.end_epoch
+        && a.start_text == b.start_text
+        && a.end_text == b.end_text
+        && a.all_day == b.all_day
+        && a.recurrent == b.recurrent
+}
+
+#[cfg(test)]
+mod scheduling_tests {
+    use super::*;
+
+    fn row(method: &str, sequence: i64, stamp: Option<i64>, occurrence: &str) -> InvitationRow {
+        InvitationRow {
+            metadata_version: 1,
+            scheduling_supported: true,
+            occurrence_key: Some(occurrence.into()),
+            method: method.into(),
+            event_uid: "series".into(),
+            sequence,
+            dtstamp_epoch: stamp,
+            organizer_address: Some("owner@example.fr".into()),
+            title: "Meeting".into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn cancellation_and_replacement_follow_version_not_arrival_order() {
+        let rows = [
+            row("request", 0, Some(1), ""),
+            row("cancel", 1, Some(2), ""),
+            row("request", 2, Some(3), ""),
+        ];
+        for order in [
+            [0, 1, 2],
+            [0, 2, 1],
+            [1, 0, 2],
+            [1, 2, 0],
+            [2, 0, 1],
+            [2, 1, 0],
+        ] {
+            let peers = order.map(|i| &rows[i]);
+            assert_eq!(
+                scheduling_state(&rows[0], peers.iter().copied()),
+                "superseded"
+            );
+            assert_eq!(scheduling_state(&rows[2], peers.iter().copied()), "active");
+        }
+        assert_eq!(scheduling_state(&rows[0], rows[..2].iter()), "cancelled");
+    }
+
+    #[test]
+    fn organizer_and_occurrence_isolate_updates_but_series_cancel_covers_occurrences() {
+        let request = row("request", 0, Some(1), "utc:10");
+        let mut cancel = row("cancel", 1, Some(2), "utc:20");
+        assert_eq!(
+            scheduling_state(&request, [&request, &cancel].into_iter()),
+            "active"
+        );
+        cancel.occurrence_key = Some(String::new());
+        assert_eq!(
+            scheduling_state(&request, [&request, &cancel].into_iter()),
+            "cancelled"
+        );
+        cancel.organizer_address = Some("other@example.fr".into());
+        assert_eq!(
+            scheduling_state(&request, [&request, &cancel].into_iter()),
+            "active"
+        );
+    }
+
+    #[test]
+    fn equal_sequence_uses_timestamp_and_ambiguous_conflicts_cannot_be_answered() {
+        let request = row("request", 2, Some(10), "");
+        let mut cancel = row("cancel", 2, Some(9), "");
+        assert_eq!(
+            scheduling_state(&request, [&request, &cancel].into_iter()),
+            "active"
+        );
+        cancel.dtstamp_epoch = Some(11);
+        assert_eq!(
+            scheduling_state(&request, [&request, &cancel].into_iter()),
+            "cancelled"
+        );
+        for stamp in [None, Some(10)] {
+            cancel.dtstamp_epoch = stamp;
+            assert_eq!(
+                scheduling_state(&request, [&request, &cancel].into_iter()),
+                "unverified"
+            );
+        }
+        let mut changed = request.clone();
+        changed.title = "Different meeting".into();
+        assert_eq!(
+            scheduling_state(&request, [&request, &changed].into_iter()),
+            "unverified"
+        );
+        assert_eq!(
+            scheduling_state(&request, [&request, &request].into_iter()),
+            "active"
+        );
     }
 }
 

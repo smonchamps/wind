@@ -111,7 +111,8 @@ test('generic account: the form reaches the connection (IPC contract)', async ()
   await page.locator('[data-testid="desk-continue"]').click();
 
   const error = page.locator('[data-testid="onboarding-error"]');
-  await expect(error).toContainText('connexion IMAP impossible', { timeout: 30_000 });
+  await expect(error).toContainText('IMAP:', { timeout: 30_000 });
+  await expect(error).toContainText('SMTP:');
   // The original regression, named: it must never come back.
   await expect(error).not.toContainText('invalid args');
   await expect(error).not.toContainText('missing required key');

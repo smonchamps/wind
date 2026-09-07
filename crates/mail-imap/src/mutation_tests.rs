@@ -74,15 +74,19 @@ impl Witness {
     }
     fn connect(&self) -> ImapServer {
         let tcp = TcpStream::connect(("127.0.0.1", self.port)).unwrap();
-        let mut client = imap::Client::new(
-            Box::new(BoundedStream::new(tcp, Duration::from_secs(2))) as imap::Connection,
-        );
+        let budget = crate::ReadBudget::default();
+        let mut client = imap::Client::new(Box::new(BoundedStream::with_budget(
+            tcp,
+            Duration::from_secs(2),
+            budget.clone(),
+        )) as imap::Connection);
         client.read_greeting().unwrap();
         ImapServer::for_test(
             client
                 .login("fixture", "synthetic")
                 .map_err(|(err, _)| err)
                 .unwrap(),
+            budget,
         )
     }
     fn poll(&self, store: &mut Store, account: i64) {

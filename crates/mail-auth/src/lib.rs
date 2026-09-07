@@ -14,7 +14,7 @@ mod provider;
 use oauth2::TokenResponse;
 use oauth2::basic::BasicTokenResponse;
 
-pub use flow::AuthError;
+pub use flow::{AuthError, AuthorizationLink, ConsentControl};
 pub use provider::{
     ALL as PROVIDERS, ClientSecret, Endpoint, GOOGLE, Identity, MICROSOFT, Provider,
     for_account_kind,
@@ -189,66 +189,86 @@ impl Authenticator {
     /// Phase 2 — migrated to the per-account entry on the way. Fails if
     /// there is no token (→ [`Self::authenticate_interactive`]).
     pub fn authenticate_silent(&self, email: &str) -> Result<Authenticated, AuthError> {
-        let (refresh, from_legacy) = match vault_read(&vault_key(self.provider, email)) {
-            Ok(token) => (token, false),
-            Err(keyring::Error::NoEntry) => {
-                let legacy = vault_read(KEYRING_REFRESH_LEGACY).map_err(|err| match err {
-                    // §6.8: never the address in an error — it ends up in
-                    // wind.log (PLAN-AUDIT-V1 review). The account is
-                    // recognized by its id, traced by the caller.
-                    keyring::Error::NoEntry => {
-                        AuthError::Vault("no token in the vault for this account".to_string())
-                    }
-                    other => AuthError::Vault(other.to_string()),
-                })?;
-                (legacy, true)
-            }
-            Err(other) => return Err(AuthError::Vault(other.to_string())),
-        };
-        let client = self.client()?;
-        let http = flow::http_client()?;
-        let tokens = flow::refresh_access_token(&client, &http, refresh.clone())?;
-        flow::ensure_mail_scope(self.provider, &tokens)?;
-        // E8 (audit S2): Azure AD returns a NEW refresh token at every
-        // exchange and expires the old one (90 days by default); Google does
-        // it occasionally. Throwing it away was a deferred silent
-        // disconnection. If it changes, it replaces the old one in the vault.
-        let renewed = tokens
-            .refresh_token()
-            .map(|token| token.secret().clone())
-            .filter(|new| *new != refresh);
-        let account = self.finish(&http, &tokens, Some(email), renewed)?;
-        if from_legacy {
-            // Vault migration: the entry becomes per-account, under the REAL
-            // email of the token (the one the provider confirms).
-            self.vault(&account.email)?
-                .set_password(&refresh)
-                .map_err(|err| AuthError::Vault(err.to_string()))?;
-            let _ = legacy_vault()?.delete_credential();
-        }
-        Ok(account)
+        self.silent_with_os_vault(Some(email))
     }
 
-    /// Phase 2 legacy reconnection: when the database does not yet know any
-    /// account, the unkeyed vault entry may reveal one — it is then
-    /// migrated. The email comes back from the token itself.
-    ///
-    /// This path is Google's own: Phase 2 only knew it.
+    /// Adopt the historical, unkeyed Google account when no account is registered.
     pub fn authenticate_silent_legacy(&self) -> Result<Authenticated, AuthError> {
-        let refresh = vault_read(KEYRING_REFRESH_LEGACY).map_err(|err| match err {
-            keyring::Error::NoEntry => AuthError::Vault("no registered account".to_string()),
-            other => AuthError::Vault(other.to_string()),
-        })?;
+        self.silent_with_os_vault(None)
+    }
+
+    fn silent_with_os_vault(&self, email: Option<&str>) -> Result<Authenticated, AuthError> {
         let client = self.client()?;
         let http = flow::http_client()?;
-        let tokens = flow::refresh_access_token(&client, &http, refresh.clone())?;
+        self.silent_using(
+            email,
+            &OsTokenVault,
+            |refresh| flow::refresh_access_token(&client, &http, refresh),
+            |tokens, declared| {
+                flow::resolve_email(
+                    self.provider,
+                    &http,
+                    tokens.access_token().secret(),
+                    declared,
+                )
+            },
+        )
+    }
+
+    fn silent_using(
+        &self,
+        email: Option<&str>,
+        vault: &dyn TokenVault,
+        exchange: impl FnOnce(String) -> Result<BasicTokenResponse, AuthError>,
+        resolve: impl FnOnce(&BasicTokenResponse, Option<&str>) -> Result<String, AuthError>,
+    ) -> Result<Authenticated, AuthError> {
+        let current = email.map(|email| vault.read(&vault_key(self.provider, email)));
+        let (refresh, from_legacy) = match current {
+            Some(Ok(token)) => (token, false),
+            None | Some(Err(keyring::Error::NoEntry))
+                if self.provider.account_kind != GOOGLE.account_kind =>
+            {
+                return Err(AuthError::Vault(
+                    "no token in the vault for this account".into(),
+                ));
+            }
+            None | Some(Err(keyring::Error::NoEntry)) => (
+                vault
+                    .read(KEYRING_REFRESH_LEGACY)
+                    .map_err(|err| match err {
+                        keyring::Error::NoEntry => {
+                            AuthError::Vault("no token in the vault for this account".into())
+                        }
+                        other => AuthError::Vault(other.to_string()),
+                    })?,
+                true,
+            ),
+            Some(Err(other)) => return Err(AuthError::Vault(other.to_string())),
+        };
+        let tokens = exchange(refresh.clone())?;
         flow::ensure_mail_scope(self.provider, &tokens)?;
-        let account = self.finish(&http, &tokens, None, None)?;
-        self.vault(&account.email)?
-            .set_password(&refresh)
-            .map_err(|err| AuthError::Vault(err.to_string()))?;
-        let _ = legacy_vault()?.delete_credential();
-        Ok(account)
+        let resolved = resolve(&tokens, email)?;
+        if email.is_some_and(|requested| !requested.eq_ignore_ascii_case(&resolved)) {
+            return Err(AuthError::OAuth(
+                "the token belongs to another account".into(),
+            ));
+        }
+        let key = vault_key(self.provider, email.unwrap_or(&resolved));
+        let effective = tokens
+            .refresh_token()
+            .map_or(refresh.as_str(), |token| token.secret());
+        if from_legacy || effective != refresh {
+            vault.write(&key, effective)?;
+        }
+        if from_legacy {
+            // Copy the effective token before deleting the recoverable source.
+            let _ = vault.forget(KEYRING_REFRESH_LEGACY);
+        }
+        Ok(Authenticated {
+            provider: self.provider,
+            email: email.unwrap_or(&resolved).to_string(),
+            access_token: tokens.access_token().secret().clone(),
+        })
     }
 
     /// Full journey: browser → consent → loopback redirect → tokens. The
@@ -260,12 +280,29 @@ impl Authenticator {
         &self,
         declared_email: Option<&str>,
     ) -> Result<Authenticated, AuthError> {
+        self.authenticate_interactive_controlled(declared_email, None, &ConsentControl::default())
+    }
+
+    /// Cancellation is accepted until credential publication starts. A failed
+    /// browser launch exposes the same live authorization through `control`.
+    pub fn authenticate_interactive_controlled(
+        &self,
+        declared_email: Option<&str>,
+        expected_email: Option<&str>,
+        control: &ConsentControl,
+    ) -> Result<Authenticated, AuthError> {
         let client = self.client()?;
         let http = flow::http_client()?;
-        let tokens = flow::interactive_tokens(self.provider, client, &http)?;
+        let tokens = flow::interactive_tokens(self.provider, client, &http, control)?;
         flow::ensure_mail_scope(self.provider, &tokens)?;
-        let refresh = tokens.refresh_token().map(|token| token.secret().clone());
-        self.finish(&http, &tokens, declared_email, refresh)
+        control.check()?;
+        let email = flow::resolve_email(
+            self.provider,
+            &http,
+            tokens.access_token().secret(),
+            declared_email,
+        )?;
+        self.publish_interactive(&tokens, email, expected_email, control, &OsTokenVault)
     }
 
     /// Forgets ONE account: removes its refresh token from the vault.
@@ -282,32 +319,28 @@ impl Authenticator {
         )
     }
 
-    fn vault(&self, email: &str) -> Result<keyring::Entry, AuthError> {
-        keyring::Entry::new(KEYRING_SERVICE, &vault_key(self.provider, email))
-            .map_err(|err| AuthError::Vault(err.to_string()))
-    }
-
-    /// At a provider that delivers the identity, the email is only known
-    /// AFTER the token exchange: the refresh is therefore stored in the
-    /// account's entry once the identity is confirmed.
-    fn finish(
+    fn publish_interactive(
         &self,
-        http: &flow::HttpClient,
         tokens: &BasicTokenResponse,
-        declared_email: Option<&str>,
-        store_refresh: Option<String>,
+        email: String,
+        expected_email: Option<&str>,
+        control: &ConsentControl,
+        vault: &dyn TokenVault,
     ) -> Result<Authenticated, AuthError> {
-        let access_token = tokens.access_token().secret().clone();
-        let email = flow::resolve_email(self.provider, http, &access_token, declared_email)?;
-        if let Some(refresh) = store_refresh {
-            self.vault(&email)?
-                .set_password(&refresh)
-                .map_err(|err| AuthError::Vault(err.to_string()))?;
+        if expected_email.is_some_and(|expected| !expected.eq_ignore_ascii_case(&email)) {
+            return Err(AuthError::OAuth(
+                "consent belongs to another account; pick the account being reconnected".into(),
+            ));
+        }
+        let email = expected_email.unwrap_or(&email).to_string();
+        control.begin_publication()?;
+        if let Some(refresh) = tokens.refresh_token() {
+            vault.write(&vault_key(self.provider, &email), refresh.secret())?;
         }
         Ok(Authenticated {
             provider: self.provider,
             email,
-            access_token,
+            access_token: tokens.access_token().secret().clone(),
         })
     }
 }
@@ -323,9 +356,26 @@ fn vault_key(provider: &Provider, email: &str) -> String {
     format!("{}-refresh:{email}", provider.vault_prefix)
 }
 
-fn legacy_vault() -> Result<keyring::Entry, AuthError> {
-    keyring::Entry::new(KEYRING_SERVICE, KEYRING_REFRESH_LEGACY)
-        .map_err(|err| AuthError::Vault(err.to_string()))
+trait TokenVault {
+    fn read(&self, key: &str) -> Result<String, keyring::Error>;
+    fn write(&self, key: &str, token: &str) -> Result<(), AuthError>;
+    fn forget(&self, key: &str) -> Result<(), AuthError>;
+}
+
+struct OsTokenVault;
+
+impl TokenVault for OsTokenVault {
+    fn read(&self, key: &str) -> Result<String, keyring::Error> {
+        vault_read(key)
+    }
+    fn write(&self, key: &str, token: &str) -> Result<(), AuthError> {
+        keyring::Entry::new(KEYRING_SERVICE, key)
+            .and_then(|entry| entry.set_password(token))
+            .map_err(|err| AuthError::Vault(err.to_string()))
+    }
+    fn forget(&self, key: &str) -> Result<(), AuthError> {
+        vault_forget(key).map_err(|err| AuthError::Vault(err.to_string()))
+    }
 }
 
 /// Reads a vault entry under the Wind service, with a fallback on the
@@ -363,6 +413,49 @@ fn vault_forget(key: &str) -> Result<(), keyring::Error> {
 
 const KEYRING_GENERIC_PASSWORD: &str = "generic-password";
 
+fn generic_slot_key(email: &str, slot: Option<&str>) -> Result<String, AuthError> {
+    match slot {
+        None => Ok(format!("{KEYRING_GENERIC_PASSWORD}:{email}")),
+        Some(slot @ ("a" | "b")) => Ok(format!("generic-password-v1:{slot}:{email}")),
+        _ => Err(AuthError::Config("invalid credential slot".into())),
+    }
+}
+
+/// The caller serializes publication for this account. The old vault entry stays
+/// referenced until `publish` commits the new slot with the connection settings.
+pub fn replace_generic_password<T>(
+    email: &str,
+    current_slot: Option<&str>,
+    password: &str,
+    publish: impl FnOnce(&str) -> Result<T, AuthError>,
+) -> Result<T, AuthError> {
+    replace_generic_using(email, current_slot, password, &OsTokenVault, publish)
+}
+
+fn replace_generic_using<T>(
+    email: &str,
+    current_slot: Option<&str>,
+    password: &str,
+    vault: &dyn TokenVault,
+    publish: impl FnOnce(&str) -> Result<T, AuthError>,
+) -> Result<T, AuthError> {
+    let previous = generic_slot_key(email, current_slot)?;
+    let slot = if current_slot == Some("a") { "b" } else { "a" };
+    let candidate = generic_slot_key(email, Some(slot))?;
+    vault.write(&candidate, password)?;
+    let result = publish(slot);
+    if result.is_ok() {
+        let _ = vault.forget(&previous);
+    } else {
+        let _ = vault.forget(&candidate);
+    }
+    result
+}
+
+pub fn fetch_generic_password_slot(email: &str, slot: Option<&str>) -> Result<String, AuthError> {
+    vault_read(&generic_slot_key(email, slot)?).map_err(|err| AuthError::Vault(err.to_string()))
+}
+
 fn generic_vault(email: &str) -> Result<keyring::Entry, AuthError> {
     keyring::Entry::new(
         KEYRING_SERVICE,
@@ -387,6 +480,13 @@ pub fn store_generic_password(email: &str, password: &str) -> Result<(), AuthErr
 /// because a `CLIENT_ID` is missing from the environment. An already
 /// absent entry is not an error: the removal is repeatable.
 pub fn forget_credentials(account_kind: &str, email: &str) -> Result<(), AuthError> {
+    if account_kind == "imap" {
+        for slot in [Some("a"), Some("b"), None] {
+            vault_forget(&generic_slot_key(email, slot)?)
+                .map_err(|err| AuthError::Vault(err.to_string()))?;
+        }
+        return Ok(());
+    }
     let key = match account_kind {
         "imap" => format!("{KEYRING_GENERIC_PASSWORD}:{email}"),
         kind => {
@@ -409,6 +509,285 @@ pub fn fetch_generic_password(email: &str) -> Result<String, AuthError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Default)]
+    struct MemoryVault {
+        entries: std::cell::RefCell<std::collections::HashMap<String, String>>,
+        writes: std::cell::RefCell<Vec<(String, String)>>,
+        fail_write: bool,
+        fail_delete: bool,
+    }
+    impl TokenVault for MemoryVault {
+        fn read(&self, key: &str) -> Result<String, keyring::Error> {
+            self.entries
+                .borrow()
+                .get(key)
+                .cloned()
+                .ok_or(keyring::Error::NoEntry)
+        }
+        fn write(&self, key: &str, token: &str) -> Result<(), AuthError> {
+            if self.fail_write {
+                return Err(AuthError::Vault("synthetic write failure".into()));
+            }
+            self.writes.borrow_mut().push((key.into(), token.into()));
+            self.entries.borrow_mut().insert(key.into(), token.into());
+            Ok(())
+        }
+        fn forget(&self, key: &str) -> Result<(), AuthError> {
+            if self.fail_delete {
+                return Err(AuthError::Vault("synthetic delete failure".into()));
+            }
+            self.entries.borrow_mut().remove(key);
+            Ok(())
+        }
+    }
+    #[test]
+    fn interactive_wrong_identity_does_not_write_any_vault_entry() {
+        let vault = MemoryVault::default();
+        let auth = Authenticator::new(&GOOGLE, "fixture", None);
+        let result = auth.publish_interactive(
+            &refreshed_token(Some("new")),
+            "other@example.fr".into(),
+            Some("owner@example.fr"),
+            &ConsentControl::default(),
+            &vault,
+        );
+        assert!(result.is_err());
+        assert!(vault.writes.borrow().is_empty());
+    }
+
+    #[test]
+    fn cancelled_consent_does_not_publish_and_finished_consent_cannot_be_cancelled() {
+        let vault = MemoryVault::default();
+        let auth = Authenticator::new(&GOOGLE, "fixture", None);
+        let control = ConsentControl::default();
+        assert!(control.cancel());
+        assert!(
+            auth.publish_interactive(
+                &refreshed_token(Some("new")),
+                "owner@example.fr".into(),
+                None,
+                &control,
+                &vault
+            )
+            .is_err()
+        );
+        assert!(vault.writes.borrow().is_empty());
+        let control = ConsentControl::default();
+        let session = auth
+            .publish_interactive(
+                &refreshed_token(Some("new")),
+                "OWNER@example.fr".into(),
+                Some("owner@example.fr"),
+                &control,
+                &vault,
+            )
+            .unwrap();
+        assert_eq!(session.email, "owner@example.fr");
+        assert!(!control.cancel());
+    }
+
+    #[test]
+    fn generic_password_stays_recoverable_until_its_reference_commits() {
+        for current in [None, Some("a"), Some("b")] {
+            let vault = MemoryVault::default();
+            let old_key = generic_slot_key("owner@example.fr", current).unwrap();
+            vault
+                .entries
+                .borrow_mut()
+                .insert(old_key.clone(), "old".into());
+            let next = if current == Some("a") { "b" } else { "a" };
+            let next_key = generic_slot_key("owner@example.fr", Some(next)).unwrap();
+            let result: Result<(), _> =
+                replace_generic_using("owner@example.fr", current, "new", &vault, |slot| {
+                    assert_eq!(slot, next);
+                    assert_eq!(vault.read(&old_key).unwrap(), "old");
+                    assert_eq!(vault.read(&next_key).unwrap(), "new");
+                    Err(AuthError::Config("synthetic SQL failure".into()))
+                });
+            assert!(result.is_err());
+            assert_eq!(vault.read(&old_key).unwrap(), "old");
+            assert!(vault.read(&next_key).is_err());
+            let committed =
+                replace_generic_using("owner@example.fr", current, "new", &vault, |slot| {
+                    Ok(slot.to_string())
+                })
+                .unwrap();
+            assert_eq!(committed, next);
+            assert_eq!(vault.read(&next_key).unwrap(), "new");
+            assert!(vault.read(&old_key).is_err());
+        }
+    }
+
+    #[test]
+    fn failed_staging_never_changes_the_database_reference() {
+        let vault = MemoryVault {
+            fail_write: true,
+            ..MemoryVault::default()
+        };
+        let called = std::cell::Cell::new(false);
+        assert!(
+            replace_generic_using("owner@example.fr", None, "new", &vault, |_| {
+                called.set(true);
+                Ok(())
+            })
+            .is_err()
+        );
+        assert!(!called.get());
+    }
+
+    #[test]
+    fn failed_slot_cleanup_keeps_the_published_password_and_slots_are_bounded() {
+        let vault = MemoryVault {
+            fail_delete: true,
+            ..MemoryVault::default()
+        };
+        let mut current = None;
+        for _ in 0..5 {
+            current = Some(
+                replace_generic_using(
+                    "owner@example.fr",
+                    current.as_deref(),
+                    "new",
+                    &vault,
+                    |slot| Ok(slot.to_string()),
+                )
+                .unwrap(),
+            );
+            let key = generic_slot_key("owner@example.fr", current.as_deref()).unwrap();
+            assert_eq!(vault.read(&key).unwrap(), "new");
+        }
+        assert_eq!(vault.entries.borrow().len(), 2);
+        assert!(
+            replace_generic_using(
+                "owner@example.fr",
+                Some("broken"),
+                "new",
+                &vault,
+                |_| Ok(())
+            )
+            .is_err()
+        );
+    }
+
+    fn legacy_fixture() -> MemoryVault {
+        let vault = MemoryVault::default();
+        vault
+            .entries
+            .borrow_mut()
+            .insert(KEYRING_REFRESH_LEGACY.into(), "old".into());
+        vault
+    }
+    fn refreshed_token(refresh: Option<&str>) -> BasicTokenResponse {
+        serde_json::from_value(serde_json::json!({ "access_token": "synthetic-access",
+            "token_type": "Bearer", "refresh_token": refresh }))
+        .unwrap()
+    }
+    fn run_refresh(
+        vault: &MemoryVault,
+        requested: Option<&str>,
+        refresh: Option<&str>,
+    ) -> Result<Authenticated, AuthError> {
+        Authenticator::new(&GOOGLE, "fixture", None).silent_using(
+            requested,
+            vault,
+            |_| Ok(refreshed_token(refresh)),
+            |_, _| Ok("owner@example.fr".into()),
+        )
+    }
+    fn check_legacy_rotation(requested: Option<&str>) {
+        let vault = legacy_fixture();
+        run_refresh(&vault, requested, Some("rotated")).unwrap();
+        assert_eq!(
+            vault.read(&vault_key(&GOOGLE, "owner@example.fr")).unwrap(),
+            "rotated"
+        );
+        assert!(matches!(
+            vault.read(KEYRING_REFRESH_LEGACY),
+            Err(keyring::Error::NoEntry)
+        ));
+        assert_eq!(
+            vault.writes.borrow().len(),
+            1,
+            "publish only the effective token"
+        );
+    }
+    #[test]
+    fn legacy_rotation_is_preserved_for_a_registered_account() {
+        check_legacy_rotation(Some("owner@example.fr"));
+    }
+    #[test]
+    fn legacy_rotation_is_preserved_during_initial_adoption() {
+        check_legacy_rotation(None);
+    }
+    #[test]
+    fn a_legacy_token_without_rotation_is_still_migrated() {
+        let vault = legacy_fixture();
+        run_refresh(&vault, None, None).unwrap();
+        assert_eq!(
+            vault.read(&vault_key(&GOOGLE, "owner@example.fr")).unwrap(),
+            "old"
+        );
+        assert_eq!(vault.writes.borrow().len(), 1);
+    }
+    #[test]
+    fn failed_token_publication_keeps_the_legacy_source() {
+        let mut vault = legacy_fixture();
+        vault.fail_write = true;
+        assert!(run_refresh(&vault, None, Some("rotated")).is_err());
+        assert_eq!(vault.read(KEYRING_REFRESH_LEGACY).unwrap(), "old");
+        assert_eq!(vault.entries.borrow().len(), 1);
+    }
+    #[test]
+    fn failed_legacy_cleanup_does_not_undo_rotation() {
+        let mut vault = legacy_fixture();
+        vault.fail_delete = true;
+        run_refresh(&vault, None, Some("rotated")).unwrap();
+        assert_eq!(
+            vault.read(&vault_key(&GOOGLE, "owner@example.fr")).unwrap(),
+            "rotated"
+        );
+        let used = std::cell::RefCell::new(String::new());
+        Authenticator::new(&GOOGLE, "fixture", None)
+            .silent_using(
+                Some("owner@example.fr"),
+                &vault,
+                |token| {
+                    *used.borrow_mut() = token;
+                    Ok(refreshed_token(None))
+                },
+                |_, _| Ok("owner@example.fr".into()),
+            )
+            .unwrap();
+        assert_eq!(*used.borrow(), "rotated");
+    }
+    #[test]
+    fn microsoft_never_tries_the_google_legacy_token() {
+        for requested in [Some("owner@example.fr"), None] {
+            let vault = legacy_fixture();
+            let exchanged = std::cell::Cell::new(false);
+            let result = Authenticator::new(&MICROSOFT, "fixture", None).silent_using(
+                requested,
+                &vault,
+                |_| {
+                    exchanged.set(true);
+                    Ok(refreshed_token(Some("rotated")))
+                },
+                |_, _| Ok("owner@example.fr".into()),
+            );
+            assert!(result.is_err());
+            assert!(!exchanged.get());
+            assert!(vault.writes.borrow().is_empty());
+        }
+    }
+    #[test]
+    fn legacy_identity_mismatch_keeps_both_account_entries_untouched() {
+        let vault = legacy_fixture();
+        assert!(run_refresh(&vault, Some("someone-else@example.fr"), Some("rotated")).is_err());
+        assert_eq!(vault.entries.borrow().len(), 1);
+        assert_eq!(vault.read(KEYRING_REFRESH_LEGACY).unwrap(), "old");
+        assert!(vault.writes.borrow().is_empty());
+    }
 
     /// D1 (PLAN-RETOURS-9): the runtime variable keeps priority — it is what
     /// serves on a dev workstation and what the e2e harness purges; the

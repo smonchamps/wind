@@ -15,6 +15,9 @@ pub const PREFS_PER_ACCOUNT: &[&str] = &[
     "repere_teinte",
     "nom_compte",
     "horizon_import",
+    "backfill_turn.headers",
+    "backfill_turn.recipients",
+    "draft_fetch_cursor",
 ];
 
 // The GLOBAL pref keys the shell reads and writes — declared next to

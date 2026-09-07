@@ -9,6 +9,13 @@ mod action;
 mod address;
 mod attachment;
 mod backfill;
+mod backfill_cursor;
+mod disk;
+mod operations;
+mod work_budget;
+pub use disk::BACKGROUND_DISK_RESERVE;
+pub use operations::OperationIssue;
+pub use work_budget::{FetchLimits, WorkBudget};
 mod body;
 mod compose;
 mod contacts;
@@ -19,6 +26,8 @@ mod drafts;
 mod echo;
 mod envelope;
 mod error;
+mod flags;
+mod images;
 mod imap_quoted;
 mod invitation;
 mod mutations;
@@ -40,9 +49,12 @@ pub use address::EmailAddress;
 pub use attachment::{Attachment, human_size};
 pub use backfill::{
     BACKFILL_BATCH, BackfillReport, HORIZONS_IMPORT, NO_HORIZON, THREAD_HEADER_BATCH,
-    backfill_bodies, backfill_percent, backfill_recipients, backfill_thread_headers, horizon_epoch,
+    backfill_bodies, backfill_bodies_budgeted, backfill_percent, backfill_recipients,
+    backfill_recipients_budgeted, backfill_thread_headers, backfill_thread_headers_budgeted,
+    horizon_epoch,
 };
-pub use body::{load_body, load_body_version};
+pub use body::REMOTE_MESSAGE_BYTES;
+pub use body::{load_body, load_body_version, refresh_invitation_version};
 pub use compose::{
     Draft, compose, forward_subject, quote_forward, quote_forward_html, quote_reply,
     quote_reply_html, reply_all_split, reply_subject, reply_to,
@@ -59,7 +71,8 @@ pub use envelope::{Envelope, Uid};
 pub use error::Error;
 pub use imap_quoted::{unescape_imap_quoted, unescape_imap_quoted_str};
 pub use invitation::{
-    InvitationRow, StoredInvitation, extract_invitation, participation_de_stable,
+    InvitationReplyTarget, InvitationRow, StoredInvitation, extract_invitation,
+    participation_de_stable,
 };
 pub use nav::{CanonicalFolders, NavCounts, PaperTrailGroup};
 pub use notify::{Lang, Notification, arrivals_to_notify, notification_for};

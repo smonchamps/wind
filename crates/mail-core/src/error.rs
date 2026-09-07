@@ -1,6 +1,10 @@
 /// Domain errors.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error(
+        "insufficient disk space: {required} bytes required, {available} available; background downloads paused"
+    )]
+    InsufficientDisk { required: u64, available: u64 },
     #[error("draft editing session is stale or belongs to another composition")]
     StaleDraft,
     #[error("another draft editing session must be closed first")]
@@ -27,6 +31,9 @@ pub enum Error {
     /// (network, protocol, authentication…).
     #[error("server: {0}")]
     Server(String),
+
+    #[error("message {uid} exceeds the {limit}-byte download limit; open it in webmail")]
+    RemoteMessageTooLarge { uid: u32, limit: u64 },
 
     /// EXPLICIT refusal from the server (NO/BAD: folder gone,
     /// `[CANNOT]`, `[TRYCREATE]`) — retrying will not change anything.

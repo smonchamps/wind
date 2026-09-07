@@ -1,13 +1,5 @@
-// UI <-> core transport port (R0-S5) — ES module for v2.
-// The contract inherited from the v1 transport (removed at B2): a single
-// operation, call(command, args) -> Promise. Success = the core's JSON
-// value; failure = a rejection carrying the message (string) from
-// Result<T, String>, as is. No event channel: progress is read by
-// polling.
-//
-// IN-PROCESS impl (Tauri IPC). Outside Tauri: a plain, named failure,
-// never silence — the remote impl (POST /api/appel/<commande>)
-// will replace this rejection without changing the application.
+// Tauri transport: successful values pass through unchanged. Ordinary failures
+// remain strings; typed size refusals become Errors with a stable code and limit.
 
 // The e2e seams are COMPILED OUT of a release build (PLAN-AUDIT-V3
 // E7, D-52 item 8): vite replaces `import.meta.env.VITE_E2E` with a
@@ -51,6 +43,11 @@ const fakeAdd = (command, args) => {
   if (command === 'add_account' || command === 'add_microsoft_account') {
     return () => Promise.resolve();
   }
+  if (command === 'ui_state') {
+    return () => brut(command, args).then((state) => ({
+      ...state, connected: [...state.connected, ...add],
+    }));
+  }
   if (command === 'connect_accounts') {
     return () => brut(command, args).then((report) => ({
       ...report,
@@ -74,22 +71,47 @@ const fakeFailure = (command) => {
 };
 
 export const call = (command, args) => {
+  const consent = E2E && ['oauth_begin', 'oauth_status', 'oauth_cancel', 'add_account',
+    'add_microsoft_account', 'reconnect_account'].includes(command)
+    ? globalThis.window?.__e2eOAuth : undefined;
   // Exercise partial sync reports without connecting the isolated E2E account.
   const summary = E2E && command === 'sync_inbox_light' ? globalThis.window?.__e2eSyncSummary : undefined;
-  const launch = fakeFailure(command) ?? fakeAdd(command, args)
+  const backfill = E2E && ['backfill_status', 'backfill_bodies'].includes(command) ? globalThis.window?.__e2eBackfill : undefined;
+  const launch = (consent ? () => consent(command, args) : null) ?? (backfill ? () => Promise.resolve(backfill(command)) : null) ?? fakeFailure(command) ?? fakeAdd(command, args)
     ?? (summary ? () => Promise.resolve(summary) : () => brut(command, args));
-  const hold = E2E ? globalThis.window?.__e2eHold : undefined;
-  const flight = hold ? hold.then(launch) : launch();
+  const heldCommands = E2E ? globalThis.window?.__e2eHoldCommands : undefined;
+  const hold = E2E && (!heldCommands || heldCommands.includes(command))
+    ? globalThis.window?.__e2eHold : undefined;
+  const rawFlight = hold ? hold.then(launch) : launch();
+  // Hold a real cached-body response after IPC to test revocation races.
+  const afterBody = E2E && command === 'message_body' ? globalThis.window?.__e2eAfterBody : undefined;
+  const injectIssues = E2E && ['ui_state', 'sync_progress'].includes(command) ? globalThis.window?.__e2eSyncIssues : undefined;
+  const withIssues = injectIssues ? rawFlight.then((value) => command === 'ui_state'
+    ? { ...value, sync: { ...value.sync, issues: injectIssues } } : { ...value, issues: injectIssues }) : rawFlight;
+  const flight = afterBody ? withIssues.then(afterBody) : withIssues;
   const log = E2E ? globalThis.window?.__e2eLog : undefined;
   if (log) {
     const poll = { command, start: performance.now(), arrival: null };
+    if (command === 'add_generic_account') poll.username = args.input.username;
+    if (command === 'repair_generic_account') {
+      poll.username = args.input.username;
+      poll.accountId = args.accountId;
+    }
     log.push(poll);
     const settle = () => {
       poll.arrival = performance.now();
     };
     flight.then(settle, settle);
   }
-  return flight;
+  return flight.catch((err) => {
+    if (err?.code === 'remote_message_too_large') {
+      const refusal = new Error(err.message);
+      refusal.code = err.code;
+      refusal.limit = err.limit;
+      throw refusal;
+    }
+    throw err;
+  });
 };
 
 // The native file picker (dialog plugin), over the SAME invoke

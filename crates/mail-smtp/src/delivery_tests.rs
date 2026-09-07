@@ -11,6 +11,7 @@ enum Scenario {
     GreetingEof,
     Greeting421,
     Auth535,
+    ProbePassword,
     MailEof,
     RcptEof,
     SecondRcpt450,
@@ -88,13 +89,20 @@ fn serve(listener: TcpListener, scenario: Scenario) -> (usize, Vec<String>) {
         }
         transcript.push(line.trim_end().to_owned());
         if line.starts_with("EHLO ") {
-            if matches!(scenario, Scenario::Auth535) {
+            if matches!(scenario, Scenario::Auth535 | Scenario::ProbePassword) {
                 reply(&mut stream, "250-localhost\r\n250 AUTH PLAIN\r\n");
             } else {
                 reply(&mut stream, "250 localhost\r\n");
             }
         } else if line.starts_with("AUTH ") {
-            reply(&mut stream, "535 credentials refused\r\n");
+            reply(
+                &mut stream,
+                if matches!(scenario, Scenario::ProbePassword) {
+                    "235 authenticated\r\n"
+                } else {
+                    "535 credentials refused\r\n"
+                },
+            );
         } else if line == "NOOP\r\n" {
             reply(&mut stream, "250 alive\r\n");
         } else if line.starts_with("MAIL FROM:") {
@@ -134,7 +142,7 @@ fn mailer(scenario: Scenario) -> (SmtpMailer, thread::JoinHandle<(usize, Vec<Str
     let builder = SmtpTransport::builder_dangerous("127.0.0.1")
         .port(port)
         .timeout(Some(Duration::from_secs(2)));
-    let transport = if matches!(scenario, Scenario::Auth535) {
+    let transport = if matches!(scenario, Scenario::Auth535 | Scenario::ProbePassword) {
         builder
             .authentication(vec![Mechanism::Plain])
             .credentials(Credentials::new("fixture".into(), "fixture".into()))
@@ -143,6 +151,21 @@ fn mailer(scenario: Scenario) -> (SmtpMailer, thread::JoinHandle<(usize, Vec<Str
         builder.build()
     };
     (SmtpMailer { transport }, server)
+}
+
+#[test]
+fn password_connection_probe_authenticates_without_delivery_commands() {
+    let (smtp, server) = mailer(Scenario::ProbePassword);
+    let checked = SmtpMailer::test_transport(smtp.transport);
+    assert!(checked.is_ok());
+    drop(checked);
+    let (payloads, transcript) = server.join().unwrap();
+    assert_eq!(payloads, 0);
+    assert!(transcript.iter().any(|line| line.starts_with("AUTH ")));
+    assert!(transcript.iter().any(|line| line == "NOOP"));
+    assert!(!transcript.iter().any(|line| line.starts_with("MAIL FROM:")
+        || line.starts_with("RCPT TO:")
+        || line == "DATA"));
 }
 
 fn queue(store: &Store) -> (i64, String) {

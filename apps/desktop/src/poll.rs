@@ -49,6 +49,14 @@ pub(crate) use commands::{db_path, lock_accounts, reset_sessions};
 pub(crate) struct ShellServer<'a>(pub(crate) &'a mut ImapServer);
 
 impl mail_core::MailServer for ShellServer<'_> {
+    fn set_fetch_limits(&mut self, limits: Option<mail_core::FetchLimits>) {
+        self.0.set_fetch_limits(limits);
+    }
+
+    fn received_bytes(&self) -> u64 {
+        self.0.received_bytes()
+    }
+
     fn plan_removal(
         &mut self,
         mailbox: &str,
@@ -172,7 +180,7 @@ impl mail_core::cycle::CycleConnection for ShellServer<'_> {
     ///
     /// The decision belongs to the core ([`mail_core::plan_draft_pull`],
     /// pure and tested); here we only execute it.
-    fn pull_drafts(&mut self, store: &Store, account_id: i64) -> Result<(), String> {
+    fn pull_drafts(&mut self, store: &Store, account_id: i64) -> Result<(), mail_core::Error> {
         // The marker guard first: if UIDVALIDITY has changed, the
         // recorded `remote_uid`s no longer designate anything.
         // Comparing the remote list to stale markers would make ALL
@@ -180,18 +188,11 @@ impl mail_core::cycle::CycleConnection for ShellServer<'_> {
         // No Drafts folder announced: nothing to pull, and nothing to
         // report. The server isn't down, it just doesn't have the
         // capability.
-        if self
-            .0
-            .drafts_folder_name()
-            .map_err(|err| err.to_string())?
-            .is_none()
-        {
+        if self.0.drafts_folder_name()?.is_none() {
             return Ok(());
         }
-        let validity = self.0.drafts_uidvalidity().map_err(|err| err.to_string())?;
-        let reset = store
-            .align_drafts_uidvalidity(account_id, validity)
-            .map_err(|err| err.to_string())?;
+        let validity = self.0.drafts_uidvalidity()?;
+        let reset = store.align_drafts_uidvalidity(account_id, validity)?;
         if reset {
             // Markers abandoned: nothing distinguishes our own copies
             // from others' anymore. We let the push cycle re-establish
@@ -201,49 +202,82 @@ impl mail_core::cycle::CycleConnection for ShellServer<'_> {
             return Ok(());
         }
 
-        let remote = self.0.draft_uids().map_err(|err| err.to_string())?;
-        let local = store.drafts_of(account_id).map_err(|err| err.to_string())?;
-        let tombstones = store
-            .draft_tombstones(account_id)
-            .map_err(|err| err.to_string())?;
+        let remote = self.0.draft_uids()?;
+        let local = store.drafts_of(account_id)?;
+        let tombstones = store.draft_tombstones(account_id)?;
         let plan = mail_core::plan_draft_pull(&local, &remote, &tombstones);
 
-        for uid in plan.fetch {
-            if self.0.drafts_uidvalidity().map_err(|err| err.to_string())? != validity {
-                return Err(mail_core::Error::StaleMailbox.to_string());
+        let cursor_key = format!("draft_fetch_cursor.{account_id}");
+        let mut uids = plan.fetch;
+        uids.sort_unstable();
+        if let Some(cursor) = store.text_pref(&cursor_key)?
+            && let Some((generation, uid)) = cursor.split_once(':')
+            && generation.parse::<u32>().ok() == Some(validity)
+            && let Ok(uid) = uid.parse::<u32>()
+        {
+            let next = uids.partition_point(|candidate| *candidate <= uid);
+            uids.rotate_left(next);
+        }
+        let mut budget = mail_core::WorkBudget::new(50);
+        if !uids.is_empty() {
+            store.admit_background_write(0)?;
+        }
+        for uid in uids {
+            // A spent allowance is the pass's normal end, not a failure: the
+            // remainder comes with the next opportunity, and the stale
+            // mirrors below are pruned regardless.
+            if budget.remaining() == 0 {
+                break;
             }
-            let mut draft = self
-                .0
-                .fetch_draft(uid)
-                .map_err(|err| err.to_string())?
-                .ok_or_else(|| {
-                    "remote draft disappeared during import; retrying next cycle".to_string()
+            let fetched = budget.fetch(self.0, 1, |server| {
+                if server.drafts_uidvalidity()? != validity {
+                    return Err(mail_core::Error::StaleMailbox);
+                }
+                let draft = server.fetch_draft(uid)?.ok_or_else(|| {
+                    mail_core::Error::Server(
+                        "remote draft disappeared during import; retrying next cycle".into(),
+                    )
                 })?;
-            if self.0.drafts_uidvalidity().map_err(|err| err.to_string())? != validity {
-                return Err(mail_core::Error::StaleMailbox.to_string());
-            }
+                if server.drafts_uidvalidity()? != validity {
+                    return Err(mail_core::Error::StaleMailbox);
+                }
+                Ok(draft)
+            });
+            let mut draft = match fetched {
+                Ok(draft) => draft,
+                // Over the raw ceiling (D9): the draft stays in webmail; the
+                // pass goes on with the others instead of failing every cycle.
+                Err(mail_core::Error::RemoteMessageTooLarge { limit, .. }) => {
+                    crate::trace::trace(&format!(
+                        "drafts: remote draft {uid} exceeds the {limit}-byte ceiling, kept in webmail"
+                    ));
+                    continue;
+                }
+                Err(err) => {
+                    // Resume after the failing UID next time so one poisoned
+                    // draft cannot starve the others.
+                    store.set_text_pref(&cursor_key, &format!("{validity}:{uid}"))?;
+                    return Err(err);
+                }
+            };
             let (body, html) = commands::body_boundary(
                 draft.text.take().unwrap_or_default(),
                 draft.html.as_deref(),
             );
             draft.text = Some(body);
             draft.html = html;
-            store
-                .import_remote_draft_complete(account_id, validity, uid, &draft)
-                .map_err(|err| err.to_string())?;
+            store.import_remote_draft_complete(account_id, validity, uid, &draft)?;
         }
         // Retain old mirrors on any failed fetch/import; only complete imports
         // become visible. One message at a time bounds retained MIME payloads.
-        if self.0.drafts_uidvalidity().map_err(|err| err.to_string())? != validity {
-            return Err(mail_core::Error::StaleMailbox.to_string());
+        if self.0.drafts_uidvalidity()? != validity {
+            return Err(mail_core::Error::StaleMailbox);
         }
         let stale: Vec<_> = local
             .into_iter()
             .filter(|draft| plan.stale.contains(&draft.id))
             .collect();
-        store
-            .finish_remote_draft_pull(account_id, validity, &stale)
-            .map_err(|err| err.to_string())?;
+        store.finish_remote_draft_pull(account_id, validity, &stale)?;
         Ok(())
     }
 }
@@ -445,54 +479,57 @@ pub(crate) fn connect_imap_with_stop(
         }
     };
     check()?;
-    let outcome = match &session.session {
-        Credentials::OAuth(auth) => {
-            let imap = auth.provider.imap;
-            match ImapServer::connect_xoauth2_with_stop(
-                imap.host,
-                imap.port,
-                &auth.email,
-                &auth.access_token,
-                alive.clone(),
-            ) {
-                Ok(server) => Ok((server, None)),
-                // A CONNECTION failure is not a dead token: no
-                // refreshing — hammering the OAuth endpoint on every
-                // cycle during a network outage is the best way to turn
-                // an IMAP throttle into an account freeze (P0
-                // complement, anti-hammering).
-                Err(err) if mail_imap::is_connection_error(&err) => Err(err.to_string()),
-                Err(_) => {
-                    check()?;
-                    let fresh = Authenticator::from_env(auth.provider)
-                        .map_err(|err| err.to_string())?
-                        .authenticate_silent(&auth.email)
+    let outcome = session.ticket.observe_connection(
+        || check().is_err(),
+        || match &session.session {
+            Credentials::OAuth(auth) => {
+                let imap = auth.provider.imap;
+                match ImapServer::connect_xoauth2_with_stop(
+                    imap.host,
+                    imap.port,
+                    &auth.email,
+                    &auth.access_token,
+                    alive.clone(),
+                ) {
+                    Ok(server) => Ok((server, None)),
+                    // A CONNECTION failure is not a dead token: no
+                    // refreshing — hammering the OAuth endpoint on every
+                    // cycle during a network outage is the best way to turn
+                    // an IMAP throttle into an account freeze (P0
+                    // complement, anti-hammering).
+                    Err(err) if mail_imap::is_connection_error(&err) => Err(err.to_string()),
+                    Err(_) => {
+                        check()?;
+                        let fresh = Authenticator::from_env(auth.provider)
+                            .map_err(|err| err.to_string())?
+                            .authenticate_silent(&auth.email)
+                            .map_err(|err| err.to_string())?;
+                        check()?;
+                        let server = ImapServer::connect_xoauth2_with_stop(
+                            imap.host,
+                            imap.port,
+                            &fresh.email,
+                            &fresh.access_token,
+                            alive.clone(),
+                        )
                         .map_err(|err| err.to_string())?;
-                    check()?;
-                    let server = ImapServer::connect_xoauth2_with_stop(
-                        imap.host,
-                        imap.port,
-                        &fresh.email,
-                        &fresh.access_token,
-                        alive.clone(),
-                    )
-                    .map_err(|err| err.to_string())?;
-                    Ok((server, Some(session.refreshed(Credentials::OAuth(fresh)))))
+                        Ok((server, Some(session.refreshed(Credentials::OAuth(fresh)))))
+                    }
                 }
             }
-        }
-        Credentials::Generic(creds) => {
-            let server = ImapServer::connect_password_with_stop(
-                &creds.imap_host,
-                creds.imap_port,
-                &creds.username,
-                &creds.password,
-                alive.clone(),
-            )
-            .map_err(|err| err.to_string())?;
-            Ok((server, None))
-        }
-    };
+            Credentials::Generic(creds) => {
+                let server = ImapServer::connect_password_with_stop(
+                    &creds.imap_host,
+                    creds.imap_port,
+                    &creds.username,
+                    &creds.password,
+                    alive.clone(),
+                )
+                .map_err(|err| err.to_string())?;
+                Ok((server, None))
+            }
+        },
+    );
     outcome.map(|(mut server, fresh)| {
         server.set_operation_stop(session.ticket.stop_flag());
         (server, fresh, lease)
@@ -895,6 +932,17 @@ async fn automatic(app: &AppHandle, due: mail_core::cycle::Due) {
             if let Err(err) = commands::flush_outbox(app.clone(), app.state()).await {
                 crate::trace::trace(&format!("scheduler: outbox flush: {err}"));
             }
+        }
+    }
+    if !matches!(due, Due::Nothing) {
+        match commands::backfill_bodies(app.clone(), app.state()).await {
+            Ok(report) => crate::trace::trace(&format!(
+                "scheduler: body pass: {} scanned, {} saved, {} errors",
+                report.scanned,
+                report.fetched,
+                report.errors.len()
+            )),
+            Err(_) => crate::trace::trace("scheduler: body pass failed"),
         }
     }
 }

@@ -271,9 +271,13 @@
     try {
       const subject = t(`inv.subject_${reply}`, { title: row.invitation.title });
       await call('reply_invitation', {
-        accountId: row.account_id,
-        mailbox: row.invitation.mailbox,
-        uid: row.invitation.uid,
+        selection: {
+          accountId: row.account_id,
+          mailbox: row.invitation.mailbox,
+          uid: row.invitation.uid,
+          version: row.invitation.version,
+          revision: row.invitation.revision,
+        },
         reply,
         subject,
         body: subject,
@@ -924,6 +928,20 @@
     if (e.ctrlKey || e.metaKey) toggle(l);
     choose(l);
   }
+  function rowKeyboard(event, row) {
+    if (event.target !== event.currentTarget || event.altKey) return;
+    if (event.key === ' ' && (event.shiftKey || event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.shiftKey) extend(row);
+      else toggle(row);
+    } else if (!event.ctrlKey && !event.metaKey) {
+      activation(() => choose(row))(event);
+    }
+  }
+  export function cancelSelection() {
+    if (!gestureInProgress) clearSelection();
+  }
   // The bulk gesture: the App acts on the batch's SNAPSHOT; on
   // return, only that batch gets unchecked — a row checked during the
   // flight (blocked today, but the guard doesn't rely on that) would
@@ -1089,6 +1107,7 @@
 
 
 <section class="column" class:center={center} aria-label={t('list.aria')} data-testid="list">
+  <span id="list-selection-help" class="keyboard-help">{t('list.selectionKeyboard')}</span>
   <!-- UI v3, E1 (CE verdict 2026-08-16): the banner of the Classic
        mockup — the current mailbox's name, ALONE ("Mark all as read"
        ruled out). The mailbox.* keys are the nav's own. -->
@@ -1100,7 +1119,7 @@
          title. In Junk, "Report as junk" gives way to "Not spam" —
          the mirror of the reading pane. -->
     <header class="banner banner-selection" data-testid="bar-selection">
-      <h1>{t('list.nSelection', { n: checkedRows.size })}</h1>
+      <h1 aria-live="polite" aria-atomic="true">{t('list.nSelection', { n: checkedRows.size })}</h1>
       {#each BAR_GESTURES as g (g.action)}
         <button type="button" class="btn-bar" data-testid="bar-{g.action}"
                 disabled={gestureInProgress}
@@ -1235,15 +1254,16 @@
            class:checked={checked}
            data-testid="row"
            role="button" tabindex="0"
+           aria-describedby="list-selection-help" aria-keyshortcuts="Control+Space Shift+Space"
            onmousedown={(e) => { if (e.shiftKey) e.preventDefault(); }}
            onclick={(e) => rowClick(e, row)}
-           onkeydown={activation(() => choose(row))}>
+           onkeydown={(event) => rowKeyboard(event, row)}>
         <!-- R1/D4: the checkbox — absolute in the left gutter, the
              row's geometry NEVER moves (the h1/h2 probes measure the
              row without it); opacity 0 at rest, revealed on hover and
              as soon as a selection exists (CSS). tabindex -1: the
-             keyboard check goes through Enter/Space on the chosen
-             row, the checkbox is a pointer affordance. -->
+             keyboard check uses Ctrl+Space on the focused row;
+             Shift+Space extends the range without opening a message. -->
         <button type="button" class="checkbox" data-testid="row-checkbox"
                 role="checkbox" aria-checked={checked} tabindex="-1"
                 aria-label={t('list.check')}
@@ -1511,6 +1531,7 @@
 </Menu>
 
 <style>
+  .keyboard-help { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
   /* Geometry and states of the track drawing (A29/A30): continuous
      rows separated by a net, no card, no shadow. */
   .column {

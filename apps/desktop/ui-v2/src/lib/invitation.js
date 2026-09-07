@@ -134,3 +134,11 @@ export function organizerLocation(inv) {
   if (inv.organizer) return t('inv.organizedBy', { who: inv.organizer });
   return '';
 }
+
+export function invitationNotice(inv) {
+  if (inv.needs_refresh) return t('inv.legacy');
+  const key = {
+    unsupported: 'inv.unsupported', superseded: 'inv.superseded', unverified: 'inv.unverified',
+  }[inv.scheduling_state];
+  return key ? t(key) : null;
+}

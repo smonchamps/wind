@@ -950,7 +950,9 @@ test('the two-pane settings navigate by click AND by keyboard (A13)', async () =
   // By click: Shortcuts — the D3 table as reference, read-only.
   await page.locator('[data-testid="settings-group"][data-group="raccourcis"]').click();
   await expect(page.locator('[data-testid="settings-shortcuts"]')).toContainText('Del');
-  await expect(page.locator('[data-testid="settings-shortcuts"] kbd')).toHaveCount(7);
+  await expect(page.locator('[data-testid="settings-shortcuts"] kbd')).toHaveCount(10);
+  await expect(page.locator('[data-testid="settings-shortcuts"]')).toContainText('Ctrl+Space');
+  await expect(page.locator('[data-testid="settings-shortcuts"]')).toContainText('Shift+Space');
   // By keyboard (A8): Enter activates the group like the click.
   await page.locator('[data-testid="settings-group"][data-group="apropos"]').focus();
   await page.keyboard.press('Enter');

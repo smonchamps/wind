@@ -119,7 +119,7 @@ pub trait CycleConnection: MailServer {
     /// Pulls in drafts started elsewhere and drops stale mirrors —
     /// best effort like the rest of the cycle: its own failure is
     /// returned, never left unreported, and never fails the poll.
-    fn pull_drafts(&mut self, store: &Store, account_id: i64) -> Result<(), String>;
+    fn pull_drafts(&mut self, store: &Store, account_id: i64) -> Result<(), Error>;
 }
 
 /// What an account synchronization reports, beyond the counts.
@@ -289,6 +289,30 @@ pub fn poll_inbox<S: MailServer, H: CycleHooks>(
     hooks: &H,
     problems: &mut Vec<String>,
 ) -> Result<(SyncReport, Option<FolderStatus>), String> {
+    let result = poll_inbox_inner(server, store, account_id, hooks, problems);
+    let error = result
+        .as_ref()
+        .err()
+        .map(|reason| Error::Server(reason.clone()));
+    store
+        .settle_operation(
+            account_id,
+            INBOX,
+            "sync",
+            chrono::Utc::now().timestamp(),
+            error.as_ref(),
+        )
+        .map_err(|err| err.to_string())?;
+    result
+}
+
+fn poll_inbox_inner<S: MailServer, H: CycleHooks>(
+    server: &mut S,
+    store: &mut Store,
+    account_id: i64,
+    hooks: &H,
+    problems: &mut Vec<String>,
+) -> Result<(SyncReport, Option<FolderStatus>), String> {
     hooks.set_mailbox(INBOX);
     // The highest UID BEFORE the sync: it's what separates "new" from
     // "already known". Fetched before, otherwise the sync would already
@@ -340,23 +364,7 @@ pub fn poll_inbox<S: MailServer, H: CycleHooks>(
         }
     };
 
-    // E4 (PLAN-REACTIVITE, R-D2): the bodies of ARRIVALS are backfilled
-    // on the connection already open, BEFORE the generation bump — the
-    // row is born WITH its preview, in the cycle as in the light pass as
-    // in the watcher (a single display, never a mute row that fills in
-    // later). Bounded: a batch that overflows (catch-up after an
-    // outage) bumps first — the rows show fast — and the bodies fall to
-    // the pump, which the UI primes on the generation. `bodies_to_backfill`
-    // serves from the most recent to the oldest: the "number of
-    // arrivals" budget covers exactly the batch that just came in.
-    //
-    // The bound is measured on ARRIVALS (UID above the pre-poll marker),
-    // NEVER on `report.fetched` — first E4 field finding (2026-08-14): on
-    // Gmail, every arrival shifts HIGHESTMODSEQ and the CONDSTORE delta
-    // returns dozens of retouched envelopes (the recorded observation of
-    // PLAN-SYNCHRO); measured on `fetched`, the batch "overflowed" on
-    // EVERY arrival and the row was born mute, filled in 3-4s later by
-    // the pump.
+    // Preview only new arrivals; the background cursor must keep its history position.
     let arrivals = match store.arrivals_since(account_id, INBOX, last_uid_before) {
         Ok(n) => n as usize,
         Err(err) => {
@@ -372,9 +380,30 @@ pub fn poll_inbox<S: MailServer, H: CycleHooks>(
     // the D1 semantics: its body loads on click.
     let horizon = body_horizon(store, account_id, hooks);
     if body_count > 0
-        && let Err(err) =
-            crate::backfill::backfill_bodies(server, store, account_id, INBOX, horizon, body_count)
+        && let Err(err) = crate::backfill::fetch_arrival_bodies(
+            server,
+            store,
+            account_id,
+            INBOX,
+            last_uid_before,
+            horizon,
+            body_count,
+        )
     {
+        // A per-UID size refusal is already recorded by its own marker: it
+        // is not an operation failure and must not leave a diagnostic that
+        // no later pass can clear.
+        if !matches!(err, Error::RemoteMessageTooLarge { .. }) {
+            store
+                .settle_operation(
+                    account_id,
+                    INBOX,
+                    "bodies",
+                    chrono::Utc::now().timestamp(),
+                    Some(&err),
+                )
+                .map_err(|err| err.to_string())?;
+        }
         problems.push(format!("bodies of arrivals: {err}"));
     }
 
@@ -410,13 +439,10 @@ pub fn poll_inbox<S: MailServer, H: CycleHooks>(
     // PLAN-AUDIT-V1 review: the cycle that quarantines an action SAYS
     // SO — otherwise only the slot's global counter reveals it, with no
     // link to the faulty cycle. Single exit point for the four paths.
-    // D-51 paid at PLAN-RETOURS-15 E3 (Chief-Engineer decision D4, 2026-09-04): a
-    // server without CONDSTORE gets a BOUNDED flag window per poll —
-    // the line stays, named ONCE per account and per session in
-    // `wind.log`, because beyond the window flags remain stale.
+    // Log once: non-CONDSTORE flags converge over bounded rotating passes.
     if report.without_condstore && hooks.condstore_missing_first_time(account_id) {
         hooks.trace(&format!(
-            "account {account_id}: without CONDSTORE, flags resynchronized by bounded window only (D-51)"
+            "account {account_id}: without CONDSTORE, flags resynchronized by recent and rotating windows"
         ));
     }
     if report.refused > 0 {
@@ -439,7 +465,9 @@ pub fn run_light<S: CycleConnection, H: CycleHooks>(
 ) -> Result<SyncReport, String> {
     let (report, _) = poll_inbox(server, store, account_id, hooks, problems)?;
     hooks.set_phase("drafts");
-    if let Err(reason) = server.pull_drafts(store, account_id) {
+    if let Err(reason) = store.attempt_operation(account_id, "", "drafts", |store| {
+        server.pull_drafts(store, account_id)
+    }) {
         problems.push(format!("remote drafts: {reason}"));
     }
     Ok(report)
@@ -483,11 +511,18 @@ pub fn run_sync<S: CycleConnection, H: CycleHooks>(
     // result that counts, and a server without a sent folder must keep
     // working. The failure is reported, never swallowed — otherwise a
     // mailbox that refused to group would be undiagnosable.
-    let sent = match server.sent_folder_name() {
-        Ok(found) => found,
+    let sent = match store.attempt_operation(account_id, "", "sent_folder", |_| {
+        server.sent_folder_name().map_err(Error::Server)
+    }) {
+        Ok(Some(found)) => found,
+        Ok(None) => store
+            .sent_mailbox(account_id)
+            .map_err(|err| err.to_string())?,
         Err(reason) => {
             problems.push(format!("sent folder: {reason}"));
-            None
+            store
+                .sent_mailbox(account_id)
+                .map_err(|err| err.to_string())?
         }
     };
 
@@ -504,7 +539,9 @@ pub fn run_sync<S: CycleConnection, H: CycleHooks>(
     // CREATE are born already on the right side of the scope. Declaring
     // it afterwards would make them born without a thread, and their
     // messages would wait for the next startup.
-    if let Err(reason) = store.set_thread_scope(account_id, sent.as_deref()) {
+    if let Err(reason) = store.attempt_operation(account_id, "", "scope", |store| {
+        store.set_thread_scope(account_id, sent.as_deref())
+    }) {
         problems.push(format!("conversation scope: {reason}"));
     }
 
@@ -521,37 +558,34 @@ pub fn run_sync<S: CycleConnection, H: CycleHooks>(
     // LIST, the STATUS calls will go out one by one — the old path,
     // intact.
     let mut statuses: HashMap<String, FolderStatus> = HashMap::new();
-    let with_status = match server.folders_with_status() {
-        Ok(v) => v,
-        Err(reason) => {
-            problems.push(format!("LIST-STATUS inventory: {reason}"));
+    let folders = match store.attempt_operation(account_id, "", "inventory", |store| {
+        let with_status = server.folders_with_status().unwrap_or_else(|_| {
+            hooks.trace("LIST-STATUS unavailable; trying LIST");
             None
-        }
-    };
-    let folders = if let Some(with_status) = with_status {
-        let mut folders = Vec::with_capacity(with_status.len());
-        for (folder, status) in with_status {
-            // The server MAY omit a folder's status (RFC 5819 §2): this
-            // folder then starts out unguarded, the loop below will
-            // catch it up with a targeted STATUS.
-            if let Some(status) = status {
-                statuses.insert(folder.wire.clone(), status);
-            }
-            folders.push(folder);
-        }
-        folders
-    } else {
-        server.folders().unwrap_or_else(|reason| {
+        });
+        let folders = if let Some(with_status) = with_status {
+            with_status
+                .into_iter()
+                .map(|(folder, status)| {
+                    if let Some(status) = status {
+                        statuses.insert(folder.wire.clone(), status);
+                    }
+                    folder
+                })
+                .collect()
+        } else {
+            server.folders()?
+        };
+        store.replace_folders(account_id, &folders)?;
+        Ok(folders)
+    }) {
+        Ok(Some(folders)) => folders,
+        Ok(None) => store.folders(account_id).map_err(|err| err.to_string())?,
+        Err(reason) => {
             problems.push(format!("folder list: {reason}"));
-            Vec::new()
-        })
+            store.folders(account_id).map_err(|err| err.to_string())?
+        }
     };
-    // Refreshed ONCE per cycle — hoisted out of `SyncEngine::sync` which
-    // used to pay for it on EVERY folder (~51 LIST per cycle, ADR 0017).
-    // Moving it out keeps its list.
-    if let Err(reason) = store.replace_folders(account_id, &folders) {
-        problems.push(format!("folder list: {reason}"));
-    }
     let order = sync_order(&folders, sent.as_deref());
 
     // The disk space guard (ADR 0010 §4): estimate BEFORE committing,
@@ -591,8 +625,9 @@ pub fn run_sync<S: CycleConnection, H: CycleHooks>(
         .map_err(|err| err.to_string())?;
     let pending = announced.saturating_sub(local);
     // Space is measured on the database's VOLUME: that's what will
-    // absorb the writes, not the system disk. The probe itself is the
-    // shell's (`fs4`, outside the core) — reached through the hook.
+    // absorb the writes, not the system disk. This probe is the
+    // shell's, reached through the hook; the background pumps take
+    // their own reserve-aware admission (`disk.rs`) before each window.
     let shortfall = match hooks.available_space(db_path) {
         Ok(available) => disk_shortfall(pending, available),
         Err(reason) => {
@@ -625,11 +660,23 @@ pub fn run_sync<S: CycleConnection, H: CycleHooks>(
             let status = statuses.get(&mailbox);
             if !must_poll(store, account_id, &mailbox, status, &mut problems, hooks) {
                 n_skipped += 1;
+                if status.is_some_and(|status| status.highest_modseq.is_none()) {
+                    match store.attempt_operation(account_id, &mailbox, "flags", |store| {
+                        SyncEngine::default().flags_pass(server, store, account_id, &mailbox)
+                    }) {
+                        Ok(Some(changed)) if changed > 0 => hooks.bump_generation(),
+                        Ok(_) => {}
+                        Err(reason) => problems.push(format!("flags of \"{mailbox}\": {reason}")),
+                    }
+                }
                 continue;
             }
             hooks.set_mailbox(&mailbox);
-            match SyncEngine::default().sync(server, store, account_id, &mailbox) {
-                Ok(_) => settle_marker(store, account_id, &mailbox, status, &mut problems),
+            match store.attempt_operation(account_id, &mailbox, "sync", |store| {
+                SyncEngine::default().sync(server, store, account_id, &mailbox)
+            }) {
+                Ok(Some(_)) => settle_marker(store, account_id, &mailbox, status, &mut problems),
+                Ok(None) => {}
                 Err(reason) => problems.push(format!("folder \"{mailbox}\": {reason}")),
             }
         }
@@ -666,20 +713,36 @@ pub fn run_sync<S: CycleConnection, H: CycleHooks>(
     // grouping's fuel, and the grouping stops at that scope (ADR 0010
     // §3). Reading Spam's headers would pay round trips for messages
     // that attach to nothing.
-    let mut budget = THREAD_HEADER_BUDGET;
-    for mailbox in std::iter::once(INBOX).chain(sent.as_deref()) {
-        if budget == 0 {
+    let header_scope = format!("headers.{account_id}");
+    let mut mailboxes = std::iter::once(INBOX)
+        .chain(sent.as_deref())
+        .map(|mailbox| store.mailbox_identity(account_id, mailbox))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    store
+        .backfill_order(&header_scope, &mut mailboxes)
+        .map_err(|err| err.to_string())?;
+    let mut budget = crate::WorkBudget::new(THREAD_HEADER_BUDGET);
+    for identity in &mailboxes {
+        let mailbox = identity.mailbox.as_str();
+        if budget.remaining() == 0 {
             break;
         }
-        match crate::backfill::backfill_thread_headers(
+        store
+            .mark_backfill_turn(&header_scope, identity.mailbox_id)
+            .map_err(|err| err.to_string())?;
+        match crate::backfill::backfill_thread_headers_budgeted(
             server,
             store,
             account_id,
             mailbox,
             crate::backfill::NO_HORIZON,
-            budget,
+            &mut budget,
         ) {
-            Ok(report) => budget = budget.saturating_sub(report.fetched),
+            Ok(_) => {}
             Err(err) => problems.push(format!("incomplete conversations: {err}")),
         }
     }
@@ -694,19 +757,27 @@ pub fn run_sync<S: CycleConnection, H: CycleHooks>(
     // bounded, resumable and at a SHARED budget, on the SAME INBOX +
     // Sent scope as the thread pass. Best effort: a failure is logged,
     // it doesn't make the poll fail.
-    let mut budget_recipients = RECIPIENTS_BUDGET;
-    for mailbox in std::iter::once(INBOX).chain(sent.as_deref()) {
-        if budget_recipients == 0 {
+    let recipient_scope = format!("recipients.{account_id}");
+    store
+        .backfill_order(&recipient_scope, &mut mailboxes)
+        .map_err(|err| err.to_string())?;
+    let mut budget_recipients = crate::WorkBudget::new(RECIPIENTS_BUDGET);
+    for identity in &mailboxes {
+        let mailbox = identity.mailbox.as_str();
+        if budget_recipients.remaining() == 0 {
             break;
         }
-        match crate::backfill::backfill_recipients(
+        store
+            .mark_backfill_turn(&recipient_scope, identity.mailbox_id)
+            .map_err(|err| err.to_string())?;
+        match crate::backfill::backfill_recipients_budgeted(
             server,
             store,
             account_id,
             mailbox,
-            budget_recipients,
+            &mut budget_recipients,
         ) {
-            Ok(report) => budget_recipients = budget_recipients.saturating_sub(report.fetched),
+            Ok(_) => {}
             Err(err) => problems.push(format!("missing recipients: {err}")),
         }
     }
@@ -718,7 +789,9 @@ pub fn run_sync<S: CycleConnection, H: CycleHooks>(
     // connection. A draft started elsewhere would then never arrive.
     hooks.set_phase("drafts");
     let stopwatch = Instant::now();
-    if let Err(reason) = server.pull_drafts(store, account_id) {
+    if let Err(reason) = store.attempt_operation(account_id, "", "drafts", |store| {
+        server.pull_drafts(store, account_id)
+    }) {
         problems.push(format!("remote drafts: {reason}"));
     }
     let drafts_duration = stopwatch.elapsed();
@@ -727,8 +800,10 @@ pub fn run_sync<S: CycleConnection, H: CycleHooks>(
     // row of an echo's destination — the reconciliation notices it, and
     // the generation reserves the list (the echo fades under its real
     // row, invisible to the eye).
-    match store.reconcile_echos(account_id) {
-        Ok(n) if n > 0 => hooks.bump_generation(),
+    match store.attempt_operation(account_id, "", "echo", |store| {
+        store.reconcile_echos(account_id)
+    }) {
+        Ok(Some(n)) if n > 0 => hooks.bump_generation(),
         Ok(_) => {}
         Err(reason) => problems.push(format!("echo reconciliation: {reason}")),
     }
@@ -751,6 +826,42 @@ pub fn run_sync<S: CycleConnection, H: CycleHooks>(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_failed_inventory_keeps_cached_folders_and_the_sent_scope() {
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("inventory@example.test", "imap")
+            .unwrap();
+        store.set_thread_scope(account, Some("Sent")).unwrap();
+        let folder = crate::Folder {
+            wire: "Archive".into(),
+            display: "Archive".into(),
+            selectable: true,
+            special_use: None,
+            delimiter: None,
+        };
+        store
+            .replace_folders(account, std::slice::from_ref(&folder))
+            .unwrap();
+        let mut server = FakeServer::new(false);
+        server.inventory_error = true;
+        run_sync(
+            &mut server,
+            &mut store,
+            account,
+            Path::new(":memory:"),
+            &NoHooks,
+        )
+        .unwrap();
+        assert_eq!(store.folders(account).unwrap(), [folder]);
+        assert_eq!(
+            store.sent_mailbox(account).unwrap().as_deref(),
+            Some("Sent")
+        );
+        let issues = store.operation_issues().unwrap();
+        assert!(issues.iter().any(|issue| issue.operation == "inventory"));
+        assert!(issues.iter().any(|issue| issue.operation == "sent_folder"));
+    }
     use super::*;
     use crate::test_support::FakeServer;
 
@@ -815,7 +926,18 @@ mod tests {
         let mut problems = Vec::new();
         let report = run_light(&mut server, &mut store, account, &NoHooks, &mut problems).unwrap();
         assert_eq!(report.fetched, 1);
-        assert_eq!(problems, ["remote drafts: simulated draft fetch failure"]);
+        assert_eq!(
+            problems,
+            ["remote drafts: server: simulated draft fetch failure"]
+        );
+        assert_eq!(store.operation_issues().unwrap()[0].operation, "drafts");
+        problems.clear();
+        run_light(&mut server, &mut store, account, &NoHooks, &mut problems).unwrap();
+        assert_eq!(store.operation_issues().unwrap().len(), 1);
+        assert!(
+            problems.is_empty(),
+            "the failed draft operation waits for its own retry delay"
+        );
     }
 
     /// The whole per-account pipeline runs against the trait — the
@@ -896,6 +1018,46 @@ mod tests {
             server.uid_list_calls, listed_after_first,
             "a motionless folder must be SKIPPED, never re-listed (ADR 0017)"
         );
+    }
+
+    #[test]
+    fn quiet_archive_flags_are_checked_without_an_inventory() {
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("cycle@test.io", "imap.test.io")
+            .unwrap();
+        let mut server = FakeServer::new(false);
+        server.add(1, "archived mail");
+        server.folders.push(crate::Folder {
+            wire: "Archive".into(),
+            display: "Archive".into(),
+            selectable: true,
+            special_use: None,
+            delimiter: None,
+        });
+        run_sync(
+            &mut server,
+            &mut store,
+            account,
+            Path::new(":memory:"),
+            &NoHooks,
+        )
+        .unwrap();
+        let inventories = server.uid_list_calls;
+        server.mark_seen(1);
+        run_sync(
+            &mut server,
+            &mut store,
+            account,
+            Path::new(":memory:"),
+            &NoHooks,
+        )
+        .unwrap();
+        assert!(
+            store.recent(account, "Archive", 0, 1).unwrap()[0].seen,
+            "quiet folders must receive flag-only changes too"
+        );
+        assert_eq!(server.uid_list_calls, inventories);
     }
 
     /// D-51's blind spot (RETOURS-15 review): on a CONDSTORE-less

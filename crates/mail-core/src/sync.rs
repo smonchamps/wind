@@ -17,10 +17,7 @@ use crate::remote::{MailServer, MailboxSnapshot};
 use crate::store::{Store, SyncState};
 
 const DEFAULT_BATCH_SIZE: usize = 500;
-/// D-51 window (PLAN-RETOURS-15 E3): how many recent UIDs get their
-/// flags re-read per poll on a CONDSTORE-less server. 500 `(UID FLAGS)`
-/// lines ≈ one bounded round trip — the figure is validated in the
-/// field on the Chief Engineer's account 3 (STOP 2).
+/// Maximum flag UIDs per pass: one fifth recent, the remainder rotating.
 const DEFAULT_FLAG_WINDOW: usize = 500;
 
 /// What a pass must do, decided BEFORE any write I/O (STANDARD §4: the
@@ -69,10 +66,7 @@ pub struct SyncReport {
     /// Actions put into QUARANTINE during this replay (E3): a definitive
     /// refusal from the server, or a fifth transient failure.
     pub refused: usize,
-    /// The server does not announce CONDSTORE: only a BOUNDED window of
-    /// recent flags resynchronizes (D-51, paid at PLAN-RETOURS-15 E3) —
-    /// beyond the window a flag stays stale until its UID moves. The
-    /// shell logs the account once per session.
+    /// The server requires bounded rotating flag reads instead of CONDSTORE.
     pub without_condstore: bool,
     /// Envelopes whose flags the D-51 window actually changed — the
     /// signal that makes the shell re-serve the UI when nothing else
@@ -82,10 +76,7 @@ pub struct SyncReport {
 
 pub struct SyncEngine {
     batch_size: usize,
-    /// How many of the most recent UIDs the D-51 flag window re-reads
-    /// on a CONDSTORE-less server (PLAN-RETOURS-15 E3). One short
-    /// `(UID FLAGS)` line per message — the bound keeps the cost flat
-    /// however deep the mailbox is.
+    /// Total recent and rotating UIDs admitted by one flag pass.
     flag_window: usize,
 }
 
@@ -164,7 +155,7 @@ impl SyncEngine {
 
         let mut report = match plan {
             SyncPlan::Incremental { .. } => {
-                self.incremental_sync(server, store, mailbox, &state, snapshot.exists)?
+                self.incremental_sync(server, store, account_id, mailbox, &state, snapshot.exists)?
             }
             SyncPlan::Initial | SyncPlan::Reset => {
                 self.initial_sync(server, store, mailbox, state.mailbox_id)?
@@ -195,6 +186,7 @@ impl SyncEngine {
         mailbox_id: i64,
     ) -> Result<SyncReport, Error> {
         let mut uids = server.list_uids(mailbox)?;
+        let present = uids.iter().copied().collect();
         // Resumable (PLAN-AUDIT-V2 E5): an initial sync cut off at batch k
         // (throttling, disconnect) used to start over from scratch. What
         // is already in the database is no longer requested again — the
@@ -205,6 +197,9 @@ impl SyncEngine {
 
         let mut fetched = 0;
         for chunk in uids.chunks(self.batch_size) {
+            store.admit_background_write(
+                (chunk.len() as u64).saturating_mul(SYNC_BYTES_PER_MESSAGE),
+            )?;
             let envelopes = server.fetch_envelopes(mailbox, chunk)?;
             fetched += envelopes.len();
             store.upsert_envelopes(mailbox_id, &envelopes)?;
@@ -212,7 +207,7 @@ impl SyncEngine {
         Ok(SyncReport {
             mode: SyncMode::Initial,
             fetched,
-            deleted: 0,
+            deleted: store.remove_absent(mailbox_id, &present)?,
             replayed: 0,
             refused: 0,
             without_condstore: false,
@@ -224,6 +219,7 @@ impl SyncEngine {
         &self,
         server: &mut dyn MailServer,
         store: &mut Store,
+        account_id: i64,
         mailbox: &str,
         state: &SyncState,
         exists: u32,
@@ -232,6 +228,7 @@ impl SyncEngine {
         let mut deleted = 0;
         let mut flags_applied = 0;
 
+        store.admit_background_write(0)?;
         let condstore_changes = match state.highest_modseq {
             Some(modseq) => server.changes_since(mailbox, modseq)?,
             None => None,
@@ -264,23 +261,14 @@ impl SyncEngine {
                     .collect();
                 new_uids.sort_unstable_by(|a, b| b.cmp(a));
                 for chunk in new_uids.chunks(self.batch_size) {
+                    store.admit_background_write(
+                        (chunk.len() as u64).saturating_mul(SYNC_BYTES_PER_MESSAGE),
+                    )?;
                     let envelopes = server.fetch_envelopes(mailbox, chunk)?;
                     fetched += envelopes.len();
                     store.upsert_envelopes(state.mailbox_id, &envelopes)?;
                 }
-                // The D-51 window (PLAN-RETOURS-15 E3, decision D4):
-                // the flags of the most recent UIDs are re-read in ONE
-                // bounded `(UID FLAGS)` command — a mail read on the
-                // phone no longer stays bold here forever. The
-                // inventory is already in hand; the window costs one
-                // round trip, flat however deep the mailbox is. Beyond
-                // the bound the flag stays stale — the stated limit
-                // (DEBT D-51).
-                let window = flag_window_uids(&server_uids, self.flag_window);
-                if !window.is_empty() {
-                    let flags = server.fetch_flags(mailbox, &window)?;
-                    flags_applied = store.apply_flags(state.mailbox_id, &flags)?;
-                }
+                flags_applied = self.flags_pass(server, store, account_id, mailbox)?;
                 // Here the inventory is already paid for (it served the
                 // new messages): the deletion diff is free.
                 let present: HashSet<Uid> = server_uids.into_iter().collect();
@@ -299,13 +287,8 @@ impl SyncEngine {
         })
     }
 
-    /// The LIGHT flags pass (PLAN-RETOURS-15 review). On a
-    /// CONDSTORE-less server a flag-only change moves neither EXISTS
-    /// nor UIDNEXT: the guarded poll rightly skips the mailbox (ADR
-    /// 0017) and the window above never plays. This pass re-reads the
-    /// window from the UIDs the STORE already knows — one bounded
-    /// `(UID FLAGS)` round trip, no inventory. Returns how many
-    /// envelopes actually changed.
+    /// Rechecks a bounded recent/rotating window from local UIDs. No UID
+    /// inventory; SELECT verifies the namespace before and after FETCH.
     pub fn flags_pass(
         &self,
         server: &mut dyn MailServer,
@@ -313,33 +296,18 @@ impl SyncEngine {
         account_id: i64,
         mailbox: &str,
     ) -> Result<usize, Error> {
-        let Some(state) = store.sync_state(account_id, mailbox)? else {
+        let Some(identity) = store.mailbox_identity(account_id, mailbox)? else {
             return Ok(0);
         };
-        let uids = store.recent_uids(state.mailbox_id, self.flag_window)?;
-        if uids.is_empty() {
+        let window = store.flag_window(&identity, self.flag_window)?;
+        if window.uids.is_empty() {
             return Ok(0);
         }
-        let flags = server.fetch_flags(mailbox, &uids)?;
-        store.apply_flags(state.mailbox_id, &flags)
+        crate::remote::verify_mailbox_generation(server, mailbox, identity.uid_validity)?;
+        let flags = server.fetch_flags(mailbox, &window.uids)?;
+        crate::remote::verify_mailbox_generation(server, mailbox, identity.uid_validity)?;
+        store.settle_flag_window(&window, &flags)
     }
-}
-
-/// The D-51 window's pure decision (STANDARD §4): which UIDs get their
-/// flags re-read — the `bound` highest, whatever order the server
-/// listed them in. Partial selection: the mailbox's depth is never
-/// sorted whole.
-fn flag_window_uids(uids: &[Uid], bound: usize) -> Vec<Uid> {
-    if bound == 0 || uids.is_empty() {
-        return Vec::new();
-    }
-    let mut uids = uids.to_vec();
-    if uids.len() > bound {
-        uids.select_nth_unstable_by(bound - 1, |a, b| b.cmp(a));
-        uids.truncate(bound);
-    }
-    uids.sort_unstable_by(|a, b| b.cmp(a));
-    uids
 }
 
 /// Replays the action queue to the server, in emission order.
@@ -916,6 +884,40 @@ mod tests {
     }
 
     #[test]
+    fn resumed_initial_sync_reconciles_the_full_inventory_after_success() {
+        for emptied in [false, true] {
+            let mut server = FakeServer::new(false);
+            for uid in 1..=6 {
+                server.add(uid, "message");
+            }
+            let mut store = Store::open_in_memory().unwrap();
+            let engine = SyncEngine::new(2);
+            let account = test_account(&store);
+            server.envelope_batch_failure = Some(2);
+            assert!(
+                engine
+                    .sync(&mut server, &mut store, account, "INBOX")
+                    .is_err()
+            );
+            assert_eq!(recent(&store, 0, 10).len(), 2);
+            server.messages.remove(&6);
+            if emptied {
+                server.messages.clear();
+            }
+            server.envelope_batch_failure = None;
+            server.fetch_batches.clear();
+            let resumed = synced(&mut server, &mut store, &engine);
+            let remaining: std::collections::HashSet<_> = recent(&store, 0, 10)
+                .iter()
+                .map(|envelope| envelope.uid)
+                .collect();
+            assert_eq!(remaining, server.messages.keys().copied().collect());
+            assert_eq!(resumed.deleted, if emptied { 2 } else { 1 });
+            assert!(!server.fetch_batches.iter().flatten().any(|uid| *uid >= 5));
+        }
+    }
+
+    #[test]
     fn initial_sync_fetches_newest_first_in_batches() {
         let mut server = FakeServer::new(false);
         for uid in 1..=5 {
@@ -1274,22 +1276,9 @@ mod tests {
         );
     }
 
-    /// §4 pure decision (trivial RED would teach nothing — stated): the
-    /// window picks the highest UIDs whatever the server's listing
-    /// order; an under-filled list travels whole; bound 0 is empty.
+    /// The first window starts at the newest UID without exceeding its bound.
     #[test]
-    fn flag_window_uids_picks_the_highest_in_any_order() {
-        assert_eq!(flag_window_uids(&[3, 9, 1, 7], 2), vec![9, 7]);
-        assert_eq!(flag_window_uids(&[3, 1], 5), vec![3, 1]);
-        assert!(flag_window_uids(&[1, 2], 0).is_empty());
-        assert!(flag_window_uids(&[], 5).is_empty());
-    }
-
-    /// The window is a BOUND, not an inventory: only the most recent
-    /// UIDs travel — an old message's flag is out of reach, and that
-    /// limit is stated (DEBT D-51 rewording), never an accident.
-    #[test]
-    fn the_flag_window_is_bounded_to_the_most_recent_uids() {
+    fn the_first_flag_window_starts_with_the_most_recent_uid() {
         let mut server = FakeServer::new(false);
         server.add(1, "old");
         server.add(2, "recent");
@@ -1310,12 +1299,91 @@ mod tests {
         assert!(rows.iter().any(|r| r.uid == 2 && r.seen));
         assert!(
             rows.iter().any(|r| r.uid == 1 && !r.seen),
-            "beyond the bound the flag stays stale — the stated limit"
+            "older flags wait for the next rotating window"
         );
     }
 
     /// CONDSTORE servers never pay the window: the delta already
     /// carries the flags.
+    #[test]
+    fn flag_windows_reach_old_mail_despite_new_arrivals() {
+        let mut server = FakeServer::new(false);
+        for uid in 1..=6 {
+            server.add(uid, "initial");
+        }
+        let mut store = Store::open_in_memory().unwrap();
+        let engine = SyncEngine::default().with_flag_window(2);
+        synced(&mut server, &mut store, &engine);
+        server.mark_seen(1);
+        for uid in 7..=12 {
+            server.add(uid, "arrival");
+            synced(&mut server, &mut store, &engine);
+        }
+        assert!(
+            recent(&store, 0, 20)
+                .iter()
+                .any(|row| row.uid == 1 && row.seen),
+            "new arrivals must not starve older flags"
+        );
+        assert!(server.flag_batches.iter().all(|batch| batch.len() <= 2));
+        assert!(
+            server
+                .flag_batches
+                .iter()
+                .enumerate()
+                .all(|(n, batch)| batch.contains(&(7 + n as u32))),
+            "the most recent mail stays checked each pass"
+        );
+    }
+
+    #[test]
+    fn light_flags_refuse_a_replaced_remote_namespace() {
+        let mut server = FakeServer::new(false);
+        server.add(1, "old namespace");
+        let mut store = Store::open_in_memory().unwrap();
+        let engine = SyncEngine::default();
+        synced(&mut server, &mut store, &engine);
+        server.bump_uid_validity();
+        server.mark_seen(1);
+        let account = test_account(&store);
+        assert!(matches!(
+            engine.flags_pass(&mut server, &mut store, account, "INBOX"),
+            Err(Error::StaleMailbox)
+        ));
+        assert!(!recent(&store, 0, 1)[0].seen);
+        assert!(server.flag_batches.is_empty());
+    }
+
+    #[test]
+    fn failed_flag_apply_retries_the_same_window_then_advances() {
+        let mut server = FakeServer::new(false);
+        for uid in 1..=4 {
+            server.add(uid, "mail");
+        }
+        let mut store = Store::open_in_memory().unwrap();
+        let engine = SyncEngine::default().with_flag_window(1);
+        synced(&mut server, &mut store, &engine);
+        server.mark_seen(4);
+        let account = test_account(&store);
+        store.conn().execute_batch("CREATE TRIGGER fail_flags BEFORE UPDATE OF seen ON envelopes BEGIN SELECT RAISE(ABORT, 'flag write failed'); END;").unwrap();
+        assert!(
+            engine
+                .flags_pass(&mut server, &mut store, account, "INBOX")
+                .is_err()
+        );
+        store
+            .conn()
+            .execute_batch("DROP TRIGGER fail_flags")
+            .unwrap();
+        engine
+            .flags_pass(&mut server, &mut store, account, "INBOX")
+            .unwrap();
+        engine
+            .flags_pass(&mut server, &mut store, account, "INBOX")
+            .unwrap();
+        assert_eq!(server.flag_batches, vec![vec![4], vec![4], vec![3]]);
+    }
+
     #[test]
     fn with_condstore_no_flag_window_is_paid() {
         let mut server = FakeServer::new(true);

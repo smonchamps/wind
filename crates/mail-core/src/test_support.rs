@@ -34,11 +34,13 @@ pub(crate) struct FakeServer {
     pub(crate) body_batches: Vec<Vec<Uid>>,
     pub(crate) body_reply_uid: Option<Uid>,
     pub(crate) reset_during_body_fetch: bool,
+    pub(crate) oversized_body: Option<Uid>,
     /// `References` served by the fake server, by UID.
     pub(crate) references: BTreeMap<Uid, String>,
     /// Batches of headers requested: the proof that the pass batches.
     pub(crate) header_batches: Vec<Vec<Uid>>,
     pub(crate) folders: Vec<crate::remote::Folder>,
+    pub(crate) inventory_error: bool,
     /// Moves received: (uid, network target folder).
     pub(crate) moved: Vec<(Uid, String)>,
     /// Bytes served for (uid, rank) — the simulator's attachments.
@@ -57,6 +59,8 @@ pub(crate) struct FakeServer {
     /// Flag windows requested (RETOURS-15 E3, D-51): the proof that the
     /// window is BOUNDED and asked in one batch.
     pub(crate) flag_batches: Vec<Vec<Uid>>,
+    pub(crate) flag_error: bool,
+    pub(crate) reset_during_flag_fetch: bool,
 }
 
 impl FakeServer {
@@ -76,9 +80,11 @@ impl FakeServer {
             body_batches: Vec::new(),
             body_reply_uid: None,
             reset_during_body_fetch: false,
+            oversized_body: None,
             references: BTreeMap::new(),
             header_batches: Vec::new(),
             folders: Vec::new(),
+            inventory_error: false,
             moved: Vec::new(),
             attachment_bytes: BTreeMap::new(),
             reset_during_attachment_fetch: false,
@@ -87,6 +93,8 @@ impl FakeServer {
             refused_moves: false,
             envelope_batch_failure: None,
             flag_batches: Vec::new(),
+            flag_error: false,
+            reset_during_flag_fetch: false,
         }
     }
 
@@ -247,6 +255,12 @@ impl MailServer for FakeServer {
         uids: &[Uid],
     ) -> Result<Vec<crate::remote::FlagState>, Error> {
         self.flag_batches.push(uids.to_vec());
+        if self.flag_error {
+            return Err(Error::Server("synthetic flag failure".into()));
+        }
+        if self.reset_during_flag_fetch {
+            self.uid_validity += 1;
+        }
         Ok(uids
             .iter()
             .filter_map(|uid| {
@@ -269,6 +283,12 @@ impl MailServer for FakeServer {
         self.body_batches.push(uids.to_vec());
         if self.reset_during_body_fetch {
             self.uid_validity += 1;
+        }
+        if let Some(uid) = self.oversized_body.filter(|uid| uids.contains(uid)) {
+            return Err(Error::RemoteMessageTooLarge {
+                uid,
+                limit: 33_554_432,
+            });
         }
         Ok(uids
             .iter()
@@ -325,6 +345,9 @@ impl MailServer for FakeServer {
     }
 
     fn folders(&mut self) -> Result<Vec<crate::remote::Folder>, Error> {
+        if self.inventory_error {
+            return Err(Error::Server("inventory unavailable".into()));
+        }
         Ok(self.folders.clone())
     }
 
@@ -394,21 +417,20 @@ impl MailServer for FakeServer {
 /// Drafts are absent unless a test supplies a remote fixture.
 impl CycleConnection for FakeServer {
     fn sent_folder_name(&mut self) -> Result<Option<String>, String> {
+        if self.inventory_error {
+            return Err("sent folder unavailable".into());
+        }
         Ok(None)
     }
 
-    fn pull_drafts(&mut self, store: &Store, account_id: i64) -> Result<(), String> {
+    fn pull_drafts(&mut self, store: &Store, account_id: i64) -> Result<(), Error> {
         if let Some(reason) = &self.draft_pull_error {
-            return Err(reason.clone());
+            return Err(Error::Server(reason.clone()));
         }
         if !self.remote_drafts.is_empty() {
-            store
-                .align_drafts_uidvalidity(account_id, self.uid_validity)
-                .map_err(|err| err.to_string())?;
+            store.align_drafts_uidvalidity(account_id, self.uid_validity)?;
             for (uid, draft) in &self.remote_drafts {
-                store
-                    .import_remote_draft_complete(account_id, self.uid_validity, *uid, draft)
-                    .map_err(|err| err.to_string())?;
+                store.import_remote_draft_complete(account_id, self.uid_validity, *uid, draft)?;
             }
         }
         Ok(())

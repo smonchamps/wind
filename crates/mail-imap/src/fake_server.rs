@@ -96,15 +96,18 @@ impl FakeImap {
     pub(crate) fn connect(&self) -> ImapServer {
         let tcp = TcpStream::connect(("127.0.0.1", self.port)).unwrap();
         tcp.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
-        let mut client = imap::Client::new(
-            Box::new(BoundedStream::new(tcp, Duration::from_secs(2))) as imap::Connection,
-        );
+        let budget = crate::ReadBudget::default();
+        let mut client = imap::Client::new(Box::new(BoundedStream::with_budget(
+            tcp,
+            Duration::from_secs(2),
+            budget.clone(),
+        )) as imap::Connection);
         client.read_greeting().unwrap();
         let session = client
             .login("me", "secret")
             .map_err(|(err, _)| err)
             .unwrap();
-        ImapServer::for_test(session)
+        ImapServer::for_test(session, budget)
     }
 
     /// The commands received, tag removed, in order.

@@ -17,10 +17,14 @@ mod convert;
 #[cfg(test)]
 mod fake_server;
 mod mutf7;
+mod read_budget;
+#[cfg(test)]
+mod resource_tests;
 #[cfg(test)]
 mod tests_e3;
 
 use cancel::CancelableTcp;
+use read_budget::ReadBudget;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::{Arc, atomic::AtomicBool};
@@ -46,6 +50,16 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// for tens of seconds before its first byte.
 const IO_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// The slowest link a bounded FETCH is still expected to finish on: its
+/// absolute deadline is `IO_TIMEOUT` plus the announced wire size at this
+/// rate — a 32 MiB message gets about 7.5 minutes, a header block the base
+/// 120 s. Below this rate the command is abandoned and the session dropped.
+const MIN_FETCH_RATE_BYTES_PER_SEC: u64 = 100 * 1024;
+
+fn fetch_deadline(wire_bytes: usize) -> Duration {
+    IO_TIMEOUT + Duration::from_secs((wire_bytes as u64) / MIN_FETCH_RATE_BYTES_PER_SEC)
+}
+
 /// Opens the IMAP connection with the timeouts set BEFORE the first byte:
 /// bounded TCP, read AND write timeouts on the socket, then direct TLS on
 /// 993 and mandatory STARTTLS elsewhere — the exact behavior of the
@@ -59,6 +73,7 @@ fn connect_client(
     io_timeout: Duration,
 ) -> Result<imap::Client<imap::Connection>, Error> {
     connect_client_cancellable(host, port, connect_timeout, io_timeout, None)
+        .map(|(client, _)| client)
 }
 
 fn connect_client_cancellable(
@@ -67,7 +82,7 @@ fn connect_client_cancellable(
     connect_timeout: Duration,
     io_timeout: Duration,
     alive: Option<Arc<AtomicBool>>,
-) -> Result<imap::Client<imap::Connection>, Error> {
+) -> Result<(imap::Client<imap::Connection>, ReadBudget), Error> {
     let context = |err: String| Error::Server(format!("connection {host}:{port}: {err}"));
     // The resolution may return several addresses (IPv4/IPv6): each one
     // gets the same timeout, the first that answers wins.
@@ -97,12 +112,16 @@ fn connect_client_cancellable(
     let mut tcp =
         CancelableTcp::new(tcp, io_timeout, alive).map_err(|err| context(err.to_string()))?;
 
+    let budget = ReadBudget::default();
     if port == 993 {
         let tls = tls_stream(host, tcp).map_err(context)?;
-        let mut client =
-            imap::Client::new(Box::new(BoundedStream::new(tls, io_timeout)) as imap::Connection);
+        let mut client = imap::Client::new(Box::new(BoundedStream::with_budget(
+            tls,
+            io_timeout,
+            budget.clone(),
+        )) as imap::Connection);
         client.read_greeting().map_err(server_err)?;
-        Ok(client)
+        Ok((client, budget))
     } else {
         // STARTTLS: greeting then MANDATORY upgrade to TLS — a server that
         // refuses it is refused, never a cleartext session (same requirement
@@ -125,8 +144,12 @@ fn connect_client_cancellable(
         let tls = tls_stream(host, tcp).map_err(context)?;
         // No greeting to read: it was consumed in cleartext, the server
         // does not send another after STARTTLS (RFC 3501 §6.2.1).
-        Ok(imap::Client::new(
-            Box::new(BoundedStream::new(tls, io_timeout)) as imap::Connection,
+        Ok((
+            imap::Client::new(
+                Box::new(BoundedStream::with_budget(tls, io_timeout, budget.clone()))
+                    as imap::Connection,
+            ),
+            budget,
         ))
     }
 }
@@ -206,26 +229,52 @@ impl<S: Read + Write + InnerSocket> InnerSocket
 struct BoundedStream<S: Read + Write + Send + InnerSocket> {
     stream: S,
     floor: Duration,
+    timeout: Duration,
+    applied_timeout: Option<Duration>,
+    budget: ReadBudget,
 }
 
 impl<S: Read + Write + Send + InnerSocket> BoundedStream<S> {
+    #[cfg(test)]
     fn new(stream: S, floor: Duration) -> Self {
-        Self { stream, floor }
+        Self::with_budget(stream, floor, ReadBudget::default())
+    }
+
+    fn with_budget(stream: S, floor: Duration, budget: ReadBudget) -> Self {
+        Self {
+            stream,
+            floor,
+            timeout: floor,
+            applied_timeout: None,
+            budget,
+        }
     }
 }
 
 impl<S: Read + Write + Send + InnerSocket> Read for BoundedStream<S> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        self.stream.read(buf)
+        let (limit, deadline) = self.budget.allowance(buf.len())?;
+        let timeout = deadline.map_or(self.timeout, |left| {
+            left.min(self.timeout).max(Duration::from_millis(1))
+        });
+        if self.applied_timeout != Some(timeout) {
+            self.stream.set_timeout(timeout)?;
+            self.applied_timeout = Some(timeout);
+        }
+        let read = self.stream.read(&mut buf[..limit])?;
+        self.budget.consumed(read)?;
+        Ok(read)
     }
 }
 
 impl<S: Read + Write + Send + InnerSocket> Write for BoundedStream<S> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.budget.check()?;
         self.stream.write(buf)
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
+        self.budget.check()?;
         self.stream.flush()
     }
 }
@@ -234,9 +283,12 @@ impl<S: Read + Write + Send + InnerSocket> imap::extensions::idle::SetReadTimeou
     for BoundedStream<S>
 {
     fn set_read_timeout(&mut self, timeout: Option<Duration>) -> imap::error::Result<()> {
+        self.timeout = timeout.unwrap_or(self.floor);
         self.stream
-            .set_timeout(timeout.unwrap_or(self.floor))
-            .map_err(imap::Error::Io)
+            .set_timeout(self.timeout)
+            .map_err(imap::Error::Io)?;
+        self.applied_timeout = Some(self.timeout);
+        Ok(())
     }
 }
 
@@ -296,6 +348,7 @@ impl imap::Authenticator for XOAuth2 {
 
 pub struct ImapServer {
     operation_stop: Option<Arc<AtomicBool>>,
+    read_budget: ReadBudget,
     session: imap::Session<Box<dyn imap::ImapConnection>>,
     selected: Option<(String, MailboxSnapshot)>,
     /// The special folders (RFC 6154), discovered by ONE `LIST` and memorized
@@ -322,11 +375,10 @@ struct SpecialFolders {
     archive: convert::ArchiveStrategy,
 }
 
-/// The most bytes a batch of bodies may weigh (PLAN-AUDIT-V2 E3): beyond
-/// that, the batch is cut — a message heavier than the bound travels alone.
-/// Before, 50 whole messages left in one reply without looking at their
-/// size (worst case beyond the gigabyte).
-const BODY_BATCH_BYTES: u64 = 32 * 1024 * 1024;
+/// D9: raw MIME ceiling, including encoded attachments. Also the batch target.
+const BODY_BATCH_BYTES: u64 = mail_core::REMOTE_MESSAGE_BYTES;
+const RESPONSE_ALLOWANCE: usize = 8192;
+const RAW_UID_BATCH: usize = 50;
 
 /// How many envelopes a `changes_since` re-requests per round trip: after a
 /// long offline period, the whole changed mailbox no longer fits in ONE
@@ -334,9 +386,104 @@ const BODY_BATCH_BYTES: u64 = 32 * 1024 * 1024;
 const CHANGES_BATCH: usize = 500;
 
 impl ImapServer {
-    fn new(session: imap::Session<Box<dyn imap::ImapConnection>>) -> Self {
+    fn bounded_fetch(
+        &mut self,
+        uids: &[Uid],
+        query: &str,
+        wire_bytes: usize,
+    ) -> Result<imap::types::Fetches, Error> {
+        self.check_operation()?;
+        self.read_budget
+            .begin(wire_bytes, fetch_deadline(wire_bytes))
+            .map_err(|err| server_err(err.into()))?;
+        let result = self.session.uid_fetch(convert::uid_set(uids), query);
+        self.read_budget
+            .finish(result.is_ok())
+            .map_err(|err| server_err(err.into()))?;
+        result.map_err(server_err)
+    }
+
+    fn raw_sizes(&mut self, uids: &[Uid]) -> Result<Vec<(Uid, u64)>, Error> {
+        let sizes = self.bounded_fetch(
+            uids,
+            "(UID RFC822.SIZE)",
+            RESPONSE_ALLOWANCE + 128 * uids.len(),
+        )?;
+        let mut weighed = std::collections::BTreeMap::new();
+        for fetch in sizes.iter() {
+            let Some(size) = fetch.size.map(u64::from) else {
+                continue;
+            };
+            let Some(uid) = fetch.uid else { continue };
+            if !uids.contains(&uid) || weighed.contains_key(&uid) {
+                return self.invalid_raw_response("unexpected or duplicate size UID");
+            }
+            if size > BODY_BATCH_BYTES {
+                return Err(Error::RemoteMessageTooLarge {
+                    uid,
+                    limit: BODY_BATCH_BYTES,
+                });
+            }
+            weighed.insert(uid, size);
+        }
+        // Missing size is unknown, not evidence that the message vanished.
+        Ok(uids
+            .iter()
+            .map(|uid| (*uid, weighed.get(uid).copied().unwrap_or(BODY_BATCH_BYTES)))
+            .collect())
+    }
+
+    fn invalid_raw_response<T>(&self, reason: &str) -> Result<T, Error> {
+        self.read_budget
+            .finish(false)
+            .map_err(|err| server_err(err.into()))?;
+        Err(Error::Server(format!(
+            "invalid raw IMAP response: {reason}; reconnect before retrying"
+        )))
+    }
+
+    fn raw_fetch(&mut self, uids: &[Uid]) -> Result<imap::types::Fetches, Error> {
+        self.raw_fetch_with_budget(uids, BODY_BATCH_BYTES)
+    }
+
+    fn raw_fetch_with_budget(
+        &mut self,
+        uids: &[Uid],
+        remaining: u64,
+    ) -> Result<imap::types::Fetches, Error> {
+        let fetches = self.bounded_fetch(
+            uids,
+            "(UID BODY.PEEK[])",
+            remaining as usize + RESPONSE_ALLOWANCE,
+        )?;
+        let mut seen = std::collections::BTreeSet::new();
+        let mut total = 0_u64;
+        for fetch in fetches.iter() {
+            let Some(raw) = fetch.body() else { continue };
+            let Some(uid) = fetch.uid else {
+                return self.invalid_raw_response("body without UID");
+            };
+            if !uids.contains(&uid) || !seen.insert(uid) {
+                return self.invalid_raw_response("unexpected or duplicate body UID");
+            }
+            if raw.len() as u64 > BODY_BATCH_BYTES {
+                return Err(Error::RemoteMessageTooLarge {
+                    uid,
+                    limit: BODY_BATCH_BYTES,
+                });
+            }
+            total += raw.len() as u64;
+            if total > remaining {
+                return self.invalid_raw_response("body batch exceeds the byte budget");
+            }
+        }
+        Ok(fetches)
+    }
+
+    fn new(session: imap::Session<Box<dyn imap::ImapConnection>>, read_budget: ReadBudget) -> Self {
         Self {
             operation_stop: None,
+            read_budget,
             session,
             selected: None,
             special: None,
@@ -347,8 +494,11 @@ impl ImapServer {
     /// An already open session, whatever its stream — for the tests' fake
     /// server.
     #[cfg(test)]
-    pub(crate) fn for_test(session: imap::Session<Box<dyn imap::ImapConnection>>) -> Self {
-        Self::new(session)
+    pub(crate) fn for_test(
+        session: imap::Session<Box<dyn imap::ImapConnection>>,
+        read_budget: ReadBudget,
+    ) -> Self {
+        Self::new(session, read_budget)
     }
 
     /// TLS connection + XOAUTH2 authentication with an OAuth2 access token.
@@ -370,7 +520,8 @@ impl ImapServer {
         access_token: &str,
         alive: Option<Arc<AtomicBool>>,
     ) -> Result<Self, Error> {
-        let client = connect_client_cancellable(host, port, CONNECT_TIMEOUT, IO_TIMEOUT, alive)?;
+        let (client, budget) =
+            connect_client_cancellable(host, port, CONNECT_TIMEOUT, IO_TIMEOUT, alive)?;
         let auth = XOAuth2 {
             user: user.to_string(),
             access_token: access_token.to_string(),
@@ -378,7 +529,7 @@ impl ImapServer {
         let session = client
             .authenticate("XOAUTH2", &auth)
             .map_err(|(err, _)| server_err(err))?;
-        Ok(Self::new(session))
+        Ok(Self::new(session, budget))
     }
 
     /// TLS connection + password authentication (generic IMAP). Same
@@ -399,11 +550,12 @@ impl ImapServer {
         password: &str,
         alive: Option<Arc<AtomicBool>>,
     ) -> Result<Self, Error> {
-        let client = connect_client_cancellable(host, port, CONNECT_TIMEOUT, IO_TIMEOUT, alive)?;
+        let (client, budget) =
+            connect_client_cancellable(host, port, CONNECT_TIMEOUT, IO_TIMEOUT, alive)?;
         let session = client
             .login(user, password)
             .map_err(|(err, _)| server_err(err))?;
-        Ok(Self::new(session))
+        Ok(Self::new(session, budget))
     }
 
     /// Stops admission between commands; an in-flight command is allowed to finish.
@@ -412,6 +564,9 @@ impl ImapServer {
     }
 
     fn check_operation(&self) -> Result<(), Error> {
+        self.read_budget
+            .check()
+            .map_err(|err| server_err(err.into()))?;
         if self
             .operation_stop
             .as_ref()
@@ -570,10 +725,8 @@ impl ImapServer {
     pub fn fetch_draft(&mut self, uid: Uid) -> Result<Option<RemoteDraft>, Error> {
         let folder = self.drafts_folder()?;
         self.ensure_selected(&folder)?;
-        let fetches = self
-            .session
-            .uid_fetch(uid.to_string(), "(UID BODY.PEEK[])")
-            .map_err(server_err)?;
+        self.raw_sizes(&[uid])?;
+        let fetches = self.raw_fetch(&[uid])?;
         Ok(fetches
             .iter()
             .filter(|fetch| fetch.uid == Some(uid))
@@ -700,6 +853,14 @@ impl ImapServer {
 }
 
 impl MailServer for ImapServer {
+    fn set_fetch_limits(&mut self, limits: Option<mail_core::FetchLimits>) {
+        self.read_budget.set_scope(limits);
+    }
+
+    fn received_bytes(&self) -> u64 {
+        self.read_budget.received()
+    }
+
     fn plan_removal(
         &mut self,
         mailbox: &str,
@@ -922,12 +1083,7 @@ impl MailServer for ImapServer {
             .collect())
     }
 
-    /// One `UID FETCH` command per batch — that is what makes the body
-    /// backfill tenable (one round trip per message costs ~192 ms on a real
-    /// server, cf. `spikes/body-backfill`). The sizes first (`RFC822.SIZE`,
-    /// one line per message), then the bodies by batches bounded to
-    /// [`BODY_BATCH_BYTES`]: a batch never weighs more than the bound, a
-    /// heavier message travels alone (PLAN-AUDIT-V2 E3).
+    /// Sizes guide batching; the stream quota and actual raw lengths enforce it.
     ///
     /// `BODY.PEEK[]`: reading a body must never set `\Seen`. The UIDs the
     /// server no longer serves are simply absent from the result.
@@ -941,25 +1097,41 @@ impl MailServer for ImapServer {
             return Ok(Vec::new());
         }
         self.ensure_selected(mailbox)?;
-        let sizes = self
-            .session
-            .uid_fetch(convert::uid_set(uids), "(UID RFC822.SIZE)")
-            .map_err(server_err)?;
-        let weighed: Vec<(Uid, u64)> = sizes
+        let mut bodies = Vec::new();
+        // The caller's shared pass scope bounds this call as well as the raw
+        // ceiling: a batch planned past the scope would be cut mid-literal.
+        let mut remaining = self
+            .read_budget
+            .scope_left()
+            .map_or(BODY_BATCH_BYTES, |left| left.min(BODY_BATCH_BYTES));
+        let unique: Vec<_> = uids
             .iter()
-            .filter_map(|fetch| Some((fetch.uid?, u64::from(fetch.size.unwrap_or(0)))))
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
             .collect();
-        let mut bodies = Vec::with_capacity(weighed.len());
-        for batch in bounded_batches(&weighed, BODY_BATCH_BYTES) {
-            self.check_operation()?;
-            let fetches = self
-                .session
-                .uid_fetch(convert::uid_set(&batch), "(UID BODY.PEEK[])")
-                .map_err(server_err)?;
-            bodies.extend(fetches.iter().filter_map(|fetch| {
-                let uid = fetch.uid?;
-                Some((uid, body_from_raw(fetch.body()?)?))
-            }));
+        for group in unique.chunks(RAW_UID_BATCH) {
+            let weighed = self.raw_sizes(group)?;
+            for batch in bounded_batches(&weighed, remaining) {
+                let estimated: u64 = weighed
+                    .iter()
+                    .filter(|(uid, _)| batch.contains(uid))
+                    .map(|(_, size)| *size)
+                    .sum();
+                if remaining == 0 || estimated > remaining {
+                    return Ok(bodies);
+                }
+                let fetches = self.raw_fetch_with_budget(&batch, remaining)?;
+                remaining -= fetches
+                    .iter()
+                    .filter_map(|fetch| fetch.body())
+                    .map(|raw| raw.len() as u64)
+                    .sum::<u64>();
+                bodies.extend(fetches.iter().filter_map(|fetch| {
+                    let uid = fetch.uid?;
+                    Some((uid, body_from_raw(fetch.body()?)?))
+                }));
+            }
         }
         Ok(bodies)
     }
@@ -981,10 +1153,8 @@ impl MailServer for ImapServer {
     ) -> Result<Option<Vec<u8>>, Error> {
         self.check_operation()?;
         self.ensure_selected(mailbox)?;
-        let fetches = self
-            .session
-            .uid_fetch(uid.to_string(), "(UID BODY.PEEK[])")
-            .map_err(server_err)?;
+        self.raw_sizes(&[uid])?;
+        let fetches = self.raw_fetch(&[uid])?;
         Ok(fetches
             .iter()
             .filter(|fetch| fetch.uid == Some(uid))

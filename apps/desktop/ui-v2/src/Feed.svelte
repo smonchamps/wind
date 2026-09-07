@@ -1,22 +1,15 @@
 <script>
-  // Feed in CARDS (PLAN-MODE-ORGANISE E5bis, then RETOURS-13
-  // R10/R11) — newsletters arrive ALREADY OPEN,
-  // centered ~720 px column, one card = sender + time, subject in
-  // display, the WHOLE BODY (auto-CSP document, sandboxed iframe S1),
-  // the ⋯ of gestures. R10 reverses A100's "nothing is marked read":
-  // a card whose elevation BOTTOM has been shown is READ (witness
-  // IntersectionObserver → `feed_mark_read`, pins pattern) — the
-  // scene splits into "Unread" (expanded, chronological) and
-  // "Previously read" (groups by sender in alphabetical order, collapsed
-  // to a pile — D5). Sectioning is computed AS OF the page's service:
-  // a card never jumps during reading. Bodies come
-  // from the CACHE by served page (D5/S3); no windowing: cards
-  // are added page by page as scrolling goes (the limit stated in the PLAN).
+  // Keep each surviving card in its original read section while reading.
+  // Only nearby cards mount their body iframe; other cards retain measured height.
+  import { untrack } from 'svelte';
   import Icon from './Icon.svelte';
   import Menu from './Menu.svelte';
   import SectionSort from './SectionSort.svelte';
   import { sortComparator } from './lib/sort.js';
   import { call } from './lib/transport.js';
+  import ImagePermission from './ImagePermission.svelte';
+  import { watchImagePermissions } from './lib/image-permissions.js';
+  import { showImages, alwaysShowImages } from './lib/thread.svelte.js';
   import { watchViews } from './lib/views.svelte.js';
   import { autoBody } from './lib/body.js';
   import { wireLinks } from './lib/links.js';
@@ -25,6 +18,7 @@
 
   let {
     account = null,
+    onflash = () => {},
     onmove = () => {},
     onsetaside = () => {},
     ontotal = () => {},
@@ -39,45 +33,44 @@
   // does not paint "Nothing in the Feed", and the entry does not flash it.
   let served = $state(false);
   let generation = 0;
+  let requestedExtent = PAGE;
+  let moreRequested = false;
 
   const cardKey = (r) => `${r.account_id}:${r.mailbox}:${r.version?.mailbox_id ?? 0}:${r.version?.uid_validity ?? 0}:${r.uid}`;
 
   async function load(since) {
     const capturedGen = ++generation;
+    const capturedAccount = account;
+    requestedExtent = Math.max(requestedExtent, since + PAGE);
+    const limit = since === 0 ? requestedExtent : PAGE;
     inFlight = true;
     try {
-      const page = await call('feed_cards', {
-        accountId: account,
-        offset: since,
-        limit: PAGE,
-      });
-      if (capturedGen !== generation) return;
-      if (since === 0) {
-        // Merge by key (PLAN-AUDIT-V2 E10): a re-served page USED TO
-        // REPLACE everything — the read card jumped section during
-        // reading and pages 2..n disappeared. `read` stays FROZEN at
-        // first service (sections are computed from the served state,
-        // R10); cards already served beyond the page stay behind.
-        const previous = new Map(cards.map((c) => [cardKey(c.row), c]));
-        const fresh = page.map((c) => {
-          const old = previous.get(cardKey(c.row));
-          return old ? { ...c, read: old.read } : c;
+      const page = [];
+      let complete = false;
+      // Reconcile every served page. Retaining an unverified tail leaves deleted
+      // messages visible; a failed refresh leaves the previous snapshot intact.
+      for (let offset = since; offset < since + limit; offset += PAGE) {
+        const batch = await call('feed_cards', {
+          accountId: capturedAccount, offset, limit: PAGE,
         });
-        const views = new Set(fresh.map((c) => cardKey(c.row)));
-        cards = [...fresh, ...cards.slice(PAGE).filter((c) => !views.has(cardKey(c.row)))];
-      } else {
-        // De-duplication on append (E5bis review): an arrival between
-        // two pages shifts the offsets — the same card re-served
-        // would cause a key collision (the keyed each's crash).
-        const views = new Set(cards.map((c) => cardKey(c.row)));
-        cards = [...cards, ...page.filter((c) => !views.has(cardKey(c.row)))];
+        if (capturedGen !== generation) return;
+        page.push(...batch);
+        complete = batch.length < PAGE;
+        if (complete) break;
       }
-      exhausted = page.length < PAGE;
+      const previous = new Map(cards.map((card) => [cardKey(card.row), card]));
+      const fresh = new Map();
+      for (const card of page) {
+        const key = cardKey(card.row);
+        const old = previous.get(key);
+        fresh.set(key, old ? { ...card, read: old.read } : card);
+      }
+      cards = since === 0 ? [...fresh.values()]
+        : [...cards, ...[...fresh].filter(([key]) => !previous.has(key)).map(([, card]) => card)];
+      exhausted = complete;
       served = true;
-      // The total follows every reload (E5bis review: a ⋯ that drains
-      // cards left the status bar at the previous count).
       if (since === 0) {
-        call('category_total', { category: 'feed', accountId: account, unread: false })
+        call('category_total', { category: 'feed', accountId: capturedAccount, unread: false })
           .then((n) => {
             if (capturedGen === generation) ontotal(n);
           })
@@ -86,23 +79,44 @@
     } catch (err) {
       console.error('feed_cards :', err);
     } finally {
-      if (capturedGen === generation) inFlight = false;
+      if (capturedGen === generation) {
+        inFlight = false;
+        if (moreRequested) {
+          moreRequested = false;
+          if (!exhausted) load(cards.length);
+        }
+      }
     }
   }
 
   export function reload() {
-    load(0);
+    untrack(() => load(0));
   }
 
-  // E7 (PLAN-AUDIT-V3, closes D-48): the view subscribes to the shared
-  // invalidation signal — one line, the wiring lives in views.svelte.js.
   watchViews(reload);
+  watchImagePermissions(() => {
+    cards = cards.map(card => ({ ...card, document: null, images_message_allowed: false }));
+    reload();
+  });
 
-
-  // New scope (account) → start over from the top.
+  let scopeGeneration = 0;
   $effect(() => {
     void account;
-    load(0);
+    untrack(() => {
+      scopeGeneration += 1;
+      cards = [];
+      requestedExtent = PAGE;
+      moreRequested = false;
+      exhausted = false;
+      served = false;
+      visibleIndex = 0;
+      heights = {};
+      replies = {};
+      openGroups = {};
+      if (scene) scene.scrollTop = 0;
+      ontotal(null);
+      load(0);
+    });
   });
 
   // Windowing (PLAN-AUDIT-V2 E10): a live iframe + a
@@ -119,8 +133,10 @@
   function measureWindow(scene) {
     if (measureRequested) return;
     measureRequested = true;
+    const capturedScope = scopeGeneration;
     requestAnimationFrame(() => {
       measureRequested = false;
+      if (capturedScope !== scopeGeneration) return;
       const top = scene.getBoundingClientRect().top;
       const articles = scene.querySelectorAll('article.card');
       let first = 0;
@@ -145,49 +161,20 @@
   function onScroll(e) {
     const el = e.currentTarget;
     measureWindow(el);
-    if (exhausted || inFlight) return;
+    if (exhausted) return;
     if (el.scrollTop + el.clientHeight >= el.scrollHeight - 600) {
-      load(cards.length);
+      if (inFlight) moreRequested = true;
+      else load(cards.length);
     }
   }
 
-  // R1: granting images — THE product's commands (message or
-  // sender), then THE card is re-served: it comes back with its
-  // images, the guard disappears. Field STOP 2 PLAN-AUDIT-V2
-  // (2026-09-02): `load(0)` only re-served page 0 — the merge
-  // by key (E10) kept a card beyond it unchanged, and its guard
-  // stayed after ten pages scrolled. The card re-serves wherever it
-  // is, via `message_body` (the same document as the pane); for the
-  // sender rule, every still-guarded served card — the
-  // core arbitrates, a third party's card re-renders identically.
   async function grantImages(card, always) {
     try {
-      await call(always ? 'allow_images_sender' : 'allow_images_message', {
-        accountId: card.row.account_id,
-        mailbox: card.row.mailbox,
-        uid: card.row.uid,
-        version: card.row.version,
-      });
-      const targets = always ? cards.filter((c) => c.remote_images_blocked > 0) : [card];
-      await Promise.all(targets.map(serveAgain));
+      // The reading pane's grants, unchanged: a card is a message.
+      await (always ? alwaysShowImages(card.row) : showImages(card.row));
     } catch (err) {
-      console.error('images kiosque :', err);
+      onflash(t('error.imagePermission', { err }));
     }
-  }
-  async function serveAgain(card) {
-    const view = await call('message_body', {
-      accountId: card.row.account_id,
-      mailbox: card.row.mailbox,
-      uid: card.row.uid,
-      version: card.row.version,
-      showImages: false,
-    });
-    const key = cardKey(card.row);
-    cards = cards.map((c) =>
-      cardKey(c.row) === key
-        ? { ...c, document: view.document, remote_images_blocked: view.remote_images_blocked }
-        : c,
-    );
   }
 
   // A card's fold (CE finding at E5bis's visual STOP): each
@@ -342,6 +329,9 @@
       <div class="body-dormant" style={`height:${heights[cardKey(card.row)] ?? 0}px`}
            data-testid="feed-dormant-body"></div>
     {:else if card.document !== null}
+      {#if card.images_message_allowed}
+        <ImagePermission message={card.row} {onflash} />
+      {/if}
       {#if card.remote_images_blocked > 0}
         <!-- R1: the image guard, as in the reading pane —
              without it, a newsletter all in remote images would be

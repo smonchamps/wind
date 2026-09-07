@@ -132,6 +132,8 @@ Gates: transport and core state-machine tests, process/crash fault injection on 
 
 ### Lot 3 — Daily workflows and bounded work
 
+Active on 2026-09-06 after “Go Lot 3”; see the [focused plan](PLAN-AUDIT-2026-09-LOT3.md) for current evidence, decisions and progress. <!-- lang:fr -->
+
 | Step | Implementation and acceptance | Audit coverage |
 |---|---|---|
 | E7 | Fix Reply-To/reply-all and Cc/Bcc-only sending, Feed scope/page reset, initial-sync inventory reconciliation and calendar version/occurrence handling. | B11, B12, B14, B15, B16 |

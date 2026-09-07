@@ -1,4 +1,5 @@
 <script>
+  import { modal, modalOpen } from './lib/modal.js';
   // Screen 02 of the prototype (A6): 60 px header, 236/400/1fr grid
   // (236/1fr in two panes — PLAN-VOLETS), 36 px status bar.
   // REAL data and actions through the port.
@@ -71,6 +72,8 @@ import { invalidateViews } from './lib/views.svelte.js';
   // side) — a subset of the `accounts` registry; the difference is the
   // accounts with a dead token, which Settings can now reconnect.
   let connected = $state([]);
+  let connectionStates = $state({});
+  let stateProbe = 0;
   // Screen 01 only appears once the nav is KNOWN to be empty — never
   // during the first load, otherwise it would flicker on every
   // startup.
@@ -202,8 +205,13 @@ import { invalidateViews } from './lib/views.svelte.js';
   // from here — informational, so LAST in priority (an incident takes
   // precedence).
   let scheduledNotice = $state(null);
+  const syncIssues = $derived(sync?.issues ?? []);
+  const syncIssueNotice = $derived(syncIssues.length ? {
+    alert: true, icon: 'error', text: t('sync.incomplete', { n: syncIssues.length }),
+    actions: [{ label: t('sync.details'), do: () => settings.open() }],
+  } : null);
   const notice = $derived(
-    sendNotice ?? refusalNotice ?? connectionNotice ?? updateNotice ?? crashNotice ?? telemetryNotice ?? scheduledNotice,
+    sendNotice ?? refusalNotice ?? connectionNotice ?? syncIssueNotice ?? updateNotice ?? crashNotice ?? telemetryNotice ?? scheduledNotice,
   );
 
   // --- Progress line (§6): at most ONE ------------------------
@@ -363,6 +371,7 @@ import { invalidateViews } from './lib/views.svelte.js';
     // The prototype's timestamp, at last: "last sync N minutes ago" —
     // and on failure, since when we've been living off the stock.
     const last = sync?.last ?? null;
+    if (syncIssues.length) return { text: t('sync.incomplete', { n: syncIssues.length }), thread: null, alert: true };
     if (syncFailure) {
       return {
         text: last
@@ -586,17 +595,19 @@ import { invalidateViews } from './lib/views.svelte.js';
       bodyBackfill = state.remaining;
       backfillPct = state.percent;
       let remaining = state.remaining;
-      while (remaining > 0) {
+      const until = performance.now() + 120000;
+      while (remaining > 0 && performance.now() < until && online) {
         const report = await call('backfill_bodies');
         remaining = report.remaining;
         bodyBackfill = remaining;
         backfillPct = report.percent;
-        if (report.fetched === 0) break;
+        if (report.errors.length) await probeSync();
+        if (report.fetched === 0 && !(report.more && report.scanned > 0)) break;
         // E4: the backfilled previews appear batch by batch — the
         // reload is invisible since E1, no more need to wait for a
         // lucky refresh. E5bis: the Feed cards gain their bodies at
         // the same pace.
-        reloadViews();
+        if (report.fetched > 0) reloadViews();
       }
     } catch (err) {
       console.error('backfill_bodies :', err);
@@ -834,6 +845,7 @@ import { invalidateViews } from './lib/views.svelte.js';
       // The addresses holding a session: Settings > Accounts derives
       // the per-account state from it — a dead token is SEEN and
       // repaired in place ("Reconnect", field finding 2026-08-20).
+      stateProbe++;
       connected = report.accounts.map((a) => a.email);
       if (report.problems.length > 0) {
         // Say WHICH one is missing and why — an absent badge with no
@@ -983,10 +995,8 @@ import { invalidateViews } from './lib/views.svelte.js';
       await call('flush_outbox').catch((err) => console.error('flush_outbox :', err));
       probeSends();
       loadNav();
-      if (report.fetched > 0 || report.deleted > 0) {
-        reloadViews();
-        backfillBodies();
-      }
+      if (report.fetched > 0 || report.deleted > 0) reloadViews();
+      if (force || report.fetched > 0 || report.deleted > 0) backfillBodies();
     } catch (err) {
       if (token === cycleToken) syncFailure = true;
       console.error('sync_inbox_light :', err);
@@ -1252,6 +1262,7 @@ import { invalidateViews } from './lib/views.svelte.js';
   // keeps a meaning (leave the field, without discarding the draft).
   // s (star) and v (move) follow D2: cut at the toggle.
   function onKey(event) {
+    if (modalOpen()) return;
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     // The composer's rich editor (PLAN-COMPOSITION-HTML) is a
     // contenteditable: neither an input nor a textarea, but an INPUT
@@ -1295,7 +1306,8 @@ import { invalidateViews } from './lib/views.svelte.js';
         searchField?.focus();
         break;
       case 'Escape':
-        if (compose?.isOpen()) compose.close();
+        if (list?.selecting()) list.cancelSelection();
+        else if (compose?.isOpen()) compose.close();
         else if (settings?.isOpen()) settings.close();
         else if (conversation?.isOpen()) backToMailbox();
         else if (drawerOpen) drawerOpen = false;
@@ -1430,6 +1442,7 @@ import { invalidateViews } from './lib/views.svelte.js';
   // At zero accounts, screen 01 comes back on its own
   // (navPrete && comptes.length === 0).
   function accountRemoved(id) {
+    stateProbe++;
     flash(t('toast.accountRemoved'));
     // The account's marker dies with it (the shell purges its prefs)
     // — the local table follows suit, otherwise a reused SQLite id
@@ -1474,8 +1487,12 @@ import { invalidateViews } from './lib/views.svelte.js';
   // whole-list poll every 10 s is dead).
   let draftsRevision = null;
   async function probeState() {
+    const mine = ++stateProbe;
     try {
       const state = await call('ui_state');
+      if (mine !== stateProbe) return;
+      connected = state.connected;
+      connectionStates = state.connection_states;
       loadNav(state.nav);
       probeSync(state.sync);
       probeSends(state.outbox);
@@ -1853,7 +1870,7 @@ import { invalidateViews } from './lib/views.svelte.js';
         <!-- E5bis: the Feed in cards — the letters already opened,
              the whole scene (CE decision of 2026-08-30). -->
         <div class="frame-screener">
-          <Feed {account}
+          <Feed {account} onflash={flash}
                    onmove={moveSender} onsetaside={toggleAside}
                    ontotal={(t) => (listTotal = t)} />
         </div>
@@ -1948,7 +1965,7 @@ import { invalidateViews } from './lib/views.svelte.js';
       <button type="button" class="btn-status" data-testid="btn-poll"
               disabled={syncing} onclick={() => poll(true)}>
         <Icon name="sync" />
-        {#if syncing}{t('action.syncing')}{:else if syncFailure || syncPartial}{t('action.retry')}{:else}{t('action.sync')}{/if}
+        {#if syncing}{t('action.syncing')}{:else if syncFailure || syncPartial || syncIssues.length}{t('action.retry')}{:else}{t('action.sync')}{/if}
       </button>
     </div>
 
@@ -1960,7 +1977,7 @@ import { invalidateViews } from './lib/views.svelte.js';
       <button type="button" class="scrim-drawer" data-testid="drawer-scrim"
               aria-label={t('nav.closeDrawer')}
               onclick={() => (drawerOpen = false)}></button>
-      <div class="drawer" data-testid="drawer" role="dialog" aria-modal="true"
+      <div use:modal={{ close: () => { drawerOpen = false; }, backdrop: '[data-testid="drawer-scrim"]' }} class="drawer" data-testid="drawer" role="dialog" aria-modal="true"
            aria-label={t('nav.aria')}>
         <div class="head-drawer">
           <Brand size={28} />Wind
@@ -2011,7 +2028,8 @@ import { invalidateViews } from './lib/views.svelte.js';
                  onmail={afterMailSent}
                  ondraft={probeDrafts} />
     <Feedback bind:this={back} {accounts} onflash={flash} />
-    <Settings bind:this={settings} {accounts} {connected} {markers} {names}
+    <Settings bind:this={settings} {accounts} {connected} {connectionStates} {markers} {names} {syncIssues}
+              onretrySync={() => poll(true)}
               onmarker={patchMarker} onname={patchName} onadd={accountAdded}
               onremove={accountRemoved}
               onflash={flash}

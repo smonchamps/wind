@@ -68,6 +68,7 @@ fn escape_like(raw: &str) -> String {
 /// name never replaces a known name).
 pub(crate) fn note(
     conn: &Connection,
+    account_id: i64,
     address: &str,
     name: Option<&str>,
     epoch: i64,
@@ -78,17 +79,48 @@ pub(crate) fn note(
     }
     let name = name.map(str::trim).filter(|name| !name.is_empty());
     conn.prepare_cached(
-        "INSERT INTO correspondants (address, name, last_epoch, hits)
-         VALUES (?1, ?2, ?3, 1)
-         ON CONFLICT(address) DO UPDATE SET
-             name = CASE WHEN excluded.name IS NOT NULL
-                          AND excluded.last_epoch >= last_epoch
-                         THEN excluded.name
-                         ELSE COALESCE(name, excluded.name) END,
-             last_epoch = MAX(last_epoch, excluded.last_epoch),
-             hits = hits + 1",
-    )?
-    .execute(params![address, name, epoch])?;
+        "INSERT INTO contact_origins (account_id, address, name, name_epoch, last_epoch, hits)
+         VALUES (?1, ?2, ?3, CASE WHEN ?3 IS NULL THEN NULL ELSE ?4 END, ?4, 1)
+         ON CONFLICT(address, account_id) DO UPDATE SET
+             name = CASE WHEN excluded.name IS NOT NULL AND (name IS NULL OR excluded.name_epoch >= name_epoch)
+                         THEN excluded.name ELSE name END,
+             name_epoch = CASE WHEN excluded.name IS NOT NULL AND (name_epoch IS NULL OR excluded.name_epoch >= name_epoch)
+                               THEN excluded.name_epoch ELSE name_epoch END,
+             last_epoch = MAX(last_epoch, excluded.last_epoch), hits = hits + 1",
+    )?.execute(params![account_id, address, name, epoch])?;
+    Ok(())
+}
+
+/// Unknown historical ownership is retained as source 0; new observations use their account.
+pub(crate) fn migrate_provenance(conn: &Connection) -> Result<(), Error> {
+    if conn
+        .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='contact_origins'")?
+        .exists([])?
+    {
+        return Ok(());
+    }
+    let tx = conn.unchecked_transaction()?;
+    tx.execute_batch("CREATE TABLE contact_origins (
+        address TEXT NOT NULL, account_id INTEGER NOT NULL, name TEXT, name_epoch INTEGER,
+        last_epoch INTEGER NOT NULL, hits INTEGER NOT NULL,
+        PRIMARY KEY (address, account_id));
+        CREATE INDEX idx_contact_origins_account ON contact_origins(account_id, address);
+        INSERT INTO contact_origins (address, account_id, name, name_epoch, last_epoch, hits)
+        SELECT address, 0, name, CASE WHEN name IS NOT NULL THEN last_epoch END, last_epoch, hits FROM correspondants;")?;
+    for (event, source) in [("INSERT", "NEW"), ("UPDATE", "NEW"), ("DELETE", "OLD")] {
+        tx.execute_batch(&format!("CREATE TRIGGER contact_origin_{event} AFTER {event} ON contact_origins BEGIN
+            INSERT INTO correspondants (address, name, last_epoch, hits)
+            SELECT address,
+                (SELECT name FROM contact_origins names WHERE names.address = {source}.address AND name IS NOT NULL
+                    ORDER BY name_epoch DESC, account_id ASC LIMIT 1),
+                MAX(last_epoch), SUM(hits)
+            FROM contact_origins WHERE address = {source}.address GROUP BY address
+            ON CONFLICT(address) DO UPDATE SET name = excluded.name, last_epoch = excluded.last_epoch, hits = excluded.hits;
+            DELETE FROM correspondants WHERE address = {source}.address
+                AND NOT EXISTS (SELECT 1 FROM contact_origins WHERE address = {source}.address);
+        END;"))?;
+    }
+    tx.commit()?;
     Ok(())
 }
 
@@ -237,20 +269,22 @@ impl Store {
                 };
                 self.conn().execute(
                     &format!(
-                        "INSERT INTO correspondants (address, name, last_epoch, hits)
-                         SELECT lower(e.sender_address), e.sender,
-                                MAX(COALESCE(e.date_epoch, 0)), COUNT(*)
+                        "INSERT INTO contact_origins (account_id, address, name, name_epoch, last_epoch, hits)
+                         SELECT ?1, lower(e.sender_address), e.sender,
+                                MAX(COALESCE(e.date_epoch, 0)), MAX(COALESCE(e.date_epoch, 0)), COUNT(*)
                          FROM envelopes e
                          JOIN mailboxes m ON m.id = e.mailbox_id
                          WHERE m.account_id = ?1
                            AND e.sender_address IS NOT NULL
                            AND e.sender_address <> ''{clause}
                          GROUP BY lower(e.sender_address)
-                         ON CONFLICT(address) DO UPDATE SET
+                         ON CONFLICT(address, account_id) DO UPDATE SET
                              name = CASE WHEN excluded.last_epoch >= last_epoch
                                           AND excluded.name IS NOT NULL
                                          THEN excluded.name
                                          ELSE COALESCE(name, excluded.name) END,
+                             name_epoch = CASE WHEN excluded.last_epoch >= last_epoch AND excluded.name IS NOT NULL
+                                               THEN excluded.name_epoch ELSE COALESCE(name_epoch, excluded.name_epoch) END,
                              last_epoch = MAX(last_epoch, excluded.last_epoch),
                              hits = hits + excluded.hits"
                     ),
@@ -275,7 +309,7 @@ impl Store {
                     for (to, cc, date) in sends {
                         for list in [to, cc].into_iter().flatten() {
                             for address in list.split('\n').filter(|a| !a.is_empty()) {
-                                note(self.conn(), address, None, date.unwrap_or(0))?;
+                                note(self.conn(), account, address, None, date.unwrap_or(0))?;
                             }
                         }
                     }
@@ -352,6 +386,172 @@ mod tests {
         (store, account, inbox, sent, spam)
     }
 
+    #[test]
+    fn account_removal_forgets_exclusive_contacts_and_recomputes_shared_names() {
+        let (mut store, first, inbox, _, _) = fixture();
+        let second = store
+            .adopt_or_create_account("second@example.fr", "gmail")
+            .unwrap();
+        let other = store.create_mailbox(second, "INBOX", 1).unwrap();
+        store
+            .upsert_envelopes(
+                other,
+                &[
+                    envelope(1, "Shared", "Shared name", "shared@example.fr", 100),
+                    envelope(2, "Other", "Other only", "other@example.fr", 100),
+                ],
+            )
+            .unwrap();
+        store
+            .upsert_envelopes(
+                inbox,
+                &[
+                    envelope(1, "Private", "Private name", "private@example.fr", 200),
+                    envelope(
+                        2,
+                        "Shared",
+                        "Removed account name",
+                        "shared@example.fr",
+                        200,
+                    ),
+                ],
+            )
+            .unwrap();
+        store.allow_images_sender_of(inbox, 2, 200).unwrap();
+        store.delete_account(first).unwrap();
+        assert!(store.complete_addresses("private@", 10).unwrap().is_empty());
+        assert_eq!(
+            store.complete_addresses("shared@", 10).unwrap()[0]
+                .name
+                .as_deref(),
+            Some("Shared name")
+        );
+        assert_eq!(store.complete_addresses("other@", 10).unwrap().len(), 1);
+        assert_eq!(
+            store.images_senders().unwrap(),
+            vec!["shared@example.fr"],
+            "explicit shared preference survives"
+        );
+        store.delete_account(second).unwrap();
+        assert!(store.complete_addresses("shared@", 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn contact_removal_rolls_back_with_failed_account_removal() {
+        let (mut store, account, inbox, _, _) = fixture();
+        store
+            .upsert_envelopes(
+                inbox,
+                &[envelope(
+                    1,
+                    "Private",
+                    "Private name",
+                    "private@example.fr",
+                    200,
+                )],
+            )
+            .unwrap();
+        store.conn().execute_batch("CREATE TRIGGER fail_account_remove BEFORE DELETE ON accounts BEGIN SELECT RAISE(ABORT, 'injected account removal failure'); END;").unwrap();
+        assert!(store.delete_account(account).is_err());
+        assert_eq!(store.complete_addresses("private@", 10).unwrap().len(), 1);
+        store
+            .conn()
+            .execute_batch("DROP TRIGGER fail_account_remove")
+            .unwrap();
+        store.delete_account(account).unwrap();
+        assert!(store.complete_addresses("private@", 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn legacy_contacts_keep_unknown_provenance_and_restore_their_original_name() {
+        let (mut store, account, inbox, _, _) = fixture();
+        store.conn().execute_batch("DROP TABLE IF EXISTS contact_origins;
+            INSERT INTO correspondants (address,name,last_epoch,hits) VALUES ('legacy@example.fr','Legacy name',100,5);").unwrap();
+        migrate_provenance(store.conn()).unwrap();
+        store
+            .upsert_envelopes(
+                inbox,
+                &[envelope(
+                    1,
+                    "Legacy",
+                    "Removed account name",
+                    "legacy@example.fr",
+                    200,
+                )],
+            )
+            .unwrap();
+        store.delete_account(account).unwrap();
+        let legacy = store.complete_addresses("legacy@", 10).unwrap();
+        assert_eq!(legacy[0].name.as_deref(), Some("Legacy name"));
+        let hits: i64 = store
+            .conn()
+            .query_row(
+                "SELECT hits FROM correspondants WHERE address='legacy@example.fr'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(hits, 5);
+        migrate_provenance(store.conn()).unwrap();
+        let repeated: i64 = store
+            .conn()
+            .query_row(
+                "SELECT hits FROM correspondants WHERE address='legacy@example.fr'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(repeated, 5);
+    }
+
+    #[test]
+    fn provenance_migration_failure_rolls_back_its_schema_and_can_retry() {
+        let (store, _, _, _, _) = fixture();
+        store.conn().execute_batch("DROP TABLE contact_origins;
+            INSERT INTO correspondants (address,name,last_epoch,hits) VALUES ('legacy@example.fr','Legacy',100,5);
+            CREATE INDEX idx_contact_origins_account ON correspondants(address);").unwrap();
+        assert!(migrate_provenance(store.conn()).is_err());
+        assert!(
+            !store
+                .conn()
+                .prepare(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='contact_origins'"
+                )
+                .unwrap()
+                .exists([])
+                .unwrap()
+        );
+        assert_eq!(store.complete_addresses("legacy@", 10).unwrap().len(), 1);
+        store
+            .conn()
+            .execute_batch("DROP INDEX idx_contact_origins_account")
+            .unwrap();
+        migrate_provenance(store.conn()).unwrap();
+        let sources: i64 = store
+            .conn()
+            .query_row(
+                "SELECT COUNT(*) FROM contact_origins WHERE account_id=0",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(sources, 1);
+    }
+
+    #[test]
+    fn unnamed_recent_mail_does_not_replace_a_more_recent_known_shared_name() {
+        let store = Store::open_in_memory().unwrap();
+        note(store.conn(), 1, "shared@example.fr", Some("Earlier"), 10).unwrap();
+        note(store.conn(), 2, "shared@example.fr", Some("Current"), 20).unwrap();
+        note(store.conn(), 1, "shared@example.fr", None, 30).unwrap();
+        assert_eq!(
+            store.complete_addresses("shared@", 10).unwrap()[0]
+                .name
+                .as_deref(),
+            Some("Current")
+        );
+    }
+
     /// Recency + frequency: recent weighs more at equal frequency, the
     /// frequent weighs more at equal recency — and a recent contact
     /// beats a frequent one from years ago.
@@ -414,12 +614,13 @@ mod tests {
         let store = Store::open_in_memory().unwrap();
         note(
             store.conn(),
+            0,
             "Camille@Exemple.fr",
             Some("Camille Rousseau"),
             10,
         )
         .unwrap();
-        note(store.conn(), "muette@exemple.fr", None, 10).unwrap();
+        note(store.conn(), 0, "muette@exemple.fr", None, 10).unwrap();
 
         let names = store
             .address_names(&[
@@ -478,7 +679,7 @@ mod tests {
     /// recipients as soon as it is queued.
     #[test]
     fn sending_notes_its_recipients() {
-        let store = Store::open_in_memory().unwrap();
+        let mut store = Store::open_in_memory().unwrap();
         let account = store
             .adopt_or_create_account("moi@exemple.fr", "gmail")
             .unwrap();
@@ -496,6 +697,9 @@ mod tests {
 
         assert_eq!(store.complete_addresses("new", 8).unwrap().len(), 1);
         assert_eq!(store.complete_addresses("cc", 8).unwrap().len(), 1);
+        store.delete_account(account).unwrap();
+        assert!(store.complete_addresses("new", 8).unwrap().is_empty());
+        assert!(store.complete_addresses("cc", 8).unwrap().is_empty());
     }
 
     /// Matching: start of address, start of name, start of a WORD of
@@ -641,7 +845,7 @@ mod tests {
             }
             conn.execute_batch(
                 "COMMIT;
-                 DELETE FROM correspondants;
+                 DELETE FROM contact_origins; DELETE FROM correspondants;
                  DELETE FROM prefs WHERE key = 'annuaire_correspondants_v1';",
             )
             .unwrap();
@@ -662,7 +866,7 @@ mod tests {
     /// excluded.
     #[test]
     fn backfill_populates_once_without_junk() {
-        let (mut store, _account, inbox, sent, spam) = fixture();
+        let (mut store, account, inbox, sent, spam) = fixture();
         store
             .upsert_envelopes(inbox, &[envelope(1, "x", "Alice", "alice@exemple.fr", 100)])
             .unwrap();
@@ -681,7 +885,7 @@ mod tests {
         store
             .conn()
             .execute_batch(
-                "DELETE FROM correspondants;
+                "DELETE FROM contact_origins; DELETE FROM correspondants;
                  DELETE FROM prefs WHERE key = 'annuaire_correspondants_v1';",
             )
             .unwrap();
@@ -700,5 +904,8 @@ mod tests {
         assert_eq!(hits, 1, "the marker holds: never two passes");
         assert_eq!(store.complete_addresses("dest", 8).unwrap().len(), 1);
         assert!(store.complete_addresses("spam", 8).unwrap().is_empty());
+        store.delete_account(account).unwrap();
+        assert!(store.complete_addresses("dest", 8).unwrap().is_empty());
+        assert!(store.complete_addresses("alice", 8).unwrap().is_empty());
     }
 }

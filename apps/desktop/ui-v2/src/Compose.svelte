@@ -1,4 +1,5 @@
 <script>
+  import { modal } from './lib/modal.js';
   // Compose overlay from the prototype: 860 px, three modes
   // (new / reply / forward), wired to the real flows.
   //
@@ -1197,7 +1198,7 @@
 
 {#if visible}
   <div class="scrim" data-testid="compose" inert={finishing || sendInProgress}>
-    <div class="card" bind:this={card} role="dialog" aria-modal="true" aria-label={t(KICKERS[mode])}>
+    <div use:modal={{ close, initial: () => { if (mode === 'new') toField?.focus(); else editorRef?.focusStart(); } }} class="card" bind:this={card} role="dialog" aria-modal="true" aria-label={t(KICKERS[mode])}>
       <!-- Field A46: the header no longer repeats the subject — the
            Subject field states it, just below. -->
       <div class="editable" inert={pendingSend !== null}>

@@ -10,6 +10,8 @@
 // (sanitized on the core side), loaded only on unfolding, displayed
 // in a sandbox iframe per message — never innerHTML.
 import { call } from './transport.js';
+import { imagePermissionGeneration, imagePermissionsChanged } from './image-permissions.js';
+import { t } from './text.svelte.js';
 
 const EMPTY = () => ({
   messages: [],
@@ -27,6 +29,7 @@ const EMPTY = () => ({
   // the v3 review).
   attachmentCount: {},
   blockedImages: {},
+  messageImageGrants: {},
   // The invitation card per message (PLAN-INVITATIONS): the view
   // arrives WITH the body (BodyView.invitation) — no dedicated
   // round trip. `undefined`/`null` = no card; object = the card.
@@ -153,6 +156,7 @@ export function closeThread() {
 async function loadMessage(m, withImages = false) {
   const k = msgKey(m);
   const mine = token;
+  const permissions = imagePermissionGeneration();
   if (thread.body[k] === undefined || withImages) {
     if (thread.body[k] === undefined) thread.body[k] = '';
     try {
@@ -171,10 +175,11 @@ async function loadMessage(m, withImages = false) {
       // The opening token guards every write: a late reply
       // (images granted then the selection changed) never overwrites
       // the state of a more recent thread.
-      if (mine !== token) return;
+      if (mine !== token || permissions !== imagePermissionGeneration()) return;
       delete thread.errors[k];
       thread.body[k] = view.document;
-      thread.blockedImages[k] = withImages ? 0 : view.remote_images_blocked;
+      thread.blockedImages[k] = view.remote_images_blocked;
+      thread.messageImageGrants[k] = view.images_message_allowed ?? false;
       thread.attachmentCount[k] = view.attachment_count;
       // The invitation card travels with the body — same freshness as
       // the attachment count, no extra round trip (review).
@@ -183,9 +188,9 @@ async function loadMessage(m, withImages = false) {
       console.error('message_body :', err);
       // Reloadable: the `''` marker set before the call falls away, the
       // error is stated in the frame (“Retry”).
-      if (mine === token && thread.body[k] === '') {
+      if (mine === token && permissions === imagePermissionGeneration() && thread.body[k] === '') {
         delete thread.body[k];
-        thread.errors[k] = true;
+        thread.errors[k] = err?.code === 'remote_message_too_large' ? 'too-large' : true;
       }
     }
   }
@@ -238,65 +243,40 @@ export function allCollapse() {
   for (const m of thread.messages) toggleMessage(m, false);
 }
 
-// Remote images: blocked by DEFAULT (the invariant that remains), with
-// two EXPLICIT and PERSISTENT exceptions (RETOURS-11, D1 reverses
-// A43 “the opt-in does not survive the selection”): per message here,
-// per sender below. The write goes out fire-and-forget and the
-// reload happens IN THE SAME TURN: the immediate render does not need
-// the write (`showImages: true` is enough for the session), the
-// core's serialized queue sets the write before any future read, and
-// `loadMessage` captures its token on click — an `await` here made
-// the anti-race guard vacant (review 2026-08-28). If the write
-// fails, the session's images display anyway and the failure is
-// stated. A local echo stays out of memory (an ephemeral key by nature).
-export function showImages(m) {
-  if (!isEcho(m)) {
-    call('allow_images_message', {
-      accountId: m.account_id,
-      mailbox: m.mailbox,
-      uid: m.uid,
-      version: m.version,
-    }).catch((err) => console.error('allow_images_message :', err));
+export async function verifyInvitation(m) {
+  const mine = token;
+  try {
+    const view = await call('refresh_invitation', {
+      accountId: m.account_id, mailbox: m.mailbox, uid: m.uid, version: m.version,
+    });
+    if (mine === token) thread.invitations[msgKey(m)] = view;
+  } catch (err) {
+    if (mine === token) throw err;
   }
-  return loadMessage(m, true);
 }
 
-// D3: “Always show images from this sender” — the address is
-// resolved by the CORE from the envelope (the UI never parses an
-// address); the rule is global to the workstation and is revoked in
-// Settings (D4). It does NOT write a per-message choice: revoking it
-// undoes everything. The core's reply is READ: `null` = envelope
-// without an address, nothing was written — this must be stated,
-// otherwise the button's promise breaks in silence (review 2026-08-28).
-export function alwaysShowImages(m) {
-  // Never offered on an echo (the template already guards it — belt).
-  if (isEcho(m)) return Promise.resolve();
-  const mine = token;
-  call('allow_images_sender', {
-    accountId: m.account_id,
-    mailbox: m.mailbox,
-    uid: m.uid,
-    version: m.version,
-  })
-    .then((address) => {
-      if (address == null) {
-        console.error(
-          'allow_images_sender: envelope without address, no rule set',
-        );
-        return;
-      }
-      if (mine !== token) return;
-      // The rule covers the OTHER messages of the thread whose banner
-      // is raised: reload them without opt-in — the core arbitrates,
-      // a third party's message re-renders identically.
-      for (const other of thread.messages) {
-        const ka = msgKey(other);
-        if (ka !== msgKey(m) && (thread.blockedImages[ka] ?? 0) > 0) {
-          delete thread.body[ka];
-          loadMessage(other);
-        }
-      }
-    })
-    .catch((err) => console.error('allow_images_sender :', err));
-  return loadMessage(m, true);
+export function refreshThreadImages() {
+  for (const message of thread.messages) {
+    const key = msgKey(message);
+    delete thread.body[key];
+    delete thread.messageImageGrants[key];
+    if (thread.expanded[key]) loadMessage(message);
+  }
+}
+
+export async function showImages(m) {
+  if (isEcho(m)) return loadMessage(m, true);
+  await call('allow_images_message', {
+    accountId: m.account_id, mailbox: m.mailbox, uid: m.uid, version: m.version,
+  });
+  imagePermissionsChanged();
+}
+
+export async function alwaysShowImages(m) {
+  if (isEcho(m)) return;
+  const address = await call('allow_images_sender', {
+    accountId: m.account_id, mailbox: m.mailbox, uid: m.uid, version: m.version,
+  });
+  if (address == null) throw new Error(t('error.noAddress'));
+  imagePermissionsChanged();
 }

@@ -8,18 +8,13 @@
 //! This pump completes the sync without contradicting it: it runs AFTER, in
 //! the background, and fetches the bodies of recent messages.
 //!
-//! Three properties define it:
-//!
-//! - **bounded**: a recency horizon and a budget per pass, so the cost stays
-//!   predictable (< 1 GB, PLAN.md §1);
-//! - **resumable**: it holds no cursor — the state is the database. A body
-//!   already written falls out of the list of missing ones, so an
-//!   interruption only costs the batch in progress;
-//! - **batched**: a round trip per message costs ~192 ms on a real server
-//!   (`spikes/body-backfill`). Bodies are requested in batches.
+//! Candidate work is debited before I/O. Persistent date/UID scan positions
+//! survive failed responses; missing bodies remain eligible after wrap. The
+//! byte and time allowance is shared by the caller across mailboxes.
 //!
 //! [ADR 0007]: ../../../docs/adr/0007-body-backfill.md
 
+use crate::{WorkBudget, backfill_cursor::Kind};
 use std::collections::HashSet;
 
 use crate::envelope::Uid;
@@ -106,13 +101,44 @@ pub struct BackfillReport {
     pub fetched: usize,
     /// Messages in the horizon still waiting for their body.
     pub remaining: u64,
+    pub scanned: usize,
+    pub more: bool,
 }
 
-/// Fetches up to `budget` missing bodies, from newest to oldest, and
-/// indexes them along the way (it is [`Store::save_body`] that handles
-/// that, inside its transaction).
-///
-/// `since_epoch` is the horizon: beyond it, nothing is fetched.
+pub const THREAD_HEADER_BATCH: usize = 200;
+
+pub(crate) fn fetch_arrival_bodies(
+    server: &mut dyn MailServer,
+    store: &Store,
+    account_id: i64,
+    mailbox: &str,
+    after: Uid,
+    since: i64,
+    limit: usize,
+) -> Result<(), Error> {
+    let Some(identity) = store.mailbox_identity(account_id, mailbox)? else {
+        return Ok(());
+    };
+    store.admit_background_write(0)?;
+    let uids = store.conn().prepare("SELECT uid FROM envelopes WHERE mailbox_id = ?1 AND uid > ?2 AND (date_epoch IS NULL OR date_epoch >= ?3) ORDER BY uid DESC LIMIT ?4")?
+        .query_map(rusqlite::params![identity.mailbox_id, after, since, limit as i64], |r| r.get(0))?.collect::<Result<Vec<Uid>, _>>()?;
+    let mut budget = WorkBudget::new(limit);
+    let before = budget.begin_fetch(server);
+    let result = crate::body::fetch_bodies_for_store(server, store, &identity, &uids);
+    budget.end_fetch(server, before);
+    for (uid, body) in result? {
+        let invitation = crate::body::invitation_from(store, account_id, body.ics.as_deref())?;
+        store.save_body_checked(
+            &identity,
+            uid,
+            &body.html,
+            &body.attachments,
+            invitation.as_ref(),
+        )?;
+    }
+    Ok(())
+}
+
 pub fn backfill_bodies(
     server: &mut dyn MailServer,
     store: &mut Store,
@@ -121,69 +147,35 @@ pub fn backfill_bodies(
     since_epoch: i64,
     budget: usize,
 ) -> Result<BackfillReport, Error> {
-    let Some(state) = store.mailbox_identity(account_id, mailbox)? else {
-        return Ok(BackfillReport {
-            fetched: 0,
-            remaining: 0,
-        });
-    };
-
-    let mut fetched = 0usize;
-    // UIDs already attempted during THIS pass. Without this memory, a
-    // message the server no longer serves would come back into the list
-    // of missing ones on every round — and the pump would run forever.
-    let mut attempted: HashSet<Uid> = HashSet::new();
-
-    while fetched < budget {
-        let window = (budget - fetched + attempted.len()).min(BACKFILL_BATCH + attempted.len());
-        let candidates = store.bodies_to_backfill(account_id, mailbox, since_epoch, window)?;
-        let batch: Vec<Uid> = candidates
-            .into_iter()
-            .filter(|uid| !attempted.contains(uid))
-            .take((budget - fetched).min(BACKFILL_BATCH))
-            .collect();
-        if batch.is_empty() {
-            break;
-        }
-        attempted.extend(batch.iter().copied());
-
-        for (uid, body) in
-            crate::remote::fetch_bodies_checked(server, mailbox, state.uid_validity, &batch)?
-        {
-            let invitation = crate::body::invitation_from(store, account_id, body.ics.as_deref())?;
-            store.save_body_checked(
-                &state,
-                uid,
-                &body.html,
-                &body.attachments,
-                invitation.as_ref(),
-            )?;
-            fetched += 1;
-        }
-    }
-
-    Ok(BackfillReport {
-        fetched,
-        remaining: store.bodies_pending_count(account_id, mailbox, since_epoch)?,
-    })
+    backfill_bodies_budgeted(
+        server,
+        store,
+        account_id,
+        mailbox,
+        since_epoch,
+        &mut WorkBudget::new(budget),
+    )
 }
 
-/// Headers requested in one command. Much more than bodies: a header block
-/// weighs ~3 KB against ~50 KB for a whole message, and the expense that
-/// matters here is the round trip, not the bytes.
-pub const THREAD_HEADER_BATCH: usize = 200;
+pub fn backfill_bodies_budgeted(
+    server: &mut dyn MailServer,
+    store: &mut Store,
+    account_id: i64,
+    mailbox: &str,
+    since_epoch: i64,
+    budget: &mut WorkBudget,
+) -> Result<BackfillReport, Error> {
+    backfill(
+        server,
+        store,
+        account_id,
+        mailbox,
+        since_epoch,
+        Kind::Bodies,
+        budget,
+    )
+}
 
-/// Fetches the missing recipients (To/Cc) of a Sent folder, from newest to
-/// oldest (R4, backfill of sent messages — D2, PLAN-RETOURS-MAIL).
-///
-/// Same bounded/resumable/batched shape as [`backfill_bodies`], but it
-/// rereads the ENVELOPE — where To/Cc travel for free with the sender,
-/// without a single byte of body — and writes ONLY those two columns
-/// (never the thread nor `refs`). In a Sent folder the sender is ONESELF:
-/// without the recipient, neither the list nor the reading pane can say
-/// who the message went to. Once the header pass has converged, already
-/// synced sent messages have no recipient in the database — this is the
-/// pump that catches them up.
 pub fn backfill_recipients(
     server: &mut dyn MailServer,
     store: &mut Store,
@@ -191,57 +183,33 @@ pub fn backfill_recipients(
     mailbox: &str,
     budget: usize,
 ) -> Result<BackfillReport, Error> {
-    let Some(state) = store.sync_state(account_id, mailbox)? else {
-        return Ok(BackfillReport {
-            fetched: 0,
-            remaining: 0,
-        });
-    };
-
-    let mut fetched = 0usize;
-    // UIDs already attempted during THIS pass — a message the server no
-    // longer serves must not make the pump run forever (same guard as
-    // [`backfill_bodies`]).
-    let mut attempted: HashSet<Uid> = HashSet::new();
-
-    while fetched < budget {
-        let window =
-            (budget - fetched + attempted.len()).min(THREAD_HEADER_BATCH + attempted.len());
-        let candidates = store.recipients_to_backfill(account_id, mailbox, window)?;
-        let batch: Vec<Uid> = candidates
-            .into_iter()
-            .filter(|uid| !attempted.contains(uid))
-            .take((budget - fetched).min(THREAD_HEADER_BATCH))
-            .collect();
-        if batch.is_empty() {
-            break;
-        }
-        attempted.extend(batch.iter().copied());
-
-        for envelope in server.fetch_envelopes(mailbox, &batch)? {
-            store.set_recipients(
-                state.mailbox_id,
-                envelope.uid,
-                &envelope.to_addrs,
-                &envelope.cc_addrs,
-            )?;
-            fetched += 1;
-        }
-    }
-
-    Ok(BackfillReport {
-        fetched,
-        remaining: store.recipients_pending_count(account_id, mailbox)?,
-    })
+    backfill_recipients_budgeted(
+        server,
+        store,
+        account_id,
+        mailbox,
+        &mut WorkBudget::new(budget),
+    )
 }
 
-/// Fetches the missing thread headers, from newest to oldest, and reglues
-/// the conversations along the way.
-///
-/// Same shape as [`backfill_bodies`] — bounded, resumable, batched — but a
-/// different reason to exist: this one does not complete search, it repairs
-/// GROUPING. A message whose `References` were never read stays alone in
-/// its thread even though it belongs to an exchange.
+pub fn backfill_recipients_budgeted(
+    server: &mut dyn MailServer,
+    store: &mut Store,
+    account_id: i64,
+    mailbox: &str,
+    budget: &mut WorkBudget,
+) -> Result<BackfillReport, Error> {
+    backfill(
+        server,
+        store,
+        account_id,
+        mailbox,
+        NO_HORIZON,
+        Kind::Recipients,
+        budget,
+    )
+}
+
 pub fn backfill_thread_headers(
     server: &mut dyn MailServer,
     store: &mut Store,
@@ -250,49 +218,228 @@ pub fn backfill_thread_headers(
     since_epoch: i64,
     budget: usize,
 ) -> Result<BackfillReport, Error> {
-    let Some(state) = store.sync_state(account_id, mailbox)? else {
+    backfill_thread_headers_budgeted(
+        server,
+        store,
+        account_id,
+        mailbox,
+        since_epoch,
+        &mut WorkBudget::new(budget),
+    )
+}
+
+pub fn backfill_thread_headers_budgeted(
+    server: &mut dyn MailServer,
+    store: &mut Store,
+    account_id: i64,
+    mailbox: &str,
+    since_epoch: i64,
+    budget: &mut WorkBudget,
+) -> Result<BackfillReport, Error> {
+    backfill(
+        server,
+        store,
+        account_id,
+        mailbox,
+        since_epoch,
+        Kind::Headers,
+        budget,
+    )
+}
+
+fn backfill(
+    server: &mut dyn MailServer,
+    store: &mut Store,
+    account_id: i64,
+    mailbox: &str,
+    since: i64,
+    kind: Kind,
+    budget: &mut WorkBudget,
+) -> Result<BackfillReport, Error> {
+    if !store.operation_due(
+        account_id,
+        mailbox,
+        kind.key(),
+        chrono::Utc::now().timestamp(),
+    )? {
+        return Ok(BackfillReport {
+            fetched: 0,
+            remaining: pending_count(store, account_id, mailbox, since, kind)?,
+            scanned: 0,
+            more: false,
+        });
+    }
+    let Some(identity) = store.mailbox_identity(account_id, mailbox)? else {
         return Ok(BackfillReport {
             fetched: 0,
             remaining: 0,
+            scanned: 0,
+            more: false,
         });
     };
-
-    let mut fetched = 0usize;
-    // Same guard as for bodies: a message the server no longer serves
-    // would otherwise come back on every round, and the pump would run
-    // forever.
-    let mut attempted: HashSet<Uid> = HashSet::new();
-
-    while fetched < budget {
-        let window =
-            (budget - fetched + attempted.len()).min(THREAD_HEADER_BATCH + attempted.len());
-        let candidates =
-            store.thread_headers_to_backfill(account_id, mailbox, since_epoch, window)?;
-        let batch: Vec<Uid> = candidates
-            .into_iter()
-            .filter(|uid| !attempted.contains(uid))
-            .take((budget - fetched).min(THREAD_HEADER_BATCH))
-            .collect();
-        if batch.is_empty() {
+    let mut fetched = 0;
+    let mut scanned = 0;
+    let mut more = false;
+    let batch_size = match kind {
+        Kind::Bodies => BACKFILL_BATCH,
+        _ => THREAD_HEADER_BATCH,
+    };
+    while budget.remaining() > 0 {
+        if let Err(error) = store.admit_background_write(0) {
+            store.settle_operation(
+                account_id,
+                mailbox,
+                kind.key(),
+                chrono::Utc::now().timestamp(),
+                Some(&error),
+            )?;
+            return Err(error);
+        }
+        let window = store.claim_backfill_window(
+            &identity,
+            kind,
+            since,
+            budget.remaining().min(batch_size),
+        )?;
+        budget.spend_candidates(window.scanned);
+        scanned += window.scanned;
+        more = !window.at_end;
+        if !window.uids.is_empty() {
+            let before = budget.begin_fetch(server);
+            let result = (|| {
+                match kind {
+                    Kind::Bodies => {
+                        for (uid, body) in crate::body::fetch_bodies_for_store(
+                            server,
+                            store,
+                            &identity,
+                            &window.uids,
+                        )? {
+                            let invitation = crate::body::invitation_from(
+                                store,
+                                account_id,
+                                body.ics.as_deref(),
+                            )?;
+                            store.save_body_checked(
+                                &identity,
+                                uid,
+                                &body.html,
+                                &body.attachments,
+                                invitation.as_ref(),
+                            )?;
+                            fetched += 1;
+                            budget.record_saved();
+                        }
+                    }
+                    Kind::Recipients => {
+                        crate::remote::verify_mailbox_generation(
+                            server,
+                            mailbox,
+                            identity.uid_validity,
+                        )?;
+                        let envelopes = server.fetch_envelopes(mailbox, &window.uids)?;
+                        crate::remote::verify_mailbox_generation(
+                            server,
+                            mailbox,
+                            identity.uid_validity,
+                        )?;
+                        validate_uids(&window.uids, envelopes.iter().map(|e| e.uid))?;
+                        for envelope in envelopes {
+                            store.set_recipients_checked(
+                                &identity,
+                                envelope.uid,
+                                &envelope.to_addrs,
+                                &envelope.cc_addrs,
+                            )?;
+                            fetched += 1;
+                            budget.record_saved();
+                        }
+                    }
+                    Kind::Headers => {
+                        crate::remote::verify_mailbox_generation(
+                            server,
+                            mailbox,
+                            identity.uid_validity,
+                        )?;
+                        let headers = server.fetch_thread_headers(mailbox, &window.uids)?;
+                        crate::remote::verify_mailbox_generation(
+                            server,
+                            mailbox,
+                            identity.uid_validity,
+                        )?;
+                        validate_uids(&window.uids, headers.iter().map(|(uid, _)| *uid))?;
+                        for (uid, headers) in headers {
+                            store.set_thread_headers_checked(
+                                &identity,
+                                uid,
+                                headers.in_reply_to.as_deref(),
+                                headers.references.as_deref().unwrap_or_default(),
+                            )?;
+                            fetched += 1;
+                            budget.record_saved();
+                        }
+                    }
+                }
+                Ok::<_, Error>(())
+            })();
+            budget.end_fetch(server, before);
+            if let Err(error) = &result {
+                store.settle_operation(
+                    account_id,
+                    mailbox,
+                    kind.key(),
+                    chrono::Utc::now().timestamp(),
+                    Some(error),
+                )?;
+            }
+            result?;
+        }
+        if window.at_end || window.scanned == 0 {
             break;
         }
-        attempted.extend(batch.iter().copied());
-
-        for (uid, headers) in server.fetch_thread_headers(mailbox, &batch)? {
-            store.set_thread_headers(
-                state.mailbox_id,
-                uid,
-                headers.in_reply_to.as_deref(),
-                headers.references.as_deref().unwrap_or_default(),
-            )?;
-            fetched += 1;
-        }
     }
-
+    let remaining = pending_count(store, account_id, mailbox, since, kind)?;
+    // Every window ran without error: the diagnostic, if any, is settled.
+    // Content the server does not hold is not a failure — it stays counted
+    // as missing (so nothing claims a complete download) and returns on a
+    // later sweep.
+    store.settle_operation(
+        account_id,
+        mailbox,
+        kind.key(),
+        chrono::Utc::now().timestamp(),
+        None,
+    )?;
     Ok(BackfillReport {
         fetched,
-        remaining: store.thread_headers_pending_count(account_id, mailbox, since_epoch)?,
+        remaining,
+        scanned,
+        more,
     })
+}
+
+fn pending_count(
+    store: &Store,
+    account_id: i64,
+    mailbox: &str,
+    since: i64,
+    kind: Kind,
+) -> Result<u64, Error> {
+    match kind {
+        Kind::Bodies => store.bodies_pending_count(account_id, mailbox, since),
+        Kind::Recipients => store.recipients_pending_count(account_id, mailbox),
+        Kind::Headers => store.thread_headers_pending_count(account_id, mailbox, since),
+    }
+}
+
+fn validate_uids(requested: &[Uid], returned: impl Iterator<Item = Uid>) -> Result<(), Error> {
+    let mut seen = HashSet::new();
+    for uid in returned {
+        if !requested.contains(&uid) || !seen.insert(uid) {
+            return Err(Error::Server("invalid backfill response UID".into()));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -417,6 +564,212 @@ mod tests {
             .sync(&mut server, &mut store, account, "INBOX")
             .unwrap();
         (server, store, account)
+    }
+
+    #[test]
+    fn empty_replies_spend_the_budget_for_all_three_pumps() {
+        for kind in 0..3 {
+            let (mut server, mut store, account) = synced(6);
+            store
+                .conn()
+                .execute_batch("UPDATE envelopes SET refs = NULL, to_addrs = NULL;")
+                .unwrap();
+            server.messages.clear();
+            server.bodies.clear();
+            server.fetch_batches.clear();
+            match kind {
+                0 => {
+                    backfill_bodies(&mut server, &mut store, account, "INBOX", 0, 2).unwrap();
+                }
+                1 => {
+                    backfill_recipients(&mut server, &mut store, account, "INBOX", 2).unwrap();
+                }
+                _ => {
+                    backfill_thread_headers(&mut server, &mut store, account, "INBOX", 0, 2)
+                        .unwrap();
+                }
+            }
+            let requests = match kind {
+                0 => server.body_batches,
+                1 => server.fetch_batches,
+                _ => server.header_batches,
+            };
+            assert_eq!(
+                requests.iter().map(Vec::len).sum::<usize>(),
+                2,
+                "pump {kind} exceeded its attempt budget"
+            );
+        }
+    }
+
+    #[test]
+    fn unsuccessful_body_passes_continue_below_the_previous_window() {
+        let (mut server, mut store, account) = synced(6);
+        server.bodies.clear();
+        backfill_bodies(&mut server, &mut store, account, "INBOX", 0, 2).unwrap();
+        let previous: HashSet<_> = server.body_batches.iter().flatten().copied().collect();
+        server.body_batches.clear();
+        backfill_bodies(&mut server, &mut store, account, "INBOX", 0, 2).unwrap();
+        assert!(
+            server
+                .body_batches
+                .iter()
+                .flatten()
+                .all(|uid| !previous.contains(uid)),
+            "the next pass repeated the same missing messages"
+        );
+    }
+
+    #[test]
+    fn a_narrower_horizon_does_not_resume_an_out_of_scope_date() {
+        let (_, store, account) = synced(4);
+        store
+            .conn()
+            .execute_batch("UPDATE envelopes SET date_epoch = 1")
+            .unwrap();
+        let identity = store.mailbox_identity(account, "INBOX").unwrap().unwrap();
+        assert_eq!(
+            store
+                .claim_backfill_window(&identity, Kind::Bodies, 0, 2)
+                .unwrap()
+                .uids,
+            [4, 3]
+        );
+        let next = store
+            .claim_backfill_window(&identity, Kind::Bodies, 2, 2)
+            .unwrap();
+        assert!(next.uids.is_empty());
+        assert!(next.at_end);
+    }
+
+    #[test]
+    fn cursor_scans_cached_prefixes_null_dates_and_wraps_without_losing_work() {
+        let (_, store, account) = synced(6);
+        store.conn().execute_batch("UPDATE envelopes SET date_epoch = CASE WHEN uid >= 3 THEN 10 WHEN uid = 2 THEN -9223372036854775808 ELSE NULL END").unwrap();
+        let identity = store.mailbox_identity(account, "INBOX").unwrap().unwrap();
+        store
+            .save_body(identity.mailbox_id, 6, "cached", &[])
+            .unwrap();
+        store
+            .save_body(identity.mailbox_id, 5, "cached", &[])
+            .unwrap();
+        let first = store
+            .claim_backfill_window(&identity, Kind::Bodies, NO_HORIZON, 2)
+            .unwrap();
+        assert_eq!(first.scanned, 2);
+        assert!(first.uids.is_empty());
+        assert!(!first.at_end);
+        assert_eq!(
+            store
+                .claim_backfill_window(&identity, Kind::Bodies, NO_HORIZON, 2)
+                .unwrap()
+                .uids,
+            [4, 3]
+        );
+        assert_eq!(
+            store
+                .claim_backfill_window(&identity, Kind::Bodies, NO_HORIZON, 3)
+                .unwrap()
+                .uids,
+            [2, 1]
+        );
+        let wrapped = store
+            .claim_backfill_window(&identity, Kind::Bodies, NO_HORIZON, 6)
+            .unwrap();
+        assert_eq!(wrapped.uids, [4, 3, 2, 1]);
+    }
+
+    #[test]
+    fn failed_fetches_do_not_refund_the_shared_candidate_allowance() {
+        let (mut server, mut store, account) = synced(6);
+        server.oversized_body = Some(6);
+        let mut budget = WorkBudget::new(2);
+        assert!(
+            backfill_bodies_budgeted(&mut server, &mut store, account, "INBOX", 0, &mut budget)
+                .is_err()
+        );
+        assert_eq!(budget.remaining(), 0);
+        assert_eq!(
+            backfill_bodies_budgeted(&mut server, &mut store, account, "INBOX", 0, &mut budget)
+                .unwrap()
+                .scanned,
+            0
+        );
+    }
+
+    #[test]
+    fn arrival_previews_do_not_follow_the_historical_cursor() {
+        let (mut server, mut store, account) = synced(6);
+        backfill_bodies(&mut server, &mut store, account, "INBOX", 0, 2).unwrap();
+        server.add_with_body(7, "new arrival", "<p>new preview</p>");
+        crate::cycle::poll_inbox(
+            &mut server,
+            &mut store,
+            account,
+            &crate::cycle::NoHooks,
+            &mut Vec::new(),
+        )
+        .unwrap();
+        assert!(store.body(account, "INBOX", 7).unwrap().is_some());
+    }
+
+    #[test]
+    fn a_size_refusal_leaves_the_next_pass_free_to_fetch_other_bodies() {
+        let (mut server, mut store, account) = synced(3);
+        server.oversized_body = Some(3);
+        assert!(backfill_bodies(&mut server, &mut store, account, "INBOX", 0, 100).is_err());
+        let report = backfill_bodies(&mut server, &mut store, account, "INBOX", 0, 100).unwrap();
+        assert_eq!(report.fetched, 2);
+        assert_eq!(
+            report.remaining, 1,
+            "refused content must not count as downloaded"
+        );
+        assert!(
+            store
+                .bodies_to_backfill(account, "INBOX", 0, 100)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(server.body_batches.last().unwrap().len(), 2);
+        assert!(store.body(account, "INBOX", 3).unwrap().is_none());
+        let identity = store.mailbox_identity(account, "INBOX").unwrap().unwrap();
+        let requests = server.body_batches.len();
+        assert!(matches!(
+            crate::load_body_version(&mut server, &mut store, &identity, 3),
+            Err(Error::RemoteMessageTooLarge { uid: 3, .. })
+        ));
+        assert_eq!(
+            server.body_batches.len(),
+            requests,
+            "known refusals should work offline"
+        );
+        store.reset_mailbox(identity.mailbox_id, 2).unwrap();
+        server.uid_validity = 2;
+        server.oversized_body = None;
+        crate::SyncEngine::default()
+            .sync(&mut server, &mut store, account, "INBOX")
+            .unwrap();
+        assert_eq!(
+            backfill_bodies(&mut server, &mut store, account, "INBOX", 0, 100)
+                .unwrap()
+                .fetched,
+            3
+        );
+    }
+
+    #[test]
+    fn a_size_refusal_during_namespace_replacement_is_not_persisted() {
+        let (mut server, mut store, account) = synced(1);
+        server.oversized_body = Some(1);
+        server.reset_during_body_fetch = true;
+        assert!(matches!(
+            backfill_bodies(&mut server, &mut store, account, "INBOX", 0, 10),
+            Err(Error::StaleMailbox)
+        ));
+        assert_eq!(
+            store.bodies_to_backfill(account, "INBOX", 0, 10).unwrap(),
+            [1]
+        );
     }
 
     /// The pump's reason to exist: after it runs, a word from the BODY
@@ -702,5 +1055,131 @@ mod tests {
 
         assert_eq!(report.fetched, 2);
         assert_eq!(report.remaining, 3);
+    }
+}
+
+#[cfg(test)]
+mod review_regressions {
+    //! Fresh-eyes review of Lot 3 (2026-09-07): maintained regressions for the
+    //! confirmed findings on diagnostics, arrivals and budgets.
+    use super::*;
+    use crate::test_support::FakeServer;
+
+    fn synced(n: u32) -> (FakeServer, Store, i64) {
+        let mut server = FakeServer::new(false);
+        for uid in 1..=n {
+            server.add_with_body(
+                uid,
+                &format!("subject {uid}"),
+                &format!("<p>body {uid}</p>"),
+            );
+        }
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("review@example.test", "imap")
+            .unwrap();
+        crate::SyncEngine::default()
+            .sync(&mut server, &mut store, account, "INBOX")
+            .unwrap();
+        (server, store, account)
+    }
+
+    #[test]
+    fn content_the_server_no_longer_holds_is_missing_not_a_failure() {
+        let (mut server, mut store, account) = synced(3);
+        for uid in 1..=3 {
+            server.expunge(uid);
+        }
+        let report =
+            backfill_thread_headers(&mut server, &mut store, account, "INBOX", NO_HORIZON, 10)
+                .unwrap();
+        assert_eq!(report.fetched, 0);
+        assert_eq!(report.remaining, 3, "still counted as missing");
+        assert!(
+            store.operation_issues().unwrap().is_empty(),
+            "an omitted answer is not an operation failure"
+        );
+    }
+
+    #[test]
+    fn an_error_free_sweep_settles_an_earlier_diagnostic() {
+        let (mut server, mut store, account) = synced(2);
+        store
+            .settle_operation(
+                account,
+                "INBOX",
+                "bodies",
+                0,
+                Some(&Error::Server("earlier outage".into())),
+            )
+            .unwrap();
+        store.retry_operations(account).unwrap();
+        backfill_bodies(&mut server, &mut store, account, "INBOX", 0, 10).unwrap();
+        assert!(store.operation_issues().unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_oversized_arrival_keeps_its_marker_without_an_operation_failure() {
+        let (mut server, mut store, account) = synced(2);
+        server.add_with_body(3, "huge", "<p>huge</p>");
+        server.oversized_body = Some(3);
+        let mut problems = Vec::new();
+        crate::cycle::poll_inbox(
+            &mut server,
+            &mut store,
+            account,
+            &crate::cycle::NoHooks,
+            &mut problems,
+        )
+        .unwrap();
+        let identity = store.mailbox_identity(account, "INBOX").unwrap().unwrap();
+        assert!(store.body_download_limit(&identity, 3).unwrap().is_some());
+        assert!(
+            store.operation_issues().unwrap().is_empty(),
+            "the per-UID marker is the whole diagnostic"
+        );
+    }
+
+    #[test]
+    fn arrivals_are_served_before_the_historical_sweep_resumes() {
+        let (mut server, mut store, account) = synced(6);
+        assert_eq!(
+            backfill_bodies(&mut server, &mut store, account, "INBOX", 0, 2)
+                .unwrap()
+                .fetched,
+            2
+        );
+        for uid in 7..=9 {
+            server.add_with_body(uid, "arrival", "<p>arrival</p>");
+        }
+        crate::SyncEngine::default()
+            .sync(&mut server, &mut store, account, "INBOX")
+            .unwrap();
+        let report = backfill_bodies(&mut server, &mut store, account, "INBOX", 0, 2).unwrap();
+        assert_eq!(report.fetched, 2);
+        assert!(store.body(account, "INBOX", 7).unwrap().is_some());
+        assert!(store.body(account, "INBOX", 8).unwrap().is_some());
+        assert!(store.body(account, "INBOX", 4).unwrap().is_none());
+        let report = backfill_bodies(&mut server, &mut store, account, "INBOX", 0, 2).unwrap();
+        assert_eq!(report.fetched, 2);
+        assert!(store.body(account, "INBOX", 9).unwrap().is_some());
+        assert!(store.body(account, "INBOX", 4).unwrap().is_some());
+        assert!(store.body(account, "INBOX", 3).unwrap().is_none());
+    }
+
+    #[test]
+    fn a_shared_allowance_below_one_maximal_message_admits_nothing() {
+        let budget = WorkBudget::with_limits(
+            5,
+            crate::REMOTE_MESSAGE_BYTES - 1,
+            std::time::Duration::from_secs(60),
+        );
+        assert_eq!(budget.remaining(), 0);
+        let budget = WorkBudget::with_limits(
+            5,
+            crate::REMOTE_MESSAGE_BYTES,
+            std::time::Duration::from_secs(60),
+        );
+        assert_eq!(budget.remaining(), 5);
     }
 }

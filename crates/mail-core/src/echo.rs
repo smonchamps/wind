@@ -125,10 +125,11 @@ impl Store {
                 Option<String>,
                 Option<i64>,
                 Option<String>,
+                Option<String>,
             );
             let envelope: Option<Material> = tx
                 .query_row(
-                    "SELECT subject, sender, sender_address, message_id, date_epoch, to_addrs
+                    "SELECT subject, sender, sender_address, message_id, date_epoch, to_addrs, cc_addrs
                      FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
                     params![mailbox_id, uid],
                     |row| {
@@ -139,12 +140,20 @@ impl Store {
                             row.get(3)?,
                             row.get(4)?,
                             row.get(5)?,
+                            row.get(6)?,
                         ))
                     },
                 )
                 .optional()?;
-            if let Some((subject, sender, sender_address, Some(message_id), date_epoch, to_addrs)) =
-                envelope
+            if let Some((
+                subject,
+                sender,
+                sender_address,
+                Some(message_id),
+                date_epoch,
+                to_addrs,
+                cc_addrs,
+            )) = envelope
                 && !self.present_at_destination(account_id, destination, &message_id)?
             {
                 let body: Option<(Option<String>, Option<String>)> = tx
@@ -164,8 +173,8 @@ impl Store {
                 tx.execute(
                     "INSERT INTO echos (account_id, destination, message_id, sender,
                         sender_address, subject, date_epoch, preview, html,
-                        attachment_count, to_addrs, origin_action_id, created_epoch)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, unixepoch())",
+                        attachment_count, to_addrs, cc_addrs, origin_action_id, created_epoch)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, unixepoch())",
                     params![
                         account_id,
                         destination,
@@ -178,6 +187,7 @@ impl Store {
                         html,
                         attachment_count,
                         to_addrs,
+                        cc_addrs,
                         action_id
                     ],
                 )?;
@@ -202,12 +212,13 @@ impl Store {
             Option<String>,
             i64,
             String,
+            String,
         );
         let row: Option<SendRow> = self
             .conn()
             .query_row(
                 "SELECT account_id, message_id, sender, subject, body_text, body_html,
-                        queued_epoch, recipients
+                        queued_epoch, recipients, cc_addrs
                  FROM outbox WHERE id = ?1 AND state = 'sent'",
                 [outbox_id],
                 |row| {
@@ -220,6 +231,7 @@ impl Store {
                         row.get(5)?,
                         row.get(6)?,
                         row.get(7)?,
+                        row.get(8)?,
                     ))
                 },
             )
@@ -233,6 +245,7 @@ impl Store {
             body_html,
             queued_epoch,
             recipients,
+            cc_addrs,
         )) = row
         else {
             return Ok(false);
@@ -256,8 +269,8 @@ impl Store {
         self.conn().execute(
             "INSERT INTO echos (account_id, destination, message_id, sender,
                 sender_address, subject, date_epoch, preview, html,
-                attachment_count, to_addrs, origin_outbox_id, created_epoch)
-             VALUES (?1, 'envoyes', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, unixepoch())",
+                attachment_count, to_addrs, cc_addrs, origin_outbox_id, created_epoch)
+             VALUES (?1, 'envoyes', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, unixepoch())",
             params![
                 account_id,
                 message_id,
@@ -269,6 +282,7 @@ impl Store {
                 html,
                 attachment_count,
                 recipients,
+                cc_addrs,
                 outbox_id
             ],
         )?;
@@ -1012,6 +1026,7 @@ mod tests {
         let (mut store, _account, inbox, _) = store_with_trash();
         let mut env = envelope(1, "to discard", 100);
         env.to_addrs = vec!["x@y.fr".to_string(), "z@w.fr".to_string()];
+        env.cc_addrs = vec!["copy@example.fr".into()];
         store.upsert_envelopes(inbox, &[env]).unwrap();
 
         store
@@ -1023,6 +1038,10 @@ mod tests {
             .query_row("SELECT to_addrs FROM echos", [], |row| row.get(0))
             .unwrap();
         assert_eq!(to.as_deref(), Some("x@y.fr\nz@w.fr"));
+        let page = store
+            .category_page(&[], false, &[], Some(("corbeille", &[_account])), 0, 10)
+            .unwrap();
+        assert_eq!(page[0].envelope.cc_addrs, vec!["copy@example.fr"]);
     }
 
     /// The attachments of a send echo read as METADATA (name, mime,

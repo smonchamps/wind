@@ -2338,6 +2338,7 @@ name = "mail-core"
 version = "0.19.0"
 dependencies = [
  "chrono",
+ "fs4",
  "mail-ical",
  "rusqlite",
  "thiserror 2.0.18",

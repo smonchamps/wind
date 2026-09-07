@@ -769,9 +769,9 @@ impl Store {
             // R10/R11: the thread's invitation, the most recent one if
             // several (ascending ORDER BY: the last one overwrites).
             let mut stmt = self.conn().prepare(&format!(
-                "SELECT e.thread_id, m.name, i.uid, i.titre, i.reponse, i.annule,
-                        i.organisateur_adresse IS NOT NULL AND i.annule = 0,
-                        e.subject, e.sender, e.sender_address, b.preview
+                "SELECT e.thread_id, m.name, i.uid, i.titre, i.reponse, i.scheduling_state = 'cancelled',
+                        COALESCE(TRIM(i.organisateur_adresse), '') != '' AND i.scheduling_state = 'active' AND i.scheduling_supported = 1 AND i.metadata_version = 1 AND i.occurrence_key IS NOT NULL,
+                        e.subject, e.sender, e.sender_address, b.preview, i.revision, m.id, m.uid_validity
                    FROM invitations i
                    JOIN envelopes e ON e.mailbox_id = i.mailbox_id AND e.uid = i.uid
                    JOIN mailboxes m ON m.id = i.mailbox_id
@@ -784,6 +784,9 @@ impl Store {
                     row.get::<_, i64>(0)?,
                     InvitationFace {
                         rank: InvitationRank {
+                            revision: row.get(11)?,
+                            mailbox_id: row.get(12)?,
+                            uid_validity: row.get(13)?,
                             mailbox: row.get(1)?,
                             uid: row.get(2)?,
                             title: row.get(3)?,
@@ -831,8 +834,8 @@ impl Store {
                     let rank = self
                         .conn()
                         .query_row(
-                            "SELECT i.titre, i.reponse, i.annule,
-                                    i.organisateur_adresse IS NOT NULL AND i.annule = 0
+                            "SELECT i.titre, i.reponse, i.scheduling_state = 'cancelled',
+                                    COALESCE(TRIM(i.organisateur_adresse), '') != '' AND i.scheduling_state = 'active' AND i.scheduling_supported = 1 AND i.metadata_version = 1 AND i.occurrence_key IS NOT NULL, i.revision, m.id, m.uid_validity
                                FROM invitations i
                                JOIN mailboxes m ON m.id = i.mailbox_id
                               WHERE m.account_id = ?1 AND m.name = ?2 AND i.uid = ?3
@@ -840,6 +843,7 @@ impl Store {
                             params![row.account_id, row.mailbox, row.envelope.uid],
                             |sql_row| {
                                 Ok(InvitationRank {
+                                    revision: sql_row.get(4)?, mailbox_id: sql_row.get(5)?, uid_validity: sql_row.get(6)?,
                                     mailbox: row.mailbox.clone(),
                                     uid: row.envelope.uid,
                                     title: sql_row.get(0)?,
@@ -1010,7 +1014,7 @@ impl Store {
                         -- echo (copies from the sending log or from
                         -- the source envelope) — never the destination
                         -- slug (“To: envoyes”, field, 2026-08-21).
-                        ec.to_addrs, NULL, 0, 0, 1, 0,
+                        ec.to_addrs, ec.cc_addrs, 0, 0, 1, 0,
                         page.date_epoch AS sort_date, page.uid AS sort_uid,
                         page.mailbox_id AS sort_mailbox
                    FROM page
@@ -1331,8 +1335,8 @@ mod tests {
         let draft = crate::compose(
             "t@exemple.fr",
             "a@b.fr, c@d.fr",
-            "",
-            "",
+            "copy@example.fr",
+            "hidden@example.fr",
             "subject",
             "body",
             None,
@@ -1356,6 +1360,8 @@ mod tests {
             vec!["a@b.fr".to_string(), "c@d.fr".to_string()],
             "the real recipients, never “envoyes”"
         );
+        assert_eq!(page[0].envelope.cc_addrs, vec!["copy@example.fr"]);
+        assert!(!format!("{:?}", page[0]).contains("hidden@example.fr"));
     }
 
     /// E3 (PLAN-REACTIVITE): the echoes enter the page AT THEIR date's
@@ -1639,6 +1645,9 @@ mod tests {
                     size: 1024,
                 }],
                 Some(&crate::InvitationRow {
+                    metadata_version: 1,
+                    scheduling_supported: true,
+                    occurrence_key: Some(String::new()),
                     method: "request".to_string(),
                     event_uid: "workshop@exemple.fr".to_string(),
                     title: "September workshop".to_string(),
@@ -1681,7 +1690,20 @@ mod tests {
         .unwrap();
         draft.ics_reply = Some("BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n".to_string());
         store
-            .enqueue_invitation_reply(account, &draft, "INBOX", 1, "accepte", 42)
+            .enqueue_invitation_reply(
+                crate::InvitationReplyTarget {
+                    identity: &store.mailbox_identity(account, "INBOX").unwrap().unwrap(),
+                    uid: 1,
+                    revision: store
+                        .invitation(account, "INBOX", 1)
+                        .unwrap()
+                        .unwrap()
+                        .revision,
+                },
+                &draft,
+                "accepte",
+                42,
+            )
             .unwrap()
             .expect("logged");
         let mut page = store.unified_recent_scoped(None, false, 0, 10).unwrap();

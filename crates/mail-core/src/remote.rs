@@ -239,6 +239,10 @@ pub struct FlagState {
 }
 
 pub trait MailServer {
+    fn set_fetch_limits(&mut self, _limits: Option<crate::FetchLimits>) {}
+    fn received_bytes(&self) -> u64 {
+        0
+    }
     /// Resolve capabilities and a fixed destination before the journal permits mutation.
     fn plan_removal(
         &mut self,

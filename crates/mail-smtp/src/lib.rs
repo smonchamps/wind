@@ -216,6 +216,8 @@ impl Header for Importance {
 /// rule).
 fn build_message(message: &OutboxMessage) -> Result<Message, SendError> {
     let mut builder = Message::builder()
+        // A Bcc-only message has no visible recipient header.
+        .envelope(build_envelope(message)?)
         .from(parse_mailbox(&message.from)?)
         .subject(&message.subject)
         .message_id(Some(message.message_id.clone()))
@@ -486,6 +488,33 @@ mod tests {
             attempts: 0,
             last_error: None,
             queued_epoch: 1_700_000_000,
+        }
+    }
+
+    #[test]
+    fn copy_only_delivery_builds_without_disclosing_blind_recipients() {
+        for blind in [false, true] {
+            let mut message = outbox_message(None);
+            message.to.clear();
+            if blind {
+                message.bcc = vec!["hidden@example.fr".into()];
+            } else {
+                message.cc = vec!["copy@example.fr".into()];
+            }
+            let raw = formatted(&message);
+            assert!(!raw.to_lowercase().contains("bcc:"));
+            assert!(!raw.contains("hidden@example.fr"));
+            assert_eq!(raw.contains("copy@example.fr"), !blind);
+            let envelope = build_envelope(&message).unwrap();
+            assert_eq!(envelope.to().len(), 1);
+            assert_eq!(
+                envelope.to()[0].to_string(),
+                if blind {
+                    "hidden@example.fr"
+                } else {
+                    "copy@example.fr"
+                }
+            );
         }
     }
 

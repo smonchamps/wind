@@ -6,6 +6,40 @@ use crate::envelope::Uid;
 use crate::error::Error;
 use crate::remote::MailServer;
 use crate::store::Store;
+use rusqlite::{OptionalExtension, params};
+
+pub const REMOTE_MESSAGE_BYTES: u64 = 32 * 1024 * 1024;
+
+pub(crate) fn fetch_bodies_for_store(
+    server: &mut dyn MailServer,
+    store: &Store,
+    identity: &crate::MailboxIdentity,
+    uids: &[Uid],
+) -> Result<Vec<(Uid, crate::FetchedBody)>, Error> {
+    // Disk admission belongs to the background pumps, before their window:
+    // this path also serves the user's click, which must read a message
+    // whenever the server can deliver it.
+    let result =
+        crate::remote::fetch_bodies_checked(server, &identity.mailbox, identity.uid_validity, uids);
+    if let Err(Error::RemoteMessageTooLarge { uid, limit }) = &result {
+        if !uids.contains(uid) {
+            return Err(Error::Server(
+                "size refusal names an unrequested UID".into(),
+            ));
+        }
+        crate::remote::verify_mailbox_generation(server, &identity.mailbox, identity.uid_validity)?;
+        let tx = store.conn().unchecked_transaction()?;
+        store.verify_mailbox_identity(identity)?;
+        store.conn().execute(
+            "INSERT INTO body_download_refusals (mailbox_id, uid, limit_bytes)
+             SELECT mailbox_id, uid, ?3 FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2
+             ON CONFLICT(mailbox_id, uid) DO UPDATE SET limit_bytes = excluded.limit_bytes",
+            params![identity.mailbox_id, uid, limit],
+        )?;
+        tx.commit()?;
+    }
+    result
+}
 
 /// Load the message selected by a displayed row, including its UID namespace.
 pub fn load_body_version(
@@ -17,14 +51,12 @@ pub fn load_body_version(
     if let Some(cached) = store.body_version(identity, uid)? {
         return Ok(Some(cached));
     }
-    match crate::remote::fetch_bodies_checked(
-        server,
-        &identity.mailbox,
-        identity.uid_validity,
-        &[uid],
-    )?
-    .into_iter()
-    .next()
+    if let Some(limit) = store.body_download_limit(identity, uid)? {
+        return Err(Error::RemoteMessageTooLarge { uid, limit });
+    }
+    match fetch_bodies_for_store(server, store, identity, &[uid])?
+        .into_iter()
+        .next()
     {
         Some((_, fetched)) => {
             let invitation = invitation_from(store, identity.account_id, fetched.ics.as_deref())?;
@@ -39,6 +71,32 @@ pub fn load_body_version(
         }
         None => Ok(None),
     }
+}
+
+/// Recover one legacy invitation without making the cached message unavailable.
+pub fn refresh_invitation_version(
+    server: &mut dyn MailServer,
+    store: &Store,
+    identity: &crate::MailboxIdentity,
+    uid: Uid,
+) -> Result<Option<crate::StoredInvitation>, Error> {
+    store.verify_mailbox_identity(identity)?;
+    let before = store.invitation_version(identity, uid)?;
+    if before.as_ref().is_none_or(|i| i.row.metadata_version != 0) {
+        return Ok(before);
+    }
+    if let Some(limit) = store.body_download_limit(identity, uid)? {
+        return Err(Error::RemoteMessageTooLarge { uid, limit });
+    }
+    let (_, fetched) = fetch_bodies_for_store(server, store, identity, &[uid])?
+        .into_iter()
+        .next()
+        .ok_or_else(|| {
+            Error::Server("invitation source unavailable; cached message retained".into())
+        })?;
+    let invitation = invitation_from(store, identity.account_id, fetched.ics.as_deref())?;
+    store.save_invitation_metadata_checked(identity, uid, invitation.as_ref())?;
+    store.invitation_version(identity, uid)
 }
 
 /// Background callers capture the current local namespace before loading.
@@ -56,6 +114,21 @@ pub fn load_body(
 }
 
 impl Store {
+    pub fn body_download_limit(
+        &self,
+        identity: &crate::MailboxIdentity,
+        uid: Uid,
+    ) -> Result<Option<u64>, Error> {
+        let tx = self.conn().unchecked_transaction()?;
+        self.verify_mailbox_identity(identity)?;
+        let limit: Option<u64> = self.conn().query_row(
+            "SELECT limit_bytes FROM body_download_refusals WHERE mailbox_id = ?1 AND uid = ?2 AND limit_bytes >= ?3",
+            params![identity.mailbox_id, uid, REMOTE_MESSAGE_BYTES], |row| row.get(0),
+        ).optional()?;
+        tx.commit()?;
+        Ok(limit)
+    }
+
     pub fn body_version(
         &self,
         identity: &crate::MailboxIdentity,
@@ -360,6 +433,64 @@ mod tests {
     use crate::test_support::FakeServer;
 
     #[test]
+    fn legacy_invitation_refresh_keeps_cached_body_and_local_reply_across_failures() {
+        let (mut server, store, account) = synced_setup();
+        let identity = store.mailbox_identity(account, "INBOX").unwrap().unwrap();
+        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:legacy\r\nORGANIZER:mailto:owner@example.fr\r\nRECURRENCE-ID:20260908T120000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let mut legacy = crate::extract_invitation(ics, "test@exemple.fr").unwrap();
+        legacy.metadata_version = 0;
+        legacy.occurrence_key = None;
+        legacy.occurrence_property = None;
+        store
+            .save_body_full(
+                identity.mailbox_id,
+                1,
+                "<p>Available offline</p>",
+                &[],
+                Some(&legacy),
+            )
+            .unwrap();
+        store
+            .conn()
+            .execute(
+                "UPDATE invitations SET reponse='accepte', reponse_epoch=42",
+                [],
+            )
+            .unwrap();
+        server.bodies.clear();
+        assert!(refresh_invitation_version(&mut server, &store, &identity, 1).is_err());
+        assert_eq!(
+            store.body(account, "INBOX", 1).unwrap().as_deref(),
+            Some("<p>Available offline</p>")
+        );
+        assert_eq!(
+            store
+                .invitation(account, "INBOX", 1)
+                .unwrap()
+                .unwrap()
+                .row
+                .metadata_version,
+            0
+        );
+        server.bodies.insert(1, "remote body".into());
+        server.ics.insert(1, ics.into());
+        let repaired = refresh_invitation_version(&mut server, &store, &identity, 1)
+            .unwrap()
+            .unwrap();
+        assert!(repaired.row.can_reply());
+        assert!(repaired.row.occurrence_property.is_some());
+        assert_eq!(repaired.reply.as_deref(), Some("accepte"));
+        assert_eq!(repaired.reply_epoch, Some(42));
+        assert_eq!(
+            store.body(account, "INBOX", 1).unwrap().as_deref(),
+            Some("<p>Available offline</p>")
+        );
+        assert_eq!(server.body_batches, vec![vec![1], vec![1]]);
+        refresh_invitation_version(&mut server, &store, &identity, 1).unwrap();
+        assert_eq!(server.body_batches.len(), 2, "already verified: no network");
+    }
+
+    #[test]
     fn preview_ignores_styles_scripts_and_comments() {
         let html = "<html><head><title>Hidden title</title>\n<style>p { color: red; }</style></head>\
                     <body><!-- note --><p>Hello&nbsp;Paul,</p><p>it&#39;s the essential &amp; the rest.</p>\
@@ -451,6 +582,76 @@ mod tests {
             .sync(&mut server, &mut store, account, "INBOX")
             .unwrap();
         (server, store, account)
+    }
+
+    #[test]
+    fn size_refusal_survives_reopen_and_cached_content_still_wins() {
+        let (mut server, mut store, account) = synced_setup();
+        let identity = store.mailbox_identity(account, "INBOX").unwrap().unwrap();
+        server.oversized_body = Some(1);
+        assert!(load_body_version(&mut server, &mut store, &identity, 1).is_err());
+        let path = std::env::temp_dir().join(format!(
+            "wind-size-refusal-{}-{}.db",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        store
+            .conn()
+            .execute("VACUUM INTO ?1", [path.to_str().unwrap()])
+            .unwrap();
+        drop(store);
+        let mut store = Store::open(&path).unwrap();
+        assert_eq!(
+            store.body_download_limit(&identity, 1).unwrap(),
+            Some(REMOTE_MESSAGE_BYTES)
+        );
+        let calls = server.body_batches.len();
+        assert!(matches!(
+            load_body_version(&mut server, &mut store, &identity, 1),
+            Err(Error::RemoteMessageTooLarge { .. })
+        ));
+        assert_eq!(server.body_batches.len(), calls);
+        store
+            .save_body(identity.mailbox_id, 1, "<p>previously cached</p>", &[])
+            .unwrap();
+        assert_eq!(
+            load_body_version(&mut server, &mut store, &identity, 1)
+                .unwrap()
+                .as_deref(),
+            Some("<p>previously cached</p>")
+        );
+        drop(store);
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+        }
+    }
+
+    #[test]
+    fn a_failed_size_refusal_write_remains_retryable() {
+        let (mut server, mut store, account) = synced_setup();
+        let identity = store.mailbox_identity(account, "INBOX").unwrap().unwrap();
+        server.oversized_body = Some(1);
+        store.conn().execute_batch("CREATE TRIGGER refuse_size_write BEFORE INSERT ON body_download_refusals BEGIN SELECT RAISE(ABORT, 'synthetic refusal'); END;").unwrap();
+        assert!(matches!(
+            load_body_version(&mut server, &mut store, &identity, 1),
+            Err(Error::Storage(_))
+        ));
+        assert_eq!(store.body_download_limit(&identity, 1).unwrap(), None);
+        assert_eq!(
+            store.bodies_to_backfill(account, "INBOX", 0, 10).unwrap(),
+            [1]
+        );
+        store
+            .conn()
+            .execute_batch("DROP TRIGGER refuse_size_write;")
+            .unwrap();
+        assert!(matches!(
+            load_body_version(&mut server, &mut store, &identity, 1),
+            Err(Error::RemoteMessageTooLarge { .. })
+        ));
     }
 
     #[test]

@@ -1,4 +1,6 @@
 <script>
+  import { modal } from './lib/modal.js';
+  import { imagePermissionsChanged } from './lib/image-permissions.js';
   // Settings overlay in two panes (A13): on the left the rail of
   // GROUPS (the nav grammar of screen 02 — 36 px rows, active state
   // = surface + accent border + shadow), on the right the content of
@@ -12,7 +14,9 @@
   import Menu from './Menu.svelte';
   import Brand from './Brand.svelte';
   import EUFlag from './EUFlag.svelte';
-  import { tick } from 'svelte';
+  import { tick, onDestroy } from 'svelte';
+  import ConsentNotice from './ConsentNotice.svelte';
+  import { createConsent } from './lib/consent.js';
   import {
     THEME_CARDS, applyTheme, displayedTheme, osTracking, applyOsTracking,
   } from './lib/theme.js';
@@ -22,6 +26,7 @@
     currentSpacing, applySpacing, LEVELS,
   } from './lib/spacing.svelte.js';
   import { activation } from './lib/keyboard.js';
+  import { whenLong } from './lib/when.js';
   import { call } from './lib/transport.js';
   import { imageSources, markHtmlEdited, pasteSafeHtml, setSafeHtml, waitForHtml } from './lib/editable-html.js';
   import { SCREENED_OUT_LABEL, DESTINATION_LABEL } from './lib/screener.js';
@@ -39,6 +44,9 @@
     // the registry absent from here has a dead token — it repairs on
     // the spot.
     connected = [],
+    connectionStates = {},
+    syncIssues = [],
+    onretrySync = () => {},
     // R1 (PLAN-RETOURS-8): the markers set (App loads them); setting
     // or removing bubbles up via `onrepere(id, repere|null)` — the App
     // patches its table on the spot (review: never a full reload on a
@@ -81,7 +89,7 @@
   // `raccourci.geste.*`): "Suppr" / "Échap" become "Del" / "Esc",
   // only the GESTURES translate — keys c/r/f/e don't change from one
   // language to another (A15).
-  const SHORTCUTS = ['c', 'r', 'f', 'e', 'delete', 'slash', 'escape'];
+  const SHORTCUTS = ['c', 'r', 'f', 'e', 'delete', 'slash', 'escape', 'check', 'range', 'tab'];
 
   let visible = $state(false);
   let panel = $state(null);
@@ -296,6 +304,9 @@
     panes = currentPanes();
     spacing = currentSpacing();
     addOpen = false;
+    repairEditor = null;
+    consent?.dispose();
+    consent = null;
     closeCards();
     // Reset to zero BEFORE the reload (imageSenders pattern): the
     // gates paint from the DATABASE, never from the previous opening's
@@ -332,13 +343,17 @@
   async function removeImageSender(address) {
     try {
       await call('revoke_images_sender', { address: address });
+      imagePermissionsChanged();
       imageSenders = imageSenders.filter((a) => a !== address);
     } catch (err) {
-      console.error('revoke_images_sender :', err);
+      onflash(t('error.imagePermission', { err }));
     }
   }
   export function close() {
     if (removalBusy) return;
+    consent?.dispose();
+    consent = null;
+    repairEditor = null;
     visible = false;
   }
   export function isOpen() {
@@ -440,18 +455,35 @@
   // 2026-08-20): the browser consent replays from the row — the
   // failure is said ON THE SPOT and the gesture replays, like removal.
   const isDisconnected = (c) => !connected.includes(c.email);
+  const connectionUnavailable = (c) => !isDisconnected(c) && connectionStates[c.account_id] === 'unavailable';
   let reconnection = $state(null);
   let reconnectionError = $state(null);
+  let repairEditor = $state(null);
+  let consentState = $state(null);
+  let consent;
+  onDestroy(() => consent?.dispose());
   async function reconnect(c) {
     reconnection = c.account_id;
     reconnectionError = null;
+    const current = createConsent(call, (value) => {
+      if (consent === current) consentState = value;
+    });
+    consent = current;
     try {
-      await call('reconnect_account', { accountId: c.account_id });
-      onreconnect();
+      const settings = await call('generic_connection_settings', { accountId: c.account_id });
+      if (!visible || consent !== current) return;
+      if (settings) {
+        addOpen = false;
+        repairEditor = { ...settings, accountId: c.account_id };
+        return;
+      }
+      if (await current.run('reconnect_account', { accountId: c.account_id })) onreconnect();
     } catch (err) {
-      reconnectionError = { id: c.account_id, text: t('settings.reconnectionFailed', { err }) };
+      if (consent === current) {
+        reconnectionError = { id: c.account_id, text: t('settings.reconnectionFailed', { err }) };
+      }
     } finally {
-      reconnection = null;
+      if (consent === current) { reconnection = null; consentState = null; }
     }
   }
   async function confirmRemoval() {
@@ -661,7 +693,7 @@
 
 {#if visible}
   <div class="scrim" data-testid="settings-modal" bind:this={panel}>
-    <div class="card" role="dialog" aria-modal="true" aria-label={t('header.settings')}>
+    <div use:modal={{ close }} class="card" role="dialog" aria-modal="true" aria-label={t('header.settings')}>
       <div class="head">
         <span class="title">{t('header.settings')}</span>
         <button type="button" class="close" aria-label={t('action.close')} onclick={close}>
@@ -723,18 +755,21 @@
                           onclick={() => openHorizon(c.account_id)}>
                     {horizons[c.account_id] ? t(`horizon.${horizons[c.account_id]}`) : '…'}</button>
                   {#if isDisconnected(c)}
-                    <!-- Dead token: the state is SAID (link_off, the
-                         reconnection glyph — same meaning as at the
-                         notification slot) and repairs on the spot. -->
                     <span class="disconnected" data-testid="account-disconnected">
                       <Icon name="link_off" />{t('settings.disconnected')}</span>
+                  {/if}
+                  {#if connectionUnavailable(c)}
+                    <span class="disconnected" data-testid="account-connection-unavailable">
+                      <Icon name="link_off" />{t('settings.connectionUnavailable')}</span>
+                  {/if}
+                  {#if isDisconnected(c) || connectionUnavailable(c) || c.provider === 'imap'}
                     <button type="button" class="reconnect" data-testid="account-reconnect"
-                            disabled={reconnection === c.account_id}
+                            disabled={reconnection !== null}
                             aria-label={t('settings.reconnectAccount', { email: c.email })}
                             onclick={() => reconnect(c)}>
                       {reconnection === c.account_id
                         ? t('settings.reconnectionInProgress')
-                        : t('settings.reconnect')}</button>
+                        : t(c.provider === 'imap' ? 'desk.repairConnection' : 'settings.reconnect')}</button>
                   {/if}
                   <!-- PLAN-RETOURS-9 (D2): the gesture is SAID — icon +
                        text, in the product's vocabulary ("remove",
@@ -744,6 +779,34 @@
                           onclick={() => requestRemoval(c.account_id)}>
                     <Icon name="delete" />{t('settings.remove')}</button>
                 </div>
+                {#each syncIssues.filter((issue) => issue.account_id === c.account_id) as issue (`${issue.mailbox}:${issue.operation}`)}
+                  <div class="sync-issue" data-testid="sync-issue">
+                    <strong>{t(`sync.operation.${issue.operation}`)}{issue.mailbox ? ` · ${issue.mailbox}` : ''}</strong>
+                    <p>{issue.reason}</p>
+                    <p>{issue.retry_at === null ? t('sync.manualRetry') : issue.retry_at === 0 ? t('sync.retryReady') : t('sync.autoRetry', {
+                      when: whenLong(issue.retry_at),
+                    })}</p>
+                    <button type="button" class="reconnect" onclick={() => { close(); onretrySync(); }}>{t('action.retry')}</button>
+                  </div>
+                {/each}
+                {#if repairEditor?.accountId === c.account_id}
+                  {@const editor = repairEditor}
+                  <div class="card-add" data-testid="generic-repair">
+                    <div class="head-add">
+                      <span class="title-add">{t('desk.repairConnection')}</span>
+                      <button type="button" class="close" aria-label={t('action.collapse')}
+                              onclick={() => (repairEditor = null)}><Icon name="close" /></button>
+                    </div>
+                    <p class="note-horizon">{t('desk.repairHint')}</p>
+                    {#key editor}
+                      <AccountDesk compact repair={editor}
+                        onadd={() => { if (repairEditor === editor) repairEditor = null; onreconnect(); }} />
+                    {/key}
+                  </div>
+                {/if}
+                {#if reconnection === c.account_id}
+                  <ConsentNotice state={consentState} oncancel={() => consent?.cancel()} />
+                {/if}
                 {#if reconnectionError?.id === c.account_id}
                   <p class="error-reconnection" data-testid="reconnection-error">
                     {reconnectionError.text}</p>
@@ -877,7 +940,7 @@
                 </div>
               {:else}
                 <button type="button" class="add" data-testid="settings-add"
-                        onclick={() => (addOpen = true)}>
+                        onclick={() => { repairEditor = null; addOpen = true; }}>
                   <Icon name="person_add" />{t('settings.addAccount')}</button>
               {/if}
             </div>
@@ -1270,6 +1333,9 @@
   </Menu>
 
 <style>
+  .sync-issue { padding:12px 16px; margin:0 0 12px; border:1px solid var(--border); font-size:14px; line-height:1.5; overflow-wrap:anywhere; }
+  .sync-issue p { margin:6px 0; }
+
   /* The prototype's signature card, widened to 800 px (A13). The
      height is FIXED (640 px, bounded to the screen): the rail must
      not breathe with whatever group is displayed. */
@@ -1363,7 +1429,7 @@
   .desc { font-size:12px; line-height:1.4; color:var(--muted); }
   .check { color:var(--accent); }
   .account {
-    display:flex; align-items:center; gap:12px; padding:10px 16px;
+    display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:10px 16px;
     font-size:13px; color:var(--ink2);
   }
   /* A74: the marker's swatch keeps its own ink (measured color
@@ -1383,6 +1449,7 @@
      before, review 2026-08-23). */
   .identity {
     display:flex; flex-direction:column; align-items:flex-start; gap:1px;
+    flex:1 1 120px;
     min-width:0; overflow:hidden; padding:2px 6px; margin:0 -6px;
     font-size:13px; text-align:left; color:var(--ink);
     background:transparent; border:1px solid transparent;
@@ -1411,9 +1478,7 @@
   }
   .add:hover { background:var(--sel); }
 
-  /* Dead token: the state is said in alert (link_off + "Disconnected"),
-     pushed to the right with the repair gesture — a healthy account's
-     row, meanwhile, doesn't change. */
+  /* Missing sessions and failed connection attempts share the alert treatment. */
   .disconnected {
     margin-left:auto; flex:none; display:inline-flex; align-items:center;
     gap:6px; font-size:12.5px; font-weight:600; color:var(--alert);

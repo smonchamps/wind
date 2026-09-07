@@ -1,4 +1,5 @@
 <script>
+  import { modal } from './lib/modal.js';
   import Brand from './Brand.svelte';
   // The migration modal (ADR 0012, switch debt §6): exclusive and
   // blocking at startup. Without it, the FIRST command to come along
@@ -75,7 +76,7 @@
 
 {#if visible}
   <div class="scrim" data-testid="migration-modal">
-    <div class="card" role="dialog" aria-modal="true"
+    <div use:modal class="card" role="dialog" aria-modal="true"
          aria-label={t('migration.aria')}>
       <!-- V11: the brand AS A TILE (fixed outside themes) — the modal
            precedes any theme applied, the tile carries its own ground. -->

@@ -1,4 +1,5 @@
 <script>
+  import { modal } from './lib/modal.js';
   // The beta feedback form (PLAN-RETOURS-11 R3, field pass of
   // 2026-08-28): one field, one send. The message goes out through
   // THE send queue (`queue_send`) — the golden rule “never a lost
@@ -84,9 +85,8 @@
        onclick={(e) => { if (e.target === e.currentTarget) close(); }}>
     <!-- tabindex -1: the dialog is programmatically focusable (a11y
          of the role); the real focus goes to the field on opening. -->
-    <div class="card" role="dialog" aria-modal="true" tabindex="-1"
-         aria-label={t('feedback.title')} data-testid="back-card"
-         onkeydown={(e) => { if (e.key === 'Escape') close(); }}>
+    <div use:modal={{ close }} class="card" role="dialog" aria-modal="true" tabindex="-1"
+         aria-label={t('feedback.title')} data-testid="back-card">
       <div class="head">
         <Icon name="feedback" />
         <span class="title">{t('feedback.title')}</span>

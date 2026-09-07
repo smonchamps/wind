@@ -144,6 +144,8 @@ pub struct MessageRow {
 /// invitation MESSAGE (not the thread head).
 #[derive(Serialize)]
 pub struct InvitationRowPayload {
+    pub revision: i64,
+    pub version: MessageVersion,
     pub mailbox: String,
     pub uid: u32,
     /// The meeting title — the reply's subject is built from it, never
@@ -323,13 +325,44 @@ fn connect_generic(
     db_path: &Path,
     account: &mail_core::Account,
 ) -> Result<Option<AccountSession>, String> {
-    let password =
-        mail_auth::fetch_generic_password(&account.email).map_err(|err| err.to_string())?;
     let config = Store::open(db_path)
         .map_err(|err| err.to_string())?
         .account_config(account.id)
         .map_err(|err| err.to_string())?;
+    let password =
+        mail_auth::fetch_generic_password_slot(&account.email, config.credential_slot.as_deref())
+            .map_err(|err| err.to_string())?;
     Ok(build_generic_session(&account.email, &password, &config))
+}
+
+#[derive(Serialize)]
+pub struct ConsentStatus {
+    url: String,
+    manual: bool,
+}
+
+#[tauri::command]
+pub async fn oauth_begin(state: State<'_, AppState>) -> Result<String, CommandError> {
+    state.consent.begin().map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn oauth_status(
+    state: State<'_, AppState>,
+    flow_id: String,
+) -> Result<Option<ConsentStatus>, CommandError> {
+    Ok(state.consent.status(&flow_id)?.map(|link| ConsentStatus {
+        url: link.url,
+        manual: link.manual,
+    }))
+}
+
+#[tauri::command]
+pub async fn oauth_cancel(
+    state: State<'_, AppState>,
+    flow_id: String,
+) -> Result<bool, CommandError> {
+    Ok(state.consent.cancel(&flow_id))
 }
 
 /// Adds a Gmail account — full browser flow, repeatable. Google delivers
@@ -339,9 +372,10 @@ pub async fn add_account(
     app: AppHandle,
     state: State<'_, AppState>,
     horizon: Option<String>,
+    flow_id: String,
 ) -> Result<AccountInfo, CommandError> {
     let _ = state;
-    add_oauth_account(app, &mail_auth::GOOGLE, None, horizon).await
+    add_oauth_account(app, &mail_auth::GOOGLE, None, horizon, flow_id).await
 }
 
 /// Adds a Microsoft 365 / Outlook.com account.
@@ -355,6 +389,7 @@ pub async fn add_microsoft_account(
     state: State<'_, AppState>,
     email: String,
     horizon: Option<String>,
+    flow_id: String,
 ) -> Result<AccountInfo, CommandError> {
     let email = email.trim().to_string();
     // Validation at the boundary: the declared address becomes the
@@ -364,7 +399,7 @@ pub async fn add_microsoft_account(
         return Err("invalid address: enter the account's full address".into());
     }
     let _ = state;
-    add_oauth_account(app, &mail_auth::MICROSOFT, Some(email), horizon).await
+    add_oauth_account(app, &mail_auth::MICROSOFT, Some(email), horizon, flow_id).await
 }
 
 /// The common trunk of OAuth2 additions: browser consent, then
@@ -374,7 +409,10 @@ async fn add_oauth_account(
     provider: &'static mail_auth::Provider,
     declared_email: Option<String>,
     horizon: Option<String>,
+    flow_id: String,
 ) -> Result<AccountInfo, CommandError> {
+    let consent = app.state::<AppState>().consent.claim(&flow_id)?;
+    let control = consent.control.clone();
     let _registration = app.state::<AppState>().account_work.registration()?;
     // Validation at the boundary, BEFORE the browser flow: refusing an
     // unreadable horizon after consent would leave an account created
@@ -383,7 +421,7 @@ async fn add_oauth_account(
     let account = tauri::async_runtime::spawn_blocking(move || {
         Authenticator::from_env(provider)
             .map_err(|err| err.to_string())?
-            .authenticate_interactive(declared_email.as_deref())
+            .authenticate_interactive_controlled(declared_email.as_deref(), None, &control)
             .map_err(|err| err.to_string())
     })
     .await
@@ -427,7 +465,10 @@ async fn add_oauth_account(
 pub async fn reconnect_account(
     app: AppHandle,
     account_id: i64,
+    flow_id: String,
 ) -> Result<AccountInfo, CommandError> {
+    let consent = app.state::<AppState>().consent.claim(&flow_id)?;
+    let control = consent.control.clone();
     let _registration = app.state::<AppState>().account_work.registration()?;
     let (account, ticket, lease) = off_pump(app.clone(), move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
@@ -452,25 +493,15 @@ pub async fn reconnect_account(
     // Google delivers the identity; Microsoft requires the declared address.
     let declared =
         (provider.account_kind != mail_auth::GOOGLE.account_kind).then(|| account.email.clone());
+    let expected = account.email.clone();
     let session = tauri::async_runtime::spawn_blocking(move || {
         Authenticator::from_env(provider)
             .map_err(|err| err.to_string())?
-            .authenticate_interactive(declared.as_deref())
+            .authenticate_interactive_controlled(declared.as_deref(), Some(&expected), &control)
             .map_err(|err| err.to_string())
     })
     .await
     .map_err(|err| err.to_string())??;
-    if !session
-        .email
-        .trim()
-        .eq_ignore_ascii_case(account.email.trim())
-    {
-        return Err(format!(
-            "consent was given for {}, not for {}; replay the reconnection and pick the right account",
-            session.email, account.email
-        )
-        .into());
-    }
     off_pump(app, move |app| {
         let _lease = lease;
         let state = app.state::<AppState>();
@@ -478,6 +509,11 @@ pub async fn reconnect_account(
             return Err("account changed during reconnection".into());
         }
         lock_accounts(&state)?.insert(account.email.clone(), AccountSession::OAuth(session));
+        // Same rule as the generic repair: a renewed connection releases the
+        // refusals waiting for a manual retry without erasing the diagnostic.
+        Store::open(&db_path(&app)?)
+            .and_then(|store| store.retry_operations(account.id))
+            .map_err(|err| err.to_string())?;
         // The account gets its IDLE watcher back without waiting for a restart.
         crate::watcher::reconcile(&app);
         Ok(AccountInfo {
@@ -550,8 +586,109 @@ fn write_horizon_on_first_add(
     Ok(())
 }
 
-/// Adds a generic IMAP/SMTP account: tests the connection, stores the
-/// password in the vault, then registers the account in the database.
+fn verify_generic_connections(
+    imap: impl FnOnce() -> Result<(), String>,
+    smtp: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    let incoming = imap();
+    let outgoing = smtp();
+    let mut errors = Vec::new();
+    if let Err(error) = incoming {
+        errors.push(format!("IMAP: {error}"));
+    }
+    if let Err(error) = outgoing {
+        errors.push(format!("SMTP: {error}"));
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
+}
+
+fn generic_credentials(input: GenericAccountInput) -> Result<GenericCredentials, String> {
+    let email = input.email.trim().to_string();
+    let username = input
+        .username
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| email.clone())
+        .trim()
+        .to_string();
+    if !is_plausible_address(&email)
+        || input.imap_host.trim().is_empty()
+        || input.smtp_host.trim().is_empty()
+        || input.imap_port == 0
+        || input.smtp_port == 0
+    {
+        return Err("enter the address, servers and valid ports".into());
+    }
+    Ok(GenericCredentials {
+        email,
+        username,
+        password: input.password,
+        imap_host: input.imap_host.trim().into(),
+        imap_port: input.imap_port,
+        smtp_host: input.smtp_host.trim().into(),
+        smtp_port: input.smtp_port,
+    })
+}
+
+fn probe_generic(creds: &GenericCredentials) -> Result<(), String> {
+    verify_generic_connections(
+        || {
+            let server = mail_imap::ImapServer::connect_password(
+                &creds.imap_host,
+                creds.imap_port,
+                &creds.username,
+                &creds.password,
+            )
+            .map_err(|err| err.to_string())?;
+            server.logout();
+            Ok(())
+        },
+        || {
+            SmtpMailer::connect_password(
+                &creds.smtp_host,
+                creds.smtp_port,
+                &creds.username,
+                &creds.password,
+            )
+            .map(|_| ())
+            .map_err(|err| err.to_string())
+        },
+    )
+}
+
+fn publish_generic(
+    store: &Store,
+    target: Option<i64>,
+    creds: &GenericCredentials,
+    current_slot: Option<&str>,
+    horizon: Option<&str>,
+) -> Result<i64, CommandError> {
+    let id =
+        mail_auth::replace_generic_password(&creds.email, current_slot, &creds.password, |slot| {
+            store
+                .save_generic_connection(
+                    target,
+                    &creds.email,
+                    &AccountConfig {
+                        imap_host: Some(creds.imap_host.clone()),
+                        imap_port: Some(creds.imap_port),
+                        smtp_host: Some(creds.smtp_host.clone()),
+                        smtp_port: Some(creds.smtp_port),
+                        username: Some(creds.username.clone()),
+                        credential_slot: Some(slot.into()),
+                    },
+                    horizon,
+                )
+                .map_err(|err| mail_auth::AuthError::Config(err.to_string()))
+        })
+        .map_err(|err| err.to_string())?;
+    Ok(id)
+}
+
+/// Verify both protocols before staging a credential; publish its reference with SQL.
 #[tauri::command]
 pub async fn add_generic_account(
     app: AppHandle,
@@ -560,64 +697,180 @@ pub async fn add_generic_account(
 ) -> Result<AccountInfo, CommandError> {
     let _registration = app.state::<AppState>().account_work.registration()?;
     validate_horizon(horizon.as_deref())?;
-    let username = input.username.unwrap_or_else(|| input.email.clone());
-    let email = input.email.clone();
-    let imap_host = input.imap_host.clone();
-    let imap_port = input.imap_port;
-    let smtp_host = input.smtp_host.clone();
-    let smtp_port = input.smtp_port;
-    let password = input.password.clone();
-
-    // Immediate IMAP test: nothing is stored until the connection works.
-    tauri::async_runtime::spawn_blocking({
-        let email = email.clone();
-        let username = username.clone();
-        let imap_host = imap_host.clone();
-        let password = password.clone();
-        move || {
-            let server = mail_imap::ImapServer::connect_password(
-                &imap_host, imap_port, &username, &password,
-            )
-            .map_err(|err| format!("connexion IMAP impossible : {err}"))?; // lang:fr
-            server.logout();
-            mail_auth::store_generic_password(&email, &password).map_err(|err| err.to_string())
-        }
+    let creds = generic_credentials(input)?;
+    if creds.password.is_empty() {
+        return Err("enter the account password".into());
+    }
+    let creds = tauri::async_runtime::spawn_blocking(move || {
+        probe_generic(&creds)?;
+        Ok::<_, String>(creds)
     })
     .await
     .map_err(|err| err.to_string())??;
-
     store_off_pump(app, move |app, store| {
         let state = app.state::<AppState>();
-        if let Some(known) = store
+        // Never stage into an existing account's active slot through the add door.
+        if store
             .accounts()?
-            .into_iter()
-            .find(|known| known.email == email)
+            .iter()
+            .any(|account| account.email.eq_ignore_ascii_case(&creds.email))
         {
-            state.account_work.capture(known.id)?;
+            return Err("account already exists; use its connection settings".into());
         }
-        let id = store
-            .create_generic_account(
-                &email, &username, &imap_host, imap_port, &smtp_host, smtp_port,
-            )
-            .map_err(|err| err.to_string())?;
-        write_horizon_on_first_add(store, id, horizon.as_deref())?;
-
-        let session = AccountSession::Generic(GenericCredentials {
-            email: email.clone(),
-            username: username.clone(),
-            password,
-            imap_host,
-            imap_port,
-            smtp_host,
-            smtp_port,
-        });
-        let state = app.state::<AppState>();
-        lock_accounts(&state)?.insert(email.clone(), session);
-        // E4: the new account gets its IDLE watcher without delay.
+        let mut accounts = lock_accounts(&state)?;
+        let horizon = horizon.as_deref().map(crate::wire::category_from_wire);
+        let id = publish_generic(store, None, &creds, None, horizon.as_deref())?;
+        let info = AccountInfo {
+            id,
+            email: creds.email.clone(),
+        };
+        accounts.insert(creds.email.clone(), AccountSession::Generic(creds));
+        drop(accounts);
         crate::watcher::reconcile(app);
-        Ok(AccountInfo { id, email })
+        Ok(info)
     })
     .await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenericConnectionSettings {
+    email: String,
+    username: String,
+    imap_host: String,
+    imap_port: u16,
+    smtp_host: String,
+    smtp_port: u16,
+}
+
+#[tauri::command]
+pub async fn generic_connection_settings(
+    app: AppHandle,
+    account_id: i64,
+) -> Result<Option<GenericConnectionSettings>, CommandError> {
+    store_off_pump(app, move |_, store| {
+        let account = store
+            .accounts()?
+            .into_iter()
+            .find(|account| account.id == account_id)
+            .ok_or("unknown account")?;
+        if account.provider != "imap" {
+            return Ok(None);
+        }
+        let config = store.account_config(account_id)?;
+        Ok(Some(GenericConnectionSettings {
+            email: account.email.clone(),
+            username: config.username.unwrap_or(account.email),
+            imap_host: config.imap_host.unwrap_or_default(),
+            imap_port: config.imap_port.unwrap_or(993),
+            smtp_host: config.smtp_host.unwrap_or_default(),
+            smtp_port: config.smtp_port.unwrap_or(465),
+        }))
+    })
+    .await
+}
+
+fn retire_generic_connection(
+    registry: &crate::account_work::Registry,
+    ticket: &Ticket,
+    lease: Lease,
+) -> Result<crate::account_work::Retirement, String> {
+    if !registry.is_current(ticket) {
+        return Err("account changed during verification".into());
+    }
+    let retirement = registry.retire(ticket.account_id)?;
+    drop(lease);
+    Ok(retirement)
+}
+
+#[tauri::command]
+pub async fn repair_generic_account(
+    app: AppHandle,
+    account_id: i64,
+    input: GenericAccountInput,
+) -> Result<AccountInfo, CommandError> {
+    let mut creds = generic_credentials(input)?;
+    let (config, ticket, lease, creds) = off_pump(app.clone(), move |app| {
+        let state = app.state::<AppState>();
+        let store = Store::open(&db_path(&app)?)?;
+        let account = store
+            .accounts()?
+            .into_iter()
+            .find(|account| account.id == account_id)
+            .ok_or("unknown account")?;
+        let config = store.account_config(account_id)?;
+        if account.provider != "imap"
+            || account.email != creds.email
+            || config.imap_host.as_deref() != Some(&creds.imap_host)
+            || config.username.as_deref().unwrap_or(&account.email) != creds.username
+        {
+            return Err(
+                "repair must keep the original address, IMAP server and login username".into(),
+            );
+        }
+        let ticket = state.account_work.capture(account_id)?;
+        let lease = ticket.lease()?;
+        if creds.password.is_empty() {
+            creds.password = mail_auth::fetch_generic_password_slot(
+                &account.email,
+                config.credential_slot.as_deref(),
+            )
+            .map_err(|err| err.to_string())?;
+        }
+        Ok::<_, CommandError>((config, ticket, lease, creds))
+    })
+    .await?;
+    let creds = tauri::async_runtime::spawn_blocking(move || {
+        probe_generic(&creds)?;
+        Ok::<_, String>(creds)
+    })
+    .await
+    .map_err(|err| err.to_string())??;
+    let retirement = off_pump(app.clone(), move |app| {
+        let state = app.state::<AppState>();
+        let retirement = retire_generic_connection(&state.account_work, &ticket, lease)?;
+        if let Some(alive) = recovered(&state.watchers).get(&creds.email) {
+            alive.store(false, Ordering::Release);
+        }
+        Ok::<_, CommandError>((retirement, creds))
+    })
+    .await?;
+    let (retirement, creds) = retirement;
+    let worker_app = app.clone();
+    let outcome = tauri::async_runtime::spawn_blocking(move || {
+        let result = (|| -> Result<AccountInfo, CommandError> {
+            retirement.wait(Duration::from_secs(30))?;
+            let state = worker_app.state::<AppState>();
+            let _commands = recovered(&state.commands);
+            let store = Store::open(&db_path(&worker_app)?)?;
+            if store.account_config(account_id)? != config {
+                return Err("connection settings changed during verification".into());
+            }
+            let mut accounts = lock_accounts(&state)?;
+            let id = publish_generic(
+                &store,
+                Some(account_id),
+                &creds,
+                config.credential_slot.as_deref(),
+                None,
+            )?;
+            let info = AccountInfo {
+                id,
+                email: creds.email.clone(),
+            };
+            recovered(&state.sync_backoffs).remove(&creds.email);
+            recovered(&state.gesture_passes).retain(|ticket, _| ticket.account_id != account_id);
+            accounts.insert(creds.email.clone(), AccountSession::Generic(creds));
+            Ok(info)
+        })();
+        if result.is_ok() {
+            retirement.commit();
+        }
+        result
+    })
+    .await;
+    crate::watcher::reconcile(&app);
+    outcome.map_err(|err| err.to_string())?
 }
 
 /// Removes an account: its secrets leave the OS vault, its local data
@@ -784,13 +1037,38 @@ pub async fn sync_inbox_light(
                 let mut store = Store::open(&path).map_err(|err| err.to_string())?;
                 let mut problems = Vec::new();
                 let hooks = crate::poll::ShellHooks::new(&run_cycle, app_bubbles.clone());
-                let outcome = mail_core::cycle::run_light(
-                    &mut crate::poll::ShellServer(&mut server),
-                    &mut store,
-                    account_id,
-                    &hooks,
-                    &mut problems,
-                );
+                let retry_partial = force
+                    && store
+                        .operation_issues()
+                        .map_err(|err| err.to_string())?
+                        .iter()
+                        .any(|issue| issue.account_id == account_id);
+                if retry_partial {
+                    store
+                        .retry_operations(account_id)
+                        .map_err(|err| err.to_string())?;
+                }
+                let outcome = if retry_partial {
+                    mail_core::cycle::run_sync(
+                        &mut crate::poll::ShellServer(&mut server),
+                        &mut store,
+                        account_id,
+                        &path,
+                        &hooks,
+                    )
+                    .map(|outcome| {
+                        problems.extend(outcome.problems);
+                        outcome.report
+                    })
+                } else {
+                    mail_core::cycle::run_light(
+                        &mut crate::poll::ShellServer(&mut server),
+                        &mut store,
+                        account_id,
+                        &hooks,
+                        &mut problems,
+                    )
+                };
                 server.logout();
                 let report = outcome?;
                 Ok((report, problems, fresh))
@@ -898,6 +1176,11 @@ fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
         pinned: false,
         aside: false,
         invitation: row.invitation.map(|rang| InvitationRowPayload {
+            revision: rang.revision,
+            version: MessageVersion {
+                mailbox_id: rang.mailbox_id,
+                uid_validity: rang.uid_validity,
+            },
             mailbox: rang.mailbox,
             uid: rang.uid,
             title: rang.title,
@@ -915,6 +1198,7 @@ fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
 pub struct NavAccount {
     pub account_id: i64,
     pub email: String,
+    pub provider: String,
     // The nav says ONLY the unread count (A29): the 10 s probe only
     // pays for these two counters — the full inventory (`nav_counts`,
     // whose total for an integral folder probes at ~240 ms) is no
@@ -942,6 +1226,7 @@ fn read_nav(store: &Store) -> Result<Vec<NavAccount>, String> {
         result.push(NavAccount {
             account_id: account.id,
             email: account.email,
+            provider: account.provider,
             inbox_unread,
             junk_unread,
         });
@@ -1186,6 +1471,7 @@ pub async fn search_messages(
 
 #[derive(Serialize)]
 pub struct BodyView {
+    pub images_message_allowed: bool,
     pub document: String,
     pub remote_images_blocked: usize,
     /// The attachment count AFTER-SCAN: the first opening of a message
@@ -1308,6 +1594,13 @@ fn body_view(
         // WITHOUT its own color was already readable; text that carries
         // one now is too.
         Ok(BodyView {
+            images_message_allowed: store
+                .sync_state(account_id, mailbox)
+                .map_err(|e| e.to_string())?
+                .map(|m| store.images_allowed_message(m.mailbox_id, uid))
+                .transpose()
+                .map_err(|e| e.to_string())?
+                .unwrap_or(false),
             document: mail_render::email_document(
                 &sanitized.html,
                 policy,
@@ -1327,7 +1620,7 @@ fn fetch_body(
     mailbox: String,
     uid: u32,
     version: MessageVersion,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     let (mut server, _refreshed, _lease) = crate::poll::connect_imap(session)?;
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
     let body = mail_core::load_body_version(
@@ -1335,10 +1628,9 @@ fn fetch_body(
         &mut store,
         &version.identity(account_id, &mailbox),
         uid,
-    )
-    .map_err(|err| err.to_string())?;
+    )?;
     server.logout();
-    body.ok_or_else(|| "message not found on the server".to_string())
+    body.ok_or_else(|| CommandError::new("message not found on the server"))
 }
 
 /// Raw HTML body of a message: local cache first (no network), the
@@ -1354,9 +1646,14 @@ async fn raw_body(
     // commands' lock); only the network fetch runs bare.
     let mailbox2 = mailbox.to_string();
     let cached: Result<String, AccountWork> = off_pump(app.clone(), move |app| {
-        let cached = Store::open(&db_path(&app)?)
-            .and_then(|store| store.body_version(&version.identity(account_id, &mailbox2), uid))
-            .map_err(|err| err.to_string())?;
+        let store = Store::open(&db_path(&app)?)?;
+        let identity = version.identity(account_id, &mailbox2);
+        let cached = store.body_version(&identity, uid)?;
+        if cached.is_none()
+            && let Some(limit) = store.body_download_limit(&identity, uid)?
+        {
+            return Err(mail_core::Error::RemoteMessageTooLarge { uid, limit }.into());
+        }
         match cached {
             Some(html) => Ok::<_, CommandError>(Ok(html)),
             None => Ok(Err(auth_for(&app, account_id)?)),
@@ -1425,6 +1722,9 @@ pub async fn message_attachments(
 /// time", D1 guard).
 #[derive(Serialize)]
 pub struct InvitationView {
+    pub revision: i64,
+    pub scheduling_state: String,
+    pub needs_refresh: bool,
     /// `request` | `cancel` | `reply`.
     pub method: String,
     pub title: String,
@@ -1458,9 +1758,12 @@ pub struct InvitationView {
 
 fn invitation_view(stored: mail_core::StoredInvitation) -> InvitationView {
     let row = stored.row;
-    let cancelled = row.method == "cancel" || row.cancelled;
-    let can_reply = row.method == "request" && row.organizer_address.is_some() && !row.cancelled;
+    let cancelled = row.cancelled;
+    let can_reply = row.can_reply();
     InvitationView {
+        revision: stored.revision,
+        needs_refresh: row.metadata_version == 0,
+        scheduling_state: row.scheduling_state,
         cancelled,
         // The D1 guard by ENDPOINT: an end with an unresolved TZID is
         // enough to say "the organizer's local time" (review — a
@@ -1493,6 +1796,63 @@ fn invitation_view(stored: mail_core::StoredInvitation) -> InvitationView {
     }
 }
 
+/// Re-extract one legacy calendar source; the cached body stays available on failure.
+#[tauri::command]
+pub async fn refresh_invitation(
+    app: AppHandle,
+    account_id: i64,
+    mailbox: String,
+    uid: u32,
+    version: MessageVersion,
+) -> Result<Option<InvitationView>, CommandError> {
+    let folder = mailbox.clone();
+    let ready = off_pump(app.clone(), move |app| {
+        let store = Store::open(&db_path(&app)?)?;
+        version.verify(&store, account_id, &folder)?;
+        let stored = store.invitation_version(&version.identity(account_id, &folder), uid)?;
+        if stored.as_ref().is_none_or(|i| i.row.metadata_version != 0) {
+            Ok::<_, CommandError>(Ok(stored.map(invitation_view)))
+        } else {
+            Ok(Err(auth_for(&app, account_id)?))
+        }
+    })
+    .await?;
+    let session = match ready {
+        Ok(view) => return Ok(view),
+        Err(session) => session,
+    };
+    let path = db_path(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let (mut server, _, _lease) = crate::poll::connect_imap(&session)?;
+        let result = (|| {
+            let store = Store::open(&path).map_err(|e| e.to_string())?;
+            mail_core::refresh_invitation_version(
+                &mut server,
+                &store,
+                &version.identity(account_id, &mailbox),
+                uid,
+            )
+            .map(|stored| stored.map(invitation_view))
+            .map_err(|e| e.to_string())
+        })();
+        server.logout();
+        result
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(Into::into)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvitationSelection {
+    account_id: i64,
+    mailbox: String,
+    uid: u32,
+    version: MessageVersion,
+    revision: i64,
+}
+
 /// Replies to an invitation (PLAN-INVITATIONS, D5-D6): the iTIP
 /// `METHOD:REPLY` email is LOGGED to the outbox (ADR 0003 golden rules —
 /// offline, it goes out on next launch), the reply is recorded on the
@@ -1501,31 +1861,36 @@ fn invitation_view(stored: mail_core::StoredInvitation) -> InvitationView {
 #[tauri::command]
 pub async fn reply_invitation(
     app: AppHandle,
-    account_id: i64,
-    mailbox: String,
-    uid: u32,
+    selection: InvitationSelection,
     reply: String,
     subject: String,
     body: String,
 ) -> Result<Option<InvitationView>, CommandError> {
+    let InvitationSelection {
+        account_id,
+        mailbox,
+        uid,
+        version,
+        revision,
+    } = selection;
     off_pump(app, move |app| {
         // The UI speaks the wire word (`accepted`); the core and the
         // database keep the French stable string (D16).
         let reply = crate::wire::reply_from_wire(&reply);
-        let participation = mail_core::participation_de_stable(&reply)
+        mail_core::participation_de_stable(&reply)
             .filter(|p| !matches!(p, mail_ical::Participation::NeedsAction))
             .ok_or_else(|| format!("unknown reply: {reply}"))?;
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         admit_account(&app, &store, account_id)?;
+        version.verify(&store, account_id, &mailbox)?;
         let stored = store
             .invitation(account_id, &mailbox, uid)
             .map_err(|err| err.to_string())?
             .ok_or_else(|| "no invitation on this message".to_string())?;
-        if stored.row.method != "request" || stored.row.cancelled {
-            // Same rule as `can_reply` — R8: a forwarded `.ics` IS
-            // an invitation (CE verdict); a cancelled meeting can no
-            // longer be replied to.
-            return Err("this message is not an invitation to reply to".into());
+        if !stored.row.can_reply() || stored.revision != revision {
+            return Err(
+                "this invitation has changed or cannot be answered; reopen the message".into(),
+            );
         }
         let organizer = stored
             .row
@@ -1552,30 +1917,20 @@ pub async fn reply_invitation(
         draft.references = store
             .references_of(account_id, &mailbox, uid)
             .map_err(|err| err.to_string())?;
-        draft.ics_reply = Some(mail_ical::itip_reply(&mail_ical::ReplyRequest {
-            uid: &stored.row.event_uid,
-            sequence: stored.row.sequence,
-            organizer_address: &organizer,
-            our_address: &from,
-            participation,
-            dtstamp_epoch: chrono::Utc::now().timestamp(),
-        }));
-        // Email AND reply in ONE transaction (review): if the row
-        // vanished between the display and the click, NOTHING goes out
-        // — a queued email in front of a "not replied" card would
-        // invite a double send.
         let queued = store
             .enqueue_invitation_reply(
-                account_id,
+                mail_core::InvitationReplyTarget {
+                    identity: &version.identity(account_id, &mailbox),
+                    uid,
+                    revision,
+                },
                 &draft,
-                &mailbox,
-                uid,
                 &reply,
                 chrono::Utc::now().timestamp(),
             )
             .map_err(|err| err.to_string())?;
         if queued.is_none() {
-            return Err("the invitation no longer exists; nothing was sent".into());
+            return Err("the invitation changed or cannot be answered; nothing was queued".into());
         }
         let updated = store
             .invitation(account_id, &mailbox, uid)
@@ -1661,7 +2016,7 @@ pub async fn save_attachment(
     .await?;
     let completion_ticket = session.ticket.clone();
     let expected_generation = identity.uid_validity;
-    let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
+    let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, CommandError> {
         let (mut server, _refreshed, _lease) = crate::poll::connect_imap(&session)?;
         let bytes = mail_core::fetch_attachment_checked(
             &mut server,
@@ -1669,10 +2024,9 @@ pub async fn save_attachment(
             expected_generation,
             uid,
             index,
-        )
-        .map_err(|err| err.to_string())?;
+        )?;
         server.logout();
-        bytes.ok_or_else(|| "attachment missing from the message".to_string())
+        bytes.ok_or_else(|| CommandError::new("attachment missing from the message"))
     })
     .await
     .map_err(|err| err.to_string())??;
@@ -1818,6 +2172,8 @@ pub(crate) fn bump_view_generation(app: &AppHandle) {
 #[derive(Serialize)]
 pub struct UiState {
     pub nav: Vec<NavAccount>,
+    pub connected: Vec<String>,
+    pub connection_states: std::collections::HashMap<i64, crate::account_work::ConnectionState>,
     pub sync: SyncProgress,
     pub outbox: OutboxStatus,
     /// Revision of the drafts table (count, latest edit, largest id) —
@@ -1831,9 +2187,14 @@ pub struct UiState {
 pub async fn ui_state(app: AppHandle, state: State<'_, AppState>) -> Result<UiState, CommandError> {
     let generation = state.sync_cycle.generation.load(Ordering::Relaxed);
     let in_progress = state.sync_cycle.in_progress.load(Ordering::Relaxed);
-    store_off_pump(app, move |_, store| {
+    store_off_pump(app, move |app, store| {
+        let state = app.state::<AppState>();
+        let connected = lock_accounts(&state)?.keys().cloned().collect();
+        let connection_states = state.account_work.connection_states();
         Ok(UiState {
             nav: read_nav(store)?,
+            connected,
+            connection_states,
             sync: read_sync(store, generation, in_progress)?,
             outbox: read_sends(store)?,
             drafts_revision: store.drafts_revision()?,
@@ -2081,6 +2442,7 @@ pub async fn echo_body(
         let sanitized = mail_render::sanitize_with(&html, policy);
         // R3: light slate always (see `message_body`) — same door, S1.
         Ok(BodyView {
+            images_message_allowed: false,
             document: mail_render::email_document(
                 &sanitized.html,
                 policy,
@@ -2250,18 +2612,16 @@ pub async fn allow_images_message(
     account_id: i64,
     mailbox: String,
     uid: u32,
+    version: MessageVersion,
 ) -> Result<(), CommandError> {
     account_store_off_pump(app, account_id, move |_, store| {
-        // Unknown mailbox = a SAID failure, never a facade success: the
-        // UI would show "remembered" while nothing is written (review
-        // 2026-08-28).
-        let Some(state) = store
-            .sync_state(account_id, &mailbox)
-            .map_err(|err| err.to_string())?
-        else {
-            return Err(format!("unknown mailbox: {mailbox}").into());
-        };
-        Ok(store.allow_images_message(state.mailbox_id, uid, epoch_now())?)
+        store.set_images_message_checked(
+            &version.identity(account_id, &mailbox),
+            uid,
+            true,
+            epoch_now(),
+        )?;
+        Ok(())
     })
     .await
 }
@@ -2276,18 +2636,34 @@ pub async fn allow_images_sender(
     account_id: i64,
     mailbox: String,
     uid: u32,
+    version: MessageVersion,
 ) -> Result<Option<String>, CommandError> {
     account_store_off_pump(app, account_id, move |_, store| {
-        // Same contract: the failure is said. The remaining `None`
-        // (envelope without an address — nothing is written) is a real
-        // business case the UI must distinguish.
-        let Some(state) = store
-            .sync_state(account_id, &mailbox)
-            .map_err(|err| err.to_string())?
-        else {
-            return Err(format!("unknown mailbox: {mailbox}").into());
-        };
-        Ok(store.allow_images_sender_of(state.mailbox_id, uid, epoch_now())?)
+        Ok(store.allow_images_sender_checked(
+            &version.identity(account_id, &mailbox),
+            uid,
+            epoch_now(),
+        )?)
+    })
+    .await
+}
+
+/// Removes only the message grant; true means a sender rule still permits images.
+#[tauri::command]
+pub async fn revoke_images_message(
+    app: AppHandle,
+    account_id: i64,
+    mailbox: String,
+    uid: u32,
+    version: MessageVersion,
+) -> Result<bool, CommandError> {
+    account_store_off_pump(app, account_id, move |_, store| {
+        Ok(store.set_images_message_checked(
+            &version.identity(account_id, &mailbox),
+            uid,
+            false,
+            epoch_now(),
+        )?)
     })
     .await
 }
@@ -2807,6 +3183,7 @@ pub async fn set_aside_pile(app: AppHandle) -> Result<Vec<MessageRow>, CommandEr
 /// bounded to the SERVED page, never one network call per card).
 #[derive(Serialize)]
 pub struct FeedCard {
+    pub images_message_allowed: bool,
     pub row: MessageRow,
     pub document: Option<String>,
     pub remote_images_blocked: usize,
@@ -2876,6 +3253,10 @@ pub async fn feed_cards(
             };
             row.version.verify(store, row.account_id, &row.mailbox)?;
             cards.push(FeedCard {
+                images_message_allowed: mailbox_id
+                    .map(|id| store.images_allowed_message(id, row.uid))
+                    .transpose()?
+                    .unwrap_or(false),
                 row,
                 document,
                 remote_images_blocked,
@@ -3227,17 +3608,24 @@ pub async fn reply_all_context(
         .map_err(|err| err.to_string())??;
         (fetched.to, fetched.cc)
     };
-    // D3: To and Cc kept SEPARATE — the original Cc stay Cc (instead of
-    // being flattened into To).
-    let (mut to, cc) =
-        mail_core::reply_all_split(envelope.sender_address.as_deref(), &to_list, &cc_list, &own);
-    if to.is_empty() {
-        // A message sent to oneself only: the sender remains the only
-        // sensible recipient — better than an empty "To" field.
-        // `Reply-To` takes priority over the sender (PLAN-AUDIT-V2 E5).
-        to.extend(repondre_a.or_else(|| envelope.sender_address.clone()));
+    let is_own = envelope
+        .sender_address
+        .as_deref()
+        .is_some_and(|sender| sender.eq_ignore_ascii_case(&own));
+    let sender = if is_own {
+        envelope.sender_address.as_deref()
+    } else {
+        repondre_a
+            .as_deref()
+            .filter(|address| !address.trim().is_empty())
+            .or(envelope.sender_address.as_deref())
+    };
+    let (mut to, cc) = mail_core::reply_all_split(sender, &to_list, &cc_list, &own);
+    if to.is_empty() && cc.is_empty() {
+        // Preserve the existing self-only reply fallback; a Cc-only reply needs none.
+        to.extend(sender.map(str::to_string));
     }
-    if to.is_empty() {
+    if to.is_empty() && cc.is_empty() {
         return Err("unknown sender address: resync the mailbox".into());
     }
     let body_html = citation_reply(&app, account_id, &mailbox, uid, version, &envelope).await;
@@ -4801,25 +5189,39 @@ fn mime_for_name(name: &str) -> &'static str {
     }
 }
 
+fn attachment_room(files: &[mail_core::DraftAttachmentMeta]) -> u64 {
+    files
+        .iter()
+        .fold(mail_core::MAX_ATTACHMENTS_BYTES, |remaining, file| {
+            remaining.saturating_sub(file.size)
+        })
+}
+
 fn attach_edit_files(
     store: &Store,
     token: &str,
     account_id: i64,
     paths: &[String],
 ) -> Result<AttachReport, CommandError> {
-    store.draft_edit(token)?;
+    let edit = store.draft_edit(token)?;
+    let mut remaining = attachment_room(&edit.attachments);
     let mut refused = Vec::new();
     let mut forked = false;
     for path in paths {
         let candidate = Path::new(path);
-        if !candidate.is_absolute() || !candidate.is_file() {
-            return Err(format!("attachment refused: {path:?} is not an absolute file").into());
-        }
         let name = candidate
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| path.clone());
-        let bytes = std::fs::read(candidate).map_err(|err| format!("reading {path:?}: {err}"))?;
+        let Some(bytes) = crate::attachment_file::read(candidate, remaining)
+            .map_err(|err| format!("reading {path:?}: {err}"))?
+        else {
+            refused.push(RefusedAttachment {
+                name,
+                remaining: mail_core::human_size(remaining),
+            });
+            continue;
+        };
         match store.add_draft_edit_attachment(
             token,
             account_id,
@@ -4827,7 +5229,10 @@ fn attach_edit_files(
             mime_for_name(&name),
             &bytes,
         ) {
-            Ok(saved) => forked |= saved.forked,
+            Ok(saved) => {
+                forked |= saved.forked;
+                remaining = remaining.saturating_sub(bytes.len() as u64);
+            }
             Err(mail_core::Error::AttachmentOverBudget {
                 name, remaining, ..
             }) => refused.push(RefusedAttachment {
@@ -4892,25 +5297,27 @@ pub async fn attach_files(
             }
         };
         let mut updated_epoch = None;
+        let mut remaining = attachment_room(&store.draft_attachments_meta(draft_id)?);
         let mut refused = Vec::new();
         for path in &paths {
-            // E8: a path coming from the UI is read only if it is
-            // absolute and names a regular file — never a folder, never
-            // a path relative to the process.
-            let candidate = std::path::Path::new(path);
-            if !candidate.is_absolute() || !candidate.is_file() {
-                return Err(format!("attachment refused: {path:?} is not an absolute file").into());
-            }
-            // A read failure is an outright failure of the gesture:
-            // files already entered stay (the UI re-reads the chips),
-            // this one has a problem the user must see, not a silence.
-            let bytes = std::fs::read(path).map_err(|err| format!("reading {path:?}: {err}"))?;
             let name = std::path::Path::new(path)
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_else(|| path.clone());
+            let Some(bytes) = crate::attachment_file::read(Path::new(path), remaining)
+                .map_err(|err| format!("reading {path:?}: {err}"))?
+            else {
+                refused.push(RefusedAttachment {
+                    name,
+                    remaining: mail_core::human_size(remaining),
+                });
+                continue;
+            };
             match store.add_draft_attachment(draft_id, &name, mime_for_name(&name), &bytes) {
-                Ok(saved) => updated_epoch = Some(saved.updated_epoch),
+                Ok(saved) => {
+                    updated_epoch = Some(saved.updated_epoch);
+                    remaining = remaining.saturating_sub(bytes.len() as u64);
+                }
                 Err(mail_core::Error::AttachmentOverBudget {
                     name, remaining, ..
                 }) => refused.push(RefusedAttachment {
@@ -5615,7 +6022,17 @@ fn body_totals(store: &Store) -> Result<(u64, u64), String> {
 }
 
 #[derive(Serialize)]
+pub struct SyncIssue {
+    pub account_id: i64,
+    pub mailbox: String,
+    pub operation: String,
+    pub reason: String,
+    pub retry_at: Option<i64>,
+}
+
+#[derive(Serialize)]
 pub struct SyncProgress {
+    pub issues: Vec<SyncIssue>,
     /// Messages in the database, all already-visited mailboxes
     /// combined.
     pub local: u64,
@@ -5654,6 +6071,18 @@ fn read_sync(store: &Store, generation: u64, in_progress: bool) -> Result<SyncPr
         .map_err(|err| err.to_string())?
         .and_then(|value| value.parse::<i64>().ok());
     Ok(SyncProgress {
+        issues: store
+            .operation_issues()
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .map(|issue| SyncIssue {
+                account_id: issue.account_id,
+                mailbox: issue.mailbox,
+                operation: issue.operation,
+                reason: issue.reason,
+                retry_at: issue.retry_at,
+            })
+            .collect(),
         local,
         remote,
         percent: mail_core::sync_percent(local, remote),
@@ -5913,6 +6342,8 @@ pub async fn migration_run(
 #[derive(Serialize)]
 pub struct BackfillSummary {
     pub fetched: usize,
+    pub scanned: usize,
+    pub more: bool,
     pub remaining: u64,
     /// The percentage of bodies present after this batch (R1) — updates
     /// the status bar batch by batch, without re-polling from the UI.
@@ -5955,77 +6386,151 @@ fn run_backfill_all(
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
     let mut summary = BackfillSummary {
         fetched: 0,
+        scanned: 0,
+        more: false,
         remaining: 0,
         percent: None,
         errors: Vec::new(),
     };
     let mut refreshed_list = Vec::new();
-    // The budget is SHARED across accounts: a batch stays a batch, even
-    // with three accounts connected.
-    let mut budget = BACKFILL_BUDGET;
-
-    for (account_id, session) in jobs {
-        if budget == 0 {
-            break;
-        }
-        let email = session.email().to_string();
-        // ALL of the account's mailboxes (ADR 0010 §1), in the store's
-        // order: Inbox first, Sent next, the rest after. The budget is
-        // shared between them just as between accounts — an archive
-        // folder of 80,000 messages doesn't confiscate the batch, it
-        // consumes what the priority mailboxes left behind.
-        let mailboxes = store
-            .mailbox_names(account_id)
-            .map_err(|err| err.to_string())?;
-        // The pump works WITHIN the account's import horizon (ADR
-        // 0029): beyond it, bodies stay on the server and load on
-        // click.
-        let horizon = body_horizon(&store, account_id);
-        // Don't open a connection for an account that has nothing to
-        // do.
-        let mut pending = 0;
-        for mailbox in &mailboxes {
-            pending += store
-                .bodies_pending_count(account_id, mailbox, horizon)
-                .map_err(|err| err.to_string())?;
-        }
-        if pending == 0 {
-            continue;
-        }
-        match crate::poll::connect_imap(&session) {
-            Err(reason) => summary.errors.push(format!("{email}: {reason}")),
-            Ok((mut server, refreshed, _lease)) => {
-                if let Some(fresh) = refreshed {
-                    refreshed_list.push(fresh);
-                }
-                for mailbox in &mailboxes {
-                    if budget == 0 {
-                        break;
-                    }
-                    match mail_core::backfill_bodies(
-                        &mut server,
-                        &mut store,
-                        account_id,
-                        mailbox,
-                        horizon,
-                        budget,
-                    ) {
-                        Ok(report) => {
-                            summary.fetched += report.fetched;
-                            budget = budget.saturating_sub(report.fetched);
-                        }
-                        // A failure in ONE mailbox doesn't deprive the
-                        // others: same rule as folder synchronization.
-                        Err(err) => summary
-                            .errors
-                            .push(format!("{email}, \"{mailbox}\": {err}")),
-                    }
-                }
-                server.logout();
+    let mut budget = mail_core::WorkBudget::new(BACKFILL_BUDGET);
+    let mut mailboxes = Vec::new();
+    for (account_id, _) in &jobs {
+        for name in store
+            .mailbox_names(*account_id)
+            .map_err(|err| err.to_string())?
+        {
+            if let Some(identity) = store
+                .mailbox_identity(*account_id, &name)
+                .map_err(|err| err.to_string())?
+            {
+                mailboxes.push(identity);
             }
         }
     }
+    store
+        .backfill_order("bodies", &mut mailboxes)
+        .map_err(|err| err.to_string())?;
+    let mut failed_accounts = std::collections::HashSet::new();
+    let mut connection = None;
+    let with_issue: std::collections::HashSet<(i64, String)> = store
+        .operation_issues()
+        .map_err(|err| err.to_string())?
+        .into_iter()
+        .filter(|issue| issue.operation == "bodies")
+        .map(|issue| (issue.account_id, issue.mailbox))
+        .collect();
+    for identity in mailboxes {
+        if budget.remaining() == 0 {
+            summary.more = true;
+            break;
+        }
+        let account_id = identity.account_id;
+        if failed_accounts.contains(&account_id) {
+            continue;
+        }
+        let Some((_, session)) = jobs.iter().find(|(id, _)| *id == account_id) else {
+            continue;
+        };
+        let Ok(_turn_lease) = session.ticket.lease() else {
+            continue;
+        };
+        let horizon = body_horizon(&store, account_id);
+        if !store
+            .operation_due(
+                account_id,
+                &identity.mailbox,
+                "bodies",
+                chrono::Utc::now().timestamp(),
+            )
+            .map_err(|err| err.to_string())?
+        {
+            continue;
+        }
+        if store
+            .bodies_to_backfill(account_id, &identity.mailbox, horizon, 1)
+            .map_err(|err| err.to_string())?
+            .is_empty()
+        {
+            // Nothing eligible any more (served, removed or size-refused per
+            // UID): a diagnostic left by an earlier pass has nothing to wait for.
+            if with_issue.contains(&(account_id, identity.mailbox.clone())) {
+                store
+                    .settle_operation(
+                        account_id,
+                        &identity.mailbox,
+                        "bodies",
+                        chrono::Utc::now().timestamp(),
+                        None,
+                    )
+                    .map_err(|err| err.to_string())?;
+            }
+            continue;
+        }
+        store
+            .mark_backfill_turn("bodies", identity.mailbox_id)
+            .map_err(|err| err.to_string())?;
+        if connection
+            .as_ref()
+            .is_none_or(|(id, _, _)| *id != account_id)
+        {
+            if let Some((_, server, _lease)) = connection.take() {
+                ImapServer::logout(server);
+            }
+            match crate::poll::connect_imap(session) {
+                Ok((server, refreshed, lease)) => {
+                    if let Some(fresh) = refreshed {
+                        refreshed_list.push(fresh);
+                    }
+                    connection = Some((account_id, server, lease));
+                }
+                Err(reason) => {
+                    // A connection failure is the ACCOUNT's state (connection
+                    // notice, backoff), not a partial failure of each folder:
+                    // recorded per mailbox it masked "Sync failed" offline with
+                    // one "issue" per folder (gate finding, 2026-09-07).
+                    summary
+                        .errors
+                        .push(format!("{}: {reason}", session.email()));
+                    failed_accounts.insert(account_id);
+                    continue;
+                }
+            }
+        }
+        if let Some((_, server, _lease)) = connection.as_mut() {
+            match mail_core::backfill_bodies_budgeted(
+                server,
+                &mut store,
+                account_id,
+                &identity.mailbox,
+                horizon,
+                &mut budget,
+            ) {
+                Ok(report) => {
+                    summary.more |= report.more;
+                }
+                Err(err) => {
+                    summary.errors.push(format!(
+                        "{}, {}: {err}",
+                        session.email(),
+                        identity.mailbox
+                    ));
+                    // The disk is shared by every mailbox: no point reconnecting
+                    // folder after folder to be refused before any I/O.
+                    if matches!(err, mail_core::Error::InsufficientDisk { .. }) {
+                        break;
+                    }
+                    connection = None;
+                }
+            }
+        }
+    }
+    if let Some((_, server, _lease)) = connection {
+        server.logout();
+    }
 
+    summary.fetched = budget.saved();
+    summary.scanned = budget.scanned();
     let (remaining, total) = body_totals(&store)?;
     summary.remaining = remaining;
     summary.percent = mail_core::backfill_percent(total.saturating_sub(summary.remaining), total);
@@ -6429,6 +6934,125 @@ fn installer_command(installer_path: &std::path::Path) -> std::process::Command 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_backfill_connection_failure_is_reported_without_a_folder_issue() {
+        use std::io::Write;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let peer = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .write_all(b"* BYE synthetic maintenance\r\n")
+                .unwrap();
+        });
+        let path = std::env::temp_dir().join(format!(
+            "wind-backfill-connection-{}-{}.db",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap()
+        ));
+        let mut store = Store::open(&path).unwrap();
+        let account = store
+            .adopt_or_create_account("fixture@example.test", "imap")
+            .unwrap();
+        let mailbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+        store
+            .upsert_envelopes(
+                mailbox,
+                &[mail_core::Envelope {
+                    uid: 1,
+                    subject: Some("fixture".into()),
+                    sender: None,
+                    sender_address: None,
+                    to_addrs: Vec::new(),
+                    cc_addrs: Vec::new(),
+                    reply_to: None,
+                    message_id: None,
+                    in_reply_to: None,
+                    date: None,
+                    seen: false,
+                    flagged: false,
+                }],
+            )
+            .unwrap();
+        drop(store);
+        let registry = crate::account_work::Registry::default();
+        let job = AccountWork {
+            ticket: registry.capture(account).unwrap(),
+            session: AccountSession::Generic(GenericCredentials {
+                email: "fixture@example.test".into(),
+                username: "fixture".into(),
+                password: "synthetic".into(),
+                imap_host: "127.0.0.1".into(),
+                imap_port: port,
+                smtp_host: "127.0.0.1".into(),
+                smtp_port: port,
+            }),
+        };
+        let (report, _) = run_backfill_all(vec![(account, job)], &path, &Mutex::new(())).unwrap();
+        peer.join().unwrap();
+        assert_eq!(report.errors.len(), 1);
+        let store = Store::open(&path).unwrap();
+        assert!(
+            store.operation_issues().unwrap().is_empty(),
+            "a connection failure is the account's state, not one issue per folder"
+        );
+        drop(store);
+        std::fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn generic_repair_drains_old_jobs_without_waiting_for_its_own_lease() {
+        let registry = crate::account_work::Registry::default();
+        let old = registry.capture(1).unwrap();
+        let started = old.lease().unwrap();
+        let own = old.lease().unwrap();
+        let retirement = retire_generic_connection(&registry, &old, own).unwrap();
+        assert!(old.lease().is_err());
+        assert!(retirement.wait(Duration::from_millis(10)).is_err());
+        drop(started);
+        retirement.wait(Duration::from_millis(10)).unwrap();
+        retirement.commit();
+        let new = registry.capture(1).unwrap();
+        assert!(new.lease().is_ok());
+        assert!(!registry.is_current(&old));
+        assert!(registry.is_current(&new));
+    }
+
+    #[test]
+    fn generic_verification_checks_both_protocols_and_requires_both() {
+        use std::cell::Cell;
+        for imap_ok in [true, false] {
+            for smtp_ok in [true, false] {
+                let checks = Cell::new(0);
+                let result = verify_generic_connections(
+                    || {
+                        checks.set(checks.get() + 1);
+                        if imap_ok {
+                            Ok(())
+                        } else {
+                            Err("receive refused".into())
+                        }
+                    },
+                    || {
+                        checks.set(checks.get() + 1);
+                        if smtp_ok {
+                            Ok(())
+                        } else {
+                            Err("send refused".into())
+                        }
+                    },
+                );
+                assert_eq!(checks.get(), 2, "both diagnostics must be available");
+                assert_eq!(result.is_ok(), imap_ok && smtp_ok);
+                if !imap_ok {
+                    assert!(result.as_ref().unwrap_err().contains("IMAP"));
+                }
+                if !smtp_ok {
+                    assert!(result.as_ref().unwrap_err().contains("SMTP"));
+                }
+            }
+        }
+    }
+
     #[test]
     fn body_boundary_preserves_image_only_content() {
         let (_, rich) = super::body_boundary(

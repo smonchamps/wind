@@ -23,10 +23,11 @@ use crate::thread;
 
 mod cleanup;
 mod draft_storage;
+mod generic;
 mod migrations;
 mod prefs;
 mod screener;
-mod sql;
+pub(crate) mod sql;
 
 pub use cleanup::{CLEANUP_RANGES, CLEANUP_SCOPES, CleanupGroup, CleanupSession};
 #[cfg(test)]
@@ -356,6 +357,7 @@ CREATE TABLE IF NOT EXISTS echos (
     -- comment — it turned into a real newline and SQLite swallowed
     -- what followed as a phantom column (fresh database, 2026-08-26).
     to_addrs         TEXT,
+    cc_addrs         TEXT,
     origin_action_id INTEGER,
     origin_outbox_id INTEGER,
     created_epoch    INTEGER NOT NULL
@@ -480,6 +482,13 @@ CREATE TABLE IF NOT EXISTS nettoyage_session (
 -- the TEXT form is authoritative and the epoch stays NULL (guard D1:
 -- never a misleading conversion).
 CREATE TABLE IF NOT EXISTS invitations (
+    revision INTEGER NOT NULL DEFAULT 1,
+    metadata_version INTEGER NOT NULL DEFAULT 0,
+    dtstamp_epoch INTEGER,
+    occurrence_key TEXT,
+    occurrence_property TEXT,
+    scheduling_supported INTEGER NOT NULL DEFAULT 0,
+    scheduling_state TEXT NOT NULL DEFAULT 'unverified',
     mailbox_id           INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
     uid                  INTEGER NOT NULL,
     methode              TEXT NOT NULL,
@@ -521,30 +530,16 @@ fn write_invitation(
     uid: Uid,
     row: &InvitationRow,
 ) -> Result<(), Error> {
-    // The crossed cancellation link (field finding R6), in BOTH arrival
-    // orders: a REQUEST written AFTER the CANCEL of its meeting is born
-    // cancelled; a CANCEL written AFTER extinguishes existing REQUESTs.
-    // The meeting is identified by (event_uid, account) — never
-    // event_uid alone: two accounts can receive the same meeting.
-    let cancelled = row.cancelled
-        || (row.method == "request"
-            && conn
-                .prepare(
-                    "SELECT 1 FROM invitations i
-                      JOIN mailboxes m ON m.id = i.mailbox_id
-                     WHERE i.event_uid = ?1 AND i.methode = 'cancel'
-                       AND m.account_id =
-                           (SELECT account_id FROM mailboxes WHERE id = ?2)",
-                )?
-                .exists(params![row.event_uid, mailbox_id])?);
     conn.execute(
         "INSERT INTO invitations (mailbox_id, uid, methode, event_uid, sequence, titre,
              lieu, organisateur_adresse, organisateur_nom, debut_epoch, fin_epoch,
              debut_texte, fin_texte, journee_entiere, recurrent, partstat,
-             repondant_adresse, repondant_nom, repondant_statut, annule)
+             repondant_adresse, repondant_nom, repondant_statut, annule,
+             metadata_version, dtstamp_epoch, occurrence_key, occurrence_property, scheduling_supported, scheduling_state)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
-             ?16, ?17, ?18, ?19, ?20)
+             ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)
          ON CONFLICT(mailbox_id, uid) DO UPDATE SET
+             revision = invitations.revision + 1,
              methode = excluded.methode, event_uid = excluded.event_uid,
              sequence = excluded.sequence, titre = excluded.titre,
              lieu = excluded.lieu,
@@ -557,7 +552,10 @@ fn write_invitation(
              repondant_adresse = excluded.repondant_adresse,
              repondant_nom = excluded.repondant_nom,
              repondant_statut = excluded.repondant_statut,
-             annule = excluded.annule",
+             annule = excluded.annule,
+             metadata_version = excluded.metadata_version, dtstamp_epoch = excluded.dtstamp_epoch,
+             occurrence_key = excluded.occurrence_key, occurrence_property = excluded.occurrence_property,
+             scheduling_supported = excluded.scheduling_supported, scheduling_state = excluded.scheduling_state",
         params![
             mailbox_id,
             uid,
@@ -578,18 +576,57 @@ fn write_invitation(
             row.attendee_address,
             row.attendee_name,
             row.attendee_status,
-            cancelled
+            row.cancelled, row.metadata_version, row.dtstamp_epoch, row.occurrence_key,
+            row.occurrence_property, row.scheduling_supported, row.scheduling_state
         ],
     )?;
-    if row.method == "cancel" {
-        conn.execute(
-            "UPDATE invitations SET annule = 1
-             WHERE event_uid = ?1 AND methode = 'request' AND annule = 0
-               AND mailbox_id IN
-                   (SELECT id FROM mailboxes WHERE account_id =
-                        (SELECT account_id FROM mailboxes WHERE id = ?2))",
-            params![row.event_uid, mailbox_id],
-        )?;
+    refresh_invitation_group(conn, mailbox_id, &row.event_uid)?;
+    Ok(())
+}
+
+fn read_invitation_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<InvitationRow> {
+    Ok(InvitationRow {
+        metadata_version: row.get("metadata_version")?,
+        dtstamp_epoch: row.get("dtstamp_epoch")?,
+        occurrence_key: row.get("occurrence_key")?,
+        occurrence_property: row.get("occurrence_property")?,
+        scheduling_supported: row.get("scheduling_supported")?,
+        scheduling_state: row.get("scheduling_state")?,
+        method: row.get("methode")?,
+        event_uid: row.get("event_uid")?,
+        sequence: row.get("sequence")?,
+        title: row.get("titre")?,
+        location: row.get("lieu")?,
+        organizer_address: row.get("organisateur_adresse")?,
+        organizer_name: row.get("organisateur_nom")?,
+        start_epoch: row.get("debut_epoch")?,
+        end_epoch: row.get("fin_epoch")?,
+        start_text: row.get("debut_texte")?,
+        end_text: row.get("fin_texte")?,
+        all_day: row.get("journee_entiere")?,
+        recurrent: row.get("recurrent")?,
+        partstat: row.get("partstat")?,
+        attendee_address: row.get("repondant_adresse")?,
+        attendee_name: row.get("repondant_nom")?,
+        attendee_status: row.get("repondant_statut")?,
+        cancelled: row.get::<_, String>("scheduling_state")? == "cancelled",
+    })
+}
+
+fn refresh_invitation_group(
+    conn: &Connection,
+    mailbox_id: i64,
+    event_uid: &str,
+) -> Result<(), Error> {
+    let peers = conn.prepare("SELECT i.* FROM invitations i
+        WHERE i.event_uid = ?1 AND i.mailbox_id IN
+            (SELECT id FROM mailboxes WHERE account_id = (SELECT account_id FROM mailboxes WHERE id = ?2))")?
+        .query_map(params![event_uid, mailbox_id], |row| Ok((row.get::<_, i64>("mailbox_id")?, row.get::<_, u32>("uid")?, read_invitation_row(row)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut update = conn.prepare("UPDATE invitations SET revision = revision + (scheduling_state != ?3), scheduling_state = ?3, annule = ?4 WHERE mailbox_id = ?1 AND uid = ?2")?;
+    for (mailbox, uid, row) in &peers {
+        let state = crate::invitation::scheduling_state(row, peers.iter().map(|(_, _, r)| r));
+        update.execute(params![mailbox, uid, state, state == "cancelled"])?;
     }
     Ok(())
 }
@@ -695,6 +732,9 @@ pub struct UnifiedRow {
 /// which is not necessarily the displayed head of the thread.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InvitationRank {
+    pub revision: i64,
+    pub mailbox_id: i64,
+    pub uid_validity: u32,
     pub mailbox: String,
     pub uid: Uid,
     /// The meeting's title — the reply's subject is built from it,
@@ -1045,7 +1085,7 @@ impl Store {
         let config = self
             .0
             .query_row(
-                "SELECT imap_host, imap_port, smtp_host, smtp_port, username
+                "SELECT imap_host, imap_port, smtp_host, smtp_port, username, credential_slot
                  FROM accounts WHERE id = ?1",
                 [account_id],
                 |row| {
@@ -1055,6 +1095,7 @@ impl Store {
                         smtp_host: row.get(2)?,
                         smtp_port: row.get(3)?,
                         username: row.get(4)?,
+                        credential_slot: row.get(5)?,
                     })
                 },
             )
@@ -1065,6 +1106,7 @@ impl Store {
                 smtp_host: None,
                 smtp_port: None,
                 username: None,
+                credential_slot: None,
             });
         Ok(config)
     }
@@ -1119,12 +1161,9 @@ impl Store {
     ///
     /// The schema's cascades take mailboxes, envelopes, bodies,
     /// attachments, pending actions, folders and threads with them.
-    /// Three families have NO foreign key and are cleared by hand: the
-    /// search index (mailbox by mailbox, BEFORE the cascade makes the
-    /// mailboxes disappear), the drafts (with tombstones and remote
-    /// marker) and the outbox. Nothing must outlive the account — an
-    /// orphan leftover would never be read again, but would keep
-    /// showing up in search or leaving on the next flush.
+    /// Explicit cleanup covers the search index before mailbox cascade,
+    /// drafts, outbox and this account's learned contacts. Shared explicit
+    /// preferences and contacts with unknown historical ownership remain.
     pub fn delete_account(&mut self, account_id: i64) -> Result<(), Error> {
         let tx = self.0.transaction()?;
         check_account_removal(&tx, account_id)?;
@@ -1157,6 +1196,10 @@ impl Store {
                 [format!("{prefixe}.{account_id}")],
             )?;
         }
+        tx.execute(
+            "DELETE FROM contact_origins WHERE account_id = ?1",
+            [account_id],
+        )?;
         tx.execute("DELETE FROM accounts WHERE id = ?1", [account_id])?;
         // The Screener's waiting list follows the mail (E2): the rows
         // the cascades just cleared die with the account. Routing,
@@ -1202,7 +1245,7 @@ impl Store {
         purge_orphan_pending(&self.0)?;
         self.0.execute(
             "UPDATE mailboxes
-             SET uid_validity = ?2, last_uid = 0, highest_modseq = NULL
+             SET uid_validity = ?2, last_uid = 0, highest_modseq = NULL, flag_before_uid = NULL
              WHERE id = ?1",
             params![mailbox_id, uid_validity],
         )?;
@@ -1218,6 +1261,7 @@ impl Store {
             [mailbox_id],
             |row| row.get(0),
         )?;
+        self.0.execute("DELETE FROM operation_issues WHERE account_id = ?1 AND mailbox = (SELECT name FROM mailboxes WHERE id = ?2)", params![account_id, mailbox_id])?;
         thread::rebuild_account(&self.0, account_id)?;
         tx.commit()?;
         Ok(())
@@ -1480,11 +1524,17 @@ impl Store {
                 if is_new {
                     let date = envelope.date.map(|d| d.timestamp()).unwrap_or(0);
                     if note_senders && let Some(address) = envelope.sender_address.as_deref() {
-                        crate::contacts::note(&tx, address, envelope.sender.as_deref(), date)?;
+                        crate::contacts::note(
+                            &tx,
+                            account_id,
+                            address,
+                            envelope.sender.as_deref(),
+                            date,
+                        )?;
                     }
                     if note_recipients {
                         for address in envelope.to_addrs.iter().chain(envelope.cc_addrs.iter()) {
-                            crate::contacts::note(&tx, address, None, date)?;
+                            crate::contacts::note(&tx, account_id, address, None, date)?;
                         }
                     }
                 }
@@ -1586,7 +1636,37 @@ impl Store {
         in_reply_to: Option<&str>,
         references: &str,
     ) -> Result<bool, Error> {
-        let tx = self.0.transaction()?;
+        self.set_thread_headers_inner(None, mailbox_id, uid, in_reply_to, references)
+    }
+
+    pub(crate) fn set_thread_headers_checked(
+        &mut self,
+        identity: &MailboxIdentity,
+        uid: Uid,
+        in_reply_to: Option<&str>,
+        references: &str,
+    ) -> Result<bool, Error> {
+        self.set_thread_headers_inner(
+            Some(identity),
+            identity.mailbox_id,
+            uid,
+            in_reply_to,
+            references,
+        )
+    }
+
+    fn set_thread_headers_inner(
+        &mut self,
+        identity: Option<&MailboxIdentity>,
+        mailbox_id: i64,
+        uid: Uid,
+        in_reply_to: Option<&str>,
+        references: &str,
+    ) -> Result<bool, Error> {
+        let tx = self.0.unchecked_transaction()?;
+        if let Some(identity) = identity {
+            self.verify_mailbox_identity(identity)?;
+        }
         let before: Option<i64> = tx
             .query_row(
                 "SELECT thread_id FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
@@ -1780,6 +1860,16 @@ impl Store {
         // cost a fsync each on a 500-UID window; the touched threads
         // refresh ONCE apiece, after the loop.
         let tx = self.0.unchecked_transaction()?;
+        let applied = self.apply_flags_rows(mailbox_id, flags)?;
+        tx.commit()?;
+        Ok(applied)
+    }
+
+    pub(crate) fn apply_flags_rows(
+        &self,
+        mailbox_id: i64,
+        flags: &[crate::remote::FlagState],
+    ) -> Result<usize, Error> {
         let mut applied = 0;
         let mut threads: BTreeSet<i64> = BTreeSet::new();
         for state in flags {
@@ -1789,7 +1879,7 @@ impl Store {
             // matters: a quarantined action is a dead intent that stays
             // queued until a fresh gesture, and it must not freeze the
             // window (review 2026-09-04).
-            let changed = tx.execute(
+            let changed = self.0.execute(
                 "UPDATE envelopes SET seen = ?3, flagged = ?4
                  WHERE mailbox_id = ?1 AND uid = ?2
                    AND (seen != ?3 OR flagged != ?4)
@@ -1800,15 +1890,14 @@ impl Store {
             )?;
             if changed > 0 {
                 applied += 1;
-                if let Some(thread) = thread::thread_of(&tx, mailbox_id, state.uid)? {
+                if let Some(thread) = thread::thread_of(&self.0, mailbox_id, state.uid)? {
                     threads.insert(thread);
                 }
             }
         }
         for thread in &threads {
-            thread::refresh(&tx, *thread)?;
+            thread::refresh(&self.0, *thread)?;
         }
-        tx.commit()?;
         Ok(applied)
     }
 
@@ -2113,9 +2202,47 @@ impl Store {
         Ok(())
     }
 
+    pub(crate) fn save_invitation_metadata_checked(
+        &self,
+        identity: &MailboxIdentity,
+        uid: Uid,
+        invitation: Option<&InvitationRow>,
+    ) -> Result<(), Error> {
+        let tx = self.0.unchecked_transaction()?;
+        self.verify_mailbox_identity(identity)?;
+        if self
+            .invitation(identity.account_id, &identity.mailbox, uid)?
+            .is_some_and(|i| i.row.metadata_version == 0)
+        {
+            match invitation {
+                Some(row) => write_invitation(&tx, identity.mailbox_id, uid, row)?,
+                None => {
+                    tx.execute(
+                        "DELETE FROM invitations WHERE mailbox_id = ?1 AND uid = ?2",
+                        params![identity.mailbox_id, uid],
+                    )?;
+                }
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     /// A message's invitation, with our local reply — LOCAL read, never
     /// the network. `None`: this message does not carry one (or its MIME
     /// has not been inspected yet).
+    pub fn invitation_version(
+        &self,
+        identity: &MailboxIdentity,
+        uid: Uid,
+    ) -> Result<Option<StoredInvitation>, Error> {
+        let tx = self.0.unchecked_transaction()?;
+        self.verify_mailbox_identity(identity)?;
+        let stored = self.invitation(identity.account_id, &identity.mailbox, uid)?;
+        tx.commit()?;
+        Ok(stored)
+    }
+
     pub fn invitation(
         &self,
         account_id: i64,
@@ -2135,26 +2262,8 @@ impl Store {
                 params![account_id, mailbox, uid],
                 |row| {
                     Ok(StoredInvitation {
-                        row: InvitationRow {
-                            method: row.get("methode")?,
-                            event_uid: row.get("event_uid")?,
-                            sequence: row.get("sequence")?,
-                            title: row.get("titre")?,
-                            location: row.get("lieu")?,
-                            organizer_address: row.get("organisateur_adresse")?,
-                            organizer_name: row.get("organisateur_nom")?,
-                            start_epoch: row.get("debut_epoch")?,
-                            end_epoch: row.get("fin_epoch")?,
-                            start_text: row.get("debut_texte")?,
-                            end_text: row.get("fin_texte")?,
-                            all_day: row.get("journee_entiere")?,
-                            recurrent: row.get("recurrent")?,
-                            partstat: row.get("partstat")?,
-                            attendee_address: row.get("repondant_adresse")?,
-                            attendee_name: row.get("repondant_nom")?,
-                            attendee_status: row.get("repondant_statut")?,
-                            cancelled: row.get("annule")?,
-                        },
+                        row: read_invitation_row(row)?,
+                        revision: row.get("revision")?,
                         reply: row.get("reponse")?,
                         reply_epoch: row.get("reponse_epoch")?,
                     })
@@ -2472,8 +2581,31 @@ impl Store {
         to: &[String],
         cc: &[String],
     ) -> Result<(), Error> {
-        // E4: recipients and the address book agree, or nothing does.
+        self.set_recipients_inner(None, mailbox_id, uid, to, cc)
+    }
+
+    pub(crate) fn set_recipients_checked(
+        &self,
+        identity: &MailboxIdentity,
+        uid: Uid,
+        to: &[String],
+        cc: &[String],
+    ) -> Result<(), Error> {
+        self.set_recipients_inner(Some(identity), identity.mailbox_id, uid, to, cc)
+    }
+
+    fn set_recipients_inner(
+        &self,
+        identity: Option<&MailboxIdentity>,
+        mailbox_id: i64,
+        uid: Uid,
+        to: &[String],
+        cc: &[String],
+    ) -> Result<(), Error> {
         let tx = self.0.unchecked_transaction()?;
+        if let Some(identity) = identity {
+            self.verify_mailbox_identity(identity)?;
+        }
         self.0.execute(
             "UPDATE envelopes SET to_addrs = ?3, cc_addrs = ?4
              WHERE mailbox_id = ?1 AND uid = ?2",
@@ -2495,8 +2627,13 @@ impl Store {
                 )
                 .optional()?
                 .flatten();
+            let account_id: i64 = self.0.query_row(
+                "SELECT account_id FROM mailboxes WHERE id = ?1",
+                [mailbox_id],
+                |r| r.get(0),
+            )?;
             for address in to.iter().chain(cc.iter()) {
-                crate::contacts::note(self.conn(), address, None, date.unwrap_or(0))?;
+                crate::contacts::note(self.conn(), account_id, address, None, date.unwrap_or(0))?;
             }
         }
         tx.commit()?;
@@ -3044,6 +3181,7 @@ pub struct AccountConfig {
     pub smtp_host: Option<String>,
     pub smtp_port: Option<u16>,
     pub username: Option<String>,
+    pub credential_slot: Option<String>,
 }
 
 /// Does this envelope change any of the five indexed fields? Pure

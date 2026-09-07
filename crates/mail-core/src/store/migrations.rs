@@ -5,6 +5,40 @@ pub(super) fn migrate(
     on_progress: &mut dyn FnMut(AdoptionProgress) -> ControlFlow<()>,
 ) -> Result<(), Error> {
     migrate_multi_account(conn)?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS operation_issues (
+        account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+        mailbox TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        attempts INTEGER NOT NULL,
+        retry_at INTEGER,
+        PRIMARY KEY(account_id, mailbox, operation)
+    ) WITHOUT ROWID",
+    )?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS body_download_refusals (
+        mailbox_id INTEGER NOT NULL,
+        uid INTEGER NOT NULL,
+        limit_bytes INTEGER NOT NULL,
+        PRIMARY KEY (mailbox_id, uid),
+        FOREIGN KEY (mailbox_id, uid) REFERENCES envelopes(mailbox_id, uid) ON DELETE CASCADE
+    ) WITHOUT ROWID;",
+    )?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS backfill_cursors (
+        mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        uid_validity INTEGER NOT NULL,
+        epoch INTEGER,
+        uid INTEGER,
+        head_uid INTEGER,
+        PRIMARY KEY (mailbox_id, kind)
+    ) WITHOUT ROWID;",
+    )?;
+    add_missing_columns(conn, "backfill_cursors", &[("head_uid", "INTEGER")])?;
+    crate::contacts::migrate_provenance(conn)?;
+    add_missing_columns(conn, "mailboxes", &[("flag_before_uid", "INTEGER")])?;
     let had_reply_identity = table_columns(conn, "drafts")?.contains("reply_mailbox_id");
     add_missing_columns(
         conn,
@@ -151,8 +185,23 @@ pub(super) fn migrate(
     // Bodies already in the database are worth 0: they predate
     // attachments, and the backfill will need to reread them once.
     add_missing_columns(conn, "bodies", &[("scanned", "INTEGER NOT NULL DEFAULT 0")])?;
-    // Echo recipients — NULL on existing rows (PLAN-RETOURS-5).
-    add_missing_columns(conn, "echos", &[("to_addrs", "TEXT")])?;
+    let echo_migration = conn.unchecked_transaction()?;
+    let had_echo_copies = table_columns(&echo_migration, "echos")?.contains("cc_addrs");
+    add_missing_columns(
+        &echo_migration,
+        "echos",
+        &[("to_addrs", "TEXT"), ("cc_addrs", "TEXT")],
+    )?;
+    if !had_echo_copies {
+        // A surviving send log can repair old echoes; moved sources are already gone.
+        echo_migration.execute_batch(
+            "UPDATE echos SET cc_addrs = (
+            SELECT cc_addrs FROM outbox o WHERE o.id = echos.origin_outbox_id
+              AND o.account_id = echos.account_id AND o.message_id = echos.message_id
+        ) WHERE origin_outbox_id IS NOT NULL;",
+        )?;
+    }
+    echo_migration.commit()?;
     // "Important" and delayed sending (PLAN-RETOURS-6): existing rows
     // are neither flagged nor scheduled.
     add_missing_columns(
@@ -178,6 +227,21 @@ pub(super) fn migrate(
         "invitations",
         &[("annule", "INTEGER NOT NULL DEFAULT 0")],
     )?;
+    add_missing_columns(
+        conn,
+        "invitations",
+        &[
+            ("revision", "INTEGER NOT NULL DEFAULT 1"),
+            ("metadata_version", "INTEGER NOT NULL DEFAULT 0"),
+            ("dtstamp_epoch", "INTEGER"),
+            ("occurrence_key", "TEXT"),
+            ("occurrence_property", "TEXT"),
+            ("scheduling_supported", "INTEGER NOT NULL DEFAULT 0"),
+            ("scheduling_state", "TEXT NOT NULL DEFAULT 'unverified'"),
+        ],
+    )?;
+    conn.execute_batch("CREATE INDEX IF NOT EXISTS idx_invitation_event ON invitations(event_uid, mailbox_id);
+        CREATE INDEX IF NOT EXISTS idx_invitation_refresh ON invitations(mailbox_id, uid) WHERE metadata_version = 0;")?;
     // The list preview (rewrite screen 02) is computed at the WRITE
     // of the body; earlier bodies backfill it IN BATCHES
     // (`preview_catchup`, called by the shell as polling proceeds) —
@@ -394,6 +458,7 @@ pub(super) fn migrate(
             ("smtp_host", "TEXT"),
             ("smtp_port", "INTEGER"),
             ("username", "TEXT"),
+            ("credential_slot", "TEXT"),
         ],
     )?;
     let reply_headers_done = conn.query_row(

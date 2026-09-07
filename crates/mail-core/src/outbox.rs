@@ -178,7 +178,7 @@ impl Store {
         // without waiting for it to come back through the Sent sync.
         let now = Utc::now().timestamp();
         for address in draft.to.iter().chain(&draft.cc).chain(&draft.bcc) {
-            crate::contacts::note(self.conn(), address, None, now)?;
+            crate::contacts::note(self.conn(), account_id, address, None, now)?;
         }
         Ok(outbox_id)
     }
@@ -237,16 +237,62 @@ impl Store {
     /// receive two REPLYs.
     pub fn enqueue_invitation_reply(
         &self,
-        account_id: i64,
+        target: crate::InvitationReplyTarget<'_>,
         draft: &Draft,
-        mailbox: &str,
-        uid: crate::envelope::Uid,
         reply: &str,
         epoch: i64,
     ) -> Result<Option<i64>, Error> {
+        let account_id = target.identity.account_id;
+        let mailbox = &target.identity.mailbox;
+        let uid = target.uid;
         let tx = self.conn().unchecked_transaction()?;
+        self.verify_mailbox_identity(target.identity)?;
+        let Some(stored) = self.invitation(account_id, mailbox, uid)? else {
+            return Ok(None);
+        };
+        if stored.revision != target.revision || !stored.row.can_reply() {
+            return Ok(None);
+        }
+        let Some(participation) = crate::participation_de_stable(reply)
+            .filter(|p| *p != mail_ical::Participation::NeedsAction)
+        else {
+            return Ok(None);
+        };
+        let row = stored.row;
+        let recurrence = row
+            .occurrence_property
+            .as_deref()
+            .and_then(mail_ical::RecurrenceId::from_property);
+        if recurrence.as_ref().map_or(Some(""), |r| Some(r.key())) != row.occurrence_key.as_deref()
+            || (row.occurrence_property.is_some() && recurrence.is_none())
+        {
+            return Ok(None);
+        }
+        let Some(organizer) = row.organizer_address.as_deref() else {
+            return Ok(None);
+        };
+        let Some(from) = self.account_email(account_id)? else {
+            return Ok(None);
+        };
+        if draft.from != from
+            || draft.to != [organizer]
+            || !draft.cc.is_empty()
+            || !draft.bcc.is_empty()
+        {
+            return Ok(None);
+        }
+        let mut draft = draft.clone();
+        draft.ics_reply = Some(mail_ical::itip_reply(&mail_ical::ReplyRequest {
+            recurrence_id: recurrence.as_ref(),
+            uid: &row.event_uid,
+            sequence: row.sequence,
+            organizer_address: organizer,
+            our_address: &from,
+            participation,
+            dtstamp_epoch: epoch,
+        }));
         let touched = tx.execute(
-            "UPDATE invitations SET reponse = ?4, reponse_epoch = ?5
+            "UPDATE invitations SET revision = revision + 1, reponse = ?4, reponse_epoch = ?5
              WHERE uid = ?3 AND mailbox_id IN
                    (SELECT id FROM mailboxes WHERE account_id = ?1 AND name = ?2)",
             params![account_id, mailbox, uid, reply, epoch],
@@ -255,7 +301,7 @@ impl Store {
             // The transaction rewinds on drop: nothing gets journaled.
             return Ok(None);
         }
-        let outbox_id = self.enqueue_outbox(account_id, draft)?;
+        let outbox_id = self.enqueue_outbox(account_id, &draft)?;
         tx.commit()?;
         Ok(Some(outbox_id))
     }

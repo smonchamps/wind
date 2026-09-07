@@ -48,9 +48,34 @@ struct Life {
     closed: Arc<AtomicBool>,
     active: Arc<Mutex<usize>>,
     drained: Arc<Condvar>,
+    connection: Mutex<ConnectionObservation>,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ConnectionState {
+    #[default]
+    Unchecked,
+    Available,
+    Unavailable,
+}
+
+#[derive(Default, Clone, Copy)]
+struct ConnectionObservation {
+    attempt: u64,
+    state: ConnectionState,
 }
 
 impl Registry {
+    pub(crate) fn connection_states(&self) -> HashMap<i64, ConnectionState> {
+        recovered(&self.0)
+            .iter()
+            .filter_map(|(&id, ticket)| {
+                ticket.check().ok()?;
+                Some((id, recovered(&ticket.life.connection).state))
+            })
+            .collect()
+    }
     /// OAuth can reveal a different address only after writing its credential.
     /// Keep those identity-unknown flows ahead of any vault removal.
     pub(crate) fn registration(&self) -> Result<Registration, String> {
@@ -97,6 +122,30 @@ impl Registry {
 }
 
 impl Ticket {
+    pub(crate) fn observe_connection<T>(
+        &self,
+        cancelled: impl Fn() -> bool,
+        connect: impl FnOnce() -> Result<T, String>,
+    ) -> Result<T, String> {
+        self.check()?;
+        let attempt = {
+            let mut observation = recovered(&self.life.connection);
+            observation.attempt = observation.attempt.wrapping_add(1);
+            observation.attempt
+        };
+        let outcome = connect();
+        if self.check().is_ok() && !cancelled() {
+            let mut observation = recovered(&self.life.connection);
+            if observation.attempt == attempt {
+                observation.state = if outcome.is_ok() {
+                    ConnectionState::Available
+                } else {
+                    ConnectionState::Unavailable
+                };
+            }
+        }
+        outcome
+    }
     fn new(account_id: i64) -> Self {
         Self {
             account_id,
@@ -210,6 +259,7 @@ impl Drop for Retirement {
                         closed: Arc::new(AtomicBool::new(false)),
                         active: self.ticket.life.active.clone(),
                         drained: self.ticket.life.drained.clone(),
+                        connection: Mutex::new(*recovered(&self.ticket.life.connection)),
                     }),
                 },
             );
@@ -241,6 +291,63 @@ mod tests {
     use super::*;
     use mail_core::{MailTransport, OutboxMessage, OutboxState, SendError, Store};
     use std::sync::mpsc;
+
+    #[test]
+    fn connection_observations_follow_attempts_and_ignore_cancelled_work() {
+        let registry = Registry::default();
+        let ticket = registry.capture(1).unwrap();
+        assert_eq!(registry.connection_states()[&1], ConnectionState::Unchecked);
+        ticket.observe_connection(|| false, || Ok(())).unwrap();
+        assert_eq!(registry.connection_states()[&1], ConnectionState::Available);
+        let failed: Result<(), _> =
+            ticket.observe_connection(|| false, || Err("authentication refused".into()));
+        assert!(failed.is_err());
+        assert_eq!(
+            registry.connection_states()[&1],
+            ConnectionState::Unavailable
+        );
+        ticket.observe_connection(|| true, || Ok(())).unwrap();
+        assert_eq!(
+            registry.connection_states()[&1],
+            ConnectionState::Unavailable
+        );
+        ticket.observe_connection(|| false, || Ok(())).unwrap();
+        assert_eq!(registry.connection_states()[&1], ConnectionState::Available);
+    }
+
+    #[test]
+    fn late_connection_result_cannot_override_a_new_attempt_or_account_incarnation() {
+        let registry = Registry::default();
+        let ticket = registry.capture(1).unwrap();
+        let old = ticket.clone();
+        let (started_tx, started_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            old.observe_connection(
+                || false,
+                || {
+                    started_tx.send(()).unwrap();
+                    release_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+                    Ok(())
+                },
+            )
+            .unwrap();
+        });
+        started_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+        let _: Result<(), _> = ticket.observe_connection(|| false, || Err("newer refusal".into()));
+        release_tx.send(()).unwrap();
+        worker.join().unwrap();
+        assert_eq!(
+            registry.connection_states()[&1],
+            ConnectionState::Unavailable
+        );
+        registry.retire(1).unwrap().commit();
+        let fresh = registry.capture(1).unwrap();
+        assert!(ticket.observe_connection(|| false, || Ok(())).is_err());
+        assert_eq!(registry.connection_states()[&1], ConnectionState::Unchecked);
+        fresh.observe_connection(|| false, || Ok(())).unwrap();
+        assert_eq!(registry.connection_states()[&1], ConnectionState::Available);
+    }
 
     struct HeldTransport {
         entered: mpsc::Sender<()>,

@@ -1,5 +1,42 @@
 # State — Wind's handover snapshot
 
+**Lot 3 field-validated and committed locally — 2026-09-07; NOT pushed.**
+E7–E10 are implemented, reviewed, gated and replayed in the field: **“1-11 OK”,
+zero KO** (D10). Per D10 the push is deferred: every audit-related change goes
+out in one grouped push later, so **no CI has run on this lot and it is not
+closed**. Do not push on your own initiative; do not rewrite the local commit.
+The [Lot 3 plan](PLAN-AUDIT-2026-09-LOT3.md) holds the whole trail: increments
+(E7a/b/c, E8, E9, E10), the whole-lot fresh review (ten confirmed findings, nine
+fixed, one stated limit), the two gate andons (connection failures recorded as
+per-folder issues; a modal making its own Screener menu inert), the green gate
+(**653 s, 885 Rust + 33 Node + 264 UI passed**, four Rust ignored, one UI flaky
+recorded, one optional benchmark skipped) and the eleven-item field checklist
+with the two committed scripts.
+
+What the lot changes, in one breath: Reply-To honored and Cc/Bcc-only sends;
+Feed scope and served-prefix reconciliation; version/occurrence-aware calendar
+state under the D8 subset; OAuth rotation/manual link/bounded callbacks and the
+generic in-place repair with dual probes (D6/D7, ADR 0039); bounded, fair and
+persistent background work (spent budgets, scan cursors with an arrivals head,
+32 MiB raw ceiling D9 with size-proportional deadlines, per-UID size refusals,
+durable partial diagnostics with uniform backoff, disk admission at the pumps
+only — ADR 0041, 0042, 0043); modal focus, keyboard selection, per-message image
+revocation, live connection state, Cc in echoes, contact provenance (ADR 0040).
+System A123–A133.
+
+Stated limits to carry: two body-pump drivers (scheduler and UI burst), each
+bounded; a Google address renamed by an administrator is refused until the
+account is re-added (product question); every quiet non-CONDSTORE folder pays
+its flags pass per full cycle — **the full-cycle latency is the field
+measurement to record** (ADR 0041); Reply-To assembly still lives in the shell
+(A01, Lot 5); the 32 MiB input ceiling proves no whole-app memory budget.
+
+Next, in order: the grouped push decided by the Chief Engineer (background,
+then `gh run watch`) → green CI → `/close` of Lot 3 (DEBT: D-4, D-41–D-44 to
+strike; new lines for the limits above) → Lot 4 (E11–E12). Until the push, a
+new session continues on top of the local commit.
+No release was requested; the published version remains 0.19.0.
+
 > **This document is rewritten at every job — that is its function.**
 > Version delivered, next job, field figures, open trade-offs,
 > deferrals: everything volatile lives here. The method, the
@@ -11,6 +48,10 @@
 ---
 
 ## Where things stand, and what to do first
+
+**Lot 3 ACTIVE:** continue the remaining work listed above from the
+[focused plan](PLAN-AUDIT-2026-09-LOT3.md). Preserve the approved early visual
+verdict, same-mailbox generic repair, both protocol probes and recurrence subset.
 
 **Lot 2 DELIVERED on 2026-09-06:** [focused plan](PLAN-AUDIT-2026-09-LOT2.md),
 implementation `0374e43`, [CI 34053044227](https://github.com/smonchamps/wind/actions/runs/34053044227)

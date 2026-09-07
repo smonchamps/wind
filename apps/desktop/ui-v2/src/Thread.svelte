@@ -14,6 +14,8 @@
   // allow-scripts per expanded message, body served by the core,
   // links intercepted (lib/links.js).
   import Icon from './Icon.svelte';
+  import ImagePermission from './ImagePermission.svelte';
+  import { watchImagePermissions } from './lib/image-permissions.js';
   import ThreadBar from './ThreadBar.svelte';
   import {
     thread,
@@ -26,11 +28,13 @@
     isEcho,
     hiddenNames,
     retry,
+    verifyInvitation,
+    refreshThreadImages,
   } from './lib/thread.svelte.js';
   import { call, chooseDestination } from './lib/transport.js';
   import { wireLinks } from './lib/links.js';
   import {
-    invitationTile, whenInvitation, invitationKicker, invitationStatus,
+    invitationTile, whenInvitation, invitationKicker, invitationStatus, invitationNotice,
     attendeeLine, organizerLocation,
   } from './lib/invitation.js';
   import { when, whenLong } from './lib/when.js';
@@ -39,6 +43,12 @@
   import { activation } from './lib/keyboard.js';
   import { t } from './lib/text.svelte.js';
   import { autoBody } from './lib/body.js';
+
+  watchImagePermissions(refreshThreadImages);
+  async function grantImages(m, always) {
+    try { await (always ? alwaysShowImages(m) : showImages(m)); }
+    catch (err) { onflash(t('error.imagePermission', { err })); }
+  }
 
   let {
     drafts = [],
@@ -255,6 +265,15 @@
   // language, the iTIP email logged on the core side (reply_invitation),
   // then a flush kicked off — offline, it goes out at the next launch
   // (the semantics stated in PLAN-RETOURS-6).
+  let verificationsInFlight = $state({});
+  async function checkInvitation(m) {
+    const k = msgKey(m);
+    if (verificationsInFlight[k]) return;
+    verificationsInFlight[k] = true;
+    try { await verifyInvitation(m); }
+    catch (err) { onflash(t('error.invitationVerification', { err })); }
+    finally { verificationsInFlight[k] = false; }
+  }
   let repliesInFlight = $state({});
   async function replyInvitation(m, reply) {
     const k = msgKey(m);
@@ -263,23 +282,27 @@
     // OPTIMISTIC (field R3'a): the button marks itself the instant of
     // the click — the log follows; a failure restores the prior state
     // and says so.
-    const before = thread.invitations[k].status;
-    thread.invitations[k].status = reply;
+    const invitation = thread.invitations[k];
+    const before = invitation.status;
+    invitation.status = reply;
     try {
       const subject = t(`inv.subject_${reply}`, { title: thread.invitations[k].title });
       const view = await call('reply_invitation', {
-        accountId: m.account_id,
-        mailbox: m.mailbox,
-        uid: m.uid,
-        version: m.version,
+        selection: {
+          accountId: m.account_id,
+          mailbox: m.mailbox,
+          uid: m.uid,
+          version: m.version,
+          revision: thread.invitations[k].revision,
+        },
         reply,
         subject,
         body: subject,
       });
-      if (view) thread.invitations[k] = view;
+      if (view && thread.invitations[k] === invitation) thread.invitations[k] = view;
       call('flush_outbox').catch(() => {});
     } catch (err) {
-      thread.invitations[k].status = before;
+      if (thread.invitations[k] === invitation) invitation.status = before;
       onflash(t('error.invitation', { err }));
     } finally {
       repliesInFlight[k] = false;
@@ -433,6 +456,7 @@
                 {@const inv = thread.invitations[k]}
                 {@const tile = invitationTile(inv)}
                 {@const invWhen = whenInvitation(inv)}
+                {@const notice = invitationNotice(inv)}
                 {@const orgLocation = organizerLocation(inv)}
                 {@const invAttendee = attendeeLine(inv)}
                 <div class="invitation" data-testid="invitation">
@@ -458,13 +482,23 @@
                       {#if orgLocation}
                         <span class="inv-location">{orgLocation}</span>
                       {/if}
-                      {#if inv.cancelled}
+                      {#if notice}
+                        <span class="inv-notice" data-testid="invitation-notice">{notice}</span>
+                      {:else if inv.cancelled}
                         <span class="inv-cancelled">{t('inv.cancelledText')}</span>
                       {:else if invAttendee}
                         <span class="inv-attendee" data-testid="invitation-attendee">{invAttendee}</span>
                       {/if}
                     </div>
                   </div>
+                  {#if inv.needs_refresh}
+                    <div class="inv-actions">
+                      <button type="button" data-testid="inv-refresh" disabled={verificationsInFlight[k]}
+                              onclick={() => checkInvitation(m)}>
+                        {t(verificationsInFlight[k] ? 'inv.checking' : 'inv.verify')}
+                      </button>
+                    </div>
+                  {/if}
                   {#if inv.can_reply}
                     <!-- R7/R9 (field 2026-08-23): the icon says the
                          reply, the color its meaning (accent / neutral /
@@ -532,32 +566,34 @@
                   </div>
                 </div>
               {/if}
+              {#if thread.messageImageGrants[k] && !isEcho(m)}
+                <ImagePermission message={m} {onflash} />
+              {/if}
               {#if (thread.blockedImages[k] ?? 0) > 0}
                 <div class="images-guard" data-testid="images-guard">
                   <Icon name="visibility_off" />
                   <span class="guard-text">{t('reading.blockedImages', { n: thread.blockedImages[k] })}</span>
                   <button type="button" data-testid="show-images"
-                          onclick={() => showImages(m)}>
+                          onclick={() => grantImages(m, false)}>
                     {t('reading.showImages')}</button>
                   <!-- D3 (RETOURS-11): the sender rule — never
                        on an echo (ourselves, no third-party sender). -->
                   {#if !isEcho(m)}
                     <button type="button" data-testid="always-show-images"
-                            onclick={() => alwaysShowImages(m)}>
+                            onclick={() => grantImages(m, true)}>
                       {t('reading.alwaysShowImages')}</button>
                   {/if}
                 </div>
               {/if}
               {#if thread.errors[k]}
-                <!-- PLAN-AUDIT-V2 E10: the core did not serve this body —
-                     the image guard's grammar, with the gesture that
-                     replays (before: an empty frame, final). -->
                 <div class="images-guard" data-testid="body-failure">
                   <Icon name="error" />
-                  <span class="guard-text">{t('reading.bodyFailure')}</span>
+                  <span class="guard-text">{t(thread.errors[k] === 'too-large' ? 'reading.bodyTooLarge' : 'reading.bodyFailure')}</span>
+                  {#if thread.errors[k] !== 'too-large'}
                   <button type="button" data-testid="body-retry"
                           onclick={() => retry(m)}>
                     {t('action.retry')}</button>
+                  {/if}
                 </div>
               {/if}
               <iframe class="body" sandbox="allow-same-origin" srcdoc={thread.body[k] ?? ''}
@@ -573,7 +609,7 @@
                  on their own message. The core then addresses the reply
                  to the original recipients (reply_context/reply_all), never
                  to ourselves. -->
-            <div class="actions-message" data-testid="actions-message">
+            <div class="actions-message" class:body-unavailable={Boolean(thread.errors[k])} data-testid="actions-message">
               <button type="button" class="main" data-testid="reply"
                       onclick={() => onreply(m)}>
                 <Icon name="reply" />{t('action.reply')}</button>
@@ -746,6 +782,7 @@
     text-transform:uppercase; color:var(--muted); flex:1;
   }
   .inv-kicker.cancelled { color:var(--alert); }
+  .inv-notice { font-size:13px; line-height:1.5; color:var(--ink2); }
   .inv-status { font-size:12px; color:var(--ink2); white-space:nowrap; }
   .inv-body { display:flex; gap:14px; padding:12px 14px 14px; align-items:flex-start; }
   .inv-tile {
@@ -845,6 +882,7 @@
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--r-control); box-shadow:var(--shadow);
   }
+  .actions-message.body-unavailable { position:static; }
   /* ONE template for the message buttons AND the invitation card's
      (A76 says "at the message actions' template"): keeping it by
      copy would diverge at the first re-tuning (review). */

@@ -20,7 +20,9 @@
 compile_error!("Wind targets Windows and macOS -- see ADR 0036 before adding a platform.");
 
 mod account_work;
+mod attachment_file;
 mod commands;
+mod consent;
 mod fault;
 mod instance;
 mod poll;
@@ -105,6 +107,7 @@ pub(crate) struct PassFlight {
 
 pub(crate) struct AppState {
     pub account_work: account_work::Registry,
+    pub consent: consent::Registry,
     pub mutation_recovery: std::sync::OnceLock<()>,
     /// Connected accounts' sessions, by email (multi-account).
     pub accounts: Mutex<HashMap<String, mail_auth::AccountSession>>,
@@ -276,6 +279,7 @@ fn main() {
     };
     let state = AppState {
         account_work: account_work::Registry::default(),
+        consent: consent::Registry::default(),
         mutation_recovery: std::sync::OnceLock::new(),
         accounts: Mutex::new(HashMap::new()),
         outbox_flush: Arc::new(Mutex::new(())),
@@ -317,9 +321,14 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::connect_accounts,
+            commands::oauth_begin,
+            commands::oauth_status,
+            commands::oauth_cancel,
             commands::add_account,
             commands::add_microsoft_account,
             commands::add_generic_account,
+            commands::generic_connection_settings,
+            commands::repair_generic_account,
             commands::reconnect_account,
             commands::remove_account,
             commands::sync_inbox,
@@ -333,12 +342,14 @@ fn main() {
             commands::message_body,
             commands::message_attachments,
             commands::reply_invitation,
+            commands::refresh_invitation,
             commands::suggested_save_path,
             commands::save_attachment,
             commands::mark_seen,
             commands::mark_flagged,
             commands::toggle_pin,
             commands::allow_images_message,
+            commands::revoke_images_message,
             commands::allow_images_sender,
             commands::images_senders,
             commands::revoke_images_sender,

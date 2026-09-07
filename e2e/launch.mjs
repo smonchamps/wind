@@ -16,7 +16,7 @@
 // - **wait for the PAGE, not the port**: CDP answers before the window
 //   has created its document. Settling for the open port creates a race
 //   that shows up as soon as the startup is cold.
-import { spawn, execSync } from 'node:child_process';
+import { spawn, execSync, execFileSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
@@ -151,6 +151,7 @@ export async function launchAppV2({ fresh = false, accounts = null, lang = 'en' 
       // PLAN-AUDIT-V2: 249 MB after ten pages of real letters).
       const heavy = account.ko ? ` ${account.messages} ${account.ko}` : '';
       steps.push({ example: 'seed_inbox', args: `${account.messages} ${account.email}${heavy}` });
+      if (account.generic) steps.push({ example: 'seed_generic', args: account.email });
       // `archives: N`: an Archives mailbox of N messages, without a body —
       // the decor for deep scrolling (PLAN-DEFILEMENT-PROFOND). The
       // seeder registers the mailbox in the `folders` cache (the canonical
@@ -184,20 +185,15 @@ export async function launchAppV2({ fresh = false, accounts = null, lang = 'en' 
 // a spec launched under ANOTHER decor (Clarity, blank) must pass its own
 // database, otherwise the arrival lands in a file the app doesn't read (the
 // seeder would come back green, the assertion would go red with no clue).
-export function injectArrival({ email, sender, n = 1, name = null, subject = null, replyTo = null, body = null, db = null }) {
+export function injectArrival({ email, sender, n = 1, name = null, subject = null, replyTo = null, body = null, replyAddress = null, to = null, cc = null, db = null }) {
   db ??= path.join(root, 'target', 'e2e', 'parcours-v2-inbox.db');
-  statSync(db); // the database MUST EXIST — never an arrival into the void
+  statSync(db);
   const exe = path.join(root, 'target', 'debug', 'examples', 'seed_arrival.exe');
-  const args = [`"${db}"`, email, sender, String(n)];
-  // The arguments are POSITIONAL: `reponseA` (RETOURS-14 R4, the
-  // decor for the interleaved thread) requires name and subject ahead of it.
-  if (name || subject || replyTo) args.push(`"${name ?? sender}"`);
-  if (subject || replyTo) args.push(`"${subject ?? 'Premier contact'}"`);
-  if (replyTo || body) args.push(`"${replyTo ?? '-'}"`);
-  // `corps: 'images'` (STOP 2 PLAN-AUDIT-V2 field test): a remote-image body
-  // per arrival — the decor for the Feed's image guard.
-  if (body) args.push(body);
-  execSync(`"${exe}" ${args.join(' ')}`, { cwd: root, stdio: 'inherit' });
+  const args = [db, email, sender, String(n), name ?? sender,
+    subject ?? 'First contact', replyTo ?? '-', body ?? '-', replyAddress ?? '-'];
+  if (to !== null || cc !== null) args.push((to ?? [email]).join(';'));
+  if (cc !== null) args.push(cc.join(';'));
+  execFileSync(exe, args, { cwd: root, stdio: 'inherit' });
 }
 
 async function attach(db, emails, lang = 'en') {

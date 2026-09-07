@@ -45,6 +45,22 @@ fn main() -> Result<(), mail_core::Error> {
     let reponse_a = reponse_a.filter(|valeur| valeur != "-");
     let corps_images = args.get(8).is_some_and(|valeur| valeur == "images");
 
+    // Optional recipient fixture fields follow the historical arguments.
+    let reply_address = args.get(9).filter(|value| value.as_str() != "-").cloned();
+    let recipients = |index: usize, fallback: Vec<String>| {
+        args.get(index)
+            .map(|value| {
+                value
+                    .split(';')
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or(fallback)
+    };
+    let to = recipients(10, vec![email.clone()]);
+    let cc = recipients(11, Vec::new());
+
     let mut store = Store::open(std::path::Path::new(path))?;
     let account = store.adopt_or_create_account(email, "gmail")?;
     let Some(state) = store.sync_state(account, "INBOX")? else {
@@ -57,7 +73,7 @@ fn main() -> Result<(), mail_core::Error> {
         .map(|i| {
             let uid = depart + i;
             Envelope {
-                reply_to: None,
+                reply_to: reply_address.clone(),
                 uid,
                 subject: Some(format!("{sujet} n°{uid}")),
                 sender: Some(nom.clone()),
@@ -67,8 +83,8 @@ fn main() -> Result<(), mail_core::Error> {
                 date: Some(Utc::now()),
                 seen: false,
                 flagged: false,
-                to_addrs: vec![email.clone()],
-                cc_addrs: Vec::new(),
+                to_addrs: to.clone(),
+                cc_addrs: cc.clone(),
             }
         })
         .collect();

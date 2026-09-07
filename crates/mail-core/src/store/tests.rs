@@ -1561,6 +1561,11 @@ fn attachments_never_leak_across_accounts() {
 
 fn project_invitation() -> crate::InvitationRow {
     crate::InvitationRow {
+        metadata_version: 1,
+        scheduling_supported: true,
+        scheduling_state: "active".into(),
+        occurrence_key: Some(String::new()),
+        dtstamp_epoch: Some(100),
         method: "request".into(),
         event_uid: "reunion-1@exemple.fr".into(),
         sequence: 2,
@@ -1572,6 +1577,39 @@ fn project_invitation() -> crate::InvitationRow {
         end_epoch: Some(1_788_402_000),
         partstat: Some("sans_reponse".into()),
         ..Default::default()
+    }
+}
+
+#[test]
+fn invitation_correlation_ignores_older_cancellations_other_organizers_and_other_occurrences() {
+    for reversed in [false, true] {
+        for separate in ["version", "organizer", "occurrence"] {
+            let (store, mailbox) = store_with_mailbox();
+            let account = test_account(&store);
+            let request = project_invitation();
+            let mut cancel = request.clone();
+            cancel.method = "cancel".into();
+            cancel.cancelled = true;
+            cancel.scheduling_state = "cancelled".into();
+            cancel.sequence = 3;
+            match separate {
+                "version" => cancel.sequence = 1,
+                "organizer" => cancel.organizer_address = Some("other@example.fr".into()),
+                _ => cancel.occurrence_key = Some("utc:42".into()),
+            }
+            for (uid, row) in if reversed {
+                [(2, &cancel), (1, &request)]
+            } else {
+                [(1, &request), (2, &cancel)]
+            } {
+                store
+                    .save_body_full(mailbox, uid, "<p>body</p>", &[], Some(row))
+                    .unwrap();
+            }
+            let current = store.invitation(account, "INBOX", 1).unwrap().unwrap();
+            assert!(!current.row.cancelled, "{separate}, reversed={reversed}");
+            assert!(current.row.can_reply());
+        }
     }
 }
 
@@ -1603,7 +1641,7 @@ fn a_rescan_without_a_calendar_erases_the_row() {
 
 fn reply_draft() -> crate::compose::Draft {
     let mut draft = crate::compose(
-        "moi@exemple.fr",
+        "test@exemple.fr",
         "claire@exemple.fr",
         "",
         "",
@@ -1612,7 +1650,15 @@ fn reply_draft() -> crate::compose::Draft {
         None,
     )
     .unwrap();
-    draft.ics_reply = Some("BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nEND:VCALENDAR\r\n".into());
+    draft.ics_reply = Some(mail_ical::itip_reply(&mail_ical::ReplyRequest {
+        recurrence_id: None,
+        uid: &project_invitation().event_uid,
+        sequence: 2,
+        organizer_address: "claire@exemple.fr",
+        our_address: "test@exemple.fr",
+        participation: mail_ical::Participation::Accepted,
+        dtstamp_epoch: 42,
+    }));
     draft
 }
 
@@ -1630,10 +1676,16 @@ fn the_reply_is_logged_with_its_email_and_survives_the_rescan() {
 
     let outbox_id = store
         .enqueue_invitation_reply(
-            account,
+            crate::InvitationReplyTarget {
+                identity: &store.mailbox_identity(account, "INBOX").unwrap().unwrap(),
+                uid: 1,
+                revision: store
+                    .invitation(account, "INBOX", 1)
+                    .unwrap()
+                    .unwrap()
+                    .revision,
+            },
             &reply_draft(),
-            "INBOX",
-            1,
             "accepte",
             1_755_900_000,
         )
@@ -1658,7 +1710,16 @@ fn a_reply_without_a_row_logs_nothing() {
     let account = test_account(&store);
     assert_eq!(
         store
-            .enqueue_invitation_reply(account, &reply_draft(), "INBOX", 9, "accepte", 1)
+            .enqueue_invitation_reply(
+                crate::InvitationReplyTarget {
+                    identity: &store.mailbox_identity(account, "INBOX").unwrap().unwrap(),
+                    uid: 9,
+                    revision: 1
+                },
+                &reply_draft(),
+                "accepte",
+                1
+            )
             .unwrap(),
         None
     );
@@ -1882,6 +1943,7 @@ fn the_calendar_body_marker_repair_rereads_the_affected_message() {
 fn a_cancel_extinguishes_the_request_of_the_same_meeting_in_both_arrival_orders() {
     let mut cancel = project_invitation();
     cancel.method = "cancel".to_string();
+    cancel.sequence += 1;
     cancel.cancelled = true;
 
     // Order 1: the REQUEST first, the CANCEL next.
@@ -5942,4 +6004,245 @@ fn a_message_without_a_date_is_treated_as_arriving_today() {
     // Dated at or before the verdict: history, never touched.
     assert!(!arrived_after_verdict(Some(50), 50));
     assert!(!arrived_after_verdict(Some(10), 50));
+}
+
+#[test]
+fn echo_copy_migration_retries_atomically_and_checks_the_source_identity() {
+    for matching in [true, false] {
+        let store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("owner@example.fr", "gmail")
+            .unwrap();
+        let draft = crate::compose(
+            "owner@example.fr",
+            "to@example.fr",
+            "copy@example.fr",
+            "hidden@example.fr",
+            "fixture",
+            "body",
+            None,
+        )
+        .unwrap();
+        let outbox = store.enqueue_outbox(account, &draft).unwrap();
+        store
+            .set_outbox_state(outbox, crate::OutboxState::Sent)
+            .unwrap();
+        store.send_echo(outbox).unwrap();
+        store
+            .conn()
+            .execute_batch(
+                "ALTER TABLE echos DROP COLUMN cc_addrs;
+            CREATE TRIGGER reject_echo_repair BEFORE UPDATE ON echos
+            BEGIN SELECT RAISE(ABORT, 'synthetic migration failure'); END;",
+            )
+            .unwrap();
+        assert!(migrate(store.conn(), &mut |_| ControlFlow::Continue(())).is_err());
+        assert!(
+            !table_columns(store.conn(), "echos")
+                .unwrap()
+                .contains("cc_addrs")
+        );
+        store
+            .conn()
+            .execute_batch("DROP TRIGGER reject_echo_repair")
+            .unwrap();
+        if !matching {
+            store
+                .conn()
+                .execute("UPDATE echos SET message_id = 'another-message'", [])
+                .unwrap();
+        }
+        migrate(store.conn(), &mut |_| ControlFlow::Continue(())).unwrap();
+        let copies: Option<String> = store
+            .conn()
+            .query_row("SELECT cc_addrs FROM echos", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            copies.as_deref(),
+            if matching {
+                Some("copy@example.fr")
+            } else {
+                None
+            }
+        );
+        migrate(store.conn(), &mut |_| ControlFlow::Continue(())).unwrap();
+        assert_eq!(store.count_echos("envoyes", Some(account)).unwrap(), 1);
+    }
+}
+
+#[test]
+fn invitation_reply_rejects_cancellation_after_display_and_preserves_the_queue() {
+    let (store, mailbox) = store_with_mailbox();
+    let account = test_account(&store);
+    let identity = store.mailbox_identity(account, "INBOX").unwrap().unwrap();
+    let request = project_invitation();
+    store
+        .save_body_full(mailbox, 1, "cached", &[], Some(&request))
+        .unwrap();
+    let before = store.invitation(account, "INBOX", 1).unwrap().unwrap();
+    let mut cancel = request;
+    cancel.method = "cancel".into();
+    cancel.sequence += 1;
+    store
+        .save_body_full(mailbox, 2, "cancel", &[], Some(&cancel))
+        .unwrap();
+    let queued = store
+        .enqueue_invitation_reply(
+            crate::InvitationReplyTarget {
+                identity: &identity,
+                uid: 1,
+                revision: before.revision,
+            },
+            &reply_draft(),
+            "accepte",
+            42,
+        )
+        .unwrap();
+    assert!(queued.is_none());
+    assert!(store.outbox_to_send(account).unwrap().is_empty());
+    assert_eq!(
+        store
+            .invitation(account, "INBOX", 1)
+            .unwrap()
+            .unwrap()
+            .reply,
+        None
+    );
+}
+
+#[test]
+fn invitation_reply_rejects_reextraction_and_recycled_namespace() {
+    for reset in [false, true] {
+        let (store, mailbox) = store_with_mailbox();
+        let account = test_account(&store);
+        let identity = store.mailbox_identity(account, "INBOX").unwrap().unwrap();
+        let request = project_invitation();
+        store
+            .save_body_full(mailbox, 1, "cached", &[], Some(&request))
+            .unwrap();
+        let before = store.invitation(account, "INBOX", 1).unwrap().unwrap();
+        if reset {
+            store.reset_mailbox(mailbox, 2).unwrap();
+        }
+        let mut changed = request;
+        changed.title = "Changed after display".into();
+        store
+            .save_body_full(mailbox, 1, "new", &[], Some(&changed))
+            .unwrap();
+        let result = store.enqueue_invitation_reply(
+            crate::InvitationReplyTarget {
+                identity: &identity,
+                uid: 1,
+                revision: before.revision,
+            },
+            &reply_draft(),
+            "accepte",
+            42,
+        );
+        assert!(matches!(result, Ok(None) | Err(_)), "reset={reset}");
+        assert!(store.outbox_to_send(account).unwrap().is_empty());
+        assert_eq!(
+            store
+                .invitation(account, "INBOX", 1)
+                .unwrap()
+                .unwrap()
+                .reply,
+            None
+        );
+    }
+}
+
+#[test]
+fn invitation_reply_carries_the_original_occurrence_and_rejects_corrupt_scope() {
+    for corrupt in [false, true] {
+        let (store, mailbox) = store_with_mailbox();
+        let account = test_account(&store);
+        let identity = store.mailbox_identity(account, "INBOX").unwrap().unwrap();
+        let mut request = project_invitation();
+        let recurrence = mail_ical::RecurrenceId::from_property(
+            "RECURRENCE-ID;TZID=Europe/Paris:20260907T140000\r\n",
+        )
+        .unwrap();
+        request.occurrence_key = Some(recurrence.key().into());
+        request.occurrence_property = Some(
+            if corrupt {
+                "RECURRENCE-ID:invalid"
+            } else {
+                recurrence.property()
+            }
+            .into(),
+        );
+        store
+            .save_body_full(mailbox, 1, "cached", &[], Some(&request))
+            .unwrap();
+        let before = store.invitation(account, "INBOX", 1).unwrap().unwrap();
+        let result = store
+            .enqueue_invitation_reply(
+                crate::InvitationReplyTarget {
+                    identity: &identity,
+                    uid: 1,
+                    revision: before.revision,
+                },
+                &reply_draft(),
+                "accepte",
+                42,
+            )
+            .unwrap();
+        let queue = store.outbox_to_send(account).unwrap();
+        if corrupt {
+            assert!(result.is_none());
+            assert!(queue.is_empty());
+        } else {
+            assert!(result.is_some());
+            let parsed =
+                mail_ical::parse(queue[0].ics_reply.as_deref().unwrap(), "moi@exemple.fr").unwrap();
+            assert_eq!(
+                parsed.scheduling.recurrence.as_ref().map(|r| r.key()),
+                Some(recurrence.key())
+            );
+        }
+    }
+}
+
+#[test]
+fn legacy_calendar_schema_adoption_keeps_offline_content_and_reply_but_blocks_actions() {
+    let (store, mailbox) = store_with_mailbox();
+    let account = test_account(&store);
+    store
+        .save_body_full(
+            mailbox,
+            1,
+            "legacy offline body",
+            &[],
+            Some(&project_invitation()),
+        )
+        .unwrap();
+    store
+        .conn()
+        .execute_batch(
+            "UPDATE invitations SET reponse='accepte', reponse_epoch=42, annule=1;
+        DROP INDEX idx_invitation_refresh;
+        ALTER TABLE invitations DROP COLUMN metadata_version;
+        ALTER TABLE invitations DROP COLUMN dtstamp_epoch;
+        ALTER TABLE invitations DROP COLUMN occurrence_key;
+        ALTER TABLE invitations DROP COLUMN occurrence_property;
+        ALTER TABLE invitations DROP COLUMN scheduling_supported;
+        ALTER TABLE invitations DROP COLUMN scheduling_state;
+        ALTER TABLE invitations DROP COLUMN revision;",
+        )
+        .unwrap();
+    migrate(store.conn(), &mut |_| ControlFlow::Continue(())).unwrap();
+    let restored = store.invitation(account, "INBOX", 1).unwrap().unwrap();
+    assert_eq!(restored.row.metadata_version, 0);
+    assert!(!restored.row.can_reply());
+    assert!(
+        !restored.row.cancelled,
+        "legacy blanket cancellation is not verified evidence"
+    );
+    assert_eq!(restored.reply.as_deref(), Some("accepte"));
+    assert_eq!(restored.reply_epoch, Some(42));
+    assert_eq!(
+        store.body(account, "INBOX", 1).unwrap().as_deref(),
+        Some("legacy offline body")
+    );
 }

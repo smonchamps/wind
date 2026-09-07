@@ -69,9 +69,53 @@ pub enum When {
     Floating(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecurrenceId {
+    entry: ICalendarEntry,
+    property: String,
+    key: String,
+}
+
+impl RecurrenceId {
+    pub fn property(&self) -> &str {
+        &self.property
+    }
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+
+    /// Rebuild only a validated recurrence property; stored text is never appended to a reply.
+    pub fn from_property(property: &str) -> Option<Self> {
+        let text = format!(
+            "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\n{}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+            property.trim_end()
+        );
+        let Entry::ICalendar(calendar) = Parser::new(&text).entry() else {
+            return None;
+        };
+        if calendar.components.len() != 2 || !calendar.components[0].entries.is_empty() {
+            return None;
+        }
+        let event = &calendar.components[1];
+        if event.component_type != ICalendarComponentType::VEvent || event.entries.len() != 1 {
+            return None;
+        }
+        let entry = event.property(&ICalendarProperty::RecurrenceId)?;
+        recurrence_of(entry, &calendar.build_tz_resolver())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Scheduling {
+    pub dtstamp_epoch: Option<i64>,
+    pub recurrence: Option<RecurrenceId>,
+    pub supported: bool,
+}
+
 /// An invitation read from a `text/calendar` part.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Invitation {
+    pub scheduling: Scheduling,
     pub method: Method,
     /// The event's UID — the identity of the meeting across messages
     /// (REQUEST, CANCEL and REPLY share it).
@@ -100,6 +144,7 @@ pub struct Invitation {
 /// `invitations` row, never from a re-parse.
 #[derive(Debug, Clone)]
 pub struct ReplyRequest<'a> {
+    pub recurrence_id: Option<&'a RecurrenceId>,
     pub uid: &'a str,
     pub sequence: i64,
     pub organizer_address: &'a str,
@@ -180,6 +225,7 @@ pub fn parse(ics: &str, our_address: &str) -> Result<Invitation, IcalError> {
     let resolver = ical.build_tz_resolver();
 
     Ok(Invitation {
+        scheduling: scheduling_of(&ical, vevent, &resolver),
         method,
         uid,
         sequence: vevent
@@ -196,11 +242,166 @@ pub fn parse(ics: &str, our_address: &str) -> Result<Invitation, IcalError> {
         end: vevent
             .property(&ICalendarProperty::Dtend)
             .and_then(|e| when_of_entry(e, &resolver)),
-        recurrent: vevent.has_property(&ICalendarProperty::Rrule),
+        recurrent: vevent.has_property(&ICalendarProperty::Rrule)
+            || vevent.has_property(&ICalendarProperty::RecurrenceId),
         our_participation,
         attendee,
         attendee_participation,
     })
+}
+
+fn valid_date_time(value: &PartialDateTime, date_only: bool) -> bool {
+    let Some(date) = value
+        .year
+        .zip(value.month)
+        .zip(value.day)
+        .and_then(|((year, month), day)| {
+            chrono::NaiveDate::from_ymd_opt(year.into(), month.into(), day.into())
+        })
+    else {
+        return false;
+    };
+    if date_only {
+        return value.hour.is_none()
+            && value.minute.is_none()
+            && value.second.is_none()
+            && value.tz_hour.is_none();
+    }
+    value
+        .hour
+        .zip(value.minute)
+        .zip(value.second)
+        .is_some_and(|((hour, minute), second)| {
+            date.and_hms_opt(hour.into(), minute.into(), second.into())
+                .is_some()
+        })
+}
+
+fn recurrence_of(entry: &ICalendarEntry, resolver: &TzResolver<&str>) -> Option<RecurrenceId> {
+    if entry.values.len() != 1 {
+        return None;
+    }
+    let mut parameters = std::collections::HashSet::new();
+    for parameter in &entry.params {
+        if !parameters.insert(parameter.name.as_str())
+            || !matches!(
+                parameter.name,
+                ICalendarParameterName::Tzid | ICalendarParameterName::Value
+            )
+        {
+            return None;
+        }
+    }
+    let date_only = is_date_only(entry);
+    let value = entry.values.first()?.as_partial_date_time()?;
+    if !valid_date_time(value, date_only) || (date_only && entry.tz_id().is_some()) {
+        return None;
+    }
+    if entry
+        .parameter(&ICalendarParameterName::Value)
+        .is_some_and(|v| {
+            !matches!(
+                v,
+                ICalendarParameterValue::Value(
+                    ICalendarValueType::Date | ICalendarValueType::DateTime
+                )
+            )
+        })
+    {
+        return None;
+    }
+    if value.tz_hour.is_some()
+        && (entry.tz_id().is_some()
+            || value.tz_hour != Some(0)
+            || value.tz_minute.unwrap_or(0) != 0
+            || value.tz_minus)
+    {
+        return None;
+    }
+    let key = match when_of_entry(entry, resolver)? {
+        When::Instant(epoch) => format!("utc:{epoch}"),
+        When::Day(date) => format!("date:{date}"),
+        When::Floating(_) if entry.tz_id().is_none() => {
+            let mut text = String::new();
+            entry.write_to(&mut text).ok()?;
+            format!("floating:{}", text.split_once(':')?.1.trim())
+        }
+        When::Floating(_) => return None,
+    };
+    let mut property = String::new();
+    entry.write_to(&mut property).ok()?;
+    Some(RecurrenceId {
+        entry: entry.clone(),
+        property,
+        key,
+    })
+}
+
+fn scheduling_of(
+    calendar: &ICalendar,
+    event: &ICalendarComponent,
+    resolver: &TzResolver<&str>,
+) -> Scheduling {
+    let stamp = event.property(&ICalendarProperty::Dtstamp);
+    let dtstamp_epoch = stamp
+        .filter(|entry| entry.params.is_empty() && entry.values.len() == 1)
+        .and_then(|entry| entry.values.first()?.as_partial_date_time())
+        .filter(|value| {
+            valid_date_time(value, false)
+                && value.tz_hour == Some(0)
+                && value.tz_minute.unwrap_or(0) == 0
+                && !value.tz_minus
+        })
+        .and_then(|value| value.to_date_time_with_tz(Tz::Floating))
+        .map(|date| date.timestamp());
+    let source = event.property(&ICalendarProperty::RecurrenceId);
+    let recurrence = source.and_then(|entry| recurrence_of(entry, resolver));
+    let unique = [
+        ICalendarProperty::Uid,
+        ICalendarProperty::Organizer,
+        ICalendarProperty::Sequence,
+        ICalendarProperty::Dtstamp,
+        ICalendarProperty::RecurrenceId,
+        ICalendarProperty::Dtstart,
+        ICalendarProperty::Dtend,
+    ]
+    .iter()
+    .all(|property| event.properties(property).count() <= 1);
+    let sequence_valid = event
+        .property(&ICalendarProperty::Sequence)
+        .is_none_or(|entry| {
+            entry.values.len() == 1
+                && entry
+                    .values
+                    .first()
+                    .and_then(|v| v.as_integer())
+                    .is_some_and(|n| n >= 0)
+        });
+    Scheduling {
+        dtstamp_epoch,
+        supported: unique
+            && text_of(event, &ICalendarProperty::Uid).is_some_and(|s| !s.trim().is_empty())
+            && calendar
+                .components
+                .iter()
+                .filter(|c| c.component_type == ICalendarComponentType::VCalendar)
+                .all(|c| c.properties(&ICalendarProperty::Method).count() == 1)
+            && event
+                .property(&ICalendarProperty::Dtstamp)
+                .is_none_or(|_| dtstamp_epoch.is_some())
+            && recurrence.as_ref().is_none_or(|r| {
+                RecurrenceId::from_property(r.property()).is_some_and(|copy| copy.key() == r.key())
+            })
+            && sequence_valid
+            && (source.is_none() || recurrence.is_some())
+            && calendar
+                .components
+                .iter()
+                .filter(|c| c.component_type == ICalendarComponentType::VEvent)
+                .count()
+                == 1,
+        recurrence,
+    }
 }
 
 /// Builds the iCalendar text of a reply (`METHOD:REPLY`), CRLF, lines
@@ -219,6 +420,9 @@ pub fn itip_reply(request: &ReplyRequest<'_>) -> String {
     vevent.add_uid(request.uid);
     vevent.add_sequence(request.sequence);
     vevent.add_dtstamp(PartialDateTime::from_utc_timestamp(request.dtstamp_epoch));
+    if let Some(recurrence) = request.recurrence_id {
+        vevent.entries.push(recurrence.entry.clone());
+    }
     vevent.add_property(
         ICalendarProperty::Organizer,
         format!("mailto:{}", request.organizer_address),

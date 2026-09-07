@@ -2,7 +2,7 @@
 //! journey with loopback redirect, verification of the granted scopes.
 
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::time::{Duration, Instant};
 
@@ -31,8 +31,8 @@ pub enum AuthError {
     )]
     MissingMailScope(&'static str, Vec<String>),
 
-    #[error("could not open the browser — open manually: {0}")]
-    BrowserFallback(String),
+    #[error("authorization cancelled")]
+    Cancelled,
 
     #[error("local network: {0}")]
     Io(#[from] std::io::Error),
@@ -85,6 +85,7 @@ pub(crate) fn http_client() -> Result<HttpClient, AuthError> {
     oauth2::reqwest::blocking::ClientBuilder::new()
         .use_preconfigured_tls(tls)
         .redirect(oauth2::reqwest::redirect::Policy::none())
+        .timeout(Duration::from_secs(30))
         .build()
         .map_err(|err| AuthError::Config(err.to_string()))
 }
@@ -100,13 +101,95 @@ pub(crate) fn refresh_access_token(
         .map_err(|err| AuthError::OAuth(err.to_string()))
 }
 
+/// A cancellable consent, shared with the UI without exposing PKCE secrets.
+#[derive(Clone, Default)]
+pub struct ConsentControl(std::sync::Arc<ConsentState>);
+
+#[derive(Default)]
+struct ConsentState {
+    cancelled: std::sync::atomic::AtomicBool,
+    publishing: std::sync::Mutex<bool>,
+    link: std::sync::Mutex<Option<AuthorizationLink>>,
+}
+
+#[derive(Clone)]
+pub struct AuthorizationLink {
+    pub url: String,
+    pub manual: bool,
+}
+
+impl ConsentControl {
+    pub fn cancel(&self) -> bool {
+        let Ok(publishing) = self.0.publishing.lock() else {
+            return false;
+        };
+        if *publishing {
+            return false;
+        }
+        self.0
+            .cancelled
+            .store(true, std::sync::atomic::Ordering::Release);
+        true
+    }
+    pub fn is_cancelled(&self) -> bool {
+        self.0.cancelled.load(std::sync::atomic::Ordering::Acquire)
+    }
+    pub fn status(&self) -> Result<Option<AuthorizationLink>, AuthError> {
+        self.0
+            .link
+            .lock()
+            .map(|link| link.clone())
+            .map_err(|_| AuthError::Config("consent status unavailable".into()))
+    }
+    fn publish(&self, url: String, manual: bool) -> Result<(), AuthError> {
+        *self
+            .0
+            .link
+            .lock()
+            .map_err(|_| AuthError::Config("consent status unavailable".into()))? =
+            Some(AuthorizationLink { url, manual });
+        Ok(())
+    }
+    pub(crate) fn check(&self) -> Result<(), AuthError> {
+        if self.is_cancelled() {
+            Err(AuthError::Cancelled)
+        } else {
+            Ok(())
+        }
+    }
+    pub(crate) fn begin_publication(&self) -> Result<(), AuthError> {
+        let mut publishing = self
+            .0
+            .publishing
+            .lock()
+            .map_err(|_| AuthError::Config("consent state unavailable".into()))?;
+        self.check()?;
+        *publishing = true;
+        Ok(())
+    }
+}
+
 /// Interactive journey: loopback listener, browser consent, PKCE exchange.
 /// Blocks until the provider's redirect.
 pub(crate) fn interactive_tokens(
     provider: &Provider,
     client: OauthClient,
     http: &HttpClient,
+    control: &ConsentControl,
 ) -> Result<BasicTokenResponse, AuthError> {
+    interactive_tokens_using(provider, client, http, control, |url| {
+        webbrowser::open(url).is_ok()
+    })
+}
+
+pub(crate) fn interactive_tokens_using(
+    provider: &Provider,
+    client: OauthClient,
+    http: &HttpClient,
+    control: &ConsentControl,
+    open_browser: impl FnOnce(&str) -> bool,
+) -> Result<BasicTokenResponse, AuthError> {
+    control.check()?;
     // Listening is ALWAYS on the loopback; only the name announced to the
     // provider changes (`localhost` at Microsoft, `127.0.0.1` at Google) —
     // both resolve to the same interface.
@@ -129,19 +212,17 @@ pub(crate) fn interactive_tokens(
     }
     let (auth_url, csrf) = request.url();
 
-    if webbrowser::open(auth_url.as_str()).is_err() {
-        return Err(AuthError::BrowserFallback(auth_url.to_string()));
-    }
-
-    let (code, state) = wait_for_redirect(&listener, CONSENT_TIMEOUT)?;
-    if state != *csrf.secret() {
-        return Err(AuthError::OAuth("unexpected CSRF state".to_string()));
-    }
-    client
+    let opened = open_browser(auth_url.as_str());
+    control.publish(auth_url.to_string(), !opened)?;
+    let (code, _) = wait_for_redirect(&listener, CONSENT_TIMEOUT, csrf.secret(), control)?;
+    control.check()?;
+    let tokens = client
         .exchange_code(AuthorizationCode::new(code))
         .set_pkce_verifier(pkce_verifier)
         .request(http)
-        .map_err(|err| AuthError::OAuth(err.to_string()))
+        .map_err(|err| AuthError::OAuth(err.to_string()))?;
+    control.check()?;
+    Ok(tokens)
 }
 
 /// Both providers issue a token even on partial consent (boxes unticked at
@@ -216,79 +297,149 @@ fn fetch_email(http: &HttpClient, url: &str, access_token: &str) -> Result<Strin
 /// account" command forever, and the loopback port stayed bound.
 const CONSENT_TIMEOUT: Duration = Duration::from_secs(300);
 
-/// An accepted connection that says nothing (probe, browser pre-opening)
-/// must not block the wait either.
-const REDIRECT_READ_TIMEOUT: Duration = Duration::from_secs(2);
+// A browser may pre-open a connection. It must release the listener for another
+// client within two seconds, and can never extend the whole consent deadline.
+const REDIRECT_CLIENT_TIMEOUT: Duration = Duration::from_secs(2);
+const REDIRECT_LINE_MAX: usize = 8192;
+const REDIRECT_POLL: Duration = Duration::from_millis(10);
 
 fn wait_for_redirect(
     listener: &TcpListener,
     timeout: Duration,
+    expected_state: &str,
+    control: &ConsentControl,
 ) -> Result<(String, String), AuthError> {
     listener.set_nonblocking(true)?;
-    let start = Instant::now();
-    loop {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        control.check()?;
         let mut stream = match listener.accept() {
             Ok((stream, _)) => stream,
             Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
-                if start.elapsed() >= timeout {
-                    return Err(AuthError::OAuth(format!(
-                        "consent not received within {} min — restart adding the account",
-                        timeout.as_secs() / 60
-                    )));
-                }
-                std::thread::sleep(Duration::from_millis(50));
+                pause_redirect(deadline);
                 continue;
             }
             Err(err) => return Err(err.into()),
         };
-        stream.set_nonblocking(false)?;
-        stream.set_read_timeout(Some(REDIRECT_READ_TIMEOUT))?;
-        let mut request_line = String::new();
-        if BufReader::new(&mut stream)
-            .read_line(&mut request_line)
-            .is_err()
-        {
-            continue; // mute or cut connection: wait for the real one
-        }
-        let Some(params) = parse_redirect_query(&request_line) else {
-            respond(&mut stream, "Request ignored.")?;
+        stream.set_nonblocking(true)?;
+        let client_deadline = deadline.min(Instant::now() + REDIRECT_CLIENT_TIMEOUT);
+        let line = read_redirect_line(&mut stream, client_deadline, control);
+        control.check()?;
+        let Some(line) = line else {
             continue;
         };
-        if let Some(error) = params.get("error") {
-            respond(&mut stream, "Authorization refused. Close this tab.")?;
-            return Err(AuthError::OAuth(format!("authorization refused: {error}")));
+        let Some(params) = parse_redirect_query(&line) else {
+            continue;
+        };
+        if params.get("state").map(String::as_str) != Some(expected_state) {
+            continue;
         }
-        if let (Some(code), Some(state)) = (params.get("code"), params.get("state")) {
-            respond(
-                &mut stream,
-                "Authorization received. Close this tab and return to Wind.",
-            )?;
-            return Ok((code.clone(), state.clone()));
+        match (params.get("code"), params.get("error")) {
+            (Some(code), None) if !code.is_empty() => {
+                // Browser acknowledgement is best effort; a disconnected tab must
+                // not discard an otherwise valid, state-checked authorization.
+                respond(
+                    &mut stream,
+                    "Authorization received. Close this tab and return to Wind.",
+                    client_deadline,
+                );
+                return Ok((code.clone(), expected_state.to_string()));
+            }
+            (None, Some(error)) if !error.is_empty() => {
+                respond(
+                    &mut stream,
+                    "Authorization refused. Close this tab.",
+                    client_deadline,
+                );
+                return Err(AuthError::OAuth(format!("authorization refused: {error}")));
+            }
+            _ => {}
         }
-        respond(&mut stream, "Unexpected parameters.")?;
     }
+    Err(AuthError::OAuth(format!(
+        "consent not received within {} min — restart adding the account",
+        timeout.as_secs() / 60
+    )))
 }
 
-/// Extracts the query parameters of the first HTTP line of the redirect
-/// (`GET /?code=…&state=… HTTP/1.1`).
+fn pause_redirect(deadline: Instant) {
+    std::thread::sleep(REDIRECT_POLL.min(deadline.saturating_duration_since(Instant::now())));
+}
+
+fn read_redirect_line(
+    stream: &mut TcpStream,
+    deadline: Instant,
+    control: &ConsentControl,
+) -> Option<String> {
+    let mut line = Vec::new();
+    let mut bytes = [0_u8; 1024];
+    while Instant::now() < deadline && !control.is_cancelled() {
+        match stream.read(&mut bytes) {
+            Ok(0) => return None,
+            Ok(count) => {
+                let end = bytes[..count].iter().position(|byte| *byte == b'\n');
+                let used = end.map_or(count, |index| index + 1);
+                if line.len() + used > REDIRECT_LINE_MAX {
+                    return None;
+                }
+                line.extend_from_slice(&bytes[..used]);
+                if end.is_some() {
+                    return String::from_utf8(line).ok();
+                }
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => pause_redirect(deadline),
+            Err(err) if err.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
+/// Only the loopback callback's GET / target, with unambiguous query parameters.
 fn parse_redirect_query(request_line: &str) -> Option<HashMap<String, String>> {
-    let path = request_line.split_whitespace().nth(1)?;
+    let mut parts = request_line.split_ascii_whitespace();
+    if parts.next()? != "GET" {
+        return None;
+    }
+    let path = parts.next()?;
+    if !matches!(parts.next()?, "HTTP/1.0" | "HTTP/1.1") || parts.next().is_some() {
+        return None;
+    }
+    if !path.starts_with('/') {
+        return None;
+    }
     let url = url::Url::parse(&format!("http://127.0.0.1{path}")).ok()?;
-    Some(
-        url.query_pairs()
-            .map(|(key, value)| (key.into_owned(), value.into_owned()))
-            .collect(),
-    )
+    if url.path() != "/" || url.fragment().is_some() {
+        return None;
+    }
+    let mut params = HashMap::new();
+    for (key, value) in url.query_pairs() {
+        if params
+            .insert(key.into_owned(), value.into_owned())
+            .is_some()
+        {
+            return None;
+        }
+    }
+    Some(params)
 }
 
-fn respond(stream: &mut TcpStream, message: &str) -> Result<(), AuthError> {
+fn respond(stream: &mut TcpStream, message: &str, deadline: Instant) {
     let body = format!("<html><body><p>{message}</p></body></html>");
     let response = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
     );
-    stream.write_all(response.as_bytes())?;
-    Ok(())
+    let mut bytes = response.as_bytes();
+    while !bytes.is_empty() && Instant::now() < deadline {
+        match stream.write(bytes) {
+            Ok(0) => break,
+            Ok(count) => bytes = &bytes[count..],
+            Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => pause_redirect(deadline),
+            Err(err) if err.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(_) => break,
+        }
+    }
 }
 
 fn config_err(err: url::ParseError) -> AuthError {
@@ -310,7 +461,12 @@ mod tests {
     fn the_redirect_wait_expires() {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let start = std::time::Instant::now();
-        let outcome = super::wait_for_redirect(&listener, std::time::Duration::from_millis(200));
+        let outcome = super::wait_for_redirect(
+            &listener,
+            std::time::Duration::from_millis(200),
+            "xyz",
+            &ConsentControl::default(),
+        );
         assert!(outcome.is_err(), "without a redirect, the wait must expire");
         assert!(start.elapsed() < std::time::Duration::from_secs(5));
         assert!(
@@ -338,9 +494,191 @@ mod tests {
                 .unwrap();
             real
         });
-        let outcome = super::wait_for_redirect(&listener, std::time::Duration::from_secs(10));
+        let outcome = super::wait_for_redirect(
+            &listener,
+            std::time::Duration::from_secs(10),
+            "xyz",
+            &ConsentControl::default(),
+        );
         let _ = real.join();
         assert_eq!(outcome.unwrap(), ("abc".to_string(), "xyz".to_string()));
+    }
+
+    #[test]
+    fn a_silent_client_cannot_extend_the_consent_deadline() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let _client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let start = Instant::now();
+        assert!(
+            wait_for_redirect(
+                &listener,
+                Duration::from_millis(150),
+                "xyz",
+                &ConsentControl::default()
+            )
+            .is_err()
+        );
+        assert!(
+            start.elapsed() < Duration::from_millis(700),
+            "{:?}",
+            start.elapsed()
+        );
+    }
+
+    #[test]
+    fn redirect_parser_rejects_wrong_targets_and_duplicate_parameters() {
+        for line in [
+            "POST /?code=abc&state=xyz HTTP/1.1",
+            "GET /other?code=abc&state=xyz HTTP/1.1",
+            "GET /?code=abc&state=wrong&state=xyz HTTP/1.1",
+            "GET /?code=abc&code=other&state=xyz HTTP/1.1",
+            "GET /?code=abc&state=xyz#fragment HTTP/1.1",
+            "GET /?code=abc&state=xyz HTTP/2.0",
+        ] {
+            assert!(parse_redirect_query(line).is_none(), "accepted {line}");
+        }
+    }
+
+    fn queued_request(listener: &TcpListener, request: &str) -> TcpStream {
+        let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        client
+            .set_write_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        client.write_all(request.as_bytes()).unwrap();
+        client
+    }
+
+    #[test]
+    fn an_oversized_callback_is_ignored_before_a_valid_one() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let _oversized = queued_request(
+            &listener,
+            &format!(
+                "GET /?code=oversized&state=xyz&padding={} HTTP/1.1\r\n",
+                "x".repeat(9000)
+            ),
+        );
+        let _valid = queued_request(&listener, "GET /?code=valid&state=xyz HTTP/1.1\r\n");
+        assert_eq!(
+            wait_for_redirect(
+                &listener,
+                Duration::from_secs(3),
+                "xyz",
+                &ConsentControl::default()
+            )
+            .unwrap(),
+            ("valid".into(), "xyz".into())
+        );
+    }
+
+    #[test]
+    fn unrelated_state_cannot_consume_the_real_callback() {
+        for query in ["code=wrong&state=other", "error=access_denied&state=other"] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let _unrelated = queued_request(&listener, &format!("GET /?{query} HTTP/1.1\r\n"));
+            let _valid = queued_request(&listener, "GET /?code=valid&state=xyz HTTP/1.1\r\n");
+            assert_eq!(
+                wait_for_redirect(
+                    &listener,
+                    Duration::from_secs(3),
+                    "xyz",
+                    &ConsentControl::default()
+                )
+                .unwrap(),
+                ("valid".into(), "xyz".into())
+            );
+        }
+    }
+
+    #[test]
+    fn failed_browser_open_keeps_the_same_callback_alive() {
+        use std::io::{BufRead, BufReader};
+        let token_server = TcpListener::bind("127.0.0.1:0").unwrap();
+        token_server.set_nonblocking(true).unwrap();
+        let endpoint = format!("http://{}/token", token_server.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(1);
+            while Instant::now() < deadline {
+                if let Ok((mut socket, _)) = token_server.accept() {
+                    socket
+                        .set_read_timeout(Some(Duration::from_secs(1)))
+                        .unwrap();
+                    socket
+                        .set_write_timeout(Some(Duration::from_secs(1)))
+                        .unwrap();
+                    let mut reader = BufReader::new(&mut socket);
+                    let mut request = String::new();
+                    let mut length = 0;
+                    loop {
+                        let mut line = String::new();
+                        reader.read_line(&mut line).unwrap();
+                        assert!(line.len() < 8192);
+                        if line == "\r\n" {
+                            break;
+                        }
+                        if let Some(value) = line.to_lowercase().strip_prefix("content-length:") {
+                            length = value.trim().parse::<usize>().unwrap();
+                        }
+                        request.push_str(&line);
+                    }
+                    assert!(length < 8192);
+                    let mut body = vec![0; length];
+                    reader.read_exact(&mut body).unwrap();
+                    let json = r#"{"access_token":"synthetic","token_type":"Bearer"}"#;
+                    write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{json}", json.len()).unwrap();
+                    return Some(String::from_utf8(body).unwrap());
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            None
+        });
+        let client = oauth_client(&GOOGLE, "fixture", None)
+            .unwrap()
+            .set_token_uri(TokenUrl::new(endpoint).unwrap());
+        let control = ConsentControl::default();
+        let result = interactive_tokens_using(
+            &GOOGLE,
+            client,
+            &http_client().unwrap(),
+            &control,
+            |auth_url| {
+                let url = url::Url::parse(auth_url).unwrap();
+                let query: HashMap<_, _> = url.query_pairs().into_owned().collect();
+                let redirect = url::Url::parse(&query["redirect_uri"]).unwrap();
+                let mut callback =
+                    TcpStream::connect(("127.0.0.1", redirect.port().unwrap())).unwrap();
+                write!(
+                    callback,
+                    "GET /?code=fixture-code&state={} HTTP/1.1\r\n",
+                    query["state"]
+                )
+                .unwrap();
+                false
+            },
+        );
+        let posted = server.join().unwrap();
+        assert!(result.is_ok(), "{result:?}");
+        let posted = posted.unwrap();
+        assert!(posted.contains("code=fixture-code"));
+        assert!(posted.contains("code_verifier="));
+        assert!(control.status().unwrap().unwrap().manual);
+    }
+
+    #[test]
+    fn cancelling_consent_interrupts_an_accepted_silent_client() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let _silent = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let control = ConsentControl::default();
+        let cancellation = control.clone();
+        let worker = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(30));
+            cancellation.cancel();
+        });
+        let start = Instant::now();
+        let result = wait_for_redirect(&listener, Duration::from_secs(1), "xyz", &control);
+        worker.join().unwrap();
+        assert!(matches!(result, Err(AuthError::Cancelled)));
+        assert!(start.elapsed() < Duration::from_millis(300));
     }
 
     /// E8: `Debug` never shows a secret — a future diagnostic `{:?}` will

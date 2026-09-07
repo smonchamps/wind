@@ -1,20 +1,8 @@
 <script>
-  // The account-add desk — ONE implementation, two surfaces: screen 01
-  // (zero accounts) and the “Accounts” section of Settings (A11).
-  // Simple gate (D4): the domain picks the existing flow — Gmail and
-  // Microsoft through the browser consent, any other domain reveals
-  // the generic desk's IMAP/SMTP fields.
-  //
-  // `compact` tightens the geometry to live in the Settings overlay
-  // (40 px entries); screen 01 keeps its prototype 52 px.
-  // `accueil` (field 2026-08-22, findings 1-3 of the two passes): the
-  // redesigned screen 01's presentation — the address bar (40 px, its
-  // button's height) carries “Add” on its right, and the revealed
-  // generic desk gains a “Back” that folds the server fields back.
-  // `mainAdd`: as long as the walkthrough's Continue is greyed
-  // out (no account), “Add” is THE gesture — primary; once an account
-  // exists, it becomes secondary again. The “server detected” note is
-  // not shown during onboarding (2nd pass, finding 2).
+  // Shared form for onboarding and Settings.
+  import { onDestroy, untrack } from 'svelte';
+  import ConsentNotice from './ConsentNotice.svelte';
+  import { createConsent } from './lib/consent.js';
   import { call } from './lib/transport.js';
   import { t } from './lib/text.svelte.js';
   import { IMPORT_HORIZONS as HORIZONS } from './lib/vocabularies.js';
@@ -22,6 +10,7 @@
   let {
     onadd = () => {},
     compact = false,
+    repair = null,
     onboarding = false,
     mainAdd = false,
     // 3rd field pass (finding 2): onboarding hides its “Continue”
@@ -29,17 +18,23 @@
     ongeneric = () => {},
   } = $props();
 
-  let address = $state('');
+  let consentState = $state(null);
+  const consent = createConsent(call, (value) => { consentState = value; });
+  onDestroy(() => consent.dispose());
+
+  const initial = untrack(() => repair);
+  let address = $state(initial?.email ?? '');
   // ADR 0029 (D1/D2): the depth of history imported locally — the
   // choice travels INSIDE the add command (the account id exists only
   // once it returns). Default “1 year” (CE decision D2).
   let horizon = $state('1a');
-  let generic = $state(false);
+  let generic = $state(!!initial);
   let password = $state('');
-  let imapHost = $state('');
-  let imapPort = $state('993');
-  let smtpHost = $state('');
-  let smtpPort = $state('465');
+  let username = $state(initial?.username ?? null);
+  let imapHost = $state(initial?.imapHost ?? '');
+  let imapPort = $state(String(initial?.imapPort ?? 993));
+  let smtpHost = $state(initial?.smtpHost ?? '');
+  let smtpPort = $state(String(initial?.smtpPort ?? 465));
   let busy = $state(false);
   let pending = $state('');
   let error = $state('');
@@ -56,14 +51,13 @@
       error = t('desk.addressInvalid');
       return;
     }
-    if (isGoogle() || isMicrosoft()) {
+    if (!repair && (isGoogle() || isMicrosoft())) {
       busy = true;
       pending = t('desk.authorization');
       try {
-        await (isGoogle()
-          ? call('add_account', { horizon })
-          : call('add_microsoft_account', { email: typing, horizon }));
-        onadd();
+        const connected = await consent.run(isGoogle() ? 'add_account' : 'add_microsoft_account',
+          { email: typing, horizon });
+        if (connected) onadd();
       } catch (err) {
         error = t('error.connection', { err });
       } finally {
@@ -83,10 +77,11 @@
     busy = true;
     pending = t('desk.checking');
     try {
-      await call('add_generic_account', {
+      await call(repair ? 'repair_generic_account' : 'add_generic_account', {
+        ...(repair ? { accountId: repair.accountId } : {}),
         input: {
           email: typing,
-          username: null,
+          username: username?.trim() || typing,
           password: password,
           imapHost: imapHost.trim(),
           imapPort: Number(imapPort) || 993,
@@ -95,6 +90,7 @@
         },
         horizon,
       });
+      password = '';
       onadd();
     } catch (err) {
       error = t('error.connection', { err });
@@ -105,11 +101,11 @@
   }
 </script>
 
-<div class="desk" class:compact class:onboarding>
+<div class="desk" class:compact class:onboarding aria-busy={busy}>
   <div class="form">
     <label for="ob-adresse">{t('desk.address')}</label>
     <div class="bar">
-      <input id="ob-adresse" type="email" bind:value={address}
+      <input id="ob-adresse" type="email" bind:value={address} disabled={busy || !!repair}
              data-testid="onboarding-address"
              onkeydown={(e) => e.key === 'Enter' && !busy && proceed()}>
       {#if onboarding && !generic}
@@ -120,6 +116,7 @@
     </div>
     <!-- ADR 0029: the depth of history — visible on BOTH surfaces and
          for the three flows (the choice travels with the add). -->
+    {#if !repair}
     <div class="horizon">
       <label for="ob-horizon">{t('desk.horizon')}</label>
       <span class="select-wrap">
@@ -131,33 +128,41 @@
         </select>
       </span>
     </div>
+    {/if}
     {#if generic}
+      <label for="ob-username">{t('desk.username')}</label>
+      <input id="ob-username" type="text" autocomplete="username" aria-describedby="ob-username-hint"
+             value={username ?? address.trim()} disabled={busy || !!repair}
+             oninput={(event) => { username = event.currentTarget.value; }}>
+      <p id="ob-username-hint" class="note">{t('desk.usernameHint')}</p>
       <label for="ob-mdp">{t('desk.password')}</label>
-      <input id="ob-mdp" type="password" bind:value={password}>
+      <input id="ob-mdp" type="password" bind:value={password} disabled={busy}
+             aria-describedby={repair ? "repair-password-hint" : undefined}>
+      {#if repair}<p id="repair-password-hint" class="note">{t('desk.keepPassword')}</p>{/if}
       <div class="servers">
         <span>
           <label for="ob-imap">{t('desk.imap')}</label>
-          <input id="ob-imap" type="text" bind:value={imapHost}>
+          <input id="ob-imap" type="text" bind:value={imapHost} disabled={busy || !!repair}>
         </span>
         <span class="port">
           <label for="ob-imap-port">{t('desk.port')}</label>
-          <input id="ob-imap-port" type="text" bind:value={imapPort}>
+          <input id="ob-imap-port" type="text" bind:value={imapPort} disabled={busy}>
         </span>
       </div>
       <div class="servers">
         <span>
           <label for="ob-smtp">{t('desk.smtp')}</label>
-          <input id="ob-smtp" type="text" bind:value={smtpHost}>
+          <input id="ob-smtp" type="text" bind:value={smtpHost} disabled={busy}>
         </span>
         <span class="port">
           <label for="ob-smtp-port">{t('desk.port')}</label>
-          <input id="ob-smtp-port" type="text" bind:value={smtpPort}>
+          <input id="ob-smtp-port" type="text" bind:value={smtpPort} disabled={busy}>
         </span>
       </div>
     {/if}
     {#if !onboarding}
       <button type="button" class="main" data-testid="desk-continue"
-              disabled={busy} onclick={proceed}>{t('action.continue')}</button>
+              disabled={busy} onclick={proceed}>{t(repair ? 'desk.saveConnection' : 'action.continue')}</button>
     {:else if generic}
       <!-- Finding 3: on the revealed generic desk, the action is
            “Add” (secondary) and “Back” folds the fields back. -->
@@ -170,12 +175,14 @@
                 disabled={busy} onclick={proceed}>{t('onboarding.add')}</button>
         <button type="button" class="secondary" data-testid="desk-back"
                 disabled={busy}
-                onclick={() => { generic = false; error = ''; ongeneric(false); }}>{t('onboarding.back')}</button>
+                onclick={() => { generic = false; error = ''; password = ''; username = null; ongeneric(false); }}>{t('onboarding.back')}</button>
       </div>
     {/if}
   </div>
   {#if error}
     <p class="error" data-testid="onboarding-error">{error}</p>
+  {:else if consentState?.active}
+    <ConsentNotice state={consentState} oncancel={() => consent.cancel()} />
   {:else if pending}
     <p class="note">{pending}</p>
   {:else if generic}

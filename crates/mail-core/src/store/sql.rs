@@ -108,8 +108,11 @@ pub(crate) fn bodies_to_backfill_sql() -> String {
              WHERE m.account_id = ?1 AND m.name = ?2
                AND (e.date_epoch IS NULL OR e.date_epoch >= ?3)
                AND {BODY_ABSENT}
+               AND NOT EXISTS (SELECT 1 FROM body_download_refusals r
+                   WHERE r.mailbox_id = e.mailbox_id AND r.uid = e.uid AND r.limit_bytes >= {ceiling})
              ORDER BY e.date_epoch DESC, e.uid DESC
-             LIMIT ?4"
+             LIMIT ?4",
+        ceiling = crate::body::REMOTE_MESSAGE_BYTES,
     )
 }
 
@@ -256,7 +259,8 @@ pub(super) fn images_address(adresse: Option<String>) -> Option<String> {
 /// on the purge, they carry the gesture (`remove_local`) or are
 /// unrealizable (`remove_absent`, `reset_mailbox` — which removes
 /// them separately).
-pub(crate) const TABLES_PER_MESSAGE: [&str; 7] = [
+pub(crate) const TABLES_PER_MESSAGE: [&str; 8] = [
+    "body_download_refusals",
     "bodies",
     "invitations",
     "attachments",

@@ -139,6 +139,7 @@ fn a_received_reply_gives_the_attendee() {
     // We are the organizer: a REPLY arrives with the attendee's PARTSTAT
     // (D2 — the "X accepted" state).
     let request = ReplyRequest {
+        recurrence_id: None,
         uid: "7f3e9a2b1c4d5e6f@google.com",
         sequence: 0,
         organizer_address: US,
@@ -176,6 +177,7 @@ fn generated_reply_is_conforming_and_reparsable() {
     let inv = parse(&load("google"), US).unwrap();
     let org = inv.organizer.expect("organizer");
     let request = ReplyRequest {
+        recurrence_id: None,
         uid: &inv.uid,
         sequence: inv.sequence,
         organizer_address: &org.address,
