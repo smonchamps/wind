@@ -10,7 +10,7 @@ figures). Sub-lot E13 implemented, reviewed, full gate GREEN (322 s);
 field pass 1: items 1, 3–7 OK, item 2 KO fixed the same day (reads off
 the commands' lock, net `reads-under-write.spec.js`), gate GREEN again
 (300 s); second field pass “2 OK”. **E13 field-validated and committed
-locally on 2026-09-07; not pushed (D0). E14 next.**
+locally on 2026-09-07 as `2e096d6`; not pushed (D0). E14 next.**
 
 ## 1. Findings
 
@@ -558,7 +558,7 @@ Gate replayed after the fix, unchanged: **GREEN in 300 s** — 911 Rust,
 
 Second field pass on item 2 alone: **“2 OK”** (verbatim). Sub-lot E13 is
 field-validated: items 1–7 OK, item 2 fixed the same day and re-validated.
-Committed locally; not pushed (D0). <!-- lang:fr -->
+Committed locally as `2e096d6`; not pushed (D0). <!-- lang:fr -->
 
 Commands, ready to copy — the committed scripts first:
 
