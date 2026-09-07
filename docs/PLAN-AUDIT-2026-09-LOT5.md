@@ -10,7 +10,7 @@ figures). Sub-lot E13 implemented, reviewed, full gate GREEN (322 s);
 field pass 1: items 1, 3–7 OK, item 2 KO fixed the same day (reads off
 the commands' lock, net `reads-under-write.spec.js`), gate GREEN again
 (300 s); second field pass “2 OK”. **E13 committed locally as `2e096d6`;
-E14 field-validated (“1 à 9 ok”, 12.49 GB database) and committed locally <!-- lang:fr -->
+E14 field-validated (“1 à 9 ok”, 12.49 GB database) and committed locally as `516180e` <!-- lang:fr -->
 on 2026-09-07; not pushed (D0). E15 next.**
 
 ## 1. Findings
@@ -741,5 +741,5 @@ Verdict as a numbered list, 1–9 OK/KO, with what you saw (and the two
 
 **“1 à 9 ok”** (verbatim), on the 12.49 GB real database with the <!-- lang:fr -->
 tightened sequence (one copy, one restore, the held send discarded).
-Sub-lot E14 is field-validated. Committed locally; not pushed (D0). <!-- lang:fr -->
+Sub-lot E14 is field-validated. Committed locally as `516180e`; not pushed (D0). <!-- lang:fr -->
 
