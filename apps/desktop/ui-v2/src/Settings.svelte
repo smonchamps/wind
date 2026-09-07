@@ -152,8 +152,11 @@
       await call('restore_snapshot', { source: restoreSource });
       restoreSource = null;
       // The swap happens at the next start (nothing may be reading the
-      // file while it moves): Wind restarts on the copy.
-      if (!globalThis.window?.__e2eNoRestart) await call('restart_app');
+      // file while it moves): Wind restarts on the copy. The e2e seam is
+      // compiled out of releases (transport.js pattern, VITE_E2E literal).
+      const noRestart = import.meta.env.VITE_E2E === '1'
+        ? globalThis.window?.__e2eNoRestart : undefined;
+      if (!noRestart) await call('restart_app');
     } catch (err) {
       onflash(t('error.restore', { err }));
     } finally {
