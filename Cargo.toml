@@ -20,7 +20,7 @@ members = [
 # La version produit (celle de tauri.conf.json) — bumpee par
 # scripts/make-release.ps1 a chaque release (PLAN-RETOURS-12 R4, D3) :
 # les crates internes disent la version de l'app qui les embarque.
-version = "0.19.0"
+version = "0.20.0"
 edition = "2024"
 
 [workspace.dependencies]
