@@ -12,23 +12,82 @@ The signed packages and their notes live in the
 [GitHub Releases](https://github.com/smonchamps/wind/releases); the update
 is automatic and signed (minisign, ADR 0013).
 
-## [Unreleased]
+## [0.20.0] - 2026-09-07
+
+Back up and restore your mail data, select with the keyboard, and a
+long list of quiet defects found by a full review of Wind, now fixed.
+
+### Added
+
+- **Back up and restore, in Settings › Your data.** Save a complete
+  copy of your local mail data wherever you choose (passwords are
+  never in it). Restoring is careful: it applies at the next start,
+  keeps the replaced data beside it, and any unsent messages found in
+  the backup are held until you decide: restoring a backup can never
+  send old mail by itself.
+- **"Also forget what Wind learned."** When you remove an account, a
+  second choice erases everything Wind learned from it: contacts,
+  sender decisions and image permissions that belonged to that account
+  alone. Anything shared with another account stays.
+- **Honest "not available" states.** A message now says whether its
+  content is simply not downloaded yet (it will retry) or no longer
+  exists on the server. A search also tells you when part of your
+  older mail isn't included, instead of quietly showing fewer results.
+- **Select with the keyboard.** Ctrl+Space checks or unchecks the
+  focused message, Shift+Space extends the selection, just like the
+  mouse.
+- **Calendar invitations behave like real mail.** An invitation that
+  arrives with no message text is now found by its title and place in
+  search, and forwarding it sends the actual invitation file instead
+  of an empty message.
+- **Change your mind about images.** The per-message "show remote
+  images" permission can now be taken back, message by message.
+
+### Changed
+
+- **Wind speaks your language everywhere.** File sizes, system
+  dialogs, the "wrote:" line in replies, forwarded-message headers
+  and the welcome screens all follow the language you chose. No more
+  French fragments in an English interface.
+- The connection "repair" button only appears when the connection
+  actually needs it, and the connection status stays current instead
+  of freezing on its last word.
+- The synchronization progress bar is lighter on large mailboxes.
 
 ### Fixed
 
-- Rich replies, forwards and pasted content keep permitted formatting while
-  blocking remote-image requests in the composer. Deleted quoted content
+- Replies, forwards and pasted content keep their formatting while the
+  composer keeps blocking remote images. Text you deleted from a quote
   stays deleted when saving or sending.
-- Failed draft saves keep the composer open with a retryable error. Closing
-  waits for pending edits and attachments; recovered edits and conflict copies
-  retain their committed content and files.
-- Drafts imported from another mail client retain recipients, attachments,
-  priority and reply headers. Manual synchronization now imports them too,
-  reports import failures, and refreshes the draft list.
-- Remote body and attachment reads reject a changed mailbox generation.
+- If saving a draft fails, the composer stays open and tells you,
+  instead of closing and losing your text. Closing waits for pending
+  edits and attachments to be safe first.
+- Drafts started in another mail app keep their recipients,
+  attachments, priority and reply context when Wind imports them.
+- Sending is honest under uncertainty: when the server's answer is
+  ambiguous, Wind never quietly retries into a duplicate send, a send
+  interrupted by a crash is recovered at the next start, and a message
+  being moved is only removed from its origin once the copy is
+  confirmed.
+- Reply-all now answers the address the sender asked for (Reply-To); a
+  message with only hidden recipients (Bcc) sends without exposing
+  them; your sent messages show their Cc right away.
+- A first synchronization interrupted midway now finishes correctly
+  when it resumes: messages deleted in the meantime no longer come
+  back.
+- Invitation updates arrive in the right order: a newer meeting
+  request is no longer cancelled by an older cancellation, and
+  replying to one occurrence of a series answers that occurrence.
+- Fewer surprise "sign in again" loops with Gmail and Outlook
+  accounts, and a clear repair path when access does expire.
+- A folder the server refuses to open now says so instead of
+  disappearing silently, and insecure image addresses are upgraded to
+  secure ones when you allow images.
+- Reading stays instant while a big synchronization is running: no
+  more blank reading pane for seconds at a time.
 - The sender selector is vertically centered beside its From label.
 
-## [0.19.0] - unreleased
+## [0.19.0] - 2026-09-05
 
 Wind comes to the Mac.
 
