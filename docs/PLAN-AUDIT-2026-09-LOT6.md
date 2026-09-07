@@ -14,8 +14,8 @@ Rust, 43 Node, 266 e2e passed, 1 optional bench skipped, 2 known flaky
 `organized-mode` green on retry), ratchet 1974 → 1735 markers (baseline
 updated the sanctioned way), 428 links live. STOP 2 on 2026-09-07:
 the Chief Engineer replayed the ratchet and the links net and read the
-checklist — verdict "OK", zero findings. Committed locally (no push,
-D0).**
+checklist — verdict "OK", zero findings. Committed locally as `01b9171`
+(no push, D0).**
 
 ## 1. Findings
 

@@ -40,7 +40,7 @@ Six lots over [AUDIT-2026-09-06.md](AUDIT-2026-09-06.md).
   initiative; do not rewrite these commits.** No CI has run on them;
   no lot of the three is `/close`d.
 - **Lot 6 (E16) DELIVERED and field-validated 2026-09-07, committed
-  locally** ([plan](PLAN-AUDIT-2026-09-LOT6.md), STOP 1 D0–D4, STOP 2
+  locally as `01b9171`** ([plan](PLAN-AUDIT-2026-09-LOT6.md), STOP 1 D0–D4, STOP 2
   "OK" zero findings, gate GREEN 681 s): documentation, comments and
   reconciliation — the C01–C08 consolidation record is the plan's §1
   table; DEBT.md re-filed (entries under their true sections, D-7/D-11
