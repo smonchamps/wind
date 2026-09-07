@@ -34,11 +34,11 @@ Six lots over [AUDIT-2026-09-06.md](AUDIT-2026-09-06.md).
   Lot 3 `9f4a9b1` ([plan](PLAN-AUDIT-2026-09-LOT3.md)), Lot 4
   `400de5e` ([plan](PLAN-AUDIT-2026-09-LOT4.md)), Lot 5 E13
   `2e096d6` / E14 `516180e` / E15 `46c1463` (evidence folder
-  `92fa3b6`; [plan](PLAN-AUDIT-2026-09-LOT5.md)). **Lot 5 D0 stands:
-  the grouped push of Lots 3–6 comes only after the Chief Engineer's
-  `/code-review ultra` of the whole diff. Do not push on your own
-  initiative; do not rewrite these commits.** No CI has run on them;
-  no lot of the three is `/close`d.
+  `92fa3b6`; [plan](PLAN-AUDIT-2026-09-LOT5.md)). **Lot 5 D0 AMENDED by the
+  Chief Engineer on 2026-09-07: `/code-review ultra` refused the grouped
+  diff on size (464 files, 44,983 lines — over its 8,000-line limit);
+  the push was ordered without it. Do not rewrite these commits.**
+  Grouped push under way; `/close` of the lots follows the green CI.
 - **Lot 6 (E16) DELIVERED and field-validated 2026-09-07, committed
   locally as `01b9171`** ([plan](PLAN-AUDIT-2026-09-LOT6.md), STOP 1 D0–D4, STOP 2
   "OK" zero findings, gate GREEN 681 s): documentation, comments and
