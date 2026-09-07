@@ -1,0 +1,11 @@
+[package]
+name = "lot2-core-proof"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+
+[dependencies]
+mail-core = { path = "../../crates/mail-core" }
+fs4 = "0.13"
+dirs = "6"

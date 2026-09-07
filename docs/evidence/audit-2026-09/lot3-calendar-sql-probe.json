@@ -1,0 +1,22 @@
+[
+  {
+    "case": "cancel sequence 1; organizer organizer@example.invalid; order ('request', 'cancel')",
+    "request2_cancelled": true,
+    "expected": false
+  },
+  {
+    "case": "cancel sequence 1; organizer organizer@example.invalid; order ('cancel', 'request')",
+    "request2_cancelled": true,
+    "expected": false
+  },
+  {
+    "case": "cancel sequence 3; organizer other@example.invalid; order ('request', 'cancel')",
+    "request2_cancelled": true,
+    "expected": false
+  },
+  {
+    "case": "cancel sequence 3; organizer other@example.invalid; order ('cancel', 'request')",
+    "request2_cancelled": true,
+    "expected": false
+  }
+]

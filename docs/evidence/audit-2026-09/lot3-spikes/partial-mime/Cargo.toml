@@ -1,0 +1,14 @@
+[package]
+name = "lot3-partial-mime-spike"
+version = "0.0.0"
+edition = "2024"
+
+[workspace]
+
+[dependencies]
+imap = { version = "=3.0.0-alpha.15", default-features = false }
+imap-proto = "=0.16.7"
+mail-parser = { version = "=0.11.5", features = ["full_encoding"] }
+base64 = "0.22"
+serde_json = "1"
+sha2 = "0.10"

@@ -11,7 +11,8 @@
 //   node e2e/language-gate.mjs --update   -> rewrite the baseline
 //
 // Exempt by decision (PLAN-ENGLISH-SWITCH D1, D3, D11 and §2): the French
-// catalogue, BETA.fr.md, docs/archives/, the rename toolkit, lock files,
+// catalogue, BETA.fr.md, docs/archives/, docs/evidence/, the rename
+// toolkit, lock files,
 // and any line carrying the marker `lang:fr` (a deliberately French
 // string, such as a French notification text or a French UI label a
 // spec asserts). This file exempts itself: it holds the word list.
@@ -26,6 +27,11 @@ const update = process.argv.includes('--update');
 const TEXT = /\.(rs|js|mjs|svelte|css|ps1|py|md|html|yml|yaml|toml|sh|json|txt)$/i;
 const EXEMPT = [
   /^docs\/archives\//,
+  // Frozen measurement evidence (2026-09-07). Same ground as spikes/: this
+  // material was written under the exemption below, and preserving it out of
+  // ignored target/ must not silently put it back under the ratchet.
+  // Translating a measurement falsifies it.
+  /^docs\/evidence\//,
   /^spikes\//, // throw-away, outside the switch (PLAN-ENGLISH-SWITCH §5)
   /^scripts\/rename\//,
   /(^|\/)catalogue?\.fr\.js$/,

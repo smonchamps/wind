@@ -1,0 +1,18 @@
+[package]
+name = "spike-ics-calcard"
+version = "0.1.0"
+edition = "2021"
+
+# Spike autonome — hors du workspace de production
+[workspace]
+
+[dependencies]
+calcard = { version = "0.3.11", default-features = false }
+# deja transitive via calcard — necessaire car calcard ne re-exporte pas chrono
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

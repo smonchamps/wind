@@ -1,0 +1,46 @@
+{
+  "inner.bin": {
+    "bytes": 620,
+    "sha256": "06247c27105e31151238b37e38af7286a64966f8405f5d6a11b5f8bd3b9108b9"
+  },
+  "malformed.eml": {
+    "bytes": 82,
+    "sha256": "404d578f607a09c05758cba3102f242dc3e0c99453f0801e69ddacd5b267b75b"
+  },
+  "nested-large.eml": {
+    "bytes": 17219602,
+    "sha256": "605bbf6f728abc31f589bde1fe5d83a007290f5bdf660511cd2cbee192b7e3d1"
+  },
+  "nested.eml": {
+    "bytes": 7332,
+    "sha256": "714a1b6b81af7593d20e6e0461e8f4b2219264649549d6c9189f47f36f3ce492"
+  },
+  "outer.bin": {
+    "bytes": 4096,
+    "sha256": "c8f5d0341d54d951a71b136e6e2afcb14d11ed8489a7ae126a8fee0df6ecf193"
+  },
+  "plain-1048576.eml": {
+    "bytes": 1048576,
+    "sha256": "6d48eaaf1bed372d88d986996db57fbb57106357c15b8cbca93f69838e3f4aaf"
+  },
+  "plain-2097151.eml": {
+    "bytes": 2097151,
+    "sha256": "f976eae5b5d4032748b12e9cda72404e0206050a6313ef53910bc72518a1b077"
+  },
+  "plain-2097152.eml": {
+    "bytes": 2097152,
+    "sha256": "9b3b1309e2e3989c73558714c3ee23b9ba9f3fb92763f035902208e37c8f8621"
+  },
+  "plain-2097153.eml": {
+    "bytes": 2097153,
+    "sha256": "e1ef21aa2e3b6267aa4ab531bd165966a10b193670e2ab9203e3917c73c3d06e"
+  },
+  "plain-65536.eml": {
+    "bytes": 65536,
+    "sha256": "4e00bd24f3af106b913918956699a0f3b454e9bcedfd187abedef09ba07cfe0c"
+  },
+  "plain-8388608.eml": {
+    "bytes": 8388608,
+    "sha256": "50c2ff6dfb6f33dc09492f688259e72d60ea5cf8a90716c20c233083487f904a"
+  }
+}

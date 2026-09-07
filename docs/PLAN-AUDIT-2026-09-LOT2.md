@@ -24,6 +24,10 @@ gate or evidence that the candidate is already integrated.
 
 The core proof is `target/lot2-proof`, built against the actual core source and
 the repository lockfile after an initial standalone dependency-resolution run.
+Its sources are preserved in
+[`docs/evidence/audit-2026-09/lot2-proof/`](evidence/audit-2026-09/lot2-proof/)
+with the command that restores and reruns them: `target/` is ignored and any
+`cargo clean` erases the copy that ran.
 The lockfile-pinned rerun gives the same 3/3 results. It uses the core flush and
 two SQLite connections, not the Tauri command scheduler: the missing shell
 coordination must still be covered by integration tests. Its two unused-code

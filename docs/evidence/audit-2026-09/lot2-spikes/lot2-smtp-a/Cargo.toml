@@ -1,0 +1,9 @@
+[package]
+name = "lot2-smtp-a"
+version = "0.0.0"
+edition = "2024"
+
+[workspace]
+
+[dependencies]
+lettre = { version = "=0.11.22", default-features = false, features = ["smtp-transport", "rustls", "ring", "rustls-platform-verifier", "builder"] }

@@ -1,0 +1,44 @@
+option=A; lettre=0.11.22; transport=SmtpTransport; pool=false; tls=false(loopback-only); repetitions=3
+GreetingEof;rep=1;baseline=Transient;candidate=Unknown;complete_data=0;status=None;response=true;client=false;tls=false;timeout=false;error=response error: incomplete response
+transcript=[]
+GreetingEof;rep=2;baseline=Transient;candidate=Unknown;complete_data=0;status=None;response=true;client=false;tls=false;timeout=false;error=response error: incomplete response
+GreetingEof;rep=3;baseline=Transient;candidate=Unknown;complete_data=0;status=None;response=true;client=false;tls=false;timeout=false;error=response error: incomplete response
+MailEof;rep=1;baseline=Transient;candidate=Unknown;complete_data=0;status=None;response=true;client=false;tls=false;timeout=false;error=response error: incomplete response
+transcript=["EHLO [127.0.0.1]", "MAIL FROM:<from@example.invalid>"]
+MailEof;rep=2;baseline=Transient;candidate=Unknown;complete_data=0;status=None;response=true;client=false;tls=false;timeout=false;error=response error: incomplete response
+MailEof;rep=3;baseline=Transient;candidate=Unknown;complete_data=0;status=None;response=true;client=false;tls=false;timeout=false;error=response error: incomplete response
+RcptEof;rep=1;baseline=Transient;candidate=Unknown;complete_data=0;status=None;response=true;client=false;tls=false;timeout=false;error=response error: incomplete response
+transcript=["EHLO [127.0.0.1]", "MAIL FROM:<from@example.invalid>", "RCPT TO:<one@example.invalid>"]
+RcptEof;rep=2;baseline=Transient;candidate=Unknown;complete_data=0;status=None;response=true;client=false;tls=false;timeout=false;error=response error: incomplete response
+RcptEof;rep=3;baseline=Transient;candidate=Unknown;complete_data=0;status=None;response=true;client=false;tls=false;timeout=false;error=response error: incomplete response
+SecondRcpt450;rep=1;baseline=Transient;candidate=Transient;complete_data=0;status=Some(450);response=false;client=false;tls=false;timeout=false;error=transient error (450): recipient refused
+transcript=["EHLO [127.0.0.1]", "MAIL FROM:<from@example.invalid>", "RCPT TO:<one@example.invalid>", "RCPT TO:<two@example.invalid>", "QUIT"]
+SecondRcpt450;rep=2;baseline=Transient;candidate=Transient;complete_data=0;status=Some(450);response=false;client=false;tls=false;timeout=false;error=transient error (450): recipient refused
+SecondRcpt450;rep=3;baseline=Transient;candidate=Transient;complete_data=0;status=Some(450);response=false;client=false;tls=false;timeout=false;error=transient error (450): recipient refused
+SecondRcpt550;rep=1;baseline=Permanent;candidate=Permanent;complete_data=0;status=Some(550);response=false;client=false;tls=false;timeout=false;error=permanent error (550): recipient refused
+transcript=["EHLO [127.0.0.1]", "MAIL FROM:<from@example.invalid>", "RCPT TO:<one@example.invalid>", "RCPT TO:<two@example.invalid>", "QUIT"]
+SecondRcpt550;rep=2;baseline=Permanent;candidate=Permanent;complete_data=0;status=Some(550);response=false;client=false;tls=false;timeout=false;error=permanent error (550): recipient refused
+SecondRcpt550;rep=3;baseline=Permanent;candidate=Permanent;complete_data=0;status=Some(550);response=false;client=false;tls=false;timeout=false;error=permanent error (550): recipient refused
+DataEof;rep=1;baseline=Transient;candidate=Unknown;complete_data=1;status=None;response=true;client=false;tls=false;timeout=false;error=response error: incomplete response
+transcript=["EHLO [127.0.0.1]", "MAIL FROM:<from@example.invalid>", "RCPT TO:<one@example.invalid>", "RCPT TO:<two@example.invalid>", "DATA", "<complete DATA>"]
+DataEof;rep=2;baseline=Transient;candidate=Unknown;complete_data=1;status=None;response=true;client=false;tls=false;timeout=false;error=response error: incomplete response
+DataEof;rep=3;baseline=Transient;candidate=Unknown;complete_data=1;status=None;response=true;client=false;tls=false;timeout=false;error=response error: incomplete response
+Final451;rep=1;baseline=Transient;candidate=Transient;complete_data=1;status=Some(451);response=false;client=false;tls=false;timeout=false;error=transient error (451): temporarily rejected
+transcript=["EHLO [127.0.0.1]", "MAIL FROM:<from@example.invalid>", "RCPT TO:<one@example.invalid>", "RCPT TO:<two@example.invalid>", "DATA", "<complete DATA>", "QUIT"]
+Final451;rep=2;baseline=Transient;candidate=Transient;complete_data=1;status=Some(451);response=false;client=false;tls=false;timeout=false;error=transient error (451): temporarily rejected
+Final451;rep=3;baseline=Transient;candidate=Transient;complete_data=1;status=Some(451);response=false;client=false;tls=false;timeout=false;error=transient error (451): temporarily rejected
+Final550;rep=1;baseline=Permanent;candidate=Permanent;complete_data=1;status=Some(550);response=false;client=false;tls=false;timeout=false;error=permanent error (550): permanently rejected
+transcript=["EHLO [127.0.0.1]", "MAIL FROM:<from@example.invalid>", "RCPT TO:<one@example.invalid>", "RCPT TO:<two@example.invalid>", "DATA", "<complete DATA>", "QUIT"]
+Final550;rep=2;baseline=Permanent;candidate=Permanent;complete_data=1;status=Some(550);response=false;client=false;tls=false;timeout=false;error=permanent error (550): permanently rejected
+Final550;rep=3;baseline=Permanent;candidate=Permanent;complete_data=1;status=Some(550);response=false;client=false;tls=false;timeout=false;error=permanent error (550): permanently rejected
+Final250QuitEof;rep=1;baseline=Sent;candidate=Sent;complete_data=1;ok=250
+transcript=["EHLO [127.0.0.1]", "MAIL FROM:<from@example.invalid>", "RCPT TO:<one@example.invalid>", "RCPT TO:<two@example.invalid>", "DATA", "<complete DATA>", "QUIT"]
+Final250QuitEof;rep=2;baseline=Sent;candidate=Sent;complete_data=1;ok=250
+Final250QuitEof;rep=3;baseline=Sent;candidate=Sent;complete_data=1;ok=250
+Final354;rep=1;baseline=Sent;candidate=Unknown;complete_data=1;ok=354
+transcript=["EHLO [127.0.0.1]", "MAIL FROM:<from@example.invalid>", "RCPT TO:<one@example.invalid>", "RCPT TO:<two@example.invalid>", "DATA", "<complete DATA>", "QUIT"]
+Final354;rep=2;baseline=Sent;candidate=Unknown;complete_data=1;ok=354
+Final354;rep=3;baseline=Sent;candidate=Unknown;complete_data=1;ok=354
+replay;candidate=false;attempts=2;complete_data=2;duplicate_payloads=1
+replay;candidate=true;attempts=1;complete_data=1;duplicate_payloads=0
+elapsed_ms=61

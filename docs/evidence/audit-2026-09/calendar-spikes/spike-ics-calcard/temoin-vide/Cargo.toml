@@ -1,0 +1,13 @@
+[package]
+name = "temoin-vide"
+version = "0.1.0"
+edition = "2021"
+
+# Temoin : binaire vide compile avec le meme profil release
+[workspace]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

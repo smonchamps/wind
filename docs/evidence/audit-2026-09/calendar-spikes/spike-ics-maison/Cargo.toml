@@ -1,0 +1,12 @@
+# Spike jetable — option B : parseur iCalendar minimal maison + chrono-tz.
+# Projet AUTONOME, hors du workspace racine.
+[package]
+name = "spike-ics-maison"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+chrono-tz = "0.10"
+
+[workspace]

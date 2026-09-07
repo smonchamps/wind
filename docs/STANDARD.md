@@ -1030,6 +1030,7 @@ had no line for a wait of ten seconds.
 | [`docs/PLAN.md`](PLAN.md) | Concept paper — product source of truth |
 | [`docs/adr/`](adr/) | The 15 frozen decisions |
 | [`docs/archives/`](archives/) | Closed-out plans and phase closing reviews |
+| [`docs/evidence/`](evidence/) | Measurement evidence for open plans that would otherwise live only in ignored `target/` |
 | [`crates/mail-core/src/store.rs`](../crates/mail-core/src/store.rs) | SQLite storage (WAL), schema, migrations, unified mailbox, grouping scope |
 | [`crates/mail-core/src/sync.rs`](../crates/mail-core/src/sync.rs) | Sync engine + `sync_order`, `sync_percent`, `disk_shortfall` |
 | [`crates/mail-core/src/thread.rs`](../crates/mail-core/src/thread.rs) | Conversations: pure union-find + persistence, account scope |

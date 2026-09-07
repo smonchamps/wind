@@ -1,0 +1,11 @@
+# Binaire témoin SANS chrono/chrono-tz, pour mesurer le poids des dépendances.
+# Fait la même chose « de base » (lire un fichier, imprimer) pour que la
+# différence de taille mesure les dépendances, pas la stdlib.
+[package]
+name = "spike-ics-temoin"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[workspace]

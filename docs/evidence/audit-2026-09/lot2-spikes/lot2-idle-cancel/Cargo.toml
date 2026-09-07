@@ -1,0 +1,10 @@
+[package]
+name = "lot2-idle-cancel-spike"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+
+[dependencies]
+imap = { version = "=3.0.0-alpha.15", default-features = false }
+rustls = { version = "=0.23.41", default-features = false, features = ["std", "ring", "tls12"] }

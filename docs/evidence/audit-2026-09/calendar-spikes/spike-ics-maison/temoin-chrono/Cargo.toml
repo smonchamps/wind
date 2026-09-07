@@ -1,0 +1,11 @@
+# Témoin intermédiaire : chrono SEUL (sans chrono-tz), pour isoler
+# le poids respectif de chrono et de la base tz embarquée de chrono-tz.
+[package]
+name = "spike-ics-temoin-chrono"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+[workspace]

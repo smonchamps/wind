@@ -1,0 +1,80 @@
+diff --git a/apps/desktop/ui-v2/src/Feed.svelte b/spikes/feed-memory/options/Feed-B.svelte
+index 21dfb0a..3039836 100644
+--- a/apps/desktop/ui-v2/src/Feed.svelte
++++ b/spikes/feed-memory/options/Feed-B.svelte
+@@ -125,11 +125,27 @@
+   // their iframe; a card that leaves the window leaves a block of its
+   // measured height (scrolling does not jump), and gets it back on
+   // return.
+-  const WINDOW = 5;
++  // SPIKE D-53 option B: window ±1, and a leaving iframe is NAVIGATED
++  // to about:blank (srcdoc dropped) one frame BEFORE it unmounts, so
++  // the compositor surface and the document are released by a
++  // navigation rather than by a detach. `blankOnLeave` covers the
++  // other exit (Feed unmounted, card collapsed): blank in the action's
++  // teardown, which Svelte runs before the node is removed.
++  const WINDOW = 1;
+   let visibleIndex = $state(0);
+   let heights = $state({});
+   const offWindow = (i) => Math.abs(i - visibleIndex) > WINDOW;
+   let measureRequested = false;
++  function blank(iframe) {
++    if (iframe.dataset.blank) return;
++    iframe.dataset.blank = '1';
++    iframe.style.height = `${iframe.offsetHeight}px`;
++    iframe.removeAttribute('srcdoc');
++    iframe.src = 'about:blank';
++  }
++  function blankOnLeave(iframe) {
++    return { destroy() { blank(iframe); } };
++  }
+   function measureWindow(scene) {
+     if (measureRequested) return;
+     measureRequested = true;
+@@ -146,14 +162,20 @@
+       // The height of bodies about to leave the window, taken BEFORE
+       // they unmount.
+       const fresh = { ...heights };
++      const leaving = [];
+       articles.forEach((article, i) => {
+         if (Math.abs(i - first) > WINDOW) {
+           const body = article.querySelector('iframe.body');
+-          if (body) fresh[article.dataset.key] = body.offsetHeight;
++          if (body) { fresh[article.dataset.key] = body.offsetHeight; leaving.push(body); }
+         }
+       });
+-      heights = fresh;
+-      visibleIndex = first;
++      for (const body of leaving) blank(body);
++      const commit = () => {
++        if (capturedScope !== scopeGeneration) return;
++        heights = fresh;
++        visibleIndex = first;
++      };
++      if (leaving.length) requestAnimationFrame(commit); else commit();
+     });
+   }
+ 
+@@ -345,7 +367,7 @@
+         </div>
+       {/if}
+       <iframe class="body" sandbox="allow-same-origin" srcdoc={card.document}
+-              title={card.row.subject} use:autoBody
++              title={card.row.subject} use:autoBody use:blankOnLeave
+               onload={(ev) => wireLinks(ev.currentTarget)}></iframe>
+     {:else}
+       <!-- Body not yet cached: the preview says the essential, the
+diff --git a/apps/desktop/ui-v2/src/lib/body.js b/spikes/feed-memory/options/body-B.js
+index 35d981e..d5b77c9 100644
+--- a/apps/desktop/ui-v2/src/lib/body.js
++++ b/spikes/feed-memory/options/body-B.js
+@@ -12,6 +12,9 @@ export function autoBody(iframe) {
+   const measure = () => {
+     const doc = iframe.contentDocument;
+     if (!doc?.documentElement) return;
++    // SPIKE D-53 option B: a blanked iframe keeps its last height
++    // until it unmounts (no one-frame collapse of the column).
++    if (iframe.dataset.blank) return;
+     iframe.style.height = '0';
+     iframe.style.height = `${doc.documentElement.scrollHeight}px`;
+   };
