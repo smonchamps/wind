@@ -61,6 +61,9 @@ pub(crate) struct FakeServer {
     pub(crate) flag_batches: Vec<Vec<Uid>>,
     pub(crate) flag_error: bool,
     pub(crate) reset_during_flag_fetch: bool,
+    /// Folders the server lists but refuses to open (`NO [NONEXISTENT]`).
+    pub(crate) nonexistent: std::collections::BTreeSet<String>,
+    pub(crate) select_calls: Vec<String>,
 }
 
 impl FakeServer {
@@ -95,6 +98,8 @@ impl FakeServer {
             flag_batches: Vec::new(),
             flag_error: false,
             reset_during_flag_fetch: false,
+            nonexistent: std::collections::BTreeSet::new(),
+            select_calls: Vec::new(),
         }
     }
 
@@ -192,7 +197,13 @@ impl FakeServer {
 }
 
 impl MailServer for FakeServer {
-    fn select(&mut self, _mailbox: &str) -> Result<MailboxSnapshot, Error> {
+    fn select(&mut self, mailbox: &str) -> Result<MailboxSnapshot, Error> {
+        self.select_calls.push(mailbox.to_string());
+        if self.nonexistent.contains(mailbox) {
+            return Err(Error::NoSuchMailbox(format!(
+                "[NONEXISTENT] Unknown Mailbox: {mailbox}"
+            )));
+        }
         Ok(MailboxSnapshot {
             uid_validity: self.uid_validity,
             highest_modseq: self.condstore.then_some(self.modseq),

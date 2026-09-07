@@ -110,6 +110,15 @@ export const call = (command, args) => {
       refusal.limit = err.limit;
       throw refusal;
     }
+    // Every other typed error (audit lot 4, A05) keeps its STRING face --
+    // `${err}` is the message, as before -- and carries `code` and
+    // `retryable` for the surfaces that branch on them.
+    if (err && typeof err === 'object' && typeof err.code === 'string') {
+      const typed = new String(err.message);
+      typed.code = err.code;
+      typed.retryable = err.retryable === true;
+      throw typed;
+    }
     throw err;
   });
 };

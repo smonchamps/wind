@@ -465,3 +465,42 @@ fn a_scope_smaller_than_the_batch_defers_the_rest_without_poisoning() {
     );
     assert_eq!(server.fetch_bodies_html("INBOX", &[2]).unwrap()[0].0, 2);
 }
+
+/// Field 2026-09-07 (lot 4 STOP 2): Gmail lists `[Gmail]` and an imported
+/// label, then answers `NO [NONEXISTENT]` on SELECT. The bracketed response
+/// code is protocol (RFC 5530), typed at the adapter's boundary.
+#[test]
+fn a_nonexistent_response_code_is_typed_and_other_refusals_stay_refusals() {
+    let information =
+        "[NONEXISTENT] Unknown Mailbox: [Gmail] (now in authenticated state) (Failure)";
+    // The adapter reads the CODE from `information`; the text shown keeps
+    // the crate's "No Response: " prefix, which must not hide the code
+    // (field 2026-09-07, second pass).
+    let shown = format!("No Response: {information}");
+    assert!(matches!(
+        crate::refusal_from(information, shown.clone()),
+        mail_core::Error::NoSuchMailbox(text) if text == shown
+    ));
+    assert!(matches!(
+        crate::refusal_from(
+            "[CANNOT] Cannot move",
+            "No Response: [CANNOT] Cannot move".into()
+        ),
+        mail_core::Error::Refusal(_)
+    ));
+    assert!(matches!(
+        crate::refusal_from("[NONEXIST", "x".into()),
+        mail_core::Error::Refusal(_)
+    ));
+    // The real wire path: a NO answered by the fake server on SELECT.
+    let mut script = Script::simple();
+    script.select_refusal = Some(
+        "[NONEXISTENT] Unknown Mailbox: [Gmail] (now in authenticated state) (Failure)".into(),
+    );
+    let fixture = FakeImap::start(script);
+    let mut server = fixture.connect();
+    assert!(matches!(
+        server.select("[Gmail]"),
+        Err(mail_core::Error::NoSuchMailbox(_))
+    ));
+}

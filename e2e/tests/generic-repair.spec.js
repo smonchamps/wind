@@ -45,15 +45,17 @@ test('generic repair preserves mailbox identity, freezes verification and clears
   await expect(form.locator('#ob-smtp-port')).toHaveValue('465');
 });
 
-test('a connected generic account also offers repair and the settings contain no password', async () => {
+// Lot 4 D4 (field 2026-09-07): a healthy generic account shows NO repair
+// button — the gesture appears with "Connection unavailable" or
+// "Disconnected" only (connection-state.spec.js proves those two) — and its
+// settings command still carries no secret.
+test('a connected generic account offers no repair button and its settings contain no password', async () => {
   ({ app, browser, page } = await launchAppV2({ accounts: [
     { email: 'owner@example.fr', messages: 1, generic: true },
   ] }));
   await page.locator('[data-testid="settings"]').click();
   await expect(page.locator('[data-testid="account-disconnected"]')).toHaveCount(0);
-  await page.locator('[data-testid="account-reconnect"]').click();
-  await expect(page.locator('[data-testid="generic-repair"]')).toBeVisible();
-  await expect(page.locator('#ob-mdp')).toHaveValue('');
+  await expect(page.locator('[data-testid="account-reconnect"]')).toHaveCount(0);
   const settings = await page.evaluate(async () => {
     const nav = await window.__TAURI__.core.invoke('nav_snapshot');
     return window.__TAURI__.core.invoke('generic_connection_settings', { accountId: nav[0].account_id });

@@ -587,6 +587,10 @@ pub fn run_sync<S: CycleConnection, H: CycleHooks>(
         }
     };
     let order = sync_order(&folders, sent.as_deref());
+    // A diagnostic can only wait on a folder the cycle still visits.
+    store
+        .prune_operation_issues(account_id, &order)
+        .map_err(|err| err.to_string())?;
 
     // The disk space guard (ADR 0010 §4): estimate BEFORE committing,
     // refuse with a figure if it's short.
@@ -662,7 +666,14 @@ pub fn run_sync<S: CycleConnection, H: CycleHooks>(
                 n_skipped += 1;
                 if status.is_some_and(|status| status.highest_modseq.is_none()) {
                     match store.attempt_operation(account_id, &mailbox, "flags", |store| {
-                        SyncEngine::default().flags_pass(server, store, account_id, &mailbox)
+                        match SyncEngine::default().flags_pass(server, store, account_id, &mailbox)
+                        {
+                            Err(Error::NoSuchMailbox(_)) => {
+                                store.mark_folder_unselectable(account_id, &mailbox)?;
+                                Ok(0)
+                            }
+                            other => other,
+                        }
                     }) {
                         Ok(Some(changed)) if changed > 0 => hooks.bump_generation(),
                         Ok(_) => {}
@@ -672,11 +683,26 @@ pub fn run_sync<S: CycleConnection, H: CycleHooks>(
                 continue;
             }
             hooks.set_mailbox(&mailbox);
+            // `NO [NONEXISTENT]` is the server's statement, not a failure:
+            // the folder leaves the scope until the next inventory and no
+            // diagnostic is kept (field 2026-09-07: `[Gmail]` and an
+            // imported label were listed selectable, then refused).
             match store.attempt_operation(account_id, &mailbox, "sync", |store| {
-                SyncEngine::default().sync(server, store, account_id, &mailbox)
+                match SyncEngine::default().sync(server, store, account_id, &mailbox) {
+                    Ok(report) => Ok(Some(report)),
+                    Err(Error::NoSuchMailbox(_)) => {
+                        store.mark_folder_unselectable(account_id, &mailbox)?;
+                        hooks.trace(&format!(
+                            "folder({} chars) refused as nonexistent: left out until the next inventory",
+                            mailbox.chars().count()
+                        ));
+                        Ok(None)
+                    }
+                    Err(err) => Err(err),
+                }
             }) {
-                Ok(Some(_)) => settle_marker(store, account_id, &mailbox, status, &mut problems),
-                Ok(None) => {}
+                Ok(Some(Some(_))) => settle_marker(store, account_id, &mailbox, status, &mut problems),
+                Ok(_) => {}
                 Err(reason) => problems.push(format!("folder \"{mailbox}\": {reason}")),
             }
         }
@@ -826,6 +852,76 @@ pub fn run_sync<S: CycleConnection, H: CycleHooks>(
 
 #[cfg(test)]
 mod tests {
+    /// Field 2026-09-07 (lot 4 STOP 2): Gmail lists `[Gmail]` and an
+    /// imported label, then answers `NO [NONEXISTENT]` on SELECT. Before:
+    /// a "Messages" diagnostic per folder, every cycle, with a retry the
+    /// user could never make succeed. Now: the folder leaves the scope, no
+    /// diagnostic, and a stale one is pruned.
+    #[test]
+    fn a_folder_refused_as_nonexistent_leaves_the_scope_without_a_diagnostic() {
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("gmail@example.test", "gmail")
+            .unwrap();
+        let mut server = FakeServer::new(false);
+        server.add(1, "INBOX message");
+        server.folders = vec![
+            crate::Folder {
+                wire: "[Gmail]".into(),
+                display: "[Gmail]".into(),
+                selectable: true,
+                special_use: None,
+                delimiter: None,
+            },
+            crate::Folder {
+                wire: "old@example.test/Archive".into(),
+                display: "old@example.test/Archive".into(),
+                selectable: true,
+                special_use: None,
+                delimiter: None,
+            },
+        ];
+        server.nonexistent.insert("[Gmail]".into());
+        server.nonexistent.insert("old@example.test/Archive".into());
+        // A diagnostic left by a previous build, on a folder now refused.
+        store
+            .settle_operation(
+                account,
+                "[Gmail]",
+                "sync",
+                0,
+                Some(&Error::Refusal("[NONEXISTENT] Unknown Mailbox".into())),
+            )
+            .unwrap();
+        run_sync(
+            &mut server,
+            &mut store,
+            account,
+            Path::new(":memory:"),
+            &NoHooks,
+        )
+        .unwrap();
+        assert!(
+            store.operation_issues().unwrap().is_empty(),
+            "the server's own answer is not a partial failure"
+        );
+        let folders = store.folders(account).unwrap();
+        assert!(folders.iter().all(|f| !f.selectable), "{folders:?}");
+        let selects = server.select_calls.len();
+        run_sync(
+            &mut server,
+            &mut store,
+            account,
+            Path::new(":memory:"),
+            &NoHooks,
+        )
+        .unwrap();
+        // The next inventory lists them selectable again and they are tried
+        // again — the memory is the inventory's, not a permanent ban.
+        assert!(server.select_calls.len() > selects);
+        assert!(store.operation_issues().unwrap().is_empty());
+    }
+
     #[test]
     fn a_failed_inventory_keeps_cached_folders_and_the_sent_scope() {
         let mut store = Store::open_in_memory().unwrap();

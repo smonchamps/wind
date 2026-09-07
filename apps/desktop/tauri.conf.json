@@ -4,7 +4,9 @@
   "version": "0.19.0",
   "identifier": "dev.elements.wind",
   "build": {
-    "frontendDist": "ui-v2/dist"
+    "frontendDist": "ui-v2/dist",
+    "beforeBuildCommand": { "script": "node scripts/build-dist-clean.mjs", "cwd": "../.." },
+    "beforeDevCommand": { "script": "node scripts/build-dist-clean.mjs", "cwd": "../..", "wait": true }
   },
   "app": {
     "withGlobalTauri": true,

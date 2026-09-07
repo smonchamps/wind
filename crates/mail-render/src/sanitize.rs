@@ -142,11 +142,17 @@ fn sanitize_policy(
     }
 }
 
+/// A remote image address, always over TLS: granting remote images is
+/// granting HTTPS (audit 2026-09-01), so a cleartext `http://` is upgraded
+/// here rather than left in the document for the iframe's CSP to break
+/// (field 2026-09-07: three of a newsletter's five images were cleartext).
 fn remote_url(value: &str) -> Option<Cow<'_, str>> {
     let value = value.trim();
     let lower = value.to_ascii_lowercase();
-    if lower.starts_with("http://") || lower.starts_with("https://") {
+    if lower.starts_with("https://") {
         Some(Cow::Borrowed(value))
+    } else if lower.starts_with("http://") {
+        Some(Cow::Owned(format!("https://{}", &value["http://".len()..])))
     } else if value.starts_with("//") {
         Some(Cow::Owned(format!("https:{value}")))
     } else {
@@ -294,6 +300,28 @@ mod tests {
         assert!(!out.html.contains("onload"));
         assert!(!out.html.contains("<svg"));
         assert!(out.html.contains("ok"));
+    }
+
+    /// Field 2026-09-07 (lot 4 STOP 2): a newsletter carried three of its
+    /// five images over `http://`; kept as-is under "allow", they hit the
+    /// iframe's `img-src https:` and showed as broken icons. Granting remote
+    /// images is granting HTTPS (audit 2026-09-01): the cleartext address
+    /// is upgraded, never fetched in clear, never left broken.
+    #[test]
+    fn a_cleartext_image_is_upgraded_to_https_when_remote_images_are_allowed() {
+        let out = sanitize_with(
+            r#"<img src="http://cdn.example.net/a/206x51.png" alt="logo"><img src="https://r.example.com/b.png">"#,
+            ImagePolicy::AllowRemote,
+        );
+        assert!(
+            out.html
+                .contains(r#"src="https://cdn.example.net/a/206x51.png""#),
+            "{}",
+            out.html
+        );
+        assert!(!out.html.contains("http://"), "{}", out.html);
+        assert!(out.html.contains(r#"src="https://r.example.com/b.png""#));
+        assert_eq!(out.remote_images_blocked, 0);
     }
 
     #[test]

@@ -254,23 +254,26 @@ ls /Volumes
 hdiutil detach /Volumes/Wind -force
 ```
 
-Per release — pull the release commit that make-release.ps1 pushed,
-then run the mac half (order is the invariant: **Windows first, mac
-second** — the manifest never points at an absent asset). The mac
-half is part of **every** release, even a Windows-motivated hotfix:
-until it runs, the fresh `latest.json` has no darwin key and mac
-clients find no update (ADR 0036):
+Per release — fetch the tag that make-release.ps1 pushed and check it
+out (the script refuses a HEAD that is not the release commit, ADR
+0044), then run the mac half. Since lot 4 the order is: Windows script
+(DRAFT), mac script, then the promotion from Windows — nothing is
+public before the third gesture, so mac clients never see a manifest
+without their key. The mac half is part of **every** release, even a
+Windows-motivated hotfix; without the Air the promotion is an explicit
+`-WindowsOnly` that says what it drops:
 
 ```bash
-cd ~/wind && git pull && ./scripts/release-macos.sh <version>
+cd ~/wind && git fetch --tags && git checkout <version> && ./scripts/release-macos.sh <version>
 ```
 
 The script builds x64 then aarch64 (Tauri asks for the key password
-at EACH build — two prompts), uploads the six assets only once both
-builds succeeded, then patches `latest.json` with both darwin keys.
-Then, from the Windows workstation,
-`powershell scripts\verify-release.ps1 <version>` — it now expects
-11 assets and 4 platform keys.
+at EACH build — two prompts), uploads the six assets and the mac
+attestation only once both builds succeeded, then patches the draft's
+`latest.json` with both darwin keys. Then, from the Windows
+workstation, `powershell scripts\publish-release.ps1 <version>`
+(proves 11 assets, 4 keys, 4 signatures and both attestations, then
+Latest) and `powershell scripts\verify-release.ps1 <version>`.
 
 ## Known limits (stated, PLAN-MACOS §2)
 

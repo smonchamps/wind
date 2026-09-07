@@ -3,3 +3,5 @@
 # configuration autocrlf de la machine.
 .githooks/** text eol=lf
 *.sh text eol=lf
+# Signed fixtures: the bytes under signature must never be re-encoded on checkout (audit lot 4, E12c).
+tools/release-verify/fixtures/** -text

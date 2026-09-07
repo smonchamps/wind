@@ -42,9 +42,7 @@ export TAURI_SIGNING_PRIVATE_KEY="${TAURI_SIGNING_PRIVATE_KEY:-$HOME/Keys/wind.k
 
 # (1) Fail fast and loud, before the long build.
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Version '$VERSION' invalid -- MAJOR.MINOR.PATCH, without 'v'." >&2; exit 1; }
-BRANCH="$(git branch --show-current)"
-[[ "$BRANCH" == "main" ]] || { echo "Current branch '$BRANCH': a release is made from main." >&2; exit 1; }
-git diff --quiet && git diff --cached --quiet || { echo "Working tree not clean -- pull the release commit, nothing else." >&2; exit 1; }
+git diff --quiet && git diff --cached --quiet || { echo "Working tree not clean -- check out the release tag, nothing else." >&2; exit 1; }
 command -v gh >/dev/null || { echo "gh (GitHub CLI) not found -- brew install gh, then gh auth login." >&2; exit 1; }
 command -v node >/dev/null || { echo "node not found -- needed for the ui-v2 build and the manifest patch." >&2; exit 1; }
 for TRIPLE in "${TRIPLES[@]}"; do
@@ -58,7 +56,23 @@ CONF_VERSION="$(node -e "console.log(require('./apps/desktop/tauri.conf.json').v
 # Auth first, then the release: an unauthenticated gh made the next
 # line say "no release" while 0.19.0 was published (field 2026-09-06).
 gh auth status >/dev/null 2>&1 || { echo "gh is not authenticated on this Mac -- gh auth login (GitHub.com, HTTPS, web browser), then rerun." >&2; exit 1; }
-gh api "repos/$REPO/releases/tags/$VERSION" >/dev/null || { echo "No GitHub release at tag $VERSION (gh error above) -- make-release.ps1 (Windows) publishes FIRST." >&2; exit 1; }
+# The DRAFT staged by make-release.ps1 (lot 4, D1): `gh release view`
+# reads drafts, the tags API does not. HEAD must BE the tagged release
+# commit (E12a / B29): a clean tree was never enough.
+TARGET="$(gh release view "$VERSION" --repo "$REPO" --json targetCommitish,isDraft --jq '.targetCommitish' 2>/dev/null || true)"
+[[ -n "$TARGET" ]] || { echo "No GitHub release (draft or not) at tag $VERSION -- make-release.ps1 (Windows) stages the draft FIRST." >&2; exit 1; }
+TAG_COMMIT="$(gh api "repos/$REPO/git/ref/tags/$VERSION" --jq '.object.sha' 2>/dev/null || true)"
+[[ -n "$TAG_COMMIT" ]] || { echo "Tag $VERSION absent from GitHub -- make-release.ps1 pushes it with the draft." >&2; exit 1; }
+HEAD_COMMIT="$(git rev-parse HEAD)"
+[[ "$HEAD_COMMIT" == "$TAG_COMMIT" ]] || { echo "HEAD $HEAD_COMMIT is not the release commit $TAG_COMMIT (tag $VERSION) -- git fetch --tags && git checkout $VERSION, then rerun." >&2; exit 1; }
+[[ "$TARGET" == "$TAG_COMMIT" ]] || { echo "The draft targets $TARGET but the tag points at $TAG_COMMIT." >&2; exit 1; }
+# The identity is the TAG's commit, checked out detached (the documented
+# path); "from main" means that commit is on main's history, not that a
+# branch is checked out (review 2026-09-07: a detached HEAD has no
+# current branch, and main may have moved since the Windows half).
+git fetch -q origin main
+git merge-base --is-ancestor "$TAG_COMMIT" origin/main || { echo "The release commit $TAG_COMMIT is not on origin/main -- a release is made from main." >&2; exit 1; }
+BRANCH="main"
 
 # A mounted "Wind" image (a dmg opened to install/test) or a leftover
 # "dmg.*" temp volume makes bundle_dmg.sh fail AFTER the build (field
@@ -80,11 +94,9 @@ export WIND_RELEASE_MICROSOFT_CLIENT_ID="$MICROSOFT_CLIENT_ID"
 # The WIND_RELEASE_* die with this process: nothing to clean up, no
 # poisoned later dev build (the make-release.ps1 finally, for free).
 
-# (2) The release dist, clean of the e2e seams (PLAN-AUDIT-V3 E7) --
-# the guard is ONE file shared with make-release.ps1, never two
-# copies that drift.
-( cd apps/desktop/ui-v2 && VITE_E2E=0 npm run build )
-node scripts/assert-dist-clean.mjs
+# (2) The release dist, clean of the e2e seams: built and asserted by
+# `cargo tauri build` itself through tauri.conf.json's beforeBuildCommand
+# (scripts/build-dist-clean.mjs, lot 4 E12d) -- one declaration, no copy.
 
 # (3) One signed build PER TRIPLE (PLAN-APPLE-SILICON D1, 2026-09-05:
 # the Intel Air cross-builds arm64 -- Xcode's SDK is fat, `cc` passes
@@ -126,7 +138,15 @@ for TRIPLE in "${TRIPLES[@]}"; do
   ASSETS+=("$DMG" "$TAR" "$TAR.sig")
 done
 
-# (4) Upload, all six at once. --clobber: a rerun after a partial
+# The builds changed nothing in the tree (E12a).
+git diff --quiet && git diff --cached --quiet || { echo "The builds modified the tree -- the binaries would not match the release commit." >&2; exit 1; }
+# The attestation (E12a): the same shape as Windows', checked by
+# publish-release.ps1 against the tag and the uploaded bytes.
+ATTESTATION="$OUT/attestation-macos.json"
+node "$ROOT/scripts/release-lib.mjs" attest "$ATTESTATION" macos "$VERSION" "$HEAD_COMMIT" "$BRANCH" "$ROOT/Cargo.lock" "$ROOT/apps/desktop/ui-v2/dist" "${ASSETS[@]}"
+ASSETS+=("$ATTESTATION")
+
+# (4) Upload, all seven at once. --clobber: a rerun after a partial
 # failure re-uploads.
 gh release upload "$VERSION" "${ASSETS[@]}" --repo "$REPO" --clobber
 
@@ -147,8 +167,9 @@ done
 gh release upload "$VERSION" "$MANIFEST" --repo "$REPO" --clobber
 
 echo ""
-echo "macOS assets of $VERSION published (${#ASSETS[@]} files, ${TRIPLES[*]});"
-echo "${#TRIPLES[@]} darwin keys added to latest.json."
-echo "Verify from the Windows workstation: powershell scripts\verify-release.ps1 $VERSION"
-echo "(expects $((5 + ${#ASSETS[@]})) assets and $((2 + ${#TRIPLES[@]})) platform keys). The field proof: install the"
-echo "dmg, then observe the n-1 -> n auto-update at the NEXT release."
+echo "macOS half of $VERSION staged on the draft (${#ASSETS[@]} files, ${TRIPLES[*]});"
+echo "${#TRIPLES[@]} darwin keys added to latest.json. Nothing is public yet (D1)."
+echo "From the Windows workstation: powershell scripts\publish-release.ps1 $VERSION"
+echo "(proves 11 assets, 4 keys, 4 signatures, both attestations, then Latest),"
+echo "then scripts\verify-release.ps1 $VERSION. The field proof: install the dmg,"
+echo "then observe the n-1 -> n auto-update at the NEXT release."

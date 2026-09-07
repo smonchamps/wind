@@ -26,7 +26,12 @@
 #      The manifest is therefore built per platform from the directory
 #      of ITS target, and the two signatures are required distinct.
 
-param([Parameter(Mandatory = $true)][string]$Version)
+param(
+    [Parameter(Mandatory = $true)][string]$Version,
+    # Non-interactive confirmation (the release-script fixtures); the
+    # Chief Engineer types YES by hand on release day.
+    [switch]$Yes
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -114,6 +119,21 @@ $changelog = Join-Path $PSScriptRoot "..\CHANGELOG.md"
 if ((Get-Content -Raw -Encoding UTF8 $changelog) -notmatch [regex]::Escape("## [$Version]")) {
     throw "CHANGELOG.md has no '## [$Version]' entry -- write the user notes first."
 }
+# Build identity (audit lot 4, E12a / B29): the binaries are built from
+# the RELEASE COMMIT and nothing else. A dirty tree used to be baked into
+# the exe while only the bump files were committed; refused before any
+# write, from main only.
+$rootDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+Push-Location $rootDir
+try {
+    $branch = (git branch --show-current).Trim()
+    if ($branch -ne "main") { throw "Current branch '$branch': a release is made from main." }
+    $dirty = @(git status --porcelain)
+    if ($dirty.Count -gt 0) {
+        throw "Working tree not clean ($($dirty.Count) path(s)): commit or stash first -- a release is built from its commit alone.`n$($dirty -join "`n")"
+    }
+}
+finally { Pop-Location }
 # Bump of the SINGLE version line (targeted regex: the rest of the file,
 # its formatting and key order, does not move; never a BOM that the
 # updater refuses). Exactly one 'version' key is required.
@@ -144,6 +164,30 @@ $toml = [regex]::Replace($toml, $patternCargo, "`${1}$Version`${2}")
 [System.IO.File]::WriteAllText($cargoToml, $toml, (New-Object System.Text.UTF8Encoding $false))
 Write-Host "Cargo.toml (workspace.package) bumped to $Version."
 
+# The release commit comes BEFORE the builds (E12a): the lockfile follows
+# the workspace bump now (never at the first build, which used to leave
+# the tree dirty), and HEAD at build time IS the tagged commit. The
+# commit stays local until the YES below; a failed build leaves a
+# replayable local commit, nothing published.
+Push-Location $rootDir
+try {
+    cargo update --workspace --offline
+    if ($LASTEXITCODE -ne 0) { throw "cargo update --workspace failed (code $LASTEXITCODE)." }
+    git add apps/desktop/tauri.conf.json Cargo.toml Cargo.lock CHANGELOG.md
+    git diff --cached --quiet
+    if ($LASTEXITCODE -ne 0) {
+        git commit -m "release: version $Version" -m "Bump tauri.conf.json, Cargo.toml and Cargo.lock; CHANGELOG entry. Signed arm64 + x64 builds, draft Release and attestation by make-release.ps1 (ADR 0013, PLAN-RETOURS-8, audit lot 4 E12)."
+        if ($LASTEXITCODE -ne 0) { throw "git commit failed (code $LASTEXITCODE)." }
+    } else {
+        Write-Host "Nothing to commit: the release commit already exists (resumption after a partial failure)."
+    }
+    $dirty = @(git status --porcelain)
+    if ($dirty.Count -gt 0) { throw "Tree not clean after the release commit: $($dirty -join ', ')" }
+    $sha = (git rev-parse HEAD).Trim()
+}
+finally { Pop-Location }
+Write-Host "Release commit $($sha.Substring(0, 7)): the builds start from it."
+
 # (2) The TWO signed builds, arm64 then x64. ALL-OR-NOTHING (D7): the
 # first failure throws, nothing is published, never a channel out of
 # step. The PASSWORD is deliberately NOT set as a variable (ADR 0013
@@ -152,26 +196,12 @@ Write-Host "Cargo.toml (workspace.package) bumped to $Version."
 # by the build's child processes.
 $desktop = Join-Path $PSScriptRoot "..\apps\desktop"
 
-# The release dist is built CLEAN of the e2e seams (PLAN-AUDIT-V3 E7,
-# D-52 item 8): `cargo tauri build` embeds WHATEVER dist sits on disk,
-# and a gate or an e2e run leaves a seam-flavored one behind. Rebuild
-# without the flag, then ASSERT no `__e2e` survives in the bundle --
-# the poka-yoke, not the build, is what makes the release deterministic.
-Push-Location (Join-Path $desktop "ui-v2")
-$env:VITE_E2E = "0"
-try {
-    & npm run build
-    if ($LASTEXITCODE -ne 0) { throw "vite build failed -- release interrupted, NOTHING is published." }
-} finally {
-    Remove-Item Env:VITE_E2E -ErrorAction SilentlyContinue
-    Pop-Location
-}
-# The guard is ONE file shared with release-macos.sh (PLAN-MACOS
-# review): two copies of a shipping poka-yoke drift.
-& node (Join-Path $PSScriptRoot "assert-dist-clean.mjs")
-if ($LASTEXITCODE -ne 0) {
-    throw "e2e seams found in the release bundle -- release interrupted, NOTHING is published."
-}
+# The release dist is built CLEAN of the e2e seams and asserted by
+# `cargo tauri build` itself: tauri.conf.json's beforeBuildCommand runs
+# scripts/build-dist-clean.mjs (lot 4 E12d -- one declaration where the
+# build reads it, no longer a sequence copied here and in
+# release-macos.sh). A seam in the bundle fails the build before any
+# artifact exists.
 
 Push-Location $desktop
 # The WIND_RELEASE_* live only for the TWO builds, and the finally removes
@@ -199,6 +229,16 @@ finally {
     }
     Pop-Location
 }
+
+# The builds changed nothing in the tree (E12a): a lockfile or config
+# rewritten by the build would mean binaries that do not match HEAD.
+Push-Location $rootDir
+try {
+    $dirty = @(git status --porcelain)
+    if ($dirty.Count -gt 0) { throw "The builds modified the tree ($($dirty -join ', ')): the binaries would not match the release commit." }
+    if ((git rev-parse HEAD).Trim() -ne $sha) { throw "HEAD moved during the builds." }
+}
+finally { Pop-Location }
 
 # Presence check PER CHANNEL: both exe and both signatures.
 foreach ($t in $targets) {
@@ -245,40 +285,52 @@ $out = Join-Path $targets[0].nsis "latest.json"
 
 Write-Host "latest.json written without BOM ($($targets.Count) platforms): $out"
 
+# The attestation (E12a): version, tag, commit, branch, lockfile and dist
+# digests, digest of every artifact -- uploaded with the assets, checked
+# again by publish-release.ps1 against the tag and the uploaded bytes.
+$attestation = Join-Path $targets[0].nsis "attestation-windows.json"
+$artifacts = @($targets | ForEach-Object { $_.exe; $_.sig })
+& node (Join-Path $PSScriptRoot "release-lib.mjs") attest $attestation windows $Version $sha main (Join-Path $rootDir "Cargo.lock") (Join-Path $desktop "ui-v2\dist") @artifacts
+if ($LASTEXITCODE -ne 0) { throw "attestation failed (code $LASTEXITCODE)." }
+
 # (4) Publication. OUTBOUND and irreversible: once the Release is marked
 # Latest with its latest.json, the installed apps auto-update. Hence the
 # explicit confirmation (Chief Engineer decision), AFTER the builds -- never before.
 Write-Host ""
-Write-Host "Ready to publish $Version : release commit + push (gate) + BARE tag + GitHub Release Latest (5 assets: 2 exe, 2 sig, latest.json)."
-$answer = Read-Host "Publish now? Type YES in capitals to continue"
-if ($answer -cne "YES") {
-    Write-Host "Publication CANCELLED. The artifacts stay ready; rerun or publish by hand."
-    return
+Write-Host "Ready to stage $Version : push of the release commit (gate) + BARE tag + DRAFT GitHub Release (6 assets: 2 exe, 2 sig, latest.json, attestation)."
+Write-Host "Nothing becomes public here (D1, lot 4): publish-release.ps1 promotes the draft once the whole matrix is proven."
+if (-not $Yes) {
+    $answer = Read-Host "Stage now? Type YES in capitals to continue"
+    if ($answer -cne "YES") {
+        Write-Host "Staging CANCELLED. The release commit and the artifacts stay local; rerun to resume."
+        return
+    }
 }
 
-$rootDir = Join-Path $PSScriptRoot ".."
 Push-Location $rootDir
 try {
-    # Release commit: the bump files only (never `git add -A`, which
-    # would carry neighbouring work).
-    git add apps/desktop/tauri.conf.json Cargo.toml Cargo.lock CHANGELOG.md scripts/make-release.ps1
-    # Resumption after a partial failure (field finding 2026-08-23): if a
-    # previous run already committed and pushed the bump then died before
-    # the tag, the index is empty here -- `git commit` would fail on
-    # "nothing to commit" and block the resumption. Skip the commit, the
-    # publication goes on.
-    git diff --cached --quiet
-    if ($LASTEXITCODE -ne 0) {
-        git commit -m "release: version $Version" -m "Bump tauri.conf.json and CHANGELOG entry; signed arm64 + x64 builds and Release published by make-release.ps1 (ADR 0013, bi-arch PLAN-RETOURS-8)."
-        if ($LASTEXITCODE -ne 0) { throw "git commit failed (code $LASTEXITCODE)." }
-    } else {
-        Write-Host "Nothing to commit: the release commit already exists (resumption after a partial failure)."
-    }
     # Push: the pre-push hook replays the full gate. A red (sometimes a
     # local e2e flake) stops here -- the commit stays local, replayable.
     git push
     if ($LASTEXITCODE -ne 0) { throw "git push failed (code $LASTEXITCODE) -- red pre-push gate? The commit stays local." }
-    $sha = (git rev-parse HEAD).Trim()
+    # The BARE tag at the release commit, pushed explicitly: a draft
+    # Release creates no tag by itself, and release-macos.sh and
+    # publish-release.ps1 both verify HEAD against this tag. Resumption
+    # after a partial failure: an existing tag at the SAME commit is
+    # reused; at another commit it is refused. No `2>$null` here: under
+    # Windows PowerShell 5.1 with $ErrorActionPreference = Stop, a
+    # redirected native stderr line is a terminating error (review
+    # 2026-09-07) -- `rev-parse -q --verify` answers by exit code alone.
+    $existing = (git rev-parse -q --verify "refs/tags/$Version^{commit}")
+    if ($LASTEXITCODE -eq 0) {
+        if ("$existing".Trim() -ne $sha) { throw "tag $Version already exists at $("$existing".Trim().Substring(0, 7)), not at the release commit $($sha.Substring(0, 7)) -- delete it knowingly (git tag -d $Version; git push origin :refs/tags/$Version) and rerun." }
+        Write-Host "Tag $Version already at the release commit (resumption)."
+    } else {
+        git tag $Version $sha
+        if ($LASTEXITCODE -ne 0) { throw "git tag $Version failed (code $LASTEXITCODE)." }
+    }
+    git push origin $Version
+    if ($LASTEXITCODE -ne 0) { throw "git push of tag $Version failed (code $LASTEXITCODE)." }
 }
 finally {
     Pop-Location
@@ -302,9 +354,11 @@ $notesFile = [System.IO.Path]::GetTempFileName()
 # assets DERIVED from $targets (review 2026-08-22: a target added to the
 # table is published by construction, never forgotten), marked Latest,
 # anchored on the release commit just pushed.
-$assets = @($targets | ForEach-Object { $_.exe; $_.sig }) + $out
+$assets = @($targets | ForEach-Object { $_.exe; $_.sig }) + $out + $attestation
 try {
-    gh release create $Version @assets --title $Version --notes-file $notesFile --latest --target $sha
+    # DRAFT (D1): invisible to every updater until publish-release.ps1
+    # promotes it -- the previous Latest stays complete meanwhile (B30).
+    gh release create $Version @assets --title $Version --notes-file $notesFile --draft --target $sha
     if ($LASTEXITCODE -ne 0) { throw "gh release create failed (code $LASTEXITCODE)." }
 }
 finally {
@@ -312,12 +366,12 @@ finally {
 }
 
 Write-Host ""
-Write-Host "Release $Version published and marked Latest."
+Write-Host "Draft Release $Version staged at $($sha.Substring(0, 7)) with the Windows half (6 assets)."
 Write-Host ""
-Write-Host "macOS half still due (PLAN-MACOS D4): this latest.json carries ONLY the"
-Write-Host "Windows keys -- until ./scripts/release-macos.sh $Version runs on the Mac,"
-Write-Host "darwin clients find no update (their check errors on the missing key)."
-Write-Host "Verify it: powershell scripts\verify-release.ps1 $Version (STANDARD 2.10,"
-Write-Host "BOTH platforms). Then confirm the AUTO-UPDATE on the installed app"
-Write-Host "(arm64: this workstation; x64: the second workstation, decision D5) -- the only"
-Write-Host "living proof of the signature (ADR 0013)."
+Write-Host "Next, in order (lot 4, D1):"
+Write-Host "  1. On the Mac: ./scripts/release-macos.sh $Version  (6 assets + attestation, darwin keys)."
+Write-Host "  2. Here: powershell scripts\publish-release.ps1 $Version  (proves the whole matrix, then Latest)."
+Write-Host "     Without the Air: publish-release.ps1 $Version -WindowsOnly -- it says what it drops."
+Write-Host "  3. Here: powershell scripts\verify-release.ps1 $Version  (the public URLs, STANDARD 2.10)."
+Write-Host "Then confirm the AUTO-UPDATE on the installed app (arm64: this workstation;"
+Write-Host "x64: the second workstation, D5) -- the living proof (ADR 0013)."

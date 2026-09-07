@@ -28,3 +28,18 @@ pub enum SendError {
     #[error("delivery unknown: {0}")]
     Unknown(String),
 }
+
+impl SendError {
+    /// The stable category across the IPC (audit lot 4, E11c / A05).
+    pub fn code(&self) -> &'static str {
+        match self {
+            SendError::Transient(_) => "send_transient",
+            SendError::Permanent(_) => "send_permanent",
+            SendError::Unknown(_) => "send_uncertain",
+        }
+    }
+
+    pub fn retryable(&self) -> bool {
+        matches!(self, SendError::Transient(_))
+    }
+}

@@ -8,6 +8,7 @@ members = [
     "crates/mail-render",
     "crates/mail-smtp",
     "apps/desktop",
+    "tools/release-verify",
 ]
 # Aucun spike ici (audit 2026-09-01) : `spikes/web-bridge` etait membre
 # et se faisait compiler, linter, tester et auditer a chaque gate et

@@ -19,6 +19,9 @@ pub(crate) struct Script {
     pub capabilities: String,
     pub list: Vec<String>,
     pub fetch: Responder,
+    /// A tagged `NO <text>` answered to every SELECT/EXAMINE (field
+    /// 2026-09-07: Gmail's `[NONEXISTENT]` on a listed folder).
+    pub select_refusal: Option<String>,
 }
 
 /// The reply lines to a `UID FETCH`, computed from the command.
@@ -36,6 +39,7 @@ impl Script {
                 "* LIST (\\HasNoChildren) \"/\" \"Archive\"".to_string(),
             ],
             fetch: Box::new(|_| Vec::new()),
+            select_refusal: None,
         }
     }
 }
@@ -140,6 +144,13 @@ fn serve(mut sock: TcpStream, script: &Script, log: &Mutex<Vec<String>>) {
                 reply.push_str("\r\n");
             }
         } else if upper.starts_with("SELECT") || upper.starts_with("EXAMINE") {
+            if let Some(text) = &script.select_refusal {
+                reply.push_str(&format!("{tag} NO {text}\r\n"));
+                if sock.write_all(reply.as_bytes()).is_err() {
+                    return;
+                }
+                continue;
+            }
             reply
                 .push_str("* 3 EXISTS\r\n* OK [UIDVALIDITY 1] ok\r\n* OK [HIGHESTMODSEQ 5] ok\r\n");
         } else if upper.starts_with("UID FETCH") {

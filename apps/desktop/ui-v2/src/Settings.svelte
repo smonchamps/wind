@@ -762,7 +762,10 @@
                     <span class="disconnected" data-testid="account-connection-unavailable">
                       <Icon name="link_off" />{t('settings.connectionUnavailable')}</span>
                   {/if}
-                  {#if isDisconnected(c) || connectionUnavailable(c) || c.provider === 'imap'}
+                  <!-- Lot 4 D4 (field 2026-09-07): the repair/reconnect gesture
+                       shows only when the connection needs it — a permanent
+                       button on a healthy generic account read as an alert. -->
+                  {#if isDisconnected(c) || connectionUnavailable(c)}
                     <button type="button" class="reconnect" data-testid="account-reconnect"
                             disabled={reconnection !== null}
                             aria-label={t('settings.reconnectAccount', { email: c.email })}

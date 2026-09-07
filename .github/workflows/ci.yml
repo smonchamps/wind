@@ -116,6 +116,21 @@ jobs:
       - name: Vite build
         run: npm run build
         working-directory: apps/desktop/ui-v2
+      # Audit lot 4 (E11b, S03): a new advisory at moderate or above blocks
+      # (Chief Engineer decision D3, 2026-09-07). The baseline is zero
+      # after the Vite 7 upgrade; a false positive becomes a job, never a
+      # `--force` fix.
+      - name: npm audit (ui-v2)
+        run: npm audit --audit-level=moderate
+        working-directory: apps/desktop/ui-v2
+      - name: npm audit (e2e)
+        run: npm ci --ignore-scripts && npm audit --audit-level=moderate
+        working-directory: e2e
+      # The release poka-yoke, proven on every push and not on release day
+      # (E11b / D-52 item 8): a dist built without the e2e flag carries no
+      # seam.
+      - name: Release dist carries no e2e seam
+        run: node scripts/build-dist-clean.mjs
       - name: WCAG contrasts (A8)
         run: node e2e/contrast.mjs
       - name: System coherence (DC-D6)
@@ -133,6 +148,25 @@ jobs:
         run: node e2e/ipc-contract.mjs
       - name: Markdown links
         run: node e2e/docs-links.mjs
+
+  # Audit lot 4 (E11b, A10): the standalone Node suites -- the gate's step
+  # 13 without Playwright -- on the platform the gate proves. They need no
+  # WebView2: consent controller, launcher, catalogs, DOM contract, the
+  # release chain's decisions and its PowerShell guards against fake tools.
+  node-tests:
+    name: Node suites (release chain, catalogs, launcher)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Dependencies (e2e, no browsers)
+        run: npm ci --ignore-scripts
+        working-directory: e2e
+      - name: Node suites (the gate's list, e2e/package.json test:node)
+        run: npm run test:node
+        working-directory: e2e
 
   audit:
     name: cargo audit (dependency CVEs)

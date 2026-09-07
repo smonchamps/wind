@@ -2318,6 +2318,36 @@ impl Store {
     }
 
     /// An account's known folders — LOCAL read, never the network.
+    /// The server refused to open a folder it had listed as selectable:
+    /// remember it until the next inventory (which replaces the table).
+    pub fn mark_folder_unselectable(&self, account_id: i64, wire: &str) -> Result<(), Error> {
+        self.0.execute(
+            "UPDATE folders SET selectable = 0 WHERE account_id = ?1 AND wire = ?2",
+            params![account_id, wire],
+        )?;
+        Ok(())
+    }
+
+    /// Diagnostics of folders no longer in the sync scope have nothing to
+    /// wait for (a container learned non-selectable, a folder removed).
+    pub fn prune_operation_issues(&self, account_id: i64, scope: &[String]) -> Result<(), Error> {
+        let mut statement = self.0.prepare(
+            "SELECT DISTINCT mailbox FROM operation_issues WHERE account_id = ?1 AND mailbox != ''",
+        )?;
+        let stale: Vec<String> = statement
+            .query_map([account_id], |row| row.get::<_, String>(0))?
+            .filter_map(Result::ok)
+            .filter(|mailbox| !scope.iter().any(|kept| kept == mailbox))
+            .collect();
+        for mailbox in stale {
+            self.0.execute(
+                "DELETE FROM operation_issues WHERE account_id = ?1 AND mailbox = ?2",
+                params![account_id, mailbox],
+            )?;
+        }
+        Ok(())
+    }
+
     pub fn folders(&self, account_id: i64) -> Result<Vec<Folder>, Error> {
         let mut statement = self.0.prepare(
             "SELECT wire, display, selectable, special_use FROM folders

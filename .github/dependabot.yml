@@ -1,9 +1,31 @@
 # PLAN-AUDIT-V2 E9: the CI actions are pinned by SHA (a movable tag can
 # be rewritten — the toolchain is an attack surface). This file keeps
 # them up to date: one PR per update, weekly.
+#
+# Audit lot 4 (E11b, S03): the two npm trees and the Cargo workspace too.
+# Minor and patch updates arrive grouped; a major arrives alone, as a
+# reviewable PR — never applied by `npm audit fix --force`.
 version: 2
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+  - package-ecosystem: "npm"
+    directory: "/apps/desktop/ui-v2"
+    schedule:
+      interval: "weekly"
+    groups:
+      ui-minor-and-patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "npm"
+    directory: "/e2e"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      cargo-minor-and-patch:
+        update-types: ["minor", "patch"]

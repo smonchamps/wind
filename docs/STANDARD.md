@@ -162,20 +162,29 @@ part of release prep, not an afterthought.
 
 ### 2.10 Verifying a published release
 
-Since 0.1.10 (2026-08-18), `scripts/make-release.ps1 <v>` does
-**the entire** release (field-validated) — provided the
-`## [<v>]` CHANGELOG entry already exists (§2.9, its first check):
-bump of the sole
-`version` line of `apps/desktop/tauri.conf.json`, **two signed builds**
-(native arm64 + x64 cross, bi-arch since PLAN-RETOURS-8/ADR 0023;
-key at the **path** `C:\Keys\wind.key` — `TAURI_SIGNING_PRIVATE_KEY`
-accepts a path; password entered once), `latest.json` with no
-BOM at **two platform keys**, then — after `OUI` confirmation —
-commit `release: version <v>`, push (gate replayed), BARE tag + GitHub
-Release `--latest` with **five assets**, notes pulled from the CHANGELOG.
+Since audit lot 4 (2026-09-07, [ADR 0044](adr/0044-release-identity-and-draft-promotion.md),
+decision D1) a release is **three gestures on two machines**, and nothing
+is public before the last one:
+
+1. `scripts/make-release.ps1 <v>` on the Windows workstation — provided
+   the `## [<v>]` CHANGELOG entry exists (§2.9, its first check) and the
+   tree is clean on `main`: bump of `tauri.conf.json`, `Cargo.toml` and
+   `Cargo.lock`, **release commit first**, then **two signed builds** from
+   that commit (native arm64 + x64 cross, ADR 0023; key at the **path**
+   `C:\Keys\wind.key`), `latest.json` without BOM at two platform keys,
+   the Windows attestation, then — after `YES` — push (gate replayed),
+   BARE tag pushed, **DRAFT** GitHub Release with six assets.
+2. `./scripts/release-macos.sh <v>` on the Air, at the tagged commit: both
+   mac families, six assets plus the mac attestation, both darwin keys
+   added to the draft's `latest.json`.
+3. `scripts/publish-release.ps1 <v>` on the Windows workstation: every
+   asset of the draft downloaded, **eleven assets, four keys, four
+   signatures verified cryptographically, both attestations at the tag's
+   commit**, then and only then promotion to Latest. Without the Air:
+   `-WindowsOnly`, which says what it drops.
 
 Control **after the fact**, before announcing it green:
-**`scripts/verify-release.ps1 <v>` runs every form check**
+**`scripts/verify-release.ps1 <v>` runs every check on the public release**
 (the friction is encoded once — with two platforms, the
 manual checks were doubling). What it verifies, and which stays the
 norm when checking by hand:
@@ -201,15 +210,18 @@ norm when checking by hand:
 - **DISTINCT arm64 and x64 signatures** (anti-cross-wiring guard):
   a signature copied under the wrong key passes every form
   check and only breaks at the user's end.
-- **minisign crypto is NOT locally verifiable** (no
-  `minisign` on this workstation; `tauri signer` has no `verify`). Never
-  fake a PASS: the definitive proof is the **`<n-1> → <n>` auto-update
-  observed in the field, PER CHANNEL** — arm64 on this
-  workstation; x64 on the second x64 workstation (CE decision D5,
-  PLAN-RETOURS-8). The first x64 auto-update can only be observed at
-  the release FOLLOWING the first bi-arch release (no n-1 x64
-  exists before it); the x64 install itself is observable from the
-  first one.
+- **The signature is verified locally** since lot 4: `tools/release-verify`
+  decodes Tauri's base64 wrapper and verifies every channel with the
+  updater's own `minisign-verify` against the pubkey of `tauri.conf.json`
+  (`minisign` the tool is still absent, and no longer needed). An absent
+  proof is a **failure**; `-Structural` is the explicitly incomplete mode.
+  The living proof stays the **`<n-1> → <n>` auto-update observed in the
+  field, PER CHANNEL** — arm64 on this workstation; x64 on the second x64
+  workstation (CE decision D5, PLAN-RETOURS-8); mac at the second mac
+  release.
+- **Eleven assets and four keys** (two Windows installers and their
+  `.sig`, two mac dmg + `app.tar.gz` + `.sig`, `latest.json`) plus the two
+  attestations; five, two and one only under an explicit `-WindowsOnly`.
 - `CHANGELOG.md` (root) carries the `## [<v>] - <date>` entry and the
   link to the Release at the bottom.
 
@@ -1008,8 +1020,12 @@ touches, not just the specs being watched.
 | [`apps/desktop/src/commands.rs`](../apps/desktop/src/commands.rs) | Tauri commands (IPC), all-mailboxes loop, disk guard, progress |
 | [`apps/desktop/ui-v2/src/App.svelte`](../apps/desktop/ui-v2/src/App.svelte) | The UI (Svelte 5, sole framework since B2/PLAN-RETRAIT-V1): screens 01-04, notice slot, automatic sync cycle |
 | [`e2e/README.md`](../e2e/README.md) | Deterministic E2E harness (CDP) |
-| [`scripts/make-release.ps1`](../scripts/make-release.ps1) | **All** of the release (ADR 0013, dual-arch ADR 0023): bump, two signed builds arm64 + x64 (all-or-nothing), two-platform BOM-free `latest.json`, commit + push + Latest Release at the bare tag |
-| [`scripts/verify-release.ps1`](../scripts/verify-release.ps1) | The §2.10 verification, scripted — 5 named assets, BOM, two platform keys, signatures == `.sig` and distinct, URLs that resolve |
+| [`scripts/make-release.ps1`](../scripts/make-release.ps1) | The Windows half of a release (ADR 0013, 0023, 0044): clean-tree and main guards, bump + release commit FIRST, two signed builds arm64 + x64 from it (all-or-nothing), BOM-free `latest.json`, attestation, push + bare tag + DRAFT Release |
+| [`scripts/release-macos.sh`](../scripts/release-macos.sh) | The mac half, on the Air at the tagged commit: both families, attestation, darwin keys added to the draft (ADR 0036, 0037, 0044) |
+| [`scripts/publish-release.ps1`](../scripts/publish-release.ps1) | The last gesture: proves the draft's whole matrix (eleven assets, four keys, four signatures, both attestations) then promotes it to Latest (ADR 0044, D1) |
+| [`scripts/verify-release.ps1`](../scripts/verify-release.ps1) | The §2.10 verification of the PUBLIC release — assets, BOM, keys, signatures verified by `release-verify`, attestations, URLs that resolve; `-Structural` = explicitly incomplete |
+| [`scripts/release-lib.mjs`](../scripts/release-lib.mjs) | The release chain's decisions (attestation, promotion rule) in one file proven by `node --test` |
+| [`tools/release-verify`](../tools/release-verify/src/main.rs) | Cryptographic proof of a channel with the updater's own minisign implementation (B31) |
 | [`crates/mail-core/src/crash.rs`](../crates/mail-core/src/crash.rs) | PURE redaction of a crash report — discards the message (PII) (ADR 0014) |
 | [`apps/desktop/src/telemetry.rs`](../apps/desktop/src/telemetry.rs) | Panic hook, file-based consent, local report write (ADR 0014) |
 | [`spikes/ui-socle-v2/`](../spikes/ui-socle-v2/RAPPORT.md) | Tie-breaking spike for the UI v2 foundation — evidence for ADR 0015, **throwaway** |

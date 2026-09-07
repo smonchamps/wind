@@ -83,7 +83,7 @@ fn connect_client_cancellable(
     io_timeout: Duration,
     alive: Option<Arc<AtomicBool>>,
 ) -> Result<(imap::Client<imap::Connection>, ReadBudget), Error> {
-    let context = |err: String| Error::Server(format!("connection {host}:{port}: {err}"));
+    let context = |err: String| Error::Connection(format!("{host}:{port}: {err}"));
     // The resolution may return several addresses (IPv4/IPv6): each one
     // gets the same timeout, the first that answers wins.
     let mut tcp: Option<TcpStream> = None;
@@ -1369,9 +1369,29 @@ fn quote_mailbox(mailbox: &str) -> Result<String, Error> {
 /// lost connection, unexpected reply) stays `Error::Server`, deemed
 /// transient.
 fn server_err(err: imap::Error) -> Error {
-    match err {
-        imap::Error::No(_) | imap::Error::Bad(_) => Error::Refusal(err.to_string()),
+    match &err {
+        // The response CODE lives in `information` ("[NONEXISTENT] …"); the
+        // Display adds "No Response: " in front and hid it (field
+        // 2026-09-07, second pass: the first fix inspected the Display).
+        imap::Error::No(no) => refusal_from(&no.information, err.to_string()),
+        imap::Error::Bad(bad) => refusal_from(&bad.information, err.to_string()),
         other => Error::Server(other.to_string()),
+    }
+}
+
+/// A tagged NO/BAD, typed by its RFC 5530 response code when the parser
+/// does not know it: `[NONEXISTENT]` names a mailbox the server will not
+/// open (field 2026-09-07: Gmail answers it for `[Gmail]` and for a label it
+/// lists but no longer serves). Everything else stays a refusal.
+pub(crate) fn refusal_from(information: &str, shown: String) -> Error {
+    let trimmed = information.trim_start();
+    if trimmed
+        .get(..13)
+        .is_some_and(|head| head.eq_ignore_ascii_case("[NONEXISTENT]"))
+    {
+        Error::NoSuchMailbox(shown)
+    } else {
+        Error::Refusal(shown)
     }
 }
 
@@ -1418,11 +1438,11 @@ fn name_to_folder(name: &imap::types::Name<'_>) -> mail_core::Folder {
 /// failed cycle is the best way to turn an IMAP throttling into an account
 /// freeze.
 ///
-/// The contract lives HERE, next to the format it inspects: every error of
-/// [`connect_client`] is prefixed "connection host:port: …" — that prefix is
-/// what counts.
+/// The contract is the TYPE (audit lot 4, E11c): every error of
+/// [`connect_client`] is an [`Error::Connection`]; no string prefix is
+/// inspected any more.
 pub fn is_connection_error(err: &Error) -> bool {
-    matches!(err, Error::Server(msg) if msg.starts_with("connection "))
+    matches!(err, Error::Connection(_))
 }
 
 /// Splits weighed messages into batches whose sum does not exceed `bound`

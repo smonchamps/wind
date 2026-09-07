@@ -1,0 +1,19 @@
+[package]
+name = "release-verify"
+description = "Cryptographic proof of a Wind release channel: the Tauri .sig wrapper decoded and verified with the updater's own minisign implementation (audit lot 4, E12c)"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[[bin]]
+name = "release-verify"
+path = "src/main.rs"
+
+[dependencies]
+# The SAME verifier the shipped updater uses (tauri-plugin-updater ->
+# minisign-verify): a PASS here is the check the installed app performs.
+minisign-verify = "0.2"
+base64 = { workspace = true }
+
+[lints]
+workspace = true

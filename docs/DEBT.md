@@ -740,6 +740,16 @@ deferral = one justified line.)
 
 ### D-32 · The gate lives in TWO encodings — pre-push (sh) and gate.ps1 (PowerShell)
 
+> ✅ **CLOSED on 2026-09-07 (PLAN-AUDIT-2026-09 lot 4, E12d).** Paid
+> earlier than recorded: since PLAN-AUDIT-V2 E9 the hook only calls
+> `scripts/gate.ps1 -DocsOnly`, ONE encoding; the reopening condition
+> (a 10th step) had fired silently at 13 steps. Lot 4 goes one step
+> further on the build side: the "rebuild the dist clean, then assert"
+> sequence that lived in PowerShell AND bash is now one script
+> (`scripts/build-dist-clean.mjs`) declared in `tauri.conf.json`'s
+> `beforeBuildCommand`, and the release chain's decisions live in one
+> tested module (`scripts/release-lib.mjs`, ADR 0044).
+
 - **Fact (review PLAN-KAIZEN-CLAUDE wave 2, 2026-08-23)**: the 9 steps
   exist in sh in `.githooks/pre-push` (with the docs-only fast path)
   and in PowerShell in `scripts/gate.ps1` (without that path — by
@@ -753,6 +763,17 @@ deferral = one justified line.)
   two verdicts, or the addition of a 10th step.
 
 ### D-33 · A stale dist is only fixed in JS — `build.rs` has no `rerun-if-changed`
+
+> ✅ **CLOSED on 2026-09-07 (PLAN-AUDIT-2026-09 lot 4, E12d, measured
+> spike).** `apps/desktop/build.rs` now emits
+> `cargo:rerun-if-changed=ui-v2/dist`: a file ADDED to the dist reruns
+> the build script, recompiles `main.rs` and is re-embedded by a bare
+> `cargo build` (proven by decompressing the brotli blob out of the
+> exe); a content change was already tracked by tauri-codegen's
+> `include_bytes!`; a no-op build stays at 0.5 s. `tauri.conf.json`'s
+> `beforeBuildCommand`/`beforeDevCommand` rebuild the dist clean of
+> seams before `cargo tauri build`/`dev`. Reopens if a stale dist is
+> observed in the field after this line.
 
 - **Fact (review PLAN-KAIZEN-CLAUDE wave 2, 2026-08-23)**: the trap
   "generate_context! only embeds the dist when main.rs compiles" is
