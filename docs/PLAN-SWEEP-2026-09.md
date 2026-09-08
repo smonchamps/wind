@@ -1,6 +1,29 @@
 # PLAN-SWEEP-2026-09 — Dependabot triage + the reproducible bug wave
 
-Status: **GO (Chief Engineer, 2026-09-08) — in progress**
+Status: **JOB CLOSED on 2026-09-08 — full field validation (items
+1–7 all OK, zero KO findings at STOP 2)**
+
+- GO of the Chief Engineer: 2026-09-08 (D1–D4 below).
+- Commits: `8538990` (oauth fixture timeouts), `46ab864` (wave A, the
+  seven beta findings, A137), `63de0dd` (the four major migrations) —
+  plus the six Dependabot merges (#14, #7, #8, #12, #10, #15) landed
+  through GitHub.
+- No field touch-ups: the seven checklist items passed on the first
+  pass.
+- A trap paid on the way, at close: both pushes were REJECTED
+  (non-fast-forward: #15's squash landed remotely after the local
+  fetch) and `git push | tail -3` masked the failure — the exit code
+  of a pipeline is the LAST command's. The "CI green" watched before
+  the rebase was a stale run. Rebase, clean `--locked` check, push
+  re-run with the exit code visible; the real CI verdict is the one
+  recorded below.
+- Kaizen (PLAN-KAIZEN-CLAUDE): 6 full local gates played (3 Dependabot
+  pre-merge, 1 red on the language ratchet — the Chief Engineer's bare
+  abbreviation reads as a French function word; spelled out —, 2 green
+  wave/migrations) + the pre-push hook replays; STOP 2 KO findings: 0.
+  T1 at close (`measure-sessions.mjs`, aggregate window): main thread
+  534.8 M input-equivalent, agents 346.8 M (39.3 %) — the tool does
+  not isolate this session's share.
 Statement (Chief Engineer, 2026-09-08): "Implement all the pull requests from Github
 and fix all the bugs listed in the Wind backlog on Notion."
 

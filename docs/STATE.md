@@ -47,10 +47,34 @@ and `/close`d ([program plan](PLAN-AUDIT-2026-09.md)):
   (rebase them); the majors (vite 8, eslint 10, rusqlite 0.40, …) fail
   on their own merits and are each a dedicated decision.
 
+## PLAN-SWEEP-2026-09 — CLOSED 2026-09-08
+
+One sweep ([plan](PLAN-SWEEP-2026-09.md)), field 7/7 OK the same day:
+
+- **Dependabot cleared (10/10)**: #14, #7, #8, #12, #10, #15 merged
+  after triage (the shared red was the pre-`dfd734c` stale base; #12's
+  macOS red a fixture flake, fixed — `8538990`); the four majors
+  MIGRATED on main (`63de0dd`): fs4 1.1 (the instance lock is std's
+  `File::try_lock` now), rusqlite 0.40 (clamped u64↔i64 boundary,
+  16 sites), vite 8 + plugin-svelte 7 (coupled pair, unmergeable one
+  by one) — their PRs closed as superseded.
+- **Seven beta bugs fixed** (`46ab864`, A137): the menu toggle + flip
+  (91/105 — the review found the real macOS root: the trigger came
+  from `document.activeElement`, so the outside-click closer NEVER
+  fired on WKWebView; it is an `anchor` prop now), the Screener
+  verdict never truncated (103), Copy-the-address on the sender
+  (110, glyph `content_copy`), Ctrl+F as the universal find + the
+  Cleanup group filter (98), the Feed 2 s read-dwell (102), search
+  newest-first (111 — BM25 stays for a future sort option).
+- Debts opened: D-66 (menu toggle not centralized), D-67 (search
+  input drawn twice). Backlog observation: an arrival in the same
+  second as Organized-mode activation never waits at the Screener.
+
 **Next, in order**: the `/field` on beta T2's P0 (sync stalled at
 72 %, on the tester's trace, T3 as the same-architecture witness) →
-the two S bugs sharing one component (the product menu does not close
-on an outside click) → the Dependabot triage.
+the remaining backlog bugs needing other machines (86 OAuth first-run,
+100 invitation status, 109 macOS shortcuts — coded here, verified on
+the Air) → the Rosetta-or-native check on T2/T3.
 
 ## Delivered version and open field proofs
 

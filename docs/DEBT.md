@@ -795,6 +795,35 @@ E15a (2026-09-07).
 - **Reopens if**: the field reports an unbounded retry, a runaway
   cycle, or the ADR 0041 measurement shows the flags pass over budget.
 
+### D-66 · The menu's second-click toggle lives in seven openers, not in Menu
+
+- **Fact (PLAN-SWEEP-2026-09, 2026-09-08)**: backlog 91/105's fix put
+  the "second click on the trigger closes" guard into each opener
+  (List, Cleanup, Screener, Settings, Feed, PaperTrail, Thread), in
+  three identity shapes; SectionSort and ThreadBar have their own.
+  Only Cleanup, Settings and Thread carry an e2e for it — the four
+  other copies are unproven. Menu.svelte now receives the trigger as
+  an `anchor` prop, so the component COULD own the toggle and the
+  outside-click test itself, and the parents could drop their
+  `stopPropagation`.
+- **Reason for deferring**: the centralization touches nine consumers
+  and rewrites the documented D-47 contract mid-sweep; the per-parent
+  guards are shipped and field-validated.
+- **Reopens as a job if**: an eighth opener ships without the guard
+  (the 91 bug returning on one screen), or a Menu contract change has
+  to be mirrored by hand across the copies.
+
+### D-67 · The 32 px search-input drawing exists twice
+
+- **Fact (PLAN-SWEEP-2026-09, 2026-09-08)**: the Cleanup group filter
+  (backlog 98) copies Settings' `.search-decisions input` CSS
+  byte-for-byte; no shared class or token binds them.
+- **Reason for deferring**: a shared control class is a System-level
+  decision (where does it live, which surfaces adopt it); the sweep's
+  scope was the bugs.
+- **Reopens if**: the search control's drawing changes and one of the
+  two copies is missed — a field report naming one screen only.
+
 ## Closed
 
 ### ~~D-4 · Focus trap of overlays~~ — closed 2026-09-08
