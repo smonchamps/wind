@@ -37,8 +37,10 @@ if (tool === 'git') {
     if (existsSync(join(process.env.FAKE_REPO, 'dirty-after-build'))) say(' M Cargo.lock');
   }
   else if (args[0] === 'rev-parse') say(process.env.FAKE_COMMIT);
-  // The release commit consumes the staged bump: after it, \`git diff
-  // --cached\` is clean again (the marker models the index emptying).
+  // The staged bump exists only between the script's own \`git add\`
+  // and its release commit: before the add the index is clean (the
+  // pre-build guard reads it), after the commit it is clean again.
+  else if (args[0] === 'add') writeFileSync(join(process.env.FAKE_REPO, 'staged'), '1');
   else if (args[0] === 'commit') writeFileSync(join(process.env.FAKE_REPO, 'committed'), '1');
   // Content-aware like real git (0.21.0 release day): the post-build
   // guard asks \`git diff --quiet\` (worktree) and \`--cached\` (index),
@@ -46,10 +48,13 @@ if (tool === 'git') {
   // is not a content change. The dirty marker IS a content change.
   else if (args[0] === 'diff') {
     if (args.includes('--cached')) {
+      const staged = existsSync(join(process.env.FAKE_REPO, 'staged'));
       const committed = existsSync(join(process.env.FAKE_REPO, 'committed'));
-      process.exit(process.env.FAKE_STAGED && !committed ? 1 : 0);
+      process.exit(process.env.FAKE_STAGED && staged && !committed ? 1 : 0);
     }
-    process.exit(existsSync(join(process.env.FAKE_REPO, 'dirty-after-build')) ? 1 : 0);
+    const dirty = process.env.FAKE_DIRTY
+      || existsSync(join(process.env.FAKE_REPO, 'dirty-after-build'));
+    process.exit(dirty ? 1 : 0);
   }
   process.exit(0);
 }

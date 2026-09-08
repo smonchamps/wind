@@ -128,8 +128,18 @@ Push-Location $rootDir
 try {
     $branch = (git branch --show-current).Trim()
     if ($branch -ne "main") { throw "Current branch '$branch': a release is made from main." }
-    $dirty = @(git status --porcelain)
-    if ($dirty.Count -gt 0) {
+    # CONTENT identity here too (0.21.0 release day, same trap as the
+    # post-build guard): a previous run's tauri build leaves
+    # apps/desktop/Cargo.toml with LF endings, and `status --porcelain`
+    # flags the EOL-only difference forever after -- a resumption would
+    # be refused on a tree that IS the release commit.
+    git diff --quiet
+    $worktreeChanged = $LASTEXITCODE -ne 0
+    git diff --cached --quiet
+    $indexChanged = $LASTEXITCODE -ne 0
+    $untracked = @(git ls-files --others --exclude-standard)
+    if ($worktreeChanged -or $indexChanged -or $untracked.Count -gt 0) {
+        $dirty = @(git status --porcelain)
         throw "Working tree not clean ($($dirty.Count) path(s)): commit or stash first -- a release is built from its commit alone.`n$($dirty -join "`n")"
     }
 }
