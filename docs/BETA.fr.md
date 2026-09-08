@@ -26,7 +26,9 @@ télémétrie réseau.
    Pomme > À propos de ce Mac — la ligne « Puce » indique Apple M-quelque
    chose (Apple Silicon), ou la ligne « Processeur » indique Intel.
 3. Windows : lancez l'installeur et suivez-le. Mac : ouvrez le dmg et
-   glissez Wind dans Applications.
+   glissez Wind dans Applications — puis lancez-le **depuis
+   Applications**, pas depuis la fenêtre du dmg : lancé depuis le dmg,
+   Wind ne peut pas se mettre à jour (il vous le dira si cela arrive).
 
 ### Si Windows affiche « Windows a protégé votre ordinateur »
 

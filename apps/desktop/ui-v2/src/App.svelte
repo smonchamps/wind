@@ -783,7 +783,12 @@ import { invalidateViews } from './lib/views.svelte.js';
             await call('update_install', { version: update.version });
           } catch (err) {
             offerUpdate(update);
-            flash(t('error.update', { err }));
+            // Same mapping as Settings (A140): a read-only install
+            // location asks for a gesture, not a retry.
+            flash(t('error.update', {
+              err: err?.code === 'app_location_readonly'
+                ? t('update.moveToApplications') : err,
+            }));
           }
         } },
         { label: t('action.later'), do: () => { updateNotice = null; } },

@@ -742,7 +742,13 @@
       // The launch failed: the update stays available — it's
       // re-offered with the error stated, never a dead end (review
       // PLAN-SIGNATURE). { error } alone remains the CHECK's failure.
-      update = { version, error: String(err) };
+      // A typed refusal is said in the user's words (A140): running
+      // from the installer image, the fix is a gesture, not a retry.
+      update = {
+        version,
+        error: err?.code === 'app_location_readonly'
+          ? t('update.moveToApplications') : String(err),
+      };
     }
   }
 </script>

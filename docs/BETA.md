@@ -24,7 +24,9 @@ your email providers and the update page. No network telemetry.
    says Apple M-something (Apple Silicon) or the "Processor" line says
    Intel.
 3. Windows: run the installer and follow it. Mac: open the dmg and
-   drag Wind to Applications.
+   drag Wind to Applications — then launch it **from Applications**,
+   not from the dmg window: run from the dmg, Wind cannot update
+   itself (it will tell you so if it happens).
 
 ### If Windows shows "Windows protected your PC"
 

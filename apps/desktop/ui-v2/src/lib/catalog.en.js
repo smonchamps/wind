@@ -554,6 +554,8 @@ export const EN = {
   'settings.horizonFailed': 'Could not save this choice ({err}).',
 
   // --- Migration modal ------------------------------------------------
+  'update.moveToApplications':
+    'Wind is running from its installation image, where it cannot update itself. Quit Wind, drag it into the Applications folder, eject the Wind volume, then relaunch',
   'whatsnew.aria': "What's new",
   'whatsnew.title': "What's new in Wind {version}",
   'migration.aria': 'Message database update',

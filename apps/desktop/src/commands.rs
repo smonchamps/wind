@@ -7236,6 +7236,23 @@ pub async fn update_install(app: AppHandle, version: String) -> Result<(), Comma
     if UPDATE_IN_PROGRESS.swap(true, std::sync::atomic::Ordering::SeqCst) {
         return Err("an installation is already in progress".into());
     }
+    // macOS replaces the bundle IN PLACE: launched from the mounted
+    // dmg (or a quarantine-translocated mount), the location is
+    // read-only and the plugin can only answer "os error 30" (field
+    // finding 2026-09-08, Apple Silicon tester). Probe BEFORE the
+    // download — a real write, not a path guess: an install on an
+    // external but writable disk stays legitimate — and answer with a
+    // sentence the UI can say in the user's language. Off the pump
+    // (ADR 0019): the probe touches the disk.
+    #[cfg(target_os = "macos")]
+    if let Some(refusal) = off_pump(app.clone(), |_| {
+        Ok::<_, CommandError>(install_location_refusal())
+    })
+    .await?
+    {
+        UPDATE_IN_PROGRESS.store(false, std::sync::atomic::Ordering::SeqCst);
+        return Err(refusal);
+    }
     let result = download_and_launch(app, version).await;
     // On success the application quits: we only come back here on
     // failure.
@@ -7248,6 +7265,78 @@ pub async fn update_install(app: AppHandle, version: String) -> Result<(), Comma
 /// and no longer matters on success: the application quits.
 static UPDATE_IN_PROGRESS: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
+
+/// The folder that would have to accept the replaced bundle on macOS:
+/// for `…/Wind.app/Contents/MacOS/wind-desktop`, the folder holding
+/// `Wind.app`. `None` when the executable is not inside an app bundle
+/// (a dev build) — no probe then, the plugin will say what it can.
+/// Pure (field finding 2026-09-08, Apple Silicon tester): the updater
+/// answered "Read-only file system (os error 30)" raw — Wind was
+/// launched from the mounted dmg, where the bundle can never be
+/// replaced. The probe in `update_install` turns that into a sentence.
+/// The write probe of `update_install` (macOS): `Some(refusal)` when
+/// the folder holding the bundle refuses a write — the update cannot
+/// replace the app there. Sync and blocking by nature: always called
+/// off the pump.
+#[cfg(target_os = "macos")]
+fn install_location_refusal() -> Option<CommandError> {
+    let exe = std::env::current_exe().ok()?;
+    let parent = macos_bundle_parent(&exe)?;
+    let probe = parent.join(format!(".wind-update-probe-{}", std::process::id()));
+    let refused = std::fs::write(&probe, b"probe").is_err();
+    let _ = std::fs::remove_file(&probe);
+    refused.then(|| {
+        CommandError::with_code(
+            format!(
+                "Wind cannot be replaced where it runs from ({})",
+                parent.display()
+            ),
+            "app_location_readonly",
+        )
+    })
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn macos_bundle_parent(exe: &std::path::Path) -> Option<std::path::PathBuf> {
+    let bundle = exe.ancestors().nth(3)?;
+    if bundle.extension()? != "app" {
+        return None;
+    }
+    Some(bundle.parent()?.to_path_buf())
+}
+
+#[cfg(test)]
+mod update_location_tests {
+    use super::macos_bundle_parent;
+    use std::path::Path;
+
+    #[test]
+    fn the_bundle_parent_is_the_folder_holding_the_app() {
+        // The mounted-dmg launch of the field finding…
+        assert_eq!(
+            macos_bundle_parent(Path::new(
+                "/Volumes/Wind/Wind.app/Contents/MacOS/wind-desktop"
+            )),
+            Some("/Volumes/Wind".into())
+        );
+        // …and the healthy install.
+        assert_eq!(
+            macos_bundle_parent(Path::new(
+                "/Applications/Wind.app/Contents/MacOS/wind-desktop"
+            )),
+            Some("/Applications".into())
+        );
+    }
+
+    #[test]
+    fn a_path_outside_an_app_bundle_probes_nothing() {
+        assert_eq!(
+            macos_bundle_parent(Path::new("/Users/dev/wind/target/release/wind-desktop")),
+            None
+        );
+        assert_eq!(macos_bundle_parent(Path::new("wind-desktop")), None);
+    }
+}
 
 async fn download_and_launch(app: AppHandle, version: String) -> Result<(), String> {
     // Instrumentation (PLAN-RETOURS-12 R2, decision D1): the package

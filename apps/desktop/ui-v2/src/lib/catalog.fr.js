@@ -575,6 +575,8 @@ export const FR = {
   'settings.horizonFailed': "Impossible d'enregistrer ce choix ({err}).",
 
   // --- Migration modal ------------------------------------------------
+  'update.moveToApplications':
+    "Wind s'exécute depuis son image d'installation, où il ne peut pas se mettre à jour. Quittez Wind, glissez-le dans le dossier Applications, éjectez le volume Wind, puis relancez-le",
   'whatsnew.aria': 'Quoi de neuf',
   'whatsnew.title': 'Quoi de neuf dans Wind {version}',
   'migration.aria': 'Mise à jour de la base de messages',

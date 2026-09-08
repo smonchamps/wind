@@ -25,6 +25,18 @@ impl CommandError {
     pub fn code(&self) -> Option<&'static str> {
         self.code
     }
+
+    /// A shell-born typed error (the core's errors carry their own
+    /// codes through `From`): the UI branches on the code and says the
+    /// catalogued sentence; the message stays the English fallback.
+    pub fn with_code(message: impl Into<String>, code: &'static str) -> Self {
+        Self {
+            message: message.into(),
+            code: Some(code),
+            retryable: false,
+            remote_limit: None,
+        }
+    }
 }
 
 impl fmt::Display for CommandError {
