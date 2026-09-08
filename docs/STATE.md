@@ -76,7 +76,7 @@ the remaining backlog bugs needing other machines (86 OAuth first-run,
 100 invitation status, 109 macOS shortcuts — coded here, verified on
 the Air) → the Rosetta-or-native check on T2/T3.
 
-## PLAN-BATCH-2026-09 — delivered 2026-09-08, field "All ok"
+## PLAN-BATCH-2026-09 — CLOSED 2026-09-08
 
 One batch ([plan](PLAN-BATCH-2026-09.md), eight Chief-Engineer
 decisions D1–D8):
@@ -89,9 +89,10 @@ entries per release, with a test-enforced net), and **pictures on the
 feedback form** (jpg/png, three max, journaled with the send in one
 transaction). Review: 8 findings fixed — the sharpest: an absent
 `whats_new_seen` pref on a database WITH accounts is the pre-feature
-fleet updating in, and SHOWS the debut window. **STOP 2 passed the
-same day ("All ok", zero KO)**; the green CI is what remains before
-`/close`.
+fleet updating in, and SHOWS the debut window. **STOP 2 "All ok" and
+CI GREEN (run 34229853815) the same day — closed**; commit `6aa2a49`.
+Ships with the next release (0.21.0): its CHANGELOG entries — BOTH
+languages now, §2.9 — are still to write at release prep.
 
 ## Delivered version and open field proofs
 

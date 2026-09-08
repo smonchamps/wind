@@ -1,11 +1,18 @@
 # PLAN-BATCH-2026-09 — docs cleanup, the "What's new" window, feedback pictures, and the next action
 
-> **STOP 2 passed on 2026-09-08 — field validation "All ok"** (Chief
-> Engineer, on the workstation's real database, run-wind.ps1 launch:
-> the What's-new window on first launch, absent on relaunch, the
-> feedback pictures and the three-image cap, the cleaned docs root —
-> zero KO findings). Full gate GREEN the same day (283 e2e, 0 flaky).
-> Close pends the green CI.
+> **JOB CLOSED on 2026-09-08 — full field validation.** STOP 2 the
+> same day, Chief-Engineer verdict **"All ok"** (workstation's real
+> database, run-wind.ps1 launch: the What's-new window on first
+> launch, absent on relaunch, the feedback pictures and the
+> three-image cap, the cleaned docs root — zero KO findings). One
+> commit `6aa2a49` (50 files, +1360/−81), **CI GREEN run
+> 34229853815**. Full gate GREEN twice (283 e2e, 0 flaky), two andon
+> stops on the way (both the language ratchet: a French word in a test
+> fixture address, then the plan file's own bare Chief-Engineer
+> abbreviations — the pre-push hook caught the second, exactly its
+> job). System A138/A139.
+> Kaizen: 2 full green gates (+2 andon-stopped at the ratchet), 0 KO
+> findings at STOP 2, review 8 angles / 8 findings fixed / 2 accepted.
 
 > Statement (Chief Engineer, 2026-09-08): *"1 Clean the /docs folder by
 > archiving and updating what needs to be. 2 Implement a feature that
