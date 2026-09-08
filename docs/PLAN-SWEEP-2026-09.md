@@ -10,6 +10,13 @@ Status: **JOB CLOSED on 2026-09-08 — full field validation (items
   through GitHub.
 - No field touch-ups: the seven checklist items passed on the first
   pass.
+- One CI andon AFTER the field pass: the mail-auth fixture red
+  returned on the docs commit WITH the new timeouts — the deadline was
+  never the root. On BSD the accepted socket INHERITS the listener's
+  non-blocking flag and `read_line` hit WouldBlock; the mail-smtp and
+  mail-imap fixtures already set the socket back to blocking, mail-auth
+  now does too (`bf95a28`, CI green on its own leg — the only place
+  the bug can show).
 - A trap paid on the way, at close: both pushes were REJECTED
   (non-fast-forward: #15's squash landed remotely after the local
   fetch) and `git push | tail -3` masked the failure — the exit code
