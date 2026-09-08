@@ -6,6 +6,45 @@ D5) : chaque version publiée ajoute son entrée ici ET dans l'original
 anglais. Une entrée absente ici retombe sur l'anglais — jamais de
 fenêtre vide.
 
+## [0.21.0] - 2026-09-08
+
+Voyez ce qui a changé après chaque mise à jour, joignez des captures
+d'écran à vos retours, et la première vague de corrections issues des
+testeurs de la bêta.
+
+### Ajouté
+
+- **« Quoi de neuf » après une mise à jour.** Le premier lancement
+  d'une nouvelle version ouvre une fenêtre avec les changements de
+  cette version — cette page, dans l'application, dans votre langue.
+  Continuer la ferme ; elle ne s'affiche jamais deux fois.
+- **Des images sur le formulaire de retour.** Joignez jusqu'à trois
+  captures d'écran (jpg ou png) à votre retour ; elles voyagent avec
+  le message et ne peuvent plus se perdre une fois Envoyer pressé.
+- **Copier l'adresse de l'expéditeur.** Dans le panneau de lecture,
+  l'adresse de l'expéditeur ouvre un petit menu avec « Copier
+  l'adresse ».
+- **Ctrl+F cherche là où vous êtes.** Le raccourci atterrit sur le
+  filtre propre de l'écran courant quand il en a un — le Nettoyage
+  gagne exactement ce filtre (restreindre les groupes par nom ou
+  adresse d'expéditeur) — et sur la recherche principale sinon.
+
+### Modifié
+
+- Les résultats de recherche se lisent du plus récent au plus ancien,
+  page après page.
+- Une carte du Kiosque ne se marque lue qu'après un vrai temps de
+  lecture — ouvrir le Kiosque ne « lit » plus les cartes courtes au
+  premier regard.
+
+### Corrigé
+
+- Les menus « ⋯ » se ferment d'un second clic sur leur propre bouton,
+  sur tous les écrans ; un menu près du bas de la fenêtre s'ouvre
+  désormais au-dessus de son bouton au lieu de glisser par-dessus.
+- Dans Réglages › Portier, une adresse longue ne peut plus pousser le
+  verdict hors de sa ligne.
+
 ## [0.20.0] - 2026-09-07
 
 Sauvegardez et restaurez vos données de courrier, sélectionnez au

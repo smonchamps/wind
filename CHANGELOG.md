@@ -12,6 +12,41 @@ The signed packages and their notes live in the
 [GitHub Releases](https://github.com/smonchamps/wind/releases); the update
 is automatic and signed (minisign, ADR 0013).
 
+## [0.21.0] - 2026-09-08
+
+See what changed after every update, attach screenshots to your
+feedback, and the first wave of beta-tester fixes.
+
+### Added
+
+- **"What's new" after an update.** The first launch of a new version
+  opens a window with that version's changes — this page, in the app,
+  in your language. Continue closes it; it never shows twice.
+- **Pictures on the feedback form.** Attach up to three screenshots
+  (jpg or png) to your feedback; they travel with the message and can
+  never be lost once Send is pressed.
+- **Copy the sender's address.** In the reading pane the sender's
+  address opens a small menu with "Copy the address".
+- **Ctrl+F finds where you are.** The shortcut lands on the current
+  screen's own filter when it has one — the Cleanup gains exactly that
+  filter (narrow groups by sender name or address) — and on the main
+  search otherwise.
+
+### Changed
+
+- Search results read newest-first, page after page.
+- A Feed card only marks itself read after you actually dwell on it
+  for a moment — opening the Feed no longer "reads" the short cards
+  on sight.
+
+### Fixed
+
+- The "⋯" menus close on a second click of their own button, on every
+  screen; a menu near the bottom of the window now opens above its
+  button instead of sliding over it.
+- In Settings › Screener, a long address can no longer push the
+  verdict out of its row.
+
 ## [0.20.0] - 2026-09-07
 
 Back up and restore your mail data, select with the keyboard, and a
