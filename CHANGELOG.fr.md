@@ -1,10 +1,13 @@
 # Journal des modifications
 
 La traduction française du [CHANGELOG](CHANGELOG.md), tenue depuis la
-0.20.0 pour la fenêtre « Quoi de neuf » (PLAN-BATCH-2026-09, décision
-D5) : chaque version publiée ajoute son entrée ici ET dans l'original
-anglais. Une entrée absente ici retombe sur l'anglais — jamais de
-fenêtre vide.
+0.20.0 — **pour les personnes qui utilisent Wind** : la section de
+chaque version s'affiche dans l'application, dans la fenêtre « Quoi
+de neuf », au premier lancement après une mise à jour. Chaque version
+publiée ajoute son entrée ici ET dans l'original anglais (une entrée
+absente ici retombe sur l'anglais — jamais de fenêtre vide). Écrit en
+mots simples, sur ce que vous pouvez faire ou remarquerez, sans
+vocabulaire interne au projet (guide : `docs/STANDARD.md` §2.9).
 
 ## [0.21.0] - 2026-09-08
 

@@ -166,6 +166,24 @@ section for the version just reached, in the interface's language
 the release net `whats_new::tests::the_running_version_has_an_english_entry`
 refuses a version without its English entry at the gate).
 
+**How a changelog entry is written** (Chief-Engineer instruction,
+2026-09-08): the changelog is **read by users** — since the "What's
+new" window, it is literally shown to every one of them at the first
+launch after an update. Write for them, not for the repository:
+
+- clear and simple sentences; say what the user can now do or what
+  they will notice, never how it was built;
+- **no internal vocabulary**: no plan names, no "Lot n", no A-n/D-n/
+  ADR numbers, no crate, function, command or file names, no backlog
+  ids — those live in the plans and the System, not here;
+- name things by their product words, the ones the interface shows
+  (the Feed, the Screener, Settings › Your data), in the entry's
+  language;
+- the short blurb under the version heading answers "why should I
+  care about this update?" in one or two sentences;
+- both languages carry the same substance — the French entry is the
+  translation, not a summary.
+
 ### 2.10 Verifying a published release
 
 Since audit lot 4 (2026-09-07, [ADR 0044](adr/0044-release-identity-and-draft-promotion.md),

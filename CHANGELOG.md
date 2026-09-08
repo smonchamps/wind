@@ -1,6 +1,10 @@
 # Changelog
 
-Every notable change to Wind is recorded here.
+Every notable change to Wind is recorded here — **for the people who
+use Wind**: each version's section is shown in the app, in the
+"What's new" window, at the first launch after an update. Entries are
+written in plain words, about what you can do or will notice, with no
+project-internal vocabulary (guidance: `docs/STANDARD.md` §2.9).
 
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
 and the project follows [semantic versioning](https://semver.org/lang/fr/):
