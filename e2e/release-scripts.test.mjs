@@ -37,7 +37,20 @@ if (tool === 'git') {
     if (existsSync(join(process.env.FAKE_REPO, 'dirty-after-build'))) say(' M Cargo.lock');
   }
   else if (args[0] === 'rev-parse') say(process.env.FAKE_COMMIT);
-  else if (args[0] === 'diff') process.exit(args.includes('--cached') ? (process.env.FAKE_STAGED ? 1 : 0) : 0);
+  // The release commit consumes the staged bump: after it, \`git diff
+  // --cached\` is clean again (the marker models the index emptying).
+  else if (args[0] === 'commit') writeFileSync(join(process.env.FAKE_REPO, 'committed'), '1');
+  // Content-aware like real git (0.21.0 release day): the post-build
+  // guard asks \`git diff --quiet\` (worktree) and \`--cached\` (index),
+  // not \`status --porcelain\` -- an EOL-only rewrite by the tauri CLI
+  // is not a content change. The dirty marker IS a content change.
+  else if (args[0] === 'diff') {
+    if (args.includes('--cached')) {
+      const committed = existsSync(join(process.env.FAKE_REPO, 'committed'));
+      process.exit(process.env.FAKE_STAGED && !committed ? 1 : 0);
+    }
+    process.exit(existsSync(join(process.env.FAKE_REPO, 'dirty-after-build')) ? 1 : 0);
+  }
   process.exit(0);
 }
 if (tool === 'rustup') { say('aarch64-pc-windows-msvc'); say('x86_64-pc-windows-msvc'); process.exit(0); }

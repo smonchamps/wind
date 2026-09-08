@@ -232,10 +232,26 @@ finally {
 
 # The builds changed nothing in the tree (E12a): a lockfile or config
 # rewritten by the build would mean binaries that do not match HEAD.
+# CONTENT identity, not stat identity (0.21.0 release day): the tauri
+# CLI rewrites apps/desktop/Cargo.toml byte-identically but with LF
+# endings, and under core.autocrlf `git status --porcelain` flags the
+# EOL-only difference while `git diff` and the blob hash say equal --
+# a false red after both signed builds. `git diff --quiet` (worktree)
+# + `--cached` (index) compare what a commit would actually store.
 Push-Location $rootDir
 try {
-    $dirty = @(git status --porcelain)
-    if ($dirty.Count -gt 0) { throw "The builds modified the tree ($($dirty -join ', ')): the binaries would not match the release commit." }
+    git diff --quiet
+    $worktreeChanged = $LASTEXITCODE -ne 0
+    git diff --cached --quiet
+    $indexChanged = $LASTEXITCODE -ne 0
+    if ($worktreeChanged -or $indexChanged) {
+        $dirty = @(git status --porcelain)
+        throw "The builds modified the tree ($($dirty -join ', ')): the binaries would not match the release commit."
+    }
+    $untracked = @(git ls-files --others --exclude-standard)
+    if ($untracked.Count -gt 0) {
+        throw "The builds left untracked files ($($untracked -join ', ')): the binaries would not match the release commit."
+    }
     if ((git rev-parse HEAD).Trim() -ne $sha) { throw "HEAD moved during the builds." }
 }
 finally { Pop-Location }
