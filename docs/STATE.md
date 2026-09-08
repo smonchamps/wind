@@ -91,12 +91,26 @@ transaction). Review: 8 findings fixed — the sharpest: an absent
 `whats_new_seen` pref on a database WITH accounts is the pre-feature
 fleet updating in, and SHOWS the debut window. **STOP 2 "All ok" and
 CI GREEN (run 34229853815) the same day — closed**; commit `6aa2a49`.
-Ships with the next release (0.21.0): its CHANGELOG entries — BOTH
-languages now, §2.9 — are still to write at release prep.
+**Shipped in 0.21.0 the same day**, both changelog entries written at
+release prep (§2.9's first bilingual release), the debut window
+proven on every computer at the update.
 
 ## Delivered version and open field proofs
 
-**0.20.0 PUBLISHED 2026-09-08** (the audit release, lots 1–6; release
+**0.21.0 PUBLISHED 2026-09-08** (the batch + sweep release; release
+commit `85c34b0`, published from `3d57bec`, bare tag, Latest; both
+halves in one draft — 13 assets with the two attestations — promoted
+by `publish-release.ps1` after its four-signature proof). **Field the
+same day, Chief-Engineer verdict: "All ok, update ok on all
+computers" — which is also the fleet-wide proof of the "What's new"
+debut window (every pre-feature install showed the 0.21.0 notes on
+first launch, by design).** Release-day finding, fixed in the line:
+the tauri CLI rewrites `apps/desktop/Cargo.toml` with LF endings and
+`git status --porcelain` flags the EOL-only difference — both
+make-release dirty-guards now compare CONTENT (`git diff --quiet` +
+`--cached` + untracked), the release-net fixtures model it. One
+transient network failure at the publication push (curl 28), resumed
+cleanly. Previous: **0.20.0 PUBLISHED 2026-09-08** (the audit release, lots 1–6; release
 commit `baeefc2`, bare tag, Latest; the mac half run on the Air the
 same day — its mounted-volume guard fired once, `hdiutil detach`,
 rerun clean; `verify-release.ps1`: **everything passes — 11 assets,
