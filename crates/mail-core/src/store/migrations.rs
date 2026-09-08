@@ -888,8 +888,9 @@ impl Store {
         }
         let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         if table_columns(&conn, "draft_attachments")?.contains("bytes") {
-            let files: u64 =
-                conn.query_row("SELECT COUNT(*) FROM draft_attachments", [], |r| r.get(0))?;
+            let files: u64 = conn.query_row("SELECT COUNT(*) FROM draft_attachments", [], |r| {
+                r.get::<_, i64>(0).map(crate::sql_read_u64)
+            })?;
             if files > 0 {
                 return Ok(Some(files));
             }

@@ -34,7 +34,7 @@ pub(crate) fn fetch_bodies_for_store(
             "INSERT INTO body_download_refusals (mailbox_id, uid, limit_bytes)
              SELECT mailbox_id, uid, ?3 FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2
              ON CONFLICT(mailbox_id, uid) DO UPDATE SET limit_bytes = excluded.limit_bytes",
-            params![identity.mailbox_id, uid, limit],
+            params![identity.mailbox_id, uid, crate::sql_u64(*limit)],
         )?;
         tx.commit()?;
     }
@@ -123,7 +123,8 @@ impl Store {
         self.verify_mailbox_identity(identity)?;
         let limit: Option<u64> = self.conn().query_row(
             "SELECT limit_bytes FROM body_download_refusals WHERE mailbox_id = ?1 AND uid = ?2 AND limit_bytes >= ?3",
-            params![identity.mailbox_id, uid, REMOTE_MESSAGE_BYTES], |row| row.get(0),
+            params![identity.mailbox_id, uid, crate::sql_u64(REMOTE_MESSAGE_BYTES)],
+            |row| row.get::<_, i64>(0).map(crate::sql_read_u64),
         ).optional()?;
         tx.commit()?;
         Ok(limit)

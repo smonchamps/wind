@@ -42,7 +42,7 @@ impl Store {
             remaining -= size;
             tx.execute("INSERT INTO draft_blobs (bytes) VALUES (?1)", [&file.bytes])?;
             let blob = tx.last_insert_rowid();
-            tx.execute("INSERT INTO draft_attachments (draft_id, name, mime, size, blob_id) VALUES (?1, ?2, ?3, ?4, ?5)", params![id, file.name, file.mime, size, blob])?;
+            tx.execute("INSERT INTO draft_attachments (draft_id, name, mime, size, blob_id) VALUES (?1, ?2, ?3, ?4, ?5)", params![id, file.name, file.mime, crate::sql_u64(size), blob])?;
         }
         tx.commit()?;
         Ok(id)

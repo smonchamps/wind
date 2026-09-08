@@ -5,6 +5,19 @@
 //! web, nor IMAP. Its only abstract boundary is the [`MailServer`]
 //! trait; the real IMAP adapter lives outside the core.
 
+/// SQLite integers are i64, and rusqlite 0.38 dropped the lossy u64
+/// conversions. The domain's counts and sizes are u64 and always fit
+/// (bytes, files, uids); the boundary CLAMPS instead of panicking —
+/// never an `unwrap` for a value the schema cannot produce.
+pub(crate) fn sql_u64(v: u64) -> i64 {
+    i64::try_from(v).unwrap_or(i64::MAX)
+}
+/// The read direction: a negative integer (impossible for our counts
+/// and sizes) reads as zero.
+pub(crate) fn sql_read_u64(v: i64) -> u64 {
+    u64::try_from(v).unwrap_or(0)
+}
+
 mod action;
 mod address;
 mod attachment;

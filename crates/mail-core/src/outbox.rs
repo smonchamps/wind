@@ -471,7 +471,7 @@ impl Store {
                     Ok(OutboxAttachment {
                         name: row.get(0)?,
                         mime: row.get(1)?,
-                        size: row.get(2)?,
+                        size: crate::sql_read_u64(row.get(2)?),
                         bytes: row.get(3)?,
                     })
                 })?

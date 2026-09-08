@@ -513,7 +513,7 @@ impl Store {
         let used: u64 = tx.query_row(
             "SELECT COALESCE(SUM(size), 0) FROM draft_attachments WHERE draft_id = ?1",
             [draft_id],
-            |row| row.get(0),
+            |row| row.get::<_, i64>(0).map(crate::sql_read_u64),
         )?;
         let remaining = MAX_ATTACHMENTS_BYTES.saturating_sub(used);
         if size > remaining {
@@ -528,7 +528,7 @@ impl Store {
         tx.execute(
             "INSERT INTO draft_attachments (draft_id, name, mime, size, blob_id)
              VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![draft_id, name, mime, size, blob_id],
+            params![draft_id, name, mime, crate::sql_u64(size), blob_id],
         )?;
         let attachment_id = tx.last_insert_rowid();
         let updated_epoch = touch_draft(&tx, draft_id)?;
@@ -604,7 +604,7 @@ impl Store {
                     draft_id: row.get(1)?,
                     name: row.get(2)?,
                     mime: row.get(3)?,
-                    size: row.get(4)?,
+                    size: crate::sql_read_u64(row.get(4)?),
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;

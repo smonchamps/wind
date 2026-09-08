@@ -13,7 +13,9 @@ pub(super) fn migrate_files(
         tx.commit()?;
         return Ok(());
     }
-    let files: u64 = tx.query_row("SELECT COUNT(*) FROM draft_attachments", [], |r| r.get(0))?;
+    let files: u64 = tx.query_row("SELECT COUNT(*) FROM draft_attachments", [], |r| {
+        r.get::<_, i64>(0).map(crate::sql_read_u64)
+    })?;
     let total = files + 1;
     if files > 0 && on_progress(AdoptionProgress { done: 0, total }).is_break() {
         return Err(Error::Interrupted);
@@ -125,7 +127,12 @@ impl Store {
         let (files, bytes): (u64, u64) = conn.query_row(
             "SELECT COUNT(*), COALESCE(SUM(length(bytes)), 0) FROM draft_attachments",
             [],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| {
+                Ok((
+                    crate::sql_read_u64(r.get(0)?),
+                    crate::sql_read_u64(r.get(1)?),
+                ))
+            },
         )?;
         Ok((files > 0).then(|| {
             bytes
@@ -144,7 +151,7 @@ impl Store {
         self.recover_draft_edit()?;
         let tx = self.conn().unchecked_transaction()?;
         let total: u64 = tx.query_row("SELECT COUNT(*) + 1 FROM draft_attachments", [], |r| {
-            r.get(0)
+            r.get::<_, i64>(0).map(crate::sql_read_u64)
         })?;
         if on_progress(AdoptionProgress { done: 0, total }).is_break() {
             return Err(Error::Interrupted);

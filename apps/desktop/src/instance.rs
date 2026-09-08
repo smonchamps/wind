@@ -4,10 +4,10 @@
 //! lock when the process dies — a crash never leaves a "sticky" lock,
 //! the file itself may remain, it says nothing.
 //!
-//! Why a file and not a plugin (single-instance): `fs4` is already
-//! there (disk space guard), the lock is a pure, testable decision
-//! without Tauri, and the second instance has nothing else to do than
-//! say so and exit (D1: message then exit).
+//! Why a file and not a plugin (single-instance): the lock is a pure,
+//! testable decision without Tauri (std's `File::try_lock`, stable
+//! since Rust 1.89 — it needed `fs4` before), and the second instance
+//! has nothing else to do than say so and exit (D1: message then exit).
 //!
 //! `WIND_DB_PATH` (e2e, freeze probe) places the lock next to the
 //! disposable database: test instances do not see each other, nor do
@@ -17,7 +17,7 @@ use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use fs4::fs_std::FileExt;
+use std::fs::TryLockError;
 
 /// The lock file, next to the database. Its content says nothing:
 /// only the OS's exclusive lock matters.
@@ -39,10 +39,14 @@ pub(crate) fn lock(folder: &Path) -> io::Result<Option<InstanceGuard>> {
         .write(true)
         .truncate(false)
         .open(folder.join(LOCK_NAME))?;
-    if file.try_lock_exclusive()? {
-        Ok(Some(InstanceGuard { _file: file }))
-    } else {
-        Ok(None)
+    // std's own File::try_lock (stable since Rust 1.89) — fs4 1.x only
+    // mirrors it, so the lock no longer needs the crate at all (fs4
+    // stays for the disk-space guard). The refusal is a typed
+    // WouldBlock, no longer a bool.
+    match file.try_lock() {
+        Ok(()) => Ok(Some(InstanceGuard { _file: file })),
+        Err(TryLockError::WouldBlock) => Ok(None),
+        Err(TryLockError::Error(err)) => Err(err),
     }
 }
 

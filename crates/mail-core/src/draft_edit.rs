@@ -206,7 +206,7 @@ impl Store {
                     draft_id: snapshot.source.unwrap_or(0),
                     name: r.get(1)?,
                     mime: r.get(2)?,
-                    size: r.get(3)?,
+                    size: crate::sql_read_u64(r.get(3)?),
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?)
@@ -384,7 +384,7 @@ impl Store {
         let used: u64 = self.conn().query_row(
             "SELECT COALESCE(SUM(size), 0) FROM draft_edit_files WHERE slot = 1",
             [],
-            |r| r.get(0),
+            |r| r.get::<_, i64>(0).map(crate::sql_read_u64),
         )?;
         let remaining = MAX_ATTACHMENTS_BYTES.saturating_sub(used);
         if bytes.len() as u64 > remaining {
