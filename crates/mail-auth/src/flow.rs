@@ -597,14 +597,18 @@ mod tests {
         token_server.set_nonblocking(true).unwrap();
         let endpoint = format!("http://{}/token", token_server.local_addr().unwrap());
         let server = std::thread::spawn(move || {
-            // 10 s / 5 s, not 1 s / 1 s: on a loaded CI runner the token
-            // exchange crossed the old deadline and `read_line` panicked
-            // mid-request (two occurrences on macOS x86_64, 2026-09-07,
-            // PRs #12 and #15 — same test, unrelated bumps). The happy
-            // path stays event-driven: green runs pay none of it.
+            // 10 s / 5 s, not 1 s / 1 s: bounded patience for a loaded
+            // CI runner; the happy path stays event-driven.
             let deadline = Instant::now() + Duration::from_secs(10);
             while Instant::now() < deadline {
                 if let Ok((mut socket, _)) = token_server.accept() {
+                    // THE root of the macOS x86_64 reds (three CI hits,
+                    // 2026-09-07/08): on BSD the accepted socket INHERITS
+                    // the listener's non-blocking flag, and `read_line`
+                    // returned WouldBlock (os error 35) whenever the
+                    // request bytes were not already in the buffer. Linux
+                    // and Windows do not inherit — hence one leg only.
+                    socket.set_nonblocking(false).unwrap();
                     socket
                         .set_read_timeout(Some(Duration::from_secs(5)))
                         .unwrap();
