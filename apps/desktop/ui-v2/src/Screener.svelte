@@ -117,6 +117,11 @@
   // the click point, bound to the window (prototype pattern).
   function openMini(e, entry, type) {
     e.stopPropagation();
+    // Second click on the same ⋯ closes (backlog 91 family).
+    if (menu && menu.address === entry.address && menu.type === type) {
+      menu = null;
+      return;
+    }
     const r = e.currentTarget.getBoundingClientRect();
     menu = {
       address: entry.address,
@@ -124,6 +129,7 @@
       type,
       x: r.left,
       y: r.bottom + 4,
+      anchor: e.currentTarget,
     };
   }
 </script>
@@ -207,6 +213,7 @@
 </div>
 
 <Menu isOpen={menu !== null} x={menu?.x ?? 0} y={menu?.y ?? 0}
+      anchor={menu?.anchor ?? null}
       testid="screener-menu" onclose={() => (menu = null)}>
     {#if menu.type === 'yes'}
       <p class="title-menu">{t('screener.yesTo')}</p>

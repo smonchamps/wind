@@ -71,6 +71,10 @@ export const FR = {
   'screener.reinstate': 'Réintégrer',
   // RETOURS-14 R4 (D5): the mixed-thread marker.
   'thread.screenerPending': 'En attente au Portier',
+  // Backlog 110: the sender address is a trigger — its menu copies it.
+  'thread.copyAddress': "Copier l'adresse",
+  'thread.addressCopied': 'Adresse copiée.',
+  'error.copyAddress': 'Copie impossible : {err}',
   'screener.screenedOut': 'écarté',
   'screener.screenedOutSpam': 'écarté (signalé indésirable)',
   'screener.screenedOutArchive': 'écarté (archivage automatique)',
@@ -559,6 +563,9 @@ export const FR = {
   'cleanup.messages': '{n} messages',
   'cleanup.done': 'Tous les expéditeurs de la période choisie ont été traités.',
   'cleanup.finish': 'Terminer le nettoyage',
+  // Backlog 98: the group filter (Ctrl+F lands here).
+  'cleanup.search': 'Filtrer les expéditeurs',
+  'cleanup.searchEmpty': 'Aucun expéditeur ne correspond.',
   'settings.horizonAccount': 'Historique importé pour {email}',
   'settings.horizonTitle': 'Historique importé pour la recherche',
   'settings.horizonNote':

@@ -230,21 +230,63 @@
   let scene = $state(null);
   const witnesses = new Map();
   let observer = null;
+  // Backlog 102 (beta): "the moment I open a letter it turns read".
+  // Seeing the foot for an INSTANT is not reading — a short card fits
+  // the scene whole, and "Show images" shifts the foot into view by
+  // itself. The witness now requires a DWELL: the foot stays in the
+  // scene for 2 s before the card marks itself. Leaving early cancels.
+  // e2e seam (the __e2eLinks pattern): the dwell is compiled to 2 s in
+  // releases, adjustable in the harness to prove both directions.
+  const dwellMs = () => {
+    // typeof, not ||: a harness asking for dwell 0 (the immediate-mark
+    // direction) must get 0, not the production 2 s.
+    const seam = import.meta.env.VITE_E2E === '1' ? globalThis.window?.__e2eFeedDwell : undefined;
+    return typeof seam === 'number' ? seam : 2000;
+  };
+  const dwells = new Map();
+  function cancelDwell(node) {
+    clearTimeout(dwells.get(node));
+    dwells.delete(node);
+  }
   $effect(() => {
     if (!scene) return;
     observer = new IntersectionObserver((entries) => {
       for (const e of entries) {
-        if (!e.isIntersecting) continue;
         const card = witnesses.get(e.target);
         if (!card) continue;
-        observer?.unobserve(e.target);
-        markRead(card, e.target);
+        if (!e.isIntersecting) {
+          cancelDwell(e.target);
+          continue;
+        }
+        if (dwells.has(e.target)) continue;
+        dwells.set(e.target, setTimeout(() => {
+          dwells.delete(e.target);
+          observer?.unobserve(e.target);
+          markRead(card, e.target);
+        }, dwellMs()));
       }
     }, { root: scene });
     // Witnesses mounted before the effect (the first render) get
     // observed here — the action runs ahead of the observer.
     for (const node of witnesses.keys()) observer.observe(node);
+    // Time out of sight is not reading: a hidden window cancels the
+    // running dwells; coming back re-observes so the visible feet
+    // start a fresh dwell (an unchanged intersection would otherwise
+    // never re-fire).
+    const visibility = () => {
+      if (document.visibilityState === 'hidden') {
+        for (const node of dwells.keys()) cancelDwell(node);
+      } else {
+        for (const node of witnesses.keys()) {
+          observer?.unobserve(node);
+          observer?.observe(node);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', visibility);
     return () => {
+      document.removeEventListener('visibilitychange', visibility);
+      for (const node of dwells.keys()) cancelDwell(node);
       observer?.disconnect();
       observer = null;
     };
@@ -254,6 +296,7 @@
     observer?.observe(node);
     return {
       destroy() {
+        cancelDwell(node);
         witnesses.delete(node);
         observer?.unobserve(node);
       },
@@ -285,12 +328,18 @@
   let menu = $state(null);
   function openMenu(e, card) {
     e.stopPropagation();
+    // Second click on the same ⋯ closes (backlog 91 family).
+    if (menu && menu.key === cardKey(card.row)) {
+      menu = null;
+      return;
+    }
     const r = e.currentTarget.getBoundingClientRect();
     menu = {
       row: card.row,
       key: cardKey(card.row),
       x: r.left,
       y: r.bottom + 4,
+      anchor: e.currentTarget,
     };
   }
   function gesture(fn, ...args) {
@@ -415,6 +464,7 @@
 </div>
 
 <Menu isOpen={menu !== null} x={menu?.x ?? 0} y={menu?.y ?? 0}
+      anchor={menu?.anchor ?? null}
       testid="feed-menu" onclose={() => (menu = null)}>
     {#each ['inbox', 'paper_trail'] as dest (dest)}
       <button type="button" role="menuitem" data-testid={`feed-to-${dest}`}

@@ -127,11 +127,17 @@
   }
   function openMenu(e, g) {
     e.stopPropagation();
+    // Second click on the same ⋯ closes (backlog 91 family).
+    if (menu && menu.address === g.address) {
+      menu = null;
+      return;
+    }
     const r = e.currentTarget.getBoundingClientRect();
     menu = {
       address: g.address, who: g.who ?? g.address,
       x: r.left,
       y: r.bottom + 4,
+      anchor: e.currentTarget,
     };
   }
   function gesture(destination) {
@@ -204,6 +210,7 @@
 </div>
 
 <Menu isOpen={menu !== null} x={menu?.x ?? 0} y={menu?.y ?? 0}
+      anchor={menu?.anchor ?? null}
       testid="paper-trail-menu" width={220} onclose={() => (menu = null)}>
     {#each ['inbox', 'feed'] as dest (dest)}
       <button type="button" role="menuitem" data-testid={`paper-trail-to-${dest}`}

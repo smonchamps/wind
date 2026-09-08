@@ -265,7 +265,7 @@ accounts, 200,000 messages):
 | Database size | **lifted** (ADR 0010 §2) | disk-space guard at ~50 KB/message |
 | Data loss | 0, proven by crash recovery | ✅ |
 | **Mail pump freeze** | no freeze > 150 ms (window always movable) | 0 freezes over 40 s, fixture 251k envelopes (PLAN-GELS, `e2e/freeze-probe.py`) ✅ |
-| **Search** | < 100 ms | **~66 ms ✅** (field, real database 251k / 7 GB, worst case 3-char prefix, 36k matches; held by the **sort-by-date relief valve** past 10k matches, since the BM25 floor is exceeded otherwise — `WIDE_QUERY_THRESHOLD`, A50/PLAN-RECHERCHE) |
+| **Search** | < 100 ms | **~66 ms ✅** (field, real database 251k / 7 GB, worst case 3-char prefix, 36k matches; date-ordered unconditionally since backlog 111 (A137) — the historical BM25 relief valve (`WIDE_QUERY_THRESHOLD`, A50) no longer switches |
 | **Adopting a legacy database** | < 1 s | **3.66 s — accepted** (ADR 0012: once only, visible, cancelable, reversible) |
 | **Rebuilding the search index** | no silent freeze | **~4 min cold on 7 GB — accepted** (ADR 0012: once only at update time, visible, cancelable, reversible; PLAN-RECHERCHE E3) |
 | **Rebuilding the envelope date index** | no silent freeze > 2 s | **1.77 s cold — accepted WITHOUT a screen** (PLAN-DEMARRAGE, CE decision D9: once only at update time, and it only reads `envelopes` — 47 MB — never the bodies. A screen that appears and disappears in 1.8 s is more annoying than the wait) |

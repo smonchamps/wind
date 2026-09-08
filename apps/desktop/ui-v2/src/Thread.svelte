@@ -17,6 +17,7 @@
   import ImagePermission from './ImagePermission.svelte';
   import { watchImagePermissions } from './lib/image-permissions.js';
   import ThreadBar from './ThreadBar.svelte';
+  import Menu from './Menu.svelte';
   import {
     thread,
     msgKey,
@@ -48,6 +49,47 @@
   async function grantImages(m, always) {
     try { await (always ? alwaysShowImages(m) : showImages(m)); }
     catch (err) { onflash(t('error.imagePermission', { err })); }
+  }
+
+  // Backlog 110 (beta, Mona): the address was unreachable — the whole
+  // header is one click target (toggle), so a selection dies as a
+  // toggle. The address is now a trigger: its menu offers the copy.
+  // Keyed by MESSAGE (msgKey), not by address: a thread repeats its
+  // sender, and the toggle must move between two identical addresses
+  // (review 2026-09-08).
+  let addressMenu = $state(null);
+  function openAddressMenu(e, m) {
+    e.stopPropagation();
+    const key = msgKey(m);
+    if (addressMenu && addressMenu.key === key) {
+      addressMenu = null;
+      return;
+    }
+    const r = e.currentTarget.getBoundingClientRect();
+    addressMenu = {
+      key,
+      address: m.sender_address,
+      x: r.left,
+      y: r.bottom + 4,
+      anchor: e.currentTarget,
+    };
+  }
+  // The moveMenu rule holds here too: a thread CHANGE closes the menu —
+  // without this mirroring, thread A's floating menu would survive over
+  // thread B and copy A's sender (review 2026-09-08).
+  $effect(() => {
+    void thread.row;
+    addressMenu = null;
+  });
+  async function copyAddress() {
+    const { address } = addressMenu;
+    addressMenu = null;
+    try {
+      await navigator.clipboard.writeText(address);
+      onflash(t('thread.addressCopied'));
+    } catch (err) {
+      onflash(t('error.copyAddress', { err }));
+    }
   }
 
   let {
@@ -420,7 +462,16 @@
                 <span class="rank-name">
                   <span class="author">{m.sender}</span>
                   {#if m.sender_address && m.sender_address !== m.sender}
-                    <span class="addr addr-sender">{`<${m.sender_address}>`}</span>
+                    <button type="button" class="addr addr-sender" data-testid="sender-address"
+                            aria-haspopup="menu"
+                            aria-expanded={addressMenu?.key === k}
+                            onclick={(e) => openAddressMenu(e, m)}
+                            onkeydown={(e) => {
+                              // Only the activation keys stay here (they would
+                              // ALSO toggle the header); everything else bubbles
+                              // to the global shortcuts (review 2026-09-08).
+                              if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
+                            }}>{`<${m.sender_address}>`}</button>
                   {/if}
                   {#if pending(m)}
                     <span class="screener-pending" data-testid="screener-pending">{t('thread.screenerPending')}</span>
@@ -672,6 +723,13 @@
   </div>
 {/if}
 
+<Menu isOpen={addressMenu !== null} x={addressMenu?.x ?? 0} y={addressMenu?.y ?? 0}
+      anchor={addressMenu?.anchor ?? null}
+      testid="address-menu" width={200} onclose={() => (addressMenu = null)}>
+    <button type="button" role="menuitem" data-testid="address-copy" onclick={copyAddress}>
+      <Icon name="content_copy" />{t('thread.copyAddress')}</button>
+  </Menu>
+
 <style>
   /* The FLAT form (A46, both frames since PLAN-RETOURS-7 R3) —
      the prototype's geometry (.voletLecture / .lecture): the thread
@@ -772,6 +830,16 @@
      only adds its yield rule: THREE times faster than the name
      (A80's pattern: identity first, detail yields). */
   .message-head .addr-sender { flex:0 3 auto; min-width:0; }
+  /* Backlog 110: the address is a TRIGGER (its menu copies it) —
+     drawn as the text it always was, the hand and the underline say
+     the affordance. */
+  button.addr-sender {
+    background:none; border:0; padding:0; font:inherit; font-size:12px;
+    color:var(--muted); cursor:pointer; text-align:left;
+  }
+  /* The focus ring stays the system's (:focus-visible in system.css) —
+     hover only adds the affordance. */
+  button.addr-sender:hover { text-decoration:underline; color:var(--ink); }
   .content { padding:14px 20px 18px; display:flex; flex-direction:column; gap:12px; }
   /* The invitation card (A76): a card WITHIN the message card —
      10 px surface radius, no elevation (it belongs to the content's

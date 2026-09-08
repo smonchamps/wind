@@ -245,13 +245,13 @@ pub(crate) fn deindex_mailbox(conn: &Connection, mailbox_id: i64) -> Result<(), 
     Ok(())
 }
 
-/// Beyond this number of matches, [`Store::search_capped`] switches from
-/// BM25 ranking to date sort: BM25 over this many matches exceeds the
-/// budget (ADR 0004), and for such a broad query relevance ranking does
-/// not mean anything anyway. Value calibrated in the field (2026-08-17):
-/// queries with ~8,000 matches hold the BM25 budget (~45 ms), one at
-/// 36,000 exceeded it (~101 ms). Since the BM25 cost per match is stable,
-/// this threshold holds as the corpus grows.
+/// HISTORICAL bound of the BM25→date safety valve. Production no longer
+/// switches: [`Store::search_capped`] reads by date unconditionally since
+/// backlog 111 (2026-09-08) — BM25 stays available through
+/// [`Store::search`] for a future relevance option, and `bench_search`
+/// still measures both regimes against this constant. Field calibration
+/// kept for that future reader (2026-08-17): ~8,000 matches held the
+/// BM25 budget (~45 ms), 36,000 exceeded it (~101 ms).
 pub const WIDE_QUERY_THRESHOLD: u64 = 10_000;
 
 impl Store {
@@ -268,23 +268,19 @@ impl Store {
         self.run_search(input, limit, 0, false)
     }
 
-    /// Search sorted by DATE (most recent first), relevance ignored. BM25
-    /// ranking of a very broad query (a 3-character prefix, tens of
-    /// thousands of matches) does not mean anything, and its cost exceeds
-    /// the budget (ADR 0004); date is then the best order.
-    /// [`Store::search_capped`] switches to it beyond
-    /// [`WIDE_QUERY_THRESHOLD`].
+    /// Search sorted by DATE (most recent first), relevance ignored —
+    /// the production order since backlog 111 ([`Store::search_capped`]
+    /// uses it unconditionally).
     pub fn search_recent(&self, input: &str, limit: usize) -> Result<Vec<UnifiedRow>, Error> {
         self.run_search(input, limit, 0, true)
     }
 
     /// Search as the UI consumes it: the rows of the `[offset,
     /// offset+limit)` slice AND the exact total of matches, to say "N of
-    /// M" and serve "load more". Switches to date sort beyond
-    /// [`WIDE_QUERY_THRESHOLD`] matches — the total COUNT, computed
-    /// anyway, informs the switch AND says how many batches remain. The
-    /// sort depends only on the total: it is the same from one page to
-    /// the next, so the slices chain without gap or duplicate.
+    /// M" and serve "load more". Ordered by DATE, newest first (backlog
+    /// 111) — constant from one page to the next, so the slices chain
+    /// without gap or duplicate; the total COUNT says how many batches
+    /// remain.
     ///
     /// The COUNT per keystroke is NOT the cost (measured at PLAN-AUDIT-V2
     /// E2 on 200k: 1.5 ms out of a total of 57 ms for a three-letter
@@ -297,7 +293,11 @@ impl Store {
         offset: usize,
     ) -> Result<(Vec<UnifiedRow>, u64), Error> {
         let total = self.search_total(input)?;
-        let rows = self.run_search(input, limit, offset, total > WIDE_QUERY_THRESHOLD)?;
+        // Backlog 111 (beta): the production order is the DATE, newest
+        // first — what a mail client reads. BM25's length normalization
+        // made a sender-name search look arbitrary ("oldest first").
+        // Relevance (`search`) stays available for a future sort option.
+        let rows = self.run_search(input, limit, offset, true)?;
         Ok((rows, total))
     }
 
@@ -415,9 +415,9 @@ impl Store {
 
     /// The EXACT number of matches for a search — no ranking or
     /// hydration, a plain COUNT on the index (same terms and filters as
-    /// [`Store::search`]). Used to display "100 of N" and to decide
-    /// [`Store::search_capped`]'s date-sort safety valve, which asks for
-    /// it on every keystroke — for 1.5 ms on 200k (see above).
+    /// [`Store::search`]). Used to display "100 of N" —
+    /// [`Store::search_capped`] asks for it on every keystroke, for
+    /// 1.5 ms on 200k (see above).
     pub fn search_total(&self, input: &str) -> Result<u64, Error> {
         let (match_expr, _has_terms, filters) = build_match(input);
         if match_expr.is_none() && filters.since.is_none() && filters.until.is_none() {
@@ -1646,6 +1646,50 @@ mod tests {
     }
 
     #[test]
+    fn a_sender_name_search_reads_newest_first_in_production_order() {
+        // Backlog 111 (beta, Mona): searching a sender's name showed the
+        // mail oldest-first. BM25's length normalization scores short
+        // documents higher, so the perceived order was arbitrary. The
+        // production path (`search_capped`) reads by DATE, newest first —
+        // what a mail client does.
+        let (mut store, inbox) = store_with_inbox("test@example.com");
+        store
+            .upsert_envelopes(
+                inbox,
+                &[
+                    envelope(1, "Hello", "Alice Martin", "alice@ex.fr", 100),
+                    envelope(
+                        2,
+                        "A much longer subject about the quarterly figures",
+                        "Alice Martin",
+                        "alice@ex.fr",
+                        300,
+                    ),
+                ],
+            )
+            .unwrap();
+        // The RECENT message carries the long body: BM25 ranks it LAST,
+        // the date must rank it FIRST.
+        store
+            .save_body(
+                inbox,
+                2,
+                "<p>a long body so the recent document scores lower under bm25 \
+                 normalization, words and words and words and words and words</p>",
+                &[],
+            )
+            .unwrap();
+
+        let (rows, total) = store.search_capped("Alice", 50, 0).unwrap();
+        assert_eq!(total, 2);
+        assert_eq!(
+            subjects(&rows),
+            vec!["A much longer subject about the quarterly figures", "Hello"],
+            "a sender search reads newest first, whatever BM25 thinks"
+        );
+    }
+
+    #[test]
     fn search_capped_returns_rows_and_exact_total() {
         let (mut store, inbox) = store_with_inbox("test@example.com");
         let envelopes: Vec<Envelope> = (1..=10)
@@ -1656,8 +1700,8 @@ mod tests {
         let (rows, total) = store.search_capped("report", 3, 0).unwrap();
         assert_eq!(rows.len(), 3, "rendered capped at the limit");
         assert_eq!(total, 10, "exact total, beyond the cap");
-        // 10 matches, well under WIDE_QUERY_THRESHOLD: BM25 ranking
-        // kept (the subject wins, proven by the dedicated tests).
+        // Order is the date, unconditionally (backlog 111) — proven by
+        // a_sender_name_search_reads_newest_first_in_production_order.
     }
 
     #[test]

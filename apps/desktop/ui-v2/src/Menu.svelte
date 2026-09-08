@@ -16,6 +16,11 @@
     // `absolute`: anchored under its trigger (position:absolute inside a
     // relative parent) instead of fixed coordinates.
     absolute = false,
+    // The trigger ELEMENT, passed by the parent (review 2026-09-08):
+    // deriving it from `document.activeElement` broke every platform
+    // where a click does not focus a button (macOS WKWebView) — the
+    // outside-click closer never fired and the flip anchored on <body>.
+    anchor = null,
     onclose = () => {},
     children,
   } = $props();
@@ -26,7 +31,12 @@
 
   $effect(() => {
     if (!isOpen) return;
-    const trigger = document.activeElement;
+    // Re-anchoring an OPEN menu (a click on another row's ⋯) must
+    // replay the whole lifecycle — bounding, flip, focus: the effect
+    // depends on the coordinates, not only on isOpen (review 2026-09-08).
+    void x;
+    void y;
+    const trigger = anchor ?? document.activeElement;
     // After render: the menu BOUNDS itself to the window (its real
     // size, not a constant copied seven times — review), then the
     // first item takes the focus.
@@ -34,7 +44,16 @@
       if (mailbox && !absolute) {
         const r = mailbox.getBoundingClientRect();
         if (r.right > window.innerWidth - 8) mailbox.style.left = `${Math.max(8, window.innerWidth - r.width - 8)}px`;
-        if (r.bottom > window.innerHeight - 8) mailbox.style.top = `${Math.max(8, window.innerHeight - r.height - 8)}px`;
+        if (r.bottom > window.innerHeight - 8) {
+          // FLIP above the trigger instead of sliding over it: a menu
+          // that covers its own trigger traps the user — the second
+          // click can no longer reach the button (backlog 105 repro).
+          // Only when the flip FITS; otherwise the old bottom clamp —
+          // covering the trigger beats losing items past the window.
+          const a = trigger?.getBoundingClientRect?.();
+          const above = a ? a.top - r.height - 6 : -1;
+          mailbox.style.top = `${above >= 8 ? above : Math.max(8, window.innerHeight - r.height - 8)}px`;
+        }
       }
       items()[0]?.focus();
     });

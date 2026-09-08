@@ -238,11 +238,18 @@
   let decisionMenu = $state(null);
   function openEdit(e, r) {
     e.stopPropagation();
+    // Second click on Edit closes (backlog 105) — same contract as the
+    // Cleanup ⋯: the trigger owns its toggle, Menu owns the rest.
+    if (decisionMenu && decisionMenu.address === r.address) {
+      decisionMenu = null;
+      return;
+    }
     const rect = e.currentTarget.getBoundingClientRect();
     decisionMenu = {
       address: r.address,
       x: rect.left,
       y: rect.bottom + 4,
+      anchor: e.currentTarget,
     };
   }
   const TOAST_NO = {
@@ -1163,7 +1170,7 @@
               </div>
               {#if routingsList?.length}
                 <div class="search-decisions">
-                  <input type="search" data-testid="screener-search"
+                  <input type="search" data-testid="screener-search" data-scene-search
                          placeholder={t('settings.screenerSearch')}
                          aria-label={t('settings.screenerSearch')}
                          bind:value={routingsFilter} />
@@ -1178,8 +1185,11 @@
                   <div class="decisions" data-testid="screener-decisions">
                     {#each visibleRoutings as r (r.address)}
                       <div class="rule-images decision" data-testid="screener-decision">
-                        <span class="address-rule"><b>{r.address}</b>
-                          <span class="verdict">{routingLabel(r)}</span></span>
+                        <!-- The verdict is a SIBLING of the address, not its
+                             child: the address truncates (ellipsis), the
+                             verdict never leaves the row (backlog 103). -->
+                        <span class="address-rule" title={r.address}><b>{r.address}</b></span>
+                        <span class="verdict">{routingLabel(r)}</span>
                         <button type="button" class="add"
                                 data-testid="decision-edit"
                                 aria-haspopup="menu"
@@ -1392,6 +1402,7 @@
 {/if}
 
 <Menu isOpen={decisionMenu !== null} x={decisionMenu?.x ?? 0} y={decisionMenu?.y ?? 0}
+      anchor={decisionMenu?.anchor ?? null}
       testid="decision-menu" onclose={() => (decisionMenu = null)}>
     <p class="title-menu">{t('screener.yesTo')}</p>
     <button type="button" role="menuitem" data-testid="decision-to-inbox"
@@ -1713,7 +1724,7 @@
   /* RETOURS-14 R5: the Screener's decisions list — row in the design
      of .regle-images, verdict in muted ink behind the address; search
      field on the controls' template (32 px). */
-  .decision .verdict { margin-left:8px; color:var(--muted); }
+  .decision .verdict { flex:none; white-space:nowrap; color:var(--muted); }
   .search-decisions { padding:2px 16px 8px; }
   .search-decisions input {
     width:100%; height:32px; padding:0 12px; font-size:13px;

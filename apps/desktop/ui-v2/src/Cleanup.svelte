@@ -36,6 +36,35 @@
   const sortedGroups = $derived(
     [...groups].sort(sortComparator(sort, (g) => g.lastEpoch, (g) => g.who ?? g.address)),
   );
+  // Backlog 98: the sort's companion — a FILTER on the groups, by
+  // sender name or address, UI-side (no new query: `groups` is whole).
+  // Ctrl+F lands here (App.svelte routes it to the search of the
+  // current scene).
+  let filter = $state('');
+  // The filter belongs to ONE sort session: a new session starts
+  // clean, and typing closes the open ⋯ (its row may leave the list —
+  // a floating menu must not act on a filtered-out sender). Reset on
+  // the session BOUNDARY only — a verdict reassigns `session` too, and
+  // must not clear the filter mid-sort.
+  let hadSession = false;
+  $effect(() => {
+    const has = session !== null;
+    if (has !== hadSession) {
+      hadSession = has;
+      filter = '';
+    }
+  });
+  $effect(() => {
+    void filter;
+    menu = null;
+  });
+  const visibleGroups = $derived.by(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return sortedGroups;
+    return sortedGroups.filter(
+      (g) => (g.who ?? '').toLowerCase().includes(q) || g.address.toLowerCase().includes(q),
+    );
+  });
   let defaults = $state({ yes: 'inbox', no: 'trash' });
   // The expanded group (address) and its messages — VIEW, nothing else.
   let isOpen = $state(null);
@@ -145,6 +174,13 @@
 
   function openMini(e, group, type) {
     e.stopPropagation();
+    // Second click on the same ⋯ closes (backlog 91): the trigger's
+    // click never reaches Menu's outside-click closer (stopPropagation
+    // above), so the toggle is decided here — the component's contract.
+    if (menu && menu.address === group.address && menu.type === type) {
+      menu = null;
+      return;
+    }
     const r = e.currentTarget.getBoundingClientRect();
     menu = {
       address: group.address,
@@ -152,6 +188,7 @@
       type,
       x: r.left,
       y: r.bottom + 4,
+      anchor: e.currentTarget,
     };
   }
 
@@ -218,7 +255,17 @@
         {#if groups.length}<SectionSort value={sort} onchange={(v) => (sort = v)} />{/if}
       </div>
       {#if groups.length}
-        {#each sortedGroups as g (g.address)}
+        <!-- Backlog 98: the group filter — Ctrl+F lands here
+             (data-scene-search, App.svelte). -->
+        <div class="search-groups">
+          <input type="search" data-testid="cleanup-search" data-scene-search
+                 placeholder={t('cleanup.search')} aria-label={t('cleanup.search')}
+                 bind:value={filter} />
+        </div>
+        {#if filter.trim() && visibleGroups.length === 0}
+          <p class="filter-empty" data-testid="cleanup-search-empty">{t('cleanup.searchEmpty')}</p>
+        {/if}
+        {#each visibleGroups as g (g.address)}
           <div class="rank-group" data-testid="cleanup-group" data-address={g.address}>
             <!-- The row's body is the group's DOOR: you enter to
                  view — the verdict, itself, stays with the buttons. -->
@@ -290,6 +337,7 @@
 </div>
 
 <Menu isOpen={menu !== null} x={menu?.x ?? 0} y={menu?.y ?? 0}
+      anchor={menu?.anchor ?? null}
       testid="cleanup-menu" onclose={() => (menu = null)}>
     {#if menu.type === 'yes'}
       <p class="title-menu">{t('screener.yesTo')}</p>
@@ -355,6 +403,18 @@
     display:flex; align-items:center; gap:18px; padding:16px 0;
     border-top:1px solid var(--border);
   }
+  /* Backlog 98: the group filter, on the controls' template (32 px) —
+     the drawing of Settings' decisions search. */
+  .search-groups { padding:2px 0 10px; }
+  .search-groups input {
+    width:100%; height:32px; padding:0 12px; font-size:13px;
+    color:var(--ink); background:var(--surface);
+    border:1px solid var(--border); border-radius:var(--r-control);
+  }
+  .search-groups input:focus-visible {
+    outline:2px solid var(--accent); outline-offset:-1px;
+  }
+  .filter-empty { padding:14px 0; font-size:13px; color:var(--muted); }
   .msg {
     flex:1; min-width:0; display:flex; flex-direction:column; gap:3px;
     padding:4px 6px; margin:0 -6px; text-align:left;

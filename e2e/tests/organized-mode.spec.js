@@ -159,6 +159,10 @@ test('"Move to…" routes the WHOLE sender — the ⋯ of the cards and the thre
 
 // ------- RETOURS-13 R10 — the Feed in Unread / Read sections -------
 test('cards read down to the bottom group by sender — "Read previously"', async () => {
+  // Backlog 102: "read" now means the foot DWELT in the scene (2 s in
+  // production) — the seam shortens the dwell so this scripted walk
+  // still reads every card without waiting 2 s per elevation.
+  await page.evaluate(() => { window.__e2eFeedDwell = 10; });
   await page.locator('[data-testid="nav-folder"][data-category="feed"]').click();
   const scene = page.locator('[data-testid="feed"]');
   // Unfold the already-read groups, then walk the WHOLE scene: the

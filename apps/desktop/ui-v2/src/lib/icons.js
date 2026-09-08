@@ -1,6 +1,6 @@
-// The “Elements” icon set (V8 — PLAN-ELEMENTS): 91 glyphs
+// The “Elements” icon set (V8 — PLAN-ELEMENTS): 92 glyphs
 // (78 at V8; `check` A86, `feedback` RETOURS-11, 5 Organized mode A96,
-// `cleanup` A103, the 4 `tri_*` A104)
+// `cleanup` A103, the 4 `tri_*` A104, `content_copy` A137)
 // drawn in SVG, 24 grid, 2-unit stroke, butt caps,
 // miter joints. This catalogue IS the shipped set; the System
 // (docs/design/system.dc.html, Icons section) carries the record — one
@@ -50,6 +50,7 @@ export const SET = {
   sort_newest: { d:['M4 6h10','M4 11h7','M4 16h4','M18 5v13','M15 15l3 3 3-3'] },
   sort_za: { d:['M4 4h6l-6 6h6','M4 20l3-6 3 6','M5 18h4','M18 5v13','M15 15l3 3 3-3'] },
   visibility_off: { d:['M3 12l4-4h10l4 4-4 4H7z','M4 4l16 16'] },
+  content_copy: { d:['M9 7h10v14H9z','M5 17V3h10'] },
   arrow_back: { d:['M20 12H4','M10 6l-6 6 6 6'] },
   close: { d:['M5 5l14 14','M19 5L5 19'] },
   menu: { d:['M4 7h16','M4 12h16','M4 17h16'] },

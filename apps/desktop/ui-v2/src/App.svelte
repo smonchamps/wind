@@ -1276,6 +1276,25 @@ import { invalidateViews } from './lib/views.svelte.js';
   // keeps a meaning (leave the field, without discarding the draft).
   // s (star) and v (move) follow D2: cut at the toggle.
   function onKey(event) {
+    // Backlog 98: Ctrl+F (⌘F) is the universal "find" and WebView2
+    // ships no find bar — it lands on the product's search: the
+    // current surface's own filter when it declares one
+    // (data-scene-search — the Cleanup groups, Settings › Screener),
+    // the header search otherwise. Handled BEFORE the modal bail
+    // (Settings is a modal and owns a filter) and even while typing.
+    // Only VISIBLE declarers count (offsetParent — a hidden mount must
+    // not steal the focus), the last one wins (a modal renders last).
+    if ((event.ctrlKey || event.metaKey) && !event.altKey
+        && (event.key === 'f' || event.key === 'F')) {
+      event.preventDefault();
+      const scoped = [...document.querySelectorAll('[data-scene-search]')]
+        .filter((el) => el.offsetParent !== null)
+        .pop();
+      const target = scoped ?? (modalOpen() ? null : searchField);
+      target?.focus();
+      target?.select?.();
+      return;
+    }
     if (modalOpen()) return;
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     // The composer's rich editor (PLAN-COMPOSITION-HTML) is a

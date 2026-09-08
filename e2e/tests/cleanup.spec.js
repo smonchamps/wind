@@ -69,6 +69,23 @@ test('starting opens the sort: groups by sender, progress at 0%, navigation insi
   await expect(page.locator('[data-testid="cleanup-messages"]')).toHaveCount(0);
 });
 
+test('Ctrl+F lands on the group filter, which narrows the groups (backlog 98)', async () => {
+  await page.keyboard.press('Control+f');
+  await expect(page.locator('[data-testid="cleanup-search"]')).toBeFocused();
+  const groups = page.locator('[data-testid="cleanup-group"]');
+  const all = await groups.count();
+  expect(all).toBeGreaterThan(1);
+  const first = await groups.first().locator('.addr').innerText();
+  await page.locator('[data-testid="cleanup-search"]').fill(first.replace(/[<>]/g, ''));
+  await expect(groups).toHaveCount(1);
+  await page.locator('[data-testid="cleanup-search"]').fill('nothing-matches-this');
+  await expect(groups).toHaveCount(0);
+  await expect(page.locator('[data-testid="cleanup-search-empty"]')).toBeVisible();
+  await page.locator('[data-testid="cleanup-search"]').fill('');
+  await expect(groups).toHaveCount(all);
+  await page.keyboard.press('Escape');
+});
+
 test('Yes processes the whole group; No makes its mail leave the Inbox (D5)', async () => {
   const groups = page.locator('[data-testid="cleanup-group"]');
   const before = await groups.count();

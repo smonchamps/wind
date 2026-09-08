@@ -96,14 +96,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n--- search (search_capped: count + sort + render, budget < 100 ms) ---");
     for (label, query) in QUERIES {
         // `search_capped` is WHAT production pays per keystroke: the
-        // COUNT of the total, the switch to date sort past the wide
-        // query threshold, and the capped render. One blank round
+        // COUNT of the total and the capped render, date-ordered
+        // unconditionally since backlog 111. One blank round
         // (established regime, warm), then the measurement.
         let _ = store.search_capped(query, SEARCH_LIMIT, 0)?;
         let start = Instant::now();
         let (results, total) = store.search_capped(query, SEARCH_LIMIT, 0)?;
         let cost = start.elapsed().as_secs_f64() * 1000.0;
-        let date_sort = total > mail_core::WIDE_QUERY_THRESHOLD;
+        // Production is date-ordered whatever the total (backlog 111);
+        // the historical threshold stays printed so the two regimes'
+        // budgets remain comparable across reports.
+        let was_wide = total > mail_core::WIDE_QUERY_THRESHOLD;
         let verdict = if cost > 100.0 {
             "  ✗ OVER BUDGET"
         } else {
@@ -112,7 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!(
             "{label:<24} \"{query:<12}\" {cost:>7.2} ms — {:>3} rendered out of {total} match(es){}{verdict}",
             results.len(),
-            if date_sort { " (date sort)" } else { " (BM25)" },
+            if was_wide { " (wide)" } else { "" },
         );
     }
 

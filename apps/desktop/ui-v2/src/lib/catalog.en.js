@@ -63,6 +63,10 @@ export const EN = {
   'screener.reinstate': 'Reinstate',
   // RETOURS-14 R4 (D5): the mixed-thread marker.
   'thread.screenerPending': 'Awaiting the Screener',
+  // Backlog 110: the sender address is a trigger — its menu copies it.
+  'thread.copyAddress': 'Copy the address',
+  'thread.addressCopied': 'Address copied.',
+  'error.copyAddress': 'Could not copy: {err}',
   'screener.screenedOut': 'screened out',
   'screener.screenedOutSpam': 'screened out (marked as junk)',
   'screener.screenedOutArchive': 'screened out (archived automatically)',
@@ -538,6 +542,9 @@ export const EN = {
   'cleanup.messages': '{n} messages',
   'cleanup.done': 'Every sender in the chosen period has been handled.',
   'cleanup.finish': 'Finish cleaning',
+  // Backlog 98: the group filter (Ctrl+F lands here).
+  'cleanup.search': 'Filter the senders',
+  'cleanup.searchEmpty': 'No sender matches.',
   'settings.horizonAccount': 'Imported history for {email}',
   'settings.horizonTitle': 'Imported history for search',
   'settings.horizonNote':

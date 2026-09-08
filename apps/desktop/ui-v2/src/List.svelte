@@ -142,12 +142,18 @@
   const rowKey = (l) => `${l.account_id}:${l.mailbox}:${l.uid}`;
   function openGestures(e, row) {
     e.stopPropagation();
+    // Second click on the same ⋯ closes (backlog 91 family).
+    if (gestureMenu && gestureMenu.key === rowKey(row)) {
+      gestureMenu = null;
+      return;
+    }
     const r = e.currentTarget.getBoundingClientRect();
     gestureMenu = {
       row,
       key: rowKey(row),
       x: r.left,
       y: r.bottom + 4,
+      anchor: e.currentTarget,
     };
   }
   function gesture(destination) {
@@ -1510,6 +1516,7 @@
 <!-- PLAN-AUDIT-V2 E11: THE product's menu (Menu.svelte) — keyboard,
      focus, closing; the List only supplies its items. -->
 <Menu isOpen={gestureMenu !== null} x={gestureMenu?.x ?? 0} y={gestureMenu?.y ?? 0}
+      anchor={gestureMenu?.anchor ?? null}
       testid="menu-gestures" onclose={() => (gestureMenu = null)}>
     {#each ['inbox', 'feed', 'paper_trail'].filter((d) => d !== category) as dest (dest)}
       <button type="button" role="menuitem" data-testid={`gestures-${dest}`}
