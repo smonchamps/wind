@@ -1,7 +1,7 @@
 # ADR 0038 — Durable draft editing snapshots
 
 Date: 2026-09-06 · Status: accepted and delivered in `e95adb4`, field validated, CI green.
-Chief Engineer: D3 of [PLAN-AUDIT-2026-09](../PLAN-AUDIT-2026-09.md).
+Chief Engineer: D3 of [PLAN-AUDIT-2026-09](../archives/PLAN-AUDIT-2026-09.md).
 
 ## Context
 

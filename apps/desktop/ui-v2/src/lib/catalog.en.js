@@ -142,6 +142,8 @@ export const EN = {
     'Tell us what is broken or missing in this form. When you click Send, it forwards your feedback by email to feedback-wind@fcts.io. We read every piece of feedback; it is invaluable to us!',
   'feedback.placeholder': 'Your feedback…',
   'feedback.thanks': 'Thank you for your feedback!',
+  'feedback.attach': 'Attach pictures',
+  'feedback.pictureCap': 'Three pictures at most.',
 
   // --- Status bar ---------------------------------------------------------
   'status.search': 'Search · {n} result|Search · {n} results',
@@ -552,6 +554,8 @@ export const EN = {
   'settings.horizonFailed': 'Could not save this choice ({err}).',
 
   // --- Migration modal ------------------------------------------------
+  'whatsnew.aria': "What's new",
+  'whatsnew.title': "What's new in Wind {version}",
   'migration.aria': 'Message database update',
   'migration.title': 'Updating your mailbox.',
   'migration.note': 'About {n} items are being updated. This runs only once and deletes nothing.',

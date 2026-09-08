@@ -253,11 +253,8 @@ months for Google/CASA) are on the critical path to public launch.
 
 ## 9. Immediate next actions
 
-1. Restructure the repo into a Cargo workspace (`crates/mail-core`,
-   `apps/desktop`) — the current `src/main.rs` (hardcoded password) is
-   replaced by the OAuth spike.
-2. Launch the 4 Phase 0 spikes (§2.3) and the set-based grid (§2.4).
-3. Create the Google Cloud project + Azure AD app; open the Google
-   verification file.
-4. Schedule the user interviews (genchi genbutsu).
-5. Set up CI (fmt, clippy, tests, coverage, audit, bench).
+The founding list that stood here (workspace restructure, the four
+Phase 0 spikes, the cloud projects, the interviews, the CI) was fully
+delivered in July 2026. The living queue of next actions is
+[STATE.md](STATE.md) — rewritten at every job (PLAN-BATCH-2026-09,
+Chief-Engineer decision D3, 2026-09-08).

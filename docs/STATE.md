@@ -24,15 +24,15 @@ database reads 12.49 GB (2026-09-07, Lot 5 E14).
 
 ## The audit program of 2026-09-06 — CLOSED 2026-09-08
 
-Six lots over [AUDIT-2026-09-06.md](AUDIT-2026-09-06.md), all
+Six lots over [AUDIT-2026-09-06.md](archives/AUDIT-2026-09-06.md), all
 delivered, field-validated, pushed, CI green, **shipped in 0.20.0**
-and `/close`d ([program plan](PLAN-AUDIT-2026-09.md)):
+and `/close`d ([program plan](archives/PLAN-AUDIT-2026-09.md)):
 
 - Lots 1–2 (2026-09-06): `e95adb4`, `0374e43`; their own green CIs.
-- Lot 3 ([plan](PLAN-AUDIT-2026-09-LOT3.md), `9f4a9b1`, field
-  "1-11 OK"), Lot 4 ([plan](PLAN-AUDIT-2026-09-LOT4.md), `400de5e`),
-  Lot 5 ([plan](PLAN-AUDIT-2026-09-LOT5.md), `2e096d6`/`516180e`/
-  `46c1463`), Lot 6 ([plan](PLAN-AUDIT-2026-09-LOT6.md), `01b9171`) —
+- Lot 3 ([plan](archives/PLAN-AUDIT-2026-09-LOT3.md), `9f4a9b1`, field
+  "1-11 OK"), Lot 4 ([plan](archives/PLAN-AUDIT-2026-09-LOT4.md), `400de5e`),
+  Lot 5 ([plan](archives/PLAN-AUDIT-2026-09-LOT5.md), `2e096d6`/`516180e`/
+  `46c1463`), Lot 6 ([plan](archives/PLAN-AUDIT-2026-09-LOT6.md), `01b9171`) —
   grouped push, CI GREEN 34164333355 (D0 amended by the Chief
   Engineer: the ultra review refused the diff on size, the push was
   ordered without it).
@@ -49,7 +49,7 @@ and `/close`d ([program plan](PLAN-AUDIT-2026-09.md)):
 
 ## PLAN-SWEEP-2026-09 — CLOSED 2026-09-08
 
-One sweep ([plan](PLAN-SWEEP-2026-09.md)), field 7/7 OK the same day:
+One sweep ([plan](archives/PLAN-SWEEP-2026-09.md)), field 7/7 OK the same day:
 
 - **Dependabot cleared (10/10)**: #14, #7, #8, #12, #10, #15 merged
   after triage (the shared red was the pre-`dfd734c` stale base; #12's
@@ -75,6 +75,23 @@ One sweep ([plan](PLAN-SWEEP-2026-09.md)), field 7/7 OK the same day:
 the remaining backlog bugs needing other machines (86 OAuth first-run,
 100 invitation status, 109 macOS shortcuts — coded here, verified on
 the Air) → the Rosetta-or-native check on T2/T3.
+
+## PLAN-BATCH-2026-09 — delivered 2026-09-08, field "All ok"
+
+One batch ([plan](PLAN-BATCH-2026-09.md), eight Chief-Engineer
+decisions D1–D8):
+the docs root cleaned (eleven closed plans + two audit reports
+archived, HANDOVER.md removed and **D-24 struck**, PLAN.md §9 points
+at the living queue here), the **"What's new" window** (a modal on the
+first launch after an update, the new version's changelog section,
+bilingual per D5 — `CHANGELOG.fr.md` is born, §2.9 now writes BOTH
+entries per release, with a test-enforced net), and **pictures on the
+feedback form** (jpg/png, three max, journaled with the send in one
+transaction). Review: 8 findings fixed — the sharpest: an absent
+`whats_new_seen` pref on a database WITH accounts is the pre-feature
+fleet updating in, and SHOWS the debut window. **STOP 2 passed the
+same day ("All ok", zero KO)**; the green CI is what remains before
+`/close`.
 
 ## Delivered version and open field proofs
 

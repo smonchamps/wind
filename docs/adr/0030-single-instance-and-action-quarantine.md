@@ -8,7 +8,7 @@ Date: 2026-09-02 · Status: accepted
 
 ## Context
 
-The full audit of 2026-09-01 (`docs/AUDIT-2026-09-01.md`) found two
+The full audit of 2026-09-01 (`docs/archives/AUDIT-2026-09-01.md`) found two
 structural silences: no single-instance guard even though `main.rs`
 named the risk (two concurrent pumps quarantining each other's sends),
 and an action log where the server's first PERMANENT refusal
@@ -51,7 +51,7 @@ awaits wave 2).
 
 ## Amendment — audit Lot 2, 2026-09-06
 
-The Chief Engineer approved [Lot 2](../PLAN-AUDIT-2026-09-LOT2.md), SMTP option A
+The Chief Engineer approved [Lot 2](../archives/PLAN-AUDIT-2026-09-LOT2.md), SMTP option A
 and fast IDLE stop (D5). Lock failure now prevents any Store/window startup.
 
 Account jobs capture an incarnation ticket and acquire a lease immediately before

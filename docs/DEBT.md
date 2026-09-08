@@ -13,7 +13,7 @@ entries and stay unassigned (never to be reused): **D-7**, the
 responsiveness-stopwatch family (its record lives in
 [archives/PLAN-GELS.md](archives/PLAN-GELS.md)), and **D-11**, the
 themes-bench recalibration folded into the bench family and paid by the
-dated baseline of [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md)
+dated baseline of [PLAN-AUDIT-2026-09-LOT5](archives/PLAN-AUDIT-2026-09-LOT5.md)
 E15a (2026-09-07).
 
 ## Open
@@ -38,7 +38,7 @@ E15a (2026-09-07).
 - **Fact (P1-P2)**: the windowed list keeps every served page in
   memory; on a very long session with heavy scrolling, RAM climbs
   and never comes back down.
-- **Measured and REFUSED at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md)
+- **Measured and REFUSED at [PLAN-AUDIT-2026-09-LOT5](archives/PLAN-AUDIT-2026-09-LOT5.md)
   E15c (2026-09-07)**: an eviction of the pages beyond ±10 of the
   viewport (21 pages kept, the scroll anchor corrected) was built and
   measured on `measure-v2` (release, 200k fixture, 300 random page jumps
@@ -264,6 +264,12 @@ E15a (2026-09-07).
   To be investigated if a composition/attachments bench is set up.
 
 ### D-24 · HANDOVER.md stub to be removed
+
+> ✅ **CLOSED on 2026-09-08 (PLAN-BATCH-2026-09 E1, Chief-Engineer decision D2).**
+> The removal condition was met many times over — every session since
+> 2026-08-19 resumes on STATE.md directly; the stub is removed and the
+> one CHANGELOG link that still pointed at it now points at
+> STANDARD §2.9.
 
 - **Fact (PLAN-DOCUMENTATION, 2026-08-19, CE decision D3)**:
   HANDOVER.md is split into STANDARD.md (the working standard) and
@@ -556,7 +562,7 @@ E15a (2026-09-07).
   Store; `reply_*`/`forward_context` take the lock three times (rare
   paths).
 - **Reason for deferral**: none is an observable defect; audit wave
-  3 (`docs/AUDIT-2026-09-01.md` §5) reorganizes these files.
+  3 (`docs/archives/AUDIT-2026-09-01.md` §5) reorganizes these files.
 - **Reopens if**: a job touches one of these sites — fix it in
   passing, not as a gratuitous refactor (§2.6).
 
@@ -633,7 +639,7 @@ E15a (2026-09-07).
 - **Reopens if**: the clarified budget is exceeded on the CE's
   workstation after D9, or a freeze appears while scrolling the
   Feed.
-- **2026-09-07 ([PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md)
+- **2026-09-07 ([PLAN-AUDIT-2026-09-LOT5](archives/PLAN-AUDIT-2026-09-LOT5.md)
   E15b, spike `spikes/feed-memory/`)**: options A (shipped), B (window
   ±1, iframes blanked before unmount) and C (pool of five) measured on
   the arm64 workstation, 160 cards of 100 KB then 300 KB: **none under
@@ -661,7 +667,7 @@ E15a (2026-09-07).
   and the shortcut (focus left on the checkbox, A38) or between the
   toast and the assertion.
 - **Reopens if**: a fourth occurrence, or a red run in CI.
-- **2026-09-07 ([PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15f)**: replayed ten times without retries in
+- **2026-09-07 ([PLAN-AUDIT-2026-09-LOT5](archives/PLAN-AUDIT-2026-09-LOT5.md) E15f)**: replayed ten times without retries in
   isolation — 90/90, no first failure to capture. The flake belongs to
   the loaded suite; the entry stays open on its own condition.
 
@@ -704,7 +710,7 @@ E15a (2026-09-07).
 
 ### D-59 · The attachment rank is a function of the adapter's inline filters
 
-- **Audit follow-up (2026-09-06, [PLAN-AUDIT-2026-09](PLAN-AUDIT-2026-09.md))**:
+- **Audit follow-up (2026-09-06, [PLAN-AUDIT-2026-09](archives/PLAN-AUDIT-2026-09.md))**:
   Lot 1 adds generation guards and complete remote-draft MIME imports, but
   leaves reading attachment ranks unchanged. This debt remains open for
   structural MIME-part identity and migration in Lot 5; generation checks
@@ -758,7 +764,7 @@ E15a (2026-09-07).
 
 ### D-63 · Conservative SMTP quarantine before an unobservable submission stage
 
-- **Since**: 2026-09-06, [audit Lot 2](PLAN-AUDIT-2026-09-LOT2.md), Chief Engineer
+- **Since**: 2026-09-06, [audit Lot 2](archives/PLAN-AUDIT-2026-09-LOT2.md), Chief Engineer
   decision D4 “A”; delivered in `0374e43`, field “1-4 OK”.
 - **What**: the retained high-level lettre transport does not expose the stage of
   response-less failures. Some pre-DATA failures therefore require the same manual
@@ -936,7 +942,7 @@ decision). The rule the Chief Engineer set: **every screenshot shown to
 the user is in the language the user chose** — one set per language,
 selected with the catalogue. To do at the next onboarding job: capture
 both sets, select per `lang`, unpin the script.
-- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15d (2026-09-07)**: one capture set per language
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](archives/PLAN-AUDIT-2026-09-LOT5.md) E15d (2026-09-07)**: one capture set per language
   (`assets/accueil/{en,fr}/`, `capture-onboarding.mjs` writes both);
   the onboarding shows the set of the current language.
 
@@ -955,7 +961,7 @@ and format in the UI per language; give the dialogs an English text when
 compose weight reads `2.8 Mo / 25 MB` — the total from `human_size`
 (shell, French), the limit from the catalogue (English). The spec
 asserts it as shipped (`redesign-screen02.spec.js`).
-- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15d (2026-09-07, D7)**: the quote attribution and
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](archives/PLAN-AUDIT-2026-09-LOT5.md) E15d (2026-09-07, D7)**: the quote attribution and
   the forward header, the size units (core and the composer's JS twin,
   through the catalogue), and the three native dialogs of `main.rs`
   follow the interface's language, read from the same preference
@@ -981,7 +987,7 @@ asserts it as shipped (`redesign-screen02.spec.js`).
   gesture outside the List, or at the multi-window/second-workstation
   job.
 
-- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E13e
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](archives/PLAN-AUDIT-2026-09-LOT5.md) E13e
   (2026-09-07)**: the generic signal exists — `views_revision` in `prefs`,
   bumped by the core on a routing verdict or removal, a pin, a set-aside, a
   cleanup verdict; `ui_state` carries it and the UI reloads its views when
@@ -1040,7 +1046,7 @@ asserts it as shipped (`redesign-screen02.spec.js`).
   `systeme.css` (the earlier `.entete-vue`). Add to it the `select`
   style pair born in two copies (AccountDesk 40 px / Settings 32 px).
 
-- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E13e
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](archives/PLAN-AUDIT-2026-09-LOT5.md) E13e
   (2026-09-07)**: the core half — one private `Mark {Pin, SetAside}` behind
   `toggle_pin`/`pin_state`/`toggle_set_aside`/`set_aside_state` (the table
   name was the only difference); the Feed's and the Paper trail's stacked
@@ -1070,7 +1076,7 @@ asserts it as shipped (`redesign-screen02.spec.js`).
   it was the index that carried the cost, not the round trips).
 - **Reopen if**: the field points to the cost — fan, battery,
   or perceived latency of the probes at rest.
-- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15c (2026-09-07)**: `mailboxes.local_count`, kept
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](archives/PLAN-AUDIT-2026-09-LOT5.md) E15c (2026-09-07)**: `mailboxes.local_count`, kept
   by two triggers on `envelopes` (a replace nets zero), recounted once
   for a database from before the column; `sync_progress` sums the column
   — the 152 ms cold / 8.6 ms warm recount is gone from the 5 s probe.
@@ -1141,7 +1147,7 @@ asserts it as shipped (`redesign-screen02.spec.js`).
 - **Reopening condition**: if the field or beta forwards bare
   invitations or searches them by title. Leads: index the invitation
   title in FTS at `save_body_full` ; attach the ICS on forward.
-- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15d (2026-09-07)**: the meeting's title and
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](archives/PLAN-AUDIT-2026-09-LOT5.md) E15d (2026-09-07)**: the meeting's title and
   location are indexed with the (empty) body; the ICS is kept
   (`invitations.ics`) and the forward's file list carries it as
   `invitation.ics`, served from the store. The card is unchanged.
@@ -1161,7 +1167,7 @@ asserts it as shipped (`redesign-screen02.spec.js`).
   re-baseline with a feature job. The benches ALREADY measure the
   right geometry (browser-args.mjs) ; only the reference series is
   dated.
-- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15a (2026-09-07)**: page jump on the shipped
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](archives/PLAN-AUDIT-2026-09-LOT5.md) E15a (2026-09-07)**: page jump on the shipped
   geometry, p50 15.4–17.4 ms, p95 26.6–26.9 ms over three runs (release,
   200k fixture, 300 random jumps) — budget < 100 ms held; first page
   70–144 ms between two launches of the same warm copy (variance noted).
@@ -1179,7 +1185,7 @@ asserts it as shipped (`redesign-screen02.spec.js`).
   re-baseline the `measure-v2` bench on the new definition. Deferred
   to keep the v3 commit on CE verdicts ; to be investigated with
   D-7/D-11 (bench family).
-- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E15a (2026-09-07)**: the first dated figure on the
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](archives/PLAN-AUDIT-2026-09-LOT5.md) E15a (2026-09-07)**: the first dated figure on the
   shipped definition (list row served → thread served → head body
   rendered): p50 15.9–20.1 ms, p95 30.0–40.8 ms over three runs
   (release, 200k fixture) — budget < 50 ms held. The ADR 0015 series is
@@ -1199,7 +1205,7 @@ asserts it as shipped (`redesign-screen02.spec.js`).
   investigated as a job, not on the fast lane.
 - **Reopens if**: a startup command is added before the modal.
 
-- **Closed at [PLAN-AUDIT-2026-09-LOT5](PLAN-AUDIT-2026-09-LOT5.md) E13a/E13b
+- **Closed at [PLAN-AUDIT-2026-09-LOT5](archives/PLAN-AUDIT-2026-09-LOT5.md) E13a/E13b
   (2026-09-07)**: the lead became the structure. `apps/desktop/src/adoption.rs`
   records the adopted file's identity at `migration_check` (nothing pending)
   or after `migration_run`; `adopted_db` refuses before adoption and when
@@ -1316,7 +1322,7 @@ asserts it as shipped (`redesign-screen02.spec.js`).
   absence is the real cause.
 - **Reopens if**: a fresh database shows a defect tied to `to_addrs`,
   or at the first job that rewrites `echos`.
-- **Closed at wave 0 of the [2026-09-01 audit](AUDIT-2026-09-01.md)**
+- **Closed at wave 0 of the [2026-09-01 audit](archives/AUDIT-2026-09-01.md)**
   (S1-11): the literal fixed (« joined by a line break », no more
   escape sequence in a SQL comment) AND the missing net —
   `une_base_neuve_n_a_aucune_colonne_fantome`: every column of every

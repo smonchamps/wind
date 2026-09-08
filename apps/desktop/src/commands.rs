@@ -3810,6 +3810,10 @@ pub async fn queue_send(
     // right away, the historical path.
     send_at_epoch: Option<i64>,
     edit_token: Option<String>,
+    // PLAN-BATCH-2026-09 E3: picture paths for a send WITHOUT an
+    // anchor draft (the feedback form). Pictures only, three at most
+    // (D6) — validated Rust-side, the dialog filter is cosmetic.
+    attachment_paths: Option<Vec<String>>,
 ) -> Result<(), String> {
     // The wire stays FLAT (the IPC keys are a contract since E5a); the
     // arguments are packed HERE and travel as one value from here on
@@ -3828,6 +3832,7 @@ pub async fn queue_send(
         important,
         send_at_epoch,
         edit_token,
+        attachment_paths,
     };
     queue_send_content(app, account_id, content)
         .await
@@ -3863,6 +3868,45 @@ struct SendContent {
     important: bool,
     send_at_epoch: Option<i64>,
     edit_token: Option<String>,
+    attachment_paths: Option<Vec<String>>,
+}
+
+/// The feedback form's cap (PLAN-BATCH-2026-09, decision D6): three
+/// pictures, jpg/png — enforced HERE, never only by the picker's
+/// filter (a path can arrive by any road).
+const MAX_QUEUED_PICTURES: usize = 3;
+
+/// The picture gates (D6), BEFORE a byte is read: three at most,
+/// jpg/png only — the dialog filter is cosmetic, a path can arrive by
+/// any road. The reads themselves and the size budget reuse
+/// `read_attachment_files` (one read loop in the shell — its "files
+/// read before a failure" semantics live there alone); any refusal
+/// fails the WHOLE gesture: the form is one message, a feedback
+/// amputated of the screenshot it describes would lie.
+fn check_queued_pictures(paths: &[String]) -> Result<(), String> {
+    if paths.len() > MAX_QUEUED_PICTURES {
+        return Err(format!(
+            "at most {MAX_QUEUED_PICTURES} pictures per feedback ({} given)",
+            paths.len()
+        ));
+    }
+    for path in paths {
+        let name = attachment_display_name(path);
+        match mime_for_name(&name) {
+            "image/jpeg" | "image/png" => {}
+            _ => return Err(format!("pictures only (jpg, png): {name:?} refused")),
+        }
+    }
+    Ok(())
+}
+
+/// The name a path shows the user — shared by the attach gesture and
+/// the picture gates.
+fn attachment_display_name(path: &str) -> String {
+    Path::new(path)
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_string())
 }
 
 async fn queue_send_content(
@@ -3884,7 +3928,50 @@ async fn queue_send_content(
         important,
         send_at_epoch,
         edit_token,
+        attachment_paths,
     } = content;
+    // The picture reads OFF the commands' lock (the attach_files rule,
+    // Lot 5 E13d): a cold-disk read never holds the store.
+    let files = match attachment_paths.filter(|paths| !paths.is_empty()) {
+        Some(paths) => {
+            // Review 2026-09-08: the draft-edit arm below takes no
+            // files — accepting the combination would read the bytes
+            // then silently drop them, the amputated send the whole-
+            // gesture rule forbids. Loud beats lossy.
+            if edit_token.is_some() {
+                return Err("pictures do not ride a draft-edit send".into());
+            }
+            check_queued_pictures(&paths).map_err(CommandError::from)?;
+            let lang = store_off_pump(app.clone(), |_, store| Ok(ui_lang(store))).await?;
+            let read = unlocked(move || {
+                Ok::<_, CommandError>(read_attachment_files(
+                    &paths,
+                    mail_core::MAX_ATTACHMENTS_BYTES,
+                    lang,
+                ))
+            })
+            .await?;
+            if let Some(failure) = read.failure {
+                return Err(failure.into());
+            }
+            if let Some(refused) = read.refused.first() {
+                return Err(format!(
+                    "{:?} exceeds the room left ({})",
+                    refused.name, refused.remaining
+                )
+                .into());
+            }
+            read.files
+                .into_iter()
+                .map(|(name, bytes)| mail_core::DraftAttachmentFull {
+                    mime: mime_for_name(&name).to_string(),
+                    name,
+                    bytes,
+                })
+                .collect()
+        }
+        None => Vec::new(),
+    };
     account_store_off_pump(app, account_id, move |_, store| {
         let from = account_email(store, account_id)?;
         // Rich body: THE boundary (`body_boundary`) — sanitized, text
@@ -3939,7 +4026,7 @@ async fn queue_send_content(
         // due time (R2) go through THE single queuing path.
         match edit_token {
             Some(token) => store.enqueue_draft_edit(&token, account_id, &draft, due)?,
-            None => store.enqueue_outbox_full(account_id, &draft, draft_id, due)?,
+            None => store.enqueue_outbox_full(account_id, &draft, draft_id, due, &files)?,
         };
         Ok(())
     })
@@ -5402,10 +5489,7 @@ fn read_attachment_files(
     };
     for path in paths {
         let candidate = Path::new(path);
-        let name = candidate
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| path.clone());
+        let name = attachment_display_name(path);
         // A read failure is an outright failure of the gesture: files
         // already entered stay (the UI re-reads the chips), this one
         // has a problem the user must see, not a silence.
@@ -7051,6 +7135,62 @@ pub async fn lang_get(app: AppHandle) -> Result<Option<String>, CommandError> {
 pub async fn lang_set(app: AppHandle, lang: String) -> Result<(), CommandError> {
     store_off_pump(app, move |_, store| {
         Ok(store.set_text_pref(mail_core::PREF_LANG, &lang)?)
+    })
+    .await
+}
+
+/// What the "What's new" window shows (PLAN-BATCH-2026-09 E2): the
+/// version just reached and its changelog section, in the interface's
+/// language (D5: French when translated, English otherwise).
+#[derive(Serialize)]
+pub struct WhatsNew {
+    pub version: String,
+    pub notes: String,
+}
+
+/// Compares the version this binary carries with the last one whose
+/// window was seen (`prefs.whats_new_seen`). First run seeds the
+/// preference SILENTLY and answers nothing: the window is an UPDATE
+/// artifact — a fresh install has nothing new to tell. The webview
+/// never reads the changelog itself: it travels inside the binary
+/// (`whats_new.rs`), same doctrine as the updater commands above.
+#[tauri::command]
+pub async fn whats_new_check(app: AppHandle) -> Result<Option<WhatsNew>, CommandError> {
+    let version = app.package_info().version.to_string();
+    // The e2e fixtures are databases WITH accounts and WITHOUT the
+    // pref — exactly the "pre-feature update" shape, which would open
+    // the modal over every unrelated spec. Same isolation signal as
+    // `update_check`: the harness plays the update shapes explicitly
+    // through `whats_new_ack`.
+    let e2e = std::env::var("WIND_DB_PATH").is_ok();
+    store_off_pump(app, move |_, store| {
+        let seen = store.text_pref(mail_core::PREF_WHATS_NEW_SEEN)?;
+        let has_accounts = !e2e && !store.accounts()?.is_empty();
+        match crate::whats_new::decision(seen.as_deref(), has_accounts, &version) {
+            crate::whats_new::Debut::SeedQuietly => {
+                store.set_text_pref(mail_core::PREF_WHATS_NEW_SEEN, &version)?;
+                Ok(None)
+            }
+            crate::whats_new::Debut::Quiet => Ok(None),
+            // A version without an entry opens no window — the release
+            // net in `whats_new.rs` makes this unreachable for a
+            // shipped binary, but a dev build stays honest.
+            crate::whats_new::Debut::Show => {
+                Ok(crate::whats_new::notes_for(&version, ui_lang(store))
+                    .map(|notes| WhatsNew { version, notes }))
+            }
+        }
+    })
+    .await
+}
+
+/// The window was dismissed: remember the version it showed. Takes the
+/// version rather than rereading it so an e2e can also rewind the
+/// preference — plain IPC, no dedicated seam.
+#[tauri::command]
+pub async fn whats_new_ack(app: AppHandle, version: String) -> Result<(), CommandError> {
+    store_off_pump(app, move |_, store| {
+        Ok(store.set_text_pref(mail_core::PREF_WHATS_NEW_SEEN, &version)?)
     })
     .await
 }

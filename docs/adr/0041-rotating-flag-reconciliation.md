@@ -1,7 +1,7 @@
 # ADR 0041 — Rotate bounded flag checks through cached mail
 
 Date: 2026-09-07. Status: implemented for Lot 3; field timing pending.
-Scope: [Lot 3 E9 / B23](../PLAN-AUDIT-2026-09-LOT3.md).
+Scope: [Lot 3 E9 / B23](../archives/PLAN-AUDIT-2026-09-LOT3.md).
 
 ## Finding and measured options
 

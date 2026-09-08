@@ -1,7 +1,7 @@
 # ADR 0039 — Publish generic credentials through an atomic database reference
 
 Date: 2026-09-06. Status: implemented for Lot 3; final review and field pending.
-Scope authority: [Lot 3 D6/D7](../PLAN-AUDIT-2026-09-LOT3.md).
+Scope authority: [Lot 3 D6/D7](../archives/PLAN-AUDIT-2026-09-LOT3.md).
 
 ## Context
 

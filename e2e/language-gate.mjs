@@ -37,6 +37,9 @@ const EXEMPT = [
   /(^|\/)catalogue?\.fr\.js$/,
   /(^|\/)catalog\.fr\.js$/,
   /^docs\/BETA\.fr\.md$/,
+  // The French changelog is deliberate French, like BETA.fr.md — it
+  // feeds the "What's new" window (PLAN-BATCH-2026-09, decision D5).
+  /^CHANGELOG\.fr\.md$/,
   /(^|\/)package-lock\.json$/,
   /^Cargo\.lock$/,
   /^e2e\/language-gate\.mjs$/,

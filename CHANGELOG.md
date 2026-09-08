@@ -6,7 +6,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/fr/1.1.0
 and the project follows [semantic versioning](https://semver.org/lang/fr/):
 the `MAJOR.MINOR.PATCH` increment rule specific to Wind (Wind
 exposing no public API) is fixed in
-[`docs/HANDOVER.md`](docs/HANDOVER.md) §2.9.
+[`docs/STANDARD.md`](docs/STANDARD.md) §2.9.
 
 The signed packages and their notes live in the
 [GitHub Releases](https://github.com/smonchamps/wind/releases); the update

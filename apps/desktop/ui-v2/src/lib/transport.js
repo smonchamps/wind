@@ -132,10 +132,16 @@ export const call = (command, args) => {
 // cannot be driven by Playwright — the suite drops its fixture
 // paths in `window.__e2eAttachments` and the picker never opens;
 // the rest of the path (attach_files → chips → send) is the real one.
-export const chooseFiles = async () => {
+// `filters` (optional, the dialog plugin's shape — e.g.
+// [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png'] }]) narrows
+// the picker; it is COSMETIC (a path can arrive by any road), the
+// caller's Rust side owns any real allowlist (PLAN-BATCH-2026-09 E3).
+export const chooseFiles = async (filters) => {
   const injectes = E2E ? globalThis.window?.__e2eAttachments : undefined;
   if (injectes !== undefined) return Array.isArray(injectes) ? injectes : [];
-  const choice = await call('plugin:dialog|open', { options: { multiple: true } });
+  const choice = await call('plugin:dialog|open', {
+    options: { multiple: true, filters },
+  });
   if (!choice) return [];
   return Array.isArray(choice) ? choice : [choice];
 };

@@ -9,21 +9,52 @@
   // first account — the button does not exist without an account
   // (App.svelte guards it).
   import Icon from './Icon.svelte';
-  import { call } from './lib/transport.js';
+  import { call, chooseFiles } from './lib/transport.js';
   import { t } from './lib/text.svelte.js';
 
   const FEEDBACK_ADDRESS = 'feedback-wind@fcts.io';
+  // PLAN-BATCH-2026-09 E3, decision D6: three pictures at most. The
+  // real gate is Rust-side (`queue_send`'s picture reader); this cap
+  // only spares the tester a refused send.
+  const MAX_PICTURES = 3;
 
   let { accounts = [], onflash = () => {} } = $props();
 
   let visible = $state(false);
   let text = $state('');
+  let pictures = $state([]);
   let sendInProgress = $state(false);
   let field = $state(null);
 
   export function open() {
     text = '';
+    pictures = [];
     visible = true;
+  }
+
+  // Screenshots say what words struggle to (beta field): jpg/png
+  // through the native picker. The filter is cosmetic — the Rust side
+  // of `queue_send` refuses anything but jpg/png regardless.
+  async function attach() {
+    let paths;
+    try {
+      paths = await chooseFiles([{ name: 'Images', extensions: ['jpg', 'jpeg', 'png'] }]);
+    } catch (err) {
+      onflash(t('error.attachment', { err }));
+      return;
+    }
+    for (const path of paths) {
+      if (pictures.some((picture) => picture.path === path)) continue;
+      if (pictures.length >= MAX_PICTURES) {
+        onflash(t('feedback.pictureCap'));
+        break;
+      }
+      pictures.push({ path, name: path.split(/[\\/]/).pop() || path });
+    }
+  }
+
+  function removePicture(path) {
+    pictures = pictures.filter((picture) => picture.path !== path);
   }
   export function isOpen() {
     return visible;
@@ -63,6 +94,9 @@
         draftId: null,
         important: false,
         sendAtEpoch: null,
+        // The pictures travel as PATHS; the shell reads the bytes and
+        // journals them with the send in one transaction (E3).
+        attachmentPaths: pictures.map((picture) => picture.path),
       });
     } catch (err) {
       onflash(t('error.send', { err }));
@@ -98,7 +132,22 @@
                 data-testid="back-text"
                 placeholder={t('feedback.placeholder')}
                 aria-label={t('feedback.title')}></textarea>
+      {#if pictures.length}
+        <div class="chips">
+          {#each pictures as picture (picture.path)}
+            <span class="chip" data-testid="back-picture">
+              <Icon name="attach_file" />{picture.name}
+              <button type="button" class="chip-remove" aria-label={t('action.remove')}
+                      onclick={() => removePicture(picture.path)}><Icon name="close" /></button>
+            </span>
+          {/each}
+        </div>
+      {/if}
       <div class="foot">
+        <button type="button" class="secondary" data-testid="back-attach"
+                onclick={attach}>
+          <Icon name="attach_file" />{t('feedback.attach')}</button>
+        <span class="spring"></span>
         <button type="button" class="secondary" onclick={close}>
           {t('action.cancel')}</button>
         <!-- “Send” ABSENT as long as the field is empty — never
@@ -142,7 +191,23 @@
     border-radius:var(--r-control);
   }
   textarea:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-  .foot { display:flex; justify-content:flex-end; gap:8px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .chip {
+    display:inline-flex; align-items:center; gap:6px; max-width:100%;
+    padding:3px 6px 3px 8px; font-size:12px; color:var(--ink);
+    background:var(--bg); border:1px solid var(--border);
+    border-radius:var(--r-control);
+  }
+  .chip :global(.ic) { color:var(--ink2); }
+  .chip-remove {
+    height:18px; width:18px; padding:0; display:inline-flex;
+    align-items:center; justify-content:center; color:var(--ink2);
+    background:none; border:none; border-radius:var(--r-control); cursor:pointer;
+  }
+  .chip-remove:hover { background:var(--sel); }
+  .foot { display:flex; align-items:center; gap:8px; }
+  .spring { flex:1; }
+  .foot .secondary { display:inline-flex; align-items:center; gap:6px; }
   .secondary, .main {
     height:32px; padding:0 14px; font-size:13px; cursor:pointer;
     border-radius:var(--r-control);

@@ -32,6 +32,10 @@ pub const PREF_LANG: &str = "lang";
 /// Epoch (seconds) of the last successful poll — written at the end of
 /// a cycle, read by `sync_progress` for the status bar.
 pub const PREF_LAST_SYNC: &str = "derniere_synchro";
+/// The version whose "What's new" window has been seen (PLAN-BATCH-
+/// 2026-09 E2). Seeded silently on first run: the window is an UPDATE
+/// artifact, a fresh install has nothing new to tell.
+pub const PREF_WHATS_NEW_SEEN: &str = "whats_new_seen";
 
 impl Store {
     /// Reads a preference WITHOUT opening the database — a probe in

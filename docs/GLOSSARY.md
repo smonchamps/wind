@@ -1,6 +1,6 @@
 # Glossary — the English vocabulary of Wind
 
-> Written on 2026-09-02 for [PLAN-ENGLISH-SWITCH](PLAN-ENGLISH-SWITCH.md)
+> Written on 2026-09-02 for [PLAN-ENGLISH-SWITCH](archives/PLAN-ENGLISH-SWITCH.md)
 > step E0, validated by the Chief Engineer at STOP 1 bis (decision D14).
 > This is the design deliverable of the switch: **every French word of
 > the code and the documentation is translated once, here, and applied
@@ -42,6 +42,8 @@
      for word (only its **keys** are renamed);
    - `docs/archives/` and the closed plans, frozen with a banner (D1);
    - `BETA.fr.md`, kept for the current tester wave (D11);
+   - `CHANGELOG.fr.md`, the deliberate French changelog feeding the
+     "What's new" window (PLAN-BATCH-2026-09, decision D5);
    - the git history and the published release notes.
 7. **Numbers are identities**: ADR `0008`, amendments `A-n`, debts
    `D-n`, decisions `D1`… and the STANDARD section numbers `§2.9` never

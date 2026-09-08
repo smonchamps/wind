@@ -102,5 +102,5 @@ prefixes no longer decide OAuth refresh. Final 250 followed by failed QUIT remai
 accepted. UI enqueue confirmation says queued; uncertainty tells the user to check
 Sent before choosing Send again or Discard.
 
-See [the focused plan](../PLAN-AUDIT-2026-09-LOT2.md) for measurements, maintained
+See [the focused plan](../archives/PLAN-AUDIT-2026-09-LOT2.md) for measurements, maintained
 wire/restart tests and the pending delivery validations.

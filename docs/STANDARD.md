@@ -106,13 +106,13 @@ default behavior: every addition is paid for in speed and reliability.
 
 **Everything is in English** — code, identifiers, comments, commits,
 documentation, the System. Amended on 2026-09-02 by
-[PLAN-ENGLISH-SWITCH](PLAN-ENGLISH-SWITCH.md) (CE decision D2): until
+[PLAN-ENGLISH-SWITCH](archives/PLAN-ENGLISH-SWITCH.md) (CE decision D2): until
 then everything was in French, and the switch is carried by the
 language ratchet (`e2e/language-gate.mjs`, gate step 7) — the French
 markers of every file can only go down. What stays French, by decision,
 is listed in [GLOSSARY.md](GLOSSARY.md) §1: the SQLite schema and the
 persisted keys (debt D-54), the French UI catalogue (delivered word for
-word), the archives, `BETA.fr.md`.
+word), the archives, `BETA.fr.md`, `CHANGELOG.fr.md`.
 
 Commits: `type: description` (`feat`, `fix`, `refactor`, `docs`, `test`,
 `chore`, `perf`, `ci`), in English; the body carries the figures and the
@@ -158,7 +158,13 @@ commit) the `## [<version>]` entry of `CHANGELOG.md` **before**
 launching the script — it flatly refuses without it ("CHANGELOG.md has
 no '## [x.y.z]' entry…"), that's its first check. Missed **at least three
 times** during a session (last: 0.2.1, 2026-08-20): the reflex is
-part of release prep, not an afterthought.
+part of release prep, not an afterthought. Since PLAN-BATCH-2026-09
+(D5), the entry is written **twice**: `CHANGELOG.md` and its French
+translation in `CHANGELOG.fr.md` — the "What's new" window shows the
+section for the version just reached, in the interface's language
+(a missing French entry falls back to English, never an empty window;
+the release net `whats_new::tests::the_running_version_has_an_english_entry`
+refuses a version without its English entry at the gate).
 
 ### 2.10 Verifying a published release
 

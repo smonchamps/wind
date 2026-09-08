@@ -1,7 +1,7 @@
 # ADR 0040 — Retain account provenance for learned contacts
 
 Date: 2026-09-07. Status: implemented for Lot 3; final review and field pending.
-Scope: [Lot 3 E10](../PLAN-AUDIT-2026-09-LOT3.md).
+Scope: [Lot 3 E10](../archives/PLAN-AUDIT-2026-09-LOT3.md).
 
 ## Context
 

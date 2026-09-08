@@ -16,12 +16,12 @@ reserves for **closed-out** plans — the audit is still open.
 
 | Path | Origin | Referenced by |
 |---|---|---|
-| [`lot2-proof/`](lot2-proof/) | The lot 2 core proof program | [`PLAN-AUDIT-2026-09-LOT2.md`](../../PLAN-AUDIT-2026-09-LOT2.md) |
+| [`lot2-proof/`](lot2-proof/) | The lot 2 core proof program | [`PLAN-AUDIT-2026-09-LOT2.md`](../../archives/PLAN-AUDIT-2026-09-LOT2.md) |
 | [`lot2-spikes/lot2-smtp-a/`](lot2-spikes/lot2-smtp-a/) | Lot 2 SMTP option A, `MEASUREMENT.md` + `results.txt` | — |
 | [`lot2-spikes/lot2-smtp-c/`](lot2-spikes/lot2-smtp-c/) | Lot 2 SMTP option C, `REPORT.md` + `measurements.csv` | — |
 | [`lot2-spikes/lot2-idle-cancel/`](lot2-spikes/lot2-idle-cancel/) | IDLE cancellation, 4 measurement CSVs + 2 reports | — |
-| [`lot3-spikes/raw-cap/`](lot3-spikes/raw-cap/) | Raw-quota spike: 34 raw cases, 51 candidate ceilings | [`PLAN-AUDIT-2026-09-LOT3.md`](../../PLAN-AUDIT-2026-09-LOT3.md) |
-| [`lot3-spikes/partial-mime/`](lot3-spikes/partial-mime/) | Partial-read spike: 29 cases | [`PLAN-AUDIT-2026-09-LOT3.md`](../../PLAN-AUDIT-2026-09-LOT3.md) |
+| [`lot3-spikes/raw-cap/`](lot3-spikes/raw-cap/) | Raw-quota spike: 34 raw cases, 51 candidate ceilings | [`PLAN-AUDIT-2026-09-LOT3.md`](../../archives/PLAN-AUDIT-2026-09-LOT3.md) |
+| [`lot3-spikes/partial-mime/`](lot3-spikes/partial-mime/) | Partial-read spike: 29 cases | [`PLAN-AUDIT-2026-09-LOT3.md`](../../archives/PLAN-AUDIT-2026-09-LOT3.md) |
 | [`calendar-spikes/spike-ics-calcard/`](calendar-spikes/spike-ics-calcard/) | ICS via library — set-based pair | — |
 | [`calendar-spikes/spike-ics-maison/`](calendar-spikes/spike-ics-maison/) | ICS hand-written — set-based pair | — |
 | [`feed-memory/`](feed-memory/) | Feed memory options A/B/C, bench and raw readings | — |

@@ -32,7 +32,9 @@ pub(crate) mod sql;
 pub use cleanup::{CLEANUP_RANGES, CLEANUP_SCOPES, CleanupGroup, CleanupSession};
 #[cfg(test)]
 use migrations::{migrate, table_columns};
-pub use prefs::{PREF_ARRIVAL_BUBBLES, PREF_LANG, PREF_LAST_SYNC, PREFS_PER_ACCOUNT};
+pub use prefs::{
+    PREF_ARRIVAL_BUBBLES, PREF_LANG, PREF_LAST_SYNC, PREF_WHATS_NEW_SEEN, PREFS_PER_ACCOUNT,
+};
 pub(crate) use screener::*;
 pub(crate) use sql::*;
 

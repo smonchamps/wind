@@ -159,6 +159,8 @@ export const FR = {
     'Dites-nous ce qui cloche ou ce qui manque dans ce formulaire. Lorsque vous cliquez sur Envoyer, il nous transmet votre retour par email à feedback-wind@fcts.io. Nous lisons tous les retours, ils nous sont très précieux !',
   'feedback.placeholder': 'Votre retour…',
   'feedback.thanks': 'Merci pour votre retour !',
+  'feedback.attach': 'Joindre des images',
+  'feedback.pictureCap': 'Trois images au maximum.',
 
   // --- Status bar ---------------------------------------------------------
   'status.search': 'Recherche · {n} résultat|Recherche · {n} résultats',
@@ -573,6 +575,8 @@ export const FR = {
   'settings.horizonFailed': "Impossible d'enregistrer ce choix ({err}).",
 
   // --- Migration modal ------------------------------------------------
+  'whatsnew.aria': 'Quoi de neuf',
+  'whatsnew.title': 'Quoi de neuf dans Wind {version}',
   'migration.aria': 'Mise à jour de la base de messages',
   'migration.title': 'Mise à jour de votre boîte.',
   'migration.note': 'Environ {n} éléments sont mis à jour. Cette mise à jour ne se fait qu’une fois et n’efface rien.',

@@ -32,6 +32,7 @@ mod restore;
 mod telemetry;
 mod trace;
 mod watcher;
+mod whats_new;
 mod wire;
 
 use std::collections::HashMap;
@@ -509,6 +510,8 @@ fn main() {
             commands::open_link,
             commands::notif_pref_get,
             commands::notif_pref_set,
+            commands::whats_new_check,
+            commands::whats_new_ack,
             commands::lang_get,
             commands::lang_set,
             telemetry::telemetry_consent_get,

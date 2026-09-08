@@ -1,7 +1,7 @@
 # ADR 0042 — Bound complete raw IMAP downloads
 
 Date: 2026-09-07. Status: implemented for Lot 3; integration and field pending.
-Scope: [Lot 3 E9 / S04](../PLAN-AUDIT-2026-09-LOT3.md), decision D9.
+Scope: [Lot 3 E9 / S04](../archives/PLAN-AUDIT-2026-09-LOT3.md), decision D9.
 
 ## Finding and options
 

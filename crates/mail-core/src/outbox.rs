@@ -199,20 +199,24 @@ impl Store {
         draft: &Draft,
         draft_id: i64,
     ) -> Result<i64, Error> {
-        self.enqueue_outbox_full(account_id, draft, Some(draft_id), None)
+        self.enqueue_outbox_full(account_id, draft, Some(draft_id), None, &[])
     }
 
     /// The COMPLETE path of queuing a send (R2, PLAN-RETOURS-6): an
-    /// optional anchor draft, an optional deadline — all in ONE
-    /// transaction. "Never a lost send" also covers the chosen time: a
+    /// optional anchor draft, an optional deadline, optional in-memory
+    /// files (the feedback pictures, PLAN-BATCH-2026-09 E3 — a send
+    /// with no draft to hang attachments on) — all in ONE transaction.
+    /// "Never a lost send" also covers the chosen time and the bytes: a
     /// crash never leaves a scheduled send amputated of its deadline
-    /// (it would go out right away, against the intent).
+    /// (it would go out right away, against the intent) or a queued
+    /// message amputated of a picture.
     pub fn enqueue_outbox_full(
         &self,
         account_id: i64,
         draft: &Draft,
         draft_id: Option<i64>,
         send_at_epoch: Option<i64>,
+        files: &[crate::DraftAttachmentFull],
     ) -> Result<i64, Error> {
         let tx = self.conn().unchecked_transaction()?;
         let outbox_id = self.enqueue_outbox(account_id, draft)?;
@@ -223,6 +227,45 @@ impl Store {
                  WHERE a.draft_id = ?2 ORDER BY a.id",
                 params![outbox_id, draft_id],
             )?;
+        }
+        // The cap re-checked HERE, not only at the surface (PJ-D3's
+        // rule for the draft path) — and against BOTH channels: the
+        // room left is what the anchor draft's copy above did not use
+        // (review 2026-09-08: seeded from the full cap, a legal draft
+        // plus legal files journaled past ADR 0031's bound). A refusal
+        // drops the transaction whole: no partial send ever commits.
+        if !files.is_empty() {
+            let copied: i64 = tx.query_row(
+                "SELECT COALESCE(SUM(size), 0) FROM outbox_attachments WHERE outbox_id = ?1",
+                [outbox_id],
+                |row| row.get(0),
+            )?;
+            let mut remaining =
+                crate::MAX_ATTACHMENTS_BYTES.saturating_sub(u64::try_from(copied).unwrap_or(0));
+            for file in files {
+                let size = file.bytes.len() as u64;
+                if size > remaining {
+                    return Err(Error::AttachmentOverBudget {
+                        name: file.name.clone(),
+                        size,
+                        remaining,
+                    });
+                }
+                remaining -= size;
+                tx.execute(
+                    "INSERT INTO outbox_attachments (outbox_id, name, mime, size, bytes)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![
+                        outbox_id,
+                        file.name,
+                        file.mime,
+                        // The u64↔i64 boundary clamp of the rusqlite
+                        // 0.40 migration (63de0dd): sizes are i64.
+                        i64::try_from(size).unwrap_or(i64::MAX),
+                        file.bytes
+                    ],
+                )?;
+            }
         }
         if let Some(send_at) = send_at_epoch {
             tx.execute(
@@ -788,6 +831,156 @@ mod tests {
             let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
         }
     }
+    /// PLAN-BATCH-2026-09 E3: a send queued with in-memory files (the
+    /// feedback pictures — no anchor draft) carries them in the SAME
+    /// transaction, bytes included: "never a lost send" covers them.
+    #[test]
+    fn enqueue_outbox_full_stores_the_given_files_with_the_send() {
+        let (path, store, account) = disk_fixture();
+        let files = vec![
+            crate::DraftAttachmentFull {
+                name: "capture.png".into(),
+                mime: "image/png".into(),
+                bytes: vec![1, 2, 3, 4],
+            },
+            crate::DraftAttachmentFull {
+                name: "photo.jpg".into(),
+                mime: "image/jpeg".into(),
+                bytes: vec![5, 6],
+            },
+        ];
+        let id = store
+            .enqueue_outbox_full(account, &draft("with pictures"), None, None, &files)
+            .unwrap();
+        let stored: Vec<(String, String, i64, Vec<u8>)> = store
+            .conn()
+            .prepare(
+                "SELECT name, mime, size, bytes FROM outbox_attachments
+                 WHERE outbox_id = ?1 ORDER BY id",
+            )
+            .unwrap()
+            .query_map([id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            stored,
+            vec![
+                (
+                    "capture.png".to_string(),
+                    "image/png".to_string(),
+                    4,
+                    vec![1, 2, 3, 4]
+                ),
+                (
+                    "photo.jpg".to_string(),
+                    "image/jpeg".to_string(),
+                    2,
+                    vec![5, 6]
+                ),
+            ]
+        );
+        drop(store);
+        remove_fixture(&path);
+    }
+
+    /// Review 2026-09-08: the cap must count BOTH channels — the
+    /// anchor draft's attachments copied by the same transaction and
+    /// the in-memory files. Seeded separately, a legal draft plus
+    /// legal files could journal a ~50 MB send (ADR 0031's bound).
+    #[test]
+    fn the_budget_counts_the_draft_and_the_files_together() {
+        let (path, store, account) = disk_fixture();
+        // A draft holding most of the room — the row planted at the
+        // storage layer with a declared size near the cap (the gesture
+        // path is proven by the drafts tests; reading 25 MB here would
+        // prove nothing more).
+        let draft_id = store
+            .save_draft(
+                account,
+                None,
+                None,
+                crate::DraftContent {
+                    to_raw: "you@example.com",
+                    cc_raw: "",
+                    bcc_raw: "",
+                    body_html: None,
+                    subject: "anchor",
+                    body: "body",
+                    reply_to_uid: None,
+                    reply_to_mailbox: None,
+                    important: false,
+                },
+            )
+            .unwrap()
+            .id;
+        store
+            .conn()
+            .execute(
+                "INSERT INTO draft_blobs (bytes) VALUES (?1)",
+                params![vec![0_u8; 1024]],
+            )
+            .unwrap();
+        let blob_id = store.conn().last_insert_rowid();
+        store
+            .conn()
+            .execute(
+                "INSERT INTO draft_attachments (draft_id, name, mime, size, blob_id)
+                 VALUES (?1, 'big.bin', 'application/octet-stream', ?2, ?3)",
+                params![draft_id, crate::MAX_ATTACHMENTS_BYTES as i64 - 512, blob_id],
+            )
+            .unwrap();
+        let files = vec![crate::DraftAttachmentFull {
+            name: "capture.png".into(),
+            mime: "image/png".into(),
+            bytes: vec![0; 4096],
+        }];
+        let refusal = store.enqueue_outbox_full(
+            account,
+            &draft("combined over budget"),
+            Some(draft_id),
+            None,
+            &files,
+        );
+        assert!(
+            matches!(refusal, Err(Error::AttachmentOverBudget { .. })),
+            "{refusal:?}"
+        );
+        assert!(
+            store.outbox().unwrap().is_empty(),
+            "the refused combined send stayed queued"
+        );
+        drop(store);
+        remove_fixture(&path);
+    }
+
+    /// The core re-checks the cap itself (the house rule of PJ-D3:
+    /// never trust the surface's arithmetic alone) — and the refusal
+    /// rolls the WHOLE queuing back: no message ever waits in the
+    /// outbox amputated of a picture the user attached.
+    #[test]
+    fn enqueue_outbox_full_refuses_files_over_the_budget_whole() {
+        let (path, store, account) = disk_fixture();
+        let files = vec![crate::DraftAttachmentFull {
+            name: "too-big.png".into(),
+            mime: "image/png".into(),
+            bytes: vec![0; (crate::MAX_ATTACHMENTS_BYTES + 1) as usize],
+        }];
+        let refusal = store.enqueue_outbox_full(account, &draft("over budget"), None, None, &files);
+        assert!(
+            matches!(refusal, Err(Error::AttachmentOverBudget { .. })),
+            "{refusal:?}"
+        );
+        assert!(
+            store.outbox().unwrap().is_empty(),
+            "the refused send stayed queued"
+        );
+        drop(store);
+        remove_fixture(&path);
+    }
+
     /// Lot 5 E14b (G02): a database restored from a copy may carry
     /// sends the user queued in another life — they are HELD, never
     /// delivered by the next cycle; each one is released by hand.
@@ -1146,7 +1339,7 @@ mod tests {
         let (mut store, account) = store();
         let future = Utc::now().timestamp() + 3600;
         let scheduled = store
-            .enqueue_outbox_full(account, &draft("later"), None, Some(future))
+            .enqueue_outbox_full(account, &draft("later"), None, Some(future), &[])
             .unwrap();
         store
             .enqueue_outbox_full(
@@ -1154,6 +1347,7 @@ mod tests {
                 &draft("due"),
                 None,
                 Some(Utc::now().timestamp() - 60),
+                &[],
             )
             .unwrap();
         let mut transport = FakeTransport::default();
@@ -1740,6 +1934,7 @@ mod tests_pieces {
                 &urgent,
                 Some(draft_id),
                 Some(chrono::Utc::now().timestamp() + 3600),
+                &[],
             )
             .unwrap();
         // The real flow deletes the draft the moment the send is journaled.

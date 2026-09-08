@@ -38,6 +38,7 @@ import { invalidateViews } from './lib/views.svelte.js';
   import Onboarding from './Onboarding.svelte';
   import NoticeSlot from './NoticeSlot.svelte';
   import MigrationModal from './MigrationModal.svelte';
+  import WhatsNewModal from './WhatsNewModal.svelte';
   import Toast from './Toast.svelte';
   import Brand from './Brand.svelte';
   import {
@@ -790,6 +791,23 @@ import { invalidateViews } from './lib/views.svelte.js';
     };
   }
 
+  // 2 bis. "What's new" (PLAN-BATCH-2026-09 E2): the first launch
+  //    after an update shows the new version's changelog, once. The
+  //    check runs after the migration modal (onMount order) — the
+  //    command opens the database. Silent on failure and on a version
+  //    without notes: the window is a courtesy, never a blocker.
+  let whatsNew = $state(null);
+  async function checkWhatsNew() {
+    try {
+      whatsNew = await call('whats_new_check');
+    } catch { /* the next launch will say it */ }
+  }
+  function closeWhatsNew() {
+    const version = whatsNew?.version;
+    whatsNew = null;
+    if (version) call('whats_new_ack', { version }).catch(() => {});
+  }
+
   // 3 and 4. Crash telemetry (ADR 0014): explicit opt-in, off by
   //    default, local reports — nothing is sent without the user.
   async function checkTelemetry() {
@@ -1085,6 +1103,7 @@ import { invalidateViews } from './lib/views.svelte.js';
     setTimeout(backfillPreviews, 1500);
     setTimeout(backfillBodies, 3000);
     checkUpdate();
+    checkWhatsNew();
     checkTelemetry();
     probeDrafts();
     // R1 — the sync cycle: AFTER the first renders (the list is
@@ -2088,6 +2107,10 @@ import { invalidateViews } from './lib/views.svelte.js';
   {/if}
 
   <MigrationModal bind:this={migrationModal} />
+
+  {#if whatsNew}
+    <WhatsNewModal info={whatsNew} onclose={closeWhatsNew} />
+  {/if}
 
   <Toast message={toast} />
 </div>
