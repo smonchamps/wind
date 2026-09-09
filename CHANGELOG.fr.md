@@ -9,6 +9,49 @@ absente ici retombe sur l'anglais — jamais de fenêtre vide). Écrit en
 mots simples, sur ce que vous pouvez faire ou remarquerez, sans
 vocabulaire interne au projet (guide : `docs/STANDARD.md` §2.9).
 
+## [0.22.0] - unreleased
+
+La fenêtre retient sa taille, les indésirables se vident d'un geste,
+les claviers Mac se sentent chez eux, et une série de demandes des
+testeurs de la bêta.
+
+### Ajouté
+
+- **Wind retient votre fenêtre.** Elle s'ouvre en plein écran la
+  première fois ; ensuite elle rouvre à la taille et à l'endroit où
+  vous l'avez laissée.
+- **Tout replier dans le Kiosque d'un coup.** Un bouton « Tout
+  replier » dans la section Non lus replie chaque carte sur son objet
+  pour une vue d'ensemble — et les redéplie. Replier ne marque jamais
+  rien comme lu.
+- **Tout sélectionner, vider les indésirables.** Ctrl+A (⌘A sur Mac)
+  coche toutes les conversations affichées ; les indésirables gagnent
+  un bouton « Vider » qui les vide d'un geste, après confirmation.
+- **Les claviers Mac se sentent chez eux.** Sur macOS la touche ⌫
+  supprime la conversation sélectionnée, et la liste des raccourcis
+  montre les touches Mac (⌫, ⌘Espace).
+
+### Modifié
+
+- **Les invitations reflètent votre réponse d'où qu'elle vienne.** Si
+  vous acceptez ou refusez une réunion dans une autre application de
+  courrier, l'invitation dans Wind affiche cette réponse une fois la
+  synchronisation faite.
+- **Un message plus clair quand une connexion manque l'accès au
+  courrier.** Si une autorisation Google ou Microsoft est validée sans
+  cocher la permission de la boîte, Wind le dit clairement et indique
+  quelle case cocher, dans votre langue.
+- **La barre « aider à améliorer Wind » disparaît.** Elle proposait de
+  conserver des rapports de plantage locaux ; elle ajoutait du bruit
+  pour peu de chose, elle est retirée.
+
+### Corrigé
+
+- **Une réponse envoyée hors ligne ne laisse plus de brouillon
+  fantôme.** Répondre et envoyer aussitôt hors ligne laissait une
+  copie dans les Brouillons avec un message déroutant ; la réponse
+  part maintenant proprement.
+
 ## [0.21.0] - 2026-09-08
 
 Voyez ce qui a changé après chaque mise à jour, joignez des captures

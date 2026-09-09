@@ -16,6 +16,46 @@ The signed packages and their notes live in the
 [GitHub Releases](https://github.com/smonchamps/wind/releases); the update
 is automatic and signed (minisign, ADR 0013).
 
+## [0.22.0] - unreleased
+
+The window remembers its size, the junk folder empties in one gesture,
+Mac keyboards feel native, and a batch of beta-tester requests.
+
+### Added
+
+- **Wind remembers your window.** It opens filling the screen the
+  first time; after that it reopens at the size and place you last
+  left it.
+- **Collapse the whole Feed at once.** A "Collapse all" button in the
+  Unread section folds every card to its subject line for a quick
+  overview — and unfolds them again. Folding never marks anything as
+  read.
+- **Select everything, empty the junk folder.** Ctrl+A (⌘A on a Mac)
+  ticks every conversation in view; the junk folder gains an "Empty"
+  button that clears it in one gesture, after a confirmation.
+- **Mac keyboards feel native.** On macOS the ⌫ key deletes the
+  selected conversation, and the shortcut list shows the Mac keys
+  (⌫, ⌘Space).
+
+### Changed
+
+- **Meeting invitations reflect your answer from anywhere.** If you
+  accept or decline a meeting in another mail app, Wind's invitation
+  now shows that answer once it syncs.
+- **A clearer message when a sign-in misses mail access.** If a Google
+  or Microsoft authorization is completed without the mailbox
+  permission ticked, Wind now says so plainly and tells you which box
+  to tick, in your language.
+- **The "help improve Wind" bar is gone.** It offered to keep local
+  crash reports; it added noise for little in return, so it has been
+  removed.
+
+### Fixed
+
+- **A reply sent offline no longer leaves a stray draft.** Replying
+  and sending straight away while offline used to leave a copy in
+  Drafts with a puzzling message; the reply now leaves cleanly.
+
 ## [0.21.0] - 2026-09-08
 
 See what changed after every update, attach screenshots to your

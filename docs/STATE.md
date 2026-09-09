@@ -72,31 +72,34 @@ One sweep ([plan](archives/PLAN-SWEEP-2026-09.md)), field 7/7 OK the same day:
 
 **Next, in order**: the `/field` on beta T2's P0 (sync stalled at
 72 %, on the tester's trace, T3 as the same-architecture witness —
-D8 2026-09-09: the trace has not arrived yet) → the item-86
-measurement (the exact message at the failed first OAuth run, and
-whether the second run ticked boxes the first did not) → the
-Rosetta-or-native check on T2/T3 → the Trash permanent-delete
-capability (D3-bis, backlog).
+D8 2026-09-09: the trace has not arrived yet) → the field checks the
+INPROGRESS job left open (item 6 invitation status from the card, on
+a live cross-client invitation; item 109 macOS shortcuts on the Air;
+item 86 first-run OAuth measurement) → the Rosetta-or-native check on
+T2/T3 → the Trash permanent-delete capability (D3-bis, backlog).
 
-## PLAN-INPROGRESS-2026-09 — running (opened 2026-09-09)
+## PLAN-INPROGRESS-2026-09 — CLOSED 2026-09-09
 
-The backlog items marked "In progress"
-([plan](PLAN-INPROGRESS-2026-09.md), decisions D1–D8 + D3-bis
-answered at STOP 1): telemetry consent dropped entirely (D1, ADR 0014
-retired, A141), the Feed's unread section folds as one (97, A142),
-Ctrl+A select-all over served rows + the Junk "Empty" button (107,
-D3-bis: Junk only — Trash awaits a permanent-delete capability, A143),
-platform-aware shortcuts (109, ⌫ deletes on macOS, A144 — the Air
-field proof due at STOP 2), our invitation answer made in another
-client reconciled onto the card (100, D5 "only our own", A145), the
+The eight backlog items marked "In progress"
+([plan](PLAN-INPROGRESS-2026-09.md)), delivered, field-validated and
+**shipped on `main` at `dcf5112`, CI GREEN (run 34404369730)**:
+telemetry consent dropped entirely (85, D1, ADR 0014 retired, A141),
+the Feed's unread section folds as one (97, A142), Ctrl+A select-all
+over served rows + the Junk "Empty" button, inline-confirmed (107,
+D3-bis: Junk only — Trash awaits a permanent-delete capability →
+DEBT, A143/A148), platform-aware shortcuts (109, ⌫ deletes on macOS,
+A144 — Air field proof still due), our invitation answer made in
+another client reconciled onto the card (100, D5, A145), the
 partial-OAuth-consent message localized with the typed code
 `missing_mail_scope` (86's certain half, A146), and the window opens
-maximized (114 — D7: a request, not a bug; A147). Early visual STOP
-passed (one wording fix: "Collapse all", the per-card vocabulary).
-Review: 10 findings, 7 fixed — the sharpest two: the Junk "Empty"
-would have deleted a live search's CROSS-FOLDER results, and one
-group-wide "freshest reply" starved per-occurrence answers of a
-recurring series. Awaiting: full gate, STOP 2, CI.
+maximized then remembers the size/position the user leaves (114, D7 +
+D7-bis, `tauri-plugin-window-state`, A147). Three field follow-ups
+from STOP 2 delivered the same day (window persistence, junk-empty
+confirmation, and a pre-existing offline-reply draft zombie — A148/
+A149). Review: 10 findings, 7 fixed. STILL OPEN: item 6 (invitation
+status from the card) is field-unverified — needs a live invitation
+accepted from another client; item 86's root (first-run OAuth
+asymmetry) awaits its measurement (D6).
 
 ## PLAN-BATCH-2026-09 — CLOSED 2026-09-08
 

@@ -830,6 +830,24 @@ E15a (2026-09-07).
 - **Reopens if**: the search control's drawing changes and one of the
   two copies is missed — a field report naming one screen only.
 
+### D-68 · The Trash cannot be emptied for real — no permanent-delete capability
+
+- **Fact (PLAN-INPROGRESS-2026-09, D3-bis, 2026-09-09)**: backlog 107
+  gave Junk an "Empty" gesture (junk → trash, the existing group
+  delete). The Trash got none: Wind's `delete` IS move-to-trash
+  (`mail-imap/src/lib.rs:1306`), so "Empty the trash" would be a
+  visible no-op. A real emptying needs a new permanent-delete
+  capability — IMAP `\Deleted` + EXPUNGE, the offline action queue,
+  the echoes — which no `MailServer` method exposes today (`Action`
+  has no permanent-delete variant).
+- **Reason for deferring**: the Chief Engineer's call at STOP 1
+  (*"Junk now, Trash as its own job (Recommended)"*) — the capability
+  is a job of its own (remote trait, queue, echoes, cross-account
+  scoping), out of proportion with the Junk gesture the beta asked
+  for.
+- **Reopens as a job when**: a tester asks to empty the trash, or the
+  permanent-delete capability is scheduled for its own reasons.
+
 ## Closed
 
 ### ~~D-4 · Focus trap of overlays~~ — closed 2026-09-08

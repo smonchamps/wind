@@ -1,9 +1,34 @@
 # PLAN-INPROGRESS-2026-09 — the backlog items marked "In progress"
 
+> **JOB CLOSED on 2026-09-09 — full field validation.** STOP 1 GO on
+> the eight Chief-Engineer decisions D1–D8 + D3-bis; STOP 2 round one field verdict
+> (workstation, real accounts): items 2,3,4,5,7 OK, item 6 untestable
+> without a live cross-client invitation, three field follow-ups
+> asked; STOP 2 round two verdict **"All ok, commit and push"** (window
+> size/position remembered, junk "Empty" inline confirmation, offline
+> reply leaves no draft). One commit `dcf5112` (39 files, +1158/−659),
+> **CI GREEN run 34404369730** (all seven legs — Windows x64/arm64,
+> macOS x64/arm64 clippy+tests, cargo audit, ui-v2 build, Node suites).
+> Review: 10 findings, 7 fixed, 3 accepted-and-recorded. System
+> A141–A149; ADR 0014 retired.
+>
+> **Kaizen (PLAN-KAIZEN-CLAUDE):** T1 ≈ **59.2 M** input equiv. (35.1 +
+> 24.1 M over the two session IDs a context reset split the job across;
+> 8.8 M of it in the review's 9 Sonnet agents). **W3 full gates: 7**
+> (four andons round one — fmt, dead doc links, maximized-window e2e
+> geometry ×1; and round two — language ratchet CE-abbreviation trap,
+> the junk-confirm banner overflow) — well over the ≤3 target: an
+> eight-item plan plus three field follow-ups is a *batch*, not a job,
+> the same T1/W3 blow-out the multi-item audits showed (kaizen D5).
+> **Quality guard: 0 KO on the delivered increments at both STOP 2
+> passes**; the three follow-ups were field-originated (two adjustments
+> + one pre-existing offline-reply bug), each fixed the same session.
+
 > Statement (Chief Engineer, 2026-09-09): *"Process Wind backlog items
 > marked as 'In Progress' in Notion's 'Backlog Wind' database."*
 
-Opened: 2026-09-09. Baseline: `a8f999f` (main, 0.21.0 published).
+Opened: 2026-09-09. Closed: 2026-09-09. Baseline: `a8f999f` (main,
+0.21.0 published). Delivery: `dcf5112`.
 Method: [WORKFLOW](WORKFLOW.md), [job](../.claude/skills/job/SKILL.md).
 
 ---
