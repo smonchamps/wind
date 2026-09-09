@@ -58,6 +58,12 @@ with the date. **No production code before the GO.**
   the runs by wave — one grouped RED for the wave, one grouped GREEN.
   The full gate is played only at the moments stated in Phase 3 — not
   at every increment.
+- **Any e2e run beyond ~60 s goes in the background** (kaizen D7): the
+  full suite and a grouped multi-spec wave run as background tasks,
+  the session goes on and announces the result when it lands. A single
+  targeted spec (13.5–19 s since wave 2) stays in the foreground. In
+  the 29/08–06/09 window, e2e in the foreground cost 173 min of the
+  320 min blocked — the largest single loss of the workflow.
 - **DC-D2**: every commit that touches the UI amends
   `docs/design/system.dc.html` in the **same commit** (journal A-n).
 - **Early visual STOP (UI)**: as soon as the first minimal TDD

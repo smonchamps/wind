@@ -61,3 +61,7 @@ cargo test --workspace --doc
 - **Never a CI wait in the foreground**: `git push` (the pre-push replays
   the gate) and `gh run watch` run in the background; the session
   announces the verdict when it lands.
+- **Nor an e2e wait beyond ~60 s** (kaizen D7): the full suite and a
+  grouped multi-spec wave run in the background, the session announces
+  the result; a single targeted spec stays in the foreground. This
+  rule is the same one as above, one command class wider.
