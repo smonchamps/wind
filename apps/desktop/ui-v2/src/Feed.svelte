@@ -222,6 +222,15 @@
   const ranks = $derived(
     new Map([...unread, ...groups.flatMap((g) => g.cards)].map((c, i) => [cardKey(c.row), i])),
   );
+  // Backlog 97: fold the WHOLE unread section as one — the compact
+  // overview the beta asked for. Per-card entries in the same map, so
+  // a manual fold afterwards still wins card by card; a folded card
+  // has no read witness (R10), so folding never marks anything read.
+  const allFolded = $derived(unread.length > 0 && unread.every((c) => isCollapsed(c)));
+  function toggleAllUnread() {
+    const fold = !allFolded;
+    for (const c of unread) replies[cardKey(c.row)] = fold;
+  }
   let openGroups = $state({});
 
   // R10 — the read witness: a node at the FOOT of every unread
@@ -422,7 +431,16 @@
            when everything is read — the Screener's checkmark says the work is done. -->
       <div class="row-section">
         <p class="rule-label" data-testid="feed-section-unread">{t('feed.sectionUnread')}</p>
-        {#if unread.length}<SectionSort value={sortUnread} onchange={(v) => (sortUnread = v)} />{/if}
+        {#if unread.length}
+          <!-- Backlog 97: the section-wide fold — the same bare
+               glyph+text button as the per-card fold, in the header. -->
+          <button type="button" class="bare fold-all" data-testid="feed-fold-all"
+                  aria-expanded={!allFolded}
+                  onclick={toggleAllUnread}>
+            <Icon name={allFolded ? 'unfold_more' : 'unfold_less'} />
+            {allFolded ? t('feed.unfoldAll') : t('feed.foldAll')}</button>
+          <SectionSort value={sortUnread} onchange={(v) => (sortUnread = v)} />
+        {/if}
       </div>
       {#if unread.length}
         {#each unread as card (cardKey(card.row))}

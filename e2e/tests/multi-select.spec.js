@@ -254,3 +254,63 @@ test('grouped delete: the rows join the trash', async () => {
     })
     .toBe(true);
 });
+
+// ------- Backlog 107 — select all, and empty the junk folder --------
+test('Ctrl+A checks every served row; Escape clears; typing is never hijacked', async () => {
+  await folder('inbox').click();
+  await expect(rows().first()).toBeVisible();
+  const n = await rows().count();
+  expect(n).toBeGreaterThan(1);
+  await page.keyboard.press('Control+a');
+  await expect(bar()).toContainText(`${n} selected`);
+  await expect(checked()).toHaveCount(n);
+  await page.keyboard.press('Escape');
+  await expect(bar()).toHaveCount(0);
+  // Inside a text field, Ctrl+A keeps its native meaning (select the
+  // text): the list must NOT light up.
+  await page.locator('[data-testid="search-field"]').click();
+  await page.keyboard.type('abc');
+  await page.keyboard.press('Control+a');
+  await expect(bar()).toHaveCount(0);
+  await page.keyboard.press('Escape');
+});
+
+test('the Junk head carries "Empty" — one click, the rows leave; the Trash does not (D3-bis)', async () => {
+  // Feed the junk folder through the product gesture: report the
+  // first Inbox row as spam.
+  await expect(rows().first()).toBeVisible();
+  await checkboxOf(0).click();
+  await page.locator('[data-testid="bar-spam"]').click();
+  await expect(toast()).toBeVisible();
+  await folder('junk').click();
+  await expect(rows().first()).toBeVisible();
+  const emptyButton = page.locator('[data-testid="empty-folder"]');
+  await expect(emptyButton).toBeVisible();
+  // A live search swaps the list for CROSS-FOLDER results: "Empty"
+  // must disappear — it may never act on those (review, angle C).
+  await page.locator('[data-testid="search-field"]').fill('message');
+  await expect(page.locator('[data-testid="row"]').first()).toBeVisible();
+  await expect(emptyButton).toHaveCount(0);
+  await page.locator('[data-testid="search-field"]').fill('');
+  await expect(emptyButton).toBeVisible();
+  // Irreversible: the first click ARMS a confirmation, it never
+  // deletes (field 2026-09-09). Cancel disarms, nothing left.
+  await emptyButton.click();
+  await expect(page.locator('[data-testid="empty-warn"]')).toBeVisible();
+  await expect(rows().first()).toBeVisible();
+  await page.locator('[data-testid="empty-cancel"]').click();
+  await expect(page.locator('[data-testid="empty-warn"]')).toHaveCount(0);
+  await expect(rows().first()).toBeVisible();
+  // Arm again, confirm: now the rows leave.
+  await emptyButton.click();
+  await page.locator('[data-testid="empty-confirm"]').click();
+  await expect(toast()).toContainText('deleted');
+  await expect(rows()).toHaveCount(0);
+  // No rows, no button — it never offers to empty nothing.
+  await expect(emptyButton).toHaveCount(0);
+  // D3-bis: the Trash head never offers "Empty" (delete IS
+  // move-to-trash; emptying the trash awaits its own capability).
+  await folder('trash').click();
+  await expect(rows().first()).toBeVisible();
+  await expect(page.locator('[data-testid="empty-folder"]')).toHaveCount(0);
+});

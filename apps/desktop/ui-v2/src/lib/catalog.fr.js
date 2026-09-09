@@ -122,6 +122,8 @@ export const FR = {
   // R10/R11 (CE texts, word for word).
   'feed.subtitle1': "Tous vos emails d'information sont regroupés ici.",
   'feed.subtitle2': 'Il vous suffit de les faire défiler pour les lire.',
+  'feed.foldAll': 'Tout replier',
+  'feed.unfoldAll': 'Tout déplier',
   'feed.sectionUnread': 'Non lus',
   'feed.sectionRead': 'Lus précédemment',
   // Field C5 (CE text, agreement settled as in D1).
@@ -200,8 +202,6 @@ export const FR = {
   'action.sendNow': 'Envoyer maintenant',
   'notice.sendInterrupted': 'La remise de « {subject} » est incertaine. Vérifiez les Envoyés avant de décider de renvoyer.{error}',
   'notice.update': 'Une mise à jour est disponible (version {version}).',
-  'notice.crash': "Wind a rencontré un problème lors d'une session précédente ({n} rapport(s) en attente). Rien n'est envoyé sans vous.",
-  'notice.telemetry': "Aider à améliorer Wind ? En cas de plantage, un rapport technique serait enregistré sur votre machine, jamais le contenu de vos mails. Vous choisissez ensuite de l'envoyer.",
   'notice.connection': 'Compte non reconnecté : {details}',
   'notice.scheduled': '« {subject} » partira {when}, si Wind est ouvert à ce moment-là.',
   'notice.uncertainMove': 'Le déplacement de {source} vers {destination} est incertain. Vérifiez les deux dossiers avant une nouvelle action.',
@@ -210,14 +210,14 @@ export const FR = {
   'notice.refusedActions': "{n} action n’a pas pu être exécutée. Vérifiez le message et le dossier concernés.|{n} actions n’ont pas pu être exécutées. Vérifiez les messages et les dossiers concernés.",
 
   // --- Shared actions -------------------------------------------------
+  'action.emptyFolder': 'Vider',
+  'junk.emptyConfirm': 'Vider les indésirables ? {n} conversation(s) partiront à la corbeille.',
+  'error.missingScope': "L'autorisation {provider} n'inclut pas l'accès au courrier. Relancez la connexion et cochez toutes les cases de l'écran d'autorisation, notamment la lecture et l'envoi des e-mails.",
   'action.resend': 'Renvoyer',
   'action.discard': 'Abandonner',
   'action.install': 'Installer',
   'action.later': 'Plus tard',
-  'action.openReports': 'Ouvrir le dossier des rapports',
   'action.dismiss': 'Ignorer',
-  'action.enable': 'Activer',
-  'action.noThanks': 'Non merci',
   'action.resume': 'Reprendre',
   'action.retry': 'Réessayer',
   'action.sync': 'Synchroniser',
@@ -313,7 +313,6 @@ export const FR = {
   'error.resend': 'Renvoi impossible : {err}',
   'error.discard': 'Abandon impossible : {err}',
   'error.update': 'Mise à jour impossible : {err}',
-  'error.opening': 'Ouverture impossible : {err}',
   'error.preference': 'Préférence non enregistrée : {err}',
   'error.save': 'Enregistrement impossible : {err}',
   'error.forward': 'Transfert impossible : {err}',
@@ -668,7 +667,10 @@ export const FR = {
 
   // --- Shortcuts (table D3, reference) -------------------------------
   "list.selectionKeyboard": "Ctrl+Espace coche ou décoche. Maj+Espace étend la sélection parmi les messages chargés. Tab déplace le focus ; Entrée ouvre. Échap annule la sélection.",
+  "list.selectionKeyboardMac": "⌘Espace coche ou décoche. Maj+Espace étend la sélection parmi les messages chargés. Tab déplace le focus ; Entrée ouvre. Échap annule la sélection.",
   "shortcut.key.check": "Ctrl+Espace",
+  "shortcut.key.mac.check": "⌘Espace",
+  "shortcut.key.mac.delete": "⌫",
   "shortcut.key.range": "Maj+Espace",
   "shortcut.key.tab": "Tab",
   "shortcut.gesture.check": "Cocher ou décocher le message ciblé sans l’ouvrir",

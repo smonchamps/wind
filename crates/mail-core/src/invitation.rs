@@ -62,8 +62,10 @@ pub struct InvitationRow {
 pub struct StoredInvitation {
     pub row: InvitationRow,
     pub revision: i64,
-    /// `accepte` | `provisoire` | `refuse` — the last reply sent through
-    /// the outbox. `None`: not yet answered from Wind.
+    /// `accepte` | `provisoire` | `refuse` — OUR latest known answer:
+    /// sent through the outbox, or seen on the wire (a REPLY carrying
+    /// the account's own address — backlog 100, D5; freshest wins).
+    /// `None`: no answer of ours known.
     pub reply: Option<String>,
     pub reply_epoch: Option<i64>,
 }
@@ -231,6 +233,14 @@ pub(crate) fn scheduling_state<'a>(
         return "superseded";
     }
     "active"
+}
+
+/// Does a REPLY cover this request's occurrence? Same key, or a
+/// series-level reply (`None`/empty key) covering every occurrence —
+/// the sibling of `scheduling_state`'s peer filter, where the empty
+/// key is cancel-specific; a reply has no such gate.
+pub(crate) fn reply_covers(request_key: &Option<String>, reply_key: &Option<String>) -> bool {
+    request_key == reply_key || reply_key.is_none() || reply_key.as_deref() == Some("")
 }
 
 fn same_scheduling_content(a: &InvitationRow, b: &InvitationRow) -> bool {

@@ -42,7 +42,7 @@ test.describe('v1 decor: one account, 200 messages', () => {
     // 200 messages, one thread in five: 160 conversations. The total has
     // left the nav (A29, W2-D4) — it is read on the perf line.
     await expect(page.locator('[data-testid="perf"]')).toContainText('160 conversations');
-    // No stray notice at launch (update/telemetry neutralized §7.5).
+    // No stray notice at launch (update neutralized §7.5).
     await expect(page.locator('[data-testid="slot-notice"]')).toHaveCount(0);
 
     await page.locator('[data-testid="row"]').first().click();

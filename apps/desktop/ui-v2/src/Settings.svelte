@@ -1,6 +1,8 @@
 <script>
   import { modal } from './lib/modal.js';
   import { imagePermissionsChanged } from './lib/image-permissions.js';
+  import { isMac } from './lib/platform.js';
+  import { connectionError } from './lib/auth-error.js';
   // Settings overlay in two panes (A13): on the left the rail of
   // GROUPS (the nav grammar of screen 02 — 36 px rows, active state
   // = surface + accent border + shadow), on the right the content of
@@ -92,6 +94,10 @@
   // only the GESTURES translate — keys c/r/f/e don't change from one
   // language to another (A15).
   const SHORTCUTS = ['c', 'r', 'f', 'e', 'delete', 'slash', 'escape', 'check', 'range', 'tab'];
+  // Backlog 109: two keys differ on a Mac keyboard — ⌫ replaces Del,
+  // ⌘Space replaces Ctrl+Space. Everything else reads the same.
+  const MAC_KEYS = { delete: 'shortcut.key.mac.delete', check: 'shortcut.key.mac.check' };
+  const shortcutKey = (r) => t(isMac() && MAC_KEYS[r] ? MAC_KEYS[r] : `shortcut.key.${r}`);
 
   let visible = $state(false);
   let panel = $state(null);
@@ -535,7 +541,7 @@
       if (await current.run('reconnect_account', { accountId: c.account_id })) onreconnect();
     } catch (err) {
       if (consent === current) {
-        reconnectionError = { id: c.account_id, text: t('settings.reconnectionFailed', { err }) };
+        reconnectionError = { id: c.account_id, text: connectionError(err, 'settings.reconnectionFailed', c.provider === 'gmail' ? 'Google' : 'Microsoft') };
       }
     } finally {
       if (consent === current) { reconnection = null; consentState = null; }
@@ -1310,7 +1316,7 @@
             <div class="rows" data-testid="settings-shortcuts">
               {#each SHORTCUTS as r (r)}
                 <div class="shortcut">
-                  <kbd>{t(`shortcut.key.${r}`)}</kbd>
+                  <kbd>{shortcutKey(r)}</kbd>
                   <span class="gesture">{t(`shortcut.gesture.${r}`)}</span>
                 </div>
               {/each}

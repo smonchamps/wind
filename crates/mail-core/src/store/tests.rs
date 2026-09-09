@@ -1701,6 +1701,150 @@ fn the_reply_is_logged_with_its_email_and_survives_the_rescan() {
     assert_eq!(store.outbox_to_send(account).unwrap().len(), 1);
 }
 
+/// Backlog 100 (D5): OUR reply made in another client comes back on
+/// the wire as a REPLY message carrying our address — the request card
+/// must show it. Somebody else's reply must never touch our status.
+#[test]
+fn our_reply_seen_on_the_wire_updates_the_request_card() {
+    let (store, id) = store_with_mailbox();
+    let account = test_account(&store);
+    store
+        .save_body_full(id, 1, "<p>x</p>", &[], Some(&project_invitation()))
+        .unwrap();
+
+    // A reply from ANOTHER attendee: the card stays unanswered.
+    let mut foreign = project_invitation();
+    foreign.method = "reply".into();
+    foreign.partstat = None;
+    foreign.attendee_address = Some("paul@contoso.com".into());
+    foreign.attendee_status = Some("accepte".into());
+    foreign.dtstamp_epoch = Some(150);
+    store
+        .save_body_full(id, 2, "<p>r</p>", &[], Some(&foreign))
+        .unwrap();
+    let stored = store.invitation(account, "INBOX", 1).unwrap().unwrap();
+    assert_eq!(stored.reply, None, "a stranger's reply is not ours");
+
+    // OUR reply (accepted in another client, synced back): the card says so.
+    let mut ours = foreign.clone();
+    ours.attendee_address = Some("Test@Exemple.fr".into()); // case must not matter
+    ours.attendee_status = Some("provisoire".into());
+    ours.dtstamp_epoch = Some(200);
+    store
+        .save_body_full(id, 3, "<p>r</p>", &[], Some(&ours))
+        .unwrap();
+    let stored = store.invitation(account, "INBOX", 1).unwrap().unwrap();
+    assert_eq!(stored.reply.as_deref(), Some("provisoire"));
+    assert_eq!(stored.reply_epoch, Some(200));
+}
+
+/// The freshest answer wins, wherever it was made: a NEWER reply from
+/// Wind is not overwritten by an older wire reply — and a newer wire
+/// reply replaces the Wind one.
+#[test]
+fn the_freshest_answer_wins_between_wind_and_the_wire() {
+    let (store, id) = store_with_mailbox();
+    let account = test_account(&store);
+    store
+        .save_body_full(id, 1, "<p>x</p>", &[], Some(&project_invitation()))
+        .unwrap();
+    store
+        .enqueue_invitation_reply(
+            crate::InvitationReplyTarget {
+                identity: &store.mailbox_identity(account, "INBOX").unwrap().unwrap(),
+                uid: 1,
+                revision: store
+                    .invitation(account, "INBOX", 1)
+                    .unwrap()
+                    .unwrap()
+                    .revision,
+            },
+            &reply_draft(),
+            "refuse",
+            1_000,
+        )
+        .unwrap();
+
+    // Older wire reply: the Wind answer stands.
+    let mut wire = project_invitation();
+    wire.method = "reply".into();
+    wire.partstat = None;
+    wire.attendee_address = Some("test@exemple.fr".into());
+    wire.attendee_status = Some("accepte".into());
+    wire.dtstamp_epoch = Some(500);
+    store
+        .save_body_full(id, 2, "<p>r</p>", &[], Some(&wire))
+        .unwrap();
+    let stored = store.invitation(account, "INBOX", 1).unwrap().unwrap();
+    assert_eq!(stored.reply.as_deref(), Some("refuse"));
+
+    // Newer wire reply: it takes over.
+    wire.dtstamp_epoch = Some(2_000);
+    store
+        .save_body_full(id, 3, "<p>r</p>", &[], Some(&wire))
+        .unwrap();
+    let stored = store.invitation(account, "INBOX", 1).unwrap().unwrap();
+    assert_eq!(stored.reply.as_deref(), Some("accepte"));
+    assert_eq!(stored.reply_epoch, Some(2_000));
+}
+
+/// A recurring series: our reply to occurrence A and our (fresher)
+/// reply to occurrence B each land on THEIR OWN occurrence's card —
+/// the freshest reply of the whole group must not starve the others
+/// (review, angle A).
+#[test]
+fn per_occurrence_replies_each_reach_their_own_card() {
+    // Both arrival orders: the fresher reply arriving FIRST is the
+    // trap — a single group-wide "freshest" would starve the older
+    // occurrence's reply forever.
+    for fresh_first in [false, true] {
+        let (store, id) = store_with_mailbox();
+        let account = test_account(&store);
+        let mut request_a = project_invitation();
+        request_a.occurrence_key = Some("utc:10".into());
+        let mut request_b = project_invitation();
+        request_b.occurrence_key = Some("utc:20".into());
+        store
+            .save_body_full(id, 1, "<p>a</p>", &[], Some(&request_a))
+            .unwrap();
+        store
+            .save_body_full(id, 2, "<p>b</p>", &[], Some(&request_b))
+            .unwrap();
+
+        let mut reply_a = project_invitation();
+        reply_a.method = "reply".into();
+        reply_a.partstat = None;
+        reply_a.attendee_address = Some("test@exemple.fr".into());
+        reply_a.occurrence_key = Some("utc:10".into());
+        reply_a.attendee_status = Some("refuse".into());
+        reply_a.dtstamp_epoch = Some(100);
+        let mut reply_b = reply_a.clone();
+        reply_b.occurrence_key = Some("utc:20".into());
+        reply_b.attendee_status = Some("accepte".into());
+        reply_b.dtstamp_epoch = Some(300);
+        let (first, second) = if fresh_first {
+            (&reply_b, &reply_a)
+        } else {
+            (&reply_a, &reply_b)
+        };
+        store
+            .save_body_full(id, 3, "<p>r</p>", &[], Some(first))
+            .unwrap();
+        store
+            .save_body_full(id, 4, "<p>r</p>", &[], Some(second))
+            .unwrap();
+
+        let a = store.invitation(account, "INBOX", 1).unwrap().unwrap();
+        let b = store.invitation(account, "INBOX", 2).unwrap().unwrap();
+        assert_eq!(
+            a.reply.as_deref(),
+            Some("refuse"),
+            "occurrence A keeps its own answer (fresh_first={fresh_first})"
+        );
+        assert_eq!(b.reply.as_deref(), Some("accepte"));
+    }
+}
+
 /// The row disappeared between display and click (purged, mailbox
 /// reset): NOTHING is sent — an email queued in front of a "not
 /// answered" card would invite a double send (review).

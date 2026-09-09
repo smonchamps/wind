@@ -1,7 +1,7 @@
 <script>
   // The notice slot (PLAN-UI-V2 §6, region A4): at the top, AT MOST
   // ONE notice at a time, by decreasing priority — send failure >
-  // update > crash > telemetry > drafts. The style is the Clarity
+  // update > scheduled sends. The style is the Clarity
   // signature; the send failure carries the alert border, it is the
   // only one.
   //

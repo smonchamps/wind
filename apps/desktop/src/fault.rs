@@ -122,9 +122,17 @@ impl From<mail_core::SendError> for CommandError {
 
 impl From<mail_auth::AuthError> for CommandError {
     fn from(err: mail_auth::AuthError) -> Self {
+        // Partial consent is the ONE auth failure the user can fix on
+        // the next screen (backlog 86, E6): its own code, so the desk
+        // says the catalogued sentence — the `app_location_readonly`
+        // convention (A140), never a substring match on the prose.
+        let code = match &err {
+            mail_auth::AuthError::MissingMailScope(_, _) => "missing_mail_scope",
+            _ => "auth",
+        };
         Self {
             message: err.to_string(),
-            code: Some("auth"),
+            code: Some(code),
             retryable: false,
             remote_limit: None,
         }

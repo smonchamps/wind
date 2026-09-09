@@ -50,8 +50,6 @@ const PROBES = [
   'markers_get',
   'names_get',
   'list_drafts',
-  'telemetry_pending',
-  'telemetry_consent_get',
 ];
 
 test('the first page of the list is requested before the startup probes', async () => {

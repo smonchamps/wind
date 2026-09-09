@@ -482,8 +482,10 @@ CREATE TABLE IF NOT EXISTS nettoyage_session (
 -- (save_body_full) or on open for a message from before the feature
 -- (write-back, adoption invariant 6.7 — never a mass migration).
 -- Envelope key, like `attachments`; the raw MIME is never stored.
--- `partstat` = our READ status from the REQUEST; `reponse` = our last
--- reply SENT via the outbox (D6) — two distinct truths. Epochs are
+-- `partstat` = our READ status from the REQUEST; `reponse` = our
+-- latest known ANSWER — sent via the outbox (D6), or reconciled from
+-- a wire REPLY carrying our own address (backlog 100 D5, freshest
+-- wins) — still distinct from `partstat`. Epochs are
 -- UTC; when a time cannot be resolved (all-day event, unknown TZID),
 -- the TEXT form is authoritative and the epoch stays NULL (guard D1:
 -- never a misleading conversion).
@@ -527,9 +529,11 @@ CREATE TABLE IF NOT EXISTS invitations (
 ";
 
 /// Writes (or replaces) a message's invitation row, PRESERVING our
-/// local reply: `reply`/`reply_epoch` are never touched here (D6)
-/// — the PARTSTAT reread from the message and the reply Wind sent are
-/// two distinct truths.
+/// local reply: `reply`/`reply_epoch` are never touched by THIS write
+/// (D6) — the PARTSTAT reread from the message never overwrites an
+/// answer. Since backlog 100 (D5) the column has a SECOND writer:
+/// `refresh_invitation_group` folds in our own answer seen on the
+/// wire (a REPLY carrying the account's address), freshest wins.
 fn write_invitation(
     conn: &Connection,
     mailbox_id: i64,
@@ -656,6 +660,75 @@ fn refresh_invitation_group(
     for (mailbox, uid, row) in &peers {
         let state = crate::invitation::scheduling_state(row, peers.iter().map(|(_, _, r)| r));
         update.execute(params![mailbox, uid, state, state == "cancelled"])?;
+    }
+    // Backlog 100 (D5): OUR answer seen ON THE WIRE — a REPLY carrying
+    // the account's own address (accepted in another client, synced
+    // back through Sent) — lands in `reponse`, the same slot as an
+    // answer sent from Wind: every reader (card, list chip) follows.
+    // The freshest answer wins, whichever side made it; the epochs
+    // compared are the REPLY's DTSTAMP against the local send time —
+    // both UTC, close enough for a human-scale "which came last".
+    // The common write is a REQUEST with no reply peer: no candidate,
+    // no account lookup — the block prices itself only when a reply
+    // actually sits in the group (review, efficiency).
+    let has_reply_peer = peers.iter().any(|(_, _, r)| {
+        r.method == "reply" && r.attendee_status.is_some() && r.dtstamp_epoch.is_some()
+    });
+    let own: Option<String> = if has_reply_peer {
+        conn.query_row(
+            "SELECT a.email FROM accounts a
+              WHERE a.id = (SELECT account_id FROM mailboxes WHERE id = ?1) AND a.email != ''",
+            params![mailbox_id],
+            |row| row.get(0),
+        )
+        .optional()?
+    } else {
+        None
+    };
+    if let Some(own) = own {
+        let ours: Vec<_> = peers
+            .iter()
+            .filter(|(_, _, r)| {
+                r.method == "reply"
+                    && r.attendee_status.is_some()
+                    && r.dtstamp_epoch.is_some()
+                    && r.attendee_address
+                        .as_deref()
+                        .is_some_and(|a| a.trim().eq_ignore_ascii_case(own.trim()))
+            })
+            .map(|(_, _, r)| r)
+            .collect();
+        if !ours.is_empty() {
+            let mut set_reply = conn.prepare(
+                "UPDATE invitations SET revision = revision + 1, reponse = ?3, reponse_epoch = ?4
+                  WHERE mailbox_id = ?1 AND uid = ?2
+                    AND (reponse IS NOT ?3 OR reponse_epoch IS NOT ?4)
+                    AND (reponse_epoch IS NULL OR reponse_epoch < ?4)",
+            )?;
+            for (mailbox, uid, row) in &peers {
+                if row.method != "request" {
+                    continue;
+                }
+                // The freshest of OUR replies covering THIS request's
+                // occurrence — never one group-wide winner (a fresher
+                // reply to another occurrence must not starve this
+                // one; review, angle A).
+                let best = ours
+                    .iter()
+                    .filter(|r| {
+                        crate::invitation::reply_covers(&row.occurrence_key, &r.occurrence_key)
+                    })
+                    .max_by_key(|r| r.dtstamp_epoch);
+                if let Some(reply) = best {
+                    set_reply.execute(params![
+                        mailbox,
+                        uid,
+                        reply.attendee_status,
+                        reply.dtstamp_epoch
+                    ])?;
+                }
+            }
+        }
     }
     Ok(())
 }

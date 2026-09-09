@@ -29,7 +29,6 @@ mod instance;
 mod poll;
 mod relocation;
 mod restore;
-mod telemetry;
 mod trace;
 mod watcher;
 mod whats_new;
@@ -366,16 +365,23 @@ fn main() {
         cadence: Arc::new(Mutex::new(poll::new_cadence())),
         commands: Arc::new(Mutex::new(())),
     };
-    let result = tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_dialog::init());
+    // Backlog 114 (D7-bis): the window's size and position are restored
+    // at creation and saved at close. First launch, no saved state →
+    // the config's `maximized` wins; after the user resizes, their
+    // geometry is remembered (maximized included). NOT under the
+    // harness (`WIND_DB_PATH`): the e2e suite pins the window size to
+    // compare pane widths and windowed-list geometry, and a persisted
+    // state across the shared WebView2 profile would fight that pin.
+    if std::env::var("WIND_DB_PATH").is_err() {
+        builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
+    }
+    let result = builder
         .manage(state)
-        // Install the panic hook and load consent BEFORE everything
-        // else: an early crash must be capturable (if the user has
-        // consented). Never touches the database (ADR 0014).
         .setup(|app| {
-            telemetry::init(app);
             // PLAN-AUDIT-V1 review: the ONLY call to `db_path` that
             // does I/O (folder created, path memorized) happens here,
             // on the main thread before the window — never in the
@@ -514,11 +520,6 @@ fn main() {
             commands::whats_new_ack,
             commands::lang_get,
             commands::lang_set,
-            telemetry::telemetry_consent_get,
-            telemetry::telemetry_consent_set,
-            telemetry::telemetry_pending,
-            telemetry::telemetry_open_folder,
-            telemetry::telemetry_selftest_panic,
         ])
         .run(tauri::generate_context!());
     if let Err(err) = result {

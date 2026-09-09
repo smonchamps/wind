@@ -419,11 +419,14 @@ async fn add_oauth_account(
     // unreadable horizon after consent would leave an account created
     // under a gesture that failed.
     validate_horizon(horizon.as_deref())?;
+    // The closure keeps the TYPED error: `From<AuthError>` gives the
+    // partial-consent failure its stable code (fault.rs, E6).
     let account = tauri::async_runtime::spawn_blocking(move || {
-        Authenticator::from_env(provider)
-            .map_err(|err| err.to_string())?
-            .authenticate_interactive_controlled(declared_email.as_deref(), None, &control)
-            .map_err(|err| err.to_string())
+        Authenticator::from_env(provider)?.authenticate_interactive_controlled(
+            declared_email.as_deref(),
+            None,
+            &control,
+        )
     })
     .await
     .map_err(|err| err.to_string())??;
@@ -495,11 +498,13 @@ pub async fn reconnect_account(
     let declared =
         (provider.account_kind != mail_auth::GOOGLE.account_kind).then(|| account.email.clone());
     let expected = account.email.clone();
+    // Typed error kept, as in `add_oauth_account` (fault.rs, E6).
     let session = tauri::async_runtime::spawn_blocking(move || {
-        Authenticator::from_env(provider)
-            .map_err(|err| err.to_string())?
-            .authenticate_interactive_controlled(declared.as_deref(), Some(&expected), &control)
-            .map_err(|err| err.to_string())
+        Authenticator::from_env(provider)?.authenticate_interactive_controlled(
+            declared.as_deref(),
+            Some(&expected),
+            &control,
+        )
     })
     .await
     .map_err(|err| err.to_string())??;

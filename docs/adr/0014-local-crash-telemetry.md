@@ -1,5 +1,12 @@
 # ADR 0014 — Crash telemetry: local, opt-in, no content
 
+> **RETIRED 2026-09-09** (PLAN-INPROGRESS-2026-09, Chief Engineer
+> decision D1 on backlog item 85): the consent notice nagged the beta
+> testers for a feature whose reports were local-only and never sent.
+> The whole feature is removed — `telemetry.rs`, the five commands,
+> the notice, `mail-core`'s `crash.rs`. The decisions below stay as
+> the record of what existed between 0.10 and 0.21.
+
 Date: 2026-07-26 · Status: accepted — **validated in the field the same
 day**: a self-test panicked with a fake address in the message, and the
 `crash-*.json` written on the real machine did not carry it. The field
@@ -50,10 +57,10 @@ Reconnaissance done on the code, three facts framed the decision:
 
 ## Architecture — the project's pattern
 
-- **Pure, in `mail-core`** ([`crash.rs`](../../crates/mail-core/src/crash.rs)):
+- **Pure, in `mail-core`** (`crash.rs`, removed 2026-09-09):
   `redact(RawPanic) -> CrashReport` drops the message. Zero dependency,
   zero I/O. This is the proven core.
-- **Platform, in the desktop app** ([`telemetry.rs`](../../apps/desktop/src/telemetry.rs)):
+- **Platform, in the desktop app** (`telemetry.rs`, removed 2026-09-09):
   the panic hook, consent, writing the file, the commands.
 
 **Two hard rules, drawn from the reconnaissance:**

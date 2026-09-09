@@ -45,7 +45,7 @@ const root = path.resolve(import.meta.dirname, '..');
 const ARCHIVES = 120_000;
 const INBOX = 2_000;
 
-buildV2(root, { seams: true });
+buildV2(root, { seams: true, windowOverride: { maximized: false } });
 
 // --- Seeded database ---------------------------------------------------
 const db = path.join(root, 'target', 'e2e', 'measure-scroll.db');

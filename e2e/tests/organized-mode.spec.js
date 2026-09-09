@@ -126,6 +126,56 @@ test('the toggle recomposes the nav, the Feed serves the routed senders, and the
   await expect(page.locator('[data-testid="row"]')).toHaveCount(0);
 });
 
+// ------- Backlog 97 — fold the whole Unread section as one ----------
+test('fold-all folds every unread card — and a folded card never marks itself read', async () => {
+  // The dwell seam is FROZEN long for the whole test: the cards spend
+  // unfolded moments before the fold and after the round trip, and a
+  // short dwell would mark those — the delta below must isolate the
+  // FOLDED walk. The witness mechanism's non-vacancy (a short dwell
+  // does mark) is proven next door: feed-read-dwell.spec.js and the
+  // "cards read down to the bottom" walk below.
+  await page.evaluate(() => { window.__e2eFeedDwell = 60000; });
+  await page.locator('[data-testid="nav-folder"][data-category="feed"]').click();
+  const scene = page.locator('[data-testid="feed"]');
+  const cards = page.locator('[data-testid="feed-card"]');
+  await expect(cards.first()).toBeVisible();
+  // Rendered cards = the UNREAD section (read ones group folded); the
+  // earlier tests may already have marked a few (production dwell) —
+  // the invariant proven here is the DELTA: a folded walk marks none.
+  const unreadBefore = await cards.count();
+  expect(unreadBefore).toBeGreaterThan(1);
+
+  // Fold all: every card collapses onto its subject line (no iframe).
+  await page.locator('[data-testid="feed-fold-all"]').click();
+  await expect(page.locator('[data-testid="feed-card"] iframe')).toHaveCount(0);
+
+  // Walk the whole scene WHILE FOLDED: nothing may mark itself read.
+  await scene.evaluate(async (el) => {
+    for (let y = 0; y <= el.scrollHeight; y += 150) {
+      el.scrollTop = y;
+      await new Promise((r) => setTimeout(r, 30));
+    }
+    el.scrollTop = 0;
+  });
+  await page.waitForTimeout(400);
+
+  // The service re-reads the truth on a folder round trip: the unread
+  // section still counts the same cards (and they arrive unfolded
+  // again — the fold is session state, R10 owns the default).
+  await page.locator('[data-testid="nav-folder"][data-category="paper_trail"]').click();
+  await page.locator('[data-testid="nav-folder"][data-category="feed"]').click();
+  await expect(cards.first()).toBeVisible();
+  await expect(cards).toHaveCount(unreadBefore);
+
+  // The toggle proves both directions: fold all, unfold all — the
+  // first card's body is back. (From here the read witnesses are live
+  // again; the next tests mark cards read on purpose.)
+  await page.locator('[data-testid="feed-fold-all"]').click();
+  await expect(page.locator('[data-testid="feed-card"] iframe')).toHaveCount(0);
+  await page.locator('[data-testid="feed-fold-all"]').click();
+  await expect(cards.first().locator('iframe')).toHaveCount(1);
+});
+
 test('"Move to…" routes the WHOLE sender — the ⋯ of the cards and the thread bar', async () => {
   // Everything is in the Feed (previous test) ; the ⋯ of a card sends
   // its sender to the Paper trail — what the user SEES: the menu,

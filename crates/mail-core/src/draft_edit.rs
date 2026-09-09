@@ -115,15 +115,17 @@ impl Store {
             "UPDATE outbox SET send_at_epoch = ?1, edit_token = ?2 WHERE id = ?3",
             params![due, token, id],
         )?;
+        // The remote mirror's tombstone stays epoch-gated: we only claim
+        // to have superseded the version we actually snapshotted.
         tx.execute("INSERT OR IGNORE INTO draft_tombstones (account_id, remote_uid) SELECT account_id, remote_uid FROM drafts WHERE id = ?1 AND incarnation = ?2 AND updated_epoch = ?3 AND remote_uid IS NOT NULL", params![snapshot.source, snapshot.draft.incarnation, snapshot.draft.updated_epoch])?;
-        tx.execute(
-            "DELETE FROM drafts WHERE id = ?1 AND incarnation = ?2 AND updated_epoch = ?3",
-            params![
-                snapshot.source,
-                snapshot.draft.incarnation,
-                snapshot.draft.updated_epoch
-            ],
-        )?;
+        // The LOCAL draft, though, is removed by its id alone (field
+        // 2026-09-09): the send is the session's final word, so the
+        // draft it owns must go whatever its epoch has since become —
+        // an epoch gate here orphaned it into a zombie whose token was
+        // just deleted, and every reopen then answered "stale".
+        if let Some(source) = snapshot.source {
+            tx.execute("DELETE FROM drafts WHERE id = ?1", [source])?;
+        }
         tx.execute("DELETE FROM draft_edit WHERE token = ?1", [token])?;
         tx.commit()?;
         Ok(id)
@@ -660,6 +662,122 @@ mod tests {
             .unwrap();
         assert_eq!(store.draft(saved.id).unwrap().unwrap().reply_to_uid, None);
         assert!(store.draft_edit_attachments("reply").unwrap().is_empty());
+    }
+
+    /// Field 2026-09-09 (offline): reply to a message, click send
+    /// immediately. The reply session opens EMPTY (no source draft),
+    /// autosaves once into a fresh draft, then the send consumes it —
+    /// the freshly created `drafts` row must be gone, never left as a
+    /// zombie beside the queued send.
+    #[test]
+    fn a_fresh_reply_sent_immediately_leaves_no_draft_behind() {
+        let mut server = crate::test_support::FakeServer::new(false);
+        server.add_with_body(1, "parent", "body");
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("reply@example.com", "gmail")
+            .unwrap();
+        crate::SyncEngine::default()
+            .sync(&mut server, &mut store, account, "INBOX")
+            .unwrap();
+        let identity = store.mailbox_identity(account, "INBOX").unwrap().unwrap();
+        // The reply opens on an empty session, then freezes the reply
+        // headers (finish_reply_context).
+        store
+            .begin_draft_edit("reply", account, None, None, None)
+            .unwrap();
+        store.set_draft_edit_reply("reply", &identity, 1).unwrap();
+        // The one autosave the send triggers (settleEdits + saveNow).
+        let content = DraftContent {
+            body: "My reply",
+            reply_to_uid: Some(1),
+            reply_to_mailbox: Some("INBOX"),
+            ..Default::default()
+        };
+        let saved = store
+            .save_draft_edit("reply", account, content)
+            .unwrap()
+            .unwrap();
+        assert!(
+            store.draft(saved.id).unwrap().is_some(),
+            "the autosave persisted a draft"
+        );
+        // The immediate send consumes the exact edited version.
+        let message = crate::compose(
+            "reply@example.com",
+            "sender@example.com",
+            "",
+            "",
+            "Re: parent",
+            "My reply",
+            Some("<parent@example.com>"),
+        )
+        .unwrap();
+        store
+            .enqueue_draft_edit("reply", account, &message, None)
+            .unwrap();
+        // The zombie: the freshly created draft must not survive the send.
+        assert_eq!(
+            store.draft(saved.id).unwrap(),
+            None,
+            "the sent reply left a draft behind"
+        );
+        let remaining: i64 = store
+            .conn()
+            .query_row("SELECT COUNT(*) FROM drafts", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(remaining, 0, "no draft row remains after the send");
+    }
+
+    /// The field zombie's mechanism (2026-09-09): the source draft's
+    /// `updated_epoch` drifts from the session snapshot between the
+    /// save and the send (a second autosave, a mirror touch). The
+    /// consume must still remove the draft the session owns — a
+    /// gate on the epoch orphans it, and the now-tokenless leftover
+    /// then answers every reopen with "stale".
+    #[test]
+    fn a_send_consumes_its_source_draft_even_if_its_epoch_drifted() {
+        let (store, draft) = fixture();
+        begin(&store, &draft);
+        let saved = store
+            .save_draft_edit(
+                "test",
+                draft.account_id,
+                DraftContent {
+                    body: "edited",
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+            .unwrap();
+        // A drift: the drafts row moves on after the session's snapshot
+        // was frozen (the base_epoch in draft_edit still reads the old
+        // value).
+        store
+            .conn()
+            .execute(
+                "UPDATE drafts SET updated_epoch = updated_epoch + 5 WHERE id = ?1",
+                [saved.id],
+            )
+            .unwrap();
+        let message = crate::compose(
+            "edit@example.com",
+            "to@example.com",
+            "",
+            "",
+            "subject",
+            "edited",
+            None,
+        )
+        .unwrap();
+        store
+            .enqueue_draft_edit("test", draft.account_id, &message, None)
+            .unwrap();
+        assert_eq!(
+            store.draft(saved.id).unwrap(),
+            None,
+            "the consumed draft survived the epoch drift — the field zombie"
+        );
     }
 
     #[test]

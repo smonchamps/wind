@@ -1098,8 +1098,6 @@ package, look at the directory's timestamp before suspecting the code.
 | [`scripts/verify-release.ps1`](../scripts/verify-release.ps1) | The §2.10 verification of the PUBLIC release — assets, BOM, keys, signatures verified by `release-verify`, attestations, URLs that resolve; `-Structural` = explicitly incomplete |
 | [`scripts/release-lib.mjs`](../scripts/release-lib.mjs) | The release chain's decisions (attestation, promotion rule) in one file proven by `node --test` |
 | [`tools/release-verify`](../tools/release-verify/src/main.rs) | Cryptographic proof of a channel with the updater's own minisign implementation (B31) |
-| [`crates/mail-core/src/crash.rs`](../crates/mail-core/src/crash.rs) | PURE redaction of a crash report — discards the message (PII) (ADR 0014) |
-| [`apps/desktop/src/telemetry.rs`](../apps/desktop/src/telemetry.rs) | Panic hook, file-based consent, local report write (ADR 0014) |
 | [`spikes/ui-socle-v2/`](../spikes/ui-socle-v2/RAPPORT.md) | Tie-breaking spike for the UI v2 foundation — evidence for ADR 0015, **throwaway** |
 | [`spikes/global-lock/`](../spikes/global-lock/REPORT.md) | The commands' lock under a 10 MB sanitize and a 25 MiB attach — evidence for ADR 0045's unlocked work, **throwaway** |
 | [`spikes/feed-memory/`](../spikes/feed-memory/REPORT.md) | Feed memory options A/B/C measured on the arm64 workstation (D-53, Lot 5 E15b) — none under 200 MB, **throwaway** |

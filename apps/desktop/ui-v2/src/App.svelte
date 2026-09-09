@@ -23,6 +23,7 @@ import { invalidateViews } from './lib/views.svelte.js';
   } from './lib/widths.svelte.js';
   import { since, whenLong } from './lib/when.js';
   import { mixedView } from './lib/mailbox.js';
+  import { isMac } from './lib/platform.js';
   import Nav from './Nav.svelte';
   import List from './List.svelte';
   import Screener from './Screener.svelte';
@@ -200,8 +201,6 @@ import { invalidateViews } from './lib/views.svelte.js';
   let refusalNotice = $state(null);
   let connectionNotice = $state(null);
   let updateNotice = $state(null);
-  let crashNotice = $state(null);
-  let telemetryNotice = $state(null);
   // R2 (PLAN-RETOURS-6, D2): the scheduled send is seen and cancelled
   // from here — informational, so LAST in priority (an incident takes
   // precedence).
@@ -212,7 +211,7 @@ import { invalidateViews } from './lib/views.svelte.js';
     actions: [{ label: t('sync.details'), do: () => settings.open() }],
   } : null);
   const notice = $derived(
-    sendNotice ?? refusalNotice ?? connectionNotice ?? syncIssueNotice ?? updateNotice ?? crashNotice ?? telemetryNotice ?? scheduledNotice,
+    sendNotice ?? refusalNotice ?? connectionNotice ?? syncIssueNotice ?? updateNotice ?? scheduledNotice,
   );
 
   // --- Progress line (§6): at most ONE ------------------------
@@ -813,42 +812,6 @@ import { invalidateViews } from './lib/views.svelte.js';
     if (version) call('whats_new_ack', { version }).catch(() => {});
   }
 
-  // 3 and 4. Crash telemetry (ADR 0014): explicit opt-in, off by
-  //    default, local reports — nothing is sent without the user.
-  async function checkTelemetry() {
-    try {
-      const reports = await call('telemetry_pending');
-      if (reports > 0) {
-        crashNotice = {
-          icon: 'report',
-          text: t('notice.crash', { n: reports }),
-          actions: [
-            { label: t('action.openReports'), primary: true, do: async () => {
-              await call('telemetry_open_folder').catch((err) => flash(t('error.opening', { err })));
-            } },
-            { label: t('action.dismiss'), do: () => { crashNotice = null; } },
-          ],
-        };
-      }
-      const consent = await call('telemetry_consent_get');
-      if (consent === 'unset') {
-        const decide = async (enabled) => {
-          telemetryNotice = null;
-          await call('telemetry_consent_set', { enabled })
-            .catch((err) => flash(t('error.preference', { err })));
-        };
-        telemetryNotice = {
-          icon: 'volunteer_activism',
-          text: t('notice.telemetry'),
-          actions: [
-            { label: t('action.enable'), primary: true, do: () => decide(true) },
-            { label: t('action.noThanks'), do: () => decide(false) },
-          ],
-        };
-      }
-    } catch { /* no telemetry available: no notice, no noise */ }
-  }
-
   // --- Drafts in the list (PLAN-BROUILLONS) --------------------------
   // Probed like the rest — the port remains poll-based (R0-S5), no new
   // channel. The probe feeds the Drafts folder AND the mention on the
@@ -1109,7 +1072,6 @@ import { invalidateViews } from './lib/views.svelte.js';
     setTimeout(backfillBodies, 3000);
     checkUpdate();
     checkWhatsNew();
-    checkTelemetry();
     probeDrafts();
     // R1 — the sync cycle: AFTER the first renders (the list is
     // usable before, "envelopes first"); never blocking. The startup
@@ -1299,6 +1261,12 @@ import { invalidateViews } from './lib/views.svelte.js';
   // In an input field, letters go back to being letters — only Escape
   // keeps a meaning (leave the field, without discarding the draft).
   // s (star) and v (move) follow D2: cut at the toggle.
+  // ONE definition of "an editable surface" (input, textarea, or the
+  // composer's contenteditable body — the bug class of "Delete deleted
+  // the conversation while typing"): every keyboard guard reads it here.
+  const editableTarget = (target) => target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || target.isContentEditable;
   function onKey(event) {
     // Backlog 98: Ctrl+F (⌘F) is the universal "find" and WebView2
     // ships no find bar — it lands on the product's search: the
@@ -1319,6 +1287,15 @@ import { invalidateViews } from './lib/views.svelte.js';
       target?.select?.();
       return;
     }
+    // Backlog 107: Ctrl+A (⌘A) outside a text field checks every
+    // served row — inside a field, the native select-all is sacred.
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
+        && (event.key === 'a' || event.key === 'A')) {
+      if (editableTarget(event.target) || modalOpen()) return;
+      event.preventDefault();
+      list?.selectAllServed();
+      return;
+    }
     if (modalOpen()) return;
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     // The composer's rich editor (PLAN-COMPOSITION-HTML) is a
@@ -1327,9 +1304,7 @@ import { invalidateViews } from './lib/views.svelte.js';
     // "e" or Delete in the body triggered the global shortcuts
     // (Delete used to delete the selected conversation while typing —
     // seen at e2e).
-    const typing = event.target instanceof HTMLInputElement
-      || event.target instanceof HTMLTextAreaElement
-      || event.target.isContentEditable;
+    const typing = editableTarget(event.target);
     if (typing) {
       if (event.key === 'Escape') {
         if (event.target === searchField) search = '';
@@ -1355,7 +1330,12 @@ import { invalidateViews } from './lib/views.svelte.js';
         if (list?.selecting()) list.act('archive');
         else if (selectedRow) advanceAfter(selectedRow, archive);
         break;
+      // Backlog 109: on macOS, ⌫ (Backspace) deletes — Mail.app's
+      // gesture, "Suppr" does not exist on a Mac keyboard. Never on
+      // Windows, where Backspace means nothing here.
+      case 'Backspace':
       case 'Delete':
+        if (event.key === 'Backspace' && !isMac()) return;
         if (list?.selecting()) list.act('delete');
         else if (selectedRow) advanceAfter(selectedRow, deleteConversation);
         break;

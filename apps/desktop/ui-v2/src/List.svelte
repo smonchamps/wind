@@ -13,6 +13,7 @@
   // Source change = new generation: in-flight pages from the previous
   // source are discarded on arrival, never mixed in.
   import Icon from './Icon.svelte';
+  import { isMac } from './lib/platform.js';
   import Menu from './Menu.svelte';
   import { tick, untrack } from 'svelte';
   import { SvelteMap } from 'svelte/reactivity';
@@ -631,6 +632,8 @@
       // gesture on rows no longer visible would be a trap (D4: the
       // selection is always in plain sight).
       clearSelection();
+      // An armed "Empty" confirmation never carries to another folder.
+      emptyConfirm = false;
       // The first page is re-measured PER source (review 2026-08-20):
       // fixed at the very first, `snapshot().firstPageMs` would have
       // lied to the benches — the startup status, itself, is already
@@ -948,6 +951,37 @@
   export function cancelSelection() {
     if (!gestureInProgress) clearSelection();
   }
+  // Backlog 107: Ctrl+A (⌘A) checks every SERVED row — the §2.6
+  // refusal stands: the selection lives in what is loaded, never "the
+  // whole folder". Drafts are local objects, the batch bar's gestures
+  // don't apply to them.
+  export function selectAllServed() {
+    if (gestureInProgress || category === 'drafts') return;
+    for (const l of orderedRows()) checkedRows.set(key(l), l);
+    anchor = null;
+  }
+  // Backlog 107 (D3-bis): "Empty" on the Junk head — the existing
+  // all-or-nothing group delete over the served rows (junk → trash).
+  // The Trash gets no such button: delete IS move-to-trash, emptying
+  // it for real awaits the permanent-delete capability.
+  // Backlog 107 (D3-bis): the "Empty" gesture waits for a confirming
+  // click before it deletes — irreversible acts never leave on the
+  // first click (the Compose R3 / account-removal rule).
+  let emptyConfirm = $state(false);
+  async function emptyServed() {
+    // A live search swaps orderedRows() for the CROSS-FOLDER results
+    // (review, angle C): "Empty" must never act on those — the button
+    // hides too, but the guard is the truth.
+    if (gestureInProgress || results !== null) return;
+    gestureInProgress = true;
+    try {
+      await ongroup('delete', orderedRows());
+    } finally {
+      emptyConfirm = false;
+      clearSelection();
+      gestureInProgress = false;
+    }
+  }
   // The bulk gesture: the App acts on the batch's SNAPSHOT; on
   // return, only that batch gets unchecked — a row checked during the
   // flight (blocked today, but the guard doesn't rely on that) would
@@ -1113,7 +1147,9 @@
 
 
 <section class="column" class:center={center} aria-label={t('list.aria')} data-testid="list">
-  <span id="list-selection-help" class="keyboard-help">{t('list.selectionKeyboard')}</span>
+  <!-- Backlog 109: the help speaks the keyboard actually in front of
+       the user (⌘ on a Mac, Ctrl elsewhere). -->
+  <span id="list-selection-help" class="keyboard-help">{t(isMac() ? 'list.selectionKeyboardMac' : 'list.selectionKeyboard')}</span>
   <!-- UI v3, E1 (CE verdict 2026-08-16): the banner of the Classic
        mockup — the current mailbox's name, ALONE ("Mark all as read"
        ruled out). The mailbox.* keys are the nav's own. -->
@@ -1150,9 +1186,33 @@
         <span class="glyph-title" aria-hidden="true"><Icon name="inbox" size={26} /></span>{t(mailboxLabelKey('inbox'))}</h2>
     </header>
   {:else}
-    <header class="banner" data-testid="list-title">
-      <!-- RETOURS-13 R3: the label comes out of THE shared rule. -->
-      <h1>{t(mailboxLabelKey(category))}</h1>
+    <header class="banner" data-testid="list-title" class:confirming={emptyConfirm}>
+      <!-- Backlog 107 (D3-bis): the expected gesture, junk only — and
+           never over a search's cross-folder results. Emptying is
+           irreversible, so it never leaves on the first click: an
+           inline confirmation, the Compose R3 grammar (field
+           2026-09-09). Confirming REPLACES the title: the 52 px banner
+           has no room for the title and the confirmation both, and the
+           overflowing button used to land under the reading pane. -->
+      {#if emptyConfirm}
+        <span class="warn-empty" data-testid="empty-warn">{t('junk.emptyConfirm', { n: total })}</span>
+        <button type="button" class="btn-empty danger" data-testid="empty-confirm"
+                disabled={gestureInProgress}
+                onclick={emptyServed}>
+          <Icon name="delete" size={16} />{t('action.emptyFolder')}</button>
+        <button type="button" class="btn-empty" data-testid="empty-cancel"
+                disabled={gestureInProgress}
+                onclick={() => (emptyConfirm = false)}>{t('action.cancel')}</button>
+      {:else}
+        <!-- RETOURS-13 R3: the label comes out of THE shared rule. -->
+        <h1>{t(mailboxLabelKey(category))}</h1>
+        {#if category === 'junk' && total > 0 && results === null}
+          <button type="button" class="btn-empty" data-testid="empty-folder"
+                  disabled={gestureInProgress}
+                  onclick={() => (emptyConfirm = true)}>
+            <Icon name="delete" size={16} />{t('action.emptyFolder')}</button>
+        {/if}
+      {/if}
     </header>
   {/if}
   <!-- A83: the spacing notch is set AS A TOKEN on the frame — the
@@ -1757,6 +1817,30 @@
      from the header's grammar. */
   .banner-selection { gap:4px; }
   .banner-selection h1 { font-size:14px; }
+  /* Backlog 107: the junk head's "Empty" — the bare glyph+text
+     grammar of the Feed's fold button, sized for the 52 px banner. */
+  .btn-empty {
+    flex:none; height:32px; padding:0 10px;
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:12px; color:var(--ink2); background:none;
+    border:1px solid transparent; border-radius:var(--r-control);
+    cursor:pointer; white-space:nowrap;
+  }
+  .btn-empty:hover:not(:disabled) { background:var(--sel); color:var(--ink); }
+  .btn-empty:disabled { opacity:.55; cursor:default; }
+  /* The confirming state (field 2026-09-09): the warning in the alert
+     hue, the confirm button carries it — the Compose R3 grammar. The
+     warning SHRINKS (min-width:0 + ellipsis) so the two buttons always
+     hold their place inside the list pane — an overflowing button once
+     landed under the reading pane and could not be clicked. */
+  .banner.confirming { gap:8px; }
+  .warn-empty {
+    flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    font-size:12px; color:var(--alert); font-weight:600;
+  }
+  .banner.confirming .btn-empty { flex:none; }
+  .btn-empty.danger { color:var(--alert); }
+  .btn-empty.danger:hover:not(:disabled) { background:var(--alert); color:var(--bg); }
   .btn-bar {
     flex:none; width:32px; height:32px; padding:0;
     display:inline-flex; align-items:center; justify-content:center;

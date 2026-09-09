@@ -47,6 +47,12 @@ tauri-plugin-updater = "=2.11.0"
 # Seule exception au « pilote depuis Rust » : la boite de dialogue est
 # un geste de la webview — capability limitee a dialog:allow-open.
 tauri-plugin-dialog = "2"
+# Window size and position remembered across launches (backlog 114,
+# D7-bis): the plugin restores the saved state at window creation and
+# saves it at close. On the very first launch no state exists, so the
+# config applies (maximized). Driven from Rust (no command exposed to
+# the JS). Skipped under the e2e harness (main.rs).
+tauri-plugin-window-state = "2"
 # Espace disque disponible (garde de l'ADR 0010 §4). Dans l'app et non
 # dans mail-core : interroger le systeme de fichiers est de l'I/O de
 # plateforme, la DECISION (disk_shortfall) reste pure dans le coeur.
@@ -63,7 +69,7 @@ same-file = "1"
 # compilation ni feature de plus, et pas de dependance windows-sys directe.
 rfd = { version = "0.17", default-features = false }
 # Liens du corps vers le navigateur SYSTEME (open_link) : ShellExecuteW
-# bien emballe, la ou `explorer` (patron de telemetry_open_folder) est
+# bien emballe, la ou `explorer` (l'ancien patron d'ouverture de dossier) est
 # fait pour des dossiers, pas des URL. Le schema est valide en Rust
 # AVANT l'appel — la garde vit ici, pas dans l'UI.
 # `shellexecute-on-windows` n'est PAS decoratif (audit 2026-09-01) : sans

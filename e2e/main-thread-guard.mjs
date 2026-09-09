@@ -48,10 +48,7 @@ const sources = path.join(root, 'apps', 'desktop', 'src');
 // - open_link: DETACHED ShellExecuteW (open::that_detached) — true
 //   ONLY with the `shellexecute-on-windows` feature of the `open`
 //   crate (apps/desktop/Cargo.toml); without it, synchronous
-//   powershell.exe on the pump (2026-09-01 audit);
-// - telemetry_selftest_panic: does not block, it PANICS — and ADR 0014
-//   validated the double-panic on the MAIN THREAD (WebView2 FFI
-//   boundary): moving it would change what the self-test exercises.
+//   powershell.exe on the pump (2026-09-01 audit).
 const PURE_COMMANDS = new Set([
   'sync_activity',
   'migration_progress',
@@ -59,7 +56,6 @@ const PURE_COMMANDS = new Set([
   'network_state',
   'app_version',
   'open_link',
-  'telemetry_selftest_panic',
   // Lot 5 E14b: `app.restart()` — the process ends here, no I/O of ours.
   'restart_app',
 ]);

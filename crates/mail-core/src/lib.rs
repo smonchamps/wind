@@ -32,7 +32,6 @@ pub use work_budget::{FetchLimits, WorkBudget};
 mod body;
 mod compose;
 mod contacts;
-mod crash;
 pub mod cycle;
 mod draft_edit;
 mod drafts;
@@ -74,7 +73,6 @@ pub use compose::{
     reply_subject, reply_to, signature_applies,
 };
 pub use contacts::Contact;
-pub use crash::{CrashReport, RawPanic, redact};
 pub use draft_edit::DraftEdit;
 pub use drafts::{
     DraftAttachmentFull, DraftAttachmentMeta, DraftAttachmentSaved, DraftContent, DraftPull,

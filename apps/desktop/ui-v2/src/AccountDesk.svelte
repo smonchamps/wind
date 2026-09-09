@@ -5,6 +5,7 @@
   import { createConsent } from './lib/consent.js';
   import { call } from './lib/transport.js';
   import { t } from './lib/text.svelte.js';
+  import { connectionError } from './lib/auth-error.js';
   import { IMPORT_HORIZONS as HORIZONS } from './lib/vocabularies.js';
 
   let {
@@ -59,7 +60,7 @@
           { email: typing, horizon });
         if (connected) onadd();
       } catch (err) {
-        error = t('error.connection', { err });
+        error = connectionError(err, 'error.connection', isGoogle() ? 'Google' : 'Microsoft');
       } finally {
         busy = false;
         pending = '';

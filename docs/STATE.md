@@ -71,10 +71,32 @@ One sweep ([plan](archives/PLAN-SWEEP-2026-09.md)), field 7/7 OK the same day:
   second as Organized-mode activation never waits at the Screener.
 
 **Next, in order**: the `/field` on beta T2's P0 (sync stalled at
-72 %, on the tester's trace, T3 as the same-architecture witness) →
-the remaining backlog bugs needing other machines (86 OAuth first-run,
-100 invitation status, 109 macOS shortcuts — coded here, verified on
-the Air) → the Rosetta-or-native check on T2/T3.
+72 %, on the tester's trace, T3 as the same-architecture witness —
+D8 2026-09-09: the trace has not arrived yet) → the item-86
+measurement (the exact message at the failed first OAuth run, and
+whether the second run ticked boxes the first did not) → the
+Rosetta-or-native check on T2/T3 → the Trash permanent-delete
+capability (D3-bis, backlog).
+
+## PLAN-INPROGRESS-2026-09 — running (opened 2026-09-09)
+
+The backlog items marked "In progress"
+([plan](PLAN-INPROGRESS-2026-09.md), decisions D1–D8 + D3-bis
+answered at STOP 1): telemetry consent dropped entirely (D1, ADR 0014
+retired, A141), the Feed's unread section folds as one (97, A142),
+Ctrl+A select-all over served rows + the Junk "Empty" button (107,
+D3-bis: Junk only — Trash awaits a permanent-delete capability, A143),
+platform-aware shortcuts (109, ⌫ deletes on macOS, A144 — the Air
+field proof due at STOP 2), our invitation answer made in another
+client reconciled onto the card (100, D5 "only our own", A145), the
+partial-OAuth-consent message localized with the typed code
+`missing_mail_scope` (86's certain half, A146), and the window opens
+maximized (114 — D7: a request, not a bug; A147). Early visual STOP
+passed (one wording fix: "Collapse all", the per-card vocabulary).
+Review: 10 findings, 7 fixed — the sharpest two: the Junk "Empty"
+would have deleted a live search's CROSS-FOLDER results, and one
+group-wide "freshest reply" starved per-occurrence answers of a
+recurring series. Awaiting: full gate, STOP 2, CI.
 
 ## PLAN-BATCH-2026-09 — CLOSED 2026-09-08
 

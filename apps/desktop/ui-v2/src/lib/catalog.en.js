@@ -111,6 +111,10 @@ export const EN = {
   // E5bis — the Feed as cards; header and sections RETOURS-13 R10/R11.
   'feed.subtitle1': 'All your informational emails are gathered here.',
   'feed.subtitle2': 'Just scroll through them to read.',
+  // The section button speaks the per-card buttons' words
+  // (action.collapse/expand) — one vocabulary (visual STOP 2026-09-09).
+  'feed.foldAll': 'Collapse all',
+  'feed.unfoldAll': 'Expand all',
   'feed.sectionUnread': 'Unread',
   'feed.sectionRead': 'Previously read',
   'feed.allRead': 'You have read all the new stories in your Feed.',
@@ -183,8 +187,6 @@ export const EN = {
   'action.sendNow': 'Send now',
   'notice.sendInterrupted': 'Delivery of “{subject}” is uncertain. Check Sent before deciding to send again.{error}',
   'notice.update': 'An update is available (version {version}).',
-  'notice.crash': 'Wind ran into a problem during a previous session ({n} report(s) pending). Nothing is sent without you.',
-  'notice.telemetry': 'Help improve Wind? If it crashes, a technical report would be saved on your machine, never the content of your mail. You then choose whether to send it.',
   'notice.connection': 'Account not reconnected: {details}',
   'notice.scheduled': '“{subject}” will be sent {when}, if Wind is open at that time.',
   'notice.uncertainMove': 'The move from {source} to {destination} is uncertain. Check both folders before a new action.',
@@ -193,14 +195,14 @@ export const EN = {
   'notice.refusedActions': '{n} action could not be completed. Check the message and folder concerned.|{n} actions could not be completed. Check the messages and folders concerned.',
 
   // --- Shared actions -------------------------------------------------
+  'action.emptyFolder': 'Empty',
+  'junk.emptyConfirm': 'Empty the junk folder? {n} conversation(s) will go to the trash.',
+  'error.missingScope': 'The {provider} authorization does not include mail access. Start the connection again and tick every box on the authorization screen, including reading and sending your email.',
   'action.resend': 'Send again',
   'action.discard': 'Discard',
   'action.install': 'Install',
   'action.later': 'Later',
-  'action.openReports': 'Open the reports folder',
   'action.dismiss': 'Dismiss',
-  'action.enable': 'Turn on',
-  'action.noThanks': 'No thanks',
   'action.resume': 'Resume',
   'action.retry': 'Try again',
   'action.sync': 'Sync',
@@ -296,7 +298,6 @@ export const EN = {
   'error.resend': 'Could not resend: {err}',
   'error.discard': 'Could not discard: {err}',
   'error.update': 'Update failed: {err}',
-  'error.opening': 'Could not open: {err}',
   'error.preference': 'Preference not saved: {err}',
   'error.save': 'Could not save: {err}',
   'error.forward': 'Could not forward: {err}',
@@ -642,7 +643,10 @@ export const EN = {
 
   // --- Shortcuts (table D3, reference) -------------------------------
   "list.selectionKeyboard": "Ctrl+Space checks or unchecks. Shift+Space extends the selection through loaded messages. Tab moves focus; Enter opens. Escape clears the selection.",
+  "list.selectionKeyboardMac": "⌘Space checks or unchecks. Shift+Space extends the selection through loaded messages. Tab moves focus; Enter opens. Escape clears the selection.",
   "shortcut.key.check": "Ctrl+Space",
+  "shortcut.key.mac.check": "⌘Space",
+  "shortcut.key.mac.delete": "⌫",
   "shortcut.key.range": "Shift+Space",
   "shortcut.key.tab": "Tab",
   "shortcut.gesture.check": "Check or uncheck the focused message without opening it",

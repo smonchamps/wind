@@ -16,6 +16,7 @@
         "title": "Wind",
         "width": 1000,
         "height": 700,
+        "maximized": true,
         "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=OverlayScrollbar"
       }
     ],

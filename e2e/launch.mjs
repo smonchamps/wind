@@ -124,7 +124,10 @@ export async function purgeLocals(page, keys = LOCAL_KEYS) {
 }
 
 export async function launchAppV2({ fresh = false, accounts = null, lang = 'en' } = {}) {
-  buildV2(root, { release: false, seams: true });
+  // The product opens MAXIMIZED (backlog 114, D7); the suite pins the
+  // declared 1000x700 — pane widths, windowed-list geometry and the
+  // bench figures are only comparable on a size no monitor decides.
+  buildV2(root, { release: false, seams: true, windowOverride: { maximized: false } });
 
   const db = path.join(
     root,
