@@ -254,12 +254,15 @@ For E-step *k* with closing commit *c(k)*:
 - **W3(k)** = number of `gate.ps1` invocations inside interval(k).
 
 **E0 — counted apart, never averaged in.** Investigation, set-based
-design, STOP 1 and the settling of the Chief Engineer's decisions
-all happen before
-E1's commit and would otherwise inflate E1, presenting design cost as
-implementation cost. E0 = job opening → E1's commit, reported on its
-own line. Without this the amended indicator is worse than the one it
-replaces.
+design, STOP 1 and the settling of the Chief Engineer's decisions all
+happen before any implementation commit and would otherwise inflate
+E1, presenting design cost as implementation cost. **E0 is simply the
+first commit of the range** — by convention the plan's own commit,
+which closes the design phase; E1 then runs from that commit to its
+own. So E0 needs no special case in the tooling, only the discipline
+of committing the plan when the design is settled. (First written as
+"E0 = job opening → E1's commit", which overlapped E1 entirely;
+corrected when the code was built, 2026-09-10.)
 
 **Comparability.** A job with one E-step and one commit gives one
 interval covering the whole job: the figure is bit-for-bit the pre-D5
@@ -278,16 +281,28 @@ one. Nothing already recorded needs re-reading.
 - **A red gate replayed after a commit** lands in the next bucket
   (W3 only).
 
-**Tooling owed**: a `--by-commit <range>` mode in
-`scripts/measure-sessions.mjs` — the per-turn timestamps and usage
-are already parsed, subagent transcripts included, so this is
-bucketing existing records against `git log --format=%H|%cI`. Due
-before the next weekly measurement, which cannot be filled without
-it. **D6 rides with it**: the aggregate turns/prompt line must skip
-sessions at 0 prompts instead of averaging their turns onto the other
-sessions' prompts. **D9 too**: the same pass already separates main
-thread from subagents, so the agent share per increment (M3) is one
-more column, not a second traversal.
+**Tooling — DELIVERED 2026-09-10.**
+`node scripts/measure-sessions.mjs --since … --until … --by-commit <range>`
+appends the per-increment table to the usual report: main thread,
+agents, agent share (flagged past ~40 %, M3), gates played, turns. D6
+rides in the same change — the aggregate turns/prompt line now counts
+driven sessions only and says how many were excluded. Twelve node
+tests in `e2e/measure-sessions.test.mjs`, registered in the `test:node`
+suite so the gate actually plays them, and proven by breaking them.
+
+Two defects found by running it on real data rather than by reading
+it — both inflating W3, the indicator D5 had just redefined:
+
+1. `grep … scripts/gate.ps1` was billed as a full gate (a bucket
+   claimed 2 where 1 had run). A mention is not a run.
+2. Tightened once, the heredoc that WROTE the test was billed too,
+   because the mandated invocation appeared as text inside it. The
+   gate must be the **head of a command segment**, not named
+   anywhere within one.
+
+Both are pinned by tests. The lesson is the plan's own: a figure is
+verified by measuring with it, never by reading the code that
+produces it.
 
 ## Measurement and review (PDCA)
 

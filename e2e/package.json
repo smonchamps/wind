@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:node": "node --test release-lib.test.mjs release-scripts.test.mjs consent.test.mjs port-cdp.test.mjs launch.test.mjs rebuild-v2.test.mjs catalogs.test.mjs language.test.mjs placeholders.test.mjs apply-dom.test.mjs apply-e2e.test.mjs dom-contract.test.mjs",
+    "test:node": "node --test release-lib.test.mjs release-scripts.test.mjs consent.test.mjs port-cdp.test.mjs launch.test.mjs rebuild-v2.test.mjs catalogs.test.mjs language.test.mjs placeholders.test.mjs apply-dom.test.mjs apply-e2e.test.mjs dom-contract.test.mjs measure-sessions.test.mjs",
     "test": "npm run test:node && playwright test"
   },
   "devDependencies": {
