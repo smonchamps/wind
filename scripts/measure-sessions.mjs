@@ -124,12 +124,20 @@ export function turnsPerPrompt(sessions) {
   };
 }
 
-async function readFile(path, s, sidechain) {
+async function readFile(path, s, sidechain, seen) {
   const tools = new Map(); // tool_use id -> { name, command, ts } for duration and category
   const rl = createInterface({ input: createReadStream(path, "utf8"), crlfDelay: Infinity });
   for await (const line of rl) {
     let e;
     try { e = JSON.parse(line); } catch { continue; }
+    // A forked conversation REPLAYS its parent's history into a new file,
+    // uuids and timestamps identical. Counting both files billed the shared
+    // stretch twice (D13). An entry belongs to the first file that claims
+    // it; an entry with no uuid is nobody's replay and is always kept.
+    if (seen && e.uuid) {
+      if (seen.has(e.uuid)) continue;
+      seen.add(e.uuid);
+    }
     const t = e.timestamp ? new Date(e.timestamp) : null;
     if (t && !sidechain) {
       if (!s.start || t < s.start) s.start = t;
@@ -186,7 +194,7 @@ async function readFile(path, s, sidechain) {
   }
 }
 
-async function readSession(file) {
+async function readSession(folder, file, seen) {
   const s = {
     id: file.replace(".jsonl", ""),
     start: null, end: null, prompts: 0, turns: 0,
@@ -194,15 +202,51 @@ async function readSession(file) {
     agentEquiv: 0, nAgents: 0, agentModels: {},
     models: {}, slow: {}, contextPerTurn: [], events: [],
   };
-  await readFile(join(folder, file), s, false);
+  await readFile(join(folder, file), s, false, seen);
   const subagents = join(folder, s.id, "subagents");
   if (existsSync(subagents)) {
     for (const f of readdirSync(subagents).filter(f => f.endsWith(".jsonl"))) {
       s.nAgents++;
-      await readFile(join(subagents, f), s, true);
+      await readFile(join(subagents, f), s, true, seen);
     }
   }
   return s;
+}
+
+// The first timestamp of a file, read from its head alone: 101 transcripts
+// weigh 592 MB here, so the ordering pass must not read them whole.
+async function firstTimestamp(path) {
+  const rl = createInterface({ input: createReadStream(path, "utf8"), crlfDelay: Infinity });
+  try {
+    for await (const line of rl) {
+      let e;
+      try { e = JSON.parse(line); } catch { continue; }
+      if (e.timestamp) return new Date(e.timestamp);
+    }
+  } finally { rl.close(); }
+  return null;
+}
+
+// Reads every transcript of `folder`, the shared entries of a fork counted
+// once (D13). The file that OPENED FIRST claims them — the parent, since the
+// child's replay carries the parent's own timestamps. Which of the two ends
+// up owning a shared entry changes no total, only the row it shows on; the
+// order is fixed all the same so that two runs read alike. Ties are broken
+// by file name for the same reason.
+export async function readSessions(folder) {
+  const files = readdirSync(folder).filter(f => f.endsWith(".jsonl"));
+  const heads = [];
+  for (const f of files) heads.push({ f, first: await firstTimestamp(join(folder, f)) });
+  heads.sort((a, b) => {
+    if (a.first && b.first && a.first - b.first !== 0) return a.first - b.first;
+    if (a.first && !b.first) return -1;
+    if (!a.first && b.first) return 1;
+    return a.f.localeCompare(b.f);
+  });
+  const seen = new Set();
+  const sessions = [];
+  for (const { f } of heads) sessions.push(await readSession(folder, f, seen));
+  return sessions;
 }
 
 const M = 1_000_000;
@@ -215,13 +259,8 @@ const fmtMin = ms => Math.round(ms / 60_000) + " min";
 // the report below runs only when the script is the entry point.
 const isMain = process.argv[1] && basename(process.argv[1]) === "measure-sessions.mjs";
 if (isMain) {
-  const files = readdirSync(folder).filter(f => f.endsWith(".jsonl"));
-  const sessions = [];
-  for (const f of files) {
-    const s = await readSession(f);
-    if (!s.start || s.end < since || s.start > until) continue;
-    sessions.push(s);
-  }
+  const all = await readSessions(folder);
+  const sessions = all.filter(s => s.start && s.end >= since && s.start <= until);
   sessions.sort((a, b) => a.start - b.start);
 
   console.log(`# Session measurement — ${since.toISOString().slice(0, 10)} → ${until.toISOString().slice(0, 10)}`);

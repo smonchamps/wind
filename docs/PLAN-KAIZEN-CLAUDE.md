@@ -411,25 +411,165 @@ Reading the gaps:
   accounting, week 1 reads 9.13 M / 1,528 per turn over 15 sessions,
   and it is those two figures that are compared here.
 
+### Weekly measurement S3 — 2026-09-11 (window 05–11/09, 14 sessions)
+
+First run of the scheduled rite (D10) and first run of the
+`--by-commit` tooling (D5/D6/D9) on real data.
+
+> **Figures corrected the same day.** The first reading of this window
+> was inflated by a measurement defect found while reading it:
+> `measure-sessions.mjs` counted a forked session's replayed history
+> twice (`afdcf923` and `08ff8738` shared 1,221 entries). Fixed by
+> deduplication on `uuid` — field finding D13, four tests, net proven
+> by breaking it. The figures below are the corrected ones; the first
+> reading said 275.5 M, 5,663 turns, T4 52.3, 112 min blocked, and
+> `dcf5112` at 69.7 M / 11 gates. No verdict changed.
+>
+> **Stated limit**: the re-run happened inside the window it measures,
+> so the corrected aggregate also carries ~9 M of the `/field` session
+> that produced the correction. A measurement that includes its own
+> cost is honest only if it says so.
+
+`node scripts/measure-sessions.mjs --since 2026-09-05 --until 2026-09-11`:
+110 Chief Engineer prompts, 5,459 turns, **262.7 M input equiv. main
+thread + 92.1 M in 87 agent transcripts (26.0 %)**, average context
+359 k/turn, 1 session > 24 h, **97 min** blocked in the foreground on
+commands > 30 s (e2e 26, shell 42, cargo 26, CI 3). T4 = **49.6**
+turns/prompt over 15 driven sessions (D6 applied; none at 0 prompts
+this window).
+
+**Window overlap, stated rather than hidden.** The scheduled task's
+rule is "the 7 days ending today", which makes 05–11/09 overlap S2
+(29/08–06/09) by two days. The disjoint continuation 07–11/09 reads
+11 sessions, 88 prompts, 4,992 turns, 251.1 M + 85.1 M agents
+(25.3 %), 379 k/turn, 1 session > 24 h, 110 min blocked, T4 = 56.5
+over 10 driven sessions — i.e. the overlap moves no verdict. The
+window convention is opened as D11.
+
+**Per increment (T1, W3, M3)** —
+`--by-commit dc1f462..b267988`, 63 commits. Only the buckets carrying
+real work are listed; the docs-record commits between them read
+0.0–1.9 M and 0 gates.
+
+| Increment (closing commit) | T1 = main + agents | Agent share (M3) | W3 gates |
+|---|---|---|---|
+| audit lot 3 `9f4a9b1` | 13.8 + 22.4 = **36.2 M** ✗ | 61.9 % ⚠ | 2 ✓ |
+| audit lot 4 `400de5e` | 29.2 + 9.3 = **38.5 M** ✗ | 24.1 % | **8** ✗ |
+| lot 5 E13 `2e096d6` | 19.8 + 14.4 = **34.2 M** ✓ | 42.1 % ⚠ | 3 ✓ |
+| lot 5 E14 `516180e` | 16.3 + 3.9 = **20.2 M** ✓ | 19.4 % | 2 ✓ |
+| audit evidence `92fa3b6` | 27.7 + 7.5 = **35.2 M** ✗ | 21.3 % | 1 ✓ |
+| lot 6 E16 `01b9171` | 8.6 + 6.9 = **15.5 M** ✓ | 44.7 % ⚠ | 1 ✓ |
+| four majors `63de0dd` | 20.4 + 5.1 = **25.5 M** ✓ | 19.9 % | 3 ✓ |
+| PLAN-BATCH `6aa2a49` | 14.0 + 4.6 = **18.6 M** ✓ | 24.7 % | 2 ✓ |
+| A140 `a8f999f` | 3.4 + 0.0 = **3.4 M** ✓ | 0.0 % | 3 ✓ |
+| PLAN-INPROGRESS `dcf5112` | 39.5 + 8.8 = **48.3 M** ✗ | 18.3 % | **7** ✗ |
+| kaizen review `8af7585` | 4.5 + 0.0 = **4.5 M** ✓ | 0.0 % | 1 ✓ |
+| kaizen tooling `b267988` | 2.5 + 0.0 = **2.5 M** ✓ | 0.0 % | 1 ✓ |
+
+Documentary gate steps replayed the same day: `language-gate.mjs` —
+363 files, 89 with French, **1661 markers against a baseline of 1662,
+no rise**; `docs-links.mjs` — 86 files, 248 relative links, none dead.
+
+Reading the gaps:
+
+- **What holds**: T1 on eight of the twelve working increments
+  (2.5–34.3 M) and W3 on ten of them (1–3 gates) — D5's denominator
+  does what it was adopted
+  for, and reads an ordinary increment where the per-job figure read
+  a program. M2 (1 review per job where recorded). Both documentary
+  gate steps green.
+- **T1/W3 missed on the batches, exactly as D5 predicted**:
+  PLAN-INPROGRESS (69.7 M, 11 gates) and audit lot 4 (38.5 M, 8
+  gates); audit lot 3 (36.2 M) and the audit-evidence bucket (35.3 M)
+  miss T1 marginally while holding W3 at 2 and 1. Neither batch is an
+  E-step in substance — eight backlog items in one commit, and a
+  security/release lot in another. The unit is the
+  commit, so a job that commits once is not decomposed and D5's
+  finer grain never applies. **This is the known limit of § Per-increment
+  attribution meeting its first real case**, and it is now the
+  dominant cause of a missed T1: see D12.
+- **Tool against hand-count, first comparison — and the tool lost**:
+  PLAN-INPROGRESS recorded "T1 ≈ 59.2 M, W3 = 7" at its close; the
+  tool read 69.7 M and **11**. Chased rather than reasoned about, the
+  gap was a **double count of a forked session**, not a definition
+  gap. Deduplicated, the tool reads **7 gates — the hand-count
+  exactly** — and 48.3 M. The hand figure was right on W3 and wrong on
+  T1: its "35.1 + 24.1 M over the two session IDs" summed the same
+  fork the tool did. The two readings agreed at first because both
+  made the same mistake. Fix and evidence at D13.
+
+- **P1 improved but still missed (320 → 97 min)**: e2e in the
+  foreground fell **173 → 26 min**, which is D7 working. But D7 was
+  written on 09-09, i.e. in the last two days of this window, so most
+  of the fall predates the amendment and the figure is not yet its
+  proof. What now dominates is **shell 42 min** (max 600 s) and
+  **cargo 26 min** (max 602 s) — two command classes wave 1.4 was
+  never extended to. Same shape as the e2e finding at S1.
+- **M1, third window without a single application**: the main thread
+  ran 5,458 top-tier calls and **zero Sonnet**. The "mechanical
+  session = Sonnet 5" rule of WORKFLOW.md has now survived S1, S2 and
+  S3 unused. Worse, the agent half **regressed**: Sonnet 2,839 of
+  4,801 agent calls = **59 %**, against 87 % at S2. The one half that
+  worked is coming back down, unwatched. This is the failure mode the
+  review named at D7 — a cause identified and left unwritten — now
+  running on M1 for a third window.
+- **T2 unchanged a third window (359 k)**: 371 k → 359 k. T3 stayed
+  at 1. The cause is still not settled; no countermeasure has been
+  written for it since it was first missed at S1. Second window with
+  no countermeasure written.
+- **Quality guardrail moved for the first time**: 0 KO at STOP 2 on
+  the jobs closed in the window (PLAN-SWEEP 7/7, PLAN-BATCH, and
+  PLAN-INPROGRESS "All ok" over two rounds), but **two red CI runs on
+  main**: `7e5f5d6` (07/09 — the Lot 4 seam guard catching Lot 5
+  E14's unguarded `__e2eNoRestart` read, fixed by `dfd734c`) and
+  `b7b6e21` (08/09 — the OAuth fixture socket, fixed by `bf95a28`,
+  root recorded in `7ef8975`). Both diagnosed and fixed the same day,
+  both caught by a guard that did its job; recorded as a movement,
+  not yet as a degradation.
+- **M3 (D9) reported, not capped**: agent share 35.3 % → **26.0 %**
+  over the window. Six increments sit past ~40 % — `0ef4f81`,
+  `9f4a9b1`, `2e096d6`, `01b9171`, `2a15b00`, `c69133e` — and owe
+  their plan entry a line on what the agents found. That line is
+  written on none of them: the D9 obligation shipped with the tooling
+  on 09-10 and has not been applied retroactively.
+- **W1 measured again, and missed for the first time (8.8 min)**: the
+  full gate played for D13's own fix read **530 s**, of which the e2e
+  suite alone is **398 s**. W1 held at 2.1–2.6 min at S1 on 148
+  specs; the suite is **288** now. The countermeasures did not decay
+  — the denominator grew. Two flakies (`redesign-gated-journeys`
+  draft-Escape, `redesign-screen02` keyboard triage) were absorbed by
+  `retries: 1` and logged in the verdict as the rule requires, which
+  is P2's first figure since the target was set: **1 retry each**.
+  Neither is D-64's `redesign-feedback-3`; whether they earn a debt
+  entry of their own is a Chief-Engineer call.
+- **Tooling note (no decision needed)**: run over a whole week rather
+  than over one job's range, `--by-commit` labels every commit
+  `E<n>`, docs-record commits included, and its E0 row is the window's
+  first commit rather than a design phase — 0.0 M here, meaningless.
+  The mode is correct for a job; for the weekly rite the useful
+  reading is the per-job range, and that is how the table above was
+  built.
+
 ### Tracking table
 
-| Indicator | Baseline | Target | Wk. 1 | Wk. 2 | Verdict |
-|---|---|---|---|---|---|
-| T1 input equiv. / job | ~60 M | ≤ 35 M | 11–30 M ✓ | jobs 5.5 / 20 / 22.4 M ✓ — programs 87 M, 434 M ✗ | split, cf. D5 |
-| T2 average context / turn | 410–540 k | ≤ 200 k | 364 k ✗ | 371 k ✗ | missed, cause not settled |
-| T3 sessions > 24 h not closed | 8+ | 0 | 3 ✗ | 1 ✗ | missed, improving |
-| T4 turns / prompt | 36.6 | ≤ 25 | 44.9 ✗ (blurred, cf. note) | 81.3 ✗ (2 sessions at 0 prompts) | indicator invalid, cf. D6 |
-| P1 wall time blocked > 60 s in the foreground | ~3.5 h | ≤ 15 min | 100 min (> 30 s) ✗ | 320 min (> 30 s) ✗ — e2e 173 min | worsened, cf. D7 |
-| P2 re-runs / flake | ≤ 11 | ≤ 2 | no flake to settle — | no flake settled in the window — | not exercised |
-| P3 avoidable round trips | 24 | 0 | 0 observed ✓ | not instrumented | no figure |
-| W1 full gate | 4 min 34 s (W0) | ≤ 6 min | 2.1–2.6 min (148 e2e) ✓ | not timed in the window | no figure |
-| W2 1 e2e spec | 74 s | ≤ 45 s | 13.5–19 s (wave 2) ✓ | not timed in the window | no figure |
-| W3 full gates / job | 10+ | ≤ 3 | 2 / 2 / 4 / 7 ~ | jobs 3 / 2 ✓ — programs 9 / 12+ / ~27 ✗ | split, cf. D5 |
-| W5 docs-only push | ~2 min | ≤ 30 s | 7.6 s ✓ (commit b8d8aa0) | not timed in the window | no figure |
-| ~~T5 (opt.) output tokens / session (Concise)~~ | wk. 1 ref. | drop without loss of quality | 9.13 M; 1,528/turn (re-measured 09-09; 7.09 M as recorded on 28/08) | 17.39 M; 1,561/turn (+2%) | **withdrawn (D8)** — instrument cannot resolve it |
-| M1 top-tier cost outside jobs | ~10–15% | ≤ 5% | agents 40% downgraded; thread 0% ~ | agents 87% ✓; thread ~100% top-tier ✗ | half met |
-| M2 high-effort reviews / job | up to 3 | 1 | 1 ✓ | 1 where recorded ✓ | held |
-| Quality: KO at STOP 2 / red CI | ref. previous week | stable or ↓ | KO fixed same day; 0 red CI ✓ | 0 KO on the five jobs; 0 red CI ✓ | held |
+| Indicator | Baseline | Target | Wk. 1 | Wk. 2 | Wk. 3 | Verdict |
+|---|---|---|---|---|---|---|
+| T1 input equiv. / job | ~60 M | ≤ 35 M | 11–30 M ✓ | jobs 5.5 / 20 / 22.4 M ✓ — programs 87 M, 434 M ✗ | increments 2.5–34.2 M ✓ (8/12) — INPROGRESS 48.3 M, lot 4 38.5 M, lot 3 36.2 M, evidence 35.2 M ✗ | split, cf. D5 |
+| T2 average context / turn | 410–540 k | ≤ 200 k | 364 k ✗ | 371 k ✗ | 359 k ✗ | missed, cause not settled |
+| T3 sessions > 24 h not closed | 8+ | 0 | 3 ✗ | 1 ✗ | 1 ✗ (55e4b147, 24.3 h) | missed, improving |
+| T4 turns / prompt | 36.6 | ≤ 25 | 44.9 ✗ (blurred, cf. note) | 81.3 ✗ (2 sessions at 0 prompts) | 49.6 ✗ (D6 applied; S2 recomputed the same way = 74.3) | indicator invalid, cf. D6 |
+| P1 wall time blocked > 60 s in the foreground | ~3.5 h | ≤ 15 min | 100 min (> 30 s) ✗ | 320 min (> 30 s) ✗ — e2e 173 min | 97 min (> 30 s) ✗ — e2e 26 (was 173), shell 42, cargo 26 | worsened, cf. D7 |
+| P2 re-runs / flake | ≤ 11 | ≤ 2 | no flake to settle — | no flake settled in the window — | **1 retry each on 2 flakies** ✓ (D13's gate) | held where exercised |
+| P3 avoidable round trips | 24 | 0 | 0 observed ✓ | not instrumented | still not instrumented — no figure | no figure |
+| W1 full gate | 4 min 34 s (W0) | ≤ 6 min | 2.1–2.6 min (148 e2e) ✓ | not timed in the window | **8.8 min** (530 s, 288 e2e, 2 flaky) ✗ | missed; the suite doubled |
+| W2 1 e2e spec | 74 s | ≤ 45 s | 13.5–19 s (wave 2) ✓ | not timed in the window | not timed in the window — no figure | no figure |
+| W3 full gates / job | 10+ | ≤ 3 | 2 / 2 / 4 / 7 ~ | jobs 3 / 2 ✓ — programs 9 / 12+ / ~27 ✗ | ≤ 3 on 10/12 increments ✓ — lot 4: 8 ✗, INPROGRESS: 7 ✗ | split, cf. D5 |
+| W5 docs-only push | ~2 min | ≤ 30 s | 7.6 s ✓ (commit b8d8aa0) | not timed in the window | not timed in the window — no figure | no figure |
+| ~~T5 (opt.) output tokens / session (Concise)~~ | wk. 1 ref. | drop without loss of quality | 9.13 M; 1,528/turn (re-measured 09-09; 7.09 M as recorded on 28/08) | 17.39 M; 1,561/turn (+2%) | withdrawn (D8) — not measured, by decision | **withdrawn (D8)** — instrument cannot resolve it |
+| M1 top-tier cost outside jobs | ~10–15% | ≤ 5% | agents 40% downgraded; thread 0% ~ | agents 87% ✓; thread ~100% top-tier ✗ | agents 59 % Sonnet ✗ (87 % at S2, regressed); thread 0 % Sonnet ✗ — third window | half met |
+| M2 high-effort reviews / job | up to 3 | 1 | 1 ✓ | 1 where recorded ✓ | 1 where recorded ✓ | held |
+| M3 agent share of an increment's cost (reported, D9) | 9.5 % | no cap; > ~40 % ⇒ the plan entry says what the agents found | 7.3 % (window) | 35.3 % (window) | 26.0 % (window); 6 increments > 40 %, none carrying the required line | reported, obligation unapplied |
+| Quality: KO at STOP 2 / red CI | ref. previous week | stable or ↓ | KO fixed same day; 0 red CI ✓ | 0 KO on the five jobs; 0 red CI ✓ | 0 KO at STOP 2 ✓; **2 red CI on main** ✗ (7e5f5d6, b7b6e21 — both fixed same day) | held |
 
 ---
 
@@ -560,3 +700,80 @@ opened below as D5–D10 and awaiting reply.
   review). Known limit, stated: the task fires only while the desktop
   app is open, and runs on next launch if it was closed — a missed
   Friday is late, never skipped.*
+- **D11 — Weekly window convention.** The scheduled task measures "the
+  7 days ending today", so S3 (05–11/09) overlaps S2 (29/08–06/09) by
+  two days and double-counts them. The disjoint continuation
+  (07–11/09) moves no verdict, so nothing is wrong with S3's reading —
+  but the convention will keep producing overlaps, and the tracking
+  table's columns are then not additive. Proposal: the window runs
+  from the day after the previous measurement's `--until` to the
+  current Friday, so the columns tile the calendar; the task's default
+  stays the 7-day form for a first run.
+  Recommendation: **make the window tile the calendar** — the
+  scheduled task reads the previous row's `--until` from this plan and
+  starts the day after, falling back to today−6 when there is none. It
+  is a few lines in the task, it makes the table's columns additive,
+  and it removes a silent double count of two days. D13 has just shown
+  what silent double counting costs: the overlap moved no verdict this
+  week, which is precisely why it would not be noticed the week it
+  did.
+  *Awaiting the Chief Engineer.*
+- **D12 — The commit is the unit, so a one-commit job is not
+  decomposed.** D5 budgets per E-step anchored on its closing commit.
+  PLAN-INPROGRESS delivered eight backlog items in a single commit
+  (`dcf5112`): the tool reads one increment at 69.7 M and 11 gates,
+  which is the per-job figure D5 was adopted to stop reporting. The
+  limit was stated in § Per-increment attribution ("sub-increments are
+  not separable") and has now produced the window's dominant T1 miss.
+  Three ways out: (a) accept it — a batch is budgeted as a batch, and
+  the plan entry says so, which is what PLAN-INPROGRESS already wrote;
+  (b) require a commit per E-step on multi-item plans, a change to the
+  commit discipline refused once as not worth it; (c) budget by plan
+  E-step declared in the plan file rather than by commit, which needs
+  the plan to carry the mapping the tool then reads. Recommendation:
+  **(a)**, with the batch named as such in its plan entry — the
+  cheapest, and it keeps the commit discipline untouched.
+  *Chief Engineer reply (2026-09-11): "accept it" — **(a) adopted**. The
+  commit stays the unit; a plan that ships several items under one
+  commit is budgeted as a batch and its plan entry says so, as
+  PLAN-INPROGRESS already did. The commit discipline is untouched and
+  the tooling needs no change.*
+- **D13 — The 11-against-7 gate gap: a defect, not a definition.**
+  Opened as a question of what counts as a gate; **answered by
+  measuring instead of reasoning, and the question dissolved.** The
+  eleven `gate.ps1` runs the tool bills to `dcf5112` carry only
+  **seven distinct timestamps**: four appear twice, once in session
+  `08ff8738` and once in `afdcf923` — the two session IDs the context
+  reset split the job across. A fork replays its parent's history into
+  a new transcript file, and `measure-sessions.mjs` reads both files
+  and counts the shared entries twice. `afdcf923` shares **1,221 of
+  its 1,436 in-window entries** with `08ff8738`. Deduplicated by
+  `uuid`, the tool reads **7 gates — exactly the hand-count on the
+  plan**. There was never a second definition to choose.
+  The double count is not confined to W3: **454 turns and 21.4 M input
+  equiv. are billed twice** in this window. `dcf5112` reads 69.7 M and
+  should read **~48.3 M** (39.5 M main + 8.8 M agents); the window
+  aggregate reads 275.5 M and should read **~254.1 M** (−7.8 %). T2
+  and T4 lean the same way, the duplicated turns being the
+  high-context ones. And the plan's own hand figure (59.2 M, "35.1 +
+  24.1 M over the two session IDs") **double-counts for the same
+  reason** — the two readings agreed because they made the same
+  mistake.
+  Recommendation: **withdraw D13 as posed**; open a `/field` to
+  deduplicate by `uuid` across transcript files in
+  `measure-sessions.mjs`, pinned by a test proven by breaking it, then
+  re-run S3 and correct the row. The hand-count stays a cross-check,
+  never a competing definition — and this is the second time the tool
+  has been corrected by running it on real data rather than by reading
+  it.
+  *Chief Engineer reply (2026-09-11): "go with your recommendation" —
+  **delivered the same day** (`/field`). `readSessions()` orders the
+  transcripts by their first entry and reads them behind one shared
+  set of `uuid`s, so the file that opened first claims a shared entry
+  and the fork carries only its own; an entry with no `uuid` is never
+  deduplicated. Four tests in `e2e/measure-sessions.test.mjs`, the net
+  proven by removing the guard (three of the four go red; the fourth
+  pins the no-`uuid` case and must not). Re-run: `dcf5112` reads
+  **48.3 M and 7 gates** — the hand-count of its plan, to the gate.
+  Window aggregate 275.5 → 262.7 M. The ordering pass reads only each
+  file's head: 101 transcripts weigh 592 MB here.*

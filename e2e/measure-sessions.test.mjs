@@ -7,11 +7,16 @@
 // agent share of an increment is reported, never capped.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   bucketByCommit,
   agentShare,
   turnsPerPrompt,
   isGateRun,
+  readSessions,
+  equiv,
 } from '../scripts/measure-sessions.mjs';
 
 const at = (iso) => new Date(iso);
@@ -160,4 +165,83 @@ test('the gate must be the head of a command, not text quoted inside one', () =>
     'the real invocation, after a cd',
   );
   assert.equal(isGateRun('powershell -File scripts/gate.ps1 | tail -5'), true, 'piped, still a run');
+});
+
+// A conversation too long to continue is forked: the child transcript
+// REPLAYS the parent's history, same uuids, same timestamps. The script
+// read both files and billed the shared stretch twice — 454 turns and
+// 21.4 M input equiv. over the window of 2026-09-11, and 11 full gates
+// where 7 had run (field finding, D13). Same entry, counted once.
+test('a forked session replaying its parent is counted once, not twice', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wind-measure-'));
+  const usage = { input_tokens: 100, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 20 };
+  const turnLine = (uuid, iso) => JSON.stringify({
+    uuid, timestamp: iso, type: 'assistant',
+    message: { model: 'claude-fable-5', usage },
+  });
+  const shared = [
+    turnLine('u-1', '2026-09-09T10:00:00.000Z'),
+    turnLine('u-2', '2026-09-09T10:01:00.000Z'),
+    turnLine('u-3', '2026-09-09T10:02:00.000Z'),
+  ];
+  writeFileSync(join(dir, 'parent.jsonl'), [...shared, turnLine('u-4', '2026-09-09T10:03:00.000Z')].join('\n'));
+  // The fork: the same three entries verbatim, then its own work.
+  writeFileSync(join(dir, 'fork.jsonl'), [...shared, turnLine('u-5', '2026-09-09T11:00:00.000Z')].join('\n'));
+
+  const sessions = await readSessions(dir);
+  const turns = sessions.reduce((a, s) => a + s.turns, 0);
+  const total = sessions.reduce((a, s) => a + equiv({
+    input_tokens: s.input, cache_read_input_tokens: s.cacheRead,
+    cache_creation_input_tokens: s.cacheCreate, output_tokens: s.output,
+  }), 0);
+  assert.equal(turns, 5, 'three shared entries plus one own entry each');
+  assert.equal(total, equiv(usage) * 5, 'the shared stretch is billed once');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('the earlier file claims the shared entries, so the reading is reproducible', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wind-measure-'));
+  const line = (uuid, iso) => JSON.stringify({
+    uuid, timestamp: iso, type: 'assistant',
+    message: { model: 'claude-fable-5', usage: { input_tokens: 10, output_tokens: 0 } },
+  });
+  // 'b-parent' sorts after 'a-fork' by name; the first timestamp must decide.
+  writeFileSync(join(dir, 'b-parent.jsonl'), [line('s-1', '2026-09-09T08:00:00.000Z'), line('s-2', '2026-09-09T08:01:00.000Z')].join('\n'));
+  writeFileSync(join(dir, 'a-fork.jsonl'), [line('s-2', '2026-09-09T08:01:00.000Z'), line('s-3', '2026-09-09T09:00:00.000Z')].join('\n'));
+
+  const sessions = await readSessions(dir);
+  const parent = sessions.find(s => s.id === 'b-parent');
+  const fork = sessions.find(s => s.id === 'a-fork');
+  assert.equal(parent.turns, 2, 'the file that opened first keeps the shared entry');
+  assert.equal(fork.turns, 1, 'the fork carries only what is its own');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('entries with no uuid are never confused with one another', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wind-measure-'));
+  const bare = (iso) => JSON.stringify({
+    timestamp: iso, type: 'assistant',
+    message: { model: 'claude-fable-5', usage: { input_tokens: 10, output_tokens: 0 } },
+  });
+  writeFileSync(join(dir, 'one.jsonl'), [bare('2026-09-09T08:00:00.000Z'), bare('2026-09-09T08:01:00.000Z')].join('\n'));
+  const sessions = await readSessions(dir);
+  assert.equal(sessions[0].turns, 2, 'dedup keys on the uuid; without one, nothing is dropped');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('a gate replayed into the fork is one gate, not two', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wind-measure-'));
+  const gate = JSON.stringify({
+    uuid: 'g-1', timestamp: '2026-09-09T10:00:00.000Z', type: 'assistant',
+    message: {
+      model: 'claude-fable-5', usage: { input_tokens: 1, output_tokens: 0 },
+      content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'powershell -ExecutionPolicy Bypass -File scripts/gate.ps1' } }],
+    },
+  });
+  writeFileSync(join(dir, 'parent.jsonl'), gate);
+  writeFileSync(join(dir, 'fork.jsonl'), gate);
+  const sessions = await readSessions(dir);
+  const gates = sessions.flatMap(s => s.events).filter(e => e.gate).length;
+  assert.equal(gates, 1, 'W3 counts the run, not the transcripts that recorded it');
+  rmSync(dir, { recursive: true, force: true });
 });
