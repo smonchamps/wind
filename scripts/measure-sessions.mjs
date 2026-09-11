@@ -180,6 +180,11 @@ async function readFile(path, s, sidechain, seen) {
       if (text !== null && !e.isMeta && !text.trimStart().startsWith("<")) s.prompts++;
       const id = Array.isArray(c) ? c.find(b => b.type === "tool_result")?.tool_use_id : null;
       const o = id && tools.get(id);
+      // A call is answered once. Consuming it here keeps the pairing
+      // one-to-one: a transcript that records the same result twice under
+      // two uuids would otherwise bill the wait twice (found 2026-09-11,
+      // the residual of D13's fork defect that deduplication alone leaves).
+      if (o) tools.delete(id);
       // Only the shell tools count as blocked wall: waiting on an
       // AskUserQuestion or an agent is not a foreground command.
       if (o && t && o.ts && (o.name === "Bash" || o.name === "PowerShell")) {

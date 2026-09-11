@@ -794,3 +794,14 @@ opened below as D5–D10 and awaiting reply.
   file's head: 101 transcripts weigh 592 MB here. Shipped as `edfe224`
   (CI GREEN 34614256504) with the corrected row, and the W1 re-reading
   as `0b085a0` (CI GREEN 34614393403).*
+  **Two more shapes of the same defect, found when the Chief Engineer
+  replayed the measurement** (2026-09-11 — the field step doing what it
+  is for): (1) a transcript repeats a `uuid` **inside one file**
+  — `b5a85584` carries 84 such repeats, 7 of them billable turns,
+  `acb9b986` 38 — which the fix already covered, but only because the
+  set of seen uuids is shared rather than per file; now pinned by a
+  test so it stays covered on purpose. (2) A residual deduplication
+  alone does **not** close: a call answered twice under two result
+  uuids billed its wait twice. The tool map now consumes a call when it
+  is answered, one-to-one. No figure in this window moves (P1 stays
+  97 min): the shape exists, it simply did not bite here.

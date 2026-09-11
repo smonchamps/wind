@@ -245,3 +245,45 @@ test('a gate replayed into the fork is one gate, not two', async () => {
   assert.equal(gates, 1, 'W3 counts the run, not the transcripts that recorded it');
   rmSync(dir, { recursive: true, force: true });
 });
+
+// A second shape of the same defect, found when the Chief Engineer
+// replayed the measurement (2026-09-11): a transcript can repeat a uuid
+// inside ONE file — b5a85584 carries 84 such repeats, 7 of them billable
+// turns; acb9b986 carries 38. The fork fix covers this only because the
+// set of seen uuids is shared rather than per file. Pinned so it stays
+// covered on purpose, not by luck.
+test('a uuid repeated inside one transcript is counted once', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wind-measure-'));
+  const line = (uuid, iso) => JSON.stringify({
+    uuid, timestamp: iso, type: 'assistant',
+    message: { model: 'claude-fable-5', usage: { input_tokens: 100, output_tokens: 0 } },
+  });
+  writeFileSync(join(dir, 'one.jsonl'), [
+    line('r-1', '2026-09-09T08:00:00.000Z'),
+    line('r-2', '2026-09-09T08:01:00.000Z'),
+    line('r-1', '2026-09-09T08:00:00.000Z'), // the same entry, written again
+  ].join('\n'));
+  const sessions = await readSessions(dir);
+  assert.equal(sessions[0].turns, 2, 'the repeat is the same turn, not a second one');
+  assert.equal(sessions[0].input, 200, 'and it is billed once');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('a command whose turn is a repeat is not billed as blocked wall twice', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wind-measure-'));
+  const call = JSON.stringify({
+    uuid: 'c-1', timestamp: '2026-09-09T08:00:00.000Z', type: 'assistant',
+    message: {
+      model: 'claude-fable-5', usage: { input_tokens: 1, output_tokens: 0 },
+      content: [{ type: 'tool_use', id: 'tc1', name: 'Bash', input: { command: 'cargo build' } }],
+    },
+  });
+  const result = (uuid) => JSON.stringify({
+    uuid, timestamp: '2026-09-09T08:02:00.000Z', type: 'user',
+    message: { content: [{ type: 'tool_result', tool_use_id: 'tc1' }] },
+  });
+  writeFileSync(join(dir, 'one.jsonl'), [call, result('k-1'), call, result('k-2')].join('\n'));
+  const sessions = await readSessions(dir);
+  assert.equal(sessions[0].slow.cargo.n, 1, 'one command waited on, however many times the file records it');
+  rmSync(dir, { recursive: true, force: true });
+});
