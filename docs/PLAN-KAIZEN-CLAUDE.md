@@ -532,16 +532,24 @@ Reading the gaps:
   their plan entry a line on what the agents found. That line is
   written on none of them: the D9 obligation shipped with the tooling
   on 09-10 and has not been applied retroactively.
-- **W1 measured again, and missed for the first time (8.8 min)**: the
-  full gate played for D13's own fix read **530 s**, of which the e2e
-  suite alone is **398 s**. W1 held at 2.1–2.6 min at S1 on 148
-  specs; the suite is **288** now. The countermeasures did not decay
-  — the denominator grew. Two flakies (`redesign-gated-journeys`
-  draft-Escape, `redesign-screen02` keyboard triage) were absorbed by
-  `retries: 1` and logged in the verdict as the rule requires, which
-  is P2's first figure since the target was set: **1 retry each**.
-  Neither is D-64's `redesign-feedback-3`; whether they earn a debt
-  entry of their own is a Chief-Engineer call.
+- **W1 measured twice on the same code, and the two readings differ
+  by 2.7 min**: D13's own gate read **8.8 min** (530 s, e2e 398 s) with
+  two flakies retried; the pre-push replay of the same commit read
+  **6.1 min** (364 s, e2e 295 s) with none. The target is ≤ 6 min, so
+  W1 **holds on a clean run and misses whenever a flaky retries** —
+  the suite having grown 148 → 290 specs since S1 without the gate
+  growing proportionally is the countermeasures still working. The
+  figure to watch is therefore not the mean but the flake rate: a
+  single retry costs ½ of the whole budget.
+- **P2 gets its first figure, and the flakies did not reproduce**:
+  `redesign-gated-journeys` (draft kept on Escape) and
+  `redesign-screen02` (keyboard triage, "Copy still syncing") each
+  took **1 retry** on the first gate and were **green on the next full
+  run**, which is the target held — and also why neither can be
+  diagnosed from this window. Neither is D-64's `redesign-feedback-3`.
+  Two specs that fail intermittently are two specs that will fail when
+  it matters; whether they earn a debt entry of their own is a
+  Chief-Engineer call.
 - **Tooling note (no decision needed)**: run over a whole week rather
   than over one job's range, `--by-commit` labels every commit
   `E<n>`, docs-record commits included, and its E0 row is the window's
@@ -559,9 +567,9 @@ Reading the gaps:
 | T3 sessions > 24 h not closed | 8+ | 0 | 3 ✗ | 1 ✗ | 1 ✗ (55e4b147, 24.3 h) | missed, improving |
 | T4 turns / prompt | 36.6 | ≤ 25 | 44.9 ✗ (blurred, cf. note) | 81.3 ✗ (2 sessions at 0 prompts) | 49.6 ✗ (D6 applied; S2 recomputed the same way = 74.3) | indicator invalid, cf. D6 |
 | P1 wall time blocked > 60 s in the foreground | ~3.5 h | ≤ 15 min | 100 min (> 30 s) ✗ | 320 min (> 30 s) ✗ — e2e 173 min | 97 min (> 30 s) ✗ — e2e 26 (was 173), shell 42, cargo 26 | worsened, cf. D7 |
-| P2 re-runs / flake | ≤ 11 | ≤ 2 | no flake to settle — | no flake settled in the window — | **1 retry each on 2 flakies** ✓ (D13's gate) | held where exercised |
+| P2 re-runs / flake | ≤ 11 | ≤ 2 | no flake to settle — | no flake settled in the window — | **1 retry each on 2 flakies** ✓; both green on the next full run | held where exercised |
 | P3 avoidable round trips | 24 | 0 | 0 observed ✓ | not instrumented | still not instrumented — no figure | no figure |
-| W1 full gate | 4 min 34 s (W0) | ≤ 6 min | 2.1–2.6 min (148 e2e) ✓ | not timed in the window | **8.8 min** (530 s, 288 e2e, 2 flaky) ✗ | missed; the suite doubled |
+| W1 full gate | 4 min 34 s (W0) | ≤ 6 min | 2.1–2.6 min (148 e2e) ✓ | not timed in the window | **6.1 min** clean (364 s, 290 e2e, 0 flaky) ✓ — **8.8 min** when 2 flakies retried ✗ | at target clean, the retries cost 2.7 min |
 | W2 1 e2e spec | 74 s | ≤ 45 s | 13.5–19 s (wave 2) ✓ | not timed in the window | not timed in the window — no figure | no figure |
 | W3 full gates / job | 10+ | ≤ 3 | 2 / 2 / 4 / 7 ~ | jobs 3 / 2 ✓ — programs 9 / 12+ / ~27 ✗ | ≤ 3 on 10/12 increments ✓ — lot 4: 8 ✗, INPROGRESS: 7 ✗ | split, cf. D5 |
 | W5 docs-only push | ~2 min | ≤ 30 s | 7.6 s ✓ (commit b8d8aa0) | not timed in the window | not timed in the window — no figure | no figure |
