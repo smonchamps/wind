@@ -550,6 +550,13 @@ Reading the gaps:
   Two specs that fail intermittently are two specs that will fail when
   it matters; whether they earn a debt entry of their own is a
   Chief-Engineer call.
+- **W5 held, measured on this rite's own second push (13 s)**: the
+  docs-only fast path skipped steps 10–13 and played the documentary
+  gate alone. Together with W1 and P2 above, three cells that read "no
+  figure" this morning were filled by the machinery of the day's own
+  fix rather than by a measurement run — which is the cheapest way
+  these figures have ever been obtained, and worth preferring when a
+  window would otherwise close empty.
 - **Tooling note (no decision needed)**: run over a whole week rather
   than over one job's range, `--by-commit` labels every commit
   `E<n>`, docs-record commits included, and its E0 row is the window's
@@ -572,7 +579,7 @@ Reading the gaps:
 | W1 full gate | 4 min 34 s (W0) | ≤ 6 min | 2.1–2.6 min (148 e2e) ✓ | not timed in the window | **6.1 min** clean (364 s, 290 e2e, 0 flaky) ✓ — **8.8 min** when 2 flakies retried ✗ | at target clean, the retries cost 2.7 min |
 | W2 1 e2e spec | 74 s | ≤ 45 s | 13.5–19 s (wave 2) ✓ | not timed in the window | not timed in the window — no figure | no figure |
 | W3 full gates / job | 10+ | ≤ 3 | 2 / 2 / 4 / 7 ~ | jobs 3 / 2 ✓ — programs 9 / 12+ / ~27 ✗ | ≤ 3 on 10/12 increments ✓ — lot 4: 8 ✗, INPROGRESS: 7 ✗ | split, cf. D5 |
-| W5 docs-only push | ~2 min | ≤ 30 s | 7.6 s ✓ (commit b8d8aa0) | not timed in the window | not timed in the window — no figure | no figure |
+| W5 docs-only push | ~2 min | ≤ 30 s | 7.6 s ✓ (commit b8d8aa0) | not timed in the window | **13 s** ✓ (commit `0b085a0`) | held |
 | ~~T5 (opt.) output tokens / session (Concise)~~ | wk. 1 ref. | drop without loss of quality | 9.13 M; 1,528/turn (re-measured 09-09; 7.09 M as recorded on 28/08) | 17.39 M; 1,561/turn (+2%) | withdrawn (D8) — not measured, by decision | **withdrawn (D8)** — instrument cannot resolve it |
 | M1 top-tier cost outside jobs | ~10–15% | ≤ 5% | agents 40% downgraded; thread 0% ~ | agents 87% ✓; thread ~100% top-tier ✗ | agents 59 % Sonnet ✗ (87 % at S2, regressed); thread 0 % Sonnet ✗ — third window | half met |
 | M2 high-effort reviews / job | up to 3 | 1 | 1 ✓ | 1 where recorded ✓ | 1 where recorded ✓ | held |
@@ -784,4 +791,6 @@ opened below as D5–D10 and awaiting reply.
   pins the no-`uuid` case and must not). Re-run: `dcf5112` reads
   **48.3 M and 7 gates** — the hand-count of its plan, to the gate.
   Window aggregate 275.5 → 262.7 M. The ordering pass reads only each
-  file's head: 101 transcripts weigh 592 MB here.*
+  file's head: 101 transcripts weigh 592 MB here. Shipped as `edfe224`
+  (CI GREEN 34614256504) with the corrected row, and the W1 re-reading
+  as `0b085a0` (CI GREEN 34614393403).*
