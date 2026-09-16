@@ -716,6 +716,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssparser"
+version = "0.38.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11119743ad110e8c1bdccd930d7f5c30c99e5fc76a7b63ec9807e84eef0c5f59"
+dependencies = [
+ "dtoa-short",
+ "itoa",
+ "smallvec",
+]
+
+[[package]]
 name = "cssparser-macros"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2389,7 +2400,7 @@ name = "mail-render"
 version = "0.21.0"
 dependencies = [
  "ammonia",
- "cssparser 0.37.0",
+ "cssparser 0.38.0",
  "mail-parser",
 ]
 
