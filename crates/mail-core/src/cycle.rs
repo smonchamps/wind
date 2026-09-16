@@ -289,21 +289,20 @@ pub fn poll_inbox<S: MailServer, H: CycleHooks>(
     hooks: &H,
     problems: &mut Vec<String>,
 ) -> Result<(SyncReport, Option<FolderStatus>), String> {
+    // The error stays TYPED up to the settle (review 2026-09-15): re-typed
+    // as `Server` it used to hide a throttle on INBOX — the field case —
+    // from the cooldown hook.
     let result = poll_inbox_inner(server, store, account_id, hooks, problems);
-    let error = result
-        .as_ref()
-        .err()
-        .map(|reason| Error::Server(reason.clone()));
     store
         .settle_operation(
             account_id,
             INBOX,
             "sync",
             chrono::Utc::now().timestamp(),
-            error.as_ref(),
+            result.as_ref().err(),
         )
         .map_err(|err| err.to_string())?;
-    result
+    result.map_err(|err| err.to_string())
 }
 
 fn poll_inbox_inner<S: MailServer, H: CycleHooks>(
@@ -312,14 +311,13 @@ fn poll_inbox_inner<S: MailServer, H: CycleHooks>(
     account_id: i64,
     hooks: &H,
     problems: &mut Vec<String>,
-) -> Result<(SyncReport, Option<FolderStatus>), String> {
+) -> Result<(SyncReport, Option<FolderStatus>), Error> {
     hooks.set_mailbox(INBOX);
     // The highest UID BEFORE the sync: it's what separates "new" from
     // "already known". Fetched before, otherwise the sync would already
     // have moved it.
     let last_uid_before = store
-        .sync_state(account_id, INBOX)
-        .map_err(|err| err.to_string())?
+        .sync_state(account_id, INBOX)?
         .map(|state| state.last_uid)
         .unwrap_or(0);
     // INBOX is guarded like the others (ADR 0017): a STATUS status, the
@@ -333,9 +331,7 @@ fn poll_inbox_inner<S: MailServer, H: CycleHooks>(
         problems,
         hooks,
     ) {
-        let report = SyncEngine::default()
-            .sync(server, store, account_id, INBOX)
-            .map_err(|err| err.to_string())?;
+        let report = SyncEngine::default().sync(server, store, account_id, INBOX)?;
         settle_marker(store, account_id, INBOX, inbox_status.as_ref(), problems);
         report
     } else {
@@ -348,9 +344,9 @@ fn poll_inbox_inner<S: MailServer, H: CycleHooks>(
         // no inventory — ADR 0017's sobriety holds. A CONDSTORE
         // server skips it: its delta will speak when polled.
         let flags_applied = match inbox_status.as_ref() {
-            Some(status) if status.highest_modseq.is_none() => SyncEngine::default()
-                .flags_pass(server, store, account_id, INBOX)
-                .map_err(|err| err.to_string())?,
+            Some(status) if status.highest_modseq.is_none() => {
+                SyncEngine::default().flags_pass(server, store, account_id, INBOX)?
+            }
             _ => 0,
         };
         SyncReport {
@@ -394,15 +390,13 @@ fn poll_inbox_inner<S: MailServer, H: CycleHooks>(
         // is not an operation failure and must not leave a diagnostic that
         // no later pass can clear.
         if !matches!(err, Error::RemoteMessageTooLarge { .. }) {
-            store
-                .settle_operation(
-                    account_id,
-                    INBOX,
-                    "bodies",
-                    chrono::Utc::now().timestamp(),
-                    Some(&err),
-                )
-                .map_err(|err| err.to_string())?;
+            store.settle_operation(
+                account_id,
+                INBOX,
+                "bodies",
+                chrono::Utc::now().timestamp(),
+                Some(&err),
+            )?;
         }
         problems.push(format!("bodies of arrivals: {err}"));
     }

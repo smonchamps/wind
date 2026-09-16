@@ -50,6 +50,8 @@ pub(crate) struct FakeServer {
     pub(crate) action_calls: Vec<String>,
     /// Simulates a cut on actions ("zero loss" test).
     pub(crate) actions_fail: bool,
+    /// PLAN-THROTTLE E2: the server answers every action with "not now".
+    pub(crate) throttled: bool,
     /// E3: the server REFUSES moves (NO/BAD — folder gone), a
     /// definitive refusal, not a cut.
     pub(crate) refused_moves: bool,
@@ -93,6 +95,7 @@ impl FakeServer {
             reset_during_attachment_fetch: false,
             action_calls: Vec::new(),
             actions_fail: false,
+            throttled: false,
             refused_moves: false,
             envelope_batch_failure: None,
             flag_batches: Vec::new(),
@@ -368,6 +371,11 @@ impl MailServer for FakeServer {
         if self.actions_fail {
             return Err(Error::Server("simulated cut".to_string()));
         }
+        if self.throttled {
+            return Err(Error::Throttled(
+                "System Error (Failure) [THROTTLED]".into(),
+            ));
+        }
         if self.refused_moves {
             return Err(Error::Refusal(format!(
                 "[TRYCREATE] {target} does not exist"
@@ -382,6 +390,11 @@ impl MailServer for FakeServer {
         if self.actions_fail {
             return Err(Error::Server("simulated cut".to_string()));
         }
+        if self.throttled {
+            return Err(Error::Throttled(
+                "System Error (Failure) [THROTTLED]".into(),
+            ));
+        }
         self.action_calls.push(format!("seen:{uid}:{seen}"));
         self.modseq += 1;
         if let Some((envelope, modseq)) = self.messages.get_mut(&uid) {
@@ -394,6 +407,11 @@ impl MailServer for FakeServer {
     fn set_flagged(&mut self, _mailbox: &str, uid: Uid, flagged: bool) -> Result<(), Error> {
         if self.actions_fail {
             return Err(Error::Server("simulated cut".to_string()));
+        }
+        if self.throttled {
+            return Err(Error::Throttled(
+                "System Error (Failure) [THROTTLED]".into(),
+            ));
         }
         self.action_calls.push(format!("flag:{uid}:{flagged}"));
         self.modseq += 1;
@@ -408,6 +426,11 @@ impl MailServer for FakeServer {
         if self.actions_fail {
             return Err(Error::Server("simulated cut".to_string()));
         }
+        if self.throttled {
+            return Err(Error::Throttled(
+                "System Error (Failure) [THROTTLED]".into(),
+            ));
+        }
         self.action_calls.push(format!("archive:{uid}"));
         self.messages.remove(&uid);
         self.modseq += 1;
@@ -417,6 +440,11 @@ impl MailServer for FakeServer {
     fn delete(&mut self, _mailbox: &str, uid: Uid) -> Result<(), Error> {
         if self.actions_fail {
             return Err(Error::Server("simulated cut".to_string()));
+        }
+        if self.throttled {
+            return Err(Error::Throttled(
+                "System Error (Failure) [THROTTLED]".into(),
+            ));
         }
         self.action_calls.push(format!("delete:{uid}"));
         self.messages.remove(&uid);

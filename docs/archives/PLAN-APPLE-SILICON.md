@@ -13,7 +13,9 @@ full test suite NATIVELY on Apple Silicon for the first time. ADR
 0037, debt D-62 paid. Kaizen: ~3.0 M input equivalents main thread +
 2.5 M agents in one 0.9 h session (121 turns, 3 prompts), 3 full
 gates (1 red — the gate's own bash lookup, fixed —, 1 green, 1
-pre-push replay), **0 KO at STOP 2**.
+pre-push replay), **0 KO at STOP 2**. **Run proof complete on
+2026-09-15**: T2 and T3 run the `_aarch64` binary natively (Activity
+Monitor › Kind = "Apple", § 5 bis).
 
 Status: STOP 1 played on 2026-09-05 — D1-D5 settled (§6), GO the same
 day.
@@ -236,7 +238,7 @@ its run proof is the tester's.
 
 **The run proof (2026-09-06/07, recorded by `/field` on 2026-09-07).**
 Two beta testers run **0.19.0 on Apple Silicon** — T2 and T3 of the
-wave-1 register ([PLAN-BETA § 3 bis](PLAN-BETA.md)), architecture
+wave-1 register ([PLAN-BETA § 3 bis](../PLAN-BETA.md)), architecture
 stated by the Chief Engineer; both have a Gmail account connected and
 sent 24 feedback items from the app's Feedback button (the normal
 outbox: the app launches, reads and sends). One reservation, stated
@@ -249,6 +251,15 @@ until it is answered, the proof reads "runs on Apple Silicon", not
 proof: T2's synchronization stalled at 72 % on 2026-09-07 (its own
 `/field`, on the trace). D-61 stands: no mac e2e, the mac gate is CI
 plus the field — and the field has just started speaking.
+
+**The reservation lifted (2026-09-15).** Both testers played the § 5
+gesture: T3 sent an Activity Monitor capture — the Wind process, Kind
+column **"Apple"**; T2 answered **"Apple"** the same day (reported by
+the Chief Engineer). Both run the `_aarch64` binary natively, not
+`_x64` under Rosetta 2. The run proof is complete; the plan leaves the
+root for `archives/` (PLAN-BATCH-2026-09 D1 kept it there until this
+proof). The capture itself stays out of the repository — it shows the
+tester's macOS user name (PLAN-BETA § 3 bis).
 
 ## 6. Chief-Engineer decisions
 

@@ -1375,6 +1375,11 @@ fn server_err(err: imap::Error) -> Error {
         // 2026-09-07, second pass: the first fix inspected the Display).
         imap::Error::No(no) => refusal_from(&no.information, err.to_string()),
         imap::Error::Bad(bad) => refusal_from(&bad.information, err.to_string()),
+        // A server hanging up BECAUSE it throttles is the same "not now"
+        // as a tagged one; any other BYE stays a transient `Server`.
+        imap::Error::Bye(bye) if is_throttle_text(&bye.information) => {
+            Error::Throttled(err.to_string())
+        }
         other => Error::Server(other.to_string()),
     }
 }
@@ -1382,7 +1387,9 @@ fn server_err(err: imap::Error) -> Error {
 /// A tagged NO/BAD, typed by its RFC 5530 response code when the parser
 /// does not know it: `[NONEXISTENT]` names a mailbox the server will not
 /// open (field 2026-09-07: Gmail answers it for `[Gmail]` and for a label it
-/// lists but no longer serves). Everything else stays a refusal.
+/// lists but no longer serves); a throttle ([`is_throttle_text`]) is
+/// "not now", never a refusal (PLAN-THROTTLE E1). Everything else stays a
+/// refusal.
 pub(crate) fn refusal_from(information: &str, shown: String) -> Error {
     let trimmed = information.trim_start();
     if trimmed
@@ -1390,9 +1397,38 @@ pub(crate) fn refusal_from(information: &str, shown: String) -> Error {
         .is_some_and(|head| head.eq_ignore_ascii_case("[NONEXISTENT]"))
     {
         Error::NoSuchMailbox(shown)
+    } else if is_throttle_text(information) {
+        Error::Throttled(shown)
     } else {
         Error::Refusal(shown)
     }
+}
+
+/// The response code and the phrase that mean "slow down". Matched
+/// ANYWHERE in the text, case-insensitively: Gmail writes `System Error
+/// (Failure) [THROTTLED]` with the code at the tail (field 2026-09-08), and
+/// its documented bandwidth lockout travels under `[ALERT]` — a code
+/// imap-proto parses away, so only the phrase reaches us. Deliberately
+/// NOT here (review 2026-09-15): RFC 5530's `[OVERQUOTA]`, `[LIMIT]`,
+/// `[INUSE]` do not clear with time and stay refusals; `[UNAVAILABLE]` is
+/// a hiccup the 30 s backoff covers; Gmail's "Too many simultaneous
+/// connections" clears in seconds — an hour of silence would be wrong.
+const THROTTLE_MARKERS: [&str; 2] = ["[throttled]", "bandwidth limit"];
+
+pub(crate) fn is_throttle_text(information: &str) -> bool {
+    let lowered = information.to_ascii_lowercase();
+    THROTTLE_MARKERS
+        .iter()
+        .any(|marker| lowered.contains(marker))
+}
+
+/// Should the shell redo the OAuth session after this connect failure?
+/// Only for what looks like a dead token: an authentication or protocol
+/// refusal. Not for a cut cable ([`is_connection_error`], audit lot 4), and
+/// not for a throttle — refreshing a token on "not now" and knocking
+/// again is the hammering D-17 named (PLAN-THROTTLE E1).
+pub fn should_refresh_token(err: &Error) -> bool {
+    !matches!(err, Error::Connection(_) | Error::Throttled(_))
 }
 
 /// An IMAP `Name` (from LIST or LIST-STATUS) becomes a domain `Folder` —
@@ -1666,3 +1702,94 @@ mod tls_stack_net {
 
 #[cfg(test)]
 mod mutation_tests;
+
+/// PLAN-THROTTLE E1 — a throttle is a transient refusal, typed from the
+/// text (the tokens sit anywhere: Gmail puts `[THROTTLED]` at the TAIL of
+/// "System Error (Failure) [THROTTLED]", field 2026-09-08; RFC 5530 puts
+/// its codes at the head; `[ALERT]` is parsed away by imap-proto and only
+/// the phrase remains).
+#[cfg(test)]
+mod throttle_tests {
+    use super::refusal_from;
+    use mail_core::Error;
+
+    fn typed(information: &str) -> Error {
+        refusal_from(information, format!("No Response: {information}"))
+    }
+
+    #[test]
+    fn gmail_puts_the_token_at_the_tail() {
+        assert!(matches!(
+            typed("System Error (Failure) [THROTTLED]"),
+            Error::Throttled(_)
+        ));
+    }
+
+    /// Review (2026-09-15): RFC 5530's `[OVERQUOTA]`, `[LIMIT]` and
+    /// `[INUSE]` do not clear with time (a full mailbox, an implementation
+    /// limit, a locked folder) — an hour of account-wide silence would be
+    /// the wrong answer; they keep the refusal class. `[UNAVAILABLE]` is a
+    /// hiccup the 30 s backoff already covers. Only what means "slow down"
+    /// is a throttle.
+    #[test]
+    fn definitive_and_hiccup_codes_are_not_throttles() {
+        for text in [
+            "[UNAVAILABLE] Temporary system problem",
+            "[LIMIT] Too many messages selected",
+            "[INUSE] Mailbox in use",
+            "[OVERQUOTA] Not enough space",
+            "Too many simultaneous connections. (Failure)",
+        ] {
+            assert!(matches!(typed(text), Error::Refusal(_)), "text: {text}");
+        }
+        assert!(matches!(
+            typed("[throttled] lower case, still a throttle"),
+            Error::Throttled(_)
+        ));
+    }
+
+    #[test]
+    fn gmail_lockouts_come_as_alert_phrases_without_their_code() {
+        for text in [
+            "Account exceeded command or bandwidth limits. (Failure)",
+            "Account exceeded bandwidth limits. (Failure)",
+        ] {
+            assert!(matches!(typed(text), Error::Throttled(_)), "text: {text}");
+        }
+    }
+
+    #[test]
+    fn a_missing_mailbox_and_a_plain_refusal_keep_their_classes() {
+        assert!(matches!(
+            typed("[NONEXISTENT] Unknown Mailbox"),
+            Error::NoSuchMailbox(_)
+        ));
+        assert!(matches!(
+            typed("[TRYCREATE] Archive does not exist"),
+            Error::Refusal(_)
+        ));
+        assert!(matches!(
+            typed("[AUTHENTICATIONFAILED] Invalid credentials (Failure)"),
+            Error::Refusal(_)
+        ));
+    }
+
+    /// The shell's guard: a dead token is refreshed, a cut cable is not
+    /// (audit lot 4), and a throttle is not either — refreshing a token
+    /// on "not now" is the hammering D-17 named.
+    #[test]
+    fn only_an_authentication_class_failure_earns_a_token_refresh() {
+        assert!(super::should_refresh_token(&Error::Refusal(
+            "[AUTHENTICATIONFAILED] Invalid credentials".into()
+        )));
+        assert!(super::should_refresh_token(&Error::Server(
+            "protocol".into()
+        )));
+        assert!(!super::should_refresh_token(&Error::Connection(
+            "cut".into()
+        )));
+        assert!(!super::should_refresh_token(&Error::Throttled(
+            "[THROTTLED]".into()
+        )));
+    }
+}

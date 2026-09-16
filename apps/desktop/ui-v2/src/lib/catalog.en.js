@@ -157,10 +157,12 @@ export const EN = {
   'status.bodyBackfill': 'Catching up on messages · {n} to go · {p} %',
   'status.bodyBackfillAlone': 'Catching up on messages · {n} to go',
   'status.previewBackfill': 'Catching up on previews…',
+  'status.dailyPaused': '{account} · daily download limit reached · catching up resumes {when}',
   'status.sends': 'Outbox · {n} message waiting|Outbox · {n} messages waiting',
   'status.scheduled':
     'Outbox · {n} message scheduled · leaves {when}|Outbox · {n} messages scheduled · next leaves {when}',
   'status.syncFailed': 'Sync failed · will retry automatically',
+  'status.throttled': '{account} · the server is limiting downloads · resumes {when}',
   'status.syncFailedSince':
     'Sync failed · will retry automatically · last synced {since}',
   'status.upToDate': 'All messages are up to date',
@@ -372,6 +374,8 @@ export const EN = {
   // --- Compose --------------------------------------------------------
   // Reconnecting an account with a dead token (field finding 2026-08-20).
   'settings.connectionUnavailable': 'Connection unavailable',
+  'settings.cooldown': 'The server is limiting downloads for this account · Wind resumes {when}',
+  'settings.dailyPaused': 'Today\'s download limit is reached for this account · catching up resumes {when}',
   'settings.disconnected': 'Disconnected',
   'settings.reconnect': 'Reconnect',
   'settings.reconnectAccount': 'Reconnect {email}',

@@ -49,8 +49,21 @@ Mac keyboards feel native, and a batch of beta-tester requests.
 - **The "help improve Wind" bar is gone.** It offered to keep local
   crash reports; it added noise for little in return, so it has been
   removed.
+- **Large Gmail catch-ups are paced.** Gmail allows a fixed amount of
+  mail to be downloaded per day; Wind now stops the background catch-up
+  for the day before that line, and the status bar says when it resumes.
+  New mail keeps arriving in the meantime.
 
 ### Fixed
+
+- **When Gmail asks Wind to slow down, Wind listens — and says so.**
+  Until now a "too many requests" answer was treated as a definitive
+  refusal: sorting gestures you had just made were abandoned with a
+  cryptic message, and Wind kept knocking at the server all day, which
+  could leave an account stuck part-way through its first sync. Wind
+  now waits (an hour, then longer if needed), keeps your gestures for
+  when the server is ready, and the status bar says which account is
+  paused and until when.
 
 - **A reply sent offline no longer leaves a stray draft.** Replying
   and sending straight away while offline used to leave a copy in

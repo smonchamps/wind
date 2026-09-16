@@ -88,7 +88,12 @@ export const call = (command, args) => {
   const injectIssues = E2E && ['ui_state', 'sync_progress'].includes(command) ? globalThis.window?.__e2eSyncIssues : undefined;
   const withIssues = injectIssues ? rawFlight.then((value) => command === 'ui_state'
     ? { ...value, sync: { ...value.sync, issues: injectIssues } } : { ...value, issues: injectIssues }) : rawFlight;
-  const flight = afterBody ? withIssues.then(afterBody) : withIssues;
+  // PLAN-THROTTLE E4: an account's cooldown, injected the same way — the
+  // real one needs Gmail's throttle, which no test may provoke.
+  const injectCooldowns = E2E && ['ui_state', 'sync_progress'].includes(command) ? globalThis.window?.__e2eCooldowns : undefined;
+  const withCooldowns = injectCooldowns ? withIssues.then((value) => command === 'ui_state'
+    ? { ...value, sync: { ...value.sync, cooldowns: injectCooldowns } } : { ...value, cooldowns: injectCooldowns }) : withIssues;
+  const flight = afterBody ? withCooldowns.then(afterBody) : withCooldowns;
   const log = E2E ? globalThis.window?.__e2eLog : undefined;
   if (log) {
     const poll = { command, start: performance.now(), arrival: null };

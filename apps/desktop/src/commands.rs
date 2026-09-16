@@ -1005,12 +1005,21 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
 
     let mut tally = tauri::async_runtime::spawn_blocking(move || {
         let run_cycle = cycle.clone();
-        crate::poll::poll_cycle(jobs, &cycle, &backoffs, &locks, false, {
-            move |account_id, session| {
-                crate::poll::run_sync(session, account_id, &path, &run_cycle, &app_bubbles)
-                    .map(|outcome| (outcome.report, outcome.problems, outcome.refreshed))
-            }
-        })
+        let held_path = path.clone();
+        crate::poll::poll_cycle(
+            jobs,
+            &cycle,
+            &backoffs,
+            &locks,
+            false,
+            &|account_id| crate::poll::held_at(&held_path, account_id),
+            {
+                move |account_id, session| {
+                    crate::poll::run_sync(session, account_id, &path, &run_cycle, &app_bubbles)
+                        .map(|outcome| (outcome.report, outcome.problems, outcome.refreshed))
+                }
+            },
+        )
     })
     .await
     .map_err(|err| err.to_string())?;
@@ -1055,49 +1064,64 @@ pub async fn sync_inbox_light(
     // order, `force` always attempts.
     let mut tally = tauri::async_runtime::spawn_blocking(move || {
         let run_cycle = cycle.clone();
-        crate::poll::poll_cycle(jobs, &cycle, &backoffs, &locks, force, {
-            move |account_id, session| {
-                let (mut server, fresh, _lease) = crate::poll::connect_imap(session)?;
-                let mut store = Store::open(&path).map_err(|err| err.to_string())?;
-                let mut problems = Vec::new();
-                let hooks = crate::poll::ShellHooks::new(&run_cycle, app_bubbles.clone());
-                let retry_partial = force
-                    && store
-                        .operation_issues()
-                        .map_err(|err| err.to_string())?
-                        .iter()
-                        .any(|issue| issue.account_id == account_id);
-                if retry_partial {
-                    store
-                        .retry_operations(account_id)
-                        .map_err(|err| err.to_string())?;
+        let held_path = path.clone();
+        crate::poll::poll_cycle(
+            jobs,
+            &cycle,
+            &backoffs,
+            &locks,
+            force,
+            &|account_id| crate::poll::held_at(&held_path, account_id),
+            {
+                move |account_id, session| {
+                    let mut store = Store::open(&path).map_err(|err| err.to_string())?;
+                    // PLAN-THROTTLE E3: the scheduler's pass never reaches here
+                    // on hold (`poll_cycle` skips it); the manual gesture is an
+                    // order and lifts the hold FIRST, with the diagnostics'
+                    // waits — its strikes stay (review B5).
+                    let retry_partial = force
+                        && (crate::poll::on_hold(&store, account_id).is_some()
+                            || store
+                                .operation_issues()
+                                .map_err(|err| err.to_string())?
+                                .iter()
+                                .any(|issue| issue.account_id == account_id));
+                    if retry_partial {
+                        store
+                            .retry_operations(account_id)
+                            .map_err(|err| err.to_string())?;
+                    }
+                    let (mut server, fresh, _lease) =
+                        crate::poll::open_door(&store, session, None)?;
+                    let mut problems = Vec::new();
+                    let hooks = crate::poll::ShellHooks::new(&run_cycle, app_bubbles.clone());
+                    let outcome = if retry_partial {
+                        mail_core::cycle::run_sync(
+                            &mut crate::poll::ShellServer(&mut server),
+                            &mut store,
+                            account_id,
+                            &path,
+                            &hooks,
+                        )
+                        .map(|outcome| {
+                            problems.extend(outcome.problems);
+                            outcome.report
+                        })
+                    } else {
+                        mail_core::cycle::run_light(
+                            &mut crate::poll::ShellServer(&mut server),
+                            &mut store,
+                            account_id,
+                            &hooks,
+                            &mut problems,
+                        )
+                    };
+                    server.logout();
+                    let report = outcome?;
+                    Ok((report, problems, fresh))
                 }
-                let outcome = if retry_partial {
-                    mail_core::cycle::run_sync(
-                        &mut crate::poll::ShellServer(&mut server),
-                        &mut store,
-                        account_id,
-                        &path,
-                        &hooks,
-                    )
-                    .map(|outcome| {
-                        problems.extend(outcome.problems);
-                        outcome.report
-                    })
-                } else {
-                    mail_core::cycle::run_light(
-                        &mut crate::poll::ShellServer(&mut server),
-                        &mut store,
-                        account_id,
-                        &hooks,
-                        &mut problems,
-                    )
-                };
-                server.logout();
-                let report = outcome?;
-                Ok((report, problems, fresh))
-            }
-        })
+            },
+        )
     })
     .await
     .map_err(|err| err.to_string())?;
@@ -4320,12 +4344,15 @@ fn pass_after_gesture_account(
         {
             let lock = crate::poll::account_lock(locks, session.email());
             let _poll = lock.lock();
-            let (mut server, fresh, _lease) = crate::poll::connect_imap(&session)?;
+            let mut store = Store::open(path).map_err(|err| err.to_string())?;
+            // PLAN-THROTTLE: the pass after a gesture is a scheduler's knock
+            // (review C3) — on hold it waits; the gesture itself stays in
+            // the journal for the next replay.
+            let (mut server, fresh, _lease) = crate::poll::open_door(&store, &session, None)?;
             if let Some(fresh) = fresh {
                 session = fresh.clone();
                 sessions.push(fresh);
             }
-            let mut store = Store::open(path).map_err(|err| err.to_string())?;
             // 1. The intentions: the replay starts NOW.
             let timer = Instant::now();
             let sources = store
@@ -5988,7 +6015,9 @@ fn run_draft_sync_all(
             continue;
         }
 
-        let (mut server, refreshed, _lease) = match crate::poll::connect_imap(&session) {
+        // PLAN-THROTTLE (review C5): the draft reflection is a scheduler's
+        // knock — on hold, the drafts wait with the rest.
+        let (mut server, refreshed, _lease) = match crate::poll::open_door(&store, &session, None) {
             Ok(pair) => pair,
             Err(reason) => {
                 summary.error = Some(reason);
@@ -6471,9 +6500,22 @@ pub struct SyncIssue {
     pub retry_at: Option<i64>,
 }
 
+/// An account the pump leaves alone until `until` (PLAN-THROTTLE E4/E5):
+/// `kind` is `throttle` (told "not now" by its server, breathing) or
+/// `daily_budget` (the day's download budget is spent, until the next
+/// local midnight). The progress line and Settings say so; computed on
+/// every probe, so the line refreshes at midnight without a pump running.
+#[derive(Serialize)]
+pub struct AccountCooldown {
+    pub account_id: i64,
+    pub until: i64,
+    pub kind: &'static str,
+}
+
 #[derive(Serialize)]
 pub struct SyncProgress {
     pub issues: Vec<SyncIssue>,
+    pub cooldowns: Vec<AccountCooldown>,
     /// Messages in the database, all already-visited mailboxes
     /// combined.
     pub local: u64,
@@ -6502,6 +6544,33 @@ pub struct SyncProgress {
 ///
 /// Purely local — no network connection: the interface can call it in
 /// a loop while a synchronization runs, at no round-trip cost.
+fn account_cooldowns(store: &Store) -> Result<Vec<AccountCooldown>, String> {
+    let mut out: Vec<AccountCooldown> = store
+        .cooldowns(epoch_now())
+        .map_err(|err| err.to_string())?
+        .into_iter()
+        .map(|(account_id, until)| AccountCooldown {
+            account_id,
+            until,
+            kind: "throttle",
+        })
+        .collect();
+    let day = local_day();
+    for account in store.accounts().map_err(|err| err.to_string())? {
+        let spent = store
+            .daily_download(account.id, &day)
+            .map_err(|err| err.to_string())?;
+        if mail_core::daily_budget_spent(&account.provider, spent) {
+            out.push(AccountCooldown {
+                account_id: account.id,
+                until: next_local_midnight(),
+                kind: "daily_budget",
+            });
+        }
+    }
+    Ok(out)
+}
+
 fn read_sync(store: &Store, generation: u64, in_progress: bool) -> Result<SyncProgress, String> {
     let (local, remote) = store.sync_progress().map_err(|err| err.to_string())?;
     // An unreadable timestamp (corrupted pref) counts as "never": the
@@ -6524,6 +6593,7 @@ fn read_sync(store: &Store, generation: u64, in_progress: bool) -> Result<SyncPr
                 retry_at: issue.retry_at,
             })
             .collect(),
+        cooldowns: account_cooldowns(store)?,
         local,
         remote,
         percent: mail_core::sync_percent(local, remote),
@@ -6819,6 +6889,23 @@ pub struct BackfillSummary {
     pub errors: Vec<String>,
 }
 
+/// The local date the daily budget is counted on, and the epoch it turns.
+fn local_day() -> String {
+    chrono::Local::now().format("%Y-%m-%d").to_string()
+}
+
+/// The next local midnight — or a day from now when the zone has no
+/// single midnight (a DST switch at 00:00; review A5: `single()` alone
+/// left the pause without a date).
+fn next_local_midnight() -> i64 {
+    let now = chrono::Local::now();
+    now.date_naive()
+        .succ_opt()
+        .and_then(|day| day.and_hms_opt(0, 0, 0))
+        .and_then(|midnight| midnight.and_local_timezone(chrono::Local).earliest())
+        .map_or(now.timestamp() + 86_400, |midnight| midnight.timestamp())
+}
+
 /// ONE backfill batch, all connected accounts combined.
 ///
 /// Deliberately bounded: the UI calls again as long as there is work
@@ -6864,6 +6951,20 @@ fn run_backfill_all(
     };
     let mut refreshed_list = Vec::new();
     let mut budget = mail_core::WorkBudget::new(BACKFILL_BUDGET);
+    // PLAN-THROTTLE E5 (D4): the day's download tally per account, read
+    // once per pass (the pump calls back to back); a Gmail account past
+    // its budget is left alone until tomorrow — the status probe says so.
+    let day = local_day();
+    let mut spent_today: std::collections::HashMap<i64, (String, u64)> =
+        std::collections::HashMap::new();
+    for account in store.accounts().map_err(|err| err.to_string())? {
+        if jobs.iter().any(|(id, _)| *id == account.id) {
+            let spent = store
+                .daily_download(account.id, &day)
+                .map_err(|err| err.to_string())?;
+            spent_today.insert(account.id, (account.provider, spent));
+        }
+    }
     let mut mailboxes = Vec::new();
     for (account_id, _) in &jobs {
         for name in store
@@ -6917,6 +7018,15 @@ fn run_backfill_all(
         {
             continue;
         }
+        // The daily budget (E5): spent, the account waits for the next
+        // local day — the arrivals' bodies keep coming through the cycle.
+        let (provider, spent) = spent_today
+            .get(&account_id)
+            .map_or(("", 0), |(provider, spent)| (provider.as_str(), *spent));
+        if mail_core::daily_budget_spent(provider, spent) {
+            continue;
+        }
+        let has_budget = mail_core::daily_download_left(provider, 0).is_some();
         if store
             .bodies_to_backfill(account_id, &identity.mailbox, horizon, 1)
             .map_err(|err| err.to_string())?
@@ -6947,7 +7057,7 @@ fn run_backfill_all(
             if let Some((_, server, _lease)) = connection.take() {
                 ImapServer::logout(server);
             }
-            match crate::poll::connect_imap(session) {
+            match crate::poll::open_door(&store, session, None) {
                 Ok((server, refreshed, lease)) => {
                     if let Some(fresh) = refreshed {
                         refreshed_list.push(fresh);
@@ -6958,7 +7068,8 @@ fn run_backfill_all(
                     // A connection failure is the ACCOUNT's state (connection
                     // notice, backoff), not a partial failure of each folder:
                     // recorded per mailbox it masked "Sync failed" offline with
-                    // one "issue" per folder (gate finding, 2026-09-07).
+                    // one "issue" per folder (gate finding, 2026-09-07). A
+                    // throttled door holds the account (PLAN-THROTTLE E3).
                     summary
                         .errors
                         .push(format!("{}: {reason}", session.email()));
@@ -6968,14 +7079,27 @@ fn run_backfill_all(
             }
         }
         if let Some((_, server, _lease)) = connection.as_mut() {
-            match mail_core::backfill_bodies_budgeted(
+            let bytes_before = budget.bytes_left();
+            let outcome = mail_core::backfill_bodies_budgeted(
                 server,
                 &mut store,
                 account_id,
                 &identity.mailbox,
                 horizon,
                 &mut budget,
-            ) {
+            );
+            // Whatever the outcome, the bytes went over the wire: tallied
+            // on the account's day (E5), only where a budget exists.
+            let cost = bytes_before.saturating_sub(budget.bytes_left());
+            if cost > 0 && has_budget {
+                store
+                    .add_daily_download(account_id, &day, cost)
+                    .map_err(|err| err.to_string())?;
+                if let Some((_, spent)) = spent_today.get_mut(&account_id) {
+                    *spent = spent.saturating_add(cost);
+                }
+            }
+            match outcome {
                 Ok(report) => {
                     summary.more |= report.more;
                 }
@@ -7549,6 +7673,46 @@ fn installer_command(installer_path: &std::path::Path) -> std::process::Command 
 
 #[cfg(test)]
 mod tests {
+    /// PLAN-THROTTLE E4/E5 — the status probe's glue: what the store holds
+    /// (a cooldown, a spent daily tally) reaches `sync_progress.cooldowns`
+    /// with its kind. The e2e proves the screen from an injected payload;
+    /// this proves the payload from the store.
+    #[test]
+    fn the_status_probe_reports_both_pauses_from_the_store() {
+        let store = mail_core::Store::open_in_memory().unwrap();
+        let gmail = store
+            .adopt_or_create_account("g@example.invalid", "gmail")
+            .unwrap();
+        let generic = store
+            .adopt_or_create_account("i@example.invalid", "imap")
+            .unwrap();
+        assert!(super::account_cooldowns(&store).unwrap().is_empty());
+
+        let until = store.note_throttle(generic, super::epoch_now()).unwrap();
+        store
+            .add_daily_download(
+                gmail,
+                &super::local_day(),
+                mail_core::GMAIL_DAILY_DOWNLOAD_BUDGET,
+            )
+            .unwrap();
+        let mut pauses = super::account_cooldowns(&store).unwrap();
+        pauses.sort_by_key(|pause| pause.account_id);
+        assert_eq!(pauses.len(), 2, "one throttle, one spent budget");
+        assert_eq!(
+            (pauses[0].account_id, pauses[0].kind, pauses[0].until),
+            (gmail, "daily_budget", super::next_local_midnight())
+        );
+        assert_eq!(
+            (pauses[1].account_id, pauses[1].kind, pauses[1].until),
+            (generic, "throttle", until)
+        );
+        assert!(
+            pauses[0].until > super::epoch_now(),
+            "the budget's pause has a date in the future"
+        );
+    }
+
     #[test]
     fn a_backfill_connection_failure_is_reported_without_a_folder_issue() {
         use std::io::Write;

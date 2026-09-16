@@ -347,6 +347,11 @@ fn replay_actions(
                 store.refuse_action(pending.id, &reason)?;
                 refused += 1;
             }
+            // "Not now" (PLAN-THROTTLE E2, decision D3): neither a refusal
+            // nor a strike — the gesture waits untouched, the sync of the
+            // mailbox stops here, the account enters its cooldown when the
+            // cycle settles this error.
+            Err(err @ Error::Throttled(_)) => return Err(err),
             Err(err) => {
                 if store.note_action_failure(pending.id, &err.to_string())? {
                     refused += 1;
@@ -1073,6 +1078,88 @@ mod tests {
         let after = synced(&mut server, &mut store, &engine);
         assert_eq!(after.replayed, 1);
         assert!(server.messages[&1].0.seen);
+    }
+
+    /// PLAN-THROTTLE E2 (Chief Engineer decision D3, 2026-09-15): "not now"
+    /// is neither a refusal nor a strike. Field 2026-09-08: three gestures
+    /// of a tester quarantined for good by a Gmail `[THROTTLED]`. The replay
+    /// stops, the sync of the mailbox stops with it (the server asked for
+    /// air, not for the next command), the queue keeps its gestures with
+    /// their attempt count untouched, and the account enters its cooldown.
+    #[test]
+    fn a_throttled_action_keeps_the_queue_and_counts_no_strike() {
+        let mut server = FakeServer::new(false);
+        server.add(1, "a");
+        server.add(2, "b");
+        let mut store = Store::open_in_memory().unwrap();
+        let engine = SyncEngine::default();
+        synced(&mut server, &mut store, &engine);
+        let id = mailbox_id(&store);
+        let account = test_account(&store);
+        store
+            .enqueue_action(id, 1, Action::MoveTo("Archive".to_string()))
+            .unwrap();
+        store.enqueue_action(id, 2, Action::MarkSeen).unwrap();
+        server.throttled = true;
+
+        for knock in 1..=6 {
+            let outcome = engine.sync(&mut server, &mut store, account, "INBOX");
+            assert!(
+                matches!(outcome, Err(Error::Throttled(_))),
+                "knock {knock}: the sync reports the throttle, typed"
+            );
+            assert_eq!(store.pending_actions(id).unwrap().len(), 2, "knock {knock}");
+            assert_eq!(store.refused_actions().unwrap(), 0, "knock {knock}");
+        }
+        assert!(server.moved.is_empty() && !server.messages[&2].0.seen);
+
+        // The air did its work: the next sync replays everything.
+        server.throttled = false;
+        let report = synced(&mut server, &mut store, &engine);
+        assert_eq!(report.replayed, 2);
+        assert_eq!(report.refused, 0);
+        assert!(store.pending_actions(id).unwrap().is_empty());
+        assert!(server.messages[&2].0.seen);
+    }
+
+    /// Review finding (PLAN-THROTTLE, 2026-09-15): the INBOX poll used to
+    /// stringify every error and re-type it `Server` before settling —
+    /// the cooldown hook never saw a throttle on INBOX, which is exactly
+    /// the field case (a gesture replayed on INBOX). The net goes through
+    /// `poll_inbox`, the shared core of the full cycle and the light pass.
+    #[test]
+    fn a_throttle_on_the_inbox_replay_puts_the_account_on_hold() {
+        let mut server = FakeServer::new(false);
+        server.add(1, "a");
+        let mut store = Store::open_in_memory().unwrap();
+        let engine = SyncEngine::default();
+        synced(&mut server, &mut store, &engine);
+        let id = mailbox_id(&store);
+        let account = test_account(&store);
+        store.enqueue_action(id, 1, Action::MarkSeen).unwrap();
+        server.throttled = true;
+        server.add(2, "b"); // something moved: the guarded poll proceeds
+
+        let mut problems = Vec::new();
+        let outcome = crate::cycle::poll_inbox(
+            &mut server,
+            &mut store,
+            account,
+            &crate::cycle::NoHooks,
+            &mut problems,
+        );
+        assert!(outcome.is_err(), "the poll reports the throttle");
+        let now = chrono::Utc::now().timestamp();
+        let until = store
+            .cooldown_until(account, now)
+            .unwrap()
+            .expect("the account is on hold after a throttled INBOX replay");
+        assert!(until >= now + 3_500, "an hour of air: {until}");
+        assert!(
+            store.operation_issues().unwrap().is_empty(),
+            "a throttle is a cooldown, never an operation issue (D5: no alert)"
+        );
+        assert_eq!(store.pending_actions(id).unwrap().len(), 1);
     }
 
     /// The pure decision (STANDARD §4): what `sync` used to do inline

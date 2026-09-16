@@ -202,7 +202,10 @@ pub(crate) fn replay_removal(
             &effect.plan,
             RemovalStep::Transfer,
         ) {
-            if matches!(err, Error::Refusal(_)) {
+            // A tagged refusal — definitive, or a throttle's "not now" —
+            // means the server did NOT transfer: the effect is dropped
+            // and the gesture keeps its plain outcome (PLAN-THROTTLE E2).
+            if matches!(err, Error::Refusal(_) | Error::Throttled(_)) {
                 store
                     .conn()
                     .execute("DELETE FROM action_effects WHERE id = ?1", [effect.id])?;

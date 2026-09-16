@@ -44,12 +44,25 @@ pub enum Error {
 
     /// EXPLICIT refusal from the server (NO/BAD: folder gone,
     /// `[CANNOT]`, `[TRYCREATE]`) — retrying will not change anything.
-    /// Everything else (`Server`) is deemed transient: network,
-    /// throttling, timeout. This is the distinction the outbox has had
-    /// since ADR 0003 (`SendError::{Transient, Permanent}`) and the
-    /// action journal did not (2026-09-01 audit S1-7, PLAN-AUDIT-V1 E3).
+    /// Everything else (`Server`) is deemed transient: network, timeout.
+    /// This is the distinction the outbox has had since ADR 0003
+    /// (`SendError::{Transient, Permanent}`) and the action journal did
+    /// not (2026-09-01 audit S1-7, PLAN-AUDIT-V1 E3). A throttle used to
+    /// be listed here as "transient, travels as `Server`": it does not —
+    /// Gmail answers it with a tagged `NO`, which is [`Error::Throttled`]
+    /// since PLAN-THROTTLE-2026-09 (field 2026-09-08, T2's `[THROTTLED]`
+    /// quarantining her own gestures).
     #[error("server refusal: {0}")]
     Refusal(String),
+
+    /// The server said "not now": a tagged `NO`/`BAD` or a `BYE` carrying
+    /// a throttle — RFC 5530 `[UNAVAILABLE]`/`[LIMIT]`/`[INUSE]`/
+    /// `[OVERQUOTA]`, Gmail's `[THROTTLED]` and its bandwidth or
+    /// connection-count lockouts. Transient by nature, but not like a
+    /// cut cable: the account must BREATHE (cooldown, PLAN-THROTTLE E3),
+    /// the token is not refreshed, the action queue keeps its gestures.
+    #[error("the server asked to slow down: {0}")]
+    Throttled(String),
 
     /// The server says the mailbox does not exist or cannot be opened
     /// (`NO [NONEXISTENT]`, RFC 5530): a container listed without its
@@ -110,6 +123,7 @@ impl Error {
             Error::Connection(_) => "connection",
             Error::RemoteMessageTooLarge { .. } => "remote_message_too_large",
             Error::Refusal(_) => "refusal",
+            Error::Throttled(_) => "throttled",
             Error::NoSuchMailbox(_) => "no_such_mailbox",
             Error::AttachmentOverBudget { .. } => "attachment_budget",
             Error::Interrupted => "interrupted",
@@ -126,6 +140,7 @@ impl Error {
                 | Error::StaleDelivery
                 | Error::Server(_)
                 | Error::Connection(_)
+                | Error::Throttled(_)
                 | Error::Interrupted
         )
     }
@@ -140,6 +155,10 @@ mod tests {
         assert_eq!(Error::Connection("x".into()).code(), "connection");
         assert!(Error::Connection("x".into()).retryable());
         assert!(!Error::Refusal("NO".into()).retryable());
+        // PLAN-THROTTLE E1: "not now" is a transient class of its own —
+        // retryable, and never a refusal.
+        assert_eq!(Error::Throttled("[THROTTLED]".into()).code(), "throttled");
+        assert!(Error::Throttled("[THROTTLED]".into()).retryable());
         assert!(!Error::InvalidEmailAddress("a".into()).retryable());
         assert_eq!(Error::Interrupted.code(), "interrupted");
     }

@@ -70,13 +70,47 @@ One sweep ([plan](archives/PLAN-SWEEP-2026-09.md)), field 7/7 OK the same day:
   input drawn twice). Backlog observation: an arrival in the same
   second as Organized-mode activation never waits at the Screener.
 
-**Next, in order**: the `/field` on beta T2's P0 (sync stalled at
-72 %, on the tester's trace, T3 as the same-architecture witness —
-D8 2026-09-09: the trace has not arrived yet) → the field checks the
+**Next, in order**: **0.22.0**, held for PLAN-THROTTLE (D7 of
+2026-09-15) and ready once its CI is green — both changelog entries are
+written; then the field proof of the throttle on T2's account after her
+update (the P0 #106 — see the PLAN-THROTTLE section below: the trace
+is `wind.log` in `…/dev.elements.wind/`, not the folder the first ask
+named; the corrected ask is pending with T2) → the field checks the
 INPROGRESS job left open (item 6 invitation status from the card, on
 a live cross-client invitation; item 109 macOS shortcuts on the Air;
-item 86 first-run OAuth measurement) → the Rosetta-or-native check on
-T2/T3 → the Trash permanent-delete capability (D3-bis, backlog).
+item 86 first-run OAuth measurement) → the Trash permanent-delete
+capability (D3-bis, backlog). The Rosetta-or-native check on T2/T3 is
+DONE (2026-09-15: both "Apple", native — see below).
+
+## PLAN-THROTTLE-2026-09 — delivered 2026-09-15, field proof pending
+
+Backlog #130 (DEBT D-17), taken because its reopening clause came true
+in the field: T2's Gmail account — the P0 #106 account — answered
+`[THROTTLED]` on 0.21.0 (2026-09-08), and Wind typed it as a
+DEFINITIVE refusal (three of her own gestures quarantined for good, a
+raw IMAP string as advice) while knocking at the server again within
+the hour, every hour. **Finding that reframes the P0's ask**: the
+trace exists — `wind.log`, bounded and sanitized, next to the database
+in `~/Library/Application Support/dev.elements.wind/` — and the folder
+named in the 2026-09-07 ask (`…/Wind/`) does not; the ask was
+corrected on 2026-09-15 (a first reading of this session said "no
+trace file at all" and was wrong, caught at STOP 2 preparation on this
+workstation's own folder). **Hypothesis for #106,
+consistent with every fact**: Wind's full backfill has no daily bound
+against Gmail's documented 2,500 MB/day download cap; past it Gmail
+suspends IMAP (1 h to 24 h, INBOX polls included), Wind knocks again
+and re-spends the next day's quota — "stalled at 72 %, nothing since
+August 25". Delivered ([plan](PLAN-THROTTLE-2026-09.md), seven Chief
+Engineer decisions D1–D7): `Error::Throttled` typed from code AND text,
+the action journal keeps a throttled gesture without a strike, no token
+refresh on a throttle, a per-account cooldown (1 h doubling to 24 h,
+persisted, read at `operation_due` and before every connection), a
+2,000 MB/day download budget for the Gmail backfill, both said in the
+progress line and in Settings (A150). D-17 closed. **The field proof is
+T2's update to 0.22.0**: the Settings line and the progress line must
+name the pause, and the INBOX must move again within a day. A "save a
+diagnostic file" gesture (the log exists, nobody can find it without a
+path) is opened as a backlog item (D6).
 
 ## PLAN-INPROGRESS-2026-09 — CLOSED 2026-09-09
 
@@ -146,11 +180,11 @@ AUTO-UPDATE (0.19.0 → 0.20.0, ADR 0036's due proof) is PROVEN, both
 Windows channels proven again, and the Air runs 0.20.0 (which
 supersedes the pending x64-install proof).** Still open:
 
-- the Apple Silicon run proof of PLAN-APPLE-SILICON — **narrowed on
-  2026-09-07**: the app RUNS on two Apple Silicon Macs (T2, T3, Gmail,
-  24 feedback items sent from the app); still to confirm that they run
-  the `_aarch64` binary and not `_x64` under Rosetta (Activity Monitor
-  › Kind = "Apple", asked of both);
+- ~~the Apple Silicon run proof of
+  [PLAN-APPLE-SILICON](archives/PLAN-APPLE-SILICON.md)~~ — **DONE on
+  2026-09-15**: T2 and T3 (Gmail, the app running since 2026-09-06/07)
+  both read Activity Monitor › Kind = **"Apple"** — the `_aarch64`
+  binary, native, not `_x64` under Rosetta; the plan is archived;
 - the SAC net stays armed (a VISIBLE failure under a real Smart App
   Control refusal — not closable by us);
 - D-50, the Microsoft refresh-token confirmation, due ≈ 2026-12-01.

@@ -48,6 +48,10 @@
     connected = [],
     connectionStates = {},
     syncIssues = [],
+    // PLAN-THROTTLE E4/E5: `[{ account_id, until, kind }]` — the account
+    // is breathing after a throttle, or past its daily download budget;
+    // said here in the product's words.
+    cooldowns = [],
     onretrySync = () => {},
     // R1 (PLAN-RETOURS-8): the markers set (App loads them); setting
     // or removing bubbles up via `onrepere(id, repere|null)` — the App
@@ -850,6 +854,11 @@
                           onclick={() => requestRemoval(c.account_id)}>
                     <Icon name="delete" />{t('settings.remove')}</button>
                 </div>
+                {#each cooldowns.filter((cooldown) => cooldown.account_id === c.account_id) as cooldown (`${cooldown.kind}:${cooldown.until}`)}
+                  <div class="sync-issue" data-testid="account-cooldown">
+                    <p>{t(cooldown.kind === 'daily_budget' ? 'settings.dailyPaused' : 'settings.cooldown', { when: whenLong(cooldown.until) })}</p>
+                  </div>
+                {/each}
                 {#each syncIssues.filter((issue) => issue.account_id === c.account_id) as issue (`${issue.mailbox}:${issue.operation}`)}
                   <div class="sync-issue" data-testid="sync-issue">
                     <strong>{t(`sync.operation.${issue.operation}`)}{issue.mailbox ? ` · ${issue.mailbox}` : ''}</strong>

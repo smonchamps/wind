@@ -112,7 +112,37 @@ E15a (2026-09-07).
   partial index `WHERE to_addrs IS NULL`.
 - **Reopens if**: the field points to the cost (with D-8).
 
-### D-17 · Body backfill blind to a Gmail throttle
+### ~~D-17 · Body backfill blind to a Gmail throttle~~ — closed 2026-09-15
+
+> ✅ **CLOSED on 2026-09-15 ([PLAN-THROTTLE-2026-09](PLAN-THROTTLE-2026-09.md)).**
+> Its reopening clause came true in the field: tester T2's Gmail
+> account, throttled after its large initial sync, answered
+> `[THROTTLED]` on 2026-09-08 — and the P0 #106 (sync stalled at 72 %)
+> has that shape. Re-read on the code of the day: (1) the mute break
+> was already paid at PLAN-AUDIT-V1 E3 (the backfill settles an
+> operation issue per mailbox, the bar says "Synchronization
+> incomplete"); what remained was worse than mute — a throttle was
+> typed as a DEFINITIVE refusal (`Error::Refusal`, the class that
+> quarantines the user's own gestures for good). (2) The dead-token
+> guard let it through (a token refresh + a second knock per hour).
+> Delivered: `Error::Throttled` typed from the response code AND the
+> text (`[THROTTLED]` sits at the TAIL of Gmail's line; `[ALERT]` is
+> parsed away by imap-proto and only the phrase remains); the action
+> journal keeps a throttled gesture without a strike; `should_refresh_token`
+> excludes the throttle; a per-account **cooldown** (1 h doubling to
+> 24 h, persisted pref, read at `operation_due` and before every
+> connection — cycle, light pass, watcher, pump); a **daily download
+> budget** of 2,000 MB for the Gmail backfill; both said in the
+> progress line and in Settings. **Residue**: Microsoft's throttling
+> is not documented and not modelled; Gmail's "too many simultaneous
+> connections" (clears in seconds) stays a refusal at LOGIN — token
+> refresh and second knock as before; `should_refresh_token` keeps its
+> negative polarity (everything but a cut cable or a throttle refreshes)
+> until an authentication class exists; a throttle at the transfer step
+> of a move is treated as "nothing transferred" (a tagged NO), which is
+> the RFC's contract, not a measurement; the daily tally counts the
+> pump's bytes only (arrivals, headers, recipients and reads on click
+> ride on the 500 MB of room under the cap).
 
 - **Fact (analysis 2026-08-17)**: on the body-backfill path, a Gmail
   server error (throttling: `[OVERQUOTA]`, « bandwidth exceeded »,
@@ -1243,12 +1273,14 @@ asserts it as shipped (`redesign-screen02.spec.js`).
 - **Why owned**: no Apple Silicon machine to build or field-test on.
 - **Reopens if**: an Apple Silicon tester reports Rosetta friction,
   or an Apple Silicon build machine appears.
-- **Closed at [PLAN-APPLE-SILICON](PLAN-APPLE-SILICON.md)** (the
+- **Closed at [PLAN-APPLE-SILICON](archives/PLAN-APPLE-SILICON.md)** (the
   reopening condition fired: an Apple Silicon tester asked to enter
   the beta). The Intel Air cross-builds arm64; a second asset family
   under `darwin-aarch64`; the mac CI job proves both triples. The
   field-test half stays true — no arm64 machine in the fleet, the
-  tester's first install is the run proof (stated at the GO).
+  tester's first install is the run proof (stated at the GO). Run
+  proof complete on 2026-09-15: T2 and T3 run the arm64 binary
+  natively (Activity Monitor › Kind = "Apple").
 
 ### ~~D-51 · An account without CONDSTORE never resyncs its flags~~ — closed 2026-09-04
 

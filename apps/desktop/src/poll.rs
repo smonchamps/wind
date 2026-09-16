@@ -454,20 +454,116 @@ fn note_outcome(backoffs: &Mutex<HashMap<String, crate::Backoff>>, email: &str, 
     backoff.since = Instant::now();
 }
 
+/// Why the door did not open — typed for the ONE thing a caller must act
+/// on (PLAN-THROTTLE E3): a throttle puts the account on hold; a cut cable
+/// or a dead token does not. Everything else stays the prose it was.
+pub(crate) struct ConnectFailure {
+    pub(crate) reason: String,
+    pub(crate) throttled: bool,
+}
+
+impl From<ConnectFailure> for String {
+    fn from(failure: ConnectFailure) -> String {
+        failure.reason
+    }
+}
+
+impl From<String> for ConnectFailure {
+    fn from(reason: String) -> Self {
+        Self {
+            reason,
+            throttled: false,
+        }
+    }
+}
+
+pub(crate) fn connect_failure(err: &mail_core::Error) -> ConnectFailure {
+    ConnectFailure {
+        reason: err.to_string(),
+        throttled: matches!(err, mail_core::Error::Throttled(_)),
+    }
+}
+
+pub(crate) fn epoch_now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |epoch| epoch.as_secs() as i64)
+}
+
+/// The account's running cooldown, if any — read before opening ANY
+/// connection (cycle, light pass, IDLE watcher, backfill pump). An
+/// unreadable store counts as "not on hold": the protection yields to the
+/// poll, never the reverse (the backoff's own rule).
+pub(crate) fn on_hold(store: &Store, account_id: i64) -> Option<i64> {
+    store.cooldown_until(account_id, epoch_now()).ok().flatten()
+}
+
+pub(crate) fn hold_reason(until: i64) -> String {
+    format!("the server asked to slow down; resuming at epoch {until}")
+}
+
+/// The door was told "not now": the account breathes from here on. A
+/// store failure is traced, never fatal — the hold is a courtesy to the
+/// server, the poll's outcome is already decided.
+pub(crate) fn hold_if_throttled(store: &Store, account_id: i64, failure: &ConnectFailure) {
+    if !failure.throttled {
+        return;
+    }
+    if let Err(err) = store.note_throttle(account_id, epoch_now()) {
+        crate::trace::trace(&format!(
+            "account {account_id}: cooldown not recorded: {err}"
+        ));
+    }
+}
+
+/// The schedulers' door (PLAN-THROTTLE E3, one site after the review): an
+/// account on hold is not knocked on; a throttled LOGIN puts it on hold.
+/// The user's own gestures (a read on click, an attachment, adding an
+/// account) keep the plain [`connect_imap`]: the hold is a courtesy to the
+/// server, not a wall in front of the user.
+pub(crate) fn open_door(
+    store: &Store,
+    session: &AccountWork,
+    alive: Option<Arc<AtomicBool>>,
+) -> Result<(ImapServer, Option<AccountWork>, Lease), String> {
+    let account_id = session.ticket.account_id;
+    if let Some(until) = on_hold(store, account_id) {
+        return Err(hold_reason(until));
+    }
+    connect_imap_with_stop(session, alive).map_err(|failure| {
+        hold_if_throttled(store, account_id, &failure);
+        failure.reason
+    })
+}
+
+/// The hold read by [`poll_cycle`] before any per-account work, from the
+/// database path alone (the cycle opens no store of its own).
+pub(crate) fn held_at(path: &Path, account_id: i64) -> Option<i64> {
+    Store::cooldown_until_readonly(path, account_id, epoch_now())
+        .ok()
+        .flatten()
+}
+
 /// Opens an IMAP connection matching the account type. For an OAuth2
 /// account, a failure triggers a silent refresh; for a generic account,
 /// the password is fixed.
 pub(crate) fn connect_imap(
     session: &AccountWork,
 ) -> Result<(ImapServer, Option<AccountWork>, Lease), String> {
-    connect_imap_with_stop(session, None)
+    connect_imap_with_stop(session, None).map_err(String::from)
 }
 
 pub(crate) fn connect_imap_with_stop(
     session: &AccountWork,
     alive: Option<Arc<AtomicBool>>,
-) -> Result<(ImapServer, Option<AccountWork>, Lease), String> {
+) -> Result<(ImapServer, Option<AccountWork>, Lease), ConnectFailure> {
     let lease = session.ticket.lease()?;
+    let throttled = std::cell::Cell::new(false);
+    let told_not_now = |err: mail_core::Error| {
+        let failure = connect_failure(&err);
+        throttled.set(failure.throttled);
+        failure.reason
+    };
     let check = || {
         session.ticket.check()?;
         if alive
@@ -497,8 +593,10 @@ pub(crate) fn connect_imap_with_stop(
                     // refreshing — hammering the OAuth endpoint on every
                     // cycle during a network outage is the best way to turn
                     // an IMAP throttle into an account freeze (P0
-                    // complement, anti-hammering).
-                    Err(err) if mail_imap::is_connection_error(&err) => Err(err.to_string()),
+                    // complement, anti-hammering). Nor is a THROTTLE
+                    // (PLAN-THROTTLE E3, D-17): "not now" earns air, not a
+                    // fresh token and a second knock.
+                    Err(err) if !mail_imap::should_refresh_token(&err) => Err(told_not_now(err)),
                     Err(_) => {
                         check()?;
                         let fresh = Authenticator::from_env(auth.provider)
@@ -513,7 +611,7 @@ pub(crate) fn connect_imap_with_stop(
                             &fresh.access_token,
                             alive.clone(),
                         )
-                        .map_err(|err| err.to_string())?;
+                        .map_err(told_not_now)?;
                         Ok((server, Some(session.refreshed(Credentials::OAuth(fresh)))))
                     }
                 }
@@ -526,11 +624,15 @@ pub(crate) fn connect_imap_with_stop(
                     &creds.password,
                     alive.clone(),
                 )
-                .map_err(|err| err.to_string())?;
+                .map_err(told_not_now)?;
                 Ok((server, None))
             }
         },
     );
+    let outcome = outcome.map_err(|reason| ConnectFailure {
+        reason,
+        throttled: throttled.get(),
+    });
     outcome.map(|(mut server, fresh)| {
         server.set_operation_stop(session.ticket.stop_flag());
         (server, fresh, lease)
@@ -584,8 +686,13 @@ pub(crate) fn light_pass_account(app: &Blocking, session: &AccountWork) -> Resul
     // network is stable, it isn't a state we'd replay afterwards.
     let mut store = Store::open(&path).map_err(|err| err.to_string())?;
     let account_id = session.ticket.account_id;
+    // The cooldown (PLAN-THROTTLE E3), read-only like the backoff: an
+    // account told "not now" is not knocked on by the watcher.
+    if on_hold(&store, account_id).is_some() {
+        return Ok(());
+    }
 
-    let (mut server, refreshed, _lease) = connect_imap(session)?;
+    let (mut server, refreshed, _lease) = open_door(&store, session, None)?;
     let mut problems = Vec::new();
     let hooks = ShellHooks {
         cycle: state.sync_cycle.as_ref(),
@@ -655,6 +762,7 @@ pub(crate) fn poll_cycle(
     backoffs: &Mutex<HashMap<String, crate::Backoff>>,
     locks: &Mutex<HashMap<String, Arc<Mutex<()>>>>,
     force: bool,
+    held: &dyn Fn(i64) -> Option<i64>,
     mut per_account: impl FnMut(
         i64,
         &AccountWork,
@@ -693,6 +801,19 @@ pub(crate) fn poll_cycle(
             tally.errors.push(format!(
                 "{email}: backing off after repeated failures; retrying in {} min",
                 remaining.as_secs().div_ceil(60).max(1)
+            ));
+            cycle.done.fetch_add(1, Ordering::Relaxed);
+            continue;
+        }
+        // The cooldown (PLAN-THROTTLE E3): an account breathing after a
+        // throttle is skipped here, BEFORE the per-account work — never
+        // as a failure (review: a hold returned as an error fed the
+        // backoff, which then outlived the cooldown by up to an hour).
+        // It is not silenced either: the progress line and Settings say
+        // it from `sync_progress`. The manual gesture lifts it (`force`).
+        if !force && let Some(until) = held(account_id) {
+            crate::trace::trace(&format!(
+                "account {account_id}: on hold after a throttle until epoch {until}"
             ));
             cycle.done.fetch_add(1, Ordering::Relaxed);
             continue;
@@ -797,8 +918,8 @@ pub(crate) fn run_sync(
     cycle: &SyncShared,
     app: &AppHandle,
 ) -> Result<SyncOutcome, String> {
-    let (mut server, refreshed, _lease) = connect_imap(session)?;
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
+    let (mut server, refreshed, _lease) = open_door(&store, session, None)?;
     let hooks = ShellHooks {
         cycle,
         app: app.clone(),
@@ -962,6 +1083,61 @@ pub(crate) fn job_for_email(app: &Blocking, email: &str) -> Result<AccountWork, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// PLAN-THROTTLE E3: the door's answer is typed for the one thing the
+    /// caller must do with it — a throttle puts the account on hold, a cut
+    /// cable or a dead token does not.
+    #[test]
+    fn a_throttle_at_the_door_is_the_only_failure_that_holds_the_account() {
+        let throttled =
+            connect_failure(&mail_core::Error::Throttled("[THROTTLED] slow down".into()));
+        assert!(throttled.throttled);
+        assert_eq!(
+            throttled.reason,
+            "the server asked to slow down: [THROTTLED] slow down"
+        );
+        assert!(!connect_failure(&mail_core::Error::Connection("cut".into())).throttled);
+        assert!(
+            !connect_failure(&mail_core::Error::Refusal("AUTHENTICATIONFAILED".into())).throttled
+        );
+        let plain: ConnectFailure = "account changed".to_string().into();
+        assert!(!plain.throttled);
+        assert_eq!(String::from(plain), "account changed");
+    }
+
+    /// The hold is read from the store every scheduler consults before
+    /// opening a connection (cycle, light pass, watcher, pump), and written
+    /// by the door itself when the server throttles the LOGIN.
+    #[test]
+    fn a_throttled_door_puts_the_account_on_hold_and_a_cut_cable_does_not() {
+        let store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("door@example.invalid", "gmail")
+            .unwrap();
+        assert_eq!(on_hold(&store, account), None);
+        hold_if_throttled(
+            &store,
+            account,
+            &connect_failure(&mail_core::Error::Connection("cut".into())),
+        );
+        assert_eq!(
+            on_hold(&store, account),
+            None,
+            "a network failure is not a throttle"
+        );
+        hold_if_throttled(
+            &store,
+            account,
+            &connect_failure(&mail_core::Error::Throttled("[THROTTLED]".into())),
+        );
+        let until = on_hold(&store, account).expect("on hold");
+        assert!(
+            until > epoch_now() + 3500,
+            "an hour of air, at least: {until}"
+        );
+        assert!(hold_reason(until).contains("resuming at"));
+    }
+
     #[test]
     fn a_closed_job_does_not_poll_or_publish_backoff_after_account_readdition() {
         let registry = crate::account_work::Registry::default();
@@ -989,6 +1165,7 @@ mod tests {
             &backoffs,
             &locks,
             true,
+            &|_| None,
             |_, _| panic!("stale job reached the network"),
         );
         assert_eq!(tally.accounts_failed, 0);

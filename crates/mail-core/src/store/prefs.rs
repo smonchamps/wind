@@ -18,6 +18,9 @@ pub const PREFS_PER_ACCOUNT: &[&str] = &[
     "backfill_turn.headers",
     "backfill_turn.recipients",
     "draft_fetch_cursor",
+    // PLAN-THROTTLE-2026-09: the cooldown and the day's download tally.
+    "throttle",
+    "download",
 ];
 
 // The GLOBAL pref keys the shell reads and writes — declared next to

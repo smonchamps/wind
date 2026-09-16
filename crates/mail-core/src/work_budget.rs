@@ -8,6 +8,9 @@ pub struct FetchLimits {
 }
 
 /// Shared by callers across folders and accounts, including failed attempts.
+/// Bytes one backfill pass may download (the default of [`WorkBudget::new`]).
+pub const PASS_BYTES: u64 = 64 * 1024 * 1024;
+
 pub struct WorkBudget {
     remaining: usize,
     scanned: usize,
@@ -18,7 +21,7 @@ pub struct WorkBudget {
 
 impl WorkBudget {
     pub fn new(candidates: usize) -> Self {
-        Self::with_limits(candidates, 64 * 1024 * 1024, Duration::from_secs(120))
+        Self::with_limits(candidates, PASS_BYTES, Duration::from_secs(120))
     }
     pub fn with_limits(candidates: usize, bytes: u64, duration: Duration) -> Self {
         Self {
@@ -42,6 +45,11 @@ impl WorkBudget {
     }
     pub fn scanned(&self) -> usize {
         self.scanned
+    }
+    /// Bytes this pass may still download — the difference between two
+    /// readings is what one mailbox's backfill cost (PLAN-THROTTLE E5).
+    pub fn bytes_left(&self) -> u64 {
+        self.bytes
     }
     pub fn saved(&self) -> usize {
         self.saved

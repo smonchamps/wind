@@ -109,6 +109,16 @@ fn run_loop(app: tauri::AppHandle, email: String, alive: Arc<AtomicBool>) {
                 continue;
             }
         }
+        // The cooldown (PLAN-THROTTLE E3), the same way as the backoff:
+        // sleep, no line — field 2026-09-16, the door's refusal used to
+        // read "session dropped … reconnecting in 60 s" once a minute
+        // for the whole hold. A read-only peek at the one pref.
+        if let (Ok(path), Ok(id)) = (poll::adopted_db(&app), account_id.parse::<i64>())
+            && poll::held_at(&path, id).is_some()
+        {
+            std::thread::sleep(SLEEP);
+            continue;
+        }
         let start = Instant::now();
         match watch_session(&app, &email, &alive) {
             // Clean exit: the flag dropped (account removed) or the
@@ -141,8 +151,26 @@ fn run_loop(app: tauri::AppHandle, email: String, alive: Arc<AtomicBool>) {
 /// caller reconnects.
 fn watch_session(app: &poll::Blocking, email: &str, alive: &Arc<AtomicBool>) -> Result<(), String> {
     let session = poll::job_for_email(app, email)?;
+    // PLAN-THROTTLE E3: on hold, the watcher waits like the others — the
+    // reconnection pause (2 s → 60 s) is its clock, no connection opened,
+    // no store opened either (a read-only peek at the one pref).
+    let path = poll::adopted_db(app)?;
+    let account_id = session.ticket.account_id;
+    if let Some(until) = poll::held_at(&path, account_id) {
+        return Err(poll::hold_reason(until));
+    }
     let (mut server, refreshed, _lease) =
-        poll::connect_imap_with_stop(&session, Some(alive.clone()))?;
+        match poll::connect_imap_with_stop(&session, Some(alive.clone())) {
+            Ok(door) => door,
+            Err(failure) => {
+                if failure.throttled
+                    && let Ok(store) = mail_core::Store::open(&path)
+                {
+                    poll::hold_if_throttled(&store, account_id, &failure);
+                }
+                return Err(failure.reason);
+            }
+        };
     if !alive.load(Ordering::Acquire) {
         return Ok(());
     }

@@ -286,7 +286,7 @@ tester's own machine, dated in the plan that recorded it.
 | Windows x64 | `make-release.ps1` (cross from the arm64 workstation) | CI `quality` (windows-latest) | pre-push hook on the workstation (WebView2, CDP) | field, 0.19.0 (tester T-x64) | field | field, chain 0.10.x → 0.19.0 |
 | Windows arm64 | `make-release.ps1` (native) | CI `quality-windows-arm64` (clippy, cross-check) | pre-push hook (the workstation IS arm64) | field, every release (the Chief Engineer's workstation) | field | field, every release |
 | macOS x64 (Intel) | `release-macos.sh` on the Air | CI `quality-macos` (Rosetta 2 on the arm64 runner) | none (WKWebView has no CDP, D-61) | field, 0.19.0 (the Air) | field (Keychain, one prompt per credential after an ad-hoc update — D-60, to watch at the second mac release) | field: pending the second mac release |
-| macOS arm64 (Apple Silicon) | `release-macos.sh` on the Air (cross) | CI `quality-macos` (native on the arm64 runner) | none (D-61) | field, 0.19.0 (tester, PLAN-APPLE-SILICON) | field: pending | field: pending the second mac release |
+| macOS arm64 (Apple Silicon) | `release-macos.sh` on the Air (cross) | CI `quality-macos` (native on the arm64 runner) | none (D-61) | field, 0.19.0 (testers T2/T3; native confirmed 2026-09-15, Activity Monitor › Kind = "Apple") | field: pending | field: pending the second mac release |
 
 Not supported: Linux, mobile (STANDARD §3). Signing: Windows Authenticode
 frozen (D-39), macOS ad-hoc (D-60) — accepted beta limits.
@@ -296,6 +296,7 @@ frozen (D-39), macOS ad-hoc (D-60) — accepted beta limits.
 - No e2e suite on macOS (WKWebView has no CDP) — the mac gate is the
   `quality-macos` CI job (both triples) + the field checklist (D5).
 - The Apple Silicon build is cross-built and never RUN on the Air:
-  its run proof is a tester's install (PLAN-APPLE-SILICON).
+  its run proof is a tester's install (PLAN-APPLE-SILICON — done:
+  T2 and T3 run it natively, 2026-09-15).
 - Unsigned/ad-hoc: the §8 gesture is the price until notarization (D2
   debt).

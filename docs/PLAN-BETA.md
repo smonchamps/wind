@@ -137,6 +137,14 @@ postures of § 2 now read: SAC `On` (T1), Gmail (T1, T2, T3), and a
 platform the plan did not require — the first two mac workstations of
 the beta, both on the binary no machine of the fleet runs natively.
 
+**Field record of 2026-09-15 — the reservation lifted.** Both testers
+played the Activity Monitor gesture: T3 by a capture (the Wind process,
+Kind **"Apple"**), T2 by answer to the Chief Engineer (**"Apple"**).
+T2 and T3 run the `_aarch64` binary natively — the run proof of
+[PLAN-APPLE-SILICON](archives/PLAN-APPLE-SILICON.md) is complete. The
+capture stays with the Chief Engineer: it shows the tester's macOS
+user name (§ 3 bis rule).
+
 Rules for keeping the register:
 
 - **The correspondence stays with the CE.** The T1-T5 ↔ person mapping

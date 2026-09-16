@@ -44,8 +44,23 @@ testeurs de la bêta.
 - **La barre « aider à améliorer Wind » disparaît.** Elle proposait de
   conserver des rapports de plantage locaux ; elle ajoutait du bruit
   pour peu de chose, elle est retirée.
+- **Les gros rattrapages Gmail sont cadencés.** Gmail n'autorise
+  qu'un volume de courrier téléchargé par jour ; Wind arrête désormais
+  le rattrapage en arrière-plan pour la journée avant cette limite, et
+  la barre d'état dit quand il reprend. Le nouveau courrier continue
+  d'arriver entre-temps.
 
 ### Corrigé
+
+- **Quand Gmail demande à Wind de ralentir, Wind écoute — et le dit.**
+  Jusqu'ici une réponse « trop de requêtes » était traitée comme un
+  refus définitif : des gestes de tri que vous veniez de faire étaient
+  abandonnés avec un message obscur, et Wind continuait de frapper au
+  serveur toute la journée, ce qui pouvait laisser un compte bloqué au
+  milieu de sa première synchronisation. Wind attend désormais (une
+  heure, puis plus si nécessaire), garde vos gestes pour le moment où
+  le serveur est prêt, et la barre d'état dit quel compte est en pause
+  et jusqu'à quand.
 
 - **Une réponse envoyée hors ligne ne laisse plus de brouillon
   fantôme.** Répondre et envoyer aussitôt hors ligne laissait une

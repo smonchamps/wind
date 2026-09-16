@@ -171,11 +171,13 @@ export const FR = {
   'status.sync': 'Synchronisation · {p} %',
   'status.bodyBackfill': 'Rattrapage des messages · {n} restants · {p} %',
   'status.bodyBackfillAlone': 'Rattrapage des messages · {n} restants',
+  'status.dailyPaused': '{account} · limite quotidienne de téléchargement atteinte · le rattrapage reprend {when}',
   'status.previewBackfill': 'Rattrapage des aperçus…',
   'status.sends': "Boîte d'envoi · {n} envoi en attente|Boîte d'envoi · {n} envois en attente",
   'status.scheduled':
     "Boîte d'envoi · {n} envoi programmé · départ {when}|Boîte d'envoi · {n} envois programmés · prochain départ {when}",
   'status.syncFailed': 'Synchronisation impossible · nouvelle tentative automatique',
+  'status.throttled': '{account} · le serveur limite les téléchargements · reprise {when}',
   'status.syncFailedSince':
     'Synchronisation impossible · nouvelle tentative automatique · dernière synchronisation {since}',
   'status.upToDate': 'Tous les messages sont à jour',
@@ -389,6 +391,8 @@ export const FR = {
   // --- Compose --------------------------------------------------------
   // Reconnecting an account with a dead token (field finding 2026-08-20).
   'settings.connectionUnavailable': 'Connexion indisponible',
+  'settings.cooldown': 'Le serveur limite les téléchargements de ce compte · Wind reprend {when}',
+  'settings.dailyPaused': 'La limite quotidienne de téléchargement de ce compte est atteinte · le rattrapage reprend {when}',
   'settings.disconnected': 'Déconnecté',
   'settings.reconnect': 'Reconnecter',
   'settings.reconnectAccount': 'Reconnecter {email}',

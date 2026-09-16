@@ -19,6 +19,12 @@ impl Store {
         operation: &str,
         now: i64,
     ) -> Result<bool, Error> {
+        // PLAN-THROTTLE E2: while the account breathes, nothing of it is
+        // due — every mailbox, every operation. The one chokepoint the
+        // cycle, the backfill and the pump already pass through.
+        if self.cooldown_until(account, now)?.is_some() {
+            return Ok(false);
+        }
         let retry: Option<Option<i64>> = self.conn().query_row("SELECT retry_at FROM operation_issues WHERE account_id = ?1 AND mailbox = ?2 AND operation = ?3", params![account, mailbox, operation], |r| r.get(0)).optional()?;
         Ok(match retry {
             None => true,
@@ -37,8 +43,19 @@ impl Store {
     ) -> Result<(), Error> {
         let Some(error) = error else {
             self.conn().execute("DELETE FROM operation_issues WHERE account_id = ?1 AND mailbox = ?2 AND operation = ?3", params![account, mailbox, operation])?;
+            // The server answered after the wait: the account breathes no more.
+            self.clear_throttle(account, now)?;
             return Ok(());
         };
+        // "Not now" (PLAN-THROTTLE E2): the whole account breathes. It is a
+        // cooldown, NOT an operation issue — an issue would raise the
+        // "Synchronization incomplete" alert and show the raw server line
+        // under the calm "resumes at" one (review, decision D5).
+        if matches!(error, Error::Throttled(_)) {
+            self.note_throttle(account, now)?;
+            self.conn().execute("DELETE FROM operation_issues WHERE account_id = ?1 AND mailbox = ?2 AND operation = ?3", params![account, mailbox, operation])?;
+            return Ok(());
+        }
         let tx = self.conn().unchecked_transaction()?;
         let attempts: u32 = self.conn().query_row("SELECT attempts FROM operation_issues WHERE account_id = ?1 AND mailbox = ?2 AND operation = ?3", params![account, mailbox, operation], |r| r.get(0)).optional()?.unwrap_or(0_u32).saturating_add(1);
         // A server refusal (any tagged NO/BAD, transient or not) backs off like
@@ -63,7 +80,9 @@ impl Store {
             "UPDATE operation_issues SET retry_at = 0 WHERE account_id = ?1",
             [account],
         )?;
-        Ok(())
+        // The manual gesture is an order: the cooldown lifts with the waits
+        // — its strikes stay (review B5).
+        self.lift_throttle(account, chrono::Utc::now().timestamp())
     }
 
     pub fn operation_issues(&self) -> Result<Vec<OperationIssue>, Error> {

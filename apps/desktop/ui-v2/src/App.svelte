@@ -206,6 +206,15 @@ import { invalidateViews } from './lib/views.svelte.js';
   // precedence).
   let scheduledNotice = $state(null);
   const syncIssues = $derived(sync?.issues ?? []);
+  // PLAN-THROTTLE E4/E5 (D5): accounts the pump leaves alone — told "not
+  // now" by their server (`throttle`), or past the day's download budget
+  // (`daily_budget`) — each with the epoch Wind knocks again. A waiting
+  // state, said in the progress line (the earliest one) and under the
+  // account in Settings — never an alert: nothing is asked of the user.
+  const cooldowns = $derived(sync?.cooldowns ?? []);
+  function accountLabel(id) {
+    return names[id] ?? accounts.find((a) => a.account_id === id)?.email ?? '';
+  }
   const syncIssueNotice = $derived(syncIssues.length ? {
     alert: true, icon: 'error', text: t('sync.incomplete', { n: syncIssues.length }),
     actions: [{ label: t('sync.details'), do: () => settings.open() }],
@@ -300,6 +309,20 @@ import { invalidateViews } from './lib/views.svelte.js';
         alert: true,
       };
     }
+    // PLAN-THROTTLE E4: an account breathing after a throttle explains
+    // every frozen figure below it — it is said first, with the resume
+    // time, and it is not an alert (D5). Several accounts: the earliest.
+    if (cooldowns.length) {
+      const soonest = cooldowns.reduce((a, b) => (b.until < a.until ? b : a));
+      return {
+        text: t(soonest.kind === 'daily_budget' ? 'status.dailyPaused' : 'status.throttled', {
+          account: accountLabel(soonest.account_id),
+          when: whenLong(soonest.until),
+        }),
+        thread: null,
+        alert: false,
+      };
+    }
     // The current cycle: never "up to date" again while the machine is
     // working — and EVERYTHING we know is shown (field 2026-08-13:
     // "2/2 · account" stuck for 7 minutes during the folder sweep).
@@ -350,6 +373,7 @@ import { invalidateViews } from './lib/views.svelte.js';
     if (previewBackfill) {
       return { text: t('status.previewBackfill'), thread: true, alert: false };
     }
+
     if (pendingSends > 0) {
       // A queued send is an action in progress (A52): the stroke loops
       // until the flush. Offline is caught higher up — the stroke
@@ -2082,7 +2106,7 @@ import { invalidateViews } from './lib/views.svelte.js';
                  onmail={afterMailSent}
                  ondraft={probeDrafts} />
     <Feedback bind:this={back} {accounts} onflash={flash} />
-    <Settings bind:this={settings} {accounts} {connected} {connectionStates} {markers} {names} {syncIssues}
+    <Settings bind:this={settings} {accounts} {connected} {connectionStates} {markers} {names} {syncIssues} {cooldowns}
               onretrySync={() => poll(true)}
               onmarker={patchMarker} onname={patchName} onadd={accountAdded}
               onremove={accountRemoved}

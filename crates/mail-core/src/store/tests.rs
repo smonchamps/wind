@@ -885,6 +885,14 @@ fn delete_account_erases_everything_and_does_not_touch_the_neighbor() {
         store
             .set_text_pref(&format!("nom_compte.{account}"), "Perso")
             .unwrap();
+        // PLAN-THROTTLE review: the cooldown and the day's download tally
+        // are per-account prefs too — a reused id must not start on hold.
+        store
+            .set_text_pref(&format!("throttle.{account}"), "9999999999:3")
+            .unwrap();
+        store
+            .set_text_pref(&format!("download.{account}"), "2026-09-15:100")
+            .unwrap();
     }
 
     store.delete_account(departed).unwrap();
@@ -892,7 +900,14 @@ fn delete_account_erases_everything_and_does_not_touch_the_neighbor() {
     let accounts = store.accounts().unwrap();
     assert_eq!(accounts.len(), 1);
     assert_eq!(accounts[0].email, "reste@exemple.fr");
-    for key in ["signature", "repere_icone", "repere_teinte", "nom_compte"] {
+    for key in [
+        "signature",
+        "repere_icone",
+        "repere_teinte",
+        "nom_compte",
+        "throttle",
+        "download",
+    ] {
         assert_eq!(
             store.text_pref(&format!("{key}.{departed}")).unwrap(),
             None,
