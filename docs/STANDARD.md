@@ -697,6 +697,24 @@ instead of the build (2026-09-04, six specs). The launcher's
 always: close every Wind window, rebuild, expect `Compiling`, not a
 bare `Finished`.
 
+### What exists on a machine is checked on the machine
+
+A finding about an artefact — "the shipped app writes no trace file" —
+was deduced from the build flags (`mesure` = stderr only) and was wrong:
+`wind.log` has been written next to the database since audit E9, and
+the P0 #106 had waited a week behind an ask that named a folder which
+did not exist (PLAN-THROTTLE, 2026-09-15, caught at STOP 2 preparation
+by listing this workstation's own data folder). Before writing "does
+not exist": `ls` the folder, `grep` the sink, open the file.
+
+### A field checklist carries real values, never a placeholder
+
+`'throttle.<ID>'` in a copy-ready command was inserted literally: the
+row `throttle.<ID>` sat in the real database and matched no account,
+and a check read as a regression for one round (2026-09-16). The
+checklist reads the ids first and writes them into the commands; a
+placeholder is a trap wearing angle brackets.
+
 ### Defects are found in the field, not in tests
 
 Never logic errors: always **false assumptions about the environment

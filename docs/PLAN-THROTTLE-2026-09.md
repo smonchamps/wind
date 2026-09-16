@@ -1,5 +1,31 @@
 # PLAN-THROTTLE-2026-09 — a Gmail throttle lets the account breathe, and says so
 
+> **JOB CLOSED on 2026-09-16 — full field validation.** STOP 1 GO on the
+> seven Chief Engineer decisions D1–D7 (2026-09-15); STOP 2 on the
+> workstation's real accounts (2026-09-16): the simulated throttle
+> cooldown and the simulated spent daily budget both said in the status
+> bar and in Settings, no alert, the other account unaffected, the
+> manual Sync lifting the hold — **"all checks ok"**; one same-day field
+> touch-up (the IDLE watcher's hold noise, A150 covers the surface).
+> Commits `bafba6b` (the job, 30 files, +1775/−117, carrying the Apple
+> Silicon run proof docs) and `a0b9cb6` (`chore(deps)`: rustls 0.23.45
+> for RUSTSEC-2026-0285, published 2026-09-14 — the first CI run
+> `35076384205` was red on the audit leg alone, for a reason outside the
+> job). **CI GREEN run 35077788756**, all seven legs. Review: 10
+> findings, 9 fixed, 1 residue. D-17 closed. Rides 0.22.0 (D7).
+>
+> **Kaizen (PLAN-KAIZEN-CLAUDE)**: `--by-commit 262f833..a0b9cb6` —
+> **T1 = 48.7 M** input equiv. (40.8 M main thread + 7.9 M in 8 agent
+> transcripts, agent share 16.3 %) on the one-commit job `bafba6b` (the
+> tool's E0 row IS the job — D12's known limit; the E-steps were not
+> separable by commit), 1.9 M for the lockfile bump. **W3**: the tool
+> counts 7 gates; by hand, **2 explicit full gates** (6.4 min before
+> the review wave, 8 min after) plus the two pre-push replays, the rest
+> partial re-gates of the fixing loop. **Quality guard**: 1 KO at STOP 2
+> (the watcher noise, fixed the same day), 0 red CI on the job's own
+> account (the audit red was an advisory of the day). Turns/prompt 38.3
+> over the 8 sessions the range touches.
+
 > Statement (Deputy Chief Engineer, 2026-09-15, from the backlog and
 > the field): *"Bug: a Gmail throttle during message download is caught
 > then dropped — the UI freezes without a word, and the throttle is

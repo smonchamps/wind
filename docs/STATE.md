@@ -70,9 +70,10 @@ One sweep ([plan](archives/PLAN-SWEEP-2026-09.md)), field 7/7 OK the same day:
   input drawn twice). Backlog observation: an arrival in the same
   second as Organized-mode activation never waits at the Screener.
 
-**Next, in order**: **0.22.0**, held for PLAN-THROTTLE (D7 of
-2026-09-15) and ready once its CI is green — both changelog entries are
-written; then the field proof of the throttle on T2's account after her
+**Next, in order**: **0.22.0 — ready to launch** (PLAN-THROTTLE closed
+2026-09-16, CI green on `a0b9cb6`; both changelog entries written —
+`make-release.ps1 0.22.0` on this workstation, the Air, then
+`publish-release.ps1`, STANDARD §2.10); then the field proof of the throttle on T2's account after her
 update (the P0 #106 — see the PLAN-THROTTLE section below: the trace
 is `wind.log` in `…/dev.elements.wind/`, not the folder the first ask
 named; the corrected ask is pending with T2) → the field checks the
@@ -82,7 +83,7 @@ item 86 first-run OAuth measurement) → the Trash permanent-delete
 capability (D3-bis, backlog). The Rosetta-or-native check on T2/T3 is
 DONE (2026-09-15: both "Apple", native — see below).
 
-## PLAN-THROTTLE-2026-09 — delivered 2026-09-15, field proof pending
+## PLAN-THROTTLE-2026-09 — CLOSED 2026-09-16
 
 Backlog #130 (DEBT D-17), taken because its reopening clause came true
 in the field: T2's Gmail account — the P0 #106 account — answered
@@ -110,7 +111,15 @@ progress line and in Settings (A150). D-17 closed. **The field proof is
 T2's update to 0.22.0**: the Settings line and the progress line must
 name the pause, and the INBOX must move again within a day. A "save a
 diagnostic file" gesture (the log exists, nobody can find it without a
-path) is opened as a backlog item (D6).
+path) is opened as a backlog item (D6). **Closed 2026-09-16**: STOP 2
+"all checks ok" on the workstation's real accounts (two simulated
+pauses through one pref each, the manual Sync lifting the hold; one
+same-day touch-up, the IDLE watcher's hold noise), commits `bafba6b` +
+`a0b9cb6` (rustls 0.23.45, RUSTSEC-2026-0285 — the advisory of the day
+turned the first CI run red on the audit leg alone), **CI GREEN
+35077788756**. Review 10 findings / 9 fixed. Kaizen: T1 48.7 M, 2
+explicit full gates (+2 hook replays), 1 KO at STOP 2 fixed the same
+day.
 
 ## PLAN-INPROGRESS-2026-09 — CLOSED 2026-09-09
 
