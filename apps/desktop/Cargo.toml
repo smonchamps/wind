@@ -60,7 +60,7 @@ fs4 = "1.1"
 # The pre-Tauri data root (single-instance lock, early trace): dirs is
 # what tauri's app_data_dir() itself reads — one truth for the folder,
 # already in the tree (PLAN-MACOS E1, review of 2026-09-04).
-dirs = "6"
+dirs = "7"
 # The adopted database file's identity (Lot 5 E13a, audit A07): the same
 # crate walkdir already pulls in — one stat, no handle kept open.
 same-file = "1"
